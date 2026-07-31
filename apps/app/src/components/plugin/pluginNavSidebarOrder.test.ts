@@ -3,6 +3,7 @@ import {
   arrangePluginNavPanels,
   getPluginNavPanelKey,
   reorderPluginNavPanels,
+  seedLeadingNavPanelKeys,
 } from "./pluginNavSidebarOrder";
 
 function panel(pluginId: string, id: string) {
@@ -47,14 +48,39 @@ describe("arrangePluginNavPanels", () => {
     ]);
   });
 
-  it("drops stored keys for panels that are no longer registered", () => {
-    const { normalizedOrder } = arrangePluginNavPanels({
+  it("renders no row for an unregistered key but keeps its slot in the order", () => {
+    // A plugin frontend can register after the sidebar mounts. Dropping the key
+    // here would persist a shortened order and lose the user's arrangement.
+    const { visible, normalizedOrder } = arrangePluginNavPanels({
       panels: [github, docs],
       storedOrder: ["strudel/repl", "docs/vault", "github/pulls"],
       hiddenKeys: [],
     });
 
-    expect(normalizedOrder).toEqual(["docs/vault", "github/pulls"]);
+    expect(visible.map(getPluginNavPanelKey)).toEqual([
+      "docs/vault",
+      "github/pulls",
+    ]);
+    expect(normalizedOrder).toEqual([
+      "strudel/repl",
+      "docs/vault",
+      "github/pulls",
+    ]);
+  });
+
+  it("returns a late-registering panel to its stored slot", () => {
+    const { visible } = arrangePluginNavPanels({
+      panels: [github, docs, tasks],
+      // The order saved while only github had registered still names all three.
+      storedOrder: ["tasks/board", "docs/vault", "github/pulls"],
+      hiddenKeys: [],
+    });
+
+    expect(visible.map(getPluginNavPanelKey)).toEqual([
+      "tasks/board",
+      "docs/vault",
+      "github/pulls",
+    ]);
   });
 
   it("splits hidden panels out while both lists keep the user's order", () => {
@@ -130,5 +156,29 @@ describe("reorderPluginNavPanels", () => {
         visibleKeys: ["github/pulls"],
       }),
     ).toBeNull();
+  });
+});
+
+describe("seedLeadingNavPanelKeys", () => {
+  it("leaves an untouched order empty so registry order still wins", () => {
+    expect(seedLeadingNavPanelKeys([], ["__builtin__/tools"])).toEqual([]);
+  });
+
+  it("prepends a built-in key that a customized order predates", () => {
+    expect(
+      seedLeadingNavPanelKeys(
+        ["github/pulls", "docs/vault"],
+        ["__builtin__/tools"],
+      ),
+    ).toEqual(["__builtin__/tools", "github/pulls", "docs/vault"]);
+  });
+
+  it("keeps the user's slot for a built-in key they already moved", () => {
+    expect(
+      seedLeadingNavPanelKeys(
+        ["github/pulls", "__builtin__/tools"],
+        ["__builtin__/tools"],
+      ),
+    ).toEqual(["github/pulls", "__builtin__/tools"]);
   });
 });
