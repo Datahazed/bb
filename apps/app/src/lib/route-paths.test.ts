@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
-  getAutomationDetailRoutePath,
-  getAutomationEditRoutePath,
-  getAutomationsRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRegistrySkillDetailRoutePath,
+  getAutomationDetailRoutePath,
+  getAutomationEditRoutePath,
+  getAutomationsRoutePath,
   getSkillDetailRoutePath,
   getSkillsRoutePath,
   getThreadRoutePath,
@@ -60,7 +60,7 @@ describe("route path helpers", () => {
     expect(isRoutePath({ path: "/settings" })).toBe(true);
   });
 
-  it("builds and recognizes the Tools routes", () => {
+  it("builds and recognizes the Extensions routes", () => {
     expect(getToolsRoutePath()).toBe("/tools");
     expect(getSkillsRoutePath()).toBe("/tools/skills");
     expect(
@@ -77,20 +77,6 @@ describe("route path helpers", () => {
     expect(getPluginDetailRoutePath({ pluginId: "github" })).toBe(
       "/tools/plugins/github",
     );
-    expect(getAutomationsRoutePath()).toBe("/tools/automations");
-    expect(
-      getAutomationDetailRoutePath({
-        projectId: "proj_standard",
-        automationId: "auto_standard",
-      }),
-    ).toBe("/tools/automations/proj_standard/auto_standard");
-    expect(
-      getAutomationEditRoutePath({
-        projectId: "proj_standard",
-        automationId: "auto_standard",
-      }),
-    ).toBe("/tools/automations/proj_standard/auto_standard/edit");
-
     for (const path of [
       "/tools",
       "/tools/skills",
@@ -100,10 +86,31 @@ describe("route path helpers", () => {
       "/tools/plugins",
       "/tools/plugins/browse",
       "/tools/plugins/github",
-      "/tools/automations",
-      "/tools/automations/browse",
-      "/tools/automations/proj_standard/auto_standard",
-      "/tools/automations/proj_standard/auto_standard/edit",
+    ]) {
+      expect(isRoutePath({ path })).toBe(true);
+    }
+  });
+
+  it("builds canonical Automations plugin routes", () => {
+    expect(getAutomationsRoutePath()).toBe("/plugins/automations/automations");
+    expect(
+      getAutomationDetailRoutePath({
+        projectId: "proj_standard",
+        automationId: "auto_standard",
+      }),
+    ).toBe("/plugins/automations/automations/proj_standard/auto_standard");
+    expect(
+      getAutomationEditRoutePath({
+        projectId: "proj_standard",
+        automationId: "auto_standard",
+      }),
+    ).toBe("/plugins/automations/automations/proj_standard/auto_standard/edit");
+
+    for (const path of [
+      "/plugins/automations/automations",
+      "/plugins/automations/automations/browse",
+      "/plugins/automations/automations/proj_standard/auto_standard",
+      "/plugins/automations/automations/proj_standard/auto_standard/edit",
     ]) {
       expect(isRoutePath({ path })).toBe(true);
     }
@@ -119,6 +126,12 @@ describe("route path helpers", () => {
     expect(isRoutePath({ path: "/automations" })).toBe(true);
     expect(
       isRoutePath({ path: "/automations/proj_standard/auto_standard" }),
+    ).toBe(true);
+    expect(isRoutePath({ path: "/tools/automations" })).toBe(true);
+    expect(
+      isRoutePath({
+        path: "/plugins/automations/automations/proj_standard/auto_standard",
+      }),
     ).toBe(true);
   });
 

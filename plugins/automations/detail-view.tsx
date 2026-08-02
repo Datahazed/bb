@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode, UIEvent } from "react";
 import type {
   AutomationExecution,
   AutomationResponse,
@@ -6,7 +7,6 @@ import type {
   AutomationRunStatus,
 } from "./src/rpc-types";
 import { Button } from "@bb/shared-ui/button";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ResourceActionButton,
@@ -17,19 +17,26 @@ import {
   ResourceDetailPanel,
   ResourcePromptPreview,
   ResourceDetailStack,
-  ResourceLocationMeta,
   ResourceMeta,
   ResourceOverflowMenu,
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
+import { Skeleton } from "@bb/shared-ui/skeleton";
+import {
+  OptionDisplay,
+  OPTION_BASE_CLASS_NAME,
+  OPTION_INTERACTIVE_CLASS_NAME,
+  OPTION_MUTED_CLASS_NAME,
+  OPTION_TRIGGER_CONTENT_CLASS_NAME,
+} from "@bb/shared-ui/option-display";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { cn } from "@bb/shared-ui/lib/utils";
+import { cn, formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import {
   formatAutomationTrigger,
   formatDetailScheduleStatusLabel,
@@ -38,6 +45,12 @@ import {
   getOneShotLifecycle,
   oneShotLifecycleAllowsToggle,
 } from "./lib/format-schedule";
+import {
+  formatAutomationModelLabel,
+  formatAutomationProviderLabel,
+} from "./lib/model-label";
+import { AutomationProviderIcon } from "./lib/provider-icon";
+import { AutomationMetadataItem } from "./metadata";
 
 export interface AutomationRunsViewState {
   runs: readonly AutomationRunResponse[];
@@ -61,6 +74,8 @@ export interface AutomationDetailViewProps {
   onOpenThread: (threadId: string) => void;
   footer?: ReactNode;
 }
+
+const PERSONAL_PROJECT_ID = "proj_personal";
 
 interface AutomationLifecycleControlProps {
   checked: boolean;
@@ -126,6 +141,19 @@ export function automationScheduleLabel(
   });
 }
 
+function automationDetailNextRun(
+  automation: AutomationResponse,
+): ReactNode | null {
+  const label = automationDetailScheduleLabel(automation);
+  if (label === null) return null;
+  if (!label.startsWith("Next ")) return label;
+  return (
+    <AutomationMetadataItem icon="CalendarCheckOut02" iconLabel="Next run">
+      {label.slice("Next ".length)}
+    </AutomationMetadataItem>
+  );
+}
+
 function automationDetailScheduleLabel(
   automation: AutomationResponse,
 ): string | null {
@@ -140,19 +168,218 @@ function automationDetailScheduleLabel(
 
 function automationBodyLabel(execution: AutomationExecution): string {
   if (execution.mode === "agent") return "Prompt";
-  return execution.scriptFile !== undefined && execution.script === undefined
-    ? "Script file"
-    : "Script";
+  return "Script";
+}
+
+const SCRIPT_SCROLLBAR_IDLE_DELAY_MS = 600;
+
+function AutomationScriptContent({ content }: { content: string }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollbarIdleTimeoutRef = useRef<number | null>(null);
+  const [hasMoreBelow, setHasMoreBelow] = useState(false);
+
+  useLayoutEffect(() => {
+    const scrollArea = scrollRef.current;
+    if (!scrollArea) return;
+
+    const updateOverflow = () => {
+      setHasMoreBelow(
+        scrollArea.scrollTop + scrollArea.clientHeight <
+          scrollArea.scrollHeight - 1,
+      );
+    };
+    updateOverflow();
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updateOverflow);
+    resizeObserver?.observe(scrollArea);
+
+    return () => {
+      resizeObserver?.disconnect();
+      if (scrollbarIdleTimeoutRef.current !== null) {
+        window.clearTimeout(scrollbarIdleTimeoutRef.current);
+      }
+    };
+  }, [content]);
+
+  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
+    const scrollArea = event.currentTarget;
+    setHasMoreBelow(
+      scrollArea.scrollTop + scrollArea.clientHeight <
+        scrollArea.scrollHeight - 1,
+    );
+    scrollArea.dataset.scrollbarScrolling = "true";
+    if (scrollbarIdleTimeoutRef.current !== null) {
+      window.clearTimeout(scrollbarIdleTimeoutRef.current);
+    }
+    scrollbarIdleTimeoutRef.current = window.setTimeout(() => {
+      scrollbarIdleTimeoutRef.current = null;
+      scrollArea.removeAttribute("data-scrollbar-scrolling");
+    }, SCRIPT_SCROLLBAR_IDLE_DELAY_MS);
+  };
+
+  return (
+    <div className="relative isolate min-w-0">
+      <div
+        ref={scrollRef}
+        role="region"
+        aria-label="Script contents"
+        tabIndex={0}
+        data-automation-script-scroll=""
+        onScroll={handleScroll}
+        className="transient-scrollbar max-h-64 min-w-0 overflow-auto px-3 py-3"
+      >
+        <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
+          {content}
+        </pre>
+      </div>
+      {hasMoreBelow ? (
+        <div
+          aria-hidden
+          data-automation-script-fade="below"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-b from-transparent to-background"
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AutomationEnvironmentVariables({
+  environment,
+}: {
+  environment: Record<string, string>;
+}) {
+  const names = Object.keys(environment).sort();
+  if (names.length === 0) return null;
+  const label = `${names.length} env ${names.length === 1 ? "var" : "vars"}`;
+
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className="inline-flex items-center gap-1.5"
+            tabIndex={0}
+            aria-label={`${names.length} environment ${names.length === 1 ? "variable" : "variables"}: ${names.join(", ")}`}
+          >
+            <Icon name="Code" className="size-3.5" aria-hidden />
+            {label}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-80">
+          {names.join(", ")}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+interface DisabledAutomationSelectorProps {
+  label: string;
+  value: string;
+  accessibleValue?: string;
+  compactValue?: string;
+  leading?: ReactNode;
+  title?: string;
+  className?: string;
+}
+
+function DisabledAutomationSelector({
+  label,
+  value,
+  accessibleValue,
+  compactValue,
+  leading,
+  title,
+  className,
+}: DisabledAutomationSelectorProps) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      aria-label={`${label}: ${accessibleValue ?? value}. Read only`}
+      disabled
+      data-disabled-automation-selector={label}
+      className={cn(
+        OPTION_BASE_CLASS_NAME,
+        OPTION_INTERACTIVE_CLASS_NAME,
+        OPTION_MUTED_CLASS_NAME,
+        "cursor-default disabled:opacity-100",
+        className,
+      )}
+    >
+      <span
+        className={OPTION_TRIGGER_CONTENT_CLASS_NAME}
+        title={title ?? `${label}: ${value}`}
+      >
+        {leading}
+        <span className="min-w-0 truncate" data-promptbox-full-label="">
+          {value}
+        </span>
+        {compactValue ? (
+          <span className="min-w-0 truncate" data-promptbox-compact-label="">
+            {compactValue}
+          </span>
+        ) : null}
+      </span>
+      <Icon
+        name="ChevronDown"
+        className="size-3.5 shrink-0 text-muted-foreground"
+        aria-hidden
+      />
+    </Button>
+  );
 }
 
 function automationEnvironmentLabel(execution: AutomationExecution): string {
   if (execution.mode !== "agent") return "Host";
   const environment = execution.environment;
-  if (environment.type === "reuse") return "Existing environment";
+  if (environment.type === "reuse") return "Reuse worktree";
   if (environment.type === "project-default") return "Project default";
+  if (environment.workspace.type === "managed-worktree") return "New worktree";
+  if (environment.workspace.type === "personal") return "Local";
+  return environment.workspace.path == null
+    ? "Workspace"
+    : formatHomePathForDisplay(environment.workspace.path);
+}
+
+function automationEnvironmentCompactLabel(
+  execution: Extract<AutomationExecution, { mode: "agent" }>,
+): string {
+  if (execution.targetThreadId !== undefined) return "Thread";
+  const environment = execution.environment;
+  if (environment.type === "reuse") return "Reuse";
+  if (environment.type === "project-default") return "Default";
   if (environment.workspace.type === "managed-worktree") return "Worktree";
   if (environment.workspace.type === "personal") return "Local";
-  return environment.workspace.path ?? "Local workspace";
+  return environment.workspace.path === null
+    ? "Workspace"
+    : formatHomePathForDisplay(environment.workspace.path);
+}
+
+function automationEnvironmentIcon(
+  execution: Extract<AutomationExecution, { mode: "agent" }>,
+): IconName {
+  if (execution.targetThreadId !== undefined) return "MessageSquare";
+  const environment = execution.environment;
+  if (
+    environment.type === "reuse" ||
+    (environment.type === "host" &&
+      environment.workspace.type === "managed-worktree")
+  ) {
+    return "FolderGit";
+  }
+  if (
+    environment.type === "host" &&
+    (environment.workspace.type === "personal" ||
+      environment.workspace.type === "unmanaged")
+  ) {
+    return "Laptop";
+  }
+  return "Folder";
 }
 
 function formatPermissionMode(
@@ -164,6 +391,17 @@ function formatPermissionMode(
   if (permissionMode === "accept-edits") return "Accept Edits";
   if (permissionMode === "auto") return "Approve for me";
   return "Full Access";
+}
+
+function formatPermissionModeCompact(
+  permissionMode: Extract<
+    AutomationExecution,
+    { mode: "agent" }
+  >["permissionMode"],
+): string {
+  if (permissionMode === "accept-edits") return "Edits";
+  if (permissionMode === "auto") return "Auto";
+  return "Full";
 }
 
 function formatRunDuration(run: AutomationRunResponse): string | null {
@@ -185,7 +423,7 @@ export const AUTOMATION_RUN_STATUS_VISUALS: Record<
   AutomationRunStatus,
   {
     label: string;
-    icon: IconName | null;
+    icon: IconName;
     className: string;
   }
 > = {
@@ -201,8 +439,12 @@ export const AUTOMATION_RUN_STATUS_VISUALS: Record<
   },
   skipped: {
     label: "Skipped",
-    icon: null,
-    className: "text-muted-foreground",
+    // Not CircleDashed: icon.tsx aliases it to the same DashedLineCircleIcon as
+    // Spinner, so a skipped run rendered an identical shape to a running one.
+    // ArrowTurnForward is the only glyph in the map that reads as "passed
+    // over", and it is shape-distinct from check, x, spinner, clock and pause.
+    icon: "ArrowTurnForward",
+    className: "text-subtle-foreground",
   },
   succeeded: {
     label: "Succeeded",
@@ -219,22 +461,17 @@ export function AutomationRunStatusIndicator({
   showLabel?: boolean;
 }) {
   const visual = AUTOMATION_RUN_STATUS_VISUALS[status];
-  if (visual.icon === null && !showLabel) {
-    return <span className="sr-only">{visual.label}</span>;
-  }
   return (
     <span
       role="img"
       aria-label={visual.label}
       className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
     >
-      {visual.icon ? (
-        <Icon
-          name={visual.icon}
-          className={cn("size-4", visual.className)}
-          aria-hidden
-        />
-      ) : null}
+      <Icon
+        name={visual.icon}
+        className={cn("size-4", visual.className)}
+        aria-hidden
+      />
       {showLabel ? <span>{visual.label}</span> : null}
     </span>
   );
@@ -252,38 +489,79 @@ function RunRow({
   const showOutput =
     run.runMode === "script" &&
     (run.output !== null || run.error !== null || silent);
+  const visual = AUTOMATION_RUN_STATUS_VISUALS[run.status];
+  const running = run.status === "running";
+  const openable = run.runMode === "agent" && run.threadId !== null;
+  // The whole row is the affordance when there is a thread, so the destination
+  // stays keyboard-reachable without a separate visible button competing with
+  // the timestamp on every line.
+  const RowTag = openable ? "button" : "div";
+  const line = (
+    <RowTag
+      {...(openable
+        ? {
+            type: "button" as const,
+            onClick: () => onOpenThread(run.threadId!),
+          }
+        : {})}
+      className={cn(
+        "group/run flex w-full min-w-0 items-center gap-2.5 rounded-sm px-2 py-1.5 text-left",
+        openable &&
+          "cursor-pointer hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default",
+        running && "bg-surface-recessed/40",
+      )}
+    >
+      <span
+        role="img"
+        aria-label={visual.label}
+        className="inline-flex shrink-0"
+      >
+        <Icon
+          name={visual.icon}
+          className={cn(
+            "size-3.5",
+            visual.className,
+            running && "animate-shine-icon",
+          )}
+          aria-hidden
+        />
+      </span>
+      <span
+        className={cn(
+          "min-w-0 shrink-0 text-sm",
+          running ? "text-muted-foreground" : "text-foreground",
+        )}
+      >
+        {formatScheduleRunTime(run.startedAt)}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate text-xs",
+          running
+            ? "animate-shine text-muted-foreground"
+            : "text-subtle-foreground",
+        )}
+      >
+        {running ? `${visual.label}\u2026` : (duration ?? "")}
+        {run.skipReason ? `${duration ? " · " : ""}${run.skipReason}` : ""}
+      </span>
+      {openable ? (
+        <Icon
+          name="ChevronRight"
+          className="size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/run:opacity-100 group-focus-visible/run:opacity-100"
+          aria-hidden
+        />
+      ) : null}
+    </RowTag>
+  );
   return (
     <div className="overflow-hidden rounded-sm">
-      <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
-        <span className="sr-only">
-          {AUTOMATION_RUN_STATUS_VISUALS[run.status].label}
-        </span>
-        <span className="font-medium">
-          {formatScheduleRunTime(run.startedAt)}
-        </span>
-        {duration ? (
-          <span className="text-xs text-muted-foreground">{duration}</span>
-        ) : null}
-        {run.runMode === "agent" && run.threadId ? (
-          <button
-            type="button"
-            onClick={() => onOpenThread(run.threadId!)}
-            className="ml-auto text-xs text-muted-foreground hover:text-foreground hover:underline"
-          >
-            View thread
-          </button>
-        ) : null}
-      </div>
-      {run.skipReason ? (
-        <p className="mx-2 mb-2 rounded-md bg-surface-recessed/70 px-3 py-2 text-xs text-muted-foreground">
-          {run.skipReason}
-        </p>
-      ) : null}
+      {line}
       {showOutput ? (
         <pre
           className={cn(
             "mx-2 mb-2 whitespace-pre-wrap rounded-md bg-surface-recessed/70 px-3 py-2 font-mono text-xs leading-relaxed",
-            run.error ? "text-destructive" : "text-foreground",
+            "text-foreground",
             silent && "italic text-subtle-foreground",
           )}
         >
@@ -325,7 +603,7 @@ export function AutomationDetailView({
   const bodyLabel = automationBodyLabel(automation.execution);
   const execution = automation.execution;
   const projectContextLabel = projectLabel;
-  const localProject = projectLabel === "Local";
+  const personalProject = automation.projectId === PERSONAL_PROJECT_ID;
 
   return (
     <ResourceDetailPage
@@ -340,15 +618,17 @@ export function AutomationDetailView({
       metadata={
         <ResourceMeta
           items={[
-            <ResourceLocationMeta
-              label={projectContextLabel}
-              icon={localProject ? "Laptop" : "Folder"}
-            />,
-            <span className="inline-flex items-center gap-1.5">
-              <Icon name="Clock" className="size-3.5" aria-hidden />
+            <AutomationMetadataItem
+              icon={personalProject ? "Laptop" : "Folder"}
+              iconLabel={personalProject ? "Local project" : "Project"}
+              title={projectContextLabel}
+            >
+              {projectContextLabel}
+            </AutomationMetadataItem>,
+            <AutomationMetadataItem icon="DateTime" iconLabel="Schedule">
               {formatAutomationTrigger(automation.trigger)}
-            </span>,
-            automationDetailScheduleLabel(automation),
+            </AutomationMetadataItem>,
+            automationDetailNextRun(automation),
           ]}
         />
       }
@@ -390,59 +670,118 @@ export function AutomationDetailView({
         <ResourceDefinitionSection
           label={bodyLabel}
           actions={
-            <ResourceActionButton
-              label="Edit with chat"
-              tooltipLabel="Edit with chat"
-              icon="MessageCirclePlus"
-              onClick={onEdit}
-            />
+            <>
+              {execution.mode === "agent" ? (
+                <span
+                  data-automation-read-only-label=""
+                  className="mr-1 inline-flex items-center gap-1 text-xs text-muted-foreground"
+                >
+                  <Icon name="Lock" className="size-3.5" aria-hidden />
+                  Read only
+                </span>
+              ) : null}
+              <ResourceActionButton
+                label="Edit with chat"
+                tooltipLabel="Edit with chat"
+                icon="MessageCirclePlus"
+                onClick={onEdit}
+              />
+            </>
           }
         >
           {execution.mode === "agent" ? (
-            <ResourcePromptPreview
-              context={[
-                {
-                  icon: "Brain",
-                  label: `${execution.providerId} · ${execution.model}`,
-                },
-                {
-                  icon:
-                    execution.environment.type === "host" &&
-                    execution.environment.workspace.type === "personal"
-                      ? "Laptop"
-                      : "Folder",
-                  label: automationEnvironmentLabel(execution),
-                },
-                {
-                  icon: "Lock",
-                  label: formatPermissionMode(execution.permissionMode),
-                },
-              ]}
-            >
-              {execution.prompt}
-            </ResourcePromptPreview>
+            <div data-promptbox-shell="" className="min-w-0">
+              <ResourcePromptPreview
+                className="bg-background"
+                context={[
+                  {
+                    label: (
+                      <DisabledAutomationSelector
+                        label="Provider and model"
+                        value={formatAutomationModelLabel(
+                          execution.model,
+                          execution.providerId,
+                        )}
+                        accessibleValue={`${formatAutomationProviderLabel(execution.providerId)}, ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
+                        compactValue={formatAutomationModelLabel(
+                          execution.model,
+                          execution.providerId,
+                        )}
+                        leading={
+                          <AutomationProviderIcon
+                            providerId={execution.providerId}
+                          />
+                        }
+                        title={`${formatAutomationProviderLabel(execution.providerId)}: ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
+                      />
+                    ),
+                  },
+                ]}
+              >
+                {execution.prompt}
+              </ResourcePromptPreview>
+              <div
+                data-automation-prompt-footer=""
+                className="mt-1 flex min-h-6 min-w-0 items-center justify-between gap-2 px-3.5 text-xs text-muted-foreground"
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                  {!personalProject ? (
+                    <OptionDisplay
+                      label="Project"
+                      value={projectContextLabel}
+                      compactValue={projectContextLabel}
+                      leading={
+                        <Icon
+                          name="Folder"
+                          className="size-3.5 shrink-0"
+                          aria-hidden
+                        />
+                      }
+                      className="shrink-0"
+                      muted
+                    />
+                  ) : null}
+                  <OptionDisplay
+                    label="Environment"
+                    value={
+                      execution.targetThreadId !== undefined
+                        ? "Existing thread"
+                        : automationEnvironmentLabel(execution)
+                    }
+                    compactValue={automationEnvironmentCompactLabel(execution)}
+                    leading={
+                      <Icon
+                        name={automationEnvironmentIcon(execution)}
+                        className="size-3.5 shrink-0"
+                        aria-hidden
+                      />
+                    }
+                    muted
+                  />
+                </div>
+                <DisabledAutomationSelector
+                  label="Permission mode"
+                  value={formatPermissionMode(execution.permissionMode)}
+                  compactValue={formatPermissionModeCompact(
+                    execution.permissionMode,
+                  )}
+                  className="h-6 shrink-0"
+                />
+              </div>
+            </div>
           ) : (
             <ResourceDetailPanel
-              surface="recessed"
-              className="bg-surface-recessed/45"
+              surface="flat"
+              className="rounded-md border border-border bg-background"
             >
-              <div
-                className={cn(
-                  "px-3 py-2",
-                  execution.script && "max-h-[42dvh] overflow-auto",
-                )}
-              >
-                {execution.script ? (
-                  <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                    {execution.script}
-                  </pre>
-                ) : execution.scriptFile ? (
-                  <span className="font-mono text-xs">
-                    {execution.scriptFile}
-                  </span>
-                ) : null}
-              </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/35 px-3 py-1.5 text-xs text-muted-foreground">
+              {execution.script ? (
+                <AutomationScriptContent content={execution.script} />
+              ) : (
+                <div className="px-3 py-3 text-xs text-muted-foreground">
+                  Script content unavailable.
+                </div>
+              )}
+              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border bg-surface-recessed/55 px-3 py-2 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
                   <Icon
                     name="ComputerTerminal01"
@@ -455,19 +794,24 @@ export function AutomationDetailView({
                   <Icon name="Clock" className="size-3.5" aria-hidden />
                   {Math.round(execution.timeoutMs / 1000)}s timeout
                 </span>
+                {execution.env ? (
+                  <AutomationEnvironmentVariables environment={execution.env} />
+                ) : null}
               </div>
             </ResourceDetailPanel>
           )}
         </ResourceDefinitionSection>
 
-        <ResourceActivitySection label="Run history">
+        <ResourceActivitySection label="Runs">
           {runsState.error !== null ? (
-            <ResourceDetailPanel
-              surface="recessed"
-              className="px-3 py-5 text-center text-sm text-destructive"
-            >
-              <div className="flex flex-col items-center gap-2">
-                <span>Failed to load runs.</span>
+            <ResourceDetailCollection>
+              <div
+                data-automation-runs-state="error"
+                className="flex min-w-0 items-center justify-between gap-3 px-2 py-1.5 text-left text-sm"
+              >
+                <span className="py-1.5 text-muted-foreground">
+                  Runs unavailable.
+                </span>
                 <Button
                   type="button"
                   variant="outline"
@@ -477,18 +821,27 @@ export function AutomationDetailView({
                   Retry
                 </Button>
               </div>
-            </ResourceDetailPanel>
+            </ResourceDetailCollection>
           ) : runsState.loading ? (
-            <ResourceDetailPanel
-              surface="recessed"
-              className="px-3 py-6 text-center text-sm text-muted-foreground"
-            >
-              Loading…
-            </ResourceDetailPanel>
+            <ResourceDetailCollection>
+              <div
+                data-automation-runs-state="loading"
+                role="status"
+                aria-label="Loading runs"
+                className="flex min-w-0 items-center gap-2.5 px-2 py-2.5"
+              >
+                <Skeleton className="size-3.5 shrink-0 rounded-full" />
+                <Skeleton className="h-3 w-28 rounded-sm" />
+                <Skeleton className="h-3 w-10 rounded-sm" />
+              </div>
+            </ResourceDetailCollection>
           ) : runsState.runs.length === 0 ? (
-            <EmptyStatePanel className="py-5">
-              <div className="flex flex-col items-center gap-2">
-                <span>No runs yet.</span>
+            <ResourceDetailCollection>
+              <div
+                data-automation-runs-state="empty"
+                className="flex min-w-0 flex-col items-center gap-2 px-2 py-3 text-center text-sm"
+              >
+                <span className="text-muted-foreground">No runs yet.</span>
                 <Button
                   type="button"
                   variant="outline"
@@ -500,7 +853,7 @@ export function AutomationDetailView({
                   Run now
                 </Button>
               </div>
-            </EmptyStatePanel>
+            </ResourceDetailCollection>
           ) : (
             <div>
               <ResourceDetailCollection className="divide-border/60">

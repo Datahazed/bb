@@ -5,13 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  matchPath,
-  useLocation,
-  useNavigate,
-  useParams,
-} from "react-router-dom";
-import { WorkerPoolContextProvider } from "@pierre/diffs/react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import { appToast } from "@/components/ui/app-toast";
@@ -21,19 +15,25 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
+import { AddPluginDialog } from "@/components/plugin/management/AddPluginDialog";
 import {
   ResourceListState,
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
-import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import {
+  CatalogPluginDetail,
+  CatalogPluginDetailBanner,
   PluginDetail,
+  PluginDetailBanners,
   pluginIsLocalSource,
   pluginRemovalLabel,
 } from "@/components/tools/PluginDetail";
+import {
+  usePluginCatalogSearch,
+  type PluginCatalogSearchEntry,
+} from "@/hooks/queries/plugin-catalog-queries";
 import {
   removePlugin,
   setPluginEnabled,
@@ -42,14 +42,6 @@ import {
 } from "@/hooks/queries/plugin-settings-queries";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import {
-  createDiffWorker,
-  getDiffWorkerPoolSize,
-} from "@/lib/diff-worker-pool";
-import { usePluginSlots } from "@/lib/plugin-slots";
-import {
-  AUTOMATIONS_PLUGIN_ID,
-  AUTOMATIONS_PLUGIN_PANEL_PATH,
-  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
   TOOLS_SKILLS_ROUTE_PATH,
   getPluginsRoutePath,
@@ -61,12 +53,6 @@ import {
 } from "@/components/tools/tools-navigation";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "./SkillsView";
-
-const WORKER_POOL_OPTIONS = {
-  workerFactory: createDiffWorker,
-  poolSize: getDiffWorkerPoolSize(),
-};
-const HIGHLIGHTER_OPTIONS = {};
 
 export { PluginDetail };
 
@@ -148,76 +134,7 @@ function ToolsSectionBody({
       </ToolsScrollPage>
     );
   }
-  if (activeSection === "plugins") {
-    return <PluginsToolView pluginId={pluginId} />;
-  }
-  return <AutomationsToolView />;
-}
-
-function AutomationsToolView() {
-  const location = useLocation();
-  const { projectId, automationId } = useParams<{
-    projectId?: string;
-    automationId?: string;
-  }>();
-  const { navPanels } = usePluginSlots();
-  const panel =
-    navPanels.find(
-      (candidate) =>
-        candidate.pluginId === AUTOMATIONS_PLUGIN_ID &&
-        candidate.path === AUTOMATIONS_PLUGIN_PANEL_PATH,
-    ) ?? null;
-  const subPath =
-    projectId && automationId
-      ? `${projectId}/${automationId}${
-          matchPath(
-            { path: TOOLS_AUTOMATION_EDIT_ROUTE_PATH, end: true },
-            location.pathname,
-          ) !== null
-            ? "/edit"
-            : ""
-        }`
-      : new URLSearchParams(location.search).get("view") === "browse"
-        ? "browse"
-        : "";
-  if (panel === null) {
-    return (
-      <ToolsScrollPage maxWidthClassName="max-w-3xl">
-        <EmptyStatePanel className="rounded-lg p-6 text-sm">
-          Automations are still loading, or the automations plugin is not
-          available.
-        </EmptyStatePanel>
-      </ToolsScrollPage>
-    );
-  }
-
-  const slotMount = (
-    <PluginSlotMount
-      key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
-      pluginId={panel.pluginId}
-      slotKind="navPanel"
-      slotId={panel.id}
-    >
-      <panel.component subPath={subPath} />
-    </PluginSlotMount>
-  );
-  const mount =
-    typeof Worker === "undefined" ? (
-      slotMount
-    ) : (
-      <WorkerPoolContextProvider
-        poolOptions={WORKER_POOL_OPTIONS}
-        highlighterOptions={HIGHLIGHTER_OPTIONS}
-      >
-        {slotMount}
-      </WorkerPoolContextProvider>
-    );
-
-  // No `ToolsScrollPage` here: the automations panel is a plugin nav panel, and
-  // nav panels own their page padding, max width, and scrolling so they render
-  // the same on this route and on the /plugins panel route. Wrapping it again
-  // would double the page padding.
-  return <div className="relative h-full overflow-hidden">{mount}</div>;
+  return <PluginsToolView pluginId={pluginId} />;
 }
 
 function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
@@ -233,7 +150,10 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
 function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   const navigate = useNavigate();
   const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
+  const [installTarget, setInstallTarget] =
+    useState<PluginCatalogSearchEntry | null>(null);
   const listQuery = usePluginList({ enabled: true });
+  const catalogQuery = usePluginCatalogSearch(pluginId, { enabled: true });
   const plugins = useMemo(
     () => listQuery.data?.plugins ?? [],
     [listQuery.data],
@@ -285,7 +205,14 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   const isLoading = listQuery.isFetching && listQuery.data === undefined;
   const selectedPlugin =
     plugins.find((plugin) => plugin.id === pluginId) ?? null;
-  useResourceRouteLabel(selectedPlugin?.name ?? selectedPlugin?.id ?? null);
+  const selectedCatalogEntry =
+    catalogQuery.data?.find((entry) => entry.pluginId === pluginId) ?? null;
+  useResourceRouteLabel(
+    selectedPlugin?.name ??
+      selectedPlugin?.id ??
+      selectedCatalogEntry?.displayName ??
+      null,
+  );
   const pendingPluginId =
     pluginToggle.isPending && pluginToggle.variables
       ? pluginToggle.variables.id
@@ -318,54 +245,143 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
     [canOpenPreferredDirectoryTarget, openPathInPreferredDirectoryTarget],
   );
 
+  let detailContent: ReactNode;
+  if (listQuery.isError) {
+    detailContent = (
+      <ResourceListState
+        state="error"
+        message="Couldn't load plugin."
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
+        onRetry={() => void listQuery.refetch()}
+      />
+    );
+  } else if (isLoading) {
+    detailContent = (
+      <ResourceListState
+        state="loading"
+        message="Loading plugin"
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
+      />
+    );
+  } else if (selectedPlugin !== null) {
+    detailContent = (
+      <PluginDetail
+        isLoading={false}
+        plugin={selectedPlugin}
+        pending={pendingPluginId === selectedPlugin.id}
+        openSourceDisabled={!canOpenPreferredDirectoryTarget}
+        onToggle={(target) => pluginToggle.mutate(target)}
+        onEdit={handleEditPlugin}
+        onOpenSource={handleOpenPluginSource}
+        onDelete={setDeleteTarget}
+      />
+    );
+  } else if (catalogQuery.isError) {
+    detailContent = (
+      <ResourceListState
+        state="error"
+        message="Couldn't load plugin."
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
+        onRetry={() => void catalogQuery.refetch()}
+      />
+    );
+  } else if (catalogQuery.isFetching && catalogQuery.data === undefined) {
+    detailContent = (
+      <ResourceListState
+        state="loading"
+        message="Loading plugin"
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
+      />
+    );
+  } else if (selectedCatalogEntry !== null && !selectedCatalogEntry.installed) {
+    detailContent = (
+      <CatalogPluginDetail
+        entry={selectedCatalogEntry}
+        onInstall={setInstallTarget}
+      />
+    );
+  } else if (selectedCatalogEntry?.installed) {
+    detailContent = (
+      <ResourceListState
+        state="error"
+        message="Couldn't load the installed plugin."
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
+        onRetry={() => void listQuery.refetch()}
+      />
+    );
+  } else {
+    detailContent = (
+      <ResourceListState
+        state="empty"
+        message="Plugin not found."
+        layout="detail"
+        maxWidthClassName="max-w-5xl"
+      />
+    );
+  }
+
   return (
-    <ToolsScrollPage>
-      {listQuery.isError ? (
-        <ResourceListState
-          state="error"
-          message="Couldn't load plugin."
-          onRetry={() => void listQuery.refetch()}
-        />
-      ) : (
-        <PluginDetail
-          isLoading={isLoading}
-          plugin={selectedPlugin}
-          pending={
-            selectedPlugin !== null && pendingPluginId === selectedPlugin.id
-          }
-          openSourceDisabled={!canOpenPreferredDirectoryTarget}
-          onToggle={(target) => pluginToggle.mutate(target)}
-          onEdit={handleEditPlugin}
-          onOpenSource={handleOpenPluginSource}
-          onDelete={setDeleteTarget}
-        />
-      )}
-      <ConfirmDeleteDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !pluginDelete.isPending) setDeleteTarget(null);
-        }}
-      >
-        {deleteTarget ? (
-          <ConfirmDeleteDialogContent
-            title={
-              pluginIsLocalSource(deleteTarget)
-                ? "Remove plugin from bb?"
-                : "Uninstall plugin?"
+    // The priority notice sits outside the scroll page so runtime conditions
+    // and acquisition blockers share the pane-wide alignment and stay with the
+    // controls that resolve them.
+    <div className="flex h-full min-h-0 flex-col">
+      {selectedPlugin !== null ? (
+        <PluginDetailBanners plugin={selectedPlugin} />
+      ) : selectedCatalogEntry !== null && !selectedCatalogEntry.installed ? (
+        <CatalogPluginDetailBanner entry={selectedCatalogEntry} />
+      ) : null}
+      <div className="min-h-0 flex-1">
+        <ToolsScrollPage>
+          {detailContent}
+          <ConfirmDeleteDialog
+            open={deleteTarget !== null}
+            onOpenChange={(open) => {
+              if (!open && !pluginDelete.isPending) setDeleteTarget(null);
+            }}
+          >
+            {deleteTarget ? (
+              <ConfirmDeleteDialogContent
+                title={
+                  pluginIsLocalSource(deleteTarget)
+                    ? "Remove plugin from bb?"
+                    : "Uninstall plugin?"
+                }
+                description={
+                  pluginIsLocalSource(deleteTarget)
+                    ? `Remove "${deleteTarget.id}" from bb? Its source files will stay on disk.`
+                    : `Uninstall "${deleteTarget.id}" and delete its managed files and settings?`
+                }
+                confirmLabel={pluginRemovalLabel(deleteTarget)}
+                pending={pluginDelete.isPending}
+                onConfirm={() => pluginDelete.mutate(deleteTarget)}
+                onCancel={() => setDeleteTarget(null)}
+              />
+            ) : null}
+          </ConfirmDeleteDialog>
+          <AddPluginDialog
+            open={installTarget !== null}
+            initial={
+              installTarget === null
+                ? null
+                : {
+                    entryId: installTarget.entryId,
+                    displayName: installTarget.displayName,
+                    icon: installTarget.icon,
+                  }
             }
-            description={
-              pluginIsLocalSource(deleteTarget)
-                ? `Remove "${deleteTarget.id}" from bb? Its source files will stay on disk.`
-                : `Uninstall "${deleteTarget.id}" and delete its managed files and settings?`
-            }
-            confirmLabel={pluginRemovalLabel(deleteTarget)}
-            pending={pluginDelete.isPending}
-            onConfirm={() => pluginDelete.mutate(deleteTarget)}
-            onCancel={() => setDeleteTarget(null)}
+            onOpenChange={(open) => {
+              if (!open) setInstallTarget(null);
+            }}
+            onInstalled={() => void listQuery.refetch()}
           />
-        ) : null}
-      </ConfirmDeleteDialog>
-    </ToolsScrollPage>
+        </ToolsScrollPage>
+      </div>
+    </div>
   );
 }
 

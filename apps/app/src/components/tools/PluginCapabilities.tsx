@@ -1,87 +1,137 @@
 import type { ReactNode } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@bb/shared-ui/button";
 import type { PluginCapability } from "@bb/server-contract";
-import {
-  ResourceDetailCollection,
-  ResourceDetailListItem,
-} from "@bb/shared-ui/resource-list";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+  ResourceStatus,
+  type ResourceStatusTone,
+} from "@bb/shared-ui/resource-list";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
+import {
+  PluginDetailGlyph,
+  PluginDetailRow,
+  PluginDetailTable,
+  PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS,
+} from "@/components/tools/plugin-detail-table";
 import { formatAbsoluteDate } from "@/components/plugin/management/plugin-ui";
 import type { PluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
+import { appToast } from "@/components/ui/app-toast";
+import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
+  reloadPlugin,
   usePluginSettingsView,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { usePluginSlots, type PluginSlotSnapshot } from "@/lib/plugin-slots";
-import { cn } from "@bb/shared-ui/lib/utils";
 
 function pluginActivityIcon(
+  activity: "service" | "schedule",
   state: "running" | "backoff" | "stopped" | "ok" | "error" | null,
 ): { name: IconName; className: string; label: string } {
-  if (state === "running" || state === "ok") {
+  if (activity === "service" && state === "running") {
     return {
       name: "CircleCheck",
       className: "text-success",
-      label: "Healthy",
+      label: "Running",
+    };
+  }
+  if (activity === "service" && state === "backoff") {
+    return {
+      name: "RotateCcw",
+      className: "text-warning",
+      label: "Restarting",
+    };
+  }
+  if (activity === "service" && state === "stopped") {
+    return {
+      name: "Pause",
+      className: "text-muted-foreground",
+      label: "Stopped",
+    };
+  }
+  if (activity === "schedule" && state === null) {
+    return {
+      name: "Clock",
+      className: "text-muted-foreground",
+      label: "Scheduled",
+    };
+  }
+  if (activity === "schedule" && state === "running") {
+    // The app says "working" by shimmering a row's own icon, never by swapping
+    // it for a spinner (ThreadRow.tsx:144). A running job keeps its clock.
+    return {
+      name: "Clock",
+      className: "animate-shine-icon text-muted-foreground",
+      label: "Running",
+    };
+  }
+  if (activity === "schedule" && state === "ok") {
+    return {
+      name: "CircleCheck",
+      className: "text-success",
+      label: "Succeeded",
+    };
+  }
+  if (activity === "schedule" && state === "error") {
+    return { name: "CircleX", className: "text-destructive", label: "Failed" };
+  }
+  return activity === "service"
+    ? {
+        name: "Pause",
+        className: "text-muted-foreground",
+        label: "Stopped",
+      }
+    : {
+        name: "Clock",
+        className: "text-muted-foreground",
+        label: "Scheduled",
+      };
+}
+
+function pluginServiceStatus(state: "running" | "backoff" | "stopped"): {
+  label: string;
+  labelClassName?: string;
+  statusClassName?: string;
+  tone: ResourceStatusTone;
+} {
+  if (state === "running") {
+    return {
+      label: "Running",
+      labelClassName: "animate-shine",
+      tone: "success",
     };
   }
   if (state === "backoff") {
     return {
-      name: "AlertTriangle",
-      className: "text-warning",
-      label: "Retrying",
-    };
-  }
-  if (state === "error") {
-    return { name: "CircleX", className: "text-destructive", label: "Failed" };
-  }
-  if (state === null) {
-    return {
-      name: "Clock",
-      className: "text-muted-foreground",
-      label: "No runs yet",
+      label: "Restarting",
+      labelClassName: "animate-shine",
+      tone: "muted",
     };
   }
   return {
-    name: "Pause",
-    className: "text-muted-foreground",
     label: "Stopped",
+    statusClassName: "opacity-50",
+    tone: "muted",
   };
 }
 
 function PluginActivityState({
+  activity,
   state,
-  resourceLabel,
 }: {
+  activity: "service" | "schedule";
   state: "running" | "backoff" | "stopped" | "ok" | "error" | null;
-  resourceLabel: string;
 }) {
-  const icon = pluginActivityIcon(state);
+  const icon = pluginActivityIcon(activity, state);
   return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            role="img"
-            aria-label={`${resourceLabel}: ${icon.label}`}
-            className="inline-flex"
-          >
-            <Icon
-              name={icon.name}
-              className={cn("size-4", icon.className)}
-              aria-hidden
-            />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="left">{icon.label}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <PluginDetailGlyph
+      icon={icon.name}
+      label={icon.label}
+      className={icon.className}
+    />
   );
 }
 
@@ -105,13 +155,23 @@ function namedSurface(
   prefix: string,
   id: string,
   title: string | undefined,
-  kind: string,
+  description: string,
 ): PluginCapabilityItem {
   const label = title?.trim() || id;
   return {
     key: `${prefix}:${id}`,
     label,
-    detail: capabilityDetail(kind, label === id ? undefined : id),
+    detail:
+      label === id ? (
+        description
+      ) : (
+        <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+          <span>{description}</span>
+          <span className="break-all font-mono text-subtle-foreground">
+            {id}
+          </span>
+        </span>
+      ),
     mono: label === id,
   };
 }
@@ -120,11 +180,11 @@ function namedSlotItems(
   pluginId: string,
   slots: readonly { pluginId: string; id: string; title?: string }[],
   prefix: string,
-  kind: string,
+  description: string,
 ): PluginCapabilityItem[] {
   return slots
     .filter((slot) => slot.pluginId === pluginId)
-    .map((slot) => namedSurface(prefix, slot.id, slot.title, kind));
+    .map((slot) => namedSurface(prefix, slot.id, slot.title, description));
 }
 
 function pluginAppSurfaceItems(
@@ -132,16 +192,32 @@ function pluginAppSurfaceItems(
   slots: PluginSlotSnapshot,
 ): PluginCapabilityItem[] {
   const namedSlots = [
-    [slots.navPanels, "nav", "Navigation panel"],
-    [slots.homepageSections, "homepage", "Homepage section"],
-    [slots.threadPanelActions, "thread-panel", "Thread panel action"],
-    [slots.pendingInteractions, "input", "Input renderer"],
-    [slots.sidebarFooterActions, "sidebar", "Sidebar action"],
-    [slots.messageActions, "message-action", "Message action"],
+    [slots.navPanels, "nav", "Adds a page to the app sidebar."],
+    [slots.homepageSections, "homepage", "Adds content to the Home page."],
+    [
+      slots.threadPanelActions,
+      "thread-panel",
+      "Adds an action that opens a panel beside a thread.",
+    ],
+    [
+      slots.pendingInteractions,
+      "input",
+      "Renders a custom interaction inside a thread.",
+    ],
+    [
+      slots.sidebarFooterActions,
+      "sidebar",
+      "Adds an action to the app sidebar.",
+    ],
+    [
+      slots.messageActions,
+      "message-action",
+      "Adds an action to messages in threads.",
+    ],
   ] as const;
   return [
-    ...namedSlots.flatMap(([items, prefix, kind]) =>
-      namedSlotItems(pluginId, items, prefix, kind),
+    ...namedSlots.flatMap(([items, prefix, description]) =>
+      namedSlotItems(pluginId, items, prefix, description),
     ),
     ...slots.composerCustomizations
       .filter((slot) => slot.pluginId === pluginId)
@@ -151,7 +227,7 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:action`,
             action.id,
             undefined,
-            "Composer action",
+            "Adds an action beside the thread composer.",
           ),
         ),
         ...(slot.banners ?? []).map((banner) =>
@@ -159,7 +235,7 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:banner`,
             banner.id,
             undefined,
-            "Composer banner",
+            "Shows information above the thread composer.",
           ),
         ),
         ...(slot.plusMenu ?? []).map((item) =>
@@ -167,7 +243,7 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:plus-menu`,
             item.id,
             item.label,
-            "Composer plus-menu item",
+            "Adds an item to the composer’s add menu.",
           ),
         ),
         ...(slot.richText?.effects ?? []).map((effect) =>
@@ -175,17 +251,22 @@ function pluginAppSurfaceItems(
             `composer:${slot.id}:rich-text`,
             effect.id,
             undefined,
-            "Composer text effect",
+            "Adds rich-text behavior while composing a message.",
           ),
         ),
       ]),
     ...slots.fileOpeners
       .filter((slot) => slot.pluginId === pluginId)
       .map((slot) => ({
-        ...namedSurface("file", slot.id, slot.title, "File opener"),
+        ...namedSurface(
+          "file",
+          slot.id,
+          slot.title,
+          "Opens supported files in a plugin-provided viewer.",
+        ),
         detail: (
           <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            <span>File opener</span>
+            <span>Opens these files in a plugin-provided viewer:</span>
             <span className="font-mono">
               {slot.extensions.map((extension) => `.${extension}`).join(", ")}
             </span>
@@ -197,56 +278,10 @@ function pluginAppSurfaceItems(
       .map((slot) => ({
         key: `directive:${slot.id}`,
         label: `::${slot.id}`,
-        detail: "Message renderer",
+        detail: "Renders plugin-provided content inside thread messages.",
         mono: true,
       })),
   ];
-}
-
-function PluginCapabilityGroup({
-  icon,
-  label,
-  items,
-}: {
-  icon: IconName;
-  label: string;
-  items: readonly PluginCapabilityItem[];
-}) {
-  return (
-    <ResourceDetailListItem
-      className="items-start px-3 py-3"
-      leading={
-        <Icon
-          name={icon}
-          className="mt-0.5 size-4 text-muted-foreground"
-          aria-hidden
-        />
-      }
-    >
-      <span data-plugin-capability-group className="block font-medium">
-        {label}
-      </span>
-      <ul className="mt-2.5 space-y-2.5">
-        {items.map((item) => (
-          <li key={item.key} className="min-w-0">
-            <span
-              className={cn(
-                "block break-words text-sm leading-snug text-foreground",
-                item.mono && "break-all font-mono",
-              )}
-            >
-              {item.label}
-            </span>
-            {item.detail ? (
-              <span className="mt-0.5 block min-w-0 break-words text-xs leading-relaxed text-muted-foreground">
-                {item.detail}
-              </span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </ResourceDetailListItem>
-  );
 }
 
 export function PluginIncludes({
@@ -313,15 +348,22 @@ export function PluginIncludes({
         mono: kind === "skill" || kind === "agent-tool",
       }));
 
-  const groups: Array<{
+  // `kind` is the name behind the glyph, not a column. Most plugins contribute
+  // one or two items per kind, so a Kind column is near-unique per row and
+  // reads as filler; the glyph carries it and names itself on hover or focus.
+  const categories: Array<{
     icon: IconName;
-    label: string;
+    kind: string;
     items: PluginCapabilityItem[];
   }> = [
-    { icon: "AppWindow", label: "App surfaces", items: appItems },
+    {
+      icon: "AppWindow",
+      kind: "App surface",
+      items: appItems,
+    },
     {
       icon: "Terminal",
-      label: "Command",
+      kind: "Command",
       items: plugin.cliCommand
         ? [
             {
@@ -333,37 +375,35 @@ export function PluginIncludes({
           ]
         : [],
     },
-    { icon: "Settings", label: "Settings", items: settingsItems },
-    { icon: "Explore", label: "Skills", items: declared("skill") },
-    { icon: "Toolbox", label: "Agent tools", items: declared("agent-tool") },
+    {
+      icon: "Settings",
+      kind: "Setting",
+      items: settingsItems,
+    },
+    {
+      icon: "Explore",
+      kind: "Skill",
+      items: declared("skill"),
+    },
+    {
+      icon: "Toolbox",
+      kind: "Agent tool",
+      items: declared("agent-tool"),
+    },
     {
       icon: "MessageCirclePlus",
-      label: "Thread integrations",
+      kind: "Thread integration",
       items: declared("thread-integration"),
     },
-    { icon: "Palette", label: "Themes", items: declared("theme") },
     {
-      icon: "Workflow",
-      label: "Services",
-      items: plugin.services.map((service) => ({
-        key: service.name,
-        label: service.name,
-        detail: "Background service",
-        mono: true,
-      })),
-    },
-    {
-      icon: "TimeSchedule",
-      label: "Schedules",
-      items: plugin.schedules.map((schedule) => ({
-        key: schedule.name,
-        label: schedule.name,
-        detail: capabilityDetail("Cron", schedule.cron),
-        mono: true,
-      })),
+      icon: "Palette",
+      kind: "Theme",
+      items: declared("theme"),
     },
   ];
-  const populated = groups.filter(({ items }) => items.length > 0);
+  const items = categories.flatMap(({ icon, kind, items: groupItems }) =>
+    groupItems.map((item) => ({ ...item, icon, kind })),
+  );
 
   // Commands, settings, agent tools, thread integrations and app surfaces are
   // only observable on a *running* plugin — not merely an enabled one. A
@@ -375,14 +415,16 @@ export function PluginIncludes({
   // useful work yet. Treating it as not-running would caption a populated list
   // with "this plugin isn't running".
   const live =
-    plugin.status === "running" || plugin.status === "needs-configuration";
+    plugin.status === "running" ||
+    plugin.status === "degraded" ||
+    plugin.status === "needs-configuration";
   const liveCapabilitiesNote = plugin.enabled
     ? "This plugin isn't running, so its commands, settings, agent tools, app surfaces, and thread integrations can't be listed."
-    : "Commands, settings, agent tools, app surfaces, and thread integrations are listed once this plugin is enabled.";
+    : "Some capabilities are only listed while the plugin is enabled.";
 
-  // Includes is a stable part of the plugin recipe, so it explains an empty
+  // Capabilities is a stable part of the plugin recipe, so it explains an empty
   // result rather than disappearing.
-  if (populated.length === 0) {
+  if (items.length === 0) {
     return (
       <EmptyStatePanel className="py-6">
         {live
@@ -395,136 +437,211 @@ export function PluginIncludes({
   }
 
   return (
-    <ResourceDetailCollection>
-      {populated.map(({ icon, label, items }) => (
-        <PluginCapabilityGroup
-          key={label}
-          icon={icon}
-          label={label}
-          items={items}
-        />
-      ))}
+    <div className="space-y-3">
+      <PluginDetailTable>
+        {items.map((item) => (
+          <PluginDetailRow
+            key={item.key}
+            glyph={
+              <PluginDetailGlyph
+                icon={item.icon}
+                label={item.kind}
+                className="text-muted-foreground"
+              />
+            }
+            name={item.label}
+            mono={item.mono}
+            detail={item.detail}
+          />
+        ))}
+      </PluginDetailTable>
       {live ? null : (
-        <ResourceDetailListItem
-          leading={
-            <Icon
-              name="Info"
-              className="size-4 text-muted-foreground"
-              aria-hidden
-            />
-          }
-        >
-          <span className="block text-xs text-muted-foreground">
-            {liveCapabilitiesNote}
-          </span>
-        </ResourceDetailListItem>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {liveCapabilitiesNote}
+        </p>
       )}
-    </ResourceDetailCollection>
+    </div>
   );
 }
 
-export function PluginActivity({
+function PluginRuntimeStatusAlert({
   plugin,
   runtimeStatus,
+  onReload,
+  reloadPending,
+  reloadable,
+}: {
+  plugin: PluginListItem;
+  runtimeStatus: PluginRuntimeStatusPresentation;
+  onReload: () => void;
+  reloadPending: boolean;
+  reloadable?: boolean;
+}) {
+  const canReload =
+    reloadable ??
+    (plugin.status === "error" ||
+      plugin.status === "degraded" ||
+      (plugin.status === "needs-configuration" && !plugin.hasSettings));
+  const condition =
+    plugin.status === "needs-configuration" && plugin.statusDetail?.trim()
+      ? plugin.statusDetail
+      : runtimeStatus.condition;
+  const detail = [condition, runtimeStatus.recovery]
+    .filter((part): part is string => part !== null && part.length > 0)
+    .map((part) => {
+      const capitalized = `${part.charAt(0).toUpperCase()}${part.slice(1)}`;
+      return /[.!?]$/u.test(capitalized) ? capitalized : `${capitalized}.`;
+    })
+    .join(" ");
+  return (
+    <PluginBannerBar
+      role="alert"
+      tone={runtimeStatus.tone === "error" ? "destructive" : "warning"}
+      icon={runtimeStatus.icon}
+      title={runtimeStatus.label}
+      detail={detail}
+      separator={plugin.status !== "degraded"}
+      action={
+        canReload ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled={reloadPending}
+            className="h-7 px-2.5 text-xs"
+            onClick={onReload}
+          >
+            {reloadPending ? (
+              <Icon
+                name="Loading"
+                className="size-3.5 animate-spin"
+                aria-hidden
+              />
+            ) : null}
+            {reloadPending ? "Reloading\u2026" : "Reload"}
+          </Button>
+        ) : undefined
+      }
+    />
+  );
+}
+
+/**
+ * The plugin's highest-priority health problem for the page banner.
+ *
+ * The banner owns the page-level consequence and recovery action. Runtime
+ * diagnostics and cumulative handler counts stay out of user copy because
+ * they do not identify one coherent, actionable incident. Scheduled-job
+ * outcomes stay row-level and do not cause this runtime banner.
+ */
+export function PluginHealthBanner({
+  plugin,
+  runtimeStatus,
+  reloadable,
 }: {
   plugin: PluginListItem;
   runtimeStatus: PluginRuntimeStatusPresentation | null;
+  reloadable?: boolean;
 }) {
+  const queryClient = useQueryClient();
+  const reload = useMutation({
+    mutationFn: () => reloadPlugin(fetch, plugin.id),
+    onSuccess: () => invalidatePluginList({ queryClient }),
+    onError: (error) => {
+      appToast.error("Failed to reload plugin", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    },
+  });
   const showOverallState = plugin.enabled && runtimeStatus !== null;
-  const hasHandlerErrors = plugin.handlerStats.errorCount > 0;
-  if (
-    !showOverallState &&
-    !hasHandlerErrors &&
-    plugin.services.length === 0 &&
-    plugin.schedules.length === 0
-  ) {
-    return null;
-  }
+  if (!showOverallState || runtimeStatus === null) return null;
   return (
-    <ResourceDetailCollection>
-      {showOverallState && runtimeStatus !== null ? (
-        <ResourceDetailListItem
-          leading={
-            <Icon
-              name={
-                runtimeStatus.tone === "error" ? "CircleX" : "AlertTriangle"
-              }
-              className={cn(
-                "size-4",
-                runtimeStatus.tone === "error"
-                  ? "text-destructive"
-                  : "text-warning",
-              )}
-              aria-hidden
-            />
-          }
-        >
-          <span className="block">{runtimeStatus.label}</span>
-          {plugin.statusDetail ? (
-            <span className="block text-xs text-muted-foreground">
-              {plugin.statusDetail}
-            </span>
-          ) : null}
-          <span className="mt-1 block text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Next:</span>{" "}
-            {runtimeStatus.recovery}
-          </span>
-        </ResourceDetailListItem>
-      ) : null}
-      {plugin.services.map((service) => (
-        <ResourceDetailListItem
-          key={service.name}
-          leading={<Icon name="Workflow" className="size-4" aria-hidden />}
-          trailing={
-            <PluginActivityState
-              state={service.state}
-              resourceLabel={service.name}
-            />
-          }
-        >
-          <span className="block">{service.name}</span>
-          <span className="block text-xs text-muted-foreground">
-            Background service
-          </span>
-        </ResourceDetailListItem>
-      ))}
+    <PluginRuntimeStatusAlert
+      plugin={plugin}
+      runtimeStatus={runtimeStatus}
+      reloadPending={reload.isPending}
+      reloadable={reloadable}
+      onReload={() => reload.mutate()}
+    />
+  );
+}
+
+/** Long-running processes the plugin keeps alive. */
+export function PluginServices({ plugin }: { plugin: PluginListItem }) {
+  return (
+    <div className="max-w-full overflow-hidden rounded-lg border border-border bg-card align-top">
+      <table
+        aria-label="Background services"
+        className="w-full max-w-full table-fixed border-collapse text-left"
+      >
+        <colgroup>
+          <col className={PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS} />
+          <col />
+        </colgroup>
+        <thead className="bg-surface-recessed/55 text-xs text-muted-foreground">
+          <tr className="border-b border-border">
+            <th scope="col" className="px-4 py-2 font-medium">
+              Status
+            </th>
+            <th
+              scope="col"
+              className="border-l border-border px-4 py-2 font-medium"
+            >
+              Service
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {plugin.services.map((service) => {
+            const status = pluginServiceStatus(service.state);
+            return (
+              <tr key={service.name}>
+                <td
+                  className={cn(
+                    "px-4 py-1.5 align-middle text-left",
+                    status.statusClassName,
+                  )}
+                >
+                  <ResourceStatus tone={status.tone}>
+                    <span className={status.labelClassName}>
+                      {status.label}
+                    </span>
+                  </ResourceStatus>
+                </td>
+                <th
+                  scope="row"
+                  className="break-words border-l border-border px-4 py-1.5 text-left text-sm font-normal leading-snug text-foreground"
+                >
+                  {service.name}
+                </th>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Work the plugin has asked bb to run on a timer. */
+export function PluginSchedules({ plugin }: { plugin: PluginListItem }) {
+  return (
+    <PluginDetailTable>
       {plugin.schedules.map((schedule) => (
-        <ResourceDetailListItem
+        <PluginDetailRow
           key={schedule.name}
-          leading={<Icon name="TimeSchedule" className="size-4" aria-hidden />}
-          trailing={
+          glyph={
             <PluginActivityState
+              activity="schedule"
               state={schedule.lastStatus}
-              resourceLabel={schedule.name}
             />
           }
-        >
-          <span className="block">{schedule.name}</span>
-          {schedule.lastError ? (
-            <span className="block text-xs text-destructive">
-              {schedule.lastError}
-            </span>
-          ) : (
-            <span className="block text-xs text-muted-foreground">
-              Next {formatAbsoluteDate(schedule.nextRunAt)}
-            </span>
-          )}
-        </ResourceDetailListItem>
+          name={schedule.name}
+          detail={
+            schedule.lastError ??
+            `Next ${formatAbsoluteDate(schedule.nextRunAt)}`
+          }
+        />
       ))}
-      {hasHandlerErrors ? (
-        <ResourceDetailListItem
-          leading={
-            <Icon
-              name="AlertCircle"
-              className="size-4 text-destructive"
-              aria-hidden
-            />
-          }
-        >
-          {plugin.handlerStats.errorCount} handler{" "}
-          {plugin.handlerStats.errorCount === 1 ? "error" : "errors"}
-        </ResourceDetailListItem>
-      ) : null}
-    </ResourceDetailCollection>
+    </PluginDetailTable>
   );
 }

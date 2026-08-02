@@ -32,7 +32,8 @@ export function ResourceDetailPanel({
 }
 
 export interface ResourcePromptContextItem {
-  icon: IconName;
+  /** Omitted where the composer's own footer carries no leading glyph. */
+  icon?: IconName;
   label: ReactNode;
 }
 
@@ -53,28 +54,36 @@ export function ResourcePromptPreview({
   context?: readonly ResourcePromptContextItem[];
 }) {
   return (
+    // Match the production follow-up composer's geometry while keeping this
+    // read-only detail surface flat: same rounded-xl card, 68px minimum prompt
+    // area, text inset, and action-row spacing, without the composer's shadow.
     <div
       className={cn(
-        "rounded-lg border border-border bg-surface-raised-solid",
+        "overflow-hidden rounded-xl border border-border bg-background",
         className,
       )}
     >
-      <div className="min-w-0 whitespace-pre-wrap px-3 py-3 text-sm leading-relaxed text-foreground">
+      <div
+        data-resource-prompt-content=""
+        role="textbox"
+        aria-label="Saved prompt"
+        aria-readonly="true"
+        className="min-h-[68px] min-w-0 whitespace-pre-wrap px-4 pb-1 pr-14 pt-3 text-sm leading-relaxed text-foreground"
+      >
         {children}
       </div>
       {context.length > 0 ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border/35 px-3 py-2 text-xs text-muted-foreground">
+        <div className="flex min-w-0 flex-wrap items-center gap-1 pb-2 pl-3.5 pr-2 pt-1.5 text-xs text-muted-foreground">
           {context.map((item, index) => (
-            <span
-              key={index}
-              className="inline-flex min-w-0 items-center gap-1.5"
-            >
-              <Icon
-                name={item.icon}
-                className="size-3.5 shrink-0"
-                aria-hidden
-              />
-              <span className="min-w-0 truncate">{item.label}</span>
+            <span key={index} className="contents">
+              {item.icon ? (
+                <Icon
+                  name={item.icon}
+                  className="size-3.5 shrink-0"
+                  aria-hidden
+                />
+              ) : null}
+              <span className="contents">{item.label}</span>
             </span>
           ))}
         </div>

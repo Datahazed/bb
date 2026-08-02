@@ -43,15 +43,22 @@ import {
 } from "@/hooks/queries/query-keys";
 import { THREAD_SEARCH_LIMIT_PER_GROUP } from "@/hooks/queries/thread-queries";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
-import { getSkillsRoutePath } from "@/lib/route-paths";
+import { PluginNavSidebarSection } from "@/components/plugin/PluginNavSidebarSection";
+import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
+  type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import {
+  AUTOMATIONS_PLUGIN_ID,
+  AUTOMATIONS_PLUGIN_PANEL_PATH,
+} from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   SIDEBAR_ORGANIZATION_MODE_STORAGE_KEY,
+  pluginNavSidebarCollapsedAtom,
   sidebarOrganizationModeAtom,
   type SidebarOrganizationMode,
 } from "./sidebarCollapsedAtoms";
@@ -343,11 +350,12 @@ function SidebarFrame({ children }: SidebarFrameProps) {
       <ThreadActionsProvider>
         <div className="flex h-[680px] w-full max-w-[320px] min-w-0 flex-col overflow-hidden rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm">
           <div className="shrink-0 px-2 py-2">
-            <ProjectListActionButtons onNewChat={noop} />
+            <ProjectListActionButtons onNewChat={noop} onOpenTools={noop} />
           </div>
-          {/* Tools rides in the nav list, exactly as AppSidebar mounts it. */}
-          <PluginNavSidebarItems toolsRoutePath={getSkillsRoutePath()} />
-          <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <PluginNavSidebarSection />
+            {children}
+          </div>
           <div className="shrink-0 border-t border-sidebar-border/70 px-2 py-2">
             <button
               type="button"
@@ -411,6 +419,109 @@ function LoadedSidebar({
     <Suspense fallback={<LoadingSidebar />}>
       <ProjectList onNewProject={noop} onProjectSelect={noop} />
     </Suspense>
+  );
+}
+
+function registrationSet(
+  navPanels: PluginRegistrationSet["navPanels"],
+): PluginRegistrationSet {
+  return {
+    homepageSections: [],
+    settingsSections: [],
+    navPanels,
+    threadPanelActions: [],
+    composerCustomizations: [],
+    pendingInteractions: [],
+    sidebarFooterActions: [],
+    fileOpeners: [],
+    messageDirectives: [],
+  };
+}
+
+function StoryPluginPageRegistrations() {
+  useEffect(() => {
+    const pluginPages = [
+      {
+        pluginId: AUTOMATIONS_PLUGIN_ID,
+        panel: {
+          id: AUTOMATIONS_PLUGIN_PANEL_PATH,
+          title: "Automations",
+          icon: "TimeSchedule" as const,
+          path: AUTOMATIONS_PLUGIN_PANEL_PATH,
+          component: () => null,
+        },
+      },
+      {
+        pluginId: "github",
+        panel: {
+          id: "github",
+          title: "GitHub",
+          icon: "Github" as const,
+          path: "github",
+          component: () => null,
+        },
+      },
+      {
+        pluginId: "docs",
+        panel: {
+          id: "docs",
+          title: "Docs",
+          icon: "FileText" as const,
+          path: "docs",
+          component: () => null,
+        },
+      },
+      {
+        pluginId: "tasks",
+        panel: {
+          id: "tasks",
+          title: "Tasks",
+          icon: "ListTodo" as const,
+          path: "tasks",
+          component: () => null,
+        },
+      },
+    ];
+
+    for (const { pluginId, panel } of pluginPages) {
+      setPluginSlotRegistrations(pluginId, registrationSet([panel]));
+    }
+
+    return () => {
+      for (const { pluginId } of pluginPages) {
+        removePluginSlotRegistrations(pluginId);
+      }
+    };
+  }, []);
+  return null;
+}
+
+function LoadedSidebarWithPluginPages() {
+  const [store] = useState(() => {
+    const storyStore = createStore();
+    storyStore.set(pluginNavSidebarCollapsedAtom, false);
+    return storyStore;
+  });
+  return (
+    <Provider store={store}>
+      <StoryPluginPageRegistrations />
+      <SidebarFrame>
+        <LoadedSidebar />
+      </SidebarFrame>
+    </Provider>
+  );
+}
+
+function ExtensionsSidebarFrame() {
+  return (
+    <SidebarProvider className="h-[680px] min-h-0 w-full max-w-[320px] overflow-hidden rounded-md border border-sidebar-border shadow-sm">
+      <ToolsSidebar
+        appRoutePath="/"
+        isResizing={false}
+        onResizeMouseDown={noop}
+        showTopReserve={false}
+      />
+    </SidebarProvider>
   );
 }
 
@@ -597,6 +708,23 @@ export function Overview() {
   );
 }
 
+export function PluginPages() {
+  return (
+    <StoryCard labelWidth="120px">
+      <StoryRow
+        label="expanded"
+        hint="all shipped plugin navigation above the real thread list"
+      >
+        <LoadedSidebarWithPluginPages />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function Extensions() {
+  return <ExtensionsSidebarFrame />;
+}
+
 export function OrganizationModes() {
   return (
     <StoryCard
@@ -710,7 +838,7 @@ export function SplitPageLabels() {
                 onNewChat={noop}
               />
             </div>
-            <PluginNavSidebarItems splitEnabled />
+            <PluginNavSidebarSection splitEnabled />
           </div>
         </StoryRow>
       </StoryCard>

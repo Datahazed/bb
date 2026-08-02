@@ -22,11 +22,12 @@ export const TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH =
 export const TOOLS_PLUGINS_ROUTE_PATH = "/tools/plugins";
 export const TOOLS_PLUGIN_BROWSE_ROUTE_PATH = "/tools/plugins/browse";
 export const TOOLS_PLUGIN_DETAIL_ROUTE_PATH = "/tools/plugins/:pluginId";
-export const TOOLS_AUTOMATIONS_ROUTE_PATH = "/tools/automations";
-export const TOOLS_AUTOMATION_BROWSE_ROUTE_PATH = "/tools/automations/browse";
-export const TOOLS_AUTOMATION_DETAIL_ROUTE_PATH =
+export const LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH = "/tools/automations";
+export const LEGACY_TOOLS_AUTOMATION_BROWSE_ROUTE_PATH =
+  "/tools/automations/browse";
+export const LEGACY_TOOLS_AUTOMATION_DETAIL_ROUTE_PATH =
   "/tools/automations/:projectId/:automationId";
-export const TOOLS_AUTOMATION_EDIT_ROUTE_PATH =
+export const LEGACY_TOOLS_AUTOMATION_EDIT_ROUTE_PATH =
   "/tools/automations/:projectId/:automationId/edit";
 export const LEGACY_SKILLS_ROUTE_PATH = "/skills";
 export const LEGACY_AUTOMATIONS_ROUTE_PATH = "/automations";
@@ -34,8 +35,13 @@ export const LEGACY_AUTOMATION_DETAIL_ROUTE_PATH =
   "/automations/:projectId/:automationId";
 export const AUTOMATIONS_PLUGIN_ID = "automations";
 export const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
-export const AUTOMATIONS_ROUTE_PATH = TOOLS_AUTOMATIONS_ROUTE_PATH;
-export const AUTOMATION_DETAIL_ROUTE_PATH = TOOLS_AUTOMATION_DETAIL_ROUTE_PATH;
+export const AUTOMATIONS_ROUTE_PATH = "/plugins/automations/automations";
+export const AUTOMATIONS_BROWSE_ROUTE_PATH =
+  "/plugins/automations/automations/browse";
+export const AUTOMATION_DETAIL_ROUTE_PATH =
+  "/plugins/automations/automations/:projectId/:automationId";
+export const AUTOMATION_EDIT_ROUTE_PATH =
+  "/plugins/automations/automations/:projectId/:automationId/edit";
 export const SKILLS_ROUTE_PATH = TOOLS_SKILLS_ROUTE_PATH;
 export const ROOT_COMPOSE_ROUTE_PATH = APP_ROOT_ROUTE_PATH;
 export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
@@ -106,8 +112,17 @@ export function getToolsRoutePath(): string {
   return TOOLS_ROUTE_PATH;
 }
 
-/** True on the Tools hub and every route nested under it. */
+/** True on Extensions and every canonical route nested under it. */
 export function isToolsRoutePath(pathname: string): boolean {
+  // Automations moved out of Extensions and into its plugin-owned panel. Keep
+  // the old /tools/automations URLs routable for redirects, but do not remember
+  // them as the user's last Extensions destination.
+  if (
+    pathname === LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH ||
+    matchPath(`${LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH}/*`, pathname) !== null
+  ) {
+    return false;
+  }
   return (
     pathname === TOOLS_ROUTE_PATH ||
     matchPath(`${TOOLS_ROUTE_PATH}/*`, pathname) !== null
@@ -171,7 +186,7 @@ export function getAutomationDetailRoutePath({
   projectId,
   automationId,
 }: AutomationDetailRoutePathArgs): string {
-  return `${TOOLS_AUTOMATIONS_ROUTE_PATH}/${encodeURIComponent(
+  return `${AUTOMATIONS_ROUTE_PATH}/${encodeURIComponent(
     projectId,
   )}/${encodeURIComponent(automationId)}`;
 }
@@ -234,13 +249,17 @@ const baseRoutePatterns: readonly string[] = [
   TOOLS_PLUGINS_ROUTE_PATH,
   TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
-  TOOLS_AUTOMATIONS_ROUTE_PATH,
-  TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
-  TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
-  TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
+  LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH,
+  LEGACY_TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
+  LEGACY_TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
+  LEGACY_TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
+  AUTOMATIONS_ROUTE_PATH,
+  AUTOMATIONS_BROWSE_ROUTE_PATH,
+  AUTOMATION_DETAIL_ROUTE_PATH,
+  AUTOMATION_EDIT_ROUTE_PATH,
   LEGACY_PROJECT_COMPOSE_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,

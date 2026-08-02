@@ -1,20 +1,19 @@
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
-import {
-  ResourceActionButton,
-  ResourceDetailFact,
-  ResourceDetailFacts,
-} from "@bb/shared-ui/resource-list";
-import { usePluginSource } from "@/hooks/queries/plugin-catalog-queries";
+import { Icon } from "@bb/shared-ui/icon";
+import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
+import { appToast } from "@/components/ui/app-toast";
+import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
+import { applyPluginUpdate } from "@/hooks/queries/plugin-catalog-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
+import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { pluginUpdateAvailableVersion } from "./plugin-status";
-import { SUCCESS_BANNER_STYLE, formatAbsoluteDate } from "./plugin-ui";
+import { DetailsDisclosure, formatAbsoluteDate } from "./plugin-ui";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 
 /**
- * Detail-page release facts. The source endpoint contributes only the useful
- * installation timestamp; requested/resolved transport strings stay out of
- * the user-facing taxonomy.
+ * Whether a plugin has any update surfaces at all.
  *
  * Bundled plugins — auto builtins and store-installed officials alike — are
  * pinned to the copy shipped inside the app and update with bb releases, so
@@ -34,22 +33,19 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
 
   if (failure !== null) {
     return (
-      <div
-        className="flex items-center gap-3 rounded-lg border border-destructive-text/30 bg-destructive/5 px-3 py-2.5"
-        data-testid="plugin-update-failure-banner"
-      >
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-destructive-text">
-            Update to {failure.version} failed — rolled back
-            {failure.at !== null ? ` on ${formatAbsoluteDate(failure.at)}` : ""}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {failure.detail.length > 0
-              ? failure.detail
-              : `Code and data were restored to ${plugin.version}.`}
-          </p>
-        </div>
-      </div>
+      <PluginBannerBar
+        tone="destructive"
+        icon="CircleX"
+        testId="plugin-update-failure-banner"
+        title={`Update to ${failure.version} failed — rolled back${
+          failure.at !== null ? ` on ${formatAbsoluteDate(failure.at)}` : ""
+        }`}
+        detail={
+          failure.detail.length > 0
+            ? failure.detail
+            : `Code and data were restored to ${plugin.version}.`
+        }
+      />
     );
   }
 
@@ -57,28 +53,23 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
 
   return (
     <>
-      <div
-        className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
-        style={SUCCESS_BANNER_STYLE}
-        data-testid="plugin-update-banner"
-      >
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">
-            Update to {availableVersion}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Compatible with your bb.
-          </p>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          className="h-7 px-2.5 text-xs"
-          onClick={() => setUpdateOpen(true)}
-        >
-          Update
-        </Button>
-      </div>
+      <PluginBannerBar
+        tone="success"
+        icon="PackageReceive"
+        testId="plugin-update-banner"
+        title={`Update to ${availableVersion}`}
+        detail="Compatible with your bb."
+        action={
+          <Button
+            type="button"
+            size="sm"
+            className="h-7 px-2.5 text-xs"
+            onClick={() => setUpdateOpen(true)}
+          >
+            Update
+          </Button>
+        }
+      />
       <UpdatePluginDialog
         failureStateLabel="Update failed"
         plugin={plugin}
@@ -89,70 +80,189 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
   );
 }
 
-export function PluginReleaseFacts({
+/** The newest release that exists but cannot run on this bb version. */
+export function pluginCompatibilityBlockedVersion(
+  plugin: PluginListItem,
+): string | null {
+  if (!pluginHasUpdateSurfaces(plugin)) return null;
+  return plugin.updateState.availableVersion === null
+    ? plugin.updateState.blockedVersion
+    : null;
+}
+
+function sentence(value: string): string {
+  const trimmed = value.trim();
+  const capitalized = `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
+  return /[.!?]$/u.test(capitalized) ? capitalized : `${capitalized}.`;
+}
+
+/**
+ * Release action for the plugin detail section header.
+ *
+ * Updates describe the installed artifact, not the plugin's current ability
+ * to operate. Keeping them in the Release section prevents routine update
+ * availability and historical rollbacks from competing with activation or
+ * present-tense health banners.
+ */
+export function PluginDetailReleaseControl({
   plugin,
-  embedded = false,
-  releaseVersion,
 }: {
   plugin: PluginListItem;
-  /** Removes the nested background when this content lives in a detail row. */
-  embedded?: boolean;
-  /** Includes current release identity in the same fact table. */
-  releaseVersion?: string;
 }) {
-  const [blockedOpen, setBlockedOpen] = useState(false);
-  const sourceQuery = usePluginSource(plugin.id, { enabled: true });
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const name = plugin.name ?? plugin.id;
+  const availableVersion = plugin.updateState.availableVersion;
+  const failure = plugin.updateState.lastFailure;
+  const retry = useMutation({
+    mutationFn: () => applyPluginUpdate(fetch, plugin.id),
+    onSuccess: (result) => {
+      invalidatePluginList({ queryClient });
+      if (result.outcome === "rolled-back") {
+        appToast.error(`Updating ${name} failed`, {
+          description: result.detail ?? `${plugin.version} was restored.`,
+        });
+      } else if (result.applied) {
+        appToast.success(`${name} updated`, {
+          description:
+            result.to === null
+              ? undefined
+              : `Now running ${result.to.display}.`,
+        });
+      } else {
+        appToast.message(`${name} is already up to date`);
+      }
+    },
+    onError: (error) => {
+      appToast.error(`Updating ${name} failed`, {
+        description: pluginAdminErrorMessage(error),
+      });
+    },
+  });
+
+  if (!pluginHasUpdateSurfaces(plugin)) return null;
+  if (availableVersion === null) return null;
+
+  if (failure !== null) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-6 px-2 text-xs"
+        disabled={retry.isPending}
+        aria-busy={retry.isPending}
+        aria-label={`Retry update to ${availableVersion}`}
+        onClick={() => retry.mutate()}
+      >
+        {retry.isPending ? (
+          <Icon name="Spinner" className="size-3.5 animate-spin" aria-hidden />
+        ) : (
+          <Icon name="RotateCcw" className="size-3.5" aria-hidden />
+        )}
+        Retry
+      </Button>
+    );
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-6 px-2 text-xs"
+        aria-label={`Update ${plugin.name ?? plugin.id} to ${availableVersion}`}
+        onClick={() => setDetailsOpen(true)}
+      >
+        <Icon name="PackageReceive" className="size-3.5" aria-hidden />
+        Update
+      </Button>
+      <UpdatePluginDialog
+        failureStateLabel="Update failed"
+        plugin={plugin}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+      />
+    </>
+  );
+}
+
+/** Passive update context shown in the Release table. */
+export function PluginDetailReleaseStatus({
+  plugin,
+}: {
+  plugin: PluginListItem;
+}) {
+  const failure = plugin.updateState.lastFailure;
+  const blockedVersion = pluginCompatibilityBlockedVersion(plugin);
+  const blockedReasons = plugin.updateState.blockedReasons;
 
   if (!pluginHasUpdateSurfaces(plugin)) return null;
 
-  const source = sourceQuery.data ?? null;
-  const blockedVersion =
-    plugin.updateState.availableVersion === null
-      ? plugin.updateState.blockedVersion
-      : null;
-
-  return (
-    <div>
-      <ResourceDetailFacts className={embedded ? undefined : "bg-card"}>
-        {releaseVersion ? (
-          <ResourceDetailFact label="Current version" mono>
-            {releaseVersion}
-          </ResourceDetailFact>
-        ) : null}
-        {source?.installedAt !== null && source?.installedAt !== undefined ? (
-          <ResourceDetailFact label="Installed">
-            {formatAbsoluteDate(source.installedAt)}
-          </ResourceDetailFact>
-        ) : null}
-        {blockedVersion !== null ? (
-          <ResourceDetailFact
-            label="Compatibility"
-            action={
-              <ResourceActionButton
-                label="View compatibility details"
-                icon="Info"
-                onClick={() => setBlockedOpen(true)}
-              />
-            }
-          >
-            <span className="block">
-              {blockedVersion} isn&apos;t compatible with this bb
-            </span>
-            <span className="mt-0.5 block text-xs text-muted-foreground">
-              {plugin.updateState.blockedReasons[0] ??
-                `Staying on ${plugin.version}.`}
-            </span>
-          </ResourceDetailFact>
-        ) : null}
-      </ResourceDetailFacts>
-      {blockedVersion !== null ? (
-        <UpdatePluginDialog
-          failureStateLabel="Update failed"
-          plugin={plugin}
-          open={blockedOpen}
-          onOpenChange={setBlockedOpen}
+  if (failure !== null) {
+    return (
+      <div
+        role="status"
+        aria-label="Update failed"
+        className="flex min-w-0 items-start gap-2.5"
+      >
+        <Icon
+          name="CircleX"
+          className="mt-0.5 size-4 shrink-0 text-destructive"
+          aria-hidden
         />
-      ) : null}
+        <p className="min-w-0 text-xs leading-relaxed text-muted-foreground">
+          bb couldn&rsquo;t activate {failure.version}. It restored{" "}
+          {plugin.version} and its data.
+        </p>
+      </div>
+    );
+  }
+
+  if (plugin.updateState.availableVersion !== null) {
+    return (
+      <div role="status" className="flex min-w-0 items-baseline gap-2">
+        <span className="font-mono text-xs text-foreground">
+          {plugin.updateState.availableVersion}
+        </span>
+        <span className="text-xs text-muted-foreground">Available</span>
+      </div>
+    );
+  }
+
+  if (blockedVersion === null) return null;
+  return (
+    <div
+      role="status"
+      aria-label="Update blocked"
+      className="flex min-w-0 items-start gap-2.5"
+    >
+      <Icon
+        name="AlertTriangle"
+        className="mt-0.5 size-4 shrink-0 text-warning"
+        aria-hidden
+      />
+      <div className="min-w-0">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {blockedReasons[0] === undefined
+            ? `${blockedVersion} isn’t compatible with this bb.`
+            : sentence(blockedReasons[0])}{" "}
+          {plugin.version} remains installed. Keep using it and check again when
+          a compatible plugin version is available.
+        </p>
+        {blockedReasons.length > 1 ? (
+          <div className="mt-1.5">
+            <DetailsDisclosure summary="Other requirements">
+              <ul className="space-y-1 text-foreground">
+                {blockedReasons.slice(1).map((reason) => (
+                  <li key={reason}>{sentence(reason)}</li>
+                ))}
+              </ul>
+            </DetailsDisclosure>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

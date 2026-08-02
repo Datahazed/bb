@@ -87,6 +87,30 @@ function BbLogo({ className = "size-4" }: { className?: string }) {
   );
 }
 
+export function SkillProvenanceTooltip({
+  prefix,
+  providerId,
+  name,
+}: {
+  prefix: string;
+  providerId: SkillProvider | null;
+  name: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span>{prefix}</span>
+      <span data-provider-icon={providerId ?? "bb"} aria-hidden="true">
+        {providerId === null ? (
+          <BbLogo className="size-3.5" />
+        ) : (
+          <ProviderLogo providerId={providerId} className="size-3.5" />
+        )}
+      </span>
+      <span>{name}</span>
+    </span>
+  );
+}
+
 function SkillLeading({ skill }: { skill: SkillSummary }) {
   if (skill.provider !== null) {
     return <ProviderLogo providerId={skill.provider} className="size-6" />;
@@ -133,7 +157,7 @@ function SkillRow({
       title={skill.name}
       titleMeta={
         skill.scope === "bb-builtin" ? (
-          <ProvenancePill label="Built-in" />
+          <ProvenancePill label="BB Official" />
         ) : undefined
       }
       description={description}
@@ -481,26 +505,35 @@ export function SkillDetailDialogView({
       leading={<SkillLeading skill={skill} />}
       title={skill.name}
       path={skill.filePath}
-      headerControl={
+      titleBadge={
         skill.scope === "bb-builtin"
           ? {
-              kind: "status",
-              label: "Built-in",
+              label: "BB Official",
               tooltip: "Ships with bb",
-              accessibleLabel: `${skill.name} is built into bb`,
+              accessibleLabel: `${skill.name} is BB Official`,
             }
           : bundledPluginName !== null
             ? {
-                kind: "status",
                 label: "Included",
-                tooltip: `Included with ${includedPluginDescription(skill)}`,
+                tooltip: (
+                  <SkillProvenanceTooltip
+                    prefix="Included with"
+                    providerId={skill.provider}
+                    name={`${providerPluginDisplayName(skill)} plugin`}
+                  />
+                ),
                 accessibleLabel: `${skill.name} is included with ${includedPluginDescription(skill)}`,
               }
             : skill.provider !== null
               ? {
-                  kind: "status",
                   label: "Imported",
-                  tooltip: `Discovered from ${providerLabel(skill.provider)}`,
+                  tooltip: (
+                    <SkillProvenanceTooltip
+                      prefix="Discovered from"
+                      providerId={skill.provider}
+                      name={providerLabel(skill.provider)}
+                    />
+                  ),
                   accessibleLabel: `${skill.name} is imported from ${skill.provider === "claude-code" ? "Claude Code" : "Codex"}`,
                 }
               : undefined

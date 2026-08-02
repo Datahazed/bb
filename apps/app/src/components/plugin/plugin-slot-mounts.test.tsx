@@ -22,8 +22,8 @@ import {
 } from "@/lib/plugin-slots";
 import {
   AUTOMATIONS_PLUGIN_ID,
-  AUTOMATIONS_PLUGIN_PANEL_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
+  AUTOMATIONS_PLUGIN_PANEL_PATH,
 } from "@/lib/route-paths";
 import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { PluginPanelView } from "@/views/PluginPanelView";
@@ -41,7 +41,7 @@ import {
   usePublishPluginComposerHost,
 } from "./plugin-composer-host";
 import { PluginHomepageSections } from "./PluginHomepageSections";
-import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
+import { PluginNavSidebarSection } from "./PluginNavSidebarSection";
 import {
   getComposerInputLock,
   useComposer,
@@ -57,6 +57,7 @@ import {
 } from "./PluginPanelActions";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { PromptDraftState } from "@/lib/prompt-draft";
+import { pluginNavSidebarCollapsedAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 
 function composerTextEffectValues(storageKey: string | null) {
   return getComposerTextEffects(storageKey).map(({ effect }) => effect);
@@ -1235,7 +1236,7 @@ describe("useComposer", () => {
   });
 });
 
-describe("PluginNavSidebarItems + PluginPanelView", () => {
+describe("PluginNavSidebarSection + PluginPanelView", () => {
   function Board() {
     return <div>board panel body</div>;
   }
@@ -1257,30 +1258,47 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     );
   }
 
-  it("preserves the Automations plugin panel while Tools Hub is disabled", () => {
+  it.each([true, false])(
+    "keeps Automations in the Plugins section when Extensions is enabled=%s",
+    (enabled) => {
+      registerAutomationsPanel();
+
+      render(
+        <ToolsHubExperimentProvider enabled={enabled}>
+          <MemoryRouter>
+            <PluginNavSidebarSection />
+          </MemoryRouter>
+        </ToolsHubExperimentProvider>,
+      );
+
+      expect(screen.getByText("Plugins")).toBeDefined();
+      expect(screen.getByRole("button", { name: "Automations" })).toBeDefined();
+    },
+  );
+
+  it("persists a collapsed Plugins section without rendering its pages", () => {
     registerAutomationsPanel();
+    const store = createStore();
+    store.set(pluginNavSidebarCollapsedAtom, false);
 
     render(
-      <MemoryRouter>
-        <PluginNavSidebarItems />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole("button", { name: "Automations" })).toBeDefined();
-  });
-
-  it("replaces the Automations plugin panel while Tools Hub is enabled", () => {
-    registerAutomationsPanel();
-
-    render(
-      <ToolsHubExperimentProvider enabled>
+      <Provider store={store}>
         <MemoryRouter>
-          <PluginNavSidebarItems />
+          <PluginNavSidebarSection />
         </MemoryRouter>
-      </ToolsHubExperimentProvider>,
+      </Provider>,
     );
 
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse Plugins section" }),
+    );
+    expect(store.get(pluginNavSidebarCollapsedAtom)).toBe(true);
     expect(screen.queryByRole("button", { name: "Automations" })).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand Plugins section" }),
+    );
+    expect(screen.getByRole("button", { name: "Automations" })).toBeDefined();
   });
 
   it("renders a sidebar entry that routes to the plugin panel", () => {
@@ -1300,7 +1318,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     );
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <PluginNavSidebarItems />
+        <PluginNavSidebarSection />
         <Routes>
           <Route path="/" element={<div>home</div>} />
           <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
@@ -1360,7 +1378,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     render(
       <Provider store={store}>
         <MemoryRouter initialEntries={["/"]}>
-          <PluginNavSidebarItems splitEnabled />
+          <PluginNavSidebarSection splitEnabled />
         </MemoryRouter>
       </Provider>,
     );
@@ -1393,7 +1411,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
           "/plugins/simple-notes/simple-notes/bb-plugin-marketplaces-and-compatible-updates.md",
         ]}
       >
-        <PluginNavSidebarItems />
+        <PluginNavSidebarSection />
       </MemoryRouter>,
     );
 

@@ -252,29 +252,31 @@ export function ResourceRow({
           {leading}
         </span>
       ) : null}
-      <button
-        type="button"
-        aria-label={openLabel}
-        onClick={onOpen}
-        className="min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        <span className="flex min-w-0 items-baseline gap-2">
-          <span className="min-w-0 truncate text-sm font-medium text-foreground">
-            {title}
-          </span>
-          {titleMeta ? (
-            <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
-              {titleMeta}
+      <span className="min-w-0">
+        <button
+          type="button"
+          aria-label={openLabel}
+          onClick={onOpen}
+          className="block w-full min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span className="min-w-0 truncate text-sm font-medium text-foreground">
+              {title}
             </span>
-          ) : null}
-          {rowState}
-        </span>
+            {titleMeta ? (
+              <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
+                {titleMeta}
+              </span>
+            ) : null}
+            {rowState}
+          </span>
+        </button>
         {description ? (
           <span className="mt-0.5 block truncate text-xs leading-snug text-muted-foreground">
             {description}
           </span>
         ) : null}
-      </button>
+      </span>
       {trailingMeta || persistentActions || actions || trailingVisual ? (
         <span className="flex shrink-0 items-center gap-1">
           {trailingMeta ? (
@@ -356,6 +358,7 @@ export function ResourceListState({
   onRetry,
   loadingRows = 4,
   layout = "list",
+  maxWidthClassName = "max-w-3xl",
 }: {
   state: "loading" | "empty" | "error";
   message: string;
@@ -367,10 +370,15 @@ export function ResourceListState({
    * than as a differently-shaped one.
    */
   layout?: "list" | "detail";
+  /** Width of the centered detail frame when `layout` is `detail`. */
+  maxWidthClassName?: string;
 }) {
   const frame = (children: ReactNode) =>
     layout === "detail" ? (
-      <div data-resource-detail-state className="mx-auto w-full max-w-3xl">
+      <div
+        data-resource-detail-state
+        className={cn("mx-auto w-full", maxWidthClassName)}
+      >
         {children}
       </div>
     ) : (

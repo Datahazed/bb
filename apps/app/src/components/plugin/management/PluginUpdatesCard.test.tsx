@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -8,16 +14,10 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import {
-  PluginReleaseFacts,
+  PluginDetailReleaseControl,
+  PluginDetailReleaseStatus,
   pluginHasUpdateSurfaces,
 } from "./PluginUpdatesCard";
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
 
 function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
   return {
@@ -79,44 +79,31 @@ describe("pluginHasUpdateSurfaces", () => {
   });
 });
 
-describe("PluginReleaseFacts", () => {
-  it("shows current version and installation time without transport metadata", async () => {
-    const fetchMock = vi.fn(async (url: string) => {
-      if (url === "/api/v1/plugins/linear/source") {
-        return jsonResponse({
-          requested: "npm:@bb-plugins/linear@^1.4.0",
-          resolved: "1.6.2",
-          integrity: "sha512-9f2c",
-          engines: { bb: ">=0.14" },
-          installedAt: 1752200000000,
-          history: [{ version: "1.6.2", activatedAt: 1752200000000 }],
-        });
-      }
-      return jsonResponse({ error: "not found" }, 404);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { wrapper } = createQueryClientTestHarness();
-    render(<PluginReleaseFacts plugin={plugin()} releaseVersion="1.6.2" />, {
-      wrapper,
-    });
-
-    expect(screen.getByText("Current version")).toBeTruthy();
-    expect(screen.getByText("1.6.2")).toBeTruthy();
-    expect(await screen.findByText("Installed")).toBeTruthy();
-    expect(screen.queryByText("Requested")).toBeNull();
-    expect(screen.queryByText("Resolved")).toBeNull();
-    expect(screen.queryByText(/npm:@bb-plugins/)).toBeNull();
-  });
-
-  it("surfaces a newer-but-incompatible release on the card, not the list", () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ error: "not found" }, 404)),
-    );
+describe("PluginDetailReleaseControl", () => {
+  it("offers a compatible update as a compact release action", () => {
     const { wrapper } = createQueryClientTestHarness();
     render(
-      <PluginReleaseFacts
+      <PluginDetailReleaseControl
+        plugin={plugin({
+          updateState: {
+            ...EMPTY_PLUGIN_UPDATE_STATE,
+            availableVersion: "1.9.0",
+          },
+        })}
+      />,
+      { wrapper },
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Update Linear to 1.9.0" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Compatible with your bb.")).toBeNull();
+  });
+
+  it("shows a blocked update inline without a modal or disabled action", () => {
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <PluginDetailReleaseStatus
         plugin={plugin({
           updateState: {
             ...EMPTY_PLUGIN_UPDATE_STATE,
@@ -128,20 +115,137 @@ describe("PluginReleaseFacts", () => {
       { wrapper },
     );
 
+    const blockedStatus = screen.getByRole("status", {
+      name: "Update blocked",
+    });
+    expect(screen.queryByText("Update blocked")).toBeNull();
+    expect(blockedStatus.textContent).toContain("Requires bb >= 0.15.");
+    expect(blockedStatus.textContent).toContain("1.6.2 remains installed");
+    expect(blockedStatus.textContent).toContain(
+      "check again when a compatible plugin version is available",
+    );
+    expect(blockedStatus.textContent).not.toContain("Update bb");
     expect(
-      screen.getByText("1.9.0 isn't compatible with this bb"),
-    ).toBeTruthy();
-    expect(screen.getByText("requires bb >= 0.15")).toBeTruthy();
+      blockedStatus
+        .querySelector('[data-icon="AlertTriangle"]')
+        ?.getAttribute("class"),
+    ).toContain("text-warning");
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("does not prescribe a bb upgrade for a candidate requiring an older bb", () => {
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <PluginDetailReleaseStatus
+        plugin={plugin({
+          updateState: {
+            ...EMPTY_PLUGIN_UPDATE_STATE,
+            blockedVersion: "1.9.0",
+            blockedReasons: ["requires bb < 0.20, running bb is 0.21.0"],
+          },
+        })}
+      />,
+      { wrapper },
+    );
+
+    const blockedStatus = screen.getByRole("status", {
+      name: "Update blocked",
+    });
+    expect(blockedStatus.textContent).toContain("Requires bb < 0.20");
+    expect(blockedStatus.textContent).not.toContain("Update bb");
+  });
+
+  it("retries a failed update from the release action without opening a modal", async () => {
+    let completeUpdate: (() => void) | undefined;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          completeUpdate = () =>
+            resolve(
+              new Response(
+                JSON.stringify({
+                  applied: true,
+                  from: { version: "1.6.2", display: "1.6.2" },
+                  to: { version: "1.9.0", display: "1.9.0" },
+                  outcome: "updated",
+                }),
+                {
+                  status: 200,
+                  headers: { "content-type": "application/json" },
+                },
+              ),
+            );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <>
+        <PluginDetailReleaseControl
+          plugin={plugin({
+            updateState: {
+              ...EMPTY_PLUGIN_UPDATE_STATE,
+              availableVersion: "1.9.0",
+              lastFailure: {
+                version: "1.9.0",
+                at: null,
+                detail: "The plugin failed to load.",
+              },
+            },
+          })}
+        />
+        <PluginDetailReleaseStatus
+          plugin={plugin({
+            updateState: {
+              ...EMPTY_PLUGIN_UPDATE_STATE,
+              availableVersion: "1.9.0",
+              lastFailure: {
+                version: "1.9.0",
+                at: null,
+                detail: "The plugin failed to load.",
+              },
+            },
+          })}
+        />
+      </>,
+      { wrapper },
+    );
+
+    const failedStatus = screen.getByRole("status", { name: "Update failed" });
+    expect(screen.queryByText("Update failed")).toBeNull();
+    expect(failedStatus.textContent).toContain(
+      "bb couldn’t activate 1.9.0. It restored 1.6.2 and its data.",
+    );
+    expect(
+      failedStatus
+        .querySelector('[data-icon="CircleX"]')
+        ?.getAttribute("class"),
+    ).toContain("text-destructive");
+    expect(screen.queryByText("Technical details")).toBeNull();
+    expect(screen.queryByText("The plugin failed to load.")).toBeNull();
+    expect(failedStatus.querySelector("button")).toBeNull();
+    const retry = screen.getByRole("button", {
+      name: "Retry update to 1.9.0",
+    });
+    fireEvent.click(retry);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(retry.getAttribute("aria-busy")).toBe("true");
+    expect(retry).toHaveProperty("disabled", true);
+    completeUpdate?.();
+    await waitFor(() => expect(retry.getAttribute("aria-busy")).toBe("false"));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("renders nothing for builtins (their update channel is the bb release)", () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ error: "not found" }, 404)),
-    );
     const { wrapper } = createQueryClientTestHarness();
     const { container } = render(
-      <PluginReleaseFacts plugin={plugin({ provenance: "builtin" })} />,
+      <PluginDetailReleaseControl
+        plugin={{
+          ...plugin({ provenance: "builtin" }),
+          source: "builtin:linear",
+        }}
+      />,
       { wrapper },
     );
     expect(container.textContent).toBe("");
