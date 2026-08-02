@@ -722,7 +722,7 @@ describe("SplitThreadArea", () => {
     expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
   });
 
-  it("uses a subtle scrim over unfocused pane content behind a hairline divider", () => {
+  it("recedes inactive pane bodies behind a structural hairline divider", () => {
     renderSplitArea({
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
@@ -734,26 +734,27 @@ describe("SplitThreadArea", () => {
     const inactivePane = document.querySelector<HTMLElement>(
       '[data-split-pane-id="pane-2"]',
     );
+    expect(activePane?.dataset.focused).toBe("true");
+    expect(inactivePane?.dataset.focused).toBe("false");
     const activeScrim = activePane?.querySelector<HTMLElement>(
-      ':scope > [aria-hidden="true"]',
+      ":scope > [data-pane-focus-scrim]",
     );
     const inactiveScrim = inactivePane?.querySelector<HTMLElement>(
-      ':scope > [aria-hidden="true"]',
+      ":scope > [data-pane-focus-scrim]",
     );
     expect(activeScrim?.classList).toContain("bg-transparent");
     expect(inactiveScrim?.classList).toContain("pointer-events-none");
     expect(inactiveScrim?.classList).toContain("bg-background/30");
     expect(inactiveScrim?.classList).not.toContain("bg-background/20");
-    expect(inactiveScrim?.classList).not.toContain("bg-background/40");
 
     const separator = screen.getByRole("separator");
     expect(separator.classList).toContain("w-px");
-    expect(separator.classList).toContain("bg-border-seam-vertical");
+    expect(separator.classList).toContain("bg-border-seam");
     expect(separator.classList).not.toContain("w-1.5");
     expect(separator.firstElementChild?.classList).toContain("-inset-x-1.5");
   });
 
-  it("uses only the pane-wide scrim to distinguish an inactive new-thread split", async () => {
+  it("uses one title tab to distinguish the focused new-thread split", async () => {
     renderSplitArea({
       path: "/",
       layout: {
@@ -783,11 +784,31 @@ describe("SplitThreadArea", () => {
       '[data-split-pane-id="pane-2"]',
     );
     const newThreadHeader = newThreadPane?.querySelector("header");
+    const focusedTab = newThreadHeader?.querySelector<HTMLElement>(
+      "[data-pane-header-focus-tab]",
+    );
+    expect(focusedTab).not.toBeNull();
+    expect(focusedTab?.classList).toContain("bg-muted");
+    expect(focusedTab?.classList).not.toContain("shadow-sm");
+    expect(screen.getByText("New thread").classList).toContain("font-normal");
+    expect(screen.getByText("New thread").classList).not.toContain(
+      "font-medium",
+    );
     expect(newThreadHeader?.classList).not.toContain("bg-surface-raised");
     expect(newThreadHeader?.classList).not.toContain("opacity-50");
+    expect(
+      newThreadHeader?.querySelector('[data-icon="CloseThreadPane"]'),
+    ).not.toBeNull();
 
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
     await waitFor(() => {
+      expect(
+        newThreadHeader?.querySelector("[data-pane-header-focus-tab]"),
+      ).toBeNull();
+      const inactiveTitle = screen.getByText("New thread");
+      expect(inactiveTitle.classList).toContain("text-muted-foreground/60");
+      expect(inactiveTitle.classList).toContain("font-normal");
+      expect(inactiveTitle.classList).not.toContain("font-medium");
       expect(newThreadHeader?.classList).not.toContain("bg-surface-raised");
       expect(newThreadHeader?.classList).not.toContain("opacity-50");
     });
@@ -927,8 +948,11 @@ describe("SplitThreadArea", () => {
       "thr-a",
     );
     expect(screen.queryByTestId("hosted-panel-thr-b")).toBeNull();
-    expect(toggle.querySelector("button")?.getAttribute("aria-pressed")).toBe(
+    expect(toggle.querySelector("button")?.getAttribute("aria-expanded")).toBe(
       "true",
+    );
+    expect(toggle.querySelector("button")?.hasAttribute("aria-pressed")).toBe(
+      false,
     );
 
     // thr-b's own persisted panel state is closed, but refocusing must swap
@@ -943,7 +967,7 @@ describe("SplitThreadArea", () => {
       screen
         .getByTestId("split-workspace-panel-toggle")
         .querySelector("button")
-        ?.getAttribute("aria-pressed"),
+        ?.getAttribute("aria-expanded"),
     ).toBe("true");
 
     // An explicit toggle closes it, and the closed state also survives
@@ -953,7 +977,7 @@ describe("SplitThreadArea", () => {
       screen
         .getByTestId("split-workspace-panel-toggle")
         .querySelector("button")
-        ?.getAttribute("aria-pressed"),
+        ?.getAttribute("aria-expanded"),
     ).toBe("false");
 
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
@@ -962,7 +986,7 @@ describe("SplitThreadArea", () => {
       screen
         .getByTestId("split-workspace-panel-toggle")
         .querySelector("button")
-        ?.getAttribute("aria-pressed"),
+        ?.getAttribute("aria-expanded"),
     ).toBe("false");
   });
 
@@ -976,7 +1000,7 @@ describe("SplitThreadArea", () => {
     });
 
     const toggle = await screen.findByTestId("split-workspace-panel-toggle");
-    expect(toggle.querySelector("button")?.getAttribute("aria-pressed")).toBe(
+    expect(toggle.querySelector("button")?.getAttribute("aria-expanded")).toBe(
       "true",
     );
     expect(
@@ -988,20 +1012,20 @@ describe("SplitThreadArea", () => {
     }
 
     // Focusing the plugin pane keeps the panel open, swapping its content for
-    // the empty state; the toggle stays put and stays pressed.
+    // the empty state; the neutral disclosure toggle stays put and expanded.
     fireEvent.pointerDown(pluginPane);
     await screen.findByTestId("split-workspace-empty-panel-state");
     const emptyPanelHandle = document.getElementById(
       "split-workspace-empty-secondary-panel-handle",
     );
     expect(emptyPanelHandle?.classList).toContain("w-px");
-    expect(emptyPanelHandle?.classList).toContain("bg-border-seam-vertical");
+    expect(emptyPanelHandle?.classList).toContain("bg-border-seam");
     expect(emptyPanelHandle?.classList).not.toContain("w-1.5");
     expect(
       screen
         .getByTestId("split-workspace-panel-toggle")
         .querySelector("button")
-        ?.getAttribute("aria-pressed"),
+        ?.getAttribute("aria-expanded"),
     ).toBe("true");
 
     // The toggle closes the window panel from the plugin pane, and the closed
@@ -1012,13 +1036,13 @@ describe("SplitThreadArea", () => {
       screen
         .getByTestId("split-workspace-panel-toggle")
         .querySelector("button")
-        ?.getAttribute("aria-pressed"),
+        ?.getAttribute("aria-expanded"),
     ).toBe("false");
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
     const restoredClosedToggle = await screen.findByRole("button", {
       name: "Show right panel",
     });
-    expect(restoredClosedToggle.getAttribute("aria-pressed")).toBe("false");
+    expect(restoredClosedToggle.getAttribute("aria-expanded")).toBe("false");
     expect(
       screen.queryByTestId("split-workspace-empty-panel-state"),
     ).toBeNull();
@@ -1374,6 +1398,7 @@ describe("SplitThreadArea", () => {
       name: "Toggle docs sidebar",
     });
     const close = screen.getByRole("button", { name: "Close pane" });
+    expect(close.querySelector('[data-icon="ClosePluginPane"]')).not.toBeNull();
     expect(
       toggle.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);

@@ -61,6 +61,7 @@ import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
   MACOS_APP_REGION_NO_DRAG_CLASS,
+  MACOS_CHROME_CONTROL_AXIS_CLASS,
   MACOS_COLLAPSED_PANEL_TRAFFIC_LIGHT_RESERVE_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
@@ -74,6 +75,8 @@ import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
+import { TabPill } from "@/components/ui/tab-pill";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 export type {
   GitDiffDisplayMode,
   GitDiffSelectionOption,
@@ -113,6 +116,21 @@ export function getReservedInlinePanelToggleClassName(
   return cn(
     SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS,
     usesDesktopChrome && MACOS_APP_REGION_NO_DRAG_CLASS,
+  );
+}
+
+/**
+ * Keeps the navigation row and optional Diff toolbar in normal document flow.
+ * The stack must reserve the combined height of both rows before the flexible
+ * panel body begins; only the navigation row owns the fixed chrome-row height.
+ */
+export function getSecondaryPanelChromeStackClassName(
+  hasGitDiffToolbar: boolean,
+): string {
+  return cn(
+    "shrink-0",
+    hasGitDiffToolbar && "flex flex-col",
+    SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
   );
 }
 
@@ -340,7 +358,9 @@ export function ThreadSecondaryPanel({
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
   const conversationCollapseControl =
-    renderAsDrawer || !showConversationCollapseControl
+    renderAsDrawer ||
+    !showConversationCollapseControl ||
+    isConversationCollapsed
       ? null
       : resolveConversationCollapseControl({
           isConversationCollapsed,
@@ -403,6 +423,7 @@ export function ThreadSecondaryPanel({
   const activeFixedPanel =
     resolveActiveFixedPanel({ activeTab, canUseGitUi }) ?? "thread-info";
   const isDiffPanelActive = activeFixedPanel === "git-diff";
+  const showsGitDiffToolbar = isDiffPanelActive && !hasActiveFileTab;
   const shouldShowGitDiffTab = canUseGitUi && showGitDiffTab !== false;
   // Inline, the panel slides out at a fixed width (clipped by the panel), so the
   // body content must stay mounted through the close animation (and across
@@ -542,7 +563,7 @@ export function ThreadSecondaryPanel({
           : undefined
       }
       className={cn(
-        "flex h-full min-h-0 flex-col overflow-hidden bg-background",
+        "flex h-full min-h-0 flex-col overflow-hidden bg-sidebar",
         // Drawer: fill the drawer shell. Inline: the fixed-width, left-pinned
         // content the panel clips into view (or fills the panel while resizing).
         renderAsDrawer && "min-w-0 flex-1",
@@ -551,23 +572,23 @@ export function ThreadSecondaryPanel({
           // Inside the split-workspace host, the hairline resize handle is the
           // visible seam; elsewhere the panel carries its own hairline border
           // (it slides with the panel through the open/close animation).
-          hostLayout === null && "border-l border-border-seam-vertical",
+          hostLayout === null && "border-l border-border-seam",
           isSecondaryPanelResizing && "right-0",
           !isOpen && "pointer-events-none",
         ],
       )}
     >
       <IframeDragGuardOverlay active={isSecondaryPanelResizing} />
-      <div className={SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS}>
+      <div
+        className={getSecondaryPanelChromeStackClassName(showsGitDiffToolbar)}
+      >
         <div
           data-testid="thread-secondary-panel-top-chrome"
           className={cn(
             CHROME_ROW_CLASS,
-            // No bottom border: the top nav sits flush over the panel body so
-            // each view's background (info, diff, new-tab, terminal) runs
-            // straight up to the top with no seam.
             "min-w-0 justify-between gap-2 px-4",
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
+            usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
           )}
         >
           <div
@@ -588,52 +609,52 @@ export function ThreadSecondaryPanel({
               `transition-[padding] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
               collapsedPanelTrafficLightReserveClassName,
             )}
-            // A toolbar, not a tablist: the Info/Diff controls and file tabs are
-            // toggle buttons (`aria-pressed`) rather than `role="tab"` widgets
-            // backed by tabpanels, so `role="tablist"` would be malformed. Toolbar
-            // semantics describe this compact row of view controls without
-            // claiming the unimplemented tab contract.
+            // A toolbar, not a tablist: the pinned Info view, Diff control, and
+            // open-view pills are toggle buttons (`aria-pressed`) rather than
+            // `role="tab"` widgets backed by tabpanels, so `role="tablist"`
+            // would be malformed. Toolbar semantics describe this compact row
+            // without claiming the unimplemented tab contract.
             role="toolbar"
             aria-label="Right panel views"
           >
             {showInfoTab ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
-                  usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-                )}
-                onClick={() => onPanelChange("thread-info")}
-                aria-label="Show thread info panel"
-                aria-pressed={
+              <PinnedIconTab
+                ariaLabel="Show thread info panel"
+                isActive={
                   activeFixedPanel === "thread-info" && !hasActiveFileTab
                 }
-              >
-                <Icon name="Info" />
-              </Button>
+                label="Info"
+                leadingVisual={<Icon name="Info" />}
+                onClick={() => onPanelChange("thread-info")}
+                title="Thread info"
+                usesDesktopChrome={usesDesktopChrome}
+                activeTreatment={isConversationCollapsed ? "underline" : "fill"}
+              />
             ) : null}
             {shouldShowGitDiffTab ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
-                  usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-                )}
-                onClick={() => onPanelChange("git-diff")}
-                aria-label={
+              <PinnedIconTab
+                ariaLabel={
                   diffShortcut
                     ? `Show diff panel (${diffShortcut.label})`
                     : "Show diff panel"
                 }
-                aria-keyshortcuts={diffShortcut?.ariaKeyshortcuts}
-                aria-pressed={isDiffPanelActive && !hasActiveFileTab}
-              >
-                <Icon name="FileDiff" />
-              </Button>
+                ariaKeyshortcuts={diffShortcut?.ariaKeyshortcuts}
+                isActive={isDiffPanelActive && !hasActiveFileTab}
+                label="Diff"
+                leadingVisual={<Icon name="FileDiff" />}
+                onClick={() => onPanelChange("git-diff")}
+                title="Diff"
+                usesDesktopChrome={usesDesktopChrome}
+                activeTreatment={isConversationCollapsed ? "underline" : "fill"}
+              />
+            ) : null}
+            {visibleFileTabs && visibleFileTabs.length > 0 ? (
+              <SecondaryPanelTabStrip
+                fileTabs={visibleFileTabs}
+                onReorderTab={onFileTabReorder}
+                usesDesktopChrome={usesDesktopChrome}
+                activeTreatment={isConversationCollapsed ? "underline" : "fill"}
+              />
             ) : null}
             {showNewTabButton ? (
               <NewTabButton
@@ -642,31 +663,31 @@ export function ThreadSecondaryPanel({
                 usesDesktopChrome={usesDesktopChrome}
               />
             ) : null}
-            {visibleFileTabs && visibleFileTabs.length > 0 ? (
-              <SecondaryPanelTabStrip
-                fileTabs={visibleFileTabs}
-                onReorderTab={onFileTabReorder}
-                usesDesktopChrome={usesDesktopChrome}
-              />
-            ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex min-w-0 shrink-0 items-center gap-1">
             {conversationCollapseControl ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                  "shrink-0",
-                  usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-                )}
-                onClick={conversationCollapseControl.onClick}
-                aria-label={conversationCollapseControl.label}
-                aria-expanded={conversationCollapseControl.isExpanded}
-              >
-                <Icon name={conversationCollapseControl.iconName} />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+                      "shrink-0",
+                      usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+                    )}
+                    onClick={conversationCollapseControl.onClick}
+                    aria-label={conversationCollapseControl.label}
+                    aria-expanded={conversationCollapseControl.isExpanded}
+                  >
+                    <Icon name={conversationCollapseControl.iconName} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {conversationCollapseControl.label}
+                </TooltipContent>
+              </Tooltip>
             ) : null}
             {renderAsDrawer || inlinePanelToggle === "button" ? (
               <Button
@@ -710,7 +731,7 @@ export function ThreadSecondaryPanel({
             ) : null}
           </div>
         </div>
-        {isDiffPanelActive && !hasActiveFileTab ? (
+        {showsGitDiffToolbar ? (
           <GitDiffToolbar
             selectionValue={gitDiffSelectValue}
             selectionOptions={gitDiffSelectOptions}
@@ -729,7 +750,7 @@ export function ThreadSecondaryPanel({
           />
         ) : null}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-sidebar">
         {/*
           The browser deck owns native-view visibility/retention and renders
           content only when a browser tab is active. The normal content slot is
@@ -837,6 +858,58 @@ interface NewTabButtonProps {
   usesDesktopChrome: boolean;
 }
 
+interface PinnedIconTabProps {
+  activeTreatment: "fill" | "underline";
+  ariaLabel: string;
+  ariaKeyshortcuts?: string;
+  isActive: boolean;
+  label: string;
+  leadingVisual: ReactNode;
+  onClick: () => void;
+  title: string;
+  usesDesktopChrome: boolean;
+}
+
+function PinnedIconTab({
+  activeTreatment,
+  ariaLabel,
+  ariaKeyshortcuts,
+  isActive,
+  label,
+  leadingVisual,
+  onClick,
+  title,
+  usesDesktopChrome,
+}: PinnedIconTabProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          data-testid={label === "Info" ? "thread-info-tab" : undefined}
+          className={cn(
+            "shrink-0",
+            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+          )}
+        >
+          <TabPill
+            label={label}
+            ariaLabel={ariaLabel}
+            ariaKeyshortcuts={ariaKeyshortcuts}
+            iconOnly
+            leadingVisual={leadingVisual}
+            title={title}
+            isActive={isActive}
+            activeTreatment={activeTreatment}
+            onSelect={onClick}
+            closeAction={null}
+          />
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>{title}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function NewTabButton({
   onOpenNewTab,
   shortcut,
@@ -899,7 +972,7 @@ function SecondaryPanelResizeHandle({
               // Match SplitDivider: a one-pixel vertical seam that warms on
               // hover/drag while the wide pseudo-element keeps it easy to
               // grab. Collapses away with the panel.
-              "z-[5] bg-border-seam-vertical hover:bg-ring/40",
+              "z-[5] bg-border-seam hover:bg-ring/40",
               isOpen && !isConversationCollapsed
                 ? "w-px opacity-100"
                 : "pointer-events-none w-0 opacity-0",

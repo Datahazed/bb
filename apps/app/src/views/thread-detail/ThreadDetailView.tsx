@@ -68,7 +68,10 @@ import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
-import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
+import {
+  ThreadActionsMenu,
+  type ThreadActionsMenuResponsiveAction,
+} from "@/components/thread/ThreadActionsMenu";
 import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
 import {
@@ -136,6 +139,7 @@ import {
 } from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
 import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
+import { setBrowserChromeRevealHeld } from "@/components/secondary-panel/browserChromeReveal";
 import { SideChatTabDeck } from "@/components/secondary-panel/SideChatTabDeck";
 import {
   canStartNativeSideChat,
@@ -1460,6 +1464,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
                 />
               ),
               statusLabel: null,
+              onRevealHoldChange: (isHeld) =>
+                setBrowserChromeRevealHeld(tab.id, isHeld),
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
@@ -2357,13 +2363,45 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     workspaceDeleted: isWorkspaceDeleted,
   });
   const threadTitle = getThreadDisplayTitle(thread);
-  const threadActionsMenu = (
-    <ThreadActionsMenu
-      thread={thread}
-      triggerClassName={HEADER_ICON_BUTTON_CLASS}
-      align="end"
-    />
-  );
+  const responsiveWorkspaceActions: ThreadActionsMenuResponsiveAction[] =
+    workspaceOpenPath && preferredDirectoryTarget
+      ? [
+          preferredDirectoryTarget,
+          ...directoryOpenTargets.filter(
+            (target) => target.id !== preferredDirectoryTarget.id,
+          ),
+        ].map((target) => ({
+          icon: "FolderOpen" as const,
+          label: `Open workspace in ${target.label}`,
+          onSelect: async () => {
+            if (target.id === preferredDirectoryTarget.id) {
+              await openPathInPreferredDirectoryTarget({
+                lineNumber: null,
+                path: workspaceOpenPath,
+              });
+              return;
+            }
+            await openPathInDirectoryTarget({
+              lineNumber: null,
+              path: workspaceOpenPath,
+              rememberTarget: true,
+              targetId: target.id,
+            });
+          },
+        }))
+      : [];
+  const responsiveGitActions: ThreadActionsMenuResponsiveAction[] =
+    gitActions.threadHeaderGitActions.map((action) => ({
+      icon: "GitBranch" as const,
+      label: action.label,
+      onSelect: () => {
+        gitActions.threadGitActionDialog.onOpen(action.target);
+      },
+    }));
+  const responsiveHeaderActions = [
+    ...responsiveWorkspaceActions,
+    ...responsiveGitActions,
+  ];
   const workspaceOpenButton =
     workspaceOpenPath && preferredDirectoryTarget ? (
       <ThreadWorkspaceOpenButton
@@ -2387,7 +2425,16 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     ) : undefined;
   const timelineHeader = (
     <ThreadDetailHeader
-      actionsMenu={threadActionsMenu}
+      actionsMenu={(includeResponsiveActions) => (
+        <ThreadActionsMenu
+          thread={thread}
+          triggerClassName={HEADER_ICON_BUTTON_CLASS}
+          align="end"
+          responsiveActions={
+            includeResponsiveActions ? responsiveHeaderActions : undefined
+          }
+        />
+      )}
       childPillLabel={
         threadOriginKind === "side-chat"
           ? "side chat"
