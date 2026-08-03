@@ -23,7 +23,11 @@ import {
   getShortcutConflicts,
   setCommandShortcutOverride,
 } from "@/lib/keyboard-shortcut-settings";
-import { formatAppShortcut } from "@/lib/app-keybindings";
+import {
+  formatAppShortcut,
+  formatAppShortcutAria,
+  type AppShortcutPresentation,
+} from "@/lib/app-keybindings";
 import {
   useUpdateGeneralSettings,
   useUpdateKeyboardSettings,
@@ -34,12 +38,30 @@ import {
   SettingsSection,
   SettingsWithControl,
 } from "@/components/ui/settings-section";
+import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
+import { getBbDesktopInfo } from "@/lib/bb-desktop";
 
 const EMPTY_KEYBINDINGS: AppKeybindings = [];
 const EMPTY_OVERRIDES: AppKeybindingOverrides = [];
+const SETTINGS_SHORTCUT_PILL_CLASS =
+  "rounded-none bg-transparent px-0 py-0 text-foreground opacity-100";
+const SETTINGS_DEFAULT_SHORTCUT_CLASS =
+  "bg-muted/40 px-1.5 py-0.5 text-foreground opacity-100";
+const SETTINGS_SEGMENTED_DEFAULT_SHORTCUT_CLASS =
+  "rounded-none border-l border-border bg-transparent px-1.5 py-0.5 text-foreground opacity-100";
 
 function browserPlatform(): string {
   return typeof navigator === "undefined" ? "" : navigator.platform;
+}
+
+function presentShortcut(
+  shortcut: AppShortcut,
+  platform: string,
+): AppShortcutPresentation {
+  return {
+    ariaKeyshortcuts: formatAppShortcutAria(shortcut, platform),
+    label: formatAppShortcut(shortcut, platform),
+  };
 }
 
 interface ShortcutRecorderProps {
@@ -61,8 +83,9 @@ function ShortcutRecorder({
 }: ShortcutRecorderProps) {
   const platform = browserPlatform();
   const [error, setError] = useState<string | null>(null);
-  const formattedShortcut =
-    shortcut === null ? "unassigned" : formatAppShortcut(shortcut, platform);
+  const shortcutPresentation =
+    shortcut === null ? null : presentShortcut(shortcut, platform);
+  const formattedShortcut = shortcutPresentation?.label ?? "unassigned";
 
   function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     if (!recording) return;
@@ -97,7 +120,7 @@ function ShortcutRecorder({
         }
         aria-pressed={recording}
         className={cn(
-          "h-7 min-w-24 px-2 font-mono text-xs",
+          "h-7 min-w-24 px-2 text-xs",
           recording && "border-ring text-foreground",
         )}
         disabled={disabled}
@@ -115,11 +138,16 @@ function ShortcutRecorder({
         type="button"
         variant="outline"
       >
-        {recording
-          ? "Press keys"
-          : shortcut === null
-            ? "Unassigned"
-            : formattedShortcut}
+        {recording ? (
+          "Press keys"
+        ) : shortcutPresentation === null ? (
+          "Unassigned"
+        ) : (
+          <AppCommandShortcutPill
+            className={SETTINGS_SHORTCUT_PILL_CLASS}
+            shortcut={shortcutPresentation}
+          />
+        )}
       </Button>
       {error ? (
         <p className="text-xs text-destructive" role="alert">
@@ -134,40 +162,73 @@ interface KeyboardCommandRowProps {
   command: AppCommandId;
   defaults: AppKeybindings;
   disabled: boolean;
+  isDesktop: boolean;
   onChange(command: AppCommandId, shortcut: AppShortcut | null): void;
   onRecordingChange(command: AppCommandId | null): void;
   overrides: AppKeybindingOverrides;
   recordingCommand: AppCommandId | null;
+  platform: string;
 }
 
 function KeyboardCommandRow({
   command,
   defaults,
   disabled,
+  isDesktop,
   onChange,
   onRecordingChange,
   overrides,
+  platform,
   recordingCommand,
 }: KeyboardCommandRowProps) {
   const metadata = getAppCommandMetadata(command);
-  const shortcut = getCommandShortcut(defaults, overrides, command);
+  const shortcut = getCommandShortcut(
+    defaults,
+    overrides,
+    command,
+    isDesktop,
+    platform,
+  );
   const customized = overrides.some((override) => override.command === command);
   const commandBindings = defaults.filter(
     (binding) => binding.command === command,
   );
-  const defaultShortcutBindings = commandBindings.filter(
-    (binding, index) =>
-      commandBindings.findIndex(
-        (candidate) =>
-          candidate.desktopOnly === binding.desktopOnly &&
-          areAppShortcutsEqual(candidate.shortcut, binding.shortcut),
-      ) === index,
+  const webDefaultShortcut = getCommandShortcut(
+    defaults,
+    [],
+    command,
+    false,
+    platform,
   );
+  const desktopDefaultShortcut = getCommandShortcut(
+    defaults,
+    [],
+    command,
+    true,
+    platform,
+  );
+  const activeDefaultShortcut = isDesktop
+    ? desktopDefaultShortcut
+    : webDefaultShortcut;
+  const availableOnClient = activeDefaultShortcut !== null;
+  const splitDefaults =
+    webDefaultShortcut !== null &&
+    desktopDefaultShortcut !== null &&
+    !areAppShortcutsEqual(webDefaultShortcut, desktopDefaultShortcut)
+      ? [
+          { label: "Web", shortcut: webDefaultShortcut },
+          { label: "Desktop", shortcut: desktopDefaultShortcut },
+        ]
+      : null;
+  const sharedDefaultShortcut =
+    splitDefaults === null
+      ? (webDefaultShortcut ?? desktopDefaultShortcut)
+      : null;
   const desktopOnly =
     commandBindings.length > 0 &&
     commandBindings.every((binding) => binding.desktopOnly);
   const conflicts = customized
-    ? getShortcutConflicts(defaults, overrides, command)
+    ? getShortcutConflicts(defaults, overrides, command, isDesktop, platform)
     : [];
 
   return (
@@ -181,23 +242,37 @@ function KeyboardCommandRow({
         <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
           {metadata.description}
         </p>
-        {defaultShortcutBindings.length > 1 ? (
+        {splitDefaults !== null || sharedDefaultShortcut !== null ? (
           <div
-            aria-label={`Default shortcuts for ${metadata.label}`}
+            aria-label={`${splitDefaults === null ? "Default shortcut" : "Default shortcuts"} for ${metadata.label}`}
             className="mt-1.5 flex flex-wrap items-center gap-1.5"
           >
-            <span className="text-xs text-subtle-foreground/75">Defaults:</span>
-            {defaultShortcutBindings.map((binding, index) => (
-              <span
-                className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-xs text-foreground"
-                key={`${binding.shortcut.key}:${index}`}
-              >
-                {formatAppShortcut(binding.shortcut, browserPlatform())}
-                <SettingsBadge>
-                  {binding.desktopOnly ? "Desktop" : "Web"}
-                </SettingsBadge>
-              </span>
-            ))}
+            <span className="text-xs text-subtle-foreground/75">
+              {splitDefaults === null ? "Default:" : "Defaults:"}
+            </span>
+            {sharedDefaultShortcut !== null ? (
+              <AppCommandShortcutPill
+                ariaHidden={false}
+                className={SETTINGS_DEFAULT_SHORTCUT_CLASS}
+                shortcut={presentShortcut(sharedDefaultShortcut, platform)}
+              />
+            ) : (
+              splitDefaults?.map((entry) => (
+                <span
+                  className="inline-flex items-stretch overflow-hidden rounded border border-border text-foreground"
+                  key={entry.label}
+                >
+                  <span className="inline-flex items-center bg-muted/40 px-1.5 text-2xs leading-none text-subtle-foreground">
+                    {entry.label}
+                  </span>
+                  <AppCommandShortcutPill
+                    ariaHidden={false}
+                    className={SETTINGS_SEGMENTED_DEFAULT_SHORTCUT_CLASS}
+                    shortcut={presentShortcut(entry.shortcut, platform)}
+                  />
+                </span>
+              ))
+            )}
           </div>
         ) : null}
         {conflicts.length > 0 ? (
@@ -213,7 +288,7 @@ function KeyboardCommandRow({
       <div className="flex shrink-0 items-start justify-end gap-1">
         <ShortcutRecorder
           command={command}
-          disabled={disabled}
+          disabled={disabled || !availableOnClient}
           onChange={(next) => onChange(command, next)}
           onRecordingChange={onRecordingChange}
           recording={recordingCommand === command}
@@ -222,7 +297,7 @@ function KeyboardCommandRow({
         <Button
           aria-label={`Clear shortcut for ${metadata.label}`}
           className="size-7"
-          disabled={disabled || shortcut === null}
+          disabled={disabled || !availableOnClient || shortcut === null}
           onClick={() => onChange(command, null)}
           size="icon"
           type="button"
@@ -233,9 +308,15 @@ function KeyboardCommandRow({
         <Button
           aria-label={`Reset shortcut for ${metadata.label}`}
           className="size-7"
-          disabled={disabled || !customized}
+          disabled={disabled || !availableOnClient || !customized}
           onClick={() => {
-            const defaultShortcut = getCommandShortcut(defaults, [], command);
+            const defaultShortcut = getCommandShortcut(
+              defaults,
+              [],
+              command,
+              isDesktop,
+              platform,
+            );
             if (defaultShortcut !== null) onChange(command, defaultShortcut);
           }}
           size="icon"
@@ -253,6 +334,8 @@ export function KeyboardSettingsSection() {
   const systemConfig = useSystemConfig();
   const updateGeneralSettings = useUpdateGeneralSettings();
   const updateKeyboardSettings = useUpdateKeyboardSettings();
+  const isDesktop = getBbDesktopInfo() !== null;
+  const platform = browserPlatform();
   const generalSettings =
     systemConfig.data?.generalSettings ?? defaultAppSettings;
   const defaults = systemConfig.data?.defaultKeybindings ?? EMPTY_KEYBINDINGS;
@@ -291,6 +374,8 @@ export function KeyboardSettingsSection() {
       overrides,
       command,
       shortcut,
+      isDesktop,
+      platform,
     );
     setDraft({ sourceKey: serverOverridesKey, value: next });
     updateKeyboardSettings.mutate(next, {
@@ -362,10 +447,12 @@ export function KeyboardSettingsSection() {
                   command={metadata.command}
                   defaults={defaults}
                   disabled={disabled}
+                  isDesktop={isDesktop}
                   key={metadata.command}
                   onChange={updateCommand}
                   onRecordingChange={setRecordingCommand}
                   overrides={overrides}
+                  platform={platform}
                   recordingCommand={recordingCommand}
                 />
               ))}

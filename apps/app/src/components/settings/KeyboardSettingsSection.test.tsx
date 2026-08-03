@@ -39,8 +39,70 @@ const testState = vi.hoisted(() => ({
       },
       when: { all: ["mainSurface"], none: ["modalOpen"] },
     },
+    {
+      command: "thread.jump.1",
+      desktopOnly: false,
+      shortcut: {
+        key: "1",
+        mod: false,
+        meta: false,
+        control: true,
+        alt: false,
+        shift: false,
+      },
+      when: {
+        all: ["mainSurface", "webSurface", "macPlatform"],
+        none: ["modalOpen"],
+      },
+    },
+    {
+      command: "thread.jump.1",
+      desktopOnly: false,
+      shortcut: {
+        key: "1",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: true,
+      },
+      when: {
+        all: ["mainSurface", "webSurface"],
+        none: ["modalOpen", "macPlatform"],
+      },
+    },
+    {
+      command: "thread.jump.1",
+      desktopOnly: true,
+      shortcut: {
+        key: "1",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: false,
+      },
+      when: { all: ["mainSurface"], none: ["modalOpen"] },
+    },
+    {
+      command: "question.select.1",
+      desktopOnly: false,
+      shortcut: {
+        key: "1",
+        mod: false,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: false,
+      },
+      when: {
+        all: ["mainSurface", "questionOpen"],
+        none: ["modalOpen", "editableFocus"],
+      },
+    },
   ] as AppKeybindings,
   generalMutate: vi.fn(),
+  isDesktop: false,
   mutate: vi.fn(),
 }));
 
@@ -65,9 +127,15 @@ vi.mock("@/hooks/mutations/settings-mutations", () => ({
   }),
 }));
 
+vi.mock("@/lib/bb-desktop", () => ({
+  getBbDesktopInfo: () => (testState.isDesktop ? {} : null),
+}));
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
+  testState.isDesktop = false;
 });
 
 describe("KeyboardSettingsSection", () => {
@@ -89,13 +157,25 @@ describe("KeyboardSettingsSection", () => {
   it("records, clears, and resets a command shortcut", () => {
     render(<KeyboardSettingsSection />);
     const defaults = screen.getByLabelText("Default shortcuts for New thread");
-    expect(within(defaults).getByText("Ctrl + Shift + O")).toBeDefined();
-    expect(within(defaults).getByText("Web")).toBeDefined();
-    expect(within(defaults).getByText("Ctrl + N")).toBeDefined();
-    expect(within(defaults).getByText("Desktop")).toBeDefined();
+    const webLabel = within(defaults).getByText("Web");
+    const webGroup = webLabel.parentElement;
+    const webDefault = within(webGroup!).getByText("Ctrl + Shift + O");
+    expect(webDefault.tagName).toBe("KBD");
+    expect(webDefault.className).toContain("font-sans");
+    expect(webDefault.getAttribute("aria-hidden")).toBe("false");
+    const desktopLabel = within(defaults).getByText("Desktop");
+    const desktopGroup = desktopLabel.parentElement;
+    expect(within(desktopGroup!).getByText("Ctrl + N")).toBeDefined();
+    expect(within(defaults).queryByText("macOS web")).toBeNull();
+    expect(within(defaults).queryByText("Windows/Linux web")).toBeNull();
     const recorder = screen.getByRole("button", {
-      name: "Record shortcut for New thread, current shortcut Ctrl + N",
+      name: "Record shortcut for New thread, current shortcut Ctrl + Shift + O",
     });
+    const recorderShortcut = within(recorder).getByText("Ctrl + Shift + O");
+    expect(recorderShortcut.tagName).toBe("KBD");
+    expect(recorderShortcut.className).toContain("font-sans");
+    expect(recorderShortcut.className).toContain("bg-transparent");
+    expect(recorderShortcut.getAttribute("aria-hidden")).toBe("true");
 
     fireEvent.click(recorder);
     expect(screen.getByText("Press keys")).toBeDefined();
@@ -140,5 +220,56 @@ describe("KeyboardSettingsSection", () => {
       [],
       expect.objectContaining({ onError: expect.any(Function) }),
     );
+  });
+
+  it("shows web and desktop defaults without OS-specific groups", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    render(<KeyboardSettingsSection />);
+
+    const defaults = screen.getByLabelText(
+      "Default shortcuts for Open thread 1",
+    );
+    const webGroup = within(defaults).getByText("Web").parentElement;
+    expect(within(webGroup!).getByText("⌃ 1")).toBeDefined();
+    const desktopGroup = within(defaults).getByText("Desktop").parentElement;
+    expect(within(desktopGroup!).getByText("⌘ 1")).toBeDefined();
+    expect(within(defaults).queryByText("macOS web")).toBeNull();
+    expect(within(defaults).queryByText("Windows/Linux web")).toBeNull();
+    expect(within(defaults).queryByText("Ctrl + Shift + 1")).toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for Open thread 1, current shortcut ⌃ 1",
+      }),
+    ).toBeDefined();
+  });
+
+  it("selects the active desktop shortcut from the displayed surface defaults", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    testState.isDesktop = true;
+    render(<KeyboardSettingsSection />);
+
+    const defaults = screen.getByLabelText(
+      "Default shortcuts for Open thread 1",
+    );
+    const webGroup = within(defaults).getByText("Web").parentElement;
+    expect(within(webGroup!).getByText("⌃ 1")).toBeDefined();
+    const desktopGroup = within(defaults).getByText("Desktop").parentElement;
+    expect(within(desktopGroup!).getByText("⌘ 1")).toBeDefined();
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for Open thread 1, current shortcut ⌘ 1",
+      }),
+    ).toBeDefined();
+  });
+
+  it("shows one unlabeled default when web and desktop match", () => {
+    render(<KeyboardSettingsSection />);
+
+    const defaults = screen.getByLabelText(
+      "Default shortcut for Choose answer 1",
+    );
+    expect(within(defaults).getByText("1")).toBeDefined();
+    expect(within(defaults).queryByText("Web")).toBeNull();
+    expect(within(defaults).queryByText("Desktop")).toBeNull();
   });
 });

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { getAppKeybindingOverrides } from "@bb/db";
-import { appKeybindingOverridesSchema } from "@bb/domain";
+import {
+  PANE_FOCUS_APP_COMMAND_IDS,
+  THREAD_JUMP_APP_COMMAND_IDS,
+  appKeybindingOverridesSchema,
+} from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -55,6 +59,58 @@ describe("app keybindings", () => {
       ]);
       expect(
         config.defaultKeybindings
+          .filter((binding) => binding.command.startsWith("thread.jump."))
+          .map((binding) => ({
+            command: binding.command,
+            desktopOnly: binding.desktopOnly,
+            key: binding.shortcut.key,
+            mod: binding.shortcut.mod,
+            control: binding.shortcut.control,
+            shift: binding.shortcut.shift,
+            when: binding.when,
+          })),
+      ).toEqual(
+        THREAD_JUMP_APP_COMMAND_IDS.flatMap((command, index) => [
+          {
+            command,
+            desktopOnly: false,
+            key: String(index + 1),
+            mod: false,
+            control: true,
+            shift: false,
+            when: {
+              all: ["mainSurface", "webSurface", "macPlatform"],
+              none: ["modalOpen"],
+            },
+          },
+          {
+            command,
+            desktopOnly: false,
+            key: String(index + 1),
+            mod: true,
+            control: false,
+            shift: true,
+            when: {
+              all: ["mainSurface", "webSurface"],
+              none: ["modalOpen", "macPlatform"],
+            },
+          },
+          {
+            command,
+            desktopOnly: true,
+            key: String(index + 1),
+            mod: true,
+            control: false,
+            shift: false,
+            when: {
+              all: ["mainSurface"],
+              none: ["modalOpen"],
+            },
+          },
+        ]),
+      );
+      expect(
+        config.defaultKeybindings
           .filter((binding) => binding.command === "terminal.open")
           .map((binding) => ({
             desktopOnly: binding.desktopOnly,
@@ -81,44 +137,85 @@ describe("app keybindings", () => {
           .filter((binding) => binding.command.startsWith("pane."))
           .map((binding) => ({
             command: binding.command,
+            desktopOnly: binding.desktopOnly,
             key: binding.shortcut.key,
             mod: binding.shortcut.mod,
+            control: binding.shortcut.control,
             shift: binding.shortcut.shift,
             when: binding.when,
           })),
       ).toEqual([
         {
           command: "pane.focus.previous",
+          desktopOnly: false,
           key: "[",
           mod: true,
+          control: false,
           shift: true,
           when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
         },
         {
           command: "pane.focus.next",
+          desktopOnly: false,
           key: "]",
           mod: true,
+          control: false,
           shift: true,
           when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
         },
-        ...[1, 2, 3, 4, 5, 6, 7, 8].map((index) => ({
-          command: `pane.focus.${index}`,
-          key: String(index),
-          mod: true,
-          shift: false,
-          when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
-        })),
+        ...PANE_FOCUS_APP_COMMAND_IDS.flatMap((command, index) => [
+          {
+            command,
+            desktopOnly: false,
+            key: String(index + 1),
+            mod: false,
+            control: true,
+            shift: false,
+            when: {
+              all: ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+              none: ["modalOpen"],
+            },
+          },
+          {
+            command,
+            desktopOnly: false,
+            key: String(index + 1),
+            mod: true,
+            control: false,
+            shift: true,
+            when: {
+              all: ["mainSurface", "splitActive", "webSurface"],
+              none: ["modalOpen", "macPlatform"],
+            },
+          },
+          {
+            command,
+            desktopOnly: true,
+            key: String(index + 1),
+            mod: true,
+            control: false,
+            shift: false,
+            when: {
+              all: ["mainSurface", "splitActive"],
+              none: ["modalOpen"],
+            },
+          },
+        ]),
         {
           command: "pane.maximize.toggle",
+          desktopOnly: false,
           key: "e",
           mod: true,
+          control: false,
           shift: true,
           when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
         },
         {
           command: "pane.close",
+          desktopOnly: false,
           key: "x",
           mod: true,
+          control: false,
           shift: true,
           when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
         },
@@ -131,6 +228,8 @@ describe("app keybindings", () => {
         "thread.new",
         "thread.previous",
         "thread.next",
+        ...THREAD_JUMP_APP_COMMAND_IDS,
+        ...PANE_FOCUS_APP_COMMAND_IDS,
         "terminal.open",
         "browser.focusLocation",
         "browser.reload",

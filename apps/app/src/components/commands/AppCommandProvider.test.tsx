@@ -89,6 +89,55 @@ const testState = vi.hoisted(() => ({
       when: { all: ["mainSurface" as const], none: [] },
     },
     {
+      command: "thread.jump.1" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: "1",
+        mod: false,
+        meta: false,
+        control: true,
+        alt: false,
+        shift: false,
+      },
+      when: {
+        all: [
+          "mainSurface" as const,
+          "webSurface" as const,
+          "macPlatform" as const,
+        ],
+        none: [],
+      },
+    },
+    {
+      command: "thread.jump.1" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: "1",
+        mod: false,
+        meta: false,
+        control: true,
+        alt: false,
+        shift: true,
+      },
+      when: {
+        all: ["mainSurface" as const, "webSurface" as const],
+        none: ["macPlatform" as const],
+      },
+    },
+    {
+      command: "thread.jump.1" as const,
+      desktopOnly: true,
+      shortcut: {
+        key: "1",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: false,
+      },
+      when: { all: ["mainSurface" as const], none: [] },
+    },
+    {
       command: "question.select.1" as const,
       desktopOnly: false,
       shortcut: {
@@ -217,12 +266,13 @@ function dispatchShortcut(): KeyboardEvent {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   testState.calls.length = 0;
   testState.showKeyboardHints = true;
 });
 
 describe("AppCommandProvider", () => {
-  it("shares primary-modifier hold state after 700ms and clears it on release or blur", () => {
+  it("shares shortcut-hint modifier state after 700ms and clears it on release or blur", () => {
     vi.useFakeTimers();
     renderProvider(<ModifierState />);
 
@@ -238,6 +288,25 @@ describe("AppCommandProvider", () => {
     act(() => vi.advanceTimersByTime(700));
     expect(screen.getByText("held")).toBeDefined();
     fireEvent.blur(window);
+    expect(screen.getByText("released")).toBeDefined();
+    vi.useRealTimers();
+  });
+
+  it("shows keyboard hints for either Command or Control on macOS", () => {
+    vi.useFakeTimers();
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    renderProvider(<ModifierState />);
+
+    fireEvent.keyDown(window, { key: "Meta", metaKey: true });
+    act(() => vi.advanceTimersByTime(700));
+    expect(screen.getByText("held")).toBeDefined();
+    fireEvent.keyUp(window, { key: "Meta" });
+    expect(screen.getByText("released")).toBeDefined();
+
+    fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
+    act(() => vi.advanceTimersByTime(700));
+    expect(screen.getByText("held")).toBeDefined();
+    fireEvent.keyUp(window, { key: "Control" });
     expect(screen.getByText("released")).toBeDefined();
     vi.useRealTimers();
   });
@@ -281,7 +350,7 @@ describe("AppCommandProvider", () => {
     vi.useRealTimers();
   });
 
-  it("does not share primary-modifier hold state when keyboard hints are disabled", () => {
+  it("does not share shortcut-hint modifier state when keyboard hints are disabled", () => {
     vi.useFakeTimers();
     testState.showKeyboardHints = false;
     renderProvider(<ModifierState />);
@@ -297,11 +366,70 @@ describe("AppCommandProvider", () => {
       <>
         <ShortcutLabel command="thread.new" />
         <ShortcutLabel command="thread.previous" />
+        <ShortcutLabel command="thread.jump.1" />
       </>,
     );
 
     expect(screen.getByText("Ctrl + Shift + O")).toBeDefined();
     expect(screen.getByText("Ctrl + Shift + ArrowUp")).toBeDefined();
+    expect(screen.getByText("Ctrl + Shift + 1")).toBeDefined();
+  });
+
+  it("preserves native Mod+number behavior and dispatches the shifted web chat alias", () => {
+    renderProvider(
+      <Handler command="thread.jump.1" name="thread" result={true} />,
+    );
+
+    const nativeTabShortcut = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: "1",
+    });
+    window.dispatchEvent(nativeTabShortcut);
+    expect(nativeTabShortcut.defaultPrevented).toBe(false);
+    expect(testState.calls).toEqual([]);
+
+    const webChatShortcut = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: "!",
+      shiftKey: true,
+    });
+    window.dispatchEvent(webChatShortcut);
+    expect(webChatShortcut.defaultPrevented).toBe(true);
+    expect(testState.calls).toEqual(["thread"]);
+  });
+
+  it("uses the Slack-style Control+number web alias on macOS", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    renderProvider(
+      <>
+        <ShortcutLabel command="thread.jump.1" />
+        <Handler command="thread.jump.1" name="thread" result={true} />
+      </>,
+    );
+
+    expect(screen.getByText("⌃ 1")).toBeDefined();
+    const webChatShortcut = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: "1",
+    });
+    window.dispatchEvent(webChatShortcut);
+    expect(webChatShortcut.defaultPrevented).toBe(true);
+    expect(testState.calls).toEqual(["thread"]);
+
+    const nativeTabShortcut = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "1",
+      metaKey: true,
+    });
+    window.dispatchEvent(nativeTabShortcut);
+    expect(nativeTabShortcut.defaultPrevented).toBe(false);
   });
 
   it("falls through declining handlers in priority order", () => {
