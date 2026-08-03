@@ -1,9 +1,4 @@
-import {
-  buildAcpProviderInfo,
-  getBuiltInAgentProviderInfo,
-  isAcpProviderId,
-  isAgentProviderId,
-} from "@bb/agent-providers";
+import { getSupportedPermissionModes } from "@bb/agent-providers";
 import { getProjectExecutionDefaults, getThread } from "@bb/db";
 import type {
   CallerExecutionInputSource,
@@ -16,6 +11,11 @@ import type {
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
+import {
+  clampPermissionModeToHost,
+  isHostPermissionCeilingConflictError,
+  resolveEnvironmentHostId,
+} from "../hosts/permission-ceiling.js";
 import {
   DEFAULT_REASONING_LEVEL,
   DEFAULT_SERVICE_TIER,
@@ -54,6 +54,12 @@ export interface ExistingThreadExecutionInputRequestSources {
 
 export interface ResolveExistingThreadExecutionPlanArgs {
   executionSource: ThreadExecutionSource;
+  /**
+   * Machine the resolved execution runs on. Omitted means "read it from the
+   * thread's environment"; thread creation passes it because the environment
+   * is still being provisioned.
+   */
+  hostId?: string | null;
   input: ExistingThreadExecutionInput;
   projectDefaults?: ProjectExecutionDefaults | null;
   threadId: string;
@@ -77,6 +83,12 @@ export interface ProjectCreateDefaultExecutionPlan {
 }
 
 interface ResolveStoredThreadPermissionModeArgs {
+  /**
+   * Machine the thread's work lands on. Omitted means "read it from the
+   * thread's environment"; callers pass it when the environment does not exist
+   * yet (thread creation resolves the host from the provisioning intent).
+   */
+  hostId?: string | null;
   projectDefaults?: ProjectExecutionDefaults | null;
   resolvingThreadIds: ReadonlySet<string>;
   threadId: string;
@@ -127,16 +139,23 @@ function resolveStoredThreadPermissionMode(
           threadId: sourceThread.id,
         })
       : undefined;
-  const permissionMode = resolveThreadExecutionPermissionMode({
-    lastExecutionPermissionMode,
-    parentThread,
-    parentThreadExecutionPermissionMode:
-      parentThread !== null
-        ? getLastExecutionOptions(deps, parentThread.id)?.permissionMode
-        : undefined,
-    projectExecutionPermissionMode: projectExecution?.permissionMode,
-    sourceThreadEffectivePermissionMode,
-    thread,
+  const permissionMode = clampPermissionModeToHost(deps, {
+    hostId:
+      args.hostId === undefined
+        ? resolveEnvironmentHostId(deps, thread.environmentId)
+        : args.hostId,
+    permissionMode: resolveThreadExecutionPermissionMode({
+      lastExecutionPermissionMode,
+      parentThread,
+      parentThreadExecutionPermissionMode:
+        parentThread !== null
+          ? getLastExecutionOptions(deps, parentThread.id)?.permissionMode
+          : undefined,
+      projectExecutionPermissionMode: projectExecution?.permissionMode,
+      sourceThreadEffectivePermissionMode,
+      thread,
+    }),
+    ...(thread.providerId ? { providerId: thread.providerId } : {}),
   });
   validateProviderPermissionMode(thread.providerId, permissionMode);
   return permissionMode;
@@ -244,27 +263,15 @@ function validateProviderPermissionMode(
     return;
   }
 
-  const provider = isAgentProviderId(providerId)
-    ? getBuiltInAgentProviderInfo(providerId)
-    : isAcpProviderId(providerId)
-      ? buildAcpProviderInfo({
-          id: providerId,
-          displayName: providerId,
-          logoUrl: null,
-        })
-      : null;
-  if (!provider) {
-    return;
-  }
-
-  if (provider.capabilities.supportedPermissionModes.includes(permissionMode)) {
+  const supported = getSupportedPermissionModes(providerId);
+  if (!supported || supported.includes(permissionMode)) {
     return;
   }
 
   throw new ProviderCapabilityValidationError(
     400,
     "invalid_request",
-    `Provider ${providerId} only supports ${provider.capabilities.supportedPermissionModes.join(", ")} permission mode.`,
+    `Provider ${providerId} only supports ${supported.join(", ")} permission mode.`,
   );
 }
 
@@ -365,14 +372,23 @@ export async function resolveExistingThreadExecutionPlan(
           threadId: sourceThread.id,
         })
       : undefined;
-  const permissionMode = resolveThreadExecutionPermissionMode({
-    requestedPermissionMode: args.input.permissionMode?.value,
-    lastExecutionPermissionMode: lastExecution?.permissionMode,
-    parentThread,
-    parentThreadExecutionPermissionMode: parentExecution?.permissionMode,
-    projectExecutionPermissionMode: projectExecution?.permissionMode,
-    sourceThreadEffectivePermissionMode,
-    thread,
+  // The machine's ceiling wins over every other source, including an explicit
+  // request, so a capped machine cannot be talked into privileged work.
+  const permissionMode = clampPermissionModeToHost(deps, {
+    hostId:
+      args.hostId === undefined
+        ? resolveEnvironmentHostId(deps, thread.environmentId)
+        : args.hostId,
+    permissionMode: resolveThreadExecutionPermissionMode({
+      requestedPermissionMode: args.input.permissionMode?.value,
+      lastExecutionPermissionMode: lastExecution?.permissionMode,
+      parentThread,
+      parentThreadExecutionPermissionMode: parentExecution?.permissionMode,
+      projectExecutionPermissionMode: projectExecution?.permissionMode,
+      sourceThreadEffectivePermissionMode,
+      thread,
+    }),
+    ...(thread.providerId ? { providerId: thread.providerId } : {}),
   });
   validateProviderPermissionMode(thread.providerId, permissionMode);
 
@@ -423,7 +439,8 @@ export async function tryResolveExistingThreadExecutionPlan(
     }
     if (
       !hasExecutionInput(args.input) &&
-      isProviderCapabilityValidationError(error)
+      (isProviderCapabilityValidationError(error) ||
+        isHostPermissionCeilingConflictError(error))
     ) {
       return null;
     }
