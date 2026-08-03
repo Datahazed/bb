@@ -215,7 +215,10 @@ export function registerSpawnCommand(
       [],
     )
     .option("--section <id>", "Create the thread in a section")
-    .option("--visibility <visibility>", "Thread visibility: visible or hidden")
+    .option(
+      "--visibility <visibility>",
+      "Thread visibility: visible or hidden (a child inherits its parent)",
+    )
     .option("--origin-kind <kind>", "Thread origin: fork or side-chat")
     .option("--source-thread <id>", "Source thread for a fork or side chat")
     .option("--source-seq-end <seq>", "Last source event sequence")
@@ -331,10 +334,11 @@ export function registerSpawnCommand(
 
         if (outputJson(opts, thread)) return;
         console.log(`Thread spawned: ${thread.id}`);
+        // A hidden child reports to its parent too, so the promise follows the
+        // parent link alone.
         if (
           thread.parentThreadId &&
-          thread.parentThreadId === resolveContextThreadId() &&
-          thread.visibility === "visible"
+          thread.parentThreadId === resolveContextThreadId()
         ) {
           console.log("You will be notified when this thread is done.");
         }
