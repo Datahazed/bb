@@ -35,7 +35,7 @@ export function NewTabPage({
   showFileSearch,
 }: NewTabPageProps) {
   return (
-    <div className="flex min-h-full flex-col gap-3 px-4 pb-3 pt-1">
+    <div className="flex min-h-full flex-col gap-3 bg-sidebar px-4 pb-3 pt-1">
       <NewTabFileSearch
         projectId={projectId}
         environmentId={environmentId}
