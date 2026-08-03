@@ -1,13 +1,15 @@
-import { execFile } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { promisify } from "node:util";
+import {
+  createNodeVerifiedProcessOps,
+  stopVerifiedProcess,
+  type VerifiedProcessOps,
+  type WaitForProcessExitArgs,
+} from "@bb/config/verified-process-stop";
 import { z } from "zod";
 
 const OWNED_RUNTIME_PID_FILE_NAME = "owned-runtime.json";
-const POLL_INTERVAL_MS = 100;
-
-const execFileAsync = promisify(execFile);
+const KILL_TIMEOUT_MS = 3_000;
 
 const ownedRuntimePidFileSchema = z.object({
   bridgePath: z.string().min(1),
@@ -18,6 +20,7 @@ const ownedRuntimePidFileSchema = z.object({
 
 export type ReapStaleOwnedRuntimeResult =
   | ClearedStaleOwnedRuntimePidFileResult
+  | FailedToStopOwnedRuntimeResult
   | NoStaleOwnedRuntimePidFileResult
   | ReapedStaleOwnedRuntimeResult
   | SkippedStaleOwnedRuntimeResult;
@@ -51,17 +54,8 @@ export interface ReapStaleOwnedRuntimeArgs {
   userDataPath: string;
 }
 
-export interface OwnedRuntimeProcessOps {
-  isRunning(pid: number): boolean;
-  kill(pid: number, signal: NodeJS.Signals): void;
-  readCommand(pid: number): Promise<string | null>;
-  waitForExit(args: WaitForProcessExitArgs): Promise<boolean>;
-}
-
-export interface WaitForProcessExitArgs {
-  pid: number;
-  timeoutMs: number;
-}
+export type OwnedRuntimeProcessOps = VerifiedProcessOps;
+export type { WaitForProcessExitArgs };
 
 export interface NoStaleOwnedRuntimePidFileResult {
   kind: "no-pid-file";
@@ -77,71 +71,23 @@ export interface ReapedStaleOwnedRuntimeResult {
   pid: number;
 }
 
+export interface FailedToStopOwnedRuntimeResult {
+  kind: "failed-to-stop";
+  pid: number;
+}
+
 export interface SkippedStaleOwnedRuntimeResult {
   command: string | null;
   kind: "skipped-unverified-process";
   pid: number;
 }
 
-interface SleepArgs {
-  delayMs: number;
-}
-
 function ownedRuntimePidFilePath(userDataPath: string): string {
   return join(userDataPath, OWNED_RUNTIME_PID_FILE_NAME);
 }
 
-async function sleep(args: SleepArgs): Promise<void> {
-  await new Promise<void>((resolvePromise) => {
-    setTimeout(resolvePromise, args.delayMs);
-  });
-}
-
-async function readProcessCommand(pid: number): Promise<string | null> {
-  try {
-    const result = await execFileAsync("ps", [
-      "-p",
-      String(pid),
-      "-o",
-      "command=",
-    ]);
-    return result.stdout.trim();
-  } catch {
-    return null;
-  }
-}
-
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForProcessExit(
-  args: WaitForProcessExitArgs,
-): Promise<boolean> {
-  const deadline = Date.now() + args.timeoutMs;
-  while (Date.now() <= deadline) {
-    if (!isProcessRunning(args.pid)) {
-      return true;
-    }
-    await sleep({ delayMs: POLL_INTERVAL_MS });
-  }
-  return !isProcessRunning(args.pid);
-}
-
 export function createNodeOwnedRuntimeProcessOps(): OwnedRuntimeProcessOps {
-  return {
-    isRunning: (pid) => isProcessRunning(pid),
-    kill(pid, signal) {
-      process.kill(pid, signal);
-    },
-    readCommand: (pid) => readProcessCommand(pid),
-    waitForExit: (args) => waitForProcessExit(args),
-  };
+  return createNodeVerifiedProcessOps();
 }
 
 export async function writeOwnedRuntimePidFile(
@@ -194,7 +140,17 @@ export async function reapStaleOwnedRuntime(
     return { kind: "no-pid-file" };
   }
 
-  if (!processOps.isRunning(pidFile.pid)) {
+  const stopResult = await stopVerifiedProcess({
+    killTimeoutMs: KILL_TIMEOUT_MS,
+    pid: pidFile.pid,
+    processOps,
+    signal: args.signal,
+    startedAt: pidFile.startedAt,
+    timeoutMs: args.timeoutMs,
+    verifyTokens: [pidFile.bridgePath],
+  });
+
+  if (stopResult.kind === "not-running") {
     await clearOwnedRuntimePidFile({ userDataPath: args.userDataPath });
     return {
       kind: "cleared-stale-pid-file",
@@ -202,26 +158,20 @@ export async function reapStaleOwnedRuntime(
     };
   }
 
-  const command = await processOps.readCommand(pidFile.pid);
-  if (command === null || !command.includes(pidFile.bridgePath)) {
+  if (stopResult.kind === "unverified") {
     return {
-      command,
+      command: stopResult.command,
       kind: "skipped-unverified-process",
       pid: pidFile.pid,
     };
   }
 
-  processOps.kill(pidFile.pid, args.signal);
-  const exited = await processOps.waitForExit({
-    pid: pidFile.pid,
-    timeoutMs: args.timeoutMs,
-  });
-  if (!exited && processOps.isRunning(pidFile.pid)) {
-    processOps.kill(pidFile.pid, "SIGKILL");
-    await processOps.waitForExit({
+  // Keep the pid file when the process survived, so the next launch retries it.
+  if (stopResult.kind === "still-running") {
+    return {
+      kind: "failed-to-stop",
       pid: pidFile.pid,
-      timeoutMs: args.timeoutMs,
-    });
+    };
   }
 
   await clearOwnedRuntimePidFile({ userDataPath: args.userDataPath });
