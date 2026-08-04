@@ -52,8 +52,9 @@ export function BrowsePluginsTab({
         ) : (
           <p className="mt-0.5 text-xs text-muted-foreground">
             {status.pluginCount} plugin
-            {status.pluginCount === 1 ? "" : "s"} · bundled with BB and
-            installed with one click
+            {status.pluginCount === 1 ? "" : "s"} · {status.includedPluginCount}
+            {" included with BB, "}
+            {status.optionalPluginCount} optional
           </p>
         )}
       </div>

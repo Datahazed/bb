@@ -94,6 +94,7 @@ describe("PaneMaximizeButton", () => {
     fireEvent.pointerEnter(button);
     const menu = await screen.findByRole("menu", { name: "Pane arrangement" });
     expect(menu.textContent).toContain("Full Screen");
+    expect(menu.textContent).toContain("Move");
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
     ).toEqual(["Full Screen⌘⇧E", "", "", "", ""]);
@@ -104,7 +105,11 @@ describe("PaneMaximizeButton", () => {
       expect(
         action.querySelector(`[data-pane-arrangement-glyph="${side}"]`),
       ).not.toBeNull();
+      expect(action.className).toContain("cursor-pointer");
     }
+    expect(
+      screen.getByRole("menuitem", { name: /Full Screen/ }).className,
+    ).toContain("cursor-pointer");
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Move left" }));
     expect(onMoveToSide).toHaveBeenCalledWith("left");

@@ -1239,7 +1239,11 @@ describe("@bb/sdk", () => {
       logoUrl: null,
       logoDarkUrl: null,
     };
-    const catalog = { pluginCount: 1 };
+    const catalog = {
+      pluginCount: 1,
+      includedPluginCount: 1,
+      optionalPluginCount: 0,
+    };
     const checked = {
       id: "notes",
       outcome: "update-available" as const,

@@ -253,7 +253,8 @@ describe("SkillsOverview", () => {
     });
     expect(markup).not.toContain("claude-skill");
     expect(markup).toContain("Review the current diff.");
-    expect(markup).toContain('aria-label="Provider: 1 selected"');
+    expect(markup).toContain('aria-label="bb"');
+    expect(markup).not.toContain("Provider: 1 selected");
     expect(markup).toContain("Sort");
     expect(markup).toContain('role="tab"');
     expect(markup).toContain("Library");
@@ -335,9 +336,7 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Provider: 1 selected" }),
-    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "bb" }));
 
     await waitFor(() => {
       expect(
@@ -381,15 +380,11 @@ describe("SkillsOverview", () => {
     );
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Provider: 1 selected" }),
-      ).toBeTruthy();
+      expect(screen.getByRole("button", { name: "bb" })).toBeTruthy();
       expect(screen.queryByText("codex-skill")).toBeNull();
     });
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Provider: 1 selected" }),
-    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "bb" }));
     const bbFilter = screen.getByRole("menuitemcheckbox", { name: "bb" });
     expect(bbFilter.getAttribute("aria-checked")).toBe("true");
     expect(bbFilter.getAttribute("aria-disabled")).toBeNull();
@@ -419,17 +414,17 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Provider: 1 selected" }),
-    );
+    fireEvent.pointerDown(screen.getByRole("button", { name: "bb" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
     fireEvent.click(
       screen.getByRole("menuitemcheckbox", { name: "Claude Code" }),
     );
+    fireEvent.keyDown(document, { key: "Escape" });
 
     await waitFor(() => {
       expect(screen.getByText("claude-skill")).toBeTruthy();
       expect(screen.queryByText("bb-skill")).toBeNull();
+      expect(screen.getByRole("button", { name: "Claude Code" })).toBeTruthy();
     });
 
     view.rerender(

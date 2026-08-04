@@ -395,6 +395,9 @@ export function SkillsOverview({
                     icon="Layers"
                     selectedValues={providerFilters}
                     options={providerOptions}
+                    selectedLabel={(options) =>
+                      options.map((option) => option.label).join(", ")
+                    }
                     onChange={(values) =>
                       setProviderFilters(values as ResourceProviderFilter[])
                     }

@@ -26,7 +26,11 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   incompatibleReason: null,
 };
 
-const CATALOG_STATUS = { pluginCount: 4 };
+const CATALOG_STATUS = {
+  pluginCount: 13,
+  includedPluginCount: 9,
+  optionalPluginCount: 4,
+};
 
 afterEach(() => {
   cleanup();

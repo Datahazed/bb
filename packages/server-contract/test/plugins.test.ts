@@ -26,13 +26,16 @@ describe("plugin catalog contracts", () => {
   });
 
   it("keeps status to the bundled plugin count and search fields required", () => {
-    expect(pluginCatalogStatusSchema.parse({ pluginCount: 4 })).toEqual({
-      pluginCount: 4,
-    });
+    const status = {
+      pluginCount: 13,
+      includedPluginCount: 9,
+      optionalPluginCount: 4,
+    };
+    expect(pluginCatalogStatusSchema.parse(status)).toEqual(status);
     // Refresh-era freshness fields no longer survive parsing.
     expect(
-      pluginCatalogStatusSchema.parse({ pluginCount: 4, lastError: null }),
-    ).toEqual({ pluginCount: 4 });
+      pluginCatalogStatusSchema.parse({ ...status, lastError: null }),
+    ).toEqual(status);
 
     expect(() =>
       pluginCatalogSearchResultSchema.parse({

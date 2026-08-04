@@ -104,9 +104,7 @@ afterEach(() => {
 beforeEach(() => {
   mocks.embeddedChatProps = [];
   mocks.timelinePanelProps = [];
-  vi.mocked(sdk.threads.get).mockResolvedValue(
-    THREAD_FIXTURE as never,
-  );
+  vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_FIXTURE as never);
 });
 
 describe("PluginThreadChat", () => {
@@ -136,6 +134,7 @@ describe("PluginThreadChat", () => {
     expect(props.providerId).toBe("provider_demo");
     expect(props.variant).toBe("compact");
     expect(props.measure).toBe("panel");
+    expect(props.surfaceTone).toBe("sidebar");
     expect(props.composer).toEqual(
       expect.objectContaining({
         permissionPolicy: "snapshot",

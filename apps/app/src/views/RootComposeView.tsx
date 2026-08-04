@@ -3468,7 +3468,7 @@ export function RootComposeView() {
             showConversationCollapseControl: false,
             showGitDiffTab: false,
             showInfoTab: false,
-            showNewTabButton: true,
+            showNewTabButton: false,
             inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
             onClose: closeSecondaryPanel,
             onCollapse: closeSecondaryPanel,

@@ -22,7 +22,6 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import {
   secondaryPanelWidthPercentAtom,
-  threadSecondaryPanelResizingAtom,
 } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   ThreadMetadataCard,
@@ -119,12 +118,6 @@ function ThreadDetailSecondaryContentBody({
   const renderAsDrawer = useIsCompactViewport();
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
-  );
-  const isSecondaryPanelResizing = useAtomValue(
-    threadSecondaryPanelResizingAtom,
-  );
-  const [liveSecondaryWidthPercent, setLiveSecondaryWidthPercent] = useState(
-    persistedSecondaryWidthPercent,
   );
   // Collapsing the conversation only makes sense on a wide viewport with the
   // secondary panel open — there is otherwise nothing to expand into.
@@ -291,7 +284,6 @@ function ThreadDetailSecondaryContentBody({
         <ThreadSecondaryPanel
           {...threadSecondaryPanelProps}
           browserDeck={browserDeck}
-          onPanelResize={setLiveSecondaryWidthPercent}
           renderAsDrawer={false}
           isConversationCollapsed={isConversationCollapsedActive}
           onToggleConversationCollapse={onToggleConversationCollapse}
@@ -372,13 +364,6 @@ function ThreadDetailSecondaryContentBody({
     );
   }
 
-  const headerSidebarSurfaceWidth =
-    isSecondaryPanelOpen && !renderAsDrawer
-      ? isConversationCollapsedActive
-        ? "100%"
-        : `${liveSecondaryWidthPercent}%`
-      : "0%";
-
   return (
     <div
       className={cn(
@@ -386,24 +371,6 @@ function ThreadDetailSecondaryContentBody({
         !isBoundedPane && "-mx-4 -mb-4 -mt-4 md:-mx-5 md:-mb-5 md:-mt-5",
       )}
     >
-      {/*
-        The thread header is a full-width bar above the split, so its right-aligned
-        actions stay anchored to the window edge instead of riding the timeline
-        panel's width as the secondary panel opens and closes.
-      */}
-      <div className="relative shrink-0 bg-surface-scrim">
-        <div
-          aria-hidden
-          data-testid="thread-secondary-panel-header-surface"
-          className={cn(
-            "pointer-events-none absolute inset-y-0 right-0 bg-sidebar",
-            !isSecondaryPanelResizing &&
-              `transition-[width] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
-          )}
-          style={{ width: headerSidebarSurfaceWidth }}
-        />
-        <div className="relative [&>header]:bg-transparent">{header}</div>
-      </div>
       {/*
         When collapsed we keep the resizable PanelGroup mounted: the timeline
         lifts to 0% and the panel to 100% via the layout effect. Nothing
@@ -462,6 +429,7 @@ function ThreadDetailSecondaryContentBody({
                 isConversationCollapsedActive && "opacity-0",
               )}
             >
+              {header}
               <ThreadTimelinePane {...stableTimeline} footer={footer} />
             </div>
           </Panel>

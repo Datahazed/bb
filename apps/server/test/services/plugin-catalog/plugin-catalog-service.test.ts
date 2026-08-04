@@ -11,6 +11,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import {
+  BUILTIN_PLUGINS,
+  BUNDLED_PLUGINS,
   OFFICIAL_PLUGINS,
   listBundledPluginRegistrations,
 } from "../../../src/services/plugins/builtin-registry.js";
@@ -28,9 +30,9 @@ describe("bundled plugin catalog service", () => {
   afterEach(() => db.$client.close());
 
   function service(options?: {
-    officialPlugins?: Parameters<
+    bundledPlugins?: Parameters<
       typeof createPluginCatalogService
-    >[0]["officialPlugins"];
+    >[0]["bundledPlugins"];
     warn?: (message: string) => void;
   }) {
     return createPluginCatalogService({
@@ -42,9 +44,9 @@ describe("bundled plugin catalog service", () => {
           throw new Error("installation stopped by test");
         },
       },
-      ...(options?.officialPlugins === undefined
+      ...(options?.bundledPlugins === undefined
         ? {}
-        : { officialPlugins: options.officialPlugins }),
+        : { bundledPlugins: options.bundledPlugins }),
       ...(options?.warn === undefined ? {} : { warn: options.warn }),
     });
   }
@@ -75,13 +77,19 @@ describe("bundled plugin catalog service", () => {
   it("lists every bundled official plugin from its manifest", async () => {
     const catalog = service();
     expect(catalog.status()).toEqual({
-      pluginCount: OFFICIAL_PLUGINS.length,
+      pluginCount: BUNDLED_PLUGINS.length,
+      includedPluginCount: BUILTIN_PLUGINS.length,
+      optionalPluginCount: OFFICIAL_PLUGINS.length,
     });
 
     const results = await catalog.search("");
     expect(results.map((entry) => entry.entryId).sort()).toEqual(
-      OFFICIAL_PLUGINS.map((plugin) => plugin.name).sort(),
+      BUNDLED_PLUGINS.map((plugin) => plugin.name).sort(),
     );
+    expect(results).toHaveLength(catalog.status().pluginCount);
+    expect(
+      results.filter((entry) => entry.category === "Included with BB"),
+    ).toHaveLength(BUILTIN_PLUGINS.length);
     const docs = results.find((entry) => entry.entryId === "docs");
     expect(docs).toMatchObject({
       pluginId: "simple-notes",
@@ -145,7 +153,7 @@ describe("bundled plugin catalog service", () => {
     );
     if (github === undefined) throw new Error("github registration missing");
     const catalog = service({
-      officialPlugins: [
+      bundledPlugins: [
         github,
         {
           name: "broken",

@@ -31,17 +31,20 @@ export function createPluginCatalogService(deps: {
   db: DbConnection;
   appVersion: string;
   plugins: Pick<PluginService, "installOfficialPlugin">;
-  officialPlugins?: readonly BundledPluginRegistration[];
+  bundledPlugins?: readonly BundledPluginRegistration[];
   warn?: (message: string) => void;
 }): PluginCatalogService {
-  const officialPlugins = (
-    deps.officialPlugins ??
-    listBundledPluginRegistrations().filter((plugin) => !plugin.autoInstall)
-  ).map((plugin) => ({ ...plugin, category: plugin.category ?? "Other" }));
+  const bundledPlugins =
+    deps.bundledPlugins ?? listBundledPluginRegistrations();
+  const officialPlugins = bundledPlugins.map((plugin) => ({
+    ...plugin,
+    category:
+      plugin.category ?? (plugin.autoInstall ? "Included with BB" : "Other"),
+  }));
 
   // Manifests are read per search so a dev checkout editing a bundled
-  // plugin's package.json sees fresh store metadata; four local files is
-  // cheap enough not to cache.
+  // plugin's package.json sees fresh store metadata; this small local catalog
+  // is cheap enough not to cache.
   function entryManifest(
     entry: BundledPluginRegistration,
   ): Promise<PluginManifest | null> {
@@ -86,7 +89,13 @@ export function createPluginCatalogService(deps: {
   }
 
   return {
-    status: () => ({ pluginCount: officialPlugins.length }),
+    status: () => ({
+      pluginCount: bundledPlugins.length,
+      includedPluginCount: bundledPlugins.filter((plugin) => plugin.autoInstall)
+        .length,
+      optionalPluginCount: bundledPlugins.filter((plugin) => !plugin.autoInstall)
+        .length,
+    }),
 
     async search(rawQuery) {
       const query = rawQuery.trim().toLowerCase();

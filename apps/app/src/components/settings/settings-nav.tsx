@@ -7,6 +7,7 @@ import {
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { useToolsHubExperiment } from "@/components/tools/tools-experiment-context";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
@@ -81,6 +82,7 @@ export interface SettingsNavState {
  */
 export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
+  const toolsHubEnabled = useToolsHubExperiment();
   const { hasDaemon } = useHostDaemon();
   const { fileOpeners, settingsSections } = usePluginSlots();
   const settingsSectionPluginIds = new Set(
@@ -126,6 +128,9 @@ export function useSettingsNavState(): SettingsNavState {
           : "general";
 
   const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
+    if (section.id === "plugins" && toolsHubEnabled) {
+      return false;
+    }
     if (section.id === "files") {
       return hasDaemon || fileOpeners.length > 0;
     }
