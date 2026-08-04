@@ -297,6 +297,7 @@ describe("public environment action regressions", () => {
           command.environmentId === environment.id,
       );
       await reportQueuedCommandSuccess(harness, refreshCommand, {
+        outcome: "available",
         pullRequest: rawPullRequest(),
       });
 
@@ -365,6 +366,7 @@ describe("public environment action regressions", () => {
           command.environmentId === environment.id,
       );
       await reportQueuedCommandSuccess(harness, refreshCommand, {
+        outcome: "available",
         pullRequest: rawPullRequest({ isDraft: true }),
       });
 
@@ -485,6 +487,7 @@ describe("public environment action regressions", () => {
           command.environmentId === environment.id,
       );
       await reportQueuedCommandSuccess(harness, refreshCommand, {
+        outcome: "available",
         pullRequest: rawPullRequest({ state: "MERGED" }),
       });
 

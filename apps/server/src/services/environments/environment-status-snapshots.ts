@@ -326,7 +326,13 @@ async function refreshPullRequestStatusSnapshot(
         }),
       },
     });
-    const pullRequest = assembleThreadPullRequest(result.pullRequest);
+    if (result.outcome === "unavailable") {
+      throw new Error(result.message);
+    }
+    const pullRequest =
+      result.outcome === "available"
+        ? assembleThreadPullRequest(result.pullRequest)
+        : null;
     const changed = writeEnvironmentPullRequestStatusSnapshot(deps.db, {
       environmentId: row.environmentId,
       status: "available",

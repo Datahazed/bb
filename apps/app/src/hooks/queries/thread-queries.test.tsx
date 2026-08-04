@@ -77,6 +77,10 @@ const THREAD_WITH_INCLUDES = {
     hostReconnectGraceExpiresAt: null,
   },
   canSpawnChild: true,
+  environmentStatusSummary: {
+    git: { state: "not_applicable", refreshedAt: 1 },
+    pullRequest: { state: "not_applicable", refreshedAt: 1 },
+  },
   environment: null,
   host: null,
 } satisfies ThreadWithIncludesResponse;

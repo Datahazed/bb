@@ -224,6 +224,10 @@ function threadListEntry(
     },
     pinSortKey: null,
     hasPendingInteraction: false,
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 1 },
+      pullRequest: { state: "not_applicable", refreshedAt: 1 },
+    },
     environmentHostId: "host_toc",
     environmentName: "ToC environment",
     environmentBranchName: "main",

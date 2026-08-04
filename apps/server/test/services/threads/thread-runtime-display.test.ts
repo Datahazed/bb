@@ -672,14 +672,14 @@ describe("thread runtime display", () => {
   });
 
   it("projects environment status snapshots into thread list entries", () => {
-    const { db, hostId } = setup();
+    const { db, hostId, hub } = setup();
     const now = 1_000;
     const { thread } = createThreadWithEnvironment({ db, hostId });
     const gitStatusSnapshot = makeGitStatusSnapshot();
     const pullRequest = makePullRequest();
 
     const [entry] = toThreadListEntryResponses(
-      { db },
+      { db, hub },
       {
         now,
         threads: [
@@ -714,7 +714,7 @@ describe("thread runtime display", () => {
   });
 
   it("marks demanded environment status snapshots due from thread list reads", () => {
-    const { db, hostId } = setup();
+    const { db, hostId, hub } = setup();
     const now = 1_000;
     const future = now + 60_000;
     const { environment, thread } = createThreadWithEnvironment({ db, hostId });
@@ -740,7 +740,7 @@ describe("thread runtime display", () => {
     });
 
     toThreadListEntryResponses(
-      { db },
+      { db, hub },
       {
         now,
         threads: [

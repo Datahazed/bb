@@ -67,6 +67,10 @@ function threadResponse(
       hostReconnectGraceExpiresAt: null,
     },
     canSpawnChild: true,
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 1 },
+      pullRequest: { state: "not_applicable", refreshedAt: 1 },
+    },
     ...overrides,
   };
 }

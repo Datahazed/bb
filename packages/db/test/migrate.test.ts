@@ -1425,6 +1425,12 @@ describe("migrate", () => {
       restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
       dropHostMaxPermissionModeColumn(db);
+      db.$client
+        .prepare("DROP TABLE IF EXISTS environment_pull_request_status_snapshots")
+        .run();
+      db.$client
+        .prepare("DROP TABLE IF EXISTS environment_git_status_snapshots")
+        .run();
 
       migrate(db);
 
@@ -1820,6 +1826,12 @@ describe("migrate", () => {
       restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
       dropHostMaxPermissionModeColumn(db);
+      db.$client
+        .prepare("DROP TABLE IF EXISTS environment_pull_request_status_snapshots")
+        .run();
+      db.$client
+        .prepare("DROP TABLE IF EXISTS environment_git_status_snapshots")
+        .run();
 
       expect(
         db.$client
@@ -1912,6 +1924,12 @@ describe("migrate", () => {
       restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
       dropHostMaxPermissionModeColumn(db);
+      db.$client
+        .prepare("DROP TABLE IF EXISTS environment_pull_request_status_snapshots")
+        .run();
+      db.$client
+        .prepare("DROP TABLE IF EXISTS environment_git_status_snapshots")
+        .run();
 
       expect(() => migrate(db)).not.toThrow();
 

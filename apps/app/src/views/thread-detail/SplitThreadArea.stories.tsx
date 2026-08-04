@@ -44,6 +44,10 @@ function storyThread(id: string, title: string): ThreadResponse {
       hostReconnectGraceExpiresAt: null,
     },
     canSpawnChild: false,
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 1 },
+      pullRequest: { state: "not_applicable", refreshedAt: 1 },
+    },
   };
 }
 

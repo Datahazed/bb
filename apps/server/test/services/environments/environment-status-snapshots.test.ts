@@ -129,6 +129,7 @@ describe("environment status snapshots", () => {
             return {
               ok: true,
               result: {
+                outcome: "available",
                 pullRequest: rawPullRequestFixture(),
               },
             };

@@ -37,6 +37,10 @@ function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
       activeGoalCount: 0,
     },
     hasPendingInteraction: false,
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 1 },
+      pullRequest: { state: "not_applicable", refreshedAt: 1 },
+    },
     environmentHostId: null,
     environmentName: null,
     environmentBranchName: null,
