@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
+import { ResourcePagination } from "@bb/shared-ui/resource-pagination";
 import {
   ResourceDefinitionSection,
   ResourceDetailCollection,
@@ -128,6 +129,10 @@ function getSkillDirectoryPath(path: string): string {
   return path.replace(/[\\/]SKILL\.md$/i, "");
 }
 
+const SKILL_PAGE_WHEEL_THRESHOLD_PX = 40;
+const SKILL_PAGE_WHEEL_GESTURE_RESET_MS = 160;
+const WHEEL_LINE_HEIGHT_PX = 16;
+
 function SkillFileList({
   files,
   selectedPath,
@@ -153,6 +158,186 @@ function SkillFileList({
         </button>
       ))}
     </ResourceDetailCollection>
+  );
+}
+
+function PagedSkillContent({
+  path,
+  content,
+  markdown,
+}: {
+  path: string;
+  content: string;
+  markdown: boolean;
+}) {
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const [pages, setPages] = useState<HTMLDivElement | null>(null);
+  const [page, setPage] = useState(0);
+  const [measurement, setMeasurement] = useState({
+    pageHeight: 0,
+    pageCount: 1,
+  });
+  const pageRef = useRef(page);
+  const pageCountRef = useRef(measurement.pageCount);
+  const wheelDeltaRef = useRef(0);
+  const wheelPageChangedRef = useRef(false);
+  const wheelResetTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (viewport === null || pages === null) return;
+    const viewportElement = viewport;
+    const pagesElement = pages;
+
+    function measure() {
+      const pageHeight = viewportElement.clientHeight;
+      if (pageHeight <= 0) return;
+      const pageCount = Math.max(
+        1,
+        Math.ceil(pagesElement.scrollHeight / pageHeight),
+      );
+      setMeasurement((current) =>
+        current.pageHeight === pageHeight && current.pageCount === pageCount
+          ? current
+          : { pageHeight, pageCount },
+      );
+    }
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(measure);
+    resizeObserver?.observe(viewportElement);
+    resizeObserver?.observe(pagesElement);
+    window.addEventListener("resize", measure);
+    measure();
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [pages, viewport]);
+
+  const safePage = Math.min(page, measurement.pageCount - 1);
+  pageRef.current = safePage;
+  pageCountRef.current = measurement.pageCount;
+
+  useEffect(() => {
+    if (viewport === null) return;
+    const viewportElement = viewport;
+
+    const resetWheelGesture = () => {
+      wheelDeltaRef.current = 0;
+      wheelPageChangedRef.current = false;
+      if (wheelResetTimeoutRef.current !== null) {
+        window.clearTimeout(wheelResetTimeoutRef.current);
+        wheelResetTimeoutRef.current = null;
+      }
+    };
+
+    const refreshWheelGestureReset = () => {
+      if (wheelResetTimeoutRef.current !== null) {
+        window.clearTimeout(wheelResetTimeoutRef.current);
+      }
+      wheelResetTimeoutRef.current = window.setTimeout(
+        resetWheelGesture,
+        SKILL_PAGE_WHEEL_GESTURE_RESET_MS,
+      );
+    };
+
+    const handleWheel = (event: WheelEvent) => {
+      if (
+        event.ctrlKey ||
+        event.deltaY === 0 ||
+        Math.abs(event.deltaX) >= Math.abs(event.deltaY)
+      ) {
+        return;
+      }
+
+      refreshWheelGestureReset();
+      const direction = event.deltaY > 0 ? 1 : -1;
+      const currentPage = pageRef.current;
+      const pageCount = pageCountRef.current;
+      const nextPage = currentPage + direction;
+      if (nextPage < 0 || nextPage >= pageCount) {
+        if (!wheelPageChangedRef.current) {
+          wheelDeltaRef.current = 0;
+        }
+        return;
+      }
+
+      event.preventDefault();
+      if (wheelPageChangedRef.current) return;
+      if (
+        wheelDeltaRef.current !== 0 &&
+        Math.sign(wheelDeltaRef.current) !== direction
+      ) {
+        wheelDeltaRef.current = 0;
+      }
+      const normalizedDelta =
+        event.deltaMode === 1
+          ? event.deltaY * WHEEL_LINE_HEIGHT_PX
+          : event.deltaMode === 2
+            ? event.deltaY * viewportElement.clientHeight
+            : event.deltaY;
+      wheelDeltaRef.current += normalizedDelta;
+      if (Math.abs(wheelDeltaRef.current) < SKILL_PAGE_WHEEL_THRESHOLD_PX) {
+        return;
+      }
+
+      wheelPageChangedRef.current = true;
+      wheelDeltaRef.current = 0;
+      pageRef.current = nextPage;
+      setPage(nextPage);
+    };
+
+    viewportElement.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      viewportElement.removeEventListener("wheel", handleWheel);
+      resetWheelGesture();
+    };
+  }, [viewport]);
+
+  return (
+    <div className="space-y-3">
+      <ResourceDetailPanel surface="recessed" className="shadow-none">
+        <div
+          ref={setViewport}
+          data-skill-content-viewport
+          className="max-h-[60dvh] overflow-hidden"
+        >
+          <div
+            ref={setPages}
+            data-skill-content-pages
+            style={{
+              transform: `translateY(-${safePage * measurement.pageHeight}px)`,
+            }}
+          >
+            <FilePreview
+              path={path}
+              headerMode="none"
+              state={{
+                kind: "ready",
+                file: {
+                  name: path.split("/").at(-1) ?? path,
+                  contents: content,
+                },
+                lineRange: null,
+                textPreviewKind: markdown ? "markdown" : null,
+              }}
+            />
+          </div>
+        </div>
+      </ResourceDetailPanel>
+      <ResourcePagination
+        page={safePage}
+        pageSize={1}
+        total={measurement.pageCount}
+        visibleCount={1}
+        onPageChange={setPage}
+        summary={`${measurement.pageCount} pages`}
+        ariaLabel="Skill content pagination"
+      />
+    </div>
   );
 }
 
@@ -242,28 +427,12 @@ export function SkillDetailView({
                 </Button>
               </ResourceDetailPanel>
             ) : (
-              <ResourceDetailPanel
-                surface="recessed"
-                className={
-                  selectedFileIsMarkdown
-                    ? "shadow-none"
-                    : "max-h-[60dvh] overflow-auto shadow-none"
-                }
-              >
-                <FilePreview
-                  path={selectedPath}
-                  headerMode="none"
-                  state={{
-                    kind: "ready",
-                    file: {
-                      name: selectedPath.split("/").at(-1) ?? selectedPath,
-                      contents: contentState.content,
-                    },
-                    lineRange: null,
-                    textPreviewKind: selectedFileIsMarkdown ? "markdown" : null,
-                  }}
-                />
-              </ResourceDetailPanel>
+              <PagedSkillContent
+                key={`${selectedPath}:${contentState.content}`}
+                path={selectedPath}
+                content={contentState.content}
+                markdown={selectedFileIsMarkdown}
+              />
             ))}
         </ResourceDefinitionSection>
       </ResourceDetailStack>
