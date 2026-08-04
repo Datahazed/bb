@@ -35,6 +35,10 @@ export function makeThreadResponse(
     updatedAt: 0,
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     canSpawnChild: true,
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 0 },
+      pullRequest: { state: "not_applicable", refreshedAt: 0 },
+    },
     ...overrides,
   };
 }
