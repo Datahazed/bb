@@ -60,6 +60,7 @@ import {
   COARSE_POINTER_TEXT_BASE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
 import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
@@ -2121,10 +2122,12 @@ export function PromptBoxInternal({
       const needsTrailingWhitespace = after.length > 0 && !/^\s/.test(after);
       const insertedText = `${needsLeadingWhitespace ? " " : ""}${normalizedText}${needsTrailingWhitespace ? " " : ""}`;
 
-      currentEditor.chain().focus().insertContent(insertedText).run();
-      scheduleRevealEditorSelection();
+      const insertion = currentEditor.chain();
+      if (!isPointerCoarse) insertion.focus();
+      insertion.insertContent(insertedText).run();
+      if (!isPointerCoarse) scheduleRevealEditorSelection();
     },
-    [scheduleRevealEditorSelection],
+    [isPointerCoarse, scheduleRevealEditorSelection],
   );
 
   const focusAfterPromptAction = useCallback(
@@ -2288,6 +2291,27 @@ export function PromptBoxInternal({
   const showStop = Boolean(isRunning && onStop && !canSubmit && !isVoiceBusy);
   const canStartVoiceInput =
     voice !== undefined && voice.isSupported && !isSubmitting;
+  const showVoiceAsPrimaryAction =
+    isPointerCoarse && !hasSubmittableInput && canStartVoiceInput;
+  const handleVoicePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!isPointerCoarse || event.button !== 0) return;
+
+      // Keep mobile voice activation from focusing the button and expanding
+      // the follow-up composer before click can start recording.
+      event.preventDefault();
+    },
+    [isPointerCoarse],
+  );
+  const startVoiceInput = useCallback(() => {
+    if (isPointerCoarse) {
+      const currentEditor = editorRef.current;
+      if (currentEditor && !currentEditor.isDestroyed) {
+        blurActiveKeyboardInputWithin(currentEditor.view.dom);
+      }
+    }
+    void voice?.start();
+  }, [isPointerCoarse, voice]);
   const effectiveSubmitTitle = isZenMode
     ? submitTitle.replace(/^Submit\s+/, "")
     : submitTitle;
@@ -2763,7 +2787,7 @@ export function PromptBoxInternal({
             "min-h-0 overflow-hidden transition-opacity duration-[180ms] motion-reduce:transition-none",
             isZenMode && "flex flex-col",
             showCompactLayout && "relative h-12",
-            showVoiceActionGroup && "opacity-0",
+            showVoiceActionGroup && "pointer-events-none opacity-0",
           )}
         >
           {header && !showCompactLayout ? (
@@ -2997,7 +3021,9 @@ export function PromptBoxInternal({
                     {!suppressPluginComposerCustomizations ? (
                       <PluginComposerActions />
                     ) : null}
-                    {voice && !showVoiceActionGroup ? (
+                    {voice &&
+                    !showVoiceActionGroup &&
+                    !showVoiceAsPrimaryAction ? (
                       <Button
                         data-promptbox-expanded-only=""
                         type="button"
@@ -3009,7 +3035,8 @@ export function PromptBoxInternal({
                             : "Start voice input"
                         }
                         disabled={!canStartVoiceInput}
-                        onClick={voice.start}
+                        onPointerDown={handleVoicePointerDown}
+                        onClick={startVoiceInput}
                         className={
                           COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS
                         }
@@ -3041,6 +3068,24 @@ export function PromptBoxInternal({
                         name="Square"
                         className="size-3.5 fill-current [&_*]:stroke-0"
                       />
+                    </Button>
+                  ) : showVoiceAsPrimaryAction ? (
+                    <Button
+                      data-promptbox-submit-action=""
+                      type="button"
+                      size={showCompactLayout ? "icon" : "sm"}
+                      variant="default"
+                      aria-label="Start voice input"
+                      onPointerDown={handleVoicePointerDown}
+                      onClick={startVoiceInput}
+                      className={cn(
+                        showCompactLayout
+                          ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
+                          : ["ml-1", COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS],
+                        "transition-colors",
+                      )}
+                    >
+                      <Icon name="Mic" className="size-4" />
                     </Button>
                   ) : (
                     <Button
