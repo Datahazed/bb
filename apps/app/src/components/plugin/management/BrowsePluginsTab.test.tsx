@@ -32,7 +32,11 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   incompatibleReason: null,
 };
 
-const CATALOG_STATUS = { pluginCount: 4 };
+const CATALOG_STATUS = {
+  pluginCount: 13,
+  includedPluginCount: 9,
+  optionalPluginCount: 4,
+};
 
 const INCOMPATIBLE_ENTRY: PluginCatalogSearchEntry = {
   ...MEMORY_ENTRY,
@@ -87,6 +91,49 @@ afterEach(() => {
 });
 
 describe("BrowsePluginsTab", () => {
+  it("renders every official catalog card represented by the catalog count", async () => {
+    const entries = Array.from(
+      { length: CATALOG_STATUS.pluginCount },
+      (_, index) => ({
+        ...MEMORY_ENTRY,
+        entryId: `official-${index + 1}`,
+        pluginId: `official-${index + 1}`,
+        displayName: `Official ${index + 1}`,
+        category:
+          index < CATALOG_STATUS.includedPluginCount
+            ? "Included with BB"
+            : "Productivity",
+      }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({ results: entries });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<BrowsePluginsTab onInstall={() => {}} onOpenPlugin={() => {}} />, {
+      wrapper,
+    });
+
+    expect(
+      await screen.findByText("13 plugins · 9 included with BB, 4 optional"),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByRole("button", { name: /^Open Official \d+ details$/ }),
+    ).toHaveLength(CATALOG_STATUS.pluginCount);
+  });
+
   it("shows the official plugins and entries", async () => {
     vi.stubGlobal(
       "fetch",
@@ -114,7 +161,9 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    expect(await screen.findByText("BB Official plugins")).toBeTruthy();
+    expect(
+      await screen.findByText("13 plugins · 9 included with BB, 4 optional"),
+    ).toBeTruthy();
     const officialCatalog = screen.getByRole("region", {
       name: "BB Official plugins",
     });

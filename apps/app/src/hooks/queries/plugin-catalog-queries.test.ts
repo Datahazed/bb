@@ -133,10 +133,18 @@ describe("plugin catalog queries", () => {
   it("binds browser fetch and parses the status count", async () => {
     const status = await fetchPluginCatalogStatus(
       receiverSensitiveFetch({
-        catalog: { pluginCount: 4 },
+        catalog: {
+          pluginCount: 13,
+          includedPluginCount: 9,
+          optionalPluginCount: 4,
+        },
       }),
     );
-    expect(status).toEqual({ pluginCount: 4 });
+    expect(status).toEqual({
+      pluginCount: 13,
+      includedPluginCount: 9,
+      optionalPluginCount: 4,
+    });
   });
 
   it("preserves canonical plugin identity without source-catalog fields", async () => {

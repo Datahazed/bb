@@ -102,7 +102,13 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
         return responseJson({ plugins });
       }
       if (url.pathname === "/api/v1/plugin-catalog") {
-        return responseJson({ catalog: { pluginCount: 4 } });
+        return responseJson({
+          catalog: {
+            pluginCount: 13,
+            includedPluginCount: 9,
+            optionalPluginCount: 4,
+          },
+        });
       }
       if (url.pathname === "/api/v1/plugin-catalog/search") {
         return responseJson({ results: [GITHUB_CATALOG_ENTRY] });

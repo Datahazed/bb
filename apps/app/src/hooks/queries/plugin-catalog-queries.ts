@@ -153,12 +153,18 @@ export async function applyPluginUpdate(
 
 export interface PluginCatalogStatus {
   pluginCount: number;
+  includedPluginCount: number;
+  optionalPluginCount: number;
 }
 
 function toPluginCatalogStatus(
   data: SdkPluginCatalogStatus,
 ): PluginCatalogStatus {
-  return { pluginCount: data.pluginCount };
+  return {
+    pluginCount: data.pluginCount,
+    includedPluginCount: data.includedPluginCount,
+    optionalPluginCount: data.optionalPluginCount,
+  };
 }
 
 export async function fetchPluginCatalogStatus(

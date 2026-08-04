@@ -218,6 +218,7 @@ function PluginThreadChatBody({
       variant="compact"
       layout={layout}
       measure={variant === "full" ? "page" : "panel"}
+      surfaceTone={variant === "compact" ? "sidebar" : "background"}
       threadId={threadId}
       projectId={thread.projectId}
       providerId={thread.providerId}

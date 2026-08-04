@@ -456,6 +456,23 @@ beforeEach(() => {
 });
 
 describe("ThreadDetailSecondaryContent compact drawer settling", () => {
+  it("keeps the thread header inside the timeline column beside the side panel", () => {
+    renderThreadDetail({
+      isCompactViewport: false,
+      isSecondaryPanelOpen: true,
+      renderBrowserDeck: createBrowserDeckRenderer(),
+      threadId: "thread-1",
+    });
+
+    const timelinePanel = screen.getByTestId("panel");
+    const sidePanel = screen.getByTestId("inline-secondary-panel");
+    const panelGroup = screen.getByTestId("panel-group");
+    expect(timelinePanel.contains(screen.getByTestId("header"))).toBe(true);
+    expect(timelinePanel.contains(sidePanel)).toBe(false);
+    expect(panelGroup.contains(timelinePanel)).toBe(true);
+    expect(panelGroup.contains(sidePanel)).toBe(true);
+  });
+
   it("hides and restores native browser readiness as hosted pane focus changes", () => {
     const order: string[] = [];
     const renderBrowserDeck = createBrowserDeckRenderer(order);

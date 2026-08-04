@@ -199,21 +199,25 @@ export function ResourceMultiSelectMenu({
   selectedValues,
   options,
   onChange,
+  selectedLabel,
 }: {
   label: string;
   icon: IconName;
   selectedValues: readonly string[];
   options: readonly ResourceOption[];
   onChange: (values: string[]) => void;
+  selectedLabel?: (options: readonly ResourceOption[]) => string;
 }) {
   const selected = new Set(selectedValues);
-  const activeSelectedCount = options.filter(
+  const activeOptions = options.filter(
     (option) => !option.disabled && selected.has(option.id),
-  ).length;
+  );
+  const activeSelectedCount = activeOptions.length;
   const triggerLabel =
     activeSelectedCount === 0
       ? label
-      : `${label}: ${activeSelectedCount} selected`;
+      : (selectedLabel?.(activeOptions) ??
+        `${label}: ${activeSelectedCount} selected`);
 
   function updateValue(option: ResourceOption, checked: boolean) {
     if (option.disabled) return;

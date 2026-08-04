@@ -310,6 +310,8 @@ export type PluginTokenResponse = z.infer<typeof pluginTokenResponseSchema>;
 
 export const pluginCatalogStatusSchema = z.object({
   pluginCount: z.number(),
+  includedPluginCount: z.number(),
+  optionalPluginCount: z.number(),
 });
 export type PluginCatalogStatus = z.infer<typeof pluginCatalogStatusSchema>;
 

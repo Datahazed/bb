@@ -2,11 +2,6 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDebounceValue } from "usehooks-ts";
 import {
-  RESOURCE_GRID_PAGE_SIZE,
-  ResourcePagination,
-  useResourcePagination,
-} from "@bb/shared-ui/resource-pagination";
-import {
   ResourceBrowseCard,
   ResourceBrowseGrid,
   ResourceCollectionViewport,
@@ -48,13 +43,8 @@ export function BrowsePluginsTab({
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
   const status = statusQuery.data;
   const entries = searchQuery.data ?? [];
-  const pagination = useResourcePagination(entries, {
-    pageSize: RESOURCE_GRID_PAGE_SIZE,
-    resetKey: debouncedQuery.toLowerCase(),
-  });
-
   const byCategory = new Map<string, PluginCatalogSearchEntry[]>();
-  for (const entry of pagination.items) {
+  for (const entry of entries) {
     const bucket = byCategory.get(entry.category);
     if (bucket === undefined) byCategory.set(entry.category, [entry]);
     else bucket.push(entry);
@@ -70,18 +60,6 @@ export function BrowsePluginsTab({
           searchPlaceholder="Search plugins"
           onSearchChange={setQuery}
         />
-      }
-      footer={
-        pagination.total > pagination.pageSize ? (
-          <ResourcePagination
-            page={pagination.page}
-            pageSize={pagination.pageSize}
-            total={pagination.total}
-            visibleCount={pagination.visibleCount}
-            onPageChange={pagination.setPage}
-            scrollTargetId="plugins-browse-results"
-          />
-        ) : undefined
       }
     >
       <section
@@ -104,8 +82,10 @@ export function BrowsePluginsTab({
           ) : (
             <p className="mt-0.5 text-xs text-muted-foreground">
               {status.pluginCount} plugin
-              {status.pluginCount === 1 ? "" : "s"} · bundled with BB and
-              installed with one click
+              {status.pluginCount === 1 ? "" : "s"} ·{" "}
+              {status.includedPluginCount}
+              {" included with BB, "}
+              {status.optionalPluginCount} optional
             </p>
           )}
         </div>
