@@ -565,9 +565,13 @@ The five settings other than `maxActiveRuns` are snapshotted into each new run.
 Settings changes do not require a plugin reload.
 
 `bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
-(packages are installed with `--ignore-scripts`). Git plugins without prebuilt
-frontend artifacts also use npm with lifecycle scripts disabled, then discard
-their installed dependencies after bundling. An omitted npm spec tracks
+(packages are installed with `--ignore-scripts`). Git plugins also use npm with
+lifecycle scripts disabled, so they may depend on third-party packages; bb
+then builds both their server and frontend bundles. `node_modules` is
+retained, because a dependency can load data files that bundling cannot
+inline. A committed `dist/` is always replaced by the bundles bb builds.
+Dependency resolution and bundling run on install and update-apply only —
+never on an update check, which reads the manifest and stops. An omitted npm spec tracks
 the newest compatible stable release, ranges track within the range, dist-tags
 track the tag, and exact versions are pinned. `git:<url>@<ref>` requires `git`;
 branches track their head while tags and commits are pinned. Local
