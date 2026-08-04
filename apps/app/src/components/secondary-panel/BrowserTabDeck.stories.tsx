@@ -9,7 +9,6 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { WithDesktopBrowser } from "../../../.ladle/story-desktop";
 import { Icon } from "@bb/shared-ui/icon";
 import { BrowserTabDeck } from "./BrowserTabDeck";
-import { setBrowserChromeRevealHeld } from "./browserChromeReveal";
 import {
   ThreadSecondaryPanel,
   type SecondaryPanelFileTab,
@@ -128,8 +127,6 @@ function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
       isActive: true,
       leadingVisual: <Icon name="Globe" className="size-3.5" aria-hidden />,
       statusLabel: null,
-      onRevealHoldChange: (isHeld) =>
-        setBrowserChromeRevealHeld(tab.id, isHeld),
       onSelect: noop,
       onClose: noop,
     },
@@ -186,7 +183,7 @@ export function Overview() {
         </StoryRow>
         <StoryRow
           label="narrow panel"
-          hint="360px browser panel; hover the active tab or top content edge to recover the full controls"
+          hint="360px browser panel; the complete navigation toolbar stays visible and usable without hover"
         >
           <BrowserTabStage
             tab={NARROW_TAB}
@@ -202,7 +199,7 @@ export function Overview() {
         </StoryRow>
         <StoryRow
           label="loading page"
-          hint="active navigation holds the quieter toolbar open and keeps Stop immediately available"
+          hint="the persistent navigation toolbar replaces Reload with Stop while the page is loading"
         >
           <BrowserTabStage tab={LOADING_TAB} threadId={LOADING_TAB_THREAD_ID} />
         </StoryRow>
