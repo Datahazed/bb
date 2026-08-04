@@ -154,6 +154,7 @@ function renderRegistryBrowse(
   return renderDom(
     <RegistrySkillsBrowsePage
       skills={[makeRegistrySkill()]}
+      pendingSkillIds={new Set()}
       pagination={{ page: 0, perPage: 24, total: 1, hasMore: false }}
       isLoading={false}
       hasError={false}
@@ -233,33 +234,38 @@ function renderRegistrySkillRoute() {
 }
 
 describe("SkillsOverview", () => {
-  it("renders flat rows with provider filter and sort controls", () => {
+  it("defaults to BB skills and places BB Official skills first", () => {
     const markup = render({
       skills: [
         makeSkill({ name: "claude-skill", provider: "claude-code" }),
         makeSkill({
-          name: "bb-skill",
+          name: "aa-user-skill",
+          provider: null,
+          scope: "bb-user",
+        }),
+        makeSkill({
+          name: "zz-official-skill",
           provider: null,
           scope: "bb-builtin",
           manageable: false,
         }),
       ],
     });
-    expect(markup).toContain("claude-skill");
+    expect(markup).not.toContain("claude-skill");
     expect(markup).toContain("Review the current diff.");
-    expect(markup).toContain('aria-label="Agent"');
+    expect(markup).toContain('aria-label="Agent: 1 selected"');
     expect(markup).toContain("Sort");
     expect(markup).toContain('role="tab"');
     expect(markup).toContain("Library");
     expect(markup).toContain("Browse");
     expect(markup).toContain("BB Official");
     expect(markup).toContain("New bb skill");
-    expect(markup).not.toContain('aria-label="Open bb-skill"');
+    expect(markup).not.toContain('aria-label="Open zz-official-skill"');
     expect(markup.indexOf("Library")).toBeLessThan(
       markup.indexOf('placeholder="Search skills"'),
     );
-    expect(markup.indexOf("bb-skill")).toBeLessThan(
-      markup.indexOf("claude-skill"),
+    expect(markup.indexOf("zz-official-skill")).toBeLessThan(
+      markup.indexOf("aa-user-skill"),
     );
   });
 
@@ -274,6 +280,7 @@ describe("SkillsOverview", () => {
         browseContent={
           <RegistrySkillsBrowsePage
             skills={[registrySkill]}
+            pendingSkillIds={new Set()}
             pagination={{ page: 0, perPage: 24, total: 1, hasMore: false }}
             isLoading={false}
             hasError={false}
@@ -309,7 +316,9 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Agent" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Agent: 1 selected" }),
+    );
 
     await waitFor(() => {
       expect(
@@ -323,6 +332,102 @@ describe("SkillsOverview", () => {
         .getByRole("menuitemcheckbox", { name: "Codex" })
         .getAttribute("aria-disabled"),
     ).toBeNull();
+    expect(
+      screen
+        .getByRole("menuitemcheckbox", { name: "bb" })
+        .getAttribute("aria-disabled"),
+    ).toBeNull();
+  });
+
+  it("keeps the default BB filter selected when only provider skills exist", async () => {
+    renderDom(
+      <SkillsOverview
+        skills={[
+          makeSkill({
+            name: "codex-skill",
+            provider: "codex",
+            scope: "codex-user",
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Agent: 1 selected" }),
+      ).toBeTruthy();
+      expect(screen.queryByText("codex-skill")).toBeNull();
+    });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Agent: 1 selected" }),
+    );
+    const bbFilter = screen.getByRole("menuitemcheckbox", { name: "bb" });
+    expect(bbFilter.getAttribute("aria-checked")).toBe("true");
+    expect(bbFilter.getAttribute("aria-disabled")).toBeNull();
+
+    fireEvent.click(bbFilter);
+
+    expect(await screen.findByText("codex-skill")).toBeTruthy();
+  });
+
+  it("preserves a user-selected provider filter across library refreshes", async () => {
+    const initialSkills = [
+      makeSkill({
+        id: `skill_${"b".repeat(64)}`,
+        name: "bb-skill",
+        provider: null,
+        scope: "bb-user",
+      }),
+      makeSkill({ name: "claude-skill", provider: "claude-code" }),
+    ];
+    const view = renderDom(
+      <SkillsOverview
+        skills={initialSkills}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Agent: 1 selected" }),
+    );
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Claude Code" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("claude-skill")).toBeTruthy();
+      expect(screen.queryByText("bb-skill")).toBeNull();
+    });
+
+    view.rerender(
+      <SkillsOverview
+        skills={[
+          ...initialSkills,
+          makeSkill({
+            id: `skill_${"c".repeat(64)}`,
+            name: "new-bb-skill",
+            provider: null,
+            scope: "bb-user",
+          }),
+        ]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("claude-skill")).toBeTruthy();
+    expect(screen.queryByText("new-bb-skill")).toBeNull();
   });
 
   it("keeps edit and delete actions in detail rather than overview rows", () => {
@@ -457,7 +562,7 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     ).toBe(false);
   });
 
-  it("loads repository stars once and progressively updates every matching card", async () => {
+  it("reveals registry cards only after repository stars finish loading", async () => {
     const firstSkill = makeRegistrySkill({
       id: "owner/shared-repo/first-skill",
       source: "owner/shared-repo",
@@ -512,9 +617,6 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("First skill")).toBeTruthy();
-    expect(screen.getByText("Second skill")).toBeTruthy();
-    expect(screen.queryByLabelText(/stars$/u)).toBeNull();
     await waitFor(() => {
       expect(
         fetchMock.mock.calls.filter(
@@ -524,38 +626,66 @@ describe("SkillsLibrary registry detail lifecycle", () => {
         ),
       ).toHaveLength(1);
     });
+    expect(screen.queryByText("First skill")).toBeNull();
+    expect(screen.queryByText("Second skill")).toBeNull();
+    expect(
+      screen.getByRole("status", { name: "Loading First skill" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("status", { name: "Loading Second skill" }),
+    ).toBeTruthy();
 
     resolveStars?.(Response.json({ stars: 27_053 }));
 
+    expect(await screen.findByText("First skill")).toBeTruthy();
+    expect(screen.getByText("Second skill")).toBeTruthy();
     expect(await screen.findAllByLabelText("27.1K stars")).toHaveLength(2);
   });
 
-  it("renders registry cards before progressively loading their descriptions", async () => {
-    const registrySkill = makeRegistrySkill({ summary: null });
-    let resolveEntry: ((response: Response) => void) | undefined;
-    const entryResponse = new Promise<Response>((resolve) => {
-      resolveEntry = resolve;
+  it("reveals each registry card as soon as that card is complete", async () => {
+    const firstSkill = makeRegistrySkill({
+      id: "owner/repo/first-skill",
+      skillId: "first-skill",
+      name: "First skill",
+      summary: null,
     });
+    const secondSkill = makeRegistrySkill({
+      id: "owner/repo/second-skill",
+      skillId: "second-skill",
+      name: "Second skill",
+      summary: null,
+    });
+    const entryResolvers = new Map<string, (response: Response) => void>();
+    const entryResponses = new Map(
+      [firstSkill, secondSkill].map((skill) => [
+        skill.id,
+        new Promise<Response>((resolve) => {
+          entryResolvers.set(skill.id, resolve);
+        }),
+      ]),
+    );
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = requestPath(input);
       if (url.startsWith("/api/v1/skills-registry?")) {
         return Promise.resolve(
           Response.json({
-            skills: [registrySkill],
+            skills: [firstSkill, secondSkill],
             pagination: {
               page: 0,
               perPage: 24,
-              total: 1,
+              total: 2,
               hasMore: false,
             },
           }),
         );
       }
-      if (
-        url === "/api/v1/skills-registry/entry?id=owner%2Frepo%2Fuseful-skill"
-      ) {
-        return entryResponse;
+      const entryId = new URL(url, "http://localhost").searchParams.get("id");
+      if (url.startsWith("/api/v1/skills-registry/entry?") && entryId) {
+        return (
+          entryResponses.get(entryId) ??
+          Promise.resolve(new Response(null, { status: 404 }))
+        );
       }
       return Promise.resolve(new Response(null, { status: 404 }));
     });
@@ -571,26 +701,39 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Useful skill")).toBeTruthy();
-    expect(screen.queryByText("Loaded after the card")).toBeNull();
     await waitFor(() => {
       expect(
-        fetchMock.mock.calls.filter(
-          ([input]) =>
-            requestPath(input) ===
-            "/api/v1/skills-registry/entry?id=owner%2Frepo%2Fuseful-skill",
+        fetchMock.mock.calls.filter(([input]) =>
+          requestPath(input).startsWith("/api/v1/skills-registry/entry?"),
         ),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
     });
+    expect(screen.queryByText("First skill")).toBeNull();
+    expect(screen.queryByText("Second skill")).toBeNull();
 
-    resolveEntry?.(
+    entryResolvers.get(firstSkill.id)?.(
       Response.json({
-        ...registrySkill,
-        summary: "Loaded after the card",
+        ...firstSkill,
+        summary: "First description",
       }),
     );
 
-    expect(await screen.findByText("Loaded after the card")).toBeTruthy();
+    expect(await screen.findByText("First skill")).toBeTruthy();
+    expect(screen.getByText("First description")).toBeTruthy();
+    expect(screen.queryByText("Second skill")).toBeNull();
+    expect(
+      screen.getByRole("status", { name: "Loading Second skill" }),
+    ).toBeTruthy();
+
+    entryResolvers.get(secondSkill.id)?.(
+      Response.json({
+        ...secondSkill,
+        summary: "Second description",
+      }),
+    );
+
+    expect(await screen.findByText("Second skill")).toBeTruthy();
+    expect(screen.getByText("Second description")).toBeTruthy();
   });
 });
 
@@ -644,6 +787,9 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(screen.getByRole("textbox", { name: "Search skills" })).toBeTruthy();
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
     expect(screen.getByLabelText("100 stars")).toBeTruthy();
+    for (const byline of screen.getAllByText("by owner/repo")) {
+      expect(byline.className).toContain("text-xs");
+    }
     expect(
       screen.getByRole("button", {
         name: "Fork Alpha into a new bb skill",

@@ -194,13 +194,19 @@ export function SkillsLibrary() {
     // `combine` results are structurally shared, so this Map is referentially
     // stable across renders. That lets the enrichment memo below list honest
     // dependencies instead of hashing query data by hand.
-    combine: (results) =>
-      new Map(
+    combine: (results) => ({
+      values: new Map(
         registryRepositorySources.flatMap(({ repositoryKey }, index) => {
           const value = results[index]?.data;
           return value === undefined ? [] : ([[repositoryKey, value]] as const);
         }),
       ),
+      pendingRepositoryKeys: new Set(
+        registryRepositorySources.flatMap(({ repositoryKey }, index) =>
+          results[index]?.isPending ? [repositoryKey] : [],
+        ),
+      ),
+    }),
   });
   const registryDescriptionSkills = useMemo(
     () =>
@@ -219,31 +225,59 @@ export function SkillsLibrary() {
       retry: false,
       refetchOnWindowFocus: false,
     })),
-    combine: (results) =>
-      new Map(
+    combine: (results) => ({
+      values: new Map(
         registryDescriptionSkills.flatMap((skill, index) => {
           const entry = results[index]?.data;
           return entry === undefined ? [] : ([[skill.id, entry]] as const);
         }),
       ),
+      pendingSkillIds: new Set(
+        registryDescriptionSkills.flatMap((skill, index) =>
+          results[index]?.isPending ? [skill.id] : [],
+        ),
+      ),
+    }),
   });
   const registrySkills = useMemo(
     () =>
       (registryQuery.data?.skills ?? []).map((skill) => {
-        const entry = registryDescriptions.get(skill.id);
+        const entry = registryDescriptions.values.get(skill.id);
         const describedSkill =
           entry === undefined
             ? skill
             : { ...skill, topic: entry.topic, summary: entry.summary };
         if (describedSkill.stars !== null) return describedSkill;
-        const stars = registryRepositoryStars.get(
+        const stars = registryRepositoryStars.values.get(
           registryRepositoryKey(describedSkill.source),
         );
         return stars === undefined
           ? describedSkill
           : { ...describedSkill, stars };
       }),
-    [registryQuery.data?.skills, registryDescriptions, registryRepositoryStars],
+    [
+      registryQuery.data?.skills,
+      registryDescriptions.values,
+      registryRepositoryStars.values,
+    ],
+  );
+  const pendingRegistrySkillIds = useMemo(
+    () =>
+      new Set(
+        (registryQuery.data?.skills ?? []).flatMap((skill) =>
+          registryDescriptions.pendingSkillIds.has(skill.id) ||
+          registryRepositoryStars.pendingRepositoryKeys.has(
+            registryRepositoryKey(skill.source),
+          )
+            ? [skill.id]
+            : [],
+        ),
+      ),
+    [
+      registryDescriptions.pendingSkillIds,
+      registryQuery.data?.skills,
+      registryRepositoryStars.pendingRepositoryKeys,
+    ],
   );
   const selectedSkill = useMemo(() => {
     if (routeSkillId === undefined) return null;
@@ -456,6 +490,7 @@ export function SkillsLibrary() {
           browseContent={
             <RegistrySkillsBrowsePage
               skills={registrySkills}
+              pendingSkillIds={pendingRegistrySkillIds}
               pagination={
                 registryQuery.data?.pagination ?? {
                   ...EMPTY_REGISTRY_PAGINATION,
