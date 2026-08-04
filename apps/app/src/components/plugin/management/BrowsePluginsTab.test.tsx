@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -109,6 +115,9 @@ describe("BrowsePluginsTab", () => {
     );
 
     expect(await screen.findByText("BB Official plugins")).toBeTruthy();
+    const officialCatalog = screen.getByRole("region", {
+      name: "BB Official plugins",
+    });
     const memoryCard = (await screen.findByText("Memory")).closest("div");
     expect(memoryCard).not.toBeNull();
     // Scoped to the card on purpose: INCOMPATIBLE_ENTRY spreads MEMORY_ENTRY
@@ -124,6 +133,17 @@ describe("BrowsePluginsTab", () => {
       .getByRole("button", { name: "Open GitHub details" })
       .closest('[class*="auto-fill"]');
     expect(githubGrid?.className).toContain("auto-fill");
+    expect(
+      within(officialCatalog).getByRole("heading", { name: "Productivity" }),
+    ).toBeTruthy();
+    expect(
+      within(officialCatalog).getByRole("heading", {
+        name: "Developer tools",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(officialCatalog).getByRole("button", { name: "Install Memory" }),
+    ).toBeTruthy();
 
     expect(screen.queryByText(MEMORY_ENTRY.source)).toBeNull();
     expect(screen.getByText("Requires a newer BB version")).toBeTruthy();
