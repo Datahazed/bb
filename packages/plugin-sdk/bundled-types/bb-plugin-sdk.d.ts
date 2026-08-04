@@ -152,6 +152,7 @@ declare const changedMessageSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         "pin-state-changed": "pin-state-changed";
         "parent-changed": "parent-changed";
         "environment-changed": "environment-changed";
+        "environment-status-summary-changed": "environment-status-summary-changed";
         "read-state-changed": "read-state-changed";
         "order-changed": "order-changed";
         "tabs-changed": "tabs-changed";
@@ -2630,6 +2631,182 @@ declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
             "unmanaged-worktree": "unmanaged-worktree";
             other: "other";
         }>;
+        environmentStatusSummary: z$1.ZodObject<{
+            git: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                state: z$1.ZodLiteral<"pending">;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                state: z$1.ZodLiteral<"not_applicable">;
+                refreshedAt: z$1.ZodNumber;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                state: z$1.ZodLiteral<"unavailable">;
+                refreshedAt: z$1.ZodNumber;
+                reason: z$1.ZodObject<{
+                    code: z$1.ZodString;
+                    message: z$1.ZodString;
+                }, z$1.core.$strict>;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                state: z$1.ZodLiteral<"available">;
+                refreshedAt: z$1.ZodNumber;
+                snapshot: z$1.ZodObject<{
+                    checkout: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                        kind: z$1.ZodLiteral<"branch">;
+                        branchName: z$1.ZodString;
+                        headSha: z$1.ZodNullable<z$1.ZodString>;
+                    }, z$1.core.$strip>, z$1.ZodObject<{
+                        kind: z$1.ZodLiteral<"detached">;
+                        headSha: z$1.ZodNullable<z$1.ZodString>;
+                    }, z$1.core.$strip>, z$1.ZodObject<{
+                        kind: z$1.ZodLiteral<"unborn">;
+                        branchName: z$1.ZodNullable<z$1.ZodString>;
+                    }, z$1.core.$strip>, z$1.ZodObject<{
+                        kind: z$1.ZodLiteral<"unknown">;
+                        reason: z$1.ZodString;
+                    }, z$1.core.$strip>], "kind">;
+                    currentBranch: z$1.ZodNullable<z$1.ZodString>;
+                    defaultBranch: z$1.ZodString;
+                    hasChanges: z$1.ZodBoolean;
+                    workingTree: z$1.ZodObject<{
+                        fileCount: z$1.ZodNumber;
+                        insertions: z$1.ZodNumber;
+                        deletions: z$1.ZodNumber;
+                        files: z$1.ZodArray<z$1.ZodObject<{
+                            path: z$1.ZodString;
+                            status: z$1.ZodEnum<{
+                                M: "M";
+                                A: "A";
+                                D: "D";
+                                R: "R";
+                                C: "C";
+                                U: "U";
+                                "??": "??";
+                                "?": "?";
+                            }>;
+                        }, z$1.core.$strict>>;
+                        hasUncommittedChanges: z$1.ZodBoolean;
+                        state: z$1.ZodEnum<{
+                            clean: "clean";
+                            untracked: "untracked";
+                            dirty_uncommitted: "dirty_uncommitted";
+                            committed_unmerged: "committed_unmerged";
+                            dirty_and_committed_unmerged: "dirty_and_committed_unmerged";
+                        }>;
+                    }, z$1.core.$strict>;
+                    mergeBase: z$1.ZodNullable<z$1.ZodObject<{
+                        fileCount: z$1.ZodNumber;
+                        insertions: z$1.ZodNumber;
+                        deletions: z$1.ZodNumber;
+                        files: z$1.ZodArray<z$1.ZodObject<{
+                            path: z$1.ZodString;
+                            status: z$1.ZodEnum<{
+                                M: "M";
+                                A: "A";
+                                D: "D";
+                                R: "R";
+                                C: "C";
+                                U: "U";
+                                "??": "??";
+                                "?": "?";
+                            }>;
+                        }, z$1.core.$strict>>;
+                        aheadCount: z$1.ZodNumber;
+                        behindCount: z$1.ZodNumber;
+                        commitCount: z$1.ZodNumber;
+                        hasCommittedUnmergedChanges: z$1.ZodBoolean;
+                        mergeBaseBranch: z$1.ZodString;
+                    }, z$1.core.$strict>>;
+                }, z$1.core.$strict>;
+            }, z$1.core.$strict>], "state">;
+            pullRequest: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                state: z$1.ZodLiteral<"pending">;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                state: z$1.ZodLiteral<"not_applicable">;
+                refreshedAt: z$1.ZodNumber;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                state: z$1.ZodLiteral<"unavailable">;
+                refreshedAt: z$1.ZodNumber;
+                reason: z$1.ZodObject<{
+                    code: z$1.ZodString;
+                    message: z$1.ZodString;
+                }, z$1.core.$strict>;
+            }, z$1.core.$strict>, z$1.ZodObject<{
+                state: z$1.ZodLiteral<"available">;
+                refreshedAt: z$1.ZodNumber;
+                pullRequest: z$1.ZodNullable<z$1.ZodObject<{
+                    number: z$1.ZodNumber;
+                    title: z$1.ZodString;
+                    state: z$1.ZodEnum<{
+                        draft: "draft";
+                        open: "open";
+                        merged: "merged";
+                        closed: "closed";
+                    }>;
+                    url: z$1.ZodString;
+                    baseRefName: z$1.ZodString;
+                    headRefName: z$1.ZodString;
+                    updatedAt: z$1.ZodString;
+                    checks: z$1.ZodObject<{
+                        state: z$1.ZodEnum<{
+                            unknown: "unknown";
+                            pending: "pending";
+                            passing: "passing";
+                            failing: "failing";
+                            no_checks: "no_checks";
+                        }>;
+                        totalCount: z$1.ZodNumber;
+                        passedCount: z$1.ZodNumber;
+                        failedCount: z$1.ZodNumber;
+                        pendingCount: z$1.ZodNumber;
+                    }, z$1.core.$strict>;
+                    review: z$1.ZodObject<{
+                        state: z$1.ZodEnum<{
+                            none: "none";
+                            approved: "approved";
+                            changes_requested: "changes_requested";
+                            review_required: "review_required";
+                            review_requested: "review_requested";
+                        }>;
+                        reviewRequestCount: z$1.ZodNumber;
+                    }, z$1.core.$strict>;
+                    mergeability: z$1.ZodObject<{
+                        state: z$1.ZodEnum<{
+                            unknown: "unknown";
+                            draft: "draft";
+                            mergeable: "mergeable";
+                            conflicts: "conflicts";
+                            blocked: "blocked";
+                        }>;
+                        mergeStateStatus: z$1.ZodNullable<z$1.ZodEnum<{
+                            BEHIND: "BEHIND";
+                            BLOCKED: "BLOCKED";
+                            CLEAN: "CLEAN";
+                            DIRTY: "DIRTY";
+                            DRAFT: "DRAFT";
+                            HAS_HOOKS: "HAS_HOOKS";
+                            UNKNOWN: "UNKNOWN";
+                            UNSTABLE: "UNSTABLE";
+                        }>>;
+                        mergeable: z$1.ZodNullable<z$1.ZodEnum<{
+                            UNKNOWN: "UNKNOWN";
+                            CONFLICTING: "CONFLICTING";
+                            MERGEABLE: "MERGEABLE";
+                        }>>;
+                    }, z$1.core.$strict>;
+                    attention: z$1.ZodEnum<{
+                        none: "none";
+                        draft: "draft";
+                        merged: "merged";
+                        closed: "closed";
+                        changes_requested: "changes_requested";
+                        review_requested: "review_requested";
+                        conflicts: "conflicts";
+                        blocked: "blocked";
+                        checks_failed: "checks_failed";
+                        checks_pending: "checks_pending";
+                        ready_to_merge: "ready_to_merge";
+                    }>;
+                }, z$1.core.$strict>>;
+            }, z$1.core.$strict>], "state">;
+        }, z$1.core.$strict>;
     }, z$1.core.$strip>>;
     defaultExecutionOptions: z$1.ZodNullable<z$1.ZodObject<{
         providerId: z$1.ZodString;
@@ -3012,9 +3189,9 @@ declare const environmentPullRequestResponseSchema: z$1.ZodDiscriminatedUnion<[z
         number: z$1.ZodNumber;
         title: z$1.ZodString;
         state: z$1.ZodEnum<{
-            merged: "merged";
             draft: "draft";
             open: "open";
+            merged: "merged";
             closed: "closed";
         }>;
         url: z$1.ZodString;
@@ -3070,8 +3247,8 @@ declare const environmentPullRequestResponseSchema: z$1.ZodDiscriminatedUnion<[z
         }, z$1.core.$strict>;
         attention: z$1.ZodEnum<{
             none: "none";
-            merged: "merged";
             draft: "draft";
+            merged: "merged";
             closed: "closed";
             changes_requested: "changes_requested";
             review_requested: "review_requested";
@@ -8501,6 +8678,182 @@ declare const threadListResponseSchema: z$1.ZodArray<z$1.ZodObject<{
         "unmanaged-worktree": "unmanaged-worktree";
         other: "other";
     }>;
+    environmentStatusSummary: z$1.ZodObject<{
+        git: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            state: z$1.ZodLiteral<"pending">;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"not_applicable">;
+            refreshedAt: z$1.ZodNumber;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"unavailable">;
+            refreshedAt: z$1.ZodNumber;
+            reason: z$1.ZodObject<{
+                code: z$1.ZodString;
+                message: z$1.ZodString;
+            }, z$1.core.$strict>;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"available">;
+            refreshedAt: z$1.ZodNumber;
+            snapshot: z$1.ZodObject<{
+                checkout: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"branch">;
+                    branchName: z$1.ZodString;
+                    headSha: z$1.ZodNullable<z$1.ZodString>;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"detached">;
+                    headSha: z$1.ZodNullable<z$1.ZodString>;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"unborn">;
+                    branchName: z$1.ZodNullable<z$1.ZodString>;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"unknown">;
+                    reason: z$1.ZodString;
+                }, z$1.core.$strip>], "kind">;
+                currentBranch: z$1.ZodNullable<z$1.ZodString>;
+                defaultBranch: z$1.ZodString;
+                hasChanges: z$1.ZodBoolean;
+                workingTree: z$1.ZodObject<{
+                    fileCount: z$1.ZodNumber;
+                    insertions: z$1.ZodNumber;
+                    deletions: z$1.ZodNumber;
+                    files: z$1.ZodArray<z$1.ZodObject<{
+                        path: z$1.ZodString;
+                        status: z$1.ZodEnum<{
+                            M: "M";
+                            A: "A";
+                            D: "D";
+                            R: "R";
+                            C: "C";
+                            U: "U";
+                            "??": "??";
+                            "?": "?";
+                        }>;
+                    }, z$1.core.$strict>>;
+                    hasUncommittedChanges: z$1.ZodBoolean;
+                    state: z$1.ZodEnum<{
+                        clean: "clean";
+                        untracked: "untracked";
+                        dirty_uncommitted: "dirty_uncommitted";
+                        committed_unmerged: "committed_unmerged";
+                        dirty_and_committed_unmerged: "dirty_and_committed_unmerged";
+                    }>;
+                }, z$1.core.$strict>;
+                mergeBase: z$1.ZodNullable<z$1.ZodObject<{
+                    fileCount: z$1.ZodNumber;
+                    insertions: z$1.ZodNumber;
+                    deletions: z$1.ZodNumber;
+                    files: z$1.ZodArray<z$1.ZodObject<{
+                        path: z$1.ZodString;
+                        status: z$1.ZodEnum<{
+                            M: "M";
+                            A: "A";
+                            D: "D";
+                            R: "R";
+                            C: "C";
+                            U: "U";
+                            "??": "??";
+                            "?": "?";
+                        }>;
+                    }, z$1.core.$strict>>;
+                    aheadCount: z$1.ZodNumber;
+                    behindCount: z$1.ZodNumber;
+                    commitCount: z$1.ZodNumber;
+                    hasCommittedUnmergedChanges: z$1.ZodBoolean;
+                    mergeBaseBranch: z$1.ZodString;
+                }, z$1.core.$strict>>;
+            }, z$1.core.$strict>;
+        }, z$1.core.$strict>], "state">;
+        pullRequest: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            state: z$1.ZodLiteral<"pending">;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"not_applicable">;
+            refreshedAt: z$1.ZodNumber;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"unavailable">;
+            refreshedAt: z$1.ZodNumber;
+            reason: z$1.ZodObject<{
+                code: z$1.ZodString;
+                message: z$1.ZodString;
+            }, z$1.core.$strict>;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"available">;
+            refreshedAt: z$1.ZodNumber;
+            pullRequest: z$1.ZodNullable<z$1.ZodObject<{
+                number: z$1.ZodNumber;
+                title: z$1.ZodString;
+                state: z$1.ZodEnum<{
+                    draft: "draft";
+                    open: "open";
+                    merged: "merged";
+                    closed: "closed";
+                }>;
+                url: z$1.ZodString;
+                baseRefName: z$1.ZodString;
+                headRefName: z$1.ZodString;
+                updatedAt: z$1.ZodString;
+                checks: z$1.ZodObject<{
+                    state: z$1.ZodEnum<{
+                        unknown: "unknown";
+                        pending: "pending";
+                        passing: "passing";
+                        failing: "failing";
+                        no_checks: "no_checks";
+                    }>;
+                    totalCount: z$1.ZodNumber;
+                    passedCount: z$1.ZodNumber;
+                    failedCount: z$1.ZodNumber;
+                    pendingCount: z$1.ZodNumber;
+                }, z$1.core.$strict>;
+                review: z$1.ZodObject<{
+                    state: z$1.ZodEnum<{
+                        none: "none";
+                        approved: "approved";
+                        changes_requested: "changes_requested";
+                        review_required: "review_required";
+                        review_requested: "review_requested";
+                    }>;
+                    reviewRequestCount: z$1.ZodNumber;
+                }, z$1.core.$strict>;
+                mergeability: z$1.ZodObject<{
+                    state: z$1.ZodEnum<{
+                        unknown: "unknown";
+                        draft: "draft";
+                        mergeable: "mergeable";
+                        conflicts: "conflicts";
+                        blocked: "blocked";
+                    }>;
+                    mergeStateStatus: z$1.ZodNullable<z$1.ZodEnum<{
+                        BEHIND: "BEHIND";
+                        BLOCKED: "BLOCKED";
+                        CLEAN: "CLEAN";
+                        DIRTY: "DIRTY";
+                        DRAFT: "DRAFT";
+                        HAS_HOOKS: "HAS_HOOKS";
+                        UNKNOWN: "UNKNOWN";
+                        UNSTABLE: "UNSTABLE";
+                    }>>;
+                    mergeable: z$1.ZodNullable<z$1.ZodEnum<{
+                        UNKNOWN: "UNKNOWN";
+                        CONFLICTING: "CONFLICTING";
+                        MERGEABLE: "MERGEABLE";
+                    }>>;
+                }, z$1.core.$strict>;
+                attention: z$1.ZodEnum<{
+                    none: "none";
+                    draft: "draft";
+                    merged: "merged";
+                    closed: "closed";
+                    changes_requested: "changes_requested";
+                    review_requested: "review_requested";
+                    conflicts: "conflicts";
+                    blocked: "blocked";
+                    checks_failed: "checks_failed";
+                    checks_pending: "checks_pending";
+                    ready_to_merge: "ready_to_merge";
+                }>;
+            }, z$1.core.$strict>>;
+        }, z$1.core.$strict>], "state">;
+    }, z$1.core.$strict>;
 }, z$1.core.$strip>>;
 type ThreadListResponse = z$1.infer<typeof threadListResponseSchema>;
 declare const threadSearchResponseSchema: z$1.ZodObject<{
@@ -8572,6 +8925,182 @@ declare const threadSearchResponseSchema: z$1.ZodObject<{
                     "unmanaged-worktree": "unmanaged-worktree";
                     other: "other";
                 }>;
+                environmentStatusSummary: z$1.ZodObject<{
+                    git: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"pending">;
+                    }, z$1.core.$strict>, z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"not_applicable">;
+                        refreshedAt: z$1.ZodNumber;
+                    }, z$1.core.$strict>, z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"unavailable">;
+                        refreshedAt: z$1.ZodNumber;
+                        reason: z$1.ZodObject<{
+                            code: z$1.ZodString;
+                            message: z$1.ZodString;
+                        }, z$1.core.$strict>;
+                    }, z$1.core.$strict>, z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"available">;
+                        refreshedAt: z$1.ZodNumber;
+                        snapshot: z$1.ZodObject<{
+                            checkout: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                                kind: z$1.ZodLiteral<"branch">;
+                                branchName: z$1.ZodString;
+                                headSha: z$1.ZodNullable<z$1.ZodString>;
+                            }, z$1.core.$strip>, z$1.ZodObject<{
+                                kind: z$1.ZodLiteral<"detached">;
+                                headSha: z$1.ZodNullable<z$1.ZodString>;
+                            }, z$1.core.$strip>, z$1.ZodObject<{
+                                kind: z$1.ZodLiteral<"unborn">;
+                                branchName: z$1.ZodNullable<z$1.ZodString>;
+                            }, z$1.core.$strip>, z$1.ZodObject<{
+                                kind: z$1.ZodLiteral<"unknown">;
+                                reason: z$1.ZodString;
+                            }, z$1.core.$strip>], "kind">;
+                            currentBranch: z$1.ZodNullable<z$1.ZodString>;
+                            defaultBranch: z$1.ZodString;
+                            hasChanges: z$1.ZodBoolean;
+                            workingTree: z$1.ZodObject<{
+                                fileCount: z$1.ZodNumber;
+                                insertions: z$1.ZodNumber;
+                                deletions: z$1.ZodNumber;
+                                files: z$1.ZodArray<z$1.ZodObject<{
+                                    path: z$1.ZodString;
+                                    status: z$1.ZodEnum<{
+                                        M: "M";
+                                        A: "A";
+                                        D: "D";
+                                        R: "R";
+                                        C: "C";
+                                        U: "U";
+                                        "??": "??";
+                                        "?": "?";
+                                    }>;
+                                }, z$1.core.$strict>>;
+                                hasUncommittedChanges: z$1.ZodBoolean;
+                                state: z$1.ZodEnum<{
+                                    clean: "clean";
+                                    untracked: "untracked";
+                                    dirty_uncommitted: "dirty_uncommitted";
+                                    committed_unmerged: "committed_unmerged";
+                                    dirty_and_committed_unmerged: "dirty_and_committed_unmerged";
+                                }>;
+                            }, z$1.core.$strict>;
+                            mergeBase: z$1.ZodNullable<z$1.ZodObject<{
+                                fileCount: z$1.ZodNumber;
+                                insertions: z$1.ZodNumber;
+                                deletions: z$1.ZodNumber;
+                                files: z$1.ZodArray<z$1.ZodObject<{
+                                    path: z$1.ZodString;
+                                    status: z$1.ZodEnum<{
+                                        M: "M";
+                                        A: "A";
+                                        D: "D";
+                                        R: "R";
+                                        C: "C";
+                                        U: "U";
+                                        "??": "??";
+                                        "?": "?";
+                                    }>;
+                                }, z$1.core.$strict>>;
+                                aheadCount: z$1.ZodNumber;
+                                behindCount: z$1.ZodNumber;
+                                commitCount: z$1.ZodNumber;
+                                hasCommittedUnmergedChanges: z$1.ZodBoolean;
+                                mergeBaseBranch: z$1.ZodString;
+                            }, z$1.core.$strict>>;
+                        }, z$1.core.$strict>;
+                    }, z$1.core.$strict>], "state">;
+                    pullRequest: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"pending">;
+                    }, z$1.core.$strict>, z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"not_applicable">;
+                        refreshedAt: z$1.ZodNumber;
+                    }, z$1.core.$strict>, z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"unavailable">;
+                        refreshedAt: z$1.ZodNumber;
+                        reason: z$1.ZodObject<{
+                            code: z$1.ZodString;
+                            message: z$1.ZodString;
+                        }, z$1.core.$strict>;
+                    }, z$1.core.$strict>, z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"available">;
+                        refreshedAt: z$1.ZodNumber;
+                        pullRequest: z$1.ZodNullable<z$1.ZodObject<{
+                            number: z$1.ZodNumber;
+                            title: z$1.ZodString;
+                            state: z$1.ZodEnum<{
+                                draft: "draft";
+                                open: "open";
+                                merged: "merged";
+                                closed: "closed";
+                            }>;
+                            url: z$1.ZodString;
+                            baseRefName: z$1.ZodString;
+                            headRefName: z$1.ZodString;
+                            updatedAt: z$1.ZodString;
+                            checks: z$1.ZodObject<{
+                                state: z$1.ZodEnum<{
+                                    unknown: "unknown";
+                                    pending: "pending";
+                                    passing: "passing";
+                                    failing: "failing";
+                                    no_checks: "no_checks";
+                                }>;
+                                totalCount: z$1.ZodNumber;
+                                passedCount: z$1.ZodNumber;
+                                failedCount: z$1.ZodNumber;
+                                pendingCount: z$1.ZodNumber;
+                            }, z$1.core.$strict>;
+                            review: z$1.ZodObject<{
+                                state: z$1.ZodEnum<{
+                                    none: "none";
+                                    approved: "approved";
+                                    changes_requested: "changes_requested";
+                                    review_required: "review_required";
+                                    review_requested: "review_requested";
+                                }>;
+                                reviewRequestCount: z$1.ZodNumber;
+                            }, z$1.core.$strict>;
+                            mergeability: z$1.ZodObject<{
+                                state: z$1.ZodEnum<{
+                                    unknown: "unknown";
+                                    draft: "draft";
+                                    mergeable: "mergeable";
+                                    conflicts: "conflicts";
+                                    blocked: "blocked";
+                                }>;
+                                mergeStateStatus: z$1.ZodNullable<z$1.ZodEnum<{
+                                    BEHIND: "BEHIND";
+                                    BLOCKED: "BLOCKED";
+                                    CLEAN: "CLEAN";
+                                    DIRTY: "DIRTY";
+                                    DRAFT: "DRAFT";
+                                    HAS_HOOKS: "HAS_HOOKS";
+                                    UNKNOWN: "UNKNOWN";
+                                    UNSTABLE: "UNSTABLE";
+                                }>>;
+                                mergeable: z$1.ZodNullable<z$1.ZodEnum<{
+                                    UNKNOWN: "UNKNOWN";
+                                    CONFLICTING: "CONFLICTING";
+                                    MERGEABLE: "MERGEABLE";
+                                }>>;
+                            }, z$1.core.$strict>;
+                            attention: z$1.ZodEnum<{
+                                none: "none";
+                                draft: "draft";
+                                merged: "merged";
+                                closed: "closed";
+                                changes_requested: "changes_requested";
+                                review_requested: "review_requested";
+                                conflicts: "conflicts";
+                                blocked: "blocked";
+                                checks_failed: "checks_failed";
+                                checks_pending: "checks_pending";
+                                ready_to_merge: "ready_to_merge";
+                            }>;
+                        }, z$1.core.$strict>>;
+                    }, z$1.core.$strict>], "state">;
+                }, z$1.core.$strict>;
             }, z$1.core.$strip>;
             matches: z$1.ZodArray<z$1.ZodObject<{
                 sourceKind: z$1.ZodEnum<{
@@ -8658,6 +9187,182 @@ declare const threadSearchResponseSchema: z$1.ZodObject<{
                     "unmanaged-worktree": "unmanaged-worktree";
                     other: "other";
                 }>;
+                environmentStatusSummary: z$1.ZodObject<{
+                    git: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"pending">;
+                    }, z$1.core.$strict>, z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"not_applicable">;
+                        refreshedAt: z$1.ZodNumber;
+                    }, z$1.core.$strict>, z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"unavailable">;
+                        refreshedAt: z$1.ZodNumber;
+                        reason: z$1.ZodObject<{
+                            code: z$1.ZodString;
+                            message: z$1.ZodString;
+                        }, z$1.core.$strict>;
+                    }, z$1.core.$strict>, z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"available">;
+                        refreshedAt: z$1.ZodNumber;
+                        snapshot: z$1.ZodObject<{
+                            checkout: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                                kind: z$1.ZodLiteral<"branch">;
+                                branchName: z$1.ZodString;
+                                headSha: z$1.ZodNullable<z$1.ZodString>;
+                            }, z$1.core.$strip>, z$1.ZodObject<{
+                                kind: z$1.ZodLiteral<"detached">;
+                                headSha: z$1.ZodNullable<z$1.ZodString>;
+                            }, z$1.core.$strip>, z$1.ZodObject<{
+                                kind: z$1.ZodLiteral<"unborn">;
+                                branchName: z$1.ZodNullable<z$1.ZodString>;
+                            }, z$1.core.$strip>, z$1.ZodObject<{
+                                kind: z$1.ZodLiteral<"unknown">;
+                                reason: z$1.ZodString;
+                            }, z$1.core.$strip>], "kind">;
+                            currentBranch: z$1.ZodNullable<z$1.ZodString>;
+                            defaultBranch: z$1.ZodString;
+                            hasChanges: z$1.ZodBoolean;
+                            workingTree: z$1.ZodObject<{
+                                fileCount: z$1.ZodNumber;
+                                insertions: z$1.ZodNumber;
+                                deletions: z$1.ZodNumber;
+                                files: z$1.ZodArray<z$1.ZodObject<{
+                                    path: z$1.ZodString;
+                                    status: z$1.ZodEnum<{
+                                        M: "M";
+                                        A: "A";
+                                        D: "D";
+                                        R: "R";
+                                        C: "C";
+                                        U: "U";
+                                        "??": "??";
+                                        "?": "?";
+                                    }>;
+                                }, z$1.core.$strict>>;
+                                hasUncommittedChanges: z$1.ZodBoolean;
+                                state: z$1.ZodEnum<{
+                                    clean: "clean";
+                                    untracked: "untracked";
+                                    dirty_uncommitted: "dirty_uncommitted";
+                                    committed_unmerged: "committed_unmerged";
+                                    dirty_and_committed_unmerged: "dirty_and_committed_unmerged";
+                                }>;
+                            }, z$1.core.$strict>;
+                            mergeBase: z$1.ZodNullable<z$1.ZodObject<{
+                                fileCount: z$1.ZodNumber;
+                                insertions: z$1.ZodNumber;
+                                deletions: z$1.ZodNumber;
+                                files: z$1.ZodArray<z$1.ZodObject<{
+                                    path: z$1.ZodString;
+                                    status: z$1.ZodEnum<{
+                                        M: "M";
+                                        A: "A";
+                                        D: "D";
+                                        R: "R";
+                                        C: "C";
+                                        U: "U";
+                                        "??": "??";
+                                        "?": "?";
+                                    }>;
+                                }, z$1.core.$strict>>;
+                                aheadCount: z$1.ZodNumber;
+                                behindCount: z$1.ZodNumber;
+                                commitCount: z$1.ZodNumber;
+                                hasCommittedUnmergedChanges: z$1.ZodBoolean;
+                                mergeBaseBranch: z$1.ZodString;
+                            }, z$1.core.$strict>>;
+                        }, z$1.core.$strict>;
+                    }, z$1.core.$strict>], "state">;
+                    pullRequest: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"pending">;
+                    }, z$1.core.$strict>, z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"not_applicable">;
+                        refreshedAt: z$1.ZodNumber;
+                    }, z$1.core.$strict>, z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"unavailable">;
+                        refreshedAt: z$1.ZodNumber;
+                        reason: z$1.ZodObject<{
+                            code: z$1.ZodString;
+                            message: z$1.ZodString;
+                        }, z$1.core.$strict>;
+                    }, z$1.core.$strict>, z$1.ZodObject<{
+                        state: z$1.ZodLiteral<"available">;
+                        refreshedAt: z$1.ZodNumber;
+                        pullRequest: z$1.ZodNullable<z$1.ZodObject<{
+                            number: z$1.ZodNumber;
+                            title: z$1.ZodString;
+                            state: z$1.ZodEnum<{
+                                draft: "draft";
+                                open: "open";
+                                merged: "merged";
+                                closed: "closed";
+                            }>;
+                            url: z$1.ZodString;
+                            baseRefName: z$1.ZodString;
+                            headRefName: z$1.ZodString;
+                            updatedAt: z$1.ZodString;
+                            checks: z$1.ZodObject<{
+                                state: z$1.ZodEnum<{
+                                    unknown: "unknown";
+                                    pending: "pending";
+                                    passing: "passing";
+                                    failing: "failing";
+                                    no_checks: "no_checks";
+                                }>;
+                                totalCount: z$1.ZodNumber;
+                                passedCount: z$1.ZodNumber;
+                                failedCount: z$1.ZodNumber;
+                                pendingCount: z$1.ZodNumber;
+                            }, z$1.core.$strict>;
+                            review: z$1.ZodObject<{
+                                state: z$1.ZodEnum<{
+                                    none: "none";
+                                    approved: "approved";
+                                    changes_requested: "changes_requested";
+                                    review_required: "review_required";
+                                    review_requested: "review_requested";
+                                }>;
+                                reviewRequestCount: z$1.ZodNumber;
+                            }, z$1.core.$strict>;
+                            mergeability: z$1.ZodObject<{
+                                state: z$1.ZodEnum<{
+                                    unknown: "unknown";
+                                    draft: "draft";
+                                    mergeable: "mergeable";
+                                    conflicts: "conflicts";
+                                    blocked: "blocked";
+                                }>;
+                                mergeStateStatus: z$1.ZodNullable<z$1.ZodEnum<{
+                                    BEHIND: "BEHIND";
+                                    BLOCKED: "BLOCKED";
+                                    CLEAN: "CLEAN";
+                                    DIRTY: "DIRTY";
+                                    DRAFT: "DRAFT";
+                                    HAS_HOOKS: "HAS_HOOKS";
+                                    UNKNOWN: "UNKNOWN";
+                                    UNSTABLE: "UNSTABLE";
+                                }>>;
+                                mergeable: z$1.ZodNullable<z$1.ZodEnum<{
+                                    UNKNOWN: "UNKNOWN";
+                                    CONFLICTING: "CONFLICTING";
+                                    MERGEABLE: "MERGEABLE";
+                                }>>;
+                            }, z$1.core.$strict>;
+                            attention: z$1.ZodEnum<{
+                                none: "none";
+                                draft: "draft";
+                                merged: "merged";
+                                closed: "closed";
+                                changes_requested: "changes_requested";
+                                review_requested: "review_requested";
+                                conflicts: "conflicts";
+                                blocked: "blocked";
+                                checks_failed: "checks_failed";
+                                checks_pending: "checks_pending";
+                                ready_to_merge: "ready_to_merge";
+                            }>;
+                        }, z$1.core.$strict>>;
+                    }, z$1.core.$strict>], "state">;
+                }, z$1.core.$strict>;
             }, z$1.core.$strip>;
             matches: z$1.ZodArray<z$1.ZodObject<{
                 sourceKind: z$1.ZodEnum<{
@@ -8727,6 +9432,182 @@ declare const threadResponseSchema: z$1.ZodObject<{
         hostReconnectGraceExpiresAt: z$1.ZodNullable<z$1.ZodNumber>;
     }, z$1.core.$strip>;
     canSpawnChild: z$1.ZodBoolean;
+    environmentStatusSummary: z$1.ZodObject<{
+        git: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            state: z$1.ZodLiteral<"pending">;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"not_applicable">;
+            refreshedAt: z$1.ZodNumber;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"unavailable">;
+            refreshedAt: z$1.ZodNumber;
+            reason: z$1.ZodObject<{
+                code: z$1.ZodString;
+                message: z$1.ZodString;
+            }, z$1.core.$strict>;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"available">;
+            refreshedAt: z$1.ZodNumber;
+            snapshot: z$1.ZodObject<{
+                checkout: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"branch">;
+                    branchName: z$1.ZodString;
+                    headSha: z$1.ZodNullable<z$1.ZodString>;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"detached">;
+                    headSha: z$1.ZodNullable<z$1.ZodString>;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"unborn">;
+                    branchName: z$1.ZodNullable<z$1.ZodString>;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"unknown">;
+                    reason: z$1.ZodString;
+                }, z$1.core.$strip>], "kind">;
+                currentBranch: z$1.ZodNullable<z$1.ZodString>;
+                defaultBranch: z$1.ZodString;
+                hasChanges: z$1.ZodBoolean;
+                workingTree: z$1.ZodObject<{
+                    fileCount: z$1.ZodNumber;
+                    insertions: z$1.ZodNumber;
+                    deletions: z$1.ZodNumber;
+                    files: z$1.ZodArray<z$1.ZodObject<{
+                        path: z$1.ZodString;
+                        status: z$1.ZodEnum<{
+                            M: "M";
+                            A: "A";
+                            D: "D";
+                            R: "R";
+                            C: "C";
+                            U: "U";
+                            "??": "??";
+                            "?": "?";
+                        }>;
+                    }, z$1.core.$strict>>;
+                    hasUncommittedChanges: z$1.ZodBoolean;
+                    state: z$1.ZodEnum<{
+                        clean: "clean";
+                        untracked: "untracked";
+                        dirty_uncommitted: "dirty_uncommitted";
+                        committed_unmerged: "committed_unmerged";
+                        dirty_and_committed_unmerged: "dirty_and_committed_unmerged";
+                    }>;
+                }, z$1.core.$strict>;
+                mergeBase: z$1.ZodNullable<z$1.ZodObject<{
+                    fileCount: z$1.ZodNumber;
+                    insertions: z$1.ZodNumber;
+                    deletions: z$1.ZodNumber;
+                    files: z$1.ZodArray<z$1.ZodObject<{
+                        path: z$1.ZodString;
+                        status: z$1.ZodEnum<{
+                            M: "M";
+                            A: "A";
+                            D: "D";
+                            R: "R";
+                            C: "C";
+                            U: "U";
+                            "??": "??";
+                            "?": "?";
+                        }>;
+                    }, z$1.core.$strict>>;
+                    aheadCount: z$1.ZodNumber;
+                    behindCount: z$1.ZodNumber;
+                    commitCount: z$1.ZodNumber;
+                    hasCommittedUnmergedChanges: z$1.ZodBoolean;
+                    mergeBaseBranch: z$1.ZodString;
+                }, z$1.core.$strict>>;
+            }, z$1.core.$strict>;
+        }, z$1.core.$strict>], "state">;
+        pullRequest: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            state: z$1.ZodLiteral<"pending">;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"not_applicable">;
+            refreshedAt: z$1.ZodNumber;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"unavailable">;
+            refreshedAt: z$1.ZodNumber;
+            reason: z$1.ZodObject<{
+                code: z$1.ZodString;
+                message: z$1.ZodString;
+            }, z$1.core.$strict>;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"available">;
+            refreshedAt: z$1.ZodNumber;
+            pullRequest: z$1.ZodNullable<z$1.ZodObject<{
+                number: z$1.ZodNumber;
+                title: z$1.ZodString;
+                state: z$1.ZodEnum<{
+                    draft: "draft";
+                    open: "open";
+                    merged: "merged";
+                    closed: "closed";
+                }>;
+                url: z$1.ZodString;
+                baseRefName: z$1.ZodString;
+                headRefName: z$1.ZodString;
+                updatedAt: z$1.ZodString;
+                checks: z$1.ZodObject<{
+                    state: z$1.ZodEnum<{
+                        unknown: "unknown";
+                        pending: "pending";
+                        passing: "passing";
+                        failing: "failing";
+                        no_checks: "no_checks";
+                    }>;
+                    totalCount: z$1.ZodNumber;
+                    passedCount: z$1.ZodNumber;
+                    failedCount: z$1.ZodNumber;
+                    pendingCount: z$1.ZodNumber;
+                }, z$1.core.$strict>;
+                review: z$1.ZodObject<{
+                    state: z$1.ZodEnum<{
+                        none: "none";
+                        approved: "approved";
+                        changes_requested: "changes_requested";
+                        review_required: "review_required";
+                        review_requested: "review_requested";
+                    }>;
+                    reviewRequestCount: z$1.ZodNumber;
+                }, z$1.core.$strict>;
+                mergeability: z$1.ZodObject<{
+                    state: z$1.ZodEnum<{
+                        unknown: "unknown";
+                        draft: "draft";
+                        mergeable: "mergeable";
+                        conflicts: "conflicts";
+                        blocked: "blocked";
+                    }>;
+                    mergeStateStatus: z$1.ZodNullable<z$1.ZodEnum<{
+                        BEHIND: "BEHIND";
+                        BLOCKED: "BLOCKED";
+                        CLEAN: "CLEAN";
+                        DIRTY: "DIRTY";
+                        DRAFT: "DRAFT";
+                        HAS_HOOKS: "HAS_HOOKS";
+                        UNKNOWN: "UNKNOWN";
+                        UNSTABLE: "UNSTABLE";
+                    }>>;
+                    mergeable: z$1.ZodNullable<z$1.ZodEnum<{
+                        UNKNOWN: "UNKNOWN";
+                        CONFLICTING: "CONFLICTING";
+                        MERGEABLE: "MERGEABLE";
+                    }>>;
+                }, z$1.core.$strict>;
+                attention: z$1.ZodEnum<{
+                    none: "none";
+                    draft: "draft";
+                    merged: "merged";
+                    closed: "closed";
+                    changes_requested: "changes_requested";
+                    review_requested: "review_requested";
+                    conflicts: "conflicts";
+                    blocked: "blocked";
+                    checks_failed: "checks_failed";
+                    checks_pending: "checks_pending";
+                    ready_to_merge: "ready_to_merge";
+                }>;
+            }, z$1.core.$strict>>;
+        }, z$1.core.$strict>], "state">;
+    }, z$1.core.$strict>;
 }, z$1.core.$strip>;
 type ThreadResponse = z$1.infer<typeof threadResponseSchema>;
 declare const threadGetQuerySchema: z$1.ZodObject<{
@@ -8782,6 +9663,182 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
         hostReconnectGraceExpiresAt: z$1.ZodNullable<z$1.ZodNumber>;
     }, z$1.core.$strip>;
     canSpawnChild: z$1.ZodBoolean;
+    environmentStatusSummary: z$1.ZodObject<{
+        git: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            state: z$1.ZodLiteral<"pending">;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"not_applicable">;
+            refreshedAt: z$1.ZodNumber;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"unavailable">;
+            refreshedAt: z$1.ZodNumber;
+            reason: z$1.ZodObject<{
+                code: z$1.ZodString;
+                message: z$1.ZodString;
+            }, z$1.core.$strict>;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"available">;
+            refreshedAt: z$1.ZodNumber;
+            snapshot: z$1.ZodObject<{
+                checkout: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"branch">;
+                    branchName: z$1.ZodString;
+                    headSha: z$1.ZodNullable<z$1.ZodString>;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"detached">;
+                    headSha: z$1.ZodNullable<z$1.ZodString>;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"unborn">;
+                    branchName: z$1.ZodNullable<z$1.ZodString>;
+                }, z$1.core.$strip>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"unknown">;
+                    reason: z$1.ZodString;
+                }, z$1.core.$strip>], "kind">;
+                currentBranch: z$1.ZodNullable<z$1.ZodString>;
+                defaultBranch: z$1.ZodString;
+                hasChanges: z$1.ZodBoolean;
+                workingTree: z$1.ZodObject<{
+                    fileCount: z$1.ZodNumber;
+                    insertions: z$1.ZodNumber;
+                    deletions: z$1.ZodNumber;
+                    files: z$1.ZodArray<z$1.ZodObject<{
+                        path: z$1.ZodString;
+                        status: z$1.ZodEnum<{
+                            M: "M";
+                            A: "A";
+                            D: "D";
+                            R: "R";
+                            C: "C";
+                            U: "U";
+                            "??": "??";
+                            "?": "?";
+                        }>;
+                    }, z$1.core.$strict>>;
+                    hasUncommittedChanges: z$1.ZodBoolean;
+                    state: z$1.ZodEnum<{
+                        clean: "clean";
+                        untracked: "untracked";
+                        dirty_uncommitted: "dirty_uncommitted";
+                        committed_unmerged: "committed_unmerged";
+                        dirty_and_committed_unmerged: "dirty_and_committed_unmerged";
+                    }>;
+                }, z$1.core.$strict>;
+                mergeBase: z$1.ZodNullable<z$1.ZodObject<{
+                    fileCount: z$1.ZodNumber;
+                    insertions: z$1.ZodNumber;
+                    deletions: z$1.ZodNumber;
+                    files: z$1.ZodArray<z$1.ZodObject<{
+                        path: z$1.ZodString;
+                        status: z$1.ZodEnum<{
+                            M: "M";
+                            A: "A";
+                            D: "D";
+                            R: "R";
+                            C: "C";
+                            U: "U";
+                            "??": "??";
+                            "?": "?";
+                        }>;
+                    }, z$1.core.$strict>>;
+                    aheadCount: z$1.ZodNumber;
+                    behindCount: z$1.ZodNumber;
+                    commitCount: z$1.ZodNumber;
+                    hasCommittedUnmergedChanges: z$1.ZodBoolean;
+                    mergeBaseBranch: z$1.ZodString;
+                }, z$1.core.$strict>>;
+            }, z$1.core.$strict>;
+        }, z$1.core.$strict>], "state">;
+        pullRequest: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            state: z$1.ZodLiteral<"pending">;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"not_applicable">;
+            refreshedAt: z$1.ZodNumber;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"unavailable">;
+            refreshedAt: z$1.ZodNumber;
+            reason: z$1.ZodObject<{
+                code: z$1.ZodString;
+                message: z$1.ZodString;
+            }, z$1.core.$strict>;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            state: z$1.ZodLiteral<"available">;
+            refreshedAt: z$1.ZodNumber;
+            pullRequest: z$1.ZodNullable<z$1.ZodObject<{
+                number: z$1.ZodNumber;
+                title: z$1.ZodString;
+                state: z$1.ZodEnum<{
+                    draft: "draft";
+                    open: "open";
+                    merged: "merged";
+                    closed: "closed";
+                }>;
+                url: z$1.ZodString;
+                baseRefName: z$1.ZodString;
+                headRefName: z$1.ZodString;
+                updatedAt: z$1.ZodString;
+                checks: z$1.ZodObject<{
+                    state: z$1.ZodEnum<{
+                        unknown: "unknown";
+                        pending: "pending";
+                        passing: "passing";
+                        failing: "failing";
+                        no_checks: "no_checks";
+                    }>;
+                    totalCount: z$1.ZodNumber;
+                    passedCount: z$1.ZodNumber;
+                    failedCount: z$1.ZodNumber;
+                    pendingCount: z$1.ZodNumber;
+                }, z$1.core.$strict>;
+                review: z$1.ZodObject<{
+                    state: z$1.ZodEnum<{
+                        none: "none";
+                        approved: "approved";
+                        changes_requested: "changes_requested";
+                        review_required: "review_required";
+                        review_requested: "review_requested";
+                    }>;
+                    reviewRequestCount: z$1.ZodNumber;
+                }, z$1.core.$strict>;
+                mergeability: z$1.ZodObject<{
+                    state: z$1.ZodEnum<{
+                        unknown: "unknown";
+                        draft: "draft";
+                        mergeable: "mergeable";
+                        conflicts: "conflicts";
+                        blocked: "blocked";
+                    }>;
+                    mergeStateStatus: z$1.ZodNullable<z$1.ZodEnum<{
+                        BEHIND: "BEHIND";
+                        BLOCKED: "BLOCKED";
+                        CLEAN: "CLEAN";
+                        DIRTY: "DIRTY";
+                        DRAFT: "DRAFT";
+                        HAS_HOOKS: "HAS_HOOKS";
+                        UNKNOWN: "UNKNOWN";
+                        UNSTABLE: "UNSTABLE";
+                    }>>;
+                    mergeable: z$1.ZodNullable<z$1.ZodEnum<{
+                        UNKNOWN: "UNKNOWN";
+                        CONFLICTING: "CONFLICTING";
+                        MERGEABLE: "MERGEABLE";
+                    }>>;
+                }, z$1.core.$strict>;
+                attention: z$1.ZodEnum<{
+                    none: "none";
+                    draft: "draft";
+                    merged: "merged";
+                    closed: "closed";
+                    changes_requested: "changes_requested";
+                    review_requested: "review_requested";
+                    conflicts: "conflicts";
+                    blocked: "blocked";
+                    checks_failed: "checks_failed";
+                    checks_pending: "checks_pending";
+                    ready_to_merge: "ready_to_merge";
+                }>;
+            }, z$1.core.$strict>>;
+        }, z$1.core.$strict>], "state">;
+    }, z$1.core.$strict>;
     environment: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodObject<{
         id: z$1.ZodString;
         name: z$1.ZodNullable<z$1.ZodString>;
