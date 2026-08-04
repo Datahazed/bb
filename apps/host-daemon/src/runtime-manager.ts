@@ -610,6 +610,22 @@ export class RuntimeManager {
     this.managedShellEnv = { ...shellEnv };
   }
 
+  /**
+   * Tears down the resident provider-maintenance runtime so the next caller
+   * gets a fresh one. In-flight maintenance RPCs fail with "Runtime shutting
+   * down" and are expected to retry; callers refetch after invalidation.
+   */
+  async invalidateProviderMaintenanceRuntime(): Promise<void> {
+    try {
+      await this.shutdownProviderMaintenanceRuntime();
+    } catch (error) {
+      this.options.logger?.warn(
+        { err: error },
+        "Failed to shut down provider maintenance runtime during invalidation",
+      );
+    }
+  }
+
   private async shutdownProviderMaintenanceRuntime(): Promise<void> {
     const existingRuntime = this.providerMaintenanceRuntime;
     const pendingRuntime = this.pendingProviderMaintenanceRuntime;
