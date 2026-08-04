@@ -331,10 +331,10 @@ export interface ListThreadsOptions {
   hasParent?: boolean;
   /** Restrict to threads spawned from this source thread. */
   sourceThreadId?: string;
-  /** Restrict to threads spawned with this origin (fork or side-chat). */
+  /** Restrict to threads spawned with this origin. */
   originKind?: ThreadOriginKind;
-  /** Exclude source-derived side-chat threads. */
-  excludeSideChats?: boolean;
+  /** Restrict to threads spawned by this plugin. */
+  originPluginId?: string;
   /** @deprecated Use originKind. */
   childOrigin?: ThreadChildOrigin;
   limit?: number;
@@ -348,7 +348,6 @@ type ThreadRow = typeof threads.$inferSelect;
 export interface ListThreadsForProjectsOptions {
   projectIds: readonly string[];
   archived?: boolean;
-  excludeOriginKind?: ThreadOriginKind;
 }
 
 export interface PinThreadArgs {
@@ -552,14 +551,14 @@ export interface CountNonDeletedAssignedChildThreadsArgs {
   parentThreadId: string;
 }
 
+export interface ListUnarchivedHiddenSourceThreadsArgs {
+  sourceThreadId: string;
+}
+
 export interface ListUnarchivedAssignedChildThreadsArgs {
   parentThreadId: string;
 }
 
-export interface ListUnarchivedSourceThreadsArgs {
-  originKind?: ThreadOriginKind;
-  sourceThreadId: string;
-}
 
 export interface ListNonDeletedChildThreadsArgs {
   parentThreadId: string;
@@ -643,17 +642,8 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
     originKind
       ? eq(threads.originKind, originKind)
       : undefined,
-    options.excludeSideChats
-      ? and(
-          or(
-            isNull(threads.originKind),
-            ne(threads.originKind, "side-chat"),
-          ),
-          or(
-            isNull(threads.childOrigin),
-            ne(threads.childOrigin, "side-chat"),
-          ),
-        )
+    options.originPluginId
+      ? eq(threads.originPluginId, options.originPluginId)
       : undefined,
     options.archived === true
       ? isNotNull(threads.archivedAt)
@@ -675,18 +665,6 @@ function buildListThreadsForProjectsFilters(
     inArray(threads.projectId, [...options.projectIds]),
     eq(threads.visibility, "visible"),
     isNull(threads.deletedAt),
-    options.excludeOriginKind
-      ? and(
-          or(
-            isNull(threads.originKind),
-            ne(threads.originKind, options.excludeOriginKind),
-          ),
-          or(
-            isNull(threads.childOrigin),
-            ne(threads.childOrigin, options.excludeOriginKind),
-          ),
-        )
-      : undefined,
     options.archived === true
       ? isNotNull(threads.archivedAt)
       : options.archived === false
@@ -1141,13 +1119,6 @@ export function listThreadsWithPendingInteractionState(
  * this summary for every registered server.
  */
 export function hasActiveThreadAttention(db: DbConnection): boolean {
-  const visibleThread = or(
-    ne(threads.originKind, "side-chat"),
-    and(
-      isNull(threads.originKind),
-      or(isNull(threads.childOrigin), ne(threads.childOrigin, "side-chat")),
-    ),
-  );
   const unreadThread = or(
     isNull(threads.lastReadAt),
     lt(threads.lastReadAt, threads.latestAttentionAt),
@@ -1168,7 +1139,6 @@ export function hasActiveThreadAttention(db: DbConnection): boolean {
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
         eq(threads.visibility, "visible"),
-        visibleThread,
         or(unreadThread, isNotNull(pendingInteractions.id)),
       ),
     )
@@ -1268,9 +1238,15 @@ export function listUnarchivedAssignedChildThreads(
     .all();
 }
 
-export function listUnarchivedSourceThreads(
+
+/**
+ * Live hidden threads forked from this source. A hidden fork has no navigable
+ * row of its own, so it retires with the thread it was derived from — the
+ * cascade is structural rather than owned by whichever plugin created it.
+ */
+export function listUnarchivedHiddenSourceThreads(
   db: ThreadWriteConnection,
-  args: ListUnarchivedSourceThreadsArgs,
+  args: ListUnarchivedHiddenSourceThreadsArgs,
 ): ThreadRow[] {
   return db
     .select()
@@ -1278,7 +1254,7 @@ export function listUnarchivedSourceThreads(
     .where(
       and(
         eq(threads.sourceThreadId, args.sourceThreadId),
-        args.originKind ? eq(threads.originKind, args.originKind) : undefined,
+        eq(threads.visibility, "hidden"),
         isNull(threads.archivedAt),
         isNull(threads.deletedAt),
       ),

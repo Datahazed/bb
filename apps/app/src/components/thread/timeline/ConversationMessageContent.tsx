@@ -92,12 +92,8 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
-  /** `childOrigin` of the SENDER thread (the cross-thread "Message from" source),
-   * so a message handed back from a side chat reads "Message from side chat". */
-  senderChildOrigin: ThreadChildOrigin | null;
-  /** The sender thread is a side-chat plugin hidden fork — the plugin-era
-   * side chat. Renders the same "Message from side chat" affordance, opening
-   * the plugin's panel instead of a legacy tab. */
+  /** The sender thread is one of the side-chat plugin's hidden forks, so the
+   * row reads "Replying to side chat" and its name opens the plugin panel. */
   senderIsPluginSideChat: boolean;
   // Family-B taxonomy fields off the row, required and always supplied (legacy
   // rows carry `unlabeled` + `null`). They drive the `system`-initiated message
@@ -147,7 +143,6 @@ export interface ConversationMessageContentAssistantProps
    * Open a side chat anchored on this agent message. Omitted when side chats are
    * unavailable (no host secondary panel) — the bar then renders without it.
    */
-  onSideChat?: () => void;
   /**
    * Hand this agent message back to the main thread. Supplied only inside a side
    * chat; omitted on the main timeline (a main message has no main thread).
@@ -200,7 +195,6 @@ interface UserConversationMessageProps {
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
   senderThreadTitle: string | null;
-  senderChildOrigin: ThreadChildOrigin | null;
   senderIsPluginSideChat: boolean;
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
   systemMessageSubject: TimelineUserConversationRow["systemMessageSubject"];
@@ -214,7 +208,6 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   onAddToChat?: ThreadTimelineAddToChatHandler;
   onFork?: () => void;
-  onSideChat?: () => void;
   onSendToMain?: () => void;
   forkDisabled?: boolean;
   onSelectProse?: (selection: MessageProseSelection | null) => void;
@@ -394,7 +387,6 @@ function UserConversationMessage({
   onTitleAction,
   senderThreadId,
   senderThreadTitle,
-  senderChildOrigin,
   senderIsPluginSideChat,
   systemMessageKind,
   systemMessageSubject,
@@ -421,12 +413,9 @@ function UserConversationMessage({
         onTitleAction={onTitleAction}
         sourceKind="agent"
         sourceName={
-          senderChildOrigin === "side-chat" || senderIsPluginSideChat
-            ? "side chat"
-            : (senderThreadTitle ?? "Agent")
+          senderIsPluginSideChat ? "side chat" : (senderThreadTitle ?? "Agent")
         }
         sourceThreadId={senderThreadId}
-        sourceIsSideChat={senderChildOrigin === "side-chat"}
         sourceIsPluginSideChat={senderIsPluginSideChat}
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
@@ -457,7 +446,6 @@ function UserConversationMessage({
         sourceKind="system"
         sourceName="BB"
         sourceThreadId={null}
-        sourceIsSideChat={false}
         sourceIsPluginSideChat={false}
         systemMessageKind={systemMessageKind}
         systemMessageSubject={systemMessageSubject}
@@ -528,7 +516,6 @@ function AssistantConversationMessage({
   id,
   onAddToChat,
   onFork,
-  onSideChat,
   onSendToMain,
   forkDisabled,
   onSelectProse,
@@ -679,7 +666,6 @@ function AssistantConversationMessage({
               addToChatAttachments={addToChatAttachments}
               onAddToChat={onAddToChat}
               onFork={onFork}
-              onSideChat={onSideChat}
               onSendToMain={onSendToMain}
               disabled={forkDisabled}
               pluginActions={pluginActions}
@@ -735,7 +721,6 @@ export function ConversationMessageContent(
         onTitleAction={props.onTitleAction}
         senderThreadId={props.senderThreadId}
         senderThreadTitle={props.senderThreadTitle}
-        senderChildOrigin={props.senderChildOrigin}
         senderIsPluginSideChat={props.senderIsPluginSideChat}
         systemMessageKind={props.systemMessageKind}
         systemMessageSubject={props.systemMessageSubject}
@@ -753,7 +738,6 @@ export function ConversationMessageContent(
       pluginActions={props.pluginActions}
       onAddToChat={props.onAddToChat}
       onFork={props.onFork}
-      onSideChat={props.onSideChat}
       onSendToMain={props.onSendToMain}
       forkDisabled={props.forkDisabled}
       onSelectProse={props.onSelectProse}

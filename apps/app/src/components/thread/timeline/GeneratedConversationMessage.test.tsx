@@ -41,7 +41,6 @@ function renderChildCompleted() {
           childOrigin={null}
           senderThreadId={null}
           senderThreadTitle={null}
-          senderChildOrigin={null}
           resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind="child-completed"
           systemMessageSubject={{
@@ -90,12 +89,12 @@ const OVERFLOWING_ONE_LINE_AGENT_BODY =
 function renderAgentMessage(
   text = AGENT_BODY,
   {
-    senderChildOrigin,
+    senderIsPluginSideChat = false,
     senderThreadTitle = "Worker",
     onTitleAction,
   }: {
     onTitleAction?: TimelineTitleActionResolver;
-    senderChildOrigin?: "side-chat" | null;
+    senderIsPluginSideChat?: boolean;
     senderThreadTitle?: string;
   } = {},
 ) {
@@ -125,8 +124,7 @@ function renderAgentMessage(
           childOrigin={null}
           senderThreadId="thr_agent"
           senderThreadTitle={senderThreadTitle}
-          senderChildOrigin={senderChildOrigin ?? null}
-          senderIsPluginSideChat={false}
+          senderIsPluginSideChat={senderIsPluginSideChat}
           onTitleAction={onTitleAction}
           resolveSegmentLinkHref={resolveThreadLink}
           systemMessageKind="unlabeled"
@@ -235,26 +233,39 @@ describe("GeneratedConversationMessage markdown body", () => {
   });
 
   it("renders side-chat handoffs as markdown", () => {
-    const openSideChat = vi.fn();
     renderAgentMessage("**Ready** to merge.\n\n- checks passed", {
-      senderChildOrigin: "side-chat",
-      onTitleAction: (action) =>
-        action.kind === "open-side-chat" ? openSideChat : null,
+      senderIsPluginSideChat: true,
     });
 
     expect(screen.getByText("Ready").tagName).toBe("STRONG");
     expect(screen.queryByText("**Ready** to merge.")).toBeNull();
 
     const toggle = screen.getByRole("button", {
-      name: /Message from side chat/u,
+      name: /Replying to side chat/u,
     });
-    fireEvent.click(screen.getByRole("link", { name: "side chat" }));
-    expect(openSideChat).toHaveBeenCalledOnce();
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
 
     fireEvent.click(toggle);
 
     expect(screen.getByRole("list").textContent).toContain("checks passed");
+  });
+
+  // A side chat opens in the plugin's panel, so its name carries the panel
+  // title action rather than a route link to the thread.
+  it("opens a side-chat sender in the plugin panel instead of linking it", () => {
+    const openPanel = vi.fn();
+    const { container } = renderAgentMessage("Handed back.", {
+      senderIsPluginSideChat: true,
+      onTitleAction: (action) =>
+        action.kind === "open-plugin-side-chat" ? openPanel : null,
+    });
+
+    const sourcePill = container.querySelector(
+      '[data-prompt-mention-serialized-text="@thread:thr_agent"]',
+    );
+    expect(sourcePill?.tagName).not.toBe("A");
+    fireEvent.click(sourcePill as Element);
+    expect(openPanel).toHaveBeenCalledOnce();
   });
 });
 

@@ -101,10 +101,12 @@ describe("threads", () => {
       expect(hasActiveThreadAttention(db)).toBe(false);
 
       const sideChat = createThread(db, noopNotifier, {
-        originKind: "side-chat",
+        originKind: "fork",
+        originPluginId: "side-chat",
         projectId: project.id,
         providerId: "codex",
         sourceThreadId: thread.id,
+        visibility: "hidden",
       });
       vi.setSystemTime(3_000);
       markThreadAttentionRequested(db, noopNotifier, {
@@ -1583,19 +1585,8 @@ describe("thread originKind compatibility", () => {
       parentThreadId: parent.id,
       childOrigin: "fork",
     });
-    const sideChat = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      parentThreadId: parent.id,
-      childOrigin: "side-chat",
-    });
-
     expect(getThread(db, fork.id)).toMatchObject({
       originKind: "fork",
-      childOrigin: null,
-    });
-    expect(getThread(db, sideChat.id)).toMatchObject({
-      originKind: "side-chat",
       childOrigin: null,
     });
   });
@@ -1612,36 +1603,47 @@ describe("thread originKind compatibility", () => {
       parentThreadId: parent.id,
       childOrigin: "fork",
     });
-    const sideChat = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      parentThreadId: parent.id,
-      childOrigin: "side-chat",
-    });
-
     const forks = listThreads(db, {
       projectId: project.id,
       childOrigin: "fork",
     });
     expect(forks.map((thread) => thread.id)).toEqual([fork.id]);
 
-    const sideChats = listThreads(db, {
-      projectId: project.id,
-      childOrigin: "side-chat",
-    });
-    expect(sideChats.map((thread) => thread.id)).toEqual([sideChat.id]);
-
     const all = listThreads(db, { projectId: project.id });
     expect(all.map((thread) => thread.id).sort()).toEqual(
-      [parent.id, fork.id, sideChat.id].sort(),
-    );
-
-    const withoutSideChats = listThreads(db, {
-      projectId: project.id,
-      excludeSideChats: true,
-    });
-    expect(withoutSideChats.map((thread) => thread.id).sort()).toEqual(
       [parent.id, fork.id].sort(),
     );
+  });
+
+  // A plugin sweeping its own spawned threads must not read another plugin's
+  // rows, so this narrowing belongs in the query.
+  it("filters listings by originPluginId", () => {
+    const { db, project } = setup();
+    const parent = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const ownFork = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      parentThreadId: parent.id,
+      originKind: "fork",
+      originPluginId: "side-chat",
+    });
+    createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      parentThreadId: parent.id,
+      originKind: "fork",
+      originPluginId: "some-other-plugin",
+    });
+
+    const own = listThreads(db, {
+      projectId: project.id,
+      originKind: "fork",
+      originPluginId: "side-chat",
+    });
+
+    expect(own.map((thread) => thread.id)).toEqual([ownFork.id]);
   });
 });

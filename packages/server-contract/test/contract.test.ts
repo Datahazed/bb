@@ -222,13 +222,13 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     fields: [
       "threadListQuerySchema.archived",
       "threadListQuerySchema.childOrigin",
-      "threadListQuerySchema.excludeSideChats",
       "threadListQuerySchema.sectionId",
       "threadListQuerySchema.limit",
       "threadListQuerySchema.hasParent",
       "threadListQuerySchema.includeHidden",
       "threadListQuerySchema.offset",
       "threadListQuerySchema.originKind",
+      "threadListQuerySchema.originPluginId",
       "threadListQuerySchema.parentThreadId",
       "threadListQuerySchema.projectId",
       "threadListQuerySchema.sourceThreadId",
@@ -1339,30 +1339,6 @@ describe("server-contract canonical schemas", () => {
       startedOnBehalfOf: null,
     });
     expect(parsed.input).toEqual([]);
-  });
-
-  it("accepts empty input for a source-derived side chat preload", () => {
-    const parsed = createThreadRequestSchema.parse({
-      projectId: "proj_123",
-      providerId: "codex",
-      origin: "app",
-      input: [],
-      environment: {
-        type: "host",
-        hostId: "host_abc",
-        workspace: { type: "unmanaged", path: null },
-      },
-      originKind: "side-chat",
-      sourceSeqEnd: 12,
-      sourceThreadId: "thr_source",
-      startedOnBehalfOf: null,
-    });
-
-    expect(parsed.input).toEqual([]);
-    expect(parsed.originKind).toBe("side-chat");
-    expect(parsed.sourceSeqEnd).toBe(12);
-    expect(parsed.sourceThreadId).toBe("thr_source");
-    expect(parsed.startedOnBehalfOf).toBeNull();
   });
 
   it("rejects sourceSeqEnd on normal thread starts", () => {

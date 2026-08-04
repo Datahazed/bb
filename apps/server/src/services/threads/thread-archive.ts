@@ -1,7 +1,7 @@
 import {
   listLiveThreadsInEnvironment,
   listUnarchivedAssignedChildThreads,
-  listUnarchivedSourceThreads,
+  listUnarchivedHiddenSourceThreads,
 } from "@bb/db";
 import type { Environment, Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
@@ -72,6 +72,34 @@ export function archiveThreadWithLifecycleEffects(
   return archivedThread;
 }
 
+/**
+ * Archive one thread plus the hidden forks that retire with it. A hidden fork
+ * (a side chat, say) has no row of its own to reach, so it must not outlive its
+ * source. Structural rather than plugin-owned: archiving cannot depend on
+ * whichever plugin created the fork still being enabled.
+ */
+export function archiveThreadAndHiddenSourceForks(
+  deps: AppDeps,
+  args: ArchiveThreadWithLifecycleEffectsArgs,
+): Thread | null {
+  const archivedThread = archiveThreadWithLifecycleEffects(deps, args);
+  if (!archivedThread) {
+    return null;
+  }
+  for (const fork of listUnarchivedHiddenSourceThreads(deps.db, {
+    sourceThreadId: archivedThread.id,
+  })) {
+    archiveThreadWithLifecycleEffects(deps, {
+      environment: requireThreadHostCommandEnvironment({
+        db: deps.db,
+        thread: fork,
+      }),
+      thread: fork,
+    });
+  }
+  return archivedThread;
+}
+
 export function archiveEnvironmentThreads(
   deps: AppDeps,
   args: ArchiveEnvironmentThreadsArgs,
@@ -116,13 +144,14 @@ export function archiveThreadAndChildren(
   const childThreads = listUnarchivedAssignedChildThreads(deps.db, {
     parentThreadId: args.parentThread.id,
   });
-  const sideChatThreads = listUnarchivedSourceThreads(deps.db, {
+  // Collected here rather than through archiveThreadAndHiddenSourceForks so
+  // every cascaded id lands in this route's response.
+  const hiddenSourceThreads = listUnarchivedHiddenSourceThreads(deps.db, {
     sourceThreadId: args.parentThread.id,
-    originKind: "side-chat",
   });
   const threads: ArchiveThreadWithLifecycleEffectsArgs["thread"][] = [
     ...childThreads,
-    ...sideChatThreads,
+    ...hiddenSourceThreads,
   ].filter((thread) => thread.id !== args.parentThread.id);
   if (args.parentThread.archivedAt === null) {
     threads.push(args.parentThread);

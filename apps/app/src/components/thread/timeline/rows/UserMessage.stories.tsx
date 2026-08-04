@@ -531,8 +531,7 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="Walk me through how ThreadDetailView wires the prompt context banner."
@@ -551,8 +550,7 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="Walk me through how ThreadDetailView wires the prompt context banner."
@@ -574,8 +572,7 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={mentionedMessageText}
@@ -598,8 +595,7 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={longMarkdownText}
@@ -621,8 +617,7 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="Hold on — also include the queue API in that audit, please."
@@ -644,8 +639,7 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="Hold on — also include the queue API in that audit, please."
@@ -664,8 +658,7 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="Repro of the layout regression in the prompt context banner."
@@ -688,8 +681,7 @@ export function Overview() {
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="Three screenshots from the design review and the spec doc."
@@ -720,8 +712,7 @@ export function Overview() {
             resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_ux3h8sxg65"
             senderThreadTitle="Render Rich Thread Names"
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={agentInitiatedMessage.text}
@@ -734,7 +725,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="from a side chat"
-        hint='a message handed back from a side chat reads "Message from side chat" (senderChildOrigin "side-chat")'
+        hint='a message handed back from a side chat reads "Replying to side chat"'
       >
         <TimelineStage>
           <ConversationMessageContent
@@ -745,8 +736,7 @@ export function Overview() {
             onTitleAction={() => () => undefined}
             senderThreadId="thr_side_chat"
             senderThreadTitle="new thread"
-            senderChildOrigin="side-chat"
-            senderIsPluginSideChat={false}
+            senderIsPluginSideChat
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={agentInitiatedMessage.text}
@@ -769,8 +759,7 @@ export function Overview() {
             resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_h4u3fgr6be"
             senderThreadTitle="Full QA post-rebase: prompt timeline app data voice"
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={agentSteerMessage.text}
@@ -785,8 +774,7 @@ export function Overview() {
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={systemAssignedMessage.text}
@@ -808,8 +796,7 @@ export function Overview() {
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={systemAssignedMessage.text}
@@ -831,8 +818,7 @@ export function Overview() {
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={systemChildOutcomeBatchMessage.text}
@@ -854,8 +840,7 @@ export function Overview() {
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
-            senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+            senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={longSystemMessage.text}
@@ -882,8 +867,7 @@ export function ParentChildSystemMessages() {
               senderThreadId={null}
               senderThreadTitle={null}
               childOrigin={null}
-              senderChildOrigin={null}
-        senderIsPluginSideChat={false}
+              senderIsPluginSideChat={false}
               resolveSegmentLinkHref={resolveThreadLink}
               systemMessageKind="unlabeled"
               systemMessageSubject={null}

@@ -153,9 +153,6 @@ export const systemExperiments = sqliteTable("system_experiments", {
     mode: "boolean",
   }).notNull(),
   toolsHub: integer("tools_hub", { mode: "boolean" }).notNull().default(false),
-  sideChatPlugin: integer("side_chat_plugin", { mode: "boolean" })
-    .notNull()
-    .default(false),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -535,6 +532,11 @@ export const threads = sqliteTable(
     index("threads_source_origin_idx").on(
       table.sourceThreadId,
       table.originKind,
+    ),
+    // The side-chat plugin's hourly sweep pages through its own live forks.
+    index("threads_origin_plugin_archived_idx").on(
+      table.originPluginId,
+      table.archivedAt,
     ),
     index("threads_section_archived_deleted_idx").on(
       table.sectionId,
