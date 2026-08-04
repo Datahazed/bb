@@ -1316,94 +1316,113 @@ function AgentChat() {
   );
 }
 
-/* ── Band 3 visual: mobile automation thread ─────────────────────── */
+/* ── Band visual: bb builds itself a plugin ───────────────────────── */
 
-type AutomationMessage = {
+type CustomizeMessage = {
   role: "user" | "agent" | "tool";
   text: string;
 };
 
-type AutomationScenario = {
+type CustomizeTask = {
+  key: string;
+  title: string;
+  status: "in_progress" | "todo" | "backlog";
+  priority: "urgent" | "high" | "medium" | "low";
+};
+
+type CustomizeScenario = {
   title: string;
   prompt: string;
   promptWidth: string;
   branch: string;
-  messages: AutomationMessage[];
+  messages: CustomizeMessage[];
+  /** The panel the agent just built, revealed once the thread lands. */
+  panel: {
+    name: string;
+    tasks: CustomizeTask[];
+  };
 };
 
-const AUTOMATION_SCENARIOS: AutomationScenario[] = [
-  {
-    title: "Issue triage",
-    prompt: "triage every new issue",
-    promptWidth: "144px",
-    branch: "bb/issue-triage",
-    messages: [
-      { role: "user", text: "triage every new issue" },
+const CUSTOMIZE_SCENARIO: CustomizeScenario = {
+  title: "Build a tasks plugin",
+  prompt: "Add a task management system",
+  // Measured width of the prompt at the composer's 13.5px Inter, plus a few px
+  // of slack for the metric-adjusted fallback face. Too small clips the tail.
+  promptWidth: "210px",
+  branch: "bb/tasks-plugin",
+  messages: [
+    { role: "user", text: "Add a task management system" },
+    {
+      role: "agent",
+      text: "I'll build it as a bb plugin and mount it in your sidebar.",
+    },
+    { role: "tool", text: "wrote plugin: tasks" },
+    { role: "tool", text: "registered panel + bb tasks CLI" },
+    { role: "agent", text: "Done. Tasks is live, and your agents can use it." },
+  ],
+  panel: {
+    name: "Tasks",
+    tasks: [
       {
-        role: "agent",
-        text: "I'll set up an automation for every new issue.",
+        key: "BB-1",
+        title: "Ship task delegation",
+        status: "in_progress",
+        priority: "high",
       },
-      { role: "tool", text: "created trigger: on new issue" },
-      { role: "tool", text: "configured action: open triage thread" },
       {
-        role: "agent",
-        text: "Done. New issues will get a local bb thread and Slack summary.",
+        key: "BB-2",
+        title: "Wire up the tasks CLI",
+        status: "todo",
+        priority: "medium",
+      },
+      {
+        key: "BB-3",
+        title: "Add label filters",
+        status: "todo",
+        priority: "low",
+      },
+      {
+        key: "BB-4",
+        title: "Nightly changelog draft",
+        status: "in_progress",
+        priority: "medium",
+      },
+      {
+        key: "BB-5",
+        title: "Triage flaky integration tests",
+        status: "backlog",
+        priority: "high",
+      },
+      {
+        key: "BB-6",
+        title: "Port the settings panel",
+        status: "backlog",
+        priority: "low",
+      },
+      {
+        key: "BB-7",
+        title: "Document the plugin API",
+        status: "backlog",
+        priority: "medium",
       },
     ],
   },
-  {
-    title: "Nightly docs sync",
-    prompt: "run nightly docs sync",
-    promptWidth: "137px",
-    branch: "bb/sync-docs",
-    messages: [
-      { role: "user", text: "run nightly docs sync" },
-      {
-        role: "agent",
-        text: "I'll create a local 2am automation for the docs sync.",
-      },
-      { role: "tool", text: "created schedule: 0 2 * * *" },
-      { role: "tool", text: "configured action: run docs worker" },
-      {
-        role: "agent",
-        text: "Done. Each run will open a thread and prepare the PR.",
-      },
-    ],
-  },
-  {
-    title: "Watch failing jobs",
-    prompt: "watch failing jobs",
-    promptWidth: "112px",
-    branch: "bb/fix-ci",
-    messages: [
-      { role: "user", text: "watch failing jobs" },
-      {
-        role: "agent",
-        text: "I'll set up an automation that reacts to failed CI jobs.",
-      },
-      { role: "tool", text: "created trigger: on job failed" },
-      { role: "tool", text: "configured action: inspect logs and spawn fix" },
-      {
-        role: "agent",
-        text: "Done. Failures will start a worker thread automatically.",
-      },
-    ],
-  },
-];
+};
 
-// A phone-sized bb thread preview: a prompt types into the composer, sends, then
-// the matching automation transcript streams into the feed.
-function AutomationRun() {
-  const { cycle, leaving } = useCycle(7600, 500);
-  const run = AUTOMATION_SCENARIOS[cycle % AUTOMATION_SCENARIOS.length];
+// A phone-sized bb thread preview: the prompt types into the composer, sends,
+// the build transcript streams into the feed, and the panel the agent just
+// wrote slides up over the thread — bb extending itself, on screen.
+function CustomizeBuild() {
+  const { cycle, leaving } = useCycle(10600, 500);
+  const run = CUSTOMIZE_SCENARIO;
   const promptStyle = {
-    "--automation-prompt-width": run.promptWidth,
+    "--customize-prompt-width": run.promptWidth,
   } as CSSProperties;
   return (
-    <div className="mockup-wrap mockup-wrap-automation">
+    <div className="mockup-wrap mockup-wrap-customize">
       <div
-        className="mock mock-automation-mobile"
-        aria-label="Mobile bb preview showing an automation prompt and streamed thread messages"
+        className="mock mock-customize-mobile"
+        aria-label="Mobile bb preview: a prompt asks for a task management system, and the agent builds it as a plugin"
       >
         <div className="mock-bar">
           <div className="bar-left">
@@ -1413,30 +1432,25 @@ function AutomationRun() {
           </div>
           <div className="bar-main">
             <span className="bar-title">{run.title}</span>
-            <span className="bar-actions">
-              <span className="commit-btn" aria-hidden>
-                Automation
-              </span>
-            </span>
           </div>
         </div>
 
         <div
           className={
             leaving
-              ? "mock-body automation-body leaving"
-              : "mock-body automation-body"
+              ? "mock-body customize-body leaving"
+              : "mock-body customize-body"
           }
           key={cycle}
         >
           <div className="main">
-            <div className="feed feed-live automation-feed">
+            <div className="feed feed-live customize-feed">
               {run.messages.map((message, i) => {
                 const style = { animationDelay: `${3.2 + i * 0.68}s` };
                 if (message.role === "user") {
                   return (
                     <div
-                      className="msg-user automation-msg"
+                      className="msg-user customize-msg"
                       key={`${message.role}-${message.text}`}
                       style={style}
                     >
@@ -1447,7 +1461,7 @@ function AutomationRun() {
                 if (message.role === "tool") {
                   return (
                     <div
-                      className="msg-step automation-msg automation-tool"
+                      className="msg-step customize-msg customize-tool"
                       key={`${message.role}-${message.text}`}
                       style={style}
                     >
@@ -1458,7 +1472,7 @@ function AutomationRun() {
                 }
                 return (
                   <div
-                    className="msg-say automation-msg"
+                    className="msg-say customize-msg"
                     key={`${message.role}-${message.text}`}
                     style={style}
                   >
@@ -1468,14 +1482,14 @@ function AutomationRun() {
               })}
             </div>
 
-            <div className="composer automation-composer">
-              <div className="composer-box automation-composer-box">
+            <div className="composer customize-composer">
+              <div className="composer-box customize-composer-box">
                 <div className="composer-top">
-                  <span className="composer-input automation-typeahead">
-                    <span className="automation-type-text" style={promptStyle}>
+                  <span className="composer-input customize-typeahead">
+                    <span className="customize-type-text" style={promptStyle}>
                       {run.prompt}
                     </span>
-                    <span className="automation-caret" aria-hidden />
+                    <span className="customize-caret" aria-hidden />
                   </span>
                   <Maximize2 className="cb-expand" />
                 </div>
@@ -1487,13 +1501,13 @@ function AutomationRun() {
                   </span>
                   <span className="composer-actions" aria-hidden>
                     <Paperclip className="composer-clip" />
-                    <span className="send-btn automation-send">
+                    <span className="send-btn customize-send">
                       <SendIcon className="send-ic" />
                     </span>
                   </span>
                 </div>
               </div>
-              <div className="context-row automation-context">
+              <div className="context-row customize-context">
                 <span className="ctx">
                   <GitBranchIcon className="ctx-ic" />
                   <span className="ctx-branch">{run.branch}</span>
@@ -1502,13 +1516,42 @@ function AutomationRun() {
               </div>
             </div>
           </div>
+
+          {/* The panel the agent just wrote, sliding up over the thread it was
+              built in. Purely decorative — the transcript above already states
+              the outcome for assistive tech. */}
+          <div className="plugin-panel" aria-hidden>
+            <div className="plugin-panel-bar">
+              <span className="plugin-panel-name">{run.panel.name}</span>
+              <span className="plugin-panel-badge">Plugin</span>
+            </div>
+            <div className="plugin-panel-rows">
+              {run.panel.tasks.map((task, i) => (
+                <div
+                  className="plugin-task"
+                  key={task.key}
+                  style={{ animationDelay: `${8.3 + i * 0.14}s` }}
+                >
+                  <span
+                    className={`plugin-task-status is-${task.status}`}
+                    aria-hidden
+                  />
+                  <span className="plugin-task-key">{task.key}</span>
+                  <span className="plugin-task-title">{task.title}</span>
+                  <span className={`plugin-task-prio is-${task.priority}`}>
+                    {task.priority}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/* ── Band 5 visual: one agent spawns and manages a thread per provider ── */
+/* ── Band visual: one agent spawns and manages a thread per provider ── */
 
 // A bb sidebar mock: a parent Claude thread with three worker threads nested
 // beneath it on a connector rail, one per provider. Each worker's status flips
@@ -1646,10 +1689,7 @@ function LandingPage() {
           <span className="updates-title">{LATEST_RELEASE_META.headline}</span>
           <span aria-hidden="true">→</span>
         </a>
-        <h1>
-          The First LDE<span className="lde-star">*</span>
-        </h1>
-        <p className="lde-expand">(Loop Development Environment)</p>
+        <h1>The IDE that builds itself</h1>
         <p className="sub">
           bb can control, customize, and automate itself, laying the groundwork
           for your own software factory.
@@ -1665,7 +1705,22 @@ function LandingPage() {
 
       <HeroAppMock />
 
-      <Band title="Anything can kick off work." flip visual={<AgentChat />}>
+      <Band title="Fully customizable." flip visual={<CustomizeBuild />}>
+        <p>
+          Almost anything in bb can be changed in a single prompt. Ask for a
+          task tracker and one appears: a panel in your sidebar, a{" "}
+          <code>bb tasks</code> command, and a skill that teaches every agent to
+          use it.
+        </p>
+        <p>
+          Many of bb&rsquo;s own features are built with the same tools you
+          have. The GitHub integration, agent memory, scheduled jobs, and even
+          remote access are all plugins.
+        </p>
+        <p>Nothing is stopping you from building your ideal workbench.</p>
+      </Band>
+
+      <Band title="Anything can kick off work." visual={<AgentChat />}>
         <p>
           The same CLI your agents use is open to any program you write: a shell
           script, a cron job, or your own Hermes Agent or OpenClaw bot in
@@ -1675,15 +1730,6 @@ function LandingPage() {
         <p>
           It runs on your machine, and is waiting for you when you&rsquo;re
           back.
-        </p>
-      </Band>
-
-      <Band title="It runs without you." visual={<AutomationRun />}>
-        <p>
-          Schedule an automation to run an agent or a script on cron. Point one
-          at your tracker and it kicks off a thread for every new issue, or run
-          nightly docs, changelogs, error triage. All on your machine, not
-          someone else&rsquo;s cloud.
         </p>
       </Band>
 
