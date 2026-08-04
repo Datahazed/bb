@@ -47,7 +47,6 @@ const experimentState = vi.hoisted(() => ({ enabled: true }));
 const viewportState = vi.hoisted(() => ({ compact: false }));
 const sidebarState = vi.hoisted(() => ({ showing: true }));
 const collapsedRailState = vi.hoisted(() => ({
-  enabled: false,
   isMainCollapsed: false,
 }));
 const panelGroupLayoutState = vi.hoisted(() => ({ layout: [100, 0] }));
@@ -459,7 +458,6 @@ beforeEach(() => {
   experimentState.enabled = true;
   viewportState.compact = false;
   sidebarState.showing = true;
-  collapsedRailState.enabled = false;
   collapsedRailState.isMainCollapsed = false;
   panelGroupLayoutState.layout = [100, 0];
   commandHandlers.clear();
@@ -524,16 +522,13 @@ describe("SplitThreadArea", () => {
   });
 
   it("removes the collapsed-thread rail while maximized and keeps the restore control", async () => {
-    collapsedRailState.enabled = true;
     collapsedRailState.isMainCollapsed = true;
     renderSplitArea({
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
     });
 
-    expect(
-      await screen.findByTestId("mock-collapsed-thread-rail"),
-    ).toBeTruthy();
+    expect(screen.queryByTestId("mock-collapsed-thread-rail")).toBeNull();
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
 
     expect(screen.queryByTestId("mock-collapsed-thread-rail")).toBeNull();
@@ -544,9 +539,7 @@ describe("SplitThreadArea", () => {
     });
 
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
-    expect(
-      await screen.findByTestId("mock-collapsed-thread-rail"),
-    ).toBeTruthy();
+    expect(screen.queryByTestId("mock-collapsed-thread-rail")).toBeNull();
   });
 
   it("preserves a hidden pane's mounted scroll position through restore", async () => {
