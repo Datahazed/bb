@@ -48,7 +48,7 @@ const threadStore = vi.hoisted(
 const experimentState = vi.hoisted(() => ({ enabled: true }));
 const viewportState = vi.hoisted(() => ({ compact: false }));
 const sidebarState = vi.hoisted(() => ({ showing: true }));
-const collapsedRailState = vi.hoisted(() => ({
+const panelFullScreenState = vi.hoisted(() => ({
   isMainCollapsed: false,
 }));
 const panelGroupLayoutState = vi.hoisted(() => ({ layout: [100, 0] }));
@@ -185,7 +185,7 @@ vi.mock("./ThreadDetailView", () => ({
       () => ({
         composerHost,
         contentKey: threadId,
-        isMainCollapsed: collapsedRailState.isMainCollapsed,
+        isMainCollapsed: panelFullScreenState.isMainCollapsed,
         isOpen: isPanelOpen,
         panel: (
           <div data-testid={`hosted-panel-${threadId}`}>
@@ -472,7 +472,7 @@ beforeEach(() => {
   experimentState.enabled = true;
   viewportState.compact = false;
   sidebarState.showing = true;
-  collapsedRailState.isMainCollapsed = false;
+  panelFullScreenState.isMainCollapsed = false;
   panelGroupLayoutState.layout = [100, 0];
   commandHandlers.clear();
   commandPresentationState.isModifierHeld = false;
@@ -535,8 +535,8 @@ describe("SplitThreadArea", () => {
     });
   });
 
-  it("removes the collapsed-thread rail while maximized and keeps the restore control", async () => {
-    collapsedRailState.isMainCollapsed = true;
+  it("temporarily replaces panel full screen with a clean thread full screen", async () => {
+    panelFullScreenState.isMainCollapsed = true;
     renderSplitArea({
       path: threadPath("thr-a"),
       layout: twoPaneLayout("pane-1"),
@@ -545,15 +545,16 @@ describe("SplitThreadArea", () => {
     expect(screen.queryByTestId("mock-collapsed-thread-rail")).toBeNull();
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
 
-    expect(screen.queryByTestId("mock-collapsed-thread-rail")).toBeNull();
     expect(screen.getByTestId("maximize-thr-a").textContent).toBe("restore");
     await waitFor(() => {
-      expect(panelGroupLayoutState.layout[0]).toBeGreaterThan(0);
-      expect(panelGroupLayoutState.layout[1]).toBeLessThan(100);
+      expect(panelGroupLayoutState.layout).toEqual([100, 0]);
     });
 
     fireEvent.click(screen.getByTestId("maximize-thr-a"));
     expect(screen.queryByTestId("mock-collapsed-thread-rail")).toBeNull();
+    await waitFor(() => {
+      expect(panelGroupLayoutState.layout).toEqual([0, 100]);
+    });
   });
 
   it("preserves a hidden pane's mounted scroll position through restore", async () => {
@@ -902,7 +903,7 @@ describe("SplitThreadArea", () => {
       "[data-pane-header-focus-tab]",
     );
     expect(focusedTab).not.toBeNull();
-    expect(focusedTab?.classList).toContain("bg-muted");
+    expect(focusedTab?.classList).toContain("bg-state-active");
     expect(focusedTab?.classList).not.toContain("shadow-sm");
     expect(screen.getByText("New thread").classList).toContain("font-normal");
     expect(screen.getByText("New thread").classList).not.toContain(
