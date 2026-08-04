@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { useDebounceValue } from "usehooks-ts";
-import type { PendingInteraction, ThreadWithRuntime } from "@bb/domain";
+import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
@@ -542,7 +542,7 @@ export function useThread(id: string, options?: QueryOptions) {
 // placeholder; the real single-thread response, which carries the server-
 // computed value, resolves moments later.
 function liftThreadListPlaceholder(
-  thread: ThreadWithRuntime | undefined,
+  thread: ThreadListEntry | undefined,
 ): ThreadResponse | undefined {
   if (thread === undefined) {
     return undefined;

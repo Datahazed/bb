@@ -128,6 +128,10 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     environmentName: null,
     environmentBranchName: null,
     environmentWorkspaceDisplayKind: "other",
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 100 },
+      pullRequest: { state: "not_applicable", refreshedAt: 100 },
+    },
     runtime: {
       displayStatus: "idle",
       hostReconnectGraceExpiresAt: null,

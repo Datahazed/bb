@@ -365,6 +365,131 @@ export const threadPullRequestSchema = z
   .strict();
 export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;
 
+export const environmentStatusUnavailableReasonSchema = z
+  .object({
+    code: z.string(),
+    message: z.string(),
+  })
+  .strict();
+export type EnvironmentStatusUnavailableReason = z.infer<
+  typeof environmentStatusUnavailableReasonSchema
+>;
+
+export const threadEnvironmentGitStatusFileSchema = z
+  .object({
+    path: z.string(),
+    status: workspaceFileStatusKindSchema,
+  })
+  .strict();
+export type ThreadEnvironmentGitStatusFile = z.infer<
+  typeof threadEnvironmentGitStatusFileSchema
+>;
+
+export const threadEnvironmentGitStatusSectionSchema = z
+  .object({
+    fileCount: z.number().int().nonnegative(),
+    insertions: z.number().int().nonnegative(),
+    deletions: z.number().int().nonnegative(),
+    files: z.array(threadEnvironmentGitStatusFileSchema),
+  })
+  .strict();
+export type ThreadEnvironmentGitStatusSection = z.infer<
+  typeof threadEnvironmentGitStatusSectionSchema
+>;
+
+export const threadEnvironmentGitStatusSnapshotSchema = z
+  .object({
+    checkout: gitCheckoutRefSchema,
+    currentBranch: z.string().nullable(),
+    defaultBranch: z.string(),
+    hasChanges: z.boolean(),
+    workingTree: threadEnvironmentGitStatusSectionSchema.extend({
+      hasUncommittedChanges: z.boolean(),
+      state: workspaceStateSchema,
+    }),
+    mergeBase: threadEnvironmentGitStatusSectionSchema
+      .extend({
+        aheadCount: z.number().int().nonnegative(),
+        behindCount: z.number().int().nonnegative(),
+        commitCount: z.number().int().nonnegative(),
+        hasCommittedUnmergedChanges: z.boolean(),
+        mergeBaseBranch: z.string(),
+      })
+      .nullable(),
+  })
+  .strict();
+export type ThreadEnvironmentGitStatusSnapshot = z.infer<
+  typeof threadEnvironmentGitStatusSnapshotSchema
+>;
+
+export const threadEnvironmentGitStatusSignalSchema = z.discriminatedUnion(
+  "state",
+  [
+    z.object({ state: z.literal("pending") }).strict(),
+    z
+      .object({
+        state: z.literal("not_applicable"),
+        refreshedAt: z.number(),
+      })
+      .strict(),
+    z
+      .object({
+        state: z.literal("unavailable"),
+        refreshedAt: z.number(),
+        reason: environmentStatusUnavailableReasonSchema,
+      })
+      .strict(),
+    z
+      .object({
+        state: z.literal("available"),
+        refreshedAt: z.number(),
+        snapshot: threadEnvironmentGitStatusSnapshotSchema,
+      })
+      .strict(),
+  ],
+);
+export type ThreadEnvironmentGitStatusSignal = z.infer<
+  typeof threadEnvironmentGitStatusSignalSchema
+>;
+
+export const threadEnvironmentPullRequestStatusSignalSchema =
+  z.discriminatedUnion("state", [
+    z.object({ state: z.literal("pending") }).strict(),
+    z
+      .object({
+        state: z.literal("not_applicable"),
+        refreshedAt: z.number(),
+      })
+      .strict(),
+    z
+      .object({
+        state: z.literal("unavailable"),
+        refreshedAt: z.number(),
+        reason: environmentStatusUnavailableReasonSchema,
+      })
+      .strict(),
+    z
+      .object({
+        state: z.literal("available"),
+        refreshedAt: z.number(),
+        pullRequest: threadPullRequestSchema.nullable(),
+      })
+      .strict(),
+  ]);
+export type ThreadEnvironmentPullRequestStatusSignal = z.infer<
+  typeof threadEnvironmentPullRequestStatusSignalSchema
+>;
+
+export const threadEnvironmentStatusSummarySchema = z
+  .object({
+    git: threadEnvironmentGitStatusSignalSchema,
+    pullRequest: threadEnvironmentPullRequestStatusSignalSchema,
+  })
+  .strict();
+export type ThreadEnvironmentStatusSummary = z.infer<
+  typeof threadEnvironmentStatusSummarySchema
+>;
+
 export const threadQueuedMessageSchema = z.object({
   id: z.string(),
   content: z.array(promptInputSchema).min(1),
@@ -418,5 +543,6 @@ export const threadListEntrySchema = threadWithRuntimeSchema.extend({
   environmentName: z.string().nullable(),
   environmentBranchName: z.string().nullable(),
   environmentWorkspaceDisplayKind: environmentWorkspaceDisplayKindSchema,
+  environmentStatusSummary: threadEnvironmentStatusSummarySchema,
 });
 export type ThreadListEntry = z.infer<typeof threadListEntrySchema>;

@@ -458,6 +458,50 @@ export const environments = sqliteTable(
   ],
 );
 
+export const environmentGitStatusSnapshots = sqliteTable(
+  "environment_git_status_snapshots",
+  {
+    environmentId: text("environment_id")
+      .primaryKey()
+      .references(() => environments.id, { onDelete: "cascade" }),
+    status: text("status").notNull(),
+    gitStatusJson: text("git_status_json"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    refreshedAt: integer("refreshed_at"),
+    nextRefreshAt: integer("next_refresh_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("environment_git_status_snapshots_next_refresh_idx").on(
+      table.nextRefreshAt,
+    ),
+  ],
+);
+
+export const environmentPullRequestStatusSnapshots = sqliteTable(
+  "environment_pull_request_status_snapshots",
+  {
+    environmentId: text("environment_id")
+      .primaryKey()
+      .references(() => environments.id, { onDelete: "cascade" }),
+    status: text("status").notNull(),
+    pullRequestJson: text("pull_request_json"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    refreshedAt: integer("refreshed_at"),
+    nextRefreshAt: integer("next_refresh_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("environment_pull_request_status_snapshots_next_refresh_idx").on(
+      table.nextRefreshAt,
+    ),
+  ],
+);
+
 export const threads = sqliteTable(
   "threads",
   {

@@ -146,6 +146,9 @@ export function registerHostRpcResponder(
     close() {},
     send(data) {
       const message = hostDaemonServerWsMessageSchema.parse(JSON.parse(data));
+      if (message.type === "watch-set.replace") {
+        return;
+      }
       if (message.type !== "host-rpc.request") {
         throw new Error(`Unexpected daemon websocket message ${message.type}`);
       }

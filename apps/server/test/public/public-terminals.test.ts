@@ -116,9 +116,12 @@ async function waitForDaemonMessage(
   messageIndex = 0,
 ): Promise<HostDaemonServerWsMessage> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const message = socket.sentMessages[messageIndex];
+    const nonWatchMessages = socket.sentMessages
+      .map((message) => hostDaemonServerWsMessageSchema.parse(JSON.parse(message)))
+      .filter((message) => message.type !== "watch-set.replace");
+    const message = nonWatchMessages[messageIndex];
     if (message !== undefined) {
-      return hostDaemonServerWsMessageSchema.parse(JSON.parse(message));
+      return message;
     }
     await new Promise((resolve) => setTimeout(resolve, 5));
   }

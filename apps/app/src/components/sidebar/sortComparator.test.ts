@@ -49,6 +49,10 @@ function thread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     environmentName: null,
     environmentBranchName: null,
     environmentWorkspaceDisplayKind: "other",
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 2 },
+      pullRequest: { state: "not_applicable", refreshedAt: 2 },
+    },
     runtime: {
       displayStatus: "idle",
       hostReconnectGraceExpiresAt: null,

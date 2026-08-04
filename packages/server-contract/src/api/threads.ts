@@ -13,6 +13,7 @@ import {
   resolvedThreadExecutionOptionsSchema,
   serviceTierSchema,
   threadChildOriginSchema,
+  threadEnvironmentStatusSummarySchema,
   threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
@@ -332,6 +333,7 @@ export type ThreadSearchResponse = z.infer<typeof threadSearchResponseSchema>;
 // depth cap.
 export const threadResponseSchema = threadWithRuntimeSchema.extend({
   canSpawnChild: z.boolean(),
+  environmentStatusSummary: threadEnvironmentStatusSummarySchema,
 });
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;
 

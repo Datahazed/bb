@@ -290,6 +290,16 @@ describe("public environment action regressions", () => {
       });
       await reportQueuedCommandSuccess(harness, readyCommand, {});
 
+      const refreshCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, refreshCommand, {
+        pullRequest: rawPullRequest(),
+      });
+
       const response = await responsePromise;
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toMatchObject({
@@ -347,6 +357,16 @@ describe("public environment action regressions", () => {
         operation: "draft",
       });
       await reportQueuedCommandSuccess(harness, draftCommand, {});
+
+      const refreshCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, refreshCommand, {
+        pullRequest: rawPullRequest({ isDraft: true }),
+      });
 
       const response = await responsePromise;
       expect(response.status).toBe(200);
@@ -457,6 +477,16 @@ describe("public environment action regressions", () => {
         method: "rebase",
       });
       await reportQueuedCommandSuccess(harness, mergeCommand, {});
+
+      const refreshCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, refreshCommand, {
+        pullRequest: rawPullRequest({ state: "MERGED" }),
+      });
 
       const response = await responsePromise;
       expect(response.status).toBe(200);

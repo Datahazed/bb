@@ -8,11 +8,15 @@ import {
   createEnvironment,
   createProject,
   createThread,
+  environmentGitStatusSnapshots,
+  environmentPullRequestStatusSnapshots,
   hostDaemonSessions,
   migrate,
   noopNotifier,
   openSession,
   upsertHost,
+  writeEnvironmentGitStatusSnapshot,
+  writeEnvironmentPullRequestStatusSnapshot,
   type DbConnection,
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
@@ -25,6 +29,8 @@ import type {
   ClientTurnRequestId,
   PromptInput,
   Thread,
+  ThreadEnvironmentGitStatusSnapshot,
+  ThreadPullRequest,
   ThreadRuntimeState,
 } from "@bb/domain";
 import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../../src/constants.js";
@@ -65,6 +71,7 @@ interface ThreadWithPinSortKey extends Thread {
 
 interface CreateThreadListEntryArgs {
   environmentHostId: string | null;
+  overrides?: Partial<ThreadWithPendingInteractionState>;
   thread: ThreadWithPinSortKey;
 }
 
@@ -211,7 +218,71 @@ function createThreadListEntry(
     environmentHostId: args.environmentHostId,
     environmentName: null,
     environmentWorkspaceDisplayKind: "other",
+    gitStatusSnapshotJson: null,
+    gitStatusSnapshotErrorCode: null,
+    gitStatusSnapshotErrorMessage: null,
+    gitStatusSnapshotRefreshedAt: null,
+    gitStatusSnapshotStatus: null,
     hasPendingInteraction: false,
+    pullRequestStatusSnapshotJson: null,
+    pullRequestStatusSnapshotErrorCode: null,
+    pullRequestStatusSnapshotErrorMessage: null,
+    pullRequestStatusSnapshotRefreshedAt: null,
+    pullRequestStatusSnapshotStatus: null,
+    ...args.overrides,
+  };
+}
+
+function makeGitStatusSnapshot(): ThreadEnvironmentGitStatusSnapshot {
+  return {
+    checkout: {
+      kind: "branch",
+      branchName: "feature/status-signals",
+      headSha: "abc123",
+    },
+    currentBranch: "feature/status-signals",
+    defaultBranch: "main",
+    hasChanges: true,
+    workingTree: {
+      fileCount: 1,
+      insertions: 12,
+      deletions: 3,
+      files: [
+        {
+          path: "apps/app/src/components/sidebar/ThreadRow.tsx",
+          status: "M",
+        },
+      ],
+      hasUncommittedChanges: true,
+      state: "dirty_uncommitted",
+    },
+    mergeBase: null,
+  };
+}
+
+function makePullRequest(): ThreadPullRequest {
+  return {
+    number: 42,
+    title: "Show thread status signals",
+    state: "open",
+    url: "https://github.com/acme/bb/pull/42",
+    baseRefName: "main",
+    headRefName: "feature/status-signals",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    checks: {
+      state: "passing",
+      totalCount: 1,
+      passedCount: 1,
+      failedCount: 0,
+      pendingCount: 0,
+    },
+    review: { state: "approved", reviewRequestCount: 0 },
+    mergeability: {
+      state: "mergeable",
+      mergeStateStatus: "CLEAN",
+      mergeable: "MERGEABLE",
+    },
+    attention: "ready_to_merge",
   };
 }
 
@@ -598,5 +669,109 @@ describe("thread runtime display", () => {
       activePlanModeCount: 1,
       activeGoalCount: 0,
     });
+  });
+
+  it("projects environment status snapshots into thread list entries", () => {
+    const { db, hostId } = setup();
+    const now = 1_000;
+    const { thread } = createThreadWithEnvironment({ db, hostId });
+    const gitStatusSnapshot = makeGitStatusSnapshot();
+    const pullRequest = makePullRequest();
+
+    const [entry] = toThreadListEntryResponses(
+      { db },
+      {
+        now,
+        threads: [
+          createThreadListEntry({
+            environmentHostId: hostId,
+            overrides: {
+              gitStatusSnapshotJson: JSON.stringify(gitStatusSnapshot),
+              gitStatusSnapshotRefreshedAt: now - 100,
+              gitStatusSnapshotStatus: "available",
+              pullRequestStatusSnapshotJson: JSON.stringify(pullRequest),
+              pullRequestStatusSnapshotRefreshedAt: now - 50,
+              pullRequestStatusSnapshotStatus: "available",
+            },
+            thread,
+          }),
+        ],
+      },
+    );
+
+    expect(entry?.environmentStatusSummary).toEqual({
+      git: {
+        state: "available",
+        refreshedAt: now - 100,
+        snapshot: gitStatusSnapshot,
+      },
+      pullRequest: {
+        state: "available",
+        refreshedAt: now - 50,
+        pullRequest,
+      },
+    });
+  });
+
+  it("marks demanded environment status snapshots due from thread list reads", () => {
+    const { db, hostId } = setup();
+    const now = 1_000;
+    const future = now + 60_000;
+    const { environment, thread } = createThreadWithEnvironment({ db, hostId });
+    writeEnvironmentGitStatusSnapshot(db, {
+      environmentId: environment.id,
+      status: "not_applicable",
+      gitStatusJson: null,
+      errorCode: null,
+      errorMessage: null,
+      refreshedAt: now - 100,
+      nextRefreshAt: future,
+      now: now - 100,
+    });
+    writeEnvironmentPullRequestStatusSnapshot(db, {
+      environmentId: environment.id,
+      status: "not_applicable",
+      pullRequestJson: null,
+      errorCode: null,
+      errorMessage: null,
+      refreshedAt: now - 100,
+      nextRefreshAt: future,
+      now: now - 100,
+    });
+
+    toThreadListEntryResponses(
+      { db },
+      {
+        now,
+        threads: [
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread,
+          }),
+        ],
+      },
+    );
+
+    expect(
+      db
+        .select({ nextRefreshAt: environmentGitStatusSnapshots.nextRefreshAt })
+        .from(environmentGitStatusSnapshots)
+        .where(eq(environmentGitStatusSnapshots.environmentId, environment.id))
+        .get(),
+    ).toEqual({ nextRefreshAt: now });
+    expect(
+      db
+        .select({
+          nextRefreshAt: environmentPullRequestStatusSnapshots.nextRefreshAt,
+        })
+        .from(environmentPullRequestStatusSnapshots)
+        .where(
+          eq(
+            environmentPullRequestStatusSnapshots.environmentId,
+            environment.id,
+          ),
+        )
+        .get(),
+    ).toEqual({ nextRefreshAt: now });
   });
 });

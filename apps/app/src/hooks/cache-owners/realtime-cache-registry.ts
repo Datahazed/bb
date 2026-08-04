@@ -326,6 +326,13 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadStorageQueriesForThread, // Thread storage is resolved through the attached environment.
     ],
   },
+  "environment-status-summary-changed": {
+    flush: "debounced",
+    dirty: [
+      dirtyThreadListQueries, // Sidebar/list rows render environment git and PR signals.
+      dirtyThreadDetailQueries, // Detail consumers may reuse list-derived environment summary.
+    ],
+  },
   "read-state-changed": {
     flush: "debounced",
     dirty: [

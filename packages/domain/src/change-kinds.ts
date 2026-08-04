@@ -17,6 +17,7 @@ export const THREAD_CHANGE_KINDS = [
   "pin-state-changed",
   "parent-changed",
   "environment-changed",
+  "environment-status-summary-changed",
   "read-state-changed",
   "order-changed",
   "tabs-changed",

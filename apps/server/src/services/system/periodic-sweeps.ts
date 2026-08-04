@@ -48,6 +48,10 @@ import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
+import {
+  refreshDueEnvironmentStatusSnapshots,
+  runEnvironmentStatusSnapshotStartupRecovery,
+} from "../environments/environment-status-snapshots.js";
 
 export type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
 
@@ -518,6 +522,14 @@ function runDestroyedEnvironmentPruneSweep(
   pruneDestroyedEnvironments(deps.db, deps.hub);
 }
 
+async function runEnvironmentStatusSnapshotRefreshSweep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  now: number,
+): Promise<void> {
+  await refreshDueEnvironmentStatusSnapshots(deps, now);
+}
+
+
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
@@ -582,6 +594,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     run: (deps, now) => deps.pluginSchedules.sweepDueSchedules(now),
   },
   {
+    cadenceMs: 0,
+    category: "scheduler",
+    name: "environment-status-snapshot-refresh",
+    run: runEnvironmentStatusSnapshotRefreshSweep,
+  },
+  {
     cadenceMs: DATABASE_MAINTENANCE_CHECK_INTERVAL_MS,
     category: "maintenance",
     name: "database-maintenance",
@@ -592,6 +610,7 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
 export async function runStartupRecoverySweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
+  runEnvironmentStatusSnapshotStartupRecovery(deps, Date.now());
   await runEnvironmentProvisioningSweep(deps);
   await runThreadLifecycleSweep(deps);
   await evaluateManagedEnvironmentArchiveCleanupCandidates(deps, Date.now());

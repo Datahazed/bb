@@ -74,6 +74,10 @@ function createThread(
     environmentName: null,
     environmentBranchName: null,
     environmentWorkspaceDisplayKind: "other",
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 1 },
+      pullRequest: { state: "not_applicable", refreshedAt: 1 },
+    },
     runtime: {
       displayStatus: "idle",
       hostReconnectGraceExpiresAt: null,

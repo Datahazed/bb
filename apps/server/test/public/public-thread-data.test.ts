@@ -326,9 +326,18 @@ describe("public thread data routes", () => {
 
   it("embeds thread environment and host snapshots when requested", async () => {
     await withTestHarness(async (harness) => {
-      const { host, environment, thread } = seedThreadFixture(harness, {
+      const { host, environment, session, thread } = seedThreadFixture(harness, {
         session: {
           id: "host-thread-include",
+        },
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle(request) {
+          throw new Error(
+            `Unexpected RPC command ${request.command.type} during thread read`,
+          );
         },
       });
 
@@ -351,6 +360,7 @@ describe("public thread data routes", () => {
       expect(includedThread.environment?.id).toBe(environment.id);
       expect(includedThread.host?.id).toBe(host.id);
       expect(includedThread.host?.status).toBe("connected");
+      expect(responder.requests).toEqual([]);
     });
   });
 

@@ -57,6 +57,10 @@ function createThreadListEntry({
     environmentId: null,
     environmentName: null,
     environmentWorkspaceDisplayKind: "other",
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 1000 },
+      pullRequest: { state: "not_applicable", refreshedAt: 1000 },
+    },
     hasPendingInteraction: false,
     id,
     lastReadAt: null,

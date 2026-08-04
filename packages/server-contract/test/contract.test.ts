@@ -850,6 +850,10 @@ describe("server-contract canonical schemas", () => {
           environmentName: null,
           environmentBranchName: "bb/test",
           environmentWorkspaceDisplayKind: "managed-worktree",
+          environmentStatusSummary: {
+            git: { state: "not_applicable", refreshedAt: 2 },
+            pullRequest: { state: "not_applicable", refreshedAt: 2 },
+          },
         },
       ]),
     ).toMatchObject([

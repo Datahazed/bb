@@ -462,7 +462,7 @@ export function getEnvironmentActionInvalidationQueryKeys({
 export function getCachedThreadListPlaceholder(
   queryClient: QueryClient,
   threadId: string,
-): ThreadWithRuntime | undefined {
+): ThreadListEntry | undefined {
   if (!threadId) {
     return undefined;
   }
@@ -592,6 +592,13 @@ export function optimisticallyInsertThread(
         hasPendingInteraction: false,
         pinSortKey: null,
         environmentWorkspaceDisplayKind: "other",
+        environmentStatusSummary: {
+          git: { state: "not_applicable", refreshedAt: thread.updatedAt },
+          pullRequest: {
+            state: "not_applicable",
+            refreshedAt: thread.updatedAt,
+          },
+        },
       },
       ...data,
     ]);

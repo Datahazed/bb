@@ -8,7 +8,6 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { environmentPullRequestQueryKey } from "./query-keys";
 import {
-  getEnvironmentPullRequestRefetchInterval,
   getEnvironmentPullRequestStaleTime,
   useEnvironmentPullRequest,
 } from "./environment-queries";
@@ -24,7 +23,6 @@ vi.mock("@/hooks/useRealtimeSubscription", () => ({
 const ENVIRONMENT_ID = "env-1";
 const ACTIVE_PULL_REQUEST_STALE_MS = 30_000;
 const SETTLED_PULL_REQUEST_STALE_MS = 60 * 60_000;
-const ACTIVE_PULL_REQUEST_REFETCH_MS = 5_000;
 
 const pullRequestFixture: ThreadPullRequest = {
   number: 128,
@@ -104,66 +102,7 @@ describe("useEnvironmentPullRequest", () => {
     ).toBe(SETTLED_PULL_REQUEST_STALE_MS);
   });
 
-  it("polls open pull requests while checks or mergeability are still settling", () => {
-    expect(getEnvironmentPullRequestRefetchInterval(null)).toBe(false);
-    expect(getEnvironmentPullRequestRefetchInterval(undefined)).toBe(false);
-    expect(getEnvironmentPullRequestRefetchInterval(pullRequestFixture)).toBe(
-      false,
-    );
-    expect(
-      getEnvironmentPullRequestRefetchInterval({
-        ...pullRequestFixture,
-        checks: {
-          ...pullRequestFixture.checks,
-          state: "pending",
-          pendingCount: 1,
-        },
-        attention: "checks_pending",
-      }),
-    ).toBe(ACTIVE_PULL_REQUEST_REFETCH_MS);
-    expect(
-      getEnvironmentPullRequestRefetchInterval({
-        ...pullRequestFixture,
-        mergeability: {
-          state: "unknown",
-          mergeStateStatus: "UNKNOWN",
-          mergeable: "UNKNOWN",
-        },
-        attention: "none",
-      }),
-    ).toBe(ACTIVE_PULL_REQUEST_REFETCH_MS);
-  });
-
-  it("does not poll draft or settled pull requests", () => {
-    expect(
-      getEnvironmentPullRequestRefetchInterval({
-        ...pullRequestFixture,
-        state: "draft",
-        mergeability: {
-          state: "draft",
-          mergeStateStatus: "DRAFT",
-          mergeable: "UNKNOWN",
-        },
-        attention: "draft",
-      }),
-    ).toBe(false);
-    expect(
-      getEnvironmentPullRequestRefetchInterval({
-        ...pullRequestFixture,
-        state: "closed",
-        attention: "closed",
-      }),
-    ).toBe(false);
-    expect(
-      getEnvironmentPullRequestRefetchInterval({
-        ...pullRequestFixture,
-        state: "merged",
-        attention: "merged",
-      }),
-    ).toBe(false);
-  });
-
-  it("refetches stale pull request data on mount and always refetches on window focus", async () => {
+  it("refetches stale pull request data on mount and window focus without polling", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
     vi.mocked(sdk.environments.pullRequest).mockResolvedValue(
       pullRequestResponse(pullRequestFixture),
@@ -183,9 +122,9 @@ describe("useEnvironmentPullRequest", () => {
       expect.objectContaining({
         refetchOnMount: true,
         refetchOnWindowFocus: "always",
-        refetchInterval: expect.any(Function),
         staleTime: expect.any(Function),
       }),
     );
+    expect(query?.options).not.toHaveProperty("refetchInterval");
   });
 });

@@ -25,6 +25,10 @@ function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
     environmentId: null,
     environmentName: null,
     environmentWorkspaceDisplayKind: "other",
+    environmentStatusSummary: {
+      git: { state: "not_applicable", refreshedAt: 1 },
+      pullRequest: { state: "not_applicable", refreshedAt: 1 },
+    },
     hasPendingInteraction: false,
     id: "thr_1",
     lastReadAt: null,

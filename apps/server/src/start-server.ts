@@ -20,6 +20,7 @@ import {
 } from "./services/system/periodic-sweeps.js";
 import { createTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
+import { EnvironmentStatusSnapshotCoordinator } from "./services/environments/environment-status-snapshots.js";
 import { resolveThreadStorageRootPath } from "./services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { ServerRuntimeConfig } from "./types.js";
@@ -39,6 +40,11 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
+  const environmentStatusSnapshots = new EnvironmentStatusSnapshotCoordinator({
+    db,
+    hub,
+    logger,
+  });
   const lifecycleDedupers = createLifecycleDedupers();
   const appUrl = toOptionalString(serverConfig.BB_APP_URL);
   const threadStorageRootPath = resolveThreadStorageRootPath({
@@ -188,7 +194,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
 
   const sweepInterval = setInterval(() => {
     void runPeriodicSweeps(sweepDeps);
-  }, 10_000);
+  }, 5_000);
   sweepInterval.unref();
 
   let shutdownPromise: Promise<void> | null = null;
@@ -198,6 +204,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     }
     shutdownPromise = (async () => {
       eventLoopStallMonitor.stop();
+      environmentStatusSnapshots.dispose();
       clearInterval(sweepInterval);
       await pluginService.stop().catch((error: unknown) => {
         logger.warn({ err: error }, "Plugin shutdown failed");

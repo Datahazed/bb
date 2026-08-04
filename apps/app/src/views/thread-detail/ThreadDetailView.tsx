@@ -17,6 +17,7 @@ import { serializePluginPanelParams } from "@/lib/plugin-json-value";
 import {
   defaultAppSettings,
   resolveEnvironmentMergeBaseBranch,
+  type ThreadPullRequest,
   type ThreadListEntry,
   type ThreadWithRuntime,
 } from "@bb/domain";
@@ -42,8 +43,6 @@ import {
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
 import {
   useEnvironment,
-  getEnvironmentPullRequestFromResponse,
-  useEnvironmentPullRequest,
   useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
 import {
@@ -1488,12 +1487,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     workStatusResponse?.outcome === "unavailable"
       ? workStatusResponse.failure
       : undefined;
-  const pullRequestQuery = useEnvironmentPullRequest(thread?.environmentId, {
-    enabled: canUseGitUi && environment !== undefined,
-  });
-  const pullRequest = getEnvironmentPullRequestFromResponse(
-    pullRequestQuery.data,
-  );
+  const pullRequest = useMemo<ThreadPullRequest | null>(() => {
+    const summary = thread?.environmentStatusSummary.pullRequest;
+    return summary?.state === "available" ? summary.pullRequest : null;
+  }, [thread?.environmentStatusSummary.pullRequest]);
   const handlePullRequestReady = useCallback(async () => {
     const environmentId = thread?.environmentId;
     if (!environmentId) {

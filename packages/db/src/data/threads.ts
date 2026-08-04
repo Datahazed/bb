@@ -35,6 +35,8 @@ import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import {
+  environmentGitStatusSnapshots,
+  environmentPullRequestStatusSnapshots,
   environments,
   pendingInteractions,
   threadSearchSegments,
@@ -479,10 +481,33 @@ function threadWithPendingInteractionBaseQuery(db: DbConnection) {
       environmentIsWorktree: environments.isWorktree,
       environmentName: environments.name,
       environmentWorkspaceProvisionType: environments.workspaceProvisionType,
+      gitStatusSnapshotJson: environmentGitStatusSnapshots.gitStatusJson,
+      gitStatusSnapshotErrorCode: environmentGitStatusSnapshots.errorCode,
+      gitStatusSnapshotErrorMessage: environmentGitStatusSnapshots.errorMessage,
+      gitStatusSnapshotRefreshedAt: environmentGitStatusSnapshots.refreshedAt,
+      gitStatusSnapshotStatus: environmentGitStatusSnapshots.status,
+      pullRequestStatusSnapshotJson:
+        environmentPullRequestStatusSnapshots.pullRequestJson,
+      pullRequestStatusSnapshotErrorCode:
+        environmentPullRequestStatusSnapshots.errorCode,
+      pullRequestStatusSnapshotErrorMessage:
+        environmentPullRequestStatusSnapshots.errorMessage,
+      pullRequestStatusSnapshotRefreshedAt:
+        environmentPullRequestStatusSnapshots.refreshedAt,
+      pullRequestStatusSnapshotStatus:
+        environmentPullRequestStatusSnapshots.status,
       pendingInteractionCount: count(pendingInteractions.id),
     })
     .from(threads)
     .leftJoin(environments, eq(threads.environmentId, environments.id))
+    .leftJoin(
+      environmentGitStatusSnapshots,
+      eq(environmentGitStatusSnapshots.environmentId, environments.id),
+    )
+    .leftJoin(
+      environmentPullRequestStatusSnapshots,
+      eq(environmentPullRequestStatusSnapshots.environmentId, environments.id),
+    )
     .leftJoin(
       pendingInteractions,
       and(
@@ -527,6 +552,16 @@ export interface ThreadWithPendingInteractionState extends ThreadRow {
   environmentName: string | null;
   hasPendingInteraction: boolean;
   environmentWorkspaceDisplayKind: EnvironmentWorkspaceDisplayKind;
+  gitStatusSnapshotJson: string | null;
+  gitStatusSnapshotErrorCode: string | null;
+  gitStatusSnapshotErrorMessage: string | null;
+  gitStatusSnapshotRefreshedAt: number | null;
+  gitStatusSnapshotStatus: string | null;
+  pullRequestStatusSnapshotJson: string | null;
+  pullRequestStatusSnapshotErrorCode: string | null;
+  pullRequestStatusSnapshotErrorMessage: string | null;
+  pullRequestStatusSnapshotRefreshedAt: number | null;
+  pullRequestStatusSnapshotStatus: string | null;
 }
 
 interface ThreadWithPendingInteractionStateRow extends ThreadRow {
@@ -535,7 +570,17 @@ interface ThreadWithPendingInteractionStateRow extends ThreadRow {
   environmentIsWorktree: boolean | null;
   environmentName: string | null;
   environmentWorkspaceProvisionType: WorkspaceProvisionType | null;
+  gitStatusSnapshotJson: string | null;
+  gitStatusSnapshotErrorCode: string | null;
+  gitStatusSnapshotErrorMessage: string | null;
+  gitStatusSnapshotRefreshedAt: number | null;
+  gitStatusSnapshotStatus: string | null;
   pendingInteractionCount: number;
+  pullRequestStatusSnapshotJson: string | null;
+  pullRequestStatusSnapshotErrorCode: string | null;
+  pullRequestStatusSnapshotErrorMessage: string | null;
+  pullRequestStatusSnapshotRefreshedAt: number | null;
+  pullRequestStatusSnapshotStatus: string | null;
 }
 
 export interface CountLiveThreadsInEnvironmentArgs {
@@ -717,7 +762,17 @@ function toThreadWithPendingInteractionState(
     environmentBranchName,
     environmentHostId,
     environmentName,
+    gitStatusSnapshotJson,
+    gitStatusSnapshotErrorCode,
+    gitStatusSnapshotErrorMessage,
+    gitStatusSnapshotRefreshedAt,
+    gitStatusSnapshotStatus,
     pendingInteractionCount,
+    pullRequestStatusSnapshotJson,
+    pullRequestStatusSnapshotErrorCode,
+    pullRequestStatusSnapshotErrorMessage,
+    pullRequestStatusSnapshotRefreshedAt,
+    pullRequestStatusSnapshotStatus,
     ...thread
   } = row;
   return {
@@ -731,7 +786,17 @@ function toThreadWithPendingInteractionState(
         workspaceProvisionType: environmentWorkspaceProvisionType,
       },
     }),
+    gitStatusSnapshotJson,
+    gitStatusSnapshotErrorCode,
+    gitStatusSnapshotErrorMessage,
+    gitStatusSnapshotRefreshedAt,
+    gitStatusSnapshotStatus,
     hasPendingInteraction: pendingInteractionCount > 0,
+    pullRequestStatusSnapshotJson,
+    pullRequestStatusSnapshotErrorCode,
+    pullRequestStatusSnapshotErrorMessage,
+    pullRequestStatusSnapshotRefreshedAt,
+    pullRequestStatusSnapshotStatus,
   };
 }
 

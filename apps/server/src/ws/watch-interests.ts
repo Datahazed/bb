@@ -1,4 +1,10 @@
-import { getEnvironment, getThread, type DbConnection } from "@bb/db";
+import {
+  getEnvironment,
+  getThread,
+  listEnvironmentSnapshotWorkspaceWatchTargetsOnHost,
+  listHosts,
+  type DbConnection,
+} from "@bb/db";
 import {
   realtimeSubscriptionTargetKey,
   type ChangedMessage,
@@ -44,15 +50,30 @@ const WATCH_TARGET_THREAD_CHANGE_KINDS = new Set<ThreadChangeKind>([
   "thread-created",
   "thread-deleted",
 ]);
+const DURABLE_WORKSPACE_WATCH_ENVIRONMENT_CHANGE_KINDS = new Set<EnvironmentChangeKind>([
+  "environment-created",
+  "environment-deleted",
+  "metadata-changed",
+  "status-changed",
+]);
+const DURABLE_WORKSPACE_WATCH_THREAD_CHANGE_KINDS = new Set<ThreadChangeKind>([
+  "archived-changed",
+  "environment-changed",
+  "thread-created",
+  "thread-deleted",
+]);
 const THREAD_PROVISIONING_EVENT_TYPE =
   "system/thread-provisioning" satisfies ThreadEventType;
 
-function emptyWatchSet(generation: number): HostDaemonWatchSet {
-  return {
-    generation,
-    workspaceTargets: [],
-    threadStorageTargets: [],
-  };
+function watchSetTargetsKey(watchSet: HostDaemonWatchSet): string {
+  return JSON.stringify({
+    workspaceTargets: [...watchSet.workspaceTargets].sort((left, right) =>
+      left.environmentId.localeCompare(right.environmentId),
+    ),
+    threadStorageTargets: [...watchSet.threadStorageTargets].sort(
+      (left, right) => left.threadId.localeCompare(right.threadId),
+    ),
+  });
 }
 
 function isWatchableSubscriptionTarget(
@@ -72,8 +93,8 @@ export class WatchInterestCoordinator {
   >();
   private readonly targetsByInterest = new Map<string, RealtimeSubscriptionTarget>();
   private readonly generationByHost = new Map<string, number>();
-  private readonly lastWatchTargetFingerprintByHost = new Map<string, string>();
   private readonly lastResolvedHostIdsByInterest = new Map<string, Set<string>>();
+  private readonly lastSentWatchSetTargetsKeyByHost = new Map<string, string>();
 
   constructor(private readonly deps: WatchInterestCoordinatorDeps) {
     this.deps.hub.onChangedMessage((message) => {
@@ -175,23 +196,30 @@ export class WatchInterestCoordinator {
   }
 
   reconcileWatchSetForHost(hostId: string): HostDaemonWatchSet {
-    return this.resolveWatchSetForHost({
+    const watchSet = this.resolveWatchSetForHost({
       generation: this.generationByHost.get(hostId) ?? 0,
       hostId,
     });
+    this.lastSentWatchSetTargetsKeyByHost.set(
+      hostId,
+      watchSetTargetsKey(watchSet),
+    );
+    return watchSet;
   }
 
   refreshWatchSetsForChangedMessage(message: ChangedMessage): void {
     const affectedInterestKeys = this.interestKeysForChangedMessage(message);
-    if (affectedInterestKeys.size === 0) {
-      return;
-    }
-
     const affectedHostIds = new Set<string>();
     for (const key of affectedInterestKeys) {
       for (const hostId of this.hostIdsForInterestKey(key)) {
         affectedHostIds.add(hostId);
       }
+    }
+    for (const hostId of this.hostIdsForDurableWorkspaceWatchChange(message)) {
+      affectedHostIds.add(hostId);
+    }
+    if (affectedHostIds.size === 0) {
+      return;
     }
     this.sendSnapshotsForHosts(affectedHostIds);
   }
@@ -202,20 +230,21 @@ export class WatchInterestCoordinator {
 
   private sendSnapshotsForHosts(hostIds: ReadonlySet<string>): void {
     for (const hostId of hostIds) {
-      const generation = (this.generationByHost.get(hostId) ?? 0) + 1;
-      const watchSet = this.resolveWatchSetForHost({ generation, hostId });
-      const fingerprint = JSON.stringify({
-        workspaceTargets: watchSet.workspaceTargets,
-        threadStorageTargets: watchSet.threadStorageTargets,
+      const nextWatchSet = this.resolveWatchSetForHost({
+        generation: this.generationByHost.get(hostId) ?? 0,
+        hostId,
       });
-      if (this.lastWatchTargetFingerprintByHost.get(hostId) === fingerprint) {
+      const nextTargetsKey = watchSetTargetsKey(nextWatchSet);
+      if (this.lastSentWatchSetTargetsKeyByHost.get(hostId) === nextTargetsKey) {
         continue;
       }
-      this.lastWatchTargetFingerprintByHost.set(hostId, fingerprint);
+      const generation = (this.generationByHost.get(hostId) ?? 0) + 1;
       this.generationByHost.set(hostId, generation);
+      this.lastSentWatchSetTargetsKeyByHost.set(hostId, nextTargetsKey);
       this.deps.hub.sendDaemonMessage(hostId, {
         type: "watch-set.replace",
-        ...watchSet,
+        ...nextWatchSet,
+        generation,
       });
     }
   }
@@ -240,10 +269,6 @@ export class WatchInterestCoordinator {
     generation: number;
     hostId: string;
   }): HostDaemonWatchSet {
-    if (this.targetsByInterest.size === 0) {
-      return emptyWatchSet(args.generation);
-    }
-
     const workspaceTargets = new Map<
       string,
       HostDaemonWatchSetWorkspaceTarget
@@ -275,6 +300,19 @@ export class WatchInterestCoordinator {
           resolved.threadStorageTarget,
         );
       }
+    }
+
+    for (const target of listEnvironmentSnapshotWorkspaceWatchTargetsOnHost(
+      this.deps.db,
+      args.hostId,
+    )) {
+      workspaceTargets.set(target.environmentId, {
+        environmentId: target.environmentId,
+        workspaceContext: workspaceContextFromPath({
+          path: target.path,
+          workspaceProvisionType: target.workspaceProvisionType,
+        }),
+      });
     }
 
     return {
@@ -352,6 +390,35 @@ export class WatchInterestCoordinator {
     return changes.some((change) =>
       WATCH_TARGET_ENVIRONMENT_CHANGE_KINDS.has(change),
     );
+  }
+
+  private hostIdsForDurableWorkspaceWatchChange(
+    message: ChangedMessage,
+  ): Set<string> {
+    switch (message.entity) {
+      case "environment":
+        if (
+          !message.changes.some((change) =>
+            DURABLE_WORKSPACE_WATCH_ENVIRONMENT_CHANGE_KINDS.has(change),
+          )
+        ) {
+          return new Set();
+        }
+        return new Set(listHosts(this.deps.db).map((host) => host.id));
+      case "thread":
+        if (
+          !message.changes.some((change) =>
+            DURABLE_WORKSPACE_WATCH_THREAD_CHANGE_KINDS.has(change),
+          )
+        ) {
+          return new Set();
+        }
+        return new Set(listHosts(this.deps.db).map((host) => host.id));
+      case "project":
+      case "host":
+      case "system":
+        return new Set();
+    }
   }
 
   private threadChangeCanAffectWatchTargets(

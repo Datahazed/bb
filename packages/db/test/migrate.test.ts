@@ -239,10 +239,17 @@ const latestMigrationWhen = Math.max(
 function dropRewindAddedTables(db: DbConnection): void {
   // Several tests migrate to head, rewind the schema to a legacy state, then
   // re-apply forward. Tables added by recent migrations must be dropped as part
-  // of that rewind so the forward re-migrate can re-create them: the automations
-  // tables (added by 0039/0041), app_theme (added by 0042), the thread section
-  // schema (thread section columns + thread_sections table), thread tabs, and
-  // normalized plugin persistence tables.
+  // of that rewind so the forward re-migrate can re-create them: the environment
+  // status snapshot tables, the automations tables (added by 0039/0041),
+  // app_theme (added by 0042), the thread section schema (thread section
+  // columns + thread_sections table), thread tabs, and normalized plugin
+  // persistence tables.
+  db.$client
+    .prepare("DROP TABLE IF EXISTS environment_pull_request_status_snapshots")
+    .run();
+  db.$client
+    .prepare("DROP TABLE IF EXISTS environment_git_status_snapshots")
+    .run();
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
