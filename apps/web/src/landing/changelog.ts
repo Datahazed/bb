@@ -29,6 +29,10 @@ export type ReleaseMeta = {
 };
 
 export const RELEASE_META: Record<string, ReleaseMeta> = {
+  "0.35.0": {
+    date: "August 4, 2026",
+    headline: "Plugins",
+  },
   "0.34.0": {
     date: "July 28, 2026",
     headline: "Fresher models, cross-provider questions",

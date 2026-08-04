@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.35.0
+
+Plugins ship in this release, enabled by default. Much of bb is already built with them — and an agent inside bb can now write one for you.
+
+### Plugins
+
+- **Plugins leave experiments and are on by default.** Browse and install them in Settings → Plugins, from the store or from a git URL, an npm package, or a local path.
+- **bb can extend itself.** A built-in plugin-authoring skill and the `bb plugin` commands let an agent in a thread scaffold, build, install, and reload a plugin without leaving the conversation. Ask bb for something it does not do, and it can write the plugin that does it.
+- A plugin can add agent tools and skills, a `bb` CLI subcommand, sidebar pages and panels, homepage and settings sections, thread header controls, message actions, @-mention providers, background services and scheduled jobs, HTTP and RPC endpoints with realtime push, and its own SQLite storage. New this release: a plugin can render bb's full new-thread composer, and it can **replace the sidebar thread list** outright.
+- **Much of bb is already a plugin.** Automations, Side chat, bb connect, Custom instructions, Inline visualizations, and Secrets ship built-in and enabled. Workflows and Ask User Question ship built-in and off by default. GitHub, Docs, Memory, and Tasks install from the store.
+- Side chat is now entirely the plugin. Existing side chats migrate over and gain their own permission mode and worktree.
+- Plugin pages sit in flat sidebar rows you can reorder or hide, and **Automations** is now separate from **Extensions**, which manages Skills and Plugins.
+
+### A permission limit for every machine
+
+- Each machine now carries a **permission limit** — the highest permission mode any thread on it may run with. A sandbox VM can stay at Full Access while a personal laptop stays lower. Every machine ships at Full Access, so nothing changes until an owner lowers one.
+- Only an owner can change a limit, from the new per-machine page. Agents can read the limit but can never raise it. The same page collects that machine's projects, provider versions, update status, rename, and remove.
+
+### Performance
+
+Long thread timelines no longer stall while scrolling, streaming stays stable and unclipped inside a long turn, and threads load faster over bb connect.
+
+### Nightly builds
+
+- New automated nightly channel. Install `bb-app@nightly`, or the separate **bb Nightly** desktop app, which sits beside stable bb and updates from its own feed. A nightly build never moves a stable release pointer.
+
+### Fixes and polish
+
+- The iOS standalone PWA fills the screen again, instead of leaving a dead band at the bottom and pushing content under the status bar.
+- Browser tab shortcuts are preserved on web: `Mod+number` stays with the browser, and bb uses `Control+number` on macOS and `Ctrl+Shift+number` on Windows and Linux. Desktop is unchanged.
+- A host daemon that fails to shut down now force-exits after 15 seconds so the service manager can restart it. This frees machines that stranded on an old protocol version after a self-update.
+- The desktop app asks before it attaches to a bb that is already running, and it can stop that copy for you. `npx bb-app stop` gives agents the same ability.
+- Settings → Updates is redesigned around a quieter hierarchy, and updates keep running when you navigate off the page.
+- The New thread surface sits flush with the window edges.
+- The mobile landing page header no longer overflows.
+- Sticky launcher headers, the thread detail header separator, and keyboard shortcut pills line up.
+
 ## 0.34.0
 
 This release refreshes the model catalogs behind Pi and Claude, gives every provider a way to ask you a multiple-choice question, and lets workflows run without holding up the composer.
