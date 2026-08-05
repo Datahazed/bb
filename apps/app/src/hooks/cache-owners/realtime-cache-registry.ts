@@ -49,6 +49,7 @@ import {
   getCachedProjectThreadListInvalidationQueryKeys,
   getCachedRootOrderThreadListInvalidationQueryKeys,
   getCachedSidebarNavigationThreads,
+  getCachedThreadListPlaceholder,
   getEnvironmentBranchListInvalidationQueryKeys,
   getEnvironmentRecordInvalidationQueryKeys,
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
@@ -264,6 +265,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadListQueriesForBackgroundActivity, // Sidebar rows render active workflow/background task state.
       dirtyThreadSearchQueries, // Indexed conversation content may now match a search query.
       dirtyThreadTimelineQueries, // Timeline rows are built from appended events.
+      dirtyThreadPullRequestQueryForCompletedTurn, // A turn may create a remote PR without changing the workspace.
       dirtyThreadPromptHistoryQueriesForTurnRequests, // Follow-up recall is built from client turn requests.
     ],
   },
@@ -685,6 +687,24 @@ function dirtyThreadPromptHistoryQueriesForTurnRequests({
     return [];
   }
   return getThreadPromptHistoryInvalidationQueryKeys({ threadId });
+}
+
+function dirtyThreadPullRequestQueryForCompletedTurn({
+  eventTypes,
+  queryClient,
+  threadId,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  if (!threadId || !eventTypes?.includes("turn/completed")) {
+    return [];
+  }
+  const cachedThread =
+    queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId)) ??
+    getCachedThreadListPlaceholder(queryClient, threadId) ??
+    getCachedSidebarNavigationThreads(queryClient).find(
+      (thread) => thread.id === threadId,
+    );
+  const environmentId = cachedThread?.environmentId;
+  return environmentId ? [environmentPullRequestQueryKey(environmentId)] : [];
 }
 
 function dirtyThreadPendingInteractionQueries({
