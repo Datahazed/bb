@@ -10,14 +10,13 @@ import {
   ResourceCollectionPage,
   ResourceCollectionViewport,
   ResourceListPanel,
+  ResourceFilterMenu,
   ResourceListState,
-  ResourceMultiSelectMenu,
   ResourceOverflowMenu,
   ResourceRow,
   ResourceRowDetailChevron,
   ResourceSortMenu,
   ResourceToolbar,
-  type ResourceOption,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TOOLS_OWNED_COLLECTION_LABEL } from "@/components/tools/tools-navigation";
@@ -62,12 +61,6 @@ function skillProviderFilterId(skill: SkillSummary): ResourceProviderFilter {
 
 function providerFilterLabel(provider: ResourceProviderFilter): string {
   return provider === "bb" ? "bb" : providerLabel(provider);
-}
-
-function isResourceProviderFilter(
-  value: string,
-): value is ResourceProviderFilter {
-  return value === "bb" || value === "claude-code" || value === "codex";
 }
 
 function skillSourceFilterId(
@@ -115,36 +108,6 @@ function BbLogo({ className = "size-4" }: { className?: string }) {
       aria-hidden="true"
       className={cn(className, "object-contain dark:invert")}
     />
-  );
-}
-
-function ProviderFilterTooltip({
-  options,
-}: {
-  options: readonly ResourceOption[];
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span>Providers: </span>
-      {options.map((option) => {
-        if (!isResourceProviderFilter(option.id)) return null;
-        const provider = option.id;
-        return (
-          <span
-            key={option.id}
-            className="flex size-3.5 items-center justify-center"
-            data-provider-icon={provider}
-            aria-hidden="true"
-          >
-            {provider === "bb" ? (
-              <BbLogo className="size-3.5 brightness-0 invert" />
-            ) : (
-              <ProviderLogo providerId={provider} className="size-3.5" />
-            )}
-          </span>
-        );
-      })}
-    </span>
   );
 }
 
@@ -475,38 +438,35 @@ export function SkillsOverview({
               onSearchChange={onQueryChange}
               controls={
                 <>
-                  <ResourceMultiSelectMenu
-                    label="Type"
-                    icon="PackageReceive"
-                    selectedValues={sourceFilters}
-                    options={sourceOptions}
-                    selectedLabel={(options) =>
-                      options.map((option) => option.label).join(", ")
-                    }
-                    onChange={(values) =>
-                      setSourceFilters(
-                        values.filter(isResourceSkillSourceFilter),
-                      )
-                    }
-                  />
-                  <ResourceMultiSelectMenu
-                    label="Provider"
-                    icon="Layers"
-                    selectedValues={providerFilters}
-                    options={providerOptions}
-                    selectedLabel={(options) =>
-                      options.map((option) => option.label).join(", ")
-                    }
-                    selectedTooltip={(options) => (
-                      <ProviderFilterTooltip options={options} />
-                    )}
-                    onChange={(values) =>
-                      setProviderFilters(values as ResourceProviderFilter[])
-                    }
+                  <ResourceFilterMenu
+                    compact
+                    groups={[
+                      {
+                        id: "type",
+                        label: "Type",
+                        options: sourceOptions,
+                        selectedValues: sourceFilters,
+                        onChange: (values) =>
+                          setSourceFilters(
+                            values.filter(isResourceSkillSourceFilter),
+                          ),
+                      },
+                      {
+                        id: "provider",
+                        label: "Provider",
+                        options: providerOptions,
+                        selectedValues: providerFilters,
+                        onChange: (values) =>
+                          setProviderFilters(
+                            values as ResourceProviderFilter[],
+                          ),
+                      },
+                    ]}
                   />
                   <ResourceSortMenu
                     value={sortMode}
                     direction={sortDirection}
+                    compact
                     options={[
                       {
                         id: "provider",

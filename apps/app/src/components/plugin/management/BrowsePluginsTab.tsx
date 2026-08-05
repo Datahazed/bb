@@ -84,7 +84,8 @@ export function BrowsePluginsTab({
             <>
               <ResourceMultiSelectMenu
                 label="Category"
-                icon="GridView"
+                icon="SlidersHorizontal"
+                compact
                 selectedValues={categories}
                 options={categoryOptions}
                 selectedLabel={(options) =>
@@ -95,6 +96,7 @@ export function BrowsePluginsTab({
               <ResourceSortMenu
                 value="alpha"
                 direction={sortDirection}
+                compact
                 options={[{ id: "alpha", label: "Plugin name" }]}
                 onChange={() =>
                   setSortDirection((current) =>

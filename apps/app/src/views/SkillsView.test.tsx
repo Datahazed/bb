@@ -304,9 +304,11 @@ describe("SkillsOverview", () => {
     expect(screen.getByText("official-skill")).toBeTruthy();
     expect(screen.getByText("user-skill")).toBeTruthy();
     expect(screen.getByText("automations")).toBeTruthy();
-    const typeTrigger = screen.getByRole("button", { name: "Type" });
+    const typeTrigger = screen.getByRole("button", { name: /^Filters/ });
     fireEvent.focus(typeTrigger);
-    expect((await screen.findByRole("tooltip")).textContent).toBe("Type: All");
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Filters: All",
+    );
     fireEvent.blur(typeTrigger);
     fireEvent.pointerDown(typeTrigger);
     expect(screen.getByText("Type")).toBeTruthy();
@@ -362,7 +364,7 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Type" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
     fireEvent.click(
       screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
     );
@@ -389,7 +391,7 @@ describe("SkillsOverview", () => {
     expect(screen.getByText("automations")).toBeTruthy();
     // The open menu hides the trigger from the a11y tree, so close it first.
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.getByRole("button", { name: "Type" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Filters/ })).toBeTruthy();
   });
 
   it("uses filter-neutral copy when a Type selection removes every skill", async () => {
@@ -410,7 +412,7 @@ describe("SkillsOverview", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Type" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
     fireEvent.click(
       screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
     );

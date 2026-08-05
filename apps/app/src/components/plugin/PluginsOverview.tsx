@@ -221,7 +221,8 @@ export function PluginsOverview() {
               <>
                 <ResourceMultiSelectMenu
                   label="Type"
-                  icon="PackageReceive"
+                  icon="SlidersHorizontal"
+                  compact
                   selectedValues={typeFilters}
                   options={PLUGIN_TYPE_FILTER_OPTIONS}
                   selectedLabel={(options) =>
@@ -234,6 +235,7 @@ export function PluginsOverview() {
                 <ResourceSortMenu
                   value="alpha"
                   direction={installedSortDirection}
+                  compact
                   options={[{ id: "alpha", label: "Plugin name" }]}
                   onChange={() =>
                     setInstalledSortDirection((current) =>
