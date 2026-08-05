@@ -34,6 +34,7 @@ import {
 import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
+import type { EnvironmentStatusSnapshotStatus } from "./environment-status-snapshots.js";
 import {
   environmentGitStatusSnapshots,
   environmentPullRequestStatusSnapshots,
@@ -556,12 +557,12 @@ export interface ThreadWithPendingInteractionState extends ThreadRow {
   gitStatusSnapshotErrorCode: string | null;
   gitStatusSnapshotErrorMessage: string | null;
   gitStatusSnapshotRefreshedAt: number | null;
-  gitStatusSnapshotStatus: string | null;
+  gitStatusSnapshotStatus: EnvironmentStatusSnapshotStatus | null;
   pullRequestStatusSnapshotJson: string | null;
   pullRequestStatusSnapshotErrorCode: string | null;
   pullRequestStatusSnapshotErrorMessage: string | null;
   pullRequestStatusSnapshotRefreshedAt: number | null;
-  pullRequestStatusSnapshotStatus: string | null;
+  pullRequestStatusSnapshotStatus: EnvironmentStatusSnapshotStatus | null;
 }
 
 interface ThreadWithPendingInteractionStateRow extends ThreadRow {
@@ -574,13 +575,13 @@ interface ThreadWithPendingInteractionStateRow extends ThreadRow {
   gitStatusSnapshotErrorCode: string | null;
   gitStatusSnapshotErrorMessage: string | null;
   gitStatusSnapshotRefreshedAt: number | null;
-  gitStatusSnapshotStatus: string | null;
+  gitStatusSnapshotStatus: EnvironmentStatusSnapshotStatus | null;
   pendingInteractionCount: number;
   pullRequestStatusSnapshotJson: string | null;
   pullRequestStatusSnapshotErrorCode: string | null;
   pullRequestStatusSnapshotErrorMessage: string | null;
   pullRequestStatusSnapshotRefreshedAt: number | null;
-  pullRequestStatusSnapshotStatus: string | null;
+  pullRequestStatusSnapshotStatus: EnvironmentStatusSnapshotStatus | null;
 }
 
 export interface CountLiveThreadsInEnvironmentArgs {

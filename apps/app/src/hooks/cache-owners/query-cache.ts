@@ -19,7 +19,6 @@ import {
   environmentDiffPatchQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
   environmentMergeBaseBranchesQueryKeyPrefix,
-  environmentPullRequestQueryKey,
   environmentQueryKey,
   environmentWorkStatusQueryKey,
   environmentWorkStatusQueryKeyPrefix,
@@ -369,7 +368,6 @@ export function getEnvironmentWorkspaceStateInvalidationQueryKeys({
 }: EnvironmentInvalidationParams): QueryKey[] {
   return [
     environmentWorkStatusQueryKeyPrefix(environmentId),
-    environmentPullRequestQueryKey(environmentId),
     environmentDiffFilesQueryKeyPrefix(environmentId),
     environmentFilePreviewQueryKeyPrefix(environmentId),
   ];
@@ -592,12 +590,12 @@ export function optimisticallyInsertThread(
         hasPendingInteraction: false,
         pinSortKey: null,
         environmentWorkspaceDisplayKind: "other",
+        // "pending" mirrors what the server returns before the first snapshot
+        // refresh; "not_applicable" would wrongly assert the environment can
+        // have no status.
         environmentStatusSummary: {
-          git: { state: "not_applicable", refreshedAt: thread.updatedAt },
-          pullRequest: {
-            state: "not_applicable",
-            refreshedAt: thread.updatedAt,
-          },
+          git: { state: "pending" },
+          pullRequest: { state: "pending" },
         },
       },
       ...data,

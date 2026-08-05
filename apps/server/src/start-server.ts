@@ -194,7 +194,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
 
   const sweepInterval = setInterval(() => {
     void runPeriodicSweeps(sweepDeps);
-  }, 5_000);
+  }, 10_000);
   sweepInterval.unref();
 
   let shutdownPromise: Promise<void> | null = null;

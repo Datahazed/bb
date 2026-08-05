@@ -281,9 +281,10 @@ export {
   listEnvironmentSnapshotWorkspaceWatchTargetsOnHost,
   listEnvironmentThreadNotificationTargets,
   listTrackedEnvironmentIds,
-  markEnvironmentGitStatusSnapshotDue,
-  markEnvironmentPullRequestStatusSnapshotDue,
+  markEnvironmentGitStatusSnapshotsDue,
+  markEnvironmentPullRequestStatusSnapshotsDue,
   markEnvironmentStatusSnapshotsDue,
+  THREAD_CHANGE_KINDS_AFFECTING_TRACKED_ENVIRONMENTS,
   writeEnvironmentGitStatusSnapshot,
   writeEnvironmentPullRequestStatusSnapshot,
 } from "./environment-status-snapshots.js";

@@ -237,7 +237,7 @@ describe("environment status snapshots", () => {
     });
   });
 
-  it("marks both git and pull request snapshots due for workspace status changes", async () => {
+  it("splits due-marking between git and pull request snapshots by change kind", async () => {
     await withTestHarness(async (harness) => {
       const { environment } = seedThreadFixture(harness, {
         environment: {
@@ -281,33 +281,45 @@ describe("environment status snapshots", () => {
         logger: harness.deps.logger,
       });
       try {
-        const beforeNotify = Date.now();
+        const readGitRow = () =>
+          harness.db
+            .select()
+            .from(environmentGitStatusSnapshots)
+            .where(
+              eq(environmentGitStatusSnapshots.environmentId, environment.id),
+            )
+            .get();
+        const readPullRequestRow = () =>
+          harness.db
+            .select()
+            .from(environmentPullRequestStatusSnapshots)
+            .where(
+              eq(
+                environmentPullRequestStatusSnapshots.environmentId,
+                environment.id,
+              ),
+            )
+            .get();
+
+        // Local file edits refresh git status immediately but cannot change
+        // the remote PR, so the PR schedule is untouched.
+        const beforeWorkStatus = Date.now();
         harness.hub.notifyEnvironment(environment.id, ["work-status-changed"]);
-
-        const gitRow = harness.db
-          .select()
-          .from(environmentGitStatusSnapshots)
-          .where(
-            eq(environmentGitStatusSnapshots.environmentId, environment.id),
-          )
-          .get();
-        const pullRequestRow = harness.db
-          .select()
-          .from(environmentPullRequestStatusSnapshots)
-          .where(
-            eq(
-              environmentPullRequestStatusSnapshots.environmentId,
-              environment.id,
-            ),
-          )
-          .get();
-
-        expect(gitRow?.nextRefreshAt).toBeGreaterThanOrEqual(beforeNotify);
-        expect(gitRow?.nextRefreshAt).toBeLessThan(futureRefreshAt);
-        expect(pullRequestRow?.nextRefreshAt).toBeGreaterThanOrEqual(
-          beforeNotify,
+        expect(readGitRow()?.nextRefreshAt).toBeGreaterThanOrEqual(
+          beforeWorkStatus,
         );
-        expect(pullRequestRow?.nextRefreshAt).toBeLessThan(futureRefreshAt);
+        expect(readGitRow()?.nextRefreshAt).toBeLessThan(futureRefreshAt);
+        expect(readPullRequestRow()?.nextRefreshAt).toBe(futureRefreshAt);
+
+        // Ref changes (commits, pushes, branch moves) can change the PR.
+        const beforeGitRefs = Date.now();
+        harness.hub.notifyEnvironment(environment.id, ["git-refs-changed"]);
+        expect(readPullRequestRow()?.nextRefreshAt).toBeGreaterThanOrEqual(
+          beforeGitRefs,
+        );
+        expect(readPullRequestRow()?.nextRefreshAt).toBeLessThan(
+          futureRefreshAt,
+        );
       } finally {
         coordinator.dispose();
       }

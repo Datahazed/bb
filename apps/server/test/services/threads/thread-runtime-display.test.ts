@@ -34,6 +34,7 @@ import type {
   ThreadRuntimeState,
 } from "@bb/domain";
 import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../../src/constants.js";
+import { SNAPSHOT_DEMAND_REFRESH_FLOOR_MS } from "../../../src/services/environments/environment-status-snapshots.js";
 import {
   resolveThreadRuntimeState,
   toThreadListEntryResponses,
@@ -713,30 +714,51 @@ describe("thread runtime display", () => {
     });
   });
 
-  it("marks demanded environment status snapshots due from thread list reads", () => {
+  it("floors demanded snapshot marks so list reads cannot re-trigger fresh refreshes", () => {
     const { db, hostId, hub } = setup();
-    const now = 1_000;
-    const future = now + 60_000;
-    const { environment, thread } = createThreadWithEnvironment({ db, hostId });
+    const now = 1_000_000;
+    const staleRefreshedAt = now - SNAPSHOT_DEMAND_REFRESH_FLOOR_MS - 5_000;
+    const farFuture = now + 60 * 60_000;
+    const stale = createThreadWithEnvironment({ db, hostId });
+    const fresh = createThreadWithEnvironment({ db, hostId });
+    // Stale row scheduled far out: a list read pulls it in, but no sooner
+    // than refreshedAt + floor (here: already past, so due now).
     writeEnvironmentGitStatusSnapshot(db, {
-      environmentId: environment.id,
+      environmentId: stale.environment.id,
+      expectedNextRefreshAt: null,
       status: "not_applicable",
       gitStatusJson: null,
       errorCode: null,
       errorMessage: null,
-      refreshedAt: now - 100,
-      nextRefreshAt: future,
-      now: now - 100,
+      refreshedAt: staleRefreshedAt,
+      nextRefreshAt: farFuture,
+      now: staleRefreshedAt,
     });
     writeEnvironmentPullRequestStatusSnapshot(db, {
-      environmentId: environment.id,
+      environmentId: stale.environment.id,
+      expectedNextRefreshAt: null,
       status: "not_applicable",
       pullRequestJson: null,
       errorCode: null,
       errorMessage: null,
-      refreshedAt: now - 100,
-      nextRefreshAt: future,
-      now: now - 100,
+      refreshedAt: staleRefreshedAt,
+      nextRefreshAt: farFuture,
+      now: staleRefreshedAt,
+    });
+    // Freshly refreshed row: a list read must not reschedule it earlier than
+    // refreshedAt + floor — its existing (sooner) schedule wins.
+    const freshRefreshedAt = now - 1_000;
+    const freshNextRefreshAt = now + 4_000;
+    writeEnvironmentGitStatusSnapshot(db, {
+      environmentId: fresh.environment.id,
+      expectedNextRefreshAt: null,
+      status: "available",
+      gitStatusJson: JSON.stringify(makeGitStatusSnapshot()),
+      errorCode: null,
+      errorMessage: null,
+      refreshedAt: freshRefreshedAt,
+      nextRefreshAt: freshNextRefreshAt,
+      now: freshRefreshedAt,
     });
 
     toThreadListEntryResponses(
@@ -746,19 +768,24 @@ describe("thread runtime display", () => {
         threads: [
           createThreadListEntry({
             environmentHostId: hostId,
-            thread,
+            thread: stale.thread,
+          }),
+          createThreadListEntry({
+            environmentHostId: hostId,
+            thread: fresh.thread,
           }),
         ],
       },
     );
 
-    expect(
+    const gitNextRefreshAt = (environmentId: string) =>
       db
         .select({ nextRefreshAt: environmentGitStatusSnapshots.nextRefreshAt })
         .from(environmentGitStatusSnapshots)
-        .where(eq(environmentGitStatusSnapshots.environmentId, environment.id))
-        .get(),
-    ).toEqual({ nextRefreshAt: now });
+        .where(eq(environmentGitStatusSnapshots.environmentId, environmentId))
+        .get()?.nextRefreshAt;
+
+    expect(gitNextRefreshAt(stale.environment.id)).toBe(now);
     expect(
       db
         .select({
@@ -768,10 +795,11 @@ describe("thread runtime display", () => {
         .where(
           eq(
             environmentPullRequestStatusSnapshots.environmentId,
-            environment.id,
+            stale.environment.id,
           ),
         )
-        .get(),
-    ).toEqual({ nextRefreshAt: now });
+        .get()?.nextRefreshAt,
+    ).toBe(now);
+    expect(gitNextRefreshAt(fresh.environment.id)).toBe(freshNextRefreshAt);
   });
 });

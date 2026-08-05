@@ -1295,10 +1295,10 @@ export interface PluginSdkApp {
    * The pull request for one thread's branch (see
    * {@link PluginSidebarThreadPullRequestState}).
    *
-   * Per row and opt-in, because it costs a git-host lookup: it is NOT on the
-   * thread payload every sidebar loads. Threads sharing an environment share
-   * one query, and the host owns the polling and staleness rules — an open PR
-   * with pending checks refreshes, a merged one does not.
+   * Served from the host's server-owned environment status snapshot: the
+   * server refreshes PR state on its own cadence (frequently while checks are
+   * pending) and pushes changes to the sidebar, so reading this costs no
+   * extra git-host lookup. Threads sharing an environment share one snapshot.
    *
    * Experimental: see docs/api_to_audit.md.
    */

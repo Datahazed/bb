@@ -3,6 +3,7 @@ import {
   getThread,
   listEnvironmentSnapshotWorkspaceWatchTargetsOnHost,
   listHosts,
+  THREAD_CHANGE_KINDS_AFFECTING_TRACKED_ENVIRONMENTS,
   type DbConnection,
 } from "@bb/db";
 import {
@@ -47,18 +48,6 @@ const WATCH_TARGET_THREAD_CHANGE_KINDS = new Set<ThreadChangeKind>([
   "archived-changed",
   "environment-changed",
   "status-changed",
-  "thread-created",
-  "thread-deleted",
-]);
-const DURABLE_WORKSPACE_WATCH_ENVIRONMENT_CHANGE_KINDS = new Set<EnvironmentChangeKind>([
-  "environment-created",
-  "environment-deleted",
-  "metadata-changed",
-  "status-changed",
-]);
-const DURABLE_WORKSPACE_WATCH_THREAD_CHANGE_KINDS = new Set<ThreadChangeKind>([
-  "archived-changed",
-  "environment-changed",
   "thread-created",
   "thread-deleted",
 ]);
@@ -399,7 +388,7 @@ export class WatchInterestCoordinator {
       case "environment":
         if (
           !message.changes.some((change) =>
-            DURABLE_WORKSPACE_WATCH_ENVIRONMENT_CHANGE_KINDS.has(change),
+            WATCH_TARGET_ENVIRONMENT_CHANGE_KINDS.has(change),
           )
         ) {
           return new Set();
@@ -408,7 +397,7 @@ export class WatchInterestCoordinator {
       case "thread":
         if (
           !message.changes.some((change) =>
-            DURABLE_WORKSPACE_WATCH_THREAD_CHANGE_KINDS.has(change),
+            THREAD_CHANGE_KINDS_AFFECTING_TRACKED_ENVIRONMENTS.has(change),
           )
         ) {
           return new Set();

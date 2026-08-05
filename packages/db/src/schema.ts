@@ -464,7 +464,9 @@ export const environmentGitStatusSnapshots = sqliteTable(
     environmentId: text("environment_id")
       .primaryKey()
       .references(() => environments.id, { onDelete: "cascade" }),
-    status: text("status").notNull(),
+    status: text("status", {
+      enum: ["pending", "available", "not_applicable", "unavailable"],
+    }).notNull(),
     gitStatusJson: text("git_status_json"),
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
@@ -486,7 +488,9 @@ export const environmentPullRequestStatusSnapshots = sqliteTable(
     environmentId: text("environment_id")
       .primaryKey()
       .references(() => environments.id, { onDelete: "cascade" }),
-    status: text("status").notNull(),
+    status: text("status", {
+      enum: ["pending", "available", "not_applicable", "unavailable"],
+    }).notNull(),
     pullRequestJson: text("pull_request_json"),
     errorCode: text("error_code"),
     errorMessage: text("error_message"),

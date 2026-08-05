@@ -466,7 +466,6 @@ describe("getEnvironmentWorkspaceStateInvalidationQueryKeys", () => {
 
     expect(queryKeys).toEqual([
       ["environmentWorkStatus", "env-1"],
-      ["environmentPullRequest", "env-1"],
       ["environmentDiffFiles", "env-1"],
       ["environmentFilePreview", "env-1"],
     ]);

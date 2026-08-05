@@ -11,10 +11,6 @@ import type {
   PluginSidebarThreadsState,
 } from "@bb/plugin-sdk";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
-import {
-  getEnvironmentPullRequestFromResponse,
-  useEnvironmentPullRequest,
-} from "@/hooks/queries/environment-queries";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useUpdateThread } from "@/hooks/mutations/thread-state-mutations";
@@ -209,34 +205,38 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
 /**
  * The pull request for one thread's branch.
  *
- * Deliberately per row rather than a field on `useSidebarThreads`: a PR lookup
- * hits the git host, so it must be opt-in and paid only for rows that want it.
- * The underlying query is keyed by environment, so threads sharing a worktree
- * share one lookup, and the host's own staleness and refetch rules apply (an
- * open PR with pending checks polls; a merged one does not).
+ * Read from the server-owned environment status snapshot already present on
+ * the thread's list entry: the server refreshes PR state on its own cadence
+ * (frequently while checks are pending) and pushes an
+ * `environment-status-summary-changed` notification when it changes, so no
+ * per-row git-host lookup happens in the client. Threads sharing a worktree
+ * share one snapshot.
  */
 export function useSidebarThreadPullRequest(
   threadId: string,
 ): PluginSidebarThreadPullRequestState {
   const entry = useSidebarThreadEntry(threadId);
-  const environmentId = entry?.environmentId ?? null;
-  const query = useEnvironmentPullRequest(environmentId);
-  const pullRequest = getEnvironmentPullRequestFromResponse(query.data);
+  const signal = entry?.environmentStatusSummary.pullRequest ?? null;
 
-  return useMemo<PluginSidebarThreadPullRequestState>(
-    () => ({
-      isLoading: environmentId !== null && query.isPending,
+  return useMemo<PluginSidebarThreadPullRequestState>(() => {
+    if (signal === null || signal.state !== "available") {
+      return {
+        isLoading: signal?.state === "pending",
+        pullRequest: null,
+      };
+    }
+    return {
+      isLoading: false,
       pullRequest:
-        pullRequest === null
+        signal.pullRequest === null
           ? null
           : {
-              number: pullRequest.number,
-              title: pullRequest.title,
-              url: pullRequest.url,
-              state: pullRequest.state,
-              attention: pullRequest.attention,
+              number: signal.pullRequest.number,
+              title: signal.pullRequest.title,
+              url: signal.pullRequest.url,
+              state: signal.pullRequest.state,
+              attention: signal.pullRequest.attention,
             },
-    }),
-    [environmentId, pullRequest, query.isPending],
-  );
+    };
+  }, [signal]);
 }

@@ -70,7 +70,6 @@ import {
   allTerminalsQueryKeyPrefix,
   environmentDiffFilesQueryKeyPrefix,
   environmentFilePreviewQueryKeyPrefix,
-  environmentPullRequestQueryKey,
   environmentWorkStatusQueryKeyPrefix,
   hostsQueryKey,
   sidebarNavigationQueryKey,
@@ -329,8 +328,8 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "environment-status-summary-changed": {
     flush: "debounced",
     dirty: [
-      dirtyThreadListQueries, // Sidebar/list rows render environment git and PR signals.
-      dirtyThreadDetailQueries, // Detail consumers may reuse list-derived environment summary.
+      dirtyThreadListQueries, // Plugin sidebar rows read PR signals from list entries.
+      dirtyThreadDetailQueries, // ThreadDetailView derives its PR banner from the detail summary.
     ],
   },
   "read-state-changed": {
@@ -818,9 +817,6 @@ function dirtyEnvironmentLiveWorkspaceStateQueries({
 }: EnvironmentRealtimeDirtyContext): void {
   queryClient.invalidateQueries({
     queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
-  });
-  queryClient.invalidateQueries({
-    queryKey: environmentPullRequestQueryKey(environmentId),
   });
   queryClient.invalidateQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),

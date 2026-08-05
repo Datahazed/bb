@@ -12,6 +12,7 @@ import {
   listStoredClientTurnRequestRowsByKeys,
   markEnvironmentStatusSnapshotsDue,
   type DbConnection,
+  type EnvironmentStatusSnapshotStatus,
   type HostDaemonSessionRow,
   type StoredEventRow,
   type ThreadClientTurnRequestKey,
@@ -39,6 +40,7 @@ import {
 } from "@bb/thread-view";
 import type { ThreadResponse } from "@bb/server-contract";
 import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../constants.js";
+import { SNAPSHOT_DEMAND_REFRESH_FLOOR_MS } from "../environments/environment-status-snapshots.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import { parseStoredEvent } from "./thread-data.js";
 import { canThreadSpawnChild } from "./thread-parent.js";
@@ -110,20 +112,14 @@ interface ThreadEnvironmentStatusSnapshotFields {
   gitStatusSnapshotErrorCode: string | null;
   gitStatusSnapshotErrorMessage: string | null;
   gitStatusSnapshotRefreshedAt: number | null;
-  gitStatusSnapshotStatus: string | null;
+  gitStatusSnapshotStatus: EnvironmentStatusSnapshotStatus | null;
   pullRequestStatusSnapshotJson: string | null;
   pullRequestStatusSnapshotErrorCode: string | null;
   pullRequestStatusSnapshotErrorMessage: string | null;
   pullRequestStatusSnapshotRefreshedAt: number | null;
-  pullRequestStatusSnapshotStatus: string | null;
+  pullRequestStatusSnapshotStatus: EnvironmentStatusSnapshotStatus | null;
   updatedAt: number;
 }
-
-type SnapshotStatus =
-  | "available"
-  | "not_applicable"
-  | "pending"
-  | "unavailable";
 
 function threadStatusRuntimeState(status: ThreadStatus): ThreadRuntimeState {
   switch (status) {
@@ -488,9 +484,13 @@ function ensureSnapshotRowsForThreadListDemand(
     environmentIds,
     now,
   });
+  // A list read is demand, not a change signal: the floor keeps repeated
+  // reads of fresh rows from re-triggering refreshes (which would otherwise
+  // loop through refresh -> notify -> list refetch -> mark due).
   markEnvironmentStatusSnapshotsDue(deps.db, {
     environmentIds,
     now,
+    floorMs: SNAPSHOT_DEMAND_REFRESH_FLOOR_MS,
   });
 }
 
@@ -515,17 +515,58 @@ function ensureSnapshotRowsForThreadDemand(
   });
 }
 
-function normalizeSnapshotStatus(status: string | null): SnapshotStatus {
+interface SnapshotSignalFields {
+  errorCode: string | null;
+  errorMessage: string | null;
+  refreshedAt: number | null;
+  status: EnvironmentStatusSnapshotStatus | null;
+}
+
+type ResolvedSnapshotSignalBase =
+  | {
+      kind: "resolved";
+      signal:
+        | { state: "pending" }
+        | { state: "not_applicable"; refreshedAt: number }
+        | {
+            state: "unavailable";
+            refreshedAt: number;
+            reason: { code: string; message: string };
+          };
+    }
+  | { kind: "available"; refreshedAt: number };
+
+/**
+ * The pending/not_applicable/unavailable arms are identical for both signals;
+ * only the payload of a refreshed "available" row differs per signal.
+ */
+function resolveSnapshotSignalBase(
+  fields: SnapshotSignalFields,
+): ResolvedSnapshotSignalBase {
+  const status = fields.status ?? "pending";
+  if (status === "pending" || fields.refreshedAt === null) {
+    return { kind: "resolved", signal: { state: "pending" } };
+  }
   switch (status) {
-    case "available":
     case "not_applicable":
-    case "pending":
+      return {
+        kind: "resolved",
+        signal: { state: "not_applicable", refreshedAt: fields.refreshedAt },
+      };
     case "unavailable":
-      return status;
-    case null:
-      return "pending";
-    default:
-      return "unavailable";
+      return {
+        kind: "resolved",
+        signal: {
+          state: "unavailable",
+          refreshedAt: fields.refreshedAt,
+          reason: snapshotUnavailableReason({
+            code: fields.errorCode,
+            message: fields.errorMessage,
+          }),
+        },
+      };
+    case "available":
+      return { kind: "available", refreshedAt: fields.refreshedAt };
   }
 }
 
@@ -550,115 +591,75 @@ function parseSnapshotJson(value: string): unknown {
 function toThreadEnvironmentGitStatusSignal(
   thread: ThreadEnvironmentStatusSnapshotFields,
 ): ThreadEnvironmentGitStatusSignal {
-  const status = normalizeSnapshotStatus(thread.gitStatusSnapshotStatus);
-  switch (status) {
-    case "pending":
-      return { state: "pending" };
-    case "not_applicable":
-      return thread.gitStatusSnapshotRefreshedAt === null
-        ? { state: "pending" }
-        : {
-            state: "not_applicable",
-            refreshedAt: thread.gitStatusSnapshotRefreshedAt,
-          };
-    case "unavailable":
-      return thread.gitStatusSnapshotRefreshedAt === null
-        ? { state: "pending" }
-        : {
-            state: "unavailable",
-            refreshedAt: thread.gitStatusSnapshotRefreshedAt,
-            reason: snapshotUnavailableReason({
-              code: thread.gitStatusSnapshotErrorCode,
-              message: thread.gitStatusSnapshotErrorMessage,
-            }),
-          };
-    case "available": {
-      if (
-        thread.gitStatusSnapshotJson === null ||
-        thread.gitStatusSnapshotRefreshedAt === null
-      ) {
-        return { state: "pending" };
-      }
-      const parsed = threadEnvironmentGitStatusSnapshotSchema.safeParse(
-        parseSnapshotJson(thread.gitStatusSnapshotJson),
-      );
-      if (!parsed.success) {
-        return {
-          state: "unavailable",
-          refreshedAt: thread.gitStatusSnapshotRefreshedAt,
-          reason: {
-            code: "invalid_snapshot",
-            message: "Stored git status snapshot is invalid",
-          },
-        };
-      }
-      return {
-        state: "available",
-        refreshedAt: thread.gitStatusSnapshotRefreshedAt,
-        snapshot: parsed.data,
-      };
-    }
+  const base = resolveSnapshotSignalBase({
+    status: thread.gitStatusSnapshotStatus,
+    refreshedAt: thread.gitStatusSnapshotRefreshedAt,
+    errorCode: thread.gitStatusSnapshotErrorCode,
+    errorMessage: thread.gitStatusSnapshotErrorMessage,
+  });
+  if (base.kind === "resolved") {
+    return base.signal;
   }
+  if (thread.gitStatusSnapshotJson === null) {
+    return { state: "pending" };
+  }
+  const parsed = threadEnvironmentGitStatusSnapshotSchema.safeParse(
+    parseSnapshotJson(thread.gitStatusSnapshotJson),
+  );
+  if (!parsed.success) {
+    return {
+      state: "unavailable",
+      refreshedAt: base.refreshedAt,
+      reason: {
+        code: "invalid_snapshot",
+        message: "Stored git status snapshot is invalid",
+      },
+    };
+  }
+  return {
+    state: "available",
+    refreshedAt: base.refreshedAt,
+    snapshot: parsed.data,
+  };
 }
 
 function toThreadEnvironmentPullRequestStatusSignal(
   thread: ThreadEnvironmentStatusSnapshotFields,
 ): ThreadEnvironmentPullRequestStatusSignal {
-  const status = normalizeSnapshotStatus(
-    thread.pullRequestStatusSnapshotStatus,
-  );
-  switch (status) {
-    case "pending":
-      return { state: "pending" };
-    case "not_applicable":
-      return thread.pullRequestStatusSnapshotRefreshedAt === null
-        ? { state: "pending" }
-        : {
-            state: "not_applicable",
-            refreshedAt: thread.pullRequestStatusSnapshotRefreshedAt,
-          };
-    case "unavailable":
-      return thread.pullRequestStatusSnapshotRefreshedAt === null
-        ? { state: "pending" }
-        : {
-            state: "unavailable",
-            refreshedAt: thread.pullRequestStatusSnapshotRefreshedAt,
-            reason: snapshotUnavailableReason({
-              code: thread.pullRequestStatusSnapshotErrorCode,
-              message: thread.pullRequestStatusSnapshotErrorMessage,
-            }),
-          };
-    case "available": {
-      if (thread.pullRequestStatusSnapshotRefreshedAt === null) {
-        return { state: "pending" };
-      }
-      if (thread.pullRequestStatusSnapshotJson === null) {
-        return {
-          state: "available",
-          refreshedAt: thread.pullRequestStatusSnapshotRefreshedAt,
-          pullRequest: null,
-        };
-      }
-      const parsed = threadPullRequestSchema.safeParse(
-        parseSnapshotJson(thread.pullRequestStatusSnapshotJson),
-      );
-      if (!parsed.success) {
-        return {
-          state: "unavailable",
-          refreshedAt: thread.pullRequestStatusSnapshotRefreshedAt,
-          reason: {
-            code: "invalid_snapshot",
-            message: "Stored pull request status snapshot is invalid",
-          },
-        };
-      }
-      return {
-        state: "available",
-        refreshedAt: thread.pullRequestStatusSnapshotRefreshedAt,
-        pullRequest: parsed.data,
-      };
-    }
+  const base = resolveSnapshotSignalBase({
+    status: thread.pullRequestStatusSnapshotStatus,
+    refreshedAt: thread.pullRequestStatusSnapshotRefreshedAt,
+    errorCode: thread.pullRequestStatusSnapshotErrorCode,
+    errorMessage: thread.pullRequestStatusSnapshotErrorMessage,
+  });
+  if (base.kind === "resolved") {
+    return base.signal;
   }
+  if (thread.pullRequestStatusSnapshotJson === null) {
+    return {
+      state: "available",
+      refreshedAt: base.refreshedAt,
+      pullRequest: null,
+    };
+  }
+  const parsed = threadPullRequestSchema.safeParse(
+    parseSnapshotJson(thread.pullRequestStatusSnapshotJson),
+  );
+  if (!parsed.success) {
+    return {
+      state: "unavailable",
+      refreshedAt: base.refreshedAt,
+      reason: {
+        code: "invalid_snapshot",
+        message: "Stored pull request status snapshot is invalid",
+      },
+    };
+  }
+  return {
+    state: "available",
+    refreshedAt: base.refreshedAt,
+    pullRequest: parsed.data,
+  };
 }
 
 function toThreadEnvironmentStatusSummary(

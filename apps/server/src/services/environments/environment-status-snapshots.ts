@@ -7,7 +7,10 @@ import {
   listDueEnvironmentGitStatusSnapshots,
   listDueEnvironmentPullRequestStatusSnapshots,
   listEnvironmentThreadNotificationTargets,
+  markEnvironmentGitStatusSnapshotsDue,
+  markEnvironmentPullRequestStatusSnapshotsDue,
   markEnvironmentStatusSnapshotsDue,
+  THREAD_CHANGE_KINDS_AFFECTING_TRACKED_ENVIRONMENTS,
   writeEnvironmentGitStatusSnapshot,
   writeEnvironmentPullRequestStatusSnapshot,
   type EnvironmentGitStatusSnapshotRow,
@@ -20,7 +23,6 @@ import {
   type ChangedMessage,
   type Environment,
   type EnvironmentChangeKind,
-  type ThreadChangeKind,
   type ThreadEnvironmentGitStatusSnapshot,
   type ThreadPullRequest,
   type WorkspaceChangeStats,
@@ -51,18 +53,21 @@ const NOT_APPLICABLE_REFRESH_MS = 60 * 60_000;
 const UNAVAILABLE_RETRY_MS = 30_000;
 const ACTIVE_PULL_REQUEST_STALE_MS = 30_000;
 const SETTLED_PULL_REQUEST_STALE_MS = 60 * 60_000;
+const ABSENT_PULL_REQUEST_REFRESH_MS = 5 * 60_000;
 const ACTIVE_PULL_REQUEST_REFETCH_MS = 5_000;
+/**
+ * Demand-driven marks (a client read the thread list, a thread was attached)
+ * never schedule a refresh sooner than refreshedAt + this floor. Change-driven
+ * marks (the host reported the workspace changed) use floor 0. Without the
+ * floor, refresh -> notify -> list refetch -> mark-due closes a loop that
+ * re-polls git and GitHub every sweep tick.
+ */
+export const SNAPSHOT_DEMAND_REFRESH_FLOOR_MS = 30_000;
 
 const ENVIRONMENT_CHANGES_DIRTYING_BOTH = new Set<EnvironmentChangeKind>([
   "environment-created",
   "metadata-changed",
   "status-changed",
-]);
-const THREAD_CHANGES_THAT_CAN_CHANGE_ELIGIBILITY = new Set<ThreadChangeKind>([
-  "archived-changed",
-  "environment-changed",
-  "thread-created",
-  "thread-deleted",
 ]);
 
 function hasAnyChange<TChange extends string>(
@@ -154,11 +159,17 @@ function nextPullRequestRefreshAt(
   pullRequest: ThreadPullRequest | null,
   now: number,
 ): number {
-  if (pullRequest?.state === "merged" || pullRequest?.state === "closed") {
+  if (pullRequest === null) {
+    // No PR exists. Demand marks (floored at SNAPSHOT_DEMAND_REFRESH_FLOOR_MS)
+    // and git-refs-changed marks pick up an externally created PR sooner; the
+    // background cadence only bounds the fully idle case.
+    return now + ABSENT_PULL_REQUEST_REFRESH_MS;
+  }
+  if (pullRequest.state === "merged" || pullRequest.state === "closed") {
     return now + SETTLED_PULL_REQUEST_STALE_MS;
   }
   if (
-    pullRequest?.state === "open" &&
+    pullRequest.state === "open" &&
     (pullRequest.checks.state === "pending" ||
       pullRequest.mergeability.state === "unknown")
   ) {
@@ -210,6 +221,7 @@ async function refreshGitStatusSnapshot(
   if (!environmentCanHaveWorkspaceStatus(environment)) {
     const changed = writeEnvironmentGitStatusSnapshot(deps.db, {
       environmentId: row.environmentId,
+      expectedNextRefreshAt: row.nextRefreshAt,
       status: "not_applicable",
       gitStatusJson: null,
       errorCode: null,
@@ -244,6 +256,7 @@ async function refreshGitStatusSnapshot(
     if (result.outcome === "unavailable") {
       const changed = writeEnvironmentGitStatusSnapshot(deps.db, {
         environmentId: row.environmentId,
+        expectedNextRefreshAt: row.nextRefreshAt,
         status: "unavailable",
         gitStatusJson: null,
         errorCode: result.failure.code,
@@ -261,6 +274,7 @@ async function refreshGitStatusSnapshot(
     const snapshot = mapWorkspaceStatusToGitSnapshot(result.workspaceStatus);
     const changed = writeEnvironmentGitStatusSnapshot(deps.db, {
       environmentId: row.environmentId,
+      expectedNextRefreshAt: row.nextRefreshAt,
       status: "available",
       gitStatusJson: serializeJson(snapshot),
       errorCode: null,
@@ -276,6 +290,7 @@ async function refreshGitStatusSnapshot(
     const normalized = normalizeError(error);
     const changed = writeEnvironmentGitStatusSnapshot(deps.db, {
       environmentId: row.environmentId,
+      expectedNextRefreshAt: row.nextRefreshAt,
       status: "unavailable",
       gitStatusJson: null,
       errorCode: normalized.code,
@@ -299,6 +314,7 @@ async function refreshPullRequestStatusSnapshot(
   if (!environmentCanHaveWorkspaceStatus(environment)) {
     const changed = writeEnvironmentPullRequestStatusSnapshot(deps.db, {
       environmentId: row.environmentId,
+      expectedNextRefreshAt: row.nextRefreshAt,
       status: "not_applicable",
       pullRequestJson: null,
       errorCode: null,
@@ -335,6 +351,7 @@ async function refreshPullRequestStatusSnapshot(
         : null;
     const changed = writeEnvironmentPullRequestStatusSnapshot(deps.db, {
       environmentId: row.environmentId,
+      expectedNextRefreshAt: row.nextRefreshAt,
       status: "available",
       pullRequestJson: pullRequest ? serializeJson(pullRequest) : null,
       errorCode: null,
@@ -351,6 +368,7 @@ async function refreshPullRequestStatusSnapshot(
     const previousPullRequest = parseStoredPullRequestSnapshot(row);
     const changed = writeEnvironmentPullRequestStatusSnapshot(deps.db, {
       environmentId: row.environmentId,
+      expectedNextRefreshAt: row.nextRefreshAt,
       status: "unavailable",
       pullRequestJson: null,
       errorCode: normalized.code,
@@ -382,14 +400,31 @@ function dirtyEnvironmentSnapshotsForChange(
     now,
   });
 
+  // Change-driven marks refresh immediately (floor 0): the host or lifecycle
+  // told us something actually changed. Local file edits (work-status-changed)
+  // cannot change the remote PR, so only git-refs changes and lifecycle
+  // changes mark the pull-request snapshot due.
+  const lifecycleChanged = hasAnyChange(
+    message.changes,
+    ENVIRONMENT_CHANGES_DIRTYING_BOTH,
+  );
+  const gitRefsChanged = message.changes.includes("git-refs-changed");
   if (
-    message.changes.includes("work-status-changed") ||
-    message.changes.includes("git-refs-changed") ||
-    hasAnyChange(message.changes, ENVIRONMENT_CHANGES_DIRTYING_BOTH)
+    lifecycleChanged ||
+    gitRefsChanged ||
+    message.changes.includes("work-status-changed")
   ) {
-    markEnvironmentStatusSnapshotsDue(deps.db, {
+    markEnvironmentGitStatusSnapshotsDue(deps.db, {
       environmentIds: [message.id],
       now,
+      floorMs: 0,
+    });
+  }
+  if (lifecycleChanged || gitRefsChanged) {
+    markEnvironmentPullRequestStatusSnapshotsDue(deps.db, {
+      environmentIds: [message.id],
+      now,
+      floorMs: 0,
     });
   }
 }
@@ -399,7 +434,10 @@ function dirtyEnvironmentSnapshotsForThreadChange(
   message: Extract<ChangedMessage, { entity: "thread" }>,
 ): void {
   if (
-    !hasAnyChange(message.changes, THREAD_CHANGES_THAT_CAN_CHANGE_ELIGIBILITY)
+    !hasAnyChange(
+      message.changes,
+      THREAD_CHANGE_KINDS_AFFECTING_TRACKED_ENVIRONMENTS,
+    )
   ) {
     return;
   }
@@ -416,9 +454,12 @@ function dirtyEnvironmentSnapshotsForThreadChange(
       environmentIds: [thread.environmentId],
       now,
     });
+    // Attaching a thread is demand, not a workspace change: fresh snapshots
+    // stay as scheduled, stale or never-refreshed ones become due.
     markEnvironmentStatusSnapshotsDue(deps.db, {
       environmentIds: [thread.environmentId],
       now,
+      floorMs: SNAPSHOT_DEMAND_REFRESH_FLOOR_MS,
     });
   }
 }
@@ -459,13 +500,6 @@ export class EnvironmentStatusSnapshotCoordinator {
   }
 }
 
-export function runEnvironmentStatusSnapshotStartupRecovery(
-  deps: SnapshotRefreshDeps,
-  now: number,
-): void {
-  ensureTrackedEnvironmentStatusSnapshotRows(deps.db, { now });
-}
-
 export async function refreshDueEnvironmentStatusSnapshots(
   deps: SnapshotRefreshDeps,
   now: number,
@@ -476,10 +510,6 @@ export async function refreshDueEnvironmentStatusSnapshots(
     now,
     limit: SNAPSHOT_REFRESH_BATCH_LIMIT,
   });
-  for (const row of gitRows) {
-    await refreshGitStatusSnapshot(deps, row, Date.now());
-  }
-
   const pullRequestRows = listDueEnvironmentPullRequestStatusSnapshots(
     deps.db,
     {
@@ -487,9 +517,34 @@ export async function refreshDueEnvironmentStatusSnapshots(
       limit: SNAPSHOT_REFRESH_BATCH_LIMIT,
     },
   );
-  for (const row of pullRequestRows) {
-    await refreshPullRequestStatusSnapshot(deps, row, Date.now());
+
+  // Hosts refresh concurrently and each host's refreshes run serially, so one
+  // slow or offline host delays only its own environments, not the sweep.
+  const refreshesByHost = new Map<string | null, (() => Promise<void>)[]>();
+  const enqueue = (environmentId: string, refresh: () => Promise<void>) => {
+    const hostId = getEnvironment(deps.db, environmentId)?.hostId ?? null;
+    const queue = refreshesByHost.get(hostId) ?? [];
+    queue.push(refresh);
+    refreshesByHost.set(hostId, queue);
+  };
+  for (const row of gitRows) {
+    enqueue(row.environmentId, () =>
+      refreshGitStatusSnapshot(deps, row, Date.now()),
+    );
   }
+  for (const row of pullRequestRows) {
+    enqueue(row.environmentId, () =>
+      refreshPullRequestStatusSnapshot(deps, row, Date.now()),
+    );
+  }
+
+  await Promise.all(
+    [...refreshesByHost.values()].map(async (queue) => {
+      for (const refresh of queue) {
+        await refresh();
+      }
+    }),
+  );
 }
 
 export async function refreshEnvironmentPullRequestStatusSnapshotForEnvironment(

@@ -1,5 +1,6 @@
-import { and, asc, eq, inArray, isNull, lte, ne } from "drizzle-orm";
-import type { WorkspaceProvisionType } from "@bb/domain";
+import { and, asc, eq, exists, inArray, isNull, lte, ne, sql } from "drizzle-orm";
+import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
+import type { ThreadChangeKind, WorkspaceProvisionType } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import {
   environmentGitStatusSnapshots,
@@ -17,9 +18,22 @@ export type EnvironmentPullRequestStatusSnapshotRow =
   typeof environmentPullRequestStatusSnapshots.$inferSelect;
 
 export type EnvironmentStatusSnapshotStatus =
-  | "available"
-  | "not_applicable"
-  | "unavailable";
+  EnvironmentGitStatusSnapshotRow["status"];
+
+/**
+ * Thread changes that can alter which environments count as tracked (an
+ * environment is tracked while at least one non-archived, non-deleted thread
+ * references it — the condition `listTrackedEnvironmentIds` queries). The
+ * snapshot sweep and the daemon durable watch sets both key off this set so
+ * they cannot disagree about which environments to track.
+ */
+export const THREAD_CHANGE_KINDS_AFFECTING_TRACKED_ENVIRONMENTS: ReadonlySet<ThreadChangeKind> =
+  new Set<ThreadChangeKind>([
+    "archived-changed",
+    "environment-changed",
+    "thread-created",
+    "thread-deleted",
+  ]);
 
 interface EnsureEnvironmentStatusSnapshotRowsArgs {
   environmentIds: readonly string[];
@@ -31,34 +45,44 @@ interface DueEnvironmentStatusSnapshotsArgs {
   now: number;
 }
 
-interface MarkEnvironmentStatusSnapshotDueArgs {
-  environmentId: string;
-  now: number;
-}
-
 interface MarkEnvironmentStatusSnapshotsDueArgs {
   environmentIds: readonly string[];
   now: number;
+  /**
+   * Staleness floor: the mark schedules a refresh no sooner than
+   * refreshedAt + floorMs (and never later than the existing schedule).
+   * Pass 0 for change-driven marks ("the workspace changed, refresh now");
+   * pass a positive window for demand-driven marks ("a client looked") so
+   * repeated reads of fresh data cannot re-trigger refresh loops.
+   */
+  floorMs: number;
 }
 
 interface WriteSnapshotArgs {
   environmentId: string;
-  errorCode?: string | null;
-  errorMessage?: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
   nextRefreshAt: number;
   now: number;
   refreshedAt: number;
-  status: EnvironmentStatusSnapshotStatus;
+  status: Exclude<EnvironmentStatusSnapshotStatus, "pending">;
+  /**
+   * The row's nextRefreshAt observed when this refresh started, or null to
+   * overwrite unconditionally. When the stored value no longer matches, a
+   * due-mark arrived while the refresh was in flight; the writer then keeps
+   * the earlier of the two schedules so that mark is not lost.
+   */
+  expectedNextRefreshAt: number | null;
 }
 
 export interface WriteEnvironmentGitStatusSnapshotArgs
   extends WriteSnapshotArgs {
-  gitStatusJson?: string | null;
+  gitStatusJson: string | null;
 }
 
 export interface WriteEnvironmentPullRequestStatusSnapshotArgs
   extends WriteSnapshotArgs {
-  pullRequestJson?: string | null;
+  pullRequestJson: string | null;
 }
 
 export interface EnvironmentSnapshotWorkspaceWatchTarget {
@@ -83,9 +107,9 @@ function visibleGitSnapshotChanged(
   return (
     existing === null ||
     existing.status !== next.status ||
-    existing.gitStatusJson !== (next.gitStatusJson ?? null) ||
-    existing.errorCode !== (next.errorCode ?? null) ||
-    existing.errorMessage !== (next.errorMessage ?? null)
+    existing.gitStatusJson !== next.gitStatusJson ||
+    existing.errorCode !== next.errorCode ||
+    existing.errorMessage !== next.errorMessage
   );
 }
 
@@ -96,10 +120,29 @@ function visiblePullRequestSnapshotChanged(
   return (
     existing === null ||
     existing.status !== next.status ||
-    existing.pullRequestJson !== (next.pullRequestJson ?? null) ||
-    existing.errorCode !== (next.errorCode ?? null) ||
-    existing.errorMessage !== (next.errorMessage ?? null)
+    existing.pullRequestJson !== next.pullRequestJson ||
+    existing.errorCode !== next.errorCode ||
+    existing.errorMessage !== next.errorMessage
   );
+}
+
+/**
+ * Preserve due-marks that arrived while a refresh was in flight: if the
+ * stored schedule diverged from what the refresh observed at start, keep the
+ * earlier of the mark and the computed schedule.
+ */
+function resolveNextRefreshAt(
+  existing: { nextRefreshAt: number } | null,
+  args: WriteSnapshotArgs,
+): number {
+  if (
+    existing === null ||
+    args.expectedNextRefreshAt === null ||
+    existing.nextRefreshAt === args.expectedNextRefreshAt
+  ) {
+    return args.nextRefreshAt;
+  }
+  return Math.min(existing.nextRefreshAt, args.nextRefreshAt);
 }
 
 export function ensureEnvironmentStatusSnapshotRows(
@@ -229,6 +272,22 @@ export function listEnvironmentThreadNotificationTargets(
     .all();
 }
 
+/**
+ * Only environments that are still tracked (at least one live thread, not
+ * destroyed) are ever refreshed; rows for other environments stay dormant
+ * until a thread references the environment again.
+ */
+function environmentIsTracked(environmentId: AnySQLiteColumn) {
+  return exists(
+    sql`(select 1 from ${threads}
+      inner join ${environments} on ${environments.id} = ${threads.environmentId}
+      where ${threads.environmentId} = ${environmentId}
+        and ${threads.archivedAt} is null
+        and ${threads.deletedAt} is null
+        and ${environments.status} != 'destroyed')`,
+  );
+}
+
 export function listDueEnvironmentGitStatusSnapshots(
   db: SnapshotReadConnection,
   args: DueEnvironmentStatusSnapshotsArgs,
@@ -236,7 +295,12 @@ export function listDueEnvironmentGitStatusSnapshots(
   return db
     .select()
     .from(environmentGitStatusSnapshots)
-    .where(lte(environmentGitStatusSnapshots.nextRefreshAt, args.now))
+    .where(
+      and(
+        lte(environmentGitStatusSnapshots.nextRefreshAt, args.now),
+        environmentIsTracked(environmentGitStatusSnapshots.environmentId),
+      ),
+    )
     .orderBy(
       asc(environmentGitStatusSnapshots.nextRefreshAt),
       asc(environmentGitStatusSnapshots.environmentId),
@@ -252,7 +316,14 @@ export function listDueEnvironmentPullRequestStatusSnapshots(
   return db
     .select()
     .from(environmentPullRequestStatusSnapshots)
-    .where(lte(environmentPullRequestStatusSnapshots.nextRefreshAt, args.now))
+    .where(
+      and(
+        lte(environmentPullRequestStatusSnapshots.nextRefreshAt, args.now),
+        environmentIsTracked(
+          environmentPullRequestStatusSnapshots.environmentId,
+        ),
+      ),
+    )
     .orderBy(
       asc(environmentPullRequestStatusSnapshots.nextRefreshAt),
       asc(environmentPullRequestStatusSnapshots.environmentId),
@@ -289,33 +360,11 @@ export function getEnvironmentPullRequestStatusSnapshot(
   );
 }
 
-export function markEnvironmentGitStatusSnapshotDue(
+function markSnapshotTableDue(
   db: SnapshotWriteConnection,
-  args: MarkEnvironmentStatusSnapshotDueArgs,
-): void {
-  db.update(environmentGitStatusSnapshots)
-    .set({ nextRefreshAt: args.now, updatedAt: args.now })
-    .where(eq(environmentGitStatusSnapshots.environmentId, args.environmentId))
-    .run();
-}
-
-export function markEnvironmentPullRequestStatusSnapshotDue(
-  db: SnapshotWriteConnection,
-  args: MarkEnvironmentStatusSnapshotDueArgs,
-): void {
-  db.update(environmentPullRequestStatusSnapshots)
-    .set({ nextRefreshAt: args.now, updatedAt: args.now })
-    .where(
-      eq(
-        environmentPullRequestStatusSnapshots.environmentId,
-        args.environmentId,
-      ),
-    )
-    .run();
-}
-
-export function markEnvironmentStatusSnapshotsDue(
-  db: SnapshotWriteConnection,
+  table:
+    | typeof environmentGitStatusSnapshots
+    | typeof environmentPullRequestStatusSnapshots,
   args: MarkEnvironmentStatusSnapshotsDueArgs,
 ): void {
   const environmentIds = uniqueEnvironmentIds(args.environmentIds);
@@ -323,19 +372,41 @@ export function markEnvironmentStatusSnapshotsDue(
     return;
   }
 
-  db.update(environmentGitStatusSnapshots)
-    .set({ nextRefreshAt: args.now, updatedAt: args.now })
-    .where(inArray(environmentGitStatusSnapshots.environmentId, environmentIds))
-    .run();
-  db.update(environmentPullRequestStatusSnapshots)
-    .set({ nextRefreshAt: args.now, updatedAt: args.now })
+  // Never refresh sooner than refreshedAt + floorMs, and only ever pull the
+  // schedule earlier — a mark that would not advance the schedule is a no-op
+  // (no row write, no lock churn on read-driven marks of fresh rows).
+  const target = sql`max(${args.now}, coalesce(${table.refreshedAt}, 0) + ${args.floorMs})`;
+  db.update(table)
+    .set({ nextRefreshAt: target, updatedAt: args.now })
     .where(
-      inArray(
-        environmentPullRequestStatusSnapshots.environmentId,
-        environmentIds,
+      and(
+        inArray(table.environmentId, environmentIds),
+        sql`${table.nextRefreshAt} > ${target}`,
       ),
     )
     .run();
+}
+
+export function markEnvironmentGitStatusSnapshotsDue(
+  db: SnapshotWriteConnection,
+  args: MarkEnvironmentStatusSnapshotsDueArgs,
+): void {
+  markSnapshotTableDue(db, environmentGitStatusSnapshots, args);
+}
+
+export function markEnvironmentPullRequestStatusSnapshotsDue(
+  db: SnapshotWriteConnection,
+  args: MarkEnvironmentStatusSnapshotsDueArgs,
+): void {
+  markSnapshotTableDue(db, environmentPullRequestStatusSnapshots, args);
+}
+
+export function markEnvironmentStatusSnapshotsDue(
+  db: SnapshotWriteConnection,
+  args: MarkEnvironmentStatusSnapshotsDueArgs,
+): void {
+  markEnvironmentGitStatusSnapshotsDue(db, args);
+  markEnvironmentPullRequestStatusSnapshotsDue(db, args);
 }
 
 export function writeEnvironmentGitStatusSnapshot(
@@ -349,16 +420,17 @@ export function writeEnvironmentGitStatusSnapshot(
       .where(eq(environmentGitStatusSnapshots.environmentId, args.environmentId))
       .get() ?? null;
   const changed = visibleGitSnapshotChanged(existing, args);
+  const nextRefreshAt = resolveNextRefreshAt(existing, args);
 
   db.insert(environmentGitStatusSnapshots)
     .values({
       environmentId: args.environmentId,
       status: args.status,
-      gitStatusJson: args.gitStatusJson ?? null,
-      errorCode: args.errorCode ?? null,
-      errorMessage: args.errorMessage ?? null,
+      gitStatusJson: args.gitStatusJson,
+      errorCode: args.errorCode,
+      errorMessage: args.errorMessage,
       refreshedAt: args.refreshedAt,
-      nextRefreshAt: args.nextRefreshAt,
+      nextRefreshAt,
       createdAt: args.now,
       updatedAt: args.now,
     })
@@ -366,11 +438,11 @@ export function writeEnvironmentGitStatusSnapshot(
       target: environmentGitStatusSnapshots.environmentId,
       set: {
         status: args.status,
-        gitStatusJson: args.gitStatusJson ?? null,
-        errorCode: args.errorCode ?? null,
-        errorMessage: args.errorMessage ?? null,
+        gitStatusJson: args.gitStatusJson,
+        errorCode: args.errorCode,
+        errorMessage: args.errorMessage,
         refreshedAt: args.refreshedAt,
-        nextRefreshAt: args.nextRefreshAt,
+        nextRefreshAt,
         updatedAt: args.now,
       },
     })
@@ -395,16 +467,17 @@ export function writeEnvironmentPullRequestStatusSnapshot(
       )
       .get() ?? null;
   const changed = visiblePullRequestSnapshotChanged(existing, args);
+  const nextRefreshAt = resolveNextRefreshAt(existing, args);
 
   db.insert(environmentPullRequestStatusSnapshots)
     .values({
       environmentId: args.environmentId,
       status: args.status,
-      pullRequestJson: args.pullRequestJson ?? null,
-      errorCode: args.errorCode ?? null,
-      errorMessage: args.errorMessage ?? null,
+      pullRequestJson: args.pullRequestJson,
+      errorCode: args.errorCode,
+      errorMessage: args.errorMessage,
       refreshedAt: args.refreshedAt,
-      nextRefreshAt: args.nextRefreshAt,
+      nextRefreshAt,
       createdAt: args.now,
       updatedAt: args.now,
     })
@@ -412,11 +485,11 @@ export function writeEnvironmentPullRequestStatusSnapshot(
       target: environmentPullRequestStatusSnapshots.environmentId,
       set: {
         status: args.status,
-        pullRequestJson: args.pullRequestJson ?? null,
-        errorCode: args.errorCode ?? null,
-        errorMessage: args.errorMessage ?? null,
+        pullRequestJson: args.pullRequestJson,
+        errorCode: args.errorCode,
+        errorMessage: args.errorMessage,
         refreshedAt: args.refreshedAt,
-        nextRefreshAt: args.nextRefreshAt,
+        nextRefreshAt,
         updatedAt: args.now,
       },
     })
