@@ -689,14 +689,19 @@ function TimelineStaticRow({
   );
 }
 
+/**
+ * Inter-row spacing, one step tighter at every tier than it used to be
+ * (16/12/0 -> 12/8/0). Row headers are `py-0`, so this gap *is* the padding
+ * between rows; the tiers still step down so nesting stays legible.
+ */
 function timelineRowsListGapClassName(
   spacing: TimelineRowsListSpacing,
 ): string {
   switch (spacing) {
     case "top-level":
-      return "gap-4";
-    case "nested":
       return "gap-3";
+    case "nested":
+      return "gap-2";
     case "bundle":
       return "gap-0";
   }
