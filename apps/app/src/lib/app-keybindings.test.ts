@@ -41,6 +41,7 @@ describe("app keybindings", () => {
   it("maps mod to the platform primary modifier and rejects extras", () => {
     const base = {
       key: "N",
+      code: "KeyN",
       metaKey: true,
       ctrlKey: false,
       altKey: false,
@@ -64,6 +65,7 @@ describe("app keybindings", () => {
       matchesAppShortcut(
         {
           key: "{",
+          code: "BracketLeft",
           metaKey: true,
           ctrlKey: false,
           altKey: false,
@@ -73,6 +75,78 @@ describe("app keybindings", () => {
         true,
       ),
     ).toBe(true);
+  });
+
+  // macOS composes Option+M into "µ", so an Alt chord that matched on `key`
+  // alone would never fire there — the physical code carries the match instead.
+  it("matches alt chords by physical key across platforms", () => {
+    const ALT_M: AppShortcut = {
+      key: "m",
+      mod: false,
+      meta: false,
+      control: false,
+      alt: true,
+      shift: false,
+    };
+    expect(
+      matchesAppShortcut(
+        {
+          key: "µ",
+          code: "KeyM",
+          metaKey: false,
+          ctrlKey: false,
+          altKey: true,
+          shiftKey: false,
+        },
+        ALT_M,
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      matchesAppShortcut(
+        {
+          key: "m",
+          code: "KeyM",
+          metaKey: false,
+          ctrlKey: false,
+          altKey: true,
+          shiftKey: false,
+        },
+        ALT_M,
+        false,
+      ),
+    ).toBe(true);
+    // A non-US layout still reports a plain letter for Alt chords. AZERTY
+    // Alt+A is key "a" on physical KeyQ — it must keep matching the character
+    // the user sees, not the physical key underneath it.
+    expect(
+      matchesAppShortcut(
+        {
+          key: "a",
+          code: "KeyQ",
+          metaKey: false,
+          ctrlKey: false,
+          altKey: true,
+          shiftKey: false,
+        },
+        { ...ALT_M, key: "a" },
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      matchesAppShortcut(
+        {
+          key: "a",
+          code: "KeyQ",
+          metaKey: false,
+          ctrlKey: false,
+          altKey: true,
+          shiftKey: false,
+        },
+        { ...ALT_M, key: "q" },
+        false,
+      ),
+    ).toBe(false);
   });
 
   it("requires every positive context and excludes every negative context", () => {
