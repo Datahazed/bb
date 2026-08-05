@@ -11,8 +11,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default:
-          "bg-foreground text-background hover:bg-foreground/90",
+        default: "bg-foreground text-background hover:bg-foreground/90",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:
@@ -30,6 +29,17 @@ const buttonVariants = cva(
         icon: "h-9 w-9",
       },
     },
+    compoundVariants: [
+      // An icon button carries no resting fill. Hover, focus-visible, and
+      // pressed/open states may still paint one; the resting state must not.
+      // Filled variants (default/destructive/secondary) are an explicit opt-in
+      // by the caller and keep their fill.
+      {
+        size: "icon",
+        variant: ["ghost", "outline", "link"],
+        class: "bg-transparent",
+      },
+    ],
     defaultVariants: {
       variant: "default",
       size: "default",

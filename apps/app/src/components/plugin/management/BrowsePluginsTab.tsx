@@ -7,6 +7,7 @@ import {
   ResourceCollectionViewport,
   ResourceInstallControl,
   ResourceListState,
+  ResourceMultiSelectMenu,
   ResourceSortMenu,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
@@ -26,7 +27,6 @@ import {
 } from "@/hooks/queries/plugin-catalog-queries";
 import { removePlugin } from "@/hooks/queries/plugin-settings-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
-import { PluginCategoryFilterPills } from "./PluginCategoryFilterPills";
 import { PlaceholderBadge } from "./plugin-ui";
 
 /** Browse BB's official plugins, bundled with the app. */
@@ -38,22 +38,31 @@ export function BrowsePluginsTab({
   onOpenPlugin: (pluginId: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<string | null>(null);
+  // Empty means unfiltered, matching the Type filters on Installed and Skills.
+  const [categories, setCategories] = useState<string[]>([]);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [debouncedQuery] = useDebounceValue(query.trim(), 300);
   const searchQuery = usePluginCatalogSearch(debouncedQuery, { enabled: true });
   const entries = searchQuery.data ?? [];
-  const categories: string[] = [];
+  const availableCategories: string[] = [];
   for (const entry of entries) {
-    if (!categories.includes(entry.category)) categories.push(entry.category);
+    if (!availableCategories.includes(entry.category)) {
+      availableCategories.push(entry.category);
+    }
   }
-  if (category !== null && !categories.includes(category)) {
-    categories.push(category);
+  for (const selected of categories) {
+    if (!availableCategories.includes(selected)) {
+      availableCategories.push(selected);
+    }
   }
+  const categoryOptions = availableCategories.map((name) => ({
+    id: name,
+    label: name,
+  }));
   const visibleEntries = (
-    category === null
+    categories.length === 0
       ? entries
-      : entries.filter((entry) => entry.category === category)
+      : entries.filter((entry) => categories.includes(entry.category))
   )
     .slice()
     .sort((left, right) => {
@@ -71,18 +80,29 @@ export function BrowsePluginsTab({
           searchValue={query}
           searchPlaceholder="Search plugins"
           onSearchChange={setQuery}
-          containedControls
           controls={
-            <ResourceSortMenu
-              value="alpha"
-              direction={sortDirection}
-              options={[{ id: "alpha", label: "Plugin name" }]}
-              onChange={() =>
-                setSortDirection((current) =>
-                  current === "asc" ? "desc" : "asc",
-                )
-              }
-            />
+            <>
+              <ResourceMultiSelectMenu
+                label="Category"
+                icon="GridView"
+                selectedValues={categories}
+                options={categoryOptions}
+                selectedLabel={(options) =>
+                  options.map((option) => option.label).join(", ")
+                }
+                onChange={setCategories}
+              />
+              <ResourceSortMenu
+                value="alpha"
+                direction={sortDirection}
+                options={[{ id: "alpha", label: "Plugin name" }]}
+                onChange={() =>
+                  setSortDirection((current) =>
+                    current === "asc" ? "desc" : "asc",
+                  )
+                }
+              />
+            </>
           }
         />
       }
@@ -113,11 +133,6 @@ export function BrowsePluginsTab({
         />
       ) : (
         <div className="space-y-3">
-          <PluginCategoryFilterPills
-            categories={categories}
-            value={category}
-            onValueChange={setCategory}
-          />
           {visibleEntries.length === 0 ? (
             <ResourceListState
               state="empty"
@@ -197,7 +212,7 @@ function BrowseCard({
         pending={uninstall.isPending}
         presentation="icon"
         tooltip={`Uninstall ${entry.displayName}`}
-        className="border-success/40 bg-success/15 text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] hover:border-success/55 hover:bg-success/25 hover:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] focus-visible:border-success/55 focus-visible:bg-success/25 focus-visible:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]"
+        className="border-transparent bg-transparent text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] shadow-none hover:border-transparent hover:bg-transparent hover:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] focus-visible:border-transparent focus-visible:bg-transparent focus-visible:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]"
         onAction={() => setConfirmingUninstall(true)}
       />
     ) : (

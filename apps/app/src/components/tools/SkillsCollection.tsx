@@ -79,7 +79,7 @@ function skillSourceFilterId(
 }
 
 function skillSourceFilterLabel(source: ResourceSkillSourceFilter): string {
-  return source === "bb-official" ? "bb official" : "Plugin";
+  return source === "bb-official" ? "bb Official" : "Included in plugin";
 }
 
 function isResourceSkillSourceFilter(
@@ -281,9 +281,10 @@ export function SkillsOverview({
   const [providerFilters, setProviderFilters] = useState<
     ResourceProviderFilter[]
   >(["bb"]);
+  // Empty means unfiltered: the menu has no explicit "All" row.
   const [sourceFilters, setSourceFilters] = useState<
     ResourceSkillSourceFilter[]
-  >(["bb-official"]);
+  >([]);
   const [sortMode, setSortMode] = useState<ResourceSortMode>("alpha");
   const [sortDirection, setSortDirection] =
     useState<ResourceSortDirection>("asc");
@@ -332,7 +333,10 @@ export function SkillsOverview({
   const visibleSkills = useMemo(() => {
     const filtered = skills.filter((skill) => {
       const source = skillSourceFilterId(skill);
-      if (source !== null && !sourceFilters.includes(source)) {
+      if (
+        sourceFilters.length > 0 &&
+        (source === null || !sourceFilters.includes(source))
+      ) {
         return false;
       }
       if (
@@ -476,8 +480,6 @@ export function SkillsOverview({
                     icon="PackageReceive"
                     selectedValues={sourceFilters}
                     options={sourceOptions}
-                    allOptionLabel="All"
-                    emptySelectionLabel="None"
                     selectedLabel={(options) =>
                       options.map((option) => option.label).join(", ")
                     }
