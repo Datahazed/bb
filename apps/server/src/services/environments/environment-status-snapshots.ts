@@ -54,6 +54,8 @@ const UNAVAILABLE_RETRY_MS = 30_000;
 const ACTIVE_PULL_REQUEST_STALE_MS = 30_000;
 const SETTLED_PULL_REQUEST_STALE_MS = 60 * 60_000;
 const ABSENT_PULL_REQUEST_REFRESH_MS = 5 * 60_000;
+// Schedules the row due 5s out; the effective cadence is bounded below by the
+// periodic sweep interval (10s), so pending-check PRs poll roughly per tick.
 const ACTIVE_PULL_REQUEST_REFETCH_MS = 5_000;
 /**
  * Demand-driven marks (a client read the thread list, a thread was attached)
@@ -518,8 +520,11 @@ export async function refreshDueEnvironmentStatusSnapshots(
     },
   );
 
-  // Hosts refresh concurrently and each host's refreshes run serially, so one
-  // slow or offline host delays only its own environments, not the sweep.
+  // Hosts refresh concurrently and each host's refreshes run serially. Within
+  // one pass a slow host delays only its own environments; the pass itself
+  // still resolves when the slowest host finishes (the sweep job's running
+  // guard skips ticks until then), which bounds a hung host's damage to one
+  // batch of RPC timeouts rather than eliminating it.
   const refreshesByHost = new Map<string | null, (() => Promise<void>)[]>();
   const enqueue = (environmentId: string, refresh: () => Promise<void>) => {
     const hostId = getEnvironment(deps.db, environmentId)?.hostId ?? null;

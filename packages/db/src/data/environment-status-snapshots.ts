@@ -1,5 +1,15 @@
-import { and, asc, eq, exists, inArray, isNull, lte, ne, sql } from "drizzle-orm";
-import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
+import {
+  and,
+  asc,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  lte,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { ThreadChangeKind, WorkspaceProvisionType } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import {
@@ -274,17 +284,27 @@ export function listEnvironmentThreadNotificationTargets(
 
 /**
  * Only environments that are still tracked (at least one live thread, not
- * destroyed) are ever refreshed; rows for other environments stay dormant
- * until a thread references the environment again.
+ * destroyed) keep refreshing; rows for other environments stay dormant until
+ * a thread references the environment again. Never-refreshed rows are exempt
+ * so every row resolves out of "pending" at least once — otherwise a thread
+ * archived before its environment's first refresh would render a loading
+ * signal forever.
  */
-function environmentIsTracked(environmentId: AnySQLiteColumn) {
-  return exists(
-    sql`(select 1 from ${threads}
-      inner join ${environments} on ${environments.id} = ${threads.environmentId}
-      where ${threads.environmentId} = ${environmentId}
-        and ${threads.archivedAt} is null
-        and ${threads.deletedAt} is null
-        and ${environments.status} != 'destroyed')`,
+function environmentIsRefreshable(
+  table:
+    | typeof environmentGitStatusSnapshots
+    | typeof environmentPullRequestStatusSnapshots,
+) {
+  return or(
+    isNull(table.refreshedAt),
+    exists(
+      sql`(select 1 from ${threads}
+        inner join ${environments} on ${environments.id} = ${threads.environmentId}
+        where ${threads.environmentId} = ${table.environmentId}
+          and ${threads.archivedAt} is null
+          and ${threads.deletedAt} is null
+          and ${environments.status} != 'destroyed')`,
+    ),
   );
 }
 
@@ -298,7 +318,7 @@ export function listDueEnvironmentGitStatusSnapshots(
     .where(
       and(
         lte(environmentGitStatusSnapshots.nextRefreshAt, args.now),
-        environmentIsTracked(environmentGitStatusSnapshots.environmentId),
+        environmentIsRefreshable(environmentGitStatusSnapshots),
       ),
     )
     .orderBy(
@@ -319,9 +339,7 @@ export function listDueEnvironmentPullRequestStatusSnapshots(
     .where(
       and(
         lte(environmentPullRequestStatusSnapshots.nextRefreshAt, args.now),
-        environmentIsTracked(
-          environmentPullRequestStatusSnapshots.environmentId,
-        ),
+        environmentIsRefreshable(environmentPullRequestStatusSnapshots),
       ),
     )
     .orderBy(
@@ -372,9 +390,29 @@ function markSnapshotTableDue(
     return;
   }
 
-  // Never refresh sooner than refreshedAt + floorMs, and only ever pull the
-  // schedule earlier — a mark that would not advance the schedule is a no-op
-  // (no row write, no lock churn on read-driven marks of fresh rows).
+  if (args.floorMs === 0) {
+    // Change-driven mark: something actually changed, so a refresh must START
+    // at or after this mark. Restamping an already-due row matters: it makes
+    // the stored schedule diverge from what an in-flight refresh observed at
+    // pickup, so the writer's expectedNextRefreshAt check keeps the row due
+    // instead of losing the mark under the refresh's computed schedule.
+    db.update(table)
+      .set({ nextRefreshAt: args.now, updatedAt: args.now })
+      .where(
+        and(
+          inArray(table.environmentId, environmentIds),
+          ne(table.nextRefreshAt, args.now),
+        ),
+      )
+      .run();
+    return;
+  }
+
+  // Demand-driven mark: never refresh sooner than refreshedAt + floorMs, and
+  // only ever pull the schedule earlier. A mark that would not advance the
+  // schedule is a no-op (no row write on reads of fresh rows), and an
+  // already-due row is left alone — the refresh it is about to get satisfies
+  // the demand.
   const target = sql`max(${args.now}, coalesce(${table.refreshedAt}, 0) + ${args.floorMs})`;
   db.update(table)
     .set({ nextRefreshAt: target, updatedAt: args.now })
