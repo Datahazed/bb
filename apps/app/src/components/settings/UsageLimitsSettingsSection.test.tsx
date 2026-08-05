@@ -63,6 +63,7 @@ describe("UsageLimitsSettingsSectionContent", () => {
     });
 
     expect(screen.getByRole("heading", { name: "Cursor" })).toBeDefined();
+    expect(screen.getByRole("region", { name: "Cursor" })).toBeDefined();
     expect(screen.getByText("cursor@example.com")).toBeDefined();
     expect(screen.getByText("Plan usage")).toBeDefined();
     expect(screen.getByText("50% used")).toBeDefined();
@@ -84,6 +85,20 @@ describe("UsageLimitsSettingsSectionContent", () => {
 
     expect(screen.queryByRole("heading", { name: "Cursor" })).toBeNull();
     expect(screen.getByRole("heading", { name: "Codex" })).toBeDefined();
+  });
+
+  it("keeps states without usage bars with the provider heading", () => {
+    renderContent({
+      usage: { codex: { status: "unauthenticated" } },
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      onRefresh: vi.fn(),
+    });
+
+    const heading = screen.getByRole("heading", { name: "Codex" });
+    const status = screen.getByText(/Run `codex` to sign in/u);
+    expect(heading.parentElement?.contains(status)).toBe(true);
   });
 
   it("selects which connected machine supplies usage", () => {

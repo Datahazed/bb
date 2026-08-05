@@ -107,11 +107,13 @@ function codexPlanLabel(planType: string | null | undefined): string | null {
 
 function codexWindow(
   window: z.infer<typeof codexUsageWindowSchema> | null | undefined,
-  label: string,
+  fallbackLabel: string,
 ): ProviderUsageWindow | null {
   if (!window) {
     return null;
   }
+  const label =
+    window.limit_window_seconds === 604_800 ? "Weekly limit" : fallbackLabel;
   return {
     label,
     usedPercent: clampPercent(window.used_percent),
@@ -251,10 +253,32 @@ const claudeUsageWindowSchema = z.object({
   resets_at: z.string().nullish(),
 });
 
+const claudeScopedUsageLimitSchema = z
+  .object({
+    kind: z.string(),
+    scope: z
+      .object({
+        model: z
+          .object({ display_name: z.string().trim().min(1).nullish() })
+          .nullish(),
+        // Surface-specific buckets need a distinct display identity. Until the
+        // provider documents that shape, accept only the aggregate model row.
+        surface: z.null().optional(),
+      })
+      .nullish(),
+    percent: z.number().nullish(),
+    resets_at: z.string().nullish(),
+  })
+  .passthrough();
+
 const claudeUsageResponseSchema = z
   .object({
     five_hour: claudeUsageWindowSchema.nullish(),
     seven_day: claudeUsageWindowSchema.nullish(),
+    limits: z
+      .array(claudeScopedUsageLimitSchema.nullable().catch(null))
+      .nullish()
+      .catch([]),
   })
   .passthrough();
 
@@ -359,6 +383,37 @@ function claudeWindow(
   };
 }
 
+function claudeScopedWindows(
+  limits:
+    | (z.infer<typeof claudeScopedUsageLimitSchema> | null)[]
+    | null
+    | undefined,
+): ProviderUsageWindow[] {
+  // `limits` repeats the aggregate session/week rows and adds model buckets.
+  // Only the model-scoped weekly rows are additive to the legacy top-level data.
+  const windows: ProviderUsageWindow[] = [];
+  const seenLabels = new Set<string>();
+  for (const limit of limits ?? []) {
+    const label = limit?.scope?.model?.display_name;
+    if (
+      limit == null ||
+      limit.kind !== "weekly_scoped" ||
+      label == null ||
+      limit.percent == null ||
+      seenLabels.has(label.toLowerCase())
+    ) {
+      continue;
+    }
+    seenLabels.add(label.toLowerCase());
+    windows.push({
+      label,
+      usedPercent: clampPercent(limit.percent),
+      resetsAt: normalizeIsoTimestamp(limit.resets_at),
+    });
+  }
+  return windows;
+}
+
 function normalizeClaudeUsage(
   raw: unknown,
   credentials: ClaudeCredentials,
@@ -372,6 +427,7 @@ function normalizeClaudeUsage(
   const windows = [
     claudeWindow(parsed.data.five_hour, "Current session"),
     claudeWindow(parsed.data.seven_day, "Weekly limit"),
+    ...claudeScopedWindows(parsed.data.limits),
   ].filter((window): window is ProviderUsageWindow => window !== null);
 
   return {
