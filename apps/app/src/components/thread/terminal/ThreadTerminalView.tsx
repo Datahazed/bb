@@ -6,7 +6,12 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import "@xterm/xterm/css/xterm.css";
-import type { ITheme, Terminal as XTermTerminal } from "@xterm/xterm";
+import type {
+  IDisposable,
+  ITerminalAddon,
+  ITheme,
+  Terminal as XTermTerminal,
+} from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type {
   TerminalServerMessage,
@@ -29,6 +34,47 @@ const TERMINAL_FONT_FAMILY =
 const TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
 
 type TerminalFitScheduler = () => void;
+
+interface WebglRendererAddon extends ITerminalAddon {
+  onContextLoss: (listener: () => void) => IDisposable;
+}
+
+type TerminalAddonLoader = Pick<XTermTerminal, "loadAddon">;
+interface TerminalWebglAddonModule {
+  WebglAddon: new () => WebglRendererAddon;
+}
+type TerminalWebglAddonImporter = () => Promise<TerminalWebglAddonModule>;
+
+export async function loadOptionalTerminalWebglAddon(
+  importAddon: TerminalWebglAddonImporter,
+): Promise<TerminalWebglAddonModule | null> {
+  try {
+    return await importAddon();
+  } catch {
+    return null;
+  }
+}
+
+export function loadTerminalWebglRenderer(
+  terminal: TerminalAddonLoader,
+  createAddon: () => WebglRendererAddon,
+): boolean {
+  let addon: WebglRendererAddon | null = null;
+  let contextLossDisposable: IDisposable | null = null;
+  try {
+    addon = createAddon();
+    contextLossDisposable = addon.onContextLoss(() => {
+      contextLossDisposable?.dispose();
+      addon?.dispose();
+    });
+    terminal.loadAddon(addon);
+    return true;
+  } catch {
+    contextLossDisposable?.dispose();
+    addon?.dispose();
+    return false;
+  }
+}
 
 interface TerminalSelectionAnchorPoint {
   x: number;
@@ -509,12 +555,17 @@ export function ThreadTerminalView({
     async function mountTerminal(
       containerElement: HTMLDivElement,
     ): Promise<void> {
+      const requiredModulesPromise = Promise.all([
+        import("@xterm/xterm"),
+        import("@xterm/addon-fit"),
+        import("@xterm/addon-web-links"),
+      ]);
+      const webglAddonModulePromise = loadOptionalTerminalWebglAddon(
+        () => import("@xterm/addon-webgl"),
+      );
       const [{ Terminal }, { FitAddon: LoadedFitAddon }, { WebLinksAddon }] =
-        await Promise.all([
-          import("@xterm/xterm"),
-          import("@xterm/addon-fit"),
-          import("@xterm/addon-web-links"),
-        ]);
+        await requiredModulesPromise;
+      const webglAddonModule = await webglAddonModulePromise;
       if (disposed) {
         return;
       }
@@ -540,6 +591,15 @@ export function ThreadTerminalView({
           });
         }),
       );
+      // The DOM renderer measures every newly encountered glyph with
+      // synchronous layout reads. Register WebGL before opening xterm so the
+      // DOM renderer is never created when WebGL is available.
+      if (webglAddonModule !== null) {
+        loadTerminalWebglRenderer(
+          terminal,
+          () => new webglAddonModule.WebglAddon(),
+        );
+      }
       terminal.open(containerElement);
       writeTerminalSessionStatusNotice({
         lastNotice: lastStatusNoticeRef,
