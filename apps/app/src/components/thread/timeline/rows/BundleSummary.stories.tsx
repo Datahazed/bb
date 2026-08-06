@@ -976,6 +976,9 @@ const interleavedConversationRows: TimelineRow[] = [
   ...frontierExplorationRows,
 ];
 
+/** Fork needs a handler to render; the story only needs the button, not a fork. */
+function noopForkMessage() {}
+
 export function Conversation() {
   const promptDraft = useStoryPromptDraft();
   const handleAddToChat = promptDraft.addQuote;
@@ -984,13 +987,22 @@ export function Conversation() {
     <StoryCard>
       <StoryRow
         label="interleaved thread"
-        hint="user + agent messages at full strength; finished work rolled up and receded; errored/interrupted clusters and the live frontier kept prominent"
+        hint="user + agent messages at full strength; finished work rolled up and receded; errored/interrupted clusters and the live frontier kept prominent; hover an agent message for its full action bar"
       >
         <TimelineStage>
+          {/*
+            Copy is the only unconditional message action; add-to-chat and fork
+            each render only when their handler is supplied. Without all three
+            the hover bar is one button wide and the story understates the
+            footer space every agent message reserves.
+          */}
           <ThreadTimelineRows
             {...baseProps}
             threadRuntimeDisplayStatus="active"
             onSelectionAddToChat={handleAddToChat}
+            onMessageAddToChat={handleAddToChat}
+            onForkMessage={noopForkMessage}
+            canSpawnChild
             timelineRows={interleavedConversationRows}
           />
           <div className="mt-3">

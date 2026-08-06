@@ -651,8 +651,15 @@ function AssistantConversationMessage({
           personal-only source with no host to base a worktree fork on.
           `disabled` greys both fork and side chat together when the thread is at
           the spawn-depth cap (both spawn a child thread, one guard).
+
+          The strip reserves less height than the 20px bar it holds, so the bar
+          overhangs into the timeline's 16px row gap. At 12px the overhang is
+          12px, leaving ~6px of optical clearance below the bar to match the
+          ~7px above it (`top-1` plus the prose line's half-leading) — the 8px
+          "control belongs to the block above" step on both sides, with the bar
+          still clear of the next row.
         */
-        <div className="relative h-5 max-md:pointer-coarse:h-7">
+        <div className="relative h-3 max-md:pointer-coarse:h-7">
           <div
             className={cn(
               "absolute left-0 top-1",
