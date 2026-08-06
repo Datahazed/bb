@@ -3,14 +3,15 @@
 import { createStore } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  closePanesForPluginAtom,
   closePanesForThreadsAtom,
   maximizedPaneIdAtom,
   MAXIMIZED_PANE_STORAGE_KEY,
   splitLayoutAtom,
 } from "./atoms";
-import { countPanes, findPaneByThread, splitPane } from "./ops";
+import { countPanes, findPaneByThread, listPanes, splitPane } from "./ops";
 import { serializeSplitLayout, SPLIT_LAYOUT_STORAGE_KEY } from "./persistence";
-import type { SplitLayout } from "./types";
+import type { PaneContent, SplitLayout } from "./types";
 
 function singlePane(threadId: string): SplitLayout {
   return {
@@ -200,6 +201,123 @@ describe("closePanesForThreadsAtom", () => {
     expect(store.set(closePanesForThreadsAtom, [])).toEqual({
       removedAny: false,
       focusedRoute: null,
+    });
+    expect(countPanes(store.get(splitLayoutAtom)!.root)).toBe(2);
+  });
+});
+
+describe("closePanesForPluginAtom", () => {
+  const THREAD_CONTENT: PaneContent = {
+    kind: "thread",
+    projectId: "project-1",
+    threadId: "thread-1",
+  };
+
+  function panelContent(pluginId: string, panelPath: string): PaneContent {
+    return { kind: "plugin-panel", pluginId, panelPath, subPath: "" };
+  }
+
+  /** Panes left to right as `pane-1`…`pane-N`, with a chosen one focused. */
+  function rowLayout(
+    contents: readonly PaneContent[],
+    focusedIndex: number,
+  ): SplitLayout {
+    return {
+      root: {
+        type: "split",
+        dir: "row",
+        sizes: contents.map(() => 1 / contents.length),
+        children: contents.map((content, index) => ({
+          type: "pane",
+          paneId: `pane-${index + 1}`,
+          content,
+        })),
+      },
+      focusedPaneId: `pane-${focusedIndex + 1}`,
+    };
+  }
+
+  it("closes every pane of the removed plugin and reports the focused survivor", () => {
+    const store = createStore();
+    // Two panels from the same plugin: the loop has to clear both, not just
+    // the first one it finds.
+    store.set(
+      splitLayoutAtom,
+      rowLayout(
+        [
+          THREAD_CONTENT,
+          panelContent("github", "main"),
+          panelContent("github", "issues"),
+          panelContent("docs", "docs"),
+        ],
+        0,
+      ),
+    );
+
+    const result = store.set(closePanesForPluginAtom, "github");
+
+    expect(result.removedAny).toBe(true);
+    expect(
+      listPanes(store.get(splitLayoutAtom)!.root).map((pane) => pane.content),
+    ).toEqual([THREAD_CONTENT, panelContent("docs", "docs")]);
+    // The caller navigates here, so closing a background pane never drags the
+    // window off the page the user is actually looking at.
+    expect(result.focusedContent).toEqual(THREAD_CONTENT);
+  });
+
+  it("clears the layout when the removed plugin's own panel keeps focus", () => {
+    const store = createStore();
+    store.set(
+      splitLayoutAtom,
+      rowLayout(
+        [panelContent("github", "main"), panelContent("github", "issues")],
+        1,
+      ),
+    );
+    store.set(maximizedPaneIdAtom, "pane-2");
+
+    const result = store.set(closePanesForPluginAtom, "github");
+
+    // The last pane cannot be removed, so it would otherwise survive as a dead
+    // pane holding focus.
+    expect(result.removedAny).toBe(true);
+    expect(result.focusedContent).toBeNull();
+    expect(store.get(splitLayoutAtom)).toBeNull();
+    expect(store.get(maximizedPaneIdAtom)).toBeNull();
+  });
+
+  it("leaves a lone plugin pane for the caller's navigation to replace", () => {
+    const store = createStore();
+    const layout: SplitLayout = {
+      root: {
+        type: "pane",
+        paneId: "pane-1",
+        content: panelContent("github", "main"),
+      },
+      focusedPaneId: "pane-1",
+    };
+    store.set(splitLayoutAtom, layout);
+
+    const result = store.set(closePanesForPluginAtom, "github");
+
+    expect(result).toEqual({ removedAny: false, focusedContent: null });
+    expect(store.get(splitLayoutAtom)).toEqual(layout);
+  });
+
+  it("does nothing without a layout or a matching pane", () => {
+    const store = createStore();
+    expect(store.set(closePanesForPluginAtom, "github")).toEqual({
+      removedAny: false,
+      focusedContent: null,
+    });
+
+    store.set(
+      splitLayoutAtom,
+      rowLayout([THREAD_CONTENT, panelContent("docs", "docs")], 0),
+    );
+    expect(store.set(closePanesForPluginAtom, "github")).toEqual({
+      removedAny: false,
+      focusedContent: null,
     });
     expect(countPanes(store.get(splitLayoutAtom)!.root)).toBe(2);
   });

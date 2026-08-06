@@ -1,6 +1,9 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import { createTabScopedStorage, type SyncStorage } from "@/lib/browser-storage";
+import {
+  createTabScopedStorage,
+  type SyncStorage,
+} from "@/lib/browser-storage";
 import type { ThreadRoutePathArgs } from "@/lib/route-paths";
 import { findPane, listPanes, removePane } from "./ops";
 import {
@@ -8,7 +11,7 @@ import {
   serializeSplitLayout,
   SPLIT_LAYOUT_STORAGE_KEY,
 } from "./persistence";
-import type { SplitLayout } from "./types";
+import type { PaneContent, SplitLayout } from "./types";
 
 function createSplitLayoutStorage(): SyncStorage<SplitLayout | null> {
   return createTabScopedStorage<SplitLayout | null>({
@@ -145,5 +148,82 @@ export const closePanesForThreadsAtom = atom(
     }
     set(splitLayoutAtom, layout);
     return { removedAny: true, focusedRoute: survivorRoute };
+  },
+);
+
+export interface ClosePanesForPluginResult {
+  /** True when at least one pane closed. */
+  removedAny: boolean;
+  /**
+   * Content of the focused pane that survived the close, or null when nothing
+   * closed or no valid pane survived. The caller navigates to this pane's own
+   * route, so removing a background pane never drags the window off the page
+   * the user is actually looking at; a null falls back to its navigate-away.
+   */
+  focusedContent: PaneContent | null;
+}
+
+/**
+ * Closes every pane showing a panel from `pluginId`, the split-layout sibling
+ * of {@link closePanesForThreadsAtom}. Uninstalling a plugin unregisters its
+ * panels, so a pane left behind renders the "panel is not available"
+ * placeholder for a page nothing can restore — and reload brings it back,
+ * because the layout is persisted.
+ *
+ * The layout never collapses below a single pane, so a lone plugin pane stays
+ * put: the caller's navigation replaces its content instead.
+ */
+export const closePanesForPluginAtom = atom(
+  null,
+  (get, set, pluginId: string): ClosePanesForPluginResult => {
+    const current = get(splitLayoutAtom);
+    if (current === null) {
+      return { removedAny: false, focusedContent: null };
+    }
+    const isRemovedPanel = (content: PaneContent): boolean =>
+      content.kind === "plugin-panel" && content.pluginId === pluginId;
+    let layout = current;
+    let removedAny = false;
+    for (;;) {
+      const pane = listPanes(layout.root).find((candidate) =>
+        isRemovedPanel(candidate.content),
+      );
+      if (pane === undefined) {
+        break;
+      }
+      const next = removePane(layout, pane.paneId);
+      if (next === layout) {
+        // removePane refuses to remove the last pane.
+        break;
+      }
+      layout = next;
+      removedAny = true;
+    }
+    if (!removedAny) {
+      return { removedAny: false, focusedContent: null };
+    }
+    const maximizedPaneId = get(maximizedPaneIdAtom);
+    if (
+      maximizedPaneId !== null &&
+      (listPanes(layout.root).length < 2 ||
+        findPane(layout.root, maximizedPaneId) === null)
+    ) {
+      set(maximizedPaneIdAtom, null);
+    }
+    // The pane that kept focus can still be the removed plugin's own panel,
+    // when its panels filled the layout. Treat that as "no valid survivor":
+    // clear the layout rather than leave a dead pane behind.
+    const focused = findPane(layout.root, layout.focusedPaneId);
+    const survivor =
+      focused !== null && !isRemovedPanel(focused.content)
+        ? focused.content
+        : null;
+    if (survivor === null) {
+      set(splitLayoutAtom, null);
+      set(maximizedPaneIdAtom, null);
+      return { removedAny: true, focusedContent: null };
+    }
+    set(splitLayoutAtom, layout);
+    return { removedAny: true, focusedContent: survivor };
   },
 );
