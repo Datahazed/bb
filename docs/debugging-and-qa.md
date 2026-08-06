@@ -30,3 +30,31 @@ Test agents with:
 eval "$(scripts/bb-dev-app env)"
 pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode accept-edits --title "Smoke test" --prompt "Reply only with ok." --json
 ```
+
+## Visual Verification
+
+Launch the app, drive it, and screenshot the result. Do not settle for reading
+the markup and reasoning about what it renders.
+
+- `scripts/bb-dev-app current --desktop` runs the Electron shell against this
+  checkout. Prefer it whenever the change touches window chrome — traffic
+  lights, title-bar geometry, window insets, full-screen layout — because only
+  the desktop build has any of that.
+- Capture the desktop window with `screencapture`. A DevTools screenshot cannot
+  show native chrome: CDP captures the renderer's web contents, and macOS draws
+  the window frame outside it. `screencapture: could not create image from
+  display` means the process hosting the agent lacks Screen Recording
+  permission (System Settings → Privacy & Security → Screen Recording) — it does
+  not mean the command is wrong, so ask for the grant instead of debugging the
+  invocation.
+- For in-page changes the dev web app is faster. `scripts/bb-dev-app current`
+  prints the URL; capture one state with a headless screenshot, or drive Chrome
+  for Testing over CDP when the check needs interaction — open a menu, confirm a
+  dialog, screenshot each state — by keeping a single attached session and
+  scripting `Page.navigate` / `Input.dispatchMouseEvent` /
+  `Page.captureScreenshot`.
+- Do not fake `window.bbDesktop` to coax macOS chrome out of the web build. The
+  desktop path expects the whole `BbDesktopApi`: a partial stub throws during
+  render and silently blanks the page (subscribe methods must *return* an
+  unsubscribe function, not be one), and even a complete stub only proves what
+  the renderer does, never what the native frame does.

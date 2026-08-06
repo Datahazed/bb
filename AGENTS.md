@@ -57,7 +57,8 @@
 ## Debugging And QA
 
 - Do not assume. Inspect logs, query the database, call server APIs, or use the CLI to observe real state.
-- See [docs/debugging-and-qa.md](docs/debugging-and-qa.md) for dev ports/data dirs, entity-ID lookups, and the `scripts/bb-dev-app` local dev QA launcher.
+- Verify UI work by launching the app and screenshotting it. Window chrome (traffic lights, title-bar geometry, full-screen layout) exists only in the desktop shell, so it must be checked there — a renderer screenshot cannot show it.
+- See [docs/debugging-and-qa.md](docs/debugging-and-qa.md) for dev ports/data dirs, entity-ID lookups, the `scripts/bb-dev-app` local dev QA launcher, and visual verification.
 
 ## Pull Requests And Stacks
 
