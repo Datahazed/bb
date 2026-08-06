@@ -246,6 +246,13 @@ const DropdownMenuItem = React.forwardRef<
       disabled,
       role = "menuitem",
       "aria-checked": ariaChecked,
+      // Forwarded explicitly rather than via the DOM-prop spread: the compact
+      // branch renders a <button>, whose prop type rejects the primitive's
+      // div-shaped props wholesale. An item that refuses its action while
+      // staying focusable — so it can explain why, the way a disabled item
+      // cannot — needs exactly these two to survive on both surfaces.
+      "aria-disabled": ariaDisabled,
+      title,
       textValue: _textValue,
       children,
       onPointerEnter: callerPointerEnter,
@@ -267,7 +274,8 @@ const DropdownMenuItem = React.forwardRef<
           type="button"
           role={role}
           disabled={disabled}
-          aria-disabled={disabled || undefined}
+          aria-disabled={ariaDisabled ?? (disabled || undefined)}
+          title={title}
           aria-checked={ariaChecked}
           className={cn(
             "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-2 text-left text-xs outline-none transition-colors focus:bg-state-hover focus:text-foreground active:bg-state-active active:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0",
@@ -305,6 +313,14 @@ const DropdownMenuItem = React.forwardRef<
         disabled={disabled}
         role={role}
         aria-checked={ariaChecked}
+        // The fallback is load-bearing, not defensive. Radix emits its own
+        // `aria-disabled={disabled || undefined}` and then spreads caller
+        // props over it, so passing a bare `undefined` here deletes the
+        // attribute React would otherwise have rendered — silently, since
+        // `data-disabled` and the roving-focus skip are unaffected and only a
+        // screen reader can tell.
+        aria-disabled={ariaDisabled ?? (disabled || undefined)}
+        title={title}
         onSelect={onSelect}
         textValue={_textValue}
         {...domProps}
