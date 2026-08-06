@@ -58,3 +58,12 @@
 
 - Do not assume. Inspect logs, query the database, call server APIs, or use the CLI to observe real state.
 - See [docs/debugging-and-qa.md](docs/debugging-and-qa.md) for dev ports/data dirs, entity-ID lookups, and the `scripts/bb-dev-app` local dev QA launcher.
+
+## Pull Requests And Stacks
+
+- Stacked work uses GitHub's native stacked pull requests through the `gh stack` extension (`github/gh-stack`). PRs chained with `gh pr create --base` are not a stack: the stack is a server-side object, and only a real one gets the stack UI and atomic merge.
+- Add a layer with `gh stack link <stack-number> <new-pr-or-branch>`, and turn an existing chain into a stack with `gh stack link <bottom> … <top>` (bottom to top; each argument is a PR number, PR URL, or branch name). `link` keeps no local tracking state and never moves `HEAD`, so it is the only safe path in a worktree another session is working in.
+- `gh stack init`, `add`, `checkout`, `rebase`, and `sync` create or switch local branches. Do not run them in a shared worktree — check `git status` for edits you did not make before assuming a worktree is yours.
+- `gh stack view` reads local tracking state, so it reports "not part of a stack" after `link` even when the stack exists. Confirm server-side with `gh api repos/{owner}/{repo}/stacks/<stack-number>`.
+- Do not hand-write "Stacked on #N" in a PR body. The stack UI already renders the layers, and a hand-maintained pointer goes stale as soon as the stack is restructured.
+- Merge with `gh stack merge`. Every PR up to the one you choose merges in a single all-or-nothing operation, so a lower layer never lands without the layers built on it.
