@@ -34,7 +34,7 @@ import {
 } from "@/lib/provider-icon";
 
 type ResourceProviderFilter = "bb" | SkillProvider;
-type ResourceSkillSourceFilter = "included" | "bb-official";
+type ResourceSkillSourceFilter = "included" | "bb-official" | "user";
 type ResourceSortMode = "provider" | "alpha";
 type ResourceSortDirection = "asc" | "desc";
 
@@ -47,6 +47,7 @@ const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = [
 const RESOURCE_SKILL_SOURCE_FILTERS: readonly ResourceSkillSourceFilter[] = [
   "included",
   "bb-official",
+  "user",
 ];
 
 function providerLabel(provider: SkillProvider | null): string {
@@ -63,22 +64,29 @@ function providerFilterLabel(provider: ResourceProviderFilter): string {
   return provider === "bb" ? "bb" : providerLabel(provider);
 }
 
-function skillSourceFilterId(
-  skill: SkillSummary,
-): ResourceSkillSourceFilter | null {
+function skillSourceFilterId(skill: SkillSummary): ResourceSkillSourceFilter {
   if (skill.scope === "bb-builtin") return "bb-official";
   if (skill.scope === "plugin") return "included";
-  return null;
+  // Every remaining scope (bb-user/-project, claude-*, codex-*) is authored by
+  // the user, so the bucket is total and the filter can never strand a skill.
+  return "user";
 }
 
 function skillSourceFilterLabel(source: ResourceSkillSourceFilter): string {
-  return source === "bb-official" ? "bb Official" : "Included in plugin";
+  switch (source) {
+    case "bb-official":
+      return "BB Official";
+    case "included":
+      return "Included in plugin";
+    case "user":
+      return "User";
+  }
 }
 
 function isResourceSkillSourceFilter(
   value: string,
 ): value is ResourceSkillSourceFilter {
-  return value === "included" || value === "bb-official";
+  return value === "included" || value === "bb-official" || value === "user";
 }
 
 export function ProviderLogo({
@@ -296,10 +304,7 @@ export function SkillsOverview({
   const visibleSkills = useMemo(() => {
     const filtered = skills.filter((skill) => {
       const source = skillSourceFilterId(skill);
-      if (
-        sourceFilters.length > 0 &&
-        (source === null || !sourceFilters.includes(source))
-      ) {
+      if (sourceFilters.length > 0 && !sourceFilters.includes(source)) {
         return false;
       }
       if (

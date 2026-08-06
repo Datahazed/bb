@@ -1,22 +1,60 @@
 import type { ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { CONTEXT_SELECTION_SURFACE_CLASS } from "./context-selection";
+import {
+  RESOURCE_MENU_TRIGGER_ENGAGED_CLASS,
+  RESOURCE_MENU_TRIGGER_RESTING_CLASS,
+} from "@bb/shared-ui/resource-list";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 export default { title: "Control weight" };
 
 /**
- * Resting/hover/focus/engaged/disabled for the two control families the
- * toolbar rework touches. Ladle's own light/dark switch drives the two
- * default palettes; custom palettes (Nord, Dracula, …) redefine the whole
- * derived token set, so those are verified in the app with `bb theme set`,
- * not by overriding --canvas/--ink on a wrapper here (derived tokens resolve
- * at :root, so a descendant override would not recompute them).
+ * Resting/hover/focus/engaged/disabled for a toolbar filter key and a bare
+ * icon button.
+ *
+ * The class strings come from shared-ui's own exports, so editing
+ * `RESOURCE_MENU_TRIGGER_*` changes this story — an earlier version
+ * hand-copied them and documented a recessed track that had already been
+ * deleted. Ladle's light/dark switch drives the two default palettes; custom
+ * palettes (Nord, Dracula, …) redefine the whole derived token set, so those
+ * are checked in the app with `bb theme set` rather than by overriding
+ * --canvas/--ink here (derived tokens resolve at :root, so a descendant
+ * override would not recompute them).
  */
 
-// The app's one selection surface, shared with sidebar rows and tab pills.
-const ENGAGED = `${CONTEXT_SELECTION_SURFACE_CLASS} text-foreground`;
+/** Mirrors ResourceMenuTrigger's own Button props. */
+function TriggerKey({
+  className,
+  disabled,
+  engaged = false,
+  label,
+}: {
+  className?: string;
+  disabled?: boolean;
+  engaged?: boolean;
+  label: string;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      aria-label={label}
+      disabled={disabled}
+      className={cn(
+        "size-8 shrink-0 rounded-md p-0 text-muted-foreground",
+        RESOURCE_MENU_TRIGGER_RESTING_CLASS,
+        engaged && RESOURCE_MENU_TRIGGER_ENGAGED_CLASS,
+        className,
+      )}
+    >
+      <Icon name="SlidersHorizontal" className="size-4" aria-hidden />
+    </Button>
+  );
+}
 
+/** A bare icon button: no resting fill, unlike a toolbar key. */
 function IconBtn({
   className,
   disabled,
@@ -33,9 +71,9 @@ function IconBtn({
       size="icon"
       aria-label={label}
       disabled={disabled}
-      className={`size-8 shrink-0 bg-background p-0 text-muted-foreground ${className ?? ""}`}
+      className={cn("size-8 shrink-0 p-0 text-muted-foreground", className)}
     >
-      <Icon name="PackageReceive" className="size-4" aria-hidden />
+      <Icon name="MoreHorizontal" className="size-4" aria-hidden />
     </Button>
   );
 }
@@ -43,19 +81,10 @@ function IconBtn({
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="w-28 shrink-0 text-xs text-muted-foreground">
+      <span className="w-32 shrink-0 text-xs text-muted-foreground">
         {label}
       </span>
-      {children}
-    </div>
-  );
-}
-
-/** The toolbar's recessed track, so engaged reads in its real context. */
-function Track({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex h-8 shrink-0 items-center gap-1 rounded-md bg-surface-recessed p-0.5 [&>button]:size-7 [&>button]:rounded-sm">
-      {children}
+      <div className="flex shrink-0 items-center gap-1.5">{children}</div>
     </div>
   );
 }
@@ -65,51 +94,41 @@ function Matrix({ name }: { name: string }) {
     <section className="space-y-3 rounded-lg border border-border bg-background p-4">
       <h2 className="text-sm font-medium text-foreground">{name}</h2>
 
-      <Row label="icon · default">
-        <IconBtn label="default" className="bg-transparent" />
+      <Row label="key · default">
+        <TriggerKey label="default" />
+        <TriggerKey label="sibling" />
       </Row>
-      <Row label="icon · hover">
-        <IconBtn label="hover" className="bg-state-hover text-foreground" />
+      <Row label="key · hover">
+        <TriggerKey label="hover" className="bg-state-hover text-foreground" />
+        <TriggerKey label="sibling" />
       </Row>
-      <Row label="icon · focus">
-        <IconBtn label="focus" className="bg-transparent ring-1 ring-ring" />
+      <Row label="key · focus">
+        <TriggerKey label="focus" className="ring-1 ring-ring" />
+        <TriggerKey label="sibling" />
       </Row>
-      <Row label="icon · disabled">
-        <IconBtn label="disabled" className="bg-transparent" disabled />
+      <Row label="key · engaged">
+        <TriggerKey label="engaged" engaged />
+        <TriggerKey label="sibling" />
+      </Row>
+      <Row label="key · disabled">
+        <TriggerKey label="disabled" disabled />
+        <TriggerKey label="sibling" />
       </Row>
 
-      <Row label="filter · default">
-        <Track>
-          <IconBtn label="filter default" />
-          <IconBtn label="filter sibling" />
-        </Track>
+      <Row label="icon · default">
+        <IconBtn label="icon default" />
       </Row>
-      <Row label="filter · hover">
-        <Track>
-          <IconBtn
-            label="filter hover"
-            className="bg-state-hover text-foreground"
-          />
-          <IconBtn label="filter sibling" />
-        </Track>
+      <Row label="icon · hover">
+        <IconBtn
+          label="icon hover"
+          className="bg-state-hover text-foreground"
+        />
       </Row>
-      <Row label="filter · focus">
-        <Track>
-          <IconBtn label="filter focus" className="ring-1 ring-ring" />
-          <IconBtn label="filter sibling" />
-        </Track>
+      <Row label="icon · focus">
+        <IconBtn label="icon focus" className="ring-1 ring-ring" />
       </Row>
-      <Row label="filter · engaged">
-        <Track>
-          <IconBtn label="filter engaged" className={ENGAGED} />
-          <IconBtn label="filter sibling" />
-        </Track>
-      </Row>
-      <Row label="filter · disabled">
-        <Track>
-          <IconBtn label="filter disabled" disabled />
-          <IconBtn label="filter sibling" />
-        </Track>
+      <Row label="icon · disabled">
+        <IconBtn label="icon disabled" disabled />
       </Row>
     </section>
   );

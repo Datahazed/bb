@@ -191,7 +191,9 @@ describe("BrowsePluginsTab", () => {
       screen.getByRole("menuitemcheckbox", { name: "Developer tools" }),
     );
     expect(cardCount()).toBe(6);
-    expect(container.textContent).not.toContain("Official 1 ");
+    expect(
+      container.querySelector('[aria-label="Open Official 1 details"]'),
+    ).toBeNull();
 
     // Selections accumulate rather than replace.
     fireEvent.click(
@@ -379,12 +381,20 @@ describe("BrowsePluginsTab", () => {
     expect(installed.querySelector('[data-icon="Check"]')).toBeNull();
     // The installed state reads as a plain success-tinted glyph: no outline,
     // no fill, at rest or on hover/focus.
-    expect(installed.className).toContain("border-transparent");
-    expect(installed.className).toContain("bg-transparent");
-    expect(installed.className).toContain("hover:border-transparent");
-    expect(installed.className).toContain("hover:bg-transparent");
-    expect(installed.className).toContain("focus-visible:border-transparent");
-    expect(installed.className).toContain("focus-visible:bg-transparent");
+    // Tokenize: `toContain` also matches inside the hover:/focus-visible:
+    // twins, which would leave the resting state unverified.
+    const installedClasses = new Set(installed.className.split(/\s+/));
+    for (const restingClass of ["border-transparent", "bg-transparent"]) {
+      expect(installedClasses.has(restingClass)).toBe(true);
+    }
+    for (const variantClass of [
+      "hover:border-transparent",
+      "hover:bg-transparent",
+      "focus-visible:border-transparent",
+      "focus-visible:bg-transparent",
+    ]) {
+      expect(installedClasses.has(variantClass)).toBe(true);
+    }
     expect(installed.className).toContain(
       "text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]",
     );

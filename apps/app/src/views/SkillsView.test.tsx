@@ -314,7 +314,7 @@ describe("SkillsOverview", () => {
     expect(screen.getByText("Type")).toBeTruthy();
     // The explicit "All" row is gone; an empty selection carries that meaning.
     expect(screen.queryByRole("menuitemcheckbox", { name: "All" })).toBeNull();
-    for (const name of ["bb Official", "Included in plugin"]) {
+    for (const name of ["BB Official", "Included in plugin", "User"]) {
       expect(
         screen
           .getByRole("menuitemcheckbox", { name })
@@ -332,6 +332,12 @@ describe("SkillsOverview", () => {
       ).textContent,
     ).toBe("Included");
     expect(screen.queryByText("official-skill")).toBeNull();
+    // A user-authored skill has its own bucket, so it is narrowed out here
+    // rather than being silently unreachable through the filter.
+    expect(screen.queryByText("user-skill")).toBeNull();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+    expect(await screen.findByText("user-skill")).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
     fireEvent.click(
       screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
     );
@@ -339,7 +345,7 @@ describe("SkillsOverview", () => {
     expect(screen.getByText("automations")).toBeTruthy();
   });
 
-  it("toggles bb Official independently from Included in plugin", async () => {
+  it("toggles BB Official independently from Included in plugin", async () => {
     renderDom(
       <SkillsOverview
         skills={[
@@ -375,7 +381,7 @@ describe("SkillsOverview", () => {
 
     // Adding the second source widens the selection rather than replacing it.
     fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "bb Official" }),
+      screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
     );
     expect(await screen.findByText("official-skill")).toBeTruthy();
     expect(screen.getByText("automations")).toBeTruthy();
@@ -385,7 +391,7 @@ describe("SkillsOverview", () => {
       screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
     );
     fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "bb Official" }),
+      screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
     );
     expect(await screen.findByText("official-skill")).toBeTruthy();
     expect(screen.getByText("automations")).toBeTruthy();

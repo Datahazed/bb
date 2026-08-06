@@ -593,7 +593,7 @@ describe("PluginsOverview", () => {
     ]);
   });
 
-  it("filters installed plugins by type, treating builtin and catalog as bb Official", async () => {
+  it("filters installed plugins by type, treating builtin and catalog as BB Official", async () => {
     installFetch([
       { ...AUTOMATIONS_PLUGIN, id: "builtin-one", name: "Builtin One" },
       {
@@ -637,7 +637,7 @@ describe("PluginsOverview", () => {
     expect(screen.queryByRole("menuitemcheckbox", { name: "All" })).toBeNull();
 
     fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "bb Official" }),
+      screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
     );
     await waitFor(() => {
       expect(rowIds()).toEqual([
@@ -648,7 +648,7 @@ describe("PluginsOverview", () => {
 
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
     fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "bb Official" }),
+      screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
     );
     await waitFor(() => {
       expect(rowIds()).toEqual(["plugin-row-direct-one"]);

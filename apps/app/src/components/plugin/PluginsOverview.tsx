@@ -45,7 +45,7 @@ const PLUGIN_TYPE_FILTERS: readonly PluginTypeFilter[] = [
 
 const PLUGIN_TYPE_FILTER_OPTIONS = PLUGIN_TYPE_FILTERS.map((type) => ({
   id: type,
-  label: type === "bb-official" ? "bb Official" : "User",
+  label: type === "bb-official" ? "BB Official" : "User",
 }));
 
 function pluginTypeFilterId(provenance: PluginProvenance): PluginTypeFilter {

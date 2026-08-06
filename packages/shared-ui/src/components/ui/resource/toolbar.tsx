@@ -126,7 +126,7 @@ function ResourceOptionContent({
  * toolbar filters on it means "selected" reads identically everywhere instead
  * of this surface inventing its own language.
  */
-const RESOURCE_MENU_TRIGGER_ENGAGED_CLASS =
+export const RESOURCE_MENU_TRIGGER_ENGAGED_CLASS =
   "bg-state-active text-foreground hover:bg-state-active";
 
 /**
@@ -136,7 +136,8 @@ const RESOURCE_MENU_TRIGGER_ENGAGED_CLASS =
  * cluster. `--background` is `var(--canvas)`, so custom palettes get their own
  * paper colour rather than a hardcoded white.
  */
-const RESOURCE_MENU_TRIGGER_RESTING_CLASS = "border border-input bg-background";
+export const RESOURCE_MENU_TRIGGER_RESTING_CLASS =
+  "border border-input bg-background";
 
 /**
  * Engagement is driven by React state, not `data-[state=open]`.

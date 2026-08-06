@@ -82,17 +82,19 @@ export function BrowsePluginsTab({
           onSearchChange={setQuery}
           controls={
             <>
-              <ResourceMultiSelectMenu
-                label="Category"
-                icon="SlidersHorizontal"
-                compact
-                selectedValues={categories}
-                options={categoryOptions}
-                selectedLabel={(options) =>
-                  options.map((option) => option.label).join(", ")
-                }
-                onChange={setCategories}
-              />
+              {categoryOptions.length > 0 ? (
+                <ResourceMultiSelectMenu
+                  label="Category"
+                  icon="SlidersHorizontal"
+                  compact
+                  selectedValues={categories}
+                  options={categoryOptions}
+                  selectedLabel={(options) =>
+                    options.map((option) => option.label).join(", ")
+                  }
+                  onChange={setCategories}
+                />
+              ) : null}
               <ResourceSortMenu
                 value="alpha"
                 direction={sortDirection}
@@ -138,7 +140,7 @@ export function BrowsePluginsTab({
           {visibleEntries.length === 0 ? (
             <ResourceListState
               state="empty"
-              message="No plugins match this category."
+              message="No plugins match these filters."
             />
           ) : (
             <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">

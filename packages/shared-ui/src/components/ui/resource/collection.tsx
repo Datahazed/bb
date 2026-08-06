@@ -163,7 +163,7 @@ export function ResourceCollectionViewport({
       </ScrollArea>
       {footer ? (
         <div
-          className="sticky bottom-0 z-10 shrink-0 border-t border-border/70 bg-background pr-1 pt-3"
+          className="sticky bottom-0 z-10 shrink-0 border-t border-border/70 bg-background pt-3"
           data-resource-collection-footer
         >
           {footer}
