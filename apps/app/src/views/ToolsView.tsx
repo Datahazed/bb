@@ -6,9 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
 import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
-import { appToast } from "@/components/ui/app-toast";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import {
@@ -22,21 +20,23 @@ import {
 } from "@bb/shared-ui/resource-list";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
+import { usePluginLifecycle } from "@/components/plugin/usePluginLifecycle";
 import {
   CatalogPluginDetail,
   CatalogPluginDetailBanner,
   PluginDetail,
   PluginDetailBanners,
-  pluginIsLocalSource,
-  pluginRemovalLabel,
 } from "@/components/tools/PluginDetail";
+import {
+  pluginIsLocalSource,
+  pluginRemovalConfirmCopy,
+  pluginRemovalLabel,
+} from "@/components/plugin/plugin-removal";
 import {
   usePluginCatalogSearch,
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
 import {
-  removePlugin,
-  setPluginEnabled,
   usePluginList,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
@@ -149,7 +149,6 @@ function PluginsToolView({ pluginId }: { pluginId: string | undefined }) {
 
 function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   const navigate = useNavigate();
-  const [deleteTarget, setDeleteTarget] = useState<PluginListItem | null>(null);
   const [installTarget, setInstallTarget] =
     useState<PluginCatalogSearchEntry | null>(null);
   const listQuery = usePluginList({ enabled: true });
@@ -166,41 +165,11 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
       (plugin) => pluginIsLocalSource(plugin) && plugin.rootDir !== null,
     ),
   });
-  const pluginToggle = useMutation({
-    mutationFn: async (plugin: PluginListItem) => {
-      const action = plugin.enabled ? "disable" : "enable";
-      try {
-        await setPluginEnabled(fetch, plugin.id, !plugin.enabled);
-      } catch {
-        throw new Error(`Failed to ${action} plugin`);
-      }
-    },
-    onSuccess: () => listQuery.refetch(),
-    onError: (error) => {
-      appToast.error(error instanceof Error ? error.message : String(error));
-    },
-  });
-  const pluginDelete = useMutation({
-    mutationFn: async (plugin: PluginListItem) => {
-      try {
-        await removePlugin(fetch, plugin.id);
-      } catch {
-        throw new Error("Failed to delete plugin");
-      }
-    },
-    onSuccess: (_data, deletedPlugin) => {
-      appToast.success(
-        pluginIsLocalSource(deletedPlugin)
-          ? "Plugin removed from bb"
-          : "Plugin uninstalled",
-      );
-      setDeleteTarget(null);
-      navigate(getPluginsRoutePath());
-      return listQuery.refetch();
-    },
-    onError: (error) => {
-      appToast.error(error instanceof Error ? error.message : String(error));
-    },
+  // Same hook the sidebar row menu uses, so the two surfaces cannot disagree
+  // about what enabling or removing a plugin does. This surface additionally
+  // leaves the detail page, which dies with the plugin it describes.
+  const lifecycle = usePluginLifecycle({
+    onRemoved: () => navigate(getPluginsRoutePath()),
   });
   const isLoading = listQuery.isFetching && listQuery.data === undefined;
   const selectedPlugin =
@@ -214,11 +183,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
       null,
   );
   const pendingPluginId =
-    pluginToggle.isPending && pluginToggle.variables
-      ? pluginToggle.variables.id
-      : pluginDelete.isPending && pluginDelete.variables
-        ? pluginDelete.variables.id
-        : null;
+    lifecycle.pendingPluginId;
   const handleEditPlugin = useCallback(
     (plugin: PluginListItem) => {
       navigate(getRootComposeRoutePath(), {
@@ -272,10 +237,10 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         plugin={selectedPlugin}
         pending={pendingPluginId === selectedPlugin.id}
         openSourceDisabled={!canOpenPreferredDirectoryTarget}
-        onToggle={(target) => pluginToggle.mutate(target)}
+        onToggle={lifecycle.toggleEnabled}
         onEdit={handleEditPlugin}
         onOpenSource={handleOpenPluginSource}
-        onDelete={setDeleteTarget}
+        onDelete={lifecycle.requestRemove}
       />
     );
   } else if (catalogQuery.isError) {
@@ -339,27 +304,19 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
         <ToolsScrollPage>
           {detailContent}
           <ConfirmDeleteDialog
-            open={deleteTarget !== null}
+            open={lifecycle.removeTarget !== null}
             onOpenChange={(open) => {
-              if (!open && !pluginDelete.isPending) setDeleteTarget(null);
+              if (!open && !lifecycle.removePending) lifecycle.cancelRemove();
             }}
           >
-            {deleteTarget ? (
+            {lifecycle.removeTarget ? (
               <ConfirmDeleteDialogContent
-                title={
-                  pluginIsLocalSource(deleteTarget)
-                    ? "Remove plugin from bb?"
-                    : "Uninstall plugin?"
-                }
-                description={
-                  pluginIsLocalSource(deleteTarget)
-                    ? `Remove "${deleteTarget.id}" from bb? Its source files will stay on disk.`
-                    : `Uninstall "${deleteTarget.id}" and delete its managed files and settings?`
-                }
-                confirmLabel={pluginRemovalLabel(deleteTarget)}
-                pending={pluginDelete.isPending}
-                onConfirm={() => pluginDelete.mutate(deleteTarget)}
-                onCancel={() => setDeleteTarget(null)}
+                title={pluginRemovalConfirmCopy(lifecycle.removeTarget).title}
+                description={pluginRemovalConfirmCopy(lifecycle.removeTarget).description}
+                confirmLabel={pluginRemovalLabel(lifecycle.removeTarget)}
+                pending={lifecycle.removePending}
+                onConfirm={lifecycle.confirmRemove}
+                onCancel={lifecycle.cancelRemove}
               />
             ) : null}
           </ConfirmDeleteDialog>

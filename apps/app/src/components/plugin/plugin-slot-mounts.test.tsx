@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   act,
   cleanup,
@@ -10,10 +16,12 @@ import {
   screen,
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { PluginComposerApi, PluginThreadPanelProps } from "@bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import { createTestQueryClient } from "@/test/queryClientTestHarness";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -1240,6 +1248,16 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     return <div>board panel body</div>;
   }
 
+  // The rows' lifecycle menu reads the installed-plugin list, so every mount of
+  // the nav list needs a query client even when the test only looks at chrome.
+  function withQueryClient(children: ReactNode) {
+    return (
+      <QueryClientProvider client={createTestQueryClient()}>
+        {children}
+      </QueryClientProvider>
+    );
+  }
+
   function registerAutomationsPanel() {
     setPluginSlotRegistrations(
       AUTOMATIONS_PLUGIN_ID,
@@ -1263,11 +1281,13 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
       registerAutomationsPanel();
 
       render(
-        <ToolsHubExperimentProvider enabled={enabled}>
-          <MemoryRouter>
-            <PluginNavSidebarItems />
-          </MemoryRouter>
-        </ToolsHubExperimentProvider>,
+        withQueryClient(
+          <ToolsHubExperimentProvider enabled={enabled}>
+            <MemoryRouter>
+              <PluginNavSidebarItems />
+            </MemoryRouter>
+          </ToolsHubExperimentProvider>,
+        ),
       );
 
       expect(screen.getByRole("button", { name: "Automations" })).toBeDefined();
@@ -1290,13 +1310,18 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
       }),
     );
     render(
-      <MemoryRouter initialEntries={["/"]}>
-        <PluginNavSidebarItems />
-        <Routes>
-          <Route path="/" element={<div>home</div>} />
-          <Route path={PLUGIN_PANEL_ROUTE_PATH} element={<PluginPanelView />} />
-        </Routes>
-      </MemoryRouter>,
+      withQueryClient(
+        <MemoryRouter initialEntries={["/"]}>
+          <PluginNavSidebarItems />
+          <Routes>
+            <Route path="/" element={<div>home</div>} />
+            <Route
+              path={PLUGIN_PANEL_ROUTE_PATH}
+              element={<PluginPanelView />}
+            />
+          </Routes>
+        </MemoryRouter>,
+      ),
     );
     fireEvent.click(screen.getByText("Demo board"));
     expect(screen.getByText("board panel body")).toBeDefined();
@@ -1349,11 +1374,13 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     });
 
     render(
-      <Provider store={store}>
-        <MemoryRouter initialEntries={["/"]}>
-          <PluginNavSidebarItems splitEnabled />
-        </MemoryRouter>
-      </Provider>,
+      withQueryClient(
+        <Provider store={store}>
+          <MemoryRouter initialEntries={["/"]}>
+            <PluginNavSidebarItems splitEnabled />
+          </MemoryRouter>
+        </Provider>,
+      ),
     );
 
     const splitMap = screen.getByRole("img", {
@@ -1379,13 +1406,15 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
       }),
     );
     render(
-      <MemoryRouter
-        initialEntries={[
-          "/plugins/simple-notes/simple-notes/bb-plugin-marketplaces-and-compatible-updates.md",
-        ]}
-      >
-        <PluginNavSidebarItems />
-      </MemoryRouter>,
+      withQueryClient(
+        <MemoryRouter
+          initialEntries={[
+            "/plugins/simple-notes/simple-notes/bb-plugin-marketplaces-and-compatible-updates.md",
+          ]}
+        >
+          <PluginNavSidebarItems />
+        </MemoryRouter>,
+      ),
     );
 
     expect(

@@ -19,6 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
+import { CONTEXT_MENU_DESTRUCTIVE_ITEM_CLASS } from "@/components/ui/menu-item-tone";
 import { usePathPickerHost } from "@/hooks/useLocalPathPicker";
 import { getProjectSettingsRoutePath } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -82,8 +83,7 @@ function ProjectActionMenuItem({
       <ContextMenuItem
         className={cn(
           className,
-          variant === "destructive" &&
-            "text-destructive focus:bg-destructive/15 focus:text-destructive data-[last-hovered]:bg-destructive/15 data-[last-hovered]:text-destructive",
+          variant === "destructive" && CONTEXT_MENU_DESTRUCTIVE_ITEM_CLASS,
         )}
         onSelect={onSelect}
       >

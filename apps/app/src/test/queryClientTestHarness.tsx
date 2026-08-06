@@ -16,8 +16,12 @@ export interface QueryClientTestHarness {
   wrapper: QueryClientTestWrapper;
 }
 
-export function createQueryClientTestHarness(): QueryClientTestHarness {
-  const queryClient = createAppQueryClient({
+/**
+ * The app's query client with retries off, so a request a test never stubs
+ * fails once instead of being retried past the assertion's timeout.
+ */
+export function createTestQueryClient(): QueryClient {
+  return createAppQueryClient({
     defaultOptions: {
       mutations: {
         retry: false,
@@ -28,6 +32,10 @@ export function createQueryClientTestHarness(): QueryClientTestHarness {
       },
     },
   });
+}
+
+export function createQueryClientTestHarness(): QueryClientTestHarness {
+  const queryClient = createTestQueryClient();
 
   const wrapper: QueryClientTestWrapper = ({ children }) => (
     <JotaiProvider>

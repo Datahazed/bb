@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -29,9 +29,24 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
+import {
+  ConfirmDeleteDialog,
+  ConfirmDeleteDialogContent,
+} from "@/components/dialogs/ConfirmDeleteDialog";
+import { CONTEXT_MENU_DESTRUCTIVE_ITEM_CLASS } from "@/components/ui/menu-item-tone";
+import {
+  usePluginList,
+  type PluginListItem,
+} from "@/hooks/queries/plugin-settings-queries";
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -48,6 +63,12 @@ import {
 import { useSidebarSortable } from "@/components/sidebar/sortableMotion";
 import { useSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
 import type { SidebarSortableDragBindings } from "@/components/sidebar/sortableMotion";
+import {
+  pluginRemovalBlockedReason,
+  pluginRemovalConfirmCopy,
+  pluginRemovalLabel,
+} from "./plugin-removal";
+import { usePluginLifecycle } from "./usePluginLifecycle";
 import {
   hiddenPluginNavPanelsAtom,
   pluginNavPanelOrderAtom,
@@ -162,6 +183,15 @@ function PluginNavSidebarItemList({
   const [storedOrder, setStoredOrder] = useAtom(pluginNavPanelOrderAtom);
   const [hiddenKeys, setHiddenKeys] = useAtom(hiddenPluginNavPanelsAtom);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
+  // Only plugin rows carry lifecycle actions, so a sidebar showing nothing but
+  // the Extensions row never asks the server for the installed list.
+  const {
+    lifecycle,
+    removeTarget,
+    removePending,
+    confirmRemove,
+    cancelRemove,
+  } = usePluginNavRowLifecycle(rows.some((row) => row.kind === "plugin"));
 
   const { visible, hidden, normalizedOrder } = useMemo(() => {
     // Users who customized their plugin order before the Extensions row joined
@@ -231,6 +261,7 @@ function PluginNavSidebarItemList({
     onNavigate,
     pathname: location.pathname,
     splitEnabled,
+    lifecycle,
   };
 
   return (
@@ -277,6 +308,23 @@ function PluginNavSidebarItemList({
             : null}
         </>
       ) : null}
+      <ConfirmDeleteDialog
+        open={removeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !removePending) cancelRemove();
+        }}
+      >
+        {removeTarget ? (
+          <ConfirmDeleteDialogContent
+            title={pluginRemovalConfirmCopy(removeTarget).title}
+            description={pluginRemovalConfirmCopy(removeTarget).description}
+            confirmLabel={pluginRemovalLabel(removeTarget)}
+            pending={removePending}
+            onConfirm={confirmRemove}
+            onCancel={cancelRemove}
+          />
+        ) : null}
+      </ConfirmDeleteDialog>
     </div>
   );
 }
@@ -344,6 +392,7 @@ interface SidebarNavRowItemProps {
   pathname: string;
   onNavigate?: () => void;
   splitEnabled: boolean;
+  lifecycle: PluginNavRowLifecycle;
   /** Present for rows parked in the "More" disclosure. */
   isHidden?: boolean;
   onHide?: (key: string) => void;
@@ -356,16 +405,103 @@ interface SidebarNavRowItemProps {
 function SidebarNavRowItem({
   row,
   splitEnabled,
+  lifecycle,
   ...props
 }: SidebarNavRowItemProps) {
   return row.kind === "tools" ? (
+    // Extensions is host chrome, not a plugin: it has nothing to disable.
     <ToolsNavSidebarItem {...props} row={row} />
   ) : (
-    <PluginNavSidebarItem {...props} row={row} splitEnabled={splitEnabled} />
+    <PluginNavSidebarItem
+      {...props}
+      row={row}
+      splitEnabled={splitEnabled}
+      lifecycle={lifecycle}
+    />
   );
 }
 
 type PluginNavRowMenuSurface = "context" | "dropdown";
+
+/**
+ * One row action, rendered into whichever menu surface asked for it. The
+ * right-click and "…" menus carry the same items, so every action is written
+ * once and switches only its primitive.
+ */
+function PluginNavRowMenuItem({
+  children,
+  disabled = false,
+  disabledReason,
+  icon,
+  onSelect,
+  surface,
+  variant = "default",
+}: {
+  children: ReactNode;
+  disabled?: boolean;
+  /** Shown on hover while `disabled`, so a refused action explains itself. */
+  disabledReason?: string;
+  icon: IconName;
+  onSelect: () => void;
+  surface: PluginNavRowMenuSurface;
+  variant?: "default" | "destructive";
+}) {
+  const content = (
+    <>
+      <Icon name={icon} aria-hidden="true" />
+      {children}
+    </>
+  );
+  // An explained refusal cannot use the primitives' own `disabled`: both apply
+  // `data-[disabled]:pointer-events-none`, which swallows the hover that would
+  // reveal the reason. Mark it aria-disabled instead and refuse the select, the
+  // way ResourceOverflowMenu does for the same case.
+  const isExplained = disabled && disabledReason !== undefined;
+  const className = cn(
+    surface === "context" &&
+      variant === "destructive" &&
+      CONTEXT_MENU_DESTRUCTIVE_ITEM_CLASS,
+    disabled && "text-muted-foreground",
+    isExplained && "cursor-not-allowed focus:bg-transparent",
+  );
+  const handleSelect = (event: Event) => {
+    if (disabled) {
+      event.preventDefault();
+      return;
+    }
+    onSelect();
+  };
+  const item =
+    surface === "context" ? (
+      <ContextMenuItem
+        className={className}
+        disabled={disabled && !isExplained}
+        aria-disabled={disabled || undefined}
+        onSelect={handleSelect}
+      >
+        {content}
+      </ContextMenuItem>
+    ) : (
+      <DropdownMenuItem
+        className={className}
+        disabled={disabled && !isExplained}
+        aria-disabled={disabled || undefined}
+        variant={variant}
+        onSelect={handleSelect}
+      >
+        {content}
+      </DropdownMenuItem>
+    );
+  if (!isExplained) return item;
+  return (
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>{item}</TooltipTrigger>
+        <TooltipContent side="left">{disabledReason}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 function PluginNavRowVisibilityMenuItem({
   isHidden,
@@ -376,17 +512,105 @@ function PluginNavRowVisibilityMenuItem({
   onSelect: () => void;
   surface: PluginNavRowMenuSurface;
 }) {
-  const content = (
-    <>
-      <Icon name={isHidden ? "Eye" : "EyeOff"} aria-hidden="true" />
+  return (
+    <PluginNavRowMenuItem
+      surface={surface}
+      icon={isHidden ? "Eye" : "EyeOff"}
+      onSelect={onSelect}
+    >
       {isHidden ? "Show in sidebar" : "Hide from sidebar"}
+    </PluginNavRowMenuItem>
+  );
+}
+
+/**
+ * Lifecycle actions for the plugin behind a row: the reversible enable toggle,
+ * then removal last as the destructive action. Both call the same admin routes
+ * the Extensions pages use, so the two surfaces cannot drift apart.
+ */
+function PluginNavRowLifecycleMenuItems({
+  lifecycle,
+  plugin,
+  surface,
+}: {
+  lifecycle: PluginNavRowLifecycle;
+  plugin: PluginListItem;
+  surface: PluginNavRowMenuSurface;
+}) {
+  const pending = lifecycle.pendingPluginId === plugin.id;
+  const blockedReason = pluginRemovalBlockedReason(plugin);
+  return (
+    <>
+      <PluginNavRowMenuItem
+        surface={surface}
+        icon={plugin.enabled ? "CircleX" : "CircleCheck"}
+        disabled={pending}
+        onSelect={() => lifecycle.onToggleEnabled(plugin)}
+      >
+        {plugin.enabled ? "Disable" : "Enable"}
+      </PluginNavRowMenuItem>
+      <PluginNavRowMenuItem
+        surface={surface}
+        icon="Trash2"
+        variant="destructive"
+        disabled={pending || blockedReason !== null}
+        disabledReason={blockedReason ?? undefined}
+        onSelect={() => lifecycle.onRequestRemove(plugin)}
+      >
+        {pluginRemovalLabel(plugin)}
+      </PluginNavRowMenuItem>
     </>
   );
-  return surface === "context" ? (
-    <ContextMenuItem onSelect={onSelect}>{content}</ContextMenuItem>
-  ) : (
-    <DropdownMenuItem onSelect={onSelect}>{content}</DropdownMenuItem>
-  );
+}
+
+/** Row-facing half of {@link usePluginNavRowLifecycle}. */
+interface PluginNavRowLifecycle {
+  /** The installed record for a row's plugin, or null until the list loads. */
+  pluginFor: (pluginId: string) => PluginListItem | null;
+  /** The plugin with a lifecycle request in flight, if any. */
+  pendingPluginId: string | null;
+  onToggleEnabled: (plugin: PluginListItem) => void;
+  onRequestRemove: (plugin: PluginListItem) => void;
+}
+
+interface PluginNavRowLifecycleState {
+  lifecycle: PluginNavRowLifecycle;
+  /** The plugin awaiting removal confirmation, if any. */
+  removeTarget: PluginListItem | null;
+  removePending: boolean;
+  confirmRemove: () => void;
+  cancelRemove: () => void;
+}
+
+/**
+ * Enable/disable and uninstall for plugin nav rows, over the shared lifecycle.
+ *
+ * The list owns this rather than the row: disabling or uninstalling
+ * unregisters the plugin's panels, so the row that started the request is gone
+ * before it settles — and with it any toast, navigation, or dialog it owned.
+ * Only the row-facing lookup is local; the mutations themselves are shared with
+ * the Extensions detail page so the two surfaces cannot drift apart again.
+ */
+function usePluginNavRowLifecycle(
+  enabled: boolean,
+): PluginNavRowLifecycleState {
+  const listQuery = usePluginList({ enabled });
+  const lifecycle = usePluginLifecycle();
+  const plugins = listQuery.data?.plugins;
+
+  return {
+    lifecycle: {
+      pluginFor: (pluginId) =>
+        plugins?.find((candidate) => candidate.id === pluginId) ?? null,
+      pendingPluginId: lifecycle.pendingPluginId,
+      onToggleEnabled: lifecycle.toggleEnabled,
+      onRequestRemove: lifecycle.requestRemove,
+    },
+    removeTarget: lifecycle.removeTarget,
+    removePending: lifecycle.removePending,
+    confirmRemove: lifecycle.confirmRemove,
+    cancelRemove: lifecycle.cancelRemove,
+  };
 }
 
 /**
@@ -398,7 +622,7 @@ function ToolsNavSidebarItem({
   pathname: _pathname,
   onNavigate,
   ...props
-}: Omit<SidebarNavRowItemProps, "row" | "splitEnabled"> & {
+}: Omit<SidebarNavRowItemProps, "row" | "splitEnabled" | "lifecycle"> & {
   row: Extract<SidebarNavRow, { kind: "tools" }>;
 }) {
   const navigate = useNavigate();
@@ -425,11 +649,13 @@ function PluginNavSidebarItem({
   pathname,
   onNavigate,
   splitEnabled,
+  lifecycle,
   ...props
 }: Omit<SidebarNavRowItemProps, "row"> & {
   row: Extract<SidebarNavRow, { kind: "plugin" }>;
 }) {
   const { panel } = row;
+  const plugin = lifecycle.pluginFor(panel.pluginId);
   const navigate = useNavigate();
   const path = getPluginPanelRoutePath({
     pluginId: panel.pluginId,
@@ -456,6 +682,19 @@ function PluginNavSidebarItem({
       icon={<PluginIcon pluginId={panel.pluginId} icon={panel.icon} />}
       isActive={pathname === path || pathname.startsWith(`${path}/`)}
       splitMiniMap={splitIndicator.miniMap}
+      // Omitted until the installed-plugin list resolves: a lifecycle action
+      // needs the plugin's real enabled state and provenance to label itself.
+      renderMenuItems={
+        plugin === null
+          ? undefined
+          : (surface) => (
+              <PluginNavRowLifecycleMenuItems
+                surface={surface}
+                plugin={plugin}
+                lifecycle={lifecycle}
+              />
+            )
+      }
       // Split-drag initiator; engages only when the pointer leaves the
       // sidebar, so it coexists with the dnd-kit reorder listeners.
       onPointerDown={onPointerDown}
@@ -485,6 +724,8 @@ interface SidebarNavRowChromeProps {
   dragBindings?: SidebarSortableDragBindings;
   rowRef?: (element: HTMLElement | null) => void;
   rowStyle?: CSSProperties;
+  /** Row-specific actions, appended below the shared visibility item. */
+  renderMenuItems?: (surface: PluginNavRowMenuSurface) => ReactNode;
 }
 
 /** Shared chrome for every sidebar nav row: button, hide menus, drag handle. */
@@ -502,6 +743,7 @@ function SidebarNavRowChrome({
   dragBindings,
   rowRef,
   rowStyle,
+  renderMenuItems,
 }: SidebarNavRowChromeProps) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   // dnd-kit's KeyboardSensor activates on Space/Enter and preventDefaults them.
@@ -584,6 +826,7 @@ function SidebarNavRowChrome({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {visibilityItem("dropdown")}
+                {renderMenuItems?.("dropdown")}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -591,6 +834,7 @@ function SidebarNavRowChrome({
       </ContextMenuTrigger>
       <ContextMenuContent aria-label={`${title} panel options`}>
         {visibilityItem("context")}
+        {renderMenuItems?.("context")}
       </ContextMenuContent>
     </ContextMenu>
   );

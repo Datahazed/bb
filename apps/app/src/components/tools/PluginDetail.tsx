@@ -42,6 +42,11 @@ import {
 } from "@/components/tools/plugin-detail-table";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
+import {
+  pluginIsLocalSource,
+  pluginRemovalBlockedReason,
+  pluginRemovalLabel,
+} from "@/components/plugin/plugin-removal";
 import { appToast } from "@/components/ui/app-toast";
 import {
   usePluginSource,
@@ -64,14 +69,6 @@ function pluginSourceLabel(plugin: PluginListItem): string | null {
 export function PluginProvenancePill({ plugin }: { plugin: PluginListItem }) {
   const label = pluginSourceLabel(plugin);
   return label === null ? null : <ProvenancePill label={label} />;
-}
-
-export function pluginIsLocalSource(plugin: PluginListItem): boolean {
-  return plugin.source.startsWith("path:");
-}
-
-export function pluginRemovalLabel(plugin: PluginListItem): string {
-  return pluginIsLocalSource(plugin) ? "Remove from bb" : "Uninstall";
 }
 
 function PluginPath({ path }: { path: string }) {
@@ -322,6 +319,7 @@ export function PluginDetail({
       plugin.updateState.lastFailure !== null);
 
   const pluginName = plugin.name ?? plugin.id;
+  const removalBlockedReason = pluginRemovalBlockedReason(plugin);
   // Uninstall is destructive and irreversible-ish, so it belongs with the other
   // ownership actions rather than beside the reversible enable toggle.
   const overflowItems: ResourceOverflowMenuItem[] = [
@@ -348,11 +346,8 @@ export function PluginDetail({
       label: pluginRemovalLabel(plugin),
       icon: "Trash2" as const,
       tone: "destructive" as const,
-      disabled: pending || plugin.provenance === "builtin",
-      disabledReason:
-        plugin.provenance === "builtin"
-          ? "Included with BB; disable this plugin instead."
-          : undefined,
+      disabled: pending || removalBlockedReason !== null,
+      disabledReason: removalBlockedReason ?? undefined,
       onSelect: () => onDelete(plugin),
     },
   ];
