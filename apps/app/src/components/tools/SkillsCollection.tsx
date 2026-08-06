@@ -89,6 +89,16 @@ function isResourceSkillSourceFilter(
   return value === "included" || value === "bb-official" || value === "user";
 }
 
+// The filter menu hands back plain strings, so both selections are narrowed on
+// the way in rather than cast. A cast would keep type-checking after a provider
+// is added to or removed from `RESOURCE_PROVIDER_FILTERS` while silently
+// admitting a value the rest of the component cannot map to a skill.
+function isResourceProviderFilter(
+  value: string,
+): value is ResourceProviderFilter {
+  return RESOURCE_PROVIDER_FILTERS.some((provider) => provider === value);
+}
+
 export function ProviderLogo({
   providerId,
   className,
@@ -463,7 +473,7 @@ export function SkillsOverview({
                         selectedValues: providerFilters,
                         onChange: (values) =>
                           setProviderFilters(
-                            values as ResourceProviderFilter[],
+                            values.filter(isResourceProviderFilter),
                           ),
                       },
                     ]}

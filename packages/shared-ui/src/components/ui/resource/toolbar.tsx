@@ -1,9 +1,10 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useId, useState, type ReactNode } from "react";
 import { Button } from "../button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -359,6 +360,9 @@ export function ResourceFilterMenu({
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  // Namespaces the per-group heading ids so `aria-labelledby` still resolves
+  // when two filter menus are mounted on one page.
+  const groupLabelIdBase = useId();
   const activeGroups = groups.map((group) => {
     const selected = new Set(group.selectedValues);
     const activeOptions = group.options.filter(
@@ -394,39 +398,50 @@ export function ResourceFilterMenu({
         {activeGroups.map(({ group, selected }, groupIndex) => (
           <Fragment key={group.id}>
             {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuLabel
-              className={cn(
-                "text-xs font-normal text-subtle-foreground",
-                compact && "md:px-1.5 md:py-1",
-              )}
+            {/*
+              Merging several dimensions into one menu makes the headings
+              load-bearing: without the group wrapper a screen reader reads
+              "bb Official, checkbox" with no hint of which dimension it
+              belongs to, and "Type" arrives as an unrelated preceding item.
+            */}
+            <DropdownMenuGroup
+              aria-labelledby={`${groupLabelIdBase}-${group.id}`}
             >
-              {group.label}
-            </DropdownMenuLabel>
-            {group.options.map((option) => (
-              <DropdownMenuCheckboxItem
-                key={option.id}
-                checked={selected.has(option.id)}
-                disabled={option.disabled}
-                className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
-                onSelect={(event) => event.preventDefault()}
-                onCheckedChange={(checked) => {
-                  if (option.disabled) return;
-                  const next = new Set(group.selectedValues);
-                  if (checked === true) next.add(option.id);
-                  else next.delete(option.id);
-                  const selectableIds = new Set(
-                    group.options
-                      .filter((candidate) => !candidate.disabled)
-                      .map(({ id }) => id),
-                  );
-                  group.onChange(
-                    [...next].filter((id) => selectableIds.has(id)),
-                  );
-                }}
+              <DropdownMenuLabel
+                id={`${groupLabelIdBase}-${group.id}`}
+                className={cn(
+                  "text-xs font-normal text-subtle-foreground",
+                  compact && "md:px-1.5 md:py-1",
+                )}
               >
-                <ResourceOptionContent option={option} compact={compact} />
-              </DropdownMenuCheckboxItem>
-            ))}
+                {group.label}
+              </DropdownMenuLabel>
+              {group.options.map((option) => (
+                <DropdownMenuCheckboxItem
+                  key={option.id}
+                  checked={selected.has(option.id)}
+                  disabled={option.disabled}
+                  className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
+                  onSelect={(event) => event.preventDefault()}
+                  onCheckedChange={(checked) => {
+                    if (option.disabled) return;
+                    const next = new Set(group.selectedValues);
+                    if (checked === true) next.add(option.id);
+                    else next.delete(option.id);
+                    const selectableIds = new Set(
+                      group.options
+                        .filter((candidate) => !candidate.disabled)
+                        .map(({ id }) => id),
+                    );
+                    group.onChange(
+                      [...next].filter((id) => selectableIds.has(id)),
+                    );
+                  }}
+                >
+                  <ResourceOptionContent option={option} compact={compact} />
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuGroup>
           </Fragment>
         ))}
       </DropdownMenuContent>
