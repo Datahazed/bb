@@ -6,10 +6,12 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
-import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
+import { createAppQueryClient } from "@/lib/query-client";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -50,10 +52,99 @@ function registerPanel(pluginId: string, title: string) {
   );
 }
 
+function responseJson(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/** An installed-plugin row as GET /api/v1/plugins reports it. */
+function installedPlugin(overrides: Record<string, unknown>) {
+  return {
+    id: "docs",
+    source: "builtin:docs",
+    rootDir: "/plugins/docs",
+    version: "0.1.0",
+    enabled: true,
+    status: "running",
+    statusDetail: null,
+    description: "Create and edit Markdown documents.",
+    name: "Docs",
+    icon: "FileText",
+    iconUrl: null,
+    logoUrl: null,
+    logoDarkUrl: null,
+    hasSettings: false,
+    provenance: "builtin",
+    isOrphanedBuiltin: false,
+    sourceDisplay: "builtin · docs",
+    updateState: {},
+    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+    services: [],
+    schedules: [],
+    cliCommand: null,
+    capabilities: [],
+    app: { hasApp: true, bundle: null },
+    ...overrides,
+  };
+}
+
+const DOCS_PLUGIN = installedPlugin({});
+// A catalog install is the removable case: bb owns the downloaded files.
+const GITHUB_PLUGIN = installedPlugin({
+  id: "github",
+  name: "GitHub",
+  source: "github-release:bb/github@^0.1.0",
+  rootDir: "/official-plugins/github",
+  provenance: "catalog",
+  sourceDisplay: "BB Official · GitHub",
+});
+
+function installFetch(plugins: readonly unknown[] = [DOCS_PLUGIN]) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const rawUrl =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    const url = new URL(rawUrl, "http://localhost");
+    if (url.pathname === "/api/v1/plugins") return responseJson({ plugins });
+    if (/^\/api\/v1\/plugins\/[^/]+\/(enable|disable)$/.test(url.pathname)) {
+      return responseJson({ ok: true, plugin: plugins[0] });
+    }
+    if (/^\/api\/v1\/plugins\/[^/]+$/.test(url.pathname)) {
+      return responseJson({ ok: true });
+    }
+    return responseJson({ error: "not found" }, 404);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function requestedPaths(fetchMock: ReturnType<typeof installFetch>): string[] {
+  return fetchMock.mock.calls.map((call) => {
+    const [input] = call;
+    const rawUrl =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    return new URL(rawUrl, "http://localhost").pathname;
+  });
+}
+
+function LocationPath() {
+  return <span data-testid="location-path">{useLocation().pathname}</span>;
+}
+
 function renderSidebarItems(
   options: {
     toolsRoutePath?: string;
     storedOrder?: string[];
+    initialPath?: string;
   } = {},
 ) {
   const store = createStore();
@@ -62,15 +153,39 @@ function renderSidebarItems(
   if (options.storedOrder) {
     store.set(pluginNavPanelOrderAtom, options.storedOrder);
   }
+  const queryClient = createAppQueryClient({
+    defaultOptions: {
+      mutations: { retry: false },
+      queries: { gcTime: Infinity, retry: false },
+    },
+  });
   return render(
     <Provider store={store}>
-      <MemoryRouter initialEntries={["/"]}>
-        <SidebarProvider>
-          <PluginNavSidebarItems toolsRoutePath={options.toolsRoutePath} />
-        </SidebarProvider>
-      </MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[options.initialPath ?? "/"]}>
+          <SidebarProvider>
+            <PluginNavSidebarItems toolsRoutePath={options.toolsRoutePath} />
+          </SidebarProvider>
+          <LocationPath />
+        </MemoryRouter>
+      </QueryClientProvider>
     </Provider>,
   );
+}
+
+/** Labels of the items in the currently open menu, top to bottom. */
+function openMenuItemLabels(): string[] {
+  return screen
+    .getAllByRole("menuitem")
+    .map((item) => item.textContent?.trim() ?? "");
+}
+
+async function openRowMenu(rowTitle: string) {
+  fireEvent.pointerDown(
+    screen.getByRole("button", { name: `${rowTitle} panel options` }),
+    { button: 0 },
+  );
+  await screen.findByRole("menuitem", { name: "Hide from sidebar" });
 }
 
 const ROW_LABELS = new Set(["Extensions", "Docs", "GitHub"]);
@@ -84,12 +199,15 @@ function panelRowNames(): string[] {
 
 beforeEach(() => {
   window.localStorage.clear();
+  installFetch();
 });
 
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
   window.localStorage.clear();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("PluginNavSidebarItems", () => {
@@ -221,6 +339,119 @@ describe("PluginNavSidebarItems", () => {
     await waitFor(() => {
       expect(panelRowNames()).toEqual(["GitHub", "Extensions", "Docs"]);
     });
+  });
+
+  it("puts the lifecycle actions under the existing visibility item, destructive last", async () => {
+    installFetch([DOCS_PLUGIN, GITHUB_PLUGIN]);
+    registerPanel("docs", "Docs");
+    registerPanel("github", "GitHub");
+
+    renderSidebarItems();
+
+    // Wait for the installed list: the actions need real enabled/provenance
+    // state before they can label themselves.
+    await openRowMenu("GitHub");
+    await waitFor(() => {
+      expect(openMenuItemLabels()).toEqual([
+        "Hide from sidebar",
+        "Disable",
+        "Uninstall",
+      ]);
+    });
+    const uninstall = screen.getByRole("menuitem", { name: "Uninstall" });
+    expect(uninstall.className).toContain("text-destructive");
+    expect(uninstall.getAttribute("aria-disabled")).not.toEqual("true");
+  });
+
+  it("refuses to uninstall a plugin that ships with bb", async () => {
+    registerPanel("docs", "Docs");
+
+    renderSidebarItems();
+
+    await openRowMenu("Docs");
+    await waitFor(() => {
+      expect(openMenuItemLabels()).toContain("Uninstall");
+    });
+    const uninstall = screen.getByRole("menuitem", { name: "Uninstall" });
+    expect(uninstall.getAttribute("aria-disabled")).toEqual("true");
+    expect(uninstall.getAttribute("title")).toEqual(
+      "Included with BB; disable this plugin instead.",
+    );
+  });
+
+  it("disables a plugin through the same route the Extensions page calls", async () => {
+    const fetchMock = installFetch();
+    registerPanel("docs", "Docs");
+
+    renderSidebarItems();
+
+    await openRowMenu("Docs");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Disable" }));
+
+    await waitFor(() => {
+      expect(requestedPaths(fetchMock)).toContain(
+        "/api/v1/plugins/docs/disable",
+      );
+    });
+  });
+
+  it("offers Enable, and enables, for a plugin that is already disabled", async () => {
+    const fetchMock = installFetch([
+      installedPlugin({ enabled: false, status: "disabled" }),
+    ]);
+    registerPanel("docs", "Docs");
+
+    renderSidebarItems();
+
+    await openRowMenu("Docs");
+    await waitFor(() => {
+      expect(openMenuItemLabels()).toContain("Enable");
+    });
+    expect(openMenuItemLabels()).not.toContain("Disable");
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Enable" }));
+    await waitFor(() => {
+      expect(requestedPaths(fetchMock)).toContain("/api/v1/plugins/docs/enable");
+    });
+  });
+
+  it("confirms an uninstall, then leaves the removed plugin's panel route", async () => {
+    const fetchMock = installFetch([GITHUB_PLUGIN]);
+    registerPanel("github", "GitHub");
+
+    renderSidebarItems({ initialPath: "/plugins/github/main" });
+
+    await openRowMenu("GitHub");
+    await waitFor(() => {
+      expect(openMenuItemLabels()).toContain("Uninstall");
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Uninstall" }));
+
+    // Destructive actions never fire straight off the menu.
+    expect(await screen.findByText("Uninstall plugin?")).toBeTruthy();
+    expect(requestedPaths(fetchMock)).not.toContain("/api/v1/plugins/github");
+
+    fireEvent.click(screen.getByRole("button", { name: "Uninstall" }));
+
+    await waitFor(() => {
+      expect(requestedPaths(fetchMock)).toContain("/api/v1/plugins/github");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("location-path").textContent).toEqual("/");
+    });
+  });
+
+  it("keeps the Extensions row's menu to its visibility item", async () => {
+    registerPanel("docs", "Docs");
+
+    renderSidebarItems({ toolsRoutePath: "/tools/plugins" });
+
+    await openRowMenu("Extensions");
+    // Give the installed list the same chance to land that a plugin row gets.
+    await waitFor(() => {
+      expect(screen.getByTestId("plugin-nav-sidebar-items")).toBeTruthy();
+    });
+    expect(openMenuItemLabels()).toEqual(["Hide from sidebar"]);
   });
 
   it("saves no Extensions key while the row is absent", async () => {

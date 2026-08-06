@@ -233,6 +233,23 @@ export function getPluginPanelRoutePath({
   return encoded.length > 0 ? `${root}/${encoded}` : root;
 }
 
+export interface PluginPanelRouteMatchArgs {
+  pathname: string;
+  pluginId: string;
+}
+
+/**
+ * True while `pathname` sits on any nav panel belonging to `pluginId`. Callers
+ * that disable or uninstall a plugin use this to leave a route whose panel is
+ * about to stop existing.
+ */
+export function isPluginPanelRoutePath({
+  pathname,
+  pluginId,
+}: PluginPanelRouteMatchArgs): boolean {
+  return pathname.startsWith(`/plugins/${encodeURIComponent(pluginId)}/`);
+}
+
 export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
   return isProjectlessProjectId(args.projectId)
     ? `/threads/${args.threadId}`

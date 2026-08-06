@@ -27,9 +27,13 @@ import {
   CatalogPluginDetailBanner,
   PluginDetail,
   PluginDetailBanners,
-  pluginIsLocalSource,
-  pluginRemovalLabel,
 } from "@/components/tools/PluginDetail";
+import {
+  pluginIsLocalSource,
+  pluginRemovalConfirmCopy,
+  pluginRemovalLabel,
+  pluginRemovalSuccessMessage,
+} from "@/components/plugin/plugin-removal";
 import {
   usePluginCatalogSearch,
   type PluginCatalogSearchEntry,
@@ -189,11 +193,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
       }
     },
     onSuccess: (_data, deletedPlugin) => {
-      appToast.success(
-        pluginIsLocalSource(deletedPlugin)
-          ? "Plugin removed from bb"
-          : "Plugin uninstalled",
-      );
+      appToast.success(pluginRemovalSuccessMessage(deletedPlugin));
       setDeleteTarget(null);
       navigate(getPluginsRoutePath());
       return listQuery.refetch();
@@ -346,16 +346,8 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
           >
             {deleteTarget ? (
               <ConfirmDeleteDialogContent
-                title={
-                  pluginIsLocalSource(deleteTarget)
-                    ? "Remove plugin from bb?"
-                    : "Uninstall plugin?"
-                }
-                description={
-                  pluginIsLocalSource(deleteTarget)
-                    ? `Remove "${deleteTarget.id}" from bb? Its source files will stay on disk.`
-                    : `Uninstall "${deleteTarget.id}" and delete its managed files and settings?`
-                }
+                title={pluginRemovalConfirmCopy(deleteTarget).title}
+                description={pluginRemovalConfirmCopy(deleteTarget).description}
                 confirmLabel={pluginRemovalLabel(deleteTarget)}
                 pending={pluginDelete.isPending}
                 onConfirm={() => pluginDelete.mutate(deleteTarget)}
