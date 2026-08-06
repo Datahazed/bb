@@ -20,6 +20,7 @@ import {
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import { useFileOpenerPreferenceValue } from "@/lib/file-opener-preference";
 import {
   createFileOpenerTabForRequest,
@@ -47,6 +48,7 @@ import {
   isBrowserTab,
   openSecondaryPanelTabInState,
   pruneStorageTabs,
+  pruneUninstalledPluginPanelTabs,
   removeWorkspaceTabsForOtherEnvironments,
   replaceNewTabWithSecondaryPanelTabInState,
   reorderSecondaryPanelFileTabInState,
@@ -400,6 +402,54 @@ export function useThreadFileTabs({
     isPanelStateResolved,
     retainedTerminalId,
     terminalSessions,
+    updateFixedPanelTabsState,
+  ]);
+
+  const installedPluginsQuery = usePluginList({ enabled: true });
+  const installedPluginIds = useMemo(
+    () =>
+      installedPluginsQuery.data === undefined
+        ? undefined
+        : new Set(
+            installedPluginsQuery.data.plugins.map((plugin) => plugin.id),
+          ),
+    [installedPluginsQuery.data],
+  );
+
+  // Uninstalling a plugin leaves its panel tabs behind, and they are persisted:
+  // without this they come back as the "plugin tab is not available"
+  // placeholder on every reload, for a tab nothing can restore. Undefined while
+  // the list has not loaded, so a failed or pending fetch never prunes.
+  useEffect(() => {
+    if (!isPanelStateResolved || installedPluginIds === undefined) return;
+    updateFixedPanelTabsState((state) => {
+      const pruned = setPrunedSecondaryTabs({
+        activeTabId: state.secondary.activeTabId,
+        stateTabs: state.secondary.tabs,
+        tabs: pruneUninstalledPluginPanelTabs(
+          state.secondary.tabs,
+          installedPluginIds,
+        ),
+      });
+      return setSecondaryPanelTabsInState({
+        activeTabId: pruned.activeTabId,
+        isOpen: state.secondary.isOpen,
+        state,
+        tabs: pruned.tabs,
+      });
+    });
+    // The tab list is a dependency, not just an input: tabs arrive twice —
+    // synchronously from localStorage, then again when the server list
+    // hydrates and replaces it wholesale. Pruning only on the plugin list's
+    // identity would miss a dead tab that the server adds afterwards, and the
+    // plugin list is already warm at boot (the sidebar loads it), so that
+    // identity never changes again to catch it. Re-running is safe: the second
+    // pass finds nothing, returns the same reference, and the update
+    // short-circuits.
+  }, [
+    fixedPanelTabsState.secondary.tabs,
+    installedPluginIds,
+    isPanelStateResolved,
     updateFixedPanelTabsState,
   ]);
 

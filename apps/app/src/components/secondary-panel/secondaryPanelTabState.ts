@@ -373,6 +373,23 @@ export function removeWorkspaceTabsForOtherEnvironments(
   return nextTabs.length === tabs.length ? tabs : nextTabs;
 }
 
+/**
+ * Drops panel tabs belonging to a plugin that is no longer installed. Keyed on
+ * the installed list rather than the registered slots: a plugin whose frontend
+ * has not loaded yet registers nothing, and its tabs have to survive that
+ * window — as do the tabs of a merely disabled plugin, which stays installed.
+ */
+export function pruneUninstalledPluginPanelTabs(
+  tabs: readonly FixedPanelTab[],
+  installedPluginIds: ReadonlySet<string>,
+): readonly FixedPanelTab[] {
+  const nextTabs = tabs.filter(
+    (tab) =>
+      tab.kind !== "plugin-panel" || installedPluginIds.has(tab.pluginId),
+  );
+  return nextTabs.length === tabs.length ? tabs : nextTabs;
+}
+
 export function pruneStorageTabs({
   knownPaths,
   tabs,

@@ -9,12 +9,14 @@ import {
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createHostFilePreviewFixedPanelTab,
+  createPluginPanelFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
   serializeFixedPanelTabsState,
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
 } from "@/lib/fixed-panel-tabs-state";
+import { pluginListQueryKey } from "@/hooks/queries/plugin-settings-queries";
 import { useThreadFileTabs } from "./useThreadFileTabs";
 import {
   resetPluginSlotStoreForTest,
@@ -611,6 +613,80 @@ describe("useThreadFileTabs file opener diversion", () => {
       actionId: "file-opener:editor",
       title: "other.md",
     });
+  });
+});
+
+describe("useThreadFileTabs uninstalled plugin panel tabs", () => {
+  const KEPT_TAB = createPluginPanelFixedPanelTab({
+    actionId: "issue",
+    paramsJson: null,
+    pluginId: "docs",
+    title: "Docs",
+  });
+  const REMOVED_TAB = createPluginPanelFixedPanelTab({
+    actionId: "issue",
+    paramsJson: null,
+    pluginId: "ghost",
+    title: "Ghost",
+  });
+
+  /** A reload: both tabs already persisted, the removed plugin's one active. */
+  function seedPersistedTabs(threadId: string): void {
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId }),
+      JSON.stringify({
+        version: FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
+        lastUsedAt: Date.now(),
+        secondary: {
+          activeTabId: REMOVED_TAB.id,
+          isOpen: true,
+          tabs: [KEPT_TAB, REMOVED_TAB],
+        },
+      }),
+    );
+  }
+
+  function renderTabs(threadId: string) {
+    return renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: threadId,
+        syncThreadId: threadId,
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+  }
+
+  it("drops persisted panel tabs of a plugin that is no longer installed", async () => {
+    const threadId = "uninstalled-plugin-panel";
+    seedPersistedTabs(threadId);
+    queryClient.setQueryData(pluginListQueryKey(true), {
+      plugins: [{ id: "docs" }],
+    });
+
+    const { result } = renderTabs(threadId);
+
+    await waitFor(() => {
+      expect(
+        result.current.orderedSecondaryFileTabs.map((tab) => tab.id),
+      ).toEqual([KEPT_TAB.id]);
+    });
+    // The removed tab was the active one, so the panel must not still resolve
+    // to it.
+    expect(result.current.activePluginPanelTab).toBeNull();
+  });
+
+  it("keeps the tabs while the installed list has not loaded", () => {
+    const threadId = "unloaded-plugin-list";
+    seedPersistedTabs(threadId);
+
+    const { result } = renderTabs(threadId);
+
+    // A pending or failed fetch must never look like "nothing is installed".
+    expect(
+      result.current.orderedSecondaryFileTabs.map((tab) => tab.id),
+    ).toEqual([KEPT_TAB.id, REMOVED_TAB.id]);
   });
 });
 
