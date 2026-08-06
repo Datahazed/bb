@@ -652,20 +652,28 @@ function AssistantConversationMessage({
           `disabled` greys both fork and side chat together when the thread is at
           the spawn-depth cap (both spawn a child thread, one guard).
 
-          The strip reserves less height than the 20px bar it holds, so the bar
-          overhangs into the timeline's 16px row gap. At 12px the overhang is
-          12px, leaving ~6px of optical clearance below the bar to match the
-          ~7px above it (`top-1` plus the prose line's half-leading) — the 8px
-          "control belongs to the block above" step on both sides, with the bar
-          still clear of the next row.
+          The strip reserves the bar's full height, so the bar never overhangs
+          past its own row. Two things break the moment it does: the row list
+          sits in an `AutoHeightContainer`, which pins its height to
+          `offsetHeight` and clips the overflow — and an absolutely positioned
+          bar contributes nothing to `offsetHeight`, so the last message in a
+          thread gets its icons sliced off. And the bar keeps pointer events
+          while `opacity-0`, so any overhang lands invisible buttons on top of
+          the next row's full-width toggle and steals its clicks.
+
+          The invariant to preserve, not the pixel values: the bar's bottom
+          plus a 2px margin must stay above the next row's top at the TIGHTEST
+          gap an actionable message can be followed by — `nested`, currently
+          8px. 20px buttons are under the 24px WCAG SC 2.5.8 minimum, so that
+          clearance is what buys the spacing exception.
+
+          Proximity is deliberately asymmetric: ~4px above (the message these
+          controls act on) versus 12px below (the row they don't). Closer to
+          its owner is the point — one of these buttons forks a thread from
+          this message.
         */
-        <div className="relative h-3 max-md:pointer-coarse:h-7">
-          <div
-            className={cn(
-              "absolute left-0 top-1",
-              "max-md:pointer-coarse:top-0",
-            )}
-          >
+        <div className="relative h-5 max-md:pointer-coarse:h-7">
+          <div className="absolute left-0 top-0">
             <MessageActionBar
               messageText={text}
               alignment="start"
