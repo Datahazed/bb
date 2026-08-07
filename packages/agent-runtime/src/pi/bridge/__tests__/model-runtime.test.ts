@@ -1,27 +1,48 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createModelRuntime, modelRuntime } = vi.hoisted(() => {
-  const modelRuntime = { getModel: vi.fn() };
-  return {
-    createModelRuntime: vi.fn(async () => modelRuntime),
-    modelRuntime,
-  };
-});
+const { createConfiguredPiServices, firstRuntime, secondRuntime } = vi.hoisted(
+  () => {
+    const firstRuntime = { getModel: vi.fn() };
+    const secondRuntime = { getModel: vi.fn() };
+    return {
+      createConfiguredPiServices: vi.fn(async ({ cwd }: { cwd: string }) => ({
+        modelRuntime: cwd === "/tmp/project-one" ? firstRuntime : secondRuntime,
+      })),
+      firstRuntime,
+      secondRuntime,
+    };
+  },
+);
 
-vi.mock("@earendil-works/pi-coding-agent", () => ({
-  ModelRuntime: { create: createModelRuntime },
+vi.mock("../configured-services.js", () => ({
+  createConfiguredPiServices,
 }));
 
-import { getPiModelRuntime } from "../model-runtime.js";
+import {
+  getPiModelRuntime,
+  resetPiModelRuntimesForTests,
+} from "../model-runtime.js";
 
 describe("Pi bridge model runtime", () => {
-  it("creates one refreshable model runtime for all bridge sessions", async () => {
-    const first = await getPiModelRuntime();
-    const second = await getPiModelRuntime();
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetPiModelRuntimesForTests();
+  });
 
-    expect(first).toBe(modelRuntime);
-    expect(second).toBe(modelRuntime);
-    expect(createModelRuntime).toHaveBeenCalledOnce();
-    expect(createModelRuntime).toHaveBeenCalledWith();
+  it("caches a configured model runtime for each requested project", async () => {
+    const first = await getPiModelRuntime("/tmp/project-one");
+    const firstAgain = await getPiModelRuntime("/tmp/project-one");
+    const second = await getPiModelRuntime("/tmp/project-two");
+
+    expect(first).toBe(firstRuntime);
+    expect(firstAgain).toBe(firstRuntime);
+    expect(second).toBe(secondRuntime);
+    expect(createConfiguredPiServices).toHaveBeenCalledTimes(2);
+    expect(createConfiguredPiServices).toHaveBeenNthCalledWith(1, {
+      cwd: "/tmp/project-one",
+    });
+    expect(createConfiguredPiServices).toHaveBeenNthCalledWith(2, {
+      cwd: "/tmp/project-two",
+    });
   });
 });

@@ -26,7 +26,6 @@ import {
   type ContextUsage,
 } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import {
   PiSdkSession,
   type PiSdkSessionOptions,
@@ -43,10 +42,6 @@ import {
 } from "./tool-proxy.js";
 import { listPiBridgeModels } from "./model-list.js";
 import { getPiModelRuntime } from "./model-runtime.js";
-
-// Pi normally loads OAuth flows through relative dynamic imports. This bridge
-// ships as one file, so register Pi's static loaders before auth is resolved.
-registerBunOAuthFlows();
 
 // ---------------------------------------------------------------------------
 // Command schema — defines what JSON-RPC requests this bridge accepts
@@ -183,7 +178,7 @@ const piCommandSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     method: z.literal("model/list"),
-    params: z.object({}),
+    params: z.object({ cwd: z.string().optional() }),
   }),
   z.object({
     method: z.literal("thread/start"),
@@ -581,7 +576,7 @@ async function handleRequest(
       sendResult(request.id, { ok: true });
       break;
     case "model/list":
-      await handleModelList(request.id);
+      await handleModelList(request.id, request.params);
       break;
     case "thread/start":
       await handleThreadStart(request.id, request.params);
@@ -643,9 +638,15 @@ function buildPiSessionParams(
   };
 }
 
-async function handleModelList(id: string | number): Promise<void> {
+async function handleModelList(
+  id: string | number,
+  params: { cwd?: string },
+): Promise<void> {
   try {
-    sendResult(id, await listPiBridgeModels(await getPiModelRuntime()));
+    sendResult(
+      id,
+      await listPiBridgeModels(await getPiModelRuntime(params.cwd)),
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
@@ -676,7 +677,7 @@ async function startPiThreadSession({
 
   const sessionSerial = nextSessionSerial();
   const session = new PiSdkSession(
-    { ...sessionOptions, modelRuntime: await getPiModelRuntime() },
+    sessionOptions,
     createOnPiEvent({ sessionSerial, threadId }),
     createOnSessionDone({ sessionSerial, threadId }),
   );
