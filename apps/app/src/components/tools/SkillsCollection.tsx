@@ -442,12 +442,12 @@ export function SkillsOverview({
       id="skills-collection"
       description="Create and manage agent skills. bb skills work across every agent you use in bb."
       modes={[
+        { id: "browse", label: "Browse" },
         {
           id: "library",
           label: TOOLS_OWNED_COLLECTION_LABEL.skills,
           count: skills.length,
         },
-        { id: "browse", label: "Browse" },
       ]}
       activeMode={activeMode}
       onModeChange={onModeChange}
