@@ -12,6 +12,12 @@ export {
   type ConnectListErrorCode,
 } from "./errors.js";
 export {
+  ConnectAiError,
+  fetchAiInference,
+  fetchAiTranscription,
+  type ConnectAiErrorCode,
+} from "./ai.js";
+export {
   accountServerSchema,
   accountServersResponseSchema,
   fetchAccountServers,

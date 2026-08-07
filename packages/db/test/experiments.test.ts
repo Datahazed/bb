@@ -37,6 +37,7 @@ describe("experiments", () => {
           .map((row) => row.key),
       ).toEqual([
         "claudeCodeMockCliTraffic",
+        "cloudAi",
         "futureExperiment",
         "newOnboarding",
         "toolsHub",

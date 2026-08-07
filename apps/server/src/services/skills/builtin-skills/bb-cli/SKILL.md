@@ -97,6 +97,10 @@ message agents, or inspect projects, providers, and environments.
   and Automations management UI. Change it with
   `bb settings experiment toolsHub <true|false>`. It does not load or unload
   tools.
+- The default-off `cloudAi` experiment permits paired cloud providers to serve
+  thread-title inference, commit-message inference, and voice transcription.
+  Change it with `bb settings experiment cloudAi <true|false>`. It does not
+  affect Remote access, pairing, or port sharing.
 - The default-off `newOnboarding` experiment exposes the first-run agent and
   project setup guide. Change it with
   `bb settings experiment newOnboarding <true|false>`. Use
@@ -175,8 +179,9 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   inherited value. A hidden child still reports its turns and blockers to its
   parent thread; only forks and side chats stay silent. Promote or hide an
   existing thread with `bb thread update <id> --visibility visible|hidden`.
-- `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
-  server for browser access at `<handle>.getbb.app` (get the code from
+- `bb connect --code <code> --server https://<handle>.getbb.app` connects this
+  bb server to bb Cloud (getbb.app): browser access at `<handle>.getbb.app`,
+  port shares, and AI features through the account (get the code from
   https://getbb.app). Pairing returns immediately — the
   server itself holds the tunnel and reconnects on restart, so there is no
   foreground process.
@@ -184,7 +189,13 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   `BB_DEV_CONNECT_BASE_URL` to the worktree's local Cloud origin. Connect uses
   it only as the unpaired default; explicit `--server` and `--base-url` values
   still win, including when pairing the dev bb with getbb.app.
-  `bb connect status` / `bb connect off` report and clear the pairing.
+  `bb connect status` reports the connection; `bb connect off` unlinks this bb
+  from Cloud and clears the pairing.
+  After `bb settings experiment cloudAi true`, AI features (thread titles,
+  commit messages, voice transcription) can route through bb Cloud with
+  automatic fallback to locally configured providers. `bb connect ai
+  [on|off]` shows or sets the plugin's inner preference; the experiment and
+  preference must both be on.
   Port sharing works from a thread on any enrolled host. `bb connect expose
 <port>` resolves that thread's environment host and returns its public URL;
   outside a thread it defaults to the server host. Pass `--host
@@ -197,10 +208,12 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   name, url, live) so callers can discover siblings; `--json` includes
   `selfHandle` for deduping this server. When you start a local server the user
   should open remotely, expose the port and give them the share URL. Remote
-  access is owned by the builtin `connect` plugin: `bb plugin disable connect`
-  cuts it off entirely; with bb connect still enabled, `bb plugin enable
-  connect` restores the command. Plugins → Connect shows the current URL, QR
-  code, shared ports, re-pair form, and disconnect control.
+  bb Cloud is provided by the builtin Cloud plugin (internal id `connect`):
+  `bb plugin disable connect` cuts it off entirely (remote access and AI
+  features alike);
+  `bb plugin enable connect` restores it. Settings → Cloud always contains
+  Remote access (URL, QR code, shared ports, pairing, and disconnect) and adds
+  a separate AI Gateway section when the `cloudAi` experiment is enabled.
 - Add remote execution machines from Settings → Machines. Its one-line
   installer stores the bb connect machine credential locally and configures
   both the daemon protocol and agent-launched `bb` CLI to traverse the account

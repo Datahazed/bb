@@ -20,6 +20,8 @@ export interface Env {
   BETTER_AUTH_SECRET: string;
   ACCOUNT_APP_URL?: string;
   CLOUD_DEV?: string;
+  /** Secret (wrangler secret put): upstream key for the /api/connect/ai proxy. */
+  OPENAI_API_KEY: string;
 }
 
 const TUNNEL_TAG = "tunnel";

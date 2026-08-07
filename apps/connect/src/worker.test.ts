@@ -243,6 +243,7 @@ function makeEnv(doFetch: (req: Request) => Promise<Response> | Response) {
     DB: {} as D1Database,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "test-secret",
+    OPENAI_API_KEY: "sk-test",
   };
   const ctx = {
     waitUntil: vi.fn(),
@@ -1297,6 +1298,7 @@ function makeDoEnv() {
     DB: {} as D1Database,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "s",
+    OPENAI_API_KEY: "sk-test",
   };
 }
 

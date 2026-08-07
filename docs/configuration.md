@@ -468,12 +468,15 @@ SDK request, plus ephemeral maximize/restore delivery through
 target thread is already open in a multi-pane app window; the response reports
 how many connected clients received the broadcast.
 
-## bb connect
+## bb Cloud (bb connect)
 
-`bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
-server for browser access at `<handle>.getbb.app` (claim a handle and copy the
-command at https://getbb.app). Remote access is owned by the builtin
-**connect plugin** (`plugins/connect/`): pairing redeems the code and stores
+`bb connect --code <code> --server https://<handle>.getbb.app` connects this
+bb server to **bb Cloud** — the getbb.app account relationship (claim a handle
+and copy the command at https://getbb.app). Once connected: the bb is
+reachable from any browser at `<handle>.getbb.app`, port shares and machine
+pairing work through the account, and AI features run through it (below).
+bb Cloud is provided by the builtin **Cloud plugin** (internal id `connect`,
+implemented in `plugins/connect/`): pairing redeems the code and stores
 the durable credential in the plugin's kv storage (in `bb.db`), and the
 plugin's background service holds the connect tunnel — dialing the gate,
 proxying relayed requests to the server's own loopback (which serves the SPA
@@ -483,9 +486,9 @@ proxying relayed requests to the server's own loopback (which serves the SPA
   re-establishes on restart; there is no foreground client. Pair from a machine
   without an installed bb via `npx -p bb-app@latest bb connect …`.
   `bb connect status` shows the connect state and every share's host and URL;
-  `bb connect off` disconnects and clears the pairing. After pairing,
-  `bb connect expose <port>` run from a thread shares that thread environment's
-  enrolled host. Server-host URLs remain
+  `bb connect off` unlinks this bb from Cloud and clears the pairing. After
+  pairing, `bb connect expose <port>` run from a thread shares that thread
+  environment's enrolled host. Server-host URLs remain
   `https://<server-label>--<port>.getbb.app`; other machines use
   `https://<machine-label>--<port>.getbb.app` and proxy directly through the
   owning daemon. Outside a thread the command defaults to the server host;
@@ -496,18 +499,27 @@ proxying relayed requests to the server's own loopback (which serves the SPA
   `url`; `shares --json` also includes the resolved `host`. A machine without
   a live Connect enrollment fails fast with instructions to remove and re-add
   it in Settings → Machines. Disabling the plugin
-  (`bb plugin disable connect`) cuts off all remote access;
-  `bb plugin enable connect` restores it.
+  (`bb plugin disable connect`) cuts off all bb Cloud capabilities — remote
+  access and AI features alike; `bb plugin enable connect` restores them.
 
-The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
-the plugin, and Settings → Connect drives the plugin's rpc (including shared
-ports).
+When the default-off `cloudAi` experiment is enabled, **AI features** —
+thread-title inference, commit-message inference, and voice transcription —
+can route through the account's bb Cloud AI proxy while connected, with no
+local AI credentials needed. Enable the experiment in Settings → Experiments
+or with `bb settings experiment cloudAi true`. The cloud picks the models;
+`BB_INFERENCE`/`BB_TRANSCRIPTION` govern only the local fallback, which bb uses
+automatically when a cloud call fails. Usage is capped by a generous
+per-account daily cost budget (an abuse ceiling, not a usage limit — normal
+use never approaches it).
 
 ## Experiments
 
 Experimental surfaces are off by default and can be changed in Settings →
 Experiments or with `bb settings experiment <key> <true|false>`. The
 `newOnboarding` experiment exposes the first-run agent and project setup guide.
+The `cloudAi` experiment permits server AI tasks to use a registered cloud
+provider and reveals the AI Gateway section of the builtin Cloud plugin. It does
+not affect Remote access, pairing, or port sharing.
 The `toolsHub` experiment exposes Extensions for managing skills and plugins,
 while Automations stays in the Plugins section beside threads. The `toolsHub`
 gate only controls the UI. Installed skills, automation execution, plugin
