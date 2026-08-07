@@ -51,7 +51,7 @@ describe("ToolsSidebar", () => {
 
     fireEvent.click(screen.getByRole("link", { name: "Plugins" }));
     expect(screen.getByLabelText("Current path").textContent).toBe(
-      "/tools/plugins/ui-patterns",
+      "/tools/plugins",
     );
   });
 

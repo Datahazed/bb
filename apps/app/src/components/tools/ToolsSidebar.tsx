@@ -32,8 +32,7 @@ export function ToolsSidebar({
     plugins: TOOLS_SECTIONS.plugins.to,
     skills: TOOLS_SECTIONS.skills.to,
   });
-  const currentRoutePath =
-    `${location.pathname}${location.search}${location.hash}`;
+  const currentRoutePath = `${location.pathname}${location.search}${location.hash}`;
 
   return (
     <SectionSidebar
@@ -67,9 +66,7 @@ export function ToolsSidebar({
               }
               label={item.label}
               to={
-                item.id === activeSection
-                  ? currentRoutePath
-                  : sectionRoutePaths[item.id]
+                item.id === activeSection ? item.to : sectionRoutePaths[item.id]
               }
             >
               <SectionSidebarIcon name={item.icon} />

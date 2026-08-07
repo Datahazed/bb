@@ -129,6 +129,10 @@ export function ExtensionsLandingRedirect() {
   return <Navigate to={TOOLS_PLUGINS_ROUTE_PATH} replace />;
 }
 
+export function LegacyPluginBrowseRedirect() {
+  return <Navigate to={TOOLS_PLUGINS_ROUTE_PATH} replace />;
+}
+
 function AppRoutes() {
   return (
     <AppLayout>
@@ -224,12 +228,7 @@ function AppRoutes() {
             <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
             <Route
               path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
-              element={
-                <Navigate
-                  to={`${TOOLS_PLUGINS_ROUTE_PATH}?view=browse`}
-                  replace
-                />
-              }
+              element={<LegacyPluginBrowseRedirect />}
             />
             <Route
               path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}

@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { focusManager } from "@tanstack/react-query";
 import type { SkillSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -26,6 +27,7 @@ import {
 } from "./SkillsView";
 
 afterEach(() => {
+  focusManager.setFocused(undefined);
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -795,13 +797,29 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       </MemoryRouter>,
     );
 
-    const forkButton = await screen.findByRole("button", {
+    let forkButton = await screen.findByRole("button", {
       name: "Fork Useful skill into a new bb skill",
     });
     const tabs = screen.getAllByRole("tab");
     expect(tabs[0]).toBe(screen.getByRole("tab", { name: "Browse" }));
     expect(tabs[1]).toBe(screen.getByRole("tab", { name: /Library/ }));
     expect(tabs[0]?.className).toContain("bg-accent");
+    const registryListRequests = () =>
+      fetchMock.mock.calls.filter(([input]) =>
+        requestPath(input).startsWith("/api/v1/skills-registry?"),
+      );
+    expect(registryListRequests()).toHaveLength(1);
+
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await waitFor(() => expect(registryListRequests()).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole("tab", { name: /Library/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
+    forkButton = await screen.findByRole("button", {
+      name: "Fork Useful skill into a new bb skill",
+    });
+    expect(registryListRequests()).toHaveLength(1);
 
     fireEvent.click(forkButton);
 

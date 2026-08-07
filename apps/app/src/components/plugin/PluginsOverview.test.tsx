@@ -16,6 +16,7 @@ import {
   defaultExperiments,
 } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { focusManager } from "@tanstack/react-query";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { PluginsOverview } from "./PluginsOverview";
 
@@ -172,6 +173,7 @@ function LocationPath() {
 }
 
 afterEach(() => {
+  focusManager.setFocused(undefined);
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -209,9 +211,32 @@ describe("PluginsOverview", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("tab", { name: /Marketplaces/ })).toBeNull();
 
+    const catalogRequests = () =>
+      vi.mocked(fetch).mock.calls.filter(([input]) => {
+        const rawUrl =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        return (
+          new URL(rawUrl, "http://localhost").pathname ===
+          "/api/v1/plugin-catalog/search"
+        );
+      });
+    expect(catalogRequests()).toHaveLength(1);
+
+    act(() => focusManager.setFocused(false));
+    act(() => focusManager.setFocused(true));
+    await waitFor(() => expect(catalogRequests()).toHaveLength(1));
+
     fireEvent.click(installedTab);
     expect(await screen.findByText("Automations")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Type" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
+    expect(await screen.findByText("GitHub")).toBeTruthy();
+    expect(catalogRequests()).toHaveLength(1);
   });
 
   it("shows category filters only in Browse", async () => {
