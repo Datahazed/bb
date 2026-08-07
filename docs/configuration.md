@@ -644,6 +644,13 @@ If the default ports are already in use, set explicit ports before starting:
 npx bb-app --server-port 48886 --host-daemon-port 48887
 ```
 
+The Settings → Machines installer assigns every enrolled standalone host daemon
+a stable local API port so it can coexist with the desktop app and with daemons
+enrolled to other servers. Atomic reservations under
+`~/.bb-machines/host-daemon-ports/` cover both default and custom
+`BB_DATA_DIR` locations. Its generated command accepts `--host-daemon-port
+<port>` when an explicit port is required.
+
 ## Source Development
 
 For source development only, `pnpm dev` and `pnpm start` load the repo-root
