@@ -195,7 +195,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
           : "Plugin uninstalled",
       );
       setDeleteTarget(null);
-      navigate(getPluginsRoutePath());
+      navigate(`${getPluginsRoutePath()}?view=installed`);
       return listQuery.refetch();
     },
     onError: (error) => {

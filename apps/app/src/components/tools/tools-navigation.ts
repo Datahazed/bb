@@ -116,7 +116,7 @@ function sectionCrumb(id: ToolsSectionId): ToolsBreadcrumbSegment {
 function collectionCrumb(
   id: ToolsSectionId,
   label: string = TOOLS_OWNED_COLLECTION_LABEL[id],
-  to = TOOLS_SECTIONS[id].to,
+  to = `${TOOLS_SECTIONS[id].to}?view=${id === "plugins" ? "installed" : "library"}`,
 ): ToolsBreadcrumbSegment {
   return { label, to };
 }
@@ -181,7 +181,8 @@ export function resolveToolsBreadcrumbs(
   for (const [section, browseRoute] of BROWSE_ROUTES) {
     if (
       pathname === browseRoute ||
-      (pathname === TOOLS_SECTIONS[section].to && view === "browse")
+      (pathname === TOOLS_SECTIONS[section].to &&
+        view !== (section === "plugins" ? "installed" : "library"))
     ) {
       return [sectionCrumb(section), { label: "Browse" }];
     }
@@ -206,6 +207,8 @@ export function resolveToolsBreadcrumbs(
       pathname === section.to ||
       ROOT_ROUTE_ALIASES[section.id].includes(pathname)
     ) {
+      const ownedView = section.id === "plugins" ? "installed" : "library";
+      if (pathname === section.to && view !== ownedView) continue;
       return [
         sectionCrumb(section.id),
         { label: TOOLS_OWNED_COLLECTION_LABEL[section.id] },

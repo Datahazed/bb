@@ -143,7 +143,8 @@ export function SkillsLibrary() {
     skillsQuery.isFetching && skillsQuery.data === undefined && !hasError;
   const isRegistryBrowseRoute =
     location.pathname === getRegistrySkillsRoutePath() ||
-    new URLSearchParams(location.search).get("view") === "browse";
+    (location.pathname === getSkillsRoutePath() &&
+      new URLSearchParams(location.search).get("view") !== "library");
   const registryRequestPage =
     isRegistryBrowseRoute || routeRegistrySkillId !== undefined
       ? registryPage
@@ -373,15 +374,15 @@ export function SkillsLibrary() {
     (mode: SkillsCollectionMode) => {
       if (mode === "browse") {
         setRegistryPage(0);
-        navigate(`${getSkillsRoutePath()}?view=browse`);
+        navigate(getSkillsRoutePath());
         return;
       }
-      navigate(getSkillsRoutePath());
+      navigate(`${getSkillsRoutePath()}?view=library`);
     },
     [navigate],
   );
   const closeSkillDetail = useCallback(() => {
-    navigate(getSkillsRoutePath());
+    navigate(`${getSkillsRoutePath()}?view=library`);
   }, [navigate]);
   // Create via prompt: open the composer seeded with the bb-skill prompt; the
   // spawned thread authors the SKILL.md.
