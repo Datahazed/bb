@@ -24,6 +24,7 @@ import { initDb } from "../../../apps/server/src/db.js";
 import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedupers.js";
 import { createApp } from "../../../apps/server/src/server.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
+import { createDirectDatabaseReadService } from "../../../apps/server/src/services/database/database-read-service.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
 import {
   copyBuiltinSkills,
@@ -275,10 +276,12 @@ async function startIntegrationServer(
     config,
     logger: testLogger,
   });
+  const databaseReads = createDirectDatabaseReadService({ db, hub });
   const { app, injectWebSocket } = createApp({
     appVersion,
     bbAppManagedConfig,
     config,
+    databaseReads,
     db,
     hub,
     lifecycleDedupers,
