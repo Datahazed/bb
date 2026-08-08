@@ -54,6 +54,7 @@ import {
 } from "@bb/config/inference-model";
 import { validateLogLevel } from "@bb/config/log-level";
 import { validateOptionalUrl } from "@bb/config/public-url";
+import { parseServerBindHost } from "@bb/config/server";
 import {
   BB_PROD_HOST_DAEMON_PORT,
   BB_LOOPBACK_HOST,
@@ -94,6 +95,27 @@ type ManagedConfigKey = "BB_SERVER_URL" | "serverUrl" | ManagedConfigValueKey;
 
 const MANAGED_CONFIG_KEYS = BB_APP_MANAGED_CONFIG_KEYS;
 const MANAGED_CONFIG_KEY_VALUES = new Set<string>(MANAGED_CONFIG_KEYS);
+const STARTUP_ONLY_MANAGED_CONFIG_KEYS = new Set<string>(["BB_LOG_LEVEL"]);
+// Keep this in sync with loadServerConfig and direct process.env reads made
+// while assembling the server. BB_APP_VERSION and NODE_ENV are omitted because
+// the launcher owns and overwrites them rather than applying env.json values.
+const STARTUP_ONLY_MANAGED_ENV_KEYS = new Set<string>([
+  "BB_APP_SURFACE",
+  "BB_APP_URL",
+  "BB_DATA_DIR",
+  "BB_DEV_APP_PORT",
+  "BB_EXTERNAL_URL",
+  "BB_HOST_DAEMON_PORT",
+  "BB_INFERENCE",
+  "BB_INHERITED_SKILLS_ROOTS",
+  "BB_LOG_LEVEL",
+  "BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD",
+  "BB_POSTHOG_API_KEY",
+  "BB_SERVER_BIND_HOST",
+  "BB_SERVER_PORT",
+  "BB_TELEMETRY",
+  "BB_TRANSCRIPTION",
+]);
 const PORTABLE_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const SECRET_SHAPED_ENV_NAME_PATTERN =
   /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD)$/u;
@@ -259,6 +281,7 @@ export interface LauncherCliOptions {
   hostType?: string;
   joinCode?: string;
   json?: boolean;
+  serverBindHost?: string;
   serverPort?: string;
   serverUrl?: string;
 }
@@ -448,6 +471,7 @@ interface CreateServerBaseEnvArgs {
   config: ManagedConfig;
   env: NodeJS.ProcessEnv;
   envFile: ManagedEnvFile;
+  serverBindHostOverride?: string;
 }
 
 interface CreateHostDaemonOnlyEnvArgs {
@@ -695,6 +719,7 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
       "host-id": { type: "string" },
       "host-type": { type: "string" },
       "join-code": { type: "string" },
+      "server-bind-host": { type: "string" },
       "server-port": { type: "string" },
       "server-url": { type: "string" },
       help: { short: "h", type: "boolean" },
@@ -715,6 +740,7 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
   const hostId = readStringOption(parsed.values["host-id"]);
   const hostType = readStringOption(parsed.values["host-type"]);
   const joinCode = readStringOption(parsed.values["join-code"]);
+  const serverBindHost = readStringOption(parsed.values["server-bind-host"]);
   const serverPort = readStringOption(parsed.values["server-port"]);
   const serverUrl = chooseServerUrlOption(
     readStringOption(parsed.values["server-url"]),
@@ -737,6 +763,9 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
   }
   if (joinCode !== undefined) {
     options.joinCode = joinCode;
+  }
+  if (serverBindHost !== undefined) {
+    options.serverBindHost = serverBindHost;
   }
   if (serverPort !== undefined) {
     options.serverPort = serverPort;
@@ -775,6 +804,9 @@ function createEnvFromOptions(
   }
   if (args.options.hostDaemonPort !== undefined) {
     env.BB_HOST_DAEMON_PORT = args.options.hostDaemonPort;
+  }
+  if (args.options.serverBindHost !== undefined) {
+    env.BB_SERVER_BIND_HOST = args.options.serverBindHost;
   }
   if (args.options.serverPort !== undefined) {
     env.BB_SERVER_PORT = args.options.serverPort;
@@ -829,6 +861,9 @@ function createServerBaseEnv(args: CreateServerBaseEnvArgs): NodeJS.ProcessEnv {
     ...args.env,
     ...args.config.config,
     ...args.envFile.env,
+    ...(args.serverBindHostOverride !== undefined
+      ? { BB_SERVER_BIND_HOST: args.serverBindHostOverride }
+      : {}),
   };
 }
 
@@ -1257,6 +1292,7 @@ export async function resolveBbAppRuntimeState(
       config,
       envFile,
       env: initialEnv,
+      serverBindHostOverride: args.options.serverBindHost,
     });
     delete localEnv.BB_SERVER_URL;
     delete localServerEnv.BB_SERVER_URL;
@@ -1293,6 +1329,7 @@ export async function resolveBbAppRuntimeState(
       config,
       envFile,
       env: initialEnv,
+      serverBindHostOverride: args.options.serverBindHost,
     }),
   };
 }
@@ -1388,6 +1425,10 @@ Usage:
 Supported keys:
   ${supportedConfigKeysText()}
 
+Startup-only:
+  BB_LOG_LEVEL changes require a full bb-app restart with
+  bb-app stop && bb-app start, or a desktop app restart.
+
 Config file:
   ${formatBbAppConfigPath(dataDir)}
 `);
@@ -1401,6 +1442,17 @@ Usage:
   bb-app env list
   bb-app env set <key> <value>
   bb-app env unset <key>
+
+Startup-only server and launcher keys:
+  BB_APP_SURFACE, BB_APP_URL, BB_DATA_DIR, BB_DEV_APP_PORT,
+  BB_EXTERNAL_URL, BB_HOST_DAEMON_PORT, BB_INFERENCE,
+  BB_INHERITED_SKILLS_ROOTS, BB_LOG_LEVEL,
+  BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD, BB_POSTHOG_API_KEY,
+  BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TELEMETRY, BB_TRANSCRIPTION,
+  and BB_FF_* feature flags.
+  Changes require a full bb-app restart with bb-app stop && bb-app start,
+  or a desktop app restart. BB_APP_URL, BB_INFERENCE, and BB_TRANSCRIPTION
+  can instead be changed live with bb-app config.
 
 Env file:
   ${formatBbAppEnvPath(dataDir)}
@@ -1659,15 +1711,63 @@ async function refreshRunningServerConfig(
   throw new Error(message);
 }
 
+function isStartupOnlyManagedKey(
+  source: "config" | "env",
+  key: string,
+): boolean {
+  if (source === "config") {
+    return STARTUP_ONLY_MANAGED_CONFIG_KEYS.has(key);
+  }
+  return STARTUP_ONLY_MANAGED_ENV_KEYS.has(key) || key.startsWith("BB_FF_");
+}
+
+function printStartupOnlyChangeNotice(key: string): void {
+  process.stdout.write(
+    `${key} is startup-only. The running process keeps its current value; a full bb-app restart is required to apply this change. Run \`bb-app stop && bb-app start\`, or restart the desktop app.\n`,
+  );
+  if (key === "BB_SERVER_BIND_HOST") {
+    process.stdout.write(
+      "Until then, the server keeps its previous bind address. If it was bound to 0.0.0.0, that network exposure remains open.\n",
+    );
+  }
+}
+
+async function readConfiguredStartupOnlyManagedKeys(
+  dataDir: string,
+): Promise<string[]> {
+  const [config, envFile] = await Promise.all([
+    readManagedConfig({ dataDir }),
+    readManagedEnvFile({ dataDir }),
+  ]);
+  const configuredKeys = new Set<string>();
+  for (const key of Object.keys(config.config ?? {})) {
+    if (isStartupOnlyManagedKey("config", key)) {
+      configuredKeys.add(key);
+    }
+  }
+  for (const key of Object.keys(envFile.env ?? {})) {
+    if (isStartupOnlyManagedKey("env", key)) {
+      configuredKeys.add(key);
+    }
+  }
+  return [...configuredKeys].sort();
+}
+
 async function refreshRunningServerConfigAfterWrite(
   serverUrl: string,
+  source: "config" | "env",
+  key: string,
 ): Promise<void> {
   const refreshed = await refreshRunningServerConfig({
     required: false,
     serverUrl,
   });
   if (refreshed) {
-    process.stdout.write("Reloaded running bb server config.\n");
+    if (isStartupOnlyManagedKey(source, key)) {
+      printStartupOnlyChangeNotice(key);
+    } else {
+      process.stdout.write("Reloaded running bb server config.\n");
+    }
     return;
   }
   process.stdout.write(
@@ -1701,6 +1801,14 @@ async function runConfigCommand(args: RunConfigCommandArgs): Promise<void> {
       serverUrl: args.serverUrl,
     });
     process.stdout.write("Reloaded running bb server config.\n");
+    const startupOnlyKeys = await readConfiguredStartupOnlyManagedKeys(
+      args.dataDir,
+    );
+    if (startupOnlyKeys.length > 0) {
+      process.stdout.write(
+        `Startup-only settings currently configured (${startupOnlyKeys.join(", ")}) apply on the next full bb-app restart.\n`,
+      );
+    }
     return;
   }
   if (commandArgs[0] === CONFIG_UNSET_COMMAND) {
@@ -1718,7 +1826,7 @@ async function runConfigCommand(args: RunConfigCommandArgs): Promise<void> {
     process.stdout.write(
       `Unset ${key} in ${formatBbAppConfigPath(args.dataDir)}\n`,
     );
-    await refreshRunningServerConfigAfterWrite(args.serverUrl);
+    await refreshRunningServerConfigAfterWrite(args.serverUrl, "config", key);
     return;
   }
   if (commandArgs[0] !== SET_COMMAND || commandArgs.length !== 3) {
@@ -1737,7 +1845,7 @@ async function runConfigCommand(args: RunConfigCommandArgs): Promise<void> {
   process.stdout.write(
     `Set ${key} in ${formatBbAppConfigPath(args.dataDir)}\n`,
   );
-  await refreshRunningServerConfigAfterWrite(args.serverUrl);
+  await refreshRunningServerConfigAfterWrite(args.serverUrl, "config", key);
 }
 
 async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
@@ -1773,7 +1881,7 @@ async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
     process.stdout.write(
       `Unset ${key} in ${formatBbAppEnvPath(args.dataDir)}\n`,
     );
-    await refreshRunningServerConfigAfterWrite(args.serverUrl);
+    await refreshRunningServerConfigAfterWrite(args.serverUrl, "env", key);
     return;
   }
   if (commandArgs[0] !== SET_COMMAND || commandArgs.length !== 3) {
@@ -1785,12 +1893,15 @@ async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
   if (value.length === 0) {
     throw new Error("Env value must not be empty. Use unset to remove it.");
   }
+  if (key === "BB_SERVER_BIND_HOST") {
+    parseServerBindHost(value);
+  }
   await writeManagedEnv({
     config: createManagedEnvPatch(key, value),
     dataDir: args.dataDir,
   });
   process.stdout.write(`Set ${key} in ${formatBbAppEnvPath(args.dataDir)}\n`);
-  await refreshRunningServerConfigAfterWrite(args.serverUrl);
+  await refreshRunningServerConfigAfterWrite(args.serverUrl, "env", key);
 }
 
 async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
@@ -2478,7 +2589,7 @@ export async function runBbServer(
     process.stdout.write(`bb-server
 
 Usage:
-  bb-server [--data-dir <path>] [--server-port <port>]
+  bb-server [--data-dir <path>] [--server-bind-host <host>] [--server-port <port>]
 `);
     return;
   }
@@ -2493,6 +2604,26 @@ Usage:
     options: parsedArgs.options,
     serverUrlMode: "local",
   });
+  const configuredServerBindHost = runtime.serverEnv.BB_SERVER_BIND_HOST;
+  if (configuredServerBindHost !== undefined) {
+    try {
+      parseServerBindHost(configuredServerBindHost);
+    } catch (error) {
+      const envFile = await readManagedEnvFile({
+        dataDir: runtime.context.dataDir,
+      });
+      if (
+        parsedArgs.options.serverBindHost === undefined &&
+        envFile.env?.BB_SERVER_BIND_HOST === configuredServerBindHost &&
+        error instanceof Error
+      ) {
+        throw new Error(
+          `Invalid bb-app env at ${runtime.context.envFile}: ${error.message}`,
+        );
+      }
+      throw error;
+    }
+  }
   assertBbAppArtifacts(runtime.context);
 
   const childProcess = spawn(process.execPath, [runtime.context.serverEntry], {
@@ -2695,7 +2826,7 @@ function printBbAppHelp(): void {
   process.stdout.write(`bb-app
 
 Usage:
-  bb-app [--data-dir <path>] [--server-port <port>] [--host-daemon-port <port>]
+  bb-app [--data-dir <path>] [--server-bind-host <host>] [--server-port <port>] [--host-daemon-port <port>]
   bb-app start
   bb-app stop
   bb-app config set <key> <value>
@@ -3015,6 +3146,29 @@ export async function runBbApp(
         ? "managed"
         : "local",
   });
+
+  if (command.kind === "start") {
+    const configuredServerBindHost = runtime.serverEnv.BB_SERVER_BIND_HOST;
+    if (configuredServerBindHost !== undefined) {
+      try {
+        parseServerBindHost(configuredServerBindHost);
+      } catch (error) {
+        const envFile = await readManagedEnvFile({
+          dataDir: runtime.context.dataDir,
+        });
+        if (
+          parsedArgs.options.serverBindHost === undefined &&
+          envFile.env?.BB_SERVER_BIND_HOST === configuredServerBindHost &&
+          error instanceof Error
+        ) {
+          throw new Error(
+            `Invalid bb-app env at ${runtime.context.envFile}: ${error.message}`,
+          );
+        }
+        throw error;
+      }
+    }
+  }
 
   if (command.kind === "config") {
     await runConfigCommand({
