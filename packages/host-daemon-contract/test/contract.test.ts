@@ -322,6 +322,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         id: "codex/gpt-5",
         model: "gpt-5",
         displayName: "GPT-5",
+        routeProviderId: "openai-codex",
         description: "Test model",
         supportedReasoningEfforts: [
           {
@@ -1038,10 +1039,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 82 changes how the Pi bridge resolves bare model ids. The bump
-  // updates enrolled daemons before they receive the revised model meaning.
-  it("uses protocol version 82 for authenticated Pi model resolution", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(82);
+  // Version 83 adds the nested provider route to model/list results so clients
+  // can disambiguate models without changing their friendly display names.
+  it("uses protocol version 83 for model route provider metadata", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(83);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
