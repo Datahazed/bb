@@ -31,18 +31,21 @@ export class HttpError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly body?: unknown;
+  readonly retryable: boolean;
 
   constructor(args: {
     status: number;
     message: string;
     code?: string;
     body?: unknown;
+    retryable?: boolean;
   }) {
     super(`HTTP ${args.status}: ${args.message}`);
     this.name = "HttpError";
     this.status = args.status;
     this.code = args.code;
     this.body = args.body;
+    this.retryable = args.retryable ?? false;
   }
 }
 
@@ -115,6 +118,10 @@ function extractErrorCode(value: unknown): string | undefined {
     : undefined;
 }
 
+function extractRetryable(value: unknown): boolean {
+  return toRecord(value)?.retryable === true;
+}
+
 async function throwHttpError(res: Response): Promise<never> {
   const rawBody = await res.text().catch(() => "");
   const contentType = res.headers.get("content-type");
@@ -130,6 +137,7 @@ async function throwHttpError(res: Response): Promise<never> {
     message,
     code: extractErrorCode(body),
     body,
+    retryable: extractRetryable(body),
   });
 }
 

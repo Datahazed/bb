@@ -201,6 +201,7 @@ describe("readJsonResponse()", () => {
         code: "thread_not_found",
         message: "Thread thread-1 not found",
         error: "Thread thread-1 not found",
+        retryable: true,
       }),
       {
         status: 404,
@@ -223,6 +224,7 @@ describe("readJsonResponse()", () => {
     expect(error.message).toBe("HTTP 404: Thread thread-1 not found");
     expect(error.status).toBe(404);
     expect(error.code).toBe("thread_not_found");
+    expect(error.retryable).toBe(true);
   });
 
   it("reports a null code when the error body has none", async () => {
@@ -235,6 +237,7 @@ describe("readJsonResponse()", () => {
       code: null,
       message: "HTTP 502: plain failure",
       name: "BbHttpError",
+      retryable: false,
       status: 502,
     });
   });

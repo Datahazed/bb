@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   ThreadListEntry,
   ThreadWithRuntime,
@@ -38,7 +38,15 @@ import {
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { HttpError } from "@/lib/api";
 import { BbHttpError } from "@/lib/sdk";
-import { isTransientReadError, requireEnabledQueryArg } from "./query-helpers";
+import {
+  getTransientReadRetryDelay,
+  isTransientReadError,
+  requireEnabledQueryArg,
+  shouldRetryTransientReadQuery,
+  TRANSIENT_READ_MAX_ATTEMPTS,
+  TRANSIENT_READ_RETRY_BASE_DELAY_MS,
+  TRANSIENT_READ_RETRY_MAX_DELAY_MS,
+} from "./query-helpers";
 
 describe("requireEnabledQueryArg", () => {
   it("returns the value when present", () => {
@@ -73,10 +81,10 @@ describe("requireEnabledQueryArg", () => {
 });
 
 describe("isTransientReadError", () => {
-  it("matches browser transport failures but not HTTP responses", () => {
+  it("matches transport failures and retryable HTTP responses", () => {
     expect(isTransientReadError(new TypeError("Failed to fetch"))).toBe(true);
     expect(isTransientReadError(new TypeError("Load failed"))).toBe(true);
-    expect(isTransientReadError({ name: "AbortError" })).toBe(true);
+    expect(isTransientReadError({ name: "AbortError" })).toBe(false);
     expect(
       isTransientReadError(
         new HttpError({ status: 404, message: "Not found" }),
@@ -92,9 +100,66 @@ describe("isTransientReadError", () => {
         }),
       ),
     ).toBe(false);
+    expect(
+      isTransientReadError(
+        new HttpError({
+          status: 503,
+          message: "Queue full",
+          retryable: true,
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isTransientReadError(
+        new BbHttpError({
+          status: 503,
+          message: "Queue full",
+          body: { retryable: true },
+          code: "database_read_unavailable",
+          retryable: true,
+        }),
+      ),
+    ).toBe(true);
     expect(isTransientReadError(new Error("Unexpected parse error"))).toBe(
       false,
     );
+  });
+});
+
+describe("read query retry policy", () => {
+  it("stops after the maximum attempt count", () => {
+    const error = new HttpError({
+      status: 503,
+      message: "Queue full",
+      retryable: true,
+    });
+
+    expect(
+      shouldRetryTransientReadQuery(TRANSIENT_READ_MAX_ATTEMPTS - 2, error),
+    ).toBe(true);
+    expect(
+      shouldRetryTransientReadQuery(TRANSIENT_READ_MAX_ATTEMPTS - 1, error),
+    ).toBe(false);
+  });
+
+  it("adds jitter to capped exponential delays", () => {
+    const random = vi.spyOn(Math, "random");
+    random.mockReturnValue(0);
+    expect(getTransientReadRetryDelay(0)).toBe(
+      TRANSIENT_READ_RETRY_BASE_DELAY_MS / 2,
+    );
+    expect(getTransientReadRetryDelay(20)).toBe(
+      TRANSIENT_READ_RETRY_MAX_DELAY_MS / 2,
+    );
+
+    random.mockReturnValue(0.999);
+    expect(getTransientReadRetryDelay(0)).toBeGreaterThan(
+      TRANSIENT_READ_RETRY_BASE_DELAY_MS / 2,
+    );
+    expect(getTransientReadRetryDelay(20)).toBeLessThan(
+      TRANSIENT_READ_RETRY_MAX_DELAY_MS,
+    );
+    random.mockRestore();
   });
 });
 

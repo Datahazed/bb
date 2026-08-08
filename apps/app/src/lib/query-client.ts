@@ -11,8 +11,8 @@ import {
 import { invalidateActiveThreadBundleQueriesAfterBrowserResume } from "@/hooks/cache-owners/active-thread-lifecycle-cache-owner";
 import { cancelActiveQueryFetchesForBrowserSuspend } from "@/hooks/cache-owners/browser-lifecycle-cache-owner";
 import {
+  getTransientReadRetryDelay,
   shouldRetryTransientReadQuery,
-  TRANSIENT_READ_RETRY_DELAY_MS,
 } from "@/hooks/queries/query-helpers";
 
 export interface CreateAppQueryClientOptions {
@@ -146,7 +146,7 @@ export function createAppQueryClient(
         staleTime: 2000,
         refetchOnWindowFocus: true,
         retry: shouldRetryTransientReadQuery,
-        retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
+        retryDelay: getTransientReadRetryDelay,
         ...defaultOptions?.queries,
       },
     },

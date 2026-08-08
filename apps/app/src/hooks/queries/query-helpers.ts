@@ -7,8 +7,9 @@ import { BbHttpError } from "@/lib/sdk";
  * project-scoped variants so they age out their cached suggestions together.
  */
 export const PROMPT_HISTORY_STALE_TIME_MS = 10_000;
-export const TRANSIENT_READ_RETRY_COUNT = 2;
-export const TRANSIENT_READ_RETRY_DELAY_MS = 250;
+export const TRANSIENT_READ_MAX_ATTEMPTS = 5;
+export const TRANSIENT_READ_RETRY_BASE_DELAY_MS = 250;
+export const TRANSIENT_READ_RETRY_MAX_DELAY_MS = 4_000;
 
 interface RequireEnabledQueryArgArgs<T> {
   value: T | null | undefined;
@@ -43,14 +44,14 @@ function normalizeErrorMessage(message: string): string {
 
 export function isTransientReadError(error: unknown): boolean {
   if (error instanceof DOMException && error.name === "AbortError") {
-    return true;
+    return false;
   }
 
   if (toRecord(error)?.name === "AbortError") {
-    return true;
+    return false;
   }
   if (error instanceof HttpError || error instanceof BbHttpError) {
-    return false;
+    return error.retryable;
   }
 
   const record = toRecord(error);
@@ -70,9 +71,19 @@ export function shouldRetryTransientReadQuery(
   failureCount: number,
   error: unknown,
 ): boolean {
-  if (failureCount >= TRANSIENT_READ_RETRY_COUNT) {
+  if (failureCount >= TRANSIENT_READ_MAX_ATTEMPTS - 1) {
     return false;
   }
 
   return isTransientReadError(error);
+}
+
+export function getTransientReadRetryDelay(attemptIndex: number): number {
+  const boundedAttemptIndex = Math.max(0, attemptIndex);
+  const exponentialDelay = Math.min(
+    TRANSIENT_READ_RETRY_BASE_DELAY_MS * 2 ** boundedAttemptIndex,
+    TRANSIENT_READ_RETRY_MAX_DELAY_MS,
+  );
+  const jitterRange = exponentialDelay / 2;
+  return Math.floor(jitterRange + Math.random() * jitterRange);
 }

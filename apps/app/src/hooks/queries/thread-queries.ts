@@ -46,10 +46,10 @@ import {
   resolveThreadTimelinePlaceholder,
 } from "./query-placeholders";
 import {
+  getTransientReadRetryDelay,
   PROMPT_HISTORY_STALE_TIME_MS,
   requireEnabledQueryArg,
   shouldRetryTransientReadQuery,
-  TRANSIENT_READ_RETRY_DELAY_MS,
 } from "./query-helpers";
 import {
   REALTIME_OWNED_MOUNT_BASELINE_QUERY_POLICY,
@@ -528,7 +528,7 @@ export function useThread(id: string, options?: QueryOptions) {
     staleTime: THREAD_DETAIL_STALE_TIME_MS,
     refetchOnMount: options?.refetchOnMount ?? true,
     retry: shouldRetryTransientReadQuery,
-    retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
+    retryDelay: getTransientReadRetryDelay,
     placeholderData: (previousData, previousQuery) =>
       resolveThreadPlaceholder(previousData, previousQuery?.queryKey, id) ??
       liftThreadListPlaceholder(
@@ -594,7 +594,7 @@ export function useThreadDetailBootstrap(
     enabled,
     staleTime: Infinity,
     retry: shouldRetryTransientReadQuery,
-    retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
+    retryDelay: getTransientReadRetryDelay,
   });
 }
 
@@ -836,7 +836,7 @@ export function useThreadTimeline(
       ? {}
       : { staleTime: options.staleTime }),
     retry: shouldRetryTransientReadQuery,
-    retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
+    retryDelay: getTransientReadRetryDelay,
     placeholderData: (previousData, previousQuery) =>
       resolveThreadTimelinePlaceholder(
         previousData,
