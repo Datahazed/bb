@@ -3,11 +3,8 @@ import type {
   ListThreadsOptions,
   SlowDbQueryLogFields,
 } from "@bb/db";
-import {
-  threadListEntrySchema,
-  threadChildOriginSchema,
-  threadOriginKindSchema,
-} from "@bb/domain";
+import { threadChildOriginSchema, threadOriginKindSchema } from "@bb/domain";
+import type { ThreadListEntry } from "@bb/domain";
 import { z } from "zod";
 
 const listThreadsOptionsSchema = z
@@ -124,11 +121,19 @@ export const databaseReadWorkerMessageSchema = z.discriminatedUnion("kind", [
     .object({
       id: z.number().int().nonnegative(),
       kind: z.literal("result"),
-      entries: z.array(threadListEntrySchema),
+      entries: z.array(z.unknown()),
     })
     .strict(),
 ]);
 
-export type DatabaseReadWorkerMessage = z.infer<
+type DatabaseReadWorkerMessageEnvelope = z.infer<
   typeof databaseReadWorkerMessageSchema
 >;
+
+export type DatabaseReadWorkerMessage =
+  | Exclude<DatabaseReadWorkerMessageEnvelope, { kind: "result" }>
+  | {
+      entries: ThreadListEntry[];
+      id: number;
+      kind: "result";
+    };

@@ -74,10 +74,15 @@ export class TurnStartGuardError extends ApiError {
   }
 }
 
+export class ClientClosedRequestError extends Error {}
+
 export function errorToResponse(
   error: unknown,
   logger: ServerLogger,
 ): Response {
+  if (error instanceof ClientClosedRequestError) {
+    return new Response(null, { status: 499 });
+  }
   if (error instanceof TurnStartGuardError) {
     logger.warn(
       { err: error, ...error.details },

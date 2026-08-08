@@ -7,9 +7,9 @@ import {
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
 } from "@bb/db";
-import type { ThreadListEntry } from "@bb/domain";
+import { threadListEntrySchema, type ThreadListEntry } from "@bb/domain";
 import { Worker } from "node:worker_threads";
-import { ApiError } from "../../errors.js";
+import { ApiError, ClientClosedRequestError } from "../../errors.js";
 import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import { toThreadListEntryResponses } from "../threads/thread-runtime-display.js";
@@ -46,11 +46,15 @@ export interface DatabaseReadRequestContext {
   signal?: AbortSignal;
 }
 
-export class DatabaseReadAbortedError extends Error {
+export class DatabaseReadAbortedError extends ClientClosedRequestError {
   constructor() {
     super("The database read request stopped");
     this.name = "DatabaseReadAbortedError";
   }
+}
+
+function isThreadListEntry(value: unknown): value is ThreadListEntry {
+  return threadListEntrySchema.safeParse(value).success;
 }
 
 export class DatabaseReadUnavailableError extends ApiError {
@@ -286,7 +290,18 @@ export async function createWorkerDatabaseReadService(
         error.stack = message.error.stack;
         rejectRead(read, error);
       } else {
-        resolveRead(read, message.entries);
+        const entries: ThreadListEntry[] = [];
+        for (const [entryIndex, entry] of message.entries.entries()) {
+          if (!isThreadListEntry(entry)) {
+            args.logger.warn(
+              { entryIndex, requestId: message.id },
+              "Dropped an invalid thread entry from a database read worker result",
+            );
+            continue;
+          }
+          entries.push(entry);
+        }
+        resolveRead(read, entries);
       }
       scheduleDispatch();
     });
