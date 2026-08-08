@@ -1,7 +1,9 @@
+import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadServerConfig } from "@bb/config/server";
 import { describe, expect, it } from "vitest";
 import { startHttpListener } from "../../src/start-server.js";
@@ -14,6 +16,36 @@ async function readServerEntrypoint(): Promise<string> {
 
 async function readServerPackageJson(): Promise<string> {
   return readFile(resolve(testDir, "../../package.json"), "utf8");
+}
+
+async function waitForChildExit(
+  child: ReturnType<typeof spawn>,
+  timeoutMs: number,
+): Promise<number | null> {
+  let timeout: NodeJS.Timeout | null = null;
+  const result = await Promise.race([
+    once(child, "exit").then(
+      ([code]): { code: number | null; kind: "exit" } => ({
+        code: typeof code === "number" ? code : null,
+        kind: "exit",
+      }),
+    ),
+    new Promise<{ kind: "timeout" }>((resolveTimeout) => {
+      timeout = setTimeout(
+        () => resolveTimeout({ kind: "timeout" }),
+        timeoutMs,
+      );
+    }),
+  ]);
+  if (timeout !== null) {
+    clearTimeout(timeout);
+  }
+  if (result.kind === "timeout") {
+    child.kill("SIGKILL");
+    await once(child, "exit");
+    throw new Error("The server startup failure kept the child process alive");
+  }
+  return result.code;
 }
 
 describe("server startup diagnostics", () => {
@@ -34,6 +66,64 @@ describe("server startup diagnostics", () => {
 
     expect(packageJson).toContain("--external ./start-server.js");
     expect(packageJson).toContain("src/start-server.ts dist/start-server.js");
+  });
+
+  it("closes the database worker after a later startup failure", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "bb-startup-failure-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    const startServerUrl = pathToFileURL(
+      resolve(testDir, "../../src/start-server.ts"),
+    ).href;
+    const databaseReadServiceUrl = pathToFileURL(
+      resolve(testDir, "../../src/services/database/database-read-service.ts"),
+    ).href;
+    const databaseUrl = pathToFileURL(resolve(testDir, "../../src/db.ts")).href;
+    const hubUrl = pathToFileURL(resolve(testDir, "../../src/ws/hub.ts")).href;
+    const source = `
+      import { initDb } from ${JSON.stringify(databaseUrl)};
+      import { createWorkerDatabaseReadService } from ${JSON.stringify(databaseReadServiceUrl)};
+      import { runStartupWithDatabaseReads } from ${JSON.stringify(startServerUrl)};
+      import { NotificationHub } from ${JSON.stringify(hubUrl)};
+      const databasePath = process.env.BB_STARTUP_FAILURE_TEST_DATABASE_PATH;
+      if (databasePath === undefined) throw new Error("The test database path is missing");
+      const db = initDb(databasePath);
+      db.$client.close();
+      const logger = { debug() {}, error() {}, info() {}, warn() {} };
+      const databaseReads = await createWorkerDatabaseReadService({
+        databasePath,
+        hub: new NotificationHub(),
+        logger,
+      });
+      await runStartupWithDatabaseReads(databaseReads, async () => {
+        throw new Error("Test startup failure");
+      });
+    `;
+
+    try {
+      const child = spawn(
+        process.execPath,
+        [
+          "--conditions=source",
+          "--import",
+          "tsx",
+          "--input-type=module",
+          "-e",
+          source,
+        ],
+        {
+          cwd: resolve(testDir, "../../../.."),
+          env: {
+            ...process.env,
+            BB_STARTUP_FAILURE_TEST_DATABASE_PATH: databasePath,
+          },
+          stdio: "ignore",
+        },
+      );
+
+      await expect(waitForChildExit(child, 10_000)).resolves.toBe(1);
+    } finally {
+      await rm(dataDir, { force: true, recursive: true });
+    }
   });
 
   it("binds the default server listener to IPv4 loopback", async () => {

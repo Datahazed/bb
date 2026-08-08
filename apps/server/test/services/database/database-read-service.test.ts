@@ -1,6 +1,8 @@
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Worker } from "node:worker_threads";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DbConnection } from "@bb/db";
 import { initDb } from "../../../src/db.js";
@@ -27,6 +29,48 @@ afterEach(async () => {
 });
 
 describe("worker database reads", () => {
+  it("reports an initialization failure before the service becomes ready", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+
+    await expect(
+      createWorkerDatabaseReadService({
+        databasePath: join(dataDir, "missing", "bb.db"),
+        hub: new NotificationHub(),
+        logger: testLogger,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("restarts the worker after an unexpected exit", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    db = initDb(databasePath);
+    const workers: Worker[] = [];
+    databaseReads = await createWorkerDatabaseReadService({
+      databasePath,
+      hub: new NotificationHub(),
+      logger: testLogger,
+      onWorkerCreated(worker): void {
+        workers.push(worker);
+      },
+    });
+    const firstWorker = workers[0];
+    if (firstWorker === undefined) {
+      throw new Error("The database read worker was not created");
+    }
+
+    const exit = once(firstWorker, "exit");
+    void firstWorker.terminate();
+    await exit;
+
+    await expect(
+      databaseReads.listThreadEntriesForProjects({
+        projectIds: ["proj_personal"],
+      }),
+    ).resolves.toEqual([]);
+    expect(workers).toHaveLength(2);
+  });
+
   it("keeps the event loop available during a slow thread-list query", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
     const databasePath = join(dataDir, "bb.db");
@@ -60,7 +104,7 @@ describe("worker database reads", () => {
         'visible'
       FROM thread_numbers
     `);
-    databaseReads = createWorkerDatabaseReadService({
+    databaseReads = await createWorkerDatabaseReadService({
       databasePath,
       hub: new NotificationHub(),
       logger: testLogger,

@@ -9,7 +9,10 @@ import { createLogger } from "@bb/logger";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
-import { createWorkerDatabaseReadService } from "./services/database/database-read-service.js";
+import {
+  createWorkerDatabaseReadService,
+  type DatabaseReadService,
+} from "./services/database/database-read-service.js";
 import { createMachineAuthService } from "./services/machine-auth.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
 import { SkillTreeRegistry } from "./services/skills/injected-skills.js";
@@ -42,6 +45,18 @@ export function startHttpListener(args: StartHttpListenerArgs) {
   });
 }
 
+export async function runStartupWithDatabaseReads(
+  databaseReads: DatabaseReadService,
+  start: () => Promise<void>,
+): Promise<void> {
+  try {
+    await start();
+  } catch (error) {
+    await databaseReads.close();
+    throw error;
+  }
+}
+
 export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const logger = createLogger({
     component: "server",
@@ -52,102 +67,121 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
   const hub = new NotificationHub();
-  const databaseReads = createWorkerDatabaseReadService({
+  const databaseReads = await createWorkerDatabaseReadService({
     databasePath: serverConfig.databasePath,
     hub,
     logger,
   });
-  const watchInterests = new WatchInterestCoordinator({ db, hub });
-  const sharedPorts = new HostSharedPortCoordinator({ db, hub });
-  const lifecycleDedupers = createLifecycleDedupers();
-  const appUrl = toOptionalString(serverConfig.BB_APP_URL);
-  const threadStorageRootPath = resolveThreadStorageRootPath({
-    dataDir: serverConfig.BB_DATA_DIR,
-  });
+  await runStartupWithDatabaseReads(databaseReads, async () => {
+    const watchInterests = new WatchInterestCoordinator({ db, hub });
+    const sharedPorts = new HostSharedPortCoordinator({ db, hub });
+    const lifecycleDedupers = createLifecycleDedupers();
+    const appUrl = toOptionalString(serverConfig.BB_APP_URL);
+    const threadStorageRootPath = resolveThreadStorageRootPath({
+      dataDir: serverConfig.BB_DATA_DIR,
+    });
 
-  const selfDir = dirname(fileURLToPath(import.meta.url));
-  const appDir = resolve(selfDir, "../../app");
-  const appDistDir = join(appDir, "dist");
-  const isProduction = process.env.NODE_ENV === "production";
-  const staticDir =
-    isProduction && existsSync(appDistDir) ? appDistDir : undefined;
-  const runtimeConfig: ServerRuntimeConfig = {
-    appSurface: serverConfig.BB_APP_SURFACE,
-    appVersion: serverConfig.BB_APP_VERSION,
-    builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
-    customAcpAgents: [],
-    customModels: [],
-    dataDir: serverConfig.BB_DATA_DIR,
-    featureFlags: serverConfig.featureFlags,
-    hostDaemonPort: serverConfig.BB_HOST_DAEMON_PORT,
-    inheritedSkillsRootPaths: serverConfig.BB_INHERITED_SKILLS_ROOTS,
-    inferenceModel: serverConfig.BB_INFERENCE,
-    isDevelopment: !isProduction,
-    openAiApiKey: serverConfig.OPENAI_API_KEY,
-    serverPort: serverConfig.BB_SERVER_PORT,
-    threadStorageRootPath,
-    transcriptionModel: serverConfig.BB_TRANSCRIPTION,
-  };
+    const selfDir = dirname(fileURLToPath(import.meta.url));
+    const appDir = resolve(selfDir, "../../app");
+    const appDistDir = join(appDir, "dist");
+    const isProduction = process.env.NODE_ENV === "production";
+    const staticDir =
+      isProduction && existsSync(appDistDir) ? appDistDir : undefined;
+    const runtimeConfig: ServerRuntimeConfig = {
+      appSurface: serverConfig.BB_APP_SURFACE,
+      appVersion: serverConfig.BB_APP_VERSION,
+      builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
+      customAcpAgents: [],
+      customModels: [],
+      dataDir: serverConfig.BB_DATA_DIR,
+      featureFlags: serverConfig.featureFlags,
+      hostDaemonPort: serverConfig.BB_HOST_DAEMON_PORT,
+      inheritedSkillsRootPaths: serverConfig.BB_INHERITED_SKILLS_ROOTS,
+      inferenceModel: serverConfig.BB_INFERENCE,
+      isDevelopment: !isProduction,
+      openAiApiKey: serverConfig.OPENAI_API_KEY,
+      serverPort: serverConfig.BB_SERVER_PORT,
+      threadStorageRootPath,
+      transcriptionModel: serverConfig.BB_TRANSCRIPTION,
+    };
 
-  if (appUrl !== undefined) {
-    runtimeConfig.appUrl = appUrl;
-  }
-  if (serverConfig.BB_DEV_APP_PORT !== undefined) {
-    runtimeConfig.devAppPort = serverConfig.BB_DEV_APP_PORT;
-  }
-  const terminalSessions = new TerminalSessionLifecycle({
-    config: runtimeConfig,
-    db,
-    hub,
-    logger,
-  });
-  const bbAppManagedConfig = await createBbAppManagedConfigReloader({
-    config: runtimeConfig,
-    hub,
-    logger,
-  });
-
-  // Telemetry only operates in production runs (the bb-app launcher and the
-  // desktop app both set NODE_ENV=production); dev/source runs never send.
-  const telemetry = await createTelemetryService({
-    apiKey: serverConfig.BB_POSTHOG_API_KEY,
-    appSurface: serverConfig.BB_APP_SURFACE,
-    appVersion: serverConfig.BB_APP_VERSION,
-    dataDir: serverConfig.BB_DATA_DIR,
-    enabled: serverConfig.BB_TELEMETRY && isProduction,
-    logger,
-  });
-
-  const machineAuth = await createMachineAuthService({
-    dataDir: serverConfig.BB_DATA_DIR,
-    db,
-    logger,
-  });
-  await machineAuth.ensureReady();
-  const skillTreeRegistry = new SkillTreeRegistry();
-  const pendingInteractions = new PendingInteractionLifecycle({
-    config: runtimeConfig,
-    db,
-    hub,
-    lifecycleDedupers,
-    logger,
-    machineAuth,
-    skillTreeRegistry,
-    telemetry,
-    terminalSessions,
-  });
-  pendingInteractions.start();
-
-  const appVersion = createAppVersionService({
-    config: runtimeConfig,
-    logger,
-  });
-  const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
-    {
-      appVersion,
-      bbAppManagedConfig,
+    if (appUrl !== undefined) {
+      runtimeConfig.appUrl = appUrl;
+    }
+    if (serverConfig.BB_DEV_APP_PORT !== undefined) {
+      runtimeConfig.devAppPort = serverConfig.BB_DEV_APP_PORT;
+    }
+    const terminalSessions = new TerminalSessionLifecycle({
       config: runtimeConfig,
-      databaseReads,
+      db,
+      hub,
+      logger,
+    });
+    const bbAppManagedConfig = await createBbAppManagedConfigReloader({
+      config: runtimeConfig,
+      hub,
+      logger,
+    });
+
+    // Telemetry only operates in production runs (the bb-app launcher and the
+    // desktop app both set NODE_ENV=production); dev/source runs never send.
+    const telemetry = await createTelemetryService({
+      apiKey: serverConfig.BB_POSTHOG_API_KEY,
+      appSurface: serverConfig.BB_APP_SURFACE,
+      appVersion: serverConfig.BB_APP_VERSION,
+      dataDir: serverConfig.BB_DATA_DIR,
+      enabled: serverConfig.BB_TELEMETRY && isProduction,
+      logger,
+    });
+
+    const machineAuth = await createMachineAuthService({
+      dataDir: serverConfig.BB_DATA_DIR,
+      db,
+      logger,
+    });
+    await machineAuth.ensureReady();
+    const skillTreeRegistry = new SkillTreeRegistry();
+    const pendingInteractions = new PendingInteractionLifecycle({
+      config: runtimeConfig,
+      db,
+      hub,
+      lifecycleDedupers,
+      logger,
+      machineAuth,
+      skillTreeRegistry,
+      telemetry,
+      terminalSessions,
+    });
+    pendingInteractions.start();
+
+    const appVersion = createAppVersionService({
+      config: runtimeConfig,
+      logger,
+    });
+    const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
+      {
+        appVersion,
+        bbAppManagedConfig,
+        config: runtimeConfig,
+        databaseReads,
+        db,
+        hub,
+        lifecycleDedupers,
+        logger,
+        machineAuth,
+        pendingInteractions,
+        skillTreeRegistry,
+        telemetry,
+        terminalSessions,
+        watchInterests,
+        sharedPorts,
+      },
+      { staticDir },
+    );
+    const eventLoopStallMonitor = startEventLoopStallMonitor({ logger });
+
+    const sweepDeps = {
+      config: runtimeConfig,
       db,
       hub,
       lifecycleDedupers,
@@ -155,102 +189,85 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       machineAuth,
       pendingInteractions,
       skillTreeRegistry,
+      pluginSchedules: pluginService,
+      pluginService,
       telemetry,
       terminalSessions,
-      watchInterests,
-      sharedPorts,
-    },
-    { staticDir },
-  );
-  const eventLoopStallMonitor = startEventLoopStallMonitor({ logger });
+    };
+    await runStartupRecoverySweep(sweepDeps).catch((error) => {
+      logger.error({ err: error }, "Startup recovery sweep failed");
+    });
 
-  const sweepDeps = {
-    config: runtimeConfig,
-    db,
-    hub,
-    lifecycleDedupers,
-    logger,
-    machineAuth,
-    pendingInteractions,
-    skillTreeRegistry,
-    pluginSchedules: pluginService,
-    pluginService,
-    telemetry,
-    terminalSessions,
-  };
-  await runStartupRecoverySweep(sweepDeps).catch((error) => {
-    logger.error({ err: error }, "Startup recovery sweep failed");
-  });
-
-  if (!isLoopbackHostname(serverConfig.BB_SERVER_BIND_HOST)) {
-    logger.warn(
-      { bindHost: serverConfig.BB_SERVER_BIND_HOST },
-      "SECURITY WARNING: The public API is unauthenticated and permits command execution and file reads. Wildcard server binding must only be used behind a trusted network boundary.",
-    );
-  }
-
-  const server = startHttpListener({
-    fetch: app.fetch,
-    serverConfig,
-  });
-  injectWebSocket(server);
-
-  logger.info(
-    {
-      bindHost: serverConfig.BB_SERVER_BIND_HOST,
-      port: serverConfig.BB_SERVER_PORT,
-      dataDir: serverConfig.BB_DATA_DIR,
-    },
-    "Server listening",
-  );
-  telemetry.capture({ name: "app_started" });
-
-  // Plugins load after the listener is up: they are additive, and a slow
-  // plugin must not delay serving. Bind the loopback SDK first so bb.sdk is
-  // usable from the moment factories run.
-  pluginService.bindSdk({
-    baseUrl: `http://127.0.0.1:${serverConfig.BB_SERVER_PORT}`,
-  });
-  void pluginService.start().catch((error: unknown) => {
-    logger.error({ err: error }, "Plugin startup failed");
-  });
-
-  const sweepInterval = setInterval(() => {
-    void runPeriodicSweeps(sweepDeps);
-  }, 10_000);
-  sweepInterval.unref();
-
-  let shutdownPromise: Promise<void> | null = null;
-  const runShutdown = (): Promise<void> => {
-    if (shutdownPromise) {
-      return shutdownPromise;
+    if (!isLoopbackHostname(serverConfig.BB_SERVER_BIND_HOST)) {
+      logger.warn(
+        { bindHost: serverConfig.BB_SERVER_BIND_HOST },
+        "SECURITY WARNING: The public API is unauthenticated and permits command execution and file reads. Wildcard server binding must only be used behind a trusted network boundary.",
+      );
     }
-    shutdownPromise = (async () => {
-      eventLoopStallMonitor.stop();
-      clearInterval(sweepInterval);
-      await pluginService.stop().catch((error: unknown) => {
-        logger.warn({ err: error }, "Plugin shutdown failed");
-      });
-      await databaseReads.close();
-      const closeServer = new Promise<void>((resolve, reject) => {
-        server.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve();
-        });
-      });
-      await closeWebSockets();
-      await closeServer;
-    })();
-    return shutdownPromise;
-  };
 
-  process.once("SIGINT", () => {
-    void runShutdown().finally(() => process.exit(0));
-  });
-  process.once("SIGTERM", () => {
-    void runShutdown().finally(() => process.exit(0));
+    const server = startHttpListener({
+      fetch: app.fetch,
+      serverConfig,
+    });
+    injectWebSocket(server);
+
+    logger.info(
+      {
+        bindHost: serverConfig.BB_SERVER_BIND_HOST,
+        port: serverConfig.BB_SERVER_PORT,
+        dataDir: serverConfig.BB_DATA_DIR,
+      },
+      "Server listening",
+    );
+    telemetry.capture({ name: "app_started" });
+
+    // Plugins load after the listener is up: they are additive, and a slow
+    // plugin must not delay serving. Bind the loopback SDK first so bb.sdk is
+    // usable from the moment factories run.
+    pluginService.bindSdk({
+      baseUrl: `http://127.0.0.1:${serverConfig.BB_SERVER_PORT}`,
+    });
+    void pluginService.start().catch((error: unknown) => {
+      logger.error({ err: error }, "Plugin startup failed");
+    });
+
+    const sweepInterval = setInterval(() => {
+      void runPeriodicSweeps(sweepDeps);
+    }, 10_000);
+    sweepInterval.unref();
+
+    let shutdownPromise: Promise<void> | null = null;
+    const runShutdown = (): Promise<void> => {
+      if (shutdownPromise) {
+        return shutdownPromise;
+      }
+      shutdownPromise = (async () => {
+        eventLoopStallMonitor.stop();
+        clearInterval(sweepInterval);
+        await pluginService.stop().catch((error: unknown) => {
+          logger.warn({ err: error }, "Plugin shutdown failed");
+        });
+        await databaseReads.close();
+        const closeServer = new Promise<void>((resolve, reject) => {
+          server.close((error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve();
+          });
+        });
+        await closeWebSockets();
+        await closeServer;
+      })();
+      return shutdownPromise;
+    };
+
+    process.once("SIGINT", () => {
+      void runShutdown().finally(() => process.exit(0));
+    });
+    process.once("SIGTERM", () => {
+      void runShutdown().finally(() => process.exit(0));
+    });
   });
 }

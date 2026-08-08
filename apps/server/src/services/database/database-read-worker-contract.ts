@@ -1,4 +1,8 @@
-import type { ListThreadsOptions, SlowDbQueryLogFields } from "@bb/db";
+import type {
+  ListThreadsForProjectsOptions,
+  ListThreadsOptions,
+  SlowDbQueryLogFields,
+} from "@bb/db";
 import {
   threadListEntrySchema,
   threadChildOriginSchema,
@@ -23,6 +27,13 @@ const listThreadsOptionsSchema = z
     unsectioned: z.boolean().optional(),
   })
   .strict() satisfies z.ZodType<ListThreadsOptions>;
+
+const listThreadsForProjectsOptionsSchema = z
+  .object({
+    archived: z.boolean().optional(),
+    projectIds: z.array(z.string()),
+  })
+  .strict() satisfies z.ZodType<ListThreadsForProjectsOptions>;
 
 const slowDbQueryLogFieldsSchema = z.object({
   bindingArgumentCount: z.number().int().nonnegative(),
@@ -60,6 +71,21 @@ export const databaseReadWorkerRequestSchema = z.discriminatedUnion(
         options: listThreadsOptionsSchema,
       })
       .strict(),
+    z
+      .object({
+        id: z.number().int().nonnegative(),
+        daemonSessions: z.array(
+          z
+            .object({
+              hostId: z.string(),
+              sessionId: z.string(),
+            })
+            .strict(),
+        ),
+        operation: z.literal("listThreadEntriesForProjects"),
+        options: listThreadsForProjectsOptionsSchema,
+      })
+      .strict(),
   ],
 );
 
@@ -75,6 +101,11 @@ const workerErrorSchema = z
   .strict();
 
 export const databaseReadWorkerMessageSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("ready"),
+    })
+    .strict(),
   z
     .object({
       fields: slowDbQueryLogFieldsSchema,

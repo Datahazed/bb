@@ -1,6 +1,7 @@
 import {
   createReadOnlyConnection,
   listThreadsWithPendingInteractionState,
+  listThreadsWithPendingInteractionStateForProjects,
   type SlowDbQueryLogger,
 } from "@bb/db";
 import { parentPort, workerData } from "node:worker_threads";
@@ -44,7 +45,13 @@ port.on("message", (value: unknown) => {
   let request;
   try {
     request = databaseReadWorkerRequestSchema.parse(value);
-    const threads = listThreadsWithPendingInteractionState(db, request.options);
+    const threads =
+      request.operation === "listThreadEntries"
+        ? listThreadsWithPendingInteractionState(db, request.options)
+        : listThreadsWithPendingInteractionStateForProjects(
+            db,
+            request.options,
+          );
     const daemonSessionIdByHostId = new Map(
       request.daemonSessions.map((session) => [
         session.hostId,
@@ -79,3 +86,5 @@ port.on("message", (value: unknown) => {
     } satisfies DatabaseReadWorkerMessage);
   }
 });
+
+port.postMessage({ kind: "ready" } satisfies DatabaseReadWorkerMessage);
