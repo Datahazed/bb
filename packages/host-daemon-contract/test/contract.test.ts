@@ -1039,10 +1039,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 83 adds the nested provider route to model/list results so clients
-  // can disambiguate models without changing their friendly display names.
-  it("uses protocol version 83 for model route provider metadata", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(83);
+  // Version 84 lets ACP model results contain no supported reasoning levels.
+  // The bump updates enrolled daemons before the server uses this result.
+  it("uses protocol version 84 for empty ACP reasoning support", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(84);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
