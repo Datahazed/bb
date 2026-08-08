@@ -35,7 +35,10 @@ import {
   type TypeaheadTrigger,
 } from "@/components/promptbox/mentions/types";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
-import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
+import {
+  useAppCommandKeyDispatch,
+  useAppCommandShortcut,
+} from "@/components/commands/AppCommandProvider";
 import { commandPillDismissedRangeEnd } from "@/components/promptbox/mentions/command-trigger";
 import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-trigger";
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
@@ -1033,6 +1036,13 @@ export function suppressPromptEditorAnchorActivation(event: Event): boolean {
   return true;
 }
 
+// TipTap's `blur` command defers to the next animation frame, so blur the
+// editor DOM directly and drop the caret with it.
+function blurPromptEditor(editor: Editor | null | undefined): void {
+  editor?.view.dom.blur();
+  window.getSelection()?.removeAllRanges();
+}
+
 function focusEditorAtEnd(editor: Editor): void {
   const transaction = editor.state.tr
     .setSelection(TextSelection.atEnd(editor.state.doc))
@@ -1148,6 +1158,7 @@ export function PromptBoxInternal({
   const handleEditorKeyDownRef = useRef<(event: KeyboardEvent) => boolean>(
     () => false,
   );
+  const dispatchAppCommandKey = useAppCommandKeyDispatch();
   // The TipTap editor is created once; its `onUpdate`/`onSelectionUpdate`/click
   // handlers close over the first `syncTriggerState`. `syncTriggerState`
   // depends on the active trigger set, which changes when the thread's provider
@@ -2476,6 +2487,13 @@ export function PromptBoxInternal({
 
   const handleEditorKeyDown = useCallback(
     (event: KeyboardEvent): boolean => {
+      // App keybindings win over the editor's own keymap. TipTap cancels the
+      // chords it knows (Mod+Shift+B for a blockquote, Mod+B, Mod+Shift+7/8 for
+      // lists), and the window listener skips a canceled event — so without
+      // this an app chord silently did nothing while the composer had focus.
+      if (dispatchAppCommandKey(event)) {
+        return true;
+      }
       const currentEditor = editorRef.current;
       const selection = currentEditor?.state.selection;
       const hasCollapsedSelection = Boolean(selection?.empty);
@@ -2577,6 +2595,16 @@ export function PromptBoxInternal({
           onCommandQueryChange(null);
           return true;
         }
+      }
+
+      // Escape releases the composer so the keyboard can reach the rest of the
+      // app. Higher-priority Escape behavior still runs first: the typeahead
+      // menu above dismisses itself, and voice recording cancels from a window
+      // capture listener that stops the event before the editor sees it. A
+      // locked editor never reaches here — see the editor container below.
+      if (event.key === "Escape") {
+        blurPromptEditor(currentEditor);
+        return true;
       }
 
       if (history) {
@@ -2700,6 +2728,7 @@ export function PromptBoxInternal({
       commandError,
       commandHasMore,
       commandIsLoadingMore,
+      dispatchAppCommandKey,
       history,
       isZenMode,
       loadMoreCommands,
@@ -2902,6 +2931,16 @@ export function PromptBoxInternal({
               >
                 <EditorContent
                   editor={editor}
+                  // A plugin lock makes the editor non-editable, and
+                  // ProseMirror then skips its own key handlers — including the
+                  // Escape blur above. A lock applied to a focused composer
+                  // would otherwise strand focus there, so release it here.
+                  onKeyDown={(event) => {
+                    if (event.key !== "Escape") return;
+                    if (editor === null || editor.isEditable) return;
+                    event.preventDefault();
+                    blurPromptEditor(editor);
+                  }}
                   data-promptbox-editor-content=""
                   data-promptbox-compact-content={
                     showCompactLayout ? "" : undefined
