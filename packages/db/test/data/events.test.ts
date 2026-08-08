@@ -18,12 +18,14 @@ import {
   appendStoredThreadEventInTransaction,
   appendStoredThreadEventsInTransaction,
   findStoredEventRow,
+  findStoredTimelineWindowByteBudgetFloor,
   getActiveStoredTurnId,
   getHighWaterMarks,
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
   getLatestThreadOutputEventRow,
   getLatestThreadSequence,
+  getStoredTimelineWindowEventDataBytes,
   insertEvents,
   listContextWindowUsageRows,
   listCompletedTurnsByThreadIds,
@@ -3797,6 +3799,152 @@ describe("timeline read-boundary output truncation", () => {
     return JSON.parse(row.data) as Record<string, unknown>;
   }
 
+  it("measures the exact UTF-8 bytes returned by the capped read", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "item/completed",
+        ...threadEventFields,
+        itemId: "cmd-bytes",
+        itemKind: "commandExecution",
+        data: JSON.stringify({
+          note: "Unicode: 🐝",
+          item: {
+            type: "commandExecution",
+            id: "cmd-bytes",
+            command: "cat big",
+            cwd: "/tmp/test",
+            status: "completed",
+            approvalStatus: null,
+            exitCode: 0,
+            aggregatedOutput: "x".repeat(maxInlineOutputChars + 500),
+          },
+        }),
+      },
+    ]);
+    const args = {
+      maxInlineOutputChars,
+      sequenceStart: 0,
+      threadId: thread.id,
+    };
+    const rows = listStoredTimelineWindowEventRows(db, args);
+
+    expect(getStoredTimelineWindowEventDataBytes(db, args)).toBe(
+      rows.reduce((total, row) => total + Buffer.byteLength(row.data), 0),
+    );
+  });
+
+  it("finds the oldest row in the newest suffix that fits a byte budget", () => {
+    const { db, thread } = setup();
+    insertEvents(
+      db,
+      noopNotifier,
+      [100, 200, 300].map((messageChars, index) => ({
+        threadId: thread.id,
+        sequence: index + 1,
+        type: "system/error" as const,
+        ...threadEventFields,
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({ message: "x".repeat(messageChars) }),
+      })),
+    );
+    const args = {
+      maxInlineOutputChars: null,
+      sequenceStart: 0,
+      threadId: thread.id,
+    };
+    const rows = listStoredTimelineWindowEventRows(db, args);
+    const rowBytes = new Map(
+      rows.map((row) => [row.sequence, Buffer.byteLength(row.data)]),
+    );
+    const newestTwoBytes = (rowBytes.get(3) ?? 0) + (rowBytes.get(2) ?? 0);
+
+    expect(
+      findStoredTimelineWindowByteBudgetFloor(db, {
+        ...args,
+        maxDataBytes: newestTwoBytes,
+      }),
+    ).toEqual({
+      eventDataBytes: newestTwoBytes,
+      kind: "floor",
+      sequenceStart: 2,
+    });
+    expect(
+      findStoredTimelineWindowByteBudgetFloor(db, {
+        ...args,
+        maxDataBytes: getStoredTimelineWindowEventDataBytes(db, args),
+      }),
+    ).toEqual({
+      eventDataBytes: getStoredTimelineWindowEventDataBytes(db, args),
+      kind: "fits",
+    });
+    expect(
+      findStoredTimelineWindowByteBudgetFloor(db, {
+        ...args,
+        maxDataBytes: (rowBytes.get(3) ?? 0) - 1,
+      }),
+    ).toEqual(expect.objectContaining({
+      eventDataBytes: rowBytes.get(3),
+      hasOlderRows: true,
+      kind: "single-event-too-large",
+      sequenceStart: 3,
+      turnId: null,
+    }));
+  });
+
+  it.each(["floor", "single-event-too-large"] as const)(
+    "releases its statement after a %s byte-cut result",
+    (expectedKind) => {
+      const { db, thread } = setup();
+      insertEvents(
+        db,
+        noopNotifier,
+        [100, 200].map((messageChars, index) => ({
+          threadId: thread.id,
+          sequence: index + 1,
+          type: "system/error" as const,
+          ...threadEventFields,
+          itemId: null,
+          itemKind: null,
+          data: JSON.stringify({ message: "x".repeat(messageChars) }),
+        })),
+      );
+      const args = {
+        maxInlineOutputChars: null,
+        sequenceStart: 0,
+        threadId: thread.id,
+      };
+      const newestRow = listStoredTimelineWindowEventRows(db, args).at(-1);
+      if (!newestRow) {
+        throw new Error("expected a newest event row");
+      }
+      const newestRowBytes = Buffer.byteLength(newestRow.data);
+
+      expect(
+        findStoredTimelineWindowByteBudgetFloor(db, {
+          ...args,
+          maxDataBytes:
+            expectedKind === "floor" ? newestRowBytes : newestRowBytes - 1,
+        }).kind,
+      ).toBe(expectedKind);
+      insertEvents(db, noopNotifier, [
+        {
+          threadId: thread.id,
+          sequence: 3,
+          type: "system/error",
+          ...threadEventFields,
+          itemId: null,
+          itemKind: null,
+          data: JSON.stringify({ message: "write after byte-cut read" }),
+        },
+      ]);
+      expect(getLatestThreadSequence(db, { threadId: thread.id })).toBe(3);
+    },
+  );
+
   it("shortens an oversized text output and leaves the rest of the payload alone", () => {
     const { db, thread } = setup();
     const output = "x".repeat(maxInlineOutputChars + 2_345);
@@ -3833,7 +3981,7 @@ describe("timeline read-boundary output truncation", () => {
     // Byte-identical to what the response-level truncator would produce, so a
     // reader cannot tell which layer shortened the value.
     expect(cappedItem.aggregatedOutput).toBe(
-      `${"x".repeat(maxInlineOutputChars)}\n\u2026[2,345 more characters truncated \u2014 open the turn to view the full output]`,
+      `${"x".repeat(maxInlineOutputChars)}\n\u2026[2,345 more characters truncated]`,
     );
     expect({ ...cappedItem, aggregatedOutput: null }).toEqual({
       ...storedItem,

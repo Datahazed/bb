@@ -710,8 +710,8 @@ export type StoredEventRow = Pick<
  * Character cap for the inline outputs a timeline read may return, or `null` to
  * return every payload as stored. See {@link truncatedEventDataColumn}: the cap
  * exists so a window never pays to read output it is going to shorten anyway.
- * `null` is the deliberate choice of the turn-details route, whose whole purpose
- * is to serve the full text.
+ * The turn-details route uses `null` only when the complete selected slice fits
+ * its byte limit.
  */
 export type InlineOutputCharLimit = number | null;
 
@@ -750,12 +750,17 @@ export interface ListStoredEventRowsInRangeArgs {
 }
 
 export interface ListStoredEventRowsByParentToolCallIdsArgs {
+  beforeSequence?: number;
   excludedTypes?: readonly ThreadEventType[];
   /** See {@link InlineOutputCharLimit}. */
   maxInlineOutputChars: InlineOutputCharLimit;
   parentToolCallIds: readonly string[];
+  sequenceStart?: number;
   threadId: string;
 }
+
+export type GetStoredEventRowsByParentToolCallIdsDataBytesArgs =
+  ListStoredEventRowsByParentToolCallIdsArgs;
 
 export interface ListStoredEventRowsByThreadIdsAndTypesArgs {
   threadIds: readonly string[];
@@ -828,6 +833,11 @@ export interface ListStoredTurnStartedRowsByTurnIdsUpToSequenceArgs {
   turnIds: readonly string[];
 }
 
+export interface ListStoredTurnCompletedRowsByTurnIdsArgs {
+  threadId: string;
+  turnIds: readonly string[];
+}
+
 export interface HasStoredTurnStartedArgs {
   threadId: string;
   turnId: string;
@@ -861,6 +871,26 @@ export interface ListStoredTimelineWindowEventRowsArgs {
   sequenceStart: number;
   threadId: string;
 }
+
+export type GetStoredTimelineWindowEventDataBytesArgs =
+  ListStoredTimelineWindowEventRowsArgs;
+
+export interface FindStoredTimelineWindowByteBudgetFloorArgs
+  extends ListStoredTimelineWindowEventRowsArgs {
+  maxDataBytes: number;
+}
+
+export type StoredTimelineWindowByteBudgetFloor =
+  | { eventDataBytes: number; kind: "fits" }
+  | { eventDataBytes: number; kind: "floor"; sequenceStart: number }
+  | {
+      createdAt: number;
+      eventDataBytes: number;
+      hasOlderRows: boolean;
+      kind: "single-event-too-large";
+      sequenceStart: number;
+      turnId: string | null;
+    };
 
 export interface ListContextWindowUsageRowsArgs {
   threadId: string;
@@ -1146,11 +1176,27 @@ export function listStoredEventRowsByParentToolCallIds(
   db: DbConnection,
   args: ListStoredEventRowsByParentToolCallIdsArgs,
 ): StoredEventRow[] {
+  const conditions = storedEventRowsByParentToolCallIdsConditions(args);
+  if (conditions === null) {
+    return [];
+  }
+
+  return db
+    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+    .from(events)
+    .where(and(...conditions))
+    .orderBy(events.sequence)
+    .all();
+}
+
+function storedEventRowsByParentToolCallIdsConditions(
+  args: ListStoredEventRowsByParentToolCallIdsArgs,
+): SQL[] | null {
   const parentToolCallIds = [...new Set(args.parentToolCallIds)].filter(
     (parentToolCallId) => parentToolCallId.length > 0,
   );
   if (parentToolCallIds.length === 0) {
-    return [];
+    return null;
   }
 
   const eventParentToolCallId = sql<string>`json_extract(${events.data}, '$.parentToolCallId')`;
@@ -1165,13 +1211,33 @@ export function listStoredEventRowsByParentToolCallIds(
   if (args.excludedTypes && args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
   }
+  if (args.sequenceStart !== undefined) {
+    conditions.push(gte(events.sequence, args.sequenceStart));
+  }
+  if (args.beforeSequence !== undefined) {
+    conditions.push(lt(events.sequence, args.beforeSequence));
+  }
 
-  return db
-    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+  return conditions;
+}
+
+export function getStoredEventRowsByParentToolCallIdsDataBytes(
+  db: DbConnection,
+  args: GetStoredEventRowsByParentToolCallIdsDataBytesArgs,
+): number {
+  const conditions = storedEventRowsByParentToolCallIdsConditions(args);
+  if (conditions === null) {
+    return 0;
+  }
+  const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
+  const row = db
+    .select({
+      dataBytes: sql<number>`COALESCE(SUM(length(CAST(${data} AS BLOB))), 0)`,
+    })
     .from(events)
     .where(and(...conditions))
-    .orderBy(events.sequence)
-    .all();
+    .get();
+  return row?.dataBytes ?? 0;
 }
 
 export function listStoredToolCallRowsByItemIds(
@@ -1535,6 +1601,28 @@ export function listStoredTurnStartedRowsByTurnIdsUpToSequence(
         eq(events.type, "turn/started"),
         inArray(events.turnId, [...args.turnIds]),
         lte(events.sequence, args.sequenceCutoff),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+export function listStoredTurnCompletedRowsByTurnIds(
+  db: DbConnection,
+  args: ListStoredTurnCompletedRowsByTurnIdsArgs,
+): StoredEventRow[] {
+  if (args.turnIds.length === 0) {
+    return [];
+  }
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "turn/completed"),
+        inArray(events.turnId, [...args.turnIds]),
       ),
     )
     .orderBy(events.sequence)
@@ -2304,10 +2392,9 @@ export function getTimelineSegmentAnchorAtSequence(
     .get();
 }
 
-export function listStoredTimelineWindowEventRows(
-  db: DbConnection,
+function storedTimelineWindowConditions(
   args: ListStoredTimelineWindowEventRowsArgs,
-): StoredEventRow[] {
+): SQL[] {
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
     gte(events.sequence, args.sequenceStart),
@@ -2318,11 +2405,122 @@ export function listStoredTimelineWindowEventRows(
   if (args.excludedTypes && args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
   }
+  return conditions;
+}
 
+function storedTimelineWindowDataColumn(
+  maxInlineOutputChars: InlineOutputCharLimit,
+) {
+  return maxInlineOutputChars === null
+    ? events.data
+    : truncatedEventDataColumn(maxInlineOutputChars);
+}
+
+/**
+ * Exact UTF-8 bytes the matching timeline read will materialize after its SQL
+ * output truncation. This query returns one number instead of every payload,
+ * so callers can bound a window before better-sqlite3 builds it.
+ */
+export function getStoredTimelineWindowEventDataBytes(
+  db: DbConnection,
+  args: GetStoredTimelineWindowEventDataBytesArgs,
+): number {
+  const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
+  const row = db
+    .select({
+      dataBytes: sql<number>`COALESCE(SUM(length(CAST(${data} AS BLOB))), 0)`,
+    })
+    .from(events)
+    .where(and(...storedTimelineWindowConditions(args)))
+    .get();
+  return row?.dataBytes ?? 0;
+}
+
+/**
+ * Finds the oldest row in the newest suffix that fits the byte budget.
+ * Iteration returns only a sequence and a byte count for each row, and stops
+ * before SQLite or V8 materializes the excluded event payloads.
+ */
+export function findStoredTimelineWindowByteBudgetFloor(
+  db: DbConnection,
+  args: FindStoredTimelineWindowByteBudgetFloorArgs,
+): StoredTimelineWindowByteBudgetFloor {
+  const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
+  const query = db
+    .select({
+      createdAt: events.createdAt,
+      dataBytes:
+        sql<number>`length(CAST(${data} AS BLOB))`.as("data_bytes"),
+      sequence: events.sequence,
+      turnId: events.turnId,
+    })
+    .from(events)
+    .where(and(...storedTimelineWindowConditions(args)))
+    .orderBy(desc(events.sequence))
+    .toSQL();
+  const statement = db.$client.prepare<
+    unknown[],
+    {
+      created_at: number;
+      data_bytes: number;
+      sequence: number;
+      turn_id: string | null;
+    }
+  >(query.sql);
+  let includedDataBytes = 0;
+  let sequenceStart: number | null = null;
+  let result: StoredTimelineWindowByteBudgetFloor | null = null;
+  let oversizedEvent: Extract<
+    StoredTimelineWindowByteBudgetFloor,
+    { kind: "single-event-too-large" }
+  > | null = null;
+
+  for (const row of statement.iterate(...query.params)) {
+    if (oversizedEvent !== null) {
+      oversizedEvent.hasOlderRows = true;
+      result = oversizedEvent;
+      break;
+    }
+    if (includedDataBytes + row.data_bytes > args.maxDataBytes) {
+      if (sequenceStart === null) {
+        oversizedEvent = {
+          createdAt: row.created_at,
+          eventDataBytes: row.data_bytes,
+          hasOlderRows: false,
+          kind: "single-event-too-large",
+          sequenceStart: row.sequence,
+          turnId: row.turn_id,
+        };
+        continue;
+      }
+      result = {
+        eventDataBytes: includedDataBytes,
+        kind: "floor",
+        sequenceStart,
+      };
+      break;
+    }
+    includedDataBytes += row.data_bytes;
+    sequenceStart = row.sequence;
+  }
+
+  if (result !== null) {
+    return result;
+  }
+  if (oversizedEvent !== null) {
+    return oversizedEvent;
+  }
+  return { eventDataBytes: includedDataBytes, kind: "fits" };
+}
+
+export function listStoredTimelineWindowEventRows(
+  db: DbConnection,
+  args: ListStoredTimelineWindowEventRowsArgs,
+): StoredEventRow[] {
   return db
     .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
     .from(events)
-    .where(and(...conditions))
+    .where(and(...storedTimelineWindowConditions(args)))
     .orderBy(events.sequence)
     .all();
 }
