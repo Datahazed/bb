@@ -23,6 +23,7 @@ import {
 const DEFAULT_MAX_PENDING_DATABASE_READS = 32;
 const DEFAULT_DATABASE_READ_TIMEOUT_MS = 30_000;
 const DEFAULT_SLOW_DATABASE_READ_LOG_THRESHOLD_MS = 100;
+const DEFAULT_DATABASE_READ_WORKER_STARTUP_TIMEOUT_MS = 10_000;
 
 interface PendingDatabaseRead {
   abortHandler?: () => void;
@@ -36,6 +37,7 @@ interface PendingDatabaseRead {
 }
 
 interface DatabaseReadWorkerState {
+  clearReadyTimeout(): void;
   failed: boolean;
   ready: Promise<void>;
   rejectReady(error: Error): void;
@@ -93,6 +95,50 @@ export interface DatabaseReadService {
   ): Promise<SidebarBootstrapResponse>;
 }
 
+function applyLiveDaemonStateToEntry(
+  hub: NotificationHub,
+  entry: ThreadListEntry,
+): ThreadListEntry {
+  if (
+    entry.status !== "active" ||
+    entry.environmentHostId === null ||
+    hub.getDaemonSessionIdForHost(entry.environmentHostId) === null
+  ) {
+    return entry;
+  }
+  return {
+    ...entry,
+    runtime: {
+      displayStatus: "active",
+      hostReconnectGraceExpiresAt: null,
+    },
+  };
+}
+
+function applyLiveDaemonStateToEntries(
+  hub: NotificationHub,
+  entries: ThreadListEntry[],
+): ThreadListEntry[] {
+  return entries.map((entry) => applyLiveDaemonStateToEntry(hub, entry));
+}
+
+function applyLiveDaemonStateToProjects(
+  hub: NotificationHub,
+  projects: ProjectWithThreadsResponse[],
+): ProjectWithThreadsResponse[] {
+  return projects.map((project) => applyLiveDaemonStateToProject(hub, project));
+}
+
+function applyLiveDaemonStateToProject(
+  hub: NotificationHub,
+  project: ProjectWithThreadsResponse,
+): ProjectWithThreadsResponse {
+  return {
+    ...project,
+    threads: applyLiveDaemonStateToEntries(hub, project.threads),
+  };
+}
+
 interface CreateDirectDatabaseReadServiceArgs {
   db: DbConnection;
   hub: NotificationHub;
@@ -111,7 +157,6 @@ export function createDirectDatabaseReadService(
       options: ListThreadsOptions,
     ): Promise<ThreadListEntry[]> {
       const result = run({
-        daemonSessions: args.hub.listDaemonSessions(),
         id: 0,
         operation: "listThreadEntries",
         options,
@@ -119,13 +164,12 @@ export function createDirectDatabaseReadService(
       if (result.operation !== "listThreadEntries") {
         throw new Error("The direct database read returned an invalid result");
       }
-      return result.entries;
+      return applyLiveDaemonStateToEntries(args.hub, result.entries);
     },
     async listThreadEntriesForProjects(
       options: ListThreadsForProjectsOptions,
     ): Promise<ThreadListEntry[]> {
       const result = run({
-        daemonSessions: args.hub.listDaemonSessions(),
         id: 0,
         operation: "listThreadEntriesForProjects",
         options: { ...options, projectIds: [...options.projectIds] },
@@ -133,13 +177,12 @@ export function createDirectDatabaseReadService(
       if (result.operation !== "listThreadEntriesForProjects") {
         throw new Error("The direct database read returned an invalid result");
       }
-      return result.entries;
+      return applyLiveDaemonStateToEntries(args.hub, result.entries);
     },
     async listProjectsWithThreads(options: {
       includePersonal: boolean;
     }): Promise<ProjectWithThreadsResponse[]> {
       const result = run({
-        daemonSessions: args.hub.listDaemonSessions(),
         id: 0,
         operation: "listProjectsWithThreads",
         options,
@@ -147,18 +190,27 @@ export function createDirectDatabaseReadService(
       if (result.operation !== "listProjectsWithThreads") {
         throw new Error("The direct database read returned an invalid result");
       }
-      return result.projects;
+      return applyLiveDaemonStateToProjects(args.hub, result.projects);
     },
     async getSidebarBootstrap(): Promise<SidebarBootstrapResponse> {
       const result = run({
-        daemonSessions: args.hub.listDaemonSessions(),
         id: 0,
         operation: "sidebarBootstrap",
       });
       if (result.operation !== "sidebarBootstrap") {
         throw new Error("The direct database read returned an invalid result");
       }
-      return result.response;
+      return {
+        ...result.response,
+        projects: applyLiveDaemonStateToProjects(
+          args.hub,
+          result.response.projects,
+        ),
+        personalProject: applyLiveDaemonStateToProject(
+          args.hub,
+          result.response.personalProject,
+        ),
+      };
     },
   };
 }
@@ -171,6 +223,7 @@ interface CreateWorkerDatabaseReadServiceArgs {
   onWorkerCreated?: (worker: Worker) => void;
   requestTimeoutMs?: number;
   slowQueryThresholdMs?: number;
+  workerStartupTimeoutMs?: number;
 }
 
 function resolveWorkerEntryUrl(): URL {
@@ -204,6 +257,11 @@ export async function createWorkerDatabaseReadService(
   const slowQueryThresholdMs = requireNonnegativeInteger(
     args.slowQueryThresholdMs ?? DEFAULT_SLOW_DATABASE_READ_LOG_THRESHOLD_MS,
     "slowQueryThresholdMs",
+  );
+  const workerStartupTimeoutMs = requireNonnegativeInteger(
+    args.workerStartupTimeoutMs ??
+      DEFAULT_DATABASE_READ_WORKER_STARTUP_TIMEOUT_MS,
+    "workerStartupTimeoutMs",
   );
   const workerData: DatabaseReadWorkerData = {
     databasePath: args.databasePath,
@@ -305,7 +363,14 @@ export async function createWorkerDatabaseReadService(
       rejectReady = reject;
       resolveReady = resolve;
     });
+    let readyTimeout: NodeJS.Timeout | null = null;
     const state: DatabaseReadWorkerState = {
+      clearReadyTimeout(): void {
+        if (readyTimeout !== null) {
+          clearTimeout(readyTimeout);
+          readyTimeout = null;
+        }
+      },
       failed: false,
       ready,
       rejectReady,
@@ -321,6 +386,7 @@ export async function createWorkerDatabaseReadService(
         return;
       }
       state.failed = true;
+      state.clearReadyTimeout();
       args.logger.warn(
         { err: error, workerWasReady: state.wasReady },
         "Database read worker failed",
@@ -337,12 +403,14 @@ export async function createWorkerDatabaseReadService(
       }
       activeWorker = null;
       if (state.wasReady) {
-        activeWorker = startWorker();
-        void activeWorker.ready.catch(() => {});
+        activeWorker = startRecoveryWorker();
       }
     }
 
     worker.on("message", (value: unknown) => {
+      if (state.failed) {
+        return;
+      }
       const parsedMessage = databaseReadWorkerMessageSchema.safeParse(value);
       if (!parsedMessage.success) {
         fail(new Error("The database read worker sent an invalid message"));
@@ -351,6 +419,7 @@ export async function createWorkerDatabaseReadService(
       }
       const message = parsedMessage.data;
       if (message.kind === "ready") {
+        state.clearReadyTimeout();
         state.wasReady = true;
         hasReadyWorker = true;
         state.resolveReady();
@@ -394,7 +463,29 @@ export async function createWorkerDatabaseReadService(
       );
     });
 
+    readyTimeout = setTimeout(() => {
+      const error = new DatabaseReadUnavailableError(
+        "The database read worker did not start. Try again later.",
+      );
+      fail(error);
+      void worker.terminate();
+    }, workerStartupTimeoutMs);
+
     return state;
+  }
+
+  function startRecoveryWorker(): DatabaseReadWorkerState | null {
+    try {
+      const state = startWorker();
+      void state.ready.catch(() => {});
+      return state;
+    } catch (error) {
+      args.logger.warn(
+        { err: error },
+        "Database read worker replacement could not start",
+      );
+      return null;
+    }
   }
 
   function replaceWorker(error: Error): void {
@@ -403,9 +494,9 @@ export async function createWorkerDatabaseReadService(
     }
     const replacedWorker = activeWorker;
     replacedWorker.failed = true;
+    replacedWorker.clearReadyTimeout();
     replacedWorker.rejectReady(error);
-    activeWorker = startWorker();
-    void activeWorker.ready.catch(() => {});
+    activeWorker = startRecoveryWorker();
     void replacedWorker.worker.terminate();
   }
 
@@ -413,7 +504,20 @@ export async function createWorkerDatabaseReadService(
     if (closed) {
       throw new Error("The database read service stopped");
     }
-    const state = activeWorker ?? startWorker();
+    let state = activeWorker;
+    if (state === null) {
+      try {
+        state = startWorker();
+      } catch (error) {
+        args.logger.warn(
+          { err: error },
+          "Database read worker could not start",
+        );
+        throw new DatabaseReadUnavailableError(
+          "The database read worker could not start. Try again later.",
+        );
+      }
+    }
     activeWorker = state;
     await state.ready;
     if (closed) {
@@ -548,6 +652,7 @@ export async function createWorkerDatabaseReadService(
     closed = true;
     activeWorker = null;
     workerState?.rejectReady(error);
+    workerState?.clearReadyTimeout();
     rejectAllReads(error);
     await Promise.all([...workers].map((worker) => worker.terminate()));
   }
@@ -568,7 +673,6 @@ export async function createWorkerDatabaseReadService(
     ): Promise<ThreadListEntry[]> {
       return sendRequest(
         (id) => ({
-          daemonSessions: args.hub.listDaemonSessions(),
           id,
           operation: "listThreadEntries",
           options,
@@ -580,7 +684,7 @@ export async function createWorkerDatabaseReadService(
             "The database read worker returned an invalid result",
           );
         }
-        return result.entries;
+        return applyLiveDaemonStateToEntries(args.hub, result.entries);
       });
     },
     listThreadEntriesForProjects(
@@ -589,7 +693,6 @@ export async function createWorkerDatabaseReadService(
     ): Promise<ThreadListEntry[]> {
       return sendRequest(
         (id) => ({
-          daemonSessions: args.hub.listDaemonSessions(),
           id,
           operation: "listThreadEntriesForProjects",
           options: {
@@ -604,7 +707,7 @@ export async function createWorkerDatabaseReadService(
             "The database read worker returned an invalid result",
           );
         }
-        return result.entries;
+        return applyLiveDaemonStateToEntries(args.hub, result.entries);
       });
     },
     listProjectsWithThreads(
@@ -613,7 +716,6 @@ export async function createWorkerDatabaseReadService(
     ): Promise<ProjectWithThreadsResponse[]> {
       return sendRequest(
         (id) => ({
-          daemonSessions: args.hub.listDaemonSessions(),
           id,
           operation: "listProjectsWithThreads",
           options,
@@ -625,7 +727,7 @@ export async function createWorkerDatabaseReadService(
             "The database read worker returned an invalid result",
           );
         }
-        return result.projects;
+        return applyLiveDaemonStateToProjects(args.hub, result.projects);
       });
     },
     getSidebarBootstrap(
@@ -633,7 +735,6 @@ export async function createWorkerDatabaseReadService(
     ): Promise<SidebarBootstrapResponse> {
       return sendRequest(
         (id) => ({
-          daemonSessions: args.hub.listDaemonSessions(),
           id,
           operation: "sidebarBootstrap",
         }),
@@ -644,7 +745,18 @@ export async function createWorkerDatabaseReadService(
             "The database read worker returned an invalid result",
           );
         }
-        return result.response;
+        const projects = applyLiveDaemonStateToProjects(
+          args.hub,
+          result.response.projects,
+        );
+        return {
+          ...result.response,
+          projects,
+          personalProject: applyLiveDaemonStateToProject(
+            args.hub,
+            result.response.personalProject,
+          ),
+        };
       });
     },
   };

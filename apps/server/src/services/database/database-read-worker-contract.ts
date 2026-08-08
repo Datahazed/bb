@@ -65,14 +65,6 @@ export const databaseReadWorkerRequestSchema = z.discriminatedUnion(
     z
       .object({
         id: z.number().int().nonnegative(),
-        daemonSessions: z.array(
-          z
-            .object({
-              hostId: z.string(),
-              sessionId: z.string(),
-            })
-            .strict(),
-        ),
         operation: z.literal("listThreadEntries"),
         options: listThreadsOptionsSchema,
       })
@@ -80,14 +72,6 @@ export const databaseReadWorkerRequestSchema = z.discriminatedUnion(
     z
       .object({
         id: z.number().int().nonnegative(),
-        daemonSessions: z.array(
-          z
-            .object({
-              hostId: z.string(),
-              sessionId: z.string(),
-            })
-            .strict(),
-        ),
         operation: z.literal("listThreadEntriesForProjects"),
         options: listThreadsForProjectsOptionsSchema,
       })
@@ -95,14 +79,6 @@ export const databaseReadWorkerRequestSchema = z.discriminatedUnion(
     z
       .object({
         id: z.number().int().nonnegative(),
-        daemonSessions: z.array(
-          z
-            .object({
-              hostId: z.string(),
-              sessionId: z.string(),
-            })
-            .strict(),
-        ),
         operation: z.literal("listProjectsWithThreads"),
         options: z
           .object({
@@ -114,14 +90,6 @@ export const databaseReadWorkerRequestSchema = z.discriminatedUnion(
     z
       .object({
         id: z.number().int().nonnegative(),
-        daemonSessions: z.array(
-          z
-            .object({
-              hostId: z.string(),
-              sessionId: z.string(),
-            })
-            .strict(),
-        ),
         operation: z.literal("sidebarBootstrap"),
       })
       .strict(),

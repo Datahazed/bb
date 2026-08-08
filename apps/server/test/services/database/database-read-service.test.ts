@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Worker } from "node:worker_threads";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DbConnection } from "@bb/db";
+import {
+  createEnvironment,
+  createProject,
+  createThread,
+  noopNotifier,
+  upsertHost,
+  type DbConnection,
+} from "@bb/db";
 import { initDb } from "../../../src/db.js";
 import {
   createDirectDatabaseReadService,
@@ -119,6 +126,90 @@ describe("worker database reads", () => {
     expect(JSON.stringify(workerResponse)).toBe(JSON.stringify(directResponse));
   }, 15_000);
 
+  it("applies current daemon state after a worker read", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    db = initDb(databasePath);
+    const host = upsertHost(db, noopNotifier, {
+      id: "host_live_state",
+      name: "Live State Host",
+      type: "persistent",
+    });
+    const { project } = createProject(db, noopNotifier, {
+      name: "Live State Project",
+      source: {
+        type: "local_path",
+        hostId: host.id,
+        path: "/tmp/live-state-project",
+      },
+    });
+    const environment = createEnvironment(db, noopNotifier, {
+      hostId: host.id,
+      path: "/tmp/live-state-environment",
+      projectId: project.id,
+      status: "ready",
+      workspaceProvisionType: "unmanaged",
+    });
+    const thread = createThread(db, noopNotifier, {
+      environmentId: environment.id,
+      projectId: project.id,
+      providerId: "codex",
+      status: "active",
+    });
+    db.$client.exec(`
+      WITH RECURSIVE thread_numbers(value) AS (
+        VALUES(1)
+        UNION ALL
+        SELECT value + 1
+        FROM thread_numbers
+        WHERE value < 10000
+      )
+      INSERT INTO threads (
+        id,
+        project_id,
+        provider_id,
+        status,
+        latest_attention_at,
+        created_at,
+        updated_at,
+        visibility
+      )
+      SELECT
+        printf('thr_live_state_%06d', value),
+        '${project.id}',
+        'codex',
+        'idle',
+        0,
+        value,
+        value,
+        'visible'
+      FROM thread_numbers
+    `);
+    const hub = new NotificationHub();
+    databaseReads = await createWorkerDatabaseReadService({
+      databasePath,
+      hub,
+      logger: testLogger,
+    });
+
+    const read = databaseReads.listThreadEntries({ projectId: project.id });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    hub.registerDaemon("session_live_state", host.id, {
+      close() {},
+      send() {},
+    });
+
+    await expect(read).resolves.toContainEqual(
+      expect.objectContaining({
+        id: thread.id,
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
+    );
+  }, 15_000);
+
   it("keeps a sidebar response in one database snapshot", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
     const databasePath = join(dataDir, "bb.db");
@@ -223,6 +314,21 @@ describe("worker database reads", () => {
         logger: testLogger,
       }),
     ).rejects.toThrow();
+  });
+
+  it("reports a controlled error when worker startup exceeds its deadline", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    db = initDb(databasePath);
+
+    await expect(
+      createWorkerDatabaseReadService({
+        databasePath,
+        hub: new NotificationHub(),
+        logger: testLogger,
+        workerStartupTimeoutMs: 0,
+      }),
+    ).rejects.toBeInstanceOf(DatabaseReadUnavailableError);
   });
 
   it("restarts the worker after an unexpected exit", async () => {

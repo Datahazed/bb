@@ -70,21 +70,14 @@ function toProjectResponses(
 
 function toThreadEntries(
   deps: DatabaseReadOperationDeps,
-  request: DatabaseReadWorkerRequest,
   threads: Parameters<typeof toThreadListEntryResponses>[1]["threads"],
 ): ThreadEntryResult {
-  const daemonSessionIdByHostId = new Map(
-    request.daemonSessions.map((session) => [
-      session.hostId,
-      session.sessionId,
-    ]),
-  );
   const rawEntries = toThreadListEntryResponses(
     {
       db: deps.db,
       hub: {
         getDaemonSessionIdForHost(hostId): string | null {
-          return daemonSessionIdByHostId.get(hostId) ?? null;
+          return null;
         },
       },
     },
@@ -99,14 +92,12 @@ function toThreadEntries(
 
 function toProjectsWithThreads(
   deps: DatabaseReadOperationDeps,
-  request: DatabaseReadWorkerRequest,
   projectRows: ProjectResponseRow[],
 ): ProjectsWithThreadsResult {
   const projects = toProjectResponses(deps.db, projectRows);
   const projectIds = projects.map((project) => project.id);
   const threadResult = toThreadEntries(
     deps,
-    request,
     listThreadsWithPendingInteractionStateForProjects(deps.db, {
       archived: false,
       projectIds,
@@ -159,7 +150,6 @@ export function executeDatabaseReadOperation(
           return {
             ...toThreadEntries(
               deps,
-              request,
               listThreadsWithPendingInteractionState(deps.db, request.options),
             ),
             operation: request.operation,
@@ -168,7 +158,6 @@ export function executeDatabaseReadOperation(
           return {
             ...toThreadEntries(
               deps,
-              request,
               listThreadsWithPendingInteractionStateForProjects(
                 deps.db,
                 request.options,
@@ -181,14 +170,14 @@ export function executeDatabaseReadOperation(
           if (request.options.includePersonal) {
             projectRows.unshift(requirePersonalProject(deps.db));
           }
-          const result = toProjectsWithThreads(deps, request, projectRows);
+          const result = toProjectsWithThreads(deps, projectRows);
           return {
             ...result,
             operation: request.operation,
           };
         }
         case "sidebarBootstrap": {
-          const result = toProjectsWithThreads(deps, request, [
+          const result = toProjectsWithThreads(deps, [
             requirePersonalProject(deps.db),
             ...listPublicProjects(deps.db),
           ]);
