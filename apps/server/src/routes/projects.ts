@@ -194,21 +194,25 @@ function parseProjectListIncludes(
 async function buildProjectsWithThreadsResponse(
   deps: AppDeps,
   options: ProjectListOptions,
+  signal: AbortSignal,
 ): Promise<ProjectWithThreadsResponse[]> {
   return buildProjectsWithThreadsResponseFromRows(
     deps,
     listDiscoverableProjects(deps, options),
+    signal,
   );
 }
 
 async function buildProjectsWithThreadsResponseFromRows(
   deps: AppDeps,
   projectRows: ProjectResponseRow[],
+  signal: AbortSignal,
 ): Promise<ProjectWithThreadsResponse[]> {
   const projects = buildProjectResponsesFromRows(deps, projectRows);
   const projectIds = projects.map((project) => project.id);
   const threadResponses = await deps.databaseReads.listThreadEntriesForProjects(
     { archived: false, projectIds },
+    { signal },
   );
   const threadsByProjectId = new Map<
     string,
@@ -236,7 +240,10 @@ async function buildProjectsWithThreadsResponseFromRows(
   }));
 }
 
-async function buildSidebarBootstrapResponse(deps: AppDeps) {
+async function buildSidebarBootstrapResponse(
+  deps: AppDeps,
+  signal: AbortSignal,
+) {
   const personalProject = getPersonalProject(deps.db);
   if (!personalProject) {
     throw new ApiError(
@@ -246,8 +253,12 @@ async function buildSidebarBootstrapResponse(deps: AppDeps) {
     );
   }
   const [personalProjectResponses, projects] = await Promise.all([
-    buildProjectsWithThreadsResponseFromRows(deps, [personalProject]),
-    buildProjectsWithThreadsResponseFromRows(deps, listPublicProjects(deps.db)),
+    buildProjectsWithThreadsResponseFromRows(deps, [personalProject], signal),
+    buildProjectsWithThreadsResponseFromRows(
+      deps,
+      listPublicProjects(deps.db),
+      signal,
+    ),
   ]);
   const personalProjectResponse = personalProjectResponses[0];
   if (!personalProjectResponse) {
@@ -328,7 +339,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     };
     if (includes.has("threads")) {
       return context.json(
-        await buildProjectsWithThreadsResponse(deps, options),
+        await buildProjectsWithThreadsResponse(
+          deps,
+          options,
+          context.req.raw.signal,
+        ),
       );
     }
     return context.json(
@@ -340,7 +355,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.sidebarBootstrap, async (context) =>
-    context.json(await buildSidebarBootstrapResponse(deps)),
+    context.json(
+      await buildSidebarBootstrapResponse(deps, context.req.raw.signal),
+    ),
   );
 
   post(routes.create, async (context, payload) => {

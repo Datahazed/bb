@@ -216,23 +216,34 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if (query.sectionId) {
       requireThreadSection(deps, query.sectionId);
     }
-    const threadEntries = await deps.databaseReads.listThreadEntries({
-      ...(query.projectId ? { projectId: query.projectId } : {}),
-      ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
-      ...(query.sourceThreadId ? { sourceThreadId: query.sourceThreadId } : {}),
-      ...(query.sectionId ? { sectionId: query.sectionId } : {}),
-      ...(query.unsectioned === "true" ? { unsectioned: true } : {}),
-      ...(query.originKind ? { originKind: query.originKind } : {}),
-      ...(query.originPluginId ? { originPluginId: query.originPluginId } : {}),
-      ...(query.childOrigin ? { childOrigin: query.childOrigin } : {}),
-      includeHidden: query.includeHidden === "true",
-      archived:
-        query.archived === undefined ? undefined : query.archived === "true",
-      hasParent:
-        query.hasParent === undefined ? undefined : query.hasParent === "true",
-      ...(limit !== undefined ? { limit } : {}),
-      ...(offset !== undefined ? { offset } : {}),
-    });
+    const threadEntries = await deps.databaseReads.listThreadEntries(
+      {
+        ...(query.projectId ? { projectId: query.projectId } : {}),
+        ...(query.parentThreadId
+          ? { parentThreadId: query.parentThreadId }
+          : {}),
+        ...(query.sourceThreadId
+          ? { sourceThreadId: query.sourceThreadId }
+          : {}),
+        ...(query.sectionId ? { sectionId: query.sectionId } : {}),
+        ...(query.unsectioned === "true" ? { unsectioned: true } : {}),
+        ...(query.originKind ? { originKind: query.originKind } : {}),
+        ...(query.originPluginId
+          ? { originPluginId: query.originPluginId }
+          : {}),
+        ...(query.childOrigin ? { childOrigin: query.childOrigin } : {}),
+        includeHidden: query.includeHidden === "true",
+        archived:
+          query.archived === undefined ? undefined : query.archived === "true",
+        hasParent:
+          query.hasParent === undefined
+            ? undefined
+            : query.hasParent === "true",
+        ...(limit !== undefined ? { limit } : {}),
+        ...(offset !== undefined ? { offset } : {}),
+      },
+      { signal: context.req.raw.signal },
+    );
     return context.json(threadEntries satisfies ThreadListEntry[]);
   });
 

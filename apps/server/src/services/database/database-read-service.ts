@@ -9,6 +9,7 @@ import {
 } from "@bb/db";
 import type { ThreadListEntry } from "@bb/domain";
 import { Worker } from "node:worker_threads";
+import { ApiError } from "../../errors.js";
 import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import { toThreadListEntryResponses } from "../threads/thread-runtime-display.js";
@@ -18,9 +19,18 @@ import {
   type DatabaseReadWorkerRequest,
 } from "./database-read-worker-contract.js";
 
+const DEFAULT_MAX_PENDING_DATABASE_READS = 32;
+const DEFAULT_DATABASE_READ_TIMEOUT_MS = 30_000;
+
 interface PendingDatabaseRead {
+  abortHandler?: () => void;
+  createRequest(id: number): DatabaseReadWorkerRequest;
+  id: number;
   reject(error: Error): void;
   resolve(entries: ThreadListEntry[]): void;
+  settled: boolean;
+  signal?: AbortSignal;
+  timeout: NodeJS.Timeout;
 }
 
 interface DatabaseReadWorkerState {
@@ -32,11 +42,33 @@ interface DatabaseReadWorkerState {
   worker: Worker;
 }
 
+export interface DatabaseReadRequestContext {
+  signal?: AbortSignal;
+}
+
+export class DatabaseReadAbortedError extends Error {
+  constructor() {
+    super("The database read request stopped");
+    this.name = "DatabaseReadAbortedError";
+  }
+}
+
+export class DatabaseReadUnavailableError extends ApiError {
+  constructor(message: string) {
+    super(503, "database_read_unavailable", message, { retryable: true });
+    this.name = "DatabaseReadUnavailableError";
+  }
+}
+
 export interface DatabaseReadService {
   close(): Promise<void>;
-  listThreadEntries(options: ListThreadsOptions): Promise<ThreadListEntry[]>;
+  listThreadEntries(
+    options: ListThreadsOptions,
+    context?: DatabaseReadRequestContext,
+  ): Promise<ThreadListEntry[]>;
   listThreadEntriesForProjects(
     options: ListThreadsForProjectsOptions,
+    context?: DatabaseReadRequestContext,
   ): Promise<ThreadListEntry[]>;
 }
 
@@ -77,7 +109,9 @@ interface CreateWorkerDatabaseReadServiceArgs {
   databasePath: string;
   hub: NotificationHub;
   logger: ServerLogger;
+  maxPendingReads?: number;
   onWorkerCreated?: (worker: Worker) => void;
+  requestTimeoutMs?: number;
 }
 
 function resolveWorkerEntryUrl(): URL {
@@ -90,24 +124,92 @@ function resolveWorkerEntryUrl(): URL {
   );
 }
 
+function requireNonnegativeInteger(value: number, name: string): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${name} must be a nonnegative integer`);
+  }
+  return value;
+}
+
 export async function createWorkerDatabaseReadService(
   args: CreateWorkerDatabaseReadServiceArgs,
 ): Promise<DatabaseReadService> {
   const workerData: DatabaseReadWorkerData = {
     databasePath: args.databasePath,
   };
+  const maxPendingReads = requireNonnegativeInteger(
+    args.maxPendingReads ?? DEFAULT_MAX_PENDING_DATABASE_READS,
+    "maxPendingReads",
+  );
+  const requestTimeoutMs = requireNonnegativeInteger(
+    args.requestTimeoutMs ?? DEFAULT_DATABASE_READ_TIMEOUT_MS,
+    "requestTimeoutMs",
+  );
   const sourceFile = import.meta.url.endsWith(".ts");
-  const pending = new Map<number, PendingDatabaseRead>();
+  const queue: PendingDatabaseRead[] = [];
   const workers = new Set<Worker>();
+  let activeRead: PendingDatabaseRead | null = null;
   let activeWorker: DatabaseReadWorkerState | null = null;
   let closed = false;
+  let dispatching = false;
   let nextRequestId = 0;
+  let preparingRead: PendingDatabaseRead | null = null;
 
-  function rejectPending(error: Error): void {
-    for (const read of pending.values()) {
-      read.reject(error);
+  function clearReadResources(read: PendingDatabaseRead): void {
+    clearTimeout(read.timeout);
+    if (read.abortHandler !== undefined) {
+      read.signal?.removeEventListener("abort", read.abortHandler);
     }
-    pending.clear();
+  }
+
+  function rejectRead(read: PendingDatabaseRead, error: Error): void {
+    if (read.settled) {
+      return;
+    }
+    read.settled = true;
+    clearReadResources(read);
+    read.reject(error);
+  }
+
+  function resolveRead(
+    read: PendingDatabaseRead,
+    entries: ThreadListEntry[],
+  ): void {
+    if (read.settled) {
+      return;
+    }
+    read.settled = true;
+    clearReadResources(read);
+    read.resolve(entries);
+  }
+
+  function removeQueuedRead(read: PendingDatabaseRead): void {
+    const index = queue.indexOf(read);
+    if (index !== -1) {
+      queue.splice(index, 1);
+    }
+  }
+
+  function rejectAllReads(error: Error): void {
+    if (preparingRead !== null) {
+      rejectRead(preparingRead, error);
+      preparingRead = null;
+    }
+    if (activeRead !== null) {
+      rejectRead(activeRead, error);
+      activeRead = null;
+    }
+    for (const read of queue.splice(0)) {
+      rejectRead(read, error);
+    }
+  }
+
+  function pendingReadCount(): number {
+    return (
+      queue.length +
+      (preparingRead === null ? 0 : 1) +
+      (activeRead === null ? 0 : 1)
+    );
   }
 
   function startWorker(): DatabaseReadWorkerState {
@@ -145,7 +247,7 @@ export async function createWorkerDatabaseReadService(
         "Database read worker failed",
       );
       state.rejectReady(error);
-      rejectPending(error);
+      rejectAllReads(error);
       if (activeWorker !== state) {
         return;
       }
@@ -173,19 +275,20 @@ export async function createWorkerDatabaseReadService(
         args.logger.debug(message.fields, message.message);
         return;
       }
-
-      const read = pending.get(message.id);
-      if (read === undefined) {
+      if (activeWorker !== state || activeRead?.id !== message.id) {
         return;
       }
-      pending.delete(message.id);
+
+      const read = activeRead;
+      activeRead = null;
       if (message.kind === "error") {
         const error = new Error(message.error.message);
         error.stack = message.error.stack;
-        read.reject(error);
-        return;
+        rejectRead(read, error);
+      } else {
+        resolveRead(read, message.entries);
       }
-      read.resolve(message.entries);
+      scheduleDispatch();
     });
     worker.on("error", (error) => {
       fail(error);
@@ -213,24 +316,109 @@ export async function createWorkerDatabaseReadService(
     return state;
   }
 
-  async function sendRequest(
+  function scheduleDispatch(): void {
+    if (closed || dispatching || activeRead !== null || queue.length === 0) {
+      return;
+    }
+    void dispatchNext();
+  }
+
+  async function dispatchNext(): Promise<void> {
+    if (dispatching || closed || activeRead !== null) {
+      return;
+    }
+    const read = queue.shift();
+    if (read === undefined) {
+      return;
+    }
+    if (read.settled) {
+      scheduleDispatch();
+      return;
+    }
+
+    dispatching = true;
+    preparingRead = read;
+    try {
+      const state = await requireReadyWorker();
+      if (read.settled || closed) {
+        return;
+      }
+      preparingRead = null;
+      activeRead = read;
+      try {
+        state.worker.postMessage(read.createRequest(read.id));
+      } catch (error) {
+        activeRead = null;
+        rejectRead(
+          read,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+    } catch (error) {
+      rejectRead(
+        read,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    } finally {
+      if (preparingRead === read) {
+        preparingRead = null;
+      }
+      dispatching = false;
+      scheduleDispatch();
+    }
+  }
+
+  function sendRequest(
     createRequest: (id: number) => DatabaseReadWorkerRequest,
+    context: DatabaseReadRequestContext | undefined,
   ): Promise<ThreadListEntry[]> {
-    const state = await requireReadyWorker();
+    if (closed) {
+      return Promise.reject(new Error("The database read service stopped"));
+    }
+    if (context?.signal?.aborted === true) {
+      return Promise.reject(new DatabaseReadAbortedError());
+    }
+    if (pendingReadCount() >= maxPendingReads) {
+      return Promise.reject(
+        new DatabaseReadUnavailableError(
+          "The database read queue is full. Try again later.",
+        ),
+      );
+    }
+
     const id = nextRequestId;
     nextRequestId += 1;
     return new Promise((resolve, reject) => {
-      if (state.failed) {
-        reject(new Error("The database read worker stopped"));
-        return;
+      const read: PendingDatabaseRead = {
+        createRequest,
+        id,
+        reject,
+        resolve,
+        settled: false,
+        timeout: setTimeout(() => {
+          removeQueuedRead(read);
+          rejectRead(
+            read,
+            new DatabaseReadUnavailableError(
+              "The database read timed out. Try again later.",
+            ),
+          );
+          scheduleDispatch();
+        }, requestTimeoutMs),
+      };
+      if (context?.signal !== undefined) {
+        read.signal = context.signal;
+        read.abortHandler = (): void => {
+          removeQueuedRead(read);
+          rejectRead(read, new DatabaseReadAbortedError());
+          scheduleDispatch();
+        };
+        context.signal.addEventListener("abort", read.abortHandler, {
+          once: true,
+        });
       }
-      pending.set(id, { reject, resolve });
-      try {
-        state.worker.postMessage(createRequest(id));
-      } catch (error) {
-        pending.delete(id);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      }
+      queue.push(read);
+      scheduleDispatch();
     });
   }
 
@@ -238,9 +426,12 @@ export async function createWorkerDatabaseReadService(
     if (closed) {
       return;
     }
+    const error = new Error("The database read service stopped");
+    const workerState = activeWorker;
     closed = true;
     activeWorker = null;
-    rejectPending(new Error("The database read service stopped"));
+    workerState?.rejectReady(error);
+    rejectAllReads(error);
     await Promise.all([...workers].map((worker) => worker.terminate()));
   }
 
@@ -254,26 +445,36 @@ export async function createWorkerDatabaseReadService(
 
   return {
     close,
-    listThreadEntries(options: ListThreadsOptions): Promise<ThreadListEntry[]> {
-      return sendRequest((id) => ({
-        daemonSessions: args.hub.listDaemonSessions(),
-        id,
-        operation: "listThreadEntries",
-        options,
-      }));
+    listThreadEntries(
+      options: ListThreadsOptions,
+      context?: DatabaseReadRequestContext,
+    ): Promise<ThreadListEntry[]> {
+      return sendRequest(
+        (id) => ({
+          daemonSessions: args.hub.listDaemonSessions(),
+          id,
+          operation: "listThreadEntries",
+          options,
+        }),
+        context,
+      );
     },
     listThreadEntriesForProjects(
       options: ListThreadsForProjectsOptions,
+      context?: DatabaseReadRequestContext,
     ): Promise<ThreadListEntry[]> {
-      return sendRequest((id) => ({
-        daemonSessions: args.hub.listDaemonSessions(),
-        id,
-        operation: "listThreadEntriesForProjects",
-        options: {
-          ...options,
-          projectIds: [...options.projectIds],
-        },
-      }));
+      return sendRequest(
+        (id) => ({
+          daemonSessions: args.hub.listDaemonSessions(),
+          id,
+          operation: "listThreadEntriesForProjects",
+          options: {
+            ...options,
+            projectIds: [...options.projectIds],
+          },
+        }),
+        context,
+      );
     },
   };
 }

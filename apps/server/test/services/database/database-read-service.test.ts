@@ -6,7 +6,11 @@ import type { Worker } from "node:worker_threads";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DbConnection } from "@bb/db";
 import { initDb } from "../../../src/db.js";
-import { createWorkerDatabaseReadService } from "../../../src/services/database/database-read-service.js";
+import {
+  createWorkerDatabaseReadService,
+  DatabaseReadAbortedError,
+  DatabaseReadUnavailableError,
+} from "../../../src/services/database/database-read-service.js";
 import type { DatabaseReadService } from "../../../src/services/database/database-read-service.js";
 import { testLogger } from "../../helpers/test-app.js";
 import { NotificationHub } from "../../../src/ws/hub.js";
@@ -69,6 +73,115 @@ describe("worker database reads", () => {
       }),
     ).resolves.toEqual([]);
     expect(workers).toHaveLength(2);
+  }, 15_000);
+
+  it("rejects a read that waits for a replacement when the service closes", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    db = initDb(databasePath);
+    const workers: Worker[] = [];
+    let replacementReady = false;
+    databaseReads = await createWorkerDatabaseReadService({
+      databasePath,
+      hub: new NotificationHub(),
+      logger: testLogger,
+      onWorkerCreated(worker): void {
+        workers.push(worker);
+        if (workers.length === 2) {
+          worker.once("message", () => {
+            replacementReady = true;
+          });
+        }
+      },
+    });
+    const firstWorker = workers[0];
+    if (firstWorker === undefined) {
+      throw new Error("The database read worker was not created");
+    }
+
+    const exit = once(firstWorker, "exit");
+    void firstWorker.terminate();
+    await exit;
+    expect(workers).toHaveLength(2);
+    expect(replacementReady).toBe(false);
+
+    const read = databaseReads.listThreadEntries({
+      projectId: "proj_personal",
+    });
+    const readResult = expect(read).rejects.toThrow(
+      "The database read service stopped",
+    );
+    await databaseReads.close();
+
+    await readResult;
+  }, 15_000);
+
+  it("rejects reads above the pending request limit", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    db = initDb(databasePath);
+    databaseReads = await createWorkerDatabaseReadService({
+      databasePath,
+      hub: new NotificationHub(),
+      logger: testLogger,
+      maxPendingReads: 1,
+    });
+
+    const firstRead = databaseReads.listThreadEntries({
+      projectId: "proj_personal",
+    });
+    await expect(
+      databaseReads.listThreadEntries({ projectId: "proj_personal" }),
+    ).rejects.toBeInstanceOf(DatabaseReadUnavailableError);
+    await expect(firstRead).resolves.toEqual([]);
+  }, 15_000);
+
+  it("removes an aborted read from the pending queue", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    db = initDb(databasePath);
+    databaseReads = await createWorkerDatabaseReadService({
+      databasePath,
+      hub: new NotificationHub(),
+      logger: testLogger,
+      maxPendingReads: 2,
+    });
+    const abortController = new AbortController();
+
+    const firstRead = databaseReads.listThreadEntries({
+      projectId: "proj_personal",
+    });
+    const abortedRead = databaseReads.listThreadEntries(
+      { projectId: "proj_personal" },
+      { signal: abortController.signal },
+    );
+    const abortedResult = expect(abortedRead).rejects.toBeInstanceOf(
+      DatabaseReadAbortedError,
+    );
+    abortController.abort();
+    const replacementRead = databaseReads.listThreadEntries({
+      projectId: "proj_personal",
+    });
+
+    await abortedResult;
+    await expect(firstRead).resolves.toEqual([]);
+    await expect(replacementRead).resolves.toEqual([]);
+  }, 15_000);
+
+  it("rejects a read after its deadline", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    db = initDb(databasePath);
+    databaseReads = await createWorkerDatabaseReadService({
+      databasePath,
+      hub: new NotificationHub(),
+      logger: testLogger,
+      requestTimeoutMs: 0,
+    });
+
+    await expect(
+      databaseReads.listThreadEntries({ projectId: "proj_personal" }),
+    ).rejects.toBeInstanceOf(DatabaseReadUnavailableError);
   }, 15_000);
 
   it("keeps the event loop available during a slow thread-list query", async () => {
