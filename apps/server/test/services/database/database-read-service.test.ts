@@ -119,6 +119,90 @@ describe("worker database reads", () => {
     expect(JSON.stringify(workerResponse)).toBe(JSON.stringify(directResponse));
   }, 15_000);
 
+  it("keeps a sidebar response in one database snapshot", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    db = initDb(databasePath);
+    db.$client.exec(`
+      WITH RECURSIVE project_numbers(value) AS (
+        VALUES(1)
+        UNION ALL
+        SELECT value + 1
+        FROM project_numbers
+        WHERE value < 10000
+      )
+      INSERT INTO projects (
+        id,
+        kind,
+        name,
+        sort_key,
+        created_at,
+        updated_at
+      )
+      SELECT
+        printf('proj_snapshot_%05d', value),
+        'standard',
+        printf('Snapshot %05d', value),
+        printf('%05d', value),
+        value,
+        value
+      FROM project_numbers;
+
+      INSERT INTO threads (
+        id,
+        project_id,
+        provider_id,
+        status,
+        latest_attention_at,
+        created_at,
+        updated_at,
+        visibility
+      ) VALUES (
+        'thr_snapshot',
+        'proj_snapshot_05000',
+        'codex',
+        'idle',
+        1,
+        1,
+        1,
+        'visible'
+      );
+    `);
+    let markProjectDeleted!: () => void;
+    const projectDeleted = new Promise<void>((resolve) => {
+      markProjectDeleted = resolve;
+    });
+    let deleted = false;
+    const logger = {
+      ...testLogger,
+      debug(fields: { sql?: string }): void {
+        if (deleted || !fields.sql?.includes('from "projects"')) {
+          return;
+        }
+        deleted = true;
+        db?.$client
+          .prepare("DELETE FROM projects WHERE id = ?")
+          .run("proj_snapshot_05000");
+        markProjectDeleted();
+      },
+    };
+    databaseReads = await createWorkerDatabaseReadService({
+      databasePath,
+      hub: new NotificationHub(),
+      logger,
+      slowQueryThresholdMs: 0,
+    });
+
+    const response = await databaseReads.getSidebarBootstrap();
+    await projectDeleted;
+
+    expect(
+      response.projects.find((project) => project.id === "proj_snapshot_05000"),
+    ).toMatchObject({
+      threads: [{ id: "thr_snapshot" }],
+    });
+  }, 15_000);
+
   it("maps an aborted read to a silent client-closed response", async () => {
     const logger = { ...testLogger, error: vi.fn() };
 
@@ -401,7 +485,7 @@ describe("worker database reads", () => {
     expect(workers).toHaveLength(2);
   }, 15_000);
 
-  it("replaces the worker when an active read is aborted", async () => {
+  it("keeps the worker active until an aborted read finishes", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
     const databasePath = join(dataDir, "bb.db");
     db = initDb(databasePath);
@@ -456,7 +540,7 @@ describe("worker database reads", () => {
     await expect(
       databaseReads.listThreadEntries({ projectId: "proj_missing" }),
     ).resolves.toEqual([]);
-    expect(workers).toHaveLength(2);
+    expect(workers).toHaveLength(1);
   }, 15_000);
 
   it("keeps the event loop available during a slow thread-list query", async () => {

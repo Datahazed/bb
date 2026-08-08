@@ -1,18 +1,12 @@
-import {
-  createReadOnlyConnection,
-  listThreadsWithPendingInteractionState,
-  listThreadsWithPendingInteractionStateForProjects,
-  type SlowDbQueryLogger,
-} from "@bb/db";
+import { createReadOnlyConnection, type SlowDbQueryLogger } from "@bb/db";
 import { parentPort, workerData } from "node:worker_threads";
-import { toThreadListEntryResponses } from "../threads/thread-runtime-display.js";
-import { threadListEntrySchema, type ThreadListEntry } from "@bb/domain";
 import {
   databaseReadWorkerDataSchema,
   databaseReadWorkerRequestIdSchema,
   databaseReadWorkerRequestSchema,
   type DatabaseReadWorkerMessage,
 } from "./database-read-worker-contract.js";
+import { executeDatabaseReadOperation } from "./database-read-operations.js";
 
 if (parentPort === null) {
   throw new Error("The database read worker requires a parent port");
@@ -31,6 +25,7 @@ const slowQueryLogger: SlowDbQueryLogger = {
 };
 const db = createReadOnlyConnection(config.databasePath, {
   slowQueryLogger,
+  slowQueryThresholdMs: config.slowQueryThresholdMs,
 });
 
 function serializeError(error: unknown): { message: string; stack?: string } {
@@ -43,10 +38,6 @@ function serializeError(error: unknown): { message: string; stack?: string } {
   return { message: String(error) };
 }
 
-function isThreadListEntry(value: unknown): value is ThreadListEntry {
-  return threadListEntrySchema.safeParse(value).success;
-}
-
 port.on("message", (value: unknown) => {
   const requestIdResult = databaseReadWorkerRequestIdSchema.safeParse(value);
   if (!requestIdResult.success) {
@@ -55,36 +46,11 @@ port.on("message", (value: unknown) => {
   const requestId = requestIdResult.data.id;
   try {
     const request = databaseReadWorkerRequestSchema.parse(value);
-    const threads =
-      request.operation === "listThreadEntries"
-        ? listThreadsWithPendingInteractionState(db, request.options)
-        : listThreadsWithPendingInteractionStateForProjects(
-            db,
-            request.options,
-          );
-    const daemonSessionIdByHostId = new Map(
-      request.daemonSessions.map((session) => [
-        session.hostId,
-        session.sessionId,
-      ]),
-    );
-    const rawEntries = toThreadListEntryResponses(
-      {
-        db,
-        hub: {
-          getDaemonSessionIdForHost(hostId): string | null {
-            return daemonSessionIdByHostId.get(hostId) ?? null;
-          },
-        },
-      },
-      { threads },
-    );
-    const entries = rawEntries.filter(isThreadListEntry);
+    const result = executeDatabaseReadOperation({ db }, request);
     port.postMessage({
-      droppedEntryCount: rawEntries.length - entries.length,
-      entries,
       id: request.id,
       kind: "result",
+      result,
     } satisfies DatabaseReadWorkerMessage);
   } catch (error) {
     port.postMessage({

@@ -63,6 +63,38 @@ describe("public thread list worker", () => {
     });
   }, 15_000);
 
+  it("keeps sidebar response bytes equal to the direct database path", async () => {
+    await withTestHarness(async (harness) => {
+      const dataDir = await mkdtemp(join(tmpdir(), "bb-sidebar-worker-"));
+      const databasePath = join(dataDir, "bb.db");
+      const db = initDb(databasePath);
+      const directReads = createDirectDatabaseReadService({
+        db,
+        hub: harness.hub,
+      });
+      const workerReads = await createWorkerDatabaseReadService({
+        databasePath,
+        hub: harness.hub,
+        logger: testLogger,
+      });
+      harness.deps.databaseReads = workerReads;
+
+      try {
+        const directResponse = await directReads.getSidebarBootstrap();
+        const response = await harness.app.request("/api/v1/sidebar-bootstrap");
+
+        expect(response.status).toBe(200);
+        await expect(response.text()).resolves.toBe(
+          JSON.stringify(directResponse),
+        );
+      } finally {
+        await workerReads.close();
+        db.$client.close();
+        await rm(dataDir, { force: true, recursive: true });
+      }
+    });
+  }, 15_000);
+
   it("rejects unsafe list bounds at the HTTP boundary", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request(

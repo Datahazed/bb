@@ -3,31 +3,33 @@ import type {
   ListThreadsForProjectsOptions,
   ListThreadsOptions,
 } from "@bb/db";
-import {
-  listThreadsWithPendingInteractionState,
-  listThreadsWithPendingInteractionStateForProjects,
-} from "@bb/db";
 import type { ThreadListEntry } from "@bb/domain";
+import type {
+  ProjectWithThreadsResponse,
+  SidebarBootstrapResponse,
+} from "@bb/server-contract";
 import { Worker } from "node:worker_threads";
 import { ApiError, ClientClosedRequestError } from "../../errors.js";
 import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
-import { toThreadListEntryResponses } from "../threads/thread-runtime-display.js";
+import { executeDatabaseReadOperation } from "./database-read-operations.js";
 import {
   databaseReadWorkerMessageSchema,
   type DatabaseReadWorkerData,
   type DatabaseReadWorkerRequest,
+  type DatabaseReadWorkerResult,
 } from "./database-read-worker-contract.js";
 
 const DEFAULT_MAX_PENDING_DATABASE_READS = 32;
 const DEFAULT_DATABASE_READ_TIMEOUT_MS = 30_000;
+const DEFAULT_SLOW_DATABASE_READ_LOG_THRESHOLD_MS = 100;
 
 interface PendingDatabaseRead {
   abortHandler?: () => void;
   createRequest(id: number): DatabaseReadWorkerRequest;
   id: number;
   reject(error: Error): void;
-  resolve(entries: ThreadListEntry[]): void;
+  resolve(result: DatabaseReadWorkerResult): void;
   settled: boolean;
   signal?: AbortSignal;
   timeout: NodeJS.Timeout;
@@ -82,6 +84,13 @@ export interface DatabaseReadService {
     options: ListThreadsForProjectsOptions,
     context?: DatabaseReadRequestContext,
   ): Promise<ThreadListEntry[]>;
+  listProjectsWithThreads(
+    options: { includePersonal: boolean },
+    context?: DatabaseReadRequestContext,
+  ): Promise<ProjectWithThreadsResponse[]>;
+  getSidebarBootstrap(
+    context?: DatabaseReadRequestContext,
+  ): Promise<SidebarBootstrapResponse>;
 }
 
 interface CreateDirectDatabaseReadServiceArgs {
@@ -92,10 +101,8 @@ interface CreateDirectDatabaseReadServiceArgs {
 export function createDirectDatabaseReadService(
   args: CreateDirectDatabaseReadServiceArgs,
 ): DatabaseReadService {
-  function toEntries(
-    threads: Parameters<typeof toThreadListEntryResponses>[1]["threads"],
-  ) {
-    return toThreadListEntryResponses(args, { threads });
+  function run(request: DatabaseReadWorkerRequest): DatabaseReadWorkerResult {
+    return executeDatabaseReadOperation({ db: args.db }, request);
   }
 
   return {
@@ -103,16 +110,55 @@ export function createDirectDatabaseReadService(
     async listThreadEntries(
       options: ListThreadsOptions,
     ): Promise<ThreadListEntry[]> {
-      return toEntries(
-        listThreadsWithPendingInteractionState(args.db, options),
-      );
+      const result = run({
+        daemonSessions: args.hub.listDaemonSessions(),
+        id: 0,
+        operation: "listThreadEntries",
+        options,
+      });
+      if (result.operation !== "listThreadEntries") {
+        throw new Error("The direct database read returned an invalid result");
+      }
+      return result.entries;
     },
     async listThreadEntriesForProjects(
       options: ListThreadsForProjectsOptions,
     ): Promise<ThreadListEntry[]> {
-      return toEntries(
-        listThreadsWithPendingInteractionStateForProjects(args.db, options),
-      );
+      const result = run({
+        daemonSessions: args.hub.listDaemonSessions(),
+        id: 0,
+        operation: "listThreadEntriesForProjects",
+        options: { ...options, projectIds: [...options.projectIds] },
+      });
+      if (result.operation !== "listThreadEntriesForProjects") {
+        throw new Error("The direct database read returned an invalid result");
+      }
+      return result.entries;
+    },
+    async listProjectsWithThreads(options: {
+      includePersonal: boolean;
+    }): Promise<ProjectWithThreadsResponse[]> {
+      const result = run({
+        daemonSessions: args.hub.listDaemonSessions(),
+        id: 0,
+        operation: "listProjectsWithThreads",
+        options,
+      });
+      if (result.operation !== "listProjectsWithThreads") {
+        throw new Error("The direct database read returned an invalid result");
+      }
+      return result.projects;
+    },
+    async getSidebarBootstrap(): Promise<SidebarBootstrapResponse> {
+      const result = run({
+        daemonSessions: args.hub.listDaemonSessions(),
+        id: 0,
+        operation: "sidebarBootstrap",
+      });
+      if (result.operation !== "sidebarBootstrap") {
+        throw new Error("The direct database read returned an invalid result");
+      }
+      return result.response;
     },
   };
 }
@@ -124,6 +170,7 @@ interface CreateWorkerDatabaseReadServiceArgs {
   maxPendingReads?: number;
   onWorkerCreated?: (worker: Worker) => void;
   requestTimeoutMs?: number;
+  slowQueryThresholdMs?: number;
 }
 
 function resolveWorkerEntryUrl(): URL {
@@ -146,9 +193,6 @@ function requireNonnegativeInteger(value: number, name: string): number {
 export async function createWorkerDatabaseReadService(
   args: CreateWorkerDatabaseReadServiceArgs,
 ): Promise<DatabaseReadService> {
-  const workerData: DatabaseReadWorkerData = {
-    databasePath: args.databasePath,
-  };
   const maxPendingReads = requireNonnegativeInteger(
     args.maxPendingReads ?? DEFAULT_MAX_PENDING_DATABASE_READS,
     "maxPendingReads",
@@ -157,6 +201,14 @@ export async function createWorkerDatabaseReadService(
     args.requestTimeoutMs ?? DEFAULT_DATABASE_READ_TIMEOUT_MS,
     "requestTimeoutMs",
   );
+  const slowQueryThresholdMs = requireNonnegativeInteger(
+    args.slowQueryThresholdMs ?? DEFAULT_SLOW_DATABASE_READ_LOG_THRESHOLD_MS,
+    "slowQueryThresholdMs",
+  );
+  const workerData: DatabaseReadWorkerData = {
+    databasePath: args.databasePath,
+    slowQueryThresholdMs,
+  };
   const sourceFile = import.meta.url.endsWith(".ts");
   const queue: PendingDatabaseRead[] = [];
   const workers = new Set<Worker>();
@@ -176,24 +228,38 @@ export async function createWorkerDatabaseReadService(
   }
 
   function rejectRead(read: PendingDatabaseRead, error: Error): void {
+    clearReadResources(read);
     if (read.settled) {
       return;
     }
     read.settled = true;
-    clearReadResources(read);
     read.reject(error);
   }
 
   function resolveRead(
     read: PendingDatabaseRead,
-    entries: ThreadListEntry[],
+    result: DatabaseReadWorkerResult,
+  ): void {
+    clearReadResources(read);
+    if (read.settled) {
+      return;
+    }
+    read.settled = true;
+    read.resolve(result);
+  }
+
+  function rejectCallerWhileReadContinues(
+    read: PendingDatabaseRead,
+    error: Error,
   ): void {
     if (read.settled) {
       return;
     }
     read.settled = true;
-    clearReadResources(read);
-    read.resolve(entries);
+    if (read.abortHandler !== undefined) {
+      read.signal?.removeEventListener("abort", read.abortHandler);
+    }
+    read.reject(error);
   }
 
   function removeQueuedRead(read: PendingDatabaseRead): void {
@@ -305,16 +371,16 @@ export async function createWorkerDatabaseReadService(
         error.stack = message.error.stack;
         rejectRead(read, error);
       } else {
-        if (message.droppedEntryCount > 0) {
+        if (message.result.droppedEntryCount > 0) {
           args.logger.warn(
             {
-              droppedEntryCount: message.droppedEntryCount,
+              droppedEntryCount: message.result.droppedEntryCount,
               requestId: message.id,
             },
             "Dropped an invalid thread entry from a database read worker result",
           );
         }
-        resolveRead(read, message.entries);
+        resolveRead(read, message.result);
       }
       scheduleDispatch();
     });
@@ -411,7 +477,7 @@ export async function createWorkerDatabaseReadService(
   function sendRequest(
     createRequest: (id: number) => DatabaseReadWorkerRequest,
     context: DatabaseReadRequestContext | undefined,
-  ): Promise<ThreadListEntry[]> {
+  ): Promise<DatabaseReadWorkerResult> {
     if (closed) {
       return Promise.reject(new Error("The database read service stopped"));
     }
@@ -455,13 +521,13 @@ export async function createWorkerDatabaseReadService(
           const abortedWhileActive = activeRead === read;
           removeQueuedRead(read);
           if (abortedWhileActive) {
-            activeRead = null;
+            rejectCallerWhileReadContinues(
+              read,
+              new DatabaseReadAbortedError(),
+            );
+            return;
           }
-          const error = new DatabaseReadAbortedError();
-          rejectRead(read, error);
-          if (abortedWhileActive) {
-            replaceWorker(error);
-          }
+          rejectRead(read, new DatabaseReadAbortedError());
           scheduleDispatch();
         };
         context.signal.addEventListener("abort", read.abortHandler, {
@@ -508,7 +574,14 @@ export async function createWorkerDatabaseReadService(
           options,
         }),
         context,
-      );
+      ).then((result) => {
+        if (result.operation !== "listThreadEntries") {
+          throw new Error(
+            "The database read worker returned an invalid result",
+          );
+        }
+        return result.entries;
+      });
     },
     listThreadEntriesForProjects(
       options: ListThreadsForProjectsOptions,
@@ -525,7 +598,54 @@ export async function createWorkerDatabaseReadService(
           },
         }),
         context,
-      );
+      ).then((result) => {
+        if (result.operation !== "listThreadEntriesForProjects") {
+          throw new Error(
+            "The database read worker returned an invalid result",
+          );
+        }
+        return result.entries;
+      });
+    },
+    listProjectsWithThreads(
+      options: { includePersonal: boolean },
+      context?: DatabaseReadRequestContext,
+    ): Promise<ProjectWithThreadsResponse[]> {
+      return sendRequest(
+        (id) => ({
+          daemonSessions: args.hub.listDaemonSessions(),
+          id,
+          operation: "listProjectsWithThreads",
+          options,
+        }),
+        context,
+      ).then((result) => {
+        if (result.operation !== "listProjectsWithThreads") {
+          throw new Error(
+            "The database read worker returned an invalid result",
+          );
+        }
+        return result.projects;
+      });
+    },
+    getSidebarBootstrap(
+      context?: DatabaseReadRequestContext,
+    ): Promise<SidebarBootstrapResponse> {
+      return sendRequest(
+        (id) => ({
+          daemonSessions: args.hub.listDaemonSessions(),
+          id,
+          operation: "sidebarBootstrap",
+        }),
+        context,
+      ).then((result) => {
+        if (result.operation !== "sidebarBootstrap") {
+          throw new Error(
+            "The database read worker returned an invalid result",
+          );
+        }
+        return result.response;
+      });
     },
   };
 }

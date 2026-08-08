@@ -7,10 +7,8 @@ import {
   deleteProjectSource,
   getProjectSourceByHost,
   getProjectSourceForProject,
-  listProjectExecutionDefaultsByProjectIds,
   listPublicProjects,
   listProjectSourcesByProjectIds,
-  listThreadSections,
   reorderProject,
   updateProject,
   updateProjectSource,
@@ -44,7 +42,6 @@ import {
   requirePublicStandardProject,
 } from "../services/lib/entity-lookup.js";
 import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
-import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread-default-policy.js";
 import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { runLiveHostCommand } from "../services/hosts/live-command.js";
@@ -196,80 +193,17 @@ async function buildProjectsWithThreadsResponse(
   options: ProjectListOptions,
   signal: AbortSignal,
 ): Promise<ProjectWithThreadsResponse[]> {
-  return buildProjectsWithThreadsResponseFromRows(
-    deps,
-    listDiscoverableProjects(deps, options),
-    signal,
-  );
-}
-
-async function buildProjectsWithThreadsResponseFromRows(
-  deps: AppDeps,
-  projectRows: ProjectResponseRow[],
-  signal: AbortSignal,
-): Promise<ProjectWithThreadsResponse[]> {
-  const projects = buildProjectResponsesFromRows(deps, projectRows);
-  const projectIds = projects.map((project) => project.id);
-  const threadResponses = await deps.databaseReads.listThreadEntriesForProjects(
-    { archived: false, projectIds },
+  return deps.databaseReads.listProjectsWithThreads(
+    { includePersonal: options.includePersonal },
     { signal },
   );
-  const threadsByProjectId = new Map<
-    string,
-    ProjectWithThreadsResponse["threads"]
-  >();
-  for (const thread of threadResponses) {
-    const projectThreads = threadsByProjectId.get(thread.projectId);
-    if (projectThreads) {
-      projectThreads.push(thread);
-      continue;
-    }
-    threadsByProjectId.set(thread.projectId, [thread]);
-  }
-  const defaultsByProjectId = listProjectExecutionDefaultsByProjectIds(
-    deps.db,
-    { projectIds },
-  );
-
-  return projects.map((project) => ({
-    ...project,
-    threads: threadsByProjectId.get(project.id) ?? [],
-    defaultExecutionOptions: resolveCreateThreadExecutionDefaults({
-      storedDefaults: defaultsByProjectId.get(project.id) ?? null,
-    }).executionDefaults,
-  }));
 }
 
 async function buildSidebarBootstrapResponse(
   deps: AppDeps,
   signal: AbortSignal,
 ) {
-  const personalProject = getPersonalProject(deps.db);
-  if (!personalProject) {
-    throw new ApiError(
-      500,
-      "internal_error",
-      "Personal project is not initialized",
-    );
-  }
-  const [personalProjectResponse, ...projects] =
-    await buildProjectsWithThreadsResponseFromRows(
-      deps,
-      [personalProject, ...listPublicProjects(deps.db)],
-      signal,
-    );
-  if (!personalProjectResponse) {
-    throw new ApiError(
-      500,
-      "internal_error",
-      "Personal project response was not built",
-    );
-  }
-  return {
-    sections: listThreadSections(deps.db),
-    projects,
-    personalProject: personalProjectResponse,
-  };
+  return deps.databaseReads.getSidebarBootstrap({ signal });
 }
 
 interface RequireProjectSourceArgs {

@@ -5,6 +5,10 @@ import type {
 } from "@bb/db";
 import { threadChildOriginSchema, threadOriginKindSchema } from "@bb/domain";
 import type { ThreadListEntry } from "@bb/domain";
+import type {
+  ProjectWithThreadsResponse,
+  SidebarBootstrapResponse,
+} from "@bb/server-contract";
 import { z } from "zod";
 
 const listThreadsOptionsShape = {
@@ -47,6 +51,7 @@ const slowDbQueryLogFieldsSchema = z.object({
 export const databaseReadWorkerDataSchema = z
   .object({
     databasePath: z.string().min(1),
+    slowQueryThresholdMs: z.number().nonnegative(),
   })
   .strict();
 
@@ -87,6 +92,39 @@ export const databaseReadWorkerRequestSchema = z.discriminatedUnion(
         options: listThreadsForProjectsOptionsSchema,
       })
       .strict(),
+    z
+      .object({
+        id: z.number().int().nonnegative(),
+        daemonSessions: z.array(
+          z
+            .object({
+              hostId: z.string(),
+              sessionId: z.string(),
+            })
+            .strict(),
+        ),
+        operation: z.literal("listProjectsWithThreads"),
+        options: z
+          .object({
+            includePersonal: z.boolean(),
+          })
+          .strict(),
+      })
+      .strict(),
+    z
+      .object({
+        id: z.number().int().nonnegative(),
+        daemonSessions: z.array(
+          z
+            .object({
+              hostId: z.string(),
+              sessionId: z.string(),
+            })
+            .strict(),
+        ),
+        operation: z.literal("sidebarBootstrap"),
+      })
+      .strict(),
   ],
 );
 
@@ -106,6 +144,49 @@ const workerErrorSchema = z
     stack: z.string().optional(),
   })
   .strict();
+
+const databaseReadWorkerResultSchema = z.discriminatedUnion("operation", [
+  z
+    .object({
+      droppedEntryCount: z.number().int().nonnegative(),
+      entries: z.custom<ThreadListEntry[]>(
+        (value): value is ThreadListEntry[] => Array.isArray(value),
+      ),
+      operation: z.literal("listThreadEntries"),
+    })
+    .strict(),
+  z
+    .object({
+      droppedEntryCount: z.number().int().nonnegative(),
+      entries: z.custom<ThreadListEntry[]>(
+        (value): value is ThreadListEntry[] => Array.isArray(value),
+      ),
+      operation: z.literal("listThreadEntriesForProjects"),
+    })
+    .strict(),
+  z
+    .object({
+      droppedEntryCount: z.number().int().nonnegative(),
+      operation: z.literal("listProjectsWithThreads"),
+      projects: z.custom<ProjectWithThreadsResponse[]>(
+        (value): value is ProjectWithThreadsResponse[] => Array.isArray(value),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      droppedEntryCount: z.number().int().nonnegative(),
+      operation: z.literal("sidebarBootstrap"),
+      response: z.custom<SidebarBootstrapResponse>(
+        (value) => typeof value === "object" && value !== null,
+      ),
+    })
+    .strict(),
+]);
+
+export type DatabaseReadWorkerResult = z.infer<
+  typeof databaseReadWorkerResultSchema
+>;
 
 export const databaseReadWorkerMessageSchema = z.discriminatedUnion("kind", [
   z
@@ -129,10 +210,9 @@ export const databaseReadWorkerMessageSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
-      droppedEntryCount: z.number().int().nonnegative(),
       id: z.number().int().nonnegative(),
       kind: z.literal("result"),
-      entries: z.custom<ThreadListEntry[]>(Array.isArray),
+      result: databaseReadWorkerResultSchema,
     })
     .strict(),
 ]);

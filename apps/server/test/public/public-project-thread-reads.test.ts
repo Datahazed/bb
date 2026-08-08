@@ -18,15 +18,32 @@ describe("project thread reads", () => {
           finishRead = resolve;
         });
         let requestSignal: AbortSignal | undefined;
-        harness.deps.databaseReads.listThreadEntriesForProjects = async (
-          _options,
-          context,
-        ) => {
-          requestSignal = context?.signal;
-          markReadStarted();
-          await readFinished;
-          return [];
-        };
+        if (path.includes("sidebar-bootstrap")) {
+          const getSidebarBootstrap =
+            harness.deps.databaseReads.getSidebarBootstrap.bind(
+              harness.deps.databaseReads,
+            );
+          harness.deps.databaseReads.getSidebarBootstrap = async (context) => {
+            requestSignal = context?.signal;
+            markReadStarted();
+            await readFinished;
+            return getSidebarBootstrap(context);
+          };
+        } else {
+          const listProjectsWithThreads =
+            harness.deps.databaseReads.listProjectsWithThreads.bind(
+              harness.deps.databaseReads,
+            );
+          harness.deps.databaseReads.listProjectsWithThreads = async (
+            options,
+            context,
+          ) => {
+            requestSignal = context?.signal;
+            markReadStarted();
+            await readFinished;
+            return listProjectsWithThreads(options, context);
+          };
+        }
 
         const projectRead = harness.app.request(path);
         await readStarted;
@@ -43,7 +60,7 @@ describe("project thread reads", () => {
 
   it("returns a retryable unavailable response when the read queue is full", async () => {
     await withTestHarness(async (harness) => {
-      harness.deps.databaseReads.listThreadEntriesForProjects = async () => {
+      harness.deps.databaseReads.listProjectsWithThreads = async () => {
         throw new DatabaseReadUnavailableError(
           "The database read queue is full. Try again later.",
         );
@@ -64,22 +81,18 @@ describe("project thread reads", () => {
 
   it("uses one database read for the sidebar bootstrap", async () => {
     await withTestHarness(async (harness) => {
-      const listThreadEntriesForProjects = vi.spyOn(
+      const getSidebarBootstrap = vi.spyOn(
         harness.deps.databaseReads,
-        "listThreadEntriesForProjects",
+        "getSidebarBootstrap",
       );
 
       const response = await harness.app.request("/api/v1/sidebar-bootstrap");
 
       expect(response.status).toBe(200);
-      expect(listThreadEntriesForProjects).toHaveBeenCalledOnce();
-      expect(listThreadEntriesForProjects).toHaveBeenCalledWith(
-        {
-          archived: false,
-          projectIds: expect.arrayContaining(["proj_personal"]),
-        },
-        { signal: expect.any(AbortSignal) },
-      );
+      expect(getSidebarBootstrap).toHaveBeenCalledOnce();
+      expect(getSidebarBootstrap).toHaveBeenCalledWith({
+        signal: expect.any(AbortSignal),
+      });
     });
   });
 });
