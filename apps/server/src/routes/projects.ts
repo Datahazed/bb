@@ -252,15 +252,12 @@ async function buildSidebarBootstrapResponse(
       "Personal project is not initialized",
     );
   }
-  const [personalProjectResponses, projects] = await Promise.all([
-    buildProjectsWithThreadsResponseFromRows(deps, [personalProject], signal),
-    buildProjectsWithThreadsResponseFromRows(
+  const [personalProjectResponse, ...projects] =
+    await buildProjectsWithThreadsResponseFromRows(
       deps,
-      listPublicProjects(deps.db),
+      [personalProject, ...listPublicProjects(deps.db)],
       signal,
-    ),
-  ]);
-  const personalProjectResponse = personalProjectResponses[0];
+    );
   if (!personalProjectResponse) {
     throw new ApiError(
       500,

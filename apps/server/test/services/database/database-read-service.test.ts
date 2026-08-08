@@ -10,6 +10,7 @@ import {
   createDirectDatabaseReadService,
   createWorkerDatabaseReadService,
   DatabaseReadAbortedError,
+  DatabaseReadTimeoutError,
   DatabaseReadUnavailableError,
 } from "../../../src/services/database/database-read-service.js";
 import type { DatabaseReadService } from "../../../src/services/database/database-read-service.js";
@@ -170,6 +171,39 @@ describe("worker database reads", () => {
     expect(workers).toHaveLength(2);
   }, 15_000);
 
+  it("returns a retryable error when a worker exits during a read", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    db = initDb(databasePath);
+    const workers: Worker[] = [];
+    databaseReads = await createWorkerDatabaseReadService({
+      databasePath,
+      hub: new NotificationHub(),
+      logger: testLogger,
+      onWorkerCreated(worker): void {
+        workers.push(worker);
+      },
+    });
+    const firstWorker = workers[0];
+    if (firstWorker === undefined) {
+      throw new Error("The database read worker was not created");
+    }
+
+    const read = databaseReads.listThreadEntries({
+      projectId: "proj_personal",
+    });
+    void firstWorker.terminate();
+
+    await expect(read).rejects.toMatchObject({
+      body: { retryable: true },
+      status: 503,
+    });
+    await expect(
+      databaseReads.listThreadEntries({ projectId: "proj_personal" }),
+    ).resolves.toEqual([]);
+    expect(workers).toHaveLength(2);
+  }, 15_000);
+
   it("rejects invalid options without restarting the worker", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
     const databasePath = join(dataDir, "bb.db");
@@ -299,7 +333,11 @@ describe("worker database reads", () => {
 
     await expect(
       databaseReads.listThreadEntries({ projectId: "proj_personal" }),
-    ).rejects.toBeInstanceOf(DatabaseReadUnavailableError);
+    ).rejects.toMatchObject({
+      body: { retryable: false },
+      name: "DatabaseReadTimeoutError",
+      status: 503,
+    });
   }, 15_000);
 
   it("replaces the worker when an active read exceeds its deadline", async () => {
@@ -348,7 +386,65 @@ describe("worker database reads", () => {
 
     await expect(
       databaseReads.listThreadEntries({ projectId: "proj_personal" }),
-    ).rejects.toBeInstanceOf(DatabaseReadUnavailableError);
+    ).rejects.toBeInstanceOf(DatabaseReadTimeoutError);
+    await expect(
+      databaseReads.listThreadEntries({ projectId: "proj_missing" }),
+    ).resolves.toEqual([]);
+    expect(workers).toHaveLength(2);
+  }, 15_000);
+
+  it("replaces the worker when an active read is aborted", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    db = initDb(databasePath);
+    db.$client.exec(`
+      WITH RECURSIVE thread_numbers(value) AS (
+        VALUES(1)
+        UNION ALL
+        SELECT value + 1
+        FROM thread_numbers
+        WHERE value < ${BULK_THREAD_COUNT}
+      )
+      INSERT INTO threads (
+        id,
+        project_id,
+        provider_id,
+        status,
+        latest_attention_at,
+        created_at,
+        updated_at,
+        visibility
+      )
+      SELECT
+        printf('thr_abort_%07d', value),
+        'proj_personal',
+        'codex',
+        'idle',
+        0,
+        value,
+        value,
+        'visible'
+      FROM thread_numbers
+    `);
+    const workers: Worker[] = [];
+    databaseReads = await createWorkerDatabaseReadService({
+      databasePath,
+      hub: new NotificationHub(),
+      logger: testLogger,
+      onWorkerCreated(worker): void {
+        workers.push(worker);
+      },
+    });
+    const abortController = new AbortController();
+    const read = databaseReads.listThreadEntries(
+      { projectId: "proj_personal" },
+      { signal: abortController.signal },
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    abortController.abort();
+
+    await expect(read).rejects.toBeInstanceOf(DatabaseReadAbortedError);
     await expect(
       databaseReads.listThreadEntries({ projectId: "proj_missing" }),
     ).resolves.toEqual([]);

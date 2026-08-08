@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DatabaseReadUnavailableError } from "../../src/services/database/database-read-service.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -59,6 +59,27 @@ describe("project thread reads", () => {
         message: "The database read queue is full. Try again later.",
         retryable: true,
       });
+    });
+  });
+
+  it("uses one database read for the sidebar bootstrap", async () => {
+    await withTestHarness(async (harness) => {
+      const listThreadEntriesForProjects = vi.spyOn(
+        harness.deps.databaseReads,
+        "listThreadEntriesForProjects",
+      );
+
+      const response = await harness.app.request("/api/v1/sidebar-bootstrap");
+
+      expect(response.status).toBe(200);
+      expect(listThreadEntriesForProjects).toHaveBeenCalledOnce();
+      expect(listThreadEntriesForProjects).toHaveBeenCalledWith(
+        {
+          archived: false,
+          projectIds: expect.arrayContaining(["proj_personal"]),
+        },
+        { signal: expect.any(AbortSignal) },
+      );
     });
   });
 });

@@ -60,6 +60,18 @@ export class DatabaseReadUnavailableError extends ApiError {
   }
 }
 
+export class DatabaseReadTimeoutError extends ApiError {
+  constructor() {
+    super(
+      503,
+      "database_read_unavailable",
+      "The database read timed out. Try again later.",
+      { retryable: false },
+    );
+    this.name = "DatabaseReadTimeoutError";
+  }
+}
+
 export interface DatabaseReadService {
   close(): Promise<void>;
   listThreadEntries(
@@ -152,6 +164,7 @@ export async function createWorkerDatabaseReadService(
   let activeWorker: DatabaseReadWorkerState | null = null;
   let closed = false;
   let dispatching = false;
+  let hasReadyWorker = false;
   let nextRequestId = 0;
   let preparingRead: PendingDatabaseRead | null = null;
 
@@ -246,8 +259,13 @@ export async function createWorkerDatabaseReadService(
         { err: error, workerWasReady: state.wasReady },
         "Database read worker failed",
       );
-      state.rejectReady(error);
-      rejectAllReads(error);
+      const requestError = hasReadyWorker
+        ? new DatabaseReadUnavailableError(
+            "The database read worker stopped. Try again later.",
+          )
+        : error;
+      state.rejectReady(requestError);
+      rejectAllReads(requestError);
       if (activeWorker !== state) {
         return;
       }
@@ -268,6 +286,7 @@ export async function createWorkerDatabaseReadService(
       const message = parsedMessage.data;
       if (message.kind === "ready") {
         state.wasReady = true;
+        hasReadyWorker = true;
         state.resolveReady();
         return;
       }
@@ -310,6 +329,18 @@ export async function createWorkerDatabaseReadService(
     });
 
     return state;
+  }
+
+  function replaceWorker(error: Error): void {
+    if (activeWorker === null) {
+      return;
+    }
+    const replacedWorker = activeWorker;
+    replacedWorker.failed = true;
+    replacedWorker.rejectReady(error);
+    activeWorker = startWorker();
+    void activeWorker.ready.catch(() => {});
+    void replacedWorker.worker.terminate();
   }
 
   async function requireReadyWorker(): Promise<DatabaseReadWorkerState> {
@@ -410,17 +441,10 @@ export async function createWorkerDatabaseReadService(
           if (timedOutWhileActive) {
             activeRead = null;
           }
-          const error = new DatabaseReadUnavailableError(
-            "The database read timed out. Try again later.",
-          );
+          const error = new DatabaseReadTimeoutError();
           rejectRead(read, error);
-          if (timedOutWhileActive && activeWorker !== null) {
-            const timedOutWorker = activeWorker;
-            timedOutWorker.failed = true;
-            timedOutWorker.rejectReady(error);
-            activeWorker = startWorker();
-            void activeWorker.ready.catch(() => {});
-            void timedOutWorker.worker.terminate();
+          if (timedOutWhileActive) {
+            replaceWorker(error);
           }
           scheduleDispatch();
         }, requestTimeoutMs),
@@ -428,8 +452,16 @@ export async function createWorkerDatabaseReadService(
       if (context?.signal !== undefined) {
         read.signal = context.signal;
         read.abortHandler = (): void => {
+          const abortedWhileActive = activeRead === read;
           removeQueuedRead(read);
-          rejectRead(read, new DatabaseReadAbortedError());
+          if (abortedWhileActive) {
+            activeRead = null;
+          }
+          const error = new DatabaseReadAbortedError();
+          rejectRead(read, error);
+          if (abortedWhileActive) {
+            replaceWorker(error);
+          }
           scheduleDispatch();
         };
         context.signal.addEventListener("abort", read.abortHandler, {
