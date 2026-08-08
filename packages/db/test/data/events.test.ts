@@ -1273,6 +1273,16 @@ describe("events", () => {
     expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(1);
   });
 
+  it("batches latest goal lookups above the SQLite variable limit", () => {
+    const { db } = setup();
+    const threadIds = Array.from(
+      { length: 32_767 },
+      (_, index) => `thr_missing_goal_${index}`,
+    );
+
+    expect(listLatestGoalEventRowsByThreadIds(db, { threadIds })).toEqual([]);
+  });
+
   it("lists only open accepted turn inputs after the latest interruption", () => {
     const { db, project, thread } = setup();
     const otherThread = createThread(db, noopNotifier, {
@@ -1378,6 +1388,16 @@ describe("events", () => {
     expect(rowsByThreadId.get(thread.id)?.sequence).toBe(1);
     expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(1);
     expect(rowsByThreadId.size).toBe(2);
+  });
+
+  it("batches client turn request keys above the SQLite variable limit", () => {
+    const { db } = setup();
+    const keys = Array.from({ length: 16_383 }, (_, index) => ({
+      requestId: "creq_23456789ab",
+      threadId: `thr_missing_request_${index}`,
+    }));
+
+    expect(listStoredClientTurnRequestRowsByKeys(db, { keys })).toEqual([]);
   });
 
   it("lists client turn request ids in range with a storage predicate", () => {
@@ -3555,6 +3575,72 @@ describe("events", () => {
       activeBackgroundAgentCount: 2,
       activeBackgroundCommandCount: 1,
     });
+  });
+
+  it("chunks thread IDs before SQLite reaches its variable limit", () => {
+    const { db } = setup();
+    const threadIds = Array.from(
+      { length: 16_378 },
+      (_, index) => `thr_missing_${index}`,
+    );
+
+    expect(
+      listActiveBackgroundTaskCountsByThreadIds(db, { threadIds }),
+    ).toEqual([]);
+  });
+
+  it("returns the same counts from chunked and unchunked thread IDs", () => {
+    const { db, project, thread } = setup();
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const taskData = (itemId: string, taskType: string) =>
+      JSON.stringify({
+        item: {
+          id: itemId,
+          type: "backgroundTask",
+          taskType,
+          description: "fixture background task",
+          status: "pending",
+          taskStatus: "running",
+          skipTranscript: false,
+        },
+      });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:workflow",
+        itemKind: "backgroundTask",
+        data: taskData("task:workflow", LOCAL_WORKFLOW_TASK_TYPE),
+      },
+      {
+        threadId: otherThread.id,
+        sequence: 1,
+        scope: turnScope("turn-2"),
+        type: "item/started",
+        itemId: "task:command",
+        itemKind: "backgroundTask",
+        data: taskData("task:command", LOCAL_BASH_TASK_TYPE),
+      },
+    ]);
+
+    const unchunkedRows = listActiveBackgroundTaskCountsByThreadIds(db, {
+      threadIds: [thread.id, otherThread.id],
+    });
+    const missingThreadIds = Array.from(
+      { length: 16_376 },
+      (_, index) => `thr_missing_${index}`,
+    );
+    const chunkedRows = listActiveBackgroundTaskCountsByThreadIds(db, {
+      threadIds: [thread.id, ...missingThreadIds, otherThread.id],
+    });
+
+    expect(chunkedRows).toEqual(unchunkedRows);
   });
 
   it("lists the latest lifecycle row per open backgroundTask item on a host", () => {
