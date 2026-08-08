@@ -37,7 +37,7 @@ import type {
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelFileTab";
 import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
-import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/GitDiffCard";
+import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/git-diff-options";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
 import {
@@ -82,16 +82,19 @@ import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { TabPill } from "@/components/ui/tab-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import {
+  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
+  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
+} from "./threadSecondaryPanelLayout";
+export {
+  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
+  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
+} from "./threadSecondaryPanelLayout";
 export type {
   GitDiffDisplayMode,
   GitDiffSelectionOption,
 } from "./GitDiffToolbar";
 export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
-
-// Shared with the split-workspace host's empty-state panel, which must resize
-// within the same bounds as the real panel it stands in for.
-export const THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT = 24;
-export const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
 
 export function isSecondaryPanelLayoutTransition(
   propertyName: string,

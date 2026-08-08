@@ -1,15 +1,10 @@
-import { WorkerPoolContextProvider } from "@pierre/diffs/react";
-import type { ReactNode } from "react";
-import {
-  createDiffWorker,
-  getDiffWorkerPoolSize,
-} from "@/lib/diff-worker-pool";
+import { lazy, Suspense, type ReactNode } from "react";
 
-const WORKER_POOL_OPTIONS = {
-  workerFactory: createDiffWorker,
-  poolSize: getDiffWorkerPoolSize(),
-};
-const HIGHLIGHTER_OPTIONS = {};
+const WorkerPoolProviderImpl = lazy(() =>
+  import("./ThreadDetailWorkerPoolProviderImpl").then((module) => ({
+    default: module.ThreadDetailWorkerPoolProvider,
+  })),
+);
 
 export function ThreadDetailWorkerPoolProvider({
   children,
@@ -20,11 +15,8 @@ export function ThreadDetailWorkerPoolProvider({
     return children;
   }
   return (
-    <WorkerPoolContextProvider
-      poolOptions={WORKER_POOL_OPTIONS}
-      highlighterOptions={HIGHLIGHTER_OPTIONS}
-    >
-      {children}
-    </WorkerPoolContextProvider>
+    <Suspense fallback={children}>
+      <WorkerPoolProviderImpl>{children}</WorkerPoolProviderImpl>
+    </Suspense>
   );
 }

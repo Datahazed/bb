@@ -12,6 +12,8 @@ describe("SplitThreadArea stories", () => {
   it.each(["light", "dark"] as const)(
     "renders two populated panes and follows focus in the %s theme",
     async (theme) => {
+      await import("@/components/thread/timeline/ThreadTimelineRows");
+
       const view = render(
         <div className={theme}>
           <MemoryRouter>
@@ -42,12 +44,12 @@ describe("SplitThreadArea stories", () => {
       expect(view.getByText("Fix Thread Drag Sync")).toBeTruthy();
       expect(view.getByText("Refine split styling")).toBeTruthy();
       expect(
-        view.getByText(
+        await view.findByText(
           "When I drag threads between sections, the source row sometimes stays faded after the drop.",
         ),
       ).toBeTruthy();
       expect(
-        view.getByText(
+        await view.findByText(
           "Make the divider thinner, keep the inactive timeline readable, and let the header carry focus.",
         ),
       ).toBeTruthy();

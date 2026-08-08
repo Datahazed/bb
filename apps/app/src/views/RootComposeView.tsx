@@ -7,7 +7,6 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
@@ -233,10 +232,7 @@ import {
   resolveEnvironmentOpenContext,
   resolveThreadWorkspacePreviewRootPath,
 } from "./thread-detail/threadWorkspaceOpenPath";
-import {
-  createDiffWorker,
-  getDiffWorkerPoolSize,
-} from "@/lib/diff-worker-pool";
+import { ThreadDetailWorkerPoolProvider } from "./thread-detail/ThreadDetailWorkerPoolProvider";
 import {
   useAppCommandHandler,
   useAppCommandShortcut,
@@ -269,12 +265,6 @@ const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
   "min-h-full flex-1 items-center justify-center pb-12";
 const ROOT_COMPOSE_FIXED_PANEL_STATE_ID = "root-compose";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
-const FILE_PREVIEW_WORKER_POOL_OPTIONS = {
-  workerFactory: createDiffWorker,
-  poolSize: getDiffWorkerPoolSize(),
-};
-const FILE_PREVIEW_HIGHLIGHTER_OPTIONS = {};
-
 type ProjectSelectionChangeHandler = NewThreadProjectConfig["onChange"];
 type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
 type NullableSecondaryPanelChangeHandler = (
@@ -787,12 +777,9 @@ export function RootComposeRoute() {
   }
 
   return (
-    <WorkerPoolContextProvider
-      poolOptions={FILE_PREVIEW_WORKER_POOL_OPTIONS}
-      highlighterOptions={FILE_PREVIEW_HIGHLIGHTER_OPTIONS}
-    >
+    <ThreadDetailWorkerPoolProvider>
       <RootComposeView />
-    </WorkerPoolContextProvider>
+    </ThreadDetailWorkerPoolProvider>
   );
 }
 

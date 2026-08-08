@@ -13,7 +13,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
-import { ThreadTimelineRows } from "./ThreadTimelineRows.js";
+import { ThreadTimelineRows } from "./LazyThreadTimelineRows.js";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows.js";
 import { TimelineStatusIndicator } from "./TimelineStatusIndicator.js";
 import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";

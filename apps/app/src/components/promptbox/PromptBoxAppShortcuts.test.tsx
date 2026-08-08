@@ -12,7 +12,7 @@ import {
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
-} from "./PromptBoxInternal";
+} from "./PromptBoxInternalImpl";
 
 const testState = vi.hoisted(() => ({
   calls: [] as string[],

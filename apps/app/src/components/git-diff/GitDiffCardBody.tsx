@@ -1,6 +1,8 @@
 import {
   type CSSProperties,
   type RefCallback,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -13,7 +15,6 @@ import type {
   SelectedLineRange,
   SelectionSide,
 } from "@pierre/diffs";
-import { FileDiff as DiffView } from "@pierre/diffs/react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
 import { usePierreLineSelectionActions } from "./PierreLineSelectionActions.js";
@@ -32,6 +33,12 @@ import {
   type GitDiffFileChangeKind,
   type ParsedGitDiffFile,
 } from "./git-diff-parsing";
+
+const LazyPierreDiffView = lazy(() =>
+  import("./PierreDiffView").then((module) => ({
+    default: module.PierreDiffView,
+  })),
+);
 
 /**
  * One side of a diff file resolved for the card. `text` carries UTF-8 contents
@@ -1174,11 +1181,13 @@ function GitDiffCardRawDiffBody({
       onPointerUpCapture={lineSelectionActions.onPointerUpCapture}
     >
       <div className="w-full max-w-full" style={GIT_DIFF_CARD_VIEW_STYLE}>
-        <DiffView
-          fileDiff={fileDiff}
-          options={options}
-          selectedLines={lineSelectionActions.selectedRange}
-        />
+        <Suspense fallback={<GitDiffCardBodySkeleton />}>
+          <LazyPierreDiffView
+            fileDiff={fileDiff}
+            options={options}
+            selectedLines={lineSelectionActions.selectedRange}
+          />
+        </Suspense>
       </div>
       {lineSelectionActions.menu}
     </div>

@@ -33,7 +33,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
-} from "./PromptBoxInternal";
+} from "./PromptBoxInternalImpl";
 
 // ProseMirror waits this long before it replays a swallowed iOS Enter.
 const IOS_ENTER_REPLAY_MS = 200;

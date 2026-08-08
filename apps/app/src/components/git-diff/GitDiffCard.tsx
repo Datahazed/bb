@@ -28,13 +28,7 @@ export type {
   RequestDiffFileContents,
 } from "./GitDiffCardBody";
 
-export const GIT_DIFF_VIEW_BASE_OPTIONS = {
-  overflow: "scroll",
-  disableFileHeader: false,
-  // Reveal 30 unchanged lines per expand-up / expand-down click. Library
-  // default is 100 — too aggressive for our compact diff cards.
-  expansionLineCount: 30,
-} as const;
+export { GIT_DIFF_VIEW_BASE_OPTIONS } from "./git-diff-options";
 
 export interface GitDiffCardProps {
   fileDiff: ParsedGitDiffFile;

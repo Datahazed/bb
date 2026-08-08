@@ -57,7 +57,7 @@ import {
   type PromptBoxHandle,
   type PromptVoiceConfig,
   type TypeaheadConfig,
-} from "./PromptBoxInternal";
+} from "./PromptBoxInternalImpl";
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,

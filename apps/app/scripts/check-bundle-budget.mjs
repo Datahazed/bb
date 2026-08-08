@@ -32,54 +32,104 @@ const budget = JSON.parse(fs.readFileSync(budgetPath, "utf8"));
 
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
 const failures = [];
+const minPrecompressBytes = 1024;
 
-// A boot chunk with no .br file would otherwise weigh zero against the
-// compressed budget, so an unrun precompression step could hide real growth.
-// Treat it as an error rather than guessing a size.
-const missingBrotli = [];
-let bootBytes = 0;
-let bootBrotliBytes = 0;
-for (const chunk of stats.bootChunks) {
-  bootBytes += chunk.bytes;
-  const brotliPath = path.join(distDir, `${chunk.fileName}.br`);
-  if (fs.existsSync(brotliPath)) {
-    bootBrotliBytes += fs.statSync(brotliPath).size;
-  } else {
-    missingBrotli.push(chunk.fileName);
+// A chunk with no .br file would otherwise weigh zero against the compressed
+// budget. The precompressor deliberately leaves files below 1 KB untouched,
+// so count their full size and fail only when a larger compressed file is gone.
+const missingBrotli = new Set();
+const measureChunks = (chunks) => {
+  let bytes = 0;
+  let brotliBytes = 0;
+  for (const chunk of chunks) {
+    bytes += chunk.bytes;
+    const brotliPath = path.join(distDir, `${chunk.fileName}.br`);
+    if (fs.existsSync(brotliPath)) {
+      brotliBytes += fs.statSync(brotliPath).size;
+    } else if (chunk.bytes < minPrecompressBytes) {
+      brotliBytes += chunk.bytes;
+    } else {
+      missingBrotli.add(chunk.fileName);
+    }
   }
-}
+  return { bytes, brotliBytes };
+};
 
-const forbidden = new Set(budget.forbiddenBootPackages);
-const offenders = new Map();
-for (const chunk of stats.bootChunks) {
-  for (const pkg of chunk.packages) {
-    if (!forbidden.has(pkg)) continue;
-    if (!offenders.has(pkg)) offenders.set(pkg, []);
-    offenders.get(pkg).push(chunk.fileName);
+const bootPayload = measureChunks(stats.bootChunks);
+const workspaceRoutePayload = measureChunks(stats.workspaceRouteChunks);
+
+const findForbiddenPackages = (chunks, forbiddenPackages) => {
+  const forbidden = new Set(forbiddenPackages);
+  const offenders = new Map();
+  for (const chunk of chunks) {
+    for (const pkg of chunk.packages) {
+      if (!forbidden.has(pkg)) continue;
+      if (!offenders.has(pkg)) offenders.set(pkg, []);
+      offenders.get(pkg).push(chunk.fileName);
+    }
   }
-}
+  return offenders;
+};
 
-console.log(`boot payload: ${kb(bootBytes)} raw / ${kb(bootBrotliBytes)} brotli`);
-console.log(`  budget:     ${kb(budget.maxBootBytes)} raw / ${kb(budget.maxBootBrotliBytes)} brotli`);
+const bootOffenders = findForbiddenPackages(
+  stats.bootChunks,
+  budget.forbiddenBootPackages,
+);
+const workspaceRouteOffenders = findForbiddenPackages(
+  stats.workspaceRouteChunks,
+  budget.forbiddenWorkspaceRoutePackages,
+);
+
+console.log(
+  `boot payload: ${kb(bootPayload.bytes)} raw / ${kb(bootPayload.brotliBytes)} brotli`,
+);
+console.log(
+  `  budget:     ${kb(budget.maxBootBytes)} raw / ${kb(budget.maxBootBrotliBytes)} brotli`,
+);
 console.log(`  chunks:     ${stats.bootChunks.length}`);
+console.log(
+  `workspace route: ${kb(workspaceRoutePayload.bytes)} raw / ${kb(workspaceRoutePayload.brotliBytes)} brotli`,
+);
+console.log(`  chunks:          ${stats.workspaceRouteChunks.length}`);
+console.log(
+  `checkout chunk:  ${kb(stats.workspaceCheckoutDisplayChunk.bytes)} raw`,
+);
+console.log(
+  `  budget:        ${kb(budget.maxWorkspaceCheckoutDisplayChunkBytes)} raw`,
+);
 
-if (missingBrotli.length > 0) {
+if (missingBrotli.size > 0) {
   failures.push(
-    `${missingBrotli.length} boot chunk(s) have no .br file, so the compressed total is understated: ${missingBrotli.join(", ")}. Run scripts/precompress-app-dist.mjs.`,
+    `${missingBrotli.size} measured chunk(s) have no .br file, so the compressed total is understated: ${[...missingBrotli].join(", ")}. Run scripts/precompress-app-dist.mjs.`,
   );
 }
-if (bootBytes > budget.maxBootBytes) {
+if (bootPayload.bytes > budget.maxBootBytes) {
   failures.push(
-    `boot payload is ${kb(bootBytes)}, over the ${kb(budget.maxBootBytes)} raw budget by ${kb(bootBytes - budget.maxBootBytes)}.`,
+    `boot payload is ${kb(bootPayload.bytes)}, over the ${kb(budget.maxBootBytes)} raw budget by ${kb(bootPayload.bytes - budget.maxBootBytes)}.`,
   );
 }
-if (bootBrotliBytes > budget.maxBootBrotliBytes) {
+if (bootPayload.brotliBytes > budget.maxBootBrotliBytes) {
   failures.push(
-    `boot payload is ${kb(bootBrotliBytes)} brotli, over the ${kb(budget.maxBootBrotliBytes)} budget by ${kb(bootBrotliBytes - budget.maxBootBrotliBytes)}.`,
+    `boot payload is ${kb(bootPayload.brotliBytes)} brotli, over the ${kb(budget.maxBootBrotliBytes)} budget by ${kb(bootPayload.brotliBytes - budget.maxBootBrotliBytes)}.`,
   );
 }
-for (const [pkg, chunks] of offenders) {
-  failures.push(`${pkg} is in the boot payload (${chunks.join(", ")}). It must load on demand.`);
+if (
+  stats.workspaceCheckoutDisplayChunk.bytes >
+  budget.maxWorkspaceCheckoutDisplayChunkBytes
+) {
+  failures.push(
+    `workspace checkout display chunk is ${kb(stats.workspaceCheckoutDisplayChunk.bytes)}, over the ${kb(budget.maxWorkspaceCheckoutDisplayChunkBytes)} raw budget.`,
+  );
+}
+for (const [pkg, chunks] of bootOffenders) {
+  failures.push(
+    `${pkg} is in the boot payload (${chunks.join(", ")}). It must load on demand.`,
+  );
+}
+for (const [pkg, chunks] of workspaceRouteOffenders) {
+  failures.push(
+    `${pkg} is in the workspace route preload (${chunks.join(", ")}). It must load on demand.`,
+  );
 }
 
 if (failures.length > 0) {

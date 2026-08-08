@@ -1,4 +1,4 @@
-import { useCallback, useEffect, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, type ReactNode } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
@@ -23,7 +23,6 @@ import type {
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { DiffFilesPanel } from "./git-diff/DiffFilesPanel";
 import { clearDiffFileCardStates } from "./git-diff/diffFilesStore";
 import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";
 import { useDiffFileContentsRequester } from "./git-diff/useDiffFileContentsRequester";
@@ -32,6 +31,12 @@ import {
   SecondaryPanelFilePreview,
   ThreadStorageFilePreview,
 } from "./ThreadStorageFilePreview";
+
+const LazyDiffFilesPanel = lazy(() =>
+  import("./git-diff/DiffFilesPanel").then((module) => ({
+    default: module.DiffFilesPanel,
+  })),
+);
 
 const GIT_DIFF_SKELETON_FILE_COUNT = 3;
 const PANEL_SCROLL_SLOT_CLASS =
@@ -277,23 +282,25 @@ export function GitDiffTabContent({
   }
 
   return (
-    <DiffFilesPanel
-      environmentId={environmentId}
-      target={target}
-      diffIdentity={diffIdentity}
-      files={diffFilesResponse.files}
-      initialPatches={diffFilesResponse.initialPatches}
-      filesUpdatedAt={diffFilesUpdatedAt}
-      diffViewOptions={gitDiffViewOptions}
-      filePathRoot={workspaceRootPath}
-      isPlaceholderData={isDiffFilesPlaceholder}
-      scrollToPath={pendingGitDiffScrollPath}
-      onScrolledToPath={clearPendingGitDiffScrollPath}
-      onOpenFileInEditor={onOpenFileInEditor}
-      onOpenFilePreview={onOpenFilePreview}
-      onRequestFileContents={onRequestFileContents}
-      onSelectionAddToChat={onSelectionAddToChat}
-    />
+    <Suspense fallback={<ThreadDiffSkeleton />}>
+      <LazyDiffFilesPanel
+        environmentId={environmentId}
+        target={target}
+        diffIdentity={diffIdentity}
+        files={diffFilesResponse.files}
+        initialPatches={diffFilesResponse.initialPatches}
+        filesUpdatedAt={diffFilesUpdatedAt}
+        diffViewOptions={gitDiffViewOptions}
+        filePathRoot={workspaceRootPath}
+        isPlaceholderData={isDiffFilesPlaceholder}
+        scrollToPath={pendingGitDiffScrollPath}
+        onScrolledToPath={clearPendingGitDiffScrollPath}
+        onOpenFileInEditor={onOpenFileInEditor}
+        onOpenFilePreview={onOpenFilePreview}
+        onRequestFileContents={onRequestFileContents}
+        onSelectionAddToChat={onSelectionAddToChat}
+      />
+    </Suspense>
   );
 }
 

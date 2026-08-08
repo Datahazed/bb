@@ -15,6 +15,9 @@ export interface BundleBootChunk {
 export interface BundleStats {
   entry: string;
   bootChunks: BundleBootChunk[];
+  workspaceRouteEntry: string;
+  workspaceRouteChunks: BundleBootChunk[];
+  workspaceCheckoutDisplayChunk: BundleBootChunk;
 }
 
 /**
@@ -35,33 +38,86 @@ export function bundleStats(): Plugin {
       );
       if (entry === undefined || entry.type !== "chunk") return;
 
-      const bootFileNames = new Set<string>();
-      const walk = (fileName: string): void => {
-        if (bootFileNames.has(fileName)) return;
-        bootFileNames.add(fileName);
-        const chunk = bundle[fileName];
-        if (chunk === undefined || chunk.type !== "chunk") return;
-        for (const imported of chunk.imports) walk(imported);
+      const collectStaticChunkClosure = (rootFileName: string): Set<string> => {
+        const fileNames = new Set<string>();
+        const walk = (fileName: string): void => {
+          if (fileNames.has(fileName)) return;
+          fileNames.add(fileName);
+          const chunk = bundle[fileName];
+          if (chunk === undefined || chunk.type !== "chunk") return;
+          for (const imported of chunk.imports) walk(imported);
+        };
+        walk(rootFileName);
+        return fileNames;
       };
-      walk(entry.fileName);
 
-      const bootChunks: BundleBootChunk[] = [];
-      for (const fileName of [...bootFileNames].sort()) {
-        const chunk = bundle[fileName];
-        if (chunk === undefined || chunk.type !== "chunk") continue;
-        const packages = new Set<string>();
-        for (const moduleId of chunk.moduleIds ?? []) {
-          const name = packageNameOf(moduleId);
-          if (name !== null) packages.add(name);
+      const describeChunks = (fileNames: Set<string>): BundleBootChunk[] => {
+        const chunks: BundleBootChunk[] = [];
+        for (const fileName of [...fileNames].sort()) {
+          const chunk = bundle[fileName];
+          if (chunk === undefined || chunk.type !== "chunk") continue;
+          const packages = new Set<string>();
+          for (const moduleId of chunk.moduleIds ?? []) {
+            const name = packageNameOf(moduleId);
+            if (name !== null) packages.add(name);
+          }
+          chunks.push({
+            fileName,
+            bytes: Buffer.byteLength(chunk.code),
+            packages: [...packages].sort(),
+          });
         }
-        bootChunks.push({
-          fileName,
-          bytes: Buffer.byteLength(chunk.code),
-          packages: [...packages].sort(),
-        });
+        return chunks;
+      };
+
+      const bootChunks = describeChunks(
+        collectStaticChunkClosure(entry.fileName),
+      );
+      const workspaceRouteEntry = Object.values(bundle).find(
+        (output) =>
+          output.type === "chunk" &&
+          output.facadeModuleId
+            ?.replaceAll("\\", "/")
+            .endsWith("/src/views/SplitWorkspaceRoute.tsx"),
+      );
+      if (
+        workspaceRouteEntry === undefined ||
+        workspaceRouteEntry.type !== "chunk"
+      ) {
+        this.error("Could not find the SplitWorkspaceRoute build entry");
+      }
+      const workspaceRouteChunks = describeChunks(
+        collectStaticChunkClosure(workspaceRouteEntry.fileName),
+      );
+      const workspaceCheckoutDisplayOutput = Object.values(bundle).find(
+        (output) =>
+          output.type === "chunk" &&
+          output.moduleIds.some((moduleId) =>
+            moduleId
+              .replaceAll("\\", "/")
+              .endsWith("/src/lib/workspace-checkout-display.ts"),
+          ),
+      );
+      if (
+        workspaceCheckoutDisplayOutput === undefined ||
+        workspaceCheckoutDisplayOutput.type !== "chunk"
+      ) {
+        this.error("Could not find the workspace checkout display chunk");
+      }
+      const workspaceCheckoutDisplayChunk = describeChunks(
+        new Set([workspaceCheckoutDisplayOutput.fileName]),
+      )[0];
+      if (workspaceCheckoutDisplayChunk === undefined) {
+        this.error("Could not describe the workspace checkout display chunk");
       }
 
-      const stats: BundleStats = { entry: entry.fileName, bootChunks };
+      const stats: BundleStats = {
+        entry: entry.fileName,
+        bootChunks,
+        workspaceRouteEntry: workspaceRouteEntry.fileName,
+        workspaceRouteChunks,
+        workspaceCheckoutDisplayChunk,
+      };
       const target = resolve(appDir, "bundle-stats.json");
       await mkdir(dirname(target), { recursive: true });
       await writeFile(target, `${JSON.stringify(stats, null, 2)}\n`);
@@ -76,6 +132,7 @@ function packageNameOf(moduleId: string): string | null {
   const segments = moduleId.slice(marker + "node_modules/".length).split("/");
   const [first, second] = segments;
   if (first === undefined) return null;
-  if (first.startsWith("@")) return second === undefined ? null : `${first}/${second}`;
+  if (first.startsWith("@"))
+    return second === undefined ? null : `${first}/${second}`;
   return first;
 }

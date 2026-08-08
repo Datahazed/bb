@@ -1,5 +1,5 @@
 export { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
-export { ThreadTimelineRows } from "./ThreadTimelineRows.js";
+export { ThreadTimelineRows } from "./LazyThreadTimelineRows.js";
 export type { ThreadTimelineRowsProps } from "./ThreadTimelineRows.js";
 export {
   ThreadTimelinePanelContent,
