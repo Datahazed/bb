@@ -4,7 +4,6 @@ import {
   countNonDeletedAssignedChildThreads,
   getEnvironment,
   getThreadSectionById,
-  listThreadsWithPendingInteractionState,
   markThreadDeleted,
   searchThreadsWithPendingInteractionState,
   updateThread,
@@ -195,7 +194,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   });
   const routes = publicApiRoutes.threads;
 
-  get(routes.list, (context, query) => {
+  get(routes.list, async (context, query) => {
     const limit = parseOptionalInteger(query.limit, "limit");
     if (limit !== undefined && limit <= 0) {
       throw new ApiError(400, "invalid_request", "limit must be positive");
@@ -217,7 +216,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if (query.sectionId) {
       requireThreadSection(deps, query.sectionId);
     }
-    const threads = listThreadsWithPendingInteractionState(deps.db, {
+    const threadEntries = await deps.databaseReads.listThreadEntries({
       ...(query.projectId ? { projectId: query.projectId } : {}),
       ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
       ...(query.sourceThreadId ? { sourceThreadId: query.sourceThreadId } : {}),
@@ -234,9 +233,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       ...(limit !== undefined ? { limit } : {}),
       ...(offset !== undefined ? { offset } : {}),
     });
-    return context.json(
-      toThreadListEntryResponses(deps, { threads }) satisfies ThreadListEntry[],
-    );
+    return context.json(threadEntries satisfies ThreadListEntry[]);
   });
 
   get(routes.search, (context, query) => {

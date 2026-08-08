@@ -8,6 +8,7 @@ import { defaultFeatureFlags, type HostType } from "@bb/domain";
 import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
+import { createDirectDatabaseReadService } from "../../src/services/database/database-read-service.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
 import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import {
@@ -98,6 +99,7 @@ export async function createTestAppHarness(
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
   const db = initDb(":memory:");
   const hub = new NotificationHubImpl();
+  const databaseReads = createDirectDatabaseReadService({ db, hub });
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const lifecycleDedupers = createLifecycleDedupers();
@@ -179,6 +181,7 @@ export async function createTestAppHarness(
     appVersion,
     bbAppManagedConfig,
     config,
+    databaseReads,
     db,
     hub,
     lifecycleDedupers,

@@ -501,6 +501,13 @@ export class NotificationHub implements DbNotifier {
     return sessionId;
   }
 
+  listDaemonSessions(): Array<{ hostId: string; sessionId: string }> {
+    return [...this.daemonSessionIdsByHost.entries()].flatMap(
+      ([hostId, sessionId]) =>
+        this.daemonSessions.has(sessionId) ? [{ hostId, sessionId }] : [],
+    );
+  }
+
   getDaemonPlatformForHost(hostId: string): HostPlatform | null {
     const sessionId = this.daemonSessionIdsByHost.get(hostId);
     if (!sessionId) {

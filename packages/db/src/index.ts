@@ -1,4 +1,4 @@
-export { createConnection } from "./connection.js";
+export { createConnection, createReadOnlyConnection } from "./connection.js";
 export type {
   CreateConnectionOptions,
   DbConnection,

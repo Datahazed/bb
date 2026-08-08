@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   createConnection,
+  createReadOnlyConnection,
   type SlowDbQueryLogger,
   type SlowDbQueryLogFields,
 } from "../src/connection.js";
@@ -123,5 +127,24 @@ describe("createConnection", () => {
     expect(debugLog.fields.sql.endsWith("...")).toBe(true);
 
     db.$client.close();
+  });
+});
+
+describe("createReadOnlyConnection", () => {
+  it("opens an existing database without write access", () => {
+    const dataDir = mkdtempSync(
+      join(tmpdir(), "bb-read-only-connection-test-"),
+    );
+    const databasePath = join(dataDir, "bb.db");
+    const writer = createConnection(databasePath);
+    migrate(writer);
+    writer.$client.close();
+
+    const reader = createReadOnlyConnection(databasePath);
+    expect(() =>
+      reader.$client.prepare("CREATE TABLE forbidden (id TEXT)").run(),
+    ).toThrow(/readonly/u);
+    reader.$client.close();
+    rmSync(dataDir, { force: true, recursive: true });
   });
 });

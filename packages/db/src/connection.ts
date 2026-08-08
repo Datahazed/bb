@@ -175,3 +175,19 @@ export function createConnection(
 
   return db;
 }
+
+export function createReadOnlyConnection(
+  dbPath: string,
+  options: CreateConnectionOptions = {},
+): DbConnection {
+  const sqlite = new Database(dbPath, {
+    fileMustExist: true,
+    readonly: true,
+  });
+
+  sqlite.pragma("foreign_keys = ON");
+  sqlite.pragma("query_only = ON");
+  instrumentSqliteClient(sqlite, options);
+
+  return drizzle({ client: sqlite, schema });
+}

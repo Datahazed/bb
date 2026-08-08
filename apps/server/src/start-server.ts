@@ -9,6 +9,7 @@ import { createLogger } from "@bb/logger";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
 import { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
+import { createWorkerDatabaseReadService } from "./services/database/database-read-service.js";
 import { createMachineAuthService } from "./services/machine-auth.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
 import { SkillTreeRegistry } from "./services/skills/injected-skills.js";
@@ -51,6 +52,11 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
   const hub = new NotificationHub();
+  const databaseReads = createWorkerDatabaseReadService({
+    databasePath: serverConfig.databasePath,
+    hub,
+    logger,
+  });
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const lifecycleDedupers = createLifecycleDedupers();
@@ -141,6 +147,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       appVersion,
       bbAppManagedConfig,
       config: runtimeConfig,
+      databaseReads,
       db,
       hub,
       lifecycleDedupers,
@@ -224,6 +231,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       await pluginService.stop().catch((error: unknown) => {
         logger.warn({ err: error }, "Plugin shutdown failed");
       });
+      await databaseReads.close();
       const closeServer = new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {
