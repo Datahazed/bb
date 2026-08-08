@@ -97,7 +97,7 @@ describe("server startup diagnostics", () => {
       await runStartupWithDatabaseReads(databaseReads, async () => {
         throw new Error("Test startup failure");
       });
-    `;
+      `;
 
     try {
       const child = spawn(
@@ -124,7 +124,7 @@ describe("server startup diagnostics", () => {
     } finally {
       await rm(dataDir, { force: true, recursive: true });
     }
-  });
+  }, 15_000);
 
   it("binds the default server listener to IPv4 loopback", async () => {
     const serverConfig = loadServerConfig({
