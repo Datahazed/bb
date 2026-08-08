@@ -18,18 +18,17 @@ async function readServerPackageJson(): Promise<string> {
   return readFile(resolve(testDir, "../../package.json"), "utf8");
 }
 
-async function waitForChildExit(
-  child: ReturnType<typeof spawn>,
+async function waitWithTimeout<T>(
+  promise: Promise<T>,
   timeoutMs: number,
-): Promise<number | null> {
+  message: string,
+): Promise<T> {
   let timeout: NodeJS.Timeout | null = null;
   const result = await Promise.race([
-    once(child, "exit").then(
-      ([code]): { code: number | null; kind: "exit" } => ({
-        code: typeof code === "number" ? code : null,
-        kind: "exit",
-      }),
-    ),
+    promise.then((value): { kind: "result"; value: T } => ({
+      kind: "result",
+      value,
+    })),
     new Promise<{ kind: "timeout" }>((resolveTimeout) => {
       timeout = setTimeout(
         () => resolveTimeout({ kind: "timeout" }),
@@ -41,11 +40,17 @@ async function waitForChildExit(
     clearTimeout(timeout);
   }
   if (result.kind === "timeout") {
-    child.kill("SIGKILL");
-    await once(child, "exit");
-    throw new Error("The server startup failure kept the child process alive");
+    throw new Error(message);
   }
-  return result.code;
+  return result.value;
+}
+
+function waitForChildClose(
+  child: ReturnType<typeof spawn>,
+): Promise<number | null> {
+  return once(child, "close").then(([code]) =>
+    typeof code === "number" ? code : null,
+  );
 }
 
 describe("server startup diagnostics", () => {
@@ -94,13 +99,15 @@ describe("server startup diagnostics", () => {
         hub: new NotificationHub(),
         logger,
       });
+      process.stdout.write("worker-ready\\n");
       await runStartupWithDatabaseReads(databaseReads, async () => {
         throw new Error("Test startup failure");
       });
       `;
 
+    let child: ReturnType<typeof spawn> | null = null;
     try {
-      const child = spawn(
+      child = spawn(
         process.execPath,
         [
           "--conditions=source",
@@ -116,15 +123,46 @@ describe("server startup diagnostics", () => {
             ...process.env,
             BB_STARTUP_FAILURE_TEST_DATABASE_PATH: databasePath,
           },
-          stdio: "ignore",
+          stdio: ["ignore", "pipe", "ignore"],
         },
       );
+      if (child.stdout === null) {
+        throw new Error("The child process output is not available");
+      }
+      const childClose = waitForChildClose(child);
+      const workerReady = new Promise<void>((resolveReady) => {
+        child?.stdout?.on("data", (chunk: Buffer) => {
+          if (chunk.includes("worker-ready\n")) {
+            resolveReady();
+          }
+        });
+      });
 
-      await expect(waitForChildExit(child, 10_000)).resolves.toBe(1);
+      await waitWithTimeout(
+        workerReady,
+        25_000,
+        "The database worker did not become ready",
+      );
+      await expect(
+        waitWithTimeout(
+          childClose,
+          5_000,
+          "The server startup failure kept the child process alive",
+        ),
+      ).resolves.toBe(1);
     } finally {
+      if (
+        child !== null &&
+        child.exitCode === null &&
+        child.signalCode === null
+      ) {
+        const childClose = once(child, "close");
+        child.kill("SIGKILL");
+        await childClose;
+      }
       await rm(dataDir, { force: true, recursive: true });
     }
-  }, 15_000);
+  }, 35_000);
 
   it("binds the default server listener to IPv4 loopback", async () => {
     const serverConfig = loadServerConfig({

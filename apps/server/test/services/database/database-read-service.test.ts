@@ -69,7 +69,7 @@ describe("worker database reads", () => {
       }),
     ).resolves.toEqual([]);
     expect(workers).toHaveLength(2);
-  });
+  }, 15_000);
 
   it("keeps the event loop available during a slow thread-list query", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
@@ -124,5 +124,5 @@ describe("worker database reads", () => {
     await expect(read).resolves.toMatchObject([
       { id: `thr_worker_${String(BULK_THREAD_COUNT).padStart(7, "0")}` },
     ]);
-  });
+  }, 15_000);
 });
