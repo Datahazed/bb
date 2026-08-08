@@ -196,10 +196,24 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.list, async (context, query) => {
     const limit = parseOptionalInteger(query.limit, "limit");
+    if (limit !== undefined && !Number.isSafeInteger(limit)) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "limit must be a safe integer",
+      );
+    }
     if (limit !== undefined && limit <= 0) {
       throw new ApiError(400, "invalid_request", "limit must be positive");
     }
     const offset = parseOptionalInteger(query.offset, "offset");
+    if (offset !== undefined && !Number.isSafeInteger(offset)) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "offset must be a safe integer",
+      );
+    }
     if (offset !== undefined && offset < 0) {
       throw new ApiError(400, "invalid_request", "offset must be non-negative");
     }

@@ -7,29 +7,33 @@ import { threadChildOriginSchema, threadOriginKindSchema } from "@bb/domain";
 import type { ThreadListEntry } from "@bb/domain";
 import { z } from "zod";
 
+const listThreadsOptionsShape = {
+  archived: z.boolean().optional(),
+  childOrigin: threadChildOriginSchema.optional(),
+  hasParent: z.boolean().optional(),
+  includeHidden: z.boolean().optional(),
+  limit: z.number().int().nonnegative().optional(),
+  offset: z.number().int().nonnegative().optional(),
+  originKind: threadOriginKindSchema.optional(),
+  originPluginId: z.string().optional(),
+  parentThreadId: z.string().optional(),
+  projectId: z.string().optional(),
+  sectionId: z.string().optional(),
+  sourceThreadId: z.string().optional(),
+  unsectioned: z.boolean().optional(),
+} satisfies Record<keyof ListThreadsOptions, z.ZodType>;
+
 const listThreadsOptionsSchema = z
-  .object({
-    archived: z.boolean().optional(),
-    childOrigin: threadChildOriginSchema.optional(),
-    hasParent: z.boolean().optional(),
-    includeHidden: z.boolean().optional(),
-    limit: z.number().int().nonnegative().optional(),
-    offset: z.number().int().nonnegative().optional(),
-    originKind: threadOriginKindSchema.optional(),
-    originPluginId: z.string().optional(),
-    parentThreadId: z.string().optional(),
-    projectId: z.string().optional(),
-    sectionId: z.string().optional(),
-    sourceThreadId: z.string().optional(),
-    unsectioned: z.boolean().optional(),
-  })
+  .object(listThreadsOptionsShape)
   .strict() satisfies z.ZodType<ListThreadsOptions>;
 
+const listThreadsForProjectsOptionsShape = {
+  archived: z.boolean().optional(),
+  projectIds: z.array(z.string()),
+} satisfies Record<keyof ListThreadsForProjectsOptions, z.ZodType>;
+
 const listThreadsForProjectsOptionsSchema = z
-  .object({
-    archived: z.boolean().optional(),
-    projectIds: z.array(z.string()),
-  })
+  .object(listThreadsForProjectsOptionsShape)
   .strict() satisfies z.ZodType<ListThreadsForProjectsOptions>;
 
 const slowDbQueryLogFieldsSchema = z.object({
@@ -90,6 +94,12 @@ export type DatabaseReadWorkerRequest = z.infer<
   typeof databaseReadWorkerRequestSchema
 >;
 
+export const databaseReadWorkerRequestIdSchema = z
+  .object({
+    id: z.number().int().nonnegative(),
+  })
+  .passthrough();
+
 const workerErrorSchema = z
   .object({
     message: z.string(),
@@ -119,21 +129,14 @@ export const databaseReadWorkerMessageSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      droppedEntryCount: z.number().int().nonnegative(),
       id: z.number().int().nonnegative(),
       kind: z.literal("result"),
-      entries: z.array(z.unknown()),
+      entries: z.custom<ThreadListEntry[]>(Array.isArray),
     })
     .strict(),
 ]);
 
-type DatabaseReadWorkerMessageEnvelope = z.infer<
+export type DatabaseReadWorkerMessage = z.infer<
   typeof databaseReadWorkerMessageSchema
 >;
-
-export type DatabaseReadWorkerMessage =
-  | Exclude<DatabaseReadWorkerMessageEnvelope, { kind: "result" }>
-  | {
-      entries: ThreadListEntry[];
-      id: number;
-      kind: "result";
-    };

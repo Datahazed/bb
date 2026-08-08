@@ -6,8 +6,10 @@ import {
 } from "@bb/db";
 import { parentPort, workerData } from "node:worker_threads";
 import { toThreadListEntryResponses } from "../threads/thread-runtime-display.js";
+import { threadListEntrySchema, type ThreadListEntry } from "@bb/domain";
 import {
   databaseReadWorkerDataSchema,
+  databaseReadWorkerRequestIdSchema,
   databaseReadWorkerRequestSchema,
   type DatabaseReadWorkerMessage,
 } from "./database-read-worker-contract.js";
@@ -41,10 +43,18 @@ function serializeError(error: unknown): { message: string; stack?: string } {
   return { message: String(error) };
 }
 
+function isThreadListEntry(value: unknown): value is ThreadListEntry {
+  return threadListEntrySchema.safeParse(value).success;
+}
+
 port.on("message", (value: unknown) => {
-  let request;
+  const requestIdResult = databaseReadWorkerRequestIdSchema.safeParse(value);
+  if (!requestIdResult.success) {
+    throw new Error("The database read worker received an invalid request ID");
+  }
+  const requestId = requestIdResult.data.id;
   try {
-    request = databaseReadWorkerRequestSchema.parse(value);
+    const request = databaseReadWorkerRequestSchema.parse(value);
     const threads =
       request.operation === "listThreadEntries"
         ? listThreadsWithPendingInteractionState(db, request.options)
@@ -58,7 +68,7 @@ port.on("message", (value: unknown) => {
         session.sessionId,
       ]),
     );
-    const entries = toThreadListEntryResponses(
+    const rawEntries = toThreadListEntryResponses(
       {
         db,
         hub: {
@@ -69,16 +79,14 @@ port.on("message", (value: unknown) => {
       },
       { threads },
     );
+    const entries = rawEntries.filter(isThreadListEntry);
     port.postMessage({
+      droppedEntryCount: rawEntries.length - entries.length,
       entries,
       id: request.id,
       kind: "result",
     } satisfies DatabaseReadWorkerMessage);
   } catch (error) {
-    const requestId = request?.id;
-    if (requestId === undefined) {
-      throw error;
-    }
     port.postMessage({
       error: serializeError(error),
       id: requestId,

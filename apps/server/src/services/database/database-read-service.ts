@@ -7,7 +7,7 @@ import {
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
 } from "@bb/db";
-import { threadListEntrySchema, type ThreadListEntry } from "@bb/domain";
+import type { ThreadListEntry } from "@bb/domain";
 import { Worker } from "node:worker_threads";
 import { ApiError, ClientClosedRequestError } from "../../errors.js";
 import type { ServerLogger } from "../../types.js";
@@ -51,10 +51,6 @@ export class DatabaseReadAbortedError extends ClientClosedRequestError {
     super("The database read request stopped");
     this.name = "DatabaseReadAbortedError";
   }
-}
-
-function isThreadListEntry(value: unknown): value is ThreadListEntry {
-  return threadListEntrySchema.safeParse(value).success;
 }
 
 export class DatabaseReadUnavailableError extends ApiError {
@@ -290,18 +286,16 @@ export async function createWorkerDatabaseReadService(
         error.stack = message.error.stack;
         rejectRead(read, error);
       } else {
-        const entries: ThreadListEntry[] = [];
-        for (const [entryIndex, entry] of message.entries.entries()) {
-          if (!isThreadListEntry(entry)) {
-            args.logger.warn(
-              { entryIndex, requestId: message.id },
-              "Dropped an invalid thread entry from a database read worker result",
-            );
-            continue;
-          }
-          entries.push(entry);
+        if (message.droppedEntryCount > 0) {
+          args.logger.warn(
+            {
+              droppedEntryCount: message.droppedEntryCount,
+              requestId: message.id,
+            },
+            "Dropped an invalid thread entry from a database read worker result",
+          );
         }
-        resolveRead(read, entries);
+        resolveRead(read, message.entries);
       }
       scheduleDispatch();
     });
@@ -411,13 +405,23 @@ export async function createWorkerDatabaseReadService(
         resolve,
         settled: false,
         timeout: setTimeout(() => {
+          const timedOutWhileActive = activeRead === read;
           removeQueuedRead(read);
-          rejectRead(
-            read,
-            new DatabaseReadUnavailableError(
-              "The database read timed out. Try again later.",
-            ),
+          if (timedOutWhileActive) {
+            activeRead = null;
+          }
+          const error = new DatabaseReadUnavailableError(
+            "The database read timed out. Try again later.",
           );
+          rejectRead(read, error);
+          if (timedOutWhileActive && activeWorker !== null) {
+            const timedOutWorker = activeWorker;
+            timedOutWorker.failed = true;
+            timedOutWorker.rejectReady(error);
+            activeWorker = startWorker();
+            void activeWorker.ready.catch(() => {});
+            void timedOutWorker.worker.terminate();
+          }
           scheduleDispatch();
         }, requestTimeoutMs),
       };

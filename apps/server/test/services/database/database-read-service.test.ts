@@ -170,6 +170,29 @@ describe("worker database reads", () => {
     expect(workers).toHaveLength(2);
   }, 15_000);
 
+  it("rejects invalid options without restarting the worker", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    db = initDb(databasePath);
+    const workers: Worker[] = [];
+    databaseReads = await createWorkerDatabaseReadService({
+      databasePath,
+      hub: new NotificationHub(),
+      logger: testLogger,
+      onWorkerCreated(worker): void {
+        workers.push(worker);
+      },
+    });
+
+    await expect(
+      databaseReads.listThreadEntries({
+        limit: Number.MAX_SAFE_INTEGER + 1,
+      }),
+    ).rejects.toThrow();
+    await expect(databaseReads.listThreadEntries({})).resolves.toEqual([]);
+    expect(workers).toHaveLength(1);
+  }, 15_000);
+
   it("rejects a read that waits for a replacement when the service closes", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
     const databasePath = join(dataDir, "bb.db");
@@ -277,6 +300,59 @@ describe("worker database reads", () => {
     await expect(
       databaseReads.listThreadEntries({ projectId: "proj_personal" }),
     ).rejects.toBeInstanceOf(DatabaseReadUnavailableError);
+  }, 15_000);
+
+  it("replaces the worker when an active read exceeds its deadline", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "bb-database-read-worker-test-"));
+    const databasePath = join(dataDir, "bb.db");
+    db = initDb(databasePath);
+    db.$client.exec(`
+      WITH RECURSIVE thread_numbers(value) AS (
+        VALUES(1)
+        UNION ALL
+        SELECT value + 1
+        FROM thread_numbers
+        WHERE value < ${BULK_THREAD_COUNT}
+      )
+      INSERT INTO threads (
+        id,
+        project_id,
+        provider_id,
+        status,
+        latest_attention_at,
+        created_at,
+        updated_at,
+        visibility
+      )
+      SELECT
+        printf('thr_timeout_%07d', value),
+        'proj_personal',
+        'codex',
+        'idle',
+        0,
+        value,
+        value,
+        'visible'
+      FROM thread_numbers
+    `);
+    const workers: Worker[] = [];
+    databaseReads = await createWorkerDatabaseReadService({
+      databasePath,
+      hub: new NotificationHub(),
+      logger: testLogger,
+      onWorkerCreated(worker): void {
+        workers.push(worker);
+      },
+      requestTimeoutMs: 1_000,
+    });
+
+    await expect(
+      databaseReads.listThreadEntries({ projectId: "proj_personal" }),
+    ).rejects.toBeInstanceOf(DatabaseReadUnavailableError);
+    await expect(
+      databaseReads.listThreadEntries({ projectId: "proj_missing" }),
+    ).resolves.toEqual([]);
+    expect(workers).toHaveLength(2);
   }, 15_000);
 
   it("keeps the event loop available during a slow thread-list query", async () => {
