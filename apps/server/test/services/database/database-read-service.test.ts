@@ -374,12 +374,19 @@ describe("worker database reads", () => {
       FROM thread_numbers
     `);
     const workers: Worker[] = [];
+    let markReplacementReady!: () => void;
+    const replacementReady = new Promise<void>((resolve) => {
+      markReplacementReady = resolve;
+    });
     databaseReads = await createWorkerDatabaseReadService({
       databasePath,
       hub: new NotificationHub(),
       logger: testLogger,
       onWorkerCreated(worker): void {
         workers.push(worker);
+        if (workers.length === 2) {
+          worker.once("message", markReplacementReady);
+        }
       },
       requestTimeoutMs: 1_000,
     });
@@ -387,6 +394,7 @@ describe("worker database reads", () => {
     await expect(
       databaseReads.listThreadEntries({ projectId: "proj_personal" }),
     ).rejects.toBeInstanceOf(DatabaseReadTimeoutError);
+    await replacementReady;
     await expect(
       databaseReads.listThreadEntries({ projectId: "proj_missing" }),
     ).resolves.toEqual([]);
