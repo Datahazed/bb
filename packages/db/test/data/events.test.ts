@@ -1637,7 +1637,7 @@ describe("events", () => {
     expect(getActiveStoredTurnId(db, thread.id)).toBeNull();
   });
 
-  it("resets the latest provider thread id after an environment directory update", () => {
+  it("preserves the latest provider thread id after an environment directory update", () => {
     const { db, thread } = setup();
 
     appendStoredThreadEvent(db, noopNotifier, {
@@ -1668,6 +1668,7 @@ describe("events", () => {
         },
       },
     });
+    expect(getLastStoredProviderThreadId(db, thread.id)).toBe("provider_old");
     appendStoredThreadEvent(db, noopNotifier, {
       threadId: thread.id,
       scope: turnScope("turn_1"),
@@ -1678,7 +1679,7 @@ describe("events", () => {
         status: "completed",
       },
     });
-    expect(getLastStoredProviderThreadId(db, thread.id)).toBeNull();
+    expect(getLastStoredProviderThreadId(db, thread.id)).toBe("provider_old");
 
     appendStoredThreadEvent(db, noopNotifier, {
       threadId: thread.id,
