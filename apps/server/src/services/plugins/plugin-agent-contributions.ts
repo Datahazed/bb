@@ -65,7 +65,7 @@ export async function resolvePluginAgentConfiguration(args: {
 
 /**
  * Dynamic instruction providers from bb.agents.contributeInstructions,
- * resolved live per session start / turn submit.
+ * evaluated only while the runtime freezes a thread's initial instructions.
  */
 export function listPluginInstructionContributions(): Array<{
   pluginId: string;

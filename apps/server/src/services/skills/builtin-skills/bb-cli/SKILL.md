@@ -119,8 +119,11 @@ message agents, or inspect projects, providers, and environments.
 - Add `.bb/AGENTS.md` at a workspace root to inject repo-specific instructions
   into every thread that runs there. Track the workspace file with git so fresh
   managed worktrees include it.
-- bb appends data-dir instructions first, then workspace instructions, to the
-  thread system prompt for all providers when a provider session starts.
+- bb appends data-dir instructions first, then workspace instructions, before
+  the first provider session. The thread keeps that text for its lifetime.
+- Later file changes apply only to new threads. Threads from before this
+  storage feature freeze current files at their first resolution after upgrade.
+- The complete resolved instruction text has a 256 KiB UTF-8 limit.
 - Only the plural `AGENTS.md` is read, only from those exact locations (no
   parent-directory walk); an empty file is ignored. Run
   `bb guide agent-configuration` for details (it also covers project

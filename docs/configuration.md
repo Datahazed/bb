@@ -377,11 +377,13 @@ For repo-specific guidance, create `.bb/AGENTS.md` at the workspace root:
 <workspace>/.bb/AGENTS.md
 ```
 
-The file contents are appended to bb's standard agent instructions when a
-provider session starts, so the guidance applies regardless of which provider
-runs. When both files exist, `<dataDir>/AGENTS.md` is appended first and
-`<workspace>/.bb/AGENTS.md` second. An empty or whitespace-only file is treated
-as absent.
+bb appends the file contents to its standard instructions before the first
+provider session. The thread keeps that exact text for its lifetime. Later file
+changes apply only to new threads. Threads that existed before this storage
+feature freeze the current files on their first runtime resolution after the
+upgrade. When both files exist, `<dataDir>/AGENTS.md` comes first and
+`<workspace>/.bb/AGENTS.md` comes second. Empty files are absent. The complete
+resolved instruction text has a 256 KiB UTF-8 limit.
 
 No agent loads `.bb/AGENTS.md` natively, and provider-native instruction files
 (`CLAUDE.md` for Claude Code, a repo-root `AGENTS.md` for Codex) remain

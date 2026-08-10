@@ -281,6 +281,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   // tables (added by 0039/0041), app_theme (added by 0042), the thread section
   // schema (thread section columns + thread_sections table), thread tabs, and
   // normalized plugin persistence tables.
+  dropThreadAgentInstructionSchema(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
@@ -647,6 +648,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
+  dropThreadAgentInstructionSchema(db);
   dropProjectGitRemoteUrlColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.exec(`
@@ -669,6 +671,11 @@ function dropPost0023Tables(db: DbConnection): void {
   }
 
   dropThreadSectionSchema(db);
+}
+
+function dropThreadAgentInstructionSchema(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS thread_agent_instructions").run();
+  db.$client.prepare("DROP TABLE IF EXISTS agent_instruction_snapshots").run();
 }
 
 function dropProjectGitRemoteUrlColumn(db: DbConnection): void {

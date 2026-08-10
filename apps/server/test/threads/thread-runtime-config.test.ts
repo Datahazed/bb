@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  getThreadAgentInstructions,
   markThreadDeleted,
   setAppSettings,
   setExperiments,
@@ -22,6 +23,7 @@ import {
   resolveExecutionOptions,
   resolveThreadRuntimeCommandConfig,
 } from "../../src/services/threads/thread-runtime-config.js";
+import { THREAD_AGENT_INSTRUCTIONS_MAX_BYTES } from "../../src/services/threads/workspace-agent-instructions.js";
 import {
   buildThreadStartCommand,
   prepareTurnSubmitCommandPayload,
@@ -1542,6 +1544,71 @@ describe("thread runtime config", () => {
     });
   });
 
+  it("does not freeze instructions after a data-dir read error", async () => {
+    await withTestHarness(async (harness) => {
+      const hostId = "host-runtime-unreadable-data-dir";
+      seedHostSession(harness.deps, { id: hostId });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId,
+        path: "/tmp/runtime-unreadable-data-dir",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId,
+        projectId: project.id,
+        path: "/tmp/runtime-unreadable-data-dir",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      await mkdir(path.join(harness.config.dataDir, "AGENTS.md"));
+
+      await expect(
+        resolveThreadRuntimeCommandConfig(harness.deps, {
+          thread,
+          environment,
+          model: "test-model",
+        }),
+      ).rejects.toThrow();
+      expect(getThreadAgentInstructions(harness.db, thread.id)).toBeNull();
+    });
+  });
+
+  it("rejects oversized instructions without freezing a partial value", async () => {
+    await withTestHarness(async (harness) => {
+      const hostId = "host-runtime-oversized-instructions";
+      seedHostSession(harness.deps, { id: hostId });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId,
+        path: "/tmp/runtime-oversized-instructions",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId,
+        projectId: project.id,
+        path: "/tmp/runtime-oversized-instructions",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      await writeDataDirAgentInstructions({
+        dataDir: harness.config.dataDir,
+        content: "x".repeat(THREAD_AGENT_INSTRUCTIONS_MAX_BYTES + 1),
+      });
+
+      await expect(
+        resolveThreadRuntimeCommandConfig(harness.deps, {
+          thread,
+          environment,
+          model: "test-model",
+        }),
+      ).rejects.toMatchObject({
+        body: { code: "agent_instructions_too_large" },
+      });
+      expect(getThreadAgentInstructions(harness.db, thread.id)).toBeNull();
+    });
+  });
+
   describe("plugin contributeInstructions assembly", () => {
     afterEach(() => {
       // withTestHarness rebinds this on each createApp; clear so a later
@@ -1550,6 +1617,11 @@ describe("thread runtime config", () => {
     });
 
     function stubContributions(args: {
+      resolveAgentConfiguration?: () => Promise<{
+        tools: PluginAgentToolContribution[];
+        selectedSkillIdsByPlugin: ReadonlyMap<string, ReadonlySet<string>>;
+        dynamicInstructions: Array<{ pluginId: string; text: string }>;
+      }>;
       tools?: PluginAgentToolContribution[];
       instructions?: Array<{
         pluginId: string;
@@ -1563,6 +1635,9 @@ describe("thread runtime config", () => {
         listSkillRootContributions: () => [],
         listAgentTools: () => args.tools ?? [],
         listInstructionContributions: () => args.instructions ?? [],
+        ...(args.resolveAgentConfiguration
+          ? { resolveAgentConfiguration: args.resolveAgentConfiguration }
+          : {}),
         findAgentTool: () => undefined,
         invokeAgentTool: async () => ({
           success: false,
@@ -1574,6 +1649,70 @@ describe("thread runtime config", () => {
         }),
       });
     }
+
+    it("evaluates contribution providers once during concurrent initial resolutions", async () => {
+      await withTestHarness(async (harness) => {
+        const hostId = "host-runtime-plugin-instr-concurrent";
+        seedHostSession(harness.deps, { id: hostId });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId,
+          path: "/tmp/runtime-plugin-instr-concurrent",
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId,
+          projectId: project.id,
+          path: "/tmp/runtime-plugin-instr-concurrent",
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+        });
+        let configureCalls = 0;
+        let contributionCalls = 0;
+        let releaseConfigurations!: () => void;
+        const configurationsStarted = new Promise<void>((resolve) => {
+          releaseConfigurations = resolve;
+        });
+        stubContributions({
+          instructions: [
+            {
+              pluginId: "concurrent",
+              provider: () => {
+                contributionCalls += 1;
+                return "one frozen contribution";
+              },
+            },
+          ],
+          resolveAgentConfiguration: async () => {
+            configureCalls += 1;
+            if (configureCalls === 2) {
+              releaseConfigurations();
+            }
+            await configurationsStarted;
+            return {
+              tools: [],
+              selectedSkillIdsByPlugin: new Map(),
+              dynamicInstructions: [],
+            };
+          },
+        });
+
+        const resolveConfig = () =>
+          resolveThreadRuntimeCommandConfig(harness.deps, {
+            thread,
+            environment,
+            model: "test-model",
+          });
+        const [first, second] = await Promise.all([
+          resolveConfig(),
+          resolveConfig(),
+        ]);
+
+        expect(configureCalls).toBe(2);
+        expect(contributionCalls).toBe(1);
+        expect(second.instructions).toBe(first.instructions);
+      });
+    });
 
     it("appends attributed plugin instructions after tool snippets and before data-dir instructions", async () => {
       await withTestHarness(async (harness) => {

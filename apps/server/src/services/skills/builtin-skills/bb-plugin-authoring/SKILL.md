@@ -712,7 +712,8 @@ Ordering is standard BB instructions, selected tools' static snippets,
 `contributeInstructions` output, `configure` dynamic instructions, data-dir
 user instructions, then workspace instructions. Tool snippets are rejected at
 registration above 4096 characters; each legacy/dynamic callback contribution
-is truncated to 4096 characters.
+is truncated to 4096 characters. BB rejects the complete resolved instruction
+text above 256 KiB without freezing a partial value.
 
 `configure` is also synchronous and may be registered only once per factory
 execution. Its context has required, plain-data `thread`, `project`,

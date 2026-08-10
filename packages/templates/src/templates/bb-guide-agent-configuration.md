@@ -16,7 +16,9 @@ User instructions (<dataDir>/AGENTS.md):
   every provider-backed thread across all projects default user-level
   instructions. bb reads <dataDir>/AGENTS.md and appends its contents to the
   thread system prompt for all providers when the first provider session starts.
-  The thread keeps that text. File changes apply only to new threads.
+  The thread keeps that text. File changes apply only to new threads. A thread
+  that existed before this storage feature freezes the current file at its first
+  runtime resolution after the upgrade.
 
 Workspace instructions (.bb/AGENTS.md):
 
@@ -24,14 +26,19 @@ Workspace instructions (.bb/AGENTS.md):
   repo-specific instructions. bb reads <workspace>/.bb/AGENTS.md and appends its
   contents to the thread system prompt for all providers, after any
   <dataDir>/AGENTS.md instructions, when the first provider session starts. The
-  thread keeps that text. File changes apply only to new threads. Track it with
-  git so fresh managed worktrees include it.
+  thread keeps that text. File changes apply only to new threads. A thread that
+  existed before this storage feature freezes the current file at its first
+  runtime resolution after the upgrade. Track it with git so fresh managed
+  worktrees include it.
 
   Only the plural AGENTS.md is read, only from the exact data-dir and
   workspace-root .bb/ locations above (bb does not walk parent directories), and
   an empty file is ignored. This is bb's own provider-agnostic instruction
   injection, separate from provider-native files such as CLAUDE.md or a
   repo-root AGENTS.md.
+
+  The complete resolved instruction text has a 256 KiB UTF-8 limit. bb rejects
+  a larger initial configuration without freezing a partial value.
 
 Skills (.bb/skills/):
 

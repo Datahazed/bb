@@ -564,15 +564,26 @@ export const threads = sqliteTable(
   ],
 );
 
-// The server resolves this text once, before a thread starts its first
-// provider session. Later turns and provider resumes reuse the same text.
+// Content-addressed snapshots deduplicate identical instruction text across
+// threads. A thread row selects one immutable snapshot for its lifetime.
+export const agentInstructionSnapshots = sqliteTable(
+  "agent_instruction_snapshots",
+  {
+    contentHash: text("content_hash").primaryKey(),
+    instructions: text("instructions").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+);
+
 export const threadAgentInstructions = sqliteTable(
   "thread_agent_instructions",
   {
     threadId: text("thread_id")
       .primaryKey()
       .references(() => threads.id, { onDelete: "cascade" }),
-    instructions: text("instructions").notNull(),
+    contentHash: text("content_hash")
+      .notNull()
+      .references(() => agentInstructionSnapshots.contentHash),
     createdAt: integer("created_at").notNull(),
   },
 );

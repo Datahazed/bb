@@ -291,8 +291,8 @@ export interface PluginService {
   }): Promise<PluginResolvedAgentConfiguration>;
   /**
    * Dynamic instruction providers from bb.agents.contributeInstructions,
-   * ordered by plugin id. Resolved live at thread.start/turn.submit;
-   * empty when no plugin registered a provider.
+   * ordered by plugin id. The runtime evaluates them only while it freezes a
+   * thread's initial instructions. Empty when no plugin registered a provider.
    * At most one provider per plugin (duplicate registration is rejected).
    */
   listInstructionContributions(): PluginInstructionContribution[];

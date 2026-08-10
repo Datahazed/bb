@@ -1043,7 +1043,13 @@ describe("host-daemon command schemas", () => {
   // the user for review. An enrolled daemon on an older build cannot raise one,
   // so it silently leaves Plan mode instead of asking, and it would reject the
   // subject if the server sent one back.
-  it("uses protocol version 90 for plan-review approvals", () => {
+  it("keeps plan-review approvals at protocol version 90 or later", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBeGreaterThanOrEqual(90);
+  });
+
+  // Version 91 fixes thread instructions at their initial value. Older daemons
+  // can apply changed resume instructions to a live runtime.
+  it("uses protocol version 91 for fixed thread instructions", () => {
     expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(91);
   });
 

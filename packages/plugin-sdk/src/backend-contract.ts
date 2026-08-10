@@ -447,7 +447,8 @@ export interface PluginAgentConfiguration {
   skills: string[];
   /** Optional instructions for a thread's initial provider session. BB freezes
    * the first resolved text for the life of that thread. Output is truncated
-   * to 4096 characters. */
+   * to 4096 characters. BB rejects a complete thread instruction set above
+   * its 256 KiB UTF-8 limit without freezing a partial value. */
   instructions?: string;
 }
 
@@ -510,8 +511,9 @@ export interface PluginAgents {
    * return null to contribute nothing. Must be synchronous and fast — it sits
    * on the thread-start path. Later plugin state changes do not alter the
    * thread. Output longer than 4096 characters is truncated; a throwing
-   * provider is logged and contributes nothing. A repeated registration within
-   * one factory execution is rejected.
+   * provider is logged and contributes nothing. BB rejects a complete thread
+   * instruction set above its 256 KiB UTF-8 limit without freezing a partial
+   * value. A repeated registration within one factory execution is rejected.
    */
   contributeInstructions(
     provider: (ctx: { threadId: string; projectId: string }) => string | null,
