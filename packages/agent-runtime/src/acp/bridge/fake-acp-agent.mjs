@@ -9,6 +9,10 @@
  *
  * Env knobs (passed by tests through thread/start envVars):
  * - FAKE_ACP_LOAD_SESSION=1  → advertise + accept session/load
+ * - FAKE_ACP_FAIL_LOAD=1     → advertise session/load, then fail it
+ * - FAKE_ACP_USAGE_ON_LOAD=1 → report context usage during session/load
+ * - FAKE_ACP_USAGE_SESSION_ID
+ *                            → override the usage notification session id
  * - FAKE_ACP_MODEL_CONFIG=1  → advertise a model configOptions select
  * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
  * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
@@ -32,7 +36,10 @@
 import { createInterface } from "node:readline";
 import { appendFileSync, writeFileSync } from "node:fs";
 
-const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1";
+const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
+const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
+const usageOnLoad = process.env.FAKE_ACP_USAGE_ON_LOAD === "1";
+const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
@@ -46,7 +53,7 @@ const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .split(",")
   .map((method) => method.trim())
   .filter(Boolean);
-const sessionId = `fake-sess-${process.pid}`;
+const newSessionId = `fake-sess-${process.pid}`;
 const fakeModels = [
   { value: "fake/default", name: "Fake Default" },
   { value: "fake/strong", name: "Fake Strong" },
@@ -57,6 +64,7 @@ let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
 let selectedEffort = "none";
 let authenticatedMethod = null;
+let activeSessionId = newSessionId;
 const pendingClientRequests = new Map();
 let currentMcpServers = [];
 
@@ -90,11 +98,11 @@ function send(message) {
   process.stdout.write(JSON.stringify(message) + "\n");
 }
 
-function notifyUpdate(update) {
+function notifyUpdate(update, targetSessionId = activeSessionId) {
   send({
     jsonrpc: "2.0",
     method: "session/update",
-    params: { sessionId, update },
+    params: { sessionId: targetSessionId, update },
   });
 }
 
@@ -230,7 +238,7 @@ async function handlePrompt(message) {
     let outcome = "cancelled";
     try {
       const result = await requestClient("session/request_permission", {
-        sessionId,
+        sessionId: activeSessionId,
         toolCall: {
           toolCallId: "perm-tool-1",
           title: "Run rm",
@@ -254,7 +262,7 @@ async function handlePrompt(message) {
   } else if (text.includes("write-file")) {
     try {
       await requestClient("fs/write_text_file", {
-        sessionId,
+        sessionId: activeSessionId,
         path: process.env.FAKE_ACP_WRITE_PATH,
         content: "hello from agent\n",
       });
@@ -357,11 +365,12 @@ async function handleMessage(message) {
         return;
       }
       captureMcpServers(message);
+      activeSessionId = newSessionId;
       send({
         jsonrpc: "2.0",
         id: message.id,
         result: {
-          sessionId,
+          sessionId: newSessionId,
           ...configState(),
         },
       });
@@ -372,7 +381,22 @@ async function handleMessage(message) {
       }
       if (loadSession) {
         captureMcpServers(message);
-        send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        if (usageOnLoad) {
+          notifyUpdate(
+            { sessionUpdate: "usage_update", used: 24_000, size: 128_000 },
+            usageSessionId ?? message.params?.sessionId,
+          );
+        }
+        if (failLoad) {
+          send({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32000, message: "session/load failed" },
+          });
+        } else {
+          activeSessionId = message.params?.sessionId;
+          send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        }
       } else {
         send({
           jsonrpc: "2.0",

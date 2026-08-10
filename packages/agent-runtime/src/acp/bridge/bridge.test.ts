@@ -1580,6 +1580,108 @@ describe("acp bridge", () => {
     startedProviderThreadIds.push(first.providerThreadId);
   });
 
+  it("forwards context usage reported during session/load", async () => {
+    const first = await startThread({
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+    await stopThread(first.providerThreadId);
+    startedProviderThreadIds.pop();
+
+    const resumeId = sendRequest("thread/resume", {
+      threadId: first.bbThreadId,
+      providerThreadId: first.providerThreadId,
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_USAGE_ON_LOAD: "1",
+      },
+    });
+    const response = await waitForResponse(resumeId);
+    expect(response.result).toEqual({
+      providerThreadId: first.providerThreadId,
+    });
+    expect(notifications("acp/update").at(-1)?.params).toEqual({
+      threadId: first.bbThreadId,
+      update: {
+        sessionUpdate: "usage_update",
+        used: 24_000,
+        size: 128_000,
+      },
+    });
+    startedProviderThreadIds.push(first.providerThreadId);
+  });
+
+  it("ignores load-time context usage for a different session", async () => {
+    const first = await startThread({
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+    await stopThread(first.providerThreadId);
+    startedProviderThreadIds.pop();
+
+    const resumeId = sendRequest("thread/resume", {
+      threadId: first.bbThreadId,
+      providerThreadId: first.providerThreadId,
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_USAGE_ON_LOAD: "1",
+        FAKE_ACP_USAGE_SESSION_ID: "different-session",
+      },
+    });
+    const response = await waitForResponse(resumeId);
+    expect(response.result).toEqual({
+      providerThreadId: first.providerThreadId,
+    });
+    expect(notifications("acp/update")).toEqual([]);
+    startedProviderThreadIds.push(first.providerThreadId);
+  });
+
+  it("discards load-time context usage when session/load fails", async () => {
+    const first = await startThread({
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+    await stopThread(first.providerThreadId);
+    startedProviderThreadIds.pop();
+
+    const resumeId = sendRequest("thread/resume", {
+      threadId: first.bbThreadId,
+      providerThreadId: first.providerThreadId,
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: {
+        FAKE_ACP_FAIL_LOAD: "1",
+        FAKE_ACP_USAGE_ON_LOAD: "1",
+      },
+    });
+    const response = await waitForResponse(resumeId);
+    const result = response.result;
+    if (
+      typeof result !== "object" ||
+      result === null ||
+      Array.isArray(result) ||
+      typeof result.providerThreadId !== "string"
+    ) {
+      throw new Error("thread/resume did not return a providerThreadId");
+    }
+    expect(result.providerThreadId).not.toBe(first.providerThreadId);
+    expect(notifications("acp/update")).toEqual([]);
+    expect(notifications("acp/warning").at(-1)?.params).toMatchObject({
+      threadId: first.bbThreadId,
+    });
+    startedProviderThreadIds.push(result.providerThreadId);
+  });
+
   it("re-applies ACP-native reasoning after session/load resume", async () => {
     const first = await startThread({
       envVars: {
