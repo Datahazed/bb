@@ -12,6 +12,7 @@ import {
   archivedThreadsListQueryKey,
   environmentDiffFilesQueryKey,
   environmentDiffPatchQueryKey,
+  environmentPathsQueryKey,
   environmentPullRequestQueryKey,
   environmentWorkStatusQueryKey,
   hostPathExistenceQueryKey,
@@ -950,6 +951,58 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryData(defaultOptionsKey)).toEqual(nextDefaults);
 
     unsubscribeDefaultOptions();
+    effects.dispose();
+  });
+
+  it("retries an active environment path query when the environment becomes ready", async () => {
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const pathsKey = environmentPathsQueryKey(
+      "env-1",
+      "",
+      1_000,
+      true,
+      true,
+    );
+    const readyResponse = {
+      paths: [
+        {
+          kind: "file" as const,
+          name: "README.md",
+          path: "README.md",
+          positions: [],
+          score: 0,
+        },
+      ],
+      truncated: false,
+    };
+    const pathsQueryFn = vi
+      .fn<() => Promise<typeof readyResponse>>()
+      .mockRejectedValueOnce(new Error("Environment unavailable"))
+      .mockResolvedValue(readyResponse);
+    const pathsObserver = new QueryObserver(queryClient, {
+      queryKey: pathsKey,
+      queryFn: pathsQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribePaths = pathsObserver.subscribe(() => {});
+
+    await vi.waitFor(() => {
+      expect(pathsObserver.getCurrentResult().isError).toBe(true);
+    });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "environment",
+      id: "env-1",
+      changes: ["status-changed"],
+    });
+
+    await vi.waitFor(() => {
+      expect(pathsQueryFn).toHaveBeenCalledTimes(2);
+      expect(queryClient.getQueryData(pathsKey)).toEqual(readyResponse);
+    });
+
+    unsubscribePaths();
     effects.dispose();
   });
 

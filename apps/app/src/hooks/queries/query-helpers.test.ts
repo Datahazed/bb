@@ -455,7 +455,7 @@ describe("resolveEnvironmentMergeBaseBranchesPlaceholder", () => {
 });
 
 describe("getEnvironmentWorkspaceStateInvalidationQueryKeys", () => {
-  it("targets workspace-derived status and the observer-backed diff TOC, but never the observer-less patch cache", () => {
+  it("targets observer-backed workspace queries, but never the observer-less patch cache", () => {
     const queryKeys = getEnvironmentWorkspaceStateInvalidationQueryKeys({
       environmentId: "env-1",
     });
@@ -465,6 +465,7 @@ describe("getEnvironmentWorkspaceStateInvalidationQueryKeys", () => {
       ["environmentPullRequest", "env-1"],
       ["environmentDiffFiles", "env-1"],
       ["environmentFilePreview", "env-1"],
+      ["environmentPaths", "env-1"],
     ]);
     // The patch cache is observer-less; invalidation is a no-op for it, so it
     // must be evicted (removeEnvironmentDiffPatchQueries) rather than appearing
