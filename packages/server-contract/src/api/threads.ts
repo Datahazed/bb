@@ -75,7 +75,6 @@ export type CreateExecutionInputSources = z.infer<
 export const existingThreadExecutionInputSourcesSchema = z
   .object({
     model: executionInputFieldSourceSchema.optional(),
-    providerMode: executionInputFieldSourceSchema.optional(),
     serviceTier: executionInputFieldSourceSchema.optional(),
     reasoningLevel: executionInputFieldSourceSchema.optional(),
     permissionMode: executionInputFieldSourceSchema.optional(),
