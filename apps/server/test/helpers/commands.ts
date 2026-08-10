@@ -251,6 +251,7 @@ function respondToProviderModelListCommand(
             isDefault: true,
           }),
         ],
+        modes: [],
         selectedOnlyModels: [],
       },
     }),

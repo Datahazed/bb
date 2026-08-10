@@ -1,5 +1,6 @@
 import type {
   AvailableModel,
+  AvailableProviderMode,
   ClientTurnRequestId,
   DynamicTool,
   InstructionMode,
@@ -305,6 +306,7 @@ export interface AgentRuntime {
 
   listModels(args: ListModelsArgs): Promise<{
     models: AvailableModel[];
+    modes: AvailableProviderMode[];
     selectedOnlyModels: AvailableModel[];
   }>;
 

@@ -29,6 +29,7 @@ import { z } from "zod";
 import {
   reasoningEffortsForLevels,
   type AvailableModel,
+  type AvailableProviderMode,
   type PromptInput,
   type ReasoningLevel,
 } from "@bb/domain";
@@ -87,8 +88,10 @@ import {
   buildAcpNativeReasoningSupport,
   buildModelCatalogFromConfigOptions,
   buildModelCatalogFromSessionModels,
+  buildProviderModesFromConfigOptions,
   acpNativeReasoningLevelToValue,
   findAcpModelConfigOption,
+  findAcpModeConfigOption,
   findAcpThoughtLevelConfigOption,
   parseAgentModelLines,
   splitPrimaryModels,
@@ -388,10 +391,7 @@ const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
 function reasoningSupportFromCli(
   reasoningCli: AcpBridgeReasoningCli | undefined,
 ):
-  | Pick<
-      AvailableModel,
-      "supportedReasoningEfforts" | "defaultReasoningEffort"
-    >
+  | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
   | undefined {
   if (reasoningCli === undefined) {
     return undefined;
@@ -413,10 +413,7 @@ function reasoningSupportFromCli(
 function reasoningSupportFromNativeHint(
   nativeReasoning: AcpBridgeNativeReasoning | undefined,
 ):
-  | Pick<
-      AvailableModel,
-      "supportedReasoningEfforts" | "defaultReasoningEffort"
-    >
+  | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
   | undefined {
   if (nativeReasoning === undefined) {
     return undefined;
@@ -509,8 +506,7 @@ function nativeReasoningLevelToValue(args: {
   nativeReasoning: AcpBridgeNativeReasoning;
   reasoningLevel: ReasoningLevel;
 }): string | undefined {
-  const override =
-    args.nativeReasoning.levelValues?.[args.reasoningLevel];
+  const override = args.nativeReasoning.levelValues?.[args.reasoningLevel];
   if (override !== undefined) {
     return override;
   }
@@ -575,7 +571,10 @@ function applyPermissionCliArgs(
   permissionCli: AcpBridgePermissionCli | undefined,
   permissionMode: AcpSessionPolicy["permissionMode"],
 ): string[] {
-  const permissionArgs = permissionCliArgsForMode(permissionCli, permissionMode);
+  const permissionArgs = permissionCliArgsForMode(
+    permissionCli,
+    permissionMode,
+  );
   if (permissionArgs.length === 0) {
     return [...agentArgs];
   }
@@ -612,9 +611,14 @@ let cachedModelCatalog: { key: string; catalog: AgentModelCatalog } | null =
 // expensive to repeat per picker open — but a short TTL lets external changes
 // to the agent (auth, added model providers) surface on the next open.
 const SESSION_MODEL_DISCOVERY_TTL_MS = 60_000;
-let cachedSessionDiscoveredModels: {
-  key: string;
+interface SessionDiscoveredOptions {
   models: AvailableModel[];
+  modes: AvailableProviderMode[];
+}
+
+let cachedSessionDiscoveredOptions: {
+  key: string;
+  options: SessionDiscoveredOptions;
   fetchedAt: number;
 } | null = null;
 
@@ -714,16 +718,16 @@ async function loadAgentModelCatalog(
   return catalog;
 }
 
-async function loadSessionDiscoveredModels(
+async function loadSessionDiscoveredOptions(
   agent: AcpBridgeAgentCommand,
-): Promise<AvailableModel[] | null> {
+): Promise<SessionDiscoveredOptions | null> {
   const key = JSON.stringify(agent);
   if (
-    cachedSessionDiscoveredModels?.key === key &&
-    Date.now() - cachedSessionDiscoveredModels.fetchedAt <
+    cachedSessionDiscoveredOptions?.key === key &&
+    Date.now() - cachedSessionDiscoveredOptions.fetchedAt <
       SESSION_MODEL_DISCOVERY_TTL_MS
   ) {
-    return cachedSessionDiscoveredModels.models;
+    return cachedSessionDiscoveredOptions.options;
   }
 
   const childEnv = {
@@ -788,19 +792,27 @@ async function loadSessionDiscoveredModels(
     }
 
     const modelOption = findAcpModelConfigOption(newSession.configOptions);
+    const modes = buildProviderModesFromConfigOptions(
+      findAcpModeConfigOption(newSession.configOptions),
+    );
     const configOptionModels = buildModelCatalogFromConfigOptions(modelOption);
     const sessionModels = buildModelCatalogFromSessionModels(newSession.models);
-    if (configOptionModels.length === 0 && sessionModels.length === 0) {
+    if (
+      configOptionModels.length === 0 &&
+      sessionModels.length === 0 &&
+      modes.length === 0
+    ) {
       return null;
     }
 
     if (configOptionModels.length === 0) {
-      cachedSessionDiscoveredModels = {
+      const options = { models: sessionModels, modes };
+      cachedSessionDiscoveredOptions = {
         key,
-        models: sessionModels,
+        options,
         fetchedAt: Date.now(),
       };
-      return sessionModels;
+      return options;
     }
 
     const reasoningByModel = await discoverAcpNativeReasoningByModel({
@@ -812,12 +824,13 @@ async function loadSessionDiscoveredModels(
       reasoningByModel === null
         ? configOptionModels
         : buildModelCatalogFromConfigOptions(modelOption, reasoningByModel);
-    cachedSessionDiscoveredModels = {
+    const options = { models, modes };
+    cachedSessionDiscoveredOptions = {
       key,
-      models,
+      options,
       fetchedAt: Date.now(),
     };
-    return models;
+    return options;
   } catch (error) {
     process.stderr.write(
       `acp bridge: ACP-native model discovery for "${agent.command}" failed: ${
@@ -1017,15 +1030,9 @@ async function selectAcpNativeModel(args: {
   }
   let configOptions = args.configOptions;
   const modelOption = findAcpModelConfigOption(args.configOptions);
-  const availableSessionModels = args.models?.availableModels ?? [];
-  const sessionModelsIncludeSelection = availableSessionModels.some(
-    (model) => model.modelId === selection.modelId,
-  );
   const shouldSetModel =
     (modelOption && modelOption.currentValue !== selection.modelId) ||
-    (!modelOption &&
-      sessionModelsIncludeSelection &&
-      args.models?.currentModelId !== selection.modelId);
+    (!modelOption && args.models?.currentModelId !== selection.modelId);
   if (shouldSetModel) {
     // Agents that surface a "model" config option (e.g. omp) pin the model via
     // the standard session/set_config_option and may not implement the legacy
@@ -1067,6 +1074,42 @@ async function selectAcpNativeModel(args: {
     configOptions,
     modelSelection: selection,
     nativeReasoning: args.nativeReasoning,
+  });
+}
+
+async function selectAcpNativeMode(args: {
+  connection: AcpAgentConnection;
+  sessionId: string;
+  configOptions: readonly AcpConfigOption[] | undefined;
+  providerMode: string | undefined;
+}): Promise<void> {
+  if (args.providerMode === undefined) {
+    return;
+  }
+  const modeOption = findAcpModeConfigOption(args.configOptions);
+  if (!modeOption) {
+    throw new Error(
+      `The ACP agent did not advertise provider mode "${args.providerMode}".`,
+    );
+  }
+  if (
+    !modeOption.options?.some((option) => option.value === args.providerMode)
+  ) {
+    throw new Error(
+      `The ACP agent does not offer provider mode "${args.providerMode}".`,
+    );
+  }
+  if (modeOption.currentValue === args.providerMode) {
+    return;
+  }
+  await args.connection.request({
+    method: "session/set_config_option",
+    params: {
+      sessionId: args.sessionId,
+      configId: modeOption.id,
+      value: args.providerMode,
+    },
+    resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
   });
 }
 
@@ -1590,6 +1633,12 @@ async function startAgentSession(
         modelSelection: params.modelSelection,
         nativeReasoning: params.nativeReasoning,
       });
+      await selectAcpNativeMode({
+        connection,
+        sessionId,
+        configOptions: newSession.configOptions,
+        providerMode: params.providerMode,
+      });
       if (request.kind === "resume") {
         sendNotification(ACP_WARNING_METHOD, {
           threadId: bbThreadId,
@@ -1604,6 +1653,12 @@ async function startAgentSession(
         models: loadedModels,
         modelSelection: params.modelSelection,
         nativeReasoning: params.nativeReasoning,
+      });
+      await selectAcpNativeMode({
+        connection,
+        sessionId,
+        configOptions: loadedConfigOptions,
+        providerMode: params.providerMode,
       });
       const loadUsageUpdate = session.pendingLoadUsageUpdate;
       session.loading = false;
@@ -1813,28 +1868,30 @@ async function handleRequest(
         ? await loadAgentModelCatalog(request.params.listCommand)
         : null;
       if (catalog) {
-        sendResult(
-          request.id,
-          splitPrimaryModels(
-            applyConfiguredReasoningToModels(catalog.models, {
-              reasoningCli: request.params.reasoningCli,
-              nativeReasoning: request.params.nativeReasoning,
-            }),
-            request.params.primaryModels,
-          ),
-        );
-        return;
-      }
-      const sessionDiscoveredModels =
-        request.params.listCommand === undefined && request.params.agent
-          ? await loadSessionDiscoveredModels(request.params.agent)
-          : null;
-      if (sessionDiscoveredModels) {
-        sendResult(request.id, {
-          models: applyConfiguredReasoningToModels(sessionDiscoveredModels, {
+        const models = splitPrimaryModels(
+          applyConfiguredReasoningToModels(catalog.models, {
             reasoningCli: request.params.reasoningCli,
             nativeReasoning: request.params.nativeReasoning,
           }),
+          request.params.primaryModels,
+        );
+        sendResult(request.id, { ...models, modes: [] });
+        return;
+      }
+      const sessionDiscoveredOptions =
+        request.params.listCommand === undefined && request.params.agent
+          ? await loadSessionDiscoveredOptions(request.params.agent)
+          : null;
+      if (sessionDiscoveredOptions) {
+        sendResult(request.id, {
+          models: applyConfiguredReasoningToModels(
+            sessionDiscoveredOptions.models,
+            {
+              reasoningCli: request.params.reasoningCli,
+              nativeReasoning: request.params.nativeReasoning,
+            },
+          ),
+          modes: sessionDiscoveredOptions.modes,
           selectedOnlyModels: [],
         });
         return;
@@ -1846,6 +1903,7 @@ async function handleRequest(
             nativeReasoning: request.params.nativeReasoning,
           }),
         ],
+        modes: [],
         selectedOnlyModels: [],
       });
       return;

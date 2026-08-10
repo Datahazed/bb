@@ -114,6 +114,7 @@ function makeExecutionOptions(
   return {
     providers: STORY_PROVIDER_INFOS,
     models,
+    modes: [],
     selectedOnlyModels,
     permissionCeiling: "full",
     modelLoadError: null,

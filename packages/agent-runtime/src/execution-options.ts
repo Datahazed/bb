@@ -69,6 +69,7 @@ export function sameExecutionSettings(
     DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
   return (
     args.left.model === args.right.model &&
+    args.left.providerMode === args.right.providerMode &&
     args.left.serviceTier === args.right.serviceTier &&
     args.left.reasoningLevel === args.right.reasoningLevel &&
     args.left.workflowsEnabled === args.right.workflowsEnabled &&
@@ -92,6 +93,9 @@ export function toProviderExecutionContext(
   const permissionPolicy = resolveAdapterPermissionPolicy(args.execOpts);
   return {
     model: args.execOpts.model,
+    ...(args.execOpts.providerMode !== undefined
+      ? { providerMode: args.execOpts.providerMode }
+      : {}),
     serviceTier: args.execOpts.serviceTier,
     reasoningLevel: args.execOpts.reasoningLevel,
     ...(args.execOpts.claudeCodePermissionMode !== undefined

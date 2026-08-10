@@ -472,6 +472,8 @@ export type CallerExecutionInputSource = z.infer<
 
 export const threadExecutionOptionsSchema = z.object({
   model: z.string().optional(),
+  /** Provider-native session mode. Omission keeps the provider default. */
+  providerMode: z.string().min(1).optional(),
   serviceTier: serviceTierSchema.optional(),
   reasoningLevel: reasoningLevelSchema.optional(),
   permissionMode: permissionModeSchema.optional(),
@@ -543,6 +545,7 @@ export type RuntimePermissionPolicy = z.infer<
 
 const runtimeThreadExecutionBaseOptionsSchema = z.object({
   model: z.string().min(1),
+  providerMode: z.string().min(1).optional(),
   serviceTier: serviceTierSchema,
   reasoningLevel: reasoningLevelSchema,
   claudeCodePermissionMode: z.literal("plan").optional(),

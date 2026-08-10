@@ -26,6 +26,7 @@ function providerHostResponse(
       ok: true as const,
       result: {
         models: [availableModelFixture({ model: modelId })],
+        modes: [],
         selectedOnlyModels: [],
       },
     };

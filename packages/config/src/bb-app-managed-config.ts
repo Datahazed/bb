@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { agentProviderIdSchema, isAgentProviderId } from "@bb/agent-providers";
+import { isAgentProviderId } from "@bb/agent-providers";
 import {
   acpNativeReasoningSchema,
   acpReasoningCliSchema,
@@ -25,6 +25,7 @@ export const BB_APP_MANAGED_CONFIG_KEYS: BbAppManagedConfigKey[] = [
 
 export const PORTABLE_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const CUSTOM_ACP_AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
+const DYNAMIC_ACP_PROVIDER_ID_PATTERN = /^acp-[a-z0-9][a-z0-9-]*$/u;
 const CUSTOM_ACP_AGENT_LOGO_PATTERN = /\.(?:svg|png|webp)$/iu;
 
 export interface BbAppManagedConfigWarningLogger {
@@ -47,9 +48,24 @@ export const bbAppManagedConfigValuesSchema = z
 // A user-registered model offered in the model picker in addition to the
 // provider's built-in catalog (e.g. a non-public preview model id). Omitting
 // `displayName` means "derive the label from the model id".
+const customModelProviderIdSchema = z
+  .string()
+  .min(1)
+  .superRefine((providerId, context) => {
+    if (
+      !isAgentProviderId(providerId) &&
+      !DYNAMIC_ACP_PROVIDER_ID_PATTERN.test(providerId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: `Unsupported provider id "${providerId}".`,
+      });
+    }
+  });
+
 export const customProviderModelSchema = z
   .object({
-    providerId: agentProviderIdSchema,
+    providerId: customModelProviderIdSchema,
     model: z.string().min(1),
     displayName: z.string().min(1).optional(),
   })

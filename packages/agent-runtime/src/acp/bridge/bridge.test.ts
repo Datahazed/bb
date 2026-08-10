@@ -100,6 +100,7 @@ interface StartThreadArgs {
       }
     | { modelId: string; reasoningLevel?: ReasoningLevel };
   launchReasoningLevel?: ReasoningLevel;
+  providerMode?: string;
   reasoningCli?: {
     flag: string;
     supportedLevels: ReasoningLevel[];
@@ -136,6 +137,9 @@ async function startThread(args?: StartThreadArgs): Promise<{
     ...(args?.modelSelection ? { modelSelection: args.modelSelection } : {}),
     ...(args?.launchReasoningLevel !== undefined
       ? { launchReasoningLevel: args.launchReasoningLevel }
+      : {}),
+    ...(args?.providerMode !== undefined
+      ? { providerMode: args.providerMode }
       : {}),
     ...(args?.reasoningCli !== undefined
       ? { reasoningCli: args.reasoningCli }
@@ -437,6 +441,29 @@ describe("acp bridge", () => {
         },
       ],
       selectedOnlyModels: [],
+    });
+  });
+
+  it("discovers ACP primary agents from the mode config option", async () => {
+    const modelListId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: { FAKE_ACP_MODE_CONFIG: "1" },
+      },
+      primaryModels: [],
+    });
+
+    expect((await waitForResponse(modelListId)).result).toMatchObject({
+      modes: [
+        { id: "build", displayName: "Build", isDefault: true },
+        {
+          id: "orchestrator",
+          displayName: "Orchestrator",
+          description: "Coordinate specialist agents",
+          isDefault: false,
+        },
+      ],
     });
   });
 
@@ -918,6 +945,38 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("selected-model:fake/strong");
   });
 
+  it("sends an unadvertised fallback model through session/set_model", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_ACCEPT_UNLISTED_MODEL: "1" },
+      modelSelection: { modelId: "custom/provider-model" },
+    });
+
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain(
+      "selected-model:custom/provider-model",
+    );
+  });
+
+  it("selects an ACP primary agent before the first prompt", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_MODE_CONFIG: "1" },
+      providerMode: "orchestrator",
+    });
+
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-selected-mode", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain("selected-mode:orchestrator");
+  });
+
   it("selects ACP-native reasoning with session/set_config_option before the first prompt", async () => {
     const { providerThreadId } = await startThread({
       envVars: {
@@ -1097,9 +1156,8 @@ describe("acp bridge", () => {
       configText.slice(configPrefix.length),
     ) as { env: { name: string; value: string }[] }[];
     expect(
-      mcpServerConfig?.env.find(
-        ({ name }) => name === "ELECTRON_RUN_AS_NODE",
-      )?.value,
+      mcpServerConfig?.env.find(({ name }) => name === "ELECTRON_RUN_AS_NODE")
+        ?.value,
     ).toBe("1");
 
     sendRequest("turn/start", {

@@ -193,6 +193,7 @@ function createRuntime(): FakeDispatchRuntime {
     unarchiveThread: vi.fn(async () => undefined),
     listModels: vi.fn(async () => ({
       models: [],
+      modes: [],
       selectedOnlyModels: [],
     })),
     listRunningProviders: vi.fn(() => ["fake"]),

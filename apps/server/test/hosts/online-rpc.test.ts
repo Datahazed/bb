@@ -93,7 +93,7 @@ describe("host online RPC retry semantics", () => {
               requestId: request.requestId,
               commandType: request.command.type,
               ok: true,
-              result: { models: [], selectedOnlyModels: [] },
+              result: { models: [], modes: [], selectedOnlyModels: [] },
             }),
           });
         },
@@ -111,7 +111,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: { type: "provider.list_models", providerId: "codex" },
         }),
-      ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
+      ).resolves.toEqual({ models: [], modes: [], selectedOnlyModels: [] });
 
       const updatedSession = harness.db
         .select()
@@ -146,7 +146,7 @@ describe("host online RPC retry semantics", () => {
                 requestId: request.requestId,
                 commandType: request.command.type,
                 ok: true,
-                result: { models: [], selectedOnlyModels: [] },
+                result: { models: [], modes: [], selectedOnlyModels: [] },
               }),
             });
           },
@@ -160,7 +160,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: { type: "provider.list_models", providerId: "codex" },
         }),
-      ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
+      ).resolves.toEqual({ models: [], modes: [], selectedOnlyModels: [] });
       expect(requests.map((request) => request.command.type)).toEqual([
         "provider.list_models",
       ]);
@@ -178,7 +178,7 @@ describe("host online RPC retry semantics", () => {
         hub: harness.hub,
         requests,
         sessionId: session.id,
-        successResult: { models: [], selectedOnlyModels: [] },
+        successResult: { models: [], modes: [], selectedOnlyModels: [] },
       });
 
       await expect(
@@ -187,7 +187,7 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: { type: "provider.list_models", providerId: "codex" },
         }),
-      ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
+      ).resolves.toEqual({ models: [], modes: [], selectedOnlyModels: [] });
       expect(requests.map((request) => request.command.type)).toEqual([
         "provider.list_models",
         "provider.list_models",
@@ -206,7 +206,7 @@ describe("host online RPC retry semantics", () => {
         hub: harness.hub,
         requests,
         sessionId: session.id,
-        successResult: { models: [], selectedOnlyModels: [] },
+        successResult: { models: [], modes: [], selectedOnlyModels: [] },
       });
 
       try {

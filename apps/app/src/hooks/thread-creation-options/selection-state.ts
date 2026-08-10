@@ -16,6 +16,7 @@ export type ThreadCreationOptionsScope = "new-thread" | "component-local";
 export interface ThreadPromptSelections {
   selectedProviderId: string;
   selectedModel: string;
+  providerMode: string;
   serviceTier: ServiceTier | undefined;
   reasoningLevel: ReasoningLevel;
   permissionMode: PermissionMode;
@@ -38,6 +39,7 @@ export interface UsePromptModelReasoningOptions {
    * connected provider reported by the routed machine. */
   preferConnectedProviderWhenUnset?: boolean;
   initialModel?: string;
+  initialProviderMode?: string;
   initialServiceTier?: ServiceTier;
   initialReasoningLevel?: ReasoningLevel;
   initialPermissionMode?: PermissionMode;
@@ -59,6 +61,7 @@ export interface UseComponentLocalCreationOptions extends UsePromptModelReasonin
 export interface StoredCreateExecutionValues {
   selectedProviderId: string;
   selectedModel: string;
+  providerMode: string;
   serviceTier: StoredServiceTier;
   reasoningLevel: StoredReasoningLevel;
   permissionMode: StoredPermissionMode;
@@ -67,6 +70,7 @@ export interface StoredCreateExecutionValues {
 export interface EffectiveCreateExecutionValues {
   selectedProviderId: string;
   selectedModel: string;
+  providerMode: string;
   serviceTier: ServiceTier | undefined;
   reasoningLevel: ReasoningLevel;
   permissionMode: PermissionMode;
@@ -135,6 +139,7 @@ export function getInitialThreadPromptSelections(
   return {
     selectedProviderId: options?.initialProviderId ?? "",
     selectedModel: options?.initialModel ?? "",
+    providerMode: options?.initialProviderMode ?? "",
     serviceTier: options?.initialServiceTier,
     reasoningLevel: options?.initialReasoningLevel ?? "medium",
     permissionMode: options?.initialPermissionMode ?? "auto",
@@ -162,6 +167,13 @@ export function syncUntouchedThreadPromptSelections({
     currentSelections.selectedModel !== nextSelections.selectedModel
   ) {
     updatedSelections.selectedModel = nextSelections.selectedModel;
+    changed = true;
+  }
+  if (
+    !touchedFields.has("providerMode") &&
+    currentSelections.providerMode !== nextSelections.providerMode
+  ) {
+    updatedSelections.providerMode = nextSelections.providerMode;
     changed = true;
   }
   if (
@@ -225,6 +237,7 @@ export function buildExecutionInputSources({
   const hasTouchedExecutionField =
     touchedFields.has("selectedProviderId") ||
     touchedFields.has("selectedModel") ||
+    touchedFields.has("providerMode") ||
     touchedFields.has("serviceTier") ||
     touchedFields.has("reasoningLevel") ||
     touchedFields.has("permissionMode");
@@ -257,6 +270,14 @@ export function buildExecutionInputSources({
       forcesExplicitExecutionFields ||
       touchedFields.has("selectedModel"),
   });
+  const providerModeSource = resolveCreateExecutionInputSource({
+    hasStoredValue:
+      usesStoredValues &&
+      hasValue(storedValues.providerMode) &&
+      storedValues.providerMode === effectiveValues.providerMode,
+    hasValue: hasValue(effectiveValues.providerMode),
+    touched: forcesExplicitExecutionFields || touchedFields.has("providerMode"),
+  });
   const serviceTierSource = resolveCreateExecutionInputSource({
     hasStoredValue:
       usesStoredValues &&
@@ -281,6 +302,7 @@ export function buildExecutionInputSources({
   if (scope === "component-local") {
     return {
       ...(modelSource ? { model: modelSource } : {}),
+      ...(providerModeSource ? { providerMode: providerModeSource } : {}),
       ...(serviceTierSource ? { serviceTier: serviceTierSource } : {}),
       ...(reasoningLevelSource ? { reasoningLevel: reasoningLevelSource } : {}),
       ...(permissionModeSource ? { permissionMode: permissionModeSource } : {}),
@@ -290,6 +312,7 @@ export function buildExecutionInputSources({
   return {
     ...(providerSource ? { providerId: providerSource } : {}),
     ...(modelSource ? { model: modelSource } : {}),
+    ...(providerModeSource ? { providerMode: providerModeSource } : {}),
     ...(serviceTierSource ? { serviceTier: serviceTierSource } : {}),
     ...(reasoningLevelSource ? { reasoningLevel: reasoningLevelSource } : {}),
     ...(permissionModeSource ? { permissionMode: permissionModeSource } : {}),

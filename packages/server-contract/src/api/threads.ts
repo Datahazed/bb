@@ -62,6 +62,7 @@ export const createExecutionInputSourcesSchema = z
   .object({
     providerId: executionInputFieldSourceSchema.optional(),
     model: executionInputFieldSourceSchema.optional(),
+    providerMode: executionInputFieldSourceSchema.optional(),
     serviceTier: executionInputFieldSourceSchema.optional(),
     reasoningLevel: executionInputFieldSourceSchema.optional(),
     permissionMode: executionInputFieldSourceSchema.optional(),
@@ -74,6 +75,7 @@ export type CreateExecutionInputSources = z.infer<
 export const existingThreadExecutionInputSourcesSchema = z
   .object({
     model: executionInputFieldSourceSchema.optional(),
+    providerMode: executionInputFieldSourceSchema.optional(),
     serviceTier: executionInputFieldSourceSchema.optional(),
     reasoningLevel: executionInputFieldSourceSchema.optional(),
     permissionMode: executionInputFieldSourceSchema.optional(),
@@ -123,6 +125,8 @@ export const createThreadRequestSchema = z
     // `.min(1)`.
     input: z.array(promptInputSchema),
     model: z.string().min(1).optional(),
+    /** Provider-native session mode, such as an OpenCode primary agent. */
+    providerMode: z.string().min(1).optional(),
     serviceTier: serviceTierSchema.optional(),
     reasoningLevel: reasoningLevelSchema.optional(),
     permissionMode: permissionModeInputSchema.optional(),

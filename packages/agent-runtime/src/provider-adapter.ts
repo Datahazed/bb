@@ -1,5 +1,6 @@
 import type {
   AvailableModel,
+  AvailableProviderMode,
   ClientTurnRequestId,
   DynamicTool,
   InstructionMode,
@@ -110,6 +111,7 @@ export interface DecodedInteractiveRequest {
 
 export type ProviderExecutionContext = {
   model?: string;
+  providerMode?: string;
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
   claudeCodePermissionMode?: "plan";
@@ -273,6 +275,7 @@ export interface ProviderAdapter {
   ): PreparedProviderCommandDispatch | null;
   parseModelListResult(result: unknown): {
     models: AvailableModel[];
+    modes: AvailableProviderMode[];
     selectedOnlyModels: AvailableModel[];
   };
   translateEvent(

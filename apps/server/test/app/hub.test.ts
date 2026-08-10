@@ -314,7 +314,7 @@ describe("NotificationHub", () => {
         requestId: "rpc-1",
         commandType: "provider.list_models",
         ok: true,
-        result: { models: [], selectedOnlyModels: [] },
+        result: { models: [], modes: [], selectedOnlyModels: [] },
       },
       sessionId: "session-1",
     });
@@ -325,7 +325,7 @@ describe("NotificationHub", () => {
       requestId: "rpc-1",
       commandType: "provider.list_models",
       ok: true,
-      result: { models: [], selectedOnlyModels: [] },
+      result: { models: [], modes: [], selectedOnlyModels: [] },
     });
   });
 
@@ -356,7 +356,7 @@ describe("NotificationHub", () => {
         requestId: "rpc-session-scoped",
         commandType: "provider.list_models",
         ok: true,
-        result: { models: [], selectedOnlyModels: [] },
+        result: { models: [], modes: [], selectedOnlyModels: [] },
       },
       sessionId: "session-2",
     });
@@ -374,7 +374,7 @@ describe("NotificationHub", () => {
         requestId: "rpc-session-scoped",
         commandType: "provider.list_models",
         ok: true,
-        result: { models: [], selectedOnlyModels: [] },
+        result: { models: [], modes: [], selectedOnlyModels: [] },
       },
       sessionId: "session-1",
     });
@@ -384,7 +384,7 @@ describe("NotificationHub", () => {
       requestId: "rpc-session-scoped",
       commandType: "provider.list_models",
       ok: true,
-      result: { models: [], selectedOnlyModels: [] },
+      result: { models: [], modes: [], selectedOnlyModels: [] },
     });
   });
 

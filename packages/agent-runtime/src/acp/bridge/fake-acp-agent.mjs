@@ -15,6 +15,10 @@
  *                            → override the usage notification session id
  * - FAKE_ACP_MODEL_CONFIG=1  → advertise a model configOptions select
  * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
+ * - FAKE_ACP_MODE_CONFIG=1   → advertise primary agents as an ACP mode option
+ * - FAKE_ACP_ACCEPT_UNLISTED_MODEL=1
+ *                            → accept a model through session/set_model even
+ *                              when discovery does not advertise it
  * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
  *                            → advertise per-model effort configOptions
  * - FAKE_ACP_UNMAPPED_REASONING_CONFIG=1
@@ -42,6 +46,8 @@ const usageOnLoad = process.env.FAKE_ACP_USAGE_ON_LOAD === "1";
 const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
+const modeConfig = process.env.FAKE_ACP_MODE_CONFIG === "1";
+const acceptUnlistedModel = process.env.FAKE_ACP_ACCEPT_UNLISTED_MODEL === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
 const unmappedReasoningConfig =
   process.env.FAKE_ACP_UNMAPPED_REASONING_CONFIG === "1";
@@ -62,6 +68,7 @@ const fakeModels = [
 let activePromptId = null;
 let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
+let selectedMode = "build";
 let selectedEffort = "none";
 let authenticatedMethod = null;
 let activeSessionId = newSessionId;
@@ -142,27 +149,42 @@ function effortOptionForModel(model) {
 }
 
 function configOptions() {
-  if (!modelConfig) {
+  if (!modelConfig && !modeConfig) {
     return undefined;
   }
   return [
-    {
-      id: "mode",
-      name: "Mode",
-      category: "mode",
-      type: "select",
-      currentValue: true,
-      options: [{ value: "build", name: "Build" }],
-    },
-    {
-      id: "model",
-      name: "Model",
-      category: "model",
-      type: "select",
-      currentValue: selectedModel,
-      options: fakeModels,
-    },
-    effortOptionForModel(selectedModel),
+    ...(modeConfig
+      ? [
+          {
+            id: "mode",
+            name: "Session Mode",
+            category: "mode",
+            type: "select",
+            currentValue: selectedMode,
+            options: [
+              { value: "build", name: "Build" },
+              {
+                value: "orchestrator",
+                name: "Orchestrator",
+                description: "Coordinate specialist agents",
+              },
+            ],
+          },
+        ]
+      : []),
+    ...(modelConfig
+      ? [
+          {
+            id: "model",
+            name: "Model",
+            category: "model",
+            type: "select",
+            currentValue: selectedModel,
+            options: fakeModels,
+          },
+          effortOptionForModel(selectedModel),
+        ]
+      : []),
   ].filter(Boolean);
 }
 
@@ -283,6 +305,8 @@ async function handlePrompt(message) {
     notifyUpdate(messageChunk(`argv:${process.argv.slice(2).join(" ")}`));
   } else if (text.includes("echo-selected-model")) {
     notifyUpdate(messageChunk(`selected-model:${selectedModel}`));
+  } else if (text.includes("echo-selected-mode")) {
+    notifyUpdate(messageChunk(`selected-mode:${selectedMode}`));
   } else if (text.includes("echo-selected-effort")) {
     notifyUpdate(messageChunk(`selected-effort:${selectedEffort}`));
   } else if (text.includes("echo-auth-method")) {
@@ -408,9 +432,10 @@ async function handleMessage(message) {
     case "session/set_model": {
       const modelId = message.params?.modelId;
       if (
-        (!modelConfig && !modelsField) ||
+        (!modelConfig && !modelsField && !acceptUnlistedModel) ||
         typeof modelId !== "string" ||
-        !fakeModels.some((model) => model.value === modelId)
+        (!acceptUnlistedModel &&
+          !fakeModels.some((model) => model.value === modelId))
       ) {
         send({
           jsonrpc: "2.0",
@@ -466,6 +491,23 @@ async function handleMessage(message) {
           return;
         }
         selectedEffort = value;
+        send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        return;
+      }
+      if (configId === "mode") {
+        if (
+          !modeConfig ||
+          typeof value !== "string" ||
+          !["build", "orchestrator"].includes(value)
+        ) {
+          send({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32602, message: `mode not found: ${value}` },
+          });
+          return;
+        }
+        selectedMode = value;
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
         return;
       }

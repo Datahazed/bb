@@ -283,7 +283,8 @@ environment pull-request show <id>`. Diff commands require an explicit target
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
 - If provider or model choice matters, inspect options with `bb provider list`
-  and `bb provider models <provider-id>`. Both accept `--machine <id-or-name>`
+  and `bb provider models <provider-id>`. Inspect provider-native agents with
+  `bb provider modes <provider-id>`. These commands accept `--machine <id-or-name>`
   (alias `--host`) or `--environment <id>` to inspect the machine where work
   will run; the selectors cannot be combined. With neither selector they
   intentionally inspect the primary machine.
@@ -291,6 +292,10 @@ environment pull-request show <id>`. Diff commands require an explicit target
   host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
   `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
   `acp-grok`, or `acp-hermes-agent`.
+- OpenCode advertises models as ACP model options. It advertises custom primary
+  agents as ACP mode options. Select an agent with `bb thread spawn
+--provider-mode <mode>`. bb applies the model and mode before the first
+  prompt. If OpenCode advertises no mode, bb uses its default agent.
 - Cursor ACP threads discover project skills from `.cursor/skills`. This root
   can link to `.agents/skills`. `bb skill list` shows linked Cursor skills under
   `cursor-project` and keeps them read-only.
@@ -307,6 +312,10 @@ environment pull-request show <id>`. Diff commands require an explicit target
   reasoning. Optional `nativeSkillRoots.user` paths resolve from the target
   host home directory. Optional `nativeSkillRoots.project` paths resolve from
   the selected workspace. The composer lists skills from these roots.
+- Top-level `customModels` adds models that provider discovery does not return.
+  It accepts built-in provider ids and dynamic ids that match `acp-<slug>`.
+  A custom OpenCode model appears in `bb provider models acp-opencode` and in
+  the model picker. bb tries `session/set_model` before the first prompt.
 - Top-level `sharedSkillRoots` uses the same relative `user` and `project`
   paths. bb lists these skills as read-only. bb injects them into each provider,
   so one physical skill collection can support bb and standalone provider CLIs.

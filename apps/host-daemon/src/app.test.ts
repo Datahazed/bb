@@ -257,6 +257,7 @@ function createFakeRuntime(): AgentRuntime {
     async listModels() {
       return {
         models: [],
+        modes: [],
         selectedOnlyModels: [],
       };
     },
@@ -414,6 +415,7 @@ describe("createHostDaemonApp", () => {
     };
     const listModels = vi.fn<AgentRuntime["listModels"]>(async () => ({
       models: [model],
+      modes: [],
       selectedOnlyModels: [],
     }));
     const resolveRuntimeShellEnv = vi.fn(async () => ({
@@ -457,6 +459,7 @@ describe("createHostDaemonApp", () => {
         ok: true,
         result: {
           models: [model],
+          modes: [],
           selectedOnlyModels: [],
         },
       });
@@ -509,6 +512,7 @@ describe("createHostDaemonApp", () => {
     };
     const listModels = vi.fn<AgentRuntime["listModels"]>(async () => ({
       models: [model],
+      modes: [],
       selectedOnlyModels: [],
     }));
     const resolveRuntimeShellEnv = vi.fn(async () => ({

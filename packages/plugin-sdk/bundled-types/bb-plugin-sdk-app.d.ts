@@ -212,6 +212,10 @@ declare const createExecutionInputSourcesSchema: z.ZodObject<{
         explicit: "explicit";
         "client-preference": "client-preference";
     }>>;
+    providerMode: z.ZodOptional<z.ZodEnum<{
+        explicit: "explicit";
+        "client-preference": "client-preference";
+    }>>;
     serviceTier: z.ZodOptional<z.ZodEnum<{
         explicit: "explicit";
         "client-preference": "client-preference";

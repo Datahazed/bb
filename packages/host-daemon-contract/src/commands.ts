@@ -3,6 +3,7 @@ import {
   acpNativeReasoningSchema,
   acpReasoningCliSchema,
   availableModelSchema,
+  availableProviderModeSchema,
   discoveredWorkspacePropertiesSchema,
   dynamicToolSchema,
   instructionModeSchema,
@@ -36,7 +37,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 95 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 96 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -1327,6 +1328,7 @@ const writeSkillResultSchema = z.discriminatedUnion("outcome", [
 
 const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),
+  modes: z.array(availableProviderModeSchema),
   selectedOnlyModels: z.array(availableModelSchema),
 });
 

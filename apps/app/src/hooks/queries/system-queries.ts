@@ -81,6 +81,7 @@ function claudeCodePlaceholderExecutionOptions(
   return {
     providers: listBuiltInAgentProviderInfos(),
     models: cached?.models ?? listClaudeCodeFallbackModels(),
+    modes: [],
     selectedOnlyModels: cached?.selectedOnlyModels ?? [],
     permissionCeiling: "full",
     modelLoadError: null,

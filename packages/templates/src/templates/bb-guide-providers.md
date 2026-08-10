@@ -1,7 +1,7 @@
 ---
 kind: instruction
 title: bb Guide — Providers
-summary: Command reference for discovering providers and models.
+summary: Command reference for discovering providers, models, and modes.
 intent: Provide complete provider command documentation for agents.
 editingNotes: Keep flags accurate against the CLI implementation.
 ---
@@ -13,11 +13,13 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
                                           List available providers
   bb provider models [providerId] [--machine <id-or-name> | --environment <id>]
                                           List models for a provider
+  bb provider modes [providerId] [--machine <id-or-name> | --environment <id>]
+                                          List provider session modes
 
 Use these before spawning threads if you are unsure which provider or model to use.
 `--host` is an alias for `--machine`. Machine and environment selectors are
 mutually exclusive because an environment already selects its machine. When no
-selector is supplied, both commands intentionally inspect the primary machine.
+selector is supplied, all commands intentionally inspect the primary machine.
 When provider and model are omitted from bb thread spawn, the project's
 remembered defaults apply. If the project has no remembered choice, bb uses
 the explicitly requested provider or Codex, then resolves the model marked
@@ -76,6 +78,25 @@ host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
 on PATH appears as provider acp-opencode, acp-omp, acp-grok, or
 acp-hermes-agent.
 
+OpenCode models and primary agents are different selections. OpenCode exposes
+models through the ACP `model` option. It exposes primary agents through the
+ACP `mode` option. The model picker shows advertised primary agents in an
+Agent section. bb applies both selections before it sends the first prompt.
+
+Inspect the exact values on the target machine before you create a thread:
+
+  bb provider models acp-opencode --environment "$BB_ENVIRONMENT_ID" --json
+  bb provider modes acp-opencode --environment "$BB_ENVIRONMENT_ID" --json
+  bb thread spawn --project <id> --provider acp-opencode --model <model> \
+    --provider-mode <agent> --prompt <text>
+
+If OpenCode does not advertise models, bb shows its default fallback model.
+Add an unadvertised model to `customModels` in the app config to make it
+selectable. bb sends that model with `session/set_model` before the first
+prompt. OpenCode can reject a model that it cannot use. If OpenCode does not
+advertise a `mode` option, bb does not show the Agent section and uses the
+OpenCode default agent.
+
 Cursor ACP threads discover project skills from .cursor/skills. This root can
 be a symlink to another skill root such as .agents/skills. bb shows a skill
 through a symlinked root as read-only under the Cursor project scope.
@@ -91,6 +112,17 @@ accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
 Use nativeSkillRoots to add native skills to the composer. User roots resolve
 from the target host home directory. Project roots resolve from the selected
 workspace. Each root must use a relative path without dot segments.
+
+The top-level `customModels` list accepts built-in provider ids and validated
+dynamic ACP provider ids. A dynamic id must match `acp-<slug>`. For example:
+
+  "customModels": [
+    {
+      "providerId": "acp-opencode",
+      "model": "my-provider/my-model",
+      "displayName": "My OpenCode Model"
+    }
+  ]
 
 Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots

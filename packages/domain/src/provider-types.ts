@@ -25,6 +25,15 @@ export const availableModelSchema = z.object({
 });
 export type AvailableModel = z.infer<typeof availableModelSchema>;
 
+/** A provider-native session mode, such as an OpenCode primary agent. */
+export const availableProviderModeSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string(),
+  isDefault: z.boolean(),
+});
+export type AvailableProviderMode = z.infer<typeof availableProviderModeSchema>;
+
 export const providerCapabilitiesSchema = z.object({
   supportsArchive: z.boolean(),
   supportsRename: z.boolean(),
@@ -37,7 +46,10 @@ export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>;
 
 export const providerComposerCommandSchema = z.object({
   trigger: promptMentionCommandTriggerSchema,
-  name: z.string().min(1).regex(/^[^\s/$]+$/u),
+  name: z
+    .string()
+    .min(1)
+    .regex(/^[^\s/$]+$/u),
   trailingText: z.string().regex(/^\s*$/u),
 });
 export type ProviderComposerCommand = z.infer<

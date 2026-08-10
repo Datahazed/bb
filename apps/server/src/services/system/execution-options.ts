@@ -59,7 +59,7 @@ interface ExpectedFallbackErrorLogFields {
 
 type ModelListResult = Pick<
   SystemExecutionOptionsResponse,
-  "modelLoadError" | "models" | "selectedOnlyModels"
+  "modelLoadError" | "models" | "modes" | "selectedOnlyModels"
 >;
 
 interface AppendCustomModelsArgs {
@@ -317,6 +317,7 @@ export async function resolveSystemProviderModels(
   });
   return {
     models,
+    modes: result.modes,
     selectedOnlyModels,
     modelLoadError: result.modelLoadError,
   };
@@ -438,6 +439,7 @@ export async function resolveSystemExecutionOptions(
       providers,
       permissionCeiling,
       models: [],
+      modes: [],
       selectedOnlyModels: [],
       modelLoadError: null,
     };
@@ -454,6 +456,7 @@ export async function resolveSystemExecutionOptions(
       providers,
       permissionCeiling,
       models,
+      modes: [],
       selectedOnlyModels,
       modelLoadError:
         hostLookupError === null
@@ -485,6 +488,7 @@ export async function resolveSystemExecutionOptions(
     providers,
     permissionCeiling,
     models,
+    modes: modelResult.modes,
     selectedOnlyModels,
     modelLoadError: modelResult.modelLoadError,
   };
@@ -511,9 +515,8 @@ async function loadSystemProviderModels(
       ? findKnownAcpAgentForProviderId(provider.id)
       : undefined;
   try {
-    const { models, selectedOnlyModels } = await callHostRetryableOnlineRpc(
-      deps,
-      {
+    const { models, modes, selectedOnlyModels } =
+      await callHostRetryableOnlineRpc(deps, {
         hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
@@ -531,10 +534,10 @@ async function loadSystemProviderModels(
                 }
               : {}),
         },
-      },
-    );
+      });
     return {
       models,
+      modes,
       selectedOnlyModels,
       modelLoadError: null,
     };
@@ -562,6 +565,7 @@ async function loadSystemProviderModels(
         code: modelLoadError.code,
         providerId: provider.id,
       }),
+      modes: [],
       selectedOnlyModels: [],
       modelLoadError,
     };

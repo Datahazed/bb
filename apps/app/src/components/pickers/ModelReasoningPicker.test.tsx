@@ -77,6 +77,7 @@ function executionOptions({
   return {
     providers: [],
     models,
+    modes: [],
     selectedOnlyModels,
     permissionCeiling: "full",
     modelLoadError: null,
@@ -87,6 +88,9 @@ function renderPicker({
   onSelectedProviderChange = vi.fn(),
   onModelChange = vi.fn(),
   onReasoningChange = vi.fn(),
+  onProviderModeChange,
+  providerModeOptions = [],
+  providerModeValue = "",
   modelOptions = codexModels,
   modelValue = modelOptions[0]?.value ?? "",
   moreModelOptions = [],
@@ -97,6 +101,9 @@ function renderPicker({
   onSelectedProviderChange?: (value: string) => void;
   onModelChange?: (value: string) => void;
   onReasoningChange?: (value: ReasoningLevel) => void;
+  onProviderModeChange?: (value: string) => void;
+  providerModeOptions?: readonly PickerOption<string>[];
+  providerModeValue?: string;
   modelOptions?: readonly ModelPickerOption[];
   modelValue?: string;
   moreModelOptions?: readonly ModelPickerOption[];
@@ -133,6 +140,9 @@ function renderPicker({
       modelOptions={modelOptions}
       moreModelOptions={moreModelOptions}
       onModelChange={onModelChange}
+      providerModeValue={providerModeValue}
+      providerModeOptions={providerModeOptions}
+      onProviderModeChange={onProviderModeChange}
       reasoningValue="medium"
       reasoningOptions={reasoningOptions}
       onReasoningChange={onReasoningChange}
@@ -153,6 +163,25 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  it("selects an ACP primary agent from the Agent section", () => {
+    const onProviderModeChange = vi.fn();
+    renderPicker({
+      onProviderModeChange,
+      providerModeOptions: [
+        { value: "build", label: "Build" },
+        { value: "orchestrator", label: "Orchestrator" },
+      ],
+      providerModeValue: "build",
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    fireEvent.click(screen.getByText("Orchestrator"));
+
+    expect(onProviderModeChange).toHaveBeenCalledWith("orchestrator");
+  });
+
   it("stays open while changing both the model and reasoning effort", () => {
     const { onModelChange, onReasoningChange } = renderPicker({
       modelOptions: [...codexModels, { value: "gpt-5.2", label: "GPT-5.2" }],

@@ -24,6 +24,7 @@ export interface ThreadCreateServiceRequestInput {
   input: PromptInput[];
   sectionId?: CreateThreadRequest["sectionId"];
   model?: CreateThreadRequest["model"];
+  providerMode?: CreateThreadRequest["providerMode"];
   origin: ThreadCreateOrigin | null;
   /** Plugin attribution; paired with origin "plugin". */
   originPluginId?: CreateThreadRequest["originPluginId"];

@@ -439,6 +439,7 @@ export function createFakeRuntime() {
       state.listedModelsAcpLaunchSpec = args.acpLaunchSpec;
       return {
         models: [] satisfies AvailableModel[],
+        modes: [],
         selectedOnlyModels: [] satisfies AvailableModel[],
       };
     },

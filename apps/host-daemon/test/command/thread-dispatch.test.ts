@@ -1797,6 +1797,7 @@ describe("thread command dispatch", () => {
                 isDefault: true,
               },
             ],
+            modes: [],
             selectedOnlyModels: [
               {
                 id: "model-1-legacy",
@@ -1830,6 +1831,7 @@ describe("thread command dispatch", () => {
           isDefault: true,
         },
       ],
+      modes: [],
       selectedOnlyModels: [
         {
           id: "model-1-legacy",

@@ -121,10 +121,12 @@ describe("command dispatch support", () => {
       .fn<AgentRuntime["listModels"]>()
       .mockResolvedValueOnce({
         models: [firstModel],
+        modes: [],
         selectedOnlyModels: [],
       })
       .mockResolvedValueOnce({
         models: [secondModel],
+        modes: [],
         selectedOnlyModels: [],
       });
     createAgentRuntimeMock.mockReturnValue(
@@ -138,10 +140,12 @@ describe("command dispatch support", () => {
 
     await expect(defaultListModels({ providerId: "codex" })).resolves.toEqual({
       models: [firstModel],
+      modes: [],
       selectedOnlyModels: [],
     });
     await expect(defaultListModels({ providerId: "codex" })).resolves.toEqual({
       models: [secondModel],
+      modes: [],
       selectedOnlyModels: [],
     });
 
@@ -162,6 +166,7 @@ describe("command dispatch support", () => {
     };
     const listModels = vi.fn<AgentRuntime["listModels"]>().mockResolvedValue({
       models: [],
+      modes: [],
       selectedOnlyModels: [],
     });
     createAgentRuntimeMock.mockReturnValue(
@@ -201,6 +206,7 @@ describe("command dispatch support", () => {
         makeRuntime({
           listModels: vi.fn<AgentRuntime["listModels"]>().mockResolvedValue({
             models: [makeModel({ id: "first" })],
+            modes: [],
             selectedOnlyModels: [],
           }),
           shutdown: async () => {
@@ -212,6 +218,7 @@ describe("command dispatch support", () => {
         makeRuntime({
           listModels: vi.fn<AgentRuntime["listModels"]>().mockResolvedValue({
             models: [makeModel({ id: "second" })],
+            modes: [],
             selectedOnlyModels: [],
           }),
           shutdown: async () => {

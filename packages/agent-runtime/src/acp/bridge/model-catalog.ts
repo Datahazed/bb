@@ -32,7 +32,12 @@
  */
 
 import { reasoningLevelValues } from "@bb/domain";
-import type { AvailableModel, ReasoningLevel, ServiceTier } from "@bb/domain";
+import type {
+  AvailableModel,
+  AvailableProviderMode,
+  ReasoningLevel,
+  ServiceTier,
+} from "@bb/domain";
 import type { AcpConfigOption, AcpSessionModels } from "../wire.js";
 
 export interface RawAgentModel {
@@ -143,6 +148,30 @@ export function findAcpThoughtLevelConfigOption(
   return (configOptions ?? []).find(
     (option) => option.category === "thought_level",
   );
+}
+
+export function findAcpModeConfigOption(
+  configOptions: readonly AcpConfigOption[] | undefined,
+): AcpConfigOption | undefined {
+  const options = configOptions ?? [];
+  return (
+    options.find((option) => option.category === "mode") ??
+    options.find((option) => option.id === "mode")
+  );
+}
+
+export function buildProviderModesFromConfigOptions(
+  modeOption: AcpConfigOption | undefined,
+): AvailableProviderMode[] {
+  const options = modeOption?.options ?? [];
+  const currentValue = modeOption?.currentValue;
+  return options.map((option, index) => ({
+    id: option.value,
+    displayName: option.name ?? option.value,
+    description: option.description ?? "",
+    isDefault:
+      currentValue !== undefined ? option.value === currentValue : index === 0,
+  }));
 }
 
 const ACP_NATIVE_REASONING_LEVEL_BY_VALUE: Readonly<

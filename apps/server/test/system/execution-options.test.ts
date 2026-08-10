@@ -222,6 +222,7 @@ describe("resolveSystemExecutionOptions", () => {
               ok: true,
               result: {
                 models: [catalogModel],
+                modes: [],
                 selectedOnlyModels: [],
               },
             };
@@ -293,6 +294,7 @@ describe("resolveSystemExecutionOptions", () => {
               ok: true,
               result: {
                 models: [catalogModel],
+                modes: [],
                 selectedOnlyModels: [],
               },
             };
@@ -384,6 +386,7 @@ describe("resolveSystemExecutionOptions", () => {
               ok: true,
               result: {
                 models: [catalogModel],
+                modes: [],
                 selectedOnlyModels: [],
               },
             };
@@ -510,6 +513,7 @@ describe("resolveSystemExecutionOptions", () => {
                   ok: true,
                   result: {
                     models: [catalogModel],
+                    modes: [],
                     selectedOnlyModels: [],
                   },
                 };
@@ -670,7 +674,7 @@ describe("resolveSystemExecutionOptions", () => {
             if (request.command.type === "provider.list_models") {
               return {
                 ok: true,
-                result: { models: [], selectedOnlyModels: [] },
+                result: { models: [], modes: [], selectedOnlyModels: [] },
               };
             }
             throw new Error(`Unexpected RPC command ${request.command.type}`);
@@ -875,6 +879,13 @@ describe("resolveSystemExecutionOptions", () => {
   it("includes custom ACP agents and sends their launch spec when loading models", async () => {
     await withTestHarness(
       {
+        customModels: [
+          {
+            providerId: "acp-example-agent",
+            model: "example/custom",
+            displayName: "Example Custom",
+          },
+        ],
         customAcpAgents: [
           {
             id: "example-agent",
@@ -898,12 +909,19 @@ describe("resolveSystemExecutionOptions", () => {
         const catalogModel = availableModelFixture({
           model: "example/default",
         });
+        const providerMode = {
+          id: "orchestrator",
+          displayName: "Orchestrator",
+          description: "Coordinates work",
+          isDefault: false,
+        };
         const responder = registerProviderHostRpcResponder(harness, {
           hostId: host.id,
           sessionId: session.id,
           modelsByProviderId: {
             "acp-example-agent": {
               models: [catalogModel],
+              modes: [providerMode],
               selectedOnlyModels: [],
             },
           },
@@ -929,7 +947,14 @@ describe("resolveSystemExecutionOptions", () => {
             }),
           ]),
         );
-        expect(response.models).toEqual([catalogModel]);
+        expect(response.models).toEqual([
+          catalogModel,
+          expect.objectContaining({
+            model: "example/custom",
+            displayName: "Example Custom",
+          }),
+        ]);
+        expect(response.modes).toEqual([providerMode]);
         expect(response.selectedOnlyModels).toEqual([]);
         expect(response.modelLoadError).toBeNull();
         expect(

@@ -477,7 +477,9 @@ export function createFakeAdapter(
       : undefined,
     displayName: options.displayName ?? DEFAULT_DISPLAY_NAME,
     id: options.id ?? DEFAULT_ADAPTER_ID,
-    parseModelListResult,
+    parseModelListResult(result) {
+      return { ...parseModelListResult(result), modes: [] };
+    },
     prepareTurnStart: noPreparedProviderCommandDispatch,
     process: {
       args: buildNodeScriptArgs(options.scriptPath ?? fakeProviderScriptPath),

@@ -32,6 +32,7 @@ import {
   usePromptBoxEnvironmentPreference,
   usePromptBoxModelPreference,
   usePromptBoxPermissionModePreference,
+  usePromptBoxProviderModePreference,
   usePromptBoxProviderPreference,
   usePromptBoxReasoningLevelPreference,
   usePromptBoxServiceTierPreference,
@@ -77,6 +78,9 @@ export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   selectedProviderComposerActions: readonly ProviderComposerAction[];
   selectedModel: string;
   setSelectedModel: StringSelectionSetter;
+  selectedProviderMode: string;
+  setSelectedProviderMode: StringSelectionSetter;
+  providerModeOptions: PickerOption<string>[];
   serviceTier: ServiceTier | undefined;
   setServiceTier: ServiceTierSelectionSetter;
   reasoningLevel: ReasoningLevel;
@@ -151,6 +155,7 @@ export function useThreadCreationOptions(
     environmentId,
     initialEnvironmentSelectionValue,
     initialModel,
+    initialProviderMode,
     initialProviderId,
     initialPermissionMode,
     initialReasoningLevel,
@@ -165,6 +170,8 @@ export function useThreadCreationOptions(
     usePromptBoxProviderPreference();
   const { setValue: setStoredSelectedModel, value: storedSelectedModel } =
     usePromptBoxModelPreference();
+  const { setValue: setStoredProviderMode, value: storedProviderMode } =
+    usePromptBoxProviderModePreference();
   const { setValue: setStoredServiceTier, value: storedServiceTier } =
     usePromptBoxServiceTierPreference();
   const { setValue: setStoredReasoningLevel, value: storedReasoningLevel } =
@@ -185,6 +192,7 @@ export function useThreadCreationOptions(
       getInitialThreadPromptSelections({
         initialEnvironmentSelectionValue,
         initialModel,
+        initialProviderMode,
         initialProviderId,
         initialPermissionMode,
         initialReasoningLevel,
@@ -202,6 +210,7 @@ export function useThreadCreationOptions(
       getInitialThreadPromptSelections({
         initialEnvironmentSelectionValue,
         initialModel,
+        initialProviderMode,
         initialProviderId,
         initialPermissionMode,
         initialReasoningLevel,
@@ -210,6 +219,7 @@ export function useThreadCreationOptions(
     [
       initialEnvironmentSelectionValue,
       initialModel,
+      initialProviderMode,
       initialProviderId,
       initialPermissionMode,
       initialReasoningLevel,
@@ -245,6 +255,9 @@ export function useThreadCreationOptions(
   const rawSelectedModel = usesStoredCreateSelections
     ? storedSelectedModel || renderedThreadSelections.selectedModel
     : renderedThreadSelections.selectedModel;
+  const rawProviderMode = usesStoredCreateSelections
+    ? storedProviderMode || renderedThreadSelections.providerMode
+    : renderedThreadSelections.providerMode;
   const rawServiceTier = usesStoredCreateSelections
     ? storedServiceTier || renderedThreadSelections.serviceTier
     : renderedThreadSelections.serviceTier;
@@ -501,6 +514,32 @@ export function useThreadCreationOptions(
     [availableModels],
   );
 
+  const availableProviderModes = useMemo(
+    () => executionOptionsQuery.data?.modes ?? [],
+    [executionOptionsQuery.data?.modes],
+  );
+  const selectedProviderMode = useMemo(() => {
+    if (
+      rawProviderMode &&
+      availableProviderModes.some((mode) => mode.id === rawProviderMode)
+    ) {
+      return rawProviderMode;
+    }
+    return (
+      availableProviderModes.find((mode) => mode.isDefault)?.id ??
+      availableProviderModes[0]?.id ??
+      ""
+    );
+  }, [availableProviderModes, rawProviderMode]);
+  const providerModeOptions = useMemo(
+    (): PickerOption<string>[] =>
+      availableProviderModes.map((mode) => ({
+        value: mode.id,
+        label: mode.displayName,
+      })),
+    [availableProviderModes],
+  );
+
   // Models behind the picker's collapsed "More models" section. A promoted
   // current selection already lives in `availableModels`, so it is excluded
   // here rather than listed twice.
@@ -599,6 +638,7 @@ export function useThreadCreationOptions(
         effectiveValues: {
           selectedProviderId: effectiveProviderId,
           selectedModel,
+          providerMode: selectedProviderMode,
           serviceTier,
           reasoningLevel,
           permissionMode,
@@ -609,6 +649,7 @@ export function useThreadCreationOptions(
         storedValues: {
           selectedProviderId: storedProviderId,
           selectedModel: storedSelectedModel,
+          providerMode: storedProviderMode,
           serviceTier: storedServiceTier,
           reasoningLevel: storedReasoningLevel,
           permissionMode: storedPermissionMode,
@@ -625,11 +666,13 @@ export function useThreadCreationOptions(
       reasoningLevel,
       scope,
       selectedModel,
+      selectedProviderMode,
       serviceTier,
       storedPermissionMode,
       storedProviderId,
       storedReasoningLevel,
       storedSelectedModel,
+      storedProviderMode,
       storedServiceTier,
       touchedFieldsPendingReset,
     ],
@@ -689,6 +732,23 @@ export function useThreadCreationOptions(
       );
     },
     [setStoredSelectedModel, usesStoredCreateSelections],
+  );
+  const setSelectedProviderMode = useCallback(
+    (value: string) => {
+      touchedThreadFieldsRef.current.add("providerMode");
+      if (usesStoredCreateSelections) {
+        setStoredProviderMode(value);
+        return;
+      }
+      setThreadSelections((currentSelections) =>
+        updateThreadPromptSelections({
+          currentSelections,
+          field: "providerMode",
+          value,
+        }),
+      );
+    },
+    [setStoredProviderMode, usesStoredCreateSelections],
   );
   const setServiceTier = useCallback(
     (value: ServiceTier | undefined) => {
@@ -785,6 +845,9 @@ export function useThreadCreationOptions(
     selectedProviderComposerActions,
     selectedModel,
     setSelectedModel,
+    selectedProviderMode,
+    setSelectedProviderMode,
+    providerModeOptions,
     serviceTier,
     setServiceTier,
     reasoningLevel,

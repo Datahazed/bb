@@ -39,6 +39,7 @@ interface ThreadSpawnCommandOptions {
   parentThread?: string;
   provider?: string;
   model?: string;
+  providerMode?: string;
   reasoningLevel?: string;
   title?: string;
   serviceTier?: string;
@@ -196,6 +197,10 @@ export function registerSpawnCommand(
       "Model ID for the thread. Omit to use the project's remembered default for the resolved provider",
     )
     .option(
+      "--provider-mode <mode>",
+      "Provider-native session mode, such as an OpenCode primary agent",
+    )
+    .option(
       "--reasoning-level <level>",
       "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
     )
@@ -298,6 +303,7 @@ export function registerSpawnCommand(
             projectId,
             ...(opts.provider ? { providerId: opts.provider } : {}),
             ...(opts.model ? { model: opts.model } : {}),
+            ...(opts.providerMode ? { providerMode: opts.providerMode } : {}),
             input: buildPromptInputs({
               message: opts.prompt,
               files: opts.file,

@@ -25,12 +25,14 @@ describe("thread execution plan input sources", () => {
     expect(
       buildExistingThreadExecutionInput({
         model: "gpt-5",
+        providerMode: "orchestrator",
         permissionMode: "accept-edits",
         reasoningLevel: "high",
         serviceTier: "fast",
       }),
     ).toEqual({
       model: { source: "explicit", value: "gpt-5" },
+      providerMode: { source: "explicit", value: "orchestrator" },
       permissionMode: { source: "explicit", value: "accept-edits" },
       reasoningLevel: { source: "explicit", value: "high" },
       serviceTier: { source: "explicit", value: "fast" },
@@ -41,6 +43,7 @@ describe("thread execution plan input sources", () => {
     expect(
       buildExistingThreadExecutionInput({
         model: "gpt-5",
+        providerMode: "orchestrator",
         permissionMode: "accept-edits",
         reasoningLevel: "high",
         serviceTier: "fast",
@@ -53,11 +56,13 @@ describe("thread execution plan input sources", () => {
     expect(
       buildExistingThreadExecutionInput({
         model: "gpt-5",
+        providerMode: "orchestrator",
         permissionMode: "accept-edits",
         reasoningLevel: "high",
         serviceTier: "fast",
         executionInputSources: {
           model: "client-preference",
+          providerMode: "explicit",
           permissionMode: "explicit",
           reasoningLevel: "client-preference",
           serviceTier: "explicit",
@@ -65,6 +70,7 @@ describe("thread execution plan input sources", () => {
       }),
     ).toEqual({
       model: { source: "client-preference", value: "gpt-5" },
+      providerMode: { source: "explicit", value: "orchestrator" },
       permissionMode: { source: "explicit", value: "accept-edits" },
       reasoningLevel: { source: "client-preference", value: "high" },
       serviceTier: { source: "explicit", value: "fast" },
@@ -277,6 +283,48 @@ describe("machine permission ceiling", () => {
       });
 
       expect(plan.resolvedExecution.permissionMode).toBe("full");
+    });
+  });
+
+  it("keeps a selected ACP provider mode in the execution plan", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = await seedCappedThread(harness, {
+        id: "host-provider-mode-acp",
+        maxPermissionMode: "full",
+        providerId: "acp-opencode",
+      });
+
+      const plan = await resolveExistingThreadExecutionPlan(harness.deps, {
+        executionSource: "client/turn/requested",
+        input: {
+          providerMode: { source: "explicit", value: "orchestrator" },
+        },
+        threadId: thread.id,
+      });
+
+      expect(plan.resolvedExecution.providerMode).toBe("orchestrator");
+    });
+  });
+
+  it("rejects provider modes for providers that do not support them", async () => {
+    await withTestHarness(async (harness) => {
+      const thread = await seedCappedThread(harness, {
+        id: "host-provider-mode-codex",
+        maxPermissionMode: "full",
+        providerId: "codex",
+      });
+
+      await expect(
+        resolveExistingThreadExecutionPlan(harness.deps, {
+          executionSource: "client/turn/requested",
+          input: {
+            providerMode: { source: "explicit", value: "orchestrator" },
+          },
+          threadId: thread.id,
+        }),
+      ).rejects.toMatchObject({
+        body: { code: "invalid_request" },
+      });
     });
   });
 });

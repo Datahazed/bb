@@ -1083,9 +1083,7 @@ describe("acp adapter event translation", () => {
     const firstId =
       firstEvents[0]?.type === "item/completed" ? firstEvents[0].item.id : "";
     const secondId =
-      secondEvents[0]?.type === "item/completed"
-        ? secondEvents[0].item.id
-        : "";
+      secondEvents[0]?.type === "item/completed" ? secondEvents[0].item.id : "";
     expect(firstId).toBe("acp-fs-write-turn_first_1-1");
     expect(secondId).toBe("acp-fs-write-turn_second_1-1");
     expect(firstId).not.toBe(secondId);
@@ -1429,6 +1427,7 @@ describe("acp adapter model list", () => {
     });
     expect(parsed.models).toHaveLength(1);
     expect(parsed.models[0]?.isDefault).toBe(true);
+    expect(parsed.modes).toEqual([]);
     expect(parsed.selectedOnlyModels).toEqual([]);
   });
 });

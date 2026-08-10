@@ -33,6 +33,12 @@ export interface ExecutionModelConfig {
   onChange: (value: string) => void;
 }
 
+export interface ExecutionProviderModeConfig {
+  selected: string;
+  options: readonly PickerOption<string>[];
+  onChange: (value: string) => void;
+}
+
 export interface ExecutionServiceTierConfig {
   value?: ServiceTier;
   onChange: (value: ServiceTier | undefined) => void;
@@ -58,6 +64,7 @@ export interface ExecutionControlsProps {
   providerRouting?: SystemProvidersQuery;
   provider: ExecutionProviderConfig;
   model: ExecutionModelConfig;
+  providerMode?: ExecutionProviderModeConfig;
   serviceTier?: ExecutionServiceTierConfig;
   reasoning: ExecutionReasoningConfig;
   footerAction?: ModelReasoningPickerFooterAction;
@@ -72,6 +79,7 @@ export const ExecutionControls = memo(function ExecutionControls({
   provider,
   providerRouting,
   model,
+  providerMode,
   serviceTier,
   reasoning,
   footerAction,
@@ -113,6 +121,9 @@ export const ExecutionControls = memo(function ExecutionControls({
           modelLoadFailed={model.loadFailed}
           modelLoadError={model.loadError}
           onModelChange={model.onChange}
+          providerModeValue={providerMode?.selected ?? ""}
+          providerModeOptions={providerMode?.options ?? []}
+          onProviderModeChange={providerMode?.onChange}
           formatModelLabel={formatModelLabel}
           reasoningValue={reasoning.value}
           reasoningOptions={reasoning.options}

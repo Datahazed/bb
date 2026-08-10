@@ -260,6 +260,9 @@ function toRuntimeExecutionOptions(
       : undefined;
   const base = {
     model: args.execution.model,
+    ...(args.execution.providerMode !== undefined
+      ? { providerMode: args.execution.providerMode }
+      : {}),
     serviceTier: args.execution.serviceTier,
     reasoningLevel: args.execution.reasoningLevel,
     ...(claudeCodePermissionMode !== undefined

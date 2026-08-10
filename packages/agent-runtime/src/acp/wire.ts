@@ -230,6 +230,7 @@ export const acpConfigOptionSelectOptionSchema = z
   .object({
     value: z.string(),
     name: acpOptionalString,
+    description: acpOptionalString,
   })
   .passthrough();
 export type AcpConfigOptionSelectOption = z.infer<

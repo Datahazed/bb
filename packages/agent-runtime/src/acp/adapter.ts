@@ -1275,6 +1275,9 @@ export function createAcpProviderAdapter(
         args: [...profile.agentCommand.args],
       },
       ...buildModelSelectionParam(command.options),
+      ...(command.options.providerMode !== undefined
+        ? { providerMode: command.options.providerMode }
+        : {}),
       ...buildReasoningCliParam(),
       ...buildNativeReasoningParam(),
       ...buildPermissionCliParam(),

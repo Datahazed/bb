@@ -5,6 +5,7 @@ import {
   appKeybindingsSchema,
   appThemeSchema,
   availableModelSchema,
+  availableProviderModeSchema,
   experimentsSchema,
   featureFlagsSchema,
   permissionModeSchema,
@@ -42,6 +43,8 @@ export const systemExecutionOptionsResponseSchema = z.object({
   permissionCeiling: permissionModeSchema,
   /** Active models offered as fresh picker choices. */
   models: z.array(availableModelSchema),
+  /** Provider-native session modes, such as OpenCode primary agents. */
+  modes: z.array(availableProviderModeSchema),
   /**
    * Retired/legacy models the picker no longer offers but that may still be
    * the user's stored selection. Clients prepend the matching entry when a

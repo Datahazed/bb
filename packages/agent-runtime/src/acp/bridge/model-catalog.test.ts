@@ -3,8 +3,10 @@ import {
   buildAgentModelCatalog,
   buildAcpNativeReasoningSupport,
   buildModelCatalogFromConfigOptions,
+  buildProviderModesFromConfigOptions,
   acpNativeReasoningLevelToValue,
   findAcpModelConfigOption,
+  findAcpModeConfigOption,
   findAcpThoughtLevelConfigOption,
   parseAgentModelLines,
   splitPrimaryModels,
@@ -355,6 +357,40 @@ describe("acp model catalog", () => {
 });
 
 describe("acp configOptions model catalog", () => {
+  it("maps ACP mode options into selectable primary agents", () => {
+    const modeOption = {
+      id: "mode",
+      name: "Session Mode",
+      category: "mode",
+      type: "select",
+      currentValue: "build",
+      options: [
+        { value: "build", name: "Build" },
+        {
+          value: "orchestrator",
+          name: "Orchestrator",
+          description: "Coordinate specialist agents",
+        },
+      ],
+    };
+
+    expect(findAcpModeConfigOption([modeOption])).toBe(modeOption);
+    expect(buildProviderModesFromConfigOptions(modeOption)).toEqual([
+      {
+        id: "build",
+        displayName: "Build",
+        description: "",
+        isDefault: true,
+      },
+      {
+        id: "orchestrator",
+        displayName: "Orchestrator",
+        description: "Coordinate specialist agents",
+        isDefault: false,
+      },
+    ]);
+  });
+
   it("finds the model select by category before falling back to id", () => {
     const byId = {
       id: "model",
@@ -538,9 +574,7 @@ describe("acp configOptions model catalog", () => {
 
     const support = buildAcpNativeReasoningSupport(thoughtLevel);
     expect(support.defaultReasoningEffort).toBe("low");
-    expect(acpNativeReasoningLevelToValue("low", thoughtLevel)).toBe(
-      "minimal",
-    );
+    expect(acpNativeReasoningLevelToValue("low", thoughtLevel)).toBe("minimal");
   });
 
   it("falls back to the first model when currentValue is absent or stale", () => {

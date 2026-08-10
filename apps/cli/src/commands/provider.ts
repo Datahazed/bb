@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import type { AvailableModel } from "@bb/domain";
+import type { AvailableModel, AvailableProviderMode } from "@bb/domain";
 import type { ProviderHostRoutingArgs } from "@bb/sdk";
 import type { SystemProviderInfo } from "@bb/server-contract";
 import { action } from "../action.js";
@@ -52,7 +52,7 @@ export function registerProviderCommands(
 ): void {
   const provider = program
     .command("provider")
-    .description("Inspect available providers and models");
+    .description("Inspect available providers, models, and modes");
 
   addProviderRoutingOptions(provider.command("list"))
     .description("List available providers")
@@ -103,6 +103,31 @@ export function registerProviderCommands(
             return;
           }
           printModelTable(models, providerId);
+        },
+      ),
+    );
+
+  addProviderRoutingOptions(provider.command("modes [providerId]"))
+    .description("List provider-native session modes for a provider")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          providerId: string | undefined,
+          opts: ProviderListCommandOptions,
+        ) => {
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
+          const executionOptions = await sdk.providers.models({
+            ...(await resolveProviderRouting(opts, serverUrl)),
+            ...(providerId ? { providerId } : {}),
+          });
+          if (outputJson(opts, executionOptions.modes)) return;
+          if (executionOptions.modes.length === 0) {
+            console.log("No provider modes available");
+            return;
+          }
+          printModeTable(executionOptions.modes, providerId);
         },
       ),
     );
@@ -162,6 +187,34 @@ function printModelTable(models: AvailableModel[], providerId?: string): void {
     rows,
   );
 
+  console.log("");
+  console.log(table);
+  console.log("");
+}
+
+function printModeTable(
+  modes: AvailableProviderMode[],
+  providerId?: string,
+): void {
+  if (providerId) {
+    console.log(`Provider modes for ${providerId}:`);
+  }
+  const rows = modes.map((mode) => [
+    mode.id,
+    mode.displayName,
+    mode.isDefault ? "*" : "",
+  ]);
+  const idWidth = Math.max(4, ...rows.map((row) => row[0].length));
+  const nameWidth = Math.max(4, ...rows.map((row) => row[1].length));
+  const defaultWidth = Math.max(7, ...rows.map((row) => row[2].length));
+  const table = renderBorderlessTable(
+    {
+      head: ["Mode", "Name", "Default"],
+      colWidths: [idWidth, nameWidth, defaultWidth],
+      trimTrailingWhitespace: true,
+    },
+    rows,
+  );
   console.log("");
   console.log(table);
   console.log("");

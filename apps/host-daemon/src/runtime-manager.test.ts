@@ -271,6 +271,7 @@ function createFakeRuntime() {
     unarchiveThread: vi.fn(async () => undefined),
     listModels: vi.fn(async (_args: ListModelsArgs) => ({
       models: [],
+      modes: [],
       selectedOnlyModels: [],
     })),
     listRunningProviders: vi.fn((): string[] => []),

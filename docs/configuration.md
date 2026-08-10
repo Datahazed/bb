@@ -250,6 +250,37 @@ uses this mapping to launch remote-capable editors and terminals over SSH.
 Browsers or devices without a helper can still use bb; local editor actions are
 simply unavailable.
 
+## Custom Models
+
+Add models that a provider does not advertise through `customModels` in
+`~/.bb/config.json`. A model appears in the app picker and in
+`bb provider models <provider-id>`.
+
+```json
+{
+  "customModels": [
+    {
+      "providerId": "acp-opencode",
+      "model": "my-provider/my-model",
+      "displayName": "My OpenCode Model"
+    }
+  ]
+}
+```
+
+The provider id can be a built-in provider id. It can also be a dynamic ACP id
+that matches `^acp-[a-z0-9][a-z0-9-]*$`. bb validates this id when it reads the
+configuration. OpenCode receives a selected custom model through ACP
+`session/set_model` before the first prompt. OpenCode can reject a model that
+it cannot use.
+
+Run `npx bb-app config refresh` after a change, or restart bb. Then inspect the
+result on the target machine:
+
+```bash
+bb provider models acp-opencode --environment "$BB_ENVIRONMENT_ID" --json
+```
+
 ## Custom ACP Agents
 
 Known ACP agents can appear automatically when their CLI is installed on the
@@ -358,6 +389,12 @@ When an agent declares `thought_level` with no options, bb hides the reasoning
 control. bb also hides it when none of the declared values map to a supported bb
 reasoning level. Omitting `thought_level` keeps the agent-managed reasoning
 fallback for agents that do not advertise this capability.
+
+OpenCode exposes primary agents as an ACP `mode` option. bb lists these values
+in the model picker's Agent section and through `bb provider modes
+acp-opencode`. bb applies a selected mode with `session/set_config_option`
+before the first prompt. If the agent does not advertise a mode, bb uses the
+agent default and hides the Agent section.
 
 Custom ACP agents are supported only with the co-located daemon from the same
 machine as the server. A command path in server config is host-local and is not

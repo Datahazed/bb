@@ -32,6 +32,7 @@ export interface ExecutionPlanFieldInput<TValue> {
 
 export interface ExistingThreadExecutionInput {
   model?: ExecutionPlanFieldInput<string>;
+  providerMode?: ExecutionPlanFieldInput<string>;
   permissionMode?: ExecutionPlanFieldInput<PermissionMode>;
   reasoningLevel?: ExecutionPlanFieldInput<ReasoningLevel>;
   serviceTier?: ExecutionPlanFieldInput<ServiceTier>;
@@ -39,6 +40,7 @@ export interface ExistingThreadExecutionInput {
 
 export interface ExistingThreadExecutionInputRequest {
   model?: string;
+  providerMode?: string;
   permissionMode?: PermissionMode;
   reasoningLevel?: ReasoningLevel;
   serviceTier?: ServiceTier;
@@ -47,6 +49,7 @@ export interface ExistingThreadExecutionInputRequest {
 
 export interface ExistingThreadExecutionInputRequestSources {
   model?: CallerExecutionInputSource;
+  providerMode?: CallerExecutionInputSource;
   permissionMode?: CallerExecutionInputSource;
   reasoningLevel?: CallerExecutionInputSource;
   serviceTier?: CallerExecutionInputSource;
@@ -179,6 +182,7 @@ function isProviderCapabilityValidationError(
 function hasExecutionInput(input: ExistingThreadExecutionInput): boolean {
   return (
     input.model !== undefined ||
+    input.providerMode !== undefined ||
     input.permissionMode !== undefined ||
     input.reasoningLevel !== undefined ||
     input.serviceTier !== undefined
@@ -217,6 +221,10 @@ export function buildExistingThreadExecutionInput(
     request.serviceTier,
     resolveRequestInputSource(sources, "serviceTier"),
   );
+  const providerMode = toRequestInputField(
+    request.providerMode,
+    resolveRequestInputSource(sources, "providerMode"),
+  );
   const reasoningLevel = toRequestInputField(
     request.reasoningLevel,
     resolveRequestInputSource(sources, "reasoningLevel"),
@@ -227,6 +235,7 @@ export function buildExistingThreadExecutionInput(
   );
   return {
     ...(model ? { model } : {}),
+    ...(providerMode ? { providerMode } : {}),
     ...(serviceTier ? { serviceTier } : {}),
     ...(reasoningLevel ? { reasoningLevel } : {}),
     ...(permissionMode ? { permissionMode } : {}),
@@ -370,8 +379,21 @@ export async function resolveExistingThreadExecutionPlan(
     DEFAULT_SERVICE_TIER,
   );
 
+  const providerMode = resolveRequiredField<string>([
+    args.input.providerMode?.value,
+    lastExecution?.providerMode,
+  ]);
+  if (providerMode !== null && !thread.providerId.startsWith("acp-")) {
+    throw new ProviderCapabilityValidationError(
+      400,
+      "invalid_request",
+      `Provider ${thread.providerId} does not support provider modes.`,
+    );
+  }
+
   const resolvedExecution = {
     model,
+    ...(providerMode !== null ? { providerMode } : {}),
     permissionMode,
     reasoningLevel,
     serviceTier,

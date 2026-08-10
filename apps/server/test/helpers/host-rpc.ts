@@ -5,7 +5,7 @@ import {
   type HostDaemonOnlineRpcResponseMessage,
   type HostDaemonRpcResultForCommand,
 } from "@bb/host-daemon-contract";
-import type { AvailableModel } from "@bb/domain";
+import type { AvailableModel, AvailableProviderMode } from "@bb/domain";
 import type { TestAppHarness } from "./test-app.js";
 import { registerTestHostRpcCapture } from "./commands.js";
 
@@ -16,6 +16,7 @@ interface TestHostRpcSocket {
 
 interface ProviderModelResponse {
   models: AvailableModel[];
+  modes?: AvailableProviderMode[];
   selectedOnlyModels: AvailableModel[];
 }
 
@@ -110,7 +111,7 @@ function buildProviderRpcResponse(
     requestId: request.requestId,
     commandType: request.command.type,
     ok: true,
-    result,
+    result: { ...result, modes: result.modes ?? [] },
   };
 }
 

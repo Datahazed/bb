@@ -41,6 +41,7 @@ vi.mock("@/lib/sdk", () => ({
 const EXECUTION_OPTIONS_RESPONSE: SystemExecutionOptionsResponse = {
   providers: [],
   models: [],
+  modes: [],
   selectedOnlyModels: [],
   permissionCeiling: "full",
   modelLoadError: null,

@@ -74,22 +74,27 @@ describe("bb provider command output", () => {
 
   it("bb provider models renders the shared borderless table", async () => {
     const get = vi.fn(async () => [
-      { model: "gpt-5", displayName: "GPT-5", isDefault: true },
+      {
+        model: "my-provider/my-model",
+        displayName: "My OpenCode Model",
+        isDefault: false,
+      },
     ]);
     stubServerApi({
       "v1.system.execution-options.$get": vi.fn(async () => ({
         providers: [],
         models: await get(),
+        modes: [],
         selectedOnlyModels: [],
       })),
     });
 
-    await runCommand(["provider", "models", "openai"], register);
+    await runCommand(["provider", "models", "acp-opencode"], register);
 
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
-      "Models for openai:",
+      "Models for acp-opencode:",
       "",
-      "Model  Name   Default\n-----  -----  -------\ngpt-5  GPT-5  *",
+      "Model                 Name               Default\n--------------------  -----------------  -------\nmy-provider/my-model  My OpenCode Model",
       "",
     ]);
   });
@@ -104,6 +109,7 @@ describe("bb provider command output", () => {
           isDefault: true,
         },
       ],
+      modes: [],
       selectedOnlyModels: [
         {
           model: "claude-opus-4-6",
@@ -138,10 +144,40 @@ describe("bb provider command output", () => {
     ]);
   });
 
+  it("bb provider modes lists OpenCode primary agents", async () => {
+    const get = vi.fn(async () => ({
+      providers: [],
+      models: [],
+      modes: [
+        {
+          id: "orchestrator",
+          displayName: "Orchestrator",
+          description: "Coordinates work",
+          isDefault: false,
+        },
+      ],
+      selectedOnlyModels: [],
+    }));
+    stubServerApi({ "v1.system.execution-options.$get": get });
+
+    await runCommand(["provider", "modes", "acp-opencode"], register);
+
+    expect(get).toHaveBeenCalledWith({
+      query: { providerId: "acp-opencode" },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Provider modes for acp-opencode:",
+      "",
+      "Mode          Name          Default\n------------  ------------  -------\norchestrator  Orchestrator",
+      "",
+    ]);
+  });
+
   it("bb provider models routes through an environment", async () => {
     const get = vi.fn(async () => ({
       providers: [],
       models: [],
+      modes: [],
       selectedOnlyModels: [],
       modelLoadError: null,
     }));

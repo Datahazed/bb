@@ -37,6 +37,24 @@ describe("bbAppManagedConfigSchema", () => {
     expect(parsed.customModels?.[1]?.displayName).toBeUndefined();
   });
 
+  it("parses custom models with dynamic ACP provider ids", () => {
+    const parsed = bbAppManagedConfigSchema.parse({
+      customModels: [
+        {
+          providerId: "acp-opencode",
+          model: "custom/provider-model",
+          displayName: "Provider Model",
+        },
+        { providerId: "acp-my-agent", model: "custom/other-model" },
+      ],
+    });
+
+    expect(parsed.customModels?.map((model) => model.providerId)).toEqual([
+      "acp-opencode",
+      "acp-my-agent",
+    ]);
+  });
+
   it("rejects custom models with an unknown provider", () => {
     const result = bbAppManagedConfigSchema.safeParse({
       customModels: [

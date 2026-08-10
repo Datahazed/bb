@@ -338,6 +338,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         isDefault: true,
       },
     ],
+    modes: [],
     selectedOnlyModels: [],
   },
   "known_acp_agents.status": {
@@ -779,6 +780,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread runtime options may omit the Claude Code native permission override unless a provider command requests plan mode.",
   "hostDaemonCommandSchema.options.memoryEnabled":
     "legacy runtime commands may omit provider memory policy; current servers always send the persisted provider preference.",
+  "hostDaemonCommandSchema.options.providerMode":
+    "runtime commands omit providerMode when the provider should use its default session mode.",
   "hostDaemonCommandSchema.options.providerSubagentsEnabled":
     "legacy runtime commands may omit provider subagent policy; current servers always send the persisted provider preference.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
@@ -1051,10 +1054,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 95 lets ACP sessions send context-window usage outside a turn.
-  // An older daemon omits these events, so it must update before connecting.
-  it("uses protocol version 95 for ACP context-window usage", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(95);
+  // Version 96 adds provider modes and providerMode execution to the host wire.
+  // An older daemon cannot discover or apply the selected ACP primary agent.
+  it("uses protocol version 96 for ACP provider modes", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(96);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

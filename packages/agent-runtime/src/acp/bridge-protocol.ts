@@ -43,9 +43,7 @@ export type AcpBridgeAgentCommand = z.infer<typeof acpBridgeAgentCommandSchema>;
  */
 export const ACP_DEFAULT_MODEL_ID = "acp-default";
 
-export type AcpBridgeReasoningCli = z.infer<
-  typeof acpBridgeReasoningCliSchema
->;
+export type AcpBridgeReasoningCli = z.infer<typeof acpBridgeReasoningCliSchema>;
 
 export type AcpBridgeNativeReasoning = z.infer<
   typeof acpBridgeNativeReasoningSchema
@@ -116,6 +114,8 @@ const acpBridgeSessionParamsSchema = z.object({
   cwd: z.string().min(1),
   agent: acpBridgeAgentCommandSchema,
   modelSelection: acpBridgeModelSelectionSchema.optional(),
+  /** Provider-native session mode, such as an OpenCode primary agent. */
+  providerMode: z.string().min(1).optional(),
   /**
    * Launch-time reasoning level for agents that take reasoning as a global CLI
    * flag rather than an ACP `thought_level` config option.

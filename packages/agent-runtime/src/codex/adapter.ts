@@ -2168,6 +2168,7 @@ export function createCodexProviderAdapter(
       // models aren't surfaced separately, so selectedOnlyModels is always empty.
       return {
         models: parseModelsResponse(result),
+        modes: [],
         selectedOnlyModels: [],
       };
     },

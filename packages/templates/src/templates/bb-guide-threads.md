@@ -20,6 +20,7 @@ Spawning:
     --parent-self                  Parent to the current thread (BB_THREAD_ID)
     --provider <id>                Provider override
     --model <model>                Model override
+    --provider-mode <mode>         Provider mode, such as an OpenCode primary agent
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a new environment (worktree)

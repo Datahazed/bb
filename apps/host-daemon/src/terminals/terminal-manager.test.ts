@@ -222,7 +222,11 @@ function createFakeRuntime(): AgentRuntime {
     renameThread: vi.fn(async () => undefined),
     archiveThread: vi.fn(async () => undefined),
     unarchiveThread: vi.fn(async () => undefined),
-    listModels: vi.fn(async () => ({ models: [], selectedOnlyModels: [] })),
+    listModels: vi.fn(async () => ({
+      models: [],
+      modes: [],
+      selectedOnlyModels: [],
+    })),
     listRunningProviders: vi.fn(() => []),
     getActiveTurnId: vi.fn(() => null),
     waitForActiveTurn: vi.fn(async () => null),

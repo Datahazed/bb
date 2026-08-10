@@ -16,6 +16,7 @@ const REASONING_STORAGE_KEY = "bb.promptbox.reasoning";
 const PERMISSION_MODE_STORAGE_KEY = "bb.promptbox.permission-mode";
 const ENVIRONMENT_STORAGE_KEY = "bb.promptbox.environment";
 const PROVIDER_STORAGE_KEY = "bb.promptbox.provider";
+const PROVIDER_MODE_STORAGE_KEY = "bb.promptbox.provider-mode";
 
 export type StoredServiceTier = "" | ServiceTier;
 export type StoredReasoningLevel = "" | ReasoningLevel;
@@ -91,6 +92,12 @@ const modelAtom = atomWithStorage<string>(
   rawStringLocalStorage,
   { getOnInit: true },
 );
+const providerModeAtom = atomWithStorage<string>(
+  PROVIDER_MODE_STORAGE_KEY,
+  "",
+  rawStringLocalStorage,
+  { getOnInit: true },
+);
 const serviceTierAtom = atomWithStorage<StoredServiceTier>(
   SERVICE_TIER_STORAGE_KEY,
   "",
@@ -108,17 +115,18 @@ const reasoningLevelAtom = atomWithStorage<StoredReasoningLevel>(
 // Legacy "readonly" (and any other unknown value) is dropped rather than
 // reinterpreted — localStorage is untrusted, and a read-only preference must
 // never silently become a writable mode.
-const permissionModePreferenceStorage = createLocalStorageSyncStorage<StoredPermissionMode>({
-  parse: (storedValue, initialValue) => {
-    if (storedValue === "workspace-write") {
-      return "accept-edits";
-    }
-    return storedValue !== null && isStoredPermissionMode(storedValue)
-      ? storedValue
-      : initialValue;
-  },
-  serialize: (value) => value,
-});
+const permissionModePreferenceStorage =
+  createLocalStorageSyncStorage<StoredPermissionMode>({
+    parse: (storedValue, initialValue) => {
+      if (storedValue === "workspace-write") {
+        return "accept-edits";
+      }
+      return storedValue !== null && isStoredPermissionMode(storedValue)
+        ? storedValue
+        : initialValue;
+    },
+    serialize: (value) => value,
+  });
 
 const permissionModeAtom = atomWithStorage<StoredPermissionMode>(
   PERMISSION_MODE_STORAGE_KEY,
@@ -154,6 +162,17 @@ export function usePromptBoxProviderPreference(): PersistedStringSelectionField 
 
 export function usePromptBoxModelPreference(): PersistedStringSelectionField {
   const [value, setAtomValue] = useAtom(modelAtom);
+  const setValue = useCallback(
+    (nextValue: string) => {
+      setAtomValue(nextValue);
+    },
+    [setAtomValue],
+  );
+  return { setValue, value };
+}
+
+export function usePromptBoxProviderModePreference(): PersistedStringSelectionField {
+  const [value, setAtomValue] = useAtom(providerModeAtom);
   const setValue = useCallback(
     (nextValue: string) => {
       setAtomValue(nextValue);

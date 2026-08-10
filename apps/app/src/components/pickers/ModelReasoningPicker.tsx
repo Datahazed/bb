@@ -198,6 +198,10 @@ interface ModelReasoningPickerProps {
   modelLoadFailed?: boolean;
   modelLoadError?: SystemExecutionOptionsModelLoadError | null;
   onModelChange: (value: string) => void;
+  // Provider-native modes. OpenCode uses these for primary agents.
+  providerModeValue?: string;
+  providerModeOptions?: readonly PickerOption<string>[];
+  onProviderModeChange?: (value: string) => void;
   /**
    * Optional case-normaliser for raw model names returned by a previewed
    * provider. The picker itself drops the brand prefix at render — callers
@@ -253,6 +257,9 @@ export function ModelReasoningPicker({
   modelLoadFailed = false,
   modelLoadError,
   onModelChange,
+  providerModeValue = "",
+  providerModeOptions = [],
+  onProviderModeChange,
   formatModelLabel,
   reasoningValue,
   reasoningOptions,
@@ -394,6 +401,15 @@ export function ModelReasoningPicker({
     previewQuery.data?.selectedOnlyModels,
     formatModelLabel,
   ]);
+  const previewProviderModeOptions =
+    useMemo((): readonly PickerOption<string>[] => {
+      if (!isPreviewing) return providerModeOptions;
+      return (previewQuery.data?.modes ?? []).map((mode) => ({
+        value: mode.id,
+        label: mode.displayName,
+      }));
+    }, [isPreviewing, previewQuery.data?.modes, providerModeOptions]);
+  const activeProviderModeOptions = previewProviderModeOptions;
   // While previewing, the reasoning levels belong to the previewed provider's
   // default model (each provider exposes its own set), so the section reflects
   // the tab on screen rather than the committed model.
@@ -403,6 +419,11 @@ export function ModelReasoningPicker({
     if (!models || models.length === 0) return undefined;
     return models.find((model) => model.isDefault) ?? models[0];
   }, [isPreviewing, previewQuery.data?.models]);
+  const activeProviderModeValue = isPreviewing
+    ? (previewQuery.data?.modes.find((mode) => mode.isDefault)?.id ??
+      previewQuery.data?.modes[0]?.id ??
+      "")
+    : providerModeValue;
   const previewReasoningOptions =
     useMemo((): readonly PickerOption<ReasoningLevel>[] => {
       if (!previewDefaultModel) return [];
@@ -546,6 +567,28 @@ export function ModelReasoningPicker({
       setPreviewProviderId(null);
     },
     [isPreviewing, onModelChange, onSelectedProviderChange, previewProviderId],
+  );
+
+  const handleProviderModeSelect = useCallback(
+    (mode: string) => {
+      if (isPreviewing) {
+        onSelectedProviderChange?.(previewProviderId!);
+        if (previewDefaultModel) {
+          onModelChange(previewDefaultModel.model);
+        }
+      }
+      onProviderModeChange?.(mode);
+      setPreviewProviderId(null);
+      setMoreModelsOpen(false);
+    },
+    [
+      isPreviewing,
+      onModelChange,
+      onProviderModeChange,
+      onSelectedProviderChange,
+      previewDefaultModel,
+      previewProviderId,
+    ],
   );
 
   // Scope Cmd+Shift+M and the cycle chords to one composer of the focused pane.
@@ -752,6 +795,10 @@ export function ModelReasoningPicker({
       : triggerModelLabel;
   const triggerTitle = [
     `${selectedProviderLabel}: ${triggerTitleModelLabel}`,
+    providerModeOptions.find((option) => option.value === providerModeValue)
+      ?.label
+      ? ` · Agent: ${providerModeOptions.find((option) => option.value === providerModeValue)?.label}`
+      : "",
     triggerReasoningLabel ? ` · ${triggerReasoningLabel} reasoning` : "",
     showSelectedFastMode ? " (Fast mode)" : "",
   ].join("");
@@ -1041,6 +1088,24 @@ export function ModelReasoningPicker({
               </div>
             )}
           </div>
+
+          {activeProviderModeOptions.length > 0 &&
+          onProviderModeChange !== undefined ? (
+            <>
+              <div className="border-t border-border" />
+              <div className="px-1 pb-1 pt-0">
+                <MenuSectionLabel>Agent</MenuSectionLabel>
+                {activeProviderModeOptions.map((option) => (
+                  <MenuRowButton
+                    key={option.value}
+                    label={option.label}
+                    selected={option.value === activeProviderModeValue}
+                    onClick={() => handleProviderModeSelect(option.value)}
+                  />
+                ))}
+              </div>
+            </>
+          ) : null}
 
           {/* Reasoning section — the committed model's levels, or (while
             previewing) the previewed provider's default-model levels. Like the

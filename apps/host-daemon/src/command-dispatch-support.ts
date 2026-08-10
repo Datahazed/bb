@@ -4,7 +4,7 @@ import {
   type AgentRuntime,
   type AgentRuntimeOptions,
 } from "@bb/agent-runtime";
-import type { AvailableModel } from "@bb/domain";
+import type { AvailableModel, AvailableProviderMode } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
   HostDaemonCommand,
@@ -54,6 +54,7 @@ export interface CommandDispatchOptions {
     cwd?: string;
   }) => Promise<{
     models: AvailableModel[];
+    modes: AvailableProviderMode[];
     selectedOnlyModels: AvailableModel[];
   }>;
   getProviderCliStatusForProvider?: (
@@ -120,6 +121,7 @@ export async function defaultListModels(
   options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
 ): Promise<{
   models: AvailableModel[];
+  modes: AvailableProviderMode[];
   selectedOnlyModels: AvailableModel[];
 }> {
   const runtimeKey =

@@ -1079,6 +1079,9 @@ export function RootComposeView() {
     selectedProviderComposerActions,
     selectedModel,
     setSelectedModel,
+    selectedProviderMode,
+    setSelectedProviderMode,
+    providerModeOptions,
     serviceTier,
     setServiceTier,
     reasoningLevel,
@@ -1133,6 +1136,22 @@ export function RootComposeView() {
       setSelectedModel(nextModel);
     },
     [selectedModel, setSelectedModel, snapshotPromptDraftBeforeOptionChange],
+  );
+  const handleSelectedProviderModeChange = useCallback(
+    (nextProviderMode: string) => {
+      if (
+        !hasPromptOptionValueChanged(selectedProviderMode, nextProviderMode)
+      ) {
+        return;
+      }
+      snapshotPromptDraftBeforeOptionChange();
+      setSelectedProviderMode(nextProviderMode);
+    },
+    [
+      selectedProviderMode,
+      setSelectedProviderMode,
+      snapshotPromptDraftBeforeOptionChange,
+    ],
   );
   const handleServiceTierChange = useCallback(
     (nextServiceTier: ServiceTier | undefined) => {
@@ -1779,6 +1798,9 @@ export function RootComposeView() {
                   projectId,
                   providerId: selectedProviderId,
                   model: selectedThreadModel,
+                  ...(selectedProviderMode
+                    ? { providerMode: selectedProviderMode }
+                    : {}),
                   ...(rootComposeSectionId
                     ? { sectionId: rootComposeSectionId }
                     : {}),
@@ -1833,6 +1855,7 @@ export function RootComposeView() {
       isResolvingInitialProvider,
       selectedEnvironment,
       selectedProviderId,
+      selectedProviderMode,
       selectedThreadModel,
       serviceTier,
       supportsServiceTier,
@@ -3174,6 +3197,11 @@ export function RootComposeView() {
         loadError: modelLoadError,
         onChange: handleSelectedModelChange,
       },
+      providerMode: {
+        selected: selectedProviderMode,
+        options: providerModeOptions,
+        onChange: handleSelectedProviderModeChange,
+      },
       serviceTier: {
         value: serviceTier,
         onChange: handleServiceTierChange,
@@ -3194,6 +3222,7 @@ export function RootComposeView() {
       handleSelectedProviderIdChange,
       handleReasoningLevelChange,
       handleSelectedModelChange,
+      handleSelectedProviderModeChange,
       handleServiceTierChange,
       isLoadingModels,
       modelLoadFailed,
@@ -3201,10 +3230,12 @@ export function RootComposeView() {
       modelOptions,
       moreModelOptions,
       providerOptions,
+      providerModeOptions,
       reasoningLevel,
       reasoningOptions,
       selectedModel,
       selectedProviderId,
+      selectedProviderMode,
       serviceTier,
       serviceTierSupportByProvider,
       supportsServiceTier,
