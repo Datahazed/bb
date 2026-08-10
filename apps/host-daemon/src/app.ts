@@ -751,6 +751,13 @@ export async function createHostDaemonApp(
       });
       return runtime.listModels(args);
     },
+    listModes: async (args) => {
+      await refreshRuntimeShellEnv();
+      const runtime = await runtimeManager.ensureProviderMaintenanceRuntime({
+        dataDir: options.dataDir,
+      });
+      return runtime.listModes(args);
+    },
     resolveInteractiveRequest: async (request) => {
       interactiveRequestRegistry.resolve(request);
     },

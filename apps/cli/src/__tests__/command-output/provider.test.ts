@@ -145,20 +145,15 @@ describe("bb provider command output", () => {
   });
 
   it("bb provider modes lists OpenCode primary agents", async () => {
-    const get = vi.fn(async () => ({
-      providers: [],
-      models: [],
-      modes: [
-        {
-          id: "orchestrator",
-          displayName: "Orchestrator",
-          description: "Coordinates work",
-          isDefault: false,
-        },
-      ],
-      selectedOnlyModels: [],
-    }));
-    stubServerApi({ "v1.system.execution-options.$get": get });
+    const get = vi.fn(async () => [
+      {
+        id: "orchestrator",
+        displayName: "Orchestrator",
+        description: "Coordinates work",
+        isDefault: false,
+      },
+    ]);
+    stubServerApi({ "v1.system.provider-modes.$get": get });
 
     await runCommand(["provider", "modes", "acp-opencode"], register);
 

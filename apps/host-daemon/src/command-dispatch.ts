@@ -10,6 +10,7 @@ import {
 } from "@bb/host-daemon-contract";
 import {
   CommandDispatchError,
+  defaultListModes,
   defaultListModels,
   ExpectedCommandDispatchError,
   type CommandOf,
@@ -493,6 +494,15 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
     }),
+  "provider.list_modes": async (command, options) => ({
+    modes: await (options.listModes ?? defaultListModes)({
+      providerId: command.providerId,
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+      ...(command.acpLaunchSpec !== undefined
+        ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
+    }),
+  }),
   "known_acp_agents.status": async (command) =>
     getKnownAcpAgentsStatus({ agents: command.agents }),
   "provider.usage": async () => getProviderUsage(),

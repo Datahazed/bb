@@ -80,7 +80,7 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 vi.mock("@/hooks/queries/system-queries", () => ({
   useOnboardingAgents: () => ({ data: undefined, isPending: false }),
   useSystemConfig: () => ({ data: { primaryHostId: "host_1" } }),
-  useSystemExecutionOptions: () => ({
+  useSystemExecutionOptions: (args?: { providerId?: string }) => ({
     data: {
       providers: [
         {
@@ -100,6 +100,16 @@ vi.mock("@/hooks/queries/system-queries", () => ({
           capabilities: {
             supportsServiceTier: false,
             supportedPermissionModes: ["auto", "accept-edits", "full"],
+          },
+          composerActions: [],
+        },
+        {
+          id: "acp-opencode",
+          displayName: "OpenCode",
+          logoUrl: null,
+          capabilities: {
+            supportsServiceTier: false,
+            supportedPermissionModes: ["accept-edits", "full"],
           },
           composerActions: [],
         },
@@ -125,6 +135,23 @@ vi.mock("@/hooks/queries/system-queries", () => ({
           ],
         },
       ],
+      modes:
+        args?.providerId === "acp-opencode"
+          ? [
+              {
+                id: "build",
+                displayName: "Build",
+                description: "",
+                isDefault: true,
+              },
+              {
+                id: "orchestrator",
+                displayName: "Orchestrator",
+                description: "",
+                isDefault: false,
+              },
+            ]
+          : [],
       selectedOnlyModels: [],
       modelLoadError: null,
     },
@@ -210,6 +237,7 @@ function composerElement(
         defaultProjectId={seed.projectId}
         defaultProviderId={seed.providerId}
         defaultModel={seed.model}
+        defaultProviderMode={seed.providerMode}
         defaultReasoningLevel={seed.reasoningLevel}
         defaultServiceTier={seed.serviceTier}
         defaultPermissionMode={seed.permissionMode}
@@ -288,6 +316,34 @@ describe("PluginNewThreadComposer seeding", () => {
 
     expect(submitted).toHaveLength(1);
     expect(submitted[0]).toEqual(STORED_REQUEST);
+  });
+
+  it("shows and submits an OpenCode primary agent", async () => {
+    const submitted: NewThreadRequest[] = [];
+    const request: NewThreadRequest = {
+      ...STORED_REQUEST,
+      providerId: "acp-opencode",
+      providerMode: "orchestrator",
+      executionInputSources: {
+        ...STORED_REQUEST.executionInputSources,
+        providerMode: "explicit",
+      },
+    };
+    renderComposer(request, (value) => submitted.push(value), "provider-mode");
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    expect(latestPromptBoxProps().execution.providerMode).toMatchObject({
+      selected: "orchestrator",
+      options: [
+        { value: "build", label: "Build" },
+        { value: "orchestrator", label: "Orchestrator" },
+      ],
+    });
+    await submit();
+
+    expect(submitted).toEqual([request]);
   });
 
   it("re-seeds every selection when the seed props change, even after a user pick", async () => {

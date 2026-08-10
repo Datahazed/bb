@@ -151,6 +151,8 @@ import type {
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemProviderModesQuery,
+  SystemProviderModesResponse,
   SystemProvidersQuery,
   OnboardingAgentOverview,
   OnboardingTelemetryEvent,
@@ -278,6 +280,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemProviderModesQuerySchema,
   systemProvidersQuerySchema,
   onboardingTelemetryEventSchema,
   systemOnboardingReposQuerySchema,
@@ -1393,6 +1396,14 @@ export const publicApiRoutes = {
         systemProvidersQuerySchema,
       ),
       response: jsonResponse<SystemProviderInfo[]>(),
+    }),
+    providerModes: defineRoute({
+      path: "/system/provider-modes",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, SystemProviderModesQuery>(
+        systemProviderModesQuerySchema,
+      ),
+      response: jsonResponse<SystemProviderModesResponse>(),
     }),
     providerLogo: defineRoute({
       path: "/system/providers/:id/logo",

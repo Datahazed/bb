@@ -118,16 +118,16 @@ export function registerProviderCommands(
         ) => {
           const serverUrl = getUrl();
           const sdk = createCliBbSdk(serverUrl);
-          const executionOptions = await sdk.providers.models({
+          const modes = await sdk.providers.modes({
             ...(await resolveProviderRouting(opts, serverUrl)),
             ...(providerId ? { providerId } : {}),
           });
-          if (outputJson(opts, executionOptions.modes)) return;
-          if (executionOptions.modes.length === 0) {
+          if (outputJson(opts, modes)) return;
+          if (modes.length === 0) {
             console.log("No provider modes available");
             return;
           }
-          printModeTable(executionOptions.modes, providerId);
+          printModeTable(modes, providerId);
         },
       ),
     );

@@ -94,6 +94,8 @@ function buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {
         method: "skills/configure",
         params: { skillRoots: command.skillRoots },
       };
+    case "mode/list":
+      return { kind: "noop", reason: "Fake provider has no modes" };
     case "thread/start":
       return {
         kind: "request",

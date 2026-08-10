@@ -1,4 +1,11 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { NewThreadComposerProps, NewThreadRequest } from "@bb/plugin-sdk";
@@ -79,6 +86,7 @@ export function PluginNewThreadComposer({
   defaultProjectId,
   defaultProviderId,
   defaultModel,
+  defaultProviderMode,
   defaultReasoningLevel,
   defaultServiceTier,
   defaultPermissionMode,
@@ -105,9 +113,8 @@ export function PluginNewThreadComposer({
   const [pickedProjectId, setPickedProjectId] = useState<string | null>(
     defaultProjectId ?? null,
   );
-  const [seededDefaultProjectId, setSeededDefaultProjectId] = useState(
-    defaultProjectId,
-  );
+  const [seededDefaultProjectId, setSeededDefaultProjectId] =
+    useState(defaultProjectId);
   // Re-seed during render (not in an effect) so a new `defaultProjectId` never
   // paints one frame of the previous project's environment options.
   if (seededDefaultProjectId !== defaultProjectId) {
@@ -127,6 +134,7 @@ export function PluginNewThreadComposer({
     defaultProjectId ?? null,
     defaultProviderId ?? null,
     defaultModel ?? null,
+    defaultProviderMode ?? null,
     defaultReasoningLevel ?? null,
     defaultServiceTier ?? null,
     defaultPermissionMode ?? null,
@@ -175,8 +183,10 @@ export function PluginNewThreadComposer({
   const hostsQuery = useHosts();
   const systemConfigQuery = useSystemConfig();
   const primaryHostId =
-    selectPrimaryHost(hostsQuery.data, systemConfigQuery.data?.primaryHostId ?? null)
-      ?.id ?? null;
+    selectPrimaryHost(
+      hostsQuery.data,
+      systemConfigQuery.data?.primaryHostId ?? null,
+    )?.id ?? null;
   const knownHostIds = useMemo(
     () => new Set((hostsQuery.data ?? []).map((host) => host.id)),
     [hostsQuery.data],
@@ -241,6 +251,7 @@ export function PluginNewThreadComposer({
     resolveProviderRouting,
     initialProviderId: defaultProviderId ?? projectDefaults?.providerId,
     initialModel: defaultModel ?? projectDefaults?.model,
+    initialProviderMode: defaultProviderMode,
     initialServiceTier: defaultServiceTier ?? projectDefaults?.serviceTier,
     initialReasoningLevel:
       defaultReasoningLevel ?? projectDefaults?.reasoningLevel,
@@ -261,12 +272,14 @@ export function PluginNewThreadComposer({
     moreModelOptions,
     permissionMode,
     permissionModeOptions,
+    providerModeOptions,
     providerOptions,
     reasoningLevel,
     reasoningOptions,
     selectedModel,
     selectedProviderComposerActions,
     selectedProviderId,
+    selectedProviderMode,
     serviceTier,
     serviceTierSupportByProvider,
     setEnvironmentSelectionValue: setCreationEnvironmentSelectionValue,
@@ -274,6 +287,7 @@ export function PluginNewThreadComposer({
     setReasoningLevel,
     setSelectedModel,
     setSelectedProviderId,
+    setSelectedProviderMode,
     setServiceTier,
     supportsPermissionModeSelection,
     supportsServiceTier,
@@ -301,6 +315,9 @@ export function PluginNewThreadComposer({
         ? { providerId: "explicit" as const }
         : {}),
       ...(defaultModel !== undefined ? { model: "explicit" as const } : {}),
+      ...(defaultProviderMode !== undefined
+        ? { providerMode: "explicit" as const }
+        : {}),
       ...(defaultReasoningLevel !== undefined
         ? { reasoningLevel: "explicit" as const }
         : {}),
@@ -317,6 +334,7 @@ export function PluginNewThreadComposer({
       defaultModel,
       defaultPermissionMode,
       defaultProviderId,
+      defaultProviderMode,
       defaultReasoningLevel,
       defaultServiceTier,
       serviceTier,
@@ -663,6 +681,7 @@ export function PluginNewThreadComposer({
       projectId,
       providerId: selectedProviderId,
       model: selectedThreadModel,
+      ...(selectedProviderMode ? { providerMode: selectedProviderMode } : {}),
       reasoningLevel,
       permissionMode,
       ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
@@ -676,6 +695,7 @@ export function PluginNewThreadComposer({
       executionInputSources: {
         ...executionInputSources,
         ...seededExecutionInputSources,
+        ...(selectedProviderMode ? { providerMode: "explicit" as const } : {}),
       },
       environment: selectedEnvironment,
       input,
@@ -704,6 +724,7 @@ export function PluginNewThreadComposer({
     reasoningLevel,
     selectedEnvironment,
     selectedProviderId,
+    selectedProviderMode,
     selectedThreadModel,
     serviceTier,
     supportsServiceTier,
@@ -885,6 +906,11 @@ export function PluginNewThreadComposer({
             loadFailed: modelLoadFailed,
             loadError: modelLoadError,
             onChange: setSelectedModel,
+          },
+          providerMode: {
+            selected: selectedProviderMode,
+            options: providerModeOptions,
+            onChange: setSelectedProviderMode,
           },
           serviceTier: {
             value: serviceTier,

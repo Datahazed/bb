@@ -3,6 +3,7 @@ import type {
   SystemExecutionOptionsModelLoadError,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
+  SystemProviderModesQuery,
   SystemProvidersQuery,
 } from "@bb/server-contract";
 import {
@@ -18,6 +19,7 @@ import {
 import {
   reasoningEffortsForLevels,
   type AvailableModel,
+  type AvailableProviderMode,
   type ProviderInfo,
 } from "@bb/domain";
 import { normalizeHostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
@@ -265,6 +267,51 @@ export async function listSystemProviderInfos(
   query: ListSystemProviderInfosRequest = {},
 ): Promise<ProviderInfo[]> {
   return (await resolveSystemProviderInfos(deps, query)).providers;
+}
+
+export async function resolveSystemProviderModes(
+  deps: LoggedWorkSessionDeps,
+  query: SystemProviderModesQuery,
+): Promise<AvailableProviderMode[]> {
+  if (query.providerId !== undefined && !query.providerId.startsWith("acp-")) {
+    return [];
+  }
+  const cwd =
+    query.environmentId === undefined
+      ? undefined
+      : (requireEnvironment(deps.db, query.environmentId).path ?? undefined);
+  const hostId = resolveSystemLookupHostId(deps, query);
+  let provider: ProviderInfo | undefined;
+  if (query.providerId !== undefined) {
+    provider = listConfiguredSystemProviderInfos(
+      deps.config.customAcpAgents,
+      [],
+    ).find((candidate) => candidate.id === query.providerId);
+    if (provider === undefined) {
+      const knownAgent = findKnownAcpAgentForProviderId(query.providerId);
+      provider =
+        knownAgent === undefined
+          ? undefined
+          : buildKnownAcpProviderInfo(knownAgent);
+    }
+    if (provider === undefined) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        `Unsupported provider ${query.providerId}`,
+      );
+    }
+  } else {
+    provider = (await listSystemProviderInfosForHost(deps, hostId))[0];
+  }
+  if (provider === undefined || !provider.id.startsWith("acp-")) {
+    return [];
+  }
+  return loadSystemProviderModes(deps, {
+    ...(cwd !== undefined ? { cwd } : {}),
+    hostId,
+    provider,
+  });
 }
 
 function findCustomAcpAgentForProviderId(
@@ -569,6 +616,61 @@ async function loadSystemProviderModels(
       selectedOnlyModels: [],
       modelLoadError,
     };
+  }
+}
+
+async function loadSystemProviderModes(
+  deps: LoggedWorkSessionDeps,
+  {
+    cwd,
+    hostId,
+    provider,
+  }: {
+    cwd?: string;
+    hostId: string;
+    provider: ProviderInfo;
+  },
+): Promise<AvailableProviderMode[]> {
+  const customAcpAgent = findCustomAcpAgentForProviderId(
+    deps.config.customAcpAgents,
+    provider.id,
+  );
+  const knownAcpAgent =
+    customAcpAgent === undefined
+      ? findKnownAcpAgentForProviderId(provider.id)
+      : undefined;
+  try {
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "provider.list_modes",
+        providerId: provider.id,
+        ...(cwd !== undefined ? { cwd } : {}),
+        ...(customAcpAgent !== undefined
+          ? { acpLaunchSpec: normalizeHostDaemonAcpLaunchSpec(customAcpAgent) }
+          : knownAcpAgent !== undefined
+            ? { acpLaunchSpec: normalizeHostDaemonAcpLaunchSpec(knownAcpAgent) }
+            : {}),
+      },
+    });
+    return result.modes;
+  } catch (error) {
+    if (
+      !(error instanceof ApiError) ||
+      (error.status !== 502 && error.status !== 504)
+    ) {
+      throw error;
+    }
+    deps.logger.warn(
+      {
+        ...expectedFallbackErrorLogFields(error),
+        hostId,
+        providerId: provider.id,
+      },
+      "Failed to load provider modes",
+    );
+    return [];
   }
 }
 

@@ -443,6 +443,9 @@ export function createFakeRuntime() {
         selectedOnlyModels: [] satisfies AvailableModel[],
       };
     },
+    async listModes() {
+      return [];
+    },
     async shutdown() {
       state.shutdownCount += 1;
     },

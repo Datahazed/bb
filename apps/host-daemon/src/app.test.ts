@@ -261,6 +261,9 @@ function createFakeRuntime(): AgentRuntime {
         selectedOnlyModels: [],
       };
     },
+    async listModes() {
+      return [];
+    },
     listRunningProviders() {
       return [];
     },

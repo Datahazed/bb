@@ -302,7 +302,6 @@ export function buildExecutionInputSources({
   if (scope === "component-local") {
     return {
       ...(modelSource ? { model: modelSource } : {}),
-      ...(providerModeSource ? { providerMode: providerModeSource } : {}),
       ...(serviceTierSource ? { serviceTier: serviceTierSource } : {}),
       ...(reasoningLevelSource ? { reasoningLevel: reasoningLevelSource } : {}),
       ...(permissionModeSource ? { permissionMode: permissionModeSource } : {}),

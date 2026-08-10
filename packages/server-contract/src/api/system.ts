@@ -100,6 +100,16 @@ export type SystemExecutionOptionsQuery = z.infer<
   typeof systemExecutionOptionsQuerySchema
 >;
 
+export const systemProviderModesQuerySchema = systemExecutionOptionsQuerySchema;
+export type SystemProviderModesQuery = SystemExecutionOptionsQuery;
+export type SystemProviderModesResponse = z.infer<
+  typeof systemProviderModesResponseSchema
+>;
+
+export const systemProviderModesResponseSchema = z.array(
+  availableProviderModeSchema,
+);
+
 /** Omission preserves the existing behavior of reading the primary machine. */
 export const systemUsageLimitsQuerySchema = z.object({
   hostId: z.string().min(1).optional(),

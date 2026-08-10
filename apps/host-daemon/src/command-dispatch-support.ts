@@ -57,6 +57,11 @@ export interface CommandDispatchOptions {
     modes: AvailableProviderMode[];
     selectedOnlyModels: AvailableModel[];
   }>;
+  listModes?: (args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    cwd?: string;
+  }) => Promise<AvailableProviderMode[]>;
   getProviderCliStatusForProvider?: (
     providerId: string,
   ) => Promise<ProviderCliStatus | null>;
@@ -144,6 +149,42 @@ export async function defaultListModels(
   }
   try {
     return await runtime.listModels(args);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith("Unsupported provider")
+    ) {
+      throw new CommandDispatchError("unknown_provider", error.message);
+    }
+    throw error;
+  }
+}
+
+export async function defaultListModes(
+  args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    cwd?: string;
+  },
+  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
+): Promise<AvailableProviderMode[]> {
+  const runtimeKey =
+    `${options.bridgeBundleDir ?? ""}` +
+    (args.acpLaunchSpec !== undefined
+      ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
+      : "");
+  let runtime = defaultModelListRuntimes.get(runtimeKey);
+  if (!runtime) {
+    runtime = createAgentRuntime({
+      bridgeBundleDir: options.bridgeBundleDir,
+      workspacePath: process.cwd(),
+      onEvent: () => {},
+      onToolCall: async () => ({ contentItems: [], success: true }),
+    });
+    defaultModelListRuntimes.set(runtimeKey, runtime);
+  }
+  try {
+    return await runtime.listModes(args);
   } catch (error) {
     if (
       error instanceof Error &&

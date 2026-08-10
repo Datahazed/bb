@@ -1069,6 +1069,8 @@ export function createClaudeCodeProviderAdapter(
             method: "model/list",
             params: {},
           };
+        case "mode/list":
+          return { kind: "noop", reason: "Claude Code has no provider modes" };
         case "skills/configure":
           return {
             kind: "noop",

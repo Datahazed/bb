@@ -341,6 +341,16 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     modes: [],
     selectedOnlyModels: [],
   },
+  "provider.list_modes": {
+    modes: [
+      {
+        id: "orchestrator",
+        displayName: "Orchestrator",
+        description: "",
+        isDefault: false,
+      },
+    ],
+  },
   "known_acp_agents.status": {
     agents: [
       {

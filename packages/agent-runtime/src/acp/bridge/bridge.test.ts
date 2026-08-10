@@ -2,6 +2,7 @@ import {
   chmodSync,
   existsSync,
   mkdtempSync,
+  mkdirSync,
   readFileSync,
   rmSync,
 } from "node:fs";
@@ -455,6 +456,7 @@ describe("acp bridge", () => {
     });
 
     expect((await waitForResponse(modelListId)).result).toMatchObject({
+      models: [{ id: "acp-default", isDefault: true }],
       modes: [
         { id: "build", displayName: "Build", isDefault: true },
         {
@@ -462,6 +464,43 @@ describe("acp bridge", () => {
           displayName: "Orchestrator",
           description: "Coordinate specialist agents",
           isDefault: false,
+        },
+      ],
+    });
+  });
+
+  it("discovers modes for each requested workspace without a model probe", async () => {
+    const firstWorkspace = join(workspaceDir, "first-project");
+    const secondWorkspace = join(workspaceDir, "second-project");
+    mkdirSync(firstWorkspace);
+    mkdirSync(secondWorkspace);
+    const discoverModes = async (cwd: string) => {
+      const id = sendRequest("mode/list", {
+        agent: {
+          command: process.execPath,
+          args: [FAKE_AGENT_PATH],
+          cwd,
+          envVars: { FAKE_ACP_MODE_CONFIG: "1", FAKE_ACP_WORKSPACE_MODES: "1" },
+        },
+      });
+      return (await waitForResponse(id)).result;
+    };
+
+    expect(await discoverModes(firstWorkspace)).toMatchObject({
+      modes: [
+        {
+          id: "first-project-agent",
+          displayName: "first-project",
+          isDefault: true,
+        },
+      ],
+    });
+    expect(await discoverModes(secondWorkspace)).toMatchObject({
+      modes: [
+        {
+          id: "second-project-agent",
+          displayName: "second-project",
+          isDefault: true,
         },
       ],
     });
@@ -975,6 +1014,42 @@ describe("acp bridge", () => {
     await waitForTurnCompleted();
 
     expect(agentMessageTexts()).toContain("selected-mode:orchestrator");
+  });
+
+  it("times out a missing provider mode response and stops the starting agent", async () => {
+    const signalFile = join(workspaceDir, "mode-agent-signal.txt");
+    const readyFile = join(workspaceDir, "mode-agent-ready.txt");
+    const modeSetFile = join(workspaceDir, "mode-agent-set.txt");
+    vi.useFakeTimers();
+    const id = sendRequest("thread/start", {
+      threadId: "thread-mode-timeout",
+      cwd: workspaceDir,
+      agent: { command: process.execPath, args: [FAKE_AGENT_PATH] },
+      providerMode: "orchestrator",
+      permissionMode: "full",
+      permissionEscalation: null,
+      workspaceWriteRoots: [workspaceDir],
+      envVars: {
+        FAKE_ACP_MODE_CONFIG: "1",
+        FAKE_ACP_IGNORE_MODE_SET: "1",
+        FAKE_ACP_MODE_SET_FILE: modeSetFile,
+        FAKE_ACP_READY_FILE: readyFile,
+        FAKE_ACP_SIGNAL_FILE: signalFile,
+      },
+    });
+
+    try {
+      await waitForFileWithRealTimer(readyFile);
+      await waitForFileWithRealTimer(modeSetFile);
+      await vi.advanceTimersByTimeAsync(30_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect((await waitForResponse(id)).error?.message).toMatch(
+      /provider mode selection timed out/,
+    );
+    await waitForFileWithRealTimer(signalFile);
   });
 
   it("selects ACP-native reasoning with session/set_config_option before the first prompt", async () => {

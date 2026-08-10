@@ -894,6 +894,13 @@ const providerListModelsCommandSchema = z.object({
   cwd: z.string().min(1).optional(),
 });
 
+const providerListModesCommandSchema = z.object({
+  type: z.literal("provider.list_modes"),
+  providerId: z.string().min(1),
+  acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+  cwd: z.string().min(1).optional(),
+});
+
 const knownAcpAgentExecutableQuerySchema = z
   .object({
     id: z.string().min(1),
@@ -1330,6 +1337,10 @@ const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),
   modes: z.array(availableProviderModeSchema),
   selectedOnlyModels: z.array(availableModelSchema),
+});
+
+const providerListModesResultSchema = z.object({
+  modes: z.array(availableProviderModeSchema),
 });
 
 const knownAcpAgentExecutableStatusSchema = z
@@ -1941,6 +1952,15 @@ export const hostDaemonCommandRegistry = {
     type: "provider.list_models",
     schema: providerListModelsCommandSchema,
     resultSchema: providerListModelsResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.list_modes": defineHostDaemonCommandDescriptor({
+    type: "provider.list_modes",
+    schema: providerListModesCommandSchema,
+    resultSchema: providerListModesResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

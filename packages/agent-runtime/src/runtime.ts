@@ -1,6 +1,8 @@
 import path from "node:path";
 import { z } from "zod";
+import { isAcpProviderId } from "@bb/agent-providers";
 import {
+  availableProviderModeSchema,
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
 } from "@bb/domain";
@@ -66,6 +68,10 @@ import {
   threadIdentityResultSchema,
 } from "./thread-identity.js";
 import { fingerprintAcpLaunchSpec } from "./acp-launch-spec-fingerprint.js";
+
+const providerModeListResultSchema = z
+  .object({ modes: z.array(availableProviderModeSchema) })
+  .strict();
 
 interface ReconfigureThreadIfNeededArgs {
   options: AgentRuntimeExecutionOptions;
@@ -1698,6 +1704,36 @@ function createAgentRuntimeInternal(
         resultSchema: ignoredJsonRpcResultSchema,
       });
       return proc.adapter.parseModelListResult(result);
+    },
+
+    async listModes({ providerId, acpLaunchSpec, cwd }) {
+      if (!isAcpProviderId(providerId)) {
+        return [];
+      }
+      await runtime.ensureProvider({
+        providerId,
+        ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+      });
+      const proc = requireProviderProcess({
+        processKey: resolveProviderProcessKey({
+          ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          providerId,
+        }),
+        providerId,
+      });
+      const plan = proc.adapter.buildCommandPlan({
+        type: "mode/list",
+        ...(cwd !== undefined ? { cwd } : {}),
+      });
+      if (plan.kind === "noop") {
+        return [];
+      }
+      const result = await sendCommand({
+        proc,
+        message: plan,
+        resultSchema: providerModeListResultSchema,
+      });
+      return result.modes;
     },
 
     listRunningProviders() {

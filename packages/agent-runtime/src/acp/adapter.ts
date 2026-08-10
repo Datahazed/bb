@@ -549,7 +549,7 @@ export function createAcpProviderAdapter(
       });
   const additionalWorkspaceWriteRoots = opts.additionalWorkspaceWriteRoots;
 
-  function buildModelListCommand():
+  function buildModelListCommand(cwd?: string):
     | {
         command: string;
         args: string[];
@@ -563,28 +563,37 @@ export function createAcpProviderAdapter(
     return {
       command: profile.agentCommand.command,
       args: [...profile.modelCli.listArgs],
-      ...(profile.cwd !== undefined ? { cwd: profile.cwd } : {}),
+      ...(profile.cwd !== undefined
+        ? { cwd: profile.cwd }
+        : cwd !== undefined
+          ? { cwd }
+          : {}),
       ...(profile.env !== undefined ? { envVars: profile.env } : {}),
     };
   }
 
-  function buildModelDiscoveryAgentCommand():
-    | {
-        command: string;
-        args: string[];
-        cwd?: string;
-        envVars?: Record<string, string>;
-      }
-    | undefined {
-    if (buildModelListCommand() !== undefined) {
-      return undefined;
-    }
+  function buildAgentCommand(cwd?: string): {
+    command: string;
+    args: string[];
+    cwd?: string;
+    envVars?: Record<string, string>;
+  } {
     return {
       command: profile.agentCommand.command,
       args: [...profile.agentCommand.args],
-      ...(profile.cwd !== undefined ? { cwd: profile.cwd } : {}),
+      ...(profile.cwd !== undefined
+        ? { cwd: profile.cwd }
+        : cwd !== undefined
+          ? { cwd }
+          : {}),
       ...(profile.env !== undefined ? { envVars: profile.env } : {}),
     };
+  }
+
+  function buildModelDiscoveryAgentCommand(cwd?: string) {
+    return buildModelListCommand(cwd) === undefined
+      ? buildAgentCommand(cwd)
+      : undefined;
   }
 
   function buildReasoningCliParam(): Record<string, unknown> {
@@ -1366,8 +1375,8 @@ export function createAcpProviderAdapter(
             params: { clientInfo: { name: "bb", version: "1.0.0" } },
           };
         case "model/list":
-          const listCommand = buildModelListCommand();
-          const agent = buildModelDiscoveryAgentCommand();
+          const listCommand = buildModelListCommand(command.cwd);
+          const agent = buildModelDiscoveryAgentCommand(command.cwd);
           return {
             kind: "request",
             method: "model/list",
@@ -1379,6 +1388,13 @@ export function createAcpProviderAdapter(
               ...buildNativeReasoningParam(),
             },
           };
+        case "mode/list": {
+          return {
+            kind: "request",
+            method: "mode/list",
+            params: { agent: buildAgentCommand(command.cwd) },
+          };
+        }
         case "skills/configure":
           return {
             kind: "noop",

@@ -1279,6 +1279,8 @@ export function createPiProviderAdapter(
             method: "model/list",
             params: command.cwd ? { cwd: command.cwd } : {},
           };
+        case "mode/list":
+          return { kind: "noop", reason: "Pi has no provider modes" };
         case "skills/configure":
           return {
             kind: "noop",

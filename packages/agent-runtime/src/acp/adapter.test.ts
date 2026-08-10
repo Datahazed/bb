@@ -383,6 +383,29 @@ describe("acp adapter model cli", () => {
     });
   });
 
+  it("uses the requested workspace for ACP model and mode discovery", () => {
+    const adapter = createAcpProviderAdapter({
+      profile: {
+        providerId: "acp-custom",
+        displayName: "Custom ACP",
+        agentCommand: { command: "custom-acp", args: ["serve"] },
+      },
+      additionalWorkspaceWriteRoots: [],
+    });
+    const agent = {
+      command: "custom-acp",
+      args: ["serve"],
+      cwd: "/workspace-two",
+    };
+
+    expect(
+      adapter.buildCommandPlan({ type: "model/list", cwd: "/workspace-two" }),
+    ).toMatchObject({ method: "model/list", params: { agent } });
+    expect(
+      adapter.buildCommandPlan({ type: "mode/list", cwd: "/workspace-two" }),
+    ).toEqual({ kind: "request", method: "mode/list", params: { agent } });
+  });
+
   it("forwards the session model and reasoning level for bridge resolution", () => {
     const plan = createAdapter().buildCommandPlan({
       type: "thread/start",

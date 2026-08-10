@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
 import {
   systemExecutionOptionsResponseSchema,
+  systemProviderModesResponseSchema,
   systemProviderInfoSchema,
 } from "@bb/server-contract";
 import { availableModelFixture } from "../helpers/available-models.js";
@@ -31,6 +32,21 @@ function providerHostResponse(
       },
     };
   }
+  if (request.command.type === "provider.list_modes") {
+    return {
+      ok: true as const,
+      result: {
+        modes: [
+          {
+            id: "orchestrator",
+            displayName: "Orchestrator",
+            description: "",
+            isDefault: false,
+          },
+        ],
+      },
+    };
+  }
   if (request.command.type === "known_acp_agents.status") {
     return {
       ok: true as const,
@@ -53,6 +69,61 @@ async function providerIds(response: Response): Promise<string[]> {
 }
 
 describe("system provider host routing", () => {
+  it("uses a mode-only ACP command and skips provider work for Codex", async () => {
+    await withTestHarness({}, async (harness) => {
+      const primary = seedHostSession(harness.deps, {
+        id: "host-provider-modes",
+      });
+      seedPrimaryHost(harness.deps, primary.host.id);
+      const commands: HostDaemonOnlineRpcRequestMessage["command"][] = [];
+      registerHostRpcResponder(harness, {
+        hostId: primary.host.id,
+        sessionId: primary.session.id,
+        handle: (request) => {
+          commands.push(request.command);
+          return providerHostResponse(request, "acp-opencode", "model");
+        },
+      });
+
+      const modes = systemProviderModesResponseSchema.parse(
+        await readJson(
+          await harness.app.request(
+            "/api/v1/system/provider-modes?providerId=acp-opencode",
+          ),
+        ),
+      );
+      expect(modes).toEqual([
+        {
+          id: "orchestrator",
+          displayName: "Orchestrator",
+          description: "",
+          isDefault: false,
+        },
+      ]);
+      expect(commands).toEqual([
+        {
+          type: "provider.list_modes",
+          providerId: "acp-opencode",
+          acpLaunchSpec: {
+            displayName: "opencode",
+            command: "opencode",
+            args: ["acp"],
+            env: {},
+          },
+        },
+      ]);
+
+      expect(
+        await readJson(
+          await harness.app.request(
+            "/api/v1/system/provider-modes?providerId=codex",
+          ),
+        ),
+      ).toEqual([]);
+      expect(commands).toHaveLength(1);
+    });
+  });
+
   it("separates provider discovery by explicit host and environment host while preserving primary fallback", async () => {
     await withTestHarness({}, async (harness) => {
       const primary = seedHostSession(harness.deps, {

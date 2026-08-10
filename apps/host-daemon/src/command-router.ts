@@ -109,6 +109,7 @@ export interface CommandRouterOptions {
   terminalManager?: CommandDispatchOptions["terminalManager"];
   eventSink: CommandDispatchOptions["eventSink"];
   listModels?: CommandDispatchOptions["listModels"];
+  listModes?: CommandDispatchOptions["listModes"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
   caffeinateManager?: CommandDispatchOptions["caffeinateManager"];
   ensureConnectTunnelIdentity?: CommandDispatchOptions["ensureConnectTunnelIdentity"];
@@ -322,6 +323,7 @@ export class CommandRouter {
       dataDir: this.options.dataDir,
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,
+      listModes: this.options.listModes,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
       caffeinateManager: this.options.caffeinateManager,
       ensureConnectTunnelIdentity: this.options.ensureConnectTunnelIdentity,

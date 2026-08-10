@@ -63,6 +63,9 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
     async archiveThread() {},
     async unarchiveThread() {},
     listModels: args.listModels,
+    async listModes() {
+      return [];
+    },
     listRunningProviders() {
       return [];
     },

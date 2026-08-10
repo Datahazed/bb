@@ -1894,6 +1894,8 @@ export function createCodexProviderAdapter(
             method: "model/list",
             params: {},
           };
+        case "mode/list":
+          return { kind: "noop", reason: "Codex has no provider modes" };
         case "skills/configure": {
           const params: CodexSkillsExtraRootsSetParams = {
             extraRoots: command.skillRoots.map((skillRoot) =>

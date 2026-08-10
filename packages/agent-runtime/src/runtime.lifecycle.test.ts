@@ -1402,6 +1402,22 @@ rl.on("line", (line) => {
       expect(models[0].isDefault).toBe(true);
       await runtime.shutdown();
     });
+
+    it("returns no modes without starting a non-ACP provider", async () => {
+      const adapterFactory = vi.fn(() => createFakeAdapter(scriptPath));
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => {},
+        onToolCall: async () => ({ contentItems: [], success: true }),
+        adapterFactory,
+      });
+
+      await expect(runtime.listModes({ providerId: "fake" })).resolves.toEqual(
+        [],
+      );
+      expect(adapterFactory).not.toHaveBeenCalled();
+      await runtime.shutdown();
+    });
   });
 
   describe("errors", () => {

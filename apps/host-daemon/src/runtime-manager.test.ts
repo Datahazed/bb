@@ -274,6 +274,7 @@ function createFakeRuntime() {
       modes: [],
       selectedOnlyModels: [],
     })),
+    listModes: vi.fn(async () => []),
     listRunningProviders: vi.fn((): string[] => []),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
     waitForActiveTurn: async (threadId) =>

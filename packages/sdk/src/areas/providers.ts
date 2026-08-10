@@ -1,6 +1,7 @@
 import type {
   SystemExecutionOptionsResponse,
   SystemProviderInfo,
+  SystemProviderModesResponse,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
@@ -20,12 +21,16 @@ export type ProviderModelsArgs = ProviderHostRoutingArgs & {
 
 export type ProviderListResult = SystemProviderInfo[];
 export type ProviderModelsResult = SystemExecutionOptionsResponse;
+export type ProviderModesArgs = ProviderModelsArgs;
+export type ProviderModesResult = SystemProviderModesResponse;
 
 export interface ProvidersArea {
   /** List providers on the environment host, explicit host, or primary host. */
   list(args?: ProviderListArgs): Promise<ProviderListResult>;
   /** List models on the environment host, explicit host, or primary host. */
   models(args?: ProviderModelsArgs): Promise<ProviderModelsResult>;
+  /** List provider-native modes without a full model probe. */
+  modes(args?: ProviderModesArgs): Promise<ProviderModesResult>;
 }
 
 export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
@@ -47,6 +52,20 @@ export function createProvidersArea(args: CreateSdkAreaArgs): ProvidersArea {
     async models(input = {}) {
       return transport.readJson(
         transport.api.v1.system["execution-options"].$get(
+          {
+            query: {
+              environmentId: input.environmentId,
+              hostId: input.hostId,
+              providerId: input.providerId,
+            },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async modes(input = {}) {
+      return transport.readJson(
+        transport.api.v1.system["provider-modes"].$get(
           {
             query: {
               environmentId: input.environmentId,

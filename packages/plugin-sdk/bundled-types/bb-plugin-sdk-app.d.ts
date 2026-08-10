@@ -1192,6 +1192,8 @@ interface NewThreadRequest {
     projectId: string;
     providerId: string;
     model: string;
+    /** OpenCode primary agent selected for the new ACP session. */
+    providerMode?: string;
     reasoningLevel: ReasoningLevel;
     permissionMode: PermissionMode;
     /** Omitted when the selected provider has no service tiers. */
@@ -1241,6 +1243,8 @@ interface NewThreadComposerProps {
     defaultProviderId?: string;
     /** Seeds the model picker. Same seed semantics as {@link defaultProviderId}. */
     defaultModel?: string;
+    /** Seeds the OpenCode primary-agent picker. */
+    defaultProviderMode?: string;
     /**
      * Seeds the reasoning-level picker. Same seed semantics as
      * {@link defaultProviderId}. If the seeded model does not support this

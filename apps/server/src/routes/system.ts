@@ -36,6 +36,7 @@ import {
 import {
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
+  resolveSystemProviderModes,
 } from "../services/system/execution-options.js";
 import {
   getOnboardingAgentOverview,
@@ -275,6 +276,10 @@ export function registerSystemRoutes(
 
   get(routes.providers, async (context, query) =>
     context.json(await listSystemProviderInfos(deps, query)),
+  );
+
+  get(routes.providerModes, async (context, query) =>
+    context.json(await resolveSystemProviderModes(deps, query)),
   );
 
   get(routes.providerLogo, async (context) => {

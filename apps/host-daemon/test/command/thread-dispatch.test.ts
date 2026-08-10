@@ -1846,6 +1846,45 @@ describe("thread command dispatch", () => {
     });
   });
 
+  it("covers provider.list_modes", async () => {
+    const harness = createHarness();
+    const acpLaunchSpec = customAcpLaunchSpec();
+    const listModes = vi.fn(async () => [
+      {
+        id: "orchestrator",
+        displayName: "Orchestrator",
+        description: "",
+        isDefault: false,
+      },
+    ]);
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "provider.list_modes",
+        providerId: "acp-custom",
+        acpLaunchSpec,
+        cwd: "/tmp/worktree",
+      },
+      { ...harness.dispatchOptions(), listModes },
+    );
+
+    expect(listModes).toHaveBeenCalledWith({
+      providerId: "acp-custom",
+      acpLaunchSpec,
+      cwd: "/tmp/worktree",
+    });
+    expect(result).toEqual({
+      modes: [
+        {
+          id: "orchestrator",
+          displayName: "Orchestrator",
+          description: "",
+          isDefault: false,
+        },
+      ],
+    });
+  });
+
   it("uses the server-provided thread runtime config", async () => {
     const threadStorage = await makeTempDir("bb-thread-runtime-");
     const harness = createHarness({ workspacePath: threadStorage });

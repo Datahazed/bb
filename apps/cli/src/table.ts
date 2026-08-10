@@ -1,4 +1,5 @@
 import Table from "cli-table3";
+import { stripVTControlCharacters } from "node:util";
 
 interface BorderlessTableOptions {
   head: string[];
@@ -38,12 +39,12 @@ export function renderBorderlessTable(
 ): string {
   const table = new Table({
     ...BORDERLESS_TABLE_OPTIONS,
-    head: options.head,
+    head: options.head.map(cleanTerminalTableCell),
     colWidths: options.colWidths,
   });
 
   for (const row of rows) {
-    table.push(row);
+    table.push(row.map(cleanTerminalTableCell));
   }
 
   const rendered = table.toString();
@@ -54,4 +55,10 @@ export function renderBorderlessTable(
     .split("\n")
     .map((line) => line.trimEnd())
     .join("\n");
+}
+
+function cleanTerminalTableCell(value: string): string {
+  return stripVTControlCharacters(value)
+    .replace(/[\r\n\t]+/gu, " ")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/gu, "");
 }

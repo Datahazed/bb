@@ -35,10 +35,13 @@
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
+ * - FAKE_ACP_IGNORE_MODE_SET=1
+ *                            → do not answer mode selection requests
  */
 
 import { createInterface } from "node:readline";
 import { appendFileSync, writeFileSync } from "node:fs";
+import { basename } from "node:path";
 
 const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
 const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
@@ -47,6 +50,8 @@ const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const modeConfig = process.env.FAKE_ACP_MODE_CONFIG === "1";
+const ignoreModeSet = process.env.FAKE_ACP_IGNORE_MODE_SET === "1";
+const workspaceModes = process.env.FAKE_ACP_WORKSPACE_MODES === "1";
 const acceptUnlistedModel = process.env.FAKE_ACP_ACCEPT_UNLISTED_MODEL === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
 const unmappedReasoningConfig =
@@ -60,6 +65,21 @@ const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .map((method) => method.trim())
   .filter(Boolean);
 const newSessionId = `fake-sess-${process.pid}`;
+const modeOptions = workspaceModes
+  ? [
+      {
+        value: `${basename(process.cwd())}-agent`,
+        name: basename(process.cwd()),
+      },
+    ]
+  : [
+      { value: "build", name: "Build" },
+      {
+        value: "orchestrator",
+        name: "Orchestrator",
+        description: "Coordinate specialist agents",
+      },
+    ];
 const fakeModels = [
   { value: "fake/default", name: "Fake Default" },
   { value: "fake/strong", name: "Fake Strong" },
@@ -68,7 +88,7 @@ const fakeModels = [
 let activePromptId = null;
 let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
-let selectedMode = "build";
+let selectedMode = modeOptions[0].value;
 let selectedEffort = "none";
 let authenticatedMethod = null;
 let activeSessionId = newSessionId;
@@ -161,14 +181,7 @@ function configOptions() {
             category: "mode",
             type: "select",
             currentValue: selectedMode,
-            options: [
-              { value: "build", name: "Build" },
-              {
-                value: "orchestrator",
-                name: "Orchestrator",
-                description: "Coordinate specialist agents",
-              },
-            ],
+            options: modeOptions,
           },
         ]
       : []),
@@ -495,10 +508,16 @@ async function handleMessage(message) {
         return;
       }
       if (configId === "mode") {
+        if (process.env.FAKE_ACP_MODE_SET_FILE) {
+          writeFileSync(process.env.FAKE_ACP_MODE_SET_FILE, "requested\n");
+        }
+        if (ignoreModeSet) {
+          return;
+        }
         if (
           !modeConfig ||
           typeof value !== "string" ||
-          !["build", "orchestrator"].includes(value)
+          !modeOptions.some((option) => option.value === value)
         ) {
           send({
             jsonrpc: "2.0",

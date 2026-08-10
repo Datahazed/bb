@@ -79,6 +79,11 @@ const acpBridgeModelListParamsSchema = z.object({
   nativeReasoning: acpBridgeNativeReasoningSchema.optional(),
 });
 
+const acpBridgeModeListParamsSchema = z.object({
+  /** ACP agent command used for one throwaway mode-discovery session. */
+  agent: acpBridgeAgentCommandSchema,
+});
+
 /**
  * Session-level model pin. CLI-style agents resolve (model, reasoningLevel,
  * serviceTier) to a raw model id and launch with `<selectFlag> <resolved-id>`.
@@ -176,6 +181,10 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("model/list"),
     params: acpBridgeModelListParamsSchema,
+  }),
+  z.object({
+    method: z.literal("mode/list"),
+    params: acpBridgeModeListParamsSchema,
   }),
   z.object({
     method: z.literal("thread/start"),

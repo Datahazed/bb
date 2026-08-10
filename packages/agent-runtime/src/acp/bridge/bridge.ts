@@ -141,6 +141,7 @@ interface AcpThreadSession {
 
 const sessionsByBbThreadId = new Map<string, AcpThreadSession>();
 const bbThreadIdByProviderThreadId = new Map<string, string>();
+const startingConnections = new Set<AcpAgentConnection>();
 const pendingRuntimeRequests = new Map<
   number,
   (response: BridgeJsonRpcResponse) => void
@@ -384,6 +385,7 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
 };
 
 const MODEL_LIST_TIMEOUT_MS = 30_000;
+const SESSION_CONFIG_OPTION_TIMEOUT_MS = 30_000;
 const ACP_NATIVE_REASONING_DISCOVERY_TIMEOUT_MS = 5_000;
 const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
   "ACP agent is not authenticated.";
@@ -622,6 +624,12 @@ let cachedSessionDiscoveredOptions: {
   fetchedAt: number;
 } | null = null;
 
+let cachedSessionDiscoveredModes: {
+  key: string;
+  modes: AvailableProviderMode[];
+  fetchedAt: number;
+} | null = null;
+
 function resolveAcpAuthMethodId(
   authMethods: readonly { id: string }[] | undefined,
   env: Record<string, string | undefined>,
@@ -834,6 +842,101 @@ async function loadSessionDiscoveredOptions(
   } catch (error) {
     process.stderr.write(
       `acp bridge: ACP-native model discovery for "${agent.command}" failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+    return null;
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    connection.kill();
+  }
+}
+
+async function loadSessionDiscoveredModes(
+  agent: AcpBridgeAgentCommand,
+): Promise<AvailableProviderMode[] | null> {
+  const key = JSON.stringify(agent);
+  if (
+    cachedSessionDiscoveredOptions?.key === key &&
+    Date.now() - cachedSessionDiscoveredOptions.fetchedAt <
+      SESSION_MODEL_DISCOVERY_TTL_MS
+  ) {
+    return cachedSessionDiscoveredOptions.options.modes;
+  }
+  if (
+    cachedSessionDiscoveredModes?.key === key &&
+    Date.now() - cachedSessionDiscoveredModes.fetchedAt <
+      SESSION_MODEL_DISCOVERY_TTL_MS
+  ) {
+    return cachedSessionDiscoveredModes.modes;
+  }
+
+  const childEnv = {
+    ...withoutBridgeRuntimeEnv(process.env),
+    ...(agent.envVars ?? {}),
+  };
+  const connection = createAcpAgentConnection({
+    command: agent.command,
+    args: agent.args,
+    cwd: agent.cwd ?? process.cwd(),
+    env: childEnv,
+    onNotification: () => {},
+    onRequest: (_method, _params, responder) => {
+      responder.error(-32601, "ACP mode discovery does not support requests");
+    },
+    onExit: () => {},
+  });
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutReached = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      connection.kill();
+      reject(
+        new Error(
+          `ACP mode discovery timed out after ${MODEL_LIST_TIMEOUT_MS}ms`,
+        ),
+      );
+    }, MODEL_LIST_TIMEOUT_MS);
+  });
+
+  try {
+    const newSession = await Promise.race([
+      (async () => {
+        const initializeResult = await connection.request({
+          method: "initialize",
+          params: {
+            protocolVersion: ACP_PROTOCOL_VERSION,
+            clientInfo: { name: "bb", version: "1.0.0" },
+            clientCapabilities: {
+              fs: { readTextFile: false, writeTextFile: false },
+              terminal: false,
+            },
+          },
+          resultSchema: acpInitializeResultSchema,
+        });
+        await authenticateAcpAgent({
+          connection,
+          env: childEnv,
+          initializeResult,
+        });
+        return connection.request({
+          method: "session/new",
+          params: { cwd: agent.cwd ?? process.cwd(), mcpServers: [] },
+          resultSchema: acpSessionNewResultSchema,
+        });
+      })(),
+      timeoutReached,
+    ]);
+    const modes = buildProviderModesFromConfigOptions(
+      findAcpModeConfigOption(newSession.configOptions),
+    );
+    cachedSessionDiscoveredModes = { key, modes, fetchedAt: Date.now() };
+    return modes;
+  } catch (error) {
+    process.stderr.write(
+      `acp bridge: ACP mode discovery for "${agent.command}" failed: ${
         error instanceof Error ? error.message : String(error)
       }\n`,
     );
@@ -1102,15 +1205,35 @@ async function selectAcpNativeMode(args: {
   if (modeOption.currentValue === args.providerMode) {
     return;
   }
-  await args.connection.request({
-    method: "session/set_config_option",
-    params: {
-      sessionId: args.sessionId,
-      configId: modeOption.id,
-      value: args.providerMode,
-    },
-    resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutReached = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      args.connection.kill();
+      reject(
+        new Error(
+          `ACP provider mode selection timed out after ${SESSION_CONFIG_OPTION_TIMEOUT_MS}ms`,
+        ),
+      );
+    }, SESSION_CONFIG_OPTION_TIMEOUT_MS);
   });
+  try {
+    await Promise.race([
+      args.connection.request({
+        method: "session/set_config_option",
+        params: {
+          sessionId: args.sessionId,
+          configId: modeOption.id,
+          value: args.providerMode,
+        },
+        resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
+      }),
+      timeoutReached,
+    ]);
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+  }
 }
 
 async function selectAcpNativeReasoning(args: {
@@ -1540,6 +1663,7 @@ async function startAgentSession(
       });
     },
   });
+  startingConnections.add(connection);
   session = {
     bbThreadId,
     providerThreadId: "",
@@ -1685,6 +1809,8 @@ async function startAgentSession(
     connection.kill();
     removeSession(session);
     throw error;
+  } finally {
+    startingConnections.delete(connection);
   }
 }
 
@@ -1883,14 +2009,15 @@ async function handleRequest(
           ? await loadSessionDiscoveredOptions(request.params.agent)
           : null;
       if (sessionDiscoveredOptions) {
+        const discoveredModels =
+          sessionDiscoveredOptions.models.length > 0
+            ? sessionDiscoveredOptions.models
+            : [ACP_DEFAULT_MODEL];
         sendResult(request.id, {
-          models: applyConfiguredReasoningToModels(
-            sessionDiscoveredOptions.models,
-            {
-              reasoningCli: request.params.reasoningCli,
-              nativeReasoning: request.params.nativeReasoning,
-            },
-          ),
+          models: applyConfiguredReasoningToModels(discoveredModels, {
+            reasoningCli: request.params.reasoningCli,
+            nativeReasoning: request.params.nativeReasoning,
+          }),
           modes: sessionDiscoveredOptions.modes,
           selectedOnlyModels: [],
         });
@@ -1906,6 +2033,12 @@ async function handleRequest(
         modes: [],
         selectedOnlyModels: [],
       });
+      return;
+    }
+
+    case "mode/list": {
+      const modes = await loadSessionDiscoveredModes(request.params.agent);
+      sendResult(request.id, { modes: modes ?? [] });
       return;
     }
 
@@ -2005,6 +2138,10 @@ export function handleLine(line: string): void {
 }
 
 async function stopAllSessions(): Promise<void> {
+  for (const connection of startingConnections) {
+    connection.kill();
+  }
+  startingConnections.clear();
   await Promise.all(
     Array.from(sessionsByBbThreadId.values()).map((session) =>
       stopSession(session),

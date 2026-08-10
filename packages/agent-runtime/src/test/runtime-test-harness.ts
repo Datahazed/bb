@@ -230,6 +230,8 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
             method: "model/list",
             params: {},
           };
+        case "mode/list":
+          return { kind: "noop", reason: "Warning fake has no modes" };
         case "thread/start":
           return {
             kind: "request",
@@ -342,6 +344,8 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
             method: "model/list",
             params: {},
           };
+        case "mode/list":
+          return { kind: "noop", reason: "Started fake has no modes" };
         case "thread/start":
           return {
             kind: "request",

@@ -227,6 +227,7 @@ function createFakeRuntime(): AgentRuntime {
       modes: [],
       selectedOnlyModels: [],
     })),
+    listModes: vi.fn(async () => []),
     listRunningProviders: vi.fn(() => []),
     getActiveTurnId: vi.fn(() => null),
     waitForActiveTurn: vi.fn(async () => null),

@@ -320,7 +320,7 @@ type ExpectedProjectsKey =
 type ExpectedProjectSourcesKey = "add" | "delete" | "update";
 type ExpectedProjectAttachmentsKey = "copy" | "read" | "upload";
 
-type ExpectedProvidersKey = "list" | "models";
+type ExpectedProvidersKey = "list" | "models" | "modes";
 
 type ExpectedStatusKey = "get";
 

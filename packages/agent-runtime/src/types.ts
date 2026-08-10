@@ -277,6 +277,8 @@ export interface ListModelsArgs {
   cwd?: string;
 }
 
+export type ListModesArgs = ListModelsArgs;
+
 export interface AgentRuntime {
   ensureProvider(args: EnsureProviderArgs): Promise<void>;
 
@@ -309,6 +311,8 @@ export interface AgentRuntime {
     modes: AvailableProviderMode[];
     selectedOnlyModels: AvailableModel[];
   }>;
+
+  listModes(args: ListModesArgs): Promise<AvailableProviderMode[]>;
 
   listRunningProviders(): string[];
 
