@@ -464,6 +464,72 @@ describe("createRealtimeCacheEffects", () => {
     },
   );
 
+  it("refetches the active pull request lookup when git refs change", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const pullRequestKey = environmentPullRequestQueryKey("env-1");
+    const nextPullRequest = {
+      outcome: "available",
+      pullRequest: { number: 42 },
+    };
+    const pullRequestQueryFn = vi.fn(async () => nextPullRequest);
+    queryClient.setQueryData(pullRequestKey, { outcome: "absent" });
+    const pullRequestObserver = new QueryObserver(queryClient, {
+      queryFn: pullRequestQueryFn,
+      queryKey: pullRequestKey,
+      staleTime: Infinity,
+    });
+    const unsubscribePullRequest = pullRequestObserver.subscribe(() => {});
+    pullRequestQueryFn.mockClear();
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "environment",
+      id: "env-1",
+      changes: ["git-refs-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(pullRequestQueryFn).toHaveBeenCalledTimes(1);
+    expect(queryClient.getQueryData(pullRequestKey)).toEqual(nextPullRequest);
+
+    unsubscribePullRequest();
+    effects.dispose();
+  });
+
+  it("does not refetch the pull request lookup for content-only work-status changes", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const pullRequestKey = environmentPullRequestQueryKey("env-1");
+    const pullRequestQueryFn = vi.fn(async () => ({
+      outcome: "absent" as const,
+    }));
+    queryClient.setQueryData(pullRequestKey, { outcome: "absent" });
+    const pullRequestObserver = new QueryObserver(queryClient, {
+      queryFn: pullRequestQueryFn,
+      queryKey: pullRequestKey,
+      staleTime: Infinity,
+    });
+    const unsubscribePullRequest = pullRequestObserver.subscribe(() => {});
+    pullRequestQueryFn.mockClear();
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "environment",
+      id: "env-1",
+      changes: ["work-status-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(pullRequestQueryFn).not.toHaveBeenCalled();
+    expect(
+      queryClient.getQueryState(pullRequestKey)?.isInvalidated,
+    ).toBe(false);
+
+    unsubscribePullRequest();
+    effects.dispose();
+  });
+
   it("invalidates cached thread search results when environment metadata changes", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();

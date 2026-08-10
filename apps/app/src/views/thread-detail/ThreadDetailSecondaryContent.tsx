@@ -254,13 +254,18 @@ function ThreadDetailSecondaryContentBody({
   }, [isConversationCollapsedActive, isSecondaryPanelOpen, renderAsDrawer]);
 
   // Mirror ForksRow's query (deduped by react-query) so the visibility gate
-  // accounts for the lazily-fetched Forks row.
-  const forksQuery = useThreads({
-    projectId: stableMetadata.thread.projectId,
-    sourceThreadId: stableMetadata.thread.id,
-    originKind: "fork",
-    archived: false,
-  });
+  // accounts for the lazily-fetched Forks row. Only while the panel/drawer is
+  // open: the result only picks the metadata placeholder, and a closed panel
+  // must not pay a thread-list refetch on every realtime list invalidation.
+  const forksQuery = useThreads(
+    {
+      projectId: stableMetadata.thread.projectId,
+      sourceThreadId: stableMetadata.thread.id,
+      originKind: "fork",
+      archived: false,
+    },
+    { enabled: isSecondaryPanelOpen },
+  );
   const hasForks = (forksQuery.data?.length ?? 0) > 0;
 
   const metadataContent = useMemo(

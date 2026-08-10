@@ -5,6 +5,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import { useThreads } from "@/hooks/queries/thread-queries";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import {
   DefaultPaneContextProvider,
@@ -42,7 +43,7 @@ vi.mock("@/components/ui/sidebar.js", () => ({
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThreads: () => ({ data: [] }),
+  useThreads: vi.fn(),
 }));
 
 vi.mock("jotai", async (importOriginal) => ({
@@ -462,6 +463,44 @@ afterEach(() => {
 beforeEach(() => {
   publishedHostedPanel = null;
   vi.mocked(dispatchBrowserViewBoundsSync).mockReset();
+  vi.mocked(useThreads).mockReturnValue({ data: [] } as unknown as ReturnType<
+    typeof useThreads
+  >);
+});
+
+describe("ThreadDetailSecondaryContent hidden-panel queries", () => {
+  it.each([
+    ["compact drawer", true],
+    ["wide panel", false],
+  ] as const)(
+    "gates the forks mirror query on %s visibility",
+    (_label, isCompactViewport) => {
+      const view = renderThreadDetail({
+        isCompactViewport,
+        isSecondaryPanelOpen: false,
+        renderBrowserDeck: createBrowserDeckRenderer(),
+        threadId: "thread-1",
+      });
+
+      expect(vi.mocked(useThreads)).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          originKind: "fork",
+          sourceThreadId: "thread-1",
+        }),
+        { enabled: false },
+      );
+
+      view.rerenderWith({ isSecondaryPanelOpen: true });
+
+      expect(vi.mocked(useThreads)).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          originKind: "fork",
+          sourceThreadId: "thread-1",
+        }),
+        { enabled: true },
+      );
+    },
+  );
 });
 
 describe("ThreadDetailSecondaryContent compact drawer settling", () => {

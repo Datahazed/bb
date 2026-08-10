@@ -583,7 +583,13 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   );
   const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
     useState<BrowserAddressFocusRequest | null>(null);
-  const shouldLoadThreadStorageFiles = thread !== undefined;
+  // Every consumer of the storage file list lives in the secondary
+  // panel/drawer (metadata storage section, storage browser, storage-tab
+  // pruning), so a closed panel must not pay realtime-driven refetches.
+  // Timeline storage links still resolve while closed: the link handler
+  // falls back to an on-demand refetch when the storage root is unknown.
+  const shouldLoadThreadStorageFiles =
+    thread !== undefined && isSecondaryPanelOpen;
   const {
     isThreadStorageFilesLoading,
     refetchThreadStorageFiles,

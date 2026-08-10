@@ -393,6 +393,7 @@ export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY = {
     dirty: [
       dirtyEnvironmentRefDerivedWorkspaceStateQueries, // Only cached ref-derived workspace queries need refresh.
       dirtyEnvironmentBranchListQueries, // Refs can add/remove/rename branch options.
+      dirtyEnvironmentPullRequestQueries, // A commit/push moves the PR head; content-only edits do not.
     ],
   },
   "thread-storage-changed": {
@@ -825,15 +826,24 @@ function dirtyEnvironmentWorkspaceStateQueries(
   removeEnvironmentDiffPatchQueries(context);
 }
 
+// Deliberately NOT part of the work-status handler: work-status-changed fires
+// for every workspace content edit during an agent turn, and the PR lookup is
+// a `gh` shell-out that content edits cannot affect. Refs moving (commit,
+// push) is the local signal that can change PR state; remote-only changes are
+// covered by the turn-completed invalidation, the pending-checks poll, and
+// stale-aware focus refetches.
+function dirtyEnvironmentPullRequestQueries({
+  environmentId,
+}: EnvironmentRealtimeDirtyContext): QueryKey[] {
+  return [environmentPullRequestQueryKey(environmentId)];
+}
+
 function dirtyEnvironmentLiveWorkspaceStateQueries({
   environmentId,
   queryClient,
 }: EnvironmentRealtimeDirtyContext): void {
   queryClient.invalidateQueries({
     queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
-  });
-  queryClient.invalidateQueries({
-    queryKey: environmentPullRequestQueryKey(environmentId),
   });
   queryClient.invalidateQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),

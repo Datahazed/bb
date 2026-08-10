@@ -192,7 +192,11 @@ export function useEnvironmentPullRequest(
       }),
     enabled,
     refetchOnMount: true,
-    refetchOnWindowFocus: "always",
+    // Stale-aware, not "always": the lookup shells out to `gh` on the server,
+    // and the settled-PR stale tier exists to keep merged/closed PRs from
+    // paying that on every window focus. Open PRs still refetch on focus once
+    // past the short stale tier.
+    refetchOnWindowFocus: true,
     refetchInterval: (query) =>
       getEnvironmentPullRequestRefetchInterval(
         getEnvironmentPullRequestFromResponse(query.state.data),
