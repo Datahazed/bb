@@ -21,6 +21,7 @@ describe("packed plugin SDK exports", () => {
       homepage: string;
       license: string;
       name: string;
+      peerDependencies: Record<string, string>;
       private?: boolean;
       publishConfig: { access: string };
       repository: { directory: string; type: string; url: string };
@@ -41,10 +42,8 @@ describe("packed plugin SDK exports", () => {
       directory: "packages/plugin-sdk",
     });
     expect(packageJson.publishConfig).toEqual({ access: "public" });
-    expect(packageJson.dependencies).toEqual({
-      "cron-parser": "^5.5.0",
-      hono: "^4.11.9",
-    });
+    expect(packageJson.dependencies).toEqual({ "cron-parser": "^5.5.0" });
+    expect(packageJson.peerDependencies.hono).toBe("^4.11.9");
     expect(packageJson.files).toEqual(["bundled-types", "dist", "README.md"]);
     expect(Object.keys(packageJson.exports)).toEqual([
       ".",

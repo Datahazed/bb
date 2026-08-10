@@ -47,10 +47,10 @@ for a cleanup-safe editor enhancement.
 The packed package includes executable JavaScript and portable declarations
 for `@bb/plugin-sdk/testing` and `@bb/plugin-sdk/testing/app`; neither subpath
 imports BB workspace packages or source TypeScript at runtime. Install the SDK
-with the test stack used by your plugin. The SDK installs the pure-JavaScript
-HTTP and cron dependencies used by its backend harness. Native database,
-schema, and browser packages remain optional peers so plugins install only the
-test surfaces they use:
+with the test stack used by your plugin. The SDK installs its cron dependency
+and declares Hono as a required peer so npm provides one compatible HTTP type
+and runtime. Native database, schema, and browser packages remain optional
+peers so plugins install only the test surfaces they use:
 
 ```sh
 npm install --save-dev @bb/plugin-sdk vitest better-sqlite3 zod @types/better-sqlite3

@@ -1470,7 +1470,8 @@ types, so add `@bb/plugin-sdk` as a devDependency when tests import the
 testing harness (plus its optional peers: `better-sqlite3`,
 `@types/better-sqlite3`, and `zod` for backend tests; React, React DOM,
 `@types/react`, Testing Library, and jsdom for frontend tests). The SDK installs
-the pure-JavaScript Hono and cron-parser harness dependencies itself.
+cron-parser itself and declares Hono as a required peer so package managers use
+one compatible HTTP type and runtime.
 
 The fake plugin host's `bb` satisfies `BbPluginApi` with host-faithful
 semantics: real better-sqlite3 temporary storage (never mock the db), the kv

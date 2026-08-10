@@ -360,8 +360,8 @@ describe("external plugin scaffold types", () => {
     expect(installedManifest.private).not.toBe(true);
     expect(installedManifest.dependencies).toEqual({
       "cron-parser": "^5.5.0",
-      hono: "^4.11.9",
     });
+    expect(installedManifest.peerDependencies?.hono).toBe("^4.11.9");
     expect(JSON.stringify(installedManifest.dependencies ?? {})).not.toContain(
       "workspace:",
     );

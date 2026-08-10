@@ -1826,9 +1826,6 @@ importers:
       cron-parser:
         specifier: ^5.5.0
         version: 5.5.0
-      hono:
-        specifier: ^4.11.9
-        version: 4.12.28
     devDependencies:
       '@bb/domain':
         specifier: workspace:*
@@ -1860,6 +1857,9 @@ importers:
       esbuild:
         specifier: ^0.28.0
         version: 0.28.1
+      hono:
+        specifier: 4.11.9
+        version: 4.11.9
       jsdom:
         specifier: ^29.0.1
         version: 29.0.1(@noble/hashes@2.0.1)

@@ -174,10 +174,8 @@ try {
     await readFile(join(packageRoot, "package.json"), "utf8"),
   );
   assert.equal(sourceManifest.publishConfig?.access, "public");
-  assert.deepEqual(sourceManifest.dependencies, {
-    "cron-parser": "^5.5.0",
-    hono: "^4.11.9",
-  });
+  assert.deepEqual(sourceManifest.dependencies, { "cron-parser": "^5.5.0" });
+  assert.equal(sourceManifest.peerDependencies?.hono, "^4.11.9");
   assertNoWorkspaceDependencies(sourceManifest);
   for (const entry of Object.values(sourceManifest.exports)) {
     for (const condition of ["import", "types"]) {
@@ -231,6 +229,7 @@ try {
   );
   assert.equal(installedManifest.version, sourceManifest.version);
   assert.deepEqual(installedManifest.dependencies, sourceManifest.dependencies);
+  assert.equal(installedManifest.peerDependencies?.hono, "^4.11.9");
   assertNoWorkspaceDependencies(installedManifest);
 
   await writeFile(join(consumerDir, "backend-smoke.test.mjs"), backendTest);
