@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
+import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scaffoldPlugin } from "../src/plugin-scaffold.js";
 
@@ -201,6 +202,12 @@ function packageRoot(name: string): string {
 async function linkExternalDependencies(targetDir: string): Promise<void> {
   for (const name of EXTERNAL_DEPENDENCIES) {
     const target = join(targetDir, "node_modules", name);
+    try {
+      await access(target);
+      continue;
+    } catch {
+      // Link dependencies that npm did not install from the packed SDK.
+    }
     await mkdir(dirname(target), { recursive: true });
     await symlink(packageRoot(name), target, "dir");
   }
@@ -349,8 +356,12 @@ describe("external plugin scaffold types", () => {
       peerDependencies?: Record<string, string>;
       exports: Record<string, { import: string; types: string }>;
     };
-    expect(installedManifest.version).toBe("0.4.1");
+    expect(installedManifest.version).toBe(PLUGIN_SDK_VERSION);
     expect(installedManifest.private).not.toBe(true);
+    expect(installedManifest.dependencies).toEqual({
+      "cron-parser": "^5.5.0",
+      hono: "^4.11.9",
+    });
     expect(JSON.stringify(installedManifest.dependencies ?? {})).not.toContain(
       "workspace:",
     );

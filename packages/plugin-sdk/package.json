@@ -1,6 +1,26 @@
 {
   "name": "@bb/plugin-sdk",
-  "version": "0.4.1",
+  "version": "0.5.0",
+  "description": "Typed BB plugin API and official plugin testing harnesses",
+  "license": "MIT",
+  "homepage": "https://github.com/get-bb/bb/tree/main/packages/plugin-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/get-bb/bb/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/get-bb/bb.git",
+    "directory": "packages/plugin-sdk"
+  },
+  "keywords": [
+    "bb",
+    "plugin",
+    "sdk",
+    "testing"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "files": [
     "bundled-types",
@@ -50,8 +70,13 @@
     "build": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "prepack": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
+    "smoke:tarball": "node scripts/smoke-tarball.mjs",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "node scripts/build-bundled-dts.mjs --check && tsc --noEmit"
+  },
+  "dependencies": {
+    "cron-parser": "^5.5.0",
+    "hono": "^4.11.9"
   },
   "devDependencies": {
     "@bb/domain": "workspace:*",
@@ -63,9 +88,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "better-sqlite3": "12.10.0",
-    "cron-parser": "^5.5.0",
     "esbuild": "^0.28.0",
-    "hono": "4.11.9",
     "jsdom": "^29.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -81,8 +104,6 @@
     "@types/better-sqlite3": "^7.6.12",
     "@types/react": "^19.0.0",
     "better-sqlite3": ">=12",
-    "cron-parser": "^5.5.0",
-    "hono": "^4.11.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^4.3.6"
@@ -98,12 +119,6 @@
       "optional": true
     },
     "better-sqlite3": {
-      "optional": true
-    },
-    "cron-parser": {
-      "optional": true
-    },
-    "hono": {
       "optional": true
     },
     "react": {

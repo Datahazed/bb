@@ -47,12 +47,14 @@ for a cleanup-safe editor enhancement.
 The packed package includes executable JavaScript and portable declarations
 for `@bb/plugin-sdk/testing` and `@bb/plugin-sdk/testing/app`; neither subpath
 imports BB workspace packages or source TypeScript at runtime. Install the SDK
-with the test stack used by your plugin (the peer dependencies are optional so
-headless plugins do not install a browser harness):
+with the test stack used by your plugin. The SDK installs the pure-JavaScript
+HTTP and cron dependencies used by its backend harness. Native database,
+schema, and browser packages remain optional peers so plugins install only the
+test surfaces they use:
 
 ```sh
-npm install --save-dev @bb/plugin-sdk vitest better-sqlite3 zod
-npm install --save-dev react react-dom @testing-library/react jsdom # frontend tests
+npm install --save-dev @bb/plugin-sdk vitest better-sqlite3 zod @types/better-sqlite3
+npm install --save-dev react react-dom @testing-library/react jsdom @types/react # frontend tests
 ```
 
 Backend example:
@@ -136,6 +138,6 @@ The complete root declaration flattens the unpublished BB workspace contracts.
 The testing declarations reuse that public `@bb/plugin-sdk` root instead of
 embedding a second copy, and no declaration depends on unpublished `@bb/*`
 packages. Genuine npm types (`hono`, `better-sqlite3`, `zod`, React, and Testing
-Library) remain peer imports. Scaffolded plugins still vendor the root/app
+Library) remain external declaration imports. Scaffolded plugins still vendor the root/app
 declarations in `types/`; installing this package is needed only when their
 tests import the testing subpaths.

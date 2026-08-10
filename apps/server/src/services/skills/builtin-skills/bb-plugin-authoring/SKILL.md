@@ -29,7 +29,7 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.4.1" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.5.0" },
   "bb": {
     "name": "Hello",
     "description": "A friendly example plugin.",
@@ -91,7 +91,7 @@ The manifest is `package.json`:
   different branded artwork and provide a dark variant when needed.
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
-  (currently `0.4.1`; the scaffold writes `"^0.4.1"`). Absent means a legacy
+  (currently `0.5.0`; the scaffold writes `"^0.5.0"`). Absent means a legacy
   manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
   the running SDK; path installs surface it as `incompatible` at load.
   Compatible updates (`bb plugin outdated` / `bb plugin update`) only select
@@ -1467,8 +1467,10 @@ hardcoded colors break custom palettes.
 standalone plugins. The packed package ships runtime JavaScript and portable
 declarations for both testing subpaths. A scaffold still vendors the root/app
 types, so add `@bb/plugin-sdk` as a devDependency when tests import the
-testing harness (plus its optional peers: `better-sqlite3` for backend tests;
-React, React DOM, Testing Library, and jsdom for frontend tests).
+testing harness (plus its optional peers: `better-sqlite3`,
+`@types/better-sqlite3`, and `zod` for backend tests; React, React DOM,
+`@types/react`, Testing Library, and jsdom for frontend tests). The SDK installs
+the pure-JavaScript Hono and cron-parser harness dependencies itself.
 
 The fake plugin host's `bb` satisfies `BbPluginApi` with host-faithful
 semantics: real better-sqlite3 temporary storage (never mock the db), the kv

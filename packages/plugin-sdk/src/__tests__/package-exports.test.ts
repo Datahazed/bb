@@ -14,12 +14,37 @@ describe("packed plugin SDK exports", () => {
     const packageJson = JSON.parse(
       await readFile(new URL("package.json", packageRoot), "utf8"),
     ) as {
+      bugs: { url: string };
+      dependencies: Record<string, string>;
+      description: string;
       files: string[];
+      homepage: string;
+      license: string;
+      name: string;
       private?: boolean;
+      publishConfig: { access: string };
+      repository: { directory: string; type: string; url: string };
       exports: Record<string, PackageExport>;
     };
 
+    expect(packageJson.name).toBe("@bb/plugin-sdk");
     expect(packageJson.private).not.toBe(true);
+    expect(packageJson.description).toBeTruthy();
+    expect(packageJson.license).toBe("MIT");
+    expect(packageJson.homepage).toBe(
+      "https://github.com/get-bb/bb/tree/main/packages/plugin-sdk#readme",
+    );
+    expect(packageJson.bugs.url).toBe("https://github.com/get-bb/bb/issues");
+    expect(packageJson.repository).toEqual({
+      type: "git",
+      url: "git+https://github.com/get-bb/bb.git",
+      directory: "packages/plugin-sdk",
+    });
+    expect(packageJson.publishConfig).toEqual({ access: "public" });
+    expect(packageJson.dependencies).toEqual({
+      "cron-parser": "^5.5.0",
+      hono: "^4.11.9",
+    });
     expect(packageJson.files).toEqual(["bundled-types", "dist", "README.md"]);
     expect(Object.keys(packageJson.exports)).toEqual([
       ".",

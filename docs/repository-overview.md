@@ -12,6 +12,7 @@ This monorepo contains the packaged app plus the runtime services it bundles:
 | [`apps/cli`](../apps/cli)                                           | Scriptable `bb` CLI for users and agents.                                                           |
 | [`apps/web`](../apps/web)                                           | getbb.app site: marketing page + bb connect auth/dashboard (TanStack Start on Cloudflare Workers).  |
 | [`packages/sdk`](../packages/sdk)                                   | TypeScript SDK used by the CLI, package SDK export, and programmatic clients.                       |
+| [`packages/plugin-sdk`](../packages/plugin-sdk)                     | Public typed plugin API and official backend/frontend plugin testing harnesses.                     |
 | [`packages/agent-runtime`](../packages/agent-runtime)               | Provider runtime adapters and bridges for Codex, Claude Code, Pi, and ACP agents.                   |
 | [`packages/config`](../packages/config)                             | Config parsing, defaults, managed package config schema, and environment variable definitions.      |
 | [`packages/db`](../packages/db)                                     | SQLite schema, migrations, and data access helpers.                                                 |
