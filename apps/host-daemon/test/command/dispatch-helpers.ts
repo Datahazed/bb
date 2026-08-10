@@ -80,10 +80,10 @@ interface FakeRuntimeState {
   archivedThreadId: string | undefined;
   listedModelsProviderId: string | undefined;
   listedModelsAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
+  ranTurnArgKeys: string[];
   ranTurnClientRequestId: ClientTurnRequestId | undefined;
   ranTurnInput: PromptInput[] | undefined;
   ranTurnInputGroups: PromptInput[][] | undefined;
-  ranTurnInstructions: string | undefined;
   ranTurnOptions: AgentRuntimeExecutionOptions | undefined;
   ranTurnText: string | undefined;
   renamedTitle: string | undefined;
@@ -105,10 +105,10 @@ interface FakeRuntimeState {
   startedOptions: AgentRuntimeExecutionOptions | undefined;
   startedThreadId: string | undefined;
   steeredClientRequestId: ClientTurnRequestId | undefined;
+  steeredTurnArgKeys: string[];
   steeredInput: PromptInput[] | undefined;
   steeredInputGroups: PromptInput[][] | undefined;
   steeredTurnId: string | undefined;
-  steeredTurnInstructions: string | undefined;
   steeredTurnOptions: AgentRuntimeExecutionOptions | undefined;
   stoppedThreadId: string | undefined;
   unarchivedProviderId: string | undefined;
@@ -266,10 +266,10 @@ export function createFakeRuntime() {
     archivedThreadId: undefined,
     listedModelsProviderId: undefined,
     listedModelsAcpLaunchSpec: undefined,
+    ranTurnArgKeys: [],
     ranTurnClientRequestId: undefined,
     ranTurnInput: undefined,
     ranTurnInputGroups: undefined,
-    ranTurnInstructions: undefined,
     ranTurnOptions: undefined,
     ranTurnText: undefined,
     renamedTitle: undefined,
@@ -291,10 +291,10 @@ export function createFakeRuntime() {
     startedOptions: undefined,
     startedThreadId: undefined,
     steeredClientRequestId: undefined,
+    steeredTurnArgKeys: [],
     steeredInput: undefined,
     steeredInputGroups: undefined,
     steeredTurnId: undefined,
-    steeredTurnInstructions: undefined,
     steeredTurnOptions: undefined,
     stoppedThreadId: undefined,
     unarchivedProviderId: undefined,
@@ -366,6 +366,7 @@ export function createFakeRuntime() {
       return { providerThreadId };
     },
     async runTurn(args) {
+      state.ranTurnArgKeys = Object.keys(args).sort();
       const firstInput = args.input[0];
       state.ranTurnText =
         firstInput?.type === "text" ? firstInput.text : undefined;
@@ -373,16 +374,15 @@ export function createFakeRuntime() {
       state.ranTurnInput = args.input;
       state.ranTurnInputGroups = args.inputGroups;
       state.ranTurnOptions = args.options;
-      state.ranTurnInstructions = args.instructions;
       activeTurnsByThreadId.set(args.threadId, `turn-${nextTurnNumber++}`);
     },
     async steerTurn(args) {
+      state.steeredTurnArgKeys = Object.keys(args).sort();
       state.steeredTurnId = args.expectedTurnId;
       state.steeredClientRequestId = args.clientRequestId;
       state.steeredInput = args.input;
       state.steeredInputGroups = args.inputGroups;
       state.steeredTurnOptions = args.options;
-      state.steeredTurnInstructions = args.instructions;
       return { status: "steered" };
     },
     async stopThread(args) {

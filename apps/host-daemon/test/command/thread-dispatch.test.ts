@@ -1247,7 +1247,7 @@ describe("thread command dispatch", () => {
           projectId: "project-1",
           providerId: "fake",
           providerThreadId: "provider-1",
-          instructions: "Be a helpful coding agent.",
+          instructions: "Initial instructions.",
           dynamicTools: [],
           injectedSkillSources: [],
           instructionMode: "append",
@@ -1281,7 +1281,7 @@ describe("thread command dispatch", () => {
           projectId: "project-1",
           providerId: "fake",
           providerThreadId: "provider-1",
-          instructions: "Be a helpful coding agent.",
+          instructions: "Updated instructions that must not reach the runtime.",
           dynamicTools: [],
           injectedSkillSources: [],
           instructionMode: "append",
@@ -1297,8 +1297,9 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.ranTurnClientRequestId).toBe(runRequestId);
     expect(harness.runtimeState.steeredTurnId).toBe("turn-1");
     expect(harness.runtimeState.steeredClientRequestId).toBe(steerRequestId);
-    expect(harness.runtimeState.steeredTurnInstructions).toBe(
-      "Be a helpful coding agent.",
+    expect(harness.runtimeState.ranTurnArgKeys).not.toContain("instructions");
+    expect(harness.runtimeState.steeredTurnArgKeys).not.toContain(
+      "instructions",
     );
   });
 

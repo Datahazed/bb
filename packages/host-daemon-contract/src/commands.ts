@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 90 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 91 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -215,6 +215,8 @@ const hostDaemonThreadRuntimeContextSchema = z
     providerId: z.string().min(1),
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     options: runtimeThreadExecutionOptionsSchema,
+    // Fixed for the life of the bb thread. Turn commands repeat the initial
+    // value only so a daemon can restore a missing provider runtime.
     instructions: z.string().min(1),
     dynamicTools: z.array(dynamicToolSchema),
     injectedSkillSources: z.array(hostDaemonInjectedSkillSourceSchema),

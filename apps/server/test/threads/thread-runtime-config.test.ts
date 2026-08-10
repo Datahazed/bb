@@ -1201,7 +1201,7 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("keeps local-host workspace .bb/AGENTS.md instructions unchanged", async () => {
+  it("freezes local-host workspace .bb/AGENTS.md instructions for the thread", async () => {
     await withTestHarness(async (harness) => {
       const hostId = "host-runtime-agents-md";
       seedHostSession(harness.deps, { id: hostId });
@@ -1254,6 +1254,30 @@ describe("thread runtime config", () => {
       );
       expect(runtimeConfig.instructions).toContain(
         "Always run the smoke test before pushing.",
+      );
+
+      await writeWorkspaceAgentInstructions({
+        content: "# Project Rules\n\nSkip the smoke test.\n",
+        workspacePath,
+      });
+      const nextRuntimeConfig = await resolveThreadRuntimeCommandConfig(
+        harness.deps,
+        {
+          thread,
+          model: "test-model",
+          environment: {
+            hostId: environment.hostId,
+            id: environment.id,
+            path: environment.path,
+            status: environment.status,
+            workspaceProvisionType: environment.workspaceProvisionType,
+          },
+        },
+      );
+
+      expect(nextRuntimeConfig.instructions).toBe(runtimeConfig.instructions);
+      expect(nextRuntimeConfig.instructions).not.toContain(
+        "Skip the smoke test.",
       );
     });
   });

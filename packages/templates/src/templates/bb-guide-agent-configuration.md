@@ -15,14 +15,16 @@ User instructions (<dataDir>/AGENTS.md):
   Add an AGENTS.md file to the bb data dir (usually ~/.bb/AGENTS.md) to give
   every provider-backed thread across all projects default user-level
   instructions. bb reads <dataDir>/AGENTS.md and appends its contents to the
-  thread system prompt for all providers when a provider session starts.
+  thread system prompt for all providers when the first provider session starts.
+  The thread keeps that text. File changes apply only to new threads.
 
 Workspace instructions (.bb/AGENTS.md):
 
   Add a .bb/AGENTS.md file to a workspace to give every thread that runs there
   repo-specific instructions. bb reads <workspace>/.bb/AGENTS.md and appends its
   contents to the thread system prompt for all providers, after any
-  <dataDir>/AGENTS.md instructions, when a provider session starts. Track it with
+  <dataDir>/AGENTS.md instructions, when the first provider session starts. The
+  thread keeps that text. File changes apply only to new threads. Track it with
   git so fresh managed worktrees include it.
 
   Only the plural AGENTS.md is read, only from the exact data-dir and

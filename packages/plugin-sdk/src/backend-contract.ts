@@ -370,9 +370,9 @@ export interface PluginAgentToolRegistrationBase {
   name: string;
   description: string;
   /**
-   * Optional usage snippet appended to the thread instructions whenever
-   * this tool is in the session's tool set (mirrors the built-in
-   * update_environment_directory guidance). Limited to 4096 characters.
+   * Optional usage snippet appended when this tool is selected for a thread's
+   * initial instructions (mirrors the built-in update_environment_directory
+   * guidance). Limited to 4096 characters.
    */
   instructions?: string;
   /**
@@ -445,7 +445,9 @@ export interface PluginAgentConfiguration {
   /** Skill frontmatter names from this plugin's manifest skill roots.
    * Duplicate or unknown names reject this plugin's complete selection. */
   skills: string[];
-  /** Optional dynamic instructions. Output is truncated to 4096 characters. */
+  /** Optional instructions for a thread's initial provider session. BB freezes
+   * the first resolved text for the life of that thread. Output is truncated
+   * to 4096 characters. */
   instructions?: string;
 }
 
@@ -459,12 +461,14 @@ export interface PluginAgents {
    * or more than 256 tool/skill ids fails closed for this plugin only.
    *
    * Tools take effect when the provider session is next started or resumed;
-   * an already-running session is not hot-mutated. Instructions are resolved
-   * for the next turn. Skill changes follow BB's environment runtime policy:
+   * an already-running session is not hot-mutated. Instructions apply only
+   * while BB resolves the thread's initial provider session. Later callback
+   * results cannot change that thread's instructions. Skill changes follow
+   * BB's environment runtime policy:
    * a busy runtime keeps its current catalog until a safe relaunch. Side chats
    * are ordinary plugin-owned forks here — read `origin` to detect them — and
-   * their returned tool, skill, and dynamic-instruction selections apply at the
-   * same boundaries.
+   * their returned tool and skill selections apply at the same boundaries.
+   * A side chat is a new thread, so its first instruction result applies to it.
    */
   configure(
     provider: (
@@ -501,13 +505,13 @@ export interface PluginAgents {
     },
   ): void;
   /**
-   * Contribute a dynamic section appended to thread instructions. The
-   * provider runs when a thread's runtime command config is resolved
-   * (thread.start / turn.submit); return null to contribute nothing for
-   * that resolution. Must be synchronous and fast — it sits on the
-   * thread-start path. Output longer than 4096 characters is truncated; a
-   * throwing provider is logged against the plugin and contributes nothing.
-   * A repeated registration within one factory execution is rejected.
+   * Contribute a dynamic section to a thread's initial instructions. The
+   * provider runs once, when BB first resolves the thread's provider session;
+   * return null to contribute nothing. Must be synchronous and fast — it sits
+   * on the thread-start path. Later plugin state changes do not alter the
+   * thread. Output longer than 4096 characters is truncated; a throwing
+   * provider is logged and contributes nothing. A repeated registration within
+   * one factory execution is rejected.
    */
   contributeInstructions(
     provider: (ctx: { threadId: string; projectId: string }) => string | null,

@@ -443,7 +443,7 @@ rl.on("line", (line) => {
       await runtime.shutdown();
     });
 
-    it("preserves merged shell env when reconfiguring a thread", async () => {
+    it("preserves merged shell env and initial instructions when reconfiguring a thread", async () => {
       const recordedCommands: AdapterCommand[] = [];
       const runtime = createAgentRuntimeWithAdapters({
         workspacePath: tmpDir,
@@ -474,8 +474,7 @@ rl.on("line", (line) => {
         clientRequestId: "creq_222222223h",
         threadId: "t1",
         input: [promptTextInput({ text: "follow up" })],
-        instructions: "Updated instructions",
-        options: fullRuntimeOptions,
+        options: { ...fullRuntimeOptions, model: "fake-model-2" },
       });
 
       const reconfigureCommand = findLastRecordedCommand(
@@ -494,6 +493,9 @@ rl.on("line", (line) => {
         BB_THREAD_ID: "t1",
         BB_ENVIRONMENT_ID: "env-1",
       });
+      expect(reconfigureCommand.options?.instructions).toBe(
+        "Initial instructions",
+      );
       expect(reconfigureCommand.cwd).toBe(tmpDir);
 
       await runtime.shutdown();
@@ -1206,7 +1208,7 @@ rl.on("line", (line) => {
       await runtime.shutdown();
     });
 
-    it("reconfigures the thread before later run turns when settings change", async () => {
+    it("reconfigures settings without changing instructions before later run turns", async () => {
       const builtCommands: AdapterCommand[] = [];
       const baseAdapter = createFakeAdapter(scriptPath);
       const runtime = createAgentRuntimeWithAdapters({
@@ -1240,14 +1242,13 @@ rl.on("line", (line) => {
         threadId: "t1",
         input: [promptTextInput({ text: "use a different setup" })],
         options: { ...fullRuntimeOptions, model: "fake-model-2" },
-        instructions: "Updated instructions",
       });
 
       expect(builtCommands).toHaveLength(2);
       expect(builtCommands[0]).toMatchObject({
         type: "thread/resume",
         options: {
-          instructions: "Updated instructions",
+          instructions: "Initial instructions",
           model: "fake-model-2",
         },
       });
@@ -1255,14 +1256,18 @@ rl.on("line", (line) => {
         type: "turn/start",
         clientRequestId: "creq_222222223v",
         options: {
-          instructions: "Updated instructions",
           model: "fake-model-2",
         },
       });
+      const turnStartCommand = builtCommands[1];
+      if (turnStartCommand?.type !== "turn/start") {
+        throw new Error("Expected turn/start command");
+      }
+      expect(turnStartCommand.options).not.toHaveProperty("instructions");
       await runtime.shutdown();
     });
 
-    it("reconfigures the thread before steer turns when settings change", async () => {
+    it("reconfigures settings without changing instructions before steer turns", async () => {
       const builtCommands: AdapterCommand[] = [];
       const events: ThreadEvent[] = [];
       const baseAdapter = createFakeAdapter(scriptPath);
@@ -1295,7 +1300,6 @@ rl.on("line", (line) => {
         threadId: "t1",
         input: [promptTextInput({ text: "delay:500" })],
         options: { ...fullRuntimeOptions, model: "fake-model" },
-        instructions: "Initial instructions",
       });
       await waitForThreadTurnStarted({
         events,
@@ -1312,14 +1316,13 @@ rl.on("line", (line) => {
         expectedTurnId: "turn-1",
         input: [promptTextInput({ text: "apply a new setup now" })],
         options: { ...fullRuntimeOptions, model: "fake-model-2" },
-        instructions: "Updated instructions",
       });
 
       expect(builtCommands).toHaveLength(2);
       expect(builtCommands[0]).toMatchObject({
         type: "thread/resume",
         options: {
-          instructions: "Updated instructions",
+          instructions: "Initial instructions",
           model: "fake-model-2",
         },
       });
@@ -1328,10 +1331,14 @@ rl.on("line", (line) => {
         type: "turn/steer",
         clientRequestId: "creq_222222223x",
         options: {
-          instructions: "Updated instructions",
           model: "fake-model-2",
         },
       });
+      const turnSteerCommand = builtCommands[1];
+      if (turnSteerCommand?.type !== "turn/steer") {
+        throw new Error("Expected turn/steer command");
+      }
+      expect(turnSteerCommand.options).not.toHaveProperty("instructions");
       await runtime.shutdown();
     });
   });

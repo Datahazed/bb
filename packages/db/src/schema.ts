@@ -564,6 +564,19 @@ export const threads = sqliteTable(
   ],
 );
 
+// The server resolves this text once, before a thread starts its first
+// provider session. Later turns and provider resumes reuse the same text.
+export const threadAgentInstructions = sqliteTable(
+  "thread_agent_instructions",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    instructions: text("instructions").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+);
+
 // Server-owned tab descriptors for a thread's shared secondary-panel workspace.
 // Presentation state such as active tab, panel visibility, and width remains
 // client-local; this row stores only the ordered durable tab list.

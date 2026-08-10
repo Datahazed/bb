@@ -68,13 +68,11 @@ import {
 import { fingerprintAcpLaunchSpec } from "./acp-launch-spec-fingerprint.js";
 
 interface ReconfigureThreadIfNeededArgs {
-  instructions: string | undefined;
   options: AgentRuntimeExecutionOptions;
   threadId: string;
 }
 
 interface RestartCodexThreadForNextTurnArgs {
-  instructions: string | undefined;
   options: AgentRuntimeExecutionOptions;
   threadId: string;
 }
@@ -701,7 +699,6 @@ function createAgentRuntimeInternal(
       providerId: proc.providerId,
     });
 
-    const resumeInstructions = args.instructions ?? currentConfig.instructions;
     await runtime.resumeThread({
       environmentId: currentConfig.environmentId,
       threadId: args.threadId,
@@ -711,8 +708,8 @@ function createAgentRuntimeInternal(
       providerThreadId,
       providerId: currentConfig.providerId,
       options: args.options,
-      ...(resumeInstructions !== undefined
-        ? { instructions: resumeInstructions }
+      ...(currentConfig.instructions !== undefined
+        ? { instructions: currentConfig.instructions }
         : {}),
       ...(currentConfig.dynamicTools !== undefined
         ? { dynamicTools: currentConfig.dynamicTools }
@@ -810,14 +807,11 @@ function createAgentRuntimeInternal(
     }
 
     const nextOptions = args.options;
-    const nextInstructions = args.instructions ?? currentConfig.instructions;
-
     if (
       sameExecutionSettings({
         left: currentConfig.options,
         right: nextOptions,
-      }) &&
-      currentConfig.instructions === nextInstructions
+      })
     ) {
       return;
     }
@@ -846,7 +840,7 @@ function createAgentRuntimeInternal(
       options: toProviderExecutionContext({
         envVars,
         execOpts: nextOptions,
-        instructions: nextInstructions,
+        instructions: currentConfig.instructions,
         skillRoots: providerSkillRoots,
       }),
       dynamicTools: currentConfig.dynamicTools,
@@ -882,7 +876,6 @@ function createAgentRuntimeInternal(
 
     setThreadRuntimeConfig(args.threadId, {
       ...currentConfig,
-      instructions: nextInstructions,
       options: nextOptions,
     });
   }
@@ -1223,7 +1216,6 @@ function createAgentRuntimeInternal(
               ...(inputGroups !== undefined ? { inputGroups } : {}),
               clientRequestId,
               options: execOpts,
-              instructions,
             });
           }
 
@@ -1371,7 +1363,6 @@ function createAgentRuntimeInternal(
       inputGroups,
       clientRequestId,
       options: execOpts,
-      instructions,
     }) {
       return runThreadOperation({
         threadId,
@@ -1379,7 +1370,6 @@ function createAgentRuntimeInternal(
           await restartCodexThreadForNextTurnIfNeeded({
             threadId,
             options: execOpts,
-            instructions,
           });
           const pid = resolveProviderForThread(threadId);
           const proc = requireProviderProcessForThread(threadId);
@@ -1391,7 +1381,6 @@ function createAgentRuntimeInternal(
           await reconfigureThreadIfNeeded({
             threadId,
             options: execOpts,
-            instructions,
           });
 
           const adapterCommand: AdapterCommand = {
@@ -1404,7 +1393,6 @@ function createAgentRuntimeInternal(
             options: toProviderExecutionContext({
               envVars: {},
               execOpts,
-              instructions,
             }),
           };
           const cmd = requireProviderRequestPlan({
@@ -1449,7 +1437,6 @@ function createAgentRuntimeInternal(
       inputGroups,
       clientRequestId,
       options: execOpts,
-      instructions,
     }) {
       return runThreadOperation({
         threadId,
@@ -1476,12 +1463,10 @@ function createAgentRuntimeInternal(
           await restartCodexThreadForNextTurnIfNeeded({
             threadId,
             options: execOpts,
-            instructions,
           });
           await reconfigureThreadIfNeeded({
             threadId,
             options: execOpts,
-            instructions,
           });
 
           const adapterCommand: AdapterCommand = {
@@ -1495,7 +1480,6 @@ function createAgentRuntimeInternal(
             options: toProviderExecutionContext({
               envVars: {},
               execOpts,
-              instructions,
             }),
           };
           const cmd = requireProviderRequestPlan({

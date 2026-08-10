@@ -1044,7 +1044,7 @@ describe("host-daemon command schemas", () => {
   // so it silently leaves Plan mode instead of asking, and it would reject the
   // subject if the server sent one back.
   it("uses protocol version 90 for plan-review approvals", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(90);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(91);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

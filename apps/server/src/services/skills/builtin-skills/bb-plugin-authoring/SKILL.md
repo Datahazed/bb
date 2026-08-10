@@ -297,22 +297,22 @@ that need the singleton personal project use
 methods, not their arguments — read `types/bb-plugin-sdk.d.ts` for exact
 signatures.
 
-| Area | Methods |
-| --- | --- |
-| `threads` | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storagePaths` `cancelPlan` `clearGoal` `continueAfterRateLimit` `rateLimitRecovery` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
-| `threadSections` | `list` `create` `update` `delete` |
-| `projects` | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`) |
-| `environments` | `get` `update` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest` `squashMerge` |
-| `hosts` | `list` `get` `update` `delete` `directory` `pathsExist` `pickFolder` `cloneDefaultPath` `createJoinCode` `retryUpdate` `providerCliStatus` `installProviderCli` |
-| `files` | `read` `write` `list` `listPaths` `mkdir` `move` `remove` `createPreview` |
-| `terminals` | `list` `create` `get` `input` `output` `resize` `rename` `restart` `close` |
-| `providers` | `list` `models` |
-| `skills` | `list` `listFiles` `getContent` `update` `remove`; sub-area `registry` (`search` `get` `detail` `install` `repositoryStars`) |
-| `plugins` | `list` `install` `remove` `enable` `disable` `reload` `token` `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates` `listUpdateResults` `applyUpdate`; sub-area `catalog` (`search` `status` `install`) |
-| `theme` | `get` `catalog` `set` |
-| `status` | `get` |
-| `system` | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills` `onboardingAgents` `onboardingRepos` `onboardingEvent` |
-| `guide` | `render` (the `bb guide` text; local, no request) |
+| Area             | Methods                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `threads`        | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storagePaths` `cancelPlan` `clearGoal` `continueAfterRateLimit` `rateLimitRecovery` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
+| `threadSections` | `list` `create` `update` `delete`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `projects`       | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`)                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `environments`   | `get` `update` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest` `squashMerge`                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `hosts`          | `list` `get` `update` `delete` `directory` `pathsExist` `pickFolder` `cloneDefaultPath` `createJoinCode` `retryUpdate` `providerCliStatus` `installProviderCli`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `files`          | `read` `write` `list` `listPaths` `mkdir` `move` `remove` `createPreview`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `terminals`      | `list` `create` `get` `input` `output` `resize` `rename` `restart` `close`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `providers`      | `list` `models`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `skills`         | `list` `listFiles` `getContent` `update` `remove`; sub-area `registry` (`search` `get` `detail` `install` `repositoryStars`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `plugins`        | `list` `install` `remove` `enable` `disable` `reload` `token` `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates` `listUpdateResults` `applyUpdate`; sub-area `catalog` (`search` `status` `install`)                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `theme`          | `get` `catalog` `set`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `status`         | `get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `system`         | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills` `onboardingAgents` `onboardingRepos` `onboardingEvent`                                                                                                                                                                                                                                                                                                                                                                               |
+| `guide`          | `render` (the `bb guide` text; local, no request)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 Prefer your own `bb.settings` and `bb.storage` over `sdk.system` and
 `sdk.plugins` for your plugin's own configuration. The `system` and `plugins`
@@ -648,7 +648,7 @@ the caller cancels the request.
 
 To give agents standing knowledge (conventions, workflows), ship a
 `skills/` directory. For schema'd capabilities, register a native tool.
-For a short, per-resolution instruction block (e.g. "the user is viewing
+For a short, initial thread instruction block (e.g. "the user is viewing
 bb remotely — share tunnel URLs"), use `contributeInstructions`:
 
 ```ts
@@ -678,8 +678,8 @@ bb.agents.configure((context) => ({
   instructions: `Docs selection resolved for ${context.project.name}.`,
 }));
 
-// Dynamic section evaluated at thread.start / turn.submit (sync, fast).
-// Return null to contribute nothing for that resolution. Duplicate factory
+// Dynamic section evaluated once for the thread's initial session.
+// Return null to contribute nothing. Duplicate factory
 // registrations are rejected. Output is capped at 4096
 // characters; a throw is logged and contributes nothing. Side-chat
 // threads never receive plugin instructions.
@@ -704,9 +704,9 @@ status with no label — error, interrupted, or awaiting approval — falls back
 to BB's standard `Running tool …` / `Ran tool …` wording, as does omitting the
 field entirely.
 
-`contributeInstructions` is **synchronous** and runs on the thread-start
-path — keep it cheap. Prefer `skills/` for standing knowledge; use this
-only when the text must reflect live plugin state at resolution time.
+`contributeInstructions` is **synchronous** and runs once on the thread-start
+path — keep it cheap. Prefer `skills/` for standing knowledge. Use this only
+when the initial text must reflect live plugin state.
 
 Ordering is standard BB instructions, selected tools' static snippets,
 `contributeInstructions` output, `configure` dynamic instructions, data-dir
@@ -729,13 +729,16 @@ malformed output, an invalid override, more than 256 ids in either array, or a
 throwing callback fail closed for that plugin only. Dynamic `instructions` are
 truncated to 4096 characters.
 
-Resolution happens for `thread.start` and `turn.submit`. A selected tool set
-takes effect only when the provider session is next started/resumed; BB never
-hot-mutates a running provider session. Instructions apply to the next turn.
+Configuration resolution happens for `thread.start` and `turn.submit`. A
+selected tool set takes effect only when the provider session is next
+started/resumed; BB never hot-mutates a running provider session. BB freezes
+instructions when it first resolves a thread's provider session. Later
+configuration and plugin state changes cannot alter that thread's instructions.
 Skill catalog changes follow the daemon's established runtime policy: a busy
 environment keeps its current staged catalog until a safe relaunch. Side chats
-evaluate `configure` with `sideChat: true`; returned tool, skill, and dynamic
-instruction selections apply at those same boundaries. Independent side-chat
+evaluate `configure` with `sideChat: true`; returned tool and skill selections
+apply at those same boundaries. Each side chat is a new thread, so its first
+dynamic instruction selection applies to it. Independent side-chat
 safety policy such as permission escalation is unchanged. The legacy
 `contributeInstructions` provider remains excluded from side chats, so use
 `configure` for side-chat-aware dynamic instructions.

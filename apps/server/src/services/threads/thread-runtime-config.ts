@@ -1,4 +1,10 @@
-import { getEnvironment, getHost, getProject } from "@bb/db";
+import {
+  freezeThreadAgentInstructions,
+  getEnvironment,
+  getHost,
+  getProject,
+  getThreadAgentInstructions,
+} from "@bb/db";
 import type {
   DynamicTool,
   InstructionMode,
@@ -176,15 +182,21 @@ export async function resolveThreadRuntimeCommandConfig(
   }
 
   const { workspaceProvisionType } = args.environment;
+  const frozenInstructions = getThreadAgentInstructions(
+    deps.db,
+    args.thread.id,
+  );
   const [projectSkillSources, workspaceAgentInstructions] = await Promise.all([
     resolveWorkspaceProjectSkills(deps, {
       hostId: args.environment.hostId,
       workspacePath,
     }),
-    readWorkspaceAgentInstructions(deps, {
-      hostId: args.environment.hostId,
-      workspacePath,
-    }),
+    frozenInstructions === null
+      ? readWorkspaceAgentInstructions(deps, {
+          hostId: args.environment.hostId,
+          workspacePath,
+        })
+      : Promise.resolve(null),
   ]);
   const pluginSkillRoots = getPluginSkillRootContributions();
   const skillIdsByPlugin = discoverPluginSkillIds(deps.logger, {
@@ -225,83 +237,85 @@ export async function resolveThreadRuntimeCommandConfig(
     projectSkillSources,
     pluginSkillSelections: conditionalConfiguration.selectedSkillIdsByPlugin,
   });
-  const dataDirAgentInstructions = readDataDirAgentInstructions(
-    deps.logger,
-    deps.config.dataDir,
-  );
   const dynamicToolContributions = resolveDynamicTools(
     conditionalConfiguration.tools,
   );
   const dynamicTools = dynamicToolContributions.map(
     (contribution) => contribution.tool,
   );
-  const instructionSections = [STANDARD_AGENT_INSTRUCTIONS];
-  // Per-tool instructions: each dynamic tool carries its own snippet (the
-  // built-in update_environment_directory guidance is one of them; plugin
-  // tools are description-only unless they registered a snippet).
-  for (const contribution of dynamicToolContributions) {
-    if (!contribution.instructions) continue;
-    if (contribution.pluginId === null) {
-      instructionSections.push(contribution.instructions);
-    } else {
-      instructionSections.push(
-        `The following instructions come from the BB plugin "${contribution.pluginId}" for its tool "${contribution.tool.name}":`,
-        contribution.instructions,
-      );
+  let instructions = frozenInstructions;
+  if (instructions === null) {
+    const dataDirAgentInstructions = readDataDirAgentInstructions(
+      deps.logger,
+      deps.config.dataDir,
+    );
+    const instructionSections = [STANDARD_AGENT_INSTRUCTIONS];
+    // Per-tool instructions: each dynamic tool carries its own snippet (the
+    // built-in update_environment_directory guidance is one of them; plugin
+    // tools are description-only unless they registered a snippet).
+    for (const contribution of dynamicToolContributions) {
+      if (!contribution.instructions) continue;
+      if (contribution.pluginId === null) {
+        instructionSections.push(contribution.instructions);
+      } else {
+        instructionSections.push(
+          `The following instructions come from the BB plugin "${contribution.pluginId}" for its tool "${contribution.tool.name}":`,
+          contribution.instructions,
+        );
+      }
     }
-  }
-  // Legacy plugin-level contributeInstructions providers (after per-tool
-  // snippets, before configure dynamic instructions).
-  for (const contribution of listPluginInstructionContributions()) {
-    let text: string | null;
-    try {
-      text = contribution.provider({
-        threadId: args.thread.id,
-        projectId: args.thread.projectId,
-      });
-    } catch (error) {
-      deps.logger.warn(
-        {
-          err: error,
-          pluginId: contribution.pluginId,
+    // Legacy plugin-level contributions and configure() instructions apply
+    // only when bb resolves this thread's initial provider session.
+    for (const contribution of listPluginInstructionContributions()) {
+      let text: string | null;
+      try {
+        text = contribution.provider({
           threadId: args.thread.id,
-        },
-        "Plugin instruction contribution threw; skipping",
+          projectId: args.thread.projectId,
+        });
+      } catch (error) {
+        deps.logger.warn(
+          {
+            err: error,
+            pluginId: contribution.pluginId,
+            threadId: args.thread.id,
+          },
+          "Plugin instruction contribution threw; skipping",
+        );
+        continue;
+      }
+      if (text === null || text.trim().length === 0) continue;
+      if (text.length > PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS) {
+        text = text.slice(0, PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS);
+      }
+      instructionSections.push(
+        `The following instructions come from the BB plugin "${contribution.pluginId}":`,
+        text,
       );
-      continue;
     }
-    if (text === null || text.trim().length === 0) continue;
-    if (text.length > PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS) {
-      text = text.slice(0, PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS);
+    for (const contribution of conditionalConfiguration.dynamicInstructions) {
+      instructionSections.push(
+        `The following dynamic instructions come from the BB plugin "${contribution.pluginId}":`,
+        contribution.text,
+      );
     }
-    instructionSections.push(
-      `The following instructions come from the BB plugin "${contribution.pluginId}":`,
-      text,
-    );
+    if (dataDirAgentInstructions) {
+      instructionSections.push(
+        `The following user instructions come from <dataDir>/${DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH}:`,
+        dataDirAgentInstructions,
+      );
+    }
+    if (workspaceAgentInstructions) {
+      instructionSections.push(
+        `The following workspace instructions come from ${WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH}:`,
+        workspaceAgentInstructions,
+      );
+    }
+    instructions = freezeThreadAgentInstructions(deps.db, {
+      threadId: args.thread.id,
+      instructions: instructionSections.join("\n\n"),
+    });
   }
-  // Conditional dynamic instructions follow the legacy/static plugin-level
-  // providers on every thread, including side chats. Each configure output
-  // was already validated and capped by the plugin service;
-  // user/data-dir/workspace instructions still follow.
-  for (const contribution of conditionalConfiguration.dynamicInstructions) {
-    instructionSections.push(
-      `The following dynamic instructions come from the BB plugin "${contribution.pluginId}":`,
-      contribution.text,
-    );
-  }
-  if (dataDirAgentInstructions) {
-    instructionSections.push(
-      `The following user instructions come from <dataDir>/${DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH}:`,
-      dataDirAgentInstructions,
-    );
-  }
-  if (workspaceAgentInstructions) {
-    instructionSections.push(
-      `The following workspace instructions come from ${WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH}:`,
-      workspaceAgentInstructions,
-    );
-  }
-  const instructions = instructionSections.join("\n\n");
   const threadStoragePath = await requireThreadStoragePath(deps, {
     hostId: args.environment.hostId,
     threadId: args.thread.id,

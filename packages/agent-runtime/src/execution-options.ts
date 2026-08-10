@@ -16,7 +16,7 @@ interface AssertProviderSupportsExecutionOptionsArgs {
 interface ToProviderExecutionContextArgs {
   envVars: Record<string, string>;
   execOpts: AgentRuntimeExecutionOptions;
-  instructions: string | undefined;
+  instructions?: string;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
 }
 
@@ -104,7 +104,9 @@ export function toProviderExecutionContext(
     memoryEnabled: args.execOpts.memoryEnabled,
     providerSubagentsEnabled: args.execOpts.providerSubagentsEnabled,
     ...permissionPolicy,
-    instructions: args.instructions,
+    ...(args.instructions !== undefined
+      ? { instructions: args.instructions }
+      : {}),
     envVars: args.envVars,
     ...(args.skillRoots && args.skillRoots.length > 0
       ? { skillRoots: args.skillRoots }

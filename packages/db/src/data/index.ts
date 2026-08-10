@@ -159,6 +159,12 @@ export type {
 } from "./threads.js";
 
 export {
+  freezeThreadAgentInstructions,
+  getThreadAgentInstructions,
+} from "./thread-agent-instructions.js";
+export type { FreezeThreadAgentInstructionsArgs } from "./thread-agent-instructions.js";
+
+export {
   getAppKeybindingOverrides,
   getAppSettings,
   setAppKeybindingOverrides,

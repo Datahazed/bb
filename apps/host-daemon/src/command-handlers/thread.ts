@@ -283,7 +283,6 @@ async function runSubmittedTurn(
       : {}),
     clientRequestId: command.requestId,
     options: command.options,
-    instructions: command.resumeContext.instructions,
   });
   return { appliedAs: "new-turn" };
 }
@@ -302,7 +301,6 @@ async function steerSubmittedTurn(
       : {}),
     clientRequestId: command.requestId,
     options: command.options,
-    instructions: command.resumeContext.instructions,
   });
 
   if (result.status === "steered") {

@@ -269,7 +269,9 @@ describe.concurrent("codex resume scenarios", () => {
         clientRequestId: "creq_2222222225",
         threadId,
         input: [
-          promptTextInput({ text: "Call the bb_test_ping tool again right now." }),
+          promptTextInput({
+            text: "Call the bb_test_ping tool again right now.",
+          }),
         ],
         options,
       });
@@ -456,7 +458,6 @@ describe.concurrent("codex resume scenarios", () => {
             }),
           ],
           options,
-          instructions: CODEX_PING_REQUIRED_INSTRUCTIONS,
         });
 
         await waitForToolCallBeforeTurnCompletion({
@@ -532,7 +533,6 @@ describe.concurrent("codex resume scenarios", () => {
             }),
           ],
           options,
-          instructions: CODEX_PING_REQUIRED_INSTRUCTIONS,
         });
 
         await waitForToolCallBeforeTurnCompletion({

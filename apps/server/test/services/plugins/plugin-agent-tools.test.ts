@@ -588,7 +588,7 @@ describe("plugin tools reach thread runtime config", () => {
     expect(command.instructions).not.toContain("quiet_tool");
   });
 
-  it("resolves different conditional tools, skills, instructions, and context without rebuilding static registrations", async () => {
+  it("freezes initial instructions while resolving conditional tools and skills", async () => {
     const rootDir = await writePlugin(pluginsDir, {
       name: "bb-plugin-conditional",
       serverSource: `
@@ -838,9 +838,8 @@ describe("plugin tools reach thread runtime config", () => {
         ?.handlerStats.errorCount,
     ).toBe(0);
     const betaAgain = await build(beta, 13);
-    // The side-chat resolution applied configure too, so this remains the
-    // fourth callback invocation without rebuilding the factory.
-    expect(betaAgain.instructions).toContain("factory=1;configure=4");
+    expect(betaAgain.instructions).toBe(betaCommand.instructions);
+    expect(betaAgain.instructions).toContain("factory=1;configure=2");
 
     const betaExecution = await resolveExecutionOptions(harness.deps, {
       threadId: beta.thread.id,
@@ -864,8 +863,8 @@ describe("plugin tools reach thread runtime config", () => {
     expect(
       turnSubmit.resumeContext.injectedSkillSources.map((skill) => skill.name),
     ).toContain("beta-skill");
-    expect(turnSubmit.resumeContext.instructions).toContain(
-      "factory=1;configure=5",
+    expect(turnSubmit.resumeContext.instructions).toBe(
+      betaCommand.instructions,
     );
   });
 });

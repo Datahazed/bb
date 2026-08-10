@@ -196,7 +196,6 @@ export interface RunTurnArgs {
   inputGroups?: PromptInput[][];
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
-  instructions?: string;
 }
 
 export interface SteerTurnArgs {
@@ -206,7 +205,6 @@ export interface SteerTurnArgs {
   inputGroups?: PromptInput[][];
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
-  instructions?: string;
 }
 
 export interface SteerTurnAppliedResult {
