@@ -1,4 +1,5 @@
 import {
+  type DbConnection,
   freezeThreadAgentInstructions,
   getEnvironment,
   getHost,
@@ -56,12 +57,30 @@ const UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS =
 
 /** Cap on each plugin's contributeInstructions output (per resolution). */
 const PLUGIN_INSTRUCTION_CONTRIBUTION_MAX_CHARS = 4096;
-const initialInstructionResolutions = new Map<string, Promise<string>>();
+const initialInstructionResolutionsByDb = new WeakMap<
+  DbConnection,
+  Map<string, Promise<string>>
+>();
+
+function getInitialInstructionResolutions(
+  db: DbConnection,
+): Map<string, Promise<string>> {
+  const existing = initialInstructionResolutionsByDb.get(db);
+  if (existing) {
+    return existing;
+  }
+  const created = new Map<string, Promise<string>>();
+  initialInstructionResolutionsByDb.set(db, created);
+  return created;
+}
 
 async function freezeInitialThreadInstructions(
   deps: Pick<LoggedWorkSessionDeps, "db">,
   args: { resolve: () => string | Promise<string>; threadId: string },
 ): Promise<string> {
+  const initialInstructionResolutions = getInitialInstructionResolutions(
+    deps.db,
+  );
   const frozen = getThreadAgentInstructions(deps.db, args.threadId);
   if (frozen !== null) {
     return frozen;

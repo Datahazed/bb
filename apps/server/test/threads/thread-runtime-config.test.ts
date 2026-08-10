@@ -1395,6 +1395,54 @@ describe("thread runtime config", () => {
     });
   });
 
+  it("applies the workspace limit after trimming whitespace", async () => {
+    await withTestHarness(async (harness) => {
+      const { host: primary } = seedHostSession(harness.deps, {
+        id: "host-runtime-trimmed-agents-primary",
+      });
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-runtime-trimmed-agents-remote",
+      });
+      seedPrimaryHost(harness.deps, primary.id);
+      const workspacePath = "/remote/runtime-trimmed-agents-workspace";
+      const agentInstructionsPath = path.join(
+        workspacePath,
+        ".bb",
+        "AGENTS.md",
+      );
+      registerRemoteRuntimeFileResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        files: new Map([
+          [
+            agentInstructionsPath,
+            `${" ".repeat(THREAD_AGENT_INSTRUCTIONS_MAX_BYTES + 1)}keep this rule`,
+          ],
+        ]),
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: workspacePath,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: workspacePath,
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+
+      const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+        harness.deps,
+        { thread, environment, model: "test-model" },
+      );
+
+      expect(runtimeConfig.instructions).toContain("keep this rule");
+    });
+  });
+
   it("enumerates project skills through a non-primary host", async () => {
     await withTestHarness(async (harness) => {
       const { host: primary } = seedHostSession(harness.deps, {

@@ -11,3 +11,15 @@ CREATE TABLE IF NOT EXISTS `thread_agent_instructions` (
 	FOREIGN KEY (`thread_id`) REFERENCES `threads`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`content_hash`) REFERENCES `agent_instruction_snapshots`(`content_hash`) ON UPDATE no action ON DELETE no action
 );
+--> statement-breakpoint
+CREATE TRIGGER IF NOT EXISTS `thread_agent_instructions_cleanup_snapshot`
+AFTER DELETE ON `thread_agent_instructions`
+BEGIN
+	DELETE FROM `agent_instruction_snapshots`
+	WHERE `content_hash` = OLD.`content_hash`
+		AND NOT EXISTS (
+			SELECT 1
+			FROM `thread_agent_instructions`
+			WHERE `content_hash` = OLD.`content_hash`
+		);
+END;

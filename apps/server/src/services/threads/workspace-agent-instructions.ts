@@ -102,14 +102,14 @@ export async function readWorkspaceAgentInstructions(
     throw error;
   }
 
-  assertInstructionSize(
-    result.sizeBytes,
-    WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH,
-  );
   const content =
     result.contentEncoding === "utf8"
       ? result.content
       : Buffer.from(result.content, "base64").toString("utf8");
   const trimmed = content.trim();
+  assertInstructionSize(
+    Buffer.byteLength(trimmed, "utf8"),
+    WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH,
+  );
   return trimmed.length > 0 ? trimmed : null;
 }
