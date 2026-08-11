@@ -121,6 +121,25 @@ describe("resolveRootComposeThreadEnvironment", () => {
     });
   });
 
+  it("sends a continuation request for an archived branch seed", () => {
+    expect(
+      resolveRootComposeThreadEnvironment({
+        defaultBranch: "main",
+        defaultWorktreeBaseBranch: "main",
+        environmentValue: hostWorktreeEnvironmentValue,
+        projectId,
+        selectedBranch: {
+          name: "feature/preserved",
+          isNew: false,
+          continueFromEnvironmentId: "env_archived",
+        },
+      }),
+    ).toEqual({
+      type: "continue",
+      sourceEnvironmentId: "env_archived",
+    });
+  });
+
   it("uses personal workspaces for the personal project", () => {
     expect(
       resolveRootComposeThreadEnvironment({

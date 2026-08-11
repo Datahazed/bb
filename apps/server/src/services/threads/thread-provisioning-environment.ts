@@ -237,6 +237,16 @@ interface ManagedEnvironmentPlanArgs {
   workspaceProvisionType: "managed-worktree";
 }
 
+interface ContinuedManagedEnvironmentPlanArgs {
+  branchName: string;
+  dataDir: string;
+  hostId: string;
+  mergeBaseBranch: string;
+  sourcePath: string;
+  thread: Thread;
+  workspaceProvisionType: "managed-worktree";
+}
+
 interface PersonalEnvironmentPlanArgs {
   dataDir: string;
   hostId: string;
@@ -479,8 +489,7 @@ async function resolveMetadataIfNeeded(
           if (
             !titledThread ||
             !environment ||
-            (titledThread.status !== "active" &&
-              titledThread.status !== "idle")
+            (titledThread.status !== "active" && titledThread.status !== "idle")
           ) {
             return;
           }
@@ -696,14 +705,10 @@ function createPreparedProvisioningEnvironment(
         );
       }
 
-      const environment = createEnvironment(
-        tx,
-        deps.hub,
-        {
-          ...args.environmentInput,
-          status: "ready",
-        },
-      );
+      const environment = createEnvironment(tx, deps.hub, {
+        ...args.environmentInput,
+        status: "ready",
+      });
       if (args.thread.environmentId !== environment.id) {
         updateThread(tx, deps.hub, args.thread.id, {
           environmentId: environment.id,
@@ -867,6 +872,52 @@ function buildManagedEnvironmentPlan(
   };
 }
 
+function buildContinuedManagedEnvironmentPlan(
+  args: ContinuedManagedEnvironmentPlanArgs,
+): ThreadProvisionEnvironmentPlan {
+  return {
+    environmentInput: {
+      projectId: args.thread.projectId,
+      hostId: args.hostId,
+      managed: true,
+      workspaceProvisionType: args.workspaceProvisionType,
+      baseBranch: args.mergeBaseBranch,
+      mergeBaseBranch: args.mergeBaseBranch,
+      continuationBranchName: args.branchName,
+      status: "provisioning",
+    },
+    buildRequest: ({ context, environment }) => {
+      const command = buildEnvironmentProvisionCommand({
+        branchName: buildManagedBranchName({
+          branchSlug: context.request.branchSlug,
+          threadId: args.thread.id,
+        }),
+        baseBranch: { kind: "named", name: args.branchName },
+        continueFromBranchName: args.branchName,
+        environmentId: environment.id,
+        hostId: args.hostId,
+        initiator: {
+          threadId: args.thread.id,
+          provisioningId: context.state.provisioningId,
+        },
+        sourcePath: args.sourcePath,
+        targetPath: resolveManagedTargetPath({
+          dataDir: args.dataDir,
+          environmentId: environment.id,
+          sourcePath: args.sourcePath,
+        }),
+        workspaceProvisionType: args.workspaceProvisionType,
+        setupTimeoutMs: SETUP_TIMEOUT_MS,
+      });
+
+      return buildDirectEnvironmentProvisionRequest({
+        command,
+        provisioningId: context.state.provisioningId,
+      });
+    },
+  };
+}
+
 function buildPersonalEnvironmentPlan(
   args: PersonalEnvironmentPlanArgs,
 ): ThreadProvisionEnvironmentPlan {
@@ -903,6 +954,20 @@ async function resolveEnvironmentCreationPlan(
   args: ResolveEnvironmentCreationPlanArgs,
 ): Promise<ThreadProvisionEnvironmentPlan> {
   switch (args.intent.type) {
+    case "continue-managed": {
+      const hostSession = await ensureHostSessionReadyForWork(deps, {
+        hostId: args.intent.hostId,
+      });
+      return buildContinuedManagedEnvironmentPlan({
+        branchName: args.intent.branchName,
+        dataDir: hostSession.dataDir,
+        hostId: args.intent.hostId,
+        mergeBaseBranch: args.intent.mergeBaseBranch,
+        sourcePath: args.intent.sourcePath,
+        thread: args.thread,
+        workspaceProvisionType: args.intent.workspaceProvisionType,
+      });
+    }
     case "direct-unmanaged":
       return buildDirectUnmanagedEnvironmentPlan({
         intent: args.intent,
@@ -986,13 +1051,14 @@ function requestCheckoutUnmanagedEnvironmentProvision(
         threadId: args.thread.id,
         context,
       });
-      const requestedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
-        { db: tx, logger: deps.logger },
-        {
-          environmentId: args.environment.id,
-          event: { type: "provision.requested" },
-        },
-      );
+      const requestedOutcome =
+        applyLoggedEnvironmentLifecycleEventInTransaction(
+          { db: tx, logger: deps.logger },
+          {
+            environmentId: args.environment.id,
+            event: { type: "provision.requested" },
+          },
+        );
       if (requestedOutcome.applied) {
         deps.hub.notifyEnvironment(
           args.environment.id,
@@ -1094,13 +1160,14 @@ async function requestPreparedEnvironmentProvision(
         context,
         environment,
       });
-      const requestedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
-        { db: tx, logger: deps.logger },
-        {
-          environmentId: environment.id,
-          event: { type: "provision.requested" },
-        },
-      );
+      const requestedOutcome =
+        applyLoggedEnvironmentLifecycleEventInTransaction(
+          { db: tx, logger: deps.logger },
+          {
+            environmentId: environment.id,
+            event: { type: "provision.requested" },
+          },
+        );
       if (requestedOutcome.applied) {
         deps.hub.notifyEnvironment(environment.id, requestedOutcome.changes);
       }

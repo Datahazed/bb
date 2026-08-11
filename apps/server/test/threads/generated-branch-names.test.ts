@@ -146,6 +146,74 @@ describe("generated managed branch names", () => {
     });
   });
 
+  it("continues an archived branch while preserving its merge base", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-continue-archived",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/continue-archived-project",
+      });
+      const archivedEnvironment = seedEnvironment(harness.deps, {
+        branchName: "feature/preserved",
+        defaultBranch: "main",
+        hostId: host.id,
+        managed: true,
+        mergeBaseBranch: "origin/release",
+        path: null,
+        projectId: project.id,
+        status: "destroyed",
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "app",
+          projectId: project.id,
+          providerId: "codex",
+          model: "gpt-5",
+          title: "Continue preserved work",
+          input: [{ type: "text", text: "Keep going" }],
+          environment: {
+            type: "continue",
+            sourceEnvironmentId: archivedEnvironment.id,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const thread = threadSchema.parse(await readJson(response));
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "environment.provision",
+      );
+      const managedCommand =
+        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
+      expect(managedCommand.command).toMatchObject({
+        baseBranch: "feature/preserved",
+        branchName: `bb/${thread.id}`,
+        continueFromBranchName: "feature/preserved",
+        sourcePath: "/tmp/continue-archived-project",
+      });
+      const continuedEnvironment = getEnvironment(
+        harness.db,
+        managedCommand.command.environmentId,
+      );
+      expect(continuedEnvironment).toMatchObject({
+        baseBranch: "origin/release",
+        continuationBranchName: "feature/preserved",
+        mergeBaseBranch: "origin/release",
+        status: "provisioning",
+      });
+      expect(getEnvironment(harness.db, archivedEnvironment.id)?.status).toBe(
+        "destroyed",
+      );
+    });
+  });
+
   it("shows child thread provisioning before metadata inference completes", async () => {
     let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
       throw new Error("Metadata inference was not started");

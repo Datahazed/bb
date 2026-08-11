@@ -125,6 +125,94 @@ describe("workspace provisioning", () => {
     expect(await new Workspace(targetPath).currentBranch).toBe("feature");
   });
 
+  it("continues an archived environment on its exact local branch", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup();
+    await runGit(["switch", "-c", "archived-feature"], { cwd: sourceRepo });
+    await fs.writeFile(path.join(sourceRepo, "feature.txt"), "preserved\n");
+    await runGit(["add", "feature.txt"], { cwd: sourceRepo });
+    await runGit(["commit", "-m", "Archived feature work"], {
+      cwd: sourceRepo,
+    });
+    const archivedHead = (
+      await runGit(["rev-parse", "HEAD"], { cwd: sourceRepo })
+    ).stdout.trim();
+    await runGit(["switch", "main"], { cwd: sourceRepo });
+    const parentDir = await makeTempDir("bb-worktree-continue-parent-");
+    const targetPath = path.join(parentDir, "continued");
+
+    await createWorktree({
+      sourcePath: sourceRepo,
+      targetPath,
+      branchName: "bb/fallback",
+      baseBranch: "archived-feature",
+      continueFromBranchName: "archived-feature",
+      timeoutMs: 900000,
+    });
+
+    expect(await new Workspace(targetPath).currentBranch).toBe(
+      "archived-feature",
+    );
+    expect(
+      (await runGit(["rev-parse", "HEAD"], { cwd: targetPath })).stdout.trim(),
+    ).toBe(archivedHead);
+    expect(
+      (
+        await runGit(["show-ref", "--verify", "refs/heads/bb/fallback"], {
+          cwd: sourceRepo,
+          allowFailure: true,
+        })
+      ).exitCode,
+    ).not.toBe(0);
+  });
+
+  it("uses a generated branch at the same commit when the archived branch is checked out", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup();
+    await runGit(["branch", "archived-feature"], { cwd: sourceRepo });
+    const parentDir = await makeTempDir(
+      "bb-worktree-continue-collision-parent-",
+    );
+    const occupiedPath = path.join(parentDir, "occupied");
+    await runGit(["worktree", "add", occupiedPath, "archived-feature"], {
+      cwd: sourceRepo,
+    });
+    const archivedHead = (
+      await runGit(["rev-parse", "archived-feature"], { cwd: sourceRepo })
+    ).stdout.trim();
+    const targetPath = path.join(parentDir, "continued");
+
+    await createWorktree({
+      sourcePath: sourceRepo,
+      targetPath,
+      branchName: "bb/fallback",
+      baseBranch: "archived-feature",
+      continueFromBranchName: "archived-feature",
+      timeoutMs: 900000,
+    });
+
+    expect(await new Workspace(targetPath).currentBranch).toBe("bb/fallback");
+    expect(
+      (await runGit(["rev-parse", "HEAD"], { cwd: targetPath })).stdout.trim(),
+    ).toBe(archivedHead);
+  });
+
+  it("fails continuation when the archived local branch no longer exists", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup();
+    const parentDir = await makeTempDir("bb-worktree-continue-missing-parent-");
+    const targetPath = path.join(parentDir, "continued");
+
+    await expect(
+      createWorktree({
+        sourcePath: sourceRepo,
+        targetPath,
+        branchName: "bb/fallback",
+        baseBranch: "missing-feature",
+        continueFromBranchName: "missing-feature",
+        timeoutMs: 900000,
+      }),
+    ).rejects.toThrow("local branch 'missing-feature' no longer exists");
+    await expect(fs.stat(targetPath)).rejects.toThrow();
+  });
+
   it("fetches remote base branches before creating worktrees", async () => {
     const { remotePath, repoPath } = await initRemoteBackedRepo();
     const parentDir = await makeTempDir("bb-worktree-remote-parent-");

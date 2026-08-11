@@ -79,6 +79,12 @@ import {
 } from "@bb/core-ui";
 import { assertNever } from "@bb/thread-view";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
+import { encodeHostValue } from "@/components/pickers/environment-picker-value";
+import {
+  useSetRootComposeEnvironmentOverride,
+  useSetRootComposeProjectId,
+} from "@/lib/root-compose-selection";
+import { buildContinueEnvironmentLocationState } from "@/lib/continue-environment-request";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
@@ -112,6 +118,7 @@ import {
 import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
 import {
   getProjectComposeRoutePath,
+  getRootComposeRoutePath,
   getThreadRoutePath,
   isRoutePath,
   type ThreadRoutePathArgs,
@@ -495,6 +502,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
     usePaneContext();
   const navigate = useNavigate();
+  const setRootComposeProjectId = useSetRootComposeProjectId();
+  const setRootComposeEnvironmentOverride =
+    useSetRootComposeEnvironmentOverride();
   useFixedPanelTabsStorageMaintenance(threadId);
   const systemConfigQuery = useSystemConfig();
   const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
@@ -2405,6 +2415,40 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [openWorkspaceFile],
   );
+  const handleContinueInNewThread = useCallback(() => {
+    const sourceMergeBaseBranch =
+      resolveEnvironmentMergeBaseBranch(environment);
+    if (
+      !thread ||
+      environment?.status !== "destroyed" ||
+      environment.workspaceProvisionType !== "managed-worktree" ||
+      environment.branchName === null ||
+      sourceMergeBaseBranch === undefined
+    ) {
+      return;
+    }
+    setRootComposeProjectId(environment.projectId);
+    setRootComposeEnvironmentOverride(
+      encodeHostValue(environment.hostId, "worktree"),
+    );
+    navigate(getRootComposeRoutePath(), {
+      state: buildContinueEnvironmentLocationState({
+        branchName: environment.branchName,
+        hostId: environment.hostId,
+        mergeBaseBranch: sourceMergeBaseBranch,
+        projectId: environment.projectId,
+        sourceEnvironmentId: environment.id,
+        sourceThreadId: thread.id,
+        sourceThreadTitle: getThreadDisplayTitle(thread),
+      }),
+    });
+  }, [
+    environment,
+    navigate,
+    setRootComposeEnvironmentOverride,
+    setRootComposeProjectId,
+    thread,
+  ]);
 
   if (threadQueryState.status === "loading") {
     return (
@@ -2474,6 +2518,13 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     environment?.status === "destroying" || environment?.status === "destroyed"
       ? environment.status
       : null;
+  const onContinueInNewThread =
+    environment?.status === "destroyed" &&
+    environment.workspaceProvisionType === "managed-worktree" &&
+    environment.branchName !== null &&
+    resolveEnvironmentMergeBaseBranch(environment) !== undefined
+      ? handleContinueInNewThread
+      : undefined;
   const threadGitStatusDisplay = getGitStatusDisplay(workspaceStatus, {
     mergeBaseBranch,
     showBranchComparison: showBranchComparisonUi,
@@ -2591,6 +2642,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       }
       environmentGoneStatus={threadEnvironmentGoneStatus}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
+      onContinueInNewThread={onContinueInNewThread}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
       onEscapeEmptyPrompt={undefined}
       onPullRequestMerge={handlePullRequestMerge}

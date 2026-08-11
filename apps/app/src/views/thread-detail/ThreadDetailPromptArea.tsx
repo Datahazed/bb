@@ -150,6 +150,7 @@ interface ThreadDetailPromptAreaProps {
   > | null;
   environmentIcon?: IconName;
   environmentLabel?: string;
+  onContinueInNewThread?: () => void;
   onCreateNewThreadInWorktree?: () => void;
   onEscapeEmptyPrompt?: () => void;
   onPullRequestDraft?: () => void;
@@ -311,6 +312,7 @@ export function ThreadDetailPromptArea({
   environmentGoneStatus,
   environmentIcon,
   environmentLabel,
+  onContinueInNewThread,
   onCreateNewThreadInWorktree,
   onEscapeEmptyPrompt,
   onPullRequestDraft,
@@ -1446,7 +1448,13 @@ export function ThreadDetailPromptArea({
           environmentGoneSection={
             environmentGoneStatus === null
               ? null
-              : { status: environmentGoneStatus }
+              : {
+                  status: environmentGoneStatus,
+                  ...(environmentGoneStatus === "destroyed" &&
+                  onContinueInNewThread
+                    ? { onContinueInNewThread }
+                    : {}),
+                }
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
@@ -1524,6 +1532,7 @@ export function ThreadDetailPromptArea({
       activeBackgroundCommands,
       isBackgroundCommandsExpanded,
       modelFallback,
+      onContinueInNewThread,
       parentThreadSection,
       childThreadsSection,
       pullRequestSection,

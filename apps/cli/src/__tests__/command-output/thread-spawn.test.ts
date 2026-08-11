@@ -712,6 +712,48 @@ describe("bb thread spawn command output", () => {
     });
   });
 
+  it("bb thread spawn forwards an archived environment continuation", async () => {
+    const thread = fixtures.makeThread({
+      id: "thread-continued",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "starting",
+      environmentId: "env-new-worktree",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--continue-from-environment",
+        "env-archived",
+        "--prompt",
+        "keep going",
+        "--provider",
+        "codex",
+        "--model",
+        "gpt-5",
+      ],
+      register,
+    );
+
+    expect(resolveLocalHostIdMock).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        environment: {
+          type: "continue",
+          sourceEnvironmentId: "env-archived",
+        },
+      }),
+    });
+  });
+
   it("bb thread spawn forwards an absolute --environment path as an unmanaged workspace", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     const workspacePath = "/Users/michael/Projects/bb";

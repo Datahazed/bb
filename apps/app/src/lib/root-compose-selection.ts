@@ -24,7 +24,7 @@ const rootComposeProjectIdAtom = atomWithStorage<string>(
   { getOnInit: true },
 );
 
-const rootComposeReuseEnvironmentAtom = atom<string | null>(null);
+const rootComposeEnvironmentOverrideAtom = atom<string | null>(null);
 
 export function useRootComposeProjectId() {
   return useAtom(rootComposeProjectIdAtom);
@@ -34,6 +34,11 @@ export function useSetRootComposeProjectId() {
   return useSetAtom(rootComposeProjectIdAtom);
 }
 
-export function useRootComposeReuseEnvironment() {
-  return useAtom(rootComposeReuseEnvironmentAtom);
+export function useRootComposeEnvironmentOverride() {
+  return useAtom(rootComposeEnvironmentOverrideAtom);
+}
+
+/** One-shot environment picker override used before navigating to compose. */
+export function useSetRootComposeEnvironmentOverride() {
+  return useSetAtom(rootComposeEnvironmentOverrideAtom);
 }

@@ -173,8 +173,14 @@ import {
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import {
   useRootComposeProjectId,
+  useSetRootComposeEnvironmentOverride,
   useSetRootComposeProjectId,
 } from "@/lib/root-compose-selection";
+import {
+  buildContinueEnvironmentPromptDraft,
+  readContinueEnvironmentSeed,
+  type ContinueEnvironmentSeed,
+} from "@/lib/continue-environment-request";
 import {
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
@@ -360,7 +366,9 @@ export function hasPromptBranchSelectionChanged(
   }
   return (
     currentBranch.name !== nextBranch.name ||
-    currentBranch.isNew !== nextBranch.isNew
+    currentBranch.isNew !== nextBranch.isNew ||
+    currentBranch.continueFromEnvironmentId !==
+      nextBranch.continueFromEnvironmentId
   );
 }
 
@@ -607,7 +615,8 @@ export function hasSingleUseRootComposeTargetState(state: unknown): boolean {
     readRootComposeSectionTargetFromLocationState(state) !== null ||
     readReuseEnvironmentIdFromLocationState(state) !== null ||
     readForkThreadCreateSeedFromLocationState(state) !== null ||
-    readThreadHandoffCreateSeedFromLocationState(state) !== null
+    readThreadHandoffCreateSeedFromLocationState(state) !== null ||
+    readContinueEnvironmentSeed(state) !== null
   );
 }
 
@@ -787,6 +796,8 @@ export function RootComposeView() {
   const isFocusedPane = paneContext?.isFocused ?? true;
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
+  const setRootComposeEnvironmentOverride =
+    useSetRootComposeEnvironmentOverride();
   const location = useLocation();
   const navigate = useNavigate();
   const isPointerCoarse = usePointerCoarse();
@@ -833,6 +844,10 @@ export function RootComposeView() {
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
     readForkThreadCreateSeedFromLocationState(location.state),
   );
+  const [continueEnvironmentSeed, setContinueEnvironmentSeed] =
+    useState<ContinueEnvironmentSeed | null>(() =>
+      readContinueEnvironmentSeed(location.state),
+    );
   const hostsQuery = useHosts();
   const connectedHostIds = useMemo(
     () =>
@@ -1036,7 +1051,7 @@ export function RootComposeView() {
     setPermissionMode,
     environmentSelectionValue,
     setEnvironmentSelectionValue,
-    clearReuseEnvironment,
+    clearEnvironmentOverride,
     activeModel,
     modelOptions,
     moreModelOptions,
@@ -1149,7 +1164,7 @@ export function RootComposeView() {
 
     promptDraft.setDraft(restoredDraft);
   });
-  const seedHandoffPrompt = promptDraft.setDraft;
+  const seedSourceThreadPrompt = promptDraft.setDraft;
 
   // Seed transient picker state from navigation state: `reuseEnvironmentId`
   // (the "+" affordance on a worktree) seeds the env picker into reuse mode for
@@ -1169,6 +1184,9 @@ export function RootComposeView() {
     const nextHandoffSeed = readThreadHandoffCreateSeedFromLocationState(
       location.state,
     );
+    const nextContinueEnvironmentSeed = readContinueEnvironmentSeed(
+      location.state,
+    );
     if (!hasSingleUseRootComposeTargetState(location.state)) {
       return;
     }
@@ -1182,6 +1200,16 @@ export function RootComposeView() {
     }
     if (reuseEnvironmentId !== null) {
       setEnvironmentSelectionValue(encodeReuseValue(reuseEnvironmentId));
+    }
+    if (nextContinueEnvironmentSeed !== null) {
+      setContinueEnvironmentSeed(nextContinueEnvironmentSeed);
+      setRootComposeProjectId(nextContinueEnvironmentSeed.projectId);
+      setRootComposeEnvironmentOverride(
+        encodeHostValue(nextContinueEnvironmentSeed.hostId, "worktree"),
+      );
+      seedSourceThreadPrompt(
+        buildContinueEnvironmentPromptDraft(nextContinueEnvironmentSeed),
+      );
     }
     if (nextForkSeed !== null && nextHandoffSeed === null) {
       setForkSeed(nextForkSeed);
@@ -1200,7 +1228,7 @@ export function RootComposeView() {
           encodeReuseValue(nextHandoffSeed.environmentId),
         );
       }
-      seedHandoffPrompt(buildThreadHandoffPromptDraft(nextHandoffSeed));
+      seedSourceThreadPrompt(buildThreadHandoffPromptDraft(nextHandoffSeed));
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
@@ -1210,12 +1238,13 @@ export function RootComposeView() {
     location.search,
     location.state,
     navigate,
-    seedHandoffPrompt,
+    seedSourceThreadPrompt,
     setEnvironmentSelectionValue,
     setPermissionMode,
     setReasoningLevel,
     setSelectedModel,
     setSelectedProviderId,
+    setRootComposeEnvironmentOverride,
     setRootComposeProjectId,
     setServiceTier,
   ]);
@@ -1333,10 +1362,39 @@ export function RootComposeView() {
     onClearBranch: handleClearBranch,
     onCreateBranch: handleCreateBranch,
     onCreateBranchFrom: handleCreateBranchFrom,
+    onContinueFrom: handleContinueFrom,
   } = useScopedBranchSelection({
     environmentValue: effectiveEnvironmentValue,
+    initialSelection: continueEnvironmentSeed
+      ? {
+          name: continueEnvironmentSeed.branchName,
+          isNew: false,
+          continueFromEnvironmentId:
+            continueEnvironmentSeed.sourceEnvironmentId,
+        }
+      : null,
     projectId,
   });
+  useEffect(() => {
+    if (
+      continueEnvironmentSeed === null ||
+      projectId !== continueEnvironmentSeed.projectId ||
+      effectiveEnvironmentValue !==
+        encodeHostValue(continueEnvironmentSeed.hostId, "worktree")
+    ) {
+      return;
+    }
+    handleContinueFrom(
+      continueEnvironmentSeed.branchName,
+      continueEnvironmentSeed.sourceEnvironmentId,
+    );
+    setContinueEnvironmentSeed(null);
+  }, [
+    continueEnvironmentSeed,
+    effectiveEnvironmentValue,
+    handleContinueFrom,
+    projectId,
+  ]);
   const canChangeBranchSelection =
     projectId !== undefined && effectiveEnvironmentValue !== "";
   const selectedBranchName = selectedBranch?.name ?? "";
@@ -1745,7 +1803,7 @@ export function RootComposeView() {
         }
         const thread = await createThread.mutateAsync(request);
         setLastCreatedThreadId(thread.id);
-        clearReuseEnvironment();
+        clearEnvironmentOverride();
         setForkSeed(null);
         setRootComposeSectionId(null);
         if (submittedDraft !== null) {
@@ -1764,7 +1822,7 @@ export function RootComposeView() {
       }
     },
     [
-      clearReuseEnvironment,
+      clearEnvironmentOverride,
       createThread,
       executionInputSources,
       forkSeed,

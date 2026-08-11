@@ -940,6 +940,33 @@ describe("@bb/sdk", () => {
     );
   });
 
+  it("sends archived environment continuation requests", async () => {
+    const queue = createFetchQueue([{ body: { id: "thr_1" }, status: 201 }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.spawn({
+      projectId: "proj_123",
+      environment: {
+        type: "continue",
+        sourceEnvironmentId: "env_archived",
+      },
+      prompt: "Keep going",
+    });
+
+    expect(JSON.parse(queue.requests[0]?.bodyText ?? "{}")).toMatchObject({
+      environment: {
+        type: "continue",
+        sourceEnvironmentId: "env_archived",
+      },
+    });
+  });
+
   it("fills thread fork defaults and preserves an agent-only context seed", async () => {
     const queue = createFetchQueue([{ body: { id: "thr_fork" }, status: 201 }]);
     const sdk = createBbSdk({

@@ -209,13 +209,19 @@ function buildWorktreeBranchUiState(
   const defaultTriggerLabel = formatBranchFromTriggerLabel(defaultBaseBranch);
 
   if (args.selectedBranch) {
+    const isContinuation =
+      args.selectedBranch.continueFromEnvironmentId !== undefined;
     return {
       currentBranch: defaultBaseBranch ?? null,
       currentOptionLabel: defaultOptionLabel,
       mutationBlocker: null,
       placeholder: "Branch from: default",
-      triggerLabel: `Branch from: ${args.selectedBranch.name}`,
-      triggerTitle: `Branch from: ${args.selectedBranch.name}`,
+      triggerLabel: isContinuation
+        ? `Continue from: ${args.selectedBranch.name}`
+        : `Branch from: ${args.selectedBranch.name}`,
+      triggerTitle: isContinuation
+        ? `Continue from archived branch: ${args.selectedBranch.name}`
+        : `Branch from: ${args.selectedBranch.name}`,
     };
   }
 

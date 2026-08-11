@@ -5,6 +5,7 @@ import {
   listEvents,
   threads,
 } from "@bb/db";
+import { eq } from "drizzle-orm";
 import { systemThreadProvisioningEventDataSchema } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
@@ -182,6 +183,60 @@ describe("environment reprovisioning", () => {
       const managedCommand =
         requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
       expect(managedCommand.command.baseBranch).toBe("release/2026-05");
+    });
+  });
+
+  it("preserves archived branch continuation during reprovision", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-reprovision-continuation",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/reprovision-continuation-project",
+      });
+      const createdEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/reprovision-continuation-target",
+        status: "error",
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        branchName: null,
+        baseBranch: "origin/main",
+        mergeBaseBranch: "origin/main",
+      });
+      harness.db
+        .update(environments)
+        .set({ continuationBranchName: "feature/preserved" })
+        .where(eq(environments.id, createdEnvironment.id))
+        .run();
+      const environment = getEnvironment(harness.db, createdEnvironment.id);
+      if (!environment) throw new Error("Expected continuation environment");
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+
+      await dispatchManagedEnvironmentReprovision(harness.deps, {
+        environment,
+        projectId: thread.projectId,
+        provisionEventSequence: 1,
+        provisioningId: "tpv-reprovision-continuation",
+        threadId: thread.id,
+      });
+
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "environment.provision",
+      );
+      const managedCommand =
+        requireManagedWorktreeEnvironmentProvisionLiveCommand(queued);
+      expect(managedCommand.command).toMatchObject({
+        baseBranch: "feature/preserved",
+        branchName: `bb/${thread.id}`,
+        continueFromBranchName: "feature/preserved",
+      });
     });
   });
 
@@ -404,7 +459,7 @@ describe("environment reprovisioning", () => {
     });
   });
 
-    it("preserves a stopped pre-start thread when stale provision failure settles", async () => {
+  it("preserves a stopped pre-start thread when stale provision failure settles", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-pre-start-provision-cancel",

@@ -24,6 +24,7 @@ Spawning:
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a new environment (worktree)
     --base-branch <branch>         Base branch for a new managed worktree
+    --continue-from-environment <id>  Continue an archived managed environment
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
@@ -58,6 +59,10 @@ Spawning:
   workspace. It cannot be combined with an existing environment ID because that
   environment already selects its machine. Without the flag, local/primary
   machine resolution is unchanged.
+  --continue-from-environment creates a new worktree on the archived
+  environment's machine, preserving its merge base and reusing its local branch
+  name when Git permits. It cannot be combined with another environment or
+  machine selector.
 
 Forking:
 

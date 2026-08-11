@@ -120,6 +120,30 @@ describe("buildSpawnEnvironment", () => {
     });
   });
 
+  it("returns archived-environment continuation without resolving a host", () => {
+    expect(
+      buildSpawnEnvironment({
+        defaultPersonalWorkspace: false,
+        continueFromEnvironmentId: "env_archived",
+        hostId: null,
+      }),
+    ).toEqual({
+      type: "continue",
+      sourceEnvironmentId: "env_archived",
+    });
+  });
+
+  it("rejects continuation combined with another environment choice", () => {
+    expect(() =>
+      buildSpawnEnvironment({
+        defaultPersonalWorkspace: false,
+        continueFromEnvironmentId: "env_archived",
+        newEnvironmentKind: "worktree",
+        hostId: HOST_ID,
+      }),
+    ).toThrow("Cannot combine --continue-from-environment");
+  });
+
   it("throws for unsupported managed environment kinds", () => {
     expect(() =>
       buildSpawnEnvironment({

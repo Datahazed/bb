@@ -16,6 +16,7 @@ import type { EnvironmentArgs } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
 import { isLiveParentThread, type ParentThread } from "./thread-parent.js";
+import type { ResolvedCreateThreadEnvironmentArgs } from "./thread-create-request.js";
 
 export const DEFAULT_SERVICE_TIER: ServiceTier = "default";
 export const DEFAULT_REASONING_LEVEL: ReasoningLevel = "medium";
@@ -81,7 +82,7 @@ export interface ResolveThreadExecutionPermissionModeArgs {
 export interface ResolveCreateThreadEnvironmentArgs {
   parentThread?: ParentThread | null;
   projectId: string;
-  requestedEnvironment: EnvironmentArgs;
+  requestedEnvironment: ResolvedCreateThreadEnvironmentArgs;
 }
 
 export interface ResolveSupportedPermissionModeArgs {
@@ -90,21 +91,21 @@ export interface ResolveSupportedPermissionModeArgs {
 }
 
 type ImplicitHostDefaultEnvironment = Extract<
-  EnvironmentArgs,
+  ResolvedCreateThreadEnvironmentArgs,
   { type: "host" }
 > & {
   workspace: { path: null; type: "unmanaged" };
 };
 
 type PersonalHostDefaultEnvironment = Extract<
-  EnvironmentArgs,
+  ResolvedCreateThreadEnvironmentArgs,
   { type: "host" }
 > & {
   workspace: { type: "personal" };
 };
 
 function isImplicitHostDefaultEnvironment(
-  environment: EnvironmentArgs,
+  environment: ResolvedCreateThreadEnvironmentArgs,
 ): environment is ImplicitHostDefaultEnvironment {
   return (
     environment.type === "host" &&
@@ -114,7 +115,7 @@ function isImplicitHostDefaultEnvironment(
 }
 
 function isPersonalHostDefaultEnvironment(
-  environment: EnvironmentArgs,
+  environment: ResolvedCreateThreadEnvironmentArgs,
 ): environment is PersonalHostDefaultEnvironment {
   return (
     environment.type === "host" && environment.workspace.type === "personal"
@@ -122,7 +123,7 @@ function isPersonalHostDefaultEnvironment(
 }
 
 function requireHostEnvironmentId(
-  environment: Extract<EnvironmentArgs, { type: "host" }>,
+  environment: Extract<ResolvedCreateThreadEnvironmentArgs, { type: "host" }>,
 ): string {
   if (environment.hostId !== undefined) {
     return environment.hostId;
@@ -231,7 +232,7 @@ export function resolveProjectDefaultThreadEnvironment(
 
 export function resolveCreateThreadEnvironment(
   args: ResolveCreateThreadEnvironmentArgs,
-): EnvironmentArgs {
+): ResolvedCreateThreadEnvironmentArgs {
   if (
     args.projectId === PERSONAL_PROJECT_ID &&
     isLiveParentThread({

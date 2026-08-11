@@ -646,6 +646,7 @@ const archivedFixture: ThreadPromptArchivedSection = {
 
 const destroyedEnvironmentFixture: ThreadPromptEnvironmentGoneSection = {
   status: "destroyed",
+  onContinueInNewThread: noop,
 };
 
 const destroyingEnvironmentFixture: ThreadPromptEnvironmentGoneSection = {

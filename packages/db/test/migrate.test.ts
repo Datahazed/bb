@@ -600,14 +600,33 @@ function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
 }
 
 // Migration 0091 adds the dedicated archive-grace clock. Rewind scenarios
-// that clear its journal row must remove the column before replaying the ADD.
+// that clear its journal row must remove it and columns from later migrations
+// before replaying their ADD statements.
 function dropEnvironmentRetireRequestedAtColumn(db: DbConnection): void {
+  dropEnvironmentContinuationBranchNameColumn(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
     .all();
   if (columns.some((column) => column.name === "retire_requested_at")) {
     db.$client
       .prepare("ALTER TABLE environments DROP COLUMN retire_requested_at")
+      .run();
+  }
+}
+
+// Migration 0093 records the archived branch preferred by continuation
+// provisioning. Rewind scenarios must remove it before replaying the ADD.
+function dropEnvironmentContinuationBranchNameColumn(
+  db: DbConnection,
+): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+    .all();
+  if (columns.some((column) => column.name === "continuation_branch_name")) {
+    db.$client
+      .prepare(
+        "ALTER TABLE environments DROP COLUMN continuation_branch_name",
+      )
       .run();
   }
 }

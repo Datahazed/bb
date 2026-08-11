@@ -167,6 +167,11 @@ message agents, or inspect projects, providers, and environments.
   attachments, and `--section <id>` to add the new thread to a section. These
   flags pass host-readable absolute paths (or relative server-upload tokens)
   through to the runtime; they do not read files on the CLI machine.
+- Use `--continue-from-environment <environment-id>` to create a fresh
+  worktree from a destroyed managed environment. bb preserves the archived
+  merge base and reuses its local branch name when possible; the archived
+  environment selects the machine. Do not combine it with `--environment`,
+  `--new-environment`, `--base-branch`, `--machine`, or `--host`.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Use `bb thread fork <source-thread-id>` to clone a provider session. It
   creates an idle fork by default; add `--prompt`, select `--workspace

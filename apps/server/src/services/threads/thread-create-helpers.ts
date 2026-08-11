@@ -109,6 +109,7 @@ export type EnvironmentProvisionCommandArgs =
       targetPath: string;
       branchName: string;
       baseBranch: BaseBranchSpec;
+      continueFromBranchName?: string;
       setupTimeoutMs: number;
     }
   | {
@@ -142,6 +143,9 @@ export function buildEnvironmentProvisionCommand(
         targetPath: args.targetPath,
         branchName: args.branchName,
         baseBranch: baseBranchSpecToStoredName(args.baseBranch),
+        ...(args.continueFromBranchName
+          ? { continueFromBranchName: args.continueFromBranchName }
+          : {}),
         setupTimeoutMs: args.setupTimeoutMs,
       };
     case "personal":

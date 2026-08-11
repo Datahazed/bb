@@ -16,6 +16,7 @@ import { Workspace } from "./workspace.js";
 import { tryWithCheckoutMutationLock } from "./checkout-mutation-lock.js";
 import {
   pathExists,
+  getGitCommonDir,
   readDefaultBranch,
   runGit,
   WorkspaceError,
@@ -52,6 +53,11 @@ export interface CreateWorkspaceArgs {
    * the daemon).
    */
   baseBranch: string | null;
+  /**
+   * Existing local branch to reuse exactly. If Git reports that it is already
+   * checked out, `branchName` is created from its current commit as fallback.
+   */
+  continueFromBranchName?: string;
   /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
   /** Resolved user-shell PATH for the setup script. */
@@ -156,7 +162,7 @@ function emitGitOutput(
 
 async function ensureExistingWorkspaceMatches(
   targetPath: string,
-  branchName: string,
+  branchNames: readonly string[],
 ): Promise<boolean> {
   if (!(await pathExists(targetPath))) {
     return false;
@@ -170,7 +176,8 @@ async function ensureExistingWorkspaceMatches(
     );
   }
 
-  if ((await workspace.currentBranch) !== branchName) {
+  const currentBranch = await workspace.currentBranch;
+  if (currentBranch === undefined || !branchNames.includes(currentBranch)) {
     throw new WorkspaceError(
       "path_exists",
       `Target path exists on the wrong branch: ${targetPath}`,
@@ -178,6 +185,71 @@ async function ensureExistingWorkspaceMatches(
   }
 
   return true;
+}
+
+function isBranchAlreadyCheckedOutFailure(result: GitCommandResult): boolean {
+  return /\bis already checked out at\b/u.test(result.stderr);
+}
+
+async function addContinuedWorktree(args: {
+  branchName: string;
+  fallbackBranchName: string;
+  signal: AbortSignal | undefined;
+  sourcePath: string;
+  targetPath: string;
+}): Promise<GitCommandResult> {
+  const branchRef = `refs/heads/${args.branchName}`;
+  const branchResult = await runGit(
+    ["show-ref", "--verify", "--quiet", branchRef],
+    {
+      cwd: args.sourcePath,
+      allowFailure: true,
+      signal: args.signal,
+    },
+  );
+  if (branchResult.exitCode !== 0) {
+    throw new WorkspaceError(
+      "branch_not_found",
+      `Cannot continue archived environment because local branch '${args.branchName}' no longer exists`,
+    );
+  }
+
+  const commonDir = await getGitCommonDir(args.sourcePath);
+  return withWorktreeMetadataLock(
+    commonDir,
+    async () => {
+      const exactResult = await runGit(
+        ["worktree", "add", args.targetPath, args.branchName],
+        {
+          cwd: args.sourcePath,
+          allowFailure: true,
+          signal: args.signal,
+        },
+      );
+      if (exactResult.exitCode === 0) {
+        return exactResult;
+      }
+      if (!isBranchAlreadyCheckedOutFailure(exactResult)) {
+        const detail = exactResult.stderr.trim();
+        throw new WorkspaceError(
+          "git_command_failed",
+          `git worktree add failed${detail ? `: ${detail}` : ""}`,
+        );
+      }
+      return runGit(
+        [
+          "worktree",
+          "add",
+          "-B",
+          args.fallbackBranchName,
+          args.targetPath,
+          args.branchName,
+        ],
+        { cwd: args.sourcePath, signal: args.signal },
+      );
+    },
+    args.signal,
+  );
 }
 
 async function ensureWorkspaceParentDirectory(
@@ -337,7 +409,12 @@ export async function createWorktree(
   args: CreateWorkspaceArgs,
 ): Promise<{ path: string }> {
   throwIfProvisionAborted(args.signal);
-  if (await ensureExistingWorkspaceMatches(args.targetPath, args.branchName)) {
+  const expectedBranchNames = args.continueFromBranchName
+    ? [args.continueFromBranchName, args.branchName]
+    : [args.branchName];
+  if (
+    await ensureExistingWorkspaceMatches(args.targetPath, expectedBranchNames)
+  ) {
     return { path: args.targetPath };
   }
 
@@ -345,30 +422,24 @@ export async function createWorktree(
   await ensureWorkspaceParentDirectory(args.targetPath);
 
   throwIfProvisionAborted(args.signal);
-  const baseBranch =
-    args.baseBranch ?? (await readDefaultBranch(args.sourcePath));
-  if (!baseBranch) {
-    throw new WorkspaceError(
-      "missing_default_branch",
-      `Cannot resolve default branch for source: ${args.sourcePath}`,
-    );
+  let baseBranch: string | null = null;
+  if (args.continueFromBranchName === undefined) {
+    baseBranch =
+      args.baseBranch ?? (await readDefaultBranch(args.sourcePath)) ?? null;
+    if (!baseBranch) {
+      throw new WorkspaceError(
+        "missing_default_branch",
+        `Cannot resolve default branch for source: ${args.sourcePath}`,
+      );
+    }
+    throwIfProvisionAborted(args.signal);
+    await fetchRemoteBaseBranch({
+      sourcePath: args.sourcePath,
+      baseBranch,
+      onProgress: args.onProgress,
+      signal: args.signal,
+    });
   }
-  throwIfProvisionAborted(args.signal);
-  await fetchRemoteBaseBranch({
-    sourcePath: args.sourcePath,
-    baseBranch,
-    onProgress: args.onProgress,
-    signal: args.signal,
-  });
-
-  const gitArgs = [
-    "worktree",
-    "add",
-    "-B",
-    args.branchName,
-    args.targetPath,
-    baseBranch,
-  ];
   const worktreeStartedAt = Date.now();
   emitStep({
     onProgress: args.onProgress,
@@ -379,10 +450,29 @@ export async function createWorktree(
   });
   let worktreeCreated = false;
   try {
-    const result = await runGitWithWorktreeMetadataLock(gitArgs, {
-      cwd: args.sourcePath,
-      signal: args.signal,
-    });
+    const result = args.continueFromBranchName
+      ? await addContinuedWorktree({
+          branchName: args.continueFromBranchName,
+          fallbackBranchName: args.branchName,
+          signal: args.signal,
+          sourcePath: args.sourcePath,
+          targetPath: args.targetPath,
+        })
+      : await runGitWithWorktreeMetadataLock(
+          [
+            "worktree",
+            "add",
+            "-B",
+            args.branchName,
+            args.targetPath,
+            // The ordinary path above always resolves this value.
+            baseBranch ?? args.branchName,
+          ],
+          {
+            cwd: args.sourcePath,
+            signal: args.signal,
+          },
+        );
     emitGitOutput(args.onProgress, "git-worktree", result);
     emitStep({
       onProgress: args.onProgress,

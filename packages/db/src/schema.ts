@@ -439,6 +439,8 @@ export const environments = sqliteTable(
     baseBranch: text("base_branch"),
     defaultBranch: text("default_branch"),
     mergeBaseBranch: text("merge_base_branch"),
+    /** Archived local branch this managed environment continues from. */
+    continuationBranchName: text("continuation_branch_name"),
     destroyAttemptId: text("destroy_attempt_id"),
     // Durable product-policy clock. Unlike updatedAt, metadata polling cannot
     // move the start of an accidental-archive recovery window.

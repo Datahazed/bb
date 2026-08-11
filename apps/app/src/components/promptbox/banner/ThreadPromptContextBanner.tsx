@@ -117,6 +117,7 @@ export interface ThreadPromptArchivedSection {
  * context for this thread, so live-work sections no longer apply.
  */
 export interface ThreadPromptEnvironmentGoneSection {
+  onContinueInNewThread?: () => void;
   status: Extract<EnvironmentStatus, "destroying" | "destroyed">;
 }
 
@@ -295,8 +296,7 @@ function SectionToggleButton({
         // icon — the icons' own internal padding provides enough separation,
         // and a gap here makes the pair look untethered.
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
-        !active &&
-          (isExpanded ? "text-foreground" : "text-muted-foreground"),
+        !active && (isExpanded ? "text-foreground" : "text-muted-foreground"),
       )}
     >
       {icon}
@@ -327,9 +327,7 @@ function SectionToggleButton({
       <Icon
         name="ChevronDown"
         className={cn(
-          active
-            ? activityIconClass("active")
-            : "text-subtle-foreground",
+          active ? activityIconClass("active") : "text-subtle-foreground",
           "size-3.5 shrink-0 transition-transform duration-200",
           isExpanded && "rotate-180",
         )}
@@ -515,6 +513,14 @@ function ThreadUnarchiveTextAction({
       disabled={Boolean(isPending)}
     >
       {isPending ? "Unarchiving..." : "Unarchive"}
+    </PromptBannerActionButton>
+  );
+}
+
+function ContinueInNewThreadAction({ onContinue }: { onContinue: () => void }) {
+  return (
+    <PromptBannerActionButton onClick={onContinue}>
+      Continue in new thread
     </PromptBannerActionButton>
   );
 }
@@ -764,6 +770,7 @@ interface ReadOnlyContextBannerProps {
   iconName: IconName;
   statusAriaLabel: string;
   statusLabel: string;
+  showStatusActionWithParent?: boolean;
   parentThreadSection: ThreadPromptParentThreadSection | null;
   statusAction: ReactNode;
   expandedSection: ThreadPromptContextBannerExpandedSection | null;
@@ -774,6 +781,7 @@ function ReadOnlyContextBanner({
   iconName,
   statusAriaLabel,
   statusLabel,
+  showStatusActionWithParent = false,
   parentThreadSection,
   statusAction,
   expandedSection,
@@ -781,8 +789,9 @@ function ReadOnlyContextBanner({
 }: ReadOnlyContextBannerProps) {
   const isParentThreadExpanded =
     expandedSection === "parentThread" && parentThreadSection !== null;
-  const hasMultipleSegments = parentThreadSection !== null;
-  const showStatusAction = statusAction !== null && !hasMultipleSegments;
+  const showStatusAction =
+    statusAction !== null &&
+    (parentThreadSection === null || showStatusActionWithParent);
   return (
     <PromptStackCard
       ariaLabel="Thread context before sending"
@@ -825,10 +834,7 @@ function ReadOnlyContextBanner({
             className="size-3.5 shrink-0"
             aria-hidden="true"
           />
-          <span
-            className="min-w-0 truncate"
-            aria-hidden="true"
-          >
+          <span className="min-w-0 truncate" aria-hidden="true">
             {statusLabel}
           </span>
         </div>
@@ -856,9 +862,10 @@ function ReadOnlyContextBanner({
 /**
  * Single rounded strip rendered above the FollowUp prompt input. Hosts the
  * thread's high-signal context as inline section toggles.
- * Segment actions render in a far-right slot only when their segment is the
- * only visible segment. Only one section can be expanded at a time; the caller
- * owns expandedSection state. See
+ * Segment actions render in a far-right slot when they are the only segment;
+ * the archived-environment continuation remains available beside parent
+ * context. Only one section can be expanded at a time; the caller owns
+ * expandedSection state. See
  * plans/thread-prompt-context-banner.md.
  */
 export function ThreadPromptContextBanner({
@@ -883,11 +890,17 @@ export function ThreadPromptContextBanner({
         statusAriaLabel={
           environmentGoneCopy?.ariaLabel ?? ARCHIVED_THREAD_STATUS_LABEL
         }
-        statusLabel={
-          environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL
-        }
+        statusLabel={environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL}
+        showStatusActionWithParent={Boolean(
+          environmentGoneSection?.onContinueInNewThread,
+        )}
         statusAction={
-          archivedSection?.onUnarchive && !environmentGone ? (
+          environmentGoneSection?.status === "destroyed" &&
+          environmentGoneSection.onContinueInNewThread ? (
+            <ContinueInNewThreadAction
+              onContinue={environmentGoneSection.onContinueInNewThread}
+            />
+          ) : archivedSection?.onUnarchive && !environmentGone ? (
             <ThreadUnarchiveTextAction
               isPending={archivedSection.unarchivePending}
               onUnarchive={archivedSection.onUnarchive}
@@ -984,8 +997,7 @@ export function ThreadPromptContextBanner({
   // inline as "Parent <name>" with the name as a link. There's no other
   // context to compete for the row, so the icon-only toggle would be a strict
   // downgrade in legibility.
-  const isParentThreadOnly =
-    showParentThread && !showGit && !showPullRequest;
+  const isParentThreadOnly = showParentThread && !showGit && !showPullRequest;
 
   const pullRequest = pullRequestSection?.pullRequest ?? null;
   const showPullRequestLabel =

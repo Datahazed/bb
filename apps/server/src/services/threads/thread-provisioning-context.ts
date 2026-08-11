@@ -10,6 +10,7 @@ import {
 } from "@bb/domain";
 import {
   baseBranchSpecSchema,
+  gitBranchNameSchema,
   unmanagedBranchSpecSchema,
 } from "@bb/server-contract";
 
@@ -37,6 +38,16 @@ const directManagedIntentSchema = z.object({
   workspaceProvisionType: z.literal("managed-worktree"),
 });
 
+const continueManagedIntentSchema = z.object({
+  type: z.literal("continue-managed"),
+  sourceEnvironmentId: z.string().min(1),
+  hostId: z.string().min(1),
+  sourcePath: z.string().min(1),
+  branchName: gitBranchNameSchema,
+  mergeBaseBranch: gitBranchNameSchema,
+  workspaceProvisionType: z.literal("managed-worktree"),
+});
+
 const directPersonalIntentSchema = z.object({
   type: z.literal("direct-personal"),
   hostId: z.string().min(1),
@@ -54,6 +65,7 @@ export const threadProvisionEnvironmentIntentSchema = z.discriminatedUnion(
     directUnmanagedIntentSchema,
     checkoutUnmanagedIntentSchema,
     directManagedIntentSchema,
+    continueManagedIntentSchema,
     directPersonalIntentSchema,
     reuseIntentSchema,
   ],

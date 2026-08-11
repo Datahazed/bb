@@ -7,10 +7,14 @@ import type {
 import type {
   CreateThreadEnvironmentArgs,
   CreateThreadRequest,
-  EnvironmentArgs,
   StartedOnBehalfOf,
   ThreadCreateOrigin,
 } from "@bb/server-contract";
+
+export type ResolvedCreateThreadEnvironmentArgs = Exclude<
+  CreateThreadEnvironmentArgs,
+  { type: "project-default" }
+>;
 
 export interface ThreadCreateServiceRequestInput {
   /** @deprecated Use originKind. */
@@ -45,7 +49,7 @@ export interface ThreadCreateServiceRequest extends Omit<
   ThreadCreateServiceRequestInput,
   "environment" | "providerId"
 > {
-  environment: EnvironmentArgs;
+  environment: ResolvedCreateThreadEnvironmentArgs;
   providerId: string;
   titleFallback: string | null;
   /** Resolved at the create boundary: request value, else inherited/default. */

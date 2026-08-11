@@ -200,6 +200,9 @@ declare const createThreadEnvironmentArgsSchema: z.ZodDiscriminatedUnion<[z.ZodO
     }, z.core.$strip>], "type">;
 }, z.core.$strip>, z.ZodObject<{
     type: z.ZodLiteral<"project-default">;
+}, z.core.$strip>, z.ZodObject<{
+    type: z.ZodLiteral<"continue">;
+    sourceEnvironmentId: z.ZodString;
 }, z.core.$strip>], "type">;
 type CreateThreadEnvironmentArgs = z.infer<typeof createThreadEnvironmentArgsSchema>;
 

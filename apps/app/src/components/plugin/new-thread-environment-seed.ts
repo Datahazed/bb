@@ -29,6 +29,9 @@ export function newThreadEnvironmentArgsToSeed(
   if (environment.type === "project-default") {
     return null;
   }
+  if (environment.type === "continue") {
+    return null;
+  }
   if (environment.type === "reuse") {
     return {
       selectionValue: encodeReuseValue(environment.environmentId),

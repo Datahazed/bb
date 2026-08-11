@@ -4,7 +4,10 @@ import {
   threadVisibilitySchema,
   type Thread,
 } from "@bb/domain";
-import type { BaseBranchSpec, EnvironmentArgs } from "@bb/server-contract";
+import type {
+  BaseBranchSpec,
+  CreateThreadEnvironmentArgs,
+} from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import {
@@ -36,6 +39,7 @@ interface ThreadSpawnCommandOptions {
   environment?: string;
   newEnvironment?: string;
   baseBranch?: string;
+  continueFromEnvironment?: string;
   parentThread?: string;
   provider?: string;
   model?: string;
@@ -103,14 +107,30 @@ export function buildSpawnEnvironment(args: {
   newEnvironmentKind?: string;
   hostId: string | null;
   baseBranch?: string;
-}): EnvironmentArgs {
+  continueFromEnvironmentId?: string;
+}): CreateThreadEnvironmentArgs {
   const environmentValue = args.environmentValue?.trim();
   const newEnvironmentKind = args.newEnvironmentKind?.trim();
   const trimmedBaseBranch = args.baseBranch?.trim();
+  const continueFromEnvironmentId = args.continueFromEnvironmentId?.trim();
   const baseBranch: BaseBranchSpec = trimmedBaseBranch
     ? { kind: "named", name: trimmedBaseBranch }
     : { kind: "default" };
 
+  if (
+    continueFromEnvironmentId &&
+    (environmentValue || newEnvironmentKind || trimmedBaseBranch)
+  ) {
+    throw new Error(
+      "Cannot combine --continue-from-environment with --environment, --new-environment, or --base-branch.",
+    );
+  }
+  if (continueFromEnvironmentId) {
+    return {
+      type: "continue",
+      sourceEnvironmentId: continueFromEnvironmentId,
+    };
+  }
   if (environmentValue && newEnvironmentKind) {
     throw new Error("Cannot combine --environment with --new-environment.");
   }
@@ -181,6 +201,10 @@ export function registerSpawnCommand(
       "Base branch for new managed worktrees. Omit to let bb choose the project's default worktree base.",
     )
     .option(
+      "--continue-from-environment <environment-id>",
+      "Create a new worktree that continues an archived managed environment's branch and merge base",
+    )
+    .option(
       "--machine <id-or-name>",
       "Execution machine ID or unambiguous name",
     )
@@ -232,7 +256,16 @@ export function registerSpawnCommand(
           throw new Error("Missing required option --project <id>.");
         }
         const environmentValue = resolveSpawnEnvironmentValue(opts.environment);
+        const continueFromEnvironmentId = resolveExplicitIdFlag({
+          flagName: "--continue-from-environment flag",
+          value: opts.continueFromEnvironment,
+        });
         const machineTarget = resolveMachineTargetOption(opts);
+        if (machineTarget && continueFromEnvironmentId) {
+          throw new Error(
+            "Cannot combine --machine or --host with --continue-from-environment; the archived environment already selects its machine.",
+          );
+        }
         if (
           machineTarget &&
           environmentValue &&
@@ -245,11 +278,13 @@ export function registerSpawnCommand(
         const defaultPersonalWorkspace =
           projectId === PERSONAL_PROJECT_ID &&
           !environmentValue &&
+          !continueFromEnvironmentId &&
           !opts.newEnvironment;
         const needsHostId =
-          Boolean(opts.newEnvironment) ||
-          (!defaultPersonalWorkspace &&
-            (!environmentValue || looksLikePath(environmentValue)));
+          !continueFromEnvironmentId &&
+          (Boolean(opts.newEnvironment) ||
+            (!defaultPersonalWorkspace &&
+              (!environmentValue || looksLikePath(environmentValue))));
         const hostId = machineTarget
           ? await resolveMachineHostId({
               serverUrl: getUrl(),
@@ -264,6 +299,7 @@ export function registerSpawnCommand(
           newEnvironmentKind: opts.newEnvironment,
           hostId,
           baseBranch: opts.baseBranch,
+          continueFromEnvironmentId,
         });
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
         const serviceTier = parseServiceTier(opts.serviceTier);

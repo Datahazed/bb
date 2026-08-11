@@ -5,6 +5,8 @@ import { parseEnvironmentValue } from "@/components/pickers/environment-picker-v
 export interface RootComposeSelectedBranch {
   name: string;
   isNew: boolean;
+  /** Source environment when this is an archived-branch continuation. */
+  continueFromEnvironmentId?: string;
 }
 
 export interface ResolveRootComposeThreadEnvironmentArgs {
@@ -62,6 +64,12 @@ export function resolveRootComposeThreadEnvironment(
     }
 
     if (parsed.mode === "worktree") {
+      if (args.selectedBranch?.continueFromEnvironmentId) {
+        return {
+          type: "continue",
+          sourceEnvironmentId: args.selectedBranch.continueFromEnvironmentId,
+        };
+      }
       return {
         type: "host",
         hostId: parsed.hostId,

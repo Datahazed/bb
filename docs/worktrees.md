@@ -22,7 +22,7 @@ branch. Under the hood it's `git worktree add` plus some bookkeeping:
 - It lives at `<BB_DATA_DIR>/worktrees/<environment-id>/<repo-name>` — for
   example, `~/.bb/worktrees/env_abc.../myrepo`.
 - Once every thread using the environment is archived or deleted, bb cleans the
-  worktree up (`git worktree remove --force`) along with the branch.
+  worktree up (`git worktree remove --force`) but retains its local branch.
 
 ## Start a thread in a worktree
 
@@ -41,6 +41,25 @@ pnpm bb thread spawn \
 When you omit `--base-branch`, bb chooses the project's default worktree base,
 preferring the origin default branch when safe. Pass `--base-branch <name>`
 only when you need a specific base.
+
+To resume work from an archived managed environment, use the **Continue in new
+thread** action in its archived banner. The new-thread composer includes a
+rich `Continue from @thread:<source>` prompt prefix so the agent can inspect
+the source conversation. You can also run:
+
+```bash
+pnpm bb thread spawn \
+  --project <project-id> \
+  --continue-from-environment <archived-environment-id> \
+  --prompt "..."
+```
+
+bb creates a new worktree with the archived environment's merge base. It
+checks out the archived local branch under the same name when possible. If
+that branch is already checked out in another worktree, bb creates a new
+thread-scoped branch at the same commit. If the archived branch no longer
+exists locally, provisioning fails rather than falling back to the merge base
+and losing branch-only commits.
 
 ## Copy local files with `.worktreeinclude`
 
@@ -106,10 +125,9 @@ Contract:
 ## Cleanup
 
 You don't need to clean up worktrees by hand — bb removes them once every
-thread using the environment is archived or deleted, and the branch goes with
-it. If you
-want to keep work the agent did, commit and push (or open a PR) from inside
-the worktree before letting the thread go.
+thread using the environment is archived or deleted. The local branch remains
+available for a later continuation; push it or open a PR if it also needs to
+survive outside that local repository.
 
 ## If something isn't working
 

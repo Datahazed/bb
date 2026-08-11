@@ -1,9 +1,6 @@
 import { mkdir, realpath, rm } from "node:fs/promises";
 import path from "node:path";
-import type {
-  ProvisioningTranscriptEntry,
-  WorkspaceStatus,
-} from "@bb/domain";
+import type { ProvisioningTranscriptEntry, WorkspaceStatus } from "@bb/domain";
 import type {
   CommitOptions,
   CommitResult,
@@ -91,6 +88,8 @@ export interface ManagedWorkspaceBaseOpts extends ProvisionBase {
    * `null` to use the source's default branch.
    */
   baseBranch: string | null;
+  /** Existing local branch to reuse for an archived-environment continuation. */
+  continueFromBranchName?: string;
   /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
   /** Resolved user-shell PATH for the setup script. */
@@ -713,6 +712,9 @@ async function provisionWorktree(
     targetPath: opts.targetPath,
     branchName: opts.branchName,
     baseBranch: opts.baseBranch,
+    ...(opts.continueFromBranchName
+      ? { continueFromBranchName: opts.continueFromBranchName }
+      : {}),
     timeoutMs: opts.timeoutMs,
     setupPath: opts.setupPath,
     onProgress: opts.onProgress,

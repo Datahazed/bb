@@ -36,7 +36,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 101 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 102 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -985,6 +985,11 @@ const managedEnvironmentProvisionFieldsSchema = z.object({
    * `null` to use the source's default branch (resolved by the daemon).
    */
   baseBranch: gitBranchNameSchema.nullable(),
+  /**
+   * Existing local branch to reattach for an archived-environment
+   * continuation. When present, `branchName` is the collision fallback name.
+   */
+  continueFromBranchName: gitBranchNameSchema.optional(),
   /** Maximum time in ms to wait for the setup script */
   setupTimeoutMs: z.number().int().positive(),
 });

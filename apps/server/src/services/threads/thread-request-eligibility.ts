@@ -3,8 +3,9 @@ import {
   type Environment,
   type LocalPathProjectSource,
   PERSONAL_PROJECT_ID,
+  resolveEnvironmentMergeBaseBranch,
 } from "@bb/domain";
-import type { EnvironmentArgs } from "@bb/server-contract";
+import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
@@ -13,7 +14,10 @@ import {
   requireConnectedPrimaryHostId,
 } from "../hosts/primary-host.js";
 
-type ThreadRequestEnvironment = EnvironmentArgs;
+type ThreadRequestEnvironment = Exclude<
+  CreateThreadEnvironmentArgs,
+  { type: "project-default" }
+>;
 type ThreadRequestEnvironmentDeps = Pick<AppDeps, "config" | "db" | "hub">;
 type HostThreadRequestEnvironment = Extract<
   ThreadRequestEnvironment,
@@ -26,6 +30,10 @@ type WorkspaceBackedHostWorkspace = Exclude<
 type ReuseThreadRequestEnvironment = Extract<
   ThreadRequestEnvironment,
   { type: "reuse" }
+>;
+type ContinueThreadRequestEnvironment = Extract<
+  ThreadRequestEnvironment,
+  { type: "continue" }
 >;
 export interface ResolveStableThreadRequestEnvironmentArgs {
   /**
@@ -56,8 +64,18 @@ export interface ResolvedPersonalThreadRequestEnvironment {
   type: "personal";
 }
 
+export interface ResolvedContinueThreadRequestEnvironment {
+  branchName: string;
+  environment: Environment;
+  hostId: string;
+  localSource: LocalPathProjectSource;
+  mergeBaseBranch: string;
+  type: "continue";
+}
+
 export type ResolvedStableThreadRequestEnvironment =
   | ResolvedHostThreadRequestEnvironment
+  | ResolvedContinueThreadRequestEnvironment
   | ResolvedPersonalThreadRequestEnvironment
   | ResolvedReuseThreadRequestEnvironment;
 
@@ -72,6 +90,71 @@ function requireHostEnvironmentId(
     "invalid_request",
     "hostId is required for workspace-backed thread creation",
   );
+}
+
+function resolveContinueThreadRequestEnvironment(
+  deps: ThreadRequestEnvironmentDeps,
+  environment: ContinueThreadRequestEnvironment,
+  projectId: string,
+): ResolvedContinueThreadRequestEnvironment {
+  if (projectId === PERSONAL_PROJECT_ID) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Personal project threads cannot continue archived managed worktrees",
+    );
+  }
+  const sourceEnvironment = requireEnvironment(
+    deps.db,
+    environment.sourceEnvironmentId,
+  );
+  if (sourceEnvironment.projectId !== projectId) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Environment belongs to a different project",
+    );
+  }
+  if (
+    sourceEnvironment.status !== "destroyed" ||
+    sourceEnvironment.workspaceProvisionType !== "managed-worktree" ||
+    sourceEnvironment.branchName === null
+  ) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Only archived managed worktrees with a branch can be continued",
+    );
+  }
+  const mergeBaseBranch = resolveEnvironmentMergeBaseBranch(sourceEnvironment);
+  if (mergeBaseBranch === undefined) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Archived environment has no merge base branch to preserve",
+    );
+  }
+  assertUsableHostId(deps, { hostId: sourceEnvironment.hostId });
+  const localSource = getProjectSourceByHost(
+    deps.db,
+    projectId,
+    sourceEnvironment.hostId,
+  );
+  if (!localSource || localSource.type !== "local_path") {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "No project source configured for the archived environment's host",
+    );
+  }
+  return {
+    branchName: sourceEnvironment.branchName,
+    environment: sourceEnvironment,
+    hostId: sourceEnvironment.hostId,
+    localSource,
+    mergeBaseBranch,
+    type: "continue",
+  };
 }
 
 function assertPersonalWorkspaceProjectCompatibility(projectId: string): void {
@@ -203,6 +286,12 @@ export function resolveStableThreadRequestEnvironment(
   args: ResolveStableThreadRequestEnvironmentArgs,
 ): ResolvedStableThreadRequestEnvironment {
   switch (args.environment.type) {
+    case "continue":
+      return resolveContinueThreadRequestEnvironment(
+        deps,
+        args.environment,
+        args.projectId,
+      );
     case "host":
       return resolveHostThreadRequestEnvironment(
         deps,

@@ -655,6 +655,22 @@ describe("hasSingleUseRootComposeTargetState", () => {
     ).toBe(true);
   });
 
+  it("treats archived environment continuation as single-use target state", () => {
+    expect(
+      hasSingleUseRootComposeTargetState({
+        continueEnvironment: {
+          branchName: "feature/preserved",
+          hostId: "host_1",
+          mergeBaseBranch: "origin/main",
+          projectId: "proj_1",
+          sourceEnvironmentId: "env_archived",
+          sourceThreadId: "thr_archived",
+          sourceThreadTitle: "Archived feature work",
+        },
+      }),
+    ).toBe(true);
+  });
+
   it("ignores non-target state", () => {
     expect(hasSingleUseRootComposeTargetState(null)).toBe(false);
   });

@@ -715,6 +715,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
+  "hostDaemonCommandSchema.continueFromBranchName":
+    "managed environment provisioning includes this only when reattaching an archived environment branch; ordinary worktrees create a new branch.",
   "hostDaemonCommandSchema.targetPath":
     "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
@@ -1055,10 +1057,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 101 builds on Codex inference deadlines in version 100 with
-  // provider-native history checkpointing and ownership-leased staged rewinds.
-  it("uses protocol version 101 for leased staged thread rewind cleanup", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(101);
+  // Version 102 builds on leased staged thread rewind cleanup in version 101
+  // with archived-branch continuation semantics for managed provisioning.
+  it("uses protocol version 102 for archived branch continuation", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(102);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

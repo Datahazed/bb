@@ -1,0 +1,1 @@
+ALTER TABLE `environments` ADD `continuation_branch_name` text;

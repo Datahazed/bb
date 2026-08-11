@@ -139,10 +139,21 @@ export const projectDefaultEnvironmentSchema = z.object({
   type: z.literal("project-default"),
 });
 
+/**
+ * Creates a fresh managed worktree from a destroyed managed environment.
+ * The server resolves the archived environment's host, project source,
+ * branch, and merge base; callers only identify the source environment.
+ */
+export const continueEnvironmentSchema = z.object({
+  type: z.literal("continue"),
+  sourceEnvironmentId: z.string().min(1),
+});
+
 export const createThreadEnvironmentArgsSchema = z.discriminatedUnion("type", [
   reuseEnvironmentSchema,
   hostEnvironmentSchema,
   projectDefaultEnvironmentSchema,
+  continueEnvironmentSchema,
 ]);
 export type CreateThreadEnvironmentArgs = z.infer<
   typeof createThreadEnvironmentArgsSchema

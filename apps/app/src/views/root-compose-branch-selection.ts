@@ -11,6 +11,7 @@ export interface UseScopedBranchSelectionResult {
   onClearBranch: () => void;
   onCreateBranch: (currentBranch: string | null) => void;
   onCreateBranchFrom: (name: string) => void;
+  onContinueFrom: (name: string, sourceEnvironmentId: string) => void;
   selectedBranch: RootComposeSelectedBranch | null;
 }
 
@@ -42,12 +43,14 @@ export function carryBranchSelectionAcrossScope(args: {
 }
 
 export function useScopedBranchSelection(
-  args: BranchSelectionScopeArgs,
+  args: BranchSelectionScopeArgs & {
+    initialSelection?: RootComposeSelectedBranch | null;
+  },
 ): UseScopedBranchSelectionResult {
   const scopeKey = getBranchSelectionScopeKey(args);
   const scopeUsable = scopeKey !== null;
   const [selectedBranchState, setSelectedBranchState] =
-    useState<RootComposeSelectedBranch | null>(null);
+    useState<RootComposeSelectedBranch | null>(args.initialSelection ?? null);
   const [trackedScopeKey, setTrackedScopeKey] = useState<string | null>(
     scopeKey,
   );
@@ -99,11 +102,24 @@ export function useScopedBranchSelection(
     setSelectedBranchState(null);
   }, [scopeUsable]);
 
+  const onContinueFrom = useCallback(
+    (name: string, sourceEnvironmentId: string) => {
+      if (!scopeUsable) return;
+      setSelectedBranchState({
+        name,
+        isNew: false,
+        continueFromEnvironmentId: sourceEnvironmentId,
+      });
+    },
+    [scopeUsable],
+  );
+
   return {
     onBranchChange,
     onClearBranch,
     onCreateBranch,
     onCreateBranchFrom,
+    onContinueFrom,
     selectedBranch,
   };
 }

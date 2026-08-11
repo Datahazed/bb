@@ -214,6 +214,8 @@ function childHostIdForResolvedEnvironment(
   resolvedEnvironment: ResolvedStableThreadRequestEnvironment,
 ): string | null {
   switch (resolvedEnvironment.type) {
+    case "continue":
+      return resolvedEnvironment.hostId;
     case "reuse":
       return resolvedEnvironment.environment.hostId;
     case "host":
@@ -227,6 +229,8 @@ function modelCatalogCwdForResolvedEnvironment(
   resolvedEnvironment: ResolvedStableThreadRequestEnvironment,
 ): string | undefined {
   switch (resolvedEnvironment.type) {
+    case "continue":
+      return resolvedEnvironment.localSource.path;
     case "reuse":
       return resolvedEnvironment.environment.path ?? undefined;
     case "host":
@@ -797,6 +801,18 @@ export async function createThreadFromRequest(
   let environmentIntent: ThreadProvisionEnvironmentIntent;
 
   switch (resolvedEnvironment.type) {
+    case "continue": {
+      environmentIntent = {
+        type: "continue-managed",
+        sourceEnvironmentId: resolvedEnvironment.environment.id,
+        hostId: resolvedEnvironment.hostId,
+        sourcePath: resolvedEnvironment.localSource.path,
+        branchName: resolvedEnvironment.branchName,
+        mergeBaseBranch: resolvedEnvironment.mergeBaseBranch,
+        workspaceProvisionType: "managed-worktree",
+      };
+      break;
+    }
     case "reuse": {
       let environment = resolvedEnvironment.environment;
       if (environment.status === "retiring") {

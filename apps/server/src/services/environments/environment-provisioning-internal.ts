@@ -21,6 +21,7 @@ import {
   systemThreadProvisioningEventDataSchema,
   threadScope,
 } from "@bb/domain";
+import type { BaseBranchSpec } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import {
@@ -610,13 +611,11 @@ export function settleEnvironmentProvisionCommandResult(
         ...resolveProvisionedEnvironmentBranchMetadata(args.command),
       },
     );
-    const provisionedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
-      args.deps,
-      {
+    const provisionedOutcome =
+      applyLoggedEnvironmentLifecycleEventInTransaction(args.deps, {
         environmentId: args.command.environmentId,
         event: { type: "provision.succeeded" },
-      },
-    );
+      });
     if (provisionedOutcome.applied) {
       args.deps.hub.notifyEnvironment(
         args.command.environmentId,
@@ -1086,6 +1085,10 @@ export async function dispatchManagedEnvironmentReprovision(
           workspaceProvisionType: provisionType,
         })
       : (() => {
+          const storedEnvironment = getEnvironment(
+            deps.db,
+            args.environment.id,
+          );
           const source = requireSourceForHost(
             deps,
             args.projectId,
@@ -1098,15 +1101,30 @@ export async function dispatchManagedEnvironmentReprovision(
               environmentId: args.environment.id,
               sourcePath: source.path,
             });
-          const branchName =
+          const generatedBranchName =
             args.environment.branchName ??
             buildManagedBranchName({ threadId: args.threadId });
-          const baseBranch = storedBaseBranchNameToSpec(
-            args.environment.baseBranch,
-          );
+          const continuationBranchName =
+            storedEnvironment?.continuationBranchName ?? null;
+          const preferredContinuationBranch = continuationBranchName
+            ? (args.environment.branchName ?? continuationBranchName)
+            : null;
+          const branchName =
+            preferredContinuationBranch === generatedBranchName
+              ? `${generatedBranchName}-recovery`
+              : generatedBranchName;
+          const baseBranch: BaseBranchSpec = preferredContinuationBranch
+            ? {
+                kind: "named",
+                name: preferredContinuationBranch,
+              }
+            : storedBaseBranchNameToSpec(args.environment.baseBranch);
           return buildEnvironmentProvisionCommand({
             branchName,
             baseBranch,
+            ...(preferredContinuationBranch
+              ? { continueFromBranchName: preferredContinuationBranch }
+              : {}),
             environmentId: args.environment.id,
             hostId: args.environment.hostId,
             initiator,

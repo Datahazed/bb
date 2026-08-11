@@ -18,7 +18,7 @@ import type { PickerOption } from "@/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
-import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
+import { useRootComposeEnvironmentOverride } from "@/lib/root-compose-selection";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { REASONING_LABELS } from "@/lib/reasoning-labels";
 import { permissionModeRank, reconcileReasoningLevel } from "@bb/domain";
@@ -85,7 +85,7 @@ export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   setPermissionMode: PermissionModeSelectionSetter;
   environmentSelectionValue: string;
   setEnvironmentSelectionValue: StringSelectionSetter;
-  clearReuseEnvironment: ClearSelectionHandler;
+  clearEnvironmentOverride: ClearSelectionHandler;
   activeModel: AvailableModel | undefined;
   modelOptions: ModelPickerOption[];
   moreModelOptions: ModelPickerOption[];
@@ -175,11 +175,11 @@ export function useThreadCreationOptions(
     setValue: setStoredEnvironmentSelectionValue,
     value: storedEnvironmentSelectionValue,
   } = usePromptBoxEnvironmentPreference(preferenceProjectId);
-  // Reuse env values are intentionally NEVER persisted to localStorage —
-  // they represent a transient "create one thread in this worktree" intent,
-  // not a project default.
-  const [rootComposeReuseValue, setRootComposeReuseValue] =
-    useRootComposeReuseEnvironment();
+  // One-shot environment values are intentionally NEVER persisted to
+  // localStorage — they represent a transient create intent, not a project
+  // default. This covers both reuse and archived-environment continuation.
+  const [rootComposeEnvironmentOverride, setRootComposeEnvironmentOverride] =
+    useRootComposeEnvironmentOverride();
   const [threadSelections, setThreadSelections] =
     useState<ThreadPromptSelections>(() =>
       getInitialThreadPromptSelections({
@@ -256,7 +256,7 @@ export function useThreadCreationOptions(
     : renderedThreadSelections.permissionMode;
   const rawEnvironmentSelectionValue =
     scope === "new-thread"
-      ? (rootComposeReuseValue ??
+      ? (rootComposeEnvironmentOverride ??
         sanitizeStoredEnvironmentValue(storedEnvironmentSelectionValue))
       : renderedThreadSelections.environmentSelectionValue;
 
@@ -749,10 +749,10 @@ export function useThreadCreationOptions(
           // Reuse intent is transient. Hold it in root-compose state so the
           // picker reflects the user's choice without overwriting their
           // persisted host-mode default.
-          setRootComposeReuseValue(value);
+          setRootComposeEnvironmentOverride(value);
           return;
         }
-        setRootComposeReuseValue(null);
+        setRootComposeEnvironmentOverride(null);
         setStoredEnvironmentSelectionValue(value);
         return;
       }
@@ -765,14 +765,17 @@ export function useThreadCreationOptions(
         }),
       );
     },
-    [scope, setRootComposeReuseValue, setStoredEnvironmentSelectionValue],
+    [
+      scope,
+      setRootComposeEnvironmentOverride,
+      setStoredEnvironmentSelectionValue,
+    ],
   );
-  // Dismissing the reuse banner reverts to whatever the user's persisted
-  // host-mode default is — no localStorage write needed, just clear the
-  // transient override.
-  const clearReuseEnvironment = useCallback(() => {
-    setRootComposeReuseValue(null);
-  }, [setRootComposeReuseValue]);
+  // Dismissing a one-shot choice reverts to the user's persisted host-mode
+  // default without a localStorage write.
+  const clearEnvironmentOverride = useCallback(() => {
+    setRootComposeEnvironmentOverride(null);
+  }, [setRootComposeEnvironmentOverride]);
 
   return {
     executionOptionsRouting,
@@ -793,7 +796,7 @@ export function useThreadCreationOptions(
     setPermissionMode,
     environmentSelectionValue,
     setEnvironmentSelectionValue,
-    clearReuseEnvironment,
+    clearEnvironmentOverride,
     activeModel,
     modelOptions,
     moreModelOptions,
