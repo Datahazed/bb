@@ -31,6 +31,7 @@ import {
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
+import { supportsManualCompaction } from "@bb/agent-providers";
 import type { AppDeps } from "../types.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
@@ -732,6 +733,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       buildCommandListResponse({
         commands: result.commands,
+        includeBuiltinCompact: supportsManualCompaction(query.provider),
         skillCatalog,
       }),
     );

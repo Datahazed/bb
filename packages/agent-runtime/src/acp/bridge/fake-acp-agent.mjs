@@ -31,6 +31,10 @@
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
+ * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
+ * - FAKE_ACP_PROMPT_ERROR=1  → reject every session/prompt request
+ * - FAKE_ACP_COMPACT_STOP_REASON
+ *                            → stop reason returned for /compact
  */
 
 import { createInterface } from "node:readline";
@@ -53,7 +57,7 @@ const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .split(",")
   .map((method) => method.trim())
   .filter(Boolean);
-const newSessionId = `fake-sess-${process.pid}`;
+const sessionId = `fake-sess-${process.pid}`;
 const fakeModels = [
   { value: "fake/default", name: "Fake Default" },
   { value: "fake/strong", name: "Fake Strong" },
@@ -64,7 +68,7 @@ let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
 let selectedEffort = "none";
 let authenticatedMethod = null;
-let activeSessionId = newSessionId;
+let activeSessionId = sessionId;
 const pendingClientRequests = new Map();
 let currentMcpServers = [];
 
@@ -225,8 +229,26 @@ function captureMcpServers(message) {
 async function handlePrompt(message) {
   activePromptId = message.id;
   const text = promptText(message.params?.prompt);
+  if (process.env.FAKE_ACP_PROMPT_LOG) {
+    appendFileSync(
+      process.env.FAKE_ACP_PROMPT_LOG,
+      `${JSON.stringify(text)}\n`,
+    );
+  }
 
-  if (text.includes("request-permission")) {
+  if (process.env.FAKE_ACP_PROMPT_ERROR === "1") {
+    activePromptId = null;
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: { code: -32000, message: "Fake prompt failure" },
+    });
+    return;
+  }
+
+  if (text === "/compact") {
+    // OpenCode treats this exact prompt as a provider-local control.
+  } else if (text.includes("request-permission")) {
     notifyUpdate({
       sessionUpdate: "tool_call",
       toolCallId: "perm-tool-1",
@@ -309,10 +331,14 @@ async function handlePrompt(message) {
 
   if (activePromptId === message.id) {
     activePromptId = null;
+    const stopReason =
+      text === "/compact"
+        ? (process.env.FAKE_ACP_COMPACT_STOP_REASON ?? "end_turn")
+        : "end_turn";
     send({
       jsonrpc: "2.0",
       id: message.id,
-      result: { stopReason: "end_turn" },
+      result: { stopReason },
     });
   }
 }
@@ -364,13 +390,13 @@ async function handleMessage(message) {
       if (!requireAuthenticated(message)) {
         return;
       }
+      activeSessionId = sessionId;
       captureMcpServers(message);
-      activeSessionId = newSessionId;
       send({
         jsonrpc: "2.0",
         id: message.id,
         result: {
-          sessionId: newSessionId,
+          sessionId: activeSessionId,
           ...configState(),
         },
       });

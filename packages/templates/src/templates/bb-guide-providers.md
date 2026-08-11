@@ -125,3 +125,6 @@ Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots
 as read-only sources. It then injects the selected skills into all providers.
 The bb user and project roots keep higher precedence than matching shared roots.
+
+OpenCode ACP supports the built-in /compact command. Cursor ACP does not expose
+compatible manual compaction through ACP.

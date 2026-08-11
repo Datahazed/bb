@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createStandaloneBuiltinCompactCommandInput,
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   threadScope,
   turnScope,
@@ -25,6 +26,17 @@ function createAdapter(turnIdPrefix?: string): AcpProviderAdapter {
     profile: getAcpAgentProfile("acp-cursor"),
     additionalWorkspaceWriteRoots: ["/extra-root"],
     ...(turnIdPrefix !== undefined ? { turnIdPrefix } : {}),
+  });
+}
+
+function createCompactingAdapter(): AcpProviderAdapter {
+  return createAcpProviderAdapter({
+    profile: {
+      providerId: "acp-opencode",
+      displayName: "opencode",
+      agentCommand: { command: "opencode", args: ["acp"] },
+    },
+    additionalWorkspaceWriteRoots: [],
   });
 }
 
@@ -74,6 +86,24 @@ describe("acp adapter command plans", () => {
       "accept-edits",
       "full",
     ]);
+  });
+
+  it("routes OpenCode's selected compact command through maintenance", () => {
+    const adapter = createCompactingAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "turn/start",
+        clientRequestId: "creq_222222228c",
+        threadId: "thread-1",
+        providerThreadId: "sess-1",
+        input: createStandaloneBuiltinCompactCommandInput(),
+        options: fullProviderExecutionContext,
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/compact",
+      params: { threadId: "sess-1" },
+    });
   });
 
   it("rejects auto when an ACP command bypasses capability validation", () => {
@@ -337,6 +367,119 @@ describe("acp adapter command plans", () => {
       method: "thread/start",
       params: {
         dynamicTools: [dynamicTool],
+      },
+    });
+  });
+});
+
+describe("acp compaction events", () => {
+  it("translates successful maintenance prompts into a compaction lifecycle", () => {
+    const adapter = createCompactingAdapter();
+
+    const started = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/compaction/started",
+        params: { threadId: "thread-1" },
+      },
+      THREAD_CONTEXT,
+    );
+    const completed = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/compaction/completed",
+        params: { threadId: "thread-1", status: "completed" },
+      },
+      THREAD_CONTEXT,
+    );
+
+    expect(started.map((event) => event.type)).toEqual([
+      "turn/started",
+      "item/started",
+    ]);
+    expect(completed).toEqual([
+      expect.objectContaining({
+        type: "thread/compacted",
+        scope: turnScope("turn-1"),
+      }),
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      }),
+    ]);
+  });
+
+  it("does not report failed maintenance prompts as compacted", () => {
+    const adapter = createCompactingAdapter();
+    adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/compaction/started",
+        params: { threadId: "thread-1" },
+      },
+      THREAD_CONTEXT,
+    );
+
+    const events = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/compaction/completed",
+        params: {
+          threadId: "thread-1",
+          status: "failed",
+          error: "Provider rejected /compact",
+        },
+      },
+      THREAD_CONTEXT,
+    );
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "failed",
+        error: { message: "Provider rejected /compact" },
+      }),
+    ]);
+  });
+
+  it("completes streamed items before ending a compaction turn", () => {
+    const adapter = createCompactingAdapter();
+    adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/compaction/started",
+        params: { threadId: "thread-1" },
+      },
+      THREAD_CONTEXT,
+    );
+    adapter.translateEvent(
+      updateNotification({
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "Compacted successfully" },
+      }),
+      THREAD_CONTEXT,
+    );
+
+    const events = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/compaction/completed",
+        params: { threadId: "thread-1", status: "completed" },
+      },
+      THREAD_CONTEXT,
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "item/completed",
+      "thread/compacted",
+      "turn/completed",
+    ]);
+    expect(events[0]).toMatchObject({
+      item: {
+        type: "agentMessage",
+        text: "Compacted successfully",
       },
     });
   });

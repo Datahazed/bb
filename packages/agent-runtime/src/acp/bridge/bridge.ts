@@ -41,6 +41,8 @@ import {
 } from "../../shared/bridge-tool-calls.js";
 import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
 import {
+  ACP_COMPACTION_COMPLETED_METHOD,
+  ACP_COMPACTION_STARTED_METHOD,
   ACP_DEFAULT_MODEL_ID,
   ACP_FS_WRITE_METHOD,
   ACP_PERMISSION_REQUEST_METHOD,
@@ -125,13 +127,13 @@ interface AcpThreadSession {
   policy: AcpSessionPolicy;
   cwd: string;
   pendingInstructions: string | undefined;
-  promptActive: boolean;
+  activePromptKind: "turn" | "compaction" | null;
   queuedInputs: PromptInput[][];
   loading: boolean;
   loadingSessionId: string | undefined;
   pendingLoadUsageUpdate: AcpUsageUpdate | undefined;
   stopping: boolean;
-  /** Resolves when the in-flight bb turn loop fully settles. */
+  /** Resolves when the in-flight turn or maintenance prompt fully settles. */
   turnSettled: Promise<void> | undefined;
   pendingPermissions: Set<PendingAcpPermission>;
 }
@@ -1262,7 +1264,7 @@ function handlePermissionRequest(
     return;
   }
 
-  if (session.stopping) {
+  if (session.stopping || session.activePromptKind !== "turn") {
     responder.result({ outcome: { outcome: "cancelled" } });
     return;
   }
@@ -1510,7 +1512,7 @@ async function startAgentSession(
     },
     cwd: params.cwd,
     pendingInstructions: params.instructions,
-    promptActive: false,
+    activePromptKind: null,
     queuedInputs: [],
     loading: false,
     loadingSessionId: undefined,
@@ -1641,7 +1643,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
   session.queuedInputs = [];
   cancelPendingPermissions(session);
 
-  if (session.promptActive && !session.connection.exited) {
+  if (session.activePromptKind !== null && !session.connection.exited) {
     session.connection.notify("session/cancel", {
       sessionId: session.providerThreadId,
     });
@@ -1664,7 +1666,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
-  session.promptActive = true;
+  session.activePromptKind = "turn";
   sendNotification(ACP_TURN_STARTED_METHOD, { threadId: session.bbThreadId });
 
   session.turnSettled = (async () => {
@@ -1682,7 +1684,7 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
         });
         stopReason = result.stopReason;
       } catch (error) {
-        session.promptActive = false;
+        session.activePromptKind = null;
         session.queuedInputs = [];
         // An exited agent already produced an error notification from the
         // connection's exit handler; only report in-protocol prompt failures.
@@ -1704,7 +1706,7 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
         }
       }
 
-      session.promptActive = false;
+      session.activePromptKind = null;
       session.queuedInputs = [];
       sendNotification(ACP_TURN_COMPLETED_METHOD, {
         threadId: session.bbThreadId,
@@ -1713,6 +1715,54 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
       return;
     }
   })();
+}
+
+function startCompaction(session: AcpThreadSession): void {
+  if (session.activePromptKind !== null) {
+    throw new Error("Cannot compact context while an ACP turn is active");
+  }
+
+  session.activePromptKind = "compaction";
+  sendNotification(ACP_COMPACTION_STARTED_METHOD, {
+    threadId: session.bbThreadId,
+  });
+
+  const request = session.connection.request({
+    method: "session/prompt",
+    params: {
+      sessionId: session.providerThreadId,
+      prompt: [{ type: "text", text: "/compact" }],
+    },
+    resultSchema: acpPromptResultSchema,
+  });
+  session.turnSettled = request
+    .then((result) => {
+      const outcome =
+        result.stopReason === "end_turn"
+          ? { status: "completed" }
+          : result.stopReason === "cancelled"
+            ? { status: "interrupted" }
+            : {
+                status: "failed",
+                error: `Agent stopped compaction: ${result.stopReason}`,
+              };
+      sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
+        threadId: session.bbThreadId,
+        ...outcome,
+      });
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
+        threadId: session.bbThreadId,
+        status: "failed",
+        error: message,
+      });
+    })
+    .finally(() => {
+      session.activePromptKind = null;
+      session.turnSettled = undefined;
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -1875,7 +1925,7 @@ async function handleRequest(
         sendError(request.id, -32000, "No active ACP session");
         return;
       }
-      if (session.promptActive) {
+      if (session.activePromptKind !== null) {
         sendError(request.id, -32000, "A turn is already active");
         return;
       }
@@ -1890,7 +1940,7 @@ async function handleRequest(
         sendError(request.id, -32000, "No active ACP session");
         return;
       }
-      if (!session.promptActive) {
+      if (session.activePromptKind !== "turn") {
         sendError(request.id, -32000, "No active turn to steer");
         return;
       }
@@ -1905,6 +1955,25 @@ async function handleRequest(
         await stopSession(session);
       }
       sendResult(request.id, { ok: true });
+      return;
+    }
+
+    case "thread/compact": {
+      const session = getSessionByProviderThreadId(request.params.threadId);
+      if (!session || session.stopping) {
+        sendError(request.id, -32000, "No active ACP session");
+        return;
+      }
+      try {
+        startCompaction(session);
+        sendResult(request.id, { threadId: request.params.threadId });
+      } catch (error) {
+        sendError(
+          request.id,
+          -32000,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
       return;
     }
   }
