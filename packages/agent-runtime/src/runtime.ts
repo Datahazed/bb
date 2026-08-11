@@ -13,13 +13,13 @@ import type {
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type {
   AdapterCommand,
+  ProviderAdapter,
   ProviderAdapterFactory,
   ProviderCommandPlan,
   ProviderRequestCommandPlan,
 } from "./provider-adapter.js";
 import {
   assertProviderSupportsExecutionOptions,
-  sameExecutionSettings,
   toProviderExecutionContext,
 } from "./execution-options.js";
 import {
@@ -81,6 +81,13 @@ interface RestartCodexThreadForNextTurnArgs {
 interface RunThreadOperationArgs<TResult> {
   threadId: string;
   work: () => Promise<TResult>;
+}
+
+function normalizeExecutionOptions(args: {
+  adapter: ProviderAdapter;
+  options: AgentRuntimeExecutionOptions;
+}): AgentRuntimeExecutionOptions {
+  return args.adapter.normalizeExecutionOptions?.(args.options) ?? args.options;
 }
 
 interface ReapIdleProviderSessionCandidate {
@@ -819,19 +826,24 @@ function createAgentRuntimeInternal(
     // instructions) must never force a thread/resume, because a resume can
     // replace the live CLI session and kill its running background tasks.
     // Fresh instructions apply when the next session is constructed.
-    if (
-      sameExecutionSettings({
-        left: currentConfig.options,
-        right: nextOptions,
-      })
-    ) {
-      return;
-    }
-
     const proc = requireProviderProcess({
       processKey: currentConfig.processKey,
       providerId: currentConfig.providerId,
     });
+    const settingsChange = proc.adapter.classifyExecutionSettingsChange({
+      current: currentConfig.options,
+      next: nextOptions,
+    });
+    if (settingsChange !== "session") {
+      // Live settings ride on the next turn command; record them without
+      // replacing the session (which would kill its background tasks).
+      setThreadRuntimeConfig(args.threadId, {
+        ...currentConfig,
+        options: nextOptions,
+      });
+      return;
+    }
+
     const providerSkillRoots = currentConfig.skillRoots;
     const envVars = buildThreadShellEnvironment({
       baseShellEnv: options.shellEnv,
@@ -1104,10 +1116,14 @@ function createAgentRuntimeInternal(
           });
 
           const proc = requireProviderProcess({ processKey, providerId });
+          const effectiveExecOpts = normalizeExecutionOptions({
+            adapter: proc.adapter,
+            options: execOpts,
+          });
           const providerSkillRoots = skillRootsForProvider(providerId);
           assertProviderSupportsExecutionOptions({
             adapter: proc.adapter,
-            options: execOpts,
+            options: effectiveExecOpts,
             providerId,
           });
           threadIdentityRegistry.registerThreadProvider({
@@ -1122,7 +1138,7 @@ function createAgentRuntimeInternal(
             environmentId,
             instructionMode,
             instructions,
-            options: execOpts,
+            options: effectiveExecOpts,
             processKey,
             projectId,
             providerId,
@@ -1143,7 +1159,7 @@ function createAgentRuntimeInternal(
 
           const providerExecutionContext = toProviderExecutionContext({
             envVars,
-            execOpts,
+            execOpts: effectiveExecOpts,
             instructions,
             skillRoots: providerSkillRoots,
           });
@@ -1227,7 +1243,7 @@ function createAgentRuntimeInternal(
               input,
               ...(inputGroups !== undefined ? { inputGroups } : {}),
               clientRequestId,
-              options: execOpts,
+              options: effectiveExecOpts,
               instructions,
             });
           }
@@ -1266,10 +1282,14 @@ function createAgentRuntimeInternal(
           });
 
           const proc = requireProviderProcess({ processKey, providerId });
+          const effectiveExecOpts = normalizeExecutionOptions({
+            adapter: proc.adapter,
+            options: execOpts,
+          });
           const providerSkillRoots = skillRootsForProvider(providerId);
           assertProviderSupportsExecutionOptions({
             adapter: proc.adapter,
-            options: execOpts,
+            options: effectiveExecOpts,
             providerId,
           });
           threadIdentityRegistry.registerThreadProvider({
@@ -1284,7 +1304,7 @@ function createAgentRuntimeInternal(
             environmentId,
             instructionMode,
             instructions,
-            options: execOpts,
+            options: effectiveExecOpts,
             processKey,
             projectId,
             providerId,
@@ -1315,7 +1335,7 @@ function createAgentRuntimeInternal(
               providerThreadId ?? requireProviderThreadId(threadId),
             options: toProviderExecutionContext({
               envVars,
-              execOpts,
+              execOpts: effectiveExecOpts,
               instructions,
               skillRoots: providerSkillRoots,
             }),
@@ -1381,21 +1401,28 @@ function createAgentRuntimeInternal(
       return runThreadOperation({
         threadId,
         work: async () => {
+          const pid = resolveProviderForThread(threadId);
+          const currentProc = requireProviderProcessForThread(threadId);
+          const effectiveExecOpts = normalizeExecutionOptions({
+            adapter: currentProc.adapter,
+            options: execOpts,
+          });
           await restartCodexThreadForNextTurnIfNeeded({
             threadId,
-            options: execOpts,
+            options: effectiveExecOpts,
             instructions,
           });
-          const pid = resolveProviderForThread(threadId);
+          // An account restart replaces a thread-scoped Codex process, so
+          // resolve the process again before constructing the turn command.
           const proc = requireProviderProcessForThread(threadId);
           assertProviderSupportsExecutionOptions({
             adapter: proc.adapter,
-            options: execOpts,
+            options: effectiveExecOpts,
             providerId: pid,
           });
           await reconfigureThreadIfNeeded({
             threadId,
-            options: execOpts,
+            options: effectiveExecOpts,
           });
 
           const adapterCommand: AdapterCommand = {
@@ -1407,7 +1434,7 @@ function createAgentRuntimeInternal(
             clientRequestId,
             options: toProviderExecutionContext({
               envVars: {},
-              execOpts,
+              execOpts: effectiveExecOpts,
               instructions,
             }),
           };
@@ -1459,10 +1486,14 @@ function createAgentRuntimeInternal(
         threadId,
         work: async () => {
           const pid = resolveProviderForThread(threadId);
-          const proc = requireProviderProcessForThread(threadId);
-          assertProviderSupportsExecutionOptions({
-            adapter: proc.adapter,
+          const currentProc = requireProviderProcessForThread(threadId);
+          const effectiveExecOpts = normalizeExecutionOptions({
+            adapter: currentProc.adapter,
             options: execOpts,
+          });
+          assertProviderSupportsExecutionOptions({
+            adapter: currentProc.adapter,
+            options: effectiveExecOpts,
             providerId: pid,
           });
 
@@ -1479,12 +1510,15 @@ function createAgentRuntimeInternal(
 
           await restartCodexThreadForNextTurnIfNeeded({
             threadId,
-            options: execOpts,
+            options: effectiveExecOpts,
             instructions,
           });
+          // An account restart replaces a thread-scoped Codex process, so
+          // resolve the process again before constructing the steer command.
+          const proc = requireProviderProcessForThread(threadId);
           await reconfigureThreadIfNeeded({
             threadId,
-            options: execOpts,
+            options: effectiveExecOpts,
           });
 
           const adapterCommand: AdapterCommand = {
@@ -1497,7 +1531,7 @@ function createAgentRuntimeInternal(
             clientRequestId,
             options: toProviderExecutionContext({
               envVars: {},
-              execOpts,
+              execOpts: effectiveExecOpts,
               instructions,
             }),
           };

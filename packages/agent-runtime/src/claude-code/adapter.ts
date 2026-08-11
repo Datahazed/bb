@@ -81,6 +81,10 @@ import type {
 } from "../provider-adapter.js";
 import { noPreparedProviderCommandDispatch } from "../provider-adapter.js";
 import {
+  classifyClaudeExecutionSettingsChange,
+  normalizeClaudeExecutionOptions,
+} from "../execution-options.js";
+import {
   type JsonRpcMessage,
   type ProviderInboundRequest,
   type ProviderRuntimeEvent,
@@ -1042,6 +1046,9 @@ export function createClaudeCodeProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
+    approvalRequestPolicy: "provider",
+    classifyExecutionSettingsChange: classifyClaudeExecutionSettingsChange,
+    normalizeExecutionOptions: normalizeClaudeExecutionOptions,
     process: {
       command: opts?.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({
@@ -1134,6 +1141,8 @@ export function createClaudeCodeProviderAdapter(
                 : {}),
               workflowsEnabled: command.options.workflowsEnabled,
               memoryEnabled: command.options.memoryEnabled,
+              providerSubagentsEnabled:
+                command.options.providerSubagentsEnabled,
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),
@@ -1204,6 +1213,8 @@ export function createClaudeCodeProviderAdapter(
                 : {}),
               workflowsEnabled: command.options.workflowsEnabled,
               memoryEnabled: command.options.memoryEnabled,
+              providerSubagentsEnabled:
+                command.options.providerSubagentsEnabled,
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),
@@ -1240,6 +1251,14 @@ export function createClaudeCodeProviderAdapter(
               ...(command.options?.model
                 ? { model: command.options.model }
                 : {}),
+              ...(command.options?.reasoningLevel
+                ? { reasoningLevel: command.options.reasoningLevel }
+                : {}),
+              workflowsEnabled: command.options.workflowsEnabled,
+              memoryEnabled: command.options.memoryEnabled,
+              providerSubagentsEnabled:
+                command.options.providerSubagentsEnabled,
+              permissionEscalation: command.options.permissionEscalation,
             },
           };
         case "turn/steer":
@@ -1261,6 +1280,17 @@ export function createClaudeCodeProviderAdapter(
                     ),
                   }
                 : {}),
+              ...(command.options?.model
+                ? { model: command.options.model }
+                : {}),
+              ...(command.options?.reasoningLevel
+                ? { reasoningLevel: command.options.reasoningLevel }
+                : {}),
+              workflowsEnabled: command.options.workflowsEnabled,
+              memoryEnabled: command.options.memoryEnabled,
+              providerSubagentsEnabled:
+                command.options.providerSubagentsEnabled,
+              permissionEscalation: command.options.permissionEscalation,
             },
           };
         case "thread/fork": {
@@ -1324,6 +1354,8 @@ export function createClaudeCodeProviderAdapter(
                 : {}),
               workflowsEnabled: command.options.workflowsEnabled,
               memoryEnabled: command.options.memoryEnabled,
+              providerSubagentsEnabled:
+                command.options.providerSubagentsEnabled,
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),
