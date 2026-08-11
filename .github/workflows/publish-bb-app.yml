@@ -76,13 +76,18 @@ jobs:
       - name: Ensure npm supports trusted publishing
         run: |
           npm_version="$(npm --version)"
-          node - "$npm_version" <<'NODE' || npm install --global npm@latest
+          node - "$npm_version" <<'NODE'
           const version = process.argv[2];
           const [major, minor, patch] = version.split(".").map(Number);
           const supported =
             major > 11 ||
             (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
-          process.exit(supported ? 0 : 1);
+          if (!supported) {
+            console.error(
+              `::error::npm ${version} does not support Trusted Publishing; npm 11.5.1 or newer is required.`,
+            );
+            process.exit(1);
+          }
           NODE
           npm --version
 
