@@ -1,4 +1,4 @@
-# @bb/plugin-sdk
+# @get-bb/plugin-sdk
 
 The typed facade BB plugin authors compile against. The root preserves the
 complete `BbPluginApi` and `BbSdk` contract; `./app` is the frontend runtime
@@ -45,7 +45,7 @@ for a cleanup-safe editor enhancement.
 ## External plugin tests
 
 The packed package includes executable JavaScript and portable declarations
-for `@bb/plugin-sdk/testing` and `@bb/plugin-sdk/testing/app`; neither subpath
+for `@get-bb/plugin-sdk/testing` and `@get-bb/plugin-sdk/testing/app`; neither subpath
 imports BB workspace packages or source TypeScript at runtime. Install the SDK
 with the test stack used by your plugin. The SDK installs its cron dependency
 and declares Hono as a required peer so npm provides one compatible HTTP type
@@ -53,14 +53,21 @@ and runtime. Native database, schema, and browser packages remain optional
 peers so plugins install only the test surfaces they use:
 
 ```sh
-npm install --save-dev @bb/plugin-sdk vitest better-sqlite3 zod @types/better-sqlite3
+npm install --save-dev @get-bb/plugin-sdk vitest better-sqlite3 zod @types/better-sqlite3
 npm install --save-dev react react-dom @testing-library/react jsdom @types/react # frontend tests
 ```
+
+Plugins scaffolded before the public package used `@bb/plugin-sdk` and
+`@bb/plugin-sdk/app` as host-provided module names. BB continues to build and
+load those legacy imports, so updating a plugin's SDK compatibility range does
+not require an import-only rewrite. The legacy scope is not an npm
+distribution: use `@get-bb/plugin-sdk` for new source and for the testing
+subpaths above.
 
 Backend example:
 
 ```ts
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server.js";
 
 const host = createFakePluginHost({ pluginId: "notes" });
@@ -86,7 +93,7 @@ import {
   loadPluginApp,
   mountPluginContentScripts,
   renderSlot,
-} from "@bb/plugin-sdk/testing/app";
+} from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app.js"));
 const scripts = await mountPluginContentScripts(app, { pluginId: "notes" });
@@ -135,7 +142,7 @@ multi-plugin arbitration; use a live BB test for those boundaries.
 ## Declaration surface
 
 The complete root declaration flattens the unpublished BB workspace contracts.
-The testing declarations reuse that public `@bb/plugin-sdk` root instead of
+The testing declarations reuse that public `@get-bb/plugin-sdk` root instead of
 embedding a second copy, and no declaration depends on unpublished `@bb/*`
 packages. Genuine npm types (`hono`, `better-sqlite3`, `zod`, React, and Testing
 Library) remain external declaration imports. Scaffolded plugins still vendor the root/app

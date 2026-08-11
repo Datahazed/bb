@@ -17,7 +17,7 @@ import {
   definePluginApp,
   useRealtime,
   useRpc,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import type { connectRpcContract } from "./src/rpc.js";
 import QRCode from "qrcode";
 import { Button } from "@bb/shared-ui/button";

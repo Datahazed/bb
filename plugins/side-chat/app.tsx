@@ -17,7 +17,7 @@ import {
   type PluginThreadPanelActionContext,
   type PluginThreadPanelProps,
   type ThreadChatMessageAction,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import type { sideChatRpcContract } from "./server.js";
 
 const PLUGIN_ID = "side-chat";

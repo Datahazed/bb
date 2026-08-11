@@ -10,7 +10,7 @@
 //   text-selection menu): "Open in demo panel" opens this plugin's own
 //   thread panel anchored on the clicked message via `openPanel`.
 import { useState } from "react";
-import { definePluginApp, ThreadChat, useBbContext } from "@bb/plugin-sdk/app";
+import { definePluginApp, ThreadChat, useBbContext } from "@get-bb/plugin-sdk/app";
 
 function ThreadChatDemoPanel({ subPath }: { subPath: string }) {
   const { threadId: routeThreadId } = useBbContext();

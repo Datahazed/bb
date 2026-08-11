@@ -723,7 +723,7 @@ confirms them with eyes on a real browser:
 
 Automated coverage: the skill is pinned to the API by
 `apps/server/test/services/plugins/plugin-authoring-docs.test.ts` (every
-`BbPluginApi` key and every actual `@bb/plugin-sdk/app` runtime export must appear
+`BbPluginApi` key and every actual `@get-bb/plugin-sdk/app` runtime export must appear
 in the SKILL.md) and the guide chapter by
 `apps/cli/src/__tests__/plugin-guide-docs.test.ts` (every `bb plugin`
 subcommand must appear in `bb guide plugins`).
@@ -851,7 +851,7 @@ reload), the app's `PluginIcon.test.tsx` (theme picks the variant) and
       for dark theme) — flip the theme in Settings and watch the mark swap
       live, no reload.
 - [x] ~~**PageBody**~~ REMOVED 2026-07-03 with the host-provided UI kit
-      (design §5.5): `@bb/plugin-sdk/app` is hooks-only; plugins write their
+      (design §5.5): `@get-bb/plugin-sdk/app` is hooks-only; plugins write their
       own `mx-auto w-full max-w-3xl` wrapper (github example has one).
       (Note: PLUGIN_SDK_VERSION was reverted 0.2.0 → 0.1.0 pre-release;
       existing dev installs stamped 0.2.0 simply rebuild on next load.)
@@ -859,7 +859,7 @@ reload), the app's `PluginIcon.test.tsx` (theme picks the variant) and
 
 ## Phase 4 — component registry + prebuilt distribution (built 2026-07-03)
 
-The host-provided UI kit is REMOVED (design §5.5): `@bb/plugin-sdk/app` is
+The host-provided UI kit is REMOVED (design §5.5): `@get-bb/plugin-sdk/app` is
 hooks-only (`definePluginApp` + useRpc/useRealtime/useSettings/useBbContext/
 useBbNavigate). Components are vendored shadcn source from the in-repo
 registry (`packages/plugin-registry`, served raw from GitHub at

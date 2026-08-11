@@ -75,10 +75,10 @@ describe("bundled plugin SDK declarations", () => {
       expect(content).not.toMatch(/import\(['"]@bb\//u);
     }
     for (const content of declarations.slice(2)) {
-      const bbImports = [
-        ...content.matchAll(/from ['"](@bb\/[^'"]+)['"]/gu),
+      const sdkImports = [
+        ...content.matchAll(/from ['"](@(?:bb|get-bb)\/[^'"]+)['"]/gu),
       ].map((match) => match[1]);
-      expect(new Set(bbImports)).toEqual(new Set(["@bb/plugin-sdk"]));
+      expect(new Set(sdkImports)).toEqual(new Set(["@get-bb/plugin-sdk"]));
       expect(content).not.toContain("@bb/sdk");
       expect(content).not.toContain("@bb/server-contract");
     }

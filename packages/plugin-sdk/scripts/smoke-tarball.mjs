@@ -70,7 +70,7 @@ function assertNoWorkspaceDependencies(manifest) {
 
 const backendTest = `
 import { describe, expect, it } from "vitest";
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 
 describe("packed backend harness", () => {
   it("runs every external backend dependency from a clean install", async () => {
@@ -106,7 +106,7 @@ describe("packed backend harness", () => {
 
 const appModule = `
 import React from "react";
-import { definePluginApp } from "@bb/plugin-sdk/app";
+import { definePluginApp } from "@get-bb/plugin-sdk/app";
 
 function PackedPanel() {
   return React.createElement("p", null, "packed app works");
@@ -124,7 +124,7 @@ export default definePluginApp((app) => {
 const frontendTest = `
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 describe("packed frontend harness", () => {
   it("loads and renders an app from a clean install", async () => {
@@ -223,7 +223,13 @@ try {
 
   const installedManifest = JSON.parse(
     await readFile(
-      join(consumerDir, "node_modules", "@bb", "plugin-sdk", "package.json"),
+      join(
+        consumerDir,
+        "node_modules",
+        "@get-bb",
+        "plugin-sdk",
+        "package.json",
+      ),
       "utf8",
     ),
   );

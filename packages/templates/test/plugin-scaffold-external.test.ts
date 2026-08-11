@@ -47,7 +47,7 @@ const EXTERNAL_DEPENDENCIES = [
 
 const BACKEND_TEST = `
 import { describe, expect, it } from "vitest";
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
 
 describe("scaffold backend", () => {
@@ -74,7 +74,7 @@ const FRONTEND_TEST = `
 // @vitest-environment jsdom
 import { fireEvent } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 describe("scaffold frontend", () => {
   it("loads and renders a slot through the packed harness", async () => {
@@ -106,7 +106,7 @@ export default defineConfig({
 `;
 
 const REPRESENTATIVE_SERVER = `
-import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const rpcContract = defineRpcContract({
@@ -160,7 +160,7 @@ export default function plugin(bb: BbPluginApi) {
 `;
 
 const REPRESENTATIVE_APP = `
-import { definePluginApp, useRpc } from "@bb/plugin-sdk/app";
+import { definePluginApp, useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 
 function Panel() {
@@ -342,10 +342,15 @@ describe("external plugin scaffold types", () => {
     await writeFile(join(backendDir, "server.test.ts"), BACKEND_TEST);
     await includeTestsInTypecheck(backendDir);
 
-    expect(await readdir(join(backendDir, "node_modules", "@bb"))).toEqual([
+    expect(
+      await readdir(join(backendDir, "node_modules", "@get-bb")),
+    ).toEqual(["plugin-sdk"]);
+    const installedSdk = join(
+      backendDir,
+      "node_modules",
+      "@get-bb",
       "plugin-sdk",
-    ]);
-    const installedSdk = join(backendDir, "node_modules", "@bb", "plugin-sdk");
+    );
     const installedManifest = JSON.parse(
       await readFile(join(installedSdk, "package.json"), "utf8"),
     ) as {
@@ -380,10 +385,10 @@ describe("external plugin scaffold types", () => {
         join(installedSdk, entry.types.replace(/^\.\//u, "")),
         "utf8",
       );
-      const bbImports = [
-        ...declarations.matchAll(/from ['"](@bb\/[^'"]+)['"]/gu),
+      const sdkImports = [
+        ...declarations.matchAll(/from ['"](@(?:bb|get-bb)\/[^'"]+)['"]/gu),
       ].map((match) => match[1]);
-      expect(new Set(bbImports)).toEqual(new Set(["@bb/plugin-sdk"]));
+      expect(new Set(sdkImports)).toEqual(new Set(["@get-bb/plugin-sdk"]));
       expect(declarations).not.toContain("@bb/sdk");
       expect(declarations).not.toContain("@bb/server-contract");
     }
@@ -410,7 +415,7 @@ describe("external plugin scaffold types", () => {
     // Also prove package self-reference works without the scaffold's vendored
     // root declaration mapping. The testing declarations intentionally import
     // the installed package root instead of flattening the full SDK again.
-    delete backendTsconfig.compilerOptions.paths["@bb/plugin-sdk"];
+    delete backendTsconfig.compilerOptions.paths["@get-bb/plugin-sdk"];
     await writeFile(
       backendTsconfigPath,
       `${JSON.stringify(backendTsconfig, null, 2)}\n`,
@@ -425,7 +430,12 @@ describe("external plugin scaffold types", () => {
       bbVersion: "0.9.0",
       app: true,
     });
-    const frontendSdk = join(frontendDir, "node_modules", "@bb", "plugin-sdk");
+    const frontendSdk = join(
+      frontendDir,
+      "node_modules",
+      "@get-bb",
+      "plugin-sdk",
+    );
     await mkdir(dirname(frontendSdk), { recursive: true });
     await symlink(installedSdk, frontendSdk, "dir");
     await linkExternalDependencies(frontendDir);

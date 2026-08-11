@@ -46,22 +46,26 @@ import type {
 } from "./plugin-service-internal.js";
 
 /**
- * Plugin server bundles keep `@bb/plugin-sdk` external (see @bb/plugin-build),
- * and plugin authors never have it installed — the scaffold maps the specifier
- * to bundled `.d.ts` files only. Source-checkout servers resolve the workspace
- * package naturally, but built and packaged servers have no node_modules copy,
- * so the server build ships a self-contained SDK runtime bundle next to the
- * server bundle and the loader aliases the specifier to it.
+ * Plugin server bundles keep both the published `@get-bb/plugin-sdk` name and
+ * the legacy `@bb/plugin-sdk` name external (see @bb/plugin-build). New
+ * scaffolds map the published name to bundled `.d.ts` files; old scaffolds keep
+ * their legacy mapping. Source-checkout servers resolve the new workspace
+ * package naturally, while built servers alias both names to the shipped SDK
+ * runtime bundle.
  */
 const pluginSdkRuntimePath = join(
   dirname(fileURLToPath(import.meta.url)),
   "plugin-sdk-runtime.js",
 );
-const pluginSdkAlias: Record<string, string> | undefined = existsSync(
-  pluginSdkRuntimePath,
-)
-  ? { "@bb/plugin-sdk": pluginSdkRuntimePath }
-  : undefined;
+const pluginSdkAlias: Record<string, string> = existsSync(pluginSdkRuntimePath)
+  ? {
+      "@get-bb/plugin-sdk": pluginSdkRuntimePath,
+      "@bb/plugin-sdk": pluginSdkRuntimePath,
+    }
+  : {
+      // In source checkouts, only the legacy name needs redirection.
+      "@bb/plugin-sdk": "@get-bb/plugin-sdk",
+    };
 
 /**
  * Per-root reload generation for mutable (path:/source-builtin) plugin trees.
@@ -1078,10 +1082,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       // Fresh instance per load: guarantees re-imports see current sources.
       const jiti = createJiti(import.meta.url, {
         moduleCache: false,
-        ...(pluginSdkAlias === undefined ? {} : { alias: pluginSdkAlias }),
+        alias: pluginSdkAlias,
       });
       // Same jiti instance for source and prebuilt dist/server.js, so the
-      // @bb/plugin-sdk resolution applies identically to both.
+      // Both plugin SDK package names resolve identically for source and
+      // prebuilt dist/server.js entries.
       const mod = (await jiti.import(
         await resolveServerEntry(row, manifest),
       )) as {

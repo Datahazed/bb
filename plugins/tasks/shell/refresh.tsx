@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useRealtimeConnectionState } from "@bb/plugin-sdk/app";
+import { useRealtimeConnectionState } from "@get-bb/plugin-sdk/app";
 
 interface TasksRefreshState {
   generation: number;

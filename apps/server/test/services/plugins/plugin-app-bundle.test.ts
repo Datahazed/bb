@@ -201,16 +201,18 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(response.status).toBe(404);
   });
 
-  it("erases a type-only backend RPC contract import from the frontend bundle", async () => {
-    const rootDir = join(
-      harness.config.dataDir,
-      "fixtures",
-      "bb-plugin-typed-rpc",
-    );
-    await writeAppPluginFixture(rootDir, {
-      name: "bb-plugin-typed-rpc",
-      serverSource: `
-        import { defineRpcContract } from "@bb/plugin-sdk";
+  it.each(["@get-bb/plugin-sdk", "@bb/plugin-sdk"])(
+    "builds typed RPC plugins using %s",
+    async (sdkSpecifier) => {
+      const rootDir = join(
+        harness.config.dataDir,
+        "fixtures",
+        "bb-plugin-typed-rpc",
+      );
+      await writeAppPluginFixture(rootDir, {
+        name: "bb-plugin-typed-rpc",
+        serverSource: `
+        import { defineRpcContract } from ${JSON.stringify(sdkSpecifier)};
         import { z } from "zod";
         const BACKEND_ONLY_SENTINEL = "backend-contract-must-not-bundle";
         export const rpcContract = defineRpcContract({
@@ -224,8 +226,8 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
           bb.rpc.register(rpcContract, { echo: (input: any) => input });
         }
       `,
-      appSource: `
-        import { definePluginApp, useRpc } from "@bb/plugin-sdk/app";
+        appSource: `
+        import { definePluginApp, useRpc } from ${JSON.stringify(`${sdkSpecifier}/app`)};
         import type { rpcContract } from "./server";
         function Panel() {
           const rpc = useRpc<typeof rpcContract>();
@@ -236,15 +238,17 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
           app.slots.homepageSection({ id: "typed", title: "Typed", component: Panel });
         });
       `,
-    });
+      });
 
-    const entry = await harness.pluginService.installPath(rootDir);
-    expect(entry.status).toBe("running");
-    const bundled = await readFile(join(rootDir, "dist", "app.js"), "utf8");
-    expect(bundled).not.toContain("backend-contract-must-not-bundle");
-    expect(bundled).not.toContain("defineRpcContract");
-    expect(bundled).toContain("typed rpc");
-  }, 60_000);
+      const entry = await harness.pluginService.installPath(rootDir);
+      expect(entry.status).toBe("running");
+      const bundled = await readFile(join(rootDir, "dist", "app.js"), "utf8");
+      expect(bundled).not.toContain("backend-contract-must-not-bundle");
+      expect(bundled).not.toContain("defineRpcContract");
+      expect(bundled).toContain("typed rpc");
+    },
+    60_000,
+  );
 
   it("fails the install when the frontend build fails", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-bad");

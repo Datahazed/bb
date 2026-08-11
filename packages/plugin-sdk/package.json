@@ -1,5 +1,5 @@
 {
-  "name": "@bb/plugin-sdk",
+  "name": "@get-bb/plugin-sdk",
   "version": "0.5.0",
   "description": "Typed BB plugin API and official plugin testing harnesses",
   "license": "MIT",

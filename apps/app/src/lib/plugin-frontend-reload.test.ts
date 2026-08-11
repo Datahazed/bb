@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
+import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { definePluginApp } from "./plugin-app-definition";
 import {

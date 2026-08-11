@@ -52,7 +52,7 @@ import {
   type NewThreadComposerProps,
   type ThreadChatProps,
   type JsonValue,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import {
   collectComposerCustomization,
@@ -67,12 +67,12 @@ import {
 } from "../internal/composer-customization-validation.js";
 
 /**
- * `@bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
+ * `@get-bb/plugin-sdk/testing/app` — the frontend plugin test harness. Tests a
  * plugin's `app.tsx` source directly under vitest + jsdom, without the bb
  * host or the esbuild bundle:
  *
  * - {@link installTestPluginRuntime} fills `globalThis.__bbPluginRuntime.
- *   pluginSdkApp` with a test implementation of the `@bb/plugin-sdk/app`
+ *   pluginSdkApp` with a test implementation of the `@get-bb/plugin-sdk/app`
  *   surface (the same seam `bb plugin build` shims to the real app). It must
  *   run BEFORE the plugin's `app.tsx` module evaluates, because that module
  *   binds the runtime at import time — so import `app.tsx` through
@@ -194,14 +194,14 @@ function useSlotEnv(hook: string): SlotEnv {
   const env = useContext(SlotEnvContext);
   if (!env) {
     throw new Error(
-      `${hook}() needs the test slot environment — mount the component via renderSlot(...) from @bb/plugin-sdk/testing/app`,
+      `${hook}() needs the test slot environment — mount the component via renderSlot(...) from @get-bb/plugin-sdk/testing/app`,
     );
   }
   return env;
 }
 
 // ---------------------------------------------------------------------------
-// The fake @bb/plugin-sdk/app runtime.
+// The fake @get-bb/plugin-sdk/app runtime.
 // ---------------------------------------------------------------------------
 
 /** Same shape (and checks) as the BB app's real definePluginApp. */
@@ -497,7 +497,7 @@ interface PluginRuntimeHost {
 /**
  * Install the test runtime at `globalThis.__bbPluginRuntime.pluginSdkApp`.
  * Idempotent per module instance; must run before the plugin's `app.tsx`
- * (and therefore `@bb/plugin-sdk/app`) is imported.
+ * (and therefore `@get-bb/plugin-sdk/app`) is imported.
  */
 export function installTestPluginRuntime(): void {
   const host = globalThis as PluginRuntimeHost;
@@ -804,7 +804,7 @@ export async function loadPluginApp(
     : (resolved as PluginAppModule).default;
   if (!isPluginAppDefinition(definition)) {
     throw new Error(
-      "the bundle's default export is not definePluginApp(...) from @bb/plugin-sdk/app",
+      "the bundle's default export is not definePluginApp(...) from @get-bb/plugin-sdk/app",
     );
   }
   return collectRegistrations(definition);

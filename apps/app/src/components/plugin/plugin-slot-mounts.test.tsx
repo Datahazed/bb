@@ -12,7 +12,7 @@ import {
 import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { PluginComposerApi, PluginThreadPanelProps } from "@bb/plugin-sdk";
+import type { PluginComposerApi, PluginThreadPanelProps } from "@get-bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   resetPluginSlotStoreForTest,

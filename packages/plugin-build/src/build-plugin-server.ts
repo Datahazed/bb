@@ -12,16 +12,22 @@ import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { validatePluginBuildManifest } from "./plugin-manifest.js";
 import { type PluginBuildToolchain } from "./toolchain.js";
 
+const PLUGIN_SDK_SERVER_SPECIFIERS = [
+  "@get-bb/plugin-sdk",
+  // Existing external plugins were scaffolded with this workspace-era name.
+  "@bb/plugin-sdk",
+] as const;
+
 /**
  * `bb plugin build` — compile a plugin's `bb.server` entry into a
  * self-contained backend bundle (prebuilt distribution, design §6):
  *
  * - `dist/server.js` (+ `.map`) — single node-platform ESM file with the
  *   plugin's npm deps inlined, so git:/npm: consumers never need npm or
- *   node_modules. `@bb/plugin-sdk` stays external — plugin authors only ever
- *   have its `.d.ts` types, so the specifier must survive to load time, where
- *   the server's loader aliases it to the SDK runtime bundle shipped next to
- *   the server (workspace resolution covers source checkouts). better-sqlite3
+ *   node_modules. Both plugin SDK package names stay external — existing
+ *   plugins use `@bb/plugin-sdk`, while new plugins use the published
+ *   `@get-bb/plugin-sdk`. The specifier must survive to load time, where the
+ *   server aliases either name to its SDK runtime bundle. better-sqlite3
  *   is also external (plugins get sqlite from the host via `bb.storage`;
  *   native deps are unsupported in plugins regardless).
  * - `dist/server.meta.json` — SDK compatibility plus authoritative plugin,
@@ -147,7 +153,7 @@ export async function buildPluginServer(
       // The server's loader aliases the SDK to its shipped runtime bundle at
       // load time; better-sqlite3 comes from the host (bb.storage). Node
       // builtins are auto-external via platform: "node".
-      external: ["@bb/plugin-sdk", "better-sqlite3"],
+      external: [...PLUGIN_SDK_SERVER_SPECIFIERS, "better-sqlite3"],
       logLevel: "error",
     });
     await writeFile(

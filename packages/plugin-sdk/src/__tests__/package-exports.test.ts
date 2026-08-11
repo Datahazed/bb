@@ -28,7 +28,7 @@ describe("packed plugin SDK exports", () => {
       exports: Record<string, PackageExport>;
     };
 
-    expect(packageJson.name).toBe("@bb/plugin-sdk");
+    expect(packageJson.name).toBe("@get-bb/plugin-sdk");
     expect(packageJson.private).not.toBe(true);
     expect(packageJson.description).toBeTruthy();
     expect(packageJson.license).toBe("MIT");

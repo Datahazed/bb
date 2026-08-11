@@ -1,6 +1,6 @@
-# Releasing @bb/plugin-sdk
+# Releasing @get-bb/plugin-sdk
 
-This runbook covers the independently versioned `@bb/plugin-sdk` npm package.
+This runbook covers the independently versioned `@get-bb/plugin-sdk` npm package.
 The SDK is released only when its public plugin API or testing harness changes;
 it does not share `bb-app`'s release cadence.
 
@@ -20,6 +20,8 @@ explicitly requests the bootstrap or emergency fallback.
 - Update every checked-in plugin's `engines.bbPluginSdk` range, the plugin
   guide, the CLI and plugin-authoring skills, and generated templates when the
   compatibility range changes.
+- Keep the legacy `@bb/plugin-sdk` and `@bb/plugin-sdk/app` host aliases for
+  previously scaffolded plugins; only the `@get-bb` package is published.
 - Publish the tarball produced by `smoke:tarball`. The release workflow tests
   and publishes that exact file rather than packing twice.
 - Do not move the `latest` npm dist-tag to a prerelease unless explicitly
@@ -28,7 +30,7 @@ explicitly requests the bootstrap or emergency fallback.
 ## One-Time npm Setup
 
 Before the first release, an npm organization owner must confirm that the
-public `@bb` scope is controlled by the project. npm requires the package to
+public `@get-bb` scope is controlled by the project. npm requires the package to
 exist before its Trusted Publisher can be configured, so the initial public
 package publication may require a one-time owner-authenticated bootstrap with
 `--access public`. After that bootstrap, configure the package's GitHub Actions
@@ -48,7 +50,7 @@ environment, and Trusted Publisher are all verified.
    ```bash
    git fetch origin main
    git rebase origin/main
-   npm view @bb/plugin-sdk version dist-tags versions --json
+   npm view @get-bb/plugin-sdk version dist-tags versions --json
    ```
 
    An `E404` is expected only before the first publication.
@@ -62,8 +64,8 @@ environment, and Trusted Publisher are all verified.
 
    ```bash
    pnpm install --frozen-lockfile
-   pnpm exec turbo run typecheck test --filter=@bb/plugin-sdk --filter=@bb/templates --force --output-logs=new-only
-   pnpm exec turbo run smoke:tarball --filter=@bb/plugin-sdk --force --output-logs=new-only
+   pnpm exec turbo run typecheck test --filter=@get-bb/plugin-sdk --filter=@bb/templates --force --output-logs=new-only
+   pnpm exec turbo run smoke:tarball --filter=@get-bb/plugin-sdk --force --output-logs=new-only
    git diff --check
    ```
 
@@ -100,8 +102,8 @@ with OIDC, and waits for the version and dist-tag to appear in the registry.
 After it succeeds, independently verify:
 
 ```bash
-npm view @bb/plugin-sdk version dist-tags versions --json
-npm install --save-dev @bb/plugin-sdk vitest better-sqlite3 zod @types/better-sqlite3
+npm view @get-bb/plugin-sdk version dist-tags versions --json
+npm install --save-dev @get-bb/plugin-sdk vitest better-sqlite3 zod @types/better-sqlite3
 ```
 
 Report the commit, package version, npm tag, workflow run, and clean-install

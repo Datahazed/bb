@@ -4,7 +4,7 @@ import {
   makeThreadResponse,
   PluginContextStaleError,
   type FakePluginHost,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import plugin from "./server.js";
 import {
   automationListResponseSchema,

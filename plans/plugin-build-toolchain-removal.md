@@ -41,7 +41,7 @@ The consequence is explicit: **git plugins are not self-healing across SDK bumps
 
 Mitigation is an explicit author action, not a silent override:
 
-- Add `bb plugin upgrade <id>`, which writes the host-matching `@bb/plugin-build` and `@bb/plugin-sdk` versions into the plugin's `package.json` and lockfile, then rebuilds.
+- Add `bb plugin upgrade <id>`, which writes the host-matching `@bb/plugin-build` and `@get-bb/plugin-sdk` versions into the plugin's `package.json` and lockfile, then rebuilds.
 - On detecting a stale builder, report `needs-update` naming that command. Do **not** retry the build on every load; bound attempts per artifact.
 
 This resolves at SDK 1.0, when `isPrebuiltServerSdkCompatible` (`plugin-runtime.ts:810-817`) accepts any matching major. Until then, every SDK minor release is a coordinated event requiring `bb plugin upgrade` across all git and path plugins. That is an argument for reaching 1.0 before adding further 0.x surface.
@@ -54,7 +54,7 @@ This resolves at SDK 1.0, when `isPrebuiltServerSdkCompatible` (`plugin-runtime.
 
 ## What must NOT change
 
-`RUNTIME_SLOT_BY_SPECIFIER` (`packages/plugin-build/src/build-plugin-app.ts:52-73`) lists 20 specifiers that must never be bundled: react x5, `@bb/plugin-sdk/app`, `@pierre/diffs` x2, the 10 portaling radix families, `sonner`, `vaul`. A plugin bundling its own React produces "Invalid hook call" in the *host* app. Two radix portal worlds break focus traps and dismissable layers.
+`RUNTIME_SLOT_BY_SPECIFIER` (`packages/plugin-build/src/build-plugin-app.ts:52-73`) lists 20 specifiers that must never be bundled: react x5, `@get-bb/plugin-sdk/app`, `@pierre/diffs` x2, the 10 portaling radix families, `sonner`, `vaul`. A plugin bundling its own React produces "Invalid hook call" in the *host* app. Two radix portal worlds break focus traps and dismissable layers.
 
 Today this is impossible to get wrong because authors never see the esbuild config. After this change it becomes a contract that must be validated. **Phase 1 ships that validation before anything else.**
 
@@ -115,7 +115,7 @@ Lands alone. No behavior change beyond a warning.
 ### Phase 2 — Publish the builder
 
 1. Give `@bb/plugin-build` a real version, a `dist/`, and a `bin`: `bb-plugin`. `bb-plugin build` runs `buildPluginServer` + `buildPluginApp` against `process.cwd()`.
-2. Resolve the workspace dependency on `@bb/plugin-sdk`. `build-plugin-app.ts:101` resolves `@bb/plugin-sdk/app` to discover exports, so inlining three `@bb/domain` symbols is insufficient. Choose: publish `@bb/plugin-sdk`, or generate the export manifest fully at builder-publish time so the builder needs no SDK resolution. This choice interacts with phase 1 step 1 — see open question 1.
+2. Resolve the workspace dependency on `@get-bb/plugin-sdk`. `build-plugin-app.ts:101` resolves `@get-bb/plugin-sdk/app` to discover exports, so inlining three `@bb/domain` symbols is insufficient. Choose: publish `@get-bb/plugin-sdk`, or generate the export manifest fully at builder-publish time so the builder needs no SDK resolution. This choice interacts with phase 1 step 1 — see open question 1.
 3. Version contract:
    - Both build functions take a `bbVersion`. A standalone binary has no host to ask. Replace it with the builder's own version, recorded as `builtWith.builderVersion`.
    - The builder pins an exact target SDK version and declares its supported host range, because `plugin-runtime.ts:816` demands exact SDK equality while the major is 0.
@@ -179,7 +179,7 @@ Then:
 
 All four r2 questions are decided. Remaining:
 
-1. **Publish `@bb/plugin-sdk`, or route it through `bb-app`?** (r3: publish is the leaning.) Publishing is the smaller step and the SDK is already every plugin's peer dependency. Routing through `bb-app` gives authors one dependency instead of two but pulls the app package into their tree. Revisit if the two-dependency requirement proves annoying.
+1. **Publish `@get-bb/plugin-sdk`, or route it through `bb-app`?** (r3: publish is the leaning.) Publishing is the smaller step and the SDK is already every plugin's peer dependency. Routing through `bb-app` gives authors one dependency instead of two but pulls the app package into their tree. Revisit if the two-dependency requirement proves annoying.
 2. **Timing of SDK 1.0.** Not strictly part of this plan, but the pre-1.0 exact-match rule is what makes builder pinning painful. If 1.0 is near, some of the `bb plugin upgrade` machinery is short-lived.
 
 ## Decisions (r3)
@@ -187,7 +187,7 @@ All four r2 questions are decided. Remaining:
 | Question | Decision |
 |---|---|
 | Who picks the builder version | The plugin. bb suggests `bb plugin upgrade`, never overrides |
-| SDK distribution | Publish `@bb/plugin-sdk` to npm |
+| SDK distribution | Publish `@get-bb/plugin-sdk` to npm |
 | `path:` install-time build | bb keeps building it, by spawning the plugin's `npm run build` |
 | Meaning of "prebuilt" | Both halves, for every managed source. Source fallback removed |
 

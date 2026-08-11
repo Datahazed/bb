@@ -7,8 +7,8 @@
 //
 // It deliberately does NOT proxy thread content: the frontend renders the
 // host's own `ThreadChat`, which loads and streams its own timeline.
-import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
-import type { NewThreadRequest } from "@bb/plugin-sdk/app";
+import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import type { NewThreadRequest } from "@get-bb/plugin-sdk/app";
 import { z } from "zod";
 
 const LAYOUT_KEY = "layout";

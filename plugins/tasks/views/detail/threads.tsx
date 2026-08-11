@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useBbNavigate, useRpc } from "@bb/plugin-sdk/app";
+import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
 import type {
   Preset,

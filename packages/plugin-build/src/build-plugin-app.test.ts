@@ -49,38 +49,41 @@ describe("plugin app runtime shim", () => {
     );
   });
 
-  it("re-derives @bb/plugin-sdk/app exports for every rebuild", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-shim-"));
-    tempDirs.push(dir);
-    const facadePath = join(dir, "app-facade.mjs");
-    const facadeUrl = pathToFileURL(facadePath).href;
+  it.each(["@get-bb/plugin-sdk/app", "@bb/plugin-sdk/app"])(
+    "re-derives %s exports for every rebuild",
+    async (specifier) => {
+      const dir = await mkdtemp(join(tmpdir(), "bb-plugin-shim-"));
+      tempDirs.push(dir);
+      const facadePath = join(dir, "app-facade.mjs");
+      const facadeUrl = pathToFileURL(facadePath).href;
 
-    async function bundle(importName: string): Promise<string> {
-      const result = await build({
-        stdin: {
-          contents: `import { ${importName} } from "@bb/plugin-sdk/app"; export { ${importName} };`,
-          loader: "js",
-          resolveDir: dir,
-        },
-        bundle: true,
-        format: "esm",
-        platform: "browser",
-        write: false,
-        logLevel: "silent",
-        plugins: [runtimeShimPlugin(facadeUrl)],
-      });
-      return result.outputFiles[0]?.text ?? "";
-    }
+      async function bundle(importName: string): Promise<string> {
+        const result = await build({
+          stdin: {
+            contents: `import { ${importName} } from ${JSON.stringify(specifier)}; export { ${importName} };`,
+            loader: "js",
+            resolveDir: dir,
+          },
+          bundle: true,
+          format: "esm",
+          platform: "browser",
+          write: false,
+          logLevel: "silent",
+          plugins: [runtimeShimPlugin(facadeUrl)],
+        });
+        return result.outputFiles[0]?.text ?? "";
+      }
 
-    await writeFile(facadePath, "export const first = 1;\n");
-    await expect(bundle("first")).resolves.toContain("first");
+      await writeFile(facadePath, "export const first = 1;\n");
+      await expect(bundle("first")).resolves.toContain("first");
 
-    await writeFile(
-      facadePath,
-      "export const first = 1; export const addedLater = 2;\n",
-    );
-    await expect(bundle("addedLater")).resolves.toContain("addedLater");
-  });
+      await writeFile(
+        facadePath,
+        "export const first = 1; export const addedLater = 2;\n",
+      );
+      await expect(bundle("addedLater")).resolves.toContain("addedLater");
+    },
+  );
 
   it("scopes Tailwind utilities while preserving imported CSS unscoped", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bb-plugin-css-"));
@@ -112,7 +115,11 @@ describe("plugin app runtime shim", () => {
       ".bb71-authored-decoration { text-decoration: underline; }\n",
     );
 
-    const result = await buildPluginApp(dir, "0.9.0-test", await testToolchain());
+    const result = await buildPluginApp(
+      dir,
+      "0.9.0-test",
+      await testToolchain(),
+    );
     const css = await readFile(result.cssPath, "utf8");
 
     expect(css).toContain(
@@ -167,9 +174,7 @@ describe("plugin app runtime shim", () => {
 
       await expect(
         buildPluginApp(dir, "0.9.0-test", await testToolchain()),
-      ).rejects.toThrow(
-        expectedError,
-      );
+      ).rejects.toThrow(expectedError);
     },
   );
 });

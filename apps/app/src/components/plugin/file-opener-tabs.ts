@@ -1,4 +1,4 @@
-import type { PluginFileOpenerProps, PluginFileOpenerSource } from "@bb/plugin-sdk";
+import type { PluginFileOpenerProps, PluginFileOpenerSource } from "@get-bb/plugin-sdk";
 import {
   createPluginPanelFixedPanelTab,
   type PluginPanelFixedPanelTab,

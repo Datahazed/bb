@@ -25,7 +25,7 @@ import { validatePluginBuildManifest } from "./plugin-manifest.js";
  * runtime-loadable frontend bundle:
  *
  * - `dist/app.js` — single ESM file, production jsx-runtime forced. The
- *   shared-runtime modules (react ×5, @bb/plugin-sdk/app, the portaling
+ *   shared-runtime modules (react ×5, @get-bb/plugin-sdk/app, the portaling
  *   radix families, sonner, vaul — see RUNTIME_SLOT_BY_SPECIFIER) are never
  *   bundled; an esbuild plugin swaps them for shims that read
  *   `globalThis.__bbPluginRuntime` — the host app provides one React, so a
@@ -50,13 +50,22 @@ import { validatePluginBuildManifest } from "./plugin-manifest.js";
  * tailwind-merge, lucide-react, form/calendar/chart libs) bundles from the
  * plugin's own node_modules.
  */
+const PLUGIN_SDK_APP_SPECIFIER = "@get-bb/plugin-sdk/app";
+const LEGACY_PLUGIN_SDK_APP_SPECIFIER = "@bb/plugin-sdk/app";
+const PLUGIN_SDK_APP_SPECIFIERS = new Set([
+  PLUGIN_SDK_APP_SPECIFIER,
+  LEGACY_PLUGIN_SDK_APP_SPECIFIER,
+]);
+
 const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
   react: "react",
   "react-dom": "reactDom",
   "react-dom/client": "reactDomClient",
   "react/jsx-runtime": "jsxRuntime",
   "react/jsx-dev-runtime": "jsxDevRuntime",
-  "@bb/plugin-sdk/app": "pluginSdkApp",
+  [PLUGIN_SDK_APP_SPECIFIER]: "pluginSdkApp",
+  // Existing external plugins were scaffolded with this workspace-era name.
+  [LEGACY_PLUGIN_SDK_APP_SPECIFIER]: "pluginSdkApp",
   "@pierre/diffs": "pierreDiffs",
   "@pierre/diffs/react": "pierreDiffsReact",
   "@radix-ui/react-alert-dialog": "radixAlertDialog",
@@ -74,7 +83,7 @@ const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
 };
 
 /**
- * Named exports of `@bb/plugin-sdk/app` are read from a fresh facade module on
+ * Named exports of `@get-bb/plugin-sdk/app` are read from a fresh facade module on
  * every app build. The dev server stays alive while the SDK source changes, so
  * retaining the first module namespace here would make newly-added exports
  * unavailable to every subsequent plugin rebuild until the server restarted.
@@ -99,13 +108,13 @@ async function shimExportsOf(
   specifier: string,
   pluginSdkAppModuleUrl: string | undefined,
 ): Promise<readonly string[]> {
-  if (specifier === "@bb/plugin-sdk/app") {
+  if (PLUGIN_SDK_APP_SPECIFIERS.has(specifier)) {
     if (pluginSdkAppModuleUrl !== undefined) {
       return freshModuleExports(pluginSdkAppModuleUrl);
     }
     let resolvedModuleUrl: string;
     try {
-      resolvedModuleUrl = import.meta.resolve("@bb/plugin-sdk/app");
+      resolvedModuleUrl = import.meta.resolve(PLUGIN_SDK_APP_SPECIFIER);
     } catch {
       // The built CLI bundles @bb/plugin-build but does not install
       // plugin-build's dependency as a directly resolvable package. Do not
@@ -113,7 +122,7 @@ async function shimExportsOf(
       // namespace to the exports referenced elsewhere in the outer bundle.
       // The generated manifest is derived statically from SDK source before
       // CLI/packaged-daemon builds and cannot lose otherwise-unused exports.
-      const names = RUNTIME_EXPORT_MANIFEST[specifier];
+      const names = RUNTIME_EXPORT_MANIFEST[PLUGIN_SDK_APP_SPECIFIER];
       if (!names) {
         throw new Error(`no runtime export manifest entry for "${specifier}"`);
       }

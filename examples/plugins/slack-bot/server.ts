@@ -11,7 +11,7 @@
 //
 // The type-only import is erased at load time; this file runs as-is.
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
 const SIGNATURE_VERSION = "v0";
 /** Slack replays are rejected past this age (Slack's own recommendation). */
