@@ -187,8 +187,19 @@ async function ensureExistingWorkspaceMatches(
   return true;
 }
 
-function isBranchAlreadyCheckedOutFailure(result: GitCommandResult): boolean {
-  return /\bis already checked out at\b/u.test(result.stderr);
+async function isBranchCheckedOut(args: {
+  branchRef: string;
+  signal: AbortSignal | undefined;
+  sourcePath: string;
+}): Promise<boolean> {
+  const worktreeList = await runGit(["worktree", "list", "--porcelain"], {
+    cwd: args.sourcePath,
+    signal: args.signal,
+  });
+  const branchLine = `branch ${args.branchRef}`;
+  return worktreeList.stdout
+    .split(/\r?\n/u)
+    .some((line) => line === branchLine);
 }
 
 async function addContinuedWorktree(args: {
@@ -218,23 +229,38 @@ async function addContinuedWorktree(args: {
   return withWorktreeMetadataLock(
     commonDir,
     async () => {
-      const exactResult = await runGit(
-        ["worktree", "add", args.targetPath, args.branchName],
-        {
-          cwd: args.sourcePath,
-          allowFailure: true,
-          signal: args.signal,
-        },
-      );
-      if (exactResult.exitCode === 0) {
-        return exactResult;
-      }
-      if (!isBranchAlreadyCheckedOutFailure(exactResult)) {
-        const detail = exactResult.stderr.trim();
-        throw new WorkspaceError(
-          "git_command_failed",
-          `git worktree add failed${detail ? `: ${detail}` : ""}`,
+      const branchIsCheckedOut = await isBranchCheckedOut({
+        branchRef,
+        signal: args.signal,
+        sourcePath: args.sourcePath,
+      });
+      if (!branchIsCheckedOut) {
+        const exactResult = await runGit(
+          ["worktree", "add", args.targetPath, args.branchName],
+          {
+            cwd: args.sourcePath,
+            allowFailure: true,
+            signal: args.signal,
+          },
         );
+        if (exactResult.exitCode === 0) {
+          return exactResult;
+        }
+        // Another Git process can create a worktree without taking bb's lock.
+        // Re-read authoritative worktree metadata before treating the failure
+        // as a branch collision; unrelated Git errors must not use fallback.
+        const occupiedAfterFailure = await isBranchCheckedOut({
+          branchRef,
+          signal: args.signal,
+          sourcePath: args.sourcePath,
+        });
+        if (!occupiedAfterFailure) {
+          const detail = exactResult.stderr.trim();
+          throw new WorkspaceError(
+            "git_command_failed",
+            `git worktree add failed${detail ? `: ${detail}` : ""}`,
+          );
+        }
       }
       return runGit(
         [
