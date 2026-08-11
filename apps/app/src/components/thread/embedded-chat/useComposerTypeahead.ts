@@ -14,10 +14,12 @@ interface UseComposerTypeaheadArgs {
   mentionsProjectId?: string;
   providerId: string;
   environmentId: string | null;
+  /** Host scope for projectless command and mention discovery. */
+  hostId?: string | null;
   /** Composer surface used to exclude commands that require an existing thread. */
   commandScope: "new-thread" | "thread";
   /** The thread the composer belongs to (excluded from thread mentions). */
-  currentThreadId: string;
+  currentThreadId?: string;
   selectedProviderComposerActions:
     | readonly ProviderComposerAction[]
     | undefined;
@@ -39,6 +41,7 @@ export function useComposerTypeahead({
   mentionsProjectId,
   providerId,
   environmentId,
+  hostId,
   commandScope,
   currentThreadId,
   selectedProviderComposerActions,
@@ -47,6 +50,7 @@ export function useComposerTypeahead({
   const promptMentions = usePromptMentions(mentionsProjectId ?? projectId, {
     currentThreadId,
     environmentId,
+    hostId,
   });
   const [commandQuery, setCommandQuery] = useState<string | null>(null);
   const providerPromptActions = useMemo(
@@ -64,6 +68,7 @@ export function useComposerTypeahead({
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions,
     environmentId,
+    hostId,
     query: commandQuery,
   });
 
