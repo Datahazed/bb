@@ -1,3 +1,4 @@
+import type { Environment } from "@bb/domain";
 import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
 import {
   encodeHostValue,
@@ -16,21 +17,58 @@ export interface NewThreadEnvironmentSeed {
   branch: RootComposeSelectedBranch | null;
 }
 
+type ContinuationSourceEnvironment = Pick<
+  Environment,
+  | "branchName"
+  | "hostId"
+  | "id"
+  | "projectId"
+  | "status"
+  | "workspaceProvisionType"
+>;
+
+interface NewThreadEnvironmentSeedContext {
+  projectId: string;
+  continuationSourceEnvironment?: ContinuationSourceEnvironment;
+}
+
 /**
  * Maps `NewThreadRequest.environment` back to picker selections. Returns null
  * for the variants the composer cannot represent — `project-default` (the
  * composer always resolves a concrete environment) and a `personal` workspace
  * without a `hostId` (the picker only encodes concrete hosts) — so the
- * composer falls back to its own environment default.
+ * composer falls back to its own environment default. A continuation needs
+ * its archived environment resolved through `context` because the request
+ * itself contains only that environment's ID.
  */
 export function newThreadEnvironmentArgsToSeed(
   environment: CreateThreadEnvironmentArgs,
+  context?: NewThreadEnvironmentSeedContext,
 ): NewThreadEnvironmentSeed | null {
   if (environment.type === "project-default") {
     return null;
   }
   if (environment.type === "continue") {
-    return null;
+    const source = context?.continuationSourceEnvironment;
+    if (
+      context === undefined ||
+      source === undefined ||
+      source.id !== environment.sourceEnvironmentId ||
+      source.projectId !== context.projectId ||
+      source.status !== "destroyed" ||
+      source.workspaceProvisionType !== "managed-worktree" ||
+      source.branchName === null
+    ) {
+      return null;
+    }
+    return {
+      selectionValue: encodeHostValue(source.hostId, "worktree"),
+      branch: {
+        name: source.branchName,
+        isNew: false,
+        continueFromEnvironmentId: source.id,
+      },
+    };
   }
   if (environment.type === "reuse") {
     return {

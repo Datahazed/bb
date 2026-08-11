@@ -202,6 +202,22 @@ async function isBranchCheckedOut(args: {
     .some((line) => line === branchLine);
 }
 
+async function localBranchExists(args: {
+  branchRef: string;
+  signal: AbortSignal | undefined;
+  sourcePath: string;
+}): Promise<boolean> {
+  const result = await runGit(
+    ["show-ref", "--verify", "--quiet", args.branchRef],
+    {
+      cwd: args.sourcePath,
+      allowFailure: true,
+      signal: args.signal,
+    },
+  );
+  return result.exitCode === 0;
+}
+
 async function addContinuedWorktree(args: {
   branchName: string;
   fallbackBranchName: string;
@@ -210,15 +226,13 @@ async function addContinuedWorktree(args: {
   targetPath: string;
 }): Promise<GitCommandResult> {
   const branchRef = `refs/heads/${args.branchName}`;
-  const branchResult = await runGit(
-    ["show-ref", "--verify", "--quiet", branchRef],
-    {
-      cwd: args.sourcePath,
-      allowFailure: true,
+  if (
+    !(await localBranchExists({
+      branchRef,
       signal: args.signal,
-    },
-  );
-  if (branchResult.exitCode !== 0) {
+      sourcePath: args.sourcePath,
+    }))
+  ) {
     throw new WorkspaceError(
       "branch_not_found",
       `Cannot continue archived environment because local branch '${args.branchName}' no longer exists`,
@@ -262,11 +276,34 @@ async function addContinuedWorktree(args: {
           );
         }
       }
+      const fallbackBranchRef = `refs/heads/${args.fallbackBranchName}`;
+      const fallbackBranchExists = await localBranchExists({
+        branchRef: fallbackBranchRef,
+        signal: args.signal,
+        sourcePath: args.sourcePath,
+      });
+      if (fallbackBranchExists) {
+        const fallbackIsCheckedOut = await isBranchCheckedOut({
+          branchRef: fallbackBranchRef,
+          signal: args.signal,
+          sourcePath: args.sourcePath,
+        });
+        if (fallbackIsCheckedOut) {
+          throw new WorkspaceError(
+            "branch_already_checked_out",
+            `Cannot continue archived environment because fallback branch '${args.fallbackBranchName}' is already checked out`,
+          );
+        }
+        return runGit(
+          ["worktree", "add", args.targetPath, args.fallbackBranchName],
+          { cwd: args.sourcePath, signal: args.signal },
+        );
+      }
       return runGit(
         [
           "worktree",
           "add",
-          "-B",
+          "-b",
           args.fallbackBranchName,
           args.targetPath,
           args.branchName,

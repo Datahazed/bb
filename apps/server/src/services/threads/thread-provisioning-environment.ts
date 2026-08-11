@@ -839,6 +839,7 @@ function buildManagedEnvironmentPlan(
       managed: true,
       workspaceProvisionType: args.workspaceProvisionType,
       baseBranch: baseBranchSpecToStoredName(args.baseBranch),
+      managedSourcePath: args.sourcePath,
       status: "provisioning",
     },
     buildRequest: ({ context, environment }) => {
@@ -883,6 +884,7 @@ function buildContinuedManagedEnvironmentPlan(
       workspaceProvisionType: args.workspaceProvisionType,
       baseBranch: args.mergeBaseBranch,
       mergeBaseBranch: args.mergeBaseBranch,
+      managedSourcePath: args.sourcePath,
       continuationBranchName: args.branchName,
       status: "provisioning",
     },

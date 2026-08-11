@@ -1398,11 +1398,13 @@ export function RootComposeView() {
   const canChangeBranchSelection =
     projectId !== undefined && effectiveEnvironmentValue !== "";
   const selectedBranchName = selectedBranch?.name ?? "";
+  const isContinuingArchivedEnvironment =
+    selectedBranch?.continueFromEnvironmentId !== undefined;
   const hostBranchesQuery = useProjectSourceBranches(
     projectId,
     isHostMode ? parsedEnvironment.hostId : null,
     {
-      enabled: isHostMode && !isProjectless,
+      enabled: isHostMode && !isProjectless && !isContinuingArchivedEnvironment,
       query: branchSearchQuery,
       selectedBranch: selectedBranchName,
     },
@@ -1412,7 +1414,9 @@ export function RootComposeView() {
     activeBranchesQuery.data,
   );
   const selectedEnvironmentRequestsManagedWorktree =
-    parsedEnvironment?.type === "host" && parsedEnvironment.mode === "worktree";
+    parsedEnvironment?.type === "host" &&
+    parsedEnvironment.mode === "worktree" &&
+    !isContinuingArchivedEnvironment;
   const managedWorktreeAvailabilityPending =
     selectedEnvironmentRequestsManagedWorktree &&
     !isProjectless &&

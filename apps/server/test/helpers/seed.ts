@@ -154,6 +154,7 @@ export function seedEnvironment(
     baseBranch?: string | null;
     defaultBranch?: string | null;
     mergeBaseBranch?: string | null;
+    managedSourcePath?: string | null;
   },
 ) {
   return createEnvironment(deps.db, deps.hub, {
@@ -171,6 +172,7 @@ export function seedEnvironment(
     defaultBranch:
       args.defaultBranch !== undefined ? args.defaultBranch : "main",
     mergeBaseBranch: args.mergeBaseBranch ?? null,
+    managedSourcePath: args.managedSourcePath ?? null,
   });
 }
 

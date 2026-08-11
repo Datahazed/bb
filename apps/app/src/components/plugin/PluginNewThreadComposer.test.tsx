@@ -16,6 +16,25 @@ import type { NewThreadRequest } from "@bb/plugin-sdk";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
 const mocks = vi.hoisted(() => ({
+  branchQueryOptions: [] as Array<Record<string, unknown>>,
+  continuationEnvironment: {
+    id: "env_archived",
+    name: null,
+    projectId: "proj_1",
+    hostId: "host_1",
+    path: null,
+    managed: true,
+    isGitRepo: true,
+    isWorktree: true,
+    workspaceProvisionType: "managed-worktree",
+    branchName: "feature/archived",
+    baseBranch: "main",
+    defaultBranch: "main",
+    mergeBaseBranch: "main",
+    status: "destroyed",
+    createdAt: 1,
+    updatedAt: 2,
+  },
   promptBoxProps: [] as Array<Record<string, any>>,
 }));
 
@@ -138,28 +157,45 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   useThreads: () => ({ data: [], isLoading: false }),
 }));
 
+vi.mock("@/hooks/queries/environment-queries", () => ({
+  useEnvironment: (environmentId: string | null) => ({
+    data:
+      environmentId === mocks.continuationEnvironment.id
+        ? mocks.continuationEnvironment
+        : undefined,
+    isPending: false,
+  }),
+}));
+
 vi.mock("@/hooks/queries/project-queries", () => ({
   stripProjectThreads: (project: unknown) => project,
   useProjectPromptHistory: () => ({ data: [] }),
-  useProjectSourceBranches: () => ({
-    data: {
-      branches: ["main", "release"],
-      branchesTruncated: false,
-      checkout: { kind: "branch", branchName: "main" },
-      defaultBranch: "main",
-      defaultBranchRelation: null,
-      hasUncommittedChanges: false,
-      operation: { kind: "none" },
-      originDefaultBranch: null,
-      remoteBranches: [],
-      remoteBranchesTruncated: false,
-      selectedBranch: null,
-      defaultWorktreeBaseBranch: null,
-    },
-    isLoading: false,
-    isFetching: false,
-    refetch: vi.fn(),
-  }),
+  useProjectSourceBranches: (
+    _projectId: string,
+    _hostId: string | null,
+    options: Record<string, unknown>,
+  ) => {
+    mocks.branchQueryOptions.push(options);
+    return {
+      data: {
+        branches: ["main", "release"],
+        branchesTruncated: false,
+        checkout: { kind: "branch", branchName: "main" },
+        defaultBranch: "main",
+        defaultBranchRelation: null,
+        hasUncommittedChanges: false,
+        operation: { kind: "none" },
+        originDefaultBranch: null,
+        remoteBranches: [],
+        remoteBranchesTruncated: false,
+        selectedBranch: null,
+        defaultWorktreeBaseBranch: null,
+      },
+      isLoading: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    };
+  },
 }));
 
 vi.mock("@/hooks/queries/project-default-execution-options-query", () => ({
@@ -263,6 +299,7 @@ async function submit(): Promise<void> {
 
 describe("PluginNewThreadComposer seeding", () => {
   beforeEach(() => {
+    mocks.branchQueryOptions.length = 0;
     mocks.promptBoxProps.length = 0;
     window.localStorage.clear();
   });
@@ -288,6 +325,36 @@ describe("PluginNewThreadComposer seeding", () => {
 
     expect(submitted).toHaveLength(1);
     expect(submitted[0]).toEqual(STORED_REQUEST);
+  });
+
+  it("round-trips a continuation without loading ordinary branch options", async () => {
+    const submitted: NewThreadRequest[] = [];
+    const continuationRequest: NewThreadRequest = {
+      ...STORED_REQUEST,
+      environment: {
+        type: "continue",
+        sourceEnvironmentId: mocks.continuationEnvironment.id,
+      },
+    };
+    renderComposer(
+      continuationRequest,
+      (request) => {
+        submitted.push(request);
+      },
+      "continue-round-trip",
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+      expect(latestPromptBoxProps().modeConfig.branch.value).toBe(
+        "feature/archived",
+      );
+    });
+    expect(mocks.branchQueryOptions.at(-1)?.enabled).toBe(false);
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toEqual(continuationRequest);
   });
 
   it("re-seeds every selection when the seed props change, even after a user pick", async () => {

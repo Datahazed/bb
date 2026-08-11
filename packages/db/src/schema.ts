@@ -439,6 +439,8 @@ export const environments = sqliteTable(
     baseBranch: text("base_branch"),
     defaultBranch: text("default_branch"),
     mergeBaseBranch: text("merge_base_branch"),
+    /** Project source checkout used to provision this managed worktree. */
+    managedSourcePath: text("managed_source_path"),
     /** Archived local branch this managed environment continues from. */
     continuationBranchName: text("continuation_branch_name"),
     destroyAttemptId: text("destroy_attempt_id"),

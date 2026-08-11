@@ -436,15 +436,17 @@ function ChildThreadsBody({
 function BannerActionSlot({
   children,
   hideInCompact = false,
+  hideInTiny = true,
 }: {
   children: ReactNode;
   hideInCompact?: boolean;
+  hideInTiny?: boolean;
 }) {
   return (
     <div
       className="ml-auto flex shrink-0 items-center gap-1.5 pr-2 text-xs text-muted-foreground"
       data-promptbox-hide-compact={hideInCompact ? "" : undefined}
-      data-promptbox-hide-tiny=""
+      data-promptbox-hide-tiny={hideInTiny ? "" : undefined}
     >
       {children}
     </div>
@@ -839,7 +841,7 @@ function ReadOnlyContextBanner({
           </span>
         </div>
         {showStatusAction ? (
-          <BannerActionSlot>{statusAction}</BannerActionSlot>
+          <BannerActionSlot hideInTiny={false}>{statusAction}</BannerActionSlot>
         ) : null}
       </div>
       {parentThreadSection ? (

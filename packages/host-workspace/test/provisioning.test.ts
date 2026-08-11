@@ -195,6 +195,64 @@ describe("workspace provisioning", () => {
     ).toBe(archivedHead);
   });
 
+  it("reuses an existing fallback branch without moving its ref", async () => {
+    const sourceRepo = await initRepoWithOptionalSetup();
+    await runGit(["branch", "archived-feature"], { cwd: sourceRepo });
+    const parentDir = await makeTempDir(
+      "bb-worktree-continue-existing-fallback-parent-",
+    );
+    const occupiedPath = path.join(parentDir, "occupied");
+    await runGit(["worktree", "add", occupiedPath, "archived-feature"], {
+      cwd: sourceRepo,
+    });
+    const fallbackSetupPath = path.join(parentDir, "fallback-setup");
+    await runGit(
+      [
+        "worktree",
+        "add",
+        "-b",
+        "bb/fallback",
+        fallbackSetupPath,
+        "archived-feature",
+      ],
+      { cwd: sourceRepo },
+    );
+    await fs.writeFile(
+      path.join(fallbackSetupPath, "fallback.txt"),
+      "preserve me\n",
+    );
+    await runGit(["add", "fallback.txt"], { cwd: fallbackSetupPath });
+    await runGit(["commit", "-m", "Preserve fallback work"], {
+      cwd: fallbackSetupPath,
+    });
+    const fallbackHead = (
+      await runGit(["rev-parse", "bb/fallback"], { cwd: sourceRepo })
+    ).stdout.trim();
+    await runGit(["worktree", "remove", fallbackSetupPath], {
+      cwd: sourceRepo,
+    });
+    const targetPath = path.join(parentDir, "continued");
+
+    await createWorktree({
+      sourcePath: sourceRepo,
+      targetPath,
+      branchName: "bb/fallback",
+      baseBranch: "archived-feature",
+      continueFromBranchName: "archived-feature",
+      timeoutMs: 900000,
+    });
+
+    expect(await new Workspace(targetPath).currentBranch).toBe("bb/fallback");
+    expect(
+      (await runGit(["rev-parse", "HEAD"], { cwd: targetPath })).stdout.trim(),
+    ).toBe(fallbackHead);
+    expect(
+      (
+        await runGit(["rev-parse", "bb/fallback"], { cwd: sourceRepo })
+      ).stdout.trim(),
+    ).toBe(fallbackHead);
+  });
+
   it("fails continuation when the archived local branch no longer exists", async () => {
     const sourceRepo = await initRepoWithOptionalSetup();
     const parentDir = await makeTempDir("bb-worktree-continue-missing-parent-");

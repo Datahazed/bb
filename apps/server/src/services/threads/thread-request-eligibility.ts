@@ -1,4 +1,8 @@
-import { getProjectSourceByHost } from "@bb/db";
+import {
+  getEnvironment,
+  getProjectSourceByHost,
+  hasRevivableArchivedThreadInEnvironment,
+} from "@bb/db";
 import {
   type Environment,
   type LocalPathProjectSource,
@@ -104,10 +108,13 @@ function resolveContinueThreadRequestEnvironment(
       "Personal project threads cannot continue archived managed worktrees",
     );
   }
-  const sourceEnvironment = requireEnvironment(
+  const sourceEnvironment = getEnvironment(
     deps.db,
     environment.sourceEnvironmentId,
   );
+  if (!sourceEnvironment) {
+    throw new ApiError(404, "environment_not_found", "Environment not found");
+  }
   if (sourceEnvironment.projectId !== projectId) {
     throw new ApiError(
       409,
@@ -118,7 +125,10 @@ function resolveContinueThreadRequestEnvironment(
   if (
     sourceEnvironment.status !== "destroyed" ||
     sourceEnvironment.workspaceProvisionType !== "managed-worktree" ||
-    sourceEnvironment.branchName === null
+    sourceEnvironment.branchName === null ||
+    !hasRevivableArchivedThreadInEnvironment(deps.db, {
+      environmentId: sourceEnvironment.id,
+    })
   ) {
     throw new ApiError(
       409,
@@ -145,6 +155,13 @@ function resolveContinueThreadRequestEnvironment(
       409,
       "invalid_request",
       "No project source configured for the archived environment's host",
+    );
+  }
+  if (sourceEnvironment.managedSourcePath !== localSource.path) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Archived environment belongs to a different project source checkout",
     );
   }
   return {

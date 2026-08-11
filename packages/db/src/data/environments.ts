@@ -30,6 +30,7 @@ export interface CreateEnvironmentInput {
   baseBranch?: string | null;
   defaultBranch?: string | null;
   mergeBaseBranch?: string | null;
+  managedSourcePath?: string | null;
   continuationBranchName?: string | null;
   status?: EnvironmentStatus;
 }
@@ -56,6 +57,7 @@ export function createEnvironment(
       baseBranch: input.baseBranch ?? null,
       defaultBranch: input.defaultBranch ?? null,
       mergeBaseBranch: input.mergeBaseBranch ?? null,
+      managedSourcePath: input.managedSourcePath ?? null,
       continuationBranchName: input.continuationBranchName ?? null,
       workspaceProvisionType: input.workspaceProvisionType,
       status: input.status ?? "provisioning",

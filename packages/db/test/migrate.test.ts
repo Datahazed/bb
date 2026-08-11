@@ -428,6 +428,12 @@ const retireRequestedAtMigrationPath = resolve(
   "drizzle",
   "0091_daffy_dark_phoenix.sql",
 );
+const continuationProvenanceMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0093_lean_peter_quill.sql",
+);
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
   "..",
@@ -614,19 +620,20 @@ function dropEnvironmentRetireRequestedAtColumn(db: DbConnection): void {
   }
 }
 
-// Migration 0093 records the archived branch preferred by continuation
-// provisioning. Rewind scenarios must remove it before replaying the ADD.
-function dropEnvironmentContinuationBranchNameColumn(
-  db: DbConnection,
-): void {
+// Migration 0093 records continuation provenance. Rewind scenarios must remove
+// its columns before replaying the ADD statements.
+function dropEnvironmentContinuationBranchNameColumn(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
     .all();
   if (columns.some((column) => column.name === "continuation_branch_name")) {
     db.$client
-      .prepare(
-        "ALTER TABLE environments DROP COLUMN continuation_branch_name",
-      )
+      .prepare("ALTER TABLE environments DROP COLUMN continuation_branch_name")
+      .run();
+  }
+  if (columns.some((column) => column.name === "managed_source_path")) {
+    db.$client
+      .prepare("ALTER TABLE environments DROP COLUMN managed_source_path")
       .run();
   }
 }
@@ -1298,6 +1305,58 @@ function deleteDeferredCleanupMigrationRows(db: DbConnection): void {
 }
 
 describe("migrate", () => {
+  it("backfills the managed source checkout used by existing worktrees", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE environments (
+          id text PRIMARY KEY NOT NULL,
+          project_id text NOT NULL,
+          host_id text NOT NULL,
+          workspace_provision_type text NOT NULL
+        );
+        CREATE TABLE project_sources (
+          project_id text NOT NULL,
+          host_id text NOT NULL,
+          type text NOT NULL,
+          path text
+        );
+        INSERT INTO project_sources (project_id, host_id, type, path)
+        VALUES ('proj_1', 'host_1', 'local_path', '/repo/original');
+        INSERT INTO environments (
+          id,
+          project_id,
+          host_id,
+          workspace_provision_type
+        ) VALUES
+          ('env_managed', 'proj_1', 'host_1', 'managed-worktree'),
+          ('env_unmanaged', 'proj_1', 'host_1', 'unmanaged');
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: continuationProvenanceMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<[], { id: string; managedSourcePath: string | null }>(
+            `
+              SELECT id, managed_source_path AS managedSourcePath
+              FROM environments
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ).toEqual([
+        { id: "env_managed", managedSourcePath: "/repo/original" },
+        { id: "env_unmanaged", managedSourcePath: null },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("backfills the retirement clock only for environments already retiring", () => {
     const db = createConnection(":memory:");
     try {

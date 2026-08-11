@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Environment } from "@bb/domain";
 import type { CreateThreadEnvironmentArgs } from "@bb/server-contract";
 import { resolveRootComposeThreadEnvironment } from "@/views/root-compose-thread-environment";
 import { newThreadEnvironmentArgsToSeed } from "./new-thread-environment-seed";
@@ -114,6 +115,55 @@ describe("newThreadEnvironmentArgsToSeed round trip", () => {
         workspace: { type: "personal" },
       }),
     ).toBeNull();
+  });
+
+  it("continues an archived managed environment", () => {
+    const environment: CreateThreadEnvironmentArgs = {
+      type: "continue",
+      sourceEnvironmentId: "env_archived",
+    };
+    const sourceEnvironment: Environment = {
+      id: "env_archived",
+      name: null,
+      projectId: PROJECT_ID,
+      hostId: "host_1",
+      path: null,
+      managed: true,
+      isGitRepo: true,
+      isWorktree: true,
+      workspaceProvisionType: "managed-worktree",
+      branchName: "feature/archived",
+      baseBranch: "main",
+      defaultBranch: "main",
+      mergeBaseBranch: "main",
+      status: "destroyed",
+      createdAt: 1,
+      updatedAt: 2,
+    };
+
+    const seed = newThreadEnvironmentArgsToSeed(environment, {
+      projectId: PROJECT_ID,
+      continuationSourceEnvironment: sourceEnvironment,
+    });
+
+    expect(seed).toEqual({
+      selectionValue: "host:host_1:worktree",
+      branch: {
+        name: "feature/archived",
+        isNew: false,
+        continueFromEnvironmentId: "env_archived",
+      },
+    });
+    expect(
+      seed &&
+        resolveRootComposeThreadEnvironment({
+          defaultBranch: "main",
+          defaultWorktreeBaseBranch: null,
+          environmentValue: seed.selectionValue,
+          projectId: PROJECT_ID,
+          selectedBranch: seed.branch,
+        }),
+    ).toEqual(environment);
   });
 
   it("documented limit: an unmanaged path is not representable", () => {

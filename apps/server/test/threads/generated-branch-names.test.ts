@@ -1,4 +1,11 @@
-import { createThread, getEnvironment, getThread, listEvents } from "@bb/db";
+import {
+  archiveThread,
+  createThread,
+  deleteThread,
+  getEnvironment,
+  getThread,
+  listEvents,
+} from "@bb/db";
 import {
   type ResolvedThreadExecutionOptions,
   systemThreadProvisioningEventDataSchema,
@@ -160,12 +167,18 @@ describe("generated managed branch names", () => {
         defaultBranch: "main",
         hostId: host.id,
         managed: true,
+        managedSourcePath: "/tmp/continue-archived-project",
         mergeBaseBranch: "origin/release",
         path: null,
         projectId: project.id,
         status: "destroyed",
         workspaceProvisionType: "managed-worktree",
       });
+      const archivedThread = seedThread(harness.deps, {
+        environmentId: archivedEnvironment.id,
+        projectId: project.id,
+      });
+      archiveThread(harness.db, harness.hub, archivedThread.id);
 
       const response = await harness.app.request("/api/v1/threads", {
         method: "POST",
@@ -211,6 +224,101 @@ describe("generated managed branch names", () => {
       expect(getEnvironment(harness.db, archivedEnvironment.id)?.status).toBe(
         "destroyed",
       );
+    });
+  });
+
+  it("rejects continuation after the archived thread is deleted", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-reject-deleted-continuation",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/reject-deleted-continuation-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        branchName: "feature/deleted",
+        hostId: host.id,
+        managed: true,
+        managedSourcePath: "/tmp/reject-deleted-continuation-project",
+        mergeBaseBranch: "main",
+        path: null,
+        projectId: project.id,
+        status: "destroyed",
+        workspaceProvisionType: "managed-worktree",
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      archiveThread(harness.db, harness.hub, thread.id);
+      deleteThread(harness.db, harness.hub, thread.id);
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "app",
+          projectId: project.id,
+          providerId: "codex",
+          model: "gpt-5",
+          title: "Do not continue deleted work",
+          input: [{ type: "text", text: "Keep going" }],
+          environment: {
+            type: "continue",
+            sourceEnvironmentId: environment.id,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(409);
+    });
+  });
+
+  it("rejects continuation after the project source checkout changes", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-reject-remapped-continuation",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/current-remapped-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        branchName: "feature/original-source",
+        hostId: host.id,
+        managed: true,
+        managedSourcePath: "/tmp/original-project-source",
+        mergeBaseBranch: "main",
+        path: null,
+        projectId: project.id,
+        status: "destroyed",
+        workspaceProvisionType: "managed-worktree",
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      archiveThread(harness.db, harness.hub, thread.id);
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "app",
+          projectId: project.id,
+          providerId: "codex",
+          model: "gpt-5",
+          title: "Do not continue from a remapped source",
+          input: [{ type: "text", text: "Keep going" }],
+          environment: {
+            type: "continue",
+            sourceEnvironmentId: environment.id,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(409);
     });
   });
 

@@ -1,4 +1,11 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { NewThreadComposerProps, NewThreadRequest } from "@bb/plugin-sdk";
@@ -18,6 +25,7 @@ import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { newThreadEnvironmentArgsToSeed } from "@/components/plugin/new-thread-environment-seed";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
+import { useEnvironment } from "@/hooks/queries/environment-queries";
 import {
   useProjectPromptHistory,
   useProjectSourceBranches,
@@ -105,9 +113,8 @@ export function PluginNewThreadComposer({
   const [pickedProjectId, setPickedProjectId] = useState<string | null>(
     defaultProjectId ?? null,
   );
-  const [seededDefaultProjectId, setSeededDefaultProjectId] = useState(
-    defaultProjectId,
-  );
+  const [seededDefaultProjectId, setSeededDefaultProjectId] =
+    useState(defaultProjectId);
   // Re-seed during render (not in an effect) so a new `defaultProjectId` never
   // paints one frame of the previous project's environment options.
   if (seededDefaultProjectId !== defaultProjectId) {
@@ -115,35 +122,6 @@ export function PluginNewThreadComposer({
     setPickedProjectId(defaultProjectId ?? null);
   }
 
-  // --- Execution/environment seeds ---------------------------------------
-  // The `default*` props are seeds, value-compared so a plugin can pass a
-  // fresh `defaultEnvironment` object each render. A signature change means
-  // the caller switched records: it re-seeds every selection (via the
-  // creation-options resetKey below), including ones the user had touched.
-  // `defaultProjectId` is part of the identity so switching to a record that
-  // differs ONLY by project still clears the previous record's branch
-  // override — otherwise record two would lose its branch seed.
-  const seedSignature = JSON.stringify([
-    defaultProjectId ?? null,
-    defaultProviderId ?? null,
-    defaultModel ?? null,
-    defaultReasoningLevel ?? null,
-    defaultServiceTier ?? null,
-    defaultPermissionMode ?? null,
-    defaultEnvironment ?? null,
-  ]);
-  const environmentSeed =
-    defaultEnvironment === undefined
-      ? null
-      : newThreadEnvironmentArgsToSeed(defaultEnvironment);
-  // The seeded branch shows until the user picks or clears one; re-seed on a
-  // signature change so switching records reloads that record's branch.
-  const [seededSignature, setSeededSignature] = useState(seedSignature);
-  const [branchSeedOverridden, setBranchSeedOverridden] = useState(false);
-  if (seededSignature !== seedSignature) {
-    setSeededSignature(seedSignature);
-    setBranchSeedOverridden(false);
-  }
   const projectId = useMemo(() => {
     const candidate = pickedProjectId ?? PERSONAL_PROJECT_ID;
     if (isProjectlessProjectId(candidate)) return PERSONAL_PROJECT_ID;
@@ -171,12 +149,65 @@ export function PluginNewThreadComposer({
     [projects],
   );
 
+  // --- Execution/environment seeds ---------------------------------------
+  // A continuation request only carries an environment ID. Resolve its
+  // archived environment so the plugin composer can render and round-trip the
+  // same host, branch, and continuation intent as the root composer.
+  const continuationSourceEnvironmentId =
+    defaultEnvironment?.type === "continue"
+      ? defaultEnvironment.sourceEnvironmentId
+      : null;
+  const continuationSourceEnvironmentQuery = useEnvironment(
+    continuationSourceEnvironmentId,
+    { enabled: continuationSourceEnvironmentId !== null },
+  );
+  const environmentSeed =
+    defaultEnvironment === undefined
+      ? null
+      : newThreadEnvironmentArgsToSeed(defaultEnvironment, {
+          projectId,
+          ...(continuationSourceEnvironmentQuery.data
+            ? {
+                continuationSourceEnvironment:
+                  continuationSourceEnvironmentQuery.data,
+              }
+            : {}),
+        });
+  // The `default*` props are seeds, value-compared so a plugin can pass a
+  // fresh `defaultEnvironment` object each render. A signature change means
+  // the caller switched records: it re-seeds every selection (via the
+  // creation-options resetKey below), including ones the user had touched.
+  // Include the resolved environment seed so a continuation re-seeds when its
+  // archived metadata arrives. `defaultProjectId` is part of the identity so
+  // switching to a record that differs ONLY by project still clears the
+  // previous record's branch override.
+  const seedSignature = JSON.stringify([
+    defaultProjectId ?? null,
+    defaultProviderId ?? null,
+    defaultModel ?? null,
+    defaultReasoningLevel ?? null,
+    defaultServiceTier ?? null,
+    defaultPermissionMode ?? null,
+    defaultEnvironment ?? null,
+    environmentSeed,
+  ]);
+  // The seeded branch shows until the user picks or clears one; re-seed on a
+  // signature change so switching records reloads that record's branch.
+  const [seededSignature, setSeededSignature] = useState(seedSignature);
+  const [branchSeedOverridden, setBranchSeedOverridden] = useState(false);
+  if (seededSignature !== seedSignature) {
+    setSeededSignature(seedSignature);
+    setBranchSeedOverridden(false);
+  }
+
   // --- Hosts and reusable worktrees --------------------------------------
   const hostsQuery = useHosts();
   const systemConfigQuery = useSystemConfig();
   const primaryHostId =
-    selectPrimaryHost(hostsQuery.data, systemConfigQuery.data?.primaryHostId ?? null)
-      ?.id ?? null;
+    selectPrimaryHost(
+      hostsQuery.data,
+      systemConfigQuery.data?.primaryHostId ?? null,
+    )?.id ?? null;
   const knownHostIds = useMemo(
     () => new Set((hostsQuery.data ?? []).map((host) => host.id)),
     [hostsQuery.data],
@@ -379,6 +410,8 @@ export function PluginNewThreadComposer({
     effectiveEnvironmentValue === environmentSeed.selectionValue
       ? environmentSeed.branch
       : null);
+  const isContinuingArchivedEnvironment =
+    selectedBranch?.continueFromEnvironmentId !== undefined;
   const handleBranchChange = useCallback(
     (name: string) => {
       setBranchSeedOverridden(true);
@@ -405,7 +438,7 @@ export function PluginNewThreadComposer({
     projectId,
     isHostMode ? parsedEnvironment.hostId : null,
     {
-      enabled: isHostMode && !isProjectless,
+      enabled: isHostMode && !isProjectless && !isContinuingArchivedEnvironment,
       query: branchSearchQuery,
       selectedBranch: selectedBranch?.name ?? "",
     },
@@ -414,7 +447,9 @@ export function PluginNewThreadComposer({
     branchesQuery.data,
   );
   const requestsManagedWorktree =
-    isHostMode && parsedEnvironment.mode === "worktree";
+    isHostMode &&
+    parsedEnvironment.mode === "worktree" &&
+    !isContinuingArchivedEnvironment;
   const managedWorktreeAvailabilityPending =
     requestsManagedWorktree && !isProjectless && branchesQuery.isLoading;
   const managedWorktreeUnavailable =
@@ -638,6 +673,8 @@ export function PluginNewThreadComposer({
     !selectedThreadModel ||
     isSubmitting ||
     isCopyingAttachments ||
+    (continuationSourceEnvironmentId !== null &&
+      continuationSourceEnvironmentQuery.isPending) ||
     promptInput.length === 0 ||
     selectedEnvironment === null ||
     managedWorktreeAvailabilityPending ||
@@ -652,6 +689,8 @@ export function PluginNewThreadComposer({
     if (
       input.length === 0 ||
       isSubmitting ||
+      (continuationSourceEnvironmentId !== null &&
+        continuationSourceEnvironmentQuery.isPending) ||
       selectedEnvironment === null ||
       !selectedProviderId ||
       !selectedThreadModel ||
@@ -694,6 +733,8 @@ export function PluginNewThreadComposer({
     }
   }, [
     executionInputSources,
+    continuationSourceEnvironmentId,
+    continuationSourceEnvironmentQuery.isPending,
     isSubmitting,
     managedWorktreeAvailabilityPending,
     managedWorktreeUnavailable,

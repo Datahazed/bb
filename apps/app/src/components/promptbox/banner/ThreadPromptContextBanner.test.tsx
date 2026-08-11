@@ -128,6 +128,7 @@ describe("ThreadPromptContextBanner", () => {
 
     expect(markup).toContain("Continue in new thread");
     expect(markup).toContain("<button");
+    expect(markup).not.toContain("data-promptbox-hide-tiny");
   });
 
   it("keeps the continue CTA alongside parent context", () => {

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "099760bb-d294-4f6a-9f67-5d8fa75d1c39",
+  "id": "9e8f0233-f9b3-4b62-8d92-a62ff0804e95",
   "prevId": "844ac91a-7746-44d4-b60f-dd235fa51627",
   "tables": {
     "app_settings": {
@@ -506,6 +506,13 @@
         },
         "merge_base_branch": {
           "name": "merge_base_branch",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "managed_source_path": {
+          "name": "managed_source_path",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
