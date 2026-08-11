@@ -21,7 +21,7 @@
     "bb-plugin"
   ],
   "scripts": {
-    "build": "bb plugin build",
+    "build": "node ../../../packages/bb-app/dist/bb.js plugin build",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit"
   },
