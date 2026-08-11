@@ -1761,6 +1761,27 @@ describe("codex provider adapter", () => {
     expect(JSON.stringify(cmd)).not.toContain("persistExtendedHistory");
   });
 
+  it("buildCommand thread/fork can stop at a specific source turn", () => {
+    const adapter = createCodexProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "thread/fork",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-edited",
+      sourceProviderThreadId: "codex-source-thread",
+      sourceProviderCheckpointId: "turn-before-edited-message",
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+    });
+
+    expect(cmd).toMatchObject({
+      method: "thread/fork",
+      params: {
+        threadId: "codex-source-thread",
+        lastTurnId: "turn-before-edited-message",
+      },
+    });
+  });
+
   it("buildCommand maps max reasoning level through to Codex", () => {
     const adapter = createCodexProviderAdapter();
     const cmd = adapter.buildCommandPlan({
@@ -2232,6 +2253,21 @@ describe("codex provider adapter", () => {
       kind: "request",
       method: "thread/archive",
       params: { threadId: "codex-thread-1" },
+    });
+  });
+
+  it("buildCommand thread/discard archives the staged provider thread", () => {
+    const adapter = createCodexProviderAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/discard",
+        threadId: "bb-staging",
+        providerThreadId: "codex-staging",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/archive",
+      params: { threadId: "codex-staging" },
     });
   });
 

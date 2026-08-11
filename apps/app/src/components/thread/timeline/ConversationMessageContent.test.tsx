@@ -165,7 +165,11 @@ describe("ConversationMessageContent long user messages", () => {
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={text}
-            turnRequest={{ kind: "message", status: "accepted" }}
+            turnRequest={{
+              isGrouped: false,
+              kind: "message",
+              status: "accepted",
+            }}
           />
         </RouteNavigationProvider>
       </MemoryRouter>,
@@ -212,7 +216,11 @@ describe("ConversationMessageContent user thread mentions", () => {
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text="Why was @thread:thr_ti4st72wgs not a pill?"
-              turnRequest={{ kind: "message", status: "accepted" }}
+              turnRequest={{
+                isGrouped: false,
+                kind: "message",
+                status: "accepted",
+              }}
             />
           </ThreadTitleMentionResourcesProvider>
         </RouteNavigationProvider>
@@ -258,7 +266,11 @@ describe("ConversationMessageContent user thread mentions", () => {
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
               text="See @thread:thr_cross_project for the result."
-              turnRequest={{ kind: "message", status: "accepted" }}
+              turnRequest={{
+                isGrouped: false,
+                kind: "message",
+                status: "accepted",
+              }}
             />
           </ThreadTitleMentionResourcesProvider>
         </RouteNavigationProvider>
