@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BbDesktopCloseWindowRequestHandler } from "@bb/desktop-contract";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
-import { RootComposePanelCommandHandlers } from "./RootComposePanelCommandHandlers";
+import { SecondaryPanelCommandHandlers } from "./SecondaryPanelHost";
 
 const commandFixture = vi.hoisted(() => ({
   keybindings: [
@@ -75,7 +75,32 @@ afterEach(() => {
   delete window.bbDesktop;
 });
 
-describe("RootComposePanelCommandHandlers", () => {
+function TestPanelCommandHandlers({
+  isFocused,
+  onClose,
+  onToggle,
+}: {
+  isFocused: boolean;
+  onClose: () => boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <SecondaryPanelCommandHandlers
+      host={{
+        canStartTerminal: false,
+        handleCloseWindowRequest: onClose,
+        handleOpenNewTab: vi.fn(),
+        handleStartTerminal: vi.fn(),
+        handleToggleSecondaryPanel: onToggle,
+        isFocused,
+        registerLegacyOpenNewTab: false,
+      }}
+      onOpenPreferred={() => false}
+    />
+  );
+}
+
+describe("SecondaryPanelCommandHandlers", () => {
   it("routes panel shortcuts and desktop close requests only to the focused New Thread pane", async () => {
     const firstToggle = vi.fn();
     const firstClose = vi.fn(() => true);
@@ -92,12 +117,12 @@ describe("RootComposePanelCommandHandlers", () => {
 
     const view = render(
       <AppCommandProvider>
-        <RootComposePanelCommandHandlers
+        <TestPanelCommandHandlers
           isFocused
           onClose={firstClose}
           onToggle={firstToggle}
         />
-        <RootComposePanelCommandHandlers
+        <TestPanelCommandHandlers
           isFocused={false}
           onClose={secondClose}
           onToggle={secondToggle}
@@ -120,12 +145,12 @@ describe("RootComposePanelCommandHandlers", () => {
 
     view.rerender(
       <AppCommandProvider>
-        <RootComposePanelCommandHandlers
+        <TestPanelCommandHandlers
           isFocused={false}
           onClose={firstClose}
           onToggle={firstToggle}
         />
-        <RootComposePanelCommandHandlers
+        <TestPanelCommandHandlers
           isFocused
           onClose={secondClose}
           onToggle={secondToggle}
