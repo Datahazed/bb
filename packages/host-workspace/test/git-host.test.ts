@@ -180,14 +180,23 @@ describe("parseGitHostPullRequest", () => {
 });
 
 describe("runPullRequestActionForCurrentBranch", () => {
+  const actionArgs = {
+    cwd: "/tmp/workspace",
+    localBranch: "bb/pr-action",
+  };
+
   function mockGhSuccess(): void {
     execFileMock.mockImplementation(
       (
-        _file: string,
+        file: string,
         _args: readonly string[],
         _options: object,
         callback: (error: Error | null, stdout: string, stderr: string) => void,
       ) => {
+        if (file === "git") {
+          callback(null, "", "");
+          return;
+        }
         callback(null, "", "");
       },
     );
@@ -217,7 +226,7 @@ describe("runPullRequestActionForCurrentBranch", () => {
       mockGhSuccess();
 
       await runPullRequestActionForCurrentBranch({
-        cwd: "/tmp/workspace",
+        ...actionArgs,
         action,
       });
 
@@ -241,18 +250,26 @@ describe("runPullRequestActionForCurrentBranch", () => {
     });
     execFileMock.mockImplementation(
       (
-        _file: string,
+        file: string,
         _args: readonly string[],
         _options: object,
-        callback: (error: Error) => void,
+        callback: (
+          error: Error | null,
+          stdout?: string,
+          stderr?: string,
+        ) => void,
       ) => {
+        if (file === "git") {
+          callback(null, "", "");
+          return;
+        }
         callback(error);
       },
     );
 
     await expect(
       runPullRequestActionForCurrentBranch({
-        cwd: "/tmp/workspace",
+        ...actionArgs,
         action: { operation: "ready" },
       }),
     ).rejects.toMatchObject({
@@ -263,14 +280,23 @@ describe("runPullRequestActionForCurrentBranch", () => {
 });
 
 describe("getPullRequestForCurrentBranch", () => {
+  const lookupArgs = {
+    cwd: "/tmp/workspace",
+    localBranch: "bb/pr-lookup",
+  };
+
   function mockGhStdout(stdout: string): void {
     execFileMock.mockImplementation(
       (
-        _file: string,
+        file: string,
         _args: readonly string[],
         _options: object,
         callback: (error: Error | null, stdout: string, stderr: string) => void,
       ) => {
+        if (file === "git") {
+          callback(null, "", "");
+          return;
+        }
         callback(null, stdout, "");
       },
     );
@@ -279,19 +305,25 @@ describe("getPullRequestForCurrentBranch", () => {
   function mockGhFailure(error: Error): void {
     execFileMock.mockImplementation(
       (
-        _file: string,
+        file: string,
         _args: readonly string[],
         _options: object,
-        callback: (error: Error) => void,
+        callback: (
+          error: Error | null,
+          stdout?: string,
+          stderr?: string,
+        ) => void,
       ) => {
+        if (file === "git") {
+          callback(null, "", "");
+          return;
+        }
         callback(error);
       },
     );
   }
 
-  const lookupArgs = { cwd: "/tmp/workspace" };
-
-  it("lets gh resolve the current branch through its configured upstream", async () => {
+  it("uses bare gh lookup when the branch has no differently named upstream", async () => {
     mockGhStdout(ghJson());
     await expect(
       getPullRequestForCurrentBranch(lookupArgs),
@@ -333,8 +365,7 @@ describe("getPullRequestForCurrentBranch", () => {
     mockGhFailure(
       Object.assign(new Error("gh exited 4"), {
         code: 4,
-        stderr:
-          "gh: To get started with GitHub CLI, please run: gh auth login",
+        stderr: "gh: To get started with GitHub CLI, please run: gh auth login",
       }),
     );
     const result = await getPullRequestForCurrentBranch(lookupArgs);
