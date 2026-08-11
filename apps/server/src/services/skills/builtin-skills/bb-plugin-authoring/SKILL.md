@@ -1630,6 +1630,9 @@ Remaining reference examples in `examples/plugins/`:
   bare-letter keymap that coexists with a dozen live composers.
 - `t3sidebar` — an inbox-style replacement for the sidebar thread list, with
   header chips for child threads and plugin-owned settled and snoozed state.
+- `thread-hover-cards` — an advanced content script that augments existing
+  sidebar rows with pointer- and keyboard-accessible previews, backed by
+  validated rpc summaries and a directory-warming background service.
 
 ## Gotchas
 

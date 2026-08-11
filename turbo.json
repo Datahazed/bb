@@ -141,6 +141,13 @@
         "@bb/plugin-sdk#build"
       ]
     },
+    "bb-plugin-thread-hover-cards#build": {
+      // The example's build command runs the workspace bb CLI from bb-app.
+      "dependsOn": [
+        "topo",
+        "bb-app#build"
+      ]
+    },
     "@bb/desktop#build": {
       "dependsOn": [
         "bb-app#build"
