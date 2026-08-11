@@ -99,6 +99,8 @@ export interface SecondaryPanelHostCapabilities {
   closeLoneNewTabByHidingPanel: boolean;
   /** Thread detail applies the user's URL routing preference to browser popups. */
   routeBrowserPopupsByPreference: boolean;
+  /** Thread detail decorates plugin tabs with the registered action icon. */
+  showPluginActionIcons: boolean;
   /** Older desktop shells emit this event instead of the app command. */
   registerLegacyOpenNewTab: boolean;
   /** Root compose opens a new placeholder when toggled open. */
@@ -1186,6 +1188,7 @@ export function useSecondaryPanelHost({
     onCloseTerminal: handleCloseTerminalTab,
     orderedTabs: syncedOrderedSecondaryFileTabs,
     pluginPanelActions,
+    showPluginActionIcons: capabilities.showPluginActionIcons,
     terminalsById,
   });
   const activePluginPanelTab = fileTabState.activePluginPanelTab;

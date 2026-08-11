@@ -24,6 +24,7 @@ interface UseSecondaryPanelFileTabsArgs {
   onCloseTerminal: (terminalId: string) => void;
   orderedTabs: readonly SecondaryFileFixedPanelTab[];
   pluginPanelActions: readonly PluginPanelActionIcon[];
+  showPluginActionIcons: boolean;
   terminalsById: ReadonlyMap<string, TerminalSession>;
 }
 
@@ -47,6 +48,7 @@ export function useSecondaryPanelFileTabs({
   onCloseTerminal,
   orderedTabs,
   pluginPanelActions,
+  showPluginActionIcons,
   terminalsById,
 }: UseSecondaryPanelFileTabsArgs): SecondaryPanelFileTab[] | undefined {
   return useMemo(() => {
@@ -140,11 +142,13 @@ export function useSecondaryPanelFileTabs({
             onClose: () => onCloseTab(tab.id),
           };
         case "plugin-panel": {
-          const actionIcon =
-            pluginPanelActions.find(
-              (action) =>
-                action.pluginId === tab.pluginId && action.id === tab.actionId,
-            )?.icon ?? null;
+          const actionIcon = showPluginActionIcons
+            ? (pluginPanelActions.find(
+                (action) =>
+                  action.pluginId === tab.pluginId &&
+                  action.id === tab.actionId,
+              )?.icon ?? null)
+            : null;
           return {
             ...common,
             filename: tab.title,
@@ -172,6 +176,7 @@ export function useSecondaryPanelFileTabs({
     onCloseTerminal,
     orderedTabs,
     pluginPanelActions,
+    showPluginActionIcons,
     terminalsById,
   ]);
 }

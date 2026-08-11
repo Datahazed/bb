@@ -199,6 +199,7 @@ const ROOT_SECONDARY_PANEL_CAPABILITIES = {
   preserveWorkspaceTabsAcrossContexts: true,
   closeLoneNewTabByHidingPanel: true,
   routeBrowserPopupsByPreference: false,
+  showPluginActionIcons: true,
   registerLegacyOpenNewTab: false,
   toggleOpensNewTab: true,
 } satisfies SecondaryPanelHostCapabilities;
