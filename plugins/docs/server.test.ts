@@ -1061,13 +1061,17 @@ describe("Docs vault operations", () => {
         path.join(temporaryDirectories[0]!, "plan.md"),
         "# Changed outside Docs",
       );
-      await waitForSignal(() =>
-        harness.realtimeSignals.some(
-          (signal) =>
-            signal.channel === "vault-changed" &&
-            isRecord(signal.payload) &&
-            signal.payload.vaultId === "personal",
-        ),
+      await waitForSignal(
+        () =>
+          harness.realtimeSignals.some(
+            (signal) =>
+              signal.channel === "vault-changed" &&
+              isRecord(signal.payload) &&
+              signal.payload.vaultId === "personal",
+          ),
+        // Stay below the 10-second polling interval while allowing native
+        // FSEvents and the 250ms debounce to run under full-suite contention.
+        5_000,
       );
     } finally {
       service.controller.abort();
