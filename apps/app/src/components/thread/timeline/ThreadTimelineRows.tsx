@@ -2335,6 +2335,7 @@ function TimelineRowsList({
     if (scrollElement === null) {
       return;
     }
+    const realizedHeightByKey = realizedHeightByKeyRef.current;
 
     const applyWithScrollCompensation = (apply: () => void) => {
       const maxScrollTop = Math.max(
@@ -2453,7 +2454,7 @@ function TimelineRowsList({
       flushSync(() => {
         for (const candidate of candidates) {
           const measured = candidate.wrapper.getBoundingClientRect().height;
-          realizedHeightByKeyRef.current.set(candidate.key, measured);
+          realizedHeightByKey.set(candidate.key, measured);
           const delta = measured - candidate.placeholderHeight;
           if (delta === 0) {
             continue;
@@ -2489,7 +2490,7 @@ function TimelineRowsList({
               continue;
             }
             if (!entry.isIntersecting) {
-              realizedHeightByKeyRef.current.delete(key);
+              realizedHeightByKey.delete(key);
               controller.handleIntersection(entry);
               continue;
             }
@@ -2526,7 +2527,7 @@ function TimelineRowsList({
               continue;
             }
             if (!entry.isIntersecting) {
-              realizedHeightByKeyRef.current.delete(key);
+              realizedHeightByKey.delete(key);
             }
             controllerByKeyRef.current.get(key)?.handleIntersection(entry);
           }
@@ -2563,13 +2564,13 @@ function TimelineRowsList({
             // Placeholder height changes are this component's own writes
             // (donor adjustments, derealization measurements) — already
             // balanced, never compensated again.
-            realizedHeightByKeyRef.current.delete(key);
+            realizedHeightByKey.delete(key);
             continue;
           }
           const height =
             entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
-          const previous = realizedHeightByKeyRef.current.get(key);
-          realizedHeightByKeyRef.current.set(key, height);
+          const previous = realizedHeightByKey.get(key);
+          realizedHeightByKey.set(key, height);
           if (previous === undefined) {
             // First observation after a realization whose delta was already
             // balanced (or that mounted through the anchor-compensated path).
@@ -2615,7 +2616,7 @@ function TimelineRowsList({
       resizeObserverRef.current = null;
       observer.disconnect();
       contentGrowthObserver?.disconnect();
-      realizedHeightByKeyRef.current.clear();
+      realizedHeightByKey.clear();
     };
   }, [getScrollElement, shouldWindow]);
 
