@@ -429,24 +429,59 @@ describe("ThreadTimelineRows actions", () => {
     expect(scrollTop).toBe(17);
     expect(setScrollTop).toHaveBeenCalledTimes(2);
 
+    // While a scroll is active, a placeholder fully below the viewport
+    // realizes immediately: its height change cannot shift visible content,
+    // so no compensating scrollTop write happens.
     scrollElement.dataset.scrollbarScrolling = "true";
+    const belowViewportWrapper = container.querySelector<HTMLElement>(
+      '[data-timeline-row-id="message_40"]',
+    );
+    expect(belowViewportWrapper?.dataset.timelineRowRealized).toBe("false");
     await act(async () => {
       intersectionCallback?.(
         [
           {
-            target: firstWrapper!,
+            target: belowViewportWrapper!,
             isIntersecting: true,
-            boundingClientRect: { height: 212 },
+            boundingClientRect: { top: 900, height: 120 },
           } as unknown as IntersectionObserverEntry,
         ],
         {} as IntersectionObserver,
       );
     });
     await waitFor(() =>
-      expect(firstWrapper?.dataset.timelineRowRealized).toBe("true"),
+      expect(belowViewportWrapper?.dataset.timelineRowRealized).toBe("true"),
     );
     expect(scrollTop).toBe(17);
     expect(setScrollTop).toHaveBeenCalledTimes(2);
+
+    // A placeholder above the viewport defers while the scroll is active —
+    // realizing it mid-scroll would shift visible content with no WebKit
+    // scroll anchoring to absorb it.
+    await act(async () => {
+      intersectionCallback?.(
+        [
+          {
+            target: firstWrapper!,
+            isIntersecting: true,
+            boundingClientRect: { top: -400, height: 212 },
+          } as unknown as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      );
+    });
+    expect(firstWrapper?.dataset.timelineRowRealized).toBe("false");
+    expect(scrollTop).toBe(17);
+
+    // Once the scroll idles, the deferred realization flushes with anchor
+    // compensation: the visible row keeps its on-screen position.
+    scrollElement.removeAttribute("data-scrollbar-scrolling");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    });
+    expect(firstWrapper?.dataset.timelineRowRealized).toBe("true");
+    expect(scrollTop).toBe(137);
+    expect(setScrollTop).toHaveBeenCalledTimes(3);
   });
 
   it("keeps an interacted row mounted after it leaves the window", async () => {

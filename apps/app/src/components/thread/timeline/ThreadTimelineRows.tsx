@@ -282,6 +282,7 @@ interface TimelineRowsListProps {
 
 interface TimelineWindowItemController {
   handleIntersection: (entry: IntersectionObserverEntry) => void;
+  realize: () => void;
 }
 
 interface TimelineVisibleAnchor {
@@ -432,6 +433,11 @@ type TimelineRowsListItem =
 const TIMELINE_WINDOWING_MIN_ITEM_COUNT = 40;
 const TIMELINE_WINDOW_MARGIN_PX = 1_000;
 const TIMELINE_WINDOW_FALLBACK_VIEWPORT_HEIGHT_PX = 800;
+// How long after the last scroll event deferred realizations flush. Momentum
+// scrolling emits scroll events every frame, so this much silence means the
+// scroll (including its inertial tail) has stopped and a compensating
+// scrollTop write can no longer kill momentum.
+const TIMELINE_WINDOW_SCROLL_IDLE_FLUSH_DELAY_MS = 250;
 
 function timelineListItemKey(item: TimelineRowsListItem): string {
   return item.kind === "row" ? item.row.id : item.id;
@@ -1982,6 +1988,13 @@ function TimelineWindowedListItem({
           updateLocallyRealized(false);
         }
       },
+      // Applies a realization whose intersection entry was deferred while a
+      // scroll was active. The entry reported the item intersecting, so the
+      // last-intersection state matches what handleIntersection would have set.
+      realize: () => {
+        lastIntersectionRef.current = true;
+        updateLocallyRealized(true);
+      },
     }),
     [updateLocallyRealized],
   );
@@ -2188,6 +2201,9 @@ function TimelineRowsList({
     new Map<string, TimelineWindowItemController>(),
   );
   const intersectionObserverRef = useRef<IntersectionObserver | null>(null);
+  // Realizations deferred while a scroll was active, keyed by item key. They
+  // flush with scroll compensation once the scroll idles.
+  const pendingRealizeKeysRef = useRef(new Set<string>());
   const alwaysRealizedKeys = useMemo(() => {
     if (!shouldWindow) {
       return EMPTY_ROW_ID_SET;
@@ -2261,41 +2277,125 @@ function TimelineRowsList({
       return;
     }
 
+    const pendingRealizeKeys = pendingRealizeKeysRef.current;
+
+    const realizePendingKeys = () => {
+      for (const key of pendingRealizeKeys) {
+        controllerByKeyRef.current.get(key)?.realize();
+      }
+      pendingRealizeKeys.clear();
+    };
+
+    const applyWithScrollCompensation = (apply: () => void) => {
+      const maxScrollTop = Math.max(
+        0,
+        scrollElement.scrollHeight - scrollElement.clientHeight,
+      );
+      const wasAtBottom = maxScrollTop - scrollElement.scrollTop <= 2;
+      const anchor = wasAtBottom
+        ? null
+        : captureTimelineVisibleAnchor({
+            scrollElement,
+            orderedKeys: itemKeys,
+            wrapperByKey: wrapperByKeyRef.current,
+          });
+      flushSync(apply);
+      restoreTimelineVisibleAnchor({ anchor, scrollElement, wasAtBottom });
+    };
+
+    let idleFlushTimeout: number | null = null;
+    const cancelIdleFlush = () => {
+      if (idleFlushTimeout !== null) {
+        window.clearTimeout(idleFlushTimeout);
+        idleFlushTimeout = null;
+      }
+    };
+    const scheduleIdleFlush = () => {
+      cancelIdleFlush();
+      idleFlushTimeout = window.setTimeout(() => {
+        idleFlushTimeout = null;
+        if (pendingRealizeKeys.size === 0) {
+          return;
+        }
+        applyWithScrollCompensation(realizePendingKeys);
+      }, TIMELINE_WINDOW_SCROLL_IDLE_FLUSH_DELAY_MS);
+    };
+    // Every scroll event pushes the flush out, so it fires only once the
+    // scroll — including WebKit's inertial tail — has actually stopped.
+    const handleScrollWhilePending = () => {
+      if (pendingRealizeKeys.size > 0) {
+        scheduleIdleFlush();
+      }
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
-        const updateWindowItems = () => {
+        // A programmatic scrollTop write stops WebKit's native momentum
+        // scrolling, and WebKit — the only engine this compact-viewport list
+        // runs on for mobile — has no scroll anchoring to absorb layout
+        // shifts. While a scroll is active (the scroll owner keeps this
+        // marker present through the inertial tail), apply only the updates
+        // that cannot shift visible content: derealizations swap in their
+        // just-measured height, and realizations fully below the viewport
+        // only push layout further down. Realizations at or above the
+        // viewport would shift what the user sees by the placeholder-vs-real
+        // height delta, so they wait for the idle flush, which restores the
+        // visible anchor after realizing.
+        if (scrollElement.dataset.scrollbarScrolling === "true") {
+          let viewportBottom: number | null = null;
           for (const entry of entries) {
             const key = keyByWrapperRef.current.get(entry.target);
             if (key === undefined) {
               continue;
             }
-            controllerByKeyRef.current.get(key)?.handleIntersection(entry);
+            const controller = controllerByKeyRef.current.get(key);
+            if (controller === undefined) {
+              continue;
+            }
+            if (!entry.isIntersecting) {
+              pendingRealizeKeys.delete(key);
+              controller.handleIntersection(entry);
+              continue;
+            }
+            const alreadyRealized =
+              wrapperByKeyRef.current.get(key)?.dataset
+                .timelineRowRealized === "true";
+            if (alreadyRealized) {
+              controller.handleIntersection(entry);
+              continue;
+            }
+            // rootBounds already includes the rootMargin expansion; strip it
+            // to recover the true viewport edge without forcing a layout.
+            const rootBottom = entry.rootBounds?.bottom;
+            viewportBottom ??=
+              rootBottom !== undefined
+                ? rootBottom - TIMELINE_WINDOW_MARGIN_PX
+                : scrollElement.getBoundingClientRect().bottom;
+            if (entry.boundingClientRect.top >= viewportBottom) {
+              controller.handleIntersection(entry);
+              continue;
+            }
+            pendingRealizeKeys.add(key);
           }
-        };
-
-        // A programmatic scrollTop write stops WebKit's native momentum
-        // scrolling. The scroll owner keeps this marker present for the full
-        // scroll, including its inertial tail. Let the browser's normal scroll
-        // anchoring cover window updates until scrolling stops.
-        if (scrollElement.dataset.scrollbarScrolling === "true") {
-          updateWindowItems();
+          if (pendingRealizeKeys.size > 0) {
+            scheduleIdleFlush();
+          }
           return;
         }
 
-        const maxScrollTop = Math.max(
-          0,
-          scrollElement.scrollHeight - scrollElement.clientHeight,
-        );
-        const wasAtBottom = maxScrollTop - scrollElement.scrollTop <= 2;
-        const anchor = wasAtBottom
-          ? null
-          : captureTimelineVisibleAnchor({
-              scrollElement,
-              orderedKeys: itemKeys,
-              wrapperByKey: wrapperByKeyRef.current,
-            });
-        flushSync(updateWindowItems);
-        restoreTimelineVisibleAnchor({ anchor, scrollElement, wasAtBottom });
+        applyWithScrollCompensation(() => {
+          for (const entry of entries) {
+            const key = keyByWrapperRef.current.get(entry.target);
+            if (key === undefined) {
+              continue;
+            }
+            if (entry.isIntersecting) {
+              pendingRealizeKeys.delete(key);
+            }
+            controllerByKeyRef.current.get(key)?.handleIntersection(entry);
+          }
+          realizePendingKeys();
+        });
       },
       {
         root: scrollElement,
@@ -2306,10 +2406,18 @@ function TimelineRowsList({
     for (const wrapper of wrapperByKeyRef.current.values()) {
       observer.observe(wrapper);
     }
+    scrollElement.addEventListener("scroll", handleScrollWhilePending, {
+      passive: true,
+    });
 
     return () => {
       intersectionObserverRef.current = null;
       observer.disconnect();
+      scrollElement.removeEventListener("scroll", handleScrollWhilePending);
+      cancelIdleFlush();
+      // A replacement observer reports fresh intersections for every wrapper
+      // on creation, so dropping the queue cannot strand an item.
+      pendingRealizeKeys.clear();
     };
   }, [getScrollElement, itemKeys, shouldWindow]);
 
