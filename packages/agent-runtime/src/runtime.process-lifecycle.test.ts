@@ -525,6 +525,48 @@ rl.on("line", (line) => {
     await manager.shutdown();
   });
 
+  it("waits for an exited provider to finalize before replacing it", async () => {
+    const crashScript = join(tmpDir, "replace-after-stderr-provider.cjs");
+    const startMarker = join(tmpDir, "replace-after-stderr.started");
+    const delayedWriter = "setTimeout(() => {}, 400);";
+    writeFileSync(
+      crashScript,
+      `const { existsSync, writeFileSync } = require("node:fs");
+      const { spawn } = require("node:child_process");
+      const startMarker = ${JSON.stringify(startMarker)};
+      if (!existsSync(startMarker)) {
+        writeFileSync(startMarker, "started");
+        const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
+          stdio: ["ignore", "ignore", "inherit"],
+        });
+        writer.unref();
+        setTimeout(() => process.exit(42), 100);
+      } else {
+        setInterval(() => {}, 1_000);
+      }`,
+    );
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      scriptPath: crashScript,
+      workspacePath: tmpDir,
+    });
+
+    await manager.ensureProvider({ processKey: "fake", providerId: "fake" });
+    const exitedProvider = manager.requireProviderProcess({
+      processKey: "fake",
+      providerId: "fake",
+    });
+    await once(exitedProvider.child, "exit");
+
+    await manager.ensureProvider({ processKey: "fake", providerId: "fake" });
+    const replacementProvider = manager.requireProviderProcess({
+      processKey: "fake",
+      providerId: "fake",
+    });
+    expect(replacementProvider.child.pid).not.toBe(exitedProvider.child.pid);
+    await manager.shutdown();
+  });
+
   it("shutdown kills processes and rejects pending requests", async () => {
     const runtime = createAgentRuntimeWithAdapters({
       workspacePath: tmpDir,

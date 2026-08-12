@@ -28,6 +28,7 @@ export interface RuntimeProviderProcess {
   adapter: ProviderAdapter;
   child: ChildProcess;
   expectedShutdownExpectations: number;
+  exitFinalized: Promise<void>;
   identity: RuntimeProviderIdentityState;
   interactiveRequestScope: string;
   pending: Map<string | number, PendingJsonRpcRequest>;
@@ -157,7 +158,20 @@ export class RuntimeProviderProcessManager {
       return;
     }
 
-    if (this.processes.has(args.processKey)) return;
+    const existingProcess = this.processes.get(args.processKey);
+    if (existingProcess !== undefined) {
+      if (!hasChildProcessExited(existingProcess.child)) return;
+      await existingProcess.exitFinalized;
+
+      // Another caller may have started the replacement while this caller
+      // waited for the exited process to finish draining its stdio.
+      const concurrentStart = this.providerStarting.get(args.processKey);
+      if (concurrentStart !== undefined) {
+        await concurrentStart;
+        return;
+      }
+      if (this.processes.has(args.processKey)) return;
+    }
 
     const startPromise = (async () => {
       const adapter = this.getAdapter(args.providerId, args.acpLaunchSpec);
@@ -255,7 +269,6 @@ export class RuntimeProviderProcessManager {
       throw new Error(`Provider "${args.providerId}" is not running`);
     }
     if (hasChildProcessExited(providerProcess.child)) {
-      this.processes.delete(args.processKey);
       throw new Error(
         `Provider "${args.providerId}" has exited (${formatChildProcessExitStatus(providerProcess.child)})`,
       );
@@ -265,13 +278,22 @@ export class RuntimeProviderProcessManager {
 
   listRunningProviders(): string[] {
     return [
-      ...new Set([...this.processes.values()].map((proc) => proc.providerId)),
+      ...new Set(
+        [...this.processes.values()]
+          .filter((proc) => !hasChildProcessExited(proc.child))
+          .map((proc) => proc.providerId),
+      ),
     ];
   }
 
   async shutdownProvider(args: ShutdownRuntimeProviderArgs): Promise<void> {
     const providerProcess = this.processes.get(args.processKey);
-    if (!providerProcess || hasChildProcessExited(providerProcess.child)) {
+    if (!providerProcess) {
+      return;
+    }
+
+    if (hasChildProcessExited(providerProcess.child)) {
+      await providerProcess.exitFinalized;
       return;
     }
 
@@ -280,6 +302,9 @@ export class RuntimeProviderProcessManager {
       providerProcess,
       timeoutMs: args.timeoutMs,
     });
+    if (hasChildProcessExited(providerProcess.child)) {
+      await providerProcess.exitFinalized;
+    }
   }
 
   async shutdown(): Promise<void> {
@@ -356,11 +381,16 @@ export class RuntimeProviderProcessManager {
       cwd: this.args.workspacePath,
       env,
     });
+    let finalizeExit: () => void = () => undefined;
+    const exitFinalized = new Promise<void>((resolve) => {
+      finalizeExit = resolve;
+    });
 
     const providerProcess: RuntimeProviderProcess = {
       child,
       adapter: args.adapter,
       expectedShutdownExpectations: 0,
+      exitFinalized,
       interactiveRequestScope: randomUUID(),
       identity: this.args.createProviderIdentityState(args.providerId),
       pending: new Map(),
@@ -415,12 +445,16 @@ export class RuntimeProviderProcessManager {
       if (closeGraceTimer !== null) {
         clearTimeout(closeGraceTimer);
       }
-      this.handleProviderProcessExit({
-        code: status.code,
-        providerId: args.providerId,
-        providerProcess,
-        signal: status.signal,
-      });
+      try {
+        this.handleProviderProcessExit({
+          code: status.code,
+          providerId: args.providerId,
+          providerProcess,
+          signal: status.signal,
+        });
+      } finally {
+        finalizeExit();
+      }
     };
 
     child.on("exit", (code, signal) => {
