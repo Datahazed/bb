@@ -186,7 +186,6 @@ const THREAD_SECONDARY_PANEL_CAPABILITIES = {
   preserveWorkspaceTabsAcrossContexts: false,
   closeLoneNewTabByHidingPanel: false,
   routeBrowserPopupsByPreference: true,
-  showPluginActionIcons: true,
   registerLegacyOpenNewTab: true,
   toggleOpensNewTab: false,
 } satisfies SecondaryPanelHostCapabilities;
