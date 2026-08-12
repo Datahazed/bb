@@ -4,13 +4,16 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import type { ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { useLocation } from "react-router-dom";
+import { useStore } from "jotai";
 import {
   isBackgroundAgentTaskType,
   isBackgroundCommandTaskType,
@@ -86,6 +89,8 @@ import { AutoHeightContainer } from "../../ui/height-transition.js";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scroll-anchor.js";
 import {
   collectSearchedMessageAncestorRowIds,
   readSearchMessageTarget,
@@ -280,6 +285,29 @@ interface TimelineRowsListProps {
   unreadDividerPlacement: ThreadTimelineUnreadDividerPlacement | null;
 }
 
+interface TimelineWindowItemController {
+  handleIntersection: (entry: IntersectionObserverEntry) => void;
+}
+
+interface TimelineVisibleAnchor {
+  element: HTMLDivElement;
+  top: number;
+}
+
+interface TimelineWindowedListItemProps {
+  alwaysRealized: boolean;
+  children: ReactNode;
+  estimatedHeight: number;
+  initiallyRealized: boolean;
+  itemKey: string;
+  registerWrapper: (key: string, node: HTMLDivElement | null) => void;
+  registerController: (
+    key: string,
+    controller: TimelineWindowItemController | null,
+  ) => void;
+  rowId: string | undefined;
+}
+
 interface TimelineUnreadDividerProps {
   autoScroll: boolean;
 }
@@ -405,6 +433,74 @@ type TimelineRowsListItem =
       kind: "unread-divider";
       id: "thread-unread-divider";
     };
+
+const TIMELINE_WINDOWING_MIN_ITEM_COUNT = 40;
+const TIMELINE_WINDOW_MARGIN_PX = 1_000;
+const TIMELINE_WINDOW_FALLBACK_VIEWPORT_HEIGHT_PX = 800;
+
+function timelineListItemKey(item: TimelineRowsListItem): string {
+  return item.kind === "row" ? item.row.id : item.id;
+}
+
+function estimateTimelineListItemHeight(item: TimelineRowsListItem): number {
+  if (item.kind === "unread-divider") {
+    return 24;
+  }
+  if (item.row.kind === "conversation") {
+    return 120;
+  }
+  return 40;
+}
+
+function collectTimelineWindowKeys({
+  centerIndex,
+  items,
+}: {
+  centerIndex: number;
+  items: readonly TimelineRowsListItem[];
+}): ReadonlySet<string> {
+  if (items.length === 0) {
+    return EMPTY_ROW_ID_SET;
+  }
+
+  const keys = new Set<string>();
+  const boundedCenterIndex = Math.max(
+    0,
+    Math.min(centerIndex, items.length - 1),
+  );
+  const coverage =
+    TIMELINE_WINDOW_MARGIN_PX + TIMELINE_WINDOW_FALLBACK_VIEWPORT_HEIGHT_PX;
+
+  let beforeHeight = 0;
+  for (
+    let index = boundedCenterIndex;
+    index >= 0 && beforeHeight <= coverage;
+    index -= 1
+  ) {
+    const item = items[index];
+    if (item === undefined) {
+      break;
+    }
+    keys.add(timelineListItemKey(item));
+    beforeHeight += estimateTimelineListItemHeight(item);
+  }
+
+  let afterHeight = 0;
+  for (
+    let index = boundedCenterIndex + 1;
+    index < items.length && afterHeight <= coverage;
+    index += 1
+  ) {
+    const item = items[index];
+    if (item === undefined) {
+      break;
+    }
+    keys.add(timelineListItemKey(item));
+    afterHeight += estimateTimelineListItemHeight(item);
+  }
+
+  return keys;
+}
 
 interface ConversationRowProps {
   row: TimelineConversationViewRow;
@@ -2008,6 +2104,152 @@ function TopLevelTimelineRowWrapper({
   );
 }
 
+function TimelineWindowedListItem({
+  alwaysRealized,
+  children,
+  estimatedHeight,
+  initiallyRealized,
+  itemKey,
+  registerWrapper,
+  registerController,
+  rowId,
+}: TimelineWindowedListItemProps) {
+  const [locallyRealized, setLocallyRealized] = useState(initiallyRealized);
+  const [placeholderHeight, setPlaceholderHeight] = useState(estimatedHeight);
+  const locallyRealizedRef = useRef(locallyRealized);
+  const alwaysRealizedRef = useRef(alwaysRealized);
+  const interactionPinnedRef = useRef(false);
+  const lastIntersectionRef = useRef<boolean | null>(null);
+  useLayoutEffect(() => {
+    locallyRealizedRef.current = locallyRealized;
+    alwaysRealizedRef.current = alwaysRealized;
+  }, [alwaysRealized, locallyRealized]);
+
+  const updateLocallyRealized = useCallback((next: boolean) => {
+    if (locallyRealizedRef.current === next) {
+      return;
+    }
+    locallyRealizedRef.current = next;
+    setLocallyRealized(next);
+  }, []);
+  const controller = useMemo<TimelineWindowItemController>(
+    () => ({
+      handleIntersection: (entry) => {
+        lastIntersectionRef.current = entry.isIntersecting;
+        if (entry.isIntersecting) {
+          updateLocallyRealized(true);
+          return;
+        }
+        if (entry.boundingClientRect.height > 0) {
+          setPlaceholderHeight(entry.boundingClientRect.height);
+        }
+        if (!alwaysRealizedRef.current && !interactionPinnedRef.current) {
+          updateLocallyRealized(false);
+        }
+      },
+    }),
+    [updateLocallyRealized],
+  );
+  useLayoutEffect(() => {
+    registerController(itemKey, controller);
+    return () => registerController(itemKey, null);
+  }, [controller, itemKey, registerController]);
+  useLayoutEffect(() => {
+    if (
+      !alwaysRealized &&
+      lastIntersectionRef.current === false &&
+      !interactionPinnedRef.current
+    ) {
+      const frame = requestAnimationFrame(() => updateLocallyRealized(false));
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [alwaysRealized, updateLocallyRealized]);
+
+  const pinInteractedItem = useCallback(() => {
+    interactionPinnedRef.current = true;
+  }, []);
+  const handleWrapperRef = useCallback(
+    (node: HTMLDivElement | null) => registerWrapper(itemKey, node),
+    [itemKey, registerWrapper],
+  );
+  const isRealized = alwaysRealized || locallyRealized;
+
+  return (
+    <div
+      ref={handleWrapperRef}
+      data-timeline-row-id={rowId}
+      data-timeline-row-realized={isRealized ? "true" : "false"}
+      aria-hidden={isRealized ? undefined : true}
+      style={isRealized ? undefined : { height: placeholderHeight }}
+      onClickCapture={pinInteractedItem}
+      onFocusCapture={pinInteractedItem}
+    >
+      {isRealized ? children : null}
+    </div>
+  );
+}
+
+function captureTimelineVisibleAnchor({
+  orderedKeys,
+  scrollElement,
+  wrapperByKey,
+}: {
+  orderedKeys: readonly string[];
+  scrollElement: HTMLElement;
+  wrapperByKey: ReadonlyMap<string, HTMLDivElement>;
+}): TimelineVisibleAnchor | null {
+  const scrollRect = scrollElement.getBoundingClientRect();
+  let low = 0;
+  let high = orderedKeys.length - 1;
+  let firstVisibleIndex = orderedKeys.length;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const key = orderedKeys[middle];
+    const element = key === undefined ? undefined : wrapperByKey.get(key);
+    if (element === undefined) {
+      return null;
+    }
+    if (element.getBoundingClientRect().bottom > scrollRect.top) {
+      firstVisibleIndex = middle;
+      high = middle - 1;
+    } else {
+      low = middle + 1;
+    }
+  }
+  const key = orderedKeys[firstVisibleIndex];
+  const element = key === undefined ? undefined : wrapperByKey.get(key);
+  if (element === undefined) {
+    return null;
+  }
+  const rect = element.getBoundingClientRect();
+  return rect.top < scrollRect.bottom ? { element, top: rect.top } : null;
+}
+
+function restoreTimelineVisibleAnchor({
+  anchor,
+  scrollElement,
+  wasAtBottom,
+}: {
+  anchor: TimelineVisibleAnchor | null;
+  scrollElement: HTMLElement;
+  wasAtBottom: boolean;
+}): void {
+  if (wasAtBottom) {
+    scrollElement.scrollTop = Math.max(
+      0,
+      scrollElement.scrollHeight - scrollElement.clientHeight,
+    );
+    return;
+  }
+  if (anchor === null || !anchor.element.isConnected) {
+    return;
+  }
+  const topDelta = anchor.element.getBoundingClientRect().top - anchor.top;
+  if (Math.abs(topDelta) > 0.5) {
+    scrollElement.scrollTop += topDelta;
+  }
+}
+
 function TimelineRowsList({
   compactActivityIntents,
   hasOlderTimelineRows,
@@ -2022,13 +2264,12 @@ function TimelineRowsList({
   unreadDividerPlacement,
 }: TimelineRowsListProps) {
   const { threadId } = useTimelineRendererStaticContext();
+  const isCompactViewport = useIsCompactViewport();
+  const bottomAnchor = useBottomAnchoredScroll();
+  const store = useStore();
+  const location = useLocation();
   const searchExpandedRowIds = useTimelineSearchExpansionRowIds(rows);
   const stableSearchExpandedRowIds = useStableReadonlySet(searchExpandedRowIds);
-  useScrollToSearchedMessage(rows, threadId, {
-    hasOlderRows: hasOlderTimelineRows,
-    isLoadingOlderRows: isLoadingOlderTimelineRows,
-    onLoadOlderRows,
-  });
   const activeLatestBundleId = useMemo(
     () => findActiveLatestBundleId(rows),
     [rows],
@@ -2037,7 +2278,259 @@ function TimelineRowsList({
     () => buildTimelineRowsListItems({ rows, unreadDividerPlacement }),
     [rows, unreadDividerPlacement],
   );
-  return (
+  const itemKeys = useMemo(() => items.map(timelineListItemKey), [items]);
+  const shouldWindow =
+    spacing === "top-level" &&
+    isCompactViewport &&
+    bottomAnchor !== null &&
+    typeof IntersectionObserver !== "undefined" &&
+    items.length >= TIMELINE_WINDOWING_MIN_ITEM_COUNT;
+  const searchTarget = useMemo(
+    () => readSearchMessageTarget(location.state),
+    [location.state],
+  );
+  const searchTargetsTimeline =
+    searchTarget !== null &&
+    (threadId === undefined ||
+      searchTarget.threadId === null ||
+      searchTarget.threadId === threadId);
+  const initialWindowCenterIndex = useMemo(() => {
+    if (searchTarget !== null && searchTargetsTimeline) {
+      const searchIndex = items.findIndex(
+        (item) =>
+          item.kind === "row" &&
+          item.row.sourceSeqStart <= searchTarget.seq &&
+          searchTarget.seq <= item.row.sourceSeqEnd,
+      );
+      if (searchIndex >= 0) {
+        return searchIndex;
+      }
+    }
+
+    if (unreadDividerAutoScroll) {
+      const dividerIndex = items.findIndex(
+        (item) => item.kind === "unread-divider",
+      );
+      if (dividerIndex >= 0) {
+        return dividerIndex;
+      }
+    }
+
+    if (threadId !== undefined) {
+      const anchor = store.get(threadTimelineScrollAnchorAtomFamily(threadId));
+      if (anchor !== null && !anchor.atBottom && anchor.rowId.length > 0) {
+        const anchorIndex = items.findIndex(
+          (item) => item.kind === "row" && item.row.id === anchor.rowId,
+        );
+        if (anchorIndex >= 0) {
+          return anchorIndex;
+        }
+      }
+    }
+
+    return Math.max(0, items.length - 1);
+  }, [
+    items,
+    searchTarget,
+    searchTargetsTimeline,
+    store,
+    threadId,
+    unreadDividerAutoScroll,
+  ]);
+  const initiallyRealizedKeys = useMemo(
+    () =>
+      shouldWindow
+        ? collectTimelineWindowKeys({
+            centerIndex: initialWindowCenterIndex,
+            items,
+          })
+        : EMPTY_ROW_ID_SET,
+    [initialWindowCenterIndex, items, shouldWindow],
+  );
+  const wrapperByKeyRef = useRef(new Map<string, HTMLDivElement>());
+  const keyByWrapperRef = useRef(new Map<Element, string>());
+  const controllerByKeyRef = useRef(
+    new Map<string, TimelineWindowItemController>(),
+  );
+  const intersectionObserverRef = useRef<IntersectionObserver | null>(null);
+  const alwaysRealizedKeys = useMemo(() => {
+    if (!shouldWindow) {
+      return EMPTY_ROW_ID_SET;
+    }
+    const keys = new Set<string>();
+    if (searchTarget !== null && searchTargetsTimeline) {
+      const searchIndex = items.findIndex(
+        (item) =>
+          item.kind === "row" &&
+          item.row.sourceSeqStart <= searchTarget.seq &&
+          searchTarget.seq <= item.row.sourceSeqEnd,
+      );
+      const searchItem = items[searchIndex];
+      if (searchItem !== undefined) {
+        keys.add(timelineListItemKey(searchItem));
+      }
+    }
+    if (unreadDividerAutoScroll) {
+      const dividerIndex = items.findIndex(
+        (item) => item.kind === "unread-divider",
+      );
+      const divider = items[dividerIndex];
+      if (divider !== undefined) {
+        keys.add(timelineListItemKey(divider));
+      }
+    }
+    return keys;
+  }, [
+    items,
+    searchTarget,
+    searchTargetsTimeline,
+    shouldWindow,
+    unreadDividerAutoScroll,
+  ]);
+
+  const registerWrapper = useCallback(
+    (key: string, node: HTMLDivElement | null) => {
+      const previous = wrapperByKeyRef.current.get(key);
+      if (previous !== undefined && previous !== node) {
+        keyByWrapperRef.current.delete(previous);
+        intersectionObserverRef.current?.unobserve(previous);
+      }
+      if (node === null) {
+        wrapperByKeyRef.current.delete(key);
+        return;
+      }
+      wrapperByKeyRef.current.set(key, node);
+      keyByWrapperRef.current.set(node, key);
+      intersectionObserverRef.current?.observe(node);
+    },
+    [],
+  );
+  const registerController = useCallback(
+    (key: string, controller: TimelineWindowItemController | null) => {
+      if (controller === null) {
+        controllerByKeyRef.current.delete(key);
+        return;
+      }
+      controllerByKeyRef.current.set(key, controller);
+    },
+    [],
+  );
+
+  const getScrollElement = bottomAnchor?.getScrollElement;
+  useEffect(() => {
+    if (!shouldWindow || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+    const scrollElement = getScrollElement?.() ?? null;
+    if (scrollElement === null) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const maxScrollTop = Math.max(
+          0,
+          scrollElement.scrollHeight - scrollElement.clientHeight,
+        );
+        const wasAtBottom = maxScrollTop - scrollElement.scrollTop <= 2;
+        const anchor = wasAtBottom
+          ? null
+          : captureTimelineVisibleAnchor({
+              scrollElement,
+              orderedKeys: itemKeys,
+              wrapperByKey: wrapperByKeyRef.current,
+            });
+        flushSync(() => {
+          for (const entry of entries) {
+            const key = keyByWrapperRef.current.get(entry.target);
+            if (key === undefined) {
+              continue;
+            }
+            controllerByKeyRef.current.get(key)?.handleIntersection(entry);
+          }
+        });
+        restoreTimelineVisibleAnchor({ anchor, scrollElement, wasAtBottom });
+      },
+      {
+        root: scrollElement,
+        rootMargin: `${TIMELINE_WINDOW_MARGIN_PX}px 0px`,
+      },
+    );
+    intersectionObserverRef.current = observer;
+    for (const wrapper of wrapperByKeyRef.current.values()) {
+      observer.observe(wrapper);
+    }
+
+    return () => {
+      intersectionObserverRef.current = null;
+      observer.disconnect();
+    };
+  }, [getScrollElement, itemKeys, shouldWindow]);
+
+  const renderedRowsKey = shouldWindow
+    ? [...alwaysRealizedKeys].sort().join("\u0000")
+    : "all";
+
+  useScrollToSearchedMessage(rows, threadId, {
+    hasOlderRows: hasOlderTimelineRows,
+    isLoadingOlderRows: isLoadingOlderTimelineRows,
+    onLoadOlderRows,
+    renderedRowsKey,
+  });
+
+  const renderItem = (item: TimelineRowsListItem) => {
+    if (item.kind === "unread-divider") {
+      return <TimelineUnreadDivider autoScroll={unreadDividerAutoScroll} />;
+    }
+    return (
+      <MemoizedTimelineRowView
+        activeLatestBundleId={activeLatestBundleId}
+        row={item.row}
+        scopeActive={scopeActive}
+        showAssistantMessageActions={showAssistantMessageActions}
+        spacing={spacing}
+        compactActivityIntents={compactActivityIntents}
+      />
+    );
+  };
+
+  if (shouldWindow) {
+    return (
+      <TimelineSearchExpansionContext.Provider
+        value={stableSearchExpandedRowIds}
+      >
+        <div
+          className={cn(
+            "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
+            timelineRowsListGapClassName(spacing),
+            className,
+          )}
+          data-timeline-row-list={spacing}
+          data-timeline-windowed="true"
+        >
+          {items.map((item) => {
+            const itemKey = timelineListItemKey(item);
+            return (
+              <TimelineWindowedListItem
+                key={itemKey}
+                alwaysRealized={alwaysRealizedKeys.has(itemKey)}
+                estimatedHeight={estimateTimelineListItemHeight(item)}
+                initiallyRealized={initiallyRealizedKeys.has(itemKey)}
+                itemKey={itemKey}
+                registerController={registerController}
+                registerWrapper={registerWrapper}
+                rowId={item.kind === "row" ? item.row.id : undefined}
+              >
+                {renderItem(item)}
+              </TimelineWindowedListItem>
+            );
+          })}
+        </div>
+      </TimelineSearchExpansionContext.Provider>
+    );
+  }
+
+  const list = (
     <TimelineSearchExpansionContext.Provider value={stableSearchExpandedRowIds}>
       <div
         className={cn(
@@ -2082,6 +2575,11 @@ function TimelineRowsList({
         })}
       </div>
     </TimelineSearchExpansionContext.Provider>
+  );
+  return spacing === "top-level" ? (
+    <AutoHeightContainer>{list}</AutoHeightContainer>
+  ) : (
+    list
   );
 }
 
