@@ -450,9 +450,8 @@ describe("ThreadTimelineRows actions", () => {
     expect(setScrollTop).toHaveBeenCalledTimes(2);
 
     // The first row has no donor placeholders above it, so its scroll-time
-    // realization compensates through a clamped scrollTop write instead of
-    // leaving a blank row. The content measures 0px (the jsdom default)
-    // against the 212px placeholder, so the -212 residual clamps 17 to 0.
+    // realization reverts to the unchanged placeholder: nothing on screen
+    // moves, and no scrollTop write can kill momentum mid-gesture.
     await act(async () => {
       intersectionCallback?.(
         [
@@ -465,8 +464,18 @@ describe("ThreadTimelineRows actions", () => {
         {} as IntersectionObserver,
       );
     });
+    expect(firstWrapper?.dataset.timelineRowRealized).toBe("false");
+    expect(scrollTop).toBe(17);
+    expect(setScrollTop).toHaveBeenCalledTimes(2);
+
+    // The idle pass mounts it with anchor compensation once the scroll
+    // stops: the visible row keeps its on-screen position.
+    scrollElement.removeAttribute("data-scrollbar-scrolling");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
     expect(firstWrapper?.dataset.timelineRowRealized).toBe("true");
-    expect(scrollTop).toBe(0);
+    expect(scrollTop).toBe(137);
     expect(setScrollTop).toHaveBeenCalledTimes(3);
   });
 
@@ -665,9 +674,8 @@ describe("ThreadTimelineRows actions", () => {
     expect(wrapperOf("message_1")?.style.height).toBe("120px");
     expect(setScrollTop).not.toHaveBeenCalled();
 
-    // Late content growth (a lazy image decoding) in the realized row — the
-    // wrapper sits above the viewport (rect bottom 0, viewport top 0), so the
-    // 90px delta against the 0px baseline comes back out of the donor.
+    // Late growth while the scroll is active only updates the baseline —
+    // mutating geometry mid-gesture is what reads as snapping.
     act(() => {
       resizeCallback?.(
         [
@@ -680,9 +688,27 @@ describe("ThreadTimelineRows actions", () => {
         {} as ResizeObserver,
       );
     });
-    expect(target?.dataset.timelineRowRealized).toBe("true");
-    expect(wrapperOf("message_0")?.style.height).toBe("150px");
+    expect(wrapperOf("message_0")?.style.height).toBe("240px");
     expect(setScrollTop).not.toHaveBeenCalled();
+
+    // At idle, further growth above the viewport compensates with a direct
+    // scrollTop nudge: 150 − 90 = 60 on top of the current 500.
+    scrollElement.removeAttribute("data-scrollbar-scrolling");
+    act(() => {
+      resizeCallback?.(
+        [
+          {
+            target: target!,
+            borderBoxSize: [{ blockSize: 150, inlineSize: 390 }],
+            contentRect: { height: 150 },
+          } as unknown as ResizeObserverEntry,
+        ],
+        {} as ResizeObserver,
+      );
+    });
+    expect(target?.dataset.timelineRowRealized).toBe("true");
+    expect(wrapperOf("message_0")?.style.height).toBe("240px");
+    expect(setScrollTop).toHaveBeenCalledWith(560);
   });
 
   it("re-budgets estimate placeholders to the measured average at idle", async () => {
@@ -752,8 +778,8 @@ describe("ThreadTimelineRows actions", () => {
 
     // Realize eight 500px rows above the viewport in one scroll-time batch:
     // 8 × (500 − 120) = 3,040px of donor demand against the 3,600px pool in
-    // message_0..29. The final 40px shortfall sits under the residual
-    // tolerance, so no scrollTop write happens.
+    // message_0..29 — solvent, so every row realizes with no scrollTop
+    // write.
     scrollElement.dataset.scrollbarScrolling = "true";
     const targets = Array.from({ length: 8 }, (_, offset) => {
       const wrapper = wrapperOf(`message_${30 + offset}`);

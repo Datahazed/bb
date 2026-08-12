@@ -288,6 +288,8 @@ interface TimelineRowsListProps {
 interface TimelineWindowItemController {
   handleIntersection: (entry: IntersectionObserverEntry) => void;
   realize: () => void;
+  /** Revert a just-realized item to its unchanged placeholder. */
+  derealize: () => void;
   /** The current placeholder height, or null while the item is realized. */
   peekPlaceholderHeight: () => number | null;
   /** Grow or shrink the placeholder (clamped at zero) to absorb a height delta. */
@@ -456,10 +458,6 @@ const TIMELINE_WINDOW_FALLBACK_VIEWPORT_HEIGHT_PX = 800;
 // cannot keep every heavy row realized forever: the oldest pin releases
 // first, and its row derealizes on its next window exit.
 const TIMELINE_WINDOW_MAX_INTERACTION_PINS = 24;
-// A residual below this threshold shifts visible content instead of writing
-// scrollTop. The write stops WebKit momentum outright; a sub-threshold drift
-// reads as a minor stutter at worst.
-const TIMELINE_WINDOW_RESIDUAL_JUMP_TOLERANCE_PX = 48;
 // Re-budgeting replaces never-measured placeholder estimates with the running
 // average of measured rows once the scroll idles, so the donor pool tracks
 // the timeline's real heights instead of draining monotonically.
@@ -2197,6 +2195,9 @@ function TimelineWindowedListItem({
         lastIntersectionRef.current = true;
         updateLocallyRealized(true);
       },
+      derealize: () => {
+        updateLocallyRealized(false);
+      },
       peekPlaceholderHeight: () =>
         alwaysRealizedRef.current || locallyRealizedRef.current
           ? null
@@ -2545,13 +2546,14 @@ function TimelineRowsList({
     // that sit earlier in the list (and therefore also fully above the
     // viewport). Positive deltas shrink donors topmost-first so placeholders
     // nearest the viewport keep accurate heights; negative deltas hand the
-    // slack to the topmost donor. Returns the residual no donor could
-    // absorb. Must run inside flushSync so donor commits paint atomically
-    // with the change they balance.
-    const compensateAboveViewportDelta = (
+    // slack to the topmost donor. All-or-nothing: donors change only when
+    // the whole delta is covered, so the swap is exactly net zero. Must run
+    // inside flushSync so donor commits paint atomically with the change
+    // they balance.
+    const tryCompensateAboveViewportDelta = (
       candidateIndex: number,
       delta: number,
-    ): number => {
+    ): boolean => {
       const keys = itemKeysRef.current;
       if (delta < 0) {
         for (let index = 0; index < candidateIndex; index += 1) {
@@ -2562,12 +2564,13 @@ function TimelineRowsList({
           const controller = controllerByKeyRef.current.get(key);
           if ((controller?.peekPlaceholderHeight() ?? null) !== null) {
             controller?.adjustPlaceholderHeight(-delta);
-            return 0;
+            return true;
           }
         }
-        return delta;
+        return false;
       }
       let remaining = delta;
+      const takes: Array<[TimelineWindowItemController, number]> = [];
       for (
         let index = 0;
         index < candidateIndex && remaining > 0.5;
@@ -2578,59 +2581,61 @@ function TimelineRowsList({
           continue;
         }
         const controller = controllerByKeyRef.current.get(key);
-        const available = controller?.peekPlaceholderHeight() ?? null;
+        if (controller === undefined) {
+          continue;
+        }
+        const available = controller.peekPlaceholderHeight();
         if (available === null || available <= 0) {
           continue;
         }
         const take = Math.min(available, remaining);
-        controller?.adjustPlaceholderHeight(-take);
+        takes.push([controller, take]);
         remaining -= take;
       }
-      return remaining > 0.5 ? remaining : 0;
+      if (remaining > 0.5) {
+        return false;
+      }
+      for (const [controller, take] of takes) {
+        controller.adjustPlaceholderHeight(-take);
+      }
+      return true;
     };
 
-    // Residuals occur when placeholders above have no height left to donate.
-    // Small residuals shift content instead of writing scrollTop — the write
-    // stops WebKit momentum outright, which reads worse than a sub-threshold
-    // stutter. Large residuals take the write: a big uncompensated jump is
-    // the original bug this windowing exists to prevent.
-    const applyResidual = (residual: number) => {
-      if (Math.abs(residual) <= TIMELINE_WINDOW_RESIDUAL_JUMP_TOLERANCE_PX) {
-        return;
-      }
-      scrollElement.scrollTop = Math.max(
-        0,
-        scrollElement.scrollTop + residual,
-      );
-    };
+    // Realizations that found no donor capacity while scrolling. They keep
+    // their unchanged placeholders (nothing on screen moves) and mount at
+    // the next idle pass, where a compensating scrollTop write is free.
+    // During an active scroll the ONLY geometry this component changes is
+    // the exact net-zero donor swap — no scrollTop writes, no tolerated
+    // drift. Anything that cannot satisfy that invariant waits for idle.
+    const pendingRealizeKeys = new Set<string>();
 
     // Running average of first-measured item heights. Never-realized
     // placeholders start from a static estimate that real content usually
     // exceeds, so donor capacity would otherwise drain monotonically during
-    // upward scrolling until every realization needed a momentum-killing
-    // residual write. Re-budgeting those estimates to the measured average
-    // while the scroll is idle (when a compensating scrollTop write is free)
-    // keeps the donor pool solvent.
+    // upward scrolling. Re-budgeting those estimates to the measured average
+    // at idle keeps the donor pool solvent, which keeps insolvency reverts
+    // (and their brief near-top blanks) rare.
     const measuredSampleKeys = new Set<string>();
     let measuredSampleSum = 0;
     let lastRebudgetAverage: number | null = null;
-    const measuredAverage = () =>
-      Math.min(
+    const computeRebudgetAdjustments = (): Array<
+      [TimelineWindowItemController, number]
+    > => {
+      if (measuredSampleKeys.size < TIMELINE_WINDOW_REBUDGET_MIN_SAMPLES) {
+        return [];
+      }
+      const average = Math.min(
         TIMELINE_WINDOW_REBUDGET_MAX_ESTIMATE_PX,
         measuredSampleSum / measuredSampleKeys.size,
       );
-    const rebudgetEstimatedPlaceholders = () => {
-      if (measuredSampleKeys.size < TIMELINE_WINDOW_REBUDGET_MIN_SAMPLES) {
-        return;
-      }
-      const average = measuredAverage();
       if (
         lastRebudgetAverage !== null &&
         Math.abs(average - lastRebudgetAverage) <
           TIMELINE_WINDOW_REBUDGET_DRIFT_PX
       ) {
-        return;
+        return [];
       }
+      lastRebudgetAverage = average;
       const adjustments: Array<[TimelineWindowItemController, number]> = [];
       for (const key of itemKeysRef.current) {
         const controller = controllerByKeyRef.current.get(key);
@@ -2647,28 +2652,40 @@ function TimelineRowsList({
         }
         adjustments.push([controller, delta]);
       }
-      lastRebudgetAverage = average;
-      if (adjustments.length === 0) {
+      return adjustments;
+    };
+
+    // One idle pass covers both deferred works: mount the insolvent
+    // realizations and re-seed estimate placeholders, in a single
+    // anchor-compensated commit.
+    const runIdlePass = () => {
+      const pending = [...pendingRealizeKeys];
+      pendingRealizeKeys.clear();
+      const adjustments = computeRebudgetAdjustments();
+      if (pending.length === 0 && adjustments.length === 0) {
         return;
       }
       applyWithScrollCompensation(() => {
+        for (const key of pending) {
+          controllerByKeyRef.current.get(key)?.realize();
+        }
         for (const [controller, delta] of adjustments) {
           controller.adjustPlaceholderHeight(delta);
         }
       });
     };
-    let rebudgetTimeout: number | null = null;
-    const scheduleRebudget = () => {
-      if (rebudgetTimeout !== null) {
-        window.clearTimeout(rebudgetTimeout);
+    let idlePassTimeout: number | null = null;
+    const scheduleIdlePass = () => {
+      if (idlePassTimeout !== null) {
+        window.clearTimeout(idlePassTimeout);
       }
-      rebudgetTimeout = window.setTimeout(() => {
-        rebudgetTimeout = null;
+      idlePassTimeout = window.setTimeout(() => {
+        idlePassTimeout = null;
         if (scrollElement.dataset.scrollbarScrolling === "true") {
-          scheduleRebudget();
+          scheduleIdlePass();
           return;
         }
-        rebudgetEstimatedPlaceholders();
+        runIdlePass();
       }, TIMELINE_WINDOW_REBUDGET_IDLE_DELAY_MS);
     };
     const recordMeasuredSample = (key: string, height: number) => {
@@ -2677,7 +2694,7 @@ function TimelineRowsList({
       }
       measuredSampleKeys.add(key);
       measuredSampleSum += height;
-      scheduleRebudget();
+      scheduleIdlePass();
     };
 
     // Realize items whose top sits above the viewport while a scroll is
@@ -2715,20 +2732,26 @@ function TimelineRowsList({
         }
       });
 
-      let residual = 0;
       flushSync(() => {
         for (const candidate of candidates) {
           const measured = candidate.wrapper.getBoundingClientRect().height;
-          realizedHeightByKey.set(candidate.key, measured);
           recordMeasuredSample(candidate.key, measured);
           const delta = measured - candidate.placeholderHeight;
-          if (delta === 0) {
+          if (
+            delta !== 0 &&
+            !tryCompensateAboveViewportDelta(candidate.index, delta)
+          ) {
+            // No donor capacity (near the top of the timeline): revert to
+            // the unchanged placeholder — net zero, nothing painted in
+            // between — and mount at the idle pass instead.
+            candidate.controller.derealize();
+            pendingRealizeKeys.add(candidate.key);
+            scheduleIdlePass();
             continue;
           }
-          residual += compensateAboveViewportDelta(candidate.index, delta);
+          realizedHeightByKey.set(candidate.key, measured);
         }
       });
-      applyResidual(residual);
     };
 
     const observer = new IntersectionObserver(
@@ -2757,6 +2780,7 @@ function TimelineRowsList({
             }
             if (!entry.isIntersecting) {
               realizedHeightByKey.delete(key);
+              pendingRealizeKeys.delete(key);
               controller.handleIntersection(entry);
               continue;
             }
@@ -2792,8 +2816,11 @@ function TimelineRowsList({
             if (key === undefined) {
               continue;
             }
-            if (!entry.isIntersecting) {
+            if (entry.isIntersecting) {
+              pendingRealizeKeys.delete(key);
+            } else {
               realizedHeightByKey.delete(key);
+              pendingRealizeKeys.delete(key);
             }
             controllerByKeyRef.current.get(key)?.handleIntersection(entry);
           }
@@ -2807,16 +2834,20 @@ function TimelineRowsList({
     intersectionObserverRef.current = observer;
 
     // Late content growth in a realized row above the viewport (a lazy image
-    // decoding, async rendering settling) shifts visible content exactly like
-    // an uncompensated realization would. ResizeObserver fires between layout
-    // and paint, so balancing the delta into donors here commits before the
-    // shift ever paints. Growth in or below the viewport stays uncompensated:
-    // a visible image expanding in place is expected content behavior.
+    // decoding, async rendering settling) shifts visible content, because
+    // WebKit has no scroll anchoring. Compensate with a direct scrollTop
+    // nudge — but only while the scroll is idle, where the write is free.
+    // During an active scroll only the baseline updates: mutating geometry
+    // mid-gesture is exactly what reads as snapping. Growth in or below the
+    // viewport stays uncompensated: a visible image expanding in place is
+    // expected content behavior.
     let contentGrowthObserver: ResizeObserver | null = null;
     if (typeof ResizeObserver !== "undefined") {
       contentGrowthObserver = new ResizeObserver((entries) => {
         let viewportTop: number | null = null;
-        const compensations: Array<{ index: number; delta: number }> = [];
+        let idleAdjustment = 0;
+        const scrolling =
+          scrollElement.dataset.scrollbarScrolling === "true";
         for (const entry of entries) {
           const key = keyByWrapperRef.current.get(entry.target);
           if (key === undefined) {
@@ -2838,9 +2869,9 @@ function TimelineRowsList({
           const previous = realizedHeightByKey.get(key);
           realizedHeightByKey.set(key, height);
           recordMeasuredSample(key, height);
-          if (previous === undefined) {
-            // First observation after a realization whose delta was already
-            // balanced (or that mounted through the anchor-compensated path).
+          if (previous === undefined || scrolling) {
+            // First observation after an already-balanced realization, or a
+            // mid-scroll change that must not mutate geometry.
             continue;
           }
           const delta = height - previous;
@@ -2851,24 +2882,14 @@ function TimelineRowsList({
           if (wrapper.getBoundingClientRect().bottom > viewportTop) {
             continue;
           }
-          const index = itemKeysRef.current.indexOf(key);
-          if (index >= 0) {
-            compensations.push({ index, delta });
-          }
+          idleAdjustment += delta;
         }
-        if (compensations.length === 0) {
-          return;
+        if (idleAdjustment !== 0) {
+          scrollElement.scrollTop = Math.max(
+            0,
+            scrollElement.scrollTop + idleAdjustment,
+          );
         }
-        let residual = 0;
-        flushSync(() => {
-          for (const compensation of compensations) {
-            residual += compensateAboveViewportDelta(
-              compensation.index,
-              compensation.delta,
-            );
-          }
-        });
-        applyResidual(residual);
       });
     }
     resizeObserverRef.current = contentGrowthObserver;
@@ -2877,8 +2898,8 @@ function TimelineRowsList({
       observer.observe(wrapper);
       contentGrowthObserver?.observe(wrapper);
     }
-    // Scroll events push a pending re-budget out to the next idle moment.
-    scrollElement.addEventListener("scroll", scheduleRebudget, {
+    // Scroll events push the pending idle pass out to the next quiet moment.
+    scrollElement.addEventListener("scroll", scheduleIdlePass, {
       passive: true,
     });
 
@@ -2887,10 +2908,11 @@ function TimelineRowsList({
       resizeObserverRef.current = null;
       observer.disconnect();
       contentGrowthObserver?.disconnect();
-      scrollElement.removeEventListener("scroll", scheduleRebudget);
-      if (rebudgetTimeout !== null) {
-        window.clearTimeout(rebudgetTimeout);
+      scrollElement.removeEventListener("scroll", scheduleIdlePass);
+      if (idlePassTimeout !== null) {
+        window.clearTimeout(idlePassTimeout);
       }
+      pendingRealizeKeys.clear();
       realizedHeightByKey.clear();
     };
   }, [getScrollElement, shouldWindow]);
