@@ -402,7 +402,10 @@ export class RuntimeProviderProcessManager {
 
     const stdout = createInterface({ input: child.stdout });
     stdout.on("line", (line) => {
-      if (this.shuttingDown) {
+      if (
+        this.shuttingDown ||
+        !this.isCurrentProviderProcess({ providerProcess })
+      ) {
         return;
       }
       this.args.handleStdoutLine({
@@ -412,7 +415,10 @@ export class RuntimeProviderProcessManager {
     });
 
     child.stderr.on("data", (chunk: Buffer) => {
-      if (this.shuttingDown) {
+      if (
+        this.shuttingDown ||
+        !this.isCurrentProviderProcess({ providerProcess })
+      ) {
         return;
       }
       consumeProviderStderrChunk({
@@ -422,7 +428,11 @@ export class RuntimeProviderProcessManager {
       });
     });
     child.stderr.on("end", () => {
-      if (this.shuttingDown || providerProcess.stderrLineTail.length === 0) {
+      if (
+        this.shuttingDown ||
+        !this.isCurrentProviderProcess({ providerProcess }) ||
+        providerProcess.stderrLineTail.length === 0
+      ) {
         return;
       }
       this.args.onStderr?.(decodeStderrLine(providerProcess.stderrLineTail));
@@ -468,6 +478,12 @@ export class RuntimeProviderProcessManager {
       // consumed before pending requests and diagnostics are settled. Bound
       // the wait because a descendant can inherit and hold a pipe open.
       closeGraceTimer = setTimeout(() => {
+        // Stop an inherited pipe from outliving its provider entry. Otherwise
+        // a descendant can emit stale protocol messages after the replacement
+        // process has become current, and the unread streams remain retained.
+        stdout.close();
+        child.stdout.destroy();
+        child.stderr.destroy();
         handleExit(status);
       }, PROVIDER_PROCESS_CLOSE_GRACE_MS);
       closeGraceTimer.unref();
