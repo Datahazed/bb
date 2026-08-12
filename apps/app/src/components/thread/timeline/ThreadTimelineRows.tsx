@@ -283,6 +283,12 @@ interface TimelineRowsListProps {
 interface TimelineWindowItemController {
   handleIntersection: (entry: IntersectionObserverEntry) => void;
   realize: () => void;
+  /** Revert a just-realized item to its unchanged placeholder. */
+  derealize: () => void;
+  /** The current placeholder height, or null while the item is realized. */
+  peekPlaceholderHeight: () => number | null;
+  /** Grow or shrink the placeholder (clamped at zero) to absorb a height delta. */
+  adjustPlaceholderHeight: (delta: number) => void;
 }
 
 interface TimelineVisibleAnchor {
@@ -436,7 +442,8 @@ const TIMELINE_WINDOW_FALLBACK_VIEWPORT_HEIGHT_PX = 800;
 // How long after the last scroll event deferred realizations flush. Momentum
 // scrolling emits scroll events every frame, so this much silence means the
 // scroll (including its inertial tail) has stopped and a compensating
-// scrollTop write can no longer kill momentum.
+// scrollTop write can no longer kill momentum. Only realizations that found
+// no donor placeholder capacity wait for this flush.
 const TIMELINE_WINDOW_SCROLL_IDLE_FLUSH_DELAY_MS = 250;
 
 function timelineListItemKey(item: TimelineRowsListItem): string {
@@ -1957,6 +1964,9 @@ function TimelineWindowedListItem({
 }: TimelineWindowedListItemProps) {
   const [locallyRealized, setLocallyRealized] = useState(initiallyRealized);
   const [placeholderHeight, setPlaceholderHeight] = useState(estimatedHeight);
+  // Mirrors the placeholder-height state so the window controller can read
+  // and adjust it synchronously between two flushSync commits in one task.
+  const placeholderHeightRef = useRef(estimatedHeight);
   const locallyRealizedRef = useRef(locallyRealized);
   const alwaysRealizedRef = useRef(alwaysRealized);
   const interactionPinnedRef = useRef(false);
@@ -1973,6 +1983,10 @@ function TimelineWindowedListItem({
     locallyRealizedRef.current = next;
     setLocallyRealized(next);
   }, []);
+  const applyPlaceholderHeight = useCallback((next: number) => {
+    placeholderHeightRef.current = next;
+    setPlaceholderHeight(next);
+  }, []);
   const controller = useMemo<TimelineWindowItemController>(
     () => ({
       handleIntersection: (entry) => {
@@ -1982,21 +1996,34 @@ function TimelineWindowedListItem({
           return;
         }
         if (entry.boundingClientRect.height > 0) {
-          setPlaceholderHeight(entry.boundingClientRect.height);
+          applyPlaceholderHeight(entry.boundingClientRect.height);
         }
         if (!alwaysRealizedRef.current && !interactionPinnedRef.current) {
           updateLocallyRealized(false);
         }
       },
-      // Applies a realization whose intersection entry was deferred while a
-      // scroll was active. The entry reported the item intersecting, so the
-      // last-intersection state matches what handleIntersection would have set.
+      // Applies a realization outside an intersection entry (scroll-time
+      // realization or the idle flush). The item is intersecting when this
+      // runs, so the last-intersection state matches what handleIntersection
+      // would have set.
       realize: () => {
         lastIntersectionRef.current = true;
         updateLocallyRealized(true);
       },
+      derealize: () => {
+        updateLocallyRealized(false);
+      },
+      peekPlaceholderHeight: () =>
+        alwaysRealizedRef.current || locallyRealizedRef.current
+          ? null
+          : placeholderHeightRef.current,
+      adjustPlaceholderHeight: (delta) => {
+        applyPlaceholderHeight(
+          Math.max(0, placeholderHeightRef.current + delta),
+        );
+      },
     }),
-    [updateLocallyRealized],
+    [applyPlaceholderHeight, updateLocallyRealized],
   );
   useLayoutEffect(() => {
     registerController(itemKey, controller);
@@ -2328,21 +2355,147 @@ function TimelineRowsList({
       }
     };
 
+    // Realize items whose top sits above the viewport while a scroll is
+    // active. Mount their content in one synchronous commit, measure each
+    // realized height, then balance every height delta against placeholder
+    // "donors" that also sit fully above the viewport, in a second commit in
+    // the same task (so nothing paints in between). The net height change
+    // above the viewport is zero, which keeps visible content still without
+    // a momentum-killing scrollTop write. Donor placeholders self-correct:
+    // they re-measure whenever they realize or derealize later. An item that
+    // finds no donor capacity (near the top of the timeline) reverts to its
+    // unchanged placeholder and waits for the idle flush instead.
+    const realizeAboveViewportDuringScroll = (keys: readonly string[]) => {
+      const candidates = keys.flatMap((key) => {
+        const controller = controllerByKeyRef.current.get(key);
+        const wrapper = wrapperByKeyRef.current.get(key);
+        const index = itemKeys.indexOf(key);
+        const placeholderHeight = controller?.peekPlaceholderHeight() ?? null;
+        if (
+          controller === undefined ||
+          wrapper === undefined ||
+          index < 0 ||
+          placeholderHeight === null
+        ) {
+          return [];
+        }
+        return [{ controller, index, key, placeholderHeight, wrapper }];
+      });
+      if (candidates.length === 0) {
+        return;
+      }
+
+      flushSync(() => {
+        for (const candidate of candidates) {
+          candidate.controller.realize();
+        }
+      });
+
+      // Plan the donor adjustments against post-realize measurements. Donors
+      // are taken topmost-first so the placeholders nearest the viewport —
+      // the ones most likely to realize next — keep accurate heights.
+      const plannedAdjustments = new Map<string, number>();
+      const effectivePlaceholderHeight = (key: string): number | null => {
+        const peeked =
+          controllerByKeyRef.current.get(key)?.peekPlaceholderHeight() ?? null;
+        if (peeked === null) {
+          return null;
+        }
+        return Math.max(0, peeked + (plannedAdjustments.get(key) ?? 0));
+      };
+      const reverts: typeof candidates = [];
+      for (const candidate of candidates) {
+        const delta =
+          candidate.wrapper.getBoundingClientRect().height -
+          candidate.placeholderHeight;
+        if (delta === 0) {
+          continue;
+        }
+        if (delta < 0) {
+          // Shorter than its placeholder: hand the slack to the topmost donor.
+          let donorKey: string | null = null;
+          for (let index = 0; index < candidate.index; index += 1) {
+            const key = itemKeys[index];
+            if (key !== undefined && effectivePlaceholderHeight(key) !== null) {
+              donorKey = key;
+              break;
+            }
+          }
+          if (donorKey === null) {
+            reverts.push(candidate);
+            continue;
+          }
+          plannedAdjustments.set(
+            donorKey,
+            (plannedAdjustments.get(donorKey) ?? 0) - delta,
+          );
+          continue;
+        }
+        // Taller than its placeholder: shrink donors above it until covered.
+        let remaining = delta;
+        const takes: Array<[string, number]> = [];
+        for (
+          let index = 0;
+          index < candidate.index && remaining > 0.5;
+          index += 1
+        ) {
+          const key = itemKeys[index];
+          if (key === undefined) {
+            continue;
+          }
+          const available = effectivePlaceholderHeight(key);
+          if (available === null || available <= 0) {
+            continue;
+          }
+          const take = Math.min(available, remaining);
+          takes.push([key, take]);
+          remaining -= take;
+        }
+        if (remaining > 0.5) {
+          reverts.push(candidate);
+          continue;
+        }
+        for (const [key, take] of takes) {
+          plannedAdjustments.set(
+            key,
+            (plannedAdjustments.get(key) ?? 0) - take,
+          );
+        }
+      }
+      if (plannedAdjustments.size > 0 || reverts.length > 0) {
+        flushSync(() => {
+          for (const [key, adjustment] of plannedAdjustments) {
+            if (adjustment !== 0) {
+              controllerByKeyRef.current
+                .get(key)
+                ?.adjustPlaceholderHeight(adjustment);
+            }
+          }
+          for (const candidate of reverts) {
+            candidate.controller.derealize();
+          }
+        });
+      }
+      for (const candidate of reverts) {
+        pendingRealizeKeys.add(candidate.key);
+      }
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
         // A programmatic scrollTop write stops WebKit's native momentum
         // scrolling, and WebKit — the only engine this compact-viewport list
         // runs on for mobile — has no scroll anchoring to absorb layout
         // shifts. While a scroll is active (the scroll owner keeps this
-        // marker present through the inertial tail), apply only the updates
-        // that cannot shift visible content: derealizations swap in their
-        // just-measured height, and realizations fully below the viewport
-        // only push layout further down. Realizations at or above the
-        // viewport would shift what the user sees by the placeholder-vs-real
-        // height delta, so they wait for the idle flush, which restores the
-        // visible anchor after realizing.
+        // marker present through the inertial tail), apply derealizations
+        // and at-or-below-viewport realizations directly: derealizations
+        // swap in their just-measured height, and an item whose top edge is
+        // at or below the viewport top only pushes layout below that edge
+        // when it grows. Items whose top is above the viewport realize with
+        // donor compensation instead.
         if (scrollElement.dataset.scrollbarScrolling === "true") {
-          let viewportBottom: number | null = null;
+          let viewportTop: number | null = null;
+          const growUpKeys: string[] = [];
           for (const entry of entries) {
             const key = keyByWrapperRef.current.get(entry.target);
             if (key === undefined) {
@@ -2366,16 +2519,20 @@ function TimelineRowsList({
             }
             // rootBounds already includes the rootMargin expansion; strip it
             // to recover the true viewport edge without forcing a layout.
-            const rootBottom = entry.rootBounds?.bottom;
-            viewportBottom ??=
-              rootBottom !== undefined
-                ? rootBottom - TIMELINE_WINDOW_MARGIN_PX
-                : scrollElement.getBoundingClientRect().bottom;
-            if (entry.boundingClientRect.top >= viewportBottom) {
+            const rootTop = entry.rootBounds?.top;
+            viewportTop ??=
+              rootTop !== undefined
+                ? rootTop + TIMELINE_WINDOW_MARGIN_PX
+                : scrollElement.getBoundingClientRect().top;
+            if (entry.boundingClientRect.top >= viewportTop) {
+              pendingRealizeKeys.delete(key);
               controller.handleIntersection(entry);
               continue;
             }
-            pendingRealizeKeys.add(key);
+            growUpKeys.push(key);
+          }
+          if (growUpKeys.length > 0) {
+            realizeAboveViewportDuringScroll(growUpKeys);
           }
           if (pendingRealizeKeys.size > 0) {
             scheduleIdleFlush();
