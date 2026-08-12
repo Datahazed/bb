@@ -1056,11 +1056,11 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 107 lets the server explicitly reject stale environment
-  // provisioning events after restart recovery. Older daemons cannot parse the
-  // new rejection reason, so enrolled machines must update for the new behavior.
-  it("uses protocol version 107 for stale provisioning event rejection", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(107);
+  // Version 108 combines stale provisioning event rejection with corrected
+  // Claude Code status reporting. Both changes affect server/daemon behavior,
+  // so daemons from either independently versioned branch must update.
+  it("uses protocol version 108 for provisioning and Claude status fixes", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(108);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

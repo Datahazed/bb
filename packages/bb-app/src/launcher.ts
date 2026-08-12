@@ -64,6 +64,7 @@ import {
   resolveDataDirDatabasePath,
   resolvePortFromEnv,
   resolveProdDataDir,
+  stripThreadContextEnv,
 } from "@bb/config/runtime";
 import { z } from "zod";
 
@@ -1304,12 +1305,14 @@ export async function resolveBbAppRuntimeState(
 
   if (args.serverUrlMode === "local") {
     const localEnv = { ...managedEnv };
-    const localServerEnv = createServerBaseEnv({
-      config,
-      envFile,
-      env: initialEnv,
-      serverBindHostOverride: args.options.serverBindHost,
-    });
+    const localServerEnv = stripThreadContextEnv(
+      createServerBaseEnv({
+        config,
+        envFile,
+        env: initialEnv,
+        serverBindHostOverride: args.options.serverBindHost,
+      }),
+    );
     delete localEnv.BB_SERVER_URL;
     delete localServerEnv.BB_SERVER_URL;
     return {
@@ -1341,12 +1344,14 @@ export async function resolveBbAppRuntimeState(
       homeDir: args.homeDir,
     }),
     env: finalEnv,
-    serverEnv: createServerBaseEnv({
-      config,
-      envFile,
-      env: initialEnv,
-      serverBindHostOverride: args.options.serverBindHost,
-    }),
+    serverEnv: stripThreadContextEnv(
+      createServerBaseEnv({
+        config,
+        envFile,
+        env: initialEnv,
+        serverBindHostOverride: args.options.serverBindHost,
+      }),
+    ),
   };
 }
 
@@ -2441,12 +2446,12 @@ function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
   };
 }
 
-function createDaemonEnv(
+export function createDaemonEnv(
   context: BbAppStartContext,
   autoJoinEnv: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv {
   return {
-    ...autoJoinEnv,
+    ...stripThreadContextEnv(autoJoinEnv),
     BB_APP_VERSION: context.appVersion,
     BB_BRIDGE_DIR: context.daemonBundleDir,
     BB_CLI_DIR: context.daemonBundleDir,
@@ -2482,7 +2487,7 @@ function createHostDaemonOnlyEnv(
   args: CreateHostDaemonOnlyEnvArgs,
 ): NodeJS.ProcessEnv {
   return {
-    ...args.env,
+    ...stripThreadContextEnv(args.env),
     BB_APP_VERSION: args.context.appVersion,
     BB_BRIDGE_DIR: args.context.daemonBundleDir,
     BB_CLI_DIR: args.context.daemonBundleDir,
@@ -2576,7 +2581,7 @@ export async function createHostDaemonJoinEnv(
   };
 }
 
-async function runBundledCliCommand(
+export async function runBundledCliCommand(
   args: RunBundledCliCommandArgs,
 ): Promise<number> {
   // Prefer the daemon-injected absolute CLI when present so packaged `bb`
@@ -3250,7 +3255,7 @@ export async function runBbApp(
   });
   const sharedEnv = createSharedEnv({
     context,
-    env: runtime.env,
+    env: stripThreadContextEnv(runtime.env),
   });
 
   process.stdout.write(`\n  ${bold("bb")}\n\n`);
