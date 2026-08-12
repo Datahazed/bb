@@ -455,11 +455,10 @@ describe("ThreadTimelineRows actions", () => {
     expect(scrollTop).toBe(17);
     expect(setScrollTop).toHaveBeenCalledTimes(2);
 
-    // The first row has no donor placeholders above it, so a scroll-time
-    // realization cannot balance its height delta. It reverts to its
-    // unchanged placeholder and waits for the idle flush — realizing it
-    // uncompensated would shift visible content with no WebKit scroll
-    // anchoring to absorb it.
+    // The first row has no donor placeholders above it, so its scroll-time
+    // realization compensates through a clamped scrollTop write instead of
+    // leaving a blank row. The content measures 0px (the jsdom default)
+    // against the 212px placeholder, so the -212 residual clamps 17 to 0.
     await act(async () => {
       intersectionCallback?.(
         [
@@ -472,17 +471,8 @@ describe("ThreadTimelineRows actions", () => {
         {} as IntersectionObserver,
       );
     });
-    expect(firstWrapper?.dataset.timelineRowRealized).toBe("false");
-    expect(scrollTop).toBe(17);
-
-    // Once the scroll idles, the deferred realization flushes with anchor
-    // compensation: the visible row keeps its on-screen position.
-    scrollElement.removeAttribute("data-scrollbar-scrolling");
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 350));
-    });
     expect(firstWrapper?.dataset.timelineRowRealized).toBe("true");
-    expect(scrollTop).toBe(137);
+    expect(scrollTop).toBe(0);
     expect(setScrollTop).toHaveBeenCalledTimes(3);
   });
 
@@ -581,13 +571,25 @@ describe("ThreadTimelineRows actions", () => {
     expect(setScrollTop).not.toHaveBeenCalled();
   });
 
-  it("grows a donor placeholder when scroll-time content is shorter than its placeholder", () => {
+  it("grows a donor placeholder for short content and re-balances late growth", () => {
     let intersectionCallback: IntersectionObserverCallback | null = null;
     vi.stubGlobal(
       "IntersectionObserver",
       class IntersectionObserverMock {
         constructor(callback: IntersectionObserverCallback) {
           intersectionCallback = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    let resizeCallback: ResizeObserverCallback | null = null;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserverMock {
+        constructor(callback: ResizeObserverCallback) {
+          resizeCallback = callback;
         }
         observe() {}
         unobserve() {}
@@ -668,6 +670,105 @@ describe("ThreadTimelineRows actions", () => {
     expect(wrapperOf("message_0")?.style.height).toBe("240px");
     expect(wrapperOf("message_1")?.style.height).toBe("120px");
     expect(setScrollTop).not.toHaveBeenCalled();
+
+    // Late content growth (a lazy image decoding) in the realized row — the
+    // wrapper sits above the viewport (rect bottom 0, viewport top 0), so the
+    // 90px delta against the 0px baseline comes back out of the donor.
+    act(() => {
+      resizeCallback?.(
+        [
+          {
+            target: target!,
+            borderBoxSize: [{ blockSize: 90, inlineSize: 390 }],
+            contentRect: { height: 90 },
+          } as unknown as ResizeObserverEntry,
+        ],
+        {} as ResizeObserver,
+      );
+    });
+    expect(target?.dataset.timelineRowRealized).toBe("true");
+    expect(wrapperOf("message_0")?.style.height).toBe("150px");
+    expect(setScrollTop).not.toHaveBeenCalled();
+  });
+
+  it("releases the oldest interaction pin once the cap is exceeded", async () => {
+    let intersectionCallback: IntersectionObserverCallback | null = null;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IntersectionObserverMock {
+        constructor(callback: IntersectionObserverCallback) {
+          intersectionCallback = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const rows = Array.from({ length: 80 }, (_, index) =>
+      conversationRow({
+        id: `message_${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        text: `Timeline message ${index}`,
+        sourceSeqStart: index + 1,
+        sourceSeqEnd: index + 1,
+        threadId: "thr_large",
+      }),
+    );
+    const scrollElement = document.createElement("div");
+    const bottomAnchor: BottomAnchorContextValue = {
+      captureScrollAnchor: vi.fn(),
+      getScrollElement: () => scrollElement,
+      isAtBottom: true,
+      scrollElementIntoView: vi.fn(),
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+
+    const { container } = renderWithRouter(
+      <BottomAnchorContext.Provider value={bottomAnchor}>
+        <CompactViewportOverrideProvider isCompactViewport>
+          <ThreadTimelineRows
+            threadId="thr_large"
+            timelineRows={rows}
+            threadRuntimeDisplayStatus="idle"
+            workspaceRootPath={undefined}
+          />
+        </CompactViewportOverrideProvider>
+      </BottomAnchorContext.Provider>,
+    );
+
+    const wrapperOf = (id: string) =>
+      container.querySelector<HTMLElement>(`[data-timeline-row-id="${id}"]`);
+    expect(wrapperOf("message_66")?.dataset.timelineRowRealized).toBe("true");
+    expect(wrapperOf("message_65")?.dataset.timelineRowRealized).toBe("true");
+
+    // Pin message_66 first, then message_65, then 23 more rows. The 25th pin
+    // exceeds the cap of 24, so the oldest pin (message_66) releases.
+    fireEvent.click(wrapperOf("message_66")!);
+    fireEvent.click(wrapperOf("message_65")!);
+    for (let index = 0; index < 23; index += 1) {
+      fireEvent.click(wrapperOf(`message_${index}`)!);
+    }
+
+    const exitEntry = (id: string) =>
+      ({
+        target: wrapperOf(id)!,
+        isIntersecting: false,
+        boundingClientRect: { height: 100 },
+      }) as unknown as IntersectionObserverEntry;
+    act(() => {
+      intersectionCallback?.(
+        [exitEntry("message_66"), exitEntry("message_65")],
+        {} as IntersectionObserver,
+      );
+    });
+    await waitFor(() =>
+      expect(wrapperOf("message_66")?.dataset.timelineRowRealized).toBe(
+        "false",
+      ),
+    );
+    // The still-pinned row survives the same exit.
+    expect(wrapperOf("message_65")?.dataset.timelineRowRealized).toBe("true");
   });
 
   it("keeps an interacted row mounted after it leaves the window", async () => {
