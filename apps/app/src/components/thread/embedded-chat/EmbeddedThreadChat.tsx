@@ -533,6 +533,7 @@ function EmbeddedThreadChatWithComposer({
   clearInlineAttachmentErrorRef.current = () => setInlineAttachmentError(null);
   const { typeaheadConfig, promptActions } = useComposerTypeahead({
     projectId,
+    mentionsProjectId: projectId,
     providerId,
     environmentId: promptContextEnvironmentId,
     commandScope: threadId === null ? "new-thread" : "thread",

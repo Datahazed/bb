@@ -10,8 +10,8 @@ import { usePromptMentions } from "@/hooks/usePromptMentions";
 
 interface UseComposerTypeaheadArgs {
   projectId: string;
-  /** Project scope for @-mentions when it differs from the command scope. */
-  mentionsProjectId?: string;
+  /** Project scope for @-mentions; undefined leaves mentions unscoped. */
+  mentionsProjectId: string | undefined;
   providerId: string;
   environmentId: string | null;
   /** Host scope for projectless command and mention discovery. */
@@ -47,7 +47,7 @@ export function useComposerTypeahead({
   selectedProviderComposerActions,
   resolveMentionLink,
 }: UseComposerTypeaheadArgs): UseComposerTypeaheadResult {
-  const promptMentions = usePromptMentions(mentionsProjectId ?? projectId, {
+  const promptMentions = usePromptMentions(mentionsProjectId, {
     currentThreadId,
     environmentId,
     hostId,
