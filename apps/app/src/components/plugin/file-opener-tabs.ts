@@ -8,7 +8,7 @@ import {
   type FileOpenerPreferenceMap,
 } from "@/lib/file-opener-preference";
 import type { PluginFileOpenerSlot } from "@/lib/plugin-slots";
-import type { OpenSecondaryPanelTabRequest } from "@/components/secondary-panel/useThreadFileTabs";
+import type { OpenSecondaryPanelTabRequest } from "@/components/secondary-panel/secondaryPanelTabState";
 
 /**
  * Plugin file-opener tabs ride the existing `plugin-panel` tab kind: the

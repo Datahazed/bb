@@ -116,3 +116,11 @@ export function getThreadConversationCollapsedAtom(
     ? threadConversationCollapsedAtomFamily(threadId)
     : disabledThreadConversationCollapsedAtom;
 }
+
+/**
+ * Drops the memoized storage atom for a thread. Safe once nothing is mounted
+ * for that thread: a later access recreates it from localStorage.
+ */
+export function removeThreadConversationCollapsedAtom(threadId: string): void {
+  threadConversationCollapsedAtomFamily.remove(threadId);
+}

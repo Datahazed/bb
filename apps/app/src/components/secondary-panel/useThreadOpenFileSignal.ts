@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { ThreadOpenFile } from "@bb/server-contract";
 import { createFilePreviewLineRange } from "@/lib/file-preview";
 import { wsManager } from "@/lib/ws";
-import type { OpenSecondaryPanelTabRequest } from "./useThreadFileTabs";
+import type { OpenSecondaryPanelTabRequest } from "./secondaryPanelTabState";
 
 interface UseThreadOpenFileSignalParams {
   threadId: string | null | undefined;

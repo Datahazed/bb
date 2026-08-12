@@ -14,7 +14,7 @@ export type FileOpenerPreferenceMap = Record<string, string>;
 
 const FILE_OPENER_PREFERENCE_STORAGE_KEY = "bb.fileOpenerByExtension";
 
-const fileOpenerPreferenceAtom = atomWithStorage<FileOpenerPreferenceMap>(
+export const fileOpenerPreferenceAtom = atomWithStorage<FileOpenerPreferenceMap>(
   FILE_OPENER_PREFERENCE_STORAGE_KEY,
   {},
   createJsonLocalStorage<FileOpenerPreferenceMap>(),

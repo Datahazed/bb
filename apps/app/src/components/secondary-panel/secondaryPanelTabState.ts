@@ -11,6 +11,39 @@ import {
   type ThreadStorageFilePreviewFixedPanelTab,
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
+import type {
+  HostFileTabState,
+  ThreadStorageFileTabState,
+  WorkspaceFileTabState,
+} from "@/lib/file-preview";
+
+/** A request to open (or focus) one secondary panel tab. */
+export type OpenSecondaryPanelTabRequest =
+  | { kind: "workspace-file-preview"; tab: WorkspaceFileTabState }
+  | { kind: "host-file-preview"; tab: HostFileTabState }
+  | { kind: "thread-storage-file-preview"; tab: ThreadStorageFileTabState }
+  | { kind: "browser"; url: string }
+  | { kind: "new-tab" };
+
+export interface FileSearchWorkspaceSelection {
+  source: "workspace";
+  path: string;
+}
+
+export interface FileSearchThreadStorageSelection {
+  source: "thread-storage";
+  path: string;
+}
+
+export type FileSearchSelection =
+  | FileSearchWorkspaceSelection
+  | FileSearchThreadStorageSelection;
+
+export interface UpdateBrowserTabArgs {
+  tabId: string;
+  url: string;
+  title: string | null;
+}
 
 interface SetSecondaryPanelTabsInStateArgs {
   activeTabId: string | null;

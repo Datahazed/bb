@@ -26,7 +26,7 @@ import {
   type FilePathSearchSuggestion,
   type FileSearchSuggestion,
 } from "@/hooks/useFileSearchSuggestions";
-import type { FileSearchSelection } from "./useThreadFileTabs";
+import type { FileSearchSelection } from "./secondaryPanelTabState";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {

@@ -9,7 +9,7 @@ import {
   createBrowserViewVisibilityCoordinator,
   destroyPersistedBrowserView,
 } from "./browserViewVisibilityCoordinator";
-import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
+import type { UpdateBrowserTabArgs } from "./secondaryPanelTabState";
 
 export interface BrowserTabDeckProps {
   browserTabs: readonly BrowserFixedPanelTab[];

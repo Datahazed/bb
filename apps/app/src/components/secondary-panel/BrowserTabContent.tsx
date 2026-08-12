@@ -38,7 +38,7 @@ import {
   type BrowserViewVisibilityCoordinator,
 } from "./browserViewVisibilityCoordinator";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
-import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
+import type { UpdateBrowserTabArgs } from "./secondaryPanelTabState";
 import {
   useAppCommandHandler,
   useAppCommandShortcut,

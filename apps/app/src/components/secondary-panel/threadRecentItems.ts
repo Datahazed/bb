@@ -14,7 +14,7 @@ export const THREAD_RECENT_ITEMS_VISIBLE_LIMIT = 6;
 
 /**
  * The panel sources a recent item can be reopened from. This is the subset of
- * {@link import("./useThreadFileTabs").FileSearchSelection} sources that map to
+ * {@link import("./secondaryPanelTabState").FileSearchSelection} sources that map to
  * a previewable file path, so a recent row reopens through the exact same
  * open-in-panel path as a file-search result.
  */
@@ -32,11 +32,6 @@ interface RecordRecentItemArgs {
   path: string;
   openedAt: number;
   limit?: number;
-}
-
-interface RecordThreadRecentItemArgs {
-  source: RecentItemSource;
-  path: string;
 }
 
 interface ThreadRecentItemsStorageKeyArgs {
@@ -119,10 +114,18 @@ function hasThreadId(threadId: string | null | undefined): threadId is string {
   return threadId !== null && threadId !== undefined && threadId.length > 0;
 }
 
-function getThreadRecentItemsAtom(threadId: string | null | undefined) {
+export function getThreadRecentItemsAtom(threadId: string | null | undefined) {
   return hasThreadId(threadId)
     ? threadRecentItemsAtomFamily(threadId)
     : disabledThreadRecentItemsAtom;
+}
+
+/**
+ * Drops the memoized storage atom for a thread. Safe once nothing is mounted
+ * for that id: a later access recreates it from localStorage.
+ */
+export function removeThreadRecentItemsAtom(threadId: string): void {
+  threadRecentItemsAtomFamily.remove(threadId);
 }
 
 export function useThreadRecentItems(
@@ -133,10 +136,10 @@ export function useThreadRecentItems(
 
 export function useRecordThreadRecentItem(
   threadId: string | null | undefined,
-): (args: RecordThreadRecentItemArgs) => void {
+): (args: { source: RecentItemSource; path: string }) => void {
   const setRecentItems = useSetAtom(getThreadRecentItemsAtom(threadId));
   return useCallback(
-    ({ source, path }: RecordThreadRecentItemArgs) => {
+    ({ source, path }: { source: RecentItemSource; path: string }) => {
       if (!hasThreadId(threadId)) {
         return;
       }

@@ -7,6 +7,32 @@ import {
   type SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { shouldShowRetainedTerminalSession } from "@/lib/terminal-session-visibility";
+import type { ThreadTerminalTarget } from "@/components/thread/terminal/useThreadTerminalController";
+
+/**
+ * Global host-path terminal sessions are not scoped server-side, so the panel
+ * filters the list down to the target host/cwd; thread/environment scopes are
+ * already exact.
+ */
+export function resolveSecondaryPanelTerminalSessions({
+  sessions,
+  terminalTarget,
+}: {
+  sessions: readonly TerminalSession[] | undefined;
+  terminalTarget: ThreadTerminalTarget | null;
+}): readonly TerminalSession[] | undefined {
+  if (terminalTarget?.kind !== "host_path") {
+    return sessions;
+  }
+  return sessions?.filter(
+    (session) =>
+      session.threadId === null &&
+      session.environmentId === null &&
+      session.hostId === terminalTarget.hostId &&
+      (terminalTarget.cwd === null ||
+        session.initialCwd === terminalTarget.cwd),
+  );
+}
 
 interface BuildTerminalSyncedSecondaryFileTabsArgs {
   orderedTabs: readonly SecondaryFileFixedPanelTab[];

@@ -15,7 +15,7 @@ import {
 import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
 import type { SecondaryPanelFileTab } from "./ThreadSecondaryPanel";
 import { NewTabPage } from "./NewTabPage";
-import type { FileSearchSelection } from "./useThreadFileTabs";
+import type { FileSearchSelection } from "./secondaryPanelTabState";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   getThreadRecentItemsStorageKey,
