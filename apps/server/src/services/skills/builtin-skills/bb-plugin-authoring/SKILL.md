@@ -845,6 +845,7 @@ export default definePluginApp((app) => {
     icon: "Columns",
     path: "board",
     component: Board,
+    experimental_sidebarAccessory: OpenIssueCount,
   });
   app.slots.threadPanelAction({
     id: "issue",
@@ -1104,14 +1105,24 @@ Slot props contracts (versioned, additive-only):
   `useBbNavigate().toPluginPanel(path, { subPath, replace? })` — browser
   back/forward then walks panel-internal history (prefer this over hash
   routing).
-  Registration: `{ id, title, icon, path, component, headerContent? }`.
+  Registration:
+  `{ id, title, icon, path, component, experimental_sidebarAccessory?, headerContent? }`.
+  `experimental_sidebarAccessory` is a no-props, presentational component at
+  the trailing edge of the sidebar row. It can own SDK hooks for a live count
+  or short status without lifting state into the host sidebar. The host does
+  not mount it on compact viewports; on wider viewports it clips the component
+  to one line, 4rem wide by 1.25rem high, and ellipsizes ordinary long text.
+  It shares the trailing action column and fades out for the host options
+  button on row hover or keyboard focus without unmounting. Do not render
+  controls or portalled content there. A throw hides only the accessory.
+  Experimental: see `docs/api_to_audit.md`.
   The host renders your compact plugin icon + `title` into the SHARED app
   header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT
   repeat the title inside your component. The component owns the full-bleed
   body below with zero host padding; add your own padding and scrolling when
   the design needs them. `headerContent` is plugin code inside the host title bar and is
-  contained separately: a throw hides the accessory without breaking the
+  contained separately: a throw hides the header content without breaking the
   title bar or the panel body. For a classic page, use an outer scroll region
   with `p-4 md:p-5` and wrap its content in a
   `mx-auto w-full max-w-3xl space-y-4` div.
