@@ -420,8 +420,28 @@ function createOnSessionDone(
   args: CreateSessionCallbackArgs,
 ): (error?: unknown) => void {
   return (error?: unknown) => {
-    if (!error) return;
-    reportSessionError({ ...args, error });
+    if (error) {
+      reportSessionError({ ...args, error });
+      return;
+    }
+    if (!getCurrentThreadSession(args)) {
+      return;
+    }
+    void closeThreadSession({
+      message:
+        "Pi extension requested thread shutdown while tool call was pending",
+      threadId: args.threadId,
+    }).catch((shutdownError: unknown) => {
+      const message =
+        shutdownError instanceof Error
+          ? shutdownError.message
+          : String(shutdownError);
+      send({
+        jsonrpc: "2.0",
+        method: "error",
+        params: { threadId: args.threadId, message },
+      });
+    });
   };
 }
 

@@ -275,6 +275,23 @@ export class PiSdkSession {
     });
     this.session = session;
 
+    await session.bindExtensions({
+      mode: "rpc",
+      abortHandler: () => {
+        void session.abort();
+      },
+      shutdownHandler: () => {
+        this.onDone();
+      },
+      onError: (error) => {
+        this.onDone(
+          new Error(
+            `Pi extension error (${error.extensionPath}, ${error.event}): ${error.error}`,
+          ),
+        );
+      },
+    });
+
     this.ensureCustomToolsActive();
 
     // Subscribe to session events
@@ -365,10 +382,9 @@ export class PiSdkSession {
       "Pi SDK session stopped before steer consumed",
     );
     this.detach();
-    if (this.session) {
-      this.session.dispose();
-      this.session = undefined;
-    }
+    const session = this.session;
+    this.session = undefined;
+    if (session) void this.disposeSession(session);
   }
 
   async closeGracefully(timeoutMs: number): Promise<string | undefined> {
@@ -394,7 +410,7 @@ export class PiSdkSession {
         clearTimeout(timeout);
       }
       providerCheckpointId = session.sessionManager.getLeafId() ?? undefined;
-      session.dispose();
+      await this.disposeSession(session);
       if (this.session === session) {
         this.session = undefined;
       }
@@ -402,6 +418,19 @@ export class PiSdkSession {
       this.isCompacting = false;
     }
     return providerCheckpointId;
+  }
+
+  private async disposeSession(session: AgentSession): Promise<void> {
+    try {
+      if (session.hasExtensionHandlers("session_shutdown")) {
+        await session.extensionRunner.emit({
+          type: "session_shutdown",
+          reason: "quit",
+        });
+      }
+    } finally {
+      session.dispose();
+    }
   }
 
   private trackProcessingState(event: AgentSessionEvent): void {
