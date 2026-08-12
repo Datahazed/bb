@@ -175,6 +175,65 @@ describe("SecondaryPanelCommandHandlers", () => {
     expect(second.onClose).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps one desktop close listener across rerenders and re-registers only when the callback changes", async () => {
+    const registrations: BbDesktopCloseWindowRequestHandler[] = [];
+    const active = new Set<BbDesktopCloseWindowRequestHandler>();
+    window.bbDesktop = {
+      ...createBbDesktopApi(desktopInfo),
+      onCloseWindowRequest(listener) {
+        registrations.push(listener);
+        active.add(listener);
+        return () => active.delete(listener);
+      },
+    };
+    const handlers = createPaneHandlers();
+
+    const view = render(
+      <AppCommandProvider>
+        <TestPanelCommandHandlers isFocused handlers={handlers} />
+      </AppCommandProvider>,
+    );
+    await act(async () => undefined);
+    expect(registrations).toHaveLength(1);
+
+    // The host prop object is rebuilt inline on every render, so these
+    // rerenders only keep the callback identities stable. The listener must
+    // not be re-registered: the effect has to key on the close callback, not
+    // on the host object.
+    view.rerender(
+      <AppCommandProvider>
+        <TestPanelCommandHandlers isFocused handlers={handlers} />
+      </AppCommandProvider>,
+    );
+    view.rerender(
+      <AppCommandProvider>
+        <TestPanelCommandHandlers isFocused handlers={handlers} />
+      </AppCommandProvider>,
+    );
+    await act(async () => undefined);
+    expect(registrations).toHaveLength(1);
+    expect(active.size).toBe(1);
+
+    // A new close-callback identity must swap the registration (old listener
+    // cleaned up, no leaked duplicate) and route close requests to the new
+    // callback — guarding against both stale (`[]`) and missing deps.
+    const replacementClose = vi.fn(() => true);
+    view.rerender(
+      <AppCommandProvider>
+        <TestPanelCommandHandlers
+          isFocused
+          handlers={{ ...handlers, onClose: replacementClose }}
+        />
+      </AppCommandProvider>,
+    );
+    await act(async () => undefined);
+    expect(registrations).toHaveLength(2);
+    expect(active.size).toBe(1);
+    for (const listener of active) listener();
+    expect(replacementClose).toHaveBeenCalledTimes(1);
+    expect(handlers.onClose).not.toHaveBeenCalled();
+  });
+
   interface RouteCase {
     command: RoutedCommand;
     expectFocusedCalls: Partial<Record<keyof PaneHandlers, number>>;

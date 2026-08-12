@@ -741,14 +741,10 @@ export function useSecondaryPanelHost({
   const terminalsListQuery = useTerminals(terminalQueryScope, {
     enabled: isSecondaryPanelOpen && terminalTarget !== null,
   });
-  const loadedTerminalSessions = useMemo(
-    () =>
-      resolveSecondaryPanelTerminalSessions({
-        sessions: terminalsListQuery.data?.sessions,
-        terminalTarget,
-      }),
-    [terminalsListQuery.data?.sessions, terminalTarget],
-  );
+  const loadedTerminalSessions = resolveSecondaryPanelTerminalSessions({
+    sessions: terminalsListQuery.data?.sessions,
+    terminalTarget,
+  });
   const terminalSessions = loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
   const terminalsById = useMemo(
     () => new Map(terminalSessions.map((session) => [session.id, session])),
@@ -776,17 +772,14 @@ export function useSecondaryPanelHost({
     orderedSecondaryFileTabs,
     updateBrowserTab,
   } = fileTabState;
-  const syncedOrderedSecondaryFileTabs = useMemo(
-    () =>
-      loadedTerminalSessions === undefined
-        ? orderedSecondaryFileTabs
-        : buildTerminalSyncedSecondaryFileTabs({
-            orderedTabs: orderedSecondaryFileTabs,
-            retainedTerminalId,
-            terminalSessions: loadedTerminalSessions,
-          }),
-    [loadedTerminalSessions, orderedSecondaryFileTabs, retainedTerminalId],
-  );
+  const syncedOrderedSecondaryFileTabs =
+    loadedTerminalSessions === undefined
+      ? orderedSecondaryFileTabs
+      : buildTerminalSyncedSecondaryFileTabs({
+          orderedTabs: orderedSecondaryFileTabs,
+          retainedTerminalId,
+          terminalSessions: loadedTerminalSessions,
+        });
   useEffect(() => {
     if (loadedTerminalSessions === undefined) return;
     updateFixedPanelTabsState((state) =>
@@ -1125,7 +1118,7 @@ export function useSecondaryPanelHost({
     },
     [activateTab, openCompactDrawer],
   );
-  const handleCloseWindowRequest = useCallback(() => {
+  const handleCloseWindowRequest = () => {
     if (!isOpen) return false;
     if (
       activeFixedSecondaryTab !== null &&
@@ -1148,15 +1141,7 @@ export function useSecondaryPanelHost({
     }
     closePanel();
     return true;
-  }, [
-    activeFixedSecondaryTab,
-    capabilities.closeLoneNewTabByHidingPanel,
-    closePanel,
-    closeTab,
-    fixedPanelTabsState.secondary.tabs.length,
-    handleCloseTerminalTab,
-    isOpen,
-  ]);
+  };
   const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
     (resource) => {
       if (resource.kind === "thread") {
