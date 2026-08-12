@@ -8,7 +8,7 @@ import type {
 } from "@bb/desktop-contract";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
-import { SecondaryPanelCommandHandlers } from "./SecondaryPanelHost";
+import { SecondaryPanelCommandHandlers } from "./SecondaryPanel";
 
 const commandFixture = vi.hoisted(() => {
   const shortcutKeys = {
@@ -108,16 +108,14 @@ function TestPanelCommandHandlers({
 }) {
   return (
     <SecondaryPanelCommandHandlers
-      host={{
-        canStartTerminal,
-        handleCloseWindowRequest: handlers.onClose,
-        handleOpenNewTab: handlers.onNewTab,
-        handleStartTerminal: handlers.onStartTerminal,
-        handleToggleSecondaryPanel: handlers.onToggle,
-        isFocused,
-        registerLegacyOpenNewTab,
-      }}
+      canStartTerminal={canStartTerminal}
+      isFocused={isFocused}
+      onCloseRequest={handlers.onClose}
+      onOpenNewTab={handlers.onNewTab}
       onOpenPreferred={handlers.onOpenPreferred}
+      onStartTerminal={handlers.onStartTerminal}
+      onTogglePanel={handlers.onToggle}
+      registerLegacyOpenNewTab={registerLegacyOpenNewTab}
       {...(hasToggleDiff ? { onToggleDiff: handlers.onToggleDiff } : {})}
     />
   );
@@ -196,10 +194,9 @@ describe("SecondaryPanelCommandHandlers", () => {
     await act(async () => undefined);
     expect(registrations).toHaveLength(1);
 
-    // The host prop object is rebuilt inline on every render, so these
-    // rerenders only keep the callback identities stable. The listener must
-    // not be re-registered: the effect has to key on the close callback, not
-    // on the host object.
+    // Rerenders keep the callback identities stable. The listener must not
+    // be re-registered: the effect has to key on the close callback (and
+    // focus), not on anything rebuilt per render.
     view.rerender(
       <AppCommandProvider>
         <TestPanelCommandHandlers isFocused handlers={handlers} />
