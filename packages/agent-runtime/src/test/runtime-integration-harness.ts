@@ -104,7 +104,7 @@ export interface ResolveRuntimeOptionsArgs {
   preset: RuntimeOptionsPreset;
 }
 
-export const fullRuntimeOptionsTemplate = {
+const fullRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
   workflowsEnabled: false,
@@ -114,7 +114,7 @@ export const fullRuntimeOptionsTemplate = {
   permissionEscalation: null,
 } satisfies RuntimeOptionsTemplate;
 
-export const workspaceWriteAskRuntimeOptionsTemplate = {
+const workspaceWriteAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
   workflowsEnabled: false,
@@ -124,7 +124,7 @@ export const workspaceWriteAskRuntimeOptionsTemplate = {
   permissionEscalation: "ask",
 } satisfies RuntimeOptionsTemplate;
 
-export const workspaceWriteDenyRuntimeOptionsTemplate = {
+const workspaceWriteDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
   workflowsEnabled: false,
@@ -134,7 +134,7 @@ export const workspaceWriteDenyRuntimeOptionsTemplate = {
   permissionEscalation: "deny",
 } satisfies RuntimeOptionsTemplate;
 
-export const runtimeOptionsTemplates = {
+const runtimeOptionsTemplates = {
   full: fullRuntimeOptionsTemplate,
   "accept-edits-ask": workspaceWriteAskRuntimeOptionsTemplate,
   "accept-edits-deny": workspaceWriteDenyRuntimeOptionsTemplate,
@@ -148,11 +148,11 @@ export function turnCompletedCount(events: ThreadEvent[]): number {
   return events.filter((e) => e.type === "turn/completed").length;
 }
 
-export function turnStartedCount(events: ThreadEvent[]): number {
+function turnStartedCount(events: ThreadEvent[]): number {
   return events.filter((e) => e.type === "turn/started").length;
 }
 
-export function collectTurnIds(events: ThreadEvent[]): Set<string> {
+function collectTurnIds(events: ThreadEvent[]): Set<string> {
   const turnIds = new Set<string>();
   for (const event of events) {
     const turnId = getThreadEventScopeTurnId(event.scope);
@@ -175,7 +175,7 @@ export interface ResolveProviderThreadIdArgs {
   threadId: string;
 }
 
-export function providerUsesRuntimeTurnIds(providerId: string): boolean {
+function providerUsesRuntimeTurnIds(providerId: string): boolean {
   return providerId === "claude-code" || providerId === "pi";
 }
 
@@ -265,7 +265,7 @@ export function getAgentTextAfterIndex(
   return getThreadText(events.slice(startIndex), threadId);
 }
 
-export function isThreadIdentityEvent(
+function isThreadIdentityEvent(
   event: ThreadEvent,
   threadId: string,
 ): event is ThreadIdentityEvent {
@@ -337,7 +337,7 @@ export function getThreadText(events: ThreadEvent[], threadId: string): string {
   return getAgentText(threadEvents) || getStreamedText(threadEvents);
 }
 
-export function describeEventsForFailure(events: ThreadEvent[]): string {
+function describeEventsForFailure(events: ThreadEvent[]): string {
   return events
     .map((event) => {
       const threadId = "threadId" in event ? event.threadId : "no-thread";
@@ -365,7 +365,7 @@ export function describeEventsForFailure(events: ThreadEvent[]): string {
     .join("\n");
 }
 
-export function previewText(value: string): string {
+function previewText(value: string): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (normalized.length <= 240) {
     return normalized;
@@ -373,13 +373,11 @@ export function previewText(value: string): string {
   return `${normalized.slice(0, 240)}...`;
 }
 
-export function isErrorEvent(event: ThreadEvent): event is ErrorThreadEvent {
+function isErrorEvent(event: ThreadEvent): event is ErrorThreadEvent {
   return event.type === "provider/error" || event.type === "system/error";
 }
 
-export function findLatestErrorEvent(
-  events: ThreadEvent[],
-): ErrorThreadEvent | null {
+function findLatestErrorEvent(events: ThreadEvent[]): ErrorThreadEvent | null {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
     if (event && isErrorEvent(event)) {
@@ -389,14 +387,12 @@ export function findLatestErrorEvent(
   return null;
 }
 
-export function formatErrorEvent(event: ErrorThreadEvent): string {
+function formatErrorEvent(event: ErrorThreadEvent): string {
   const detail = event.detail ? ` detail=${event.detail}` : "";
   return `${event.type}: ${event.message}${detail}`;
 }
 
-export function formatInteractiveRequest(
-  request: PendingInteractionCreate,
-): string {
+function formatInteractiveRequest(request: PendingInteractionCreate): string {
   if (isUserQuestionPendingInteractionPayload(request.payload)) {
     const firstQuestion = request.payload.questions[0];
     return `user_question:${previewText(firstQuestion?.prompt ?? "empty")}`;
@@ -449,9 +445,7 @@ export function describeRuntimeDiagnostics(
   ].join("\n");
 }
 
-export function failOnRuntimeError(
-  args: RuntimeDiagnosticsArgs,
-): string | null {
+function failOnRuntimeError(args: RuntimeDiagnosticsArgs): string | null {
   const events = args.threadId
     ? getEventsForThread(args.ctx.events, args.threadId)
     : args.ctx.events;
@@ -524,7 +518,7 @@ export function waitForThreadTurnStarted(args: ThreadWaitArgs): Promise<void> {
   });
 }
 
-export function hasToolCallForThread(
+function hasToolCallForThread(
   ctx: TestContext,
   threadId: string,
   toolName: string,
@@ -534,7 +528,7 @@ export function hasToolCallForThread(
   );
 }
 
-export function interactiveRequestCountForThread(
+function interactiveRequestCountForThread(
   ctx: TestContext,
   threadId: string,
 ): number {
@@ -694,7 +688,7 @@ export function createTempFileName(prefix: string): string {
   return `${prefix}-${randomUUID().replaceAll("-", "")}.txt`;
 }
 
-export function expectSemanticApprovalRequest(
+function expectSemanticApprovalRequest(
   request: PendingInteractionCreate,
 ): void {
   if (!isApprovalPendingInteractionPayload(request.payload)) {
@@ -730,7 +724,7 @@ export function expectSemanticApprovalRequest(
   }
 }
 
-export function expectSemanticUserQuestionRequest(
+function expectSemanticUserQuestionRequest(
   request: PendingInteractionCreate,
 ): void {
   if (!isUserQuestionPendingInteractionPayload(request.payload)) {
@@ -748,7 +742,7 @@ export function expectSemanticUserQuestionRequest(
   }
 }
 
-export function expectSemanticInteractiveRequest(
+function expectSemanticInteractiveRequest(
   request: PendingInteractionCreate,
 ): void {
   if (isApprovalPendingInteractionPayload(request.payload)) {
@@ -921,9 +915,7 @@ export async function createApprovalResolution(
   };
 }
 
-export function isWriteApprovalRequest(
-  request: PendingInteractionCreate,
-): boolean {
+function isWriteApprovalRequest(request: PendingInteractionCreate): boolean {
   return (
     isApprovalPendingInteractionPayload(request.payload) &&
     (request.payload.subject.kind === "command" ||

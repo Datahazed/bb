@@ -1185,11 +1185,13 @@ describe("PromptBoxInternal submit shortcuts", () => {
             value: "Run this",
             onChange,
             onSubmit,
+            blurOnPointerSubmit: true,
           })}
         />,
       );
 
       const editor = getPromptEditorElement();
+      act(() => editor.focus());
       const wasNotCanceled = fireEvent.keyDown(editor, {
         key: "Enter",
         code: "Enter",
@@ -1199,6 +1201,7 @@ describe("PromptBoxInternal submit shortcuts", () => {
       expect(editor.getAttribute("enterkeyhint")).toBe("enter");
       expect(onSubmit).toHaveBeenCalledOnce();
       expect(onChange).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(editor);
     } finally {
       restoreNavigator();
       restoreMatchMedia();
@@ -1355,11 +1358,14 @@ describe("PromptBoxInternal submit shortcuts", () => {
             value: "Follow up",
             onSubmit,
             submission: { onModifierSubmit },
+            blurOnPointerSubmit: true,
           })}
         />,
       );
 
-      fireEvent.keyDown(getPromptEditorElement(), {
+      const editor = getPromptEditorElement();
+      act(() => editor.focus());
+      fireEvent.keyDown(editor, {
         key: "Enter",
         code: "Enter",
         metaKey: true,
@@ -1367,6 +1373,7 @@ describe("PromptBoxInternal submit shortcuts", () => {
 
       expect(onModifierSubmit).toHaveBeenCalledOnce();
       expect(onSubmit).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(editor);
     } finally {
       restoreNavigator();
       restoreMatchMedia();
@@ -2158,8 +2165,40 @@ describe("PromptBoxInternal compact layout", () => {
     ).toBe(false);
     expect(document.activeElement).toBe(editor);
 
-    fireEvent.click(submit);
+    fireEvent.click(submit, { detail: 1 });
     expect(onSubmit).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(editor);
+  });
+
+  it("blurs the editor after a pointer submit when requested", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Send this follow-up",
+          onSubmit,
+          blurOnPointerSubmit: true,
+          compact: {
+            isCompact: true,
+            placeholder: "Ask a follow-up",
+          },
+        })}
+      />,
+    );
+
+    await waitForPromptFocus();
+    const editor = getPromptEditorElement();
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+
+    expect(
+      fireEvent.pointerDown(submit, { button: 0, pointerType: "touch" }),
+    ).toBe(false);
+    expect(document.activeElement).toBe(editor);
+
+    fireEvent.click(submit, { detail: 1 });
+
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(document.activeElement).not.toBe(editor);
   });
 
   it("keeps all Markdown and mention text in the navigable preview", async () => {
