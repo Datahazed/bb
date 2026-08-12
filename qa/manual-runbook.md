@@ -567,6 +567,12 @@ bb thread output "$SMOKE_THREAD_ID"
 Server restart during environment provisioning:
 
 ```bash
+# The disposable repository normally provisions too quickly to observe reliably.
+# Commit a temporary supported setup hook so the restart lands mid-RPC.
+printf '#!/usr/bin/env bash\nsleep 30\n' > "$PROJECT_ROOT/.bb-env-setup.sh"
+git -C "$PROJECT_ROOT" add .bb-env-setup.sh
+git -C "$PROJECT_ROOT" commit -m "qa: delay one worktree provision"
+
 SERVER_RESTART_THREAD_ID=$(bb thread spawn \
   --project "$BB_PROJECT_ID" \
   --provider codex \
@@ -583,6 +589,8 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 test "$ENV_STATUS" = "provisioning"
+git -C "$PROJECT_ROOT" rm .bb-env-setup.sh
+git -C "$PROJECT_ROOT" commit -m "qa: remove provision delay"
 
 kill -TERM "$SERVER_PID"
 while kill -0 "$SERVER_PID" 2>/dev/null; do sleep 1; done
