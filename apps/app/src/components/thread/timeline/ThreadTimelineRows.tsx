@@ -2263,6 +2263,25 @@ function TimelineRowsList({
 
     const observer = new IntersectionObserver(
       (entries) => {
+        const updateWindowItems = () => {
+          for (const entry of entries) {
+            const key = keyByWrapperRef.current.get(entry.target);
+            if (key === undefined) {
+              continue;
+            }
+            controllerByKeyRef.current.get(key)?.handleIntersection(entry);
+          }
+        };
+
+        // A programmatic scrollTop write stops WebKit's native momentum
+        // scrolling. The scroll owner keeps this marker present for the full
+        // scroll, including its inertial tail. Let the browser's normal scroll
+        // anchoring cover window updates until scrolling stops.
+        if (scrollElement.dataset.scrollbarScrolling === "true") {
+          updateWindowItems();
+          return;
+        }
+
         const maxScrollTop = Math.max(
           0,
           scrollElement.scrollHeight - scrollElement.clientHeight,
@@ -2275,15 +2294,7 @@ function TimelineRowsList({
               orderedKeys: itemKeys,
               wrapperByKey: wrapperByKeyRef.current,
             });
-        flushSync(() => {
-          for (const entry of entries) {
-            const key = keyByWrapperRef.current.get(entry.target);
-            if (key === undefined) {
-              continue;
-            }
-            controllerByKeyRef.current.get(key)?.handleIntersection(entry);
-          }
-        });
+        flushSync(updateWindowItems);
         restoreTimelineVisibleAnchor({ anchor, scrollElement, wasAtBottom });
       },
       {

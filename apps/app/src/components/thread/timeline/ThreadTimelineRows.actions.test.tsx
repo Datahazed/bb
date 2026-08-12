@@ -428,6 +428,25 @@ describe("ThreadTimelineRows actions", () => {
     expect(firstWrapper?.style.height).toBe("212px");
     expect(scrollTop).toBe(17);
     expect(setScrollTop).toHaveBeenCalledTimes(2);
+
+    scrollElement.dataset.scrollbarScrolling = "true";
+    await act(async () => {
+      intersectionCallback?.(
+        [
+          {
+            target: firstWrapper!,
+            isIntersecting: true,
+            boundingClientRect: { height: 212 },
+          } as unknown as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      );
+    });
+    await waitFor(() =>
+      expect(firstWrapper?.dataset.timelineRowRealized).toBe("true"),
+    );
+    expect(scrollTop).toBe(17);
+    expect(setScrollTop).toHaveBeenCalledTimes(2);
   });
 
   it("keeps an interacted row mounted after it leaves the window", async () => {
