@@ -122,6 +122,7 @@ interface ProviderProcessExitedErrorArgs {
 }
 
 const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
+const PROVIDER_PROCESS_CLOSE_GRACE_MS = 1_000;
 
 function createAdapterTurnIdPrefix(): string {
   const adapterId = randomUUID().replaceAll("-", "").slice(0, 16);
@@ -286,21 +287,23 @@ export class RuntimeProviderProcessManager {
     const shutdownPromises: Promise<void>[] = [];
 
     for (const [processKey, providerProcess] of this.processes) {
-      shutdownPromises.push(
-        new Promise<void>((resolve) => {
-          const timer = setTimeout(() => {
-            providerProcess.child.kill("SIGKILL");
-            resolve();
-          }, 5000);
+      if (!hasChildProcessExited(providerProcess.child)) {
+        shutdownPromises.push(
+          new Promise<void>((resolve) => {
+            const timer = setTimeout(() => {
+              providerProcess.child.kill("SIGKILL");
+              resolve();
+            }, 5000);
 
-          providerProcess.child.on("exit", () => {
-            clearTimeout(timer);
-            resolve();
-          });
+            providerProcess.child.on("exit", () => {
+              clearTimeout(timer);
+              resolve();
+            });
 
-          providerProcess.child.kill("SIGTERM");
-        }),
-      );
+            providerProcess.child.kill("SIGTERM");
+          }),
+        );
+      }
       for (const [, pending] of providerProcess.pending) {
         pending.reject(new Error("Runtime shutting down"));
       }
@@ -403,13 +406,45 @@ export class RuntimeProviderProcessManager {
         providerProcess,
       });
     });
-    child.on("exit", (code, signal) => {
+    let exitStatus: ProviderProcessExitStatus | null = null;
+    let closeGraceTimer: NodeJS.Timeout | null = null;
+    let exitHandled = false;
+    const handleExit = (status: ProviderProcessExitStatus): void => {
+      if (exitHandled) return;
+      exitHandled = true;
+      if (closeGraceTimer !== null) {
+        clearTimeout(closeGraceTimer);
+      }
       this.handleProviderProcessExit({
-        code: code ?? null,
+        code: status.code,
         providerId: args.providerId,
         providerProcess,
-        signal: signal ?? null,
+        signal: status.signal,
       });
+    };
+
+    child.on("exit", (code, signal) => {
+      const status = {
+        code: code ?? null,
+        signal: signal ?? null,
+      };
+      exitStatus = status;
+      // `exit` can precede the final stdout/stderr data events. Prefer
+      // `close`, which fires after stdio closes, so final provider output is
+      // consumed before pending requests and diagnostics are settled. Bound
+      // the wait because a descendant can inherit and hold a pipe open.
+      closeGraceTimer = setTimeout(() => {
+        handleExit(status);
+      }, PROVIDER_PROCESS_CLOSE_GRACE_MS);
+      closeGraceTimer.unref();
+    });
+    child.on("close", (code, signal) => {
+      handleExit(
+        exitStatus ?? {
+          code: code ?? null,
+          signal: signal ?? null,
+        },
+      );
     });
 
     this.processes.set(args.processKey, providerProcess);

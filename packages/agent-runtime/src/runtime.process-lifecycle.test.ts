@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import {
   existsSync,
   readFileSync,
@@ -440,8 +441,8 @@ rl.on("line", (line) => {
     const crashScript = join(tmpDir, "large-stderr-provider.cjs");
     writeFileSync(
       crashScript,
-      `process.stderr.write("a".repeat(100_000) + "stderr-tail");
-      process.exit(42);`,
+      `process.exitCode = 42;
+      process.stderr.write("a".repeat(100_000) + "stderr-tail");`,
     );
     const manager = createProviderProcessManager({
       onProcessExit: exitInfo,
@@ -463,6 +464,64 @@ rl.on("line", (line) => {
     expect(Buffer.byteLength(stderrLines[0] ?? "", "utf8")).toBeLessThanOrEqual(
       4_000,
     );
+    await manager.shutdown();
+  });
+
+  it("drains provider stderr before reporting process exit", async () => {
+    const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
+    const crashScript = join(tmpDir, "delayed-stderr-provider.cjs");
+    const delayedWriter =
+      'setTimeout(() => process.stderr.write("stderr-after-exit"), 50);';
+    writeFileSync(
+      crashScript,
+      `const { spawn } = require("node:child_process");
+      const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
+        stdio: ["ignore", "ignore", "inherit"],
+      });
+      writer.unref();
+      process.exit(42);`,
+    );
+    const manager = createProviderProcessManager({
+      onProcessExit: exitInfo,
+      scriptPath: crashScript,
+      workspacePath: tmpDir,
+    });
+
+    await manager.ensureProvider({ processKey: "fake", providerId: "fake" });
+    await waitForRuntimeState({
+      label: "drained provider stderr exit callback",
+      predicate: () => exitInfo.mock.calls.length === 1,
+    });
+
+    expect(exitInfo.mock.calls[0]?.[0].stderr).toBe("stderr-after-exit");
+    await manager.shutdown();
+  });
+
+  it("does not wait for an already-exited provider during shutdown", async () => {
+    const crashScript = join(tmpDir, "open-stderr-provider.cjs");
+    const delayedWriter = "setTimeout(() => {}, 400);";
+    writeFileSync(
+      crashScript,
+      `const { spawn } = require("node:child_process");
+      const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
+        stdio: ["ignore", "ignore", "inherit"],
+      });
+      writer.unref();
+      setTimeout(() => process.exit(42), 100);`,
+    );
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      scriptPath: crashScript,
+      workspacePath: tmpDir,
+    });
+
+    await manager.ensureProvider({ processKey: "fake", providerId: "fake" });
+    const providerProcess = manager.requireProviderProcess({
+      processKey: "fake",
+      providerId: "fake",
+    });
+    await once(providerProcess.child, "exit");
+
     await manager.shutdown();
   });
 
@@ -528,6 +587,7 @@ rl.on("line", (line) => {
       providerId: "fake",
     });
     replacementProcess.child.emit("exit", 64, null);
+    replacementProcess.child.emit("close", 64, null);
 
     await waitForRuntimeState({
       label: "unexpected replacement process exit",
