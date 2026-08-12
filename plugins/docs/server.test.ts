@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { defineRpcContract } from "@bb/plugin-sdk";
 import type { PluginRpcClient, PluginRpcHandlers } from "@bb/plugin-sdk";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
@@ -22,7 +22,10 @@ afterEach(async () => {
   );
 });
 
-async function loadNotebook(notes: Record<string, string>) {
+async function loadNotebook(
+  notes: Record<string, string>,
+  watchVault?: NonNullable<Parameters<typeof simpleNotes>[1]>,
+) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "bb-simple-notes-"));
   temporaryDirectories.push(directory);
   await Promise.all(
@@ -72,7 +75,11 @@ async function loadNotebook(notes: Record<string, string>) {
       hosts: { list: async () => [] },
     },
   });
-  await simpleNotes(host.bb);
+  if (watchVault) {
+    await simpleNotes(host.bb, watchVault);
+  } else {
+    await simpleNotes(host.bb);
+  }
   host.bb.storage
     .database()
     .prepare("UPDATE vaults SET root_path = ? WHERE id = 'personal'")
@@ -1053,14 +1060,29 @@ describe("Docs vault operations", () => {
     ]);
   });
 
-  it("publishes native filesystem changes without waiting for the poll", async () => {
-    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
+  it("publishes watched filesystem changes without waiting for the poll", async () => {
+    const changeListeners: Array<() => void> = [];
+    const closeWatcher = vi.fn();
+    const watchedRoots: string[] = [];
+    const { harness } = await loadNotebook(
+      { "plan.md": "# Plan" },
+      (rootPath, onChange) => {
+        watchedRoots.push(rootPath);
+        changeListeners.push(onChange);
+        return {
+          close: closeWatcher,
+          on: () => undefined,
+        };
+      },
+    );
     const service = harness.runService("watch-vaults");
     try {
-      await writeFile(
-        path.join(temporaryDirectories[0]!, "plan.md"),
-        "# Changed outside Docs",
-      );
+      expect(watchedRoots).toEqual([temporaryDirectories[0]]);
+      const notifyChange = changeListeners[0];
+      if (!notifyChange) {
+        throw new Error("Expected vault watcher callback");
+      }
+      notifyChange();
       await waitForSignal(
         () =>
           harness.realtimeSignals.some(
@@ -1069,13 +1091,12 @@ describe("Docs vault operations", () => {
               isRecord(signal.payload) &&
               signal.payload.vaultId === "personal",
           ),
-        // Stay below the 10-second polling interval while allowing native
-        // FSEvents and the 250ms debounce to run under full-suite contention.
-        5_000,
+        1_000,
       );
     } finally {
       service.controller.abort();
       await service.done;
     }
+    expect(closeWatcher).toHaveBeenCalledOnce();
   });
 });
