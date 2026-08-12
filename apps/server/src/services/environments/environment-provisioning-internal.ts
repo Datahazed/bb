@@ -10,7 +10,10 @@ import {
   listStoredThreadProvisioningRowsByProvisioningId,
   threads,
 } from "@bb/db";
-import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
+import {
+  recordEnvironmentCurrentBranch,
+  recordProvisionedEnvironmentWorkspace,
+} from "@bb/db/internal-environment-lifecycle";
 import type {
   Environment,
   ProvisioningTranscriptEntry,
@@ -972,6 +975,28 @@ function startTrackedEnvironmentProvisionCommand(
     });
 }
 
+function persistManagedProvisionBranchBeforeDispatch(
+  deps: Pick<CommandResultSideEffectsDeps, "db" | "hub">,
+  args: {
+    environment: Environment;
+    request: EnvironmentProvisionRequest;
+  },
+): Environment {
+  const command = args.request.command;
+  if (
+    command.workspaceProvisionType !== "managed-worktree" ||
+    args.environment.branchName === command.branchName
+  ) {
+    return args.environment;
+  }
+
+  return (
+    recordEnvironmentCurrentBranch(deps.db, deps.hub, args.environment.id, {
+      branchName: command.branchName,
+    }) ?? args.environment
+  );
+}
+
 export async function advanceEnvironmentProvisioning(
   deps: CommandResultSideEffectsDeps,
   args: AdvanceEnvironmentProvisioningArgs,
@@ -999,8 +1024,15 @@ export async function advanceEnvironmentProvisioning(
     });
     return null;
   }
+  const dispatchEnvironment = persistManagedProvisionBranchBeforeDispatch(
+    deps,
+    {
+      environment,
+      request: args.request,
+    },
+  );
   startTrackedEnvironmentProvisionCommand(deps, {
-    environment,
+    environment: dispatchEnvironment,
     request: args.request,
   });
   return null;

@@ -109,7 +109,7 @@ describe("bb thread wait command output", () => {
     ).rejects.toThrow("process.exit:4");
 
     expect(collectLogLines(vi.mocked(console.error))).toContain(
-      "Error: Thread thread-wait-error is in status error and will not reach idle by waiting alone. Inspect it with 'bb thread show thread-wait-error' and recover by sending a follow-up.",
+      "Error: Thread thread-wait-error is in status error and will not reach idle by waiting alone. Inspect it with 'bb thread show thread-wait-error' and recover with 'bb thread tell thread-wait-error \"<message>\" --mode auto'.",
     );
     expect(get).toHaveBeenCalledTimes(1);
   });

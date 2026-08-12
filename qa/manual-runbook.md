@@ -620,7 +620,14 @@ Expected result:
 - If the live RPC result was lost, the environment/thread reaches an honest
   `error` or retryable interrupted state, with a system error explaining that
   the server restarted before live provisioning completed.
-- The operator can retry by sending a new turn after the host is connected.
+- The operator can retry after the host is connected with an explicit start-mode
+  turn, then wait for the recovered thread:
+
+  ```bash
+  bb thread tell "$SERVER_RESTART_THREAD_ID" "Say exactly: provisioning retry ok" --mode auto
+  bb thread wait "$SERVER_RESTART_THREAD_ID" --status idle --timeout 180
+  bb thread output "$SERVER_RESTART_THREAD_ID"
+  ```
 
 Host offline before send:
 
@@ -703,7 +710,7 @@ THREAD_STATE=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$SMOKE_THREAD_ID" | jq -
 if [ "$THREAD_STATE" = "active" ]; then
   bb thread wait "$SMOKE_THREAD_ID" --status idle --timeout 180
 else
-  bb thread tell "$SMOKE_THREAD_ID" "Say exactly: recovery ok"
+  bb thread tell "$SMOKE_THREAD_ID" "Say exactly: recovery ok" --mode auto
   bb thread wait "$SMOKE_THREAD_ID" --status idle --timeout 120
 fi
 
