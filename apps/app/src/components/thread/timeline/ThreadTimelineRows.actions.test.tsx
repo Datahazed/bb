@@ -12,6 +12,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState, type ComponentProps, type ReactElement } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { getDefaultStore } from "jotai";
+import {
+  BottomAnchorContext,
+  type BottomAnchorContextValue,
+} from "@/components/ui/bottom-anchored-scroll-body";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import type { PluginMessageActionRegistration } from "@bb/plugin-sdk";
@@ -25,6 +31,7 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scroll-anchor";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
 
 function messageActionRegistrationSet(
@@ -268,11 +275,420 @@ function mockSelectionMenuMedia({
 
 afterEach(() => {
   cleanup();
+  getDefaultStore().set(
+    threadTimelineScrollAnchorAtomFamily("thr_large"),
+    null,
+  );
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("ThreadTimelineRows actions", () => {
+  it("keeps measured placeholders and preserves the visible row", async () => {
+    let intersectionCallback: IntersectionObserverCallback | null = null;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IntersectionObserverMock {
+        constructor(callback: IntersectionObserverCallback) {
+          intersectionCallback = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const rows = Array.from({ length: 80 }, (_, index) =>
+      conversationRow({
+        id: `message_${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        text: `Timeline message ${index}`,
+        sourceSeqStart: index + 1,
+        sourceSeqEnd: index + 1,
+        threadId: "thr_large",
+      }),
+    );
+    const scrollElement = document.createElement("div");
+    let scrollTop = 17;
+    const setScrollTop = vi.fn((value: number) => {
+      scrollTop = value;
+    });
+    Object.defineProperty(scrollElement, "clientHeight", {
+      configurable: true,
+      value: 0,
+    });
+    Object.defineProperty(scrollElement, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: setScrollTop,
+    });
+    Object.defineProperty(scrollElement, "scrollHeight", {
+      configurable: true,
+      value: 16_000,
+    });
+    scrollElement.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 800 }) as DOMRect;
+
+    const bottomAnchor: BottomAnchorContextValue = {
+      captureScrollAnchor: vi.fn(),
+      getScrollElement: () => scrollElement,
+      isAtBottom: true,
+      scrollElementIntoView: vi.fn(),
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+
+    const { container } = renderWithRouter(
+      <BottomAnchorContext.Provider value={bottomAnchor}>
+        <CompactViewportOverrideProvider isCompactViewport>
+          <ThreadTimelineRows
+            threadId="thr_large"
+            timelineRows={rows}
+            threadRuntimeDisplayStatus="idle"
+            workspaceRootPath={undefined}
+          />
+        </CompactViewportOverrideProvider>
+      </BottomAnchorContext.Provider>,
+    );
+
+    const windowedList = container.querySelector<HTMLElement>(
+      '[data-timeline-windowed="true"]',
+    );
+    expect(windowedList).not.toBeNull();
+    expect(windowedList?.closest('[style*="overflow-y: clip"]')).toBeNull();
+    expect(container.querySelectorAll("[data-timeline-row-id]").length).toBe(
+      rows.length,
+    );
+    expect(
+      container.querySelectorAll('[data-timeline-row-realized="true"]').length,
+    ).toBeLessThan(rows.length);
+
+    const firstWrapper = container.querySelector<HTMLElement>(
+      '[data-timeline-row-id="message_0"]',
+    );
+    const lastWrapper = container.querySelector<HTMLElement>(
+      '[data-timeline-row-id="message_79"]',
+    );
+    lastWrapper!.getBoundingClientRect = () => {
+      const top =
+        firstWrapper?.dataset.timelineRowRealized === "true" ? 320 : 200;
+      return { top, bottom: top + 100 } as DOMRect;
+    };
+    expect(firstWrapper?.dataset.timelineRowRealized).toBe("false");
+    expect(lastWrapper?.dataset.timelineRowRealized).toBe("true");
+
+    act(() => {
+      intersectionCallback?.(
+        [
+          {
+            target: lastWrapper!,
+            isIntersecting: false,
+            boundingClientRect: { height: 144 },
+          } as unknown as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      );
+    });
+    await waitFor(() =>
+      expect(lastWrapper?.dataset.timelineRowRealized).toBe("false"),
+    );
+
+    await act(async () => {
+      intersectionCallback?.(
+        [
+          {
+            target: firstWrapper!,
+            isIntersecting: true,
+            boundingClientRect: { height: 120 },
+          } as unknown as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      );
+    });
+    await waitFor(() =>
+      expect(firstWrapper?.dataset.timelineRowRealized).toBe("true"),
+    );
+    expect(scrollTop).toBe(137);
+
+    act(() => {
+      intersectionCallback?.(
+        [
+          {
+            target: firstWrapper!,
+            isIntersecting: false,
+            boundingClientRect: { height: 212 },
+          } as unknown as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      );
+    });
+    await waitFor(() =>
+      expect(firstWrapper?.dataset.timelineRowRealized).toBe("false"),
+    );
+    expect(firstWrapper?.style.height).toBe("212px");
+    expect(scrollTop).toBe(17);
+    expect(setScrollTop).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps an interacted row mounted after it leaves the window", async () => {
+    let intersectionCallback: IntersectionObserverCallback | null = null;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IntersectionObserverMock {
+        constructor(callback: IntersectionObserverCallback) {
+          intersectionCallback = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const rows = [
+      turnRow({
+        id: "expandable_turn",
+        children: [
+          conversationRow({
+            id: "expanded_child",
+            role: "assistant",
+            text: "Expanded row state stays mounted.",
+            threadId: "thr_large",
+          }),
+        ],
+        threadId: "thr_large",
+      }),
+      ...Array.from({ length: 79 }, (_, index) =>
+        conversationRow({
+          id: `message_${index + 1}`,
+          role: index % 2 === 0 ? "user" : "assistant",
+          text: `Timeline message ${index + 1}`,
+          sourceSeqStart: index + 20,
+          sourceSeqEnd: index + 20,
+          threadId: "thr_large",
+        }),
+      ),
+    ];
+    const scrollElement = document.createElement("div");
+    const bottomAnchor: BottomAnchorContextValue = {
+      captureScrollAnchor: vi.fn(),
+      getScrollElement: () => scrollElement,
+      isAtBottom: true,
+      scrollElementIntoView: vi.fn(),
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+
+    const { container } = renderWithRouter(
+      <BottomAnchorContext.Provider value={bottomAnchor}>
+        <CompactViewportOverrideProvider isCompactViewport>
+          <ThreadTimelineRows
+            threadId="thr_large"
+            timelineRows={rows}
+            threadRuntimeDisplayStatus="idle"
+            workspaceRootPath={undefined}
+          />
+        </CompactViewportOverrideProvider>
+      </BottomAnchorContext.Provider>,
+    );
+
+    const wrapper = container.querySelector<HTMLElement>(
+      '[data-timeline-row-id="expandable_turn"]',
+    );
+    expect(wrapper?.dataset.timelineRowRealized).toBe("false");
+
+    await act(async () => {
+      intersectionCallback?.(
+        [
+          {
+            target: wrapper!,
+            isIntersecting: true,
+            boundingClientRect: { height: 120 },
+          } as unknown as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      );
+    });
+    const toggle = await waitFor(() => {
+      const element = wrapper?.querySelector<HTMLButtonElement>(
+        'button[aria-expanded="false"]',
+      );
+      if (element === null || element === undefined) {
+        throw new Error("The realized row toggle was not rendered");
+      }
+      return element;
+    });
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Expanded row state stays mounted.")).toBeTruthy();
+
+    act(() => {
+      intersectionCallback?.(
+        [
+          {
+            target: wrapper!,
+            isIntersecting: false,
+            boundingClientRect: { height: 212 },
+          } as unknown as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      );
+    });
+    await waitFor(() =>
+      expect(wrapper?.dataset.timelineRowRealized).toBe("true"),
+    );
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Expanded row state stays mounted.")).toBeTruthy();
+  });
+
+  it("uses a saved anchor when search state belongs to another thread", () => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IntersectionObserverMock {
+        constructor(_callback: IntersectionObserverCallback) {}
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    getDefaultStore().set(threadTimelineScrollAnchorAtomFamily("thr_large"), {
+      rowId: "message_60",
+      offsetWithinRow: 0,
+      atBottom: false,
+    });
+    const rows = Array.from({ length: 80 }, (_, index) =>
+      conversationRow({
+        id: `message_${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        text: `Timeline message ${index}`,
+        sourceSeqStart: index + 1,
+        sourceSeqEnd: index + 1,
+        threadId: "thr_large",
+      }),
+    );
+    const scrollElement = document.createElement("div");
+    const bottomAnchor: BottomAnchorContextValue = {
+      captureScrollAnchor: vi.fn(),
+      getScrollElement: () => scrollElement,
+      isAtBottom: false,
+      scrollElementIntoView: vi.fn(),
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+
+    const { container } = renderWithRouter(
+      <BottomAnchorContext.Provider value={bottomAnchor}>
+        <CompactViewportOverrideProvider isCompactViewport>
+          <ThreadTimelineRows
+            threadId="thr_large"
+            timelineRows={rows}
+            threadRuntimeDisplayStatus="idle"
+            workspaceRootPath={undefined}
+          />
+        </CompactViewportOverrideProvider>
+      </BottomAnchorContext.Provider>,
+      [
+        {
+          pathname: "/thread",
+          state: { searchMessageSeq: 11, searchThreadId: "thr_other" },
+        },
+      ],
+    );
+
+    expect(
+      container.querySelector<HTMLElement>(
+        '[data-timeline-row-id="message_60"]',
+      )?.dataset.timelineRowRealized,
+    ).toBe("true");
+    expect(
+      container.querySelector<HTMLElement>(
+        '[data-timeline-row-id="message_10"]',
+      )?.dataset.timelineRowRealized,
+    ).toBe("false");
+  });
+
+  it("realizes a search target before it reveals a windowed timeline row", async () => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IntersectionObserverMock {
+        constructor(_callback: IntersectionObserverCallback) {}
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserverMock {
+        constructor(_callback: ResizeObserverCallback) {}
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+
+    const rows = Array.from({ length: 80 }, (_, index) =>
+      conversationRow({
+        id: `search_message_${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        text: `Search timeline message ${index}`,
+        sourceSeqStart: index + 1,
+        sourceSeqEnd: index + 1,
+        threadId: "thr_large_search",
+      }),
+    );
+    const scrollElement = document.createElement("div");
+    Object.defineProperty(scrollElement, "clientHeight", {
+      configurable: true,
+      value: 800,
+    });
+    const scrollElementIntoView = vi.fn();
+    const bottomAnchor: BottomAnchorContextValue = {
+      captureScrollAnchor: vi.fn(),
+      getScrollElement: () => scrollElement,
+      isAtBottom: false,
+      scrollElementIntoView,
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+
+    const { container } = renderWithRouter(
+      <BottomAnchorContext.Provider value={bottomAnchor}>
+        <CompactViewportOverrideProvider isCompactViewport>
+          <ThreadTimelineRows
+            threadId="thr_large_search"
+            timelineRows={rows}
+            threadRuntimeDisplayStatus="idle"
+            workspaceRootPath={undefined}
+          />
+        </CompactViewportOverrideProvider>
+      </BottomAnchorContext.Provider>,
+      [
+        {
+          pathname: "/thread",
+          state: {
+            searchMessageSeq: 11,
+            searchThreadId: "thr_large_search",
+          },
+        },
+      ],
+    );
+
+    const target = container.querySelector<HTMLElement>(
+      '[data-timeline-row-id="search_message_10"]',
+    );
+    expect(target?.dataset.timelineRowRealized).toBe("true");
+    await waitFor(() =>
+      expect(scrollElementIntoView).toHaveBeenCalledWith({
+        element: target,
+        options: { block: "center" },
+      }),
+    );
+  });
+
   it("uses inline mobile actions only for the last assistant message", () => {
     const { container } = renderWithRouter(
       <ThreadTimelineRows
