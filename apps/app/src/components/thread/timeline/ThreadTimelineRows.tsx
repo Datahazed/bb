@@ -287,6 +287,12 @@ interface TimelineWindowItemController {
   peekPlaceholderHeight: () => number | null;
   /** Grow or shrink the placeholder (clamped at zero) to absorb a height delta. */
   adjustPlaceholderHeight: (delta: number) => void;
+  /**
+   * Whether the item has ever mounted its real content. A false value means
+   * its placeholder height is still a pure estimate, eligible for
+   * re-budgeting; a true value means the placeholder carries a measurement.
+   */
+  hasEverRealized: () => boolean;
   /** Release an interaction pin so the row can derealize on its next exit. */
   unpin: () => void;
 }
@@ -445,6 +451,17 @@ const TIMELINE_WINDOW_FALLBACK_VIEWPORT_HEIGHT_PX = 800;
 // cannot keep every heavy row realized forever: the oldest pin releases
 // first, and its row derealizes on its next window exit.
 const TIMELINE_WINDOW_MAX_INTERACTION_PINS = 24;
+// A residual below this threshold shifts visible content instead of writing
+// scrollTop. The write stops WebKit momentum outright; a sub-threshold drift
+// reads as a minor stutter at worst.
+const TIMELINE_WINDOW_RESIDUAL_JUMP_TOLERANCE_PX = 48;
+// Re-budgeting replaces never-measured placeholder estimates with the running
+// average of measured rows once the scroll idles, so the donor pool tracks
+// the timeline's real heights instead of draining monotonically.
+const TIMELINE_WINDOW_REBUDGET_MIN_SAMPLES = 8;
+const TIMELINE_WINDOW_REBUDGET_DRIFT_PX = 24;
+const TIMELINE_WINDOW_REBUDGET_IDLE_DELAY_MS = 300;
+const TIMELINE_WINDOW_REBUDGET_MAX_ESTIMATE_PX = 1_000;
 
 function timelineListItemKey(item: TimelineRowsListItem): string {
   return item.kind === "row" ? item.row.id : item.id;
@@ -1970,6 +1987,7 @@ function TimelineWindowedListItem({
   const placeholderHeightRef = useRef(estimatedHeight);
   const locallyRealizedRef = useRef(locallyRealized);
   const alwaysRealizedRef = useRef(alwaysRealized);
+  const everRealizedRef = useRef(initiallyRealized || alwaysRealized);
   const interactionPinnedRef = useRef(false);
   const lastIntersectionRef = useRef<boolean | null>(null);
   useLayoutEffect(() => {
@@ -1978,6 +1996,9 @@ function TimelineWindowedListItem({
   }, [alwaysRealized, locallyRealized]);
 
   const updateLocallyRealized = useCallback((next: boolean) => {
+    if (next) {
+      everRealizedRef.current = true;
+    }
     if (locallyRealizedRef.current === next) {
       return;
     }
@@ -2020,6 +2041,7 @@ function TimelineWindowedListItem({
           Math.max(0, placeholderHeightRef.current + delta),
         );
       },
+      hasEverRealized: () => everRealizedRef.current,
       unpin: () => {
         interactionPinnedRef.current = false;
       },
@@ -2402,17 +2424,95 @@ function TimelineRowsList({
       return remaining > 0.5 ? remaining : 0;
     };
 
-    // Residuals occur only when placeholders above have no height left to
-    // donate — the final viewport-heights of the timeline. A scrollTop write
-    // there can stop momentum, but the alternatives are a visible jump or a
-    // blank row, and the scroll is about to hit the hard top anyway.
+    // Residuals occur when placeholders above have no height left to donate.
+    // Small residuals shift content instead of writing scrollTop — the write
+    // stops WebKit momentum outright, which reads worse than a sub-threshold
+    // stutter. Large residuals take the write: a big uncompensated jump is
+    // the original bug this windowing exists to prevent.
     const applyResidual = (residual: number) => {
-      if (Math.abs(residual) > 0.5) {
-        scrollElement.scrollTop = Math.max(
-          0,
-          scrollElement.scrollTop + residual,
-        );
+      if (Math.abs(residual) <= TIMELINE_WINDOW_RESIDUAL_JUMP_TOLERANCE_PX) {
+        return;
       }
+      scrollElement.scrollTop = Math.max(
+        0,
+        scrollElement.scrollTop + residual,
+      );
+    };
+
+    // Running average of first-measured item heights. Never-realized
+    // placeholders start from a static estimate that real content usually
+    // exceeds, so donor capacity would otherwise drain monotonically during
+    // upward scrolling until every realization needed a momentum-killing
+    // residual write. Re-budgeting those estimates to the measured average
+    // while the scroll is idle (when a compensating scrollTop write is free)
+    // keeps the donor pool solvent.
+    const measuredSampleKeys = new Set<string>();
+    let measuredSampleSum = 0;
+    let lastRebudgetAverage: number | null = null;
+    const measuredAverage = () =>
+      Math.min(
+        TIMELINE_WINDOW_REBUDGET_MAX_ESTIMATE_PX,
+        measuredSampleSum / measuredSampleKeys.size,
+      );
+    const rebudgetEstimatedPlaceholders = () => {
+      if (measuredSampleKeys.size < TIMELINE_WINDOW_REBUDGET_MIN_SAMPLES) {
+        return;
+      }
+      const average = measuredAverage();
+      if (
+        lastRebudgetAverage !== null &&
+        Math.abs(average - lastRebudgetAverage) <
+          TIMELINE_WINDOW_REBUDGET_DRIFT_PX
+      ) {
+        return;
+      }
+      const adjustments: Array<[TimelineWindowItemController, number]> = [];
+      for (const key of itemKeysRef.current) {
+        const controller = controllerByKeyRef.current.get(key);
+        if (controller === undefined || controller.hasEverRealized()) {
+          continue;
+        }
+        const current = controller.peekPlaceholderHeight();
+        if (current === null) {
+          continue;
+        }
+        const delta = average - current;
+        if (Math.abs(delta) < 1) {
+          continue;
+        }
+        adjustments.push([controller, delta]);
+      }
+      lastRebudgetAverage = average;
+      if (adjustments.length === 0) {
+        return;
+      }
+      applyWithScrollCompensation(() => {
+        for (const [controller, delta] of adjustments) {
+          controller.adjustPlaceholderHeight(delta);
+        }
+      });
+    };
+    let rebudgetTimeout: number | null = null;
+    const scheduleRebudget = () => {
+      if (rebudgetTimeout !== null) {
+        window.clearTimeout(rebudgetTimeout);
+      }
+      rebudgetTimeout = window.setTimeout(() => {
+        rebudgetTimeout = null;
+        if (scrollElement.dataset.scrollbarScrolling === "true") {
+          scheduleRebudget();
+          return;
+        }
+        rebudgetEstimatedPlaceholders();
+      }, TIMELINE_WINDOW_REBUDGET_IDLE_DELAY_MS);
+    };
+    const recordMeasuredSample = (key: string, height: number) => {
+      if (height <= 0 || measuredSampleKeys.has(key)) {
+        return;
+      }
+      measuredSampleKeys.add(key);
+      measuredSampleSum += height;
+      scheduleRebudget();
     };
 
     // Realize items whose top sits above the viewport while a scroll is
@@ -2455,6 +2555,7 @@ function TimelineRowsList({
         for (const candidate of candidates) {
           const measured = candidate.wrapper.getBoundingClientRect().height;
           realizedHeightByKey.set(candidate.key, measured);
+          recordMeasuredSample(candidate.key, measured);
           const delta = measured - candidate.placeholderHeight;
           if (delta === 0) {
             continue;
@@ -2571,6 +2672,7 @@ function TimelineRowsList({
             entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
           const previous = realizedHeightByKey.get(key);
           realizedHeightByKey.set(key, height);
+          recordMeasuredSample(key, height);
           if (previous === undefined) {
             // First observation after a realization whose delta was already
             // balanced (or that mounted through the anchor-compensated path).
@@ -2610,12 +2712,20 @@ function TimelineRowsList({
       observer.observe(wrapper);
       contentGrowthObserver?.observe(wrapper);
     }
+    // Scroll events push a pending re-budget out to the next idle moment.
+    scrollElement.addEventListener("scroll", scheduleRebudget, {
+      passive: true,
+    });
 
     return () => {
       intersectionObserverRef.current = null;
       resizeObserverRef.current = null;
       observer.disconnect();
       contentGrowthObserver?.disconnect();
+      scrollElement.removeEventListener("scroll", scheduleRebudget);
+      if (rebudgetTimeout !== null) {
+        window.clearTimeout(rebudgetTimeout);
+      }
       realizedHeightByKey.clear();
     };
   }, [getScrollElement, shouldWindow]);

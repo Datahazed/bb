@@ -691,6 +691,111 @@ describe("ThreadTimelineRows actions", () => {
     expect(setScrollTop).not.toHaveBeenCalled();
   });
 
+  it("re-budgets estimate placeholders to the measured average at idle", async () => {
+    let intersectionCallback: IntersectionObserverCallback | null = null;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IntersectionObserverMock {
+        constructor(callback: IntersectionObserverCallback) {
+          intersectionCallback = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const rows = Array.from({ length: 80 }, (_, index) =>
+      conversationRow({
+        id: `message_${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        text: `Timeline message ${index}`,
+        sourceSeqStart: index + 1,
+        sourceSeqEnd: index + 1,
+        threadId: "thr_large",
+      }),
+    );
+    const scrollElement = document.createElement("div");
+    const setScrollTop = vi.fn();
+    Object.defineProperty(scrollElement, "scrollTop", {
+      configurable: true,
+      get: () => 500,
+      set: setScrollTop,
+    });
+    Object.defineProperty(scrollElement, "scrollHeight", {
+      configurable: true,
+      value: 16_000,
+    });
+    Object.defineProperty(scrollElement, "clientHeight", {
+      configurable: true,
+      value: 0,
+    });
+    scrollElement.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 800 }) as DOMRect;
+    const bottomAnchor: BottomAnchorContextValue = {
+      captureScrollAnchor: vi.fn(),
+      getScrollElement: () => scrollElement,
+      isAtBottom: false,
+      scrollElementIntoView: vi.fn(),
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+
+    const { container } = renderWithRouter(
+      <BottomAnchorContext.Provider value={bottomAnchor}>
+        <CompactViewportOverrideProvider isCompactViewport>
+          <ThreadTimelineRows
+            threadId="thr_large"
+            timelineRows={rows}
+            threadRuntimeDisplayStatus="idle"
+            workspaceRootPath={undefined}
+          />
+        </CompactViewportOverrideProvider>
+      </BottomAnchorContext.Provider>,
+    );
+
+    const wrapperOf = (id: string) =>
+      container.querySelector<HTMLElement>(`[data-timeline-row-id="${id}"]`);
+
+    // Realize eight 500px rows above the viewport in one scroll-time batch:
+    // 8 × (500 − 120) = 3,040px of donor demand against the 3,600px pool in
+    // message_0..29. The final 40px shortfall sits under the residual
+    // tolerance, so no scrollTop write happens.
+    scrollElement.dataset.scrollbarScrolling = "true";
+    const targets = Array.from({ length: 8 }, (_, offset) => {
+      const wrapper = wrapperOf(`message_${30 + offset}`);
+      wrapper!.getBoundingClientRect = () => ({ height: 500 }) as DOMRect;
+      return wrapper!;
+    });
+    act(() => {
+      intersectionCallback?.(
+        targets.map(
+          (target) =>
+            ({
+              target,
+              isIntersecting: true,
+              boundingClientRect: { top: -600, height: 120 },
+            }) as unknown as IntersectionObserverEntry,
+        ),
+        {} as IntersectionObserver,
+      );
+    });
+    expect(wrapperOf("message_30")?.dataset.timelineRowRealized).toBe("true");
+    expect(wrapperOf("message_0")?.style.height).toBe("0px");
+    expect(wrapperOf("message_26")?.style.height).toBe("120px");
+    expect(setScrollTop).not.toHaveBeenCalled();
+
+    // Once the scroll idles, never-realized placeholders re-seed to the
+    // measured 500px average, refilling the drained donor pool.
+    scrollElement.removeAttribute("data-scrollbar-scrolling");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+    expect(wrapperOf("message_0")?.style.height).toBe("500px");
+    expect(wrapperOf("message_26")?.style.height).toBe("500px");
+    expect(wrapperOf("message_50")?.style.height).toBe("500px");
+    expect(setScrollTop).not.toHaveBeenCalled();
+  });
+
   it("releases the oldest interaction pin once the cap is exceeded", async () => {
     let intersectionCallback: IntersectionObserverCallback | null = null;
     vi.stubGlobal(
