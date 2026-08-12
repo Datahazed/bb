@@ -106,53 +106,17 @@ vi.mock("@bb/shared-ui/responsive-overlay", async () => {
   return { ResponsiveDrawerShell };
 });
 
-vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
-  const React = await import("react");
-
-  const ThreadSecondaryPanel = ({
-    browserDeck,
-    isOpen,
-    renderAsDrawer,
-    showNewTabButton,
-  }: {
-    browserDeck?: ReactNode;
-    isOpen: boolean;
-    renderAsDrawer: boolean;
-    showNewTabButton?: boolean;
-  }) =>
-    React.createElement(
-      "section",
-      {
-        "data-open": String(isOpen),
-        "data-show-new-tab-button": String(showNewTabButton),
-        "data-testid": renderAsDrawer
-          ? "drawer-secondary-panel"
-          : "inline-secondary-panel",
-      },
-      browserDeck,
-    );
-
-  return { ThreadSecondaryPanel };
-});
-
-function createSecondaryPanel(
+function createRenderSecondaryPanel(
   isOpen: boolean,
-): RootComposeSecondaryContentProps["secondaryPanel"] {
-  return {
-    activeTab: null,
-    canUseGitUi: false,
-    fileTabs: [],
-    isOpen,
-    metadataContent: null,
-    onCollapse: noop,
-    onClose: noop,
-    onFileTabReorder: noop,
-    onOpenNewTab: noop,
-    onPanelChange: noop,
-    onPanelFocus: noop,
-    showGitDiffTab: false,
-    showInfoTab: false,
-  };
+): RootComposeSecondaryContentProps["renderSecondaryPanel"] {
+  return ({ renderAsDrawer }) => (
+    <section
+      data-open={String(isOpen)}
+      data-testid={
+        renderAsDrawer ? "drawer-secondary-panel" : "inline-secondary-panel"
+      }
+    />
+  );
 }
 
 function withPaneContext(
@@ -190,7 +154,10 @@ function renderRootCompose(args: RenderRootComposeArgs) {
           renderArgs.panelTogglePositionClassName ??
           ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS
         }
-        secondaryPanel={createSecondaryPanel(renderArgs.isSecondaryPanelOpen)}
+        onCloseSecondaryPanel={noop}
+        renderSecondaryPanel={createRenderSecondaryPanel(
+          renderArgs.isSecondaryPanelOpen,
+        )}
       >
         <div data-testid="root-compose-content" />
       </RootComposeSecondaryContent>
@@ -213,7 +180,8 @@ function renderRootCompose(args: RenderRootComposeArgs) {
               renderArgs.panelTogglePositionClassName ??
               ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS
             }
-            secondaryPanel={createSecondaryPanel(
+            onCloseSecondaryPanel={noop}
+            renderSecondaryPanel={createRenderSecondaryPanel(
               renderArgs.isSecondaryPanelOpen,
             )}
           >
@@ -233,19 +201,6 @@ afterEach(() => {
 });
 
 describe("RootComposeSecondaryContent desktop layout", () => {
-  it("always offers a new tab from the new-thread right panel", () => {
-    renderRootCompose({
-      isCompactViewport: false,
-      isSecondaryPanelOpen: true,
-    });
-
-    expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .getAttribute("data-show-new-tab-button"),
-    ).toBe("true");
-  });
-
   it("marks the root compose top strip as a macOS window drag region", () => {
     setMacosDesktopChrome();
 

@@ -17,9 +17,8 @@ import { MemoryRouter } from "react-router-dom";
 type ThreadDetailSecondaryContentProps = ComponentProps<
   typeof ThreadDetailSecondaryContent
 >;
-type RenderBrowserDeck = NonNullable<
-  ThreadDetailSecondaryContentProps["secondaryPanel"]["renderBrowserDeck"]
->;
+type RenderSecondaryPanel =
+  ThreadDetailSecondaryContentProps["renderSecondaryPanel"];
 type DrawerShellCallback = (open: boolean) => void;
 
 const drawerShellState = vi.hoisted(() => ({
@@ -125,37 +124,6 @@ vi.mock(
   },
 );
 
-vi.mock(
-  "@/components/secondary-panel/ThreadSecondaryPanel",
-  async (importOriginal) => {
-    const React = await import("react");
-    const actual =
-      await importOriginal<
-        typeof import("@/components/secondary-panel/ThreadSecondaryPanel")
-      >();
-
-    const ThreadSecondaryPanel = ({
-      browserDeck,
-      inlinePanelToggle,
-      isOpen,
-      renderAsDrawer,
-    }: ComponentProps<typeof actual.ThreadSecondaryPanel>) =>
-      React.createElement(
-        "section",
-        {
-          "data-open": String(isOpen),
-          "data-inline-panel-toggle": inlinePanelToggle,
-          "data-testid": renderAsDrawer
-            ? "drawer-secondary-panel"
-            : "inline-secondary-panel",
-        },
-        browserDeck,
-      );
-
-    return { ...actual, ThreadSecondaryPanel };
-  },
-);
-
 vi.mock("./ThreadTimelinePane", async (importOriginal) => {
   const React = await import("react");
   const actual = await importOriginal<typeof import("./ThreadTimelinePane")>();
@@ -182,7 +150,7 @@ interface RenderThreadDetailArgs {
   isFocusedHosted?: boolean;
   isCompactViewport: boolean;
   isSecondaryPanelOpen: boolean;
-  renderBrowserDeck: RenderBrowserDeck;
+  renderSecondaryPanel: RenderSecondaryPanel;
   threadId: string;
 }
 
@@ -300,21 +268,30 @@ function makeThread(
   } as ThreadDetailSecondaryContentProps["metadata"]["thread"];
 }
 
-function createBrowserDeckRenderer(order?: string[]): RenderBrowserDeck {
-  return vi.fn(({ canShowNativeBrowserView }) => {
+// Stands in for renderSecondaryPanelOutlet: renders the per-slot layout
+// inputs the real outlet consumes, so the tests can observe the drawer/inline
+// placement and the native-browser-view gating the layout computes.
+function createSecondaryPanelRenderer(order?: string[]): RenderSecondaryPanel {
+  return vi.fn(({ canShowNativeBrowserView, renderAsDrawer }) => {
     order?.push(`render:${String(canShowNativeBrowserView)}`);
     return (
-      <div
-        data-can-show-native-browser-view={String(canShowNativeBrowserView)}
-        data-testid="browser-deck"
-      />
+      <section
+        data-testid={
+          renderAsDrawer ? "drawer-secondary-panel" : "inline-secondary-panel"
+        }
+      >
+        <div
+          data-can-show-native-browser-view={String(canShowNativeBrowserView)}
+          data-testid="browser-deck"
+        />
+      </section>
     );
   });
 }
 
 function createProps({
   isSecondaryPanelOpen,
-  renderBrowserDeck,
+  renderSecondaryPanel,
   threadId,
 }: Omit<
   RenderThreadDetailArgs,
@@ -351,24 +328,11 @@ function createProps({
       workspaceStatus: undefined,
       workspaceStatusError: null,
     } as ThreadDetailSecondaryContentProps["metadata"],
+    onCloseSecondaryPanel: noop,
     onToggleConversationCollapse: noop,
     onToggleSecondaryPanel: noop,
     renderHostedPanel: (panel) => panel,
-    secondaryPanel: {
-      activeTab: null,
-      canUseGitUi: false,
-      fileTabs: [],
-      isBrowserTabActive: true,
-      isOpen: isSecondaryPanelOpen,
-      onCollapse: noop,
-      onClose: noop,
-      onFileTabReorder: noop,
-      onOpenNewTab: noop,
-      onPanelChange: noop,
-      onPanelFocus: noop,
-      renderBrowserDeck,
-      showGitDiffTab: false,
-    },
+    renderSecondaryPanel,
     timeline: {
       activeThinking: null,
       hasOlderTimelineRows: false,
@@ -401,7 +365,7 @@ function renderThreadDetail(args: RenderThreadDetailArgs) {
         <ThreadDetailSecondaryContent
           {...createProps({
             isSecondaryPanelOpen: renderArgs.isSecondaryPanelOpen,
-            renderBrowserDeck: renderArgs.renderBrowserDeck,
+            renderSecondaryPanel: renderArgs.renderSecondaryPanel,
             threadId: renderArgs.threadId,
           })}
         />
@@ -423,7 +387,7 @@ function renderThreadDetail(args: RenderThreadDetailArgs) {
             <ThreadDetailSecondaryContent
               {...createProps({
                 isSecondaryPanelOpen: renderArgs.isSecondaryPanelOpen,
-                renderBrowserDeck: renderArgs.renderBrowserDeck,
+                renderSecondaryPanel: renderArgs.renderSecondaryPanel,
                 threadId: renderArgs.threadId,
               })}
             />
@@ -472,27 +436,12 @@ beforeEach(() => {
 });
 
 describe("ThreadDetailSecondaryContent compact drawer settling", () => {
-  it("keeps the standalone panel hide control in the panel toolbar", () => {
-    renderThreadDetail({
-      isCompactViewport: false,
-      isSecondaryPanelOpen: true,
-      renderBrowserDeck: createBrowserDeckRenderer(),
-      threadId: "thread-1",
-    });
-
-    expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .getAttribute("data-inline-panel-toggle"),
-    ).toBe("button");
-  });
-
-  it("places the hosted panel hide control at the outer edge of its own toolbar", () => {
+  it("publishes the hosted pane's rendered panel to the window-level host", () => {
     renderThreadDetail({
       isCompactViewport: false,
       isFocusedHosted: true,
       isSecondaryPanelOpen: true,
-      renderBrowserDeck: createBrowserDeckRenderer(),
+      renderSecondaryPanel: createSecondaryPanelRenderer(),
       threadId: "thread-1",
     });
 
@@ -500,18 +449,14 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
       throw new Error("Expected the focused pane to publish its panel model");
     }
     render(<>{publishedHostedPanel.panel}</>);
-    expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .getAttribute("data-inline-panel-toggle"),
-    ).toBe("button");
+    expect(screen.getByTestId("inline-secondary-panel")).toBeTruthy();
   });
 
   it("keeps the thread header inside the timeline column beside the side panel", () => {
     renderThreadDetail({
       isCompactViewport: false,
       isSecondaryPanelOpen: true,
-      renderBrowserDeck: createBrowserDeckRenderer(),
+      renderSecondaryPanel: createSecondaryPanelRenderer(),
       threadId: "thread-1",
     });
 
@@ -526,26 +471,26 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
 
   it("hides and restores native browser readiness as hosted pane focus changes", () => {
     const order: string[] = [];
-    const renderBrowserDeck = createBrowserDeckRenderer(order);
+    const renderSecondaryPanel = createSecondaryPanelRenderer(order);
     const view = renderThreadDetail({
       isCompactViewport: false,
       isFocusedHosted: true,
       isSecondaryPanelOpen: true,
-      renderBrowserDeck,
+      renderSecondaryPanel,
       threadId: "thread-1",
     });
 
-    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
-      canShowNativeBrowserView: true,
-    });
+    expect(renderSecondaryPanel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canShowNativeBrowserView: true }),
+    );
     view.rerenderWith({ isFocusedHosted: false });
-    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
-      canShowNativeBrowserView: false,
-    });
+    expect(renderSecondaryPanel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canShowNativeBrowserView: false }),
+    );
     view.rerenderWith({ isFocusedHosted: true });
-    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
-      canShowNativeBrowserView: true,
-    });
+    expect(renderSecondaryPanel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canShowNativeBrowserView: true }),
+    );
     expect(order.filter((entry) => entry.startsWith("render:"))).toEqual([
       "render:true",
       "render:false",
@@ -559,12 +504,12 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
     vi.mocked(dispatchBrowserViewBoundsSync).mockImplementation(() => {
       order.push("dispatchBrowserViewBoundsSync");
     });
-    const renderBrowserDeck = createBrowserDeckRenderer(order);
+    const renderSecondaryPanel = createSecondaryPanelRenderer(order);
 
     renderThreadDetail({
       isCompactViewport: true,
       isSecondaryPanelOpen: true,
-      renderBrowserDeck,
+      renderSecondaryPanel,
       threadId: "thread-1",
     });
 
@@ -593,12 +538,12 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
 
   it("ignores close-animation completion without dispatching bounds sync", () => {
     const frames = installAnimationFrameQueue();
-    const renderBrowserDeck = createBrowserDeckRenderer();
+    const renderSecondaryPanel = createSecondaryPanelRenderer();
 
     renderThreadDetail({
       isCompactViewport: true,
       isSecondaryPanelOpen: true,
-      renderBrowserDeck,
+      renderSecondaryPanel,
       threadId: "thread-1",
     });
 
@@ -620,11 +565,11 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
 
   it("does not schedule a stale open callback after the compact drawer closes", () => {
     const frames = installAnimationFrameQueue();
-    const renderBrowserDeck = createBrowserDeckRenderer();
+    const renderSecondaryPanel = createSecondaryPanelRenderer();
     const view = renderThreadDetail({
       isCompactViewport: true,
       isSecondaryPanelOpen: true,
-      renderBrowserDeck,
+      renderSecondaryPanel,
       threadId: "thread-1",
     });
 
@@ -638,11 +583,11 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
 
   it("cancels a pending compact drawer settle rAF when the drawer closes", () => {
     const frames = installAnimationFrameQueue();
-    const renderBrowserDeck = createBrowserDeckRenderer();
+    const renderSecondaryPanel = createSecondaryPanelRenderer();
     const view = renderThreadDetail({
       isCompactViewport: true,
       isSecondaryPanelOpen: true,
-      renderBrowserDeck,
+      renderSecondaryPanel,
       threadId: "thread-1",
     });
 
@@ -663,11 +608,11 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
 
   it("cancels a pending compact drawer settle rAF when the thread changes", () => {
     const frames = installAnimationFrameQueue();
-    const renderBrowserDeck = createBrowserDeckRenderer();
+    const renderSecondaryPanel = createSecondaryPanelRenderer();
     const view = renderThreadDetail({
       isCompactViewport: true,
       isSecondaryPanelOpen: true,
-      renderBrowserDeck,
+      renderSecondaryPanel,
       threadId: "thread-1",
     });
 
@@ -688,11 +633,11 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
 
   it("cancels a pending compact drawer settle rAF on compact-to-wide transition", () => {
     const frames = installAnimationFrameQueue();
-    const renderBrowserDeck = createBrowserDeckRenderer();
+    const renderSecondaryPanel = createSecondaryPanelRenderer();
     const view = renderThreadDetail({
       isCompactViewport: true,
       isSecondaryPanelOpen: true,
-      renderBrowserDeck,
+      renderSecondaryPanel,
       threadId: "thread-1",
     });
 
@@ -713,11 +658,11 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
 
   it("cancels a pending compact drawer settle rAF on unmount", () => {
     const frames = installAnimationFrameQueue();
-    const renderBrowserDeck = createBrowserDeckRenderer();
+    const renderSecondaryPanel = createSecondaryPanelRenderer();
     const view = renderThreadDetail({
       isCompactViewport: true,
       isSecondaryPanelOpen: true,
-      renderBrowserDeck,
+      renderSecondaryPanel,
       threadId: "thread-1",
     });
 
@@ -738,45 +683,45 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
   it("passes compact opening and wide layout visibility values to the browser deck render prop", () => {
     const frames = installAnimationFrameQueue();
     vi.mocked(dispatchBrowserViewBoundsSync).mockImplementation(() => {});
-    const compactRenderBrowserDeck = createBrowserDeckRenderer();
+    const compactRenderSecondaryPanel = createSecondaryPanelRenderer();
 
     renderThreadDetail({
       isCompactViewport: true,
       isSecondaryPanelOpen: true,
-      renderBrowserDeck: compactRenderBrowserDeck,
+      renderSecondaryPanel: compactRenderSecondaryPanel,
       threadId: "thread-1",
     });
 
-    expect(compactRenderBrowserDeck).toHaveBeenLastCalledWith({
-      canShowNativeBrowserView: false,
-    });
+    expect(compactRenderSecondaryPanel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canShowNativeBrowserView: false }),
+    );
     scheduleCompactDrawerSettleFrame();
     act(() => {
       frames.flushAll();
     });
-    expect(compactRenderBrowserDeck).toHaveBeenLastCalledWith({
-      canShowNativeBrowserView: true,
-    });
+    expect(compactRenderSecondaryPanel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canShowNativeBrowserView: true }),
+    );
 
     cleanup();
 
-    const wideRenderBrowserDeck = createBrowserDeckRenderer();
+    const wideRenderSecondaryPanel = createSecondaryPanelRenderer();
     const wideView = renderThreadDetail({
       isCompactViewport: false,
       isSecondaryPanelOpen: false,
-      renderBrowserDeck: wideRenderBrowserDeck,
+      renderSecondaryPanel: wideRenderSecondaryPanel,
       threadId: "thread-1",
     });
 
-    expect(wideRenderBrowserDeck).toHaveBeenLastCalledWith({
-      canShowNativeBrowserView: false,
-    });
+    expect(wideRenderSecondaryPanel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canShowNativeBrowserView: false }),
+    );
 
     wideView.rerenderWith({ isSecondaryPanelOpen: true });
 
-    expect(wideRenderBrowserDeck).toHaveBeenLastCalledWith({
-      canShowNativeBrowserView: true,
-    });
+    expect(wideRenderSecondaryPanel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canShowNativeBrowserView: true }),
+    );
     expect(dispatchBrowserViewBoundsSync).toHaveBeenCalledTimes(1);
   });
 });

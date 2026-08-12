@@ -15,8 +15,8 @@ import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { getProjectStoredPromptAttachmentPaths } from "@/lib/prompt-draft";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
+import { resolveSecondaryPanelTerminalSessions } from "@/components/secondary-panel/terminalPanelTabs";
 import {
-  buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
   hasPromptBranchSelectionChanged,
@@ -967,12 +967,11 @@ describe("resolveRootComposeProviderRouting", () => {
   });
 });
 
-describe("buildRootComposeTerminalSessions", () => {
+describe("resolveSecondaryPanelTerminalSessions", () => {
   it("keeps host-path terminal sessions unresolved until the global list loads", () => {
     expect(
-      buildRootComposeTerminalSessions({
-        environmentTerminalSessions: undefined,
-        globalTerminalSessions: undefined,
+      resolveSecondaryPanelTerminalSessions({
+        sessions: undefined,
         terminalTarget: {
           kind: "host_path",
           hostId: "host_1",
@@ -1001,9 +1000,8 @@ describe("buildRootComposeTerminalSessions", () => {
     });
 
     expect(
-      buildRootComposeTerminalSessions({
-        environmentTerminalSessions: undefined,
-        globalTerminalSessions: [matching, otherHost, threadTerminal],
+      resolveSecondaryPanelTerminalSessions({
+        sessions: [matching, otherHost, threadTerminal],
         terminalTarget: {
           kind: "host_path",
           hostId: "host_1",

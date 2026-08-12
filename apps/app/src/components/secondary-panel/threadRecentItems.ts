@@ -1,5 +1,4 @@
-import { useCallback } from "react";
-import { atom, useAtomValue, useSetAtom } from "jotai";
+import { atom, useAtomValue } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import { z } from "zod";
@@ -132,21 +131,4 @@ export function useThreadRecentItems(
   threadId: string | null | undefined,
 ): readonly ThreadRecentItem[] {
   return useAtomValue(getThreadRecentItemsAtom(threadId));
-}
-
-export function useRecordThreadRecentItem(
-  threadId: string | null | undefined,
-): (args: { source: RecentItemSource; path: string }) => void {
-  const setRecentItems = useSetAtom(getThreadRecentItemsAtom(threadId));
-  return useCallback(
-    ({ source, path }: { source: RecentItemSource; path: string }) => {
-      if (!hasThreadId(threadId)) {
-        return;
-      }
-      setRecentItems((items) =>
-        recordRecentItem({ items, source, path, openedAt: Date.now() }),
-      );
-    },
-    [setRecentItems, threadId],
-  );
 }

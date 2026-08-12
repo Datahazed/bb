@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ComponentProps,
   type ReactNode,
 } from "react";
 import { useAtomValue } from "jotai";
@@ -16,7 +15,7 @@ import {
 } from "react-resizable-panels";
 import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import type { SecondaryPanelSlotProps } from "@/components/secondary-panel/SecondaryPanel";
 import { useDrawerPanelRealization } from "@/components/secondary-panel/useDrawerPanelRealization";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -67,29 +66,20 @@ const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
 export const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
   "right-[calc(1rem+env(safe-area-inset-right))] top-[calc(0.625rem+env(safe-area-inset-top))] max-md:pointer-coarse:top-[calc(0.375rem+env(safe-area-inset-top))]";
 
-type RootSecondaryPanelProps = Omit<
-  ComponentProps<typeof ThreadSecondaryPanel>,
-  | "browserDeck"
-  | "isConversationCollapsed"
-  | "onToggleConversationCollapse"
-  | "renderAsDrawer"
-  | "showNewTabButton"
-> & {
-  renderBrowserDeck?: (args: {
-    canShowNativeBrowserView: boolean;
-  }) => ReactNode;
-};
-
 interface RootComposeSecondaryContentProps {
   children: ReactNode;
   contentClassName?: string;
   isSecondaryPanelOpen: boolean;
+  onCloseSecondaryPanel: () => void;
   onToggleSecondaryPanel: () => void;
   panelTogglePositionClassName: string;
-  secondaryPanel: RootSecondaryPanelProps;
+  /**
+   * Places the secondary panel (the view passes `renderSecondaryPanelOutlet`,
+   * which reads the surrounding `SecondaryPanel`'s context). This layout owns
+   * the per-slot inputs: drawer vs inline and native-browser-view gating.
+   */
+  renderSecondaryPanel: (props: SecondaryPanelSlotProps) => ReactNode;
 }
-
-function noopToggleConversationCollapse(): void {}
 
 function DrawerPanelLoadingSkeleton() {
   return (
@@ -108,9 +98,10 @@ export function RootComposeSecondaryContent({
   children,
   contentClassName,
   isSecondaryPanelOpen,
+  onCloseSecondaryPanel,
   onToggleSecondaryPanel,
   panelTogglePositionClassName,
-  secondaryPanel,
+  renderSecondaryPanel,
 }: RootComposeSecondaryContentProps) {
   const paneContext = useOptionalPaneContext();
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
@@ -230,11 +221,6 @@ export function RootComposeSecondaryContent({
     ? isSecondaryPanelOpen && isCompactDrawerContentSettled
     : isSecondaryPanelOpen &&
       (secondaryPanelHost === null || paneContext?.isFocused === true);
-  const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
-  const browserDeck = useMemo(
-    () => renderBrowserDeck?.({ canShowNativeBrowserView }),
-    [canShowNativeBrowserView, renderBrowserDeck],
-  );
   useLayoutEffect(() => {
     const group = horizontalPanelGroupRef.current;
     if (group === null || renderAsDrawer) {
@@ -254,42 +240,38 @@ export function RootComposeSecondaryContent({
   }, [isSecondaryPanelOpen, renderAsDrawer]);
   const inlineSecondaryPanelContent = useMemo(
     () =>
-      !renderAsDrawer ? (
-        <ThreadSecondaryPanel
-          {...threadSecondaryPanelProps}
-          browserDeck={browserDeck}
-          renderAsDrawer={false}
-          isConversationCollapsed={false}
-          onToggleConversationCollapse={noopToggleConversationCollapse}
-          showNewTabButton
-          // In the split-workspace host, panes' panels share one PanelGroup,
-          // so each pane's Panel needs its own layout identity (see the prop
-          // doc).
-          resizablePanelId={
-            secondaryPanelHost === null || paneContext === null
-              ? undefined
-              : `thread-detail-secondary-panel-${paneContext.paneId}`
-          }
-        />
-      ) : null,
+      !renderAsDrawer
+        ? renderSecondaryPanel({
+            canShowNativeBrowserView,
+            renderAsDrawer: false,
+            // In the split-workspace host, panes' panels share one PanelGroup,
+            // so each pane's Panel needs its own layout identity (see the
+            // ThreadSecondaryPanel prop doc).
+            ...(secondaryPanelHost === null || paneContext === null
+              ? {}
+              : {
+                  resizablePanelId: `thread-detail-secondary-panel-${paneContext.paneId}`,
+                }),
+          })
+        : null,
     [
-      browserDeck,
+      canShowNativeBrowserView,
       paneContext,
       renderAsDrawer,
+      renderSecondaryPanel,
       secondaryPanelHost,
-      threadSecondaryPanelProps,
     ],
   );
-  const drawerSecondaryPanelContent = renderAsDrawer ? (
-    <ThreadSecondaryPanel
-      {...threadSecondaryPanelProps}
-      browserDeck={browserDeck}
-      renderAsDrawer={true}
-      isConversationCollapsed={false}
-      onToggleConversationCollapse={noopToggleConversationCollapse}
-      showNewTabButton
-    />
-  ) : null;
+  const drawerSecondaryPanelContent = useMemo(
+    () =>
+      renderAsDrawer
+        ? renderSecondaryPanel({
+            canShowNativeBrowserView,
+            renderAsDrawer: true,
+          })
+        : null,
+    [canShowNativeBrowserView, renderAsDrawer, renderSecondaryPanel],
+  );
   const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
     () => ({
       composerHost,
@@ -396,7 +378,7 @@ export function RootComposeSecondaryContent({
         <ResponsiveDrawerShell
           open={isSecondaryPanelOpen}
           onOpenChange={(open) => {
-            if (!open) threadSecondaryPanelProps.onClose();
+            if (!open) onCloseSecondaryPanel();
           }}
           srLabel="Right panel"
           contentClassName="h-[92dvh] max-h-[92dvh]"

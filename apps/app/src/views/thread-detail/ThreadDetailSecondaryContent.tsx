@@ -19,7 +19,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import type { SecondaryPanelSlotProps } from "@/components/secondary-panel/SecondaryPanel";
 import { useDrawerPanelRealization } from "@/components/secondary-panel/useDrawerPanelRealization";
 import {
   secondaryPanelWidthPercentAtom,
@@ -52,18 +52,6 @@ type ThreadTimelinePaneProps = Omit<
   ComponentProps<typeof ThreadTimelinePane>,
   "footer"
 >;
-type ThreadSecondaryPanelProps = Omit<
-  ComponentProps<typeof ThreadSecondaryPanel>,
-  | "metadataContent"
-  | "renderAsDrawer"
-  | "isConversationCollapsed"
-  | "onToggleConversationCollapse"
-  | "browserDeck"
-> & {
-  renderBrowserDeck?: (args: {
-    canShowNativeBrowserView: boolean;
-  }) => ReactNode;
-};
 
 interface ThreadDetailSecondaryContentProps {
   footer: ReactNode;
@@ -79,11 +67,18 @@ interface ThreadDetailSecondaryContentProps {
    * without stretching it).
    */
   isBoundedPane: boolean;
+  onCloseSecondaryPanel: () => void;
   onToggleSecondaryPanel: () => void;
   onToggleConversationCollapse: () => void;
   renderHostedPanel: (panel: ReactNode) => ReactNode;
   metadata: ThreadMetadataContentProps;
-  secondaryPanel: ThreadSecondaryPanelProps;
+  /**
+   * Places the secondary panel (the view passes `renderSecondaryPanelOutlet`,
+   * which reads the surrounding `SecondaryPanel`'s context). This layout owns
+   * the per-slot inputs: drawer vs inline, native-browser-view gating,
+   * conversation collapse, and the metadata slot.
+   */
+  renderSecondaryPanel: (props: SecondaryPanelSlotProps) => ReactNode;
   timeline: ThreadTimelinePaneProps;
 }
 
@@ -104,17 +99,17 @@ function ThreadDetailSecondaryContentBody({
   isSecondaryPanelOpen,
   isConversationCollapsed,
   isBoundedPane,
+  onCloseSecondaryPanel,
   onToggleSecondaryPanel,
   onToggleConversationCollapse,
   renderHostedPanel,
   metadata,
-  secondaryPanel,
+  renderSecondaryPanel,
   timeline,
 }: ThreadDetailSecondaryContentProps) {
   const { isFocused, paneId, secondaryPanelHost } = usePaneContext();
   const composerHost = usePluginComposerHost();
   const stableMetadata = metadata;
-  const stableSecondaryPanel = secondaryPanel;
   const stableTimeline = timeline;
   const renderAsDrawer = useIsCompactViewport();
   const persistedSecondaryWidthPercent = useAtomValue(
@@ -221,12 +216,6 @@ function ThreadDetailSecondaryContentBody({
   const canShowNativeBrowserView = renderAsDrawer
     ? isSecondaryPanelOpen && isCompactDrawerContentSettled
     : isSecondaryPanelOpen && (secondaryPanelHost === null || isFocused);
-  const { renderBrowserDeck, ...threadSecondaryPanelProps } =
-    stableSecondaryPanel;
-  const browserDeck = useMemo(
-    () => renderBrowserDeck?.({ canShowNativeBrowserView }),
-    [canShowNativeBrowserView, renderBrowserDeck],
-  );
 
   const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
     null,
@@ -286,47 +275,53 @@ function ThreadDetailSecondaryContentBody({
   );
   const inlineSecondaryPanelContent = useMemo(
     () =>
-      !renderAsDrawer ? (
-        <ThreadSecondaryPanel
-          {...threadSecondaryPanelProps}
-          browserDeck={browserDeck}
-          renderAsDrawer={false}
-          isConversationCollapsed={isConversationCollapsedActive}
-          onToggleConversationCollapse={onToggleConversationCollapse}
-          // The owning thread or workspace header shows a closed panel. Once
-          // open, collapse belongs at the outer edge of the panel toolbar.
-          inlinePanelToggle="button"
-          // In the split-workspace host, panes' panels share one PanelGroup, so
-          // each pane's Panel needs its own layout identity (see the prop doc).
-          resizablePanelId={
-            secondaryPanelHost === null
-              ? undefined
-              : `thread-detail-secondary-panel-${paneId}`
-          }
-          metadataContent={metadataContent}
-        />
-      ) : null,
+      !renderAsDrawer
+        ? renderSecondaryPanel({
+            canShowNativeBrowserView,
+            renderAsDrawer: false,
+            isConversationCollapsed: isConversationCollapsedActive,
+            onToggleConversationCollapse,
+            metadataContent,
+            // In the split-workspace host, panes' panels share one PanelGroup,
+            // so each pane's Panel needs its own layout identity (see the
+            // ThreadSecondaryPanel prop doc).
+            ...(secondaryPanelHost === null
+              ? {}
+              : {
+                  resizablePanelId: `thread-detail-secondary-panel-${paneId}`,
+                }),
+          })
+        : null,
     [
-      browserDeck,
+      canShowNativeBrowserView,
       isConversationCollapsedActive,
       metadataContent,
       onToggleConversationCollapse,
       paneId,
       renderAsDrawer,
+      renderSecondaryPanel,
       secondaryPanelHost,
-      threadSecondaryPanelProps,
     ],
   );
-  const drawerSecondaryPanelContent = renderAsDrawer ? (
-    <ThreadSecondaryPanel
-      {...threadSecondaryPanelProps}
-      browserDeck={browserDeck}
-      renderAsDrawer={true}
-      isConversationCollapsed={false}
-      onToggleConversationCollapse={onToggleConversationCollapse}
-      metadataContent={metadataContent}
-    />
-  ) : null;
+  const drawerSecondaryPanelContent = useMemo(
+    () =>
+      renderAsDrawer
+        ? renderSecondaryPanel({
+            canShowNativeBrowserView,
+            renderAsDrawer: true,
+            isConversationCollapsed: false,
+            onToggleConversationCollapse,
+            metadataContent,
+          })
+        : null,
+    [
+      canShowNativeBrowserView,
+      metadataContent,
+      onToggleConversationCollapse,
+      renderAsDrawer,
+      renderSecondaryPanel,
+    ],
+  );
   const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
     () => ({
       composerHost,
@@ -443,7 +438,7 @@ function ThreadDetailSecondaryContentBody({
         <ResponsiveDrawerShell
           open={isSecondaryPanelOpen}
           onOpenChange={(open) => {
-            if (!open) threadSecondaryPanelProps.onClose();
+            if (!open) onCloseSecondaryPanel();
           }}
           srLabel="Thread details"
           contentClassName="h-[92dvh] max-h-[92dvh]"

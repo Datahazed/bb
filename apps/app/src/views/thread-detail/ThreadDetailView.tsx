@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
@@ -120,25 +120,41 @@ import {
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
-import type { ThreadSecondaryPanelFileOpenOptions } from "./useThreadSecondaryPanelVisibility";
 import type { HostConnectionNotice } from "./ThreadTimelinePane";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
 import {
-  SecondaryPanelCommandHandlers,
-  SecondaryPanelHostContent,
-  useSecondaryPanelHost,
-  useSecondaryPanelFileOpeners,
-  type SecondaryPanelHostCapabilities,
-} from "@/components/secondary-panel/SecondaryPanelHost";
+  SecondaryPanel,
+  renderSecondaryPanelOutlet,
+  type SecondaryPanelContent,
+} from "@/components/secondary-panel/SecondaryPanel";
+import { useSecondaryPanelFileOpeners } from "@/components/secondary-panel/useSecondaryPanelFileOpeners";
+import {
+  getActiveFixedSecondaryTabAtom,
+  getClearActiveSecondaryFileTabsAtom,
+  getCloseSecondaryPanelAtom,
+  getOpenBrowserTabAndRevealAtom,
+  getOpenCompactDrawerAtom,
+  getOpenHostFileAtom,
+  getOpenPluginPanelAtom,
+  getOpenSecondaryPanelTabAtom,
+  getOpenStorageFileAtom,
+  getOpenWorkspaceFileAtom,
+  getPersistedSecondaryPanelOpenAtom,
+  getSecondaryPanelActiveFileTabsAtom,
+  getSetPersistedSecondaryPanelAtom,
+  getToggleSecondaryPanelAtom,
+  isCompactViewportAtom,
+  useIsSecondaryPanelOpen,
+  useSecondaryPanelMentionLinkResolver,
+  useSecondaryPanelUrlOpener,
+  type SecondaryPanelFileOpenOptions,
+} from "@/components/secondary-panel/secondaryPanelSession";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   SIDE_CHAT_PLUGIN_ID,
   SIDE_CHAT_PLUGIN_PANEL_ACTION_ID,
 } from "@/lib/side-chat-plugin";
-import {
-  PluginPanelTabContent,
-  usePluginPanelActions,
-} from "@/components/plugin/PluginPanelActions";
+import { PluginPanelTabContent } from "@/components/plugin/PluginPanelActions";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -150,7 +166,6 @@ import {
   useThreadStorageBrowser,
   type ThreadStoragePathSelectHandler,
 } from "@/components/secondary-panel/useThreadStorageBrowser";
-import type { FileSearchSelection } from "@/components/secondary-panel/useThreadFileTabs";
 import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
 import { useThreadGitActions } from "./useThreadGitActions";
@@ -180,15 +195,6 @@ import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 import { ThreadRenameCommandHandler } from "./ThreadRenameCommandHandler";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
-const THREAD_SECONDARY_PANEL_CAPABILITIES = {
-  hideNewTab: false,
-  autoOpenNewTabWhenEmpty: false,
-  preserveWorkspaceTabsAcrossContexts: false,
-  closeLoneNewTabByHidingPanel: false,
-  routeBrowserPopupsByPreference: true,
-  registerLegacyOpenNewTab: true,
-  toggleOpensNewTab: false,
-} satisfies SecondaryPanelHostCapabilities;
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
 const DEFAULT_PULL_REQUEST_MERGE_METHOD: PullRequestMergeMethod = "merge";
@@ -548,50 +554,46 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     () => ({ kind: "thread" as const, threadId }),
     [threadId],
   );
-  const secondaryPanelHost = useSecondaryPanelHost({
-    canCreateTerminal,
-    capabilities: THREAD_SECONDARY_PANEL_CAPABILITIES,
-    environmentId: thread?.environmentId,
-    isFocused,
-    navigation: threadPanelNavigation,
-    panelStateId: threadId,
-    pluginPanelActions: pluginThreadPanelActions,
-    projectId,
-    storageFiles: threadStorageFiles?.files,
-    syncThreadId: threadId,
-    terminalTarget: threadTerminalTarget,
-    threadId: thread?.id ?? null,
-    workspaceRootPath: environment?.path,
-  });
-  const {
-    activeFixedSecondaryTab,
-    activeHostFilePath,
-    activeStorageFilePath,
-    clearActiveFileTabs,
-    closeSecondaryPanel,
-    handleOpenBrowser,
-    handleStartTerminal,
-    isPersistedSecondaryPanelOpen,
-    isSecondaryPanelOpen,
-    openBrowserTabAndReveal,
-    openCompactDrawer,
-    openHostFile,
-    openPluginPanel,
-    openStorageFile,
-    openTab,
-    openUrlByPreference: handleOpenUrlByPreference,
-    openWorkspaceFile,
-    renderSecondaryPanelAsDrawer,
-    resolveMentionLink,
-    secondaryPanelProps,
-    selectFileSearchResult,
-    setPersistedSecondaryPanel,
-    toggleSecondaryPanel,
-  } = secondaryPanelHost;
-  const pluginPanelActions = usePluginPanelActions({
-    openPluginPanel,
-    threadId,
-  });
+  // The panel session is keyed by the thread id; state and actions live in
+  // atoms (secondaryPanelSession.ts) read/written at point of use.
+  const panelStateId = threadId;
+  const isSecondaryPanelOpen = useIsSecondaryPanelOpen(panelStateId);
+  const isPersistedSecondaryPanelOpen = useAtomValue(
+    getPersistedSecondaryPanelOpenAtom(panelStateId),
+  );
+  const activeFixedSecondaryTab = useAtomValue(
+    getActiveFixedSecondaryTabAtom(panelStateId),
+  );
+  const activeFileTabs = useAtomValue(
+    getSecondaryPanelActiveFileTabsAtom(panelStateId),
+  );
+  const activeHostFilePath = activeFileTabs.activeHostFilePath;
+  const activeStorageFilePath = activeFileTabs.activeStorageFilePath;
+  const clearActiveFileTabs = useSetAtom(
+    getClearActiveSecondaryFileTabsAtom(panelStateId),
+  );
+  const closeSecondaryPanel = useSetAtom(
+    getCloseSecondaryPanelAtom(panelStateId),
+  );
+  const openBrowserTabAndReveal = useSetAtom(
+    getOpenBrowserTabAndRevealAtom(panelStateId),
+  );
+  const openCompactDrawer = useSetAtom(getOpenCompactDrawerAtom(panelStateId));
+  const openHostFile = useSetAtom(getOpenHostFileAtom(panelStateId));
+  const openPluginPanel = useSetAtom(getOpenPluginPanelAtom(panelStateId));
+  const openStorageFile = useSetAtom(getOpenStorageFileAtom(panelStateId));
+  const openTab = useSetAtom(getOpenSecondaryPanelTabAtom(panelStateId));
+  const openWorkspaceFile = useSetAtom(getOpenWorkspaceFileAtom(panelStateId));
+  const setPersistedSecondaryPanel = useSetAtom(
+    getSetPersistedSecondaryPanelAtom(panelStateId),
+  );
+  const toggleSecondaryPanel = useSetAtom(
+    getToggleSecondaryPanelAtom(panelStateId),
+  );
+  const renderSecondaryPanelAsDrawer = useAtomValue(isCompactViewportAtom);
+  const resolveMentionLink = useSecondaryPanelMentionLinkResolver(panelStateId);
+  const { openUrlByPreference: handleOpenUrlByPreference } =
+    useSecondaryPanelUrlOpener(panelStateId);
   useThreadOpenFileSignal({
     threadId,
     environmentId: thread?.environmentId,
@@ -1054,13 +1056,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       },
       [openCompactDrawer, openPluginPanel, pluginThreadPanelActions],
     );
-  const handleSelectFileSearchResult = useCallback(
-    (selection: FileSearchSelection) => {
-      selectFileSearchResult(selection);
-      openCompactDrawer();
-    },
-    [openCompactDrawer, selectFileSearchResult],
-  );
   const handleSelectStorageBrowserPath =
     useCallback<ThreadStoragePathSelectHandler>(
       (path) => {
@@ -1381,7 +1376,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const handleTimelineLocalFileLinkResolution = useCallback(
     (
       resolution: ThreadLocalFileLinkResolution,
-      options?: ThreadSecondaryPanelFileOpenOptions,
+      options?: SecondaryPanelFileOpenOptions,
     ) => {
       if (resolution.kind === "app-route") {
         return false;
@@ -1431,7 +1426,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const handleOpenTimelineLocalFileLink = useCallback(
     (
       link: ThreadTimelineLocalFileLink,
-      options?: ThreadSecondaryPanelFileOpenOptions,
+      options?: SecondaryPanelFileOpenOptions,
     ) => {
       const resolution = resolveThreadLocalFileLink({
         hostFileLinksAvailable:
@@ -1551,8 +1546,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     storageFileCopyPath,
     workspaceFileCopyPath,
   } = useSecondaryPanelFileOpeners({
+    active: activeFileTabs,
     canOpenPreferredFileTarget,
-    host: secondaryPanelHost,
     onOpenPreferredFallback: handleOpenPreferredWorkspace,
     openPathInPreferredFileTarget,
     storageRootPath: threadStorageRootPath,
@@ -1960,64 +1955,54 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       thread={thread}
     />
   );
-  const fileTabContent = (
-    <SecondaryPanelHostContent
-      host={secondaryPanelHost}
-      terminal={{
-        onOpenLink: handleOpenTimelineLink,
-        onSelectionAddToChat: handleSelectionAddToChat,
-        target: threadTerminalTarget,
-      }}
-      newTab={{
-        projectId: projectId ?? undefined,
-        environmentId: thread.environmentId ?? null,
-        currentThreadId: thread.id,
-        onSelect: handleSelectFileSearchResult,
-        onOpenBrowser: handleOpenBrowser,
-        onStartTerminal: canCreateTerminal
-          ? handleStartTerminal
-          : undefined,
-        pluginActions: pluginPanelActions,
-      }}
-      workspaceFile={{
-        copyPath: workspaceFileCopyPath,
-        environmentId: thread.environmentId,
-        markdownLinkRouting: workspaceMarkdownLinkRouting,
-        onOpenInEditor: handleOpenFileInEditor,
-        onSelectionAddToChat: handleSelectionAddToChat,
-        threadId: thread.id,
-      }}
-      hostFile={{
-        copyPath: activeHostFilePath ?? "",
-        environmentId: thread.environmentId,
-        markdownLinkRouting: hostMarkdownLinkRouting,
-        onOpenInEditor: handleOpenHostFileInEditor,
-        onSelectionAddToChat: handleSelectionAddToChat,
-        threadId: thread.id,
-      }}
-      storageFile={{
-        copyPath: storageFileCopyPath,
-        markdownLinkRouting: storageMarkdownLinkRouting,
-        onOpenInEditor: handleOpenStorageFileInEditor,
-        onSelectionAddToChat: handleSelectionAddToChat,
-        threadId: thread.id,
-      }}
-      renderPluginPanel={(tab) => (
-        <ThreadTimelineNavigationProvider
-          environmentId={thread.environmentId}
-          onOpenLink={handleOpenTimelineLink}
-          onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
-          resolveMentionLink={resolveMentionLink}
-          workspaceRootPath={environment?.path ?? undefined}
-        >
-          <PluginPanelTabContent
-            tab={tab}
-            context={{ kind: "thread", threadId: thread.id }}
-          />
-        </ThreadTimelineNavigationProvider>
-      )}
-    />
-  );
+  const secondaryPanelContent: SecondaryPanelContent = {
+    terminal: {
+      onOpenLink: handleOpenTimelineLink,
+      onSelectionAddToChat: handleSelectionAddToChat,
+    },
+    newTab: {
+      projectId: projectId ?? undefined,
+      environmentId: thread.environmentId ?? null,
+      currentThreadId: thread.id,
+    },
+    workspaceFile: {
+      copyPath: workspaceFileCopyPath,
+      environmentId: thread.environmentId,
+      markdownLinkRouting: workspaceMarkdownLinkRouting,
+      onOpenInEditor: handleOpenFileInEditor,
+      onSelectionAddToChat: handleSelectionAddToChat,
+      threadId: thread.id,
+    },
+    hostFile: {
+      copyPath: activeHostFilePath ?? "",
+      environmentId: thread.environmentId,
+      markdownLinkRouting: hostMarkdownLinkRouting,
+      onOpenInEditor: handleOpenHostFileInEditor,
+      onSelectionAddToChat: handleSelectionAddToChat,
+      threadId: thread.id,
+    },
+    storageFile: {
+      copyPath: storageFileCopyPath,
+      markdownLinkRouting: storageMarkdownLinkRouting,
+      onOpenInEditor: handleOpenStorageFileInEditor,
+      onSelectionAddToChat: handleSelectionAddToChat,
+      threadId: thread.id,
+    },
+    renderPluginPanel: (tab) => (
+      <ThreadTimelineNavigationProvider
+        environmentId={thread.environmentId}
+        onOpenLink={handleOpenTimelineLink}
+        onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
+        resolveMentionLink={resolveMentionLink}
+        workspaceRootPath={environment?.path ?? undefined}
+      >
+        <PluginPanelTabContent
+          tab={tab}
+          context={{ kind: "thread", threadId: thread.id }}
+        />
+      </ThreadTimelineNavigationProvider>
+    ),
+  };
   const threadDetailContent = (
     <MarkdownLocalFileContextMenuContext.Provider
       value={getLocalFileContextMenuItems}
@@ -2083,19 +2068,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               : undefined,
             onCommitClick: canUseGitUi ? handleCommitClick : undefined,
           }}
-          secondaryPanel={{
-            ...secondaryPanelProps,
-            canUseGitUi,
-            fileTabContent,
-            onClearPendingGitDiffIntent: clearPendingGitDiffIntent,
-            onOpenFileInEditor: handleOpenFileInEditor,
-            onOpenFilePreview: handleOpenFilePreview,
-            onSelectionAddToChat: handleSelectionAddToChat,
-            pendingGitDiffCommitSha,
-            pendingGitDiffScrollPath,
-            requestedMergeBaseBranch,
-            showGitDiffTab: canUseGitUi,
-          }}
+          onCloseSecondaryPanel={closeSecondaryPanel}
+          renderSecondaryPanel={renderSecondaryPanelOutlet}
           timeline={{
             activeThinking,
             canSpawnChild: thread.canSpawnChild,
@@ -2173,12 +2147,36 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     </MarkdownLocalFileContextMenuContext.Provider>
   );
   return (
-    <>
-      <SecondaryPanelCommandHandlers
-        host={secondaryPanelHost}
-        onOpenPreferred={handleOpenPreferred}
-        onToggleDiff={handleToggleDiff}
-      />
+    <SecondaryPanel
+      canCreateTerminal={canCreateTerminal}
+      content={secondaryPanelContent}
+      environmentId={thread.environmentId}
+      fileOwnerThreadId={thread.id}
+      gitDiff={{
+        canUseGitUi,
+        onClearPendingGitDiffIntent: clearPendingGitDiffIntent,
+        pendingGitDiffCommitSha,
+        pendingGitDiffScrollPath,
+        ...(requestedMergeBaseBranch === undefined
+          ? {}
+          : { requestedMergeBaseBranch }),
+      }}
+      isFocused={isFocused}
+      navigation={threadPanelNavigation}
+      onOpenFileInEditor={handleOpenFileInEditor}
+      onOpenFilePreview={handleOpenFilePreview}
+      onOpenPreferred={handleOpenPreferred}
+      onSelectionAddToChat={handleSelectionAddToChat}
+      onToggleDiff={handleToggleDiff}
+      panelStateId={panelStateId}
+      projectId={projectId}
+      storageFiles={threadStorageFiles?.files}
+      syncThreadId={threadId}
+      terminalTarget={threadTerminalTarget}
+      threadId={thread.id}
+      variant="thread"
+      workspaceRootPath={environment?.path ?? null}
+    >
       <ThreadArchiveCommandHandler thread={thread} />
       <ThreadRenameCommandHandler thread={thread} />
       <PluginThreadPanelNavigationProvider
@@ -2186,6 +2184,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       >
         {threadDetailContent}
       </PluginThreadPanelNavigationProvider>
-    </>
+    </SecondaryPanel>
   );
 }
