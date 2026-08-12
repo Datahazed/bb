@@ -1636,7 +1636,7 @@ Remaining reference examples in `examples/plugins/`:
   header chips for child threads and plugin-owned settled and snoozed state.
 - `thread-hover-cards` — an advanced content script that augments existing
   sidebar rows with pointer- and keyboard-accessible previews, backed by
-  validated rpc summaries and a directory-warming background service.
+  validated rpc summaries and bounded timeline reads.
 
 ## Gotchas
 
