@@ -92,8 +92,8 @@ interface SortableFileTabProps {
  * The middle, horizontally-scrolling region of the secondary panel tab strip.
  *
  * Only the file tabs scroll; the leading Info/Diff controls and trailing
- * new-tab/panel controls stay anchored outside this component. Edge
- * fades and scroll buttons appear only on a side that has more tabs, and the
+ * new-tab/panel controls stay anchored outside this component. A single fixed
+ * overflow button sits beside Diff and points toward the remaining tabs. The
  * active tab is auto-scrolled into view on mount and whenever it changes
  * (covering pointer, keyboard, and programmatic selection).
  */
@@ -107,8 +107,7 @@ export function SecondaryPanelTabStrip({
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const activeTabRef = useRef<HTMLDivElement>(null);
-  const leftScrollButtonRef = useRef<HTMLButtonElement>(null);
-  const rightScrollButtonRef = useRef<HTMLButtonElement>(null);
+  const scrollButtonRef = useRef<HTMLButtonElement>(null);
   const [overflow, setOverflow] = useState<TabStripOverflowState>(
     INITIAL_OVERFLOW_STATE,
   );
@@ -251,32 +250,16 @@ export function SecondaryPanelTabStrip({
     activeTabElement.scrollIntoView({ inline: "nearest", block: "nearest" });
   }, [activeTabId, overflow.hasOverflow]);
 
-  // A scroll button can reach its edge while it has keyboard focus. Move focus
-  // before the button becomes an invisible, aria-hidden control.
+  // If overflow disappears while the fixed button has keyboard focus, return
+  // focus to the active tab before the button collapses out of the tab order.
   useLayoutEffect(() => {
     const focusedElement = document.activeElement;
     const activeTabButton =
       activeTabRef.current?.querySelector<HTMLButtonElement>("button") ?? null;
-    if (
-      !overflow.canScrollLeft &&
-      focusedElement === leftScrollButtonRef.current
-    ) {
-      (overflow.canScrollRight
-        ? rightScrollButtonRef.current
-        : activeTabButton
-      )?.focus();
-      return;
+    if (!overflow.hasOverflow && focusedElement === scrollButtonRef.current) {
+      activeTabButton?.focus();
     }
-    if (
-      !overflow.canScrollRight &&
-      focusedElement === rightScrollButtonRef.current
-    ) {
-      (overflow.canScrollLeft
-        ? leftScrollButtonRef.current
-        : activeTabButton
-      )?.focus();
-    }
-  }, [overflow.canScrollLeft, overflow.canScrollRight]);
+  }, [overflow.hasOverflow]);
 
   // A plain mouse wheel over the strip should move it sideways. React registers
   // its onWheel listener as passive, so a synthetic handler can't call
@@ -375,6 +358,7 @@ export function SecondaryPanelTabStrip({
   const chevronNoDragClass = usesDesktopChrome
     ? MACOS_APP_REGION_NO_DRAG_CLASS
     : null;
+  const scrollDirection = overflow.canScrollRight ? "right" : "left";
   // Memoize the sortable tab tree so the directional overflow flags — which
   // flip every time you reach a scroll edge, i.e. constantly at narrow widths —
   // re-render only the edge controls, never the tabs. Without this, each edge
@@ -434,21 +418,20 @@ export function SecondaryPanelTabStrip({
 
   return (
     // Hugs its tabs (no `flex-1`) and shrinks (`min-w-0`) when they overflow.
-    // The New Tab button follows this strip as an anchored sibling, while the
-    // in-flow scroll controls reserve their own space on either side of the tab
-    // viewport instead of covering its contents.
+    // The fixed overflow button is the strip's first child, immediately beside
+    // the preceding Diff control. The scrolling tabs and fades are confined to
+    // the following viewport, so the button never covers a label or icon.
     <div
       ref={stripRef}
       data-testid="secondary-panel-tab-strip"
       className="group relative flex min-w-0 items-center"
     >
       <TabStripScrollButton
-        buttonRef={leftScrollButtonRef}
-        direction="left"
+        buttonRef={scrollButtonRef}
+        direction={scrollDirection}
         hasOverflow={overflow.hasOverflow}
-        canScroll={overflow.canScrollLeft}
         className={chevronNoDragClass}
-        onClick={() => scrollByStep(-1)}
+        onClick={() => scrollByStep(scrollDirection === "left" ? -1 : 1)}
       />
       <div data-secondary-panel-tab-scroll-region className="relative min-w-0">
         {/* The fades are scoped to the tab viewport, so neither they nor the
@@ -488,14 +471,6 @@ export function SecondaryPanelTabStrip({
           </div>
         </div>
       </div>
-      <TabStripScrollButton
-        buttonRef={rightScrollButtonRef}
-        direction="right"
-        hasOverflow={overflow.hasOverflow}
-        canScroll={overflow.canScrollRight}
-        className={chevronNoDragClass}
-        onClick={() => scrollByStep(1)}
-      />
     </div>
   );
 }
@@ -552,7 +527,6 @@ interface TabStripScrollButtonProps {
   buttonRef: RefObject<HTMLButtonElement | null>;
   direction: "left" | "right";
   hasOverflow: boolean;
-  canScroll: boolean;
   className: string | null;
   onClick: () => void;
 }
@@ -561,7 +535,6 @@ function TabStripScrollButton({
   buttonRef,
   direction,
   hasOverflow,
-  canScroll,
   className,
   onClick,
 }: TabStripScrollButtonProps) {
@@ -572,9 +545,10 @@ function TabStripScrollButton({
       type="button"
       variant="ghost"
       size="sm"
-      tabIndex={canScroll ? 0 : -1}
-      aria-hidden={!canScroll}
+      tabIndex={hasOverflow ? 0 : -1}
+      aria-hidden={!hasOverflow}
       aria-label={label}
+      data-secondary-panel-tab-overflow-control
       onClick={onClick}
       className={cn(
         "z-20 shrink-0 bg-sidebar text-muted-foreground shadow-none hover:bg-surface-raised-solid hover:text-foreground focus-visible:bg-sidebar",
@@ -582,7 +556,7 @@ function TabStripScrollButton({
           ? TAB_STRIP_SCROLL_BUTTON_CLASS
           : "h-7 w-0 overflow-hidden p-0 max-md:pointer-coarse:h-9",
         "transition-opacity",
-        canScroll
+        hasOverflow
           ? "pointer-events-auto opacity-100"
           : "pointer-events-none opacity-0",
         className,

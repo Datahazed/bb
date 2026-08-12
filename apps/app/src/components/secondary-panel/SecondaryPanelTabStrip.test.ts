@@ -78,14 +78,11 @@ describe("secondary panel tab-strip edge fades", () => {
         .querySelector("[data-overflow-fade='left']")
         ?.classList.contains("w-6"),
     ).toBe(true);
-    const leftButton = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Scroll tabs left"]',
+    const overflowButton = container.querySelector<HTMLButtonElement>(
+      "[data-secondary-panel-tab-overflow-control]",
     );
-    const rightButton = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Scroll tabs right"]',
-    );
-    expect(leftButton?.classList.contains("w-0")).toBe(true);
-    expect(rightButton?.classList.contains("w-0")).toBe(true);
+    expect(overflowButton).not.toBeNull();
+    expect(overflowButton?.classList.contains("w-0")).toBe(true);
 
     const rightFade = container.querySelector("[data-overflow-fade='right']");
     expect(rightFade?.classList.contains("opacity-0")).toBe(true);
@@ -110,39 +107,45 @@ describe("secondary panel tab-strip edge fades", () => {
     const scrollRegion = container.querySelector(
       "[data-secondary-panel-tab-scroll-region]",
     );
-    expect(strip?.children[0]).toBe(leftButton);
+    expect(strip?.children[0]).toBe(overflowButton);
     expect(strip?.children[1]).toBe(scrollRegion);
-    expect(strip?.children[2]).toBe(rightButton);
-    expect(leftButton?.classList.contains("absolute")).toBe(false);
-    expect(rightButton?.classList.contains("absolute")).toBe(false);
-    expect(leftButton?.classList.contains("w-5")).toBe(true);
-    expect(rightButton?.classList.contains("w-5")).toBe(true);
-    expect(leftButton?.classList.contains("opacity-0")).toBe(true);
-    expect(leftButton?.tabIndex).toBe(-1);
-    expect(rightButton?.classList.contains("opacity-100")).toBe(true);
-    expect(rightButton?.tabIndex).toBe(0);
-    expect(rightButton?.classList.contains("bg-sidebar")).toBe(true);
+    expect(strip?.children).toHaveLength(2);
+    expect(overflowButton?.classList.contains("absolute")).toBe(false);
+    expect(overflowButton?.classList.contains("w-5")).toBe(true);
+    expect(overflowButton?.classList.contains("opacity-100")).toBe(true);
+    expect(overflowButton?.tabIndex).toBe(0);
+    expect(overflowButton?.getAttribute("aria-label")).toBe(
+      "Scroll tabs right",
+    );
+    expect(overflowButton?.classList.contains("bg-sidebar")).toBe(true);
     expect(
-      rightButton?.classList.contains("hover:bg-surface-raised-solid"),
+      overflowButton?.classList.contains("hover:bg-surface-raised-solid"),
     ).toBe(true);
-    expect(rightButton?.classList.contains("hover:bg-state-hover")).toBe(false);
+    expect(overflowButton?.classList.contains("hover:bg-state-hover")).toBe(
+      false,
+    );
 
     const scrollBy = vi.fn();
     Object.defineProperty(viewport!, "scrollBy", {
       configurable: true,
       value: scrollBy,
     });
-    fireEvent.click(rightButton!);
+    fireEvent.click(overflowButton!);
     expect(scrollBy).toHaveBeenCalledWith({ left: 140, behavior: "smooth" });
 
-    rightButton?.focus();
-    expect(document.activeElement).toBe(rightButton);
+    overflowButton?.focus();
+    expect(document.activeElement).toBe(overflowButton);
     viewport!.scrollLeft = 120;
     fireEvent.scroll(viewport!);
     act(() => animationFrameCallback?.(0));
-    expect(rightButton?.getAttribute("aria-hidden")).toBe("true");
-    expect(leftButton?.getAttribute("aria-hidden")).toBe("false");
-    expect(document.activeElement).toBe(leftButton);
+    expect(overflowButton?.getAttribute("aria-hidden")).toBe("false");
+    expect(overflowButton?.getAttribute("aria-label")).toBe("Scroll tabs left");
+    expect(document.activeElement).toBe(overflowButton);
+    fireEvent.click(overflowButton!);
+    expect(scrollBy).toHaveBeenLastCalledWith({
+      left: -140,
+      behavior: "smooth",
+    });
 
     Object.defineProperty(content!, "scrollWidth", {
       configurable: true,
@@ -151,8 +154,8 @@ describe("secondary panel tab-strip edge fades", () => {
     act(() => {
       resizeCallback?.([], {} as ResizeObserver);
     });
-    expect(leftButton?.classList.contains("w-0")).toBe(true);
-    expect(rightButton?.classList.contains("w-0")).toBe(true);
+    expect(overflowButton?.classList.contains("w-0")).toBe(true);
+    expect(overflowButton?.getAttribute("aria-hidden")).toBe("true");
     expect(document.activeElement).toBe(
       container.querySelector('button[aria-pressed="true"]'),
     );
