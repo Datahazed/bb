@@ -237,6 +237,15 @@ const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN =
   /\b(?:40[19]|429|auth(?:entication|orization)?|credits?|quota|rate[-\s]?limit(?:ed)?|unauthori[sz]ed|usage limit)\b/i;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
+const CODEX_EMPTY_ROLLOUT_RENAME_ERROR_PATTERN =
+  /\brollout at .+ is empty\b/i;
+const CODEX_RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400] as const;
+
+async function delay(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 function resolveThreadStoragePath(
   args: ResolveThreadStoragePathArgs,
@@ -2014,11 +2023,34 @@ function createAgentRuntimeInternal(
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          await sendCommand({
-            proc,
-            message: cmd,
-            resultSchema: ignoredJsonRpcResultSchema,
-          });
+          for (
+            let attempt = 0;
+            attempt <= CODEX_RENAME_RETRY_DELAYS_MS.length;
+            attempt += 1
+          ) {
+            try {
+              await sendCommand({
+                proc,
+                message: cmd,
+                resultSchema: ignoredJsonRpcResultSchema,
+              });
+              break;
+            } catch (error) {
+              const retryDelayMs = CODEX_RENAME_RETRY_DELAYS_MS[attempt];
+              if (
+                pid !== CODEX_PROVIDER_ID ||
+                !(error instanceof Error) ||
+                !CODEX_EMPTY_ROLLOUT_RENAME_ERROR_PATTERN.test(error.message) ||
+                retryDelayMs === undefined
+              ) {
+                throw error;
+              }
+              options.onStderr?.(
+                `Codex session rollout is not ready; retrying rename for thread "${threadId}" in ${retryDelayMs}ms.`,
+              );
+              await delay(retryDelayMs);
+            }
+          }
           emitAcceptedCommandEvents({
             command: adapterCommand,
             proc,
