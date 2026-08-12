@@ -264,6 +264,7 @@ export function ungroupHostDaemonEvents(
 }
 
 export const hostDaemonEventRejectionReasonSchema = z.enum([
+  "stale_environment_provisioning",
   "thread_not_owned_by_host",
 ]);
 

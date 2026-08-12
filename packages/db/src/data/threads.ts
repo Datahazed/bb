@@ -15,6 +15,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type {
+  EnvironmentStatus,
   EnvironmentWorkspaceDisplayKind,
   ReasoningLevel,
   ThreadChangeKind,
@@ -619,6 +620,11 @@ export interface ListTrackedThreadStorageTargetsOnHostArgs {
 export interface ThreadEnvironmentAssignmentRow {
   environmentId: string;
   threadId: string;
+}
+
+export interface ThreadEnvironmentAssignmentOnHostRow
+  extends ThreadEnvironmentAssignmentRow {
+  environmentStatus: EnvironmentStatus;
 }
 
 export interface HasPendingThreadShutdownInEnvironmentArgs {
@@ -1288,7 +1294,7 @@ export function listNonDeletedChildThreads(
 export function listThreadEnvironmentAssignmentsOnHost(
   db: DbConnection,
   args: ListThreadEnvironmentAssignmentsOnHostArgs,
-): ThreadEnvironmentAssignmentRow[] {
+): ThreadEnvironmentAssignmentOnHostRow[] {
   if (args.threadIds.length === 0) {
     return [];
   }
@@ -1297,6 +1303,7 @@ export function listThreadEnvironmentAssignmentsOnHost(
     .select({
       threadId: threads.id,
       environmentId: environments.id,
+      environmentStatus: environments.status,
     })
     .from(threads)
     .innerJoin(environments, eq(threads.environmentId, environments.id))

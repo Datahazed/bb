@@ -1335,6 +1335,7 @@ describe("threads", () => {
       {
         threadId: matchingThread.id,
         environmentId: environment.id,
+        environmentStatus: "ready",
       },
     ]);
   });

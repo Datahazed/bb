@@ -146,6 +146,7 @@ export type {
   ReorderPinnedThreadArgs,
   ReorderPinnedThreadResult,
   ThreadEnvironmentAssignmentRow,
+  ThreadEnvironmentAssignmentOnHostRow,
   ThreadSearchHighlightRange,
   ThreadSearchMatch,
   ThreadSearchResult,

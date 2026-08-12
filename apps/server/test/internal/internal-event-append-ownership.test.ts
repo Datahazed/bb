@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { events, getThread } from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
+import type { EnvironmentStatus, ThreadStatus } from "@bb/domain";
 import {
   groupHostDaemonEvents,
   hostDaemonEventBatchResponseSchema,
@@ -25,7 +26,9 @@ import { createTestAppHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 
 interface SeedEventRouteArgs {
+  environmentStatus?: EnvironmentStatus;
   hostType?: "persistent";
+  threadStatus?: ThreadStatus;
 }
 
 interface PostEventBatchArgs {
@@ -56,11 +59,14 @@ function setupEventRoute(args: SeedEventRouteArgs = {}) {
     const environment = seedEnvironment(harness.deps, {
       hostId: host.id,
       projectId: project.id,
+      ...(args.environmentStatus !== undefined
+        ? { status: args.environmentStatus }
+        : {}),
     });
     const thread = seedThread(harness.deps, {
       projectId: project.id,
       environmentId: environment.id,
-      status: "active",
+      status: args.threadStatus ?? "active",
     });
     return {
       environment,
@@ -457,6 +463,76 @@ describe("internal event append ownership", () => {
           .where(eq(events.threadId, thread.id))
           .all(),
       ).toHaveLength(1);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("rejects late provisioning progress after restart recovery settled the environment", async () => {
+    const { environment, harness, session, thread } = await setupEventRoute({
+      environmentStatus: "error",
+      threadStatus: "error",
+    });
+    try {
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "system/thread-provisioning",
+              threadId: thread.id,
+              scope: threadScope(),
+              provisioningId: "tpv_before_server_restart",
+              environmentId: environment.id,
+              status: "active",
+              entries: [
+                {
+                  type: "step",
+                  key: "setup-completed",
+                  text: ".bb-env-setup.sh finished",
+                  status: "completed",
+                },
+              ],
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "system/error",
+              threadId: thread.id,
+              scope: threadScope(),
+              message: "owned event behind stale provisioning progress",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        acceptedEvents: [
+          {
+            eventIndex: 1,
+            threadId: thread.id,
+            sequence: 1,
+          },
+        ],
+        rejectedEvents: [
+          {
+            eventIndex: 0,
+            reason: "stale_environment_provisioning",
+            threadId: thread.id,
+          },
+        ],
+      });
+      expect(
+        harness.db
+          .select({ type: events.type })
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all(),
+      ).toEqual([{ type: "system/error" }]);
     } finally {
       await harness.cleanup();
     }

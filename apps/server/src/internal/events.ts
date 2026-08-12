@@ -77,6 +77,7 @@ interface ResolvePostableEventBatchEntriesResult {
 
 interface RejectedDaemonEventSummary {
   count: number;
+  reasons: HostDaemonRejectedEvent["reason"][];
   threadIds: string[];
 }
 
@@ -799,6 +800,7 @@ function summarizeRejectedDaemonEvents(
 ): RejectedDaemonEventSummary {
   return {
     count: rejectedEvents.length,
+    reasons: [...new Set(rejectedEvents.map((event) => event.reason))],
     threadIds: [...new Set(rejectedEvents.map((event) => event.threadId))],
   };
 }
@@ -820,18 +822,19 @@ function resolvePostableEventBatchEntries(
     threadIds,
   });
 
-  const canonicalEnvironmentIdByThreadId = new Map<string, string | null>();
-  for (const ownedThread of ownedThreads) {
-    canonicalEnvironmentIdByThreadId.set(
-      ownedThread.threadId,
-      ownedThread.environmentId,
-    );
-  }
+  const canonicalEnvironmentByThreadId = new Map(
+    ownedThreads.map(
+      (ownedThread) => [ownedThread.threadId, ownedThread] as const,
+    ),
+  );
 
   const entries: PostableEventBatchEntry[] = [];
   const rejectedEvents: HostDaemonRejectedEvent[] = [];
   for (const [eventIndex, entry] of args.events.entries()) {
-    if (!canonicalEnvironmentIdByThreadId.has(entry.threadId)) {
+    const canonicalEnvironment = canonicalEnvironmentByThreadId.get(
+      entry.threadId,
+    );
+    if (!canonicalEnvironment) {
       rejectedEvents.push({
         eventIndex,
         reason: "thread_not_owned_by_host",
@@ -839,11 +842,21 @@ function resolvePostableEventBatchEntries(
       });
       continue;
     }
-    const canonicalEnvironmentId =
-      canonicalEnvironmentIdByThreadId.get(entry.threadId) ?? null;
+    if (
+      entry.event.type === "system/thread-provisioning" &&
+      (entry.event.environmentId !== canonicalEnvironment.environmentId ||
+        canonicalEnvironment.environmentStatus !== "provisioning")
+    ) {
+      rejectedEvents.push({
+        eventIndex,
+        reason: "stale_environment_provisioning",
+        threadId: entry.threadId,
+      });
+      continue;
+    }
     entries.push({
       envelope: entry,
-      environmentId: canonicalEnvironmentId,
+      environmentId: canonicalEnvironment.environmentId,
       eventIndex,
     });
   }
@@ -901,7 +914,7 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
             rejectedEvents: summarizeRejectedDaemonEvents(rejectedEvents),
             sessionId: session.id,
           },
-          "Rejected daemon events for threads outside the session host",
+          "Rejected daemon events",
         );
       }
       const labelledEntries = entries.map((entry) => ({
