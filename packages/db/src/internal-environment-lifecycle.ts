@@ -4,6 +4,7 @@ export {
   EnvironmentLifecycleEventNotAppliedError,
   listStaleDestroyingManagedEnvironments,
   recordEnvironmentCurrentBranch,
+  recordEnvironmentProvisioningAttempt,
   recordProvisionedEnvironmentWorkspace,
   requireEnvironmentLifecycleEventApplied,
 } from "./data/environments.js";

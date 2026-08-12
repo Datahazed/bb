@@ -301,6 +301,31 @@ export function recordEnvironmentCurrentBranch(
   });
 }
 
+/**
+ * Claims the provisioning attempt that may currently emit daemon progress for
+ * this environment. The status predicate prevents dispatch from reviving or
+ * attaching an attempt to an environment that settled concurrently.
+ */
+export function recordEnvironmentProvisioningAttempt(
+  db: EnvironmentWriteConnection,
+  id: string,
+  provisioningId: string,
+) {
+  return (
+    db
+      .update(environments)
+      .set({ activeProvisioningId: provisioningId, updatedAt: Date.now() })
+      .where(
+        and(
+          eq(environments.id, id),
+          eq(environments.status, "provisioning"),
+        ),
+      )
+      .returning()
+      .get() ?? null
+  );
+}
+
 export interface RecordProvisionedEnvironmentWorkspaceInput extends DiscoveredWorkspaceProperties {
   baseBranch?: string | null;
   mergeBaseBranch?: string | null;
@@ -437,6 +462,7 @@ function applyEnvironmentLifecycleEventRecord(
 
   const now = Date.now();
   const set: Partial<typeof environments.$inferInsert> = {
+    activeProvisioningId: null,
     status: evaluation.to,
     updatedAt: now,
   };

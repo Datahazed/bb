@@ -472,6 +472,9 @@ describe("thread provisioning recovery", () => {
         expect(getEnvironment(harness.db, environment.id)?.status).toBe(
           "ready",
         );
+        expect(
+          getEnvironment(harness.db, environment.id)?.activeProvisioningId,
+        ).toBeNull();
       } finally {
         if (startCommand !== null) {
           await reportQueuedCommandError(harness, startCommand, {

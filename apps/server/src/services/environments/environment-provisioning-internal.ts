@@ -12,6 +12,7 @@ import {
 } from "@bb/db";
 import {
   recordEnvironmentCurrentBranch,
+  recordEnvironmentProvisioningAttempt,
   recordProvisionedEnvironmentWorkspace,
 } from "@bb/db/internal-environment-lifecycle";
 import type {
@@ -1031,8 +1032,16 @@ export async function advanceEnvironmentProvisioning(
       request: args.request,
     },
   );
+  const claimedEnvironment = recordEnvironmentProvisioningAttempt(
+    deps.db,
+    dispatchEnvironment.id,
+    args.request.provisioningId,
+  );
+  if (!claimedEnvironment) {
+    return null;
+  }
   startTrackedEnvironmentProvisionCommand(deps, {
-    environment: dispatchEnvironment,
+    environment: claimedEnvironment,
     request: args.request,
   });
   return null;

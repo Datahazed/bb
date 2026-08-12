@@ -845,7 +845,9 @@ function resolvePostableEventBatchEntries(
     if (
       entry.event.type === "system/thread-provisioning" &&
       (entry.event.environmentId !== canonicalEnvironment.environmentId ||
-        canonicalEnvironment.environmentStatus !== "provisioning")
+        canonicalEnvironment.environmentStatus !== "provisioning" ||
+        entry.event.provisioningId !==
+          canonicalEnvironment.activeProvisioningId)
     ) {
       rejectedEvents.push({
         eventIndex,

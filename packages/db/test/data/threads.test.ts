@@ -1333,6 +1333,7 @@ describe("threads", () => {
       }),
     ).toEqual([
       {
+        activeProvisioningId: null,
         threadId: matchingThread.id,
         environmentId: environment.id,
         environmentStatus: "ready",

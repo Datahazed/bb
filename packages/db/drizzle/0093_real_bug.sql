@@ -1,0 +1,1 @@
+ALTER TABLE `environments` ADD `active_provisioning_id` text;

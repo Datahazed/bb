@@ -87,6 +87,7 @@ describe("environment reprovisioning", () => {
       });
       expect(secondAttempt).toBe(MANAGED_REPROVISION_IN_PROGRESS);
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        activeProvisioningId: "tpv-reprovision-once-first",
         status: "provisioning",
         branchName: `bb/${thread.id}`,
       });

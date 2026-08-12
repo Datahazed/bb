@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { events, getThread } from "@bb/db";
+import { recordEnvironmentProvisioningAttempt } from "@bb/db/internal-environment-lifecycle";
 import { threadScope, turnScope } from "@bb/domain";
 import type { EnvironmentStatus, ThreadStatus } from "@bb/domain";
 import {
@@ -533,6 +534,98 @@ describe("internal event append ownership", () => {
           .where(eq(events.threadId, thread.id))
           .all(),
       ).toEqual([{ type: "system/error" }]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("rejects progress from an older attempt on the same provisioning environment", async () => {
+    const { environment, harness, session, thread } = await setupEventRoute({
+      environmentStatus: "provisioning",
+      threadStatus: "starting",
+    });
+    try {
+      expect(
+        recordEnvironmentProvisioningAttempt(
+          harness.db,
+          environment.id,
+          "tpv_attempt_a",
+        )?.activeProvisioningId,
+      ).toBe("tpv_attempt_a");
+      expect(
+        recordEnvironmentProvisioningAttempt(
+          harness.db,
+          environment.id,
+          "tpv_attempt_b",
+        )?.activeProvisioningId,
+      ).toBe("tpv_attempt_b");
+
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "system/thread-provisioning",
+              threadId: thread.id,
+              scope: threadScope(),
+              provisioningId: "tpv_attempt_a",
+              environmentId: environment.id,
+              status: "cancelled",
+              entries: [],
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "system/thread-provisioning",
+              threadId: thread.id,
+              scope: threadScope(),
+              provisioningId: "tpv_attempt_b",
+              environmentId: environment.id,
+              status: "active",
+              entries: [
+                {
+                  type: "step",
+                  key: "current-attempt",
+                  text: "Current setup is running",
+                  status: "started",
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        acceptedEvents: [
+          {
+            eventIndex: 1,
+            threadId: thread.id,
+            sequence: 1,
+          },
+        ],
+        rejectedEvents: [
+          {
+            eventIndex: 0,
+            reason: "stale_environment_provisioning",
+            threadId: thread.id,
+          },
+        ],
+      });
+      expect(
+        harness.db
+          .select({ data: events.data })
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all(),
+      ).toEqual([
+        {
+          data: expect.stringContaining('"provisioningId":"tpv_attempt_b"'),
+        },
+      ]);
     } finally {
       await harness.cleanup();
     }

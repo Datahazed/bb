@@ -299,6 +299,7 @@ function dropRewindAddedTables(db: DbConnection): void {
     .run();
   dropHostMaxPermissionModeColumn(db);
   dropEnvironmentRetireRequestedAtColumn(db);
+  dropEnvironmentActiveProvisioningIdColumn(db);
   dropThreadSectionSchema(db);
   restoreWideExperimentsTable(db);
   // system_experiments predates thread search, so the table itself isn't
@@ -612,6 +613,21 @@ function dropEnvironmentRetireRequestedAtColumn(db: DbConnection): void {
   }
 }
 
+// Migration 0093 adds the active provisioning attempt identity. Rewind
+// scenarios that clear its journal row must remove it before replaying the ADD.
+function dropEnvironmentActiveProvisioningIdColumn(
+  db: DbConnection,
+): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+    .all();
+  if (columns.some((column) => column.name === "active_provisioning_id")) {
+    db.$client
+      .prepare("ALTER TABLE environments DROP COLUMN active_provisioning_id")
+      .run();
+  }
+}
+
 /**
  * cleanup_mode existed since the baseline and is dropped by 0033, so a forward
  * replay from before 0033 must first restore it for 0033's DROP COLUMN to apply
@@ -668,6 +684,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
   dropEnvironmentRetireRequestedAtColumn(db);
+  dropEnvironmentActiveProvisioningIdColumn(db);
   dropProjectGitRemoteUrlColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.exec(`
@@ -1369,6 +1386,7 @@ describe("migrate", () => {
     dropOnboardingCompletedAtColumn(db);
     dropNewOnboardingExperimentColumn(db);
     dropEnvironmentRetireRequestedAtColumn(db);
+    dropEnvironmentActiveProvisioningIdColumn(db);
     // Delete by the journal timestamp, not a hash substring: migration hashes
     // are hex and can contain "0085" by coincidence.
     db.$client
@@ -1658,6 +1676,7 @@ describe("migrate", () => {
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
+      dropEnvironmentActiveProvisioningIdColumn(db);
 
       migrate(db);
 
@@ -2057,6 +2076,7 @@ describe("migrate", () => {
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
+      dropEnvironmentActiveProvisioningIdColumn(db);
 
       expect(
         db.$client
@@ -2153,6 +2173,7 @@ describe("migrate", () => {
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
+      dropEnvironmentActiveProvisioningIdColumn(db);
 
       expect(() => migrate(db)).not.toThrow();
 

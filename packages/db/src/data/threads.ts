@@ -624,6 +624,7 @@ export interface ThreadEnvironmentAssignmentRow {
 
 export interface ThreadEnvironmentAssignmentOnHostRow
   extends ThreadEnvironmentAssignmentRow {
+  activeProvisioningId: string | null;
   environmentStatus: EnvironmentStatus;
 }
 
@@ -1301,6 +1302,7 @@ export function listThreadEnvironmentAssignmentsOnHost(
 
   return db
     .select({
+      activeProvisioningId: environments.activeProvisioningId,
       threadId: threads.id,
       environmentId: environments.id,
       environmentStatus: environments.status,
