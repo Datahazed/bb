@@ -28,14 +28,8 @@ bb plugin install ./examples/plugins/thread-hover-cards
 
 After editing the plugin, run `bb plugin reload thread-hover-cards` or use `bb plugin dev` from this directory.
 
-## Keep the two copies aligned
+## Source of truth
 
-The standalone plugin lives in the `bb-plugins` repository. This example keeps the authored behavior aligned while retaining its own package configuration, generated SDK types, and build output.
+The canonical implementation lives at `bb-plugins/plugins/thread-hover-cards`. Make behavior changes there first, then port them into this example.
 
-Check the shared source files without changing either checkout:
-
-```bash
-pnpm --dir examples/plugins/thread-hover-cards sync:status -- /path/to/bb-plugins
-```
-
-The report lists matching, changed, and missing files and prints a focused diff command for the first change. Review and port the authored files it names; do not copy `package.json`, TypeScript or Vitest configuration, `types/`, or `dist/` between repositories.
+This copy may adapt package configuration, imports, tests, and host integration for the bb repository. Preserve those local adaptations when porting; do not copy generated SDK types or build output between repositories.
