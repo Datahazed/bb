@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { createRetryingModuleLoader } from "./plugin-frontend-lazy";
+import { createRetryingModuleLoader } from "./retrying-module-loader";
 
 describe("createRetryingModuleLoader", () => {
   it("refetches after a rejection instead of replaying it", async () => {
-    // The plugin runtime lives in a lazily fetched chunk. A caching loader
+    // A lazily fetched chunk holds the plugin runtime, and another holds
+    // KaTeX. A caching loader
     // that kept the rejected promise would leave plugin UI dead for the rest
     // of the page's life after one flaky chunk fetch.
     const load = vi

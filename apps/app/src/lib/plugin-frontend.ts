@@ -31,6 +31,8 @@ import type {
 } from "@bb/plugin-sdk";
 import { normalizePluginThreadRowStatus } from "@bb/plugin-sdk/internal/composer-customization-validation";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
+import { renderWithDiffWorkerPool } from "@/components/git-diff/DiffWorkerPoolProvider";
+import { setPluginDiffWorkerPoolRenderer } from "./plugin-diff-worker-pool";
 import { runWithPluginDomIsolationAsync } from "./foreign-dom-mutation-guard";
 import {
   collectPluginAppRegistrations,
@@ -43,6 +45,10 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "./plugin-slots";
+
+// This chunk already carries `@pierre/diffs`, so publishing the provider here
+// gives plugin slots a worker pool without the light side importing it.
+setPluginDiffWorkerPoolRenderer(renderWithDiffWorkerPool);
 import {
   clearPluginThreadRowStatuses,
   clearPluginThreadRowStatusesByOwner,

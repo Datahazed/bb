@@ -280,6 +280,30 @@ describe("MarkdownPreview", () => {
     expect(container.textContent).toContain("$x$");
   });
 
+  it("keeps display math out of a paragraph before KaTeX loads", async () => {
+    // `remark-math` alone turns display math into `<pre><code>`, and this
+    // component renders those as block elements. Emitting them inside the
+    // paragraph that held the math is invalid HTML, and React says so. The
+    // pipeline therefore waits for KaTeX before parsing math at all.
+    const errors: unknown[][] = [];
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation((...args: unknown[]) => {
+        errors.push(args);
+      });
+    const { container } = render(
+      <MarkdownPreview content={"Before\n\n$$\na = b\n$$\n\nAfter"} />,
+    );
+
+    expect(container.querySelector("p div")).toBeNull();
+    expect(container.querySelector("p pre")).toBeNull();
+    await waitFor(() => {
+      expect(container.querySelector(".katex-display")).not.toBeNull();
+    });
+    expect(errors).toEqual([]);
+    consoleError.mockRestore();
+  });
+
   it("renders display LaTeX math blocks with KaTeX", async () => {
     const { container } = render(
       <MarkdownPreview content={"$$\n\\frac{1}{2} + \\frac{1}{2} = 1\n$$"} />,

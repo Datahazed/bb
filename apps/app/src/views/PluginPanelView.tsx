@@ -1,21 +1,8 @@
-import { lazy, Suspense } from "react";
 import { useParams } from "react-router-dom";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { usePluginSlots } from "@/lib/plugin-slots";
-
-// Plugins can render `@pierre/diffs` FileDiff (the specifier is shimmed to
-// the host's copy); syntax highlighting needs a worker pool in React context.
-// The provider is loaded on demand because this view renders inside the split
-// workspace, and a static import would put the diff renderer on the thread
-// route's preload set. Plugin frontends already arrive after first paint, so
-// the panel body waits on the same kind of boundary it already waits on.
-const DiffWorkerPoolProvider = lazy(() =>
-  import("@/components/git-diff/DiffWorkerPoolProvider").then((module) => ({
-    default: module.DiffWorkerPoolProvider,
-  })),
-);
 
 /**
  * The route surface for plugin `navPanel` slots (plugin design §5.2):
@@ -84,9 +71,7 @@ export function PluginPanelView(props: PluginPanelViewProps = {}) {
       className="-m-4 flex min-h-0 flex-1 flex-col overflow-hidden md:-m-5"
       data-testid="plugin-panel-body"
     >
-      <Suspense fallback={null}>
-        <DiffWorkerPoolProvider>{slotMount}</DiffWorkerPoolProvider>
-      </Suspense>
+      {slotMount}
     </div>
   );
 }

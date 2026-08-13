@@ -5,6 +5,7 @@ import {
   PluginSlotOwnershipContext,
   type PluginSlotOwnershipRegistry,
 } from "./plugin-context";
+import { getPluginDiffWorkerPoolRenderer } from "@/lib/plugin-diff-worker-pool";
 
 /**
  * Per-plugin error containment for mounted slot components (plugin design
@@ -214,6 +215,46 @@ export interface PluginSlotMountProps {
  * for stylesheets built before the per-plugin scope). `display: contents`
  * keeps the wrapper layout-neutral.
  */
+/**
+ * Slot kinds that receive the diff worker pool: the thread workspace slots and
+ * the plugin panel body. Those are exactly the places the host supplied a pool
+ * before it moved off the thread route's preload set, so the pool reaches what
+ * it reached before and nothing more.
+ *
+ * The set omits homepage, settings, sidebar and thread-list slots. Those never
+ * had a pool, and the provider spawns workers eagerly, so widening the set
+ * would start workers on pages that show nothing but a plugin chip.
+ */
+const DIFF_WORKER_POOL_SLOT_KINDS: ReadonlySet<string> = new Set([
+  "composerAction",
+  "composerBanner",
+  "composerPlusMenuItem",
+  "fileOpener",
+  "messageDirective",
+  "navPanel",
+  "newThreadPanelAction",
+  "pendingInteraction",
+  "threadHeaderAction",
+  "threadPanelAction",
+]);
+
+function PluginSlotDiffWorkerPool({
+  slotKind,
+  children,
+}: {
+  slotKind: string;
+  children: ReactNode;
+}) {
+  const renderWithDiffWorkerPool = getPluginDiffWorkerPoolRenderer();
+  if (
+    renderWithDiffWorkerPool === null ||
+    !DIFF_WORKER_POOL_SLOT_KINDS.has(slotKind)
+  ) {
+    return children;
+  }
+  return renderWithDiffWorkerPool(children);
+}
+
 export function PluginSlotMount({
   pluginId,
   slotKind,
@@ -241,7 +282,9 @@ export function PluginSlotMount({
           data-bb-plugin={pluginId}
           className="contents"
         >
-          {children}
+          <PluginSlotDiffWorkerPool slotKind={slotKind}>
+            {children}
+          </PluginSlotDiffWorkerPool>
         </div>
       </PluginSlotBoundary>
     </PluginContext.Provider>

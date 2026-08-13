@@ -12,27 +12,9 @@
  * plugin management UI are already lazy and import it directly; they share
  * this module instance, so the reconcile state stays single-owner.
  */
-type PluginFrontendModule = typeof import("./plugin-frontend");
+import { createRetryingModuleLoader } from "./retrying-module-loader";
 
-/**
- * Caches a module import, but drops the cache when the import rejects.
- *
- * A chunk fetch fails on a flaky network. Caching the rejected promise would
- * replay that one failure for the rest of the page's life, so plugin UI could
- * never come back without a reload.
- */
-export function createRetryingModuleLoader<T>(
-  load: () => Promise<T>,
-): () => Promise<T> {
-  let pending: Promise<T> | null = null;
-  return () => {
-    pending ??= load().catch((error: unknown) => {
-      pending = null;
-      throw error;
-    });
-    return pending;
-  };
-}
+type PluginFrontendModule = typeof import("./plugin-frontend");
 
 const loadPluginFrontend = createRetryingModuleLoader<PluginFrontendModule>(
   () => import("./plugin-frontend"),

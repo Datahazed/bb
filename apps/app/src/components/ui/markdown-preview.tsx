@@ -48,6 +48,7 @@ import {
 } from "./markdown-code-block.js";
 import { highlightMarkdownCode } from "./markdown-code-highlight.js";
 import "./markdown-code-highlight.css";
+import { createRetryingModuleLoader } from "@/lib/retrying-module-loader";
 import { normalizeLocalFileMarkdownLinks } from "./markdown-local-file-link-normalize.js";
 import {
   buildLocalFileAnchorHref,
@@ -319,18 +320,21 @@ function mightContainMath(body: string): boolean {
   return body.includes("$$");
 }
 
-// One shared load per session. KaTeX is idempotent to import, but caching the
-// promise keeps a timeline of math-bearing messages from queueing one import
-// each.
-let katexRehypePluginPromise: Promise<MarkdownRehypePlugin> | null = null;
+// One shared load per session. A retrying loader, not a bare cached promise:
+// one flaky chunk fetch must not leave every later math body raw until the
+// page reloads.
+const loadKatexModule = createRetryingModuleLoader(
+  () => import("./markdown-katex.js"),
+);
 let loadedKatexRehypePlugin: MarkdownRehypePlugin | null = null;
 
 /**
  * Resolves `rehype-katex` once the body needs it, and `null` until then.
  *
- * A math-bearing body renders its TeX as plain text for the one frame before
+ * A math-bearing body renders its TeX as literal text for the one frame before
  * the chunk lands, then re-renders through KaTeX. Bodies without math never
- * load the chunk at all.
+ * load the chunk at all. A failed load leaves the TeX literal and retries on
+ * the next math body.
  */
 function useKatexRehypePlugin(body: string): MarkdownRehypePlugin | null {
   const wanted = mightContainMath(body);
@@ -344,13 +348,15 @@ function useKatexRehypePlugin(body: string): MarkdownRehypePlugin | null {
   useEffect(() => {
     if (!wanted || plugin !== null) return;
     let cancelled = false;
-    katexRehypePluginPromise ??= import("./markdown-katex.js").then(
-      (module) => module.rehypeKatex,
+    void loadKatexModule().then(
+      (module) => {
+        loadedKatexRehypePlugin = module.rehypeKatex;
+        if (!cancelled) setPlugin(() => module.rehypeKatex);
+      },
+      (error: unknown) => {
+        console.error("Failed to load KaTeX for markdown math", error);
+      },
     );
-    void katexRehypePluginPromise.then((loaded) => {
-      loadedKatexRehypePlugin = loaded;
-      if (!cancelled) setPlugin(() => loaded);
-    });
     return () => {
       cancelled = true;
     };
@@ -1601,17 +1607,32 @@ function MarkdownPreviewComponent({
   //
   // Message directives (assistant only) add `remark-directive` + a host
   // transformer that rewrites recognized leaf directives into plugin mounts.
+  // `remark-math` emits math as `<code class="language-math">` (inline) and
+  // `<pre><code class="language-math">` (display) holding the raw TeX, and
+  // `rehype-katex` renders any element carrying that class. The default sanitize
+  // schema already keeps `language-*` classes on `<code>`, so the wrappers survive
+  // sanitization untouched — and `rehype-katex` runs LAST, after sanitize, so KaTeX
+  // (which uses `trust: false` and self-escapes its TeX input) emits its rendered
+  // output without it being re-sanitized.
+  const katexRehypePlugin = useKatexRehypePlugin(body);
   const remarkPlugins = useMemo((): NonNullable<
     ReactMarkdownOptions["remarkPlugins"]
   > => {
     const plugins: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [
       remarkGfm,
-      // `remark-math` with single-dollar math OFF: micromark pairs any two
-      // unescaped `$` on a line, so "$5 to $10" or "$HOME and $PATH" render the
-      // span between them as math — and literal dollars dominate chat (#511).
-      // Inline math needs `$$x$$`; `$$` on its own lines is still a block.
-      [remarkMath, { singleDollarTextMath: false }],
     ];
+    // `remark-math` joins the pipeline only once KaTeX is there to consume its
+    // output. On its own it emits `<pre><code class="language-math">`, and this
+    // component's code renderer turns that into block elements inside the
+    // paragraph that held the math — invalid HTML that React reports. Leaving
+    // the TeX as literal text for that one frame is both valid and readable.
+    if (katexRehypePlugin !== null) {
+      // Single-dollar math OFF: micromark pairs any two unescaped `$` on a
+      // line, so "$5 to $10" or "$HOME and $PATH" render the span between them
+      // as math — and literal dollars dominate chat (#511). Inline math needs
+      // `$$x$$`; `$$` on its own lines is still a block.
+      plugins.push([remarkMath, { singleDollarTextMath: false }]);
+    }
     if (
       threadMentions?.preserveSoftBreaks === true ||
       promptMentions !== undefined
@@ -1637,15 +1658,12 @@ function MarkdownPreviewComponent({
       ]);
     }
     return plugins;
-  }, [threadMentions, promptMentions, messageDirectiveMounts]);
-  // `remark-math` emits math as `<code class="language-math">` (inline) and
-  // `<pre><code class="language-math">` (display) holding the raw TeX, and
-  // `rehype-katex` renders any element carrying that class. The default sanitize
-  // schema already keeps `language-*` classes on `<code>`, so the wrappers survive
-  // sanitization untouched — and `rehype-katex` runs LAST, after sanitize, so KaTeX
-  // (which uses `trust: false` and self-escapes its TeX input) emits its rendered
-  // output without it being re-sanitized.
-  const katexRehypePlugin = useKatexRehypePlugin(body);
+  }, [
+    katexRehypePlugin,
+    threadMentions,
+    promptMentions,
+    messageDirectiveMounts,
+  ]);
   const rehypePlugins = useMemo((): MarkdownRehypePlugins => {
     const base = allowHtml
       ? MARKDOWN_HTML_REHYPE_PLUGINS

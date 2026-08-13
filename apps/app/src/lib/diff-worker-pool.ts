@@ -23,28 +23,39 @@ export function createDiffWorker(): Worker {
 }
 
 // The diff renderer loads on demand, so nothing on a thread page may import
-// `@pierre/diffs` before a user opens a diff. This flag is the one bit the
-// light side is allowed to know about the heavy side: DiffWorkerPoolProvider
-// sets it when its chunk evaluates, and DiffWorkerPoolKeepAlive reads it.
-let diffWorkerPoolProviderLoaded = false;
-const diffWorkerPoolProviderListeners = new Set<() => void>();
+// `@pierre/diffs` before a user opens a diff. This counter is the one thing the
+// light side is allowed to know about the heavy side: how many diff surfaces
+// are mounted right now. `DiffWorkerPoolProvider` maintains it, and a thread
+// area reads it to decide whether to hold the pool open.
+//
+// A count, not a "the chunk loaded" flag: a flag would never fall back to
+// false, so opening one diff would make every later thread page spawn workers
+// before it showed a diff of its own.
+let diffWorkerPoolDemand = 0;
+const diffWorkerPoolDemandListeners = new Set<() => void>();
 
-/** Called by the diff chunk when it evaluates. */
-export function markDiffWorkerPoolProviderLoaded(): void {
-  if (diffWorkerPoolProviderLoaded) return;
-  diffWorkerPoolProviderLoaded = true;
-  for (const listener of diffWorkerPoolProviderListeners) listener();
+/** Called by a mounted diff surface. Returns its release function. */
+export function retainDiffWorkerPoolDemand(): () => void {
+  diffWorkerPoolDemand += 1;
+  for (const listener of diffWorkerPoolDemandListeners) listener();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    diffWorkerPoolDemand -= 1;
+    for (const listener of diffWorkerPoolDemandListeners) listener();
+  };
 }
 
-export function isDiffWorkerPoolProviderLoaded(): boolean {
-  return diffWorkerPoolProviderLoaded;
+export function getDiffWorkerPoolDemand(): number {
+  return diffWorkerPoolDemand;
 }
 
-export function subscribeToDiffWorkerPoolProviderLoaded(
+export function subscribeToDiffWorkerPoolDemand(
   listener: () => void,
 ): () => void {
-  diffWorkerPoolProviderListeners.add(listener);
+  diffWorkerPoolDemandListeners.add(listener);
   return () => {
-    diffWorkerPoolProviderListeners.delete(listener);
+    diffWorkerPoolDemandListeners.delete(listener);
   };
 }

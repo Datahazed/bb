@@ -1,7 +1,7 @@
-import { lazy, Suspense, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from "react";
 import {
-  isDiffWorkerPoolProviderLoaded,
-  subscribeToDiffWorkerPoolProviderLoaded,
+  getDiffWorkerPoolDemand,
+  subscribeToDiffWorkerPoolDemand,
 } from "@/lib/diff-worker-pool";
 
 const DiffWorkerPoolKeepAlive = lazy(() =>
@@ -11,7 +11,7 @@ const DiffWorkerPoolKeepAlive = lazy(() =>
 );
 
 /**
- * Holds the shared diff worker pool open for the thread area. Renders nothing.
+ * Holds the shared diff worker pool open for this thread area. Renders nothing.
  *
  * Each diff surface supplies the pool to its own subtree through
  * `DiffWorkerPoolProvider`, so this component exists only to stop the pool's
@@ -23,16 +23,23 @@ const DiffWorkerPoolKeepAlive = lazy(() =>
  * and mounting a wrapper later would change the tree shape around the
  * workspace, which remounts it and loses composer state.
  *
- * It waits for the diff chunk to load on its own account, so a thread whose
- * user never opens a diff never spawns a worker.
+ * The latch is per mount, not global: a thread area engages only after a diff
+ * surface appears inside it. Opening a diff in one thread therefore does not
+ * make the next thread spawn workers it has no use for.
  */
 export function ThreadDetailWorkerPoolKeepAlive() {
-  const diffWorkerPoolLoaded = useSyncExternalStore(
-    subscribeToDiffWorkerPoolProviderLoaded,
-    isDiffWorkerPoolProviderLoaded,
-    isDiffWorkerPoolProviderLoaded,
+  const diffWorkerPoolDemand = useSyncExternalStore(
+    subscribeToDiffWorkerPoolDemand,
+    getDiffWorkerPoolDemand,
+    getDiffWorkerPoolDemand,
   );
-  if (!diffWorkerPoolLoaded) return null;
+  const [engaged, setEngaged] = useState(false);
+
+  useEffect(() => {
+    if (diffWorkerPoolDemand > 0) setEngaged(true);
+  }, [diffWorkerPoolDemand]);
+
+  if (!engaged) return null;
   return (
     <Suspense fallback={null}>
       <DiffWorkerPoolKeepAlive />

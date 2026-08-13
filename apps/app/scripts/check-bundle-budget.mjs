@@ -84,8 +84,20 @@ for (const [pkg, chunks] of offenders) {
 
 // Same rule, one level down: a lazy route pays for its own static closure, and
 // none of it is visible to the boot budget above.
-for (const route of stats.routes ?? []) {
-  const forbiddenForRoute = new Set(budget.forbiddenRoutePackages?.[route.name] ?? []);
+//
+// Driven by the budget, not by the stats: a renamed route or a changed Vite
+// facade would drop the route from bundle-stats.json, and iterating the stats
+// would then report success without checking anything.
+const routesByName = new Map((stats.routes ?? []).map((route) => [route.name, route]));
+for (const name of Object.keys(budget.forbiddenRoutePackages ?? {})) {
+  const route = routesByName.get(name);
+  if (route === undefined) {
+    failures.push(
+      `bundle-budget.json guards the "${name}" route, but bundle-stats.json has no such route. Update TRACKED_ROUTES in vite-bundle-stats.ts, or drop the entry from forbiddenRoutePackages.`,
+    );
+    continue;
+  }
+  const forbiddenForRoute = new Set(budget.forbiddenRoutePackages[name]);
   if (forbiddenForRoute.size === 0) continue;
   const routeBytes = route.chunks.reduce((total, chunk) => total + chunk.bytes, 0);
   console.log(`${route.name} route: ${kb(routeBytes)} raw across ${route.chunks.length} chunks`);
