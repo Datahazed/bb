@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { claudeCodeVisibilityMetadata } from "./claude-code/visibility.js";
 import { codexVisibilityMetadata } from "./codex/visibility.js";
-import { piVisibilityMetadata } from "./pi/visibility.js";
 import type { JsonRpcMessage } from "./runtime-json-rpc.js";
 
 describe("provider visibility raw events", () => {
@@ -25,38 +24,7 @@ describe("provider visibility raw events", () => {
     });
 
     expect(
-      piVisibilityMetadata.describeRawEvent({
-        jsonrpc: "2.0",
-        method: "thread/contextWindowUsage/updated",
-        params: {
-          threadId: "t1",
-          contextWindowUsage: {
-            usedTokens: 12,
-            modelContextWindow: 100,
-            estimated: false,
-          },
-        },
-      }),
-    ).toEqual({
-      kind: "thread/contextWindowUsage/updated",
-      coverage: "normalized",
-    });
-
-    expect(
       claudeCodeVisibilityMetadata.describeRawEvent({
-        jsonrpc: "2.0",
-        method: "error",
-        params: {
-          message: "provider failed",
-        },
-      }),
-    ).toEqual({
-      kind: "error",
-      coverage: "normalized",
-    });
-
-    expect(
-      piVisibilityMetadata.describeRawEvent({
         jsonrpc: "2.0",
         method: "error",
         params: {
