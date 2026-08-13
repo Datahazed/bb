@@ -89,7 +89,7 @@ describe("thread conversation outline performance", () => {
     db.$client.close();
   });
 
-  it("preserves errored-turn conversation visibility", () => {
+  it("lists the errored-turn assistant message the timeline keeps visible", () => {
     const { db, thread } = setup();
     insertEvents(db, noopNotifier, [
       {
@@ -114,7 +114,7 @@ describe("thread conversation outline performance", () => {
           item: {
             id: "message-1",
             type: "agentMessage",
-            text: "Failed answer collapsed behind the turn summary",
+            text: "Answer written before the provider failed",
           },
         }),
       },
@@ -142,7 +142,12 @@ describe("thread conversation outline performance", () => {
 
     const outline = buildThreadConversationOutline(db, thread, { maxSeq: 4 });
 
-    expect(outline.items).toEqual([]);
+    expect(outline.items).toEqual([
+      expect.objectContaining({
+        role: "assistant",
+        preview: "Answer written before the provider failed",
+      }),
+    ]);
     db.$client.close();
   });
 });

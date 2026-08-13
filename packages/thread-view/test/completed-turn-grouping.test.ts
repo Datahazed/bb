@@ -4,6 +4,7 @@ import { groupCompletedTurnMessages } from "../src/completed-turn-grouping.js";
 import type { CompletedTurnMessageGroups } from "../src/completed-turn-grouping.js";
 import type {
   EventProjectionAssistantTextMessage,
+  EventProjectionCommandMessage,
   EventProjectionMessage,
   EventProjectionOperationMessage,
   EventProjectionTurnRequest,
@@ -35,6 +36,23 @@ function assistantMessage(
     ...messageBase(args),
     kind: "assistant-text",
     text: args.id,
+    status: "completed",
+  };
+}
+
+function commandMessage(args: MessageBaseArgs): EventProjectionCommandMessage {
+  return {
+    ...messageBase(args),
+    kind: "command",
+    callId: args.id,
+    command: "pnpm test",
+    cwd: null,
+    parsedIntents: [],
+    source: null,
+    output: "",
+    exitCode: 0,
+    completedAt: args.seq,
+    approvalStatus: null,
     status: "completed",
   };
 }
@@ -159,8 +177,8 @@ describe("groupCompletedTurnMessages", () => {
 
   it("uses one summary group when no messages are ungroupable", () => {
     const messages = [
-      assistantMessage({ id: "assistant-1", seq: 1 }),
-      assistantMessage({ id: "assistant-2", seq: 2 }),
+      commandMessage({ id: "command-1", seq: 1 }),
+      commandMessage({ id: "command-2", seq: 2 }),
     ];
     const groups = groupCompletedTurnMessages(
       completedTurn(messages, undefined),
@@ -176,7 +194,35 @@ describe("groupCompletedTurnMessages", () => {
       },
     ]);
     expect(summarySourceMessageIds(groups)).toEqual([
-      ["assistant-1", "assistant-2"],
+      ["command-1", "command-2"],
+    ]);
+  });
+
+  it("keeps an assistant message before tool activity out of the summary group", () => {
+    const answer = assistantMessage({ id: "assistant-answer", seq: 1 });
+    const acknowledgement = assistantMessage({
+      id: "assistant-acknowledgement",
+      seq: 3,
+    });
+    const turn = completedTurn(
+      [answer, commandMessage({ id: "command-1", seq: 2 }), acknowledgement],
+      acknowledgement,
+    );
+    const groups = groupCompletedTurnMessages(turn);
+
+    expect(groups.summaryItems).toMatchObject([
+      {
+        kind: "ungrouped-message",
+        message: { id: "assistant-answer" },
+      },
+      {
+        kind: "summary",
+        summaryCount: 1,
+      },
+    ]);
+    expect(summarySourceMessageIds(groups)).toEqual([["command-1"]]);
+    expect(groups.terminalMessages.map((message) => message.id)).toEqual([
+      "assistant-acknowledgement",
     ]);
   });
 
@@ -218,7 +264,7 @@ describe("groupCompletedTurnMessages", () => {
   it("does not segment summary groups around agent and system steers", () => {
     const turn = completedTurn(
       [
-        assistantMessage({ id: "assistant-before", seq: 1 }),
+        commandMessage({ id: "command-before", seq: 1 }),
         userMessage({
           id: "agent-steer",
           initiator: "agent",
@@ -231,7 +277,7 @@ describe("groupCompletedTurnMessages", () => {
           seq: 3,
           turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
         }),
-        assistantMessage({ id: "assistant-after", seq: 4 }),
+        commandMessage({ id: "command-after", seq: 4 }),
       ],
       undefined,
     );
@@ -247,16 +293,16 @@ describe("groupCompletedTurnMessages", () => {
       },
     ]);
     expect(summarySourceMessageIds(groups)).toEqual([
-      ["assistant-before", "agent-steer", "system-steer", "assistant-after"],
+      ["command-before", "agent-steer", "system-steer", "command-after"],
     ]);
   });
 
   it("segments summary groups around converted legacy user messages", () => {
     const turn = completedTurn(
       [
-        assistantMessage({ id: "assistant-before", seq: 1 }),
+        commandMessage({ id: "command-before", seq: 1 }),
         legacyUserMessage({ id: "legacy-user-message", seq: 2 }),
-        assistantMessage({ id: "assistant-after", seq: 3 }),
+        commandMessage({ id: "command-after", seq: 3 }),
       ],
       undefined,
     );
@@ -285,13 +331,13 @@ describe("groupCompletedTurnMessages", () => {
       },
     ]);
     expect(summarySourceMessageIds(groups)).toEqual([
-      ["assistant-before"],
-      ["assistant-after"],
+      ["command-before"],
+      ["command-after"],
     ]);
   });
 
   it("slices terminal and trailing messages out of the summary groups", () => {
-    const before = assistantMessage({ id: "before", seq: 1 });
+    const before = commandMessage({ id: "before", seq: 1 });
     const terminal = assistantMessage({ id: "terminal", seq: 2 });
     const trailing = assistantMessage({ id: "trailing", seq: 3 });
     const groups = groupCompletedTurnMessages(

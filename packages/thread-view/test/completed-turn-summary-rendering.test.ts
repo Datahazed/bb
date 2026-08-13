@@ -109,6 +109,60 @@ describe("completed turn summary rendering", () => {
     expect(rowSignatures(turnRow.children ?? [])).toEqual(["work:command"]);
   });
 
+  it("keeps an earlier assistant text block outside the completed turn summary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "which option should we take?",
+    });
+
+    const timeline = renderCompletedTimeline({
+      events: [
+        request,
+        event.turnStarted(),
+        event.inputAccepted({
+          clientRequestId: request.data.requestId,
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-answer",
+          text: "Option A keeps the daemon simple. Which one do you want?",
+        }),
+        event.commandCompleted({
+          itemId: "tool-1",
+          command: "pnpm test",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-acknowledgement",
+          text: "The verify gate is still open.",
+        }),
+        event.turnCompleted(),
+      ],
+    });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "conversation:user",
+      "conversation:assistant",
+      "turn:5-5",
+      "conversation:assistant",
+    ]);
+    expect(
+      timeline.rows
+        .filter(
+          (row): row is Extract<TimelineRow, { kind: "conversation" }> =>
+            row.kind === "conversation",
+        )
+        .map((row) => row.text),
+    ).toEqual([
+      "which option should we take?",
+      "Option A keeps the daemon simple. Which one do you want?",
+      "The verify gate is still open.",
+    ]);
+
+    const turnRow = requireOnlyTurnRow(timeline.rows);
+    expect(turnRow.summaryCount).toBe(1);
+    expect(rowSignatures(turnRow.children ?? [])).toEqual(["work:command"]);
+  });
+
   it("keeps turn-scoped environment directory update operations inside the completed turn summary", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const request = event.clientTurnRequested({

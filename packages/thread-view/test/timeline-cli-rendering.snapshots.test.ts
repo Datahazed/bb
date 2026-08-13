@@ -1140,13 +1140,22 @@ describe("timeline CLI rendering snapshots", () => {
       },
     });
 
-    expect(timeline.turnRows).toHaveLength(1);
+    expect(timeline.turnRows).toHaveLength(2);
     expect(timeline.turnRows[0]).toMatchObject({
-      sourceSeqStart: 1,
-      sourceSeqEnd: 6,
+      sourceSeqStart: 2,
+      sourceSeqEnd: 2,
+    });
+    expect(timeline.turnRows[1]).toMatchObject({
+      sourceSeqStart: 4,
+      sourceSeqEnd: 4,
     });
     expect(timeline.text).toMatchInlineSnapshot(`
-      "── Worked for (5ms) ────────────────────────────────────────
+      "── Worked for (0ms) ────────────────────────────────────────
+
+      ── Assistant ───────────────────────────────────────────────
+      I found the test path.
+
+      ── Worked for (0ms) ────────────────────────────────────────
 
       ── Assistant ───────────────────────────────────────────────
       Done."

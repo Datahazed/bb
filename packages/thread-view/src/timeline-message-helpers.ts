@@ -22,10 +22,13 @@ export function isTimelineUngroupableMessage(
   if (message.kind === "user") {
     return !isTimelineSummaryGroupableSteerMessage(message);
   }
-  if (message.kind === "assistant-text") {
-    return message.isLegacyUserMessage === true;
-  }
-  return message.kind === "debug/raw-event";
+  // Assistant prose stays visible at rest. A turn shaped
+  // text -> tool_use -> text keeps only the last text as the terminal message,
+  // so every earlier text would otherwise hide inside the collapsed
+  // "Worked for ..." summary.
+  return (
+    message.kind === "assistant-text" || message.kind === "debug/raw-event"
+  );
 }
 
 export function isTimelineSummaryCountedMessage(
