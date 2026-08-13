@@ -13,6 +13,7 @@ import {
   isLoopbackBrowserRequestHost,
   isPrivateBrowserRequestHost,
   localRequestOriginKey,
+  loopbackServicePort,
   resolveRequestingFrameLocalOriginKey,
   resolveWindowOpenAction,
   shouldBlockBrowserRequest,
@@ -325,6 +326,22 @@ describe("localRequestOriginKey", () => {
   });
 });
 
+describe("loopbackServicePort", () => {
+  it("reads the port of a loopback bb service URL, filling in scheme defaults", () => {
+    expect(loopbackServicePort("http://127.0.0.1:38886")).toBe(38886);
+    expect(loopbackServicePort("http://localhost:3011/")).toBe(3011);
+    expect(loopbackServicePort("http://[::1]/")).toBe(80);
+    expect(loopbackServicePort("https://localhost/")).toBe(443);
+  });
+
+  it("returns null for URLs that name no loopback bb service", () => {
+    expect(loopbackServicePort("https://bee.getbb.app")).toBeNull();
+    expect(loopbackServicePort("http://192.168.1.10:38886")).toBeNull();
+    expect(loopbackServicePort("ws://127.0.0.1:38886")).toBeNull();
+    expect(loopbackServicePort("not a url")).toBeNull();
+  });
+});
+
 describe("shouldBlockBrowserRequest", () => {
   const localhost3000 = requireLocalOriginKey("http://localhost:3000/");
   const localhost5173 = requireLocalOriginKey("http://localhost:5173/");
@@ -340,6 +357,7 @@ describe("shouldBlockBrowserRequest", () => {
     entryWebContentsId: 1,
     currentMainFrameLocalOriginKey: null,
     requestingFrameOriginKey: null,
+    reservedLoopbackPorts: [],
   };
 
   it("allows public requests regardless of local attribution fields", () => {
@@ -522,9 +540,12 @@ describe("shouldBlockBrowserRequest", () => {
     }
   });
 
-  it("blocks cross-origin loopback requests from a committed local page", () => {
+  // Issue #1452: a local app's frontend and its WebSocket/API backend commonly
+  // sit on different loopback ports, and every real browser connects them.
+  it("allows cross-origin loopback requests from a committed local page", () => {
     for (const url of [
       "http://localhost:5173/api",
+      "ws://localhost:5173/socket",
       "http://127.0.0.1:3000/api",
       "https://localhost:3000/api",
       "http://localhost.:3000/api",
@@ -538,10 +559,46 @@ describe("shouldBlockBrowserRequest", () => {
           currentMainFrameLocalOriginKey: localhost3000,
           requestingFrameOriginKey: localhost3000,
         }),
-      ).toBe(true);
+      ).toBe(false);
     }
 
     expect(loopbackIpv4).not.toBe(localhost3000);
+  });
+
+  it("blocks reserved bb loopback ports under any loopback name or scheme", () => {
+    for (const url of [
+      "http://localhost:38886/api/v1/threads",
+      "ws://127.0.0.1:38886/ws",
+      "https://[::1]:38886/api/v1/threads",
+      "http://127.0.0.1/", // default port 80 must compare as 80
+    ]) {
+      expect(
+        shouldBlockBrowserRequest({
+          ...baseRequest,
+          url,
+          resourceType: "xhr",
+          isMainFrame: false,
+          currentMainFrameLocalOriginKey: localhost3000,
+          requestingFrameOriginKey: localhost3000,
+          reservedLoopbackPorts: [38886, 80],
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it("still allows a page served from a reserved port to load its own subresources", () => {
+    const reservedOrigin = requireLocalOriginKey("http://localhost:38886/");
+    expect(
+      shouldBlockBrowserRequest({
+        ...baseRequest,
+        url: "http://localhost:38886/assets/app.js",
+        resourceType: "script",
+        isMainFrame: false,
+        currentMainFrameLocalOriginKey: reservedOrigin,
+        requestingFrameOriginKey: reservedOrigin,
+        reservedLoopbackPorts: [38886],
+      }),
+    ).toBe(false);
   });
 
   it("blocks private requests even when attribution and frame origin are present", () => {
@@ -655,6 +712,7 @@ describe("loopback SPA subresource firewall (regression)", () => {
     targetWebContentsId: 1,
     entryWebContentsId: 1,
     currentMainFrameLocalOriginKey: originKey,
+    reservedLoopbackPorts: [],
   };
 
   it("allows a same-origin top-frame subresource resolved via the URL fallback", () => {

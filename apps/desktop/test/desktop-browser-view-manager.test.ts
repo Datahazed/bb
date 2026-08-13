@@ -19,6 +19,7 @@ function createDesktopBrowserViewManager(
   return createProductionDesktopBrowserViewManager({
     dispatchAppCommand: () => undefined,
     focusHostWebContents: () => undefined,
+    getReservedLoopbackPorts: () => [],
     resolveAppCommand: () => null,
     ...args,
   });
@@ -1296,14 +1297,6 @@ describe("DesktopBrowserViewManager", () => {
       }),
     ).toBe(false);
     expect(
-      browserRequestBlocked({
-        url: "http://localhost:38886/api",
-        resourceType: "xhr",
-        webContentsId: view.webContents.id,
-        frameOrigin: "http://localhost:5173",
-      }),
-    ).toBe(true);
-    expect(
       view.webContents.emitWillFrameNavigate(
         "http://localhost:38886/",
         true,
@@ -1318,6 +1311,66 @@ describe("DesktopBrowserViewManager", () => {
         frameOrigin: "http://localhost:5173",
       }),
     ).toBe(false);
+  });
+
+  // Regression for issue #1452: a local app whose frontend and WebSocket
+  // backend sit on different loopback ports must connect, as it does in Chrome
+  // and Safari, while bb's own loopback services stay unreachable.
+  it("allows cross-port loopback requests but never bb's own loopback ports", () => {
+    const manager = createDesktopBrowserViewManager({
+      getReservedLoopbackPorts: () => [38886, 3011],
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 66,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "http://127.0.0.1:3009/",
+    });
+    const view = requireFakeView(0);
+    view.webContents.emitDidNavigate("http://127.0.0.1:3009/");
+
+    for (const url of ["ws://127.0.0.1:3210/api", "http://127.0.0.1:3210/api"]) {
+      expect(
+        browserRequestBlocked({
+          url,
+          resourceType: url.startsWith("ws:") ? "webSocket" : "xhr",
+          webContentsId: view.webContents.id,
+          frameOrigin: "http://127.0.0.1:3009",
+        }),
+      ).toBe(false);
+    }
+
+    // bb's server and host-daemon ports stay blocked, under any loopback name.
+    for (const url of [
+      "ws://127.0.0.1:38886/ws",
+      "http://localhost:38886/api/v1/threads",
+      "http://[::1]:3011/",
+    ]) {
+      expect(
+        browserRequestBlocked({
+          url,
+          resourceType: url.startsWith("ws:") ? "webSocket" : "xhr",
+          webContentsId: view.webContents.id,
+          frameOrigin: "http://127.0.0.1:3009",
+        }),
+      ).toBe(true);
+    }
+
+    // A page that never committed a loopback origin still reaches nothing.
+    expect(
+      browserRequestBlocked({
+        url: "ws://127.0.0.1:3210/api",
+        resourceType: "webSocket",
+        webContentsId: view.webContents.id,
+        frameOrigin: "https://example.com",
+      }),
+    ).toBe(true);
   });
 
   it("allows top-level localhost frame navigation but blocks public iframe subresources", () => {

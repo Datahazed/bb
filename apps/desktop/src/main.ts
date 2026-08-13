@@ -142,6 +142,7 @@ import {
   createDesktopBrowserViewManager,
   type DesktopBrowserViewManager,
 } from "./desktop-browser-view.js";
+import { loopbackServicePort } from "./desktop-browser-policy.js";
 import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
@@ -292,6 +293,12 @@ let currentApplicationMenuAccelerators = DEFAULT_APPLICATION_MENU_ACCELERATORS;
 let desktopUpdateService: DesktopUpdateService | null = null;
 let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
 let currentRuntime: DesktopRuntime | null = null;
+/**
+ * Host-daemon local API port, recorded only while the attached bb server runs
+ * on this machine's loopback. A remote server reports its own machine's port,
+ * which says nothing about what listens on this Mac's loopback.
+ */
+let currentLocalHostDaemonPort: number | null = null;
 let currentWindowUrl: string | null = null;
 let logViewerIpcHandlersInstalled = false;
 let logViewerLineBuffer: LogLineBuffer | null = null;
@@ -874,6 +881,10 @@ async function refreshSystemConfig(
     if (token !== systemConfigRefreshToken) {
       return;
     }
+    currentLocalHostDaemonPort =
+      loopbackServicePort(args.serverUrl) === null
+        ? null
+        : config.hostDaemonPort;
     currentAppKeybindings = config.keybindings;
     currentApplicationMenuAccelerators = resolveApplicationMenuAccelerators(
       currentAppKeybindings,
@@ -925,6 +936,28 @@ function createRemoteSystemConfigSync(serverUrl: string): SystemConfigSync {
 function stopSystemConfigSync(): void {
   systemConfigSync?.stop();
   systemConfigSync = null;
+  currentLocalHostDaemonPort = null;
+}
+
+/**
+ * Loopback ports bb itself serves on this Mac. The in-app browser firewall
+ * keeps them unreachable from browsed pages, while every other loopback port
+ * (a user's own dev server and its separate API/WebSocket backend) stays
+ * reachable, as it is in Chrome and Safari.
+ */
+function reservedLoopbackPorts(): readonly number[] {
+  const ports = new Set<number>();
+  for (const serverUrl of [builtinServerUrl, currentRuntime?.serverUrl]) {
+    const port =
+      serverUrl === undefined ? null : loopbackServicePort(serverUrl);
+    if (port !== null) {
+      ports.add(port);
+    }
+  }
+  if (currentLocalHostDaemonPort !== null) {
+    ports.add(currentLocalHostDaemonPort);
+  }
+  return [...ports];
 }
 
 function startSystemConfigSync(serverUrl: string): void {
@@ -2167,6 +2200,7 @@ async function runDesktopApp(): Promise<void> {
         browserWindow.webContents.focus();
       }
     },
+    getReservedLoopbackPorts: reservedLoopbackPorts,
     resolveAppCommand(input) {
       return resolveDesktopBrowserAppCommand({
         input,

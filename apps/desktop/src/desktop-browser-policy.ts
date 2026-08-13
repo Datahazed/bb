@@ -39,6 +39,11 @@ export function resolveWindowOpenAction(url: string): WindowOpenDecision {
 // `session.webRequest` wiring in desktop-browser-view) using these predicates,
 // which classify the request's URL host as loopback / link-local / private.
 //
+// A loopback page may still reach other loopback ports, because that is how
+// ordinary local development works (a dev server on one port, its API or
+// WebSocket backend on another) and every real browser allows it. The ports bb
+// itself serves are the ones held back, named by `reservedLoopbackPorts`.
+//
 // Residual: this classifies the URL host, not the DNS-resolved address, so a
 // public name that resolves to a private IP (DNS rebinding) is not caught here.
 // That is a deeper, separate mitigation and out of scope for v1.
@@ -52,6 +57,12 @@ export interface ShouldBlockBrowserRequestArgs {
   entryWebContentsId: number | null;
   currentMainFrameLocalOriginKey: string | null;
   requestingFrameOriginKey: string | null;
+  /**
+   * Loopback ports bb's own services occupy (the local bb server, the host
+   * daemon local API). A browsed page never reaches these, whichever loopback
+   * name it addresses them by.
+   */
+  reservedLoopbackPorts: readonly number[];
 }
 
 interface ParsedBrowserRequestUrl {
@@ -267,6 +278,18 @@ function isReadOnlyMainFrameRequestMethod(method: string): boolean {
   return normalizedMethod === "GET" || normalizedMethod === "HEAD";
 }
 
+/**
+ * The port a guarded request actually reaches. `URL` leaves `port` empty for a
+ * scheme's default port, so a bare `http://127.0.0.1/` must still compare as
+ * port 80. Every caller has already narrowed the protocol to `http(s)`/`ws(s)`.
+ */
+function effectiveRequestPort(parsed: ParsedBrowserRequestUrl): number {
+  if (parsed.port.length > 0) {
+    return Number(parsed.port);
+  }
+  return parsed.protocol === "https:" || parsed.protocol === "wss:" ? 443 : 80;
+}
+
 function localRequestProtocolClass(protocol: string): string | null {
   if (protocol === "http:" || protocol === "ws:") {
     return "local";
@@ -359,6 +382,23 @@ export function localRequestOriginKey(url: string): string | null {
     return null;
   }
   return `${protocolClass}|${parsed.originHost}|${parsed.port}`;
+}
+
+/**
+ * The loopback port a bb service URL occupies, or null when the URL is not a
+ * loopback `http(s)` URL. The caller collects these into the reserved-port list
+ * the request firewall keeps unreachable from browsed pages.
+ */
+export function loopbackServicePort(url: string): number | null {
+  const parsed = parseBrowserRequestUrl(url);
+  if (
+    parsed === null ||
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    !isLoopbackBrowserRequestHost(parsed.host)
+  ) {
+    return null;
+  }
+  return effectiveRequestPort(parsed);
 }
 
 export interface ResolveRequestingFrameLocalOriginKeyArgs {
@@ -455,7 +495,13 @@ export function shouldBlockBrowserRequest(
   ) {
     return true;
   }
-  return targetOriginKey !== args.currentMainFrameLocalOriginKey;
+  if (targetOriginKey === args.currentMainFrameLocalOriginKey) {
+    return false;
+  }
+  // A committed loopback page reaching a second loopback port is ordinary local
+  // development, so it is allowed here as it is in Chrome and Safari. bb's own
+  // loopback services stay unreachable, which is what this firewall protects.
+  return args.reservedLoopbackPorts.includes(effectiveRequestPort(parsed));
 }
 
 // --- Popup-tab rate limiting ---

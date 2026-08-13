@@ -114,6 +114,12 @@ export interface DispatchDesktopBrowserAppCommandArgs {
 export interface CreateDesktopBrowserViewManagerArgs {
   dispatchAppCommand: (args: DispatchDesktopBrowserAppCommandArgs) => void;
   focusHostWebContents: (hostWebContentsId: number) => void;
+  /**
+   * Loopback ports bb's own services occupy, which browsed pages must never
+   * reach. Read per request rather than captured once, because the local
+   * runtime and its host-daemon port attach after the manager is created.
+   */
+  getReservedLoopbackPorts: () => readonly number[];
   partition?: string;
   resolveAppCommand: (input: AppShortcutInput) => AppCommandId | null;
 }
@@ -259,6 +265,7 @@ function commitEntryMainFrameUrl(entry: BrowserViewEntry, url: string): void {
 function shouldBlockEntryTopLevelRequest(
   entry: BrowserViewEntry,
   url: string,
+  reservedLoopbackPorts: readonly number[],
 ): boolean {
   if (!isAllowedBrowserUrl(url)) {
     return true;
@@ -273,6 +280,7 @@ function shouldBlockEntryTopLevelRequest(
     entryWebContentsId: webContentsId,
     currentMainFrameLocalOriginKey: entry.currentMainFrameLocalOriginKey,
     requestingFrameOriginKey: null,
+    reservedLoopbackPorts,
   });
 }
 
@@ -327,6 +335,17 @@ export function createDesktopBrowserViewManager(
 
   function isHostResizing(hostWindow: DesktopBrowserHostWindow): boolean {
     return resizingHostIds.has(hostWindow.webContents.id);
+  }
+
+  function blockTopLevelRequest(
+    entry: BrowserViewEntry,
+    url: string,
+  ): boolean {
+    return shouldBlockEntryTopLevelRequest(
+      entry,
+      url,
+      args.getReservedLoopbackPorts(),
+    );
   }
 
   function applyEntryVisibility(
@@ -427,6 +446,7 @@ export function createDesktopBrowserViewManager(
             // SPA dev server (Vite, etc.) is not blocked into a blank page.
             isTopFrame: details.frame?.parent === null,
           }),
+          reservedLoopbackPorts: args.getReservedLoopbackPorts(),
         }),
       });
     });
@@ -485,12 +505,12 @@ export function createDesktopBrowserViewManager(
       if (!event.isMainFrame) {
         return;
       }
-      if (shouldBlockEntryTopLevelRequest(entry, event.url)) {
+      if (blockTopLevelRequest(entry, event.url)) {
         event.preventDefault();
       }
     });
     webContents.on("will-navigate", (event, url) => {
-      if (shouldBlockEntryTopLevelRequest(entry, url)) {
+      if (blockTopLevelRequest(entry, url)) {
         event.preventDefault();
       }
     });
@@ -498,7 +518,7 @@ export function createDesktopBrowserViewManager(
       if (!isMainFrame) {
         return;
       }
-      if (shouldBlockEntryTopLevelRequest(entry, url)) {
+      if (blockTopLevelRequest(entry, url)) {
         event.preventDefault();
       }
     });
