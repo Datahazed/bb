@@ -76,6 +76,7 @@ import type { JsonRpcMessage } from "../runtime-json-rpc.js";
 import type { AgentRuntimeSkillRoot } from "../types.js";
 import { toCanonicalPiModelId } from "./model-list.js";
 import { piVisibilityMetadata } from "./visibility.js";
+import type { PiReasoningLevel } from "./bridge/bridge.js";
 
 // ---------------------------------------------------------------------------
 // Pi event and command types
@@ -450,6 +451,30 @@ function buildPiAdditionalSkillPathsParams(
         ),
       }
     : undefined;
+}
+
+// BB's reasoning ladder is a superset of Pi's thinking levels. The only name
+// that differs is BB's "none" (no extended thinking), which Pi calls "off".
+// Levels Pi does not support ("ultracode", "ultra") are dropped so the bridge
+// schema never receives a value it would reject; reconciliation picks the
+// closest supported level before this point, so this is a defensive floor.
+function toPiThinkingLevel(
+  reasoningLevel: ProviderExecutionContext["reasoningLevel"],
+): PiReasoningLevel | undefined {
+  switch (reasoningLevel) {
+    case "none":
+      return "off";
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+    case "max":
+      return reasoningLevel;
+    case "ultracode":
+    case "ultra":
+    case undefined:
+      return undefined;
+  }
 }
 
 function buildPiConfig(
@@ -1147,7 +1172,11 @@ export function createPiProviderAdapter(
                   ? { model: command.options.model }
                   : {}),
                 ...(command.options?.reasoningLevel
-                  ? { reasoningLevel: command.options.reasoningLevel }
+                  ? {
+                      reasoningLevel: toPiThinkingLevel(
+                        command.options.reasoningLevel,
+                      ),
+                    }
                   : {}),
                 ...(dynamicTools && dynamicTools.length > 0
                   ? { dynamicTools }
@@ -1187,7 +1216,11 @@ export function createPiProviderAdapter(
                   ? { model: command.options.model }
                   : {}),
                 ...(command.options?.reasoningLevel
-                  ? { reasoningLevel: command.options.reasoningLevel }
+                  ? {
+                      reasoningLevel: toPiThinkingLevel(
+                        command.options.reasoningLevel,
+                      ),
+                    }
                   : {}),
                 ...(dynamicTools && dynamicTools.length > 0
                   ? { dynamicTools }
@@ -1275,7 +1308,11 @@ export function createPiProviderAdapter(
                   ? { model: command.options.model }
                   : {}),
                 ...(command.options?.reasoningLevel
-                  ? { reasoningLevel: command.options.reasoningLevel }
+                  ? {
+                      reasoningLevel: toPiThinkingLevel(
+                        command.options.reasoningLevel,
+                      ),
+                    }
                   : {}),
                 ...(dynamicTools && dynamicTools.length > 0
                   ? { dynamicTools }
