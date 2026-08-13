@@ -23,7 +23,9 @@ export function resolvePiDriverSessionDir(
     return resolve(configuredSessionDir);
   }
 
-  return join(homedir(), ".bb", "pi-driver-sessions");
+  // This directory is durable provider data. Keep the historical path so
+  // sessions created before the canonical-driver migration still resume.
+  return join(homedir(), ".bb", "pi-bridge-sessions");
 }
 
 export function resolvePiSessionFilePath(
