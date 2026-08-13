@@ -352,6 +352,7 @@ describe("resolveReservedLoopbackPorts", () => {
       resolveReservedLoopbackPorts({
         builtinServerUrl: "http://127.0.0.1:38886",
         localServerUrl: null,
+        appWindowUrl: null,
         localHostDaemonPort: null,
       }),
     ).toEqual(expect.arrayContaining([BB_PROD_HOST_DAEMON_PORT, 38886]));
@@ -361,6 +362,7 @@ describe("resolveReservedLoopbackPorts", () => {
     const ports = resolveReservedLoopbackPorts({
       builtinServerUrl: "http://127.0.0.1:38886",
       localServerUrl: "http://127.0.0.1:19123",
+      appWindowUrl: null,
       localHostDaemonPort: 27123,
     });
     expect(ports).toEqual(
@@ -368,16 +370,32 @@ describe("resolveReservedLoopbackPorts", () => {
     );
   });
 
-  it("keeps bb's own ports reserved when attached to a remote server", () => {
+  // In dev the bb app window loads from a loopback Vite server bb owns, which
+  // no server URL or daemon port names.
+  it("reserves the loopback app-window port in dev", () => {
+    expect(
+      resolveReservedLoopbackPorts({
+        builtinServerUrl: "http://127.0.0.1:19123",
+        localServerUrl: "http://127.0.0.1:19123",
+        appWindowUrl: "http://127.0.0.1:11123/",
+        localHostDaemonPort: 27123,
+      }),
+    ).toEqual(expect.arrayContaining([11123, 19123, 27123]));
+  });
+
+  // Switching to a remote target leaves the local runtime and its daemon
+  // running, so their ports must survive the switch.
+  it("keeps the local daemon port reserved while pointed at a remote server", () => {
     const ports = resolveReservedLoopbackPorts({
       builtinServerUrl: "http://127.0.0.1:38886",
-      localServerUrl: "https://bee.getbb.app",
-      localHostDaemonPort: null,
+      localServerUrl: "http://127.0.0.1:19123",
+      appWindowUrl: "https://bee.getbb.app",
+      localHostDaemonPort: 27123,
     });
     expect(ports).toEqual(
-      expect.arrayContaining([BB_PROD_HOST_DAEMON_PORT, 38886]),
+      expect.arrayContaining([BB_PROD_HOST_DAEMON_PORT, 38886, 19123, 27123]),
     );
-    expect(ports).toHaveLength(2);
+    expect(ports).toHaveLength(4);
   });
 });
 

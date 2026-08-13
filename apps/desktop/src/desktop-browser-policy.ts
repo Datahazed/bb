@@ -409,6 +409,11 @@ export interface ResolveReservedLoopbackPortsArgs {
   /** The attached runtime's server URL, or null when none is attached. */
   localServerUrl: string | null;
   /**
+   * URL the bb app window itself loads, or null before the first load. In dev
+   * that is a loopback Vite server bb owns, which is otherwise unnamed here.
+   */
+  appWindowUrl: string | null;
+  /**
    * Host-daemon port an attached loopback server reports, or null before the
    * first system-config fetch lands and after the config sync stops.
    */
@@ -416,7 +421,9 @@ export interface ResolveReservedLoopbackPortsArgs {
 }
 
 /**
- * The loopback ports bb itself serves, which browsed pages must never reach.
+ * The loopback ports bb itself serves, which browsed pages must never reach:
+ * the bb server, the host daemon, and in dev the Vite server that hosts the bb
+ * app window.
  *
  * The packaged host-daemon port is always reserved, because
  * `localHostDaemonPort` only arrives with the first system-config fetch and a
@@ -429,8 +436,12 @@ export function resolveReservedLoopbackPorts(
   args: ResolveReservedLoopbackPortsArgs,
 ): readonly number[] {
   const ports = new Set<number>([BB_PROD_HOST_DAEMON_PORT]);
-  for (const serverUrl of [args.builtinServerUrl, args.localServerUrl]) {
-    const port = serverUrl === null ? null : loopbackServicePort(serverUrl);
+  for (const url of [
+    args.builtinServerUrl,
+    args.localServerUrl,
+    args.appWindowUrl,
+  ]) {
+    const port = url === null ? null : loopbackServicePort(url);
     if (port !== null) {
       ports.add(port);
     }

@@ -884,10 +884,12 @@ async function refreshSystemConfig(
     if (token !== systemConfigRefreshToken) {
       return;
     }
-    currentLocalHostDaemonPort =
-      loopbackServicePort(args.serverUrl) === null
-        ? null
-        : config.hostDaemonPort;
+    // Only a loopback server describes this machine's daemon. A remote target
+    // must not clear the port either: switching to one leaves the local
+    // runtime, and its daemon, running.
+    if (loopbackServicePort(args.serverUrl) !== null) {
+      currentLocalHostDaemonPort = config.hostDaemonPort;
+    }
     currentAppKeybindings = config.keybindings;
     currentApplicationMenuAccelerators = resolveApplicationMenuAccelerators(
       currentAppKeybindings,
@@ -936,6 +938,7 @@ function createRemoteSystemConfigSync(serverUrl: string): SystemConfigSync {
   };
 }
 
+/** Runs when the local runtime stops or the app quits, never on a target switch. */
 function stopSystemConfigSync(): void {
   systemConfigSync?.stop();
   systemConfigSync = null;
@@ -952,6 +955,7 @@ function reservedLoopbackPorts(): readonly number[] {
   return resolveReservedLoopbackPorts({
     builtinServerUrl,
     localServerUrl: currentRuntime?.serverUrl ?? null,
+    appWindowUrl: currentWindowUrl,
     localHostDaemonPort: currentLocalHostDaemonPort,
   });
 }

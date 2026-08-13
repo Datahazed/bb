@@ -21,16 +21,44 @@ export interface MachineAuthProxy {
   close(): Promise<void>;
 }
 
+// Headers no non-browser client sends. `Origin` rides every browser write and
+// WebSocket handshake; `Sec-Fetch-Site` rides every browser fetch, including a
+// blind `no-cors` GET that carries no `Origin`. `Sec-Fetch-Mode` is NOT a
+// discriminator: Node's own `fetch` sends `sec-fetch-mode: cors`, so keying on
+// it would reject the runtime processes this proxy exists to serve.
+const BROWSER_REQUEST_HEADERS = ["origin", "sec-fetch-site"] as const;
+
+const REJECTED_SOCKET_MESSAGES = {
+  400: "Bad Request",
+  403: "Forbidden",
+  405: "Method Not Allowed",
+} as const;
+
+type RejectedSocketStatus = keyof typeof REJECTED_SOCKET_MESSAGES;
+
+/**
+ * Whether a web page made this request. This proxy exists for the Node runtime
+ * processes it hands `BB_SERVER_URL` to, and it stamps every forwarded request
+ * with a machine credential. A page can reach any loopback port it can guess,
+ * and a `no-cors` request still acts even though its response stays hidden, so
+ * a browsed page must never borrow that credential.
+ */
+export function isBrowserRequest(headers: IncomingHttpHeaders): boolean {
+  return BROWSER_REQUEST_HEADERS.some((name) => headers[name] !== undefined);
+}
+
 function isOriginFormTarget(target: string | undefined): target is string {
   return (
     target !== undefined && target.startsWith("/") && !target.startsWith("//")
   );
 }
 
-function writeRejectedSocket(socket: Duplex, status: 400 | 405): void {
-  const message = status === 405 ? "Method Not Allowed" : "Bad Request";
+function writeRejectedSocket(
+  socket: Duplex,
+  status: RejectedSocketStatus,
+): void {
   socket.end(
-    `HTTP/1.1 ${status} ${message}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
+    `HTTP/1.1 ${status} ${REJECTED_SOCKET_MESSAGES[status]}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
   );
 }
 
@@ -52,6 +80,10 @@ function proxyRequest(args: {
   response: ServerResponse;
   target: URL;
 }): void {
+  if (isBrowserRequest(args.request.headers)) {
+    args.response.writeHead(403).end();
+    return;
+  }
   if (!isOriginFormTarget(args.request.url)) {
     args.response.writeHead(400).end();
     return;
@@ -97,6 +129,10 @@ function proxyUpgrade(args: {
   request: IncomingMessage;
   target: URL;
 }): void {
+  if (isBrowserRequest(args.request.headers)) {
+    writeRejectedSocket(args.clientSocket, 403);
+    return;
+  }
   if (!isOriginFormTarget(args.request.url)) {
     writeRejectedSocket(args.clientSocket, 400);
     return;
