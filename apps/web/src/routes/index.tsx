@@ -55,7 +55,7 @@ import {
   GitHubLink,
   ProductHuntCallout,
 } from "../landing/cta";
-import { DASHBOARD_PATH } from "../lib/connect-return-to";
+import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import {
   ClaudeIcon,
   CursorIcon,
@@ -1736,19 +1736,7 @@ function LandingPage() {
   }, []);
   return (
     <div className="wrap">
-      <nav className="nav">
-        <a className="logo" href="/">
-          <img src={bbIcon} alt="bb" width={36} height={36} />
-        </a>
-        <div className="nav-links">
-          <a href="/changelog">Changelog</a>
-          <GitHubLink placement="nav">GitHub</GitHubLink>
-          <a href={DASHBOARD_PATH}>Sign in</a>
-          <DownloadLink placement="nav" className="btn btn-primary btn-sm">
-            Download for macOS
-          </DownloadLink>
-        </div>
-      </nav>
+      <SiteNav />
 
       <header className="hero">
         {PRODUCT_HUNT_LAUNCH_ACTIVE ? (
@@ -1884,18 +1872,7 @@ function LandingPage() {
         <EmailSignup placement="footer" />
       </section>
 
-      <footer className="footer">
-        <span>bb is free and open source (MIT)</span>
-        <span>
-          <a href="/changelog">Changelog</a>
-          {" · "}
-          <GitHubLink placement="footer">GitHub</GitHubLink>
-          {" · "}
-          <DiscordLink placement="footer">Discord</DiscordLink>
-          {" · "}
-          <DownloadLink placement="footer">Download</DownloadLink>
-        </span>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }
