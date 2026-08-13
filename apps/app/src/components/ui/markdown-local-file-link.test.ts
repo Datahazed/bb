@@ -288,6 +288,16 @@ describe("resolveRelativeLocalFileHref", () => {
     ).toBeNull();
   });
 
+  it("rejects home-relative paths", () => {
+    expect(
+      resolveRelativeLocalFileHref({
+        baseDir: "/workspace",
+        href: "~/.config/example.md",
+        rootPath: "/workspace",
+      }),
+    ).toBeNull();
+  });
+
   it("rejects relative paths that escape the containing root", () => {
     expect(
       resolveRelativeLocalFileHref({

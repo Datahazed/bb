@@ -297,6 +297,7 @@ export function resolveRelativeLocalFileHref({
     parsedHref === null ||
     parsedHref.path.length === 0 ||
     parsedHref.path.startsWith("/") ||
+    parsedHref.path.startsWith("~/") ||
     parsedHref.path.startsWith("#") ||
     parsedHref.path.startsWith("?") ||
     URI_SCHEME_PATTERN.test(parsedHref.path)
