@@ -211,7 +211,9 @@ export function useFixedPanelTabsState(
   const queryClient = useQueryClient();
   const resolvedThreadId = hasThreadId(syncThreadId) ? syncThreadId : null;
   const tabsQuery = useThreadTabs(resolvedThreadId ?? "", {
-    enabled: resolvedThreadId !== null,
+    // Tabs have no visible consumer while the secondary panel is closed. The
+    // local presentation state still restores whether the panel itself opens.
+    enabled: resolvedThreadId !== null && state.secondary.isOpen,
   });
 
   useEffect(() => {

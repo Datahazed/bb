@@ -35,6 +35,7 @@ import {
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
 } from "@/hooks/queries/thread-queries";
+import { THREAD_OPEN_MOUNT_COALESCE_STALE_TIME_MS } from "@/hooks/queries/query-policies";
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
@@ -727,7 +728,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   // mirroring how the in-view unread signal covers every thread kind.
   const currentThreadPendingInteractionsQuery = useThreadPendingInteractions(
     threadId ?? "",
-    { enabled: isThreadView && Boolean(threadId) },
+    {
+      enabled: isThreadView && Boolean(threadId),
+      staleTime: THREAD_OPEN_MOUNT_COALESCE_STALE_TIME_MS,
+    },
   );
   const currentThreadHasPendingInteraction =
     getLatestPendingInteraction(currentThreadPendingInteractionsQuery.data) !==

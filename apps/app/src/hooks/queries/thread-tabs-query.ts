@@ -8,6 +8,10 @@ interface ThreadTabsQueryOptions {
   enabled?: boolean;
 }
 
+export function fetchThreadTabs(threadId: string, signal?: AbortSignal) {
+  return sdk.threads.tabs.get({ threadId, signal });
+}
+
 export function useThreadTabs(
   threadId: string,
   options?: ThreadTabsQueryOptions,
@@ -16,7 +20,7 @@ export function useThreadTabs(
 
   return useQuery<ThreadTabsResponse>({
     queryKey: threadTabsQueryKey(threadId),
-    queryFn: ({ signal }) => sdk.threads.tabs.get({ threadId, signal }),
+    queryFn: ({ signal }) => fetchThreadTabs(threadId, signal),
     enabled,
     ...RESUME_REFETCH_QUERY_POLICY,
   });

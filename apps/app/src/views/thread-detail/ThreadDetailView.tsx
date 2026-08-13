@@ -62,10 +62,13 @@ import {
   useThread,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
+  useThreadPromptHistory,
   useThreadQueuedMessages,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
+import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
+import { THREAD_OPEN_MOUNT_COALESCE_STALE_TIME_MS } from "@/hooks/queries/query-policies";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
@@ -602,6 +605,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     thread?.id ?? "",
     {
       enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
+      // AppLayout already owns the page thread's current interaction query for
+      // favicon attention. Pane threads have no such parent owner and still
+      // establish their own fresh baseline.
+      refetchOnMount: props.surface === "pane",
+      staleTime: THREAD_OPEN_MOUNT_COALESCE_STALE_TIME_MS,
     },
   );
   const pendingInteractions = pendingInteractionsQuery.data ?? [];
@@ -610,10 +618,20 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     (pendingInteractionsQuery.isLoading || pendingInteractionsQuery.isFetching);
   const hasPendingInteraction =
     getLatestPendingInteraction(pendingInteractions) !== null;
-  const { data: queuedMessagesForEditEligibility = [] } =
-    useThreadQueuedMessages(thread?.id ?? "", {
-      enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
-    });
+  const composerQueriesEnabled =
+    threadQueryState.status === "ready" && Boolean(thread?.id);
+  const defaultExecutionOptionsQuery = useThreadDefaultExecutionOptions(
+    thread?.id ?? "",
+    { enabled: composerQueriesEnabled },
+  );
+  const { data: promptHistoryEntries = [] } = useThreadPromptHistory(
+    thread?.id ?? "",
+    { enabled: composerQueriesEnabled },
+  );
+  const { data: queuedMessages = [] } = useThreadQueuedMessages(
+    thread?.id ?? "",
+    { enabled: composerQueriesEnabled },
+  );
   const unreadDividerState = useThreadUnreadDividerState({
     routeThreadId: threadId,
     thread,
@@ -627,7 +645,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   );
   const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
     useState<BrowserAddressFocusRequest | null>(null);
-  const shouldLoadThreadStorageFiles = thread !== undefined;
+  // Thread storage backs only the secondary file panel. Keep its directory
+  // walk off the thread-open path until that panel is actually visible.
+  const shouldLoadThreadStorageFiles =
+    thread !== undefined && isSecondaryPanelOpen;
   const {
     isThreadStorageFilesLoading,
     refetchThreadStorageFiles,
@@ -978,7 +999,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     !createQueuedMessage.isPending &&
     !editMessage.isPending &&
     !(timelineLoading && timelineRows.length === 0) &&
-    queuedMessagesForEditEligibility.length === 0 &&
+    queuedMessages.length === 0 &&
     activeWorkflows.length === 0 &&
     thread.activeBackgroundAgentCount === 0 &&
     activeBackgroundCommands.length === 0;
@@ -2580,6 +2601,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       activeBackgroundAgentCount={thread.activeBackgroundAgentCount}
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
+      defaultExecutionOptions={defaultExecutionOptionsQuery.data}
+      defaultExecutionOptionsError={defaultExecutionOptionsQuery.isError}
       environmentCheckout={threadCheckoutDisplay}
       environmentCompactLabel={
         threadEnvironmentDisplay
@@ -2634,6 +2657,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       pendingInteractions={pendingInteractions}
       pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
       pendingTodos={pendingTodos}
+      promptHistoryEntries={promptHistoryEntries}
       activePromptMode={activePromptMode}
       goal={goal}
       modelFallback={modelFallback}
@@ -2643,6 +2667,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       childPendingInteractions={childPendingInteractions}
       childThreadsSection={childThreadsSection}
       pullRequest={pullRequest}
+      queuedMessages={queuedMessages}
       thread={thread}
     />
   );

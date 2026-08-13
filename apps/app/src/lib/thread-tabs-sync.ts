@@ -10,6 +10,8 @@ import {
   invalidateCachedThreadTabs,
   setCachedThreadTabs,
 } from "@/hooks/cache-owners/thread-tabs-cache-owner";
+import { threadTabsQueryKey } from "@/hooks/queries/query-keys";
+import { fetchThreadTabs } from "@/hooks/queries/thread-tabs-query";
 import { BbHttpError, sdk } from "./sdk";
 import {
   areFixedPanelTabsEquivalent,
@@ -128,9 +130,12 @@ async function readCurrentThreadTabs({
   if (cached !== undefined) {
     return cached;
   }
-  const response = await sdk.threads.tabs.get({ threadId });
-  setCachedThreadTabs(queryClient, threadId, response);
-  return response;
+  // Share the same query promise as the panel-open observer so opening a tab
+  // and persisting it in one action cannot race two initial reads.
+  return queryClient.fetchQuery({
+    queryKey: threadTabsQueryKey(threadId),
+    queryFn: ({ signal }) => fetchThreadTabs(threadId, signal),
+  });
 }
 
 function isThreadTabsConflict(error: unknown): boolean {

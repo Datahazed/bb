@@ -9,6 +9,11 @@ const FOCUS_OWNED_LIVE_STALE_TIME_MS = 30_000;
 const FAST_FOCUS_OWNED_LIVE_STALE_TIME_MS = 5_000;
 const TYPEAHEAD_STALE_TIME_MS = 15_000;
 
+// Route transitions can mount two observers for the same live query a few
+// milliseconds apart. Keep the first answer fresh only long enough to coalesce
+// that handoff; realtime invalidation still refreshes actual changes.
+export const THREAD_OPEN_MOUNT_COALESCE_STALE_TIME_MS = 1_000;
+
 export const SESSION_STATIC_QUERY_POLICY = {
   refetchOnMount: false,
   refetchOnReconnect: false,

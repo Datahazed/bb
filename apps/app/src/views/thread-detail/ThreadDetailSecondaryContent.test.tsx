@@ -25,6 +25,9 @@ type DrawerShellCallback = (open: boolean) => void;
 const drawerShellState = vi.hoisted(() => ({
   onContentAnimationEnd: undefined as DrawerShellCallback | undefined,
 }));
+const queryMocks = vi.hoisted(() => ({
+  useThreads: vi.fn(() => ({ data: [] })),
+}));
 
 vi.mock("@/lib/browser-view-bounds-sync", () => ({
   dispatchBrowserViewBoundsSync: vi.fn(),
@@ -42,7 +45,7 @@ vi.mock("@/components/ui/sidebar.js", () => ({
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThreads: () => ({ data: [] }),
+  useThreads: queryMocks.useThreads,
 }));
 
 vi.mock("jotai", async (importOriginal) => ({
@@ -478,6 +481,29 @@ afterEach(() => {
 beforeEach(() => {
   publishedHostedPanel = null;
   vi.mocked(dispatchBrowserViewBoundsSync).mockReset();
+  queryMocks.useThreads.mockClear();
+});
+
+describe("ThreadDetailSecondaryContent query deferral", () => {
+  it("waits to list forks until the secondary panel opens", () => {
+    const view = renderThreadDetail({
+      isCompactViewport: false,
+      isSecondaryPanelOpen: false,
+      renderBrowserDeck: createBrowserDeckRenderer(),
+      threadId: "thread-1",
+    });
+
+    expect(queryMocks.useThreads).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sourceThreadId: "thread-1" }),
+      { enabled: false },
+    );
+
+    view.rerenderWith({ isSecondaryPanelOpen: true });
+    expect(queryMocks.useThreads).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sourceThreadId: "thread-1" }),
+      { enabled: true },
+    );
+  });
 });
 
 describe("ThreadDetailSecondaryContent compact drawer settling", () => {

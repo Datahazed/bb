@@ -262,29 +262,38 @@ function ThreadDetailSecondaryContentBody({
 
   // Mirror ForksRow's query (deduped by react-query) so the visibility gate
   // accounts for the lazily-fetched Forks row.
-  const forksQuery = useThreads({
-    projectId: stableMetadata.thread.projectId,
-    sourceThreadId: stableMetadata.thread.id,
-    originKind: "fork",
-    archived: false,
-  });
+  const forksQuery = useThreads(
+    {
+      projectId: stableMetadata.thread.projectId,
+      sourceThreadId: stableMetadata.thread.id,
+      originKind: "fork",
+      archived: false,
+    },
+    {
+      enabled: isSecondaryPanelOpen,
+    },
+  );
   const hasForks = (forksQuery.data?.length ?? 0) > 0;
 
-  const metadataContent = useMemo(
-    () =>
-      hasAnyThreadMetadata(stableMetadata, hasForks) ? (
+  const metadataContent = useMemo(() => {
+    if (!isSecondaryPanelOpen) {
+      return null;
+    }
+    if (hasAnyThreadMetadata(stableMetadata, hasForks)) {
+      return (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <ThreadMetadataContent {...stableMetadata} />
         </div>
-      ) : isMetadataLoading ? (
-        <ThreadMetadataLoadingSkeleton />
-      ) : (
-        <div className="px-4 pt-1 text-sm text-muted-foreground">
-          No thread details available.
-        </div>
-      ),
-    [hasForks, isMetadataLoading, stableMetadata],
-  );
+      );
+    }
+    return isMetadataLoading ? (
+      <ThreadMetadataLoadingSkeleton />
+    ) : (
+      <div className="px-4 pt-1 text-sm text-muted-foreground">
+        No thread details available.
+      </div>
+    );
+  }, [hasForks, isMetadataLoading, isSecondaryPanelOpen, stableMetadata]);
   const inlineSecondaryPanelContent = useMemo(
     () =>
       !renderAsDrawer ? (

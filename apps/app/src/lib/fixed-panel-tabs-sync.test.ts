@@ -222,7 +222,7 @@ describe("fixed panel tab server sync", () => {
     });
   });
 
-  it("persists tab-list changes but not presentation-only changes", async () => {
+  it("defers the server read until the panel opens, then persists tab-list changes", async () => {
     const threadId = "sync-local-updates";
     apiMocks.getThreadTabs.mockResolvedValue({ revision: 2, tabs: [] });
     const savedTab = createThreadInfoFixedPanelTab();
@@ -238,7 +238,17 @@ describe("fixed panel tab server sync", () => {
       }),
       { wrapper: createQueryWrapper(queryClient) },
     );
-    await waitFor(() => expect(apiMocks.getThreadTabs).toHaveBeenCalled());
+    expect(apiMocks.getThreadTabs).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.update((current) => ({
+        ...current,
+        secondary: { ...current.secondary, isOpen: true },
+      }));
+    });
+    await waitFor(() => {
+      expect(apiMocks.getThreadTabs).toHaveBeenCalledTimes(1);
+    });
 
     act(() => {
       result.current.update((current) => ({
@@ -301,6 +311,14 @@ describe("fixed panel tab server sync", () => {
       }),
       { wrapper: createQueryWrapper(queryClient) },
     );
+    expect(apiMocks.getThreadTabs).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.update((current) => ({
+        ...current,
+        secondary: { ...current.secondary, isOpen: true },
+      }));
+    });
     await waitFor(() => {
       expect(result.current.state.secondary.tabs).toEqual([originalTab]);
     });

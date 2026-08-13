@@ -66,10 +66,7 @@ const mocks = vi.hoisted(() => ({
   unarchiveThreadMutate: vi.fn(),
   uploadPromptAttachmentMutateAsync: vi.fn(),
   updateQueuedMessageMutateAsync: vi.fn(),
-  useThreadDefaultExecutionOptions: vi.fn(),
   useThreadCreationOptions: vi.fn(),
-  useThreadPromptHistory: vi.fn(),
-  useThreadQueuedMessages: vi.fn(),
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -503,27 +500,9 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useProjectDisplayName: () => null,
 }));
 
-vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
-  useThreadDefaultExecutionOptions: (threadId: string, options: unknown) => {
-    mocks.useThreadDefaultExecutionOptions(threadId, options);
-    return {
-      data: mocks.defaultExecutionOptions,
-      isError: false,
-    };
-  },
-}));
-
 vi.mock("@/hooks/queries/thread-queries", () => ({
   getLatestPendingInteraction: (interactions: readonly PendingInteraction[]) =>
     interactions.at(-1) ?? null,
-  useThreadPromptHistory: (threadId: string, options: unknown) => {
-    mocks.useThreadPromptHistory(threadId, options);
-    return { data: [] };
-  },
-  useThreadQueuedMessages: (threadId: string, options: unknown) => {
-    mocks.useThreadQueuedMessages(threadId, options);
-    return { data: mocks.queuedMessages };
-  },
 }));
 
 function makeQueuedMessage(
@@ -664,6 +643,8 @@ function buildPromptAreaElement({
       childThreadsSection={null}
       composerFocusRequestNonce={0}
       contextBannerMergeBase={null}
+      defaultExecutionOptions={mocks.defaultExecutionOptions}
+      defaultExecutionOptionsError={false}
       environmentGoneStatus={null}
       goal={goal}
       modelFallback={modelFallback}
@@ -674,9 +655,11 @@ function buildPromptAreaElement({
       pendingInteractions={pendingInteractions}
       pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
       pendingTodos={null}
+      promptHistoryEntries={[]}
       projectId="proj_1"
       pullRequest={null}
       pullRequestMergeMethod="squash"
+      queuedMessages={mocks.queuedMessages}
       resolveMentionLink={() => null}
       sendMessage={{
         isPending: false,
@@ -717,9 +700,6 @@ beforeEach(() => {
   mocks.queuedMessages = [];
   mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
   mocks.useThreadCreationOptions.mockClear();
-  mocks.useThreadDefaultExecutionOptions.mockClear();
-  mocks.useThreadPromptHistory.mockClear();
-  mocks.useThreadQueuedMessages.mockClear();
 });
 
 afterEach(() => {
@@ -880,23 +860,11 @@ describe("ThreadDetailPromptArea", () => {
     expect(stack.nextElementSibling).toBe(composer);
   });
 
-  it("uses the real thread cache keys immediately", () => {
+  it("uses provided composer query data immediately", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
 
     renderPromptArea();
 
-    expect(mocks.useThreadDefaultExecutionOptions).toHaveBeenCalledWith(
-      "thr_1",
-      expect.objectContaining({ enabled: true }),
-    );
-    expect(mocks.useThreadPromptHistory).toHaveBeenCalledWith(
-      "thr_1",
-      expect.objectContaining({ enabled: true }),
-    );
-    expect(mocks.useThreadQueuedMessages).toHaveBeenCalledWith(
-      "thr_1",
-      expect.objectContaining({ enabled: true }),
-    );
     expect(mocks.useThreadCreationOptions).toHaveBeenCalledWith(
       expect.objectContaining({
         enabled: true,

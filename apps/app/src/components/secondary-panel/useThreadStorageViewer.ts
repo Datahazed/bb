@@ -9,7 +9,7 @@ import {
 
 interface UseThreadStorageViewerParams {
   activePath: string | null;
-  fileListEnabled?: boolean;
+  fileListEnabled: boolean;
   fileListOptions?: ThreadStorageFileListOptions;
   filePreviewEnabled?: boolean;
   threadId?: string;
@@ -17,7 +17,7 @@ interface UseThreadStorageViewerParams {
 
 export function useThreadStorageViewer({
   activePath,
-  fileListEnabled = true,
+  fileListEnabled,
   fileListOptions = DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
   filePreviewEnabled = true,
   threadId,

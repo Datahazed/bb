@@ -12,6 +12,7 @@ import type {
   EnvironmentStatus,
   PendingInteraction,
   PromptInput,
+  ResolvedThreadExecutionOptions,
   ThreadQueuedMessage,
   ThreadPullRequest,
   ThreadTimelineActivePromptMode,
@@ -21,6 +22,7 @@ import type {
   ThreadWithRuntime,
 } from "@bb/domain";
 import type {
+  PromptHistoryResponse,
   PullRequestMergeMethod,
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
@@ -79,12 +81,7 @@ import {
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
-import {
-  getLatestPendingInteraction,
-  useThreadQueuedMessages,
-  useThreadPromptHistory,
-} from "@/hooks/queries/thread-queries";
-import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
+import { getLatestPendingInteraction } from "@/hooks/queries/thread-queries";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectComposeRoutePath } from "@/lib/route-paths";
@@ -137,6 +134,8 @@ export const THREAD_DETAIL_COMPOSER_TEXTAREA_ID =
 interface ThreadDetailPromptAreaProps {
   activeBackgroundAgentCount: number;
   canUseGitUi: boolean;
+  defaultExecutionOptions: ResolvedThreadExecutionOptions | null | undefined;
+  defaultExecutionOptionsError: boolean;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
   environmentCompactLabel?: string;
@@ -160,6 +159,8 @@ interface ThreadDetailPromptAreaProps {
   isEnvironmentActionPending: boolean;
   pendingInteractions: readonly PendingInteraction[];
   pendingInteractionsInitialLoading: boolean;
+  promptHistoryEntries: PromptHistoryResponse;
+  queuedMessages: readonly ThreadQueuedMessage[];
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
   openThreadDiffPanel: () => void;
   projectId: string;
@@ -308,6 +309,8 @@ function buildInlineDraftComposer(options: InlineDraftComposerOptions) {
 export function ThreadDetailPromptArea({
   activeBackgroundAgentCount,
   canUseGitUi,
+  defaultExecutionOptions,
+  defaultExecutionOptionsError,
   contextWindowUsage,
   environmentCheckout,
   environmentCompactLabel,
@@ -323,6 +326,8 @@ export function ThreadDetailPromptArea({
   isEnvironmentActionPending,
   pendingInteractions,
   pendingInteractionsInitialLoading,
+  promptHistoryEntries,
+  queuedMessages,
   onChangedFileClick,
   openThreadDiffPanel,
   projectId,
@@ -347,13 +352,6 @@ export function ThreadDetailPromptArea({
   thread,
 }: ThreadDetailPromptAreaProps) {
   const navigate = useNavigate();
-  const defaultExecutionOptionsQuery = useThreadDefaultExecutionOptions(
-    thread.id,
-    {
-      enabled: true,
-    },
-  );
-  const defaultExecutionOptions = defaultExecutionOptionsQuery.data;
   const hasResolvedDefaultExecutionOptions =
     defaultExecutionOptions !== undefined;
   const hasConcreteDefaultExecutionOptions =
@@ -361,13 +359,10 @@ export function ThreadDetailPromptArea({
   const defaultExecutionOptionsState = resolveDefaultExecutionOptionsState({
     hasConcreteDefaultExecutionOptions,
     hasResolvedDefaultExecutionOptions,
-    isError: defaultExecutionOptionsQuery.isError,
+    isError: defaultExecutionOptionsError,
   });
   const isDefaultExecutionOptionsLoading =
     defaultExecutionOptionsState === "loading";
-  const { data: queuedMessages = [] } = useThreadQueuedMessages(thread.id, {
-    enabled: true,
-  });
   const queuedMessagesRef = useRef<readonly ThreadQueuedMessage[]>([]);
   queuedMessagesRef.current = queuedMessages;
   const [bottomPluginFocusNonce, setBottomPluginFocusNonce] = useState(0);
@@ -397,12 +392,6 @@ export function ThreadDetailPromptArea({
       setEditFocusNonce((nonce) => nonce + 1);
     },
   });
-  const { data: promptHistoryEntries = [] } = useThreadPromptHistory(
-    thread.id,
-    {
-      enabled: true,
-    },
-  );
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const stopThread = useStopThread();
   const cancelThreadPlan = useCancelThreadPlan();
@@ -1421,9 +1410,7 @@ export function ThreadDetailPromptArea({
             >
               From child thread: {item.childTitle}
             </NavLink>
-            <PluginPendingInteractionComposer
-              interaction={item.interaction}
-            />
+            <PluginPendingInteractionComposer interaction={item.interaction} />
           </div>
         ) : (
           <ThreadPendingInteractionBanner
