@@ -1232,6 +1232,8 @@ async function applyServerTarget(): Promise<void> {
       return;
     }
     if (!loaded) {
+      // The app never reached this server, so stop refreshing its session.
+      connectSessionRenewal?.stop();
       refreshApplicationMenu();
       return;
     }
