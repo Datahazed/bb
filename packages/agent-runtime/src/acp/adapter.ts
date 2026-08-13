@@ -194,6 +194,26 @@ function extractAcpCommand(event: {
   return toOptionalString(event.title);
 }
 
+const acpRawInputRecordSchema = z.record(z.string(), z.unknown());
+
+/**
+ * ACP `rawInput` is the agent's own tool input object, so it holds the call's
+ * command. opencode sends its `task` tool as kind `think` titled `task`, with
+ * the real work in `rawInput` (`command`, `description`, `prompt`,
+ * `subagent_type`); without this the timeline row can only say "task". Surface
+ * it as the item's `arguments`, the same field the Codex adapter fills, so the
+ * existing tool-call detail renders the command next to the output.
+ */
+function extractAcpToolCallArguments(event: {
+  rawInput?: unknown;
+}): Record<string, unknown> | undefined {
+  const parsed = acpRawInputRecordSchema.safeParse(event.rawInput);
+  if (!parsed.success || Object.keys(parsed.data).length === 0) {
+    return undefined;
+  }
+  return parsed.data;
+}
+
 function extractAcpToolCallPath(
   event: Pick<AcpToolCallUpdateEvent, "locations" | "rawInput">,
 ): string | undefined {
@@ -312,11 +332,13 @@ function translateAcpToolCallItem(
   }
 
   const outputText = extractAcpToolCallOutputText(event);
+  const toolArguments = extractAcpToolCallArguments(event);
   return withParentToolCallId(
     {
       type: "toolCall",
       id: event.toolCallId,
       tool: toOptionalString(event.title) ?? event.kind ?? "tool",
+      ...(toolArguments === undefined ? {} : { arguments: toolArguments }),
       status,
       ...(outputText === undefined ? {} : { result: outputText }),
     },
@@ -903,8 +925,27 @@ export function createAcpProviderAdapter(
           return events;
         }
         state.toolCallEventsByCallId.set(parsed.data.toolCallId, mergedEvent);
+        const revealsArguments =
+          startedItem?.type === "toolCall" &&
+          mergedItem.type === "toolCall" &&
+          startedItem.arguments === undefined &&
+          mergedItem.arguments !== undefined;
         if (!startedItem || startedItem.type === mergedItem.type) {
           state.toolItemsByCallId.set(parsed.data.toolCallId, mergedItem);
+        }
+        // opencode opens every tool call with a bare skeleton (`rawInput: {}`)
+        // and sends the real input on the next update, so the running row would
+        // keep the placeholder label with no detail for the whole call. Restate
+        // the item once, when its arguments first arrive; the timeline merges a
+        // repeated `item/started` into the running call instead of adding a row.
+        if (revealsArguments) {
+          events.push({
+            type: "item/started",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(state.currentTurnId),
+            item: mergedItem,
+          });
         }
         const progressText = extractAcpToolCallOutputText(parsed.data);
         if (progressText && mergedItem.type === "toolCall") {

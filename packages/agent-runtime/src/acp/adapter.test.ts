@@ -1175,6 +1175,187 @@ describe("acp adapter event translation", () => {
     ]);
   });
 
+  // Payload shapes below are recorded from `opencode acp` 1.18.18 driven by a
+  // minimal ACP client (see the pull request for the capture). opencode opens
+  // every tool call with an empty `rawInput` and sends the real input on the
+  // next update, so the task row must pick up its command mid-call.
+  it("surfaces an opencode task command once its arguments arrive", () => {
+    const adapter = createCompactingAdapter();
+    startTurn(adapter);
+
+    expect(
+      adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "tool_call",
+          toolCallId: "call-task",
+          title: "task",
+          kind: "think",
+          status: "pending",
+          locations: [],
+          rawInput: {},
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([
+      {
+        type: "item/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "toolCall",
+          id: "call-task",
+          tool: "task",
+          status: "pending",
+        },
+      },
+    ]);
+
+    const rawInput = {
+      command: "/review",
+      description: "Report workspace contents",
+      prompt: "Explore the workspace and report what is in it.",
+      subagent_type: "explore",
+    };
+    expect(
+      adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-task",
+          status: "in_progress",
+          kind: "think",
+          title: "Report workspace contents",
+          locations: [],
+          rawInput,
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([
+      {
+        type: "item/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "toolCall",
+          id: "call-task",
+          tool: "Report workspace contents",
+          arguments: rawInput,
+          status: "pending",
+        },
+      },
+    ]);
+
+    // A repeat of the same input must not restate the item again.
+    expect(
+      adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-task",
+          status: "in_progress",
+          kind: "think",
+          title: "Report workspace contents",
+          locations: [],
+          rawInput,
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([]);
+
+    // opencode's completion carries the output but repeats neither kind nor
+    // rawInput, so the merged item must still hold the command.
+    expect(
+      adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-task",
+          status: "completed",
+          title: "Report workspace contents",
+          content: [
+            {
+              type: "content",
+              content: {
+                type: "text",
+                text: "<task_result>done</task_result>",
+              },
+            },
+          ],
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([
+      {
+        type: "item/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "toolCall",
+          id: "call-task",
+          tool: "Report workspace contents",
+          arguments: rawInput,
+          status: "completed",
+          result: "<task_result>done</task_result>",
+        },
+      },
+    ]);
+  });
+
+  it("keeps the plain label for a task call that carries no arguments", () => {
+    const adapter = createCompactingAdapter();
+    startTurn(adapter);
+    adapter.translateEvent(
+      updateNotification({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-bare",
+        title: "task",
+        kind: "think",
+        status: "pending",
+        rawInput: {},
+      }),
+      THREAD_CONTEXT,
+    );
+
+    expect(
+      adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-bare",
+          status: "in_progress",
+          kind: "think",
+          title: "task",
+          rawInput: {},
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([]);
+
+    expect(
+      adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-bare",
+          status: "completed",
+          title: "task",
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([
+      {
+        type: "item/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "toolCall",
+          id: "call-bare",
+          tool: "task",
+          status: "completed",
+        },
+      },
+    ]);
+  });
+
   it("translates plan updates", () => {
     const adapter = createAdapter();
     startTurn(adapter);

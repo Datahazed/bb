@@ -1047,6 +1047,40 @@ describe("buildThreadTimelineFromEvents", () => {
     ]);
   });
 
+  // The ACP adapter restates a tool call's `item/started` when the agent sends
+  // its input after the call opens (opencode does this for every tool call).
+  // The restatement must enrich the running row, not add a second one.
+  it("merges a restated tool call item/started into one row with its arguments", () => {
+    const toolArgs = {
+      command: "/review",
+      description: "Report workspace contents",
+      subagent_type: "explore",
+    };
+    const rows = buildTimelineRows(
+      [
+        turnStartedEvent({ seq: 1 }),
+        toolCallItemEvent({ seq: 2, tool: "task", type: "item/started" }),
+        toolCallItemEvent({
+          seq: 3,
+          tool: "task",
+          toolArgs,
+          type: "item/started",
+        }),
+      ],
+      "active",
+    );
+
+    const toolRows = collectToolRows(rows);
+    expect(toolRows).toHaveLength(1);
+    expect(toolRows[0]).toEqual(
+      expect.objectContaining({
+        status: "pending",
+        toolArgs,
+        toolName: "task",
+      }),
+    );
+  });
+
   it("extracts the exact active Plan turn id from the accepted input scope", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const requestId = "creq_23456789ab";
