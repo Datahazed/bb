@@ -78,6 +78,7 @@ describe("createAgentRuntime process lifecycle", () => {
         identityRegistry.createProviderState({ providerId }),
       env: args.env,
       getNextRequestId: () => nextRequestId++,
+      handleCanonicalToolCall: async () => ({ success: true, content: [] }),
       handleConnectionEvents: () => undefined,
       handleStdoutLine: () => undefined,
       onProcessExit: args.onProcessExit,
@@ -88,6 +89,7 @@ describe("createAgentRuntime process lifecycle", () => {
       onProviderThreadDetached: (threadId) =>
         identityRegistry.clearThread(threadId),
       onStderr: args.onStderr,
+      resolveThreadStoragePath: (threadId) => `/tmp/threads/${threadId}`,
       skillRoots: [],
       workspacePath: args.workspacePath,
     });

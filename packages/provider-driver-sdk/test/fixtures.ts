@@ -9,7 +9,7 @@ import {
 
 export function makeInitializeParams(): ProviderDriverInitializeParams {
   return providerDriverInitializeParamsSchema.parse({
-    supportedProtocolVersions: [2],
+    supportedProtocolVersions: [3],
     expected: {
       pluginId: "fake",
       driverId: "fake",

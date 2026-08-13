@@ -58,7 +58,7 @@ class FakeDriverPeer {
 
 function makeInitializeParams(): ProviderDriverInitializeParams {
   return providerDriverInitializeParamsSchema.parse({
-    supportedProtocolVersions: [2],
+    supportedProtocolVersions: [3],
     expected: {
       pluginId: "test-plugin",
       driverId: "test-driver",
@@ -73,7 +73,7 @@ function makeInitializeParams(): ProviderDriverInitializeParams {
 
 function makeInitializeResult(): ProviderDriverInitializeResult {
   return providerDriverInitializeResultSchema.parse({
-    protocolVersion: 2,
+    protocolVersion: 3,
     identity: {
       pluginId: "test-plugin",
       driverId: "test-driver",
@@ -449,6 +449,16 @@ describe("ProcessProviderDriverConnection", () => {
 
   it("times out an unanswered request", async () => {
     const { connection, driver } = createHarness({ requestTimeoutMs: 10 });
+    driver.onRequest = () => {};
+
+    await expect(connection.initialize(makeInitializeParams())).rejects.toThrow(
+      "request timed out: driver.initialize",
+    );
+  });
+
+  it("supports tighter startup timeouts than long-running mutations", async () => {
+    const { connection, driver } = createHarness({ requestTimeoutMs: 5_000 });
+    connection.configureRequestTimeouts({ driverInitializeMs: 10 });
     driver.onRequest = () => {};
 
     await expect(connection.initialize(makeInitializeParams())).rejects.toThrow(

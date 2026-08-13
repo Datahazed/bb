@@ -277,6 +277,42 @@ function createAgentRuntimeInternal(
       threadIdentityRegistry.createProviderState({ providerId }),
     env: options.env,
     getNextRequestId: () => nextRequestId++,
+    handleCanonicalToolCall: async (args) => {
+      const attachment = args.providerProcess.connection.resolveAttachment(
+        args.params.attachmentId,
+      );
+      if (!attachment) {
+        throw new Error(
+          `Cannot resolve canonical attachment ${args.params.attachmentId}`,
+        );
+      }
+      const activeTurnId = turnState.getActiveTurnId(attachment.bbThreadId);
+      if (activeTurnId !== args.params.turnId) {
+        throw new Error(
+          `Canonical tool call turn ${args.params.turnId} does not match runtime turn ${activeTurnId ?? "none"}`,
+        );
+      }
+      if (!options.onToolCall) {
+        throw new Error("No runtime tool call handler is configured");
+      }
+      const response = await options.onToolCall({
+        requestId: args.params.callId,
+        threadId: attachment.bbThreadId,
+        providerThreadId: attachment.providerSessionId,
+        turnId: args.params.turnId,
+        callId: args.params.callId,
+        tool: args.params.tool,
+        arguments: args.params.arguments,
+      });
+      return {
+        success: response.success,
+        content: response.contentItems.map((item) =>
+          item.type === "inputText"
+            ? { type: "text" as const, text: item.text }
+            : { type: "image" as const, imageUrl: item.imageUrl },
+        ),
+      };
+    },
     handleConnectionEvents: (args) =>
       emitTranslatedEvents({
         events: args.events,
@@ -309,6 +345,15 @@ function createAgentRuntimeInternal(
       turnReplayFilter.clearThread(threadId);
     },
     onStderr: options.onStderr,
+    resolveThreadStoragePath: (threadId) => {
+      const resolved = resolveThreadStoragePath({ options, threadId });
+      if (!resolved) {
+        throw new Error(
+          `Canonical provider thread ${threadId} requires thread storage`,
+        );
+      }
+      return resolved;
+    },
     skillRoots,
     workspacePath: options.workspacePath,
   });

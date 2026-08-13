@@ -878,6 +878,7 @@ export function createTestRuntime(
   const runtime = createAgentRuntime({
     env: createRuntimeProcessEnv({ providerId, tmpDir }),
     skillRoots: opts?.skillRoots,
+    threadStorageRootPath: join(tmpDir, ".bb-thread-storage"),
     workspacePath: tmpDir,
     onEvent: (e) => events.push(e),
     onToolCall: async (req) => {

@@ -38,7 +38,7 @@ function handle(message) {
       jsonrpc: "2.0",
       id: message.id,
       result: {
-        protocolVersion: 2,
+        protocolVersion: 3,
         identity: {
           pluginId: message.params.expected.pluginId,
           driverId: message.params.expected.driverId,
@@ -103,7 +103,7 @@ if (process.env.FAKE_DRIVER_SCENARIO === "oversized") {
 
 function makeInitializeParams(): ProviderDriverInitializeParams {
   return providerDriverInitializeParamsSchema.parse({
-    supportedProtocolVersions: [2],
+    supportedProtocolVersions: [3],
     expected: {
       pluginId: "test-plugin",
       driverId: "test-driver",
@@ -211,6 +211,10 @@ describe("ProviderDriverSupervisor", () => {
       stream: "stderr",
       line: "fake driver diagnostic",
     });
+
+    await first.stop();
+    const relaunched = await supervisor.launch(launch);
+    expect(relaunched).not.toBe(first);
 
     await supervisor.shutdown();
   });

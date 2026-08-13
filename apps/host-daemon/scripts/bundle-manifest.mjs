@@ -62,6 +62,23 @@ export const bundleTargets = [
       "packages",
       "agent-runtime",
       "src",
+      "pi",
+      "driver.ts",
+    ),
+    externalPackages: [
+      "@earendil-works/pi-ai",
+      "@earendil-works/pi-coding-agent",
+    ],
+    label: "pi canonical driver",
+    outfile: resolve(packageRoot, "dist", "bb-pi-driver.mjs"),
+  },
+  {
+    banner: NODE_ESM_REQUIRE_BANNER,
+    entryPoint: resolve(
+      workspaceRoot,
+      "packages",
+      "agent-runtime",
+      "src",
       "acp",
       "bridge",
       "bridge.ts",

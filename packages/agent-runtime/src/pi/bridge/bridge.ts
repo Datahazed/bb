@@ -1,12 +1,6 @@
 #!/usr/bin/env node
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-} from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
 import { extractEnvOverrides } from "../../shared/adapter-utils.js";
@@ -25,14 +19,12 @@ import {
   createBridgeSessionRegistry,
   type PendingBridgeToolCall,
 } from "../../shared/bridge-session-registry.js";
-import { mimeTypeFromExtension } from "../../shared/mime-types.js";
 import type { ThreadEventContextWindowUsage } from "@bb/domain";
 import {
   SessionManager,
   type AgentSessionEvent,
   type ContextUsage,
 } from "@earendil-works/pi-coding-agent";
-import type { ImageContent } from "@earendil-works/pi-ai";
 import {
   PiSdkSession,
   type PiSdkSessionOptions,
@@ -45,6 +37,7 @@ import {
 import { buildDynamicTools, type DynamicToolDefinition } from "./tool-proxy.js";
 import { listPiBridgeModels } from "./model-list.js";
 import { getPiModelRuntime } from "./model-runtime.js";
+import { extractPiPromptInput } from "./prompt-input.js";
 import {
   takeOverPiBridgeStdout,
   writePiBridgeProtocol,
@@ -761,7 +754,7 @@ async function handleTurnStart(
     return;
   }
 
-  const { text, images } = extractInput(params.input);
+  const { text, images } = extractPiPromptInput(params.input);
   if (!text) {
     sendError(id, -32602, "Missing input text");
     return;
@@ -784,7 +777,7 @@ async function handleTurnSteer(
     return;
   }
 
-  const { text, images } = extractInput(params.input);
+  const { text, images } = extractPiPromptInput(params.input);
   if (!text) {
     sendError(id, -32602, "Missing input text");
     return;
@@ -855,47 +848,6 @@ async function handleThreadDiscard(
     { force: true },
   );
   return { ok: true };
-}
-
-interface ExtractedInput {
-  text?: string;
-  images: ImageContent[];
-}
-
-function extractInput(input: unknown): ExtractedInput {
-  if (typeof input === "string") return { text: input, images: [] };
-  if (!Array.isArray(input)) return { images: [] };
-
-  const chunks: string[] = [];
-  const images: ImageContent[] = [];
-
-  for (const item of input) {
-    if (!item || typeof item !== "object") continue;
-    const typed = item as {
-      type?: string;
-      text?: string;
-      path?: string;
-      url?: string;
-      mimeType?: string;
-    };
-
-    if (typed.type === "text" && typeof typed.text === "string") {
-      chunks.push(typed.text);
-    } else if (typed.type === "localImage" && typeof typed.path === "string") {
-      try {
-        const data = readFileSync(typed.path).toString("base64");
-        const mimeType = typed.mimeType ?? mimeTypeFromExtension(typed.path);
-        images.push({ type: "image", data, mimeType });
-      } catch {
-        // Skip unreadable images silently
-      }
-    }
-  }
-
-  return {
-    text: chunks.length > 0 ? chunks.join("\n") : undefined,
-    images,
-  };
 }
 
 function handleParsedMessage(parsed: unknown): void {

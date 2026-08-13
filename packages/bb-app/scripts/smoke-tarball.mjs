@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import {
+  access,
   mkdir,
   mkdtemp,
   readFile,
@@ -396,6 +397,7 @@ async function smokeBridgeModelList({
 }
 
 async function smokeProviderBridgeBundles(packageDir) {
+  await access(join(packageDir, "host-daemon", "dist", "bb-pi-driver.mjs"));
   await smokeBridgeModelList({
     // The packaged bridge intentionally relies on the host's Claude CLI for
     // account-scoped discovery. CI does not install that provider binary, so

@@ -65,6 +65,13 @@ export interface ProcessProviderDriverConnectionOptions {
   writable: Writable;
 }
 
+export interface ProcessProviderDriverConnectionRequestTimeouts {
+  driverInitializeMs?: number;
+  driverInspectMs?: number;
+  sessionOpenMs?: number;
+  defaultMs?: number;
+}
+
 interface PendingProviderDriverRequest {
   reject(error: Error): void;
   settle(response: ProviderDriverRpcResponse): void;
@@ -155,6 +162,7 @@ export class ProcessProviderDriverConnection {
   >();
   private readonly readable: Readable;
   private readonly requestTimeoutMs: number;
+  private readonly requestTimeouts = new Map<string, number>();
   private readonly writable: Writable;
   private activeHostRequests = 0;
   private closed = false;
@@ -175,6 +183,26 @@ export class ProcessProviderDriverConnection {
     this.readable.on("data", this.handleData);
     this.readable.on("error", this.handleStreamError);
     this.writable.on("error", this.handleStreamError);
+  }
+
+  configureRequestTimeouts(
+    timeouts: ProcessProviderDriverConnectionRequestTimeouts,
+  ): void {
+    if (timeouts.defaultMs !== undefined) {
+      this.requestTimeouts.set("default", timeouts.defaultMs);
+    }
+    if (timeouts.driverInitializeMs !== undefined) {
+      this.requestTimeouts.set(
+        "driver.initialize",
+        timeouts.driverInitializeMs,
+      );
+    }
+    if (timeouts.driverInspectMs !== undefined) {
+      this.requestTimeouts.set("driver.inspect", timeouts.driverInspectMs);
+    }
+    if (timeouts.sessionOpenMs !== undefined) {
+      this.requestTimeouts.set("session.open", timeouts.sessionOpenMs);
+    }
   }
 
   async initialize(
@@ -613,7 +641,7 @@ export class ProcessProviderDriverConnection {
         // The provider may have accepted a timed-out mutation. Close the
         // connection rather than allowing a late response to race a retry.
         this.failProtocol(error);
-      }, this.requestTimeoutMs);
+      }, this.timeoutForMethod(method));
       this.pending.set(id, {
         timeout,
         reject,
@@ -662,6 +690,14 @@ export class ProcessProviderDriverConnection {
         params: parsedParams.data,
       });
     });
+  }
+
+  private timeoutForMethod(method: string): number {
+    return (
+      this.requestTimeouts.get(method) ??
+      this.requestTimeouts.get("default") ??
+      this.requestTimeoutMs
+    );
   }
 
   private writeError(args: {

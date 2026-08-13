@@ -7,6 +7,7 @@ import {
 } from "@bb/process-utils";
 import {
   ProcessProviderDriverConnection,
+  type ProcessProviderDriverConnectionRequestTimeouts,
   type ProcessProviderDriverHostHandlers,
   type ProviderDriverProcessExit,
 } from "./process-connection.js";
@@ -36,6 +37,7 @@ export interface ProviderDriverSupervisorLaunchArgs {
   onProtocolError?: (error: Error) => void;
   processKey: string;
   requestTimeoutMs?: number;
+  requestTimeouts?: ProcessProviderDriverConnectionRequestTimeouts;
 }
 
 export interface SupervisedProviderDriver {
@@ -235,6 +237,9 @@ export class ProviderDriverSupervisor {
         requestTimeoutMs: args.requestTimeoutMs,
         writable: protocolWritable,
       });
+      if (args.requestTimeouts) {
+        connection.configureRequestTimeouts(args.requestTimeouts);
+      }
       let stopped = false;
       const handle: SupervisedProviderDriver = {
         child,
@@ -249,6 +254,19 @@ export class ProviderDriverSupervisor {
             // Process termination below is authoritative during shutdown.
           }
           await terminateChild(child);
+          const current = this.drivers.get(args.processKey);
+          if (current !== undefined) {
+            await current.then(
+              (resolved) => {
+                if (resolved === handle) {
+                  this.drivers.delete(args.processKey);
+                }
+              },
+              () => {
+                // Startup failure removes the promise in launch().
+              },
+            );
+          }
         },
       };
 

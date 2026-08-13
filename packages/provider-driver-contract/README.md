@@ -2,7 +2,7 @@
 
 Runtime-validated contract for the local connection between the BB host daemon and an isolated agent-provider driver process.
 
-This package defines the target protocol and its pure lifecycle validator. `@bb/provider-driver-sdk` implements the driver side, while `ProcessProviderDriverConnection` and `ProviderDriverSupervisor` implement the host side. No production provider uses the canonical path yet; existing providers continue through `ProviderAdapter` until they are migrated individually.
+This package defines the target protocol and its pure lifecycle validator. `@bb/provider-driver-sdk` implements the driver side, while `ProcessProviderDriverConnection` and `ProviderDriverSupervisor` implement the host side. Pi uses the canonical path. Codex, Claude Code, and ACP continue through `ProviderAdapter` until they are migrated individually.
 
 ## Boundary
 
@@ -56,7 +56,7 @@ Stdout and stderr are bounded diagnostics only. They are never parsed as protoco
 
 ### Events
 
-- Protocol version 2 carries bounded canonical item payloads on `item.started` and `item.completed`; core-owned user messages and long-lived background tasks are not accepted as ordinary turn items.
+- Protocol version 3 carries bounded canonical item payloads on `item.started` and `item.completed`; core-owned user messages and long-lived background tasks are not accepted as ordinary turn items. Version 2 replaced version 1's lossy item-kind-only payload and split token/context usage by lifecycle scope; version 3 made dynamic-tool status labels explicit before the first release of a production canonical provider.
 - Token usage and compaction are turn-scoped facts; context-window usage is a session-scoped fact. Drivers do not invent a turn scope for session-only state.
 - Events use a sequence that is contiguous and monotonically increasing across one process connection, starting at 1.
 - Every event names a daemon-issued attachment. Turn/item events also name a daemon-issued canonical turn.

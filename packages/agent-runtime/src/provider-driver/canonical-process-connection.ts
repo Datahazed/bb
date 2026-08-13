@@ -411,6 +411,16 @@ export class CanonicalProcessProviderConnection implements ProviderDriverConnect
     return [];
   }
 
+  resolveAttachment(attachmentId: string) {
+    const attachment = this.attachmentsById.get(attachmentId);
+    return attachment?.providerSessionId
+      ? {
+          bbThreadId: attachment.bbThreadId,
+          providerSessionId: attachment.providerSessionId,
+        }
+      : null;
+  }
+
   onEvent(listener: (events: ThreadEvent[]) => void): () => void {
     this.eventListeners.add(listener);
     return () => this.eventListeners.delete(listener);
@@ -502,6 +512,7 @@ export class CanonicalProcessProviderConnection implements ProviderDriverConnect
         name: tool.name,
         description: tool.description,
         inputSchema: jsonObjectSchema.parse(tool.inputSchema),
+        statusLabels: null,
       })),
       disallowedTools: [...(args.disallowedTools ?? [])],
       outputSchema: args.outputSchema ?? null,

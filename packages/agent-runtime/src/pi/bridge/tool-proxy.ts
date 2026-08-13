@@ -5,11 +5,13 @@ export interface DynamicToolDefinition {
   name: string;
   description: string;
   inputSchema: unknown;
+  statusLabels?: { pending: string; completed: string } | null;
 }
 
 export type ToolCallForwarder = (
   toolName: string,
   args: Record<string, unknown>,
+  providerCallId?: string,
 ) => Promise<{ content: string; isError?: boolean }>;
 
 /**
@@ -28,11 +30,11 @@ export function buildDynamicTools(
       description: def.description,
       parameters,
       async execute(
-        _toolCallId: string,
+        toolCallId: string,
         params: Record<string, unknown>,
         _signal: AbortSignal | undefined,
       ) {
-        const result = await forwardToolCall(def.name, params);
+        const result = await forwardToolCall(def.name, params, toolCallId);
         return {
           content: [{ type: "text" as const, text: result.content }],
           details: {},

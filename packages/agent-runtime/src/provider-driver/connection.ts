@@ -215,6 +215,10 @@ export interface ProviderDriverConnection {
     args: ProviderDriverSetSessionArchivedArgs,
   ): Promise<ThreadEvent[]>;
 
+  resolveAttachment(attachmentId: string): {
+    bbThreadId: string;
+    providerSessionId: string;
+  } | null;
   onEvent(listener: (events: ThreadEvent[]) => void): () => void;
   translateEvent(
     event: ProviderRuntimeEvent,

@@ -359,6 +359,10 @@ export class LegacyAdapterConnection implements ProviderDriverConnection {
     return this.acceptedEvents(command);
   }
 
+  resolveAttachment(_attachmentId: string) {
+    return null;
+  }
+
   onEvent(_listener: (events: ThreadEvent[]) => void) {
     return () => {};
   }

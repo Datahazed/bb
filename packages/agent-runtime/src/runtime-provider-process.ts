@@ -1,8 +1,17 @@
 import type { ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { getBuiltInAgentProviderInfo } from "@bb/agent-providers";
 import type { ThreadEvent } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import {
+  PROVIDER_DRIVER_PROTOCOL_VERSION,
+  type ProviderDriverHostToolCallParams,
+  type ProviderDriverHostToolCallResult,
+} from "@bb/provider-driver-contract";
 import {
   sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
@@ -13,8 +22,15 @@ import type {
 } from "./provider-adapter.js";
 import { createProviderForId } from "./provider-registry.js";
 import { filterSkillRootsForProvider } from "./runtime-skill-roots.js";
+import { classifySessionExecutionSettingsChange } from "./execution-options.js";
+import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
 import type { ProviderDriverConnection } from "./provider-driver/connection.js";
+import { CanonicalProcessProviderConnection } from "./provider-driver/canonical-process-connection.js";
 import { LegacyAdapterConnection } from "./provider-driver/legacy-adapter-connection.js";
+import {
+  ProviderDriverSupervisor,
+  type SupervisedProviderDriver,
+} from "./provider-driver/supervisor.js";
 import type { RuntimeProviderIdentityState } from "./runtime-thread-identity.js";
 import type {
   AgentRuntimeOptions,
@@ -30,6 +46,7 @@ export interface RuntimeProviderProcess {
   interactiveRequestScope: string;
   processKey: string;
   providerId: string;
+  stop?: () => Promise<void>;
   stderrLineTail: Buffer;
   stderrTail: Buffer;
 }
@@ -41,6 +58,11 @@ export interface RuntimeProviderProcessLineArgs {
 
 export interface RuntimeProviderConnectionEventsArgs {
   events: ThreadEvent[];
+  providerProcess: RuntimeProviderProcess;
+}
+
+export interface RuntimeProviderCanonicalToolCallArgs {
+  params: ProviderDriverHostToolCallParams;
   providerProcess: RuntimeProviderProcess;
 }
 
@@ -63,6 +85,9 @@ export interface RuntimeProviderProcessManagerArgs {
   ) => RuntimeProviderIdentityState;
   env: Record<string, string> | undefined;
   getNextRequestId: () => number;
+  handleCanonicalToolCall: (
+    args: RuntimeProviderCanonicalToolCallArgs,
+  ) => Promise<ProviderDriverHostToolCallResult>;
   handleConnectionEvents: (args: RuntimeProviderConnectionEventsArgs) => void;
   handleStdoutLine: (args: RuntimeProviderProcessLineArgs) => void;
   onProcessExit: AgentRuntimeOptions["onProcessExit"];
@@ -74,6 +99,7 @@ export interface RuntimeProviderProcessManagerArgs {
     providerProcess: RuntimeProviderProcess,
   ) => void;
   onStderr: AgentRuntimeOptions["onStderr"];
+  resolveThreadStoragePath: (threadId: string) => string;
   skillRoots: readonly AgentRuntimeSkillRoot[];
   workspacePath: string;
 }
@@ -125,10 +151,31 @@ interface ProviderProcessExitedErrorArgs {
 }
 
 const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
+const CANONICAL_PROVIDER_REQUEST_TIMEOUT_MS = 2 * 60_000;
+const PI_PROVIDER_ID = "pi";
 
 function createAdapterTurnIdPrefix(): string {
   const adapterId = randomUUID().replaceAll("-", "").slice(0, 16);
   return `turn_${adapterId}_`;
+}
+
+function resolvePiDriverProcessArgs(args: {
+  bridgeBundleDir: string | undefined;
+}): string[] {
+  return resolveBridgeProcessArgs({
+    bridgeBundleDir: args.bridgeBundleDir,
+    bundleFileName: "bb-pi-driver.mjs",
+    importMetaUrl: import.meta.url,
+    bridgeRelativePath: "pi/driver.js",
+  });
+}
+
+function driverArtifactDigest(processArgs: readonly string[]): string {
+  const entryPath = processArgs.at(-1);
+  if (!entryPath) {
+    throw new Error("Pi driver launch has no entry point");
+  }
+  return createHash("sha256").update(readFileSync(entryPath)).digest("hex");
 }
 
 export class ProviderProcessExitedError extends Error {
@@ -144,6 +191,7 @@ export class ProviderProcessExitedError extends Error {
 
 export class RuntimeProviderProcessManager {
   private readonly args: RuntimeProviderProcessManagerArgs;
+  private readonly canonicalSupervisor = new ProviderDriverSupervisor();
   private readonly processes = new Map<string, RuntimeProviderProcess>();
   private readonly providerStarting = new Map<string, Promise<void>>();
   private shuttingDown = false;
@@ -162,6 +210,14 @@ export class RuntimeProviderProcessManager {
     if (this.processes.has(args.processKey)) return;
 
     const startPromise = (async () => {
+      if (
+        args.providerId === PI_PROVIDER_ID &&
+        this.args.adapterFactory === undefined
+      ) {
+        await this.startCanonicalPiProvider(args);
+        return;
+      }
+
       const adapter = this.getAdapter(args.providerId, args.acpLaunchSpec);
       const providerProcess = this.spawnProvider({
         adapter,
@@ -238,6 +294,10 @@ export class RuntimeProviderProcessManager {
     }
 
     providerProcess.expectedShutdownExpectations += 1;
+    if (providerProcess.stop) {
+      await providerProcess.stop();
+      return;
+    }
     await this.terminateProviderProcess({
       providerProcess,
       timeoutMs: args.timeoutMs,
@@ -250,19 +310,21 @@ export class RuntimeProviderProcessManager {
 
     for (const [processKey, providerProcess] of this.processes) {
       shutdownPromises.push(
-        new Promise<void>((resolve) => {
-          const timer = setTimeout(() => {
-            providerProcess.child.kill("SIGKILL");
-            resolve();
-          }, 5000);
+        providerProcess.stop
+          ? providerProcess.stop()
+          : new Promise<void>((resolve) => {
+              const timer = setTimeout(() => {
+                providerProcess.child.kill("SIGKILL");
+                resolve();
+              }, 5000);
 
-          providerProcess.child.on("exit", () => {
-            clearTimeout(timer);
-            resolve();
-          });
+              providerProcess.child.on("exit", () => {
+                clearTimeout(timer);
+                resolve();
+              });
 
-          providerProcess.child.kill("SIGTERM");
-        }),
+              providerProcess.child.kill("SIGTERM");
+            }),
       );
       providerProcess.connection.rejectPendingRequests(
         new Error("Runtime shutting down"),
@@ -276,6 +338,144 @@ export class RuntimeProviderProcessManager {
     }
 
     await Promise.all(shutdownPromises);
+    await this.canonicalSupervisor.shutdown();
+  }
+
+  private async startCanonicalPiProvider(
+    args: EnsureRuntimeProviderArgs,
+  ): Promise<void> {
+    const processArgs = resolvePiDriverProcessArgs({
+      bridgeBundleDir: this.args.bridgeBundleDir,
+    });
+    let diagnosticsTail: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+    let providerProcess: RuntimeProviderProcess | null = null;
+    let supervised: SupervisedProviderDriver;
+    try {
+      supervised = await this.canonicalSupervisor.launch({
+        processKey: args.processKey,
+        initialize: {
+          supportedProtocolVersions: [PROVIDER_DRIVER_PROTOCOL_VERSION],
+          expected: {
+            pluginId: PI_PROVIDER_ID,
+            driverId: PI_PROVIDER_ID,
+            providerId: PI_PROVIDER_ID,
+            artifactDigest: driverArtifactDigest(processArgs),
+          },
+          host: {
+            platform: process.platform,
+            architecture: process.arch,
+          },
+          paths: {
+            providerDataDir: join(
+              homedir(),
+              ".bb",
+              "provider-data",
+              PI_PROVIDER_ID,
+            ),
+          },
+          config: {},
+        },
+        launch: {
+          command: this.args.bridgeNodeExecutablePath ?? process.execPath,
+          args: processArgs,
+          cwd: this.args.workspacePath,
+          env: {
+            ...this.args.env,
+            ...this.args.bridgeNodeEnv,
+          },
+        },
+        hostHandlers: {
+          callTool: (params) => {
+            if (!providerProcess) {
+              throw new Error("Pi driver requested a tool during startup");
+            }
+            return this.args.handleCanonicalToolCall({
+              params,
+              providerProcess,
+            });
+          },
+        },
+        onDiagnostic: (diagnostic) => {
+          diagnosticsTail = appendBoundedStderrBytes(
+            diagnosticsTail,
+            Buffer.from(`${diagnostic.line}\n`),
+          );
+          if (providerProcess) {
+            providerProcess.stderrTail = diagnosticsTail;
+          }
+          this.args.onStderr?.(
+            diagnostic.stream === "stderr"
+              ? diagnostic.line
+              : `Pi stdout: ${diagnostic.line}`,
+          );
+        },
+        onExit: (exit) => {
+          if (!providerProcess) return;
+          this.handleProviderProcessExit({
+            code: exit.code,
+            providerId: PI_PROVIDER_ID,
+            providerProcess,
+            signal: exit.signal,
+          });
+        },
+        onProtocolError: (error) => {
+          this.args.onStderr?.(`Pi driver protocol error: ${error.message}`);
+        },
+        requestTimeoutMs: CANONICAL_PROVIDER_REQUEST_TIMEOUT_MS,
+        requestTimeouts: {
+          driverInitializeMs: 30_000,
+          driverInspectMs: 30_000,
+          sessionOpenMs: 30_000,
+        },
+      });
+    } catch (error) {
+      const detail = formatProviderStderr(diagnosticsTail);
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}${detail ? `\nstderr: ${detail}` : ""}`,
+        { cause: error },
+      );
+    }
+
+    const providerInfo = getBuiltInAgentProviderInfo(PI_PROVIDER_ID);
+    const connection = new CanonicalProcessProviderConnection({
+      additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
+      capabilities: providerInfo.capabilities,
+      classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
+      displayName: providerInfo.displayName,
+      processConnection: supervised.connection,
+      providerId: PI_PROVIDER_ID,
+      resolveThreadStoragePath: this.args.resolveThreadStoragePath,
+    });
+    providerProcess = {
+      child: supervised.child,
+      connection,
+      expectedShutdownExpectations: 0,
+      identity: this.args.createProviderIdentityState(PI_PROVIDER_ID),
+      interactiveRequestScope: randomUUID(),
+      processKey: args.processKey,
+      providerId: PI_PROVIDER_ID,
+      stop: async () => supervised.stop(),
+      stderrLineTail: Buffer.alloc(0),
+      stderrTail: diagnosticsTail,
+    };
+    connection.onEvent((events) => {
+      if (this.shuttingDown || !providerProcess) return;
+      this.args.handleConnectionEvents({ events, providerProcess });
+    });
+    this.processes.set(args.processKey, providerProcess);
+
+    try {
+      await connection.initialize(
+        filterSkillRootsForProvider({
+          providerId: PI_PROVIDER_ID,
+          skillRoots: this.args.skillRoots,
+        }),
+      );
+    } catch (error) {
+      this.processes.delete(args.processKey);
+      await supervised.stop();
+      throw error;
+    }
   }
 
   private getAdapter(
@@ -398,6 +598,10 @@ export class RuntimeProviderProcessManager {
     args.providerProcess.connection.rejectPendingRequests(args.startupError);
     this.args.onProviderIdentityWaitersInterrupted(args.providerProcess);
 
+    if (args.providerProcess.stop) {
+      await args.providerProcess.stop();
+      return;
+    }
     await this.terminateProviderProcess({
       providerProcess: args.providerProcess,
     });

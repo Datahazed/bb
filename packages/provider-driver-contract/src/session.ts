@@ -76,6 +76,13 @@ export const providerDriverDynamicToolSchema = z
     name: z.string().min(1).max(PROVIDER_DRIVER_MAX_ID_LENGTH),
     description: z.string().max(PROVIDER_DRIVER_MAX_MESSAGE_LENGTH),
     inputSchema: jsonObjectSchema,
+    statusLabels: z
+      .object({
+        pending: z.string().min(1).max(PROVIDER_DRIVER_MAX_MESSAGE_LENGTH),
+        completed: z.string().min(1).max(PROVIDER_DRIVER_MAX_MESSAGE_LENGTH),
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 export type ProviderDriverDynamicTool = z.infer<
