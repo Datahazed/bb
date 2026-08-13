@@ -28,7 +28,7 @@ export function SplitDimmingButton() {
           className={cn(
             HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
             CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
-            "aria-pressed:bg-state-active aria-pressed:text-foreground",
+            "aria-pressed:bg-transparent aria-pressed:text-foreground aria-pressed:hover:bg-state-hover",
           )}
           aria-label={label}
           aria-pressed={dimsInactiveSplits}

@@ -977,6 +977,8 @@ describe("SplitThreadArea", () => {
       }),
     ).toHaveLength(1);
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.className).toContain("aria-pressed:bg-transparent");
+    expect(toggle.className).not.toContain("aria-pressed:bg-state-active");
     expect(toggle.querySelector('[data-icon="Idea"]')).not.toBeNull();
 
     fireEvent.focus(toggle);
