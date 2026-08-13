@@ -20,12 +20,18 @@ export interface InfoViewModel {
   title: string;
 }
 
-export interface StartupErrorViewModel {
-  /** Recovery buttons. Empty when the failure has no action the app can take. */
+export interface StartupErrorRecovery {
   actions: StartupErrorAction[];
+  /** One-time token that proves a click came from this view. */
+  token: string;
+}
+
+export interface StartupErrorViewModel {
   details: string;
   kind: "error";
   logText: string;
+  /** Null when the failure has no recovery action the app can take. */
+  recovery: StartupErrorRecovery | null;
   title: string;
 }
 
@@ -64,16 +70,17 @@ const STARTUP_ERROR_ACTION_LABELS: Record<StartupErrorAction, string> = {
 };
 
 // The view carries no scripts of its own (CSP default-src 'none'). The window
-// preload finds these buttons by their data attribute and sends the click to
-// the main process.
-function renderErrorActions(actions: StartupErrorAction[]): string {
-  if (actions.length === 0) {
+// preload finds these buttons by their data attribute, reads the token, and
+// sends both to the main process.
+function renderErrorActions(recovery: StartupErrorRecovery | null): string {
+  if (recovery === null || recovery.actions.length === 0) {
     return "";
   }
-  const buttons = actions
+  const token = escapeHtmlText(recovery.token);
+  const buttons = recovery.actions
     .map(
       (action) =>
-        `<button type="button" data-startup-error-action="${action}">${escapeHtmlText(
+        `<button type="button" data-startup-error-action="${action}" data-startup-error-token="${token}">${escapeHtmlText(
           STARTUP_ERROR_ACTION_LABELS[action],
         )}</button>`,
     )
@@ -91,7 +98,7 @@ function renderErrorView(viewModel: StartupErrorViewModel): string {
     <main class="shell shell-error">
       <h1>${escapeHtmlText(viewModel.title)}</h1>
       <p>${escapeHtmlText(viewModel.details)}</p>
-      ${renderErrorActions(viewModel.actions)}
+      ${renderErrorActions(viewModel.recovery)}
       ${logs}
     </main>
   `;

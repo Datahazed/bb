@@ -163,6 +163,9 @@ interface EmitIpcPayloadArgs {
   payload: unknown;
 }
 
+/** Stands in for the token the error view renders into each button. */
+const VIEW_TOKEN = "view-token-1";
+
 interface PreloadDomStub {
   /** Runs the click listener the preload attached to a rendered button. */
   clickButton(action: StartupErrorAction): void;
@@ -193,6 +196,7 @@ function installPreloadDomStub(): PreloadDomStub {
         return null;
       }
       return {
+        dataset: { startupErrorToken: VIEW_TOKEN },
         addEventListener(_type: string, listener: () => void): void {
           clickListeners.set(action, listener);
         },
@@ -583,11 +587,11 @@ describe("desktop preload browser API", () => {
     ).toEqual([
       {
         channel: BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL,
-        payload: { action: "use-this-mac" },
+        payload: { action: "use-this-mac", token: VIEW_TOKEN },
       },
       {
         channel: BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL,
-        payload: { action: "retry" },
+        payload: { action: "retry", token: VIEW_TOKEN },
       },
     ]);
   });

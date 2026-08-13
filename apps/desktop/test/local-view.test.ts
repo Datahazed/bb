@@ -24,10 +24,10 @@ const localViewTestCases: LocalViewTestCase[] = [
   {
     label: "error",
     viewModel: {
-      actions: [],
       details: "The local service failed to start.",
       kind: "error",
       logText: "Failed to bind port",
+      recovery: null,
       title: "Could not open bb",
     },
   },
@@ -71,11 +71,11 @@ describe("local desktop views", () => {
   it("renders startup error logs without terminal control sequences", () => {
     const html = decodeLocalViewHtml({
       viewModel: {
-        actions: [],
         details: "The local service failed to start.",
         kind: "error",
         logText:
           "\x1b[2K  \x1b[2m○\x1b[0m  Starting server\r\x1b[2K  \x1b[32m✓\x1b[0m  Server listening\nError: listen EADDRINUSE",
+        recovery: null,
         title: "Could not open bb",
       },
     });
@@ -93,19 +93,22 @@ describe("local desktop views", () => {
   it("renders the recovery buttons the window preload wires up", () => {
     const html = decodeLocalViewHtml({
       viewModel: {
-        actions: ["retry", "use-this-mac"],
         details: "bb could not reach the server at http://host.example:38886.",
         kind: "error",
         logText: "",
+        recovery: {
+          actions: ["retry", "use-this-mac"],
+          token: "token-abc",
+        },
         title: "Could not reach this bb server",
       },
     });
 
     expect(html).toContain(
-      '<button type="button" data-startup-error-action="retry">Retry</button>',
+      '<button type="button" data-startup-error-action="retry" data-startup-error-token="token-abc">Retry</button>',
     );
     expect(html).toContain(
-      '<button type="button" data-startup-error-action="use-this-mac">Use This Mac</button>',
+      '<button type="button" data-startup-error-action="use-this-mac" data-startup-error-token="token-abc">Use This Mac</button>',
     );
     expect(html).toContain("http://host.example:38886");
   });
@@ -113,10 +116,10 @@ describe("local desktop views", () => {
   it("renders no action row for a failure with no recovery action", () => {
     const html = decodeLocalViewHtml({
       viewModel: {
-        actions: [],
         details: "Port 38886 is already in use.",
         kind: "error",
         logText: "",
+        recovery: null,
         title: "Port conflict",
       },
     });

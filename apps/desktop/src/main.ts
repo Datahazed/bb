@@ -55,8 +55,8 @@ import {
 import { createLocalViewUrl } from "./local-view.js";
 import { loadRemoteServerPage } from "./remote-server-load.js";
 import {
+  acceptStartupErrorAction,
   BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL,
-  startupErrorActionRequestSchema,
   type StartupErrorAction,
 } from "./startup-error-ipc.js";
 import { installApplicationMenu } from "./menu.js";
@@ -209,6 +209,8 @@ interface LoadStartupErrorArgs {
 }
 
 interface LoadWindowUrlArgs {
+  /** Token the loaded view accepts recovery clicks with, or null for none. */
+  startupErrorActionToken: string | null;
   url: string;
 }
 
@@ -309,6 +311,7 @@ let currentRuntime: DesktopRuntime | null = null;
 let currentWindowUrl: string | null = null;
 let logViewerIpcHandlersInstalled = false;
 let startupErrorIpcHandlersInstalled = false;
+let startupErrorActionToken: string | null = null;
 let logViewerLineBuffer: LogLineBuffer | null = null;
 let logViewerPreloadPath: string | null = null;
 let logViewerTailer: LogTailer | null = null;
@@ -1237,6 +1240,9 @@ async function applyServerTarget(): Promise<void> {
       refreshApplicationMenu();
       return;
     }
+    // After the generation check, so an aborted older load cannot claim the
+    // workspace is open over a newer failure screen.
+    bbAppLoaded = true;
     startRemoteSystemConfigSync(target.server.url);
   } else {
     // A custom server is a plain web load with no bb Connect involved.
@@ -1248,6 +1254,7 @@ async function applyServerTarget(): Promise<void> {
       refreshApplicationMenu();
       return;
     }
+    bbAppLoaded = true;
     startRemoteSystemConfigSync(target.url);
   }
   refreshApplicationMenu();
@@ -1387,8 +1394,8 @@ async function handleStartupErrorAction(
  * Wire the recovery buttons on the startup error screen.
  *
  * Only the window preload sends on this channel, because the app never exposes
- * it on the main world. The `bbAppLoaded` check drops a click that arrives
- * after a later load already opened the workspace.
+ * it on the main world. The token proves the click came from the error view the
+ * app itself rendered, and not from a page that copied the button markup.
  */
 function installStartupErrorIpcHandlers(): void {
   if (startupErrorIpcHandlersInstalled) {
@@ -1397,12 +1404,21 @@ function installStartupErrorIpcHandlers(): void {
   startupErrorIpcHandlersInstalled = true;
   ipcMain.on(
     BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL,
-    (_event, payload: unknown) => {
-      const parsed = startupErrorActionRequestSchema.safeParse(payload);
-      if (!parsed.success || bbAppLoaded) {
+    (event, payload: unknown) => {
+      const action = acceptStartupErrorAction({
+        currentToken: startupErrorActionToken,
+        payload,
+        senderIsApplicationWindow: applicationWindowWebContentsIds.has(
+          event.sender.id,
+        ),
+      });
+      if (action === null) {
         return;
       }
-      void handleStartupErrorAction(parsed.data.action).catch(
+      // One use only: a repeated click, or a click that raced a load, does
+      // nothing.
+      startupErrorActionToken = null;
+      void handleStartupErrorAction(action).catch(
         reportUnexpectedStartupFailure,
       );
     },
@@ -1495,6 +1511,9 @@ async function openServerDaemonLogs(): Promise<void> {
 
 async function loadWindowUrl(args: LoadWindowUrlArgs): Promise<void> {
   currentWindowUrl = args.url;
+  // Every load replaces what the window shows, so the token of the screen that
+  // is going away stops counting here, before the new page can send anything.
+  startupErrorActionToken = args.startupErrorActionToken;
   if (desktopWindowFactory === null) {
     return;
   }
@@ -1505,6 +1524,7 @@ async function loadWindowUrl(args: LoadWindowUrlArgs): Promise<void> {
 async function loadLoadingView(): Promise<void> {
   bbAppLoaded = false;
   await loadWindowUrl({
+    startupErrorActionToken: null,
     url: createLocalViewUrl({
       viewModel: {
         kind: "loading",
@@ -1517,13 +1537,18 @@ async function loadLoadingView(): Promise<void> {
 
 async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
   bbAppLoaded = false;
+  const recovery =
+    args.actions.length === 0
+      ? null
+      : { actions: args.actions, token: randomUUID() };
   await loadWindowUrl({
+    startupErrorActionToken: recovery?.token ?? null,
     url: createLocalViewUrl({
       viewModel: {
-        actions: args.actions,
         details: `${args.details} Logs are under ${formatLogDirectory()}/.`,
         kind: "error",
         logText: args.logs,
+        recovery,
         title: args.title,
       },
     }),
@@ -1551,27 +1576,28 @@ function reportUnexpectedStartupFailure(error: unknown): void {
 /**
  * Load a remote target, or show the recoverable "cannot reach" screen.
  *
- * The app counts as loaded only after the page load resolves. An unreachable
- * host otherwise leaves `bbAppLoaded` true while an error screen shows.
+ * The caller owns `bbAppLoaded`, because only the caller knows whether its own
+ * switch is still the current one.
  */
 async function loadRemoteServerTarget(serverUrl: string): Promise<boolean> {
-  const loaded = await loadRemoteServerPage({
+  return await loadRemoteServerPage({
     loadStartupError,
-    loadUrl: loadWindowUrl,
+    async loadUrl(loadArgs) {
+      await loadWindowUrl({
+        startupErrorActionToken: null,
+        url: loadArgs.url,
+      });
+    },
     logWarning(message) {
       createDesktopLogger().warn(message);
     },
     serverUrl,
   });
-  if (loaded) {
-    bbAppLoaded = true;
-  }
-  return loaded;
 }
 
 async function loadBbApp(serverUrl: string): Promise<void> {
   bbAppLoaded = true;
-  await loadWindowUrl({ url: serverUrl });
+  await loadWindowUrl({ startupErrorActionToken: null, url: serverUrl });
   if (shouldOpenDevTools()) {
     desktopWindowFactory?.openDevTools();
   }

@@ -433,15 +433,23 @@ ipcRenderer.on(
 // The startup error view has no scripts of its own (CSP default-src 'none'), so
 // the preload wires its recovery buttons from the isolated world. This channel
 // stays off the main world on purpose: a loaded page must not switch servers.
+// This preload also runs on the loaded server page, which can carry the same
+// markup, so the click forwards the view's token and the main process checks it.
 window.addEventListener("DOMContentLoaded", () => {
   for (const action of STARTUP_ERROR_ACTIONS) {
-    document
-      .querySelector<HTMLButtonElement>(
-        `button[data-startup-error-action="${action}"]`,
-      )
-      ?.addEventListener("click", () => {
-        ipcRenderer.send(BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL, { action });
+    const button = document.querySelector<HTMLButtonElement>(
+      `button[data-startup-error-action="${action}"]`,
+    );
+    const token = button?.dataset.startupErrorToken;
+    if (button === null || button === undefined || token === undefined) {
+      continue;
+    }
+    button.addEventListener("click", () => {
+      ipcRenderer.send(BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL, {
+        action,
+        token,
       });
+    });
   }
 });
 
