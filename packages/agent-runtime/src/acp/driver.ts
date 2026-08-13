@@ -1,65 +1,50 @@
 #!/usr/bin/env node
 
-/**
- * Generic ACP bridge.
- *
- * Speaks bb's runtime JSON-RPC on stdio and acts as the ACP *client* for the
- * configured agent (Cursor): one agent subprocess and
- * one ACP session per bb thread. The bridge owns the cooperative permission
- * policy — it answers `session/request_permission` per bb's permission mode
- * (forwarding to the runtime when escalation is "ask") and enforces the
- * workspace write policy on client `fs/write_text_file` requests.
- */
+/** Canonical driver for ACP-compatible agents. */
 
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
-import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { z } from "zod";
 import {
+  hostDaemonAcpLaunchSpecSchema,
+  normalizeHostDaemonAcpLaunchSpec,
+  type HostDaemonAcpLaunchSpec,
+} from "@bb/host-daemon-contract";
+import {
+  isApprovalPendingInteractionResolution,
+  isStandaloneBuiltinCompactCommand,
+  jsonObjectSchema,
   reasoningEffortsForLevels,
   type AvailableModel,
   type PromptInput,
   type ReasoningLevel,
 } from "@bb/domain";
-import { buildEditDiff } from "../../shared/adapter-utils.js";
+import type {
+  ProviderDriverError,
+  ProviderSessionOpenParams,
+  ProviderTurnSubmitParams,
+} from "@bb/provider-driver-contract";
 import {
-  createBridgeIo,
-  createBridgeLineHandler,
-  isMainModule,
-  runBridgeRequest,
-  startBridgeStdio,
-} from "../../shared/bridge-harness.js";
+  ProviderDriverRequestError,
+  defineProviderDriver,
+  type ProviderDriverContext,
+} from "@bb/provider-driver-sdk";
+import { z } from "zod";
+import { buildEditDiff } from "../shared/adapter-utils.js";
+import { withoutBridgeRuntimeEnv } from "../shared/bridge-runtime-env.js";
+import { mimeTypeFromExtension } from "../shared/mime-types.js";
+import { flattenPromptInputGroups } from "../provider-adapter.js";
 import {
-  decodeToolCallResponsePayload,
-  type BridgeJsonRpcResponse,
-  decodeBridgeJsonRpcResponse,
-  jsonRpcEnvelopeSchema,
-} from "../../shared/bridge-tool-calls.js";
-import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
-import { mimeTypeFromExtension } from "../../shared/mime-types.js";
-import {
-  ACP_COMPACTION_COMPLETED_METHOD,
-  ACP_COMPACTION_STARTED_METHOD,
   ACP_DEFAULT_MODEL_ID,
-  ACP_FS_WRITE_METHOD,
-  ACP_PERMISSION_REQUEST_METHOD,
-  ACP_TURN_COMPLETED_METHOD,
-  ACP_TURN_STARTED_METHOD,
-  ACP_UPDATE_METHOD,
-  ACP_WARNING_METHOD,
-  acpBridgeCommandSchema,
-  acpPermissionResponseSchema,
   type AcpBridgeAgentCommand,
-  type AcpBridgeCommand,
   type AcpBridgeNativeReasoning,
   type AcpBridgePermissionCli,
   type AcpBridgeReasoningCli,
-  type AcpBridgeThreadResumeParams,
   type AcpBridgeThreadStartParams,
-} from "../bridge-protocol.js";
+} from "./session-config.js";
 import {
   ACP_PROTOCOL_VERSION,
   type AcpConfigOption,
@@ -78,7 +63,7 @@ import {
   acpWriteTextFileParamsSchema,
   type AcpContentBlock,
   type AcpPermissionOption,
-} from "../wire.js";
+} from "./wire.js";
 import {
   createAcpAgentConnection,
   type AcpAgentConnection,
@@ -102,10 +87,11 @@ import {
   runAcpDynamicToolMcpServer,
   type AcpMcpServerConfig,
 } from "./tool-proxy-mcp.js";
-
-// ---------------------------------------------------------------------------
-// Session state
-// ---------------------------------------------------------------------------
+import {
+  AcpCanonicalEventTranslator,
+  buildAcpApprovalDecisions,
+  buildOpaqueAcpPermissionCommand,
+} from "./canonical-event-translator.js";
 
 interface AcpSessionPolicy {
   permissionMode: "accept-edits" | "full";
@@ -119,110 +105,75 @@ interface PendingAcpPermission {
 }
 
 interface AcpThreadSession {
-  bbThreadId: string;
-  providerThreadId: string;
-  connection: AcpAgentConnection;
-  agentLabel: string;
-  supportsImageInput: boolean;
-  policy: AcpSessionPolicy;
-  cwd: string;
-  pendingInstructions: string | undefined;
   activePromptKind: "turn" | "compaction" | null;
-  queuedInputs: PromptInput[][];
+  activeTurnId: string | null;
+  readonly agentLabel: string;
+  readonly attachmentId: string;
+  readonly connection: AcpAgentConnection;
+  readonly context: ProviderDriverContext;
+  readonly cwd: string;
   loading: boolean;
   loadingSessionId: string | undefined;
+  pendingInstructions: string | undefined;
   pendingLoadUsageUpdate: AcpUsageUpdate | undefined;
+  readonly pendingPermissions: Set<PendingAcpPermission>;
+  readonly policy: AcpSessionPolicy;
+  providerThreadId: string;
+  queuedInputs: PromptInput[][];
   stopping: boolean;
-  /** Resolves when the in-flight turn or maintenance prompt fully settles. */
+  supportsImageInput: boolean;
+  readonly translator: AcpCanonicalEventTranslator;
   turnSettled: Promise<void> | undefined;
-  pendingPermissions: Set<PendingAcpPermission>;
 }
 
-const sessionsByBbThreadId = new Map<string, AcpThreadSession>();
-const bbThreadIdByProviderThreadId = new Map<string, string>();
-const pendingRuntimeRequests = new Map<
-  number,
-  (response: BridgeJsonRpcResponse) => void
->();
-let runtimeRequestIdCounter = 0;
+const sessionsByAttachmentId = new Map<string, AcpThreadSession>();
+const sessionsByProviderThreadId = new Map<string, AcpThreadSession>();
 let dynamicToolBridgePromise: Promise<AcpDynamicToolBridge> | null = null;
-
-// Runtime waits on thread/stop until the agent settles the cancelled prompt or
-// this timeout forces disposal. Stop remains a best-effort success boundary.
 const THREAD_STOP_CANCEL_TIMEOUT_MS = 4_000;
 
-// ---------------------------------------------------------------------------
-// stdout helpers (bridge → runtime)
-// ---------------------------------------------------------------------------
-
-interface BridgeNotification {
-  jsonrpc: "2.0";
-  method: string;
-  params: Record<string, unknown>;
+function driverError(args: {
+  category: ProviderDriverError["category"];
+  code: string;
+  message: string;
+  detail?: string;
+}): ProviderDriverError {
+  return {
+    code: args.code,
+    category: args.category,
+    message: args.message,
+    ...(args.detail !== undefined ? { detail: args.detail } : {}),
+    retry: { disposition: "never" },
+  };
 }
 
-interface BridgeRuntimeRequest {
-  jsonrpc: "2.0";
-  id: number;
-  method: string;
-  params: Record<string, unknown>;
+function rejectRequest(args: Parameters<typeof driverError>[0]): never {
+  throw new ProviderDriverRequestError(driverError(args));
 }
 
-const { send, sendResult, sendError } = createBridgeIo<
-  BridgeNotification | BridgeRuntimeRequest
->();
-
-function sendNotification(
-  method: string,
-  params: Record<string, unknown>,
-): void {
-  send({ jsonrpc: "2.0", method, params });
+function requireSession(attachmentId: string): AcpThreadSession {
+  const session = sessionsByAttachmentId.get(attachmentId);
+  if (!session || session.stopping) {
+    rejectRequest({
+      code: "acp_session_not_found",
+      category: "driver",
+      message: `No active ACP session for attachment ${attachmentId}`,
+    });
+  }
+  return session;
 }
 
-function sendRuntimeRequest(
-  method: string,
-  params: Record<string, unknown>,
-): Promise<unknown> {
-  runtimeRequestIdCounter += 1;
-  const requestId = runtimeRequestIdCounter;
-  const responsePromise = new Promise<unknown>(
-    (resolveResponse, rejectResponse) => {
-      pendingRuntimeRequests.set(requestId, (response) => {
-        if ("error" in response) {
-          rejectResponse(
-            new Error(response.error.message ?? "Runtime request failed"),
-          );
-          return;
-        }
-        resolveResponse(response.result);
-      });
-    },
-  );
-  send({
-    jsonrpc: "2.0",
-    id: requestId,
-    method,
-    params,
-  });
-  return responsePromise;
-}
-
-function resolveBridgeProcessArgsForMcpServer(): string[] {
+function resolveDriverProcessArgsForMcpServer(): string[] {
   const entryPoint = process.argv[1]
     ? resolve(process.argv[1])
     : fileURLToPath(import.meta.url);
   return [...process.execArgv, entryPoint, "--mcp-stdio"];
 }
 
-function resolveBridgeProcessEnvForMcpServer(): AcpMcpServerConfig["env"] {
+function resolveDriverProcessEnvForMcpServer(): AcpMcpServerConfig["env"] {
   const electronRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
-  if (electronRunAsNode === undefined) {
-    return [];
-  }
-
-  // The ACP agent must not inherit Electron's Node mode, but this MCP process
-  // re-executes the packaged bridge and therefore needs it restored.
-  return [{ name: "ELECTRON_RUN_AS_NODE", value: electronRunAsNode }];
+  return electronRunAsNode === undefined
+    ? []
+    : [{ name: "ELECTRON_RUN_AS_NODE", value: electronRunAsNode }];
 }
 
 async function forwardDynamicToolCall(args: {
@@ -234,21 +185,28 @@ async function forwardDynamicToolCall(args: {
   | { ok: true; content: string; isError?: boolean }
   | { ok: false; error: string }
 > {
-  const session = sessionsByBbThreadId.get(args.threadId);
-  if (!session || !session.providerThreadId || session.stopping) {
-    return { ok: false, error: "No active ACP session for dynamic tool call." };
+  const session = sessionsByAttachmentId.get(args.threadId);
+  const turnId = session?.activeTurnId;
+  if (!session || session.stopping || turnId == null) {
+    return { ok: false, error: "No active ACP turn for dynamic tool call." };
   }
-
   try {
-    const result = await sendRuntimeRequest("item/tool/call", {
-      providerThreadId: session.providerThreadId,
-      threadId: session.bbThreadId,
-      turnId: null,
+    const result = await session.context.host.callTool({
+      attachmentId: session.attachmentId,
+      turnId,
       callId: args.callId,
       tool: args.tool,
-      arguments: args.arguments,
+      arguments: jsonObjectSchema.parse(args.arguments),
     });
-    return { ok: true, ...decodeToolCallResponsePayload(result) };
+    return {
+      ok: true,
+      content: result.content
+        .map((item) =>
+          item.type === "text" ? item.text : `[image](${item.imageUrl})`,
+        )
+        .join("\n"),
+      ...(result.success ? {} : { isError: true }),
+    };
   } catch (error) {
     return {
       ok: false,
@@ -266,9 +224,7 @@ function handleDynamicToolBridgeSocket(
   socket.on("data", (chunk) => {
     buffer += chunk;
     const newlineIndex = buffer.indexOf("\n");
-    if (newlineIndex === -1) {
-      return;
-    }
+    if (newlineIndex === -1) return;
     const line = buffer.slice(0, newlineIndex);
     let parsed: unknown;
     try {
@@ -291,10 +247,7 @@ function handleDynamicToolBridgeSocket(
 }
 
 async function ensureDynamicToolBridge(): Promise<AcpDynamicToolBridge> {
-  if (dynamicToolBridgePromise) {
-    return dynamicToolBridgePromise;
-  }
-
+  if (dynamicToolBridgePromise) return dynamicToolBridgePromise;
   dynamicToolBridgePromise = new Promise((resolveBridge, rejectBridge) => {
     const host = "127.0.0.1";
     const server = createServer((socket) => {
@@ -319,7 +272,6 @@ async function ensureDynamicToolBridge(): Promise<AcpDynamicToolBridge> {
       });
     });
   });
-
   return dynamicToolBridgePromise;
 }
 
@@ -327,23 +279,36 @@ async function buildSessionMcpServers(
   params: AcpBridgeThreadStartParams,
 ): Promise<AcpMcpServerConfig[]> {
   const dynamicTools = params.dynamicTools ?? [];
-  if (dynamicTools.length === 0) {
-    return [];
-  }
+  if (dynamicTools.length === 0) return [];
   const bridge = await ensureDynamicToolBridge();
   return [
     buildAcpMcpServerConfig({
-      bridgeArgs: resolveBridgeProcessArgsForMcpServer(),
+      bridgeArgs: resolveDriverProcessArgsForMcpServer(),
       command: process.execPath,
       dynamicTools,
       host: bridge.host,
       port: bridge.port,
-      runtimeEnv: resolveBridgeProcessEnvForMcpServer(),
+      runtimeEnv: resolveDriverProcessEnvForMcpServer(),
       threadId: params.threadId,
       token: bridge.token,
     }),
   ];
 }
+
+interface AcpDynamicToolBridge {
+  host: string;
+  port: number;
+  server: Server;
+  token: string;
+}
+
+const dynamicToolBridgeRequestSchema = z.object({
+  arguments: z.record(z.string(), z.unknown()).default({}),
+  callId: z.string().min(1),
+  threadId: z.string().min(1),
+  token: z.string().min(1),
+  tool: z.string().min(1),
+});
 
 // ---------------------------------------------------------------------------
 // Model catalog — parsed from the agent CLI's list command, with the
@@ -571,21 +536,6 @@ function applyPermissionCliArgs(
   ];
 }
 
-interface AcpDynamicToolBridge {
-  host: string;
-  port: number;
-  server: Server;
-  token: string;
-}
-
-const dynamicToolBridgeRequestSchema = z.object({
-  arguments: z.record(z.string(), z.unknown()).default({}),
-  callId: z.string().min(1),
-  threadId: z.string().min(1),
-  token: z.string().min(1),
-  tool: z.string().min(1),
-});
-
 let cachedModelCatalog: { key: string; catalog: AgentModelCatalog } | null =
   null;
 // ACP-native model discovery spawns a throwaway session, so its result is
@@ -640,7 +590,7 @@ async function authenticateAcpAgent(args: {
 
 /**
  * Run the agent's model list command and build the variant catalog, cached
- * per list command for the bridge's lifetime (model/list refreshes it on the
+ * per list command for the driver's lifetime (model/list refreshes it on the
  * next picker open; session starts reuse it for variant resolution). Returns
  * null when the command fails or lists nothing so callers can fall back —
  * the picker to the synthetic entry, session starts to the unresolved id.
@@ -680,14 +630,14 @@ async function loadAgentModelCatalog(
   const key = JSON.stringify(listCommand);
   if (stdout === null) {
     process.stderr.write(
-      `acp bridge: model list command "${listCommand.command}" failed\n`,
+      `acp driver: model list command "${listCommand.command}" failed\n`,
     );
     return cachedModelCatalog?.key === key ? cachedModelCatalog.catalog : null;
   }
   const catalog = buildAgentModelCatalog(parseAgentModelLines(stdout));
   if (!catalog) {
     process.stderr.write(
-      `acp bridge: model list command "${listCommand.command}" printed no models\n`,
+      `acp driver: model list command "${listCommand.command}" printed no models\n`,
     );
     return cachedModelCatalog?.key === key ? cachedModelCatalog.catalog : null;
   }
@@ -801,7 +751,7 @@ async function loadSessionDiscoveredModels(
     return models;
   } catch (error) {
     process.stderr.write(
-      `acp bridge: ACP-native model discovery for "${agent.command}" failed: ${
+      `acp driver: ACP-native model discovery for "${agent.command}" failed: ${
         error instanceof Error ? error.message : String(error)
       }\n`,
     );
@@ -1166,9 +1116,7 @@ function findOptionIdByKinds(
 ): string | undefined {
   for (const kind of kinds) {
     const option = options.find((candidate) => candidate.kind === kind);
-    if (option) {
-      return option.optionId;
-    }
+    if (option) return option.optionId;
   }
   return undefined;
 }
@@ -1191,21 +1139,20 @@ function respondPermission(
   pending: PendingAcpPermission,
   decision: "allow_once" | "allow_for_session" | "deny" | null,
 ): void {
-  if (decision === null) {
-    pending.responder.result({ outcome: { outcome: "cancelled" } });
-    return;
-  }
-  const optionId = pickPermissionOptionId(pending.options, decision);
-  if (optionId === undefined) {
-    pending.responder.result({ outcome: { outcome: "cancelled" } });
-    return;
-  }
-  pending.responder.result({ outcome: { outcome: "selected", optionId } });
+  const optionId =
+    decision === null
+      ? undefined
+      : pickPermissionOptionId(pending.options, decision);
+  pending.responder.result(
+    optionId === undefined
+      ? { outcome: { outcome: "cancelled" } }
+      : { outcome: { outcome: "selected", optionId } },
+  );
 }
 
 function cancelPendingPermissions(session: AcpThreadSession): void {
   for (const pending of session.pendingPermissions) {
-    pending.responder.result({ outcome: { outcome: "cancelled" } });
+    respondPermission(pending, null);
   }
   session.pendingPermissions.clear();
 }
@@ -1224,8 +1171,12 @@ function handlePermissionRequest(
     responder.error(-32602, "Invalid session/request_permission params");
     return;
   }
-
-  if (session.stopping || session.activePromptKind !== "turn") {
+  const turnId = session.activeTurnId;
+  if (
+    session.stopping ||
+    session.activePromptKind !== "turn" ||
+    turnId === null
+  ) {
     responder.result({ outcome: { outcome: "cancelled" } });
     return;
   }
@@ -1234,51 +1185,53 @@ function handlePermissionRequest(
     responder,
     options: parsed.data.options,
   };
-
   if (session.policy.permissionMode === "full") {
     respondPermission(pending, "allow_once");
     return;
   }
-
   session.pendingPermissions.add(pending);
 
   const toolCall = parsed.data.toolCall;
   const rawInputCommand = acpRawInputCommandSchema.safeParse(
     toolCall?.rawInput,
   );
-  void sendRuntimeRequest(ACP_PERMISSION_REQUEST_METHOD, {
-    threadId: session.bbThreadId,
-    providerThreadId: session.providerThreadId,
-    turnId: null,
-    ...(toolCall?.toolCallId
-      ? {
-          toolCall: {
-            toolCallId: toolCall.toolCallId,
-            ...(toolCall.title ? { title: toolCall.title } : {}),
-            ...(toolCall.kind ? { kind: toolCall.kind } : {}),
-            ...(rawInputCommand.success
-              ? { command: rawInputCommand.data.command }
-              : {}),
-          },
-        }
+  const command = buildOpaqueAcpPermissionCommand({
+    ...(rawInputCommand.success
+      ? { command: rawInputCommand.data.command }
       : {}),
-    options: parsed.data.options,
-  })
-    .then((result) => {
-      if (!session.pendingPermissions.delete(pending)) {
-        // Already settled as cancelled (stop/cancel raced the user's decision).
-        return;
-      }
-      const decision = acpPermissionResponseSchema.safeParse(result);
+    ...(toolCall?.title ? { title: toolCall.title } : {}),
+    ...(toolCall?.kind ? { kind: toolCall.kind } : {}),
+  });
+  void session.context.host
+    .requestInteraction({
+      attachmentId: session.attachmentId,
+      turnId,
+      requestId: toolCall?.toolCallId || `acp-permission-${Date.now()}`,
+      payload: {
+        kind: "approval",
+        subject: {
+          kind: "command",
+          itemId: toolCall?.toolCallId ?? "acp-permission",
+          command,
+          cwd: null,
+          actions: [{ type: "unknown", command }],
+          sessionGrant: null,
+        },
+        reason: null,
+        availableDecisions: buildAcpApprovalDecisions(parsed.data.options),
+      },
+    })
+    .then(({ resolution }) => {
+      if (!session.pendingPermissions.delete(pending)) return;
       respondPermission(
         pending,
-        decision.success ? decision.data.decision : null,
+        isApprovalPendingInteractionResolution(resolution)
+          ? resolution.decision
+          : null,
       );
     })
     .catch(() => {
-      if (!session.pendingPermissions.delete(pending)) {
-        return;
-      }
+      if (!session.pendingPermissions.delete(pending)) return;
       respondPermission(pending, null);
     });
 }
@@ -1303,9 +1256,7 @@ function sliceFileContent(
   line: number | null | undefined,
   limit: number | null | undefined,
 ): string {
-  if (line == null && limit == null) {
-    return content;
-  }
+  if (line == null && limit == null) return content;
   const lines = content.split("\n");
   const startIndex = line == null ? 0 : Math.max(0, line - 1);
   const endIndex = limit == null ? lines.length : startIndex + limit;
@@ -1344,7 +1295,6 @@ async function handleFsWriteTextFile(
     responder.error(-32602, "Invalid fs/write_text_file params");
     return;
   }
-
   if (
     session.policy.permissionMode === "accept-edits" &&
     !isPathInsideRoots(parsed.data.path, session.policy.workspaceWriteRoots)
@@ -1355,7 +1305,6 @@ async function handleFsWriteTextFile(
     );
     return;
   }
-
   try {
     let oldText: string | undefined;
     try {
@@ -1365,10 +1314,8 @@ async function handleFsWriteTextFile(
     }
     await fs.mkdir(dirname(parsed.data.path), { recursive: true });
     await fs.writeFile(parsed.data.path, parsed.data.content, "utf8");
-
     const diff = buildEditDiff(parsed.data.path, oldText, parsed.data.content);
-    sendNotification(ACP_FS_WRITE_METHOD, {
-      threadId: session.bbThreadId,
+    session.translator.translateFsWrite({
       path: parsed.data.path,
       kind: oldText === undefined ? "add" : "update",
       ...(diff ? { diff } : {}),
@@ -1387,49 +1334,139 @@ async function handleFsWriteTextFile(
 // ---------------------------------------------------------------------------
 
 function removeSession(session: AcpThreadSession): void {
-  if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
-    sessionsByBbThreadId.delete(session.bbThreadId);
+  if (sessionsByAttachmentId.get(session.attachmentId) === session) {
+    sessionsByAttachmentId.delete(session.attachmentId);
   }
-  if (
-    bbThreadIdByProviderThreadId.get(session.providerThreadId) ===
-    session.bbThreadId
-  ) {
-    bbThreadIdByProviderThreadId.delete(session.providerThreadId);
+  if (sessionsByProviderThreadId.get(session.providerThreadId) === session) {
+    sessionsByProviderThreadId.delete(session.providerThreadId);
   }
 }
 
-function getSessionByProviderThreadId(
-  providerThreadId: string,
-): AcpThreadSession | undefined {
-  const bbThreadId = bbThreadIdByProviderThreadId.get(providerThreadId);
-  return bbThreadId ? sessionsByBbThreadId.get(bbThreadId) : undefined;
-}
-
-type AcpSessionStartParams =
-  | { kind: "start"; params: AcpBridgeThreadStartParams }
-  | { kind: "resume"; params: AcpBridgeThreadResumeParams };
-
-async function startAgentSession(
-  request: AcpSessionStartParams,
-): Promise<AcpThreadSession> {
-  const params = request.params;
-  const bbThreadId = params.threadId;
-
-  const existing = sessionsByBbThreadId.get(bbThreadId);
-  if (existing) {
-    await stopSession(existing);
-  }
-
-  const launch = await resolveAgentLaunchArgs(params);
-  if (launch.warning) {
-    sendNotification(ACP_WARNING_METHOD, {
-      threadId: bbThreadId,
-      summary: launch.warning,
+function buildSessionParams(
+  params: ProviderSessionOpenParams,
+  profile: HostDaemonAcpLaunchSpec,
+): AcpBridgeThreadStartParams {
+  if (params.execution.permission.permissionMode === "auto") {
+    rejectRequest({
+      code: "acp_permission_mode_unsupported",
+      category: "configuration",
+      message: `Provider "${profile.displayName}" does not support permission mode "auto".`,
     });
   }
+  if (params.mode.kind === "fork") {
+    rejectRequest({
+      code: "acp_fork_unsupported",
+      category: "configuration",
+      message: "ACP does not support session forks",
+    });
+  }
+  if (params.outputSchema !== null || params.disallowedTools.length > 0) {
+    rejectRequest({
+      code: "acp_session_options_unsupported",
+      category: "configuration",
+      message: "ACP does not support structured output or disallowed tools",
+    });
+  }
+  acpDriverProviderOptionsSchema.parse(params.execution.providerOptions);
+  const baseInstructions = params.instructions.text.trim();
+  const skillsInstructions = buildAcpSkillsInstructions(params.skillSources);
+  const instructions = [baseInstructions, skillsInstructions]
+    .filter((value) => value.length > 0)
+    .join("\n\n");
+  const cwd = profile.cwd ?? params.workspace.cwd;
+  const modelSelection = buildModelSelection({
+    model: params.execution.model,
+    nativeReasoning: profile.nativeReasoning,
+    modelCli: profile.modelCli,
+    reasoningLevel: params.execution.reasoningLevel,
+    serviceTier: params.execution.serviceTier,
+    command: profile.command,
+    cwd: profile.cwd,
+    env: profile.env,
+  });
+  return {
+    threadId: params.attachmentId,
+    cwd,
+    agent: { command: profile.command, args: [...profile.args] },
+    ...(modelSelection ? { modelSelection } : {}),
+    ...(profile.reasoningCli ? { reasoningCli: profile.reasoningCli } : {}),
+    ...(profile.nativeReasoning
+      ? { nativeReasoning: profile.nativeReasoning }
+      : {}),
+    ...(profile.permissionCli ? { permissionCli: profile.permissionCli } : {}),
+    ...(profile.reasoningCli
+      ? { launchReasoningLevel: params.execution.reasoningLevel }
+      : {}),
+    permissionMode: params.execution.permission.permissionMode,
+    permissionEscalation: params.execution.permission.permissionEscalation,
+    workspaceWriteRoots: [cwd, ...params.workspace.additionalWriteRoots],
+    envVars: { ...profile.env, ...params.shellEnvironment },
+    ...(instructions ? { instructions } : {}),
+    ...(params.dynamicTools.length > 0
+      ? { dynamicTools: params.dynamicTools }
+      : {}),
+  };
+}
+
+function buildAcpSkillsInstructions(
+  skillSources: ProviderSessionOpenParams["skillSources"],
+): string {
+  const lines = skillSources.flatMap((source) =>
+    source.skills.map((skill) => {
+      const description = (skill.description ?? "(description unavailable)")
+        .replace(/[\r\n]+/gu, " ")
+        .replace(/\s+/gu, " ")
+        .replace(/[<>]/gu, "")
+        .trim();
+      return `- ${skill.name}: ${description || "(description unavailable)"} (SKILL.md: ${resolve(source.rootPath, skill.name, "SKILL.md")})`;
+    }),
+  );
+  return lines.length === 0
+    ? ""
+    : [
+        "bb skills are reusable instruction folders. When the current task matches a listed skill description, read that skill's SKILL.md at the absolute path before proceeding; you may read supporting files in the same skill directory that SKILL.md references. If a listed path does not exist, the list is stale and should be ignored.",
+        "",
+        "Available bb skills:",
+        ...lines,
+      ].join("\n");
+}
+
+function buildModelSelection(args: {
+  command: string;
+  cwd?: string;
+  env: Record<string, string>;
+  model: string;
+  modelCli?: NonNullable<HostDaemonAcpLaunchSpec["modelCli"]>;
+  nativeReasoning?: HostDaemonAcpLaunchSpec["nativeReasoning"];
+  reasoningLevel: ReasoningLevel;
+  serviceTier: ProviderSessionOpenParams["execution"]["serviceTier"];
+}): AcpBridgeThreadStartParams["modelSelection"] {
+  if (args.model === ACP_DEFAULT_MODEL_ID) return undefined;
+  if (args.modelCli?.selectFlag) {
+    return {
+      listCommand: {
+        command: args.command,
+        args: [...args.modelCli.listArgs],
+        ...(args.cwd ? { cwd: args.cwd } : {}),
+        ...(Object.keys(args.env).length > 0 ? { envVars: args.env } : {}),
+      },
+      selectFlag: args.modelCli.selectFlag,
+      model: args.model,
+      reasoningLevel: args.reasoningLevel,
+      ...(args.serviceTier === "fast" ? { serviceTier: "fast" } : {}),
+    };
+  }
+  return { modelId: args.model, reasoningLevel: args.reasoningLevel };
+}
+
+async function startAgentSession(args: {
+  context: ProviderDriverContext;
+  params: ProviderSessionOpenParams;
+  profile: HostDaemonAcpLaunchSpec;
+}): Promise<AcpThreadSession> {
+  const params = buildSessionParams(args.params, args.profile);
+  const launch = await resolveAgentLaunchArgs(params);
   const agentLabel = [params.agent.command, ...params.agent.args].join(" ");
-  // The connection handlers close over `session`; they only fire after the
-  // child process emits events, by which point the session is constructed.
   let session: AcpThreadSession;
   const childEnv = {
     ...withoutBridgeRuntimeEnv(process.env),
@@ -1445,43 +1482,48 @@ async function startAgentSession(
     onRequest: (method, requestParams, responder) =>
       handleAgentRequest(session, method, requestParams, responder),
     onExit: (info) => {
-      const wasCurrent = sessionsByBbThreadId.get(bbThreadId) === session;
+      const wasCurrent =
+        sessionsByAttachmentId.get(args.params.attachmentId) === session;
       cancelPendingPermissions(session);
       removeSession(session);
-      if (!wasCurrent || session.stopping) {
-        return;
-      }
-      sendNotification("error", {
-        threadId: bbThreadId,
-        message:
-          `ACP agent "${agentLabel}" exited unexpectedly` +
+      if (!wasCurrent || session.stopping) return;
+      session.translator.failActiveTurn(
+        `ACP agent "${agentLabel}" exited unexpectedly` +
           `${info.code !== null ? ` (code ${info.code})` : ""}` +
           `${info.stderrTail ? `: ${info.stderrTail}` : ""}`,
-      });
+      );
     },
   });
+  const translator = new AcpCanonicalEventTranslator({
+    attachmentId: args.params.attachmentId,
+    events: args.context.events,
+  });
   session = {
-    bbThreadId,
-    providerThreadId: "",
-    connection,
+    activePromptKind: null,
+    activeTurnId: null,
     agentLabel,
-    supportsImageInput: false,
+    attachmentId: args.params.attachmentId,
+    connection,
+    context: args.context,
+    cwd: params.cwd,
+    loading: false,
+    loadingSessionId: undefined,
+    pendingInstructions: params.instructions,
+    pendingLoadUsageUpdate: undefined,
+    pendingPermissions: new Set(),
     policy: {
       permissionMode: params.permissionMode,
       permissionEscalation: params.permissionEscalation,
       workspaceWriteRoots: params.workspaceWriteRoots,
     },
-    cwd: params.cwd,
-    pendingInstructions: params.instructions,
-    activePromptKind: null,
+    providerThreadId: "",
     queuedInputs: [],
-    loading: false,
-    loadingSessionId: undefined,
-    pendingLoadUsageUpdate: undefined,
     stopping: false,
+    supportsImageInput: false,
+    translator,
     turnSettled: undefined,
-    pendingPermissions: new Set(),
   };
+  if (launch.warning) translator.warning("acp_launch_warning", launch.warning);
 
   try {
     const initializeResult = await connection.request({
@@ -1510,15 +1552,14 @@ async function startAgentSession(
     let sessionId: string | undefined;
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
     let loadedModels: AcpSessionModels | undefined;
-    if (request.kind === "resume" && supportsLoadSession) {
+    if (args.params.mode.kind === "resume" && supportsLoadSession) {
       session.loading = true;
-      session.loadingSessionId = request.params.providerThreadId;
-      session.pendingLoadUsageUpdate = undefined;
+      session.loadingSessionId = args.params.mode.providerSessionId;
       try {
         const configState = await connection.request({
           method: "session/load",
           params: {
-            sessionId: request.params.providerThreadId,
+            sessionId: args.params.mode.providerSessionId,
             cwd: params.cwd,
             mcpServers,
           },
@@ -1526,9 +1567,8 @@ async function startAgentSession(
         });
         loadedConfigOptions = configState?.configOptions;
         loadedModels = configState?.models;
-        sessionId = request.params.providerThreadId;
+        sessionId = args.params.mode.providerSessionId;
       } catch {
-        sessionId = undefined;
         session.loading = false;
         session.loadingSessionId = undefined;
         session.pendingLoadUsageUpdate = undefined;
@@ -1553,11 +1593,11 @@ async function startAgentSession(
         modelSelection: params.modelSelection,
         nativeReasoning: params.nativeReasoning,
       });
-      if (request.kind === "resume") {
-        sendNotification(ACP_WARNING_METHOD, {
-          threadId: bbThreadId,
-          summary: `${agentLabel} could not restore the previous session; continuing in a fresh session without in-agent history.`,
-        });
+      if (args.params.mode.kind === "resume") {
+        translator.warning(
+          "acp_resume_fallback",
+          `${agentLabel} could not restore the previous session; continuing in a fresh session without in-agent history.`,
+        );
       }
     } else {
       await selectAcpNativeModel({
@@ -1572,21 +1612,12 @@ async function startAgentSession(
       session.loading = false;
       session.loadingSessionId = undefined;
       session.pendingLoadUsageUpdate = undefined;
-      if (loadUsageUpdate) {
-        sendNotification(ACP_UPDATE_METHOD, {
-          threadId: session.bbThreadId,
-          update: loadUsageUpdate,
-        });
-      }
+      if (loadUsageUpdate) translator.translateUpdate(loadUsageUpdate);
     }
 
     session.providerThreadId = sessionId;
-    sessionsByBbThreadId.set(bbThreadId, session);
-    bbThreadIdByProviderThreadId.set(sessionId, bbThreadId);
-    sendNotification("thread/identity", {
-      threadId: bbThreadId,
-      providerThreadId: sessionId,
-    });
+    sessionsByAttachmentId.set(session.attachmentId, session);
+    sessionsByProviderThreadId.set(sessionId, session);
     return session;
   } catch (error) {
     session.stopping = true;
@@ -1597,13 +1628,10 @@ async function startAgentSession(
 }
 
 async function stopSession(session: AcpThreadSession): Promise<void> {
-  if (session.stopping) {
-    return;
-  }
+  if (session.stopping) return;
   session.stopping = true;
   session.queuedInputs = [];
   cancelPendingPermissions(session);
-
   if (session.activePromptKind !== null && !session.connection.exited) {
     session.connection.notify("session/cancel", {
       sessionId: session.providerThreadId,
@@ -1617,19 +1645,12 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
       ]);
     }
   }
-
   session.connection.kill();
   removeSession(session);
 }
 
-// ---------------------------------------------------------------------------
-// Turn loop
-// ---------------------------------------------------------------------------
-
 function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
   session.activePromptKind = "turn";
-  sendNotification(ACP_TURN_STARTED_METHOD, { threadId: session.bbThreadId });
-
   session.turnSettled = (async () => {
     let input = firstInput;
     for (;;) {
@@ -1647,58 +1668,49 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
       } catch (error) {
         session.activePromptKind = null;
         session.queuedInputs = [];
-        // An exited agent already produced an error notification from the
-        // connection's exit handler; only report in-protocol prompt failures.
         if (!session.stopping && !session.connection.exited) {
-          sendNotification("error", {
-            threadId: session.bbThreadId,
-            message: error instanceof Error ? error.message : String(error),
-          });
+          session.translator.failActiveTurn(
+            error instanceof Error ? error.message : String(error),
+          );
         }
         return;
       }
-
       if (stopReason !== "cancelled" && !session.stopping) {
-        // Steer inputs queued during the prompt continue the same bb turn.
         const next = session.queuedInputs.shift();
         if (next) {
           input = next;
           continue;
         }
       }
-
       session.activePromptKind = null;
       session.queuedInputs = [];
-      sendNotification(ACP_TURN_COMPLETED_METHOD, {
-        threadId: session.bbThreadId,
-        stopReason,
-      });
+      session.translator.finishTurn(stopReason);
+      session.activeTurnId = null;
       return;
     }
-  })();
+  })().finally(() => {
+    session.turnSettled = undefined;
+  });
 }
 
-function startCompaction(session: AcpThreadSession): void {
+function startCompaction(session: AcpThreadSession, turnId: string): void {
   if (session.activePromptKind !== null) {
     throw new Error("Cannot compact context while an ACP turn is active");
   }
-
   session.activePromptKind = "compaction";
-  sendNotification(ACP_COMPACTION_STARTED_METHOD, {
-    threadId: session.bbThreadId,
-  });
-
-  const request = session.connection.request({
-    method: "session/prompt",
-    params: {
-      sessionId: session.providerThreadId,
-      prompt: [{ type: "text", text: "/compact" }],
-    },
-    resultSchema: acpPromptResultSchema,
-  });
-  session.turnSettled = request
+  session.activeTurnId = turnId;
+  session.translator.beginCompaction(turnId);
+  session.turnSettled = session.connection
+    .request({
+      method: "session/prompt",
+      params: {
+        sessionId: session.providerThreadId,
+        prompt: [{ type: "text", text: "/compact" }],
+      },
+      resultSchema: acpPromptResultSchema,
+    })
     .then((result) => {
-      const outcome =
+      session.translator.finishCompaction(
         result.stopReason === "end_turn"
           ? { status: "completed" }
           : result.stopReason === "cancelled"
@@ -1706,29 +1718,21 @@ function startCompaction(session: AcpThreadSession): void {
             : {
                 status: "failed",
                 error: `Agent stopped compaction: ${result.stopReason}`,
-              };
-      sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
-        threadId: session.bbThreadId,
-        ...outcome,
-      });
+              },
+      );
     })
     .catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
-        threadId: session.bbThreadId,
+      session.translator.finishCompaction({
         status: "failed",
-        error: message,
+        error: error instanceof Error ? error.message : String(error),
       });
     })
     .finally(() => {
       session.activePromptKind = null;
+      session.activeTurnId = null;
       session.turnSettled = undefined;
     });
 }
-
-// ---------------------------------------------------------------------------
-// Agent inbound traffic
-// ---------------------------------------------------------------------------
 
 function handleAgentRequest(
   session: AcpThreadSession,
@@ -1756,25 +1760,17 @@ function handleAgentNotification(
   method: string,
   params: unknown,
 ): void {
-  if (method !== "session/update") {
-    return;
-  }
-  if (session.stopping) {
-    return;
-  }
+  if (method !== "session/update" || session.stopping) return;
   const parsed = acpSessionNotificationParamsSchema.safeParse(params);
-  if (!parsed.success) {
-    return;
-  }
+  if (!parsed.success) return;
   if (session.loading) {
     if (
       parsed.data.sessionId === session.loadingSessionId &&
       parsed.data.update.sessionUpdate === "usage_update"
     ) {
       const usageUpdate = acpUsageUpdateSchema.safeParse(parsed.data.update);
-      if (usageUpdate.success) {
+      if (usageUpdate.success)
         session.pendingLoadUsageUpdate = usageUpdate.data;
-      }
     }
     return;
   }
@@ -1784,212 +1780,218 @@ function handleAgentNotification(
   ) {
     return;
   }
-  sendNotification(ACP_UPDATE_METHOD, {
-    threadId: session.bbThreadId,
-    update: parsed.data.update,
-  });
+  session.translator.translateUpdate(parsed.data.update);
 }
 
-// ---------------------------------------------------------------------------
-// Runtime command handling
-// ---------------------------------------------------------------------------
+const acpDriverProviderOptionsSchema = z.object({}).strict();
 
-function decodeAcpBridgeJsonRpcRequest(
-  raw: unknown,
-): (AcpBridgeCommand & { id: string | number }) | null {
-  const envelope = jsonRpcEnvelopeSchema.safeParse(raw);
-  if (!envelope.success) {
-    return null;
-  }
-  const command = acpBridgeCommandSchema.safeParse({
-    method: envelope.data.method,
-    params: envelope.data.params ?? {},
-  });
-  if (!command.success) {
-    return null;
-  }
-  return { ...command.data, id: envelope.data.id };
-}
-
-async function handleRequest(
-  request: AcpBridgeCommand & { id: string | number },
-): Promise<void> {
-  switch (request.method) {
-    case "initialize":
-      sendResult(request.id, { ok: true });
-      return;
-
-    case "model/list": {
-      const catalog = request.params.listCommand
-        ? await loadAgentModelCatalog(request.params.listCommand)
-        : null;
-      if (catalog) {
-        sendResult(
-          request.id,
-          splitPrimaryModels(
-            applyConfiguredReasoningToModels(catalog.models, {
-              reasoningCli: request.params.reasoningCli,
-              nativeReasoning: request.params.nativeReasoning,
-            }),
-            request.params.primaryModels,
-          ),
-        );
-        return;
-      }
-      const sessionDiscoveredModels =
-        request.params.listCommand === undefined && request.params.agent
-          ? await loadSessionDiscoveredModels(request.params.agent)
-          : null;
-      if (sessionDiscoveredModels) {
-        sendResult(request.id, {
-          models: applyConfiguredReasoningToModels(sessionDiscoveredModels, {
-            reasoningCli: request.params.reasoningCli,
-            nativeReasoning: request.params.nativeReasoning,
-          }),
-          selectedOnlyModels: [],
-        });
-        return;
-      }
-      sendResult(request.id, {
-        models: [
-          applyConfiguredReasoningToModel(ACP_DEFAULT_MODEL, {
-            reasoningCli: request.params.reasoningCli,
-            nativeReasoning: request.params.nativeReasoning,
-          }),
-        ],
-        selectedOnlyModels: [],
-      });
-      return;
-    }
-
-    case "thread/start": {
-      const session = await startAgentSession({
-        kind: "start",
-        params: request.params,
-      });
-      sendResult(request.id, { providerThreadId: session.providerThreadId });
-      return;
-    }
-
-    case "thread/resume": {
-      const session = await startAgentSession({
-        kind: "resume",
-        params: request.params,
-      });
-      sendResult(request.id, { providerThreadId: session.providerThreadId });
-      return;
-    }
-
-    case "turn/start": {
-      const session = getSessionByProviderThreadId(request.params.threadId);
-      if (!session || session.stopping) {
-        sendError(request.id, -32000, "No active ACP session");
-        return;
-      }
-      if (session.activePromptKind !== null) {
-        sendError(request.id, -32000, "A turn is already active");
-        return;
-      }
-      runTurn(session, request.params.input);
-      sendResult(request.id, { threadId: request.params.threadId });
-      return;
-    }
-
-    case "turn/steer": {
-      const session = getSessionByProviderThreadId(request.params.threadId);
-      if (!session || session.stopping) {
-        sendError(request.id, -32000, "No active ACP session");
-        return;
-      }
-      if (session.activePromptKind !== "turn") {
-        sendError(request.id, -32000, "No active turn to steer");
-        return;
-      }
-      session.queuedInputs.push(request.params.input);
-      sendResult(request.id, { threadId: request.params.threadId });
-      return;
-    }
-
-    case "thread/stop": {
-      const session = getSessionByProviderThreadId(request.params.threadId);
-      if (session) {
-        await stopSession(session);
-      }
-      sendResult(request.id, { ok: true });
-      return;
-    }
-
-    case "thread/compact": {
-      const session = getSessionByProviderThreadId(request.params.threadId);
-      if (!session || session.stopping) {
-        sendError(request.id, -32000, "No active ACP session");
-        return;
-      }
-      try {
-        startCompaction(session);
-        sendResult(request.id, { threadId: request.params.threadId });
-      } catch (error) {
-        sendError(
-          request.id,
-          -32000,
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-      return;
-    }
-  }
-}
-
-function handleParsedMessage(parsed: unknown): void {
-  const response = decodeBridgeJsonRpcResponse(parsed);
-  if (response && typeof response.id === "number") {
-    const pending = pendingRuntimeRequests.get(response.id);
-    if (pending) {
-      pendingRuntimeRequests.delete(response.id);
-      pending(response);
-      return;
-    }
-  }
-
-  const request = decodeAcpBridgeJsonRpcRequest(parsed);
-  if (!request) {
-    return;
-  }
-  runBridgeRequest({ request, handleRequest, sendError });
-}
-
-export const handleLine = createBridgeLineHandler({ handleParsedMessage });
-
-async function stopAllSessions(): Promise<void> {
-  await Promise.all(
-    Array.from(sessionsByBbThreadId.values()).map((session) =>
-      stopSession(session),
-    ),
+function profileFromInitialization(
+  context: ProviderDriverContext,
+): HostDaemonAcpLaunchSpec {
+  const parsed = hostDaemonAcpLaunchSpecSchema.parse(
+    context.initialization.config,
   );
-  const dynamicToolBridge = dynamicToolBridgePromise
-    ? await dynamicToolBridgePromise.catch(() => null)
-    : null;
-  await new Promise<void>((resolveClose) => {
-    if (!dynamicToolBridge) {
-      resolveClose();
-      return;
-    }
-    dynamicToolBridge.server.close(() => resolveClose());
-  });
+  return normalizeHostDaemonAcpLaunchSpec(parsed);
 }
 
-if (isMainModule(import.meta.url) && process.argv.includes("--mcp-stdio")) {
+async function listModelsForProfile(profile: HostDaemonAcpLaunchSpec) {
+  const listCommand =
+    profile.modelCli && profile.modelCli.listArgs.length > 0
+      ? {
+          command: profile.command,
+          args: [...profile.modelCli.listArgs],
+          ...(profile.cwd ? { cwd: profile.cwd } : {}),
+          ...(Object.keys(profile.env).length > 0
+            ? { envVars: profile.env }
+            : {}),
+        }
+      : undefined;
+  const catalog = listCommand ? await loadAgentModelCatalog(listCommand) : null;
+  if (catalog) {
+    return splitPrimaryModels(
+      applyConfiguredReasoningToModels(catalog.models, {
+        reasoningCli: profile.reasoningCli,
+        nativeReasoning: profile.nativeReasoning,
+      }),
+      profile.modelCli?.primaryModels ?? [],
+    );
+  }
+  const discovered =
+    listCommand === undefined
+      ? await loadSessionDiscoveredModels({
+          command: profile.command,
+          args: [...profile.args],
+          ...(profile.cwd ? { cwd: profile.cwd } : {}),
+          ...(Object.keys(profile.env).length > 0
+            ? { envVars: profile.env }
+            : {}),
+        })
+      : null;
+  if (discovered) {
+    return {
+      models: applyConfiguredReasoningToModels(discovered, {
+        reasoningCli: profile.reasoningCli,
+        nativeReasoning: profile.nativeReasoning,
+      }),
+      selectedOnlyModels: [],
+    };
+  }
+  return {
+    models: [
+      applyConfiguredReasoningToModel(ACP_DEFAULT_MODEL, {
+        reasoningCli: profile.reasoningCli,
+        nativeReasoning: profile.nativeReasoning,
+      }),
+    ],
+    selectedOnlyModels: [],
+  };
+}
+
+export const acpProviderDriver = defineProviderDriver({
+  identity: {
+    pluginId: "acp",
+    driverId: "acp",
+    providerId: "acp",
+  },
+  processCapabilities: { multiplexSessions: true },
+
+  async inspect(_params, context) {
+    const profile = profileFromInitialization(context);
+    try {
+      const models = await listModelsForProfile(profile);
+      return {
+        readiness: { status: "ready" },
+        capabilities: {
+          multiplexSessions: true,
+          supportedSessionOperations: [],
+          supportedPermissionModes: ["accept-edits", "full"],
+          supportsServiceTier: true,
+          supportsSteering: true,
+          supportsUserQuestions: false,
+        },
+        ...models,
+        diagnostics: [],
+      };
+    } catch (error) {
+      return {
+        readiness: {
+          status: "missing_dependency",
+          reason: error instanceof Error ? error.message : String(error),
+        },
+        capabilities: {
+          multiplexSessions: true,
+          supportedSessionOperations: [],
+          supportedPermissionModes: ["accept-edits", "full"],
+          supportsServiceTier: true,
+          supportsSteering: true,
+          supportsUserQuestions: false,
+        },
+        models: [ACP_DEFAULT_MODEL],
+        selectedOnlyModels: [],
+        diagnostics: [],
+      };
+    }
+  },
+
+  async openSession(params, context) {
+    const profile = profileFromInitialization(context);
+    const session = await startAgentSession({ context, params, profile });
+    return {
+      providerSessionId: session.providerThreadId,
+      sessionFormatVersion: String(ACP_PROTOCOL_VERSION),
+    };
+  },
+
+  async detachSession(params) {
+    const session = requireSession(params.attachmentId);
+    await stopSession(session);
+    return { providerCheckpointId: null };
+  },
+
+  async discardSession(params) {
+    const session = sessionsByAttachmentId.get(params.attachmentId);
+    if (session) await stopSession(session);
+  },
+
+  async submitTurn(params: ProviderTurnSubmitParams) {
+    const session = requireSession(params.attachmentId);
+    if (params.mode === "steer") {
+      if (
+        session.activePromptKind !== "turn" ||
+        session.activeTurnId !== params.expectedTurnId
+      ) {
+        return { outcome: "stale", activeTurnId: session.activeTurnId };
+      }
+      session.queuedInputs.push(
+        flattenPromptInputGroups([], params.inputGroups),
+      );
+      return {
+        outcome: "accepted",
+        disposition: "steered",
+        turnId: params.expectedTurnId,
+        providerTurnId: null,
+      };
+    }
+    if (session.activePromptKind !== null) {
+      return {
+        outcome: "rejected",
+        error: driverError({
+          code: "acp_turn_active",
+          category: "provider",
+          message: "An ACP turn is already active",
+        }),
+      };
+    }
+    const input = flattenPromptInputGroups([], params.inputGroups);
+    if (
+      isStandaloneBuiltinCompactCommand(input) &&
+      profileFromInitialization(session.context).command.includes("opencode")
+    ) {
+      startCompaction(session, params.turnId);
+    } else {
+      session.activeTurnId = params.turnId;
+      session.translator.beginTurn(params.turnId);
+      runTurn(session, input);
+    }
+    return {
+      outcome: "accepted",
+      disposition: "started",
+      turnId: params.turnId,
+      providerTurnId: null,
+    };
+  },
+
+  async cancelTurn(params) {
+    const session = requireSession(params.attachmentId);
+    if (session.activeTurnId !== params.turnId) {
+      return { outcome: "not_active" };
+    }
+    session.connection.notify("session/cancel", {
+      sessionId: session.providerThreadId,
+    });
+    cancelPendingPermissions(session);
+    return { outcome: "cancellation_requested" };
+  },
+
+  async shutdown() {
+    await Promise.all([...sessionsByAttachmentId.values()].map(stopSession));
+    const dynamicToolBridge = dynamicToolBridgePromise
+      ? await dynamicToolBridgePromise.catch(() => null)
+      : null;
+    await new Promise<void>((resolveClose) => {
+      if (!dynamicToolBridge) {
+        resolveClose();
+        return;
+      }
+      dynamicToolBridge.server.close(() => resolveClose());
+    });
+  },
+});
+
+export function isAcpMcpStdioProcess(): boolean {
+  return process.argv.includes("--mcp-stdio");
+}
+
+export function runAcpMcpStdioProcess(): void {
   runAcpDynamicToolMcpServer();
-} else {
-  startBridgeStdio({
-    importMetaUrl: import.meta.url,
-    handleLine,
-    onClose: () => {
-      // Stdin close is a process shutdown boundary; cancel and reap the agent
-      // subprocesses before the bridge exits so none outlive the daemon.
-      void stopAllSessions().finally(() => {
-        process.exit(0);
-      });
-    },
-  });
 }

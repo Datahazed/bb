@@ -12,11 +12,6 @@ import {
   listBuiltInAgentProviderInfos,
 } from "@bb/agent-providers";
 import type { ProviderInfo } from "@bb/domain";
-import { createAcpProviderAdapter } from "./acp/adapter.js";
-import {
-  acpProfileFromLaunchSpec,
-  ACP_AGENT_PROFILES,
-} from "./acp/profiles.js";
 import { createCodexProviderAdapter } from "./codex/adapter.js";
 import type {
   ProviderAdapter,
@@ -42,11 +37,6 @@ const builtInProviders = [
     createAdapter: (options) => createCodexProviderAdapter(options),
     info: getBuiltInAgentProviderInfo("codex"),
   },
-  ...ACP_AGENT_PROFILES.map((profile) => ({
-    createAdapter: (options: ProviderAdapterFactoryOptions) =>
-      createAcpProviderAdapter({ ...options, profile }),
-    info: getBuiltInAgentProviderInfo(profile.providerId),
-  })),
 ] satisfies BuiltInProviderDescriptor[];
 
 const builtInProvidersById = new Map(
@@ -66,20 +56,17 @@ export function createProviderForId(
   providerId: string,
   options?: ProviderAdapterFactoryOptions,
 ): ProviderAdapter {
-  if (!isAgentProviderId(providerId) && options?.acpLaunchSpec) {
-    if (!isAcpProviderId(providerId)) {
-      throw new Error(
-        `ACP launch spec supplied for non-ACP provider "${providerId}".`,
-      );
-    }
-    const adapterOptions = toProviderAdapterFactoryOptions(options);
-    return createAcpProviderAdapter({
-      ...adapterOptions,
-      profile: acpProfileFromLaunchSpec(options.acpLaunchSpec, providerId),
-    });
+  if (options?.acpLaunchSpec && !isAcpProviderId(providerId)) {
+    throw new Error(
+      `ACP launch spec supplied for non-ACP provider "${providerId}".`,
+    );
   }
 
-  if (providerId === "pi" || providerId === "claude-code") {
+  if (
+    providerId === "pi" ||
+    providerId === "claude-code" ||
+    isAcpProviderId(providerId)
+  ) {
     throw new Error(
       `Provider "${providerId}" uses the canonical driver and has no legacy adapter.`,
     );

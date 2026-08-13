@@ -47,7 +47,7 @@
     "dist",
     "!dist/*.map",
     "host-daemon/dist/bb",
-    "host-daemon/dist/bb-acp-bridge.mjs",
+    "host-daemon/dist/bb-acp-driver.mjs",
     "host-daemon/dist/bb-claude-code-driver.mjs",
     "host-daemon/dist/bb-parcel-watcher-child.mjs",
     "host-daemon/dist/bb-pi-driver.mjs",

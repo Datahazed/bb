@@ -4,7 +4,11 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { getBuiltInAgentProviderInfo } from "@bb/agent-providers";
+import {
+  buildAcpProviderInfo,
+  getBuiltInAgentProviderInfo,
+  isAcpProviderId,
+} from "@bb/agent-providers";
 import type { ThreadEvent } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import {
@@ -166,6 +170,7 @@ interface ProviderProcessExitedErrorArgs {
 
 const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 const CANONICAL_PROVIDER_REQUEST_TIMEOUT_MS = 2 * 60_000;
+const ACP_DRIVER_ID = "acp";
 const CLAUDE_CODE_PROVIDER_ID = "claude-code";
 const PI_PROVIDER_ID = "pi";
 
@@ -178,8 +183,12 @@ function resolveCanonicalDriverProcessArgs(args: {
   bridgeBundleDir: string | undefined;
   providerId: string;
 }): string[] {
-  const driver =
-    args.providerId === PI_PROVIDER_ID
+  const driver = isAcpProviderId(args.providerId)
+    ? {
+        bundleFileName: "bb-acp-driver.mjs",
+        bridgeRelativePath: "acp/driver-entry.js",
+      }
+    : args.providerId === PI_PROVIDER_ID
       ? {
           bundleFileName: "bb-pi-driver.mjs",
           bridgeRelativePath: "pi/driver-entry.js",
@@ -237,7 +246,8 @@ export class RuntimeProviderProcessManager {
     const startPromise = (async () => {
       if (
         (args.providerId === PI_PROVIDER_ID ||
-          args.providerId === CLAUDE_CODE_PROVIDER_ID) &&
+          args.providerId === CLAUDE_CODE_PROVIDER_ID ||
+          isAcpProviderId(args.providerId)) &&
         this.args.adapterFactory === undefined
       ) {
         await this.startCanonicalProvider(args);
@@ -371,6 +381,13 @@ export class RuntimeProviderProcessManager {
     args: EnsureRuntimeProviderArgs,
   ): Promise<void> {
     const providerId = args.providerId;
+    const acpProfile = args.acpLaunchSpec;
+    if (isAcpProviderId(providerId) && acpProfile === undefined) {
+      throw new Error(`ACP provider "${providerId}" requires a launch spec`);
+    }
+    const driverIdentity = isAcpProviderId(providerId)
+      ? ACP_DRIVER_ID
+      : providerId;
     const processArgs = resolveCanonicalDriverProcessArgs({
       bridgeBundleDir: this.args.bridgeBundleDir,
       providerId,
@@ -384,9 +401,9 @@ export class RuntimeProviderProcessManager {
         initialize: {
           supportedProtocolVersions: [PROVIDER_DRIVER_PROTOCOL_VERSION],
           expected: {
-            pluginId: providerId,
-            driverId: providerId,
-            providerId,
+            pluginId: driverIdentity,
+            driverId: driverIdentity,
+            providerId: driverIdentity,
             artifactDigest: driverArtifactDigest(processArgs),
           },
           host: {
@@ -401,7 +418,7 @@ export class RuntimeProviderProcessManager {
               providerId,
             ),
           },
-          config: {},
+          config: acpProfile ?? {},
         },
         launch: {
           command: this.args.bridgeNodeExecutablePath ?? process.execPath,
@@ -479,9 +496,17 @@ export class RuntimeProviderProcessManager {
       );
     }
 
-    const providerInfo = getBuiltInAgentProviderInfo(
-      providerId === PI_PROVIDER_ID ? PI_PROVIDER_ID : CLAUDE_CODE_PROVIDER_ID,
-    );
+    const providerInfo = isAcpProviderId(providerId)
+      ? buildAcpProviderInfo({
+          id: providerId,
+          displayName: acpProfile?.displayName ?? providerId,
+          logoUrl: null,
+        })
+      : getBuiltInAgentProviderInfo(
+          providerId === PI_PROVIDER_ID
+            ? PI_PROVIDER_ID
+            : CLAUDE_CODE_PROVIDER_ID,
+        );
     const connection = new CanonicalProcessProviderConnection({
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
       ...(providerId === CLAUDE_CODE_PROVIDER_ID

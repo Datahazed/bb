@@ -2,7 +2,7 @@
  * Minimal JSON-RPC 2.0 endpoint over a spawned ACP agent's stdio.
  *
  * ACP frames messages as newline-delimited JSON. BB only consumes a small,
- * stable subset of the protocol, so the bridge validates traffic with the
+ * stable subset of the protocol, so the driver validates traffic with the
  * schemas in `../wire.ts` instead of depending on an external ACP SDK.
  */
 

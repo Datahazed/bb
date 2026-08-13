@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * Scripted fake ACP agent for bridge tests.
+ * Scripted fake ACP agent for driver tests.
  *
- * Speaks just enough of the Agent Client Protocol to exercise the bridge:
+ * Speaks just enough of the Agent Client Protocol to exercise the driver:
  * initialize/session lifecycle, streamed message chunks, permission requests,
  * client fs writes, cancellation, and (env-gated) session/load support.
  *
@@ -301,7 +301,7 @@ async function handlePrompt(message) {
     notifyUpdate(messageChunk(`echo:${text}`));
     await sleep(300);
   } else if (text.includes("echo-argv")) {
-    // Lets bridge tests assert the launch args (e.g. the --model pin).
+    // Lets driver tests assert the launch args (e.g. the --model pin).
     notifyUpdate(messageChunk(`argv:${process.argv.slice(2).join(" ")}`));
   } else if (text.includes("echo-selected-model")) {
     notifyUpdate(messageChunk(`selected-model:${selectedModel}`));

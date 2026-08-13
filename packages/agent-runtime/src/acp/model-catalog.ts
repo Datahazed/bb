@@ -33,7 +33,7 @@
 
 import { reasoningLevelValues } from "@bb/domain";
 import type { AvailableModel, ReasoningLevel, ServiceTier } from "@bb/domain";
-import type { AcpConfigOption, AcpSessionModels } from "../wire.js";
+import type { AcpConfigOption, AcpSessionModels } from "./wire.js";
 
 export interface RawAgentModel {
   id: string;

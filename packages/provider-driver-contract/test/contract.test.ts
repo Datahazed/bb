@@ -34,8 +34,8 @@ describe("provider driver contract", () => {
         expected: { ...params.expected, artifactDigest: "not-a-digest" },
       }).success,
     ).toBe(false);
-    expect(supportsCurrentProviderDriverProtocol([4])).toBe(true);
-    expect(supportsCurrentProviderDriverProtocol([3])).toBe(false);
+    expect(supportsCurrentProviderDriverProtocol([5])).toBe(true);
+    expect(supportsCurrentProviderDriverProtocol([4])).toBe(false);
   });
 
   it("requires a classified error for a failed settlement", () => {

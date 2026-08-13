@@ -15,7 +15,7 @@ import {
 
 export function makeInitializeParams(): ProviderDriverInitializeParams {
   return providerDriverInitializeParamsSchema.parse({
-    supportedProtocolVersions: [4],
+    supportedProtocolVersions: [5],
     expected: {
       pluginId: "pi",
       driverId: "pi",
@@ -35,7 +35,7 @@ export function makeInitializeParams(): ProviderDriverInitializeParams {
 
 export function makeInitializeResult(): ProviderDriverInitializeResult {
   return providerDriverInitializeResultSchema.parse({
-    protocolVersion: 4,
+    protocolVersion: 5,
     identity: {
       pluginId: "pi",
       driverId: "pi",

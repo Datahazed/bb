@@ -79,7 +79,7 @@ beforeAll(async () => {
 
 function initializeParams() {
   return providerDriverInitializeParamsSchema.parse({
-    supportedProtocolVersions: [4],
+    supportedProtocolVersions: [5],
     expected: {
       pluginId: "claude-code",
       driverId: "claude-code",

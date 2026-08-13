@@ -32,7 +32,6 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "inline-vis",
   "secrets",
 ];
-const BRIDGE_WAIT_TIMEOUT_MS = 10_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
 
@@ -263,152 +262,12 @@ async function packTarball() {
   return join(tempRoot, entry.filename);
 }
 
-function waitForJsonRpcResponse({ childProcess, id, label, output }) {
-  return new Promise((resolvePromise, reject) => {
-    let buffer = "";
-    let settled = false;
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      childProcess.stdout?.off("data", onData);
-      childProcess.off("exit", onExit);
-    };
-    const settle = (callback, value) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      callback(value);
-    };
-    const parseLine = (line) => {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        return;
-      }
-
-      let parsed;
-      try {
-        parsed = JSON.parse(trimmed);
-      } catch (error) {
-        settle(
-          reject,
-          new Error(
-            `${label} emitted invalid JSON-RPC output: ${trimmed}\n${formatProcessOutput(output)}`,
-          ),
-        );
-        return;
-      }
-
-      if (isRecord(parsed) && parsed.id === id) {
-        settle(resolvePromise, parsed);
-      }
-    };
-    const onData = (chunk) => {
-      buffer += chunk.toString("utf8");
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        if (settled) {
-          return;
-        }
-        parseLine(line);
-      }
-    };
-    const onExit = (code, signal) => {
-      settle(
-        reject,
-        new Error(
-          `${label} exited before response ${id} with ${code ?? signal}\n${formatProcessOutput(output)}`,
-        ),
-      );
-    };
-    const timeout = setTimeout(() => {
-      settle(
-        reject,
-        new Error(
-          `${label} timed out waiting for response ${id}\n${formatProcessOutput(output)}`,
-        ),
-      );
-    }, BRIDGE_WAIT_TIMEOUT_MS);
-
-    childProcess.stdout?.on("data", onData);
-    childProcess.once("exit", onExit);
-  });
-}
-
-async function smokeBridgeModelList({
-  allowUnavailableProvider = false,
-  bridgePath,
-  label,
-}) {
-  const childProcess = spawn(process.execPath, [bridgePath], {
-    cwd: tempRoot,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  const output = collectProcessOutput(childProcess);
-  const modelListResponsePromise = waitForJsonRpcResponse({
-    childProcess,
-    id: 2,
-    label,
-    output,
-  });
-  childProcess.stdin.write(
-    `${JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: { clientInfo: { name: "bb-app-smoke", version: "0.0.0" } },
-    })}\n`,
-  );
-  childProcess.stdin.write(
-    `${JSON.stringify({
-      jsonrpc: "2.0",
-      id: 2,
-      method: "model/list",
-      params: {},
-    })}\n`,
-  );
-  const modelListResponse = await modelListResponsePromise;
-  childProcess.stdin.end();
-  const result = await waitForProcessExit(childProcess);
-  if (result.code !== 0) {
-    throw new Error(
-      `${label} failed with ${result.code ?? result.signal}\n${formatProcessOutput(output)}`,
-    );
-  }
-
-  if (
-    "result" in modelListResponse &&
-    isRecord(modelListResponse.result) &&
-    Array.isArray(modelListResponse.result.models)
-  ) {
-    return;
-  }
-
-  const unavailableProviderMessage =
-    "error" in modelListResponse &&
-    isRecord(modelListResponse.error) &&
-    typeof modelListResponse.error.message === "string" &&
-    /(?:Native CLI binary|Claude Code executable).*not found|could not find the Claude Code CLI/u.test(
-      modelListResponse.error.message,
-    );
-  if (!allowUnavailableProvider || !unavailableProviderMessage) {
-    throw new Error(
-      `${label} did not return a model/list response\n${formatProcessOutput(output)}`,
-    );
-  }
-}
-
-async function smokeProviderBridgeBundles(packageDir) {
+async function smokeProviderDriverBundles(packageDir) {
   await access(join(packageDir, "host-daemon", "dist", "bb-pi-driver.mjs"));
   await access(
     join(packageDir, "host-daemon", "dist", "bb-claude-code-driver.mjs"),
   );
-  await smokeBridgeModelList({
-    bridgePath: join(packageDir, "host-daemon", "dist", "bb-acp-bridge.mjs"),
-    label: "ACP bridge model/list",
-  });
+  await access(join(packageDir, "host-daemon", "dist", "bb-acp-driver.mjs"));
 }
 
 async function smokeClaudeCanonicalDriver(packageDir) {
@@ -453,6 +312,71 @@ async function smokeClaudeCanonicalDriver(packageDir) {
       inspected.readiness?.status !== "ready" &&
       inspected.readiness?.status !== "unavailable"
     ) {
+      throw new Error(
+        `${label} returned invalid readiness: ${JSON.stringify(inspected)}`,
+      );
+    }
+    await peer.request("driver.shutdown", {});
+  } finally {
+    peer.close();
+    if (childProcess.exitCode === null) childProcess.kill("SIGKILL");
+  }
+}
+
+async function smokeAcpCanonicalDriver(packageDir) {
+  const testRoot = join(tempRoot, "acp-canonical-driver");
+  const workspaceDir = join(testRoot, "workspace");
+  await mkdir(workspaceDir, { recursive: true });
+  const label = "ACP installed-package canonical driver";
+  const driverPath = join(
+    packageDir,
+    "host-daemon",
+    "dist",
+    "bb-acp-driver.mjs",
+  );
+  const childProcess = spawn(process.execPath, [driverPath], {
+    cwd: workspaceDir,
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
+  });
+  const output = collectProcessOutput(childProcess);
+  const peer = createProviderDriverSmokePeer({ childProcess, label, output });
+  try {
+    const initialized = await peer.request("driver.initialize", {
+      supportedProtocolVersions: [peer.protocolVersion],
+      expected: {
+        pluginId: "acp",
+        driverId: "acp",
+        providerId: "acp",
+        artifactDigest: await driverArtifactDigest(driverPath),
+      },
+      host: { platform: process.platform, architecture: process.arch },
+      paths: { providerDataDir: join(testRoot, "provider-data") },
+      config: {
+        displayName: "ACP smoke agent",
+        command: process.execPath,
+        args: [
+          join(
+            import.meta.dirname,
+            "..",
+            "..",
+            "agent-runtime",
+            "src",
+            "acp",
+            "fake-acp-agent.mjs",
+          ),
+        ],
+        env: {},
+      },
+    });
+    if (initialized.identity?.providerId !== "acp") {
+      throw new Error(`${label} returned the wrong identity`);
+    }
+    const inspected = await peer.request("driver.inspect", {
+      cwd: workspaceDir,
+      operation: null,
+    });
+    if (inspected.readiness?.status !== "ready") {
       throw new Error(
         `${label} returned invalid readiness: ${JSON.stringify(inspected)}`,
       );
@@ -986,8 +910,9 @@ try {
   await smokeConfigCommand(tarballPath);
   const sdkDir = await smokeSdkPackage(tarballPath);
   const installedPackageDir = join(sdkDir, "node_modules", "bb-app");
-  await smokeProviderBridgeBundles(installedPackageDir);
+  await smokeProviderDriverBundles(installedPackageDir);
   await smokeClaudeCanonicalDriver(installedPackageDir);
+  await smokeAcpCanonicalDriver(installedPackageDir);
   await smokePiUserConfiguration(installedPackageDir);
   await smokeFullStack(tarballPath, sdkDir);
   await smokeDaemonJoin(tarballPath);

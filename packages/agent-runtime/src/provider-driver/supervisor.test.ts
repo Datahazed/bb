@@ -38,7 +38,7 @@ function handle(message) {
       jsonrpc: "2.0",
       id: message.id,
       result: {
-        protocolVersion: 4,
+        protocolVersion: 5,
         identity: {
           pluginId: message.params.expected.pluginId,
           driverId: message.params.expected.driverId,
@@ -103,7 +103,7 @@ if (process.env.FAKE_DRIVER_SCENARIO === "oversized") {
 
 function makeInitializeParams(): ProviderDriverInitializeParams {
   return providerDriverInitializeParamsSchema.parse({
-    supportedProtocolVersions: [4],
+    supportedProtocolVersions: [5],
     expected: {
       pluginId: "test-plugin",
       driverId: "test-driver",

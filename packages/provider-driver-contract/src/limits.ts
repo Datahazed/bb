@@ -1,4 +1,4 @@
-export const PROVIDER_DRIVER_PROTOCOL_VERSION = 4 as const;
+export const PROVIDER_DRIVER_PROTOCOL_VERSION = 5 as const;
 
 /** Maximum encoded protocol frame. Transport implementations reject it before JSON parsing. */
 export const PROVIDER_DRIVER_MAX_FRAME_BYTES = 16 * 1024 * 1024;

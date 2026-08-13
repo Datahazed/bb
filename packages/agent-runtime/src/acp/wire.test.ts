@@ -49,7 +49,9 @@ describe("acpSessionNewResultSchema", () => {
     if (!parsed.success) {
       return;
     }
-    expect(parsed.data.models?.availableModels?.[0].description).toBeUndefined();
+    expect(
+      parsed.data.models?.availableModels?.[0].description,
+    ).toBeUndefined();
     expect(parsed.data.configOptions?.[0].options?.[0].name).toBe(
       "openai-codex/GPT-5.5",
     );

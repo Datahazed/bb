@@ -165,7 +165,7 @@ async function createConnection() {
   });
   await peer.initialize(
     providerDriverInitializeParamsSchema.parse({
-      supportedProtocolVersions: [4],
+      supportedProtocolVersions: [5],
       expected: {
         pluginId: "fake",
         driverId: "fake",
