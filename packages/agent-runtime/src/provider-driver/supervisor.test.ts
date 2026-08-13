@@ -1,12 +1,22 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   providerDriverInitializeParamsSchema,
+  providerSessionOpenParamsSchema,
+  providerTurnSubmitParamsSchema,
+  type ProviderDriverEvent,
   type ProviderDriverInitializeParams,
+  type ProviderSessionOpenParams,
+  type ProviderTurnSubmitParams,
 } from "@bb/provider-driver-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProviderDriverSupervisor } from "./supervisor.js";
+
+const SDK_FAKE_DRIVER_PATH = fileURLToPath(
+  new URL("../../test/provider-driver/sdk-fake-driver.ts", import.meta.url),
+);
 
 const FAKE_DRIVER_SOURCE = String.raw`
 import fs from "node:fs";
@@ -106,6 +116,55 @@ function makeInitializeParams(): ProviderDriverInitializeParams {
   });
 }
 
+function makeSessionOpenParams(): ProviderSessionOpenParams {
+  return providerSessionOpenParamsSchema.parse({
+    operationId: "open-1",
+    attachmentId: "attachment-1",
+    bbThreadId: "thread-1",
+    mode: { kind: "start" },
+    workspace: {
+      cwd: "/tmp/workspace",
+      additionalWriteRoots: [],
+      threadStoragePath: "/tmp/thread-storage",
+    },
+    execution: {
+      model: "fake/model",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      permission: {
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      features: {
+        workflowsEnabled: false,
+        memoryEnabled: false,
+        subagentsEnabled: false,
+      },
+      providerOptions: {},
+    },
+    instructions: { mode: "append", text: "Test instructions" },
+    skillSources: [],
+    dynamicTools: [],
+    disallowedTools: [],
+    outputSchema: null,
+    shellEnvironment: {},
+  });
+}
+
+function makeTurnSubmitParams(): ProviderTurnSubmitParams {
+  return providerTurnSubmitParamsSchema.parse({
+    operationId: "submit-1",
+    clientRequestId: "creq_23456789ab",
+    attachmentId: "attachment-1",
+    mode: "start",
+    turnId: "turn-1",
+    inputGroups: [[{ type: "text", text: "Hello", mentions: [] }]],
+    execution: makeSessionOpenParams().execution,
+  });
+}
+
 describe("ProviderDriverSupervisor", () => {
   let directory: string;
   let scriptPath: string;
@@ -179,6 +238,46 @@ describe("ProviderDriverSupervisor", () => {
     );
     expect(stdoutDiagnostics).toHaveLength(1_001);
     expect(stdoutDiagnostics.at(-1)?.line).toContain("diagnostics truncated");
+
+    await supervisor.shutdown();
+  });
+
+  it("runs an SDK-defined driver with acceptance buffering and replay", async () => {
+    const supervisor = new ProviderDriverSupervisor();
+    const driver = await supervisor.launch({
+      processKey: "sdk-driver",
+      initialize: makeInitializeParams(),
+      launch: {
+        command: process.execPath,
+        args: ["--import", "tsx/esm", SDK_FAKE_DRIVER_PATH],
+        cwd: process.cwd(),
+        env: {},
+      },
+    });
+    await expect(
+      driver.connection.openSession(makeSessionOpenParams()),
+    ).resolves.toMatchObject({ providerSessionId: "sdk-provider-session" });
+
+    const event = new Promise<ProviderDriverEvent>((resolve) => {
+      const unsubscribe = driver.connection.onEvent((received) => {
+        unsubscribe();
+        resolve(received);
+      });
+    });
+    const submit = makeTurnSubmitParams();
+    await expect(driver.connection.submitTurn(submit)).resolves.toMatchObject({
+      outcome: "accepted",
+      turnId: "turn-1",
+    });
+    await expect(event).resolves.toMatchObject({
+      type: "turn.settled",
+      turnId: "turn-1",
+      sequence: 1,
+    });
+    await expect(driver.connection.submitTurn(submit)).resolves.toMatchObject({
+      outcome: "accepted",
+      turnId: "turn-1",
+    });
 
     await supervisor.shutdown();
   });

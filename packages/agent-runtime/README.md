@@ -157,6 +157,7 @@ Consumer (host-daemon, server)
        │       ├─ dedicated framed protocol fds
        │       ├─ canonical lifecycle validation
        │       └─ bounded requests, timeouts, and diagnostics
+       │           ↕ @bb/provider-driver-sdk in canonical children
        │
        └─ Bridge Process               SDK-specific child process
            ├─ codex               spawns `codex app-server` directly
@@ -164,7 +165,7 @@ Consumer (host-daemon, server)
            └─ pi                  Node.js bridge → Pi coding agent SDK
 ```
 
-`AgentRuntime` depends on `ProviderDriverConnection`, not adapter command-building callbacks. Existing providers still run through `LegacyAdapterConnection`, which preserves the current child processes and newline-delimited JSON-RPC dialect while containing adapter command construction, response parsing, accepted-command synthesis, and event/request translation. The separately tested canonical path uses `ProviderDriverSupervisor` and `ProcessProviderDriverConnection` with `@bb/provider-driver-contract`; providers move onto that path one at a time.
+`AgentRuntime` depends on `ProviderDriverConnection`, not adapter command-building callbacks. Existing providers still run through `LegacyAdapterConnection`, which preserves the current child processes and newline-delimited JSON-RPC dialect while containing adapter command construction, response parsing, accepted-command synthesis, and event/request translation. The separately tested canonical path uses `ProviderDriverSupervisor` and `ProcessProviderDriverConnection` with `@bb/provider-driver-contract`; canonical children use `@bb/provider-driver-sdk` for framing, operation replay, acceptance buffering, event sequencing, and host callbacks. Providers move onto that path one at a time.
 
 ### Current legacy adapter shapes
 

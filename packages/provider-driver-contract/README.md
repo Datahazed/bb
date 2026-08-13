@@ -2,7 +2,7 @@
 
 Runtime-validated contract for the local connection between the BB host daemon and an isolated agent-provider driver process.
 
-This package currently defines the target protocol and its pure lifecycle validator. No production provider uses it yet. Existing providers continue through `ProviderAdapter` until they are migrated individually.
+This package defines the target protocol and its pure lifecycle validator. `@bb/provider-driver-sdk` implements the driver side, while `ProcessProviderDriverConnection` and `ProviderDriverSupervisor` implement the host side. No production provider uses the canonical path yet; existing providers continue through `ProviderAdapter` until they are migrated individually.
 
 ## Boundary
 
@@ -52,7 +52,7 @@ Stdout and stderr are bounded diagnostics only. They are never parsed as protoco
 - An accepted start returns the requested turn ID with disposition `started`.
 - An accepted steer targets the expected active turn and returns disposition `steered` or `queued`.
 - Replaying the operation/client request IDs must not duplicate user input.
-- A driver SDK must buffer provider events produced during submission until the acceptance response has been written.
+- `@bb/provider-driver-sdk` buffers provider events produced during submission until the acceptance response has been written and deduplicates successful operations for the process generation.
 
 ### Events
 
