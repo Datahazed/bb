@@ -1,4 +1,5 @@
 import {
+  defaultAppSettings,
   encodeClientTurnRequestIdNumber,
   threadScope,
   turnScope,
@@ -41,7 +42,13 @@ export interface RenderTimelineFixtureArgs {
   includeNestedRows?: boolean;
   // `threadName` defaults to "" so existing fixtures need not supply it; pass a
   // name to exercise operation rows that describe relationships to other threads.
-  projectionOptions: Omit<BuildEventProjectionOptions, "threadName"> & {
+  // `showAllAssistantMessages` defaults to the shipped app setting, so only
+  // fixtures for the collapsed mode pass it.
+  projectionOptions: Omit<
+    BuildEventProjectionOptions,
+    "showAllAssistantMessages" | "threadName"
+  > & {
+    showAllAssistantMessages?: boolean;
     threadName?: string;
   };
   verbose?: boolean;
@@ -1114,8 +1121,12 @@ export function renderTimelineFixture(
 ): RenderedTimelineFixture {
   const decodedEvents = args.events.map((row) => decodeThreadEventRow(row));
   const includeNestedRows = args.includeNestedRows ?? true;
+  const showAllAssistantMessages =
+    args.projectionOptions.showAllAssistantMessages ??
+    defaultAppSettings.showAllAssistantMessages;
   const projection = buildEventProjection(decodedEvents, {
     ...args.projectionOptions,
+    showAllAssistantMessages,
     threadName: args.projectionOptions.threadName ?? "",
     turnMessageDetail: includeNestedRows
       ? "full"
@@ -1127,6 +1138,7 @@ export function renderTimelineFixture(
     includeProviderUnhandledOperations:
       args.projectionOptions.includeProviderUnhandledOperations ?? false,
     isLatestPage: true,
+    showAllAssistantMessages,
     threadStatus: args.projectionOptions.threadStatus ?? "idle",
     threadName: args.projectionOptions.threadName ?? "",
     workspaceRoot: null,

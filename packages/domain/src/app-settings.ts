@@ -14,6 +14,12 @@ export const appSettingsSchema = z
     /** Show shortcut hints after holding Command or Control. */
     showKeyboardHints: z.boolean(),
     /**
+     * Show every assistant message of a finished turn in the timeline. When
+     * false, a finished turn shows only its last assistant message and keeps
+     * the earlier ones inside the collapsed work summary.
+     */
+    showAllAssistantMessages: z.boolean(),
+    /**
      * While a thread is running, make Enter steer the active turn and use
      * Command+Enter to queue a follow-up.
      */
@@ -47,6 +53,7 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 export const defaultAppSettings: AppSettings = {
   caffeinate: false,
   showKeyboardHints: true,
+  showAllAssistantMessages: true,
   steerActiveThreadOnEnter: false,
   showUnhandledProviderEvents: false,
   codexMemoryEnabled: true,

@@ -109,6 +109,12 @@ export interface EventProjectionAssistantTextMessage extends EventProjectionMess
   kind: "assistant-text";
   text: string;
   status: Extract<EventProjectionMessageStatus, "streaming" | "completed">;
+  /**
+   * True when this message came from a legacy persisted user-visible system
+   * event. bb wrote that prose itself, so it stays outside the collapsed work
+   * summary even when the timeline collapses model prose.
+   */
+  isLegacyUserMessage?: boolean;
 }
 
 export type EventProjectionToolParsedIntent =

@@ -104,6 +104,7 @@ describe("internal event append ownership", () => {
         buildThreadTimeline(harness.db, thread, {
           eventBudget: 1_000_000,
           includeProviderUnhandledOperations: true,
+          showAllAssistantMessages: true,
           maxInlineOutputChars: null,
           maxSeq: 1,
           page: {

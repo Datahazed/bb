@@ -65,6 +65,7 @@ import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
 import { extractThreadTimelineModelFallback } from "./model-fallback-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
+import type { TimelineGroupingOptions } from "./timeline-message-helpers.js";
 
 export type ThreadTimelineTurnMessageDetail = "summary" | "full";
 
@@ -89,6 +90,8 @@ interface ThreadTimelineFromEventsBaseOptions {
    * providers that are not in thread-view's static provider table.
    */
   providerDisplayName?: string;
+  /** See {@link TimelineGroupingOptions.showAllAssistantMessages}. */
+  showAllAssistantMessages: boolean;
   threadStatus: Thread["status"];
   /**
    * Display name of the thread, used by operation rows that describe a
@@ -135,6 +138,8 @@ export interface ThreadTimelineSourceSeqRange {
 export interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
   includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
+  /** See {@link ThreadTimelineFromEventsBaseOptions.showAllAssistantMessages}. */
+  showAllAssistantMessages: boolean;
   threadStatus: Thread["status"];
   /** See {@link ThreadTimelineFromEventsBaseOptions.threadName}. */
   threadName: string;
@@ -161,6 +166,7 @@ export type ThreadTimelineTurnDetailsFromEventsResult =
     };
 
 interface BuildTurnRowsArgs {
+  grouping: TimelineGroupingOptions;
   includeNestedRows: boolean;
   rowIdPrefix: string;
   turn: EventProjectionTurn;
@@ -187,6 +193,7 @@ interface BuildTurnSummaryRowArgs {
 }
 
 interface BuildCompletedTurnSummaryRowsArgs {
+  grouping: TimelineGroupingOptions;
   includeNestedRows: boolean;
   rowIdPrefix: string;
   summaryItems: CompletedTurnSummaryItem[];
@@ -195,6 +202,7 @@ interface BuildCompletedTurnSummaryRowsArgs {
 }
 
 interface BuildTimelineRowsOptions {
+  grouping: TimelineGroupingOptions;
   includeNestedRows: boolean;
   rowIdPrefix: string;
   workspaceRoot: string | null;
@@ -699,6 +707,7 @@ function convertMessage(
           completedAt: message.completedAt,
           childRows: filterDelegationChildRows(
             buildTimelineRows(message.childProjection, {
+              grouping: options.grouping,
               includeNestedRows: true,
               rowIdPrefix: `${base.id}:child:`,
               workspaceRoot: options.workspaceRoot,
@@ -1104,6 +1113,7 @@ function buildTurnSummaryRow({
 }
 
 function buildCompletedTurnSummaryRows({
+  grouping,
   includeNestedRows,
   rowIdPrefix,
   summaryItems,
@@ -1115,6 +1125,7 @@ function buildCompletedTurnSummaryRows({
     if (item.kind === "ungrouped-message") {
       rows.push(
         ...convertMessage(item.message, {
+          grouping,
           includeNestedRows,
           rowIdPrefix,
           workspaceRoot,
@@ -1126,6 +1137,7 @@ function buildCompletedTurnSummaryRows({
     const sourceRows = includeNestedRows
       ? item.sourceMessages.flatMap((message) =>
           convertMessage(message, {
+            grouping,
             includeNestedRows,
             rowIdPrefix,
             workspaceRoot,
@@ -1151,6 +1163,7 @@ function buildCompletedTurnSummaryRows({
 }
 
 function buildTurnRows({
+  grouping,
   includeNestedRows,
   rowIdPrefix,
   turn,
@@ -1163,6 +1176,7 @@ function buildTurnRows({
   if (!isCompletedTurn) {
     return messages.flatMap((message) =>
       convertMessage(message, {
+        grouping,
         includeNestedRows,
         rowIdPrefix,
         workspaceRoot,
@@ -1171,14 +1185,25 @@ function buildTurnRows({
   }
 
   const { summaryItems, terminalMessages, trailingMessages } =
-    groupCompletedTurnMessages(turn);
+    groupCompletedTurnMessages(turn, grouping);
   const terminalRows = terminalMessages.flatMap((message) =>
-    convertMessage(message, { includeNestedRows, rowIdPrefix, workspaceRoot }),
+    convertMessage(message, {
+      grouping,
+      includeNestedRows,
+      rowIdPrefix,
+      workspaceRoot,
+    }),
   );
   const trailingRows = trailingMessages.flatMap((message) =>
-    convertMessage(message, { includeNestedRows, rowIdPrefix, workspaceRoot }),
+    convertMessage(message, {
+      grouping,
+      includeNestedRows,
+      rowIdPrefix,
+      workspaceRoot,
+    }),
   );
   const summaryRows = buildCompletedTurnSummaryRows({
+    grouping,
     includeNestedRows,
     rowIdPrefix,
     summaryItems,
@@ -1284,6 +1309,7 @@ function buildTimelineRows(
           rows,
           buildTurnRows({
             turn: entry.turn,
+            grouping: options.grouping,
             includeNestedRows,
             rowIdPrefix: options.rowIdPrefix,
             workspaceRoot: options.workspaceRoot,
@@ -1311,6 +1337,7 @@ export function buildThreadTimelineFromEvents(
       args.options.includeProviderUnhandledOperations,
     contextOnlyToolCallIds: args.options.contextOnlyToolCallIds,
     providerDisplayName: args.options.providerDisplayName,
+    showAllAssistantMessages: args.options.showAllAssistantMessages,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,
     turnMessageDetail: args.options.turnMessageDetail,
@@ -1319,6 +1346,9 @@ export function buildThreadTimelineFromEvents(
 
   const rows = [
     ...buildTimelineRows(projection, {
+      grouping: {
+        showAllAssistantMessages: args.options.showAllAssistantMessages,
+      },
       includeNestedRows: args.options.includeNestedRows,
       rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
       workspaceRoot: args.options.workspaceRoot,
@@ -1376,11 +1406,15 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
     providerDisplayName: args.options.providerDisplayName,
+    showAllAssistantMessages: args.options.showAllAssistantMessages,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,
     turnMessageDetail: "full",
   });
   const nestedRows = buildTimelineRows(projection, {
+    grouping: {
+      showAllAssistantMessages: args.options.showAllAssistantMessages,
+    },
     includeNestedRows: true,
     rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
     workspaceRoot: args.options.workspaceRoot,

@@ -7,6 +7,7 @@ import type {
 } from "./event-projection-types.js";
 import { findLastTerminalTimelineMessage } from "./timeline-message-helpers.js";
 import { getProjectionSummaryCount } from "./apply-turn-message-detail.js";
+import type { TimelineGroupingOptions } from "./timeline-message-helpers.js";
 
 interface MessageTimingSource {
   createdAt: number;
@@ -39,6 +40,7 @@ type SemanticMessageContext = StandaloneMessageContext | TurnMessageContext;
 
 interface NormalizeEventProjectionOptions {
   contextOnlyToolCallIds?: ReadonlySet<string>;
+  grouping: TimelineGroupingOptions;
 }
 
 function getStartedAt(message: MessageTimingSource): number {
@@ -188,11 +190,16 @@ function getProjectionMessageBounds(
 function buildSourceTurn(
   sourceTurn: EventProjectionTurn,
   messages: EventProjectionMessage[],
+  grouping: TimelineGroupingOptions,
 ): EventProjectionTurn {
   const terminalMessage = findLastTerminalTimelineMessage(messages);
   const turn: EventProjectionTurn = {
     ...sourceTurn,
-    summaryCount: getProjectionSummaryCount(messages, terminalMessage),
+    summaryCount: getProjectionSummaryCount(
+      messages,
+      terminalMessage,
+      grouping,
+    ),
     messages,
   };
   delete turn.terminalMessage;
@@ -253,14 +260,16 @@ class SemanticProjectionBuilder {
     SemanticMessageContext[]
   >();
   private readonly contextOnlyToolCallIds: ReadonlySet<string>;
+  private readonly grouping: TimelineGroupingOptions;
   private readonly rootContexts: SemanticMessageContext[];
 
   constructor(
     contexts: SemanticMessageContext[],
-    options: NormalizeEventProjectionOptions = {},
+    options: NormalizeEventProjectionOptions,
   ) {
     this.contextOnlyToolCallIds =
       options.contextOnlyToolCallIds ?? new Set<string>();
+    this.grouping = options.grouping;
     const delegationCallIds = new Set(
       contexts
         .map((context) => context.message)
@@ -343,7 +352,7 @@ class SemanticProjectionBuilder {
 
       entries.push({
         kind: "turn",
-        turn: buildSourceTurn(sourceTurn, messages),
+        turn: buildSourceTurn(sourceTurn, messages, this.grouping),
       });
     }
 
@@ -394,7 +403,7 @@ class SemanticProjectionBuilder {
 
 export function normalizeEventProjection(
   projection: EventProjection,
-  options: NormalizeEventProjectionOptions = {},
+  options: NormalizeEventProjectionOptions,
 ): EventProjection {
   const normalizedProjection = new SemanticProjectionBuilder(
     collectProjectionMessageContexts(projection),

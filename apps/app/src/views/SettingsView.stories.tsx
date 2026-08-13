@@ -184,6 +184,8 @@ function useSettingsStoryState() {
   const [openLinksInAppBrowser, setOpenLinksInAppBrowser] = useState(false);
   const [rewriteLocalhostLinks, setRewriteLocalhostLinks] = useState(true);
   const [richTextEditing, setRichTextEditing] = useState(false);
+  const [showAllAssistantMessages, setShowAllAssistantMessages] =
+    useState(true);
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
   const [caffeinate, setCaffeinate] = useState(false);
@@ -209,6 +211,7 @@ function useSettingsStoryState() {
     preferredAudioInputDeviceId,
     rewriteLocalhostLinks,
     richTextEditing,
+    showAllAssistantMessages,
     steerActiveThreadOnEnter,
     showUnhandledProviderEvents,
     setAppearance,
@@ -221,6 +224,7 @@ function useSettingsStoryState() {
     setPreferredAudioInputDeviceId,
     setRewriteLocalhostLinks,
     setRichTextEditing,
+    setShowAllAssistantMessages,
     setSteerActiveThreadOnEnter,
     setShowUnhandledProviderEvents,
     setThemePreference,
@@ -269,11 +273,14 @@ function GeneralSettingsStory({
         onReplayOnboarding={() => {}}
         onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
         onRichTextEditingChange={state.setRichTextEditing}
+        onShowAllAssistantMessagesChange={state.setShowAllAssistantMessages}
         onSteerActiveThreadOnEnterChange={state.setSteerActiveThreadOnEnter}
         openLinksInAppBrowser={state.openLinksInAppBrowser}
         rewriteLocalhostLinks={state.rewriteLocalhostLinks}
         richTextEditing={state.richTextEditing}
         replayOnboardingAvailable={state.experiments.newOnboarding}
+        showAllAssistantMessages={state.showAllAssistantMessages}
+        showAllAssistantMessagesDisabled={false}
         steerActiveThreadOnEnter={state.steerActiveThreadOnEnter}
         steerActiveThreadOnEnterDisabled={false}
       />

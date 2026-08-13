@@ -257,6 +257,7 @@ function walkAllFileChangeDiffs(
     const response = buildThreadTimeline(db, thread, {
       eventBudget,
       includeProviderUnhandledOperations: false,
+      showAllAssistantMessages: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -304,6 +305,7 @@ function walkAllPages(
     const response = buildThreadTimeline(db, thread, {
       eventBudget,
       includeProviderUnhandledOperations: false,
+      showAllAssistantMessages: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -362,6 +364,7 @@ describe("timeline event budget", () => {
     const unbudgeted = buildThreadTimeline(db, thread, {
       eventBudget: LARGE_BUDGET,
       includeProviderUnhandledOperations: false,
+      showAllAssistantMessages: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -372,6 +375,7 @@ describe("timeline event budget", () => {
     const budgeted = buildThreadTimeline(db, thread, {
       eventBudget: 100,
       includeProviderUnhandledOperations: false,
+      showAllAssistantMessages: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -393,6 +397,7 @@ describe("timeline event budget", () => {
     const budgeted = buildThreadTimeline(db, thread, {
       eventBudget: 50,
       includeProviderUnhandledOperations: false,
+      showAllAssistantMessages: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,
@@ -433,6 +438,7 @@ describe("timeline event budget", () => {
     const page = { kind: "latest", segmentLimit: 20 } as const;
     const options = {
       includeProviderUnhandledOperations: false,
+      showAllAssistantMessages: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 0,

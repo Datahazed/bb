@@ -169,6 +169,13 @@ software-keyboard Return path inserts a newline and the submit button sends.
 iPadOS WebKit additionally preserves the Enter and Command+Enter shortcuts
 above for a connected Magic Keyboard.
 
+The "Show all assistant messages" toggle in Settings → General controls how a
+finished turn appears in the timeline. It defaults to on, which shows every
+assistant message of the turn in order and collapses only the tool activity.
+Turn it off to show only the last assistant message and keep the earlier ones
+inside the collapsed work summary. Set it with
+`bb settings general showAllAssistantMessages <true|false>`.
+
 ## Keyboard Shortcuts
 
 Settings → Keyboard edits app command shortcuts. Overrides are stored in the

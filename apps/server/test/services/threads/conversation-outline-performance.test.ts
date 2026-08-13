@@ -75,7 +75,10 @@ describe("thread conversation outline performance", () => {
     ]);
     queries.length = 0;
 
-    const outline = buildThreadConversationOutline(db, thread, { maxSeq: 2 });
+    const outline = buildThreadConversationOutline(db, thread, {
+      maxSeq: 2,
+      showAllAssistantMessages: true,
+    });
 
     expect(outline.items).toEqual([
       expect.objectContaining({ preview: "Visible response" }),
@@ -140,7 +143,10 @@ describe("thread conversation outline performance", () => {
       },
     ]);
 
-    const outline = buildThreadConversationOutline(db, thread, { maxSeq: 4 });
+    const outline = buildThreadConversationOutline(db, thread, {
+      maxSeq: 4,
+      showAllAssistantMessages: true,
+    });
 
     expect(outline.items).toEqual([
       expect.objectContaining({
@@ -219,6 +225,7 @@ describe("thread conversation outline performance", () => {
 
     const outline = buildThreadConversationOutline(db, thread, {
       maxSeq: events.length,
+      showAllAssistantMessages: true,
     });
 
     // The outline mirrors the visible conversation rows, so one tool-heavy turn

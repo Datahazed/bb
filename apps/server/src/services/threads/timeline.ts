@@ -131,6 +131,12 @@ interface BuildThreadTimelineOptions {
   includeProviderUnhandledOperations: boolean;
   includeNestedRows?: boolean;
   /**
+   * Resolved `showAllAssistantMessages` app setting. Every timeline consumer
+   * must pass the same value: the row composition of a finished turn depends on
+   * it, so a caller that disagrees would describe the same turn differently.
+   */
+  showAllAssistantMessages: boolean;
+  /**
    * Cap on the inline output a window reads out of SQLite, applied during the
    * read rather than to the finished rows. The window renders a preview either
    * way, so reading a 300 KB command output only to shorten it after projection
@@ -154,6 +160,8 @@ interface BuildThreadTimelineOptions {
 interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
   includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
+  /** See {@link BuildThreadTimelineOptions.showAllAssistantMessages}. */
+  showAllAssistantMessages: boolean;
 }
 
 export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
@@ -1680,6 +1688,7 @@ function buildThreadTimelineInternal(
     includeProviderUnhandledOperations,
     isLatestPage: options.page.kind === "latest",
     providerDisplayName: options.providerDisplayName,
+    showAllAssistantMessages: options.showAllAssistantMessages,
     threadStatus: thread.status,
     threadName: thread.title ?? thread.titleFallback ?? "",
     workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
@@ -1826,6 +1835,8 @@ export interface BuildThreadConversationOutlineOptions {
   /** Thread high-water event sequence this outline reflects (echoed to clients). */
   maxSeq: number;
   providerDisplayName?: string;
+  /** See {@link BuildThreadTimelineOptions.showAllAssistantMessages}. */
+  showAllAssistantMessages: boolean;
 }
 
 const CONVERSATION_OUTLINE_PREVIEW_MAX_LENGTH = 200;
@@ -1898,6 +1909,7 @@ export function buildThreadConversationOutline(
         isLatestPage: true,
         providerDisplayName: options.providerDisplayName,
         providerId: thread.providerId,
+        showAllAssistantMessages: options.showAllAssistantMessages,
         threadName: thread.title ?? thread.titleFallback ?? "",
         threadStatus: thread.status,
         turnMessageDetail: "summary",
@@ -2097,6 +2109,7 @@ export function buildTimelineTurnSummaryDetails(
       sourceSeqEnd: sourceRange.sourceSeqEnd,
       sourceSeqStart: projectionSourceSeqStart,
       providerDisplayName: options.providerDisplayName,
+      showAllAssistantMessages: options.showAllAssistantMessages,
       threadStatus: thread.status,
       threadName: thread.title ?? thread.titleFallback ?? "",
       workspaceRoot: resolveThreadWorkspaceRoot(db, thread),

@@ -46,6 +46,7 @@ describe("general settings", () => {
           ...defaultAppSettings,
           caffeinate: true,
           showKeyboardHints: false,
+          showAllAssistantMessages: false,
           steerActiveThreadOnEnter: true,
           codexMemoryEnabled: false,
         }),
@@ -55,6 +56,7 @@ describe("general settings", () => {
         ...defaultAppSettings,
         caffeinate: true,
         showKeyboardHints: false,
+        showAllAssistantMessages: false,
         steerActiveThreadOnEnter: true,
         codexMemoryEnabled: false,
       });
@@ -62,6 +64,7 @@ describe("general settings", () => {
         ...defaultAppSettings,
         caffeinate: true,
         showKeyboardHints: false,
+        showAllAssistantMessages: false,
         steerActiveThreadOnEnter: true,
         codexMemoryEnabled: false,
       });
@@ -74,6 +77,7 @@ describe("general settings", () => {
         ...defaultAppSettings,
         caffeinate: true,
         showKeyboardHints: false,
+        showAllAssistantMessages: false,
         steerActiveThreadOnEnter: true,
         codexMemoryEnabled: false,
       });

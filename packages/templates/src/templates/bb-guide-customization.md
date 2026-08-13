@@ -81,6 +81,12 @@ Settings → General includes `showUnhandledProviderEvents`, which defaults to
 false in packaged builds. Turn it on to show raw provider events bb does not yet
 understand; development builds always show these diagnostic rows.
 
+Settings → General also includes `showAllAssistantMessages`, which defaults to
+true. A finished turn can hold more than one assistant message, for example when
+the agent answers, calls a tool, and then answers again. Leave it on to read
+every one of those messages in order. Turn it off to show only the last one and
+keep the earlier ones inside the collapsed work summary.
+
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 false. Outside an open typeahead menu, enabling it makes Enter steer a running
 thread and Command+Enter queue a follow-up; when disabled, those actions are

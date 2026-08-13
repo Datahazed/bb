@@ -136,13 +136,19 @@ function summarySourceMessageIds(
   );
 }
 
+const SHOW_ALL_ASSISTANT_MESSAGES = { showAllAssistantMessages: true };
+const COLLAPSED_ASSISTANT_MESSAGES = { showAllAssistantMessages: false };
+
 describe("groupCompletedTurnMessages", () => {
   it("unwraps a singleton compaction group after a user message", () => {
     const user = userMessage({ id: "compact-request", seq: 1 });
     const compaction = compactionMessage({ id: "compaction", seq: 2 });
     const turn = completedTurn([user, compaction], undefined);
     turn.externalUserBoundarySeqs = [0];
-    const groups = groupCompletedTurnMessages(turn);
+    const groups = groupCompletedTurnMessages(
+      turn,
+      SHOW_ALL_ASSISTANT_MESSAGES,
+    );
 
     expect(groups.summaryItems).toEqual([
       { kind: "ungrouped-message", message: user },
@@ -159,6 +165,7 @@ describe("groupCompletedTurnMessages", () => {
     });
     const groups = groupCompletedTurnMessages(
       completedTurn([contextClear], undefined),
+      SHOW_ALL_ASSISTANT_MESSAGES,
     );
 
     expect(groups.summaryItems).toEqual([
@@ -173,6 +180,7 @@ describe("groupCompletedTurnMessages", () => {
     ];
     const groups = groupCompletedTurnMessages(
       completedTurn(messages, undefined),
+      SHOW_ALL_ASSISTANT_MESSAGES,
     );
 
     expect(groups.summaryItems).toMatchObject([
@@ -199,7 +207,10 @@ describe("groupCompletedTurnMessages", () => {
       [answer, commandMessage({ id: "command-1", seq: 2 }), acknowledgement],
       acknowledgement,
     );
-    const groups = groupCompletedTurnMessages(turn);
+    const groups = groupCompletedTurnMessages(
+      turn,
+      SHOW_ALL_ASSISTANT_MESSAGES,
+    );
 
     expect(groups.summaryItems).toMatchObject([
       {
@@ -212,6 +223,39 @@ describe("groupCompletedTurnMessages", () => {
       },
     ]);
     expect(summarySourceMessageIds(groups)).toEqual([["command-1"]]);
+    expect(groups.terminalMessages.map((message) => message.id)).toEqual([
+      "assistant-acknowledgement",
+    ]);
+  });
+
+  it("collapses an earlier assistant message when the preference is off", () => {
+    const answer = assistantMessage({ id: "assistant-answer", seq: 1 });
+    const acknowledgement = assistantMessage({
+      id: "assistant-acknowledgement",
+      seq: 3,
+    });
+    // The projection counts every message before the terminal one, so this
+    // turn reports two collapsed items in the collapsed mode.
+    const turn = completedTurn(
+      [answer, commandMessage({ id: "command-1", seq: 2 }), acknowledgement],
+      acknowledgement,
+      2,
+    );
+    const groups = groupCompletedTurnMessages(
+      turn,
+      COLLAPSED_ASSISTANT_MESSAGES,
+    );
+
+    expect(groups.summaryItems).toMatchObject([
+      {
+        kind: "summary",
+        segmentIndex: null,
+        summaryCount: 2,
+      },
+    ]);
+    expect(summarySourceMessageIds(groups)).toEqual([
+      ["assistant-answer", "command-1"],
+    ]);
     expect(groups.terminalMessages.map((message) => message.id)).toEqual([
       "assistant-acknowledgement",
     ]);
@@ -230,7 +274,10 @@ describe("groupCompletedTurnMessages", () => {
       [assistantBefore, userMessage({ id: "user", seq: 2 }), assistantAfter],
       assistantAfter,
     );
-    const groups = groupCompletedTurnMessages(turn);
+    const groups = groupCompletedTurnMessages(
+      turn,
+      SHOW_ALL_ASSISTANT_MESSAGES,
+    );
 
     expect(groups.summaryItems).toMatchObject([
       {
@@ -272,7 +319,10 @@ describe("groupCompletedTurnMessages", () => {
       ],
       undefined,
     );
-    const groups = groupCompletedTurnMessages(turn);
+    const groups = groupCompletedTurnMessages(
+      turn,
+      SHOW_ALL_ASSISTANT_MESSAGES,
+    );
 
     expect(groups.summaryItems).toMatchObject([
       {
@@ -297,7 +347,10 @@ describe("groupCompletedTurnMessages", () => {
       ],
       undefined,
     );
-    const groups = groupCompletedTurnMessages(turn);
+    const groups = groupCompletedTurnMessages(
+      turn,
+      SHOW_ALL_ASSISTANT_MESSAGES,
+    );
 
     expect(groups.summaryItems).toMatchObject([
       {
@@ -333,6 +386,7 @@ describe("groupCompletedTurnMessages", () => {
     const trailing = assistantMessage({ id: "trailing", seq: 3 });
     const groups = groupCompletedTurnMessages(
       completedTurn([before, terminal, trailing], terminal),
+      SHOW_ALL_ASSISTANT_MESSAGES,
     );
 
     expect(summarySourceMessageIds(groups)).toEqual([["before"]]);

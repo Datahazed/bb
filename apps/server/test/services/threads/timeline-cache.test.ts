@@ -55,6 +55,7 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   includeNestedRows: false,
   summaryOnly: false,
   includeProviderUnhandledOperations: false,
+  showAllAssistantMessages: true,
 };
 
 describe("createThreadTimelineCache", () => {

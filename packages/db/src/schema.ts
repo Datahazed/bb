@@ -158,6 +158,11 @@ export const appSettings = sqliteTable("app_settings", {
   showKeyboardHints: integer("show_keyboard_hints", { mode: "boolean" })
     .notNull()
     .default(true),
+  showAllAssistantMessages: integer("show_all_assistant_messages", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(true),
   steerActiveThreadOnEnter: integer("steer_active_thread_on_enter", {
     mode: "boolean",
   })

@@ -54,6 +54,19 @@ every window and client sees the same value.
   stays a newline; iPadOS WebKit preserves the Enter shortcuts for a connected
   Magic Keyboard.
 
+## Assistant message visibility
+
+- `showAllAssistantMessages` defaults to true. Set it with
+  `bb settings general showAllAssistantMessages <true|false>`.
+- A finished turn can hold more than one assistant message, for example when
+  the agent answers, calls a tool, and then answers again. When enabled, the
+  timeline shows each of those messages in order and collapses only the tool
+  activity.
+- When disabled, a finished turn shows only its last assistant message and
+  keeps the earlier ones inside the collapsed work summary.
+- The preference changes the timeline, the work summary details, the
+  conversation outline, and `bb thread show`.
+
 ## New onboarding
 
 - The `newOnboarding` experiment defaults to false.

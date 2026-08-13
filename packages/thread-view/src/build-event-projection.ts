@@ -40,6 +40,7 @@ import {
 } from "./group-event-projection-turns.js";
 export type { ThreadEventWithMeta } from "./group-event-projection-turns.js";
 import { shouldSuppressLowValueToolCall } from "./tool-call-suppression.js";
+import type { TimelineGroupingOptions } from "./timeline-message-helpers.js";
 import {
   buildAcceptedClientRequestById,
   EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
@@ -127,6 +128,7 @@ interface BuildDetailedProjectionArgs {
   activeBackgroundCommands: EventProjectionWorkflowMessage[];
   contextOnlyToolCallIds?: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
+  grouping: TimelineGroupingOptions;
   messages: EventProjectionMessage[];
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
 }
@@ -974,11 +976,18 @@ function buildFlatProjectionData(
   };
 }
 
+function toTimelineGroupingOptions(
+  options: BuildEventProjectionOptions,
+): TimelineGroupingOptions {
+  return { showAllAssistantMessages: options.showAllAssistantMessages };
+}
+
 function buildDetailedProjection(
   args: BuildDetailedProjectionArgs,
 ): EventProjection {
   const projection = groupEventProjectionTurns({
     events: args.events,
+    grouping: args.grouping,
     messages: args.messages,
   });
   const semanticProjection = normalizeEventProjection(
@@ -992,11 +1001,13 @@ function buildDetailedProjection(
     },
     {
       contextOnlyToolCallIds: args.contextOnlyToolCallIds,
+      grouping: args.grouping,
     },
   );
   return applyProjectionTurnMessageDetail(
     semanticProjection,
     args.turnMessageDetail,
+    args.grouping,
   );
 }
 
@@ -1018,6 +1029,7 @@ function buildFullEventProjection(
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events,
+    grouping: toTimelineGroupingOptions(options),
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
   });
@@ -1053,6 +1065,7 @@ export function buildEventProjectionEntries(
     activeBackgroundCommands: flatProjection.activeBackgroundCommands,
     contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events: orderedEvents,
+    grouping: toTimelineGroupingOptions(options),
     messages: flatProjection.messages,
     turnMessageDetail: options.turnMessageDetail,
   });

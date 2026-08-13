@@ -141,6 +141,12 @@ export interface SteerActiveThreadOnEnterSettingsControlProps {
   onEnabledChange: (enabled: boolean) => void;
 }
 
+export interface AllAssistantMessagesSettingsControlProps {
+  disabled: boolean;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}
+
 export interface RichTextEditingSettingsControlProps {
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
@@ -183,11 +189,14 @@ export interface GeneralSettingsSectionProps {
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
   onRichTextEditingChange: (enabled: boolean) => void;
+  onShowAllAssistantMessagesChange: (enabled: boolean) => void;
   onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
   replayOnboardingAvailable: boolean;
+  showAllAssistantMessages: boolean;
+  showAllAssistantMessagesDisabled: boolean;
   steerActiveThreadOnEnter: boolean;
   steerActiveThreadOnEnterDisabled: boolean;
 }
@@ -492,6 +501,7 @@ const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
 const CAFFEINATE_SETTING_LABEL = "Caffeinate";
 const STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL =
   "Steer running threads on Enter";
+const ALL_ASSISTANT_MESSAGES_SETTING_LABEL = "Show all assistant messages";
 
 export function RootComposeBehaviorSettingsControl({
   navigateToThreadAfterCreate,
@@ -543,6 +553,26 @@ export function SteerActiveThreadOnEnterSettingsControl({
         disabled={disabled}
         onCheckedChange={onEnabledChange}
         aria-label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
+      />
+    </SettingsWithControl>
+  );
+}
+
+export function AllAssistantMessagesSettingsControl({
+  disabled,
+  enabled,
+  onEnabledChange,
+}: AllAssistantMessagesSettingsControlProps) {
+  return (
+    <SettingsWithControl
+      label={ALL_ASSISTANT_MESSAGES_SETTING_LABEL}
+      description="Show every assistant message of a finished turn. Turn this off to keep only the last one outside the work summary."
+    >
+      <Switch
+        checked={enabled}
+        disabled={disabled}
+        onCheckedChange={onEnabledChange}
+        aria-label={ALL_ASSISTANT_MESSAGES_SETTING_LABEL}
       />
     </SettingsWithControl>
   );
@@ -782,11 +812,14 @@ export function GeneralSettingsSection({
   onOpenLinksInAppBrowserChange,
   onRewriteLocalhostLinksChange,
   onRichTextEditingChange,
+  onShowAllAssistantMessagesChange,
   onSteerActiveThreadOnEnterChange,
   openLinksInAppBrowser,
   rewriteLocalhostLinks,
   richTextEditing,
   replayOnboardingAvailable,
+  showAllAssistantMessages,
+  showAllAssistantMessagesDisabled,
   steerActiveThreadOnEnter,
   steerActiveThreadOnEnterDisabled,
   onReplayOnboarding,
@@ -810,6 +843,12 @@ export function GeneralSettingsSection({
           disabled={steerActiveThreadOnEnterDisabled}
           enabled={steerActiveThreadOnEnter}
           onEnabledChange={onSteerActiveThreadOnEnterChange}
+        />
+
+        <AllAssistantMessagesSettingsControl
+          disabled={showAllAssistantMessagesDisabled}
+          enabled={showAllAssistantMessages}
+          onEnabledChange={onShowAllAssistantMessagesChange}
         />
 
         {caffeinateAvailable ? (
@@ -1228,6 +1267,11 @@ export function SettingsView() {
           rewriteLocalhostLinks={rewriteLocalhostLinks}
           richTextEditing={richTextEditing}
           replayOnboardingAvailable={experiments.newOnboarding}
+          showAllAssistantMessages={generalSettings.showAllAssistantMessages}
+          showAllAssistantMessagesDisabled={
+            systemConfigQuery.data === undefined ||
+            updateGeneralSettingsMutation.isPending
+          }
           steerActiveThreadOnEnter={generalSettings.steerActiveThreadOnEnter}
           steerActiveThreadOnEnterDisabled={
             systemConfigQuery.data === undefined ||
@@ -1249,6 +1293,12 @@ export function SettingsView() {
           }
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
           onRichTextEditingChange={setRichTextEditing}
+          onShowAllAssistantMessagesChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              showAllAssistantMessages: enabled,
+            })
+          }
           onSteerActiveThreadOnEnterChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,

@@ -95,6 +95,12 @@ export interface ThreadTimelineCacheKeyArgs {
   includeNestedRows: boolean;
   summaryOnly: boolean;
   includeProviderUnhandledOperations: boolean;
+  /**
+   * Resolved `showAllAssistantMessages` app setting. It selects which assistant
+   * rows a finished turn keeps outside its work summary, so the same `maxSeq`
+   * names a different set of rows under each value.
+   */
+  showAllAssistantMessages: boolean;
 }
 
 function pageKeyPart(page: ThreadTimelinePageRequest): string {
@@ -120,6 +126,7 @@ export function buildThreadTimelineParamsKey(
     args.includeNestedRows ? "1" : "0",
     args.summaryOnly ? "1" : "0",
     args.includeProviderUnhandledOperations ? "1" : "0",
+    args.showAllAssistantMessages ? "1" : "0",
   ].join("|");
 }
 

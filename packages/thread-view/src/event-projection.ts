@@ -1,5 +1,6 @@
 import type { ActiveThinking } from "@bb/domain";
 import type { AcceptedClientRequestContext } from "./accepted-client-request-context.js";
+import type { TimelineGroupingOptions } from "./timeline-message-helpers.js";
 import type {
   BuildEventProjectionMessagesOptions,
   EventProjectionMessage,
@@ -51,6 +52,8 @@ export interface EventProjectionState {
 export interface BuildEventProjectionOptions extends BuildEventProjectionMessagesOptions {
   acceptedClientRequestContext?: AcceptedClientRequestContext;
   contextOnlyToolCallIds?: ReadonlySet<string>;
+  /** See {@link TimelineGroupingOptions.showAllAssistantMessages}. */
+  showAllAssistantMessages: boolean;
   turnMessageDetail: EventProjectionTurnMessageDetail;
 }
 

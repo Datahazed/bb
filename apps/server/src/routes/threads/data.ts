@@ -328,9 +328,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       thread.providerId,
     );
+    const appSettings = getAppSettings(deps.db);
     const includeProviderUnhandledOperations =
-      deps.config.isDevelopment ||
-      getAppSettings(deps.db).showUnhandledProviderEvents;
+      deps.config.isDevelopment || appSettings.showUnhandledProviderEvents;
+    const showAllAssistantMessages = appSettings.showAllAssistantMessages;
     // Resolved once at server start. The timeline caches deliberately do NOT
     // key on it: if this ever becomes per-request or per-thread, they must,
     // because the same `maxSeq` names a different set of rows under a
@@ -345,6 +346,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       includeNestedRows,
       summaryOnly,
       includeProviderUnhandledOperations,
+      showAllAssistantMessages,
     };
     const full = timelineCache.getOrBuild(
       buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
@@ -360,6 +362,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
             maxSeq,
             page,
             providerDisplayName,
+            showAllAssistantMessages,
             summaryOnly,
           },
         );
@@ -397,7 +400,13 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   get(routes.conversationOutline, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
-    const cacheKey = `${thread.id}:${maxSeq}`;
+    // `showAllAssistantMessages` selects which assistant rows a finished turn
+    // keeps outside its work summary, so it names a different outline for the
+    // same revision and belongs in the key.
+    const showAllAssistantMessages = getAppSettings(
+      deps.db,
+    ).showAllAssistantMessages;
+    const cacheKey = `${thread.id}:${maxSeq}:${showAllAssistantMessages ? "1" : "0"}`;
     const cached = conversationOutlineCache.get(cacheKey);
     if (cached !== undefined) {
       // Re-insert to mark most-recently-used.
@@ -411,6 +420,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         deps,
         thread.providerId,
       ),
+      showAllAssistantMessages,
     });
     conversationOutlineCache.set(cacheKey, response);
     while (
@@ -427,9 +437,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.timelineTurnSummaryDetails, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const appSettings = getAppSettings(deps.db);
     const includeProviderUnhandledOperations =
-      deps.config.isDevelopment ||
-      getAppSettings(deps.db).showUnhandledProviderEvents;
+      deps.config.isDevelopment || appSettings.showUnhandledProviderEvents;
     return context.json(
       buildTimelineTurnSummaryDetails(deps.db, thread, {
         includeProviderUnhandledOperations,
@@ -437,6 +447,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           deps,
           thread.providerId,
         ),
+        showAllAssistantMessages: appSettings.showAllAssistantMessages,
         turnId: query.turnId,
         sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
         sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),

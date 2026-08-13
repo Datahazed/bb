@@ -321,6 +321,7 @@ describe("thread timeline parented pagination", () => {
     const timeline = buildThreadTimeline(db, thread, {
       eventBudget: 1_000_000,
       includeProviderUnhandledOperations: false,
+      showAllAssistantMessages: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 51,
@@ -338,6 +339,7 @@ describe("thread timeline parented pagination", () => {
     const timeline = buildThreadTimeline(db, thread, {
       eventBudget: 1_000_000,
       includeProviderUnhandledOperations: false,
+      showAllAssistantMessages: true,
       includeNestedRows: true,
       maxInlineOutputChars: null,
       maxSeq: 51,

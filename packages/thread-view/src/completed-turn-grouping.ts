@@ -4,6 +4,7 @@ import type {
 } from "./event-projection-types.js";
 import { getProjectionSummaryCount } from "./apply-turn-message-detail.js";
 import { getMessageStartedAt } from "./format-helpers.js";
+import type { TimelineGroupingOptions } from "./timeline-message-helpers.js";
 import {
   findLastTerminalTimelineMessage,
   isSingletonContextManagementOperation,
@@ -145,11 +146,14 @@ function splitCompletedTurnMessages(
 function groupCompletedTurnSummaryMessages(
   turn: EventProjectionTurn,
   summaryMessages: EventProjectionMessage[],
+  grouping: TimelineGroupingOptions,
 ): CompletedTurnSummaryItem[] {
   const externalBoundarySeqs = turn.externalUserBoundarySeqs ?? [];
   if (
     externalBoundarySeqs.length === 0 &&
-    !summaryMessages.some(isTimelineUngroupableMessage)
+    !summaryMessages.some((message) =>
+      isTimelineUngroupableMessage(message, grouping),
+    )
   ) {
     return [
       {
@@ -180,7 +184,11 @@ function groupCompletedTurnSummaryMessages(
       completedAt: null,
       segmentIndex,
       sourceMessages,
-      summaryCount: getProjectionSummaryCount(sourceMessages, undefined),
+      summaryCount: getProjectionSummaryCount(
+        sourceMessages,
+        undefined,
+        grouping,
+      ),
     });
     segmentIndex += 1;
   }
@@ -227,7 +235,7 @@ function groupCompletedTurnSummaryMessages(
 
   for (const message of summaryMessages) {
     flushExternalBoundariesBefore(message);
-    if (isTimelineUngroupableMessage(message)) {
+    if (isTimelineUngroupableMessage(message, grouping)) {
       flushGroupedMessages(
         message.kind === "user" && message.initiator === "user",
       );
@@ -250,13 +258,14 @@ function groupCompletedTurnSummaryMessages(
 
 export function groupCompletedTurnMessages(
   turn: EventProjectionTurn,
+  grouping: TimelineGroupingOptions,
 ): CompletedTurnMessageGroups {
   const messages = turn.messages ?? [];
   const { summaryMessages, terminalMessages, trailingMessages } =
     splitCompletedTurnMessages(messages, turn.terminalMessage);
   return {
     summaryItems: unwrapSingletonContextManagementGroups(
-      groupCompletedTurnSummaryMessages(turn, summaryMessages),
+      groupCompletedTurnSummaryMessages(turn, summaryMessages, grouping),
     ),
     terminalMessages,
     trailingMessages,

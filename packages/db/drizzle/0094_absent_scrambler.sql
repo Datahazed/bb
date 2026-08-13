@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `show_all_assistant_messages` integer DEFAULT true NOT NULL;

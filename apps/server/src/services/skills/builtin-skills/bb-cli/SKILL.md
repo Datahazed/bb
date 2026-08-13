@@ -87,6 +87,10 @@ message agents, or inspect projects, providers, and environments.
   keyboard keeps Return as a newline; iPadOS WebKit preserves the Enter
   shortcuts for a connected Magic Keyboard. Update the preference with
   `bb settings general steerActiveThreadOnEnter <true|false>`.
+- The `showAllAssistantMessages` General preference defaults to true. It shows
+  every assistant message of a finished turn in the timeline. Disable it to
+  keep only the last assistant message outside the collapsed work summary.
+  Update it with `bb settings general showAllAssistantMessages <true|false>`.
 - Settings → Keyboard records server-backed per-command shortcut overrides.
   The `showKeyboardHints` preference controls the delayed badges shown while
   holding Command or Control and defaults to true; update it with

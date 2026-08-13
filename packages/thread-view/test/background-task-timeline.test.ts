@@ -40,6 +40,7 @@ function buildTimeline(
       includeNestedRows: options.includeNestedRows ?? true,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
+      showAllAssistantMessages: true,
       threadStatus: "idle",
       threadName: "",
       turnMessageDetail: options.turnMessageDetail ?? "full",

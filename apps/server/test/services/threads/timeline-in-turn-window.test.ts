@@ -417,6 +417,7 @@ function buildPage(
   return buildThreadTimelineWithProfile(db, thread, {
     eventBudget,
     includeProviderUnhandledOperations: false,
+    showAllAssistantMessages: true,
     includeNestedRows: false,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
@@ -435,6 +436,7 @@ function buildNestedPage(
   return buildThreadTimelineWithProfile(db, thread, {
     eventBudget,
     includeProviderUnhandledOperations: false,
+    showAllAssistantMessages: true,
     includeNestedRows: true,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
@@ -619,6 +621,7 @@ describe("in-turn timeline windows", () => {
         turnRowIds.add(row.id);
         const details = buildTimelineTurnSummaryDetails(db, thread, {
           includeProviderUnhandledOperations: false,
+          showAllAssistantMessages: true,
           sourceSeqEnd: row.sourceSeqEnd,
           sourceSeqStart: row.sourceSeqStart,
           turnId: row.turnId,
@@ -720,6 +723,7 @@ describe("in-turn timeline windows", () => {
     }
     const details = buildTimelineTurnSummaryDetails(db, thread, {
       includeProviderUnhandledOperations: false,
+      showAllAssistantMessages: true,
       sourceSeqEnd: turnRow.sourceSeqEnd,
       sourceSeqStart: turnRow.sourceSeqStart,
       turnId: turnRow.turnId,
@@ -767,6 +771,7 @@ describe("in-turn timeline windows", () => {
         }
         const details = buildTimelineTurnSummaryDetails(db, thread, {
           includeProviderUnhandledOperations: false,
+          showAllAssistantMessages: true,
           sourceSeqEnd: row.sourceSeqEnd,
           sourceSeqStart: row.sourceSeqStart,
           turnId: row.turnId,
@@ -1072,6 +1077,7 @@ describe("timeline inline output reads", () => {
     const capped = buildThreadTimeline(db, thread, {
       eventBudget: LARGE_BUDGET,
       includeProviderUnhandledOperations: false,
+      showAllAssistantMessages: true,
       includeNestedRows: false,
       maxInlineOutputChars: 32_000,
       maxSeq: 0,
@@ -1080,6 +1086,7 @@ describe("timeline inline output reads", () => {
     const uncapped = buildThreadTimeline(db, thread, {
       eventBudget: LARGE_BUDGET,
       includeProviderUnhandledOperations: false,
+      showAllAssistantMessages: true,
       includeNestedRows: false,
       maxInlineOutputChars: null,
       maxSeq: 0,

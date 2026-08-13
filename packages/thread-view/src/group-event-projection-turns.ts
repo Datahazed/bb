@@ -9,6 +9,7 @@ import type {
 import { requireThreadEventScopeTurnId } from "@bb/domain";
 import { assertNever } from "./assert-never.js";
 import type { EventMeta } from "./event-decode.js";
+import type { TimelineGroupingOptions } from "./timeline-message-helpers.js";
 import {
   assertTerminalMessageIncludedInMessages,
   findProjectionTerminalMessage,
@@ -38,6 +39,7 @@ interface ProjectionTurnBoundsUpdate {
 
 interface GroupEventProjectionTurnsArgs {
   events: ThreadEventWithMeta[];
+  grouping: TimelineGroupingOptions;
   messages: EventProjectionMessage[];
 }
 
@@ -195,6 +197,7 @@ function applyExternalUserBoundaries(
 function createEventProjectionEntry(
   draft: ProjectionEntryDraft,
   turnsById: Map<string, ProjectionTurnDraft>,
+  grouping: TimelineGroupingOptions,
 ): EventProjectionEntry {
   if (draft.kind === "projected-message") {
     return {
@@ -216,6 +219,7 @@ function createEventProjectionEntry(
     summaryCount: getProjectionSummaryCount(
       turnDraft.messages,
       terminalMessage,
+      grouping,
     ),
     messages: turnDraft.messages,
   };
@@ -345,7 +349,7 @@ export function groupEventProjectionTurns(
       activeBackgroundCommands: [],
     },
     entries: orderedEntryDrafts.map((entryDraft) =>
-      createEventProjectionEntry(entryDraft, turnsById),
+      createEventProjectionEntry(entryDraft, turnsById, args.grouping),
     ),
   };
 }

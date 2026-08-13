@@ -15,6 +15,7 @@ type TimelineWorkRow = Extract<TimelineRow, { kind: "work" }>;
 interface RenderCompletedTimelineArgs {
   events: TimelineFixtureEvent[];
   includeDebugRawEvents?: boolean;
+  showAllAssistantMessages?: boolean;
 }
 
 function renderCompletedTimeline(args: RenderCompletedTimelineArgs) {
@@ -22,10 +23,40 @@ function renderCompletedTimeline(args: RenderCompletedTimelineArgs) {
     events: args.events,
     projectionOptions: {
       includeDebugRawEvents: args.includeDebugRawEvents,
+      showAllAssistantMessages: args.showAllAssistantMessages,
       threadStatus: "idle",
       turnMessageDetail: "summary",
     },
   });
+}
+
+function assistantTurnEvents(
+  event: TimelineEventFactory,
+): TimelineFixtureEvent[] {
+  const request = event.clientTurnRequested({
+    target: { kind: "new-turn" },
+    text: "which option should we take?",
+  });
+  return [
+    request,
+    event.turnStarted(),
+    event.inputAccepted({
+      clientRequestId: request.data.requestId,
+    }),
+    event.assistantCompleted({
+      itemId: "assistant-answer",
+      text: "Option A keeps the daemon simple. Which one do you want?",
+    }),
+    event.commandCompleted({
+      itemId: "tool-1",
+      command: "pnpm test",
+    }),
+    event.assistantCompleted({
+      itemId: "assistant-acknowledgement",
+      text: "The verify gate is still open.",
+    }),
+    event.turnCompleted(),
+  ];
 }
 
 function rowSignature(row: TimelineRow): string {
@@ -111,32 +142,9 @@ describe("completed turn summary rendering", () => {
 
   it("keeps an earlier assistant text block outside the completed turn summary", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const request = event.clientTurnRequested({
-      target: { kind: "new-turn" },
-      text: "which option should we take?",
-    });
 
     const timeline = renderCompletedTimeline({
-      events: [
-        request,
-        event.turnStarted(),
-        event.inputAccepted({
-          clientRequestId: request.data.requestId,
-        }),
-        event.assistantCompleted({
-          itemId: "assistant-answer",
-          text: "Option A keeps the daemon simple. Which one do you want?",
-        }),
-        event.commandCompleted({
-          itemId: "tool-1",
-          command: "pnpm test",
-        }),
-        event.assistantCompleted({
-          itemId: "assistant-acknowledgement",
-          text: "The verify gate is still open.",
-        }),
-        event.turnCompleted(),
-      ],
+      events: assistantTurnEvents(event),
     });
 
     expect(rowSignatures(timeline.rows)).toEqual([
@@ -161,6 +169,28 @@ describe("completed turn summary rendering", () => {
     const turnRow = requireOnlyTurnRow(timeline.rows);
     expect(turnRow.summaryCount).toBe(1);
     expect(rowSignatures(turnRow.children ?? [])).toEqual(["work:command"]);
+  });
+
+  it("hides an earlier assistant text block when the preference is off", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+
+    const timeline = renderCompletedTimeline({
+      events: assistantTurnEvents(event),
+      showAllAssistantMessages: false,
+    });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "conversation:user",
+      "turn:4-5",
+      "conversation:assistant",
+    ]);
+
+    const turnRow = requireOnlyTurnRow(timeline.rows);
+    expect(turnRow.summaryCount).toBe(2);
+    expect(rowSignatures(turnRow.children ?? [])).toEqual([
+      "conversation:assistant",
+      "work:command",
+    ]);
   });
 
   it("keeps both text blocks visible when a turn has no tool activity", () => {
@@ -723,6 +753,40 @@ describe("completed turn summary rendering", () => {
     expect(
       turnRows(timeline.rows).map((row) => rowSignatures(row.children ?? [])),
     ).toEqual([["work:command"], ["work:command"]]);
+  });
+
+  it("keeps legacy system prose visible when the preference is off", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+
+    const timeline = renderCompletedTimeline({
+      events: [
+        event.turnStarted(),
+        event.commandCompleted({
+          itemId: "tool-before-message",
+          command: "pnpm test",
+        }),
+        event.legacyUserMessage({
+          text: "Visible legacy update",
+        }),
+        event.commandCompleted({
+          itemId: "tool-after-message",
+          command: "git status --short",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-1",
+          text: "Done.",
+        }),
+        event.turnCompleted(),
+      ],
+      showAllAssistantMessages: false,
+    });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "turn:2-2",
+      "conversation:assistant",
+      "turn:4-4",
+      "conversation:assistant",
+    ]);
   });
 
   it("keeps summary rows on both sides of debug raw events", () => {

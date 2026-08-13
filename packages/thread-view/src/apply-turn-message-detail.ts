@@ -4,6 +4,7 @@ import type {
   EventProjectionTurn,
   EventProjectionTurnMessageDetail,
 } from "./event-projection-types.js";
+import type { TimelineGroupingOptions } from "./timeline-message-helpers.js";
 import {
   findLastTerminalTimelineMessage,
   isSingletonContextManagementOperation,
@@ -30,13 +31,14 @@ function getProjectionMessageSummaryCount(
 export function getProjectionSummaryCount(
   messages: EventProjectionMessage[],
   terminalMessage: EventProjectionMessage | undefined,
+  grouping: TimelineGroupingOptions,
 ): number {
   let count = 0;
   for (const message of messages) {
     if (terminalMessage && message.id === terminalMessage.id) {
       break;
     }
-    if (isTimelineSummaryCountedMessage(message)) {
+    if (isTimelineSummaryCountedMessage(message, grouping)) {
       count += getProjectionMessageSummaryCount(message);
     }
   }
@@ -46,6 +48,7 @@ export function getProjectionSummaryCount(
 function shouldIncludeSummaryTurnMessages(
   messages: EventProjectionMessage[],
   terminalMessage: EventProjectionMessage | undefined,
+  grouping: TimelineGroupingOptions,
 ): boolean {
   let foundTerminalMessage = false;
   for (const message of messages) {
@@ -56,7 +59,7 @@ function shouldIncludeSummaryTurnMessages(
     if (terminalMessage && isTimelineTerminalMessage(message)) {
       return true;
     }
-    if (isTimelineUngroupableMessage(message)) {
+    if (isTimelineUngroupableMessage(message, grouping)) {
       return true;
     }
     if (terminalMessage && foundTerminalMessage) {
@@ -84,6 +87,7 @@ export function assertTerminalMessageIncludedInMessages(
 
 function withChildProjectionDetail(
   message: EventProjectionMessage,
+  grouping: TimelineGroupingOptions,
 ): EventProjectionMessage {
   if (message.kind !== "delegation") {
     return message;
@@ -93,6 +97,7 @@ function withChildProjectionDetail(
     childProjection: applyProjectionTurnMessageDetail(
       message.childProjection,
       "full",
+      grouping,
     ),
   };
 }
@@ -100,21 +105,26 @@ function withChildProjectionDetail(
 function applyTurnMessageDetail(
   turn: EventProjectionTurn,
   turnMessageDetail: EventProjectionTurnMessageDetail,
+  grouping: TimelineGroupingOptions,
 ): EventProjectionTurn {
   const messages = (turn.messages ?? []).map((message) =>
-    withChildProjectionDetail(message),
+    withChildProjectionDetail(message, grouping),
   );
   const terminalMessage = findProjectionTerminalMessage(messages);
   const summaryMessages = terminalMessage
     ? messages.slice(0, messages.indexOf(terminalMessage))
     : messages;
-  const summaryCount = getProjectionSummaryCount(messages, terminalMessage);
+  const summaryCount = getProjectionSummaryCount(
+    messages,
+    terminalMessage,
+    grouping,
+  );
   const includeMessages =
     turn.status === "pending" ||
     turnMessageDetail === "full" ||
     (turn.externalUserBoundarySeqs?.length ?? 0) > 0 ||
     isSingletonContextManagementOperation(summaryMessages) ||
-    shouldIncludeSummaryTurnMessages(messages, terminalMessage);
+    shouldIncludeSummaryTurnMessages(messages, terminalMessage, grouping);
 
   const detailedTurn: EventProjectionTurn = {
     turnId: turn.turnId,
@@ -143,6 +153,7 @@ function applyTurnMessageDetail(
 export function applyProjectionTurnMessageDetail(
   projection: EventProjection,
   turnMessageDetail: EventProjectionTurnMessageDetail,
+  grouping: TimelineGroupingOptions,
 ): EventProjection {
   return {
     state: projection.state,
@@ -150,12 +161,12 @@ export function applyProjectionTurnMessageDetail(
       if (entry.kind === "projected-message") {
         return {
           kind: "projected-message",
-          message: withChildProjectionDetail(entry.message),
+          message: withChildProjectionDetail(entry.message, grouping),
         };
       }
       return {
         kind: "turn",
-        turn: applyTurnMessageDetail(entry.turn, turnMessageDetail),
+        turn: applyTurnMessageDetail(entry.turn, turnMessageDetail, grouping),
       };
     }),
   };
