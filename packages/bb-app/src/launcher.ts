@@ -2021,10 +2021,6 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
       path: join(context.daemonBundleDir, "bb-claude-code-bridge.mjs"),
     },
     {
-      label: "Pi bridge",
-      path: join(context.daemonBundleDir, "bb-pi-bridge.mjs"),
-    },
-    {
       label: "Pi canonical driver",
       path: join(context.daemonBundleDir, "bb-pi-driver.mjs"),
     },

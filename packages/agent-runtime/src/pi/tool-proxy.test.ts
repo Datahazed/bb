@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDynamicTools } from "../tool-proxy.js";
+import { buildDynamicTools } from "./tool-proxy.js";
 
 describe("tool-proxy", () => {
   it("preserves required and optional scalar fields", () => {

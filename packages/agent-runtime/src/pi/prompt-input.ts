@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import { mimeTypeFromExtension } from "../../shared/mime-types.js";
+import { mimeTypeFromExtension } from "../shared/mime-types.js";
 
 export interface ExtractedPiPromptInput {
   text?: string;
@@ -40,7 +40,7 @@ export function extractPiPromptInput(input: unknown): ExtractedPiPromptInput {
             : mimeTypeFromExtension(item.path);
         images.push({ type: "image", data, mimeType });
       } catch {
-        // Preserve current bridge behavior: unreadable images are skipped.
+        // Preserve current driver behavior: unreadable images are skipped.
       }
     }
   }

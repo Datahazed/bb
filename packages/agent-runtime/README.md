@@ -161,10 +161,10 @@ Consumer (host-daemon, server)
        │           └─ bounded requests, timeouts, and diagnostics
        │               ↕ @bb/provider-driver-sdk in canonical children
        │
-       └─ Bridge Process               SDK-specific child process
+       └─ Provider Process             isolated provider child process
            ├─ codex               spawns `codex app-server` directly
-           ├─ claude-code         Node.js bridge → Claude Agent SDK
-           └─ pi                  Node.js bridge → Pi coding agent SDK
+           ├─ claude-code         legacy bridge → Claude Agent SDK
+           └─ pi                  canonical driver → Pi coding agent SDK
 ```
 
 `AgentRuntime` depends on `ProviderDriverConnection`, not adapter command-building callbacks. Pi now runs through the canonical isolated driver process. Codex, Claude Code, and ACP still run through `LegacyAdapterConnection`, which preserves their current child processes and newline-delimited JSON-RPC dialects while containing adapter command construction, response parsing, accepted-command synthesis, and event/request translation. The canonical path uses `ProviderDriverSupervisor` and `ProcessProviderDriverConnection` with `@bb/provider-driver-contract`. `CanonicalProcessProviderConnection` adapts that strict peer to the current runtime seam without provider-specific translation: it mints attachment/operation/turn IDs, preserves response-before-event ordering, and projects bounded canonical events. Canonical children use `@bb/provider-driver-sdk` for framing, operation replay, acceptance buffering, event sequencing, and host callbacks. Providers move onto that path one at a time.

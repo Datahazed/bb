@@ -27,16 +27,16 @@ const { loadConfiguredPiServices, firstRuntime, secondRuntime } = vi.hoisted(
   },
 );
 
-vi.mock("../configured-services.js", () => ({
+vi.mock("./configured-services.js", () => ({
   loadConfiguredPiServices,
 }));
 
 import {
   getPiModelRuntime,
   resetPiModelRuntimesForTests,
-} from "../model-runtime.js";
+} from "./model-runtime.js";
 
-describe("Pi bridge model runtime", () => {
+describe("Pi driver model runtime", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetPiModelRuntimesForTests();
@@ -74,12 +74,12 @@ describe("Pi bridge model runtime", () => {
       firstRuntime,
     );
     expect(write).toHaveBeenCalledWith(
-      'pi bridge: Failed to load Pi extension "broken.ts": boom\n',
+      'pi driver: Failed to load Pi extension "broken.ts": boom\n',
     );
     write.mockRestore();
   });
 
-  // The bridge outlives the broken configuration, so a memoized partial
+  // The driver outlives the broken configuration, so a memoized partial
   // runtime would hide the repaired extension until the process restarts.
   it("reloads after a partial load so a repaired extension appears", async () => {
     const write = vi

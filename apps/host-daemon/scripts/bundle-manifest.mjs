@@ -43,27 +43,7 @@ export const bundleTargets = [
       "agent-runtime",
       "src",
       "pi",
-      "bridge",
-      "bridge.ts",
-    ),
-    // Pi extensions import the host's Pi modules. Keep the pinned Pi package
-    // tree on disk so Pi's extension loader can resolve those shared modules.
-    externalPackages: [
-      "@earendil-works/pi-ai",
-      "@earendil-works/pi-coding-agent",
-    ],
-    label: "pi bridge",
-    outfile: resolve(packageRoot, "dist", "bb-pi-bridge.mjs"),
-  },
-  {
-    banner: NODE_ESM_REQUIRE_BANNER,
-    entryPoint: resolve(
-      workspaceRoot,
-      "packages",
-      "agent-runtime",
-      "src",
-      "pi",
-      "driver.ts",
+      "driver-entry.ts",
     ),
     externalPackages: [
       "@earendil-works/pi-ai",

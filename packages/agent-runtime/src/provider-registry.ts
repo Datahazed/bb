@@ -19,7 +19,6 @@ import {
 } from "./acp/profiles.js";
 import { createClaudeCodeProviderAdapter } from "./claude-code/adapter.js";
 import { createCodexProviderAdapter } from "./codex/adapter.js";
-import { createPiProviderAdapter } from "./pi/adapter.js";
 import type {
   ProviderAdapter,
   ProviderAdapterFactoryOptions,
@@ -47,10 +46,6 @@ const builtInProviders = [
   {
     createAdapter: (options) => createClaudeCodeProviderAdapter(options),
     info: getBuiltInAgentProviderInfo("claude-code"),
-  },
-  {
-    createAdapter: (options) => createPiProviderAdapter(options),
-    info: getBuiltInAgentProviderInfo("pi"),
   },
   ...ACP_AGENT_PROFILES.map((profile) => ({
     createAdapter: (options: ProviderAdapterFactoryOptions) =>
@@ -87,6 +82,12 @@ export function createProviderForId(
       ...adapterOptions,
       profile: acpProfileFromLaunchSpec(options.acpLaunchSpec, providerId),
     });
+  }
+
+  if (providerId === "pi") {
+    throw new Error(
+      'Provider "pi" uses the canonical driver and has no legacy adapter.',
+    );
   }
 
   if (!isAgentProviderId(providerId)) {

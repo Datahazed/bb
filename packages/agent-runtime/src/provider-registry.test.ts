@@ -48,25 +48,15 @@ describe("provider registry", () => {
       additionalWorkspaceWriteRoots: [],
       bridgeBundleDir: "/tmp",
     });
-    const piProvider = createProviderForId("pi", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeBundleDir: "/tmp",
-    });
 
     expect(claudeProvider.process.args[0]).toBe(
       "/tmp/bb-claude-code-bridge.mjs",
     );
-    expect(piProvider.process.args[0]).toBe("/tmp/bb-pi-bridge.mjs");
   });
 
   it("passes the configured bridge node runtime to bundled providers", () => {
     const bridgeNodeEnv = { ELECTRON_RUN_AS_NODE: "1" };
     const claudeProvider = createProviderForId("claude-code", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeNodeEnv,
-      bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
-    });
-    const piProvider = createProviderForId("pi", {
       additionalWorkspaceWriteRoots: [],
       bridgeNodeEnv,
       bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
@@ -81,10 +71,6 @@ describe("provider registry", () => {
       "/Applications/bb.app/Contents/MacOS/bb",
     );
     expect(claudeProvider.process.env).toEqual(bridgeNodeEnv);
-    expect(piProvider.process.command).toBe(
-      "/Applications/bb.app/Contents/MacOS/bb",
-    );
-    expect(piProvider.process.env).toEqual(bridgeNodeEnv);
     expect(acpProvider.process.command).toBe(
       "/Applications/bb.app/Contents/MacOS/bb",
     );
@@ -96,17 +82,10 @@ describe("provider registry", () => {
       additionalWorkspaceWriteRoots: [],
       turnIdPrefix: "turn_runtime_",
     });
-    const piProvider = createProviderForId("pi", {
-      additionalWorkspaceWriteRoots: [],
-      turnIdPrefix: "turn_runtime_",
-    });
 
     const claudeEvents = claudeProvider.translateEvent({
       type: "assistant",
       message: {},
-    });
-    const piEvents = piProvider.translateEvent({
-      type: "agent_start",
     });
 
     expect(claudeEvents).toContainEqual(
@@ -117,44 +96,12 @@ describe("provider registry", () => {
         scope: turnScope("turn_runtime_1"),
       }),
     );
-    expect(piEvents).toContainEqual(
-      expect.objectContaining({
-        type: "turn/started",
-        threadId: "",
-        providerThreadId: "",
-        scope: turnScope("turn_runtime_1"),
-      }),
-    );
   });
 
-  it("creates pi provider with expected process config", () => {
-    const provider = createProviderForId("pi");
-    expect(provider.id).toBe("pi");
-    expect(provider.process.command).toBe("node");
-    expect(provider.process.args.slice(0, 3)).toEqual([
-      "--conditions=source",
-      "--import",
-      import.meta.resolve("tsx"),
-    ]);
-    expect(provider.process.args.at(-1)).toMatch(
-      /agent-runtime\/src\/pi\/bridge\/bridge\.ts$/,
+  it("does not expose Pi through the legacy adapter registry", () => {
+    expect(() => createProviderForId("pi")).toThrow(
+      'Provider "pi" uses the canonical driver and has no legacy adapter.',
     );
-    expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
-  });
-
-  it("passes the requested workspace to Pi model listing", () => {
-    const provider = createProviderForId("pi");
-
-    expect(
-      provider.buildCommandPlan({
-        type: "model/list",
-        cwd: "/tmp/project",
-      }),
-    ).toEqual({
-      kind: "request",
-      method: "model/list",
-      params: { cwd: "/tmp/project" },
-    });
   });
 
   it("creates the acp cursor provider with the bridge process config", () => {

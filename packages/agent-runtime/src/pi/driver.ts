@@ -2,7 +2,6 @@
 
 import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
-import { pathToFileURL } from "node:url";
 import {
   SessionManager,
   type AgentSessionEvent,
@@ -22,22 +21,18 @@ import {
   ProviderDriverRequestError,
   defineProviderDriver,
   type ProviderDriverContext,
-  serveProviderDriverProcess,
 } from "@bb/provider-driver-sdk";
 import { flattenPromptInputGroups } from "../provider-adapter.js";
 import { PiCanonicalEventTranslator } from "./canonical-event-translator.js";
-import { listPiBridgeModels } from "./bridge/model-list.js";
-import { getPiModelRuntime } from "./bridge/model-runtime.js";
-import { extractPiPromptInput } from "./bridge/prompt-input.js";
+import { listPiDriverModels } from "./driver-model-list.js";
+import { getPiModelRuntime } from "./model-runtime.js";
+import { extractPiPromptInput } from "./prompt-input.js";
+import { PiSdkSession, type PiSdkSessionOptions } from "./sdk-session.js";
 import {
-  PiSdkSession,
-  type PiSdkSessionOptions,
-} from "./bridge/sdk-session.js";
-import {
-  resolvePiBridgeSessionDir,
+  resolvePiDriverSessionDir,
   resolvePiSessionFilePath,
-} from "./bridge/session-paths.js";
-import { buildDynamicTools } from "./bridge/tool-proxy.js";
+} from "./session-paths.js";
+import { buildDynamicTools } from "./tool-proxy.js";
 
 const PI_SESSION_CLOSE_TIMEOUT_MS = 4_000;
 
@@ -276,7 +271,7 @@ function materializeFork(params: ProviderSessionOpenParams): void {
     env: process.env,
     threadId: params.bbThreadId,
   });
-  const sessionDir = resolvePiBridgeSessionDir({ env: process.env });
+  const sessionDir = resolvePiDriverSessionDir({ env: process.env });
   const forkedFile =
     params.mode.sourceCheckpointId === null
       ? SessionManager.forkFrom(
@@ -343,7 +338,7 @@ export const piProviderDriver = defineProviderDriver({
 
   async inspect(params) {
     try {
-      const models = await listPiBridgeModels(
+      const models = await listPiDriverModels(
         await getPiModelRuntime(params.cwd ?? undefined),
       );
       return {
@@ -413,7 +408,6 @@ export const piProviderDriver = defineProviderDriver({
 
     const translator = new PiCanonicalEventTranslator({
       attachmentId: params.attachmentId,
-      bbThreadId: params.bbThreadId,
       events: context.events,
     });
     let record: PiDriverSession | null = null;
@@ -635,15 +629,3 @@ export const piProviderDriver = defineProviderDriver({
     );
   },
 });
-
-const entryPath = process.argv[1];
-if (
-  entryPath !== undefined &&
-  import.meta.url === pathToFileURL(entryPath).href
-) {
-  serveProviderDriverProcess(piProviderDriver, {
-    onFatalError: (error) => {
-      process.stderr.write(`pi driver fatal: ${error.message}\n`);
-    },
-  });
-}

@@ -215,11 +215,11 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   },
 }));
 
-vi.mock("../configured-services.js", () => ({
+vi.mock("./configured-services.js", () => ({
   createConfiguredPiServices: mockCreateAgentSessionServices,
 }));
 
-import { PiSdkSession } from "../sdk-session.js";
+import { PiSdkSession } from "./sdk-session.js";
 
 function rejectPromptWithTransientAuthError(count: number, error: Error): void {
   for (let index = 0; index < count; index += 1) {

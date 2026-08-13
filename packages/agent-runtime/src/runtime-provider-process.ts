@@ -166,7 +166,7 @@ function resolvePiDriverProcessArgs(args: {
     bridgeBundleDir: args.bridgeBundleDir,
     bundleFileName: "bb-pi-driver.mjs",
     importMetaUrl: import.meta.url,
-    bridgeRelativePath: "pi/driver.js",
+    bridgeRelativePath: "pi/driver-entry.js",
   });
 }
 

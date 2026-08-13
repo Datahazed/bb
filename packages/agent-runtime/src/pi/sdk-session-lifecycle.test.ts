@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { PiSdkSession } from "../sdk-session.js";
+import { PiSdkSession } from "./sdk-session.js";
 
 const testRoots: string[] = [];
 

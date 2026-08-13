@@ -1,27 +1,29 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-export const PI_BRIDGE_SESSION_DIR_ENV = "BB_PI_BRIDGE_SESSION_DIR";
+export const PI_DRIVER_SESSION_DIR_ENV = "BB_PI_DRIVER_SESSION_DIR";
+const LEGACY_PI_BRIDGE_SESSION_DIR_ENV = "BB_PI_BRIDGE_SESSION_DIR";
 
-export interface ResolvePiBridgeSessionDirArgs {
+export interface ResolvePiDriverSessionDirArgs {
   env: NodeJS.ProcessEnv;
 }
 
-export interface ResolvePiSessionFilePathArgs
-  extends ResolvePiBridgeSessionDirArgs {
+export interface ResolvePiSessionFilePathArgs extends ResolvePiDriverSessionDirArgs {
   sessionPath?: string;
   threadId: string;
 }
 
-export function resolvePiBridgeSessionDir(
-  args: ResolvePiBridgeSessionDirArgs,
+export function resolvePiDriverSessionDir(
+  args: ResolvePiDriverSessionDirArgs,
 ): string {
-  const configuredSessionDir = args.env[PI_BRIDGE_SESSION_DIR_ENV]?.trim();
+  const configuredSessionDir =
+    args.env[PI_DRIVER_SESSION_DIR_ENV]?.trim() ??
+    args.env[LEGACY_PI_BRIDGE_SESSION_DIR_ENV]?.trim();
   if (configuredSessionDir) {
     return resolve(configuredSessionDir);
   }
 
-  return join(homedir(), ".bb", "pi-bridge-sessions");
+  return join(homedir(), ".bb", "pi-driver-sessions");
 }
 
 export function resolvePiSessionFilePath(
@@ -32,7 +34,7 @@ export function resolvePiSessionFilePath(
   }
 
   return join(
-    resolvePiBridgeSessionDir({ env: args.env }),
+    resolvePiDriverSessionDir({ env: args.env }),
     `${sanitizeSessionKey(args.threadId)}.jsonl`,
   );
 }

@@ -1,7 +1,11 @@
 import {
-  type ProviderErrorCategory,
-  type ThreadEvent,
-  type ThreadEventItem,
+  getBuiltinModels,
+  getBuiltinProviders,
+} from "@earendil-works/pi-ai/providers/all";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type {
+  ThreadEventItem,
+  ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
 import type {
   ProviderDriverError,
@@ -11,149 +15,252 @@ import type {
   ProviderDriverEventEmitter,
   ProviderDriverEventInput,
 } from "@bb/provider-driver-sdk";
-import type { ProviderAdapter } from "../provider-adapter.js";
-import { createPiProviderAdapter } from "./adapter.js";
+import {
+  diffCumulativeText,
+  extractResultText,
+  normalizeProviderCommandOutput,
+  toNonNegativeNumber,
+  toOptionalString,
+} from "../shared/adapter-utils.js";
+import { bashArgsSchema } from "../shared/tool-arg-schemas.js";
+import {
+  buildToolResultItem,
+  buildToolUseItem,
+  type ToolUseTranslationInput,
+} from "../shared/tool-item-translation.js";
+import { toCanonicalPiModelId } from "./model-list.js";
 
 interface PiCanonicalEventTranslatorOptions {
   readonly attachmentId: string;
-  readonly bbThreadId: string;
   readonly events: ProviderDriverEventEmitter;
 }
 
-function canonicalErrorCategory(
-  category: ProviderErrorCategory | undefined,
-): ProviderDriverError["category"] {
-  switch (category) {
-    case "rate-limit":
-    case "billing":
-    case "budget-exceeded":
-      return "rate_limit";
-    case "unauthorized":
-      return "authentication";
-    case "context-window-exceeded":
-    case "max-output-tokens":
-      return "context_limit";
-    case "policy":
-    case "sandbox":
-      return "permission";
-    case "bad-request":
-      return "configuration";
-    case "connection-failed":
-    case "overloaded":
-    case "stream-disconnected":
-      return "provider_unavailable";
-    case "internal":
-      return "driver";
-    case "active-turn-not-steerable":
-    case "max-turns":
-    case "structured-output-retries":
-    case "thread-rollback-failed":
-    case "too-many-failed-attempts":
-    case "unknown":
-    case undefined:
-      return "provider";
-  }
+interface PiContextWindowModel {
+  contextWindow?: number;
+  id: string;
+  provider: string;
 }
 
-function toCanonicalError(
-  event: Extract<ThreadEvent, { type: "provider/error" }>,
-): ProviderDriverError {
+interface PiModelContextWindowLookup {
+  byCanonicalId: ReadonlyMap<string, number>;
+  byModelId: ReadonlyMap<string, number>;
+}
+
+interface PiFileEditArgs {
+  content?: string;
+  newText?: string;
+  oldText?: string;
+  path?: string;
+}
+
+interface PiCommandOutputDelta {
+  delta: string;
+  reset: boolean;
+  snapshot: string;
+}
+
+const PI_EMPTY_BASH_OUTPUT_PLACEHOLDERS = ["(no output)"] as const;
+const PI_COMMAND_TOOL_NAMES = new Set(["bash"]);
+const PI_FILE_CHANGE_TOOL_NAMES = new Set(["edit", "write"]);
+
+function canonicalProviderError(args: {
+  code: string;
+  message: string;
+  detail?: string;
+}): ProviderDriverError {
   return {
-    code: event.errorInfo?.providerCode ?? "pi_provider_error",
-    category: canonicalErrorCategory(event.errorInfo?.category),
-    message: event.message,
-    ...(event.detail !== undefined ? { detail: event.detail } : {}),
-    retry: {
-      disposition: event.willRetry === true ? "automatic" : "never",
-    },
+    code: args.code,
+    category: "provider",
+    message: args.message,
+    ...(args.detail !== undefined ? { detail: args.detail } : {}),
+    retry: { disposition: "never" },
   };
 }
 
 function failedItemError(item: ProviderDriverItem): ProviderDriverError {
   const detail = item.type === "toolCall" ? item.error : undefined;
-  return {
+  return canonicalProviderError({
     code: "pi_item_failed",
-    category: "provider",
     message: `Pi ${item.type} item failed`,
     ...(detail !== undefined ? { detail } : {}),
-    retry: { disposition: "never" },
+  });
+}
+
+function parseFileEditArgs(value: unknown): PiFileEditArgs | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    ...(typeof record.path === "string" ? { path: record.path } : {}),
+    ...(typeof record.oldText === "string" ? { oldText: record.oldText } : {}),
+    ...(typeof record.newText === "string" ? { newText: record.newText } : {}),
+    ...(typeof record.content === "string" ? { content: record.content } : {}),
   };
 }
 
-function canonicalItem(item: ThreadEventItem): ProviderDriverItem | null {
-  return item.type === "userMessage" || item.type === "backgroundTask"
-    ? null
-    : item;
-}
-
-function initialItem(item: ThreadEventItem): ProviderDriverItem | null {
-  switch (item.type) {
-    case "userMessage":
-    case "backgroundTask":
-      return null;
-    case "agentMessage":
-      return { ...item, text: "" };
-    case "reasoning":
-      return { ...item, summary: [], content: [] };
-    case "commandExecution":
-      return {
-        type: "commandExecution",
-        id: item.id,
-        command: item.command,
-        cwd: item.cwd,
-        status: "pending",
-        approvalStatus: item.approvalStatus,
-        ...(item.parentToolCallId !== undefined
-          ? { parentToolCallId: item.parentToolCallId }
-          : {}),
-      };
-    case "fileChange":
-      return {
-        ...item,
-        status: "pending",
-      };
-    case "toolCall":
-      return item.status === "pending"
+function translatePiToolUseItem(
+  input: ToolUseTranslationInput,
+): ThreadEventItem {
+  return buildToolUseItem(input, {
+    commandToolNames: PI_COMMAND_TOOL_NAMES,
+    fileChangeToolNames: PI_FILE_CHANGE_TOOL_NAMES,
+    parseCommand(args) {
+      const parsed = bashArgsSchema.safeParse(args);
+      const command = parsed.success
+        ? toOptionalString(parsed.data.command)
+        : undefined;
+      const cwd = parsed.success
+        ? (toOptionalString(parsed.data.cwd) ?? "")
+        : "";
+      return command ? { command, cwd } : null;
+    },
+    parseFileChange(args) {
+      const parsed = parseFileEditArgs(args);
+      return parsed
         ? {
-            type: "toolCall",
-            id: item.id,
-            ...(item.server !== undefined ? { server: item.server } : {}),
-            tool: item.tool,
-            ...(item.arguments !== undefined
-              ? { arguments: item.arguments }
-              : {}),
-            ...(item.statusLabels !== undefined
-              ? { statusLabels: item.statusLabels }
-              : {}),
-            status: "pending",
-            ...(item.parentToolCallId !== undefined
-              ? { parentToolCallId: item.parentToolCallId }
-              : {}),
+            arguments: { ...parsed },
+            path: parsed.path,
+            oldText: parsed.oldText,
+            newText: parsed.newText ?? parsed.content,
           }
-        : item;
-    case "plan":
-      return { ...item, text: "" };
-    case "webSearch":
-      return { ...item, resultText: null };
-    case "webFetch":
-      return { ...item, resultText: null };
-    case "imageView":
-    case "contextCompaction":
-      return item;
-  }
+        : null;
+    },
+  });
 }
 
-type PiCanonicalTurnEventInput = ProviderDriverEventInput extends infer Event
-  ? Event extends { turnId: string }
-    ? Event
-    : never
-  : never;
-type PiCanonicalTurnEventWithoutTurnId =
-  PiCanonicalTurnEventInput extends infer Event
-    ? Event extends PiCanonicalTurnEventInput
-      ? Omit<Event, "turnId">
-      : never
-    : never;
+function translatePiToolResultItem(args: {
+  callId: string;
+  content: unknown;
+  isError: boolean;
+  startedItem?: ThreadEventItem;
+  toolName: string;
+}): ThreadEventItem {
+  const outputText = extractResultText(args.content);
+  const commandOutputText =
+    args.toolName === "bash" || args.startedItem?.type === "commandExecution"
+      ? extractPiCommandOutput(args.content)
+      : undefined;
+  return buildToolResultItem({
+    callId: args.callId,
+    commandOutputText,
+    commandToolNames: PI_COMMAND_TOOL_NAMES,
+    fileChangeToolNames: PI_FILE_CHANGE_TOOL_NAMES,
+    isError: args.isError,
+    outputText,
+    startedItem: args.startedItem,
+    toolCallResult: outputText,
+    toolName: args.toolName,
+  });
+}
+
+function buildPiModelContextWindowLookup(
+  models: readonly PiContextWindowModel[],
+): PiModelContextWindowLookup {
+  const byCanonicalId = new Map<string, number>();
+  const byModelId = new Map<string, number>();
+  for (const model of models) {
+    if (
+      typeof model.contextWindow !== "number" ||
+      !Number.isFinite(model.contextWindow) ||
+      model.contextWindow <= 0
+    ) {
+      continue;
+    }
+    byCanonicalId.set(
+      toCanonicalPiModelId(model.provider, model.id),
+      model.contextWindow,
+    );
+    byModelId.set(model.id, model.contextWindow);
+  }
+  return { byCanonicalId, byModelId };
+}
+
+function resolvePiModelContextWindow(
+  message:
+    | Extract<AgentSessionEvent, { type: "agent_end" }>["messages"][number]
+    | undefined,
+  lookup: PiModelContextWindowLookup,
+): number | null {
+  if (!message || message.role !== "assistant") return null;
+  const modelId = toOptionalString(message.model);
+  if (!modelId) return null;
+  const providerId = toOptionalString(message.provider);
+  return providerId
+    ? (lookup.byCanonicalId.get(toCanonicalPiModelId(providerId, modelId)) ??
+        null)
+    : (lookup.byModelId.get(modelId) ?? null);
+}
+
+function assistantMessage(
+  event: Extract<AgentSessionEvent, { type: "agent_end" }>,
+) {
+  for (let index = event.messages.length - 1; index >= 0; index -= 1) {
+    const message = event.messages[index];
+    if (message?.role === "assistant") return message;
+  }
+  return undefined;
+}
+
+function assistantText(
+  message: ReturnType<typeof assistantMessage>,
+): string | undefined {
+  if (!message) return undefined;
+  const text = message.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+  return text.length > 0 ? text : undefined;
+}
+
+function toUsageBreakdown(
+  message: ReturnType<typeof assistantMessage>,
+): ThreadEventTokenUsageBreakdown | undefined {
+  if (!message) return undefined;
+  const inputTokens = toNonNegativeNumber(message.usage.input);
+  const outputTokens = toNonNegativeNumber(message.usage.output);
+  const cachedInputTokens =
+    toNonNegativeNumber(message.usage.cacheRead) +
+    toNonNegativeNumber(message.usage.cacheWrite);
+  const totalTokens = toNonNegativeNumber(message.usage.totalTokens);
+  return {
+    totalTokens:
+      totalTokens > 0
+        ? totalTokens
+        : inputTokens + outputTokens + cachedInputTokens,
+    inputTokens,
+    cachedInputTokens,
+    outputTokens,
+    reasoningOutputTokens: toNonNegativeNumber(message.usage.reasoning),
+  };
+}
+
+function extractPiCommandOutput(content: unknown): string | undefined {
+  return normalizeProviderCommandOutput({
+    text: extractResultText(content),
+    emptyPlaceholders: PI_EMPTY_BASH_OUTPUT_PLACEHOLDERS,
+  });
+}
+
+function commandOutputDelta(args: {
+  partialResult: unknown;
+  previousOutput?: string;
+}): PiCommandOutputDelta | null {
+  const nextOutput = extractPiCommandOutput(args.partialResult);
+  if (nextOutput === undefined) return null;
+  const delta = diffCumulativeText({
+    previousText: args.previousOutput,
+    nextText: nextOutput,
+  });
+  return delta
+    ? {
+        delta: delta.delta,
+        reset: delta.reset,
+        snapshot: delta.nextText,
+      }
+    : null;
+}
 
 function initialItemForDelta(args: {
   channel: Extract<ProviderDriverEventInput, { type: "item.delta" }>["channel"];
@@ -179,44 +286,118 @@ function initialItemForDelta(args: {
   }
 }
 
-/** Transitional Pi translator that runs the retained adapter semantics inside the driver process. */
+type CanonicalTurnEventInput = ProviderDriverEventInput extends infer Event
+  ? Event extends { turnId: string }
+    ? Event
+    : never
+  : never;
+type CanonicalTurnEventWithoutTurnId =
+  CanonicalTurnEventInput extends infer Event
+    ? Event extends CanonicalTurnEventInput
+      ? Omit<Event, "turnId">
+      : never
+    : never;
+
+/** Converts Pi SDK lifecycle events directly into the canonical driver event union. */
 export class PiCanonicalEventTranslator {
-  private readonly adapter: ProviderAdapter;
   private readonly attachmentId: string;
-  private readonly bbThreadId: string;
   private readonly events: ProviderDriverEventEmitter;
+  private readonly modelContextWindows: PiModelContextWindowLookup;
   private readonly openItems = new Map<string, ProviderDriverItem>();
+  private readonly commandOutputSnapshots = new Map<string, string>();
+  private readonly toolItems = new Map<string, ThreadEventItem>();
+  private readonly totalTokens: ThreadEventTokenUsageBreakdown = {
+    totalTokens: 0,
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
+    reasoningOutputTokens: 0,
+  };
   private activeTurnId: string | null = null;
-  private pendingTurnError: ProviderDriverError | null = null;
-  private retryAttempt = 0;
+  private assistantCounter = 0;
+  private assistantItemId: string | null = null;
+  private pendingRetryError: string | null = null;
+  private reasoningCounter = 0;
+  private readonly reasoningItemIds = new Map<number, string>();
 
   constructor(options: PiCanonicalEventTranslatorOptions) {
-    this.adapter = createPiProviderAdapter();
     this.attachmentId = options.attachmentId;
-    this.bbThreadId = options.bbThreadId;
     this.events = options.events;
+    this.modelContextWindows = buildPiModelContextWindowLookup(
+      getBuiltinProviders().flatMap((provider) => getBuiltinModels(provider)),
+    );
   }
 
   beginTurn(turnId: string): void {
     this.activeTurnId = turnId;
-    this.pendingTurnError = null;
-    this.retryAttempt = 0;
+    this.assistantItemId = null;
+    this.pendingRetryError = null;
     this.openItems.clear();
+    this.commandOutputSnapshots.clear();
+    this.toolItems.clear();
+    this.reasoningItemIds.clear();
   }
 
-  translateSdkEvent(event: unknown): void {
-    const translated = this.adapter.translateEvent(
-      {
-        jsonrpc: "2.0",
-        method: "sdk/message",
-        params: {
-          threadId: this.bbThreadId,
-          message: event,
-        },
-      },
-      { threadId: this.bbThreadId },
-    );
-    this.translateThreadEvents(translated);
+  translateSdkEvent(
+    event: AgentSessionEvent & { providerCheckpointId?: string },
+  ): void {
+    switch (event.type) {
+      case "agent_start":
+        return;
+      case "agent_end":
+        this.translateAgentEnd(event);
+        return;
+      case "message_update":
+        this.translateMessageUpdate(event);
+        return;
+      case "tool_execution_start":
+        this.translateToolStart(event);
+        return;
+      case "tool_execution_update":
+        this.translateToolUpdate(event);
+        return;
+      case "tool_execution_end":
+        this.translateToolEnd(event);
+        return;
+      case "compaction_start":
+        this.translateCompactionStart(event);
+        return;
+      case "compaction_end":
+        this.translateCompactionEnd(event);
+        return;
+      case "auto_retry_start":
+        this.pendingRetryError = event.errorMessage;
+        this.emitTurnEvent({
+          type: "turn.retrying",
+          attachmentId: this.attachmentId,
+          attempt: event.attempt,
+          message: event.errorMessage,
+          retryAt: new Date(Date.now() + event.delayMs).toISOString(),
+        });
+        return;
+      case "auto_retry_end":
+        if (!event.success) {
+          this.pendingRetryError =
+            event.finalError ?? this.pendingRetryError ?? "Pi retry failed";
+        } else {
+          this.pendingRetryError = null;
+        }
+        return;
+      case "agent_settled":
+      case "queue_update":
+      case "turn_start":
+      case "turn_end":
+      case "message_start":
+      case "message_end":
+      case "entry_appended":
+      case "session_info_changed":
+      case "thinking_level_changed":
+      case "summarization_retry_scheduled":
+      case "summarization_retry_attempt_start":
+      case "summarization_retry_finished":
+      case "bash_execution_update":
+        return;
+    }
   }
 
   translateContextWindowUsage(contextWindowUsage: {
@@ -267,240 +448,244 @@ export class PiCanonicalEventTranslator {
     this.finishTurn();
   }
 
-  private translateThreadEvents(events: ThreadEvent[]): void {
-    for (const event of events) {
-      this.translateThreadEvent(event);
+  private translateAgentEnd(
+    event: Extract<AgentSessionEvent, { type: "agent_end" }> & {
+      providerCheckpointId?: string;
+    },
+  ): void {
+    const message = assistantMessage(event);
+    if (event.willRetry) {
+      this.pendingRetryError = message?.errorMessage ?? "Pi retrying";
+      return;
+    }
+    const terminalError =
+      message?.stopReason === "error"
+        ? (message.errorMessage ?? this.pendingRetryError)
+        : this.pendingRetryError;
+    if (terminalError) {
+      this.settleFailed(
+        canonicalProviderError({
+          code: "pi_provider_error",
+          message: "Provider error",
+          detail: terminalError,
+        }),
+      );
+      return;
+    }
+    const text = assistantText(message);
+    if (text) {
+      const itemId = this.resolveAssistantCompletionId();
+      this.completeItem({ type: "agentMessage", id: itemId, text });
+    }
+    const last = toUsageBreakdown(message);
+    if (last) {
+      this.totalTokens.totalTokens += last.totalTokens;
+      this.totalTokens.inputTokens += last.inputTokens;
+      this.totalTokens.cachedInputTokens += last.cachedInputTokens;
+      this.totalTokens.outputTokens += last.outputTokens;
+      this.totalTokens.reasoningOutputTokens += last.reasoningOutputTokens;
+      this.emitTurnEvent({
+        type: "turn.token_usage_changed",
+        attachmentId: this.attachmentId,
+        tokenUsage: {
+          total: { ...this.totalTokens },
+          last,
+          modelContextWindow: resolvePiModelContextWindow(
+            message,
+            this.modelContextWindows,
+          ),
+        },
+      });
+    }
+    const turnId = this.activeTurnId;
+    if (turnId === null) return;
+    this.events.emit({
+      type: "turn.settled",
+      attachmentId: this.attachmentId,
+      turnId,
+      outcome: message?.stopReason === "aborted" ? "cancelled" : "completed",
+      error: null,
+      providerCheckpointId: event.providerCheckpointId ?? null,
+    });
+    this.finishTurn();
+  }
+
+  private translateMessageUpdate(
+    event: Extract<AgentSessionEvent, { type: "message_update" }>,
+  ): void {
+    const assistantEvent = event.assistantMessageEvent;
+    switch (assistantEvent.type) {
+      case "text_delta":
+        this.emitDelta({
+          itemId: this.getOrCreateAssistantItemId(),
+          channel: "assistant_text",
+          delta: assistantEvent.delta,
+          reset: false,
+        });
+        return;
+      case "thinking_delta":
+        this.emitDelta({
+          itemId: this.getOrCreateReasoningItemId(assistantEvent.contentIndex),
+          channel: "reasoning_text",
+          delta: assistantEvent.delta,
+          reset: false,
+        });
+        return;
+      case "thinking_end": {
+        const itemId = this.getOrCreateReasoningItemId(
+          assistantEvent.contentIndex,
+        );
+        if (assistantEvent.content) {
+          this.completeItem({
+            type: "reasoning",
+            id: itemId,
+            summary: [],
+            content: [assistantEvent.content],
+          });
+        }
+        this.reasoningItemIds.delete(assistantEvent.contentIndex);
+        return;
+      }
+      case "start":
+      case "text_start":
+      case "text_end":
+      case "thinking_start":
+      case "toolcall_start":
+      case "toolcall_delta":
+      case "toolcall_end":
+      case "done":
+      case "error":
+        return;
     }
   }
 
-  private translateThreadEvent(event: ThreadEvent): void {
-    switch (event.type) {
-      case "turn/started":
-      case "turn/input/accepted":
-      case "thread/started":
-      case "thread/identity":
-        return;
-      case "item/started":
-        this.startItem(event.item);
-        return;
-      case "item/completed":
-        this.completeItem(event.item);
-        return;
-      case "item/agentMessage/delta":
-        this.emitDelta({
-          itemId: event.itemId,
-          channel: "assistant_text",
-          delta: event.delta,
-          reset: false,
-        });
-        return;
-      case "item/reasoning/textDelta":
-        this.emitDelta({
-          itemId: event.itemId,
-          channel: "reasoning_text",
-          delta: event.delta,
-          reset: false,
-        });
-        return;
-      case "item/reasoning/summaryTextDelta":
-        this.emitDelta({
-          itemId: event.itemId,
-          channel: "reasoning_summary",
-          delta: event.delta,
-          reset: false,
-        });
-        return;
-      case "item/commandExecution/outputDelta":
-        this.emitDelta({
-          itemId: event.itemId,
-          channel: "command_output",
-          delta: event.delta,
-          reset: event.reset === true,
-        });
-        return;
-      case "item/fileChange/outputDelta":
-        this.emitDelta({
-          itemId: event.itemId,
-          channel: "file_change_output",
-          delta: event.delta,
-          reset: false,
-        });
-        return;
-      case "item/plan/delta":
-        this.emitDelta({
-          itemId: event.itemId,
-          channel: "plan_text",
-          delta: event.delta,
-          reset: false,
-        });
-        return;
-      case "item/toolCall/progress":
-      case "item/mcpToolCall/progress":
-        this.emitDelta({
-          itemId: event.itemId,
-          channel: "tool_output",
-          delta: event.message ?? "Tool progress",
-          reset: false,
-        });
-        return;
-      case "thread/compacted":
-        this.completeOpenCompactionItem();
-        this.emitTurnEvent({
-          type: "turn.compacted",
-          attachmentId: this.attachmentId,
-        });
-        return;
-      case "thread/tokenUsage/updated":
-        this.emitTurnEvent({
-          type: "turn.token_usage_changed",
-          attachmentId: this.attachmentId,
-          tokenUsage: event.tokenUsage,
-        });
-        return;
-      case "thread/contextWindowUsage/updated":
-        this.translateContextWindowUsage(event.contextWindowUsage);
-        return;
-      case "provider/error": {
-        const error = toCanonicalError(event);
-        if (event.willRetry === true) {
-          this.retryAttempt += 1;
-          this.emitTurnEvent({
-            type: "turn.retrying",
-            attachmentId: this.attachmentId,
-            attempt: this.retryAttempt,
-            message: event.detail ?? event.message,
-            retryAt: null,
-          });
-          return;
-        }
-        this.pendingTurnError = error;
-        return;
-      }
-      case "turn/completed": {
-        const turnId = this.activeTurnId;
-        if (turnId === null) return;
-        const outcome =
-          event.status === "completed"
-            ? "completed"
-            : event.status === "interrupted"
-              ? "cancelled"
-              : "failed";
-        const error =
-          outcome === "failed"
-            ? (this.pendingTurnError ?? {
-                code: "pi_turn_failed",
-                category: "provider" as const,
-                message: event.error?.message ?? "Pi turn failed",
-                retry: { disposition: "never" as const },
-              })
-            : null;
-        this.events.emit({
-          type: "turn.settled",
-          attachmentId: this.attachmentId,
-          turnId,
-          outcome,
-          error,
-          providerCheckpointId: event.providerCheckpointId ?? null,
-        });
-        this.finishTurn();
-        return;
-      }
-      case "provider/rateLimits/updated":
-        this.events.emit({
-          type: "provider.rate_limits_changed",
-          attachmentId: this.attachmentId,
-          rateLimits: event.rateLimits,
-        });
-        return;
-      case "provider/warning":
-        this.events.emit({
-          type: "provider.warning",
-          attachmentId: this.attachmentId,
-          code: "pi_warning",
-          message: event.summary ?? event.details ?? "Pi warning",
-        });
-        return;
-      case "provider/unhandled":
-        this.events.emit({
-          type: "provider.warning",
-          attachmentId: this.attachmentId,
-          code: "pi_unhandled_event",
-          message: `Unhandled Pi event: ${event.rawType}`,
-        });
-        return;
-      case "provider/modelFallback":
-        this.events.emit({
-          type: "provider.warning",
-          attachmentId: this.attachmentId,
-          code: "pi_model_fallback",
-          message: event.message,
-        });
-        return;
-      case "thread/name/updated":
-      case "thread/goal/updated":
-      case "thread/goal/cleared":
-      case "turn/plan/updated":
-      case "turn/diff/updated":
-      case "item/backgroundTask/progress":
-      case "item/backgroundTask/completed":
-      case "system/error":
-      case "system/manager/user_message":
-      case "system/thread/interrupted":
-      case "system/operation":
-      case "system/permissionGrant/lifecycle":
-      case "system/userQuestion/lifecycle":
-      case "system/thread-provisioning":
-      case "system/provider-turn-watchdog":
-      case "client/thread/start":
-      case "client/turn/requested":
-      case "client/turn/start":
-        this.events.emit({
-          type: "provider.warning",
-          attachmentId: this.attachmentId,
-          code: "pi_unprojected_event",
-          message: `Pi produced unsupported translated event ${event.type}`,
-        });
+  private translateToolStart(
+    event: Extract<AgentSessionEvent, { type: "tool_execution_start" }>,
+  ): void {
+    this.assistantItemId = null;
+    const item = translatePiToolUseItem({
+      callId: event.toolCallId,
+      toolName: event.toolName,
+      args: event.args,
+    });
+    this.toolItems.set(event.toolCallId, item);
+    this.startItem(item);
+  }
+
+  private translateToolUpdate(
+    event: Extract<AgentSessionEvent, { type: "tool_execution_update" }>,
+  ): void {
+    if (event.toolName === "bash") {
+      const output = commandOutputDelta({
+        partialResult: event.partialResult,
+        previousOutput: this.commandOutputSnapshots.get(event.toolCallId),
+      });
+      if (!output) return;
+      this.commandOutputSnapshots.set(event.toolCallId, output.snapshot);
+      this.emitDelta({
+        itemId: event.toolCallId,
+        channel: "command_output",
+        delta: output.delta,
+        reset: output.reset,
+      });
+      return;
     }
+    const message = extractResultText(event.partialResult).trim();
+    this.emitDelta({
+      itemId: event.toolCallId,
+      channel: "tool_output",
+      delta: message || `${event.toolName} progress update`,
+      reset: false,
+    });
+  }
+
+  private translateToolEnd(
+    event: Extract<AgentSessionEvent, { type: "tool_execution_end" }>,
+  ): void {
+    this.completeItem(
+      translatePiToolResultItem({
+        callId: event.toolCallId,
+        toolName: event.toolName,
+        content: event.result,
+        isError: event.isError,
+        startedItem: this.toolItems.get(event.toolCallId),
+      }),
+    );
+    this.toolItems.delete(event.toolCallId);
+    this.commandOutputSnapshots.delete(event.toolCallId);
+  }
+
+  private translateCompactionStart(
+    event: Extract<AgentSessionEvent, { type: "compaction_start" }>,
+  ): void {
+    this.startItem({
+      type: "contextCompaction",
+      id: `pi-compaction-${this.activeTurnId ?? event.reason}`,
+    });
+  }
+
+  private translateCompactionEnd(
+    event: Extract<AgentSessionEvent, { type: "compaction_end" }>,
+  ): void {
+    const item = [...this.openItems.values()].find(
+      (candidate) => candidate.type === "contextCompaction",
+    );
+    if (item) this.completeItem(item);
+    if (!event.aborted && !event.errorMessage) {
+      this.emitTurnEvent({
+        type: "turn.compacted",
+        attachmentId: this.attachmentId,
+      });
+    }
+    if (event.reason !== "manual") return;
+    const turnId = this.activeTurnId;
+    if (turnId === null) return;
+    const failed = event.errorMessage !== undefined;
+    this.events.emit({
+      type: "turn.settled",
+      attachmentId: this.attachmentId,
+      turnId,
+      outcome: event.aborted ? "cancelled" : failed ? "failed" : "completed",
+      error: failed
+        ? canonicalProviderError({
+            code: "pi_compaction_failed",
+            message: "Pi compaction failed",
+            detail: event.errorMessage,
+          })
+        : null,
+      providerCheckpointId: null,
+    });
+    this.finishTurn();
   }
 
   private startItem(item: ThreadEventItem): void {
-    const initial = initialItem(item);
-    if (!initial) {
-      this.warnUnsupportedItem(item.type);
-      return;
-    }
+    if (item.type === "userMessage" || item.type === "backgroundTask") return;
     this.emitTurnEvent({
       type: "item.started",
       attachmentId: this.attachmentId,
-      item: initial,
+      item,
     });
-    this.openItems.set(initial.id, initial);
+    this.openItems.set(item.id, item);
   }
 
   private completeItem(item: ThreadEventItem): void {
-    const completed = canonicalItem(item);
-    if (!completed) {
-      this.warnUnsupportedItem(item.type);
-      return;
-    }
-    if (!this.openItems.has(completed.id)) {
-      this.startItem(completed);
-    }
-    const itemStatus = "status" in item ? item.status : "completed";
+    if (item.type === "userMessage" || item.type === "backgroundTask") return;
+    if (!this.openItems.has(item.id)) this.startItem(initialItem(item));
+    const status = "status" in item ? item.status : "completed";
     const outcome =
-      itemStatus === "failed"
+      status === "failed"
         ? "failed"
-        : itemStatus === "interrupted"
+        : status === "interrupted"
           ? "cancelled"
           : "completed";
     this.emitTurnEvent({
       type: "item.completed",
       attachmentId: this.attachmentId,
-      item: completed,
+      item,
       outcome,
-      error: outcome === "failed" ? failedItemError(completed) : null,
+      error: outcome === "failed" ? failedItemError(item) : null,
     });
-    this.openItems.delete(completed.id);
+    this.openItems.delete(item.id);
   }
 
   private emitDelta(
@@ -510,20 +695,10 @@ export class PiCanonicalEventTranslator {
     >,
   ): void {
     if (!this.openItems.has(event.itemId)) {
-      const initial = initialItemForDelta(event);
-      if (initial) {
-        this.startItem(initial);
-      }
+      const item = initialItemForDelta(event);
+      if (item) this.startItem(item);
     }
-    if (!this.openItems.has(event.itemId)) {
-      this.events.emit({
-        type: "provider.warning",
-        attachmentId: this.attachmentId,
-        code: "pi_delta_without_item",
-        message: `Pi emitted ${event.channel} for unknown item ${event.itemId}`,
-      });
-      return;
-    }
+    if (!this.openItems.has(event.itemId)) return;
     this.emitTurnEvent({
       type: "item.delta",
       attachmentId: this.attachmentId,
@@ -531,48 +706,71 @@ export class PiCanonicalEventTranslator {
     });
   }
 
-  private completeOpenCompactionItem(): void {
-    const compaction = [...this.openItems.values()].find(
-      (item) => item.type === "contextCompaction",
-    );
-    if (compaction) {
-      this.emitTurnEvent({
-        type: "item.completed",
-        attachmentId: this.attachmentId,
-        item: compaction,
-        outcome: "completed",
-        error: null,
-      });
-      this.openItems.delete(compaction.id);
-    }
+  private getOrCreateAssistantItemId(): string {
+    this.assistantItemId ??= `pi-assistant-${++this.assistantCounter}`;
+    return this.assistantItemId;
   }
 
-  private emitTurnEvent(event: PiCanonicalTurnEventWithoutTurnId): void {
-    if (this.activeTurnId === null) {
-      this.events.emit({
-        type: "provider.warning",
-        attachmentId: this.attachmentId,
-        code: "pi_event_without_turn",
-        message: `Pi emitted ${event.type} without an active canonical turn`,
-      });
-      return;
-    }
+  private resolveAssistantCompletionId(): string {
+    const itemId = this.getOrCreateAssistantItemId();
+    this.assistantItemId = null;
+    return itemId;
+  }
+
+  private getOrCreateReasoningItemId(contentIndex: number): string {
+    const existing = this.reasoningItemIds.get(contentIndex);
+    if (existing) return existing;
+    const itemId = `pi-reasoning-${++this.reasoningCounter}`;
+    this.reasoningItemIds.set(contentIndex, itemId);
+    return itemId;
+  }
+
+  private emitTurnEvent(event: CanonicalTurnEventWithoutTurnId): void {
+    if (this.activeTurnId === null) return;
     this.events.emit({ ...event, turnId: this.activeTurnId });
-  }
-
-  private warnUnsupportedItem(itemType: ThreadEventItem["type"]): void {
-    this.events.emit({
-      type: "provider.warning",
-      attachmentId: this.attachmentId,
-      code: "pi_unsupported_item",
-      message: `Pi produced unsupported canonical item ${itemType}`,
-    });
   }
 
   private finishTurn(): void {
     this.activeTurnId = null;
-    this.pendingTurnError = null;
-    this.retryAttempt = 0;
+    this.assistantItemId = null;
+    this.pendingRetryError = null;
     this.openItems.clear();
+    this.commandOutputSnapshots.clear();
+    this.toolItems.clear();
+    this.reasoningItemIds.clear();
+  }
+}
+
+function initialItem(item: ProviderDriverItem): ProviderDriverItem {
+  switch (item.type) {
+    case "agentMessage":
+      return { ...item, text: "" };
+    case "reasoning":
+      return { ...item, summary: [], content: [] };
+    case "commandExecution":
+      return {
+        ...item,
+        aggregatedOutput: undefined,
+        exitCode: undefined,
+        status: "pending",
+      };
+    case "fileChange":
+      return { ...item, status: "pending" };
+    case "toolCall":
+      return {
+        ...item,
+        status: "pending",
+        result: undefined,
+        error: undefined,
+      };
+    case "plan":
+      return { ...item, text: "" };
+    case "webSearch":
+      return { ...item, resultText: null };
+    case "webFetch":
+      return { ...item, resultText: null };
+    case "imageView":
+    case "contextCompaction":
+      return item;
   }
 }

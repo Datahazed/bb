@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   providerDriverEventSchema,
   type ProviderDriverEvent,
@@ -17,16 +18,10 @@ const fixtureDirectory = resolve(
   "../__fixtures__/pi",
 );
 
-function fixture(name: string): unknown {
-  return JSON.parse(readFileSync(resolve(fixtureDirectory, name), "utf8"));
-}
-
-function fixtureRecord(name: string): Record<string, unknown> {
-  const value = fixture(name);
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`Expected object fixture ${name}`);
-  }
-  return Object.fromEntries(Object.entries(value));
+function fixture(name: string): AgentSessionEvent {
+  return JSON.parse(
+    readFileSync(resolve(fixtureDirectory, name), "utf8"),
+  ) as AgentSessionEvent;
 }
 
 function createTranslator() {
@@ -36,7 +31,6 @@ function createTranslator() {
   };
   const translator = new PiCanonicalEventTranslator({
     attachmentId: "attachment-1",
-    bbThreadId: "thread-1",
     events: emitter,
   });
   const events = (): ProviderDriverEvent[] =>
@@ -51,8 +45,10 @@ describe("PiCanonicalEventTranslator", () => {
     const { events, translator } = createTranslator();
     translator.beginTurn("turn-1");
     translator.translateSdkEvent(fixture("agent-start.json"));
+    const completed = fixture("agent-end-with-message.json");
+    if (completed.type !== "agent_end") throw new Error("Expected agent_end");
     translator.translateSdkEvent({
-      ...fixtureRecord("agent-end-with-message.json"),
+      ...completed,
       providerCheckpointId: "checkpoint-1",
     });
 
@@ -85,6 +81,13 @@ describe("PiCanonicalEventTranslator", () => {
     translator.beginTurn("turn-1");
     translator.translateSdkEvent(fixture("agent-start.json"));
     translator.translateSdkEvent({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 100,
+      errorMessage: "temporary failure",
+    });
+    translator.translateSdkEvent({
       type: "agent_end",
       messages: [
         {
@@ -92,7 +95,24 @@ describe("PiCanonicalEventTranslator", () => {
           content: [],
           stopReason: "error",
           errorMessage: "temporary failure",
-          usage: { input: 0, output: 0, totalTokens: 0 },
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          api: "openai-completions",
+          provider: "openai",
+          model: "gpt-5",
+          timestamp: 0,
         },
       ],
       willRetry: true,
@@ -104,6 +124,40 @@ describe("PiCanonicalEventTranslator", () => {
         type: "turn.retrying",
         attempt: 1,
         message: "temporary failure",
+      }),
+    );
+    expect(
+      events().filter((event) => event.type === "turn.settled"),
+    ).toHaveLength(1);
+  });
+
+  it("settles a terminal Pi retry failure exactly once", () => {
+    const { events, translator } = createTranslator();
+    translator.beginTurn("turn-1");
+    translator.translateSdkEvent({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 1,
+      delayMs: 0,
+      errorMessage: "rate limited",
+    });
+    translator.translateSdkEvent({
+      type: "agent_end",
+      messages: [],
+      willRetry: false,
+    });
+    translator.translateSdkEvent({
+      type: "auto_retry_end",
+      success: false,
+      attempt: 1,
+      finalError: "rate limited",
+    });
+
+    expect(events()).toContainEqual(
+      expect.objectContaining({
+        type: "turn.settled",
+        outcome: "failed",
+        error: expect.objectContaining({ detail: "rate limited" }),
       }),
     );
     expect(
@@ -125,6 +179,7 @@ describe("PiCanonicalEventTranslator", () => {
       type: "tool_execution_update",
       toolCallId: "call-1",
       toolName: "bash",
+      args: { command: "printf hello", cwd: "/repo" },
       partialResult: { content: [{ type: "text", text: "hello" }] },
     });
     translator.translateSdkEvent({
@@ -173,6 +228,8 @@ describe("PiCanonicalEventTranslator", () => {
       type: "compaction_end",
       reason: "manual",
       aborted: false,
+      result: undefined,
+      willRetry: false,
     });
 
     expect(events().map((event) => event.type)).toEqual([

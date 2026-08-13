@@ -12,6 +12,10 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  createProviderDriverSmokePeer,
+  driverArtifactDigest,
+} from "./provider-driver-smoke-peer.mjs";
 
 const HTTP_WAIT_TIMEOUT_MS = 60_000;
 const HTTP_WAIT_INTERVAL_MS = 250;
@@ -412,74 +416,9 @@ async function smokeProviderBridgeBundles(packageDir) {
     label: "Claude Code bridge model/list",
   });
   await smokeBridgeModelList({
-    bridgePath: join(packageDir, "host-daemon", "dist", "bb-pi-bridge.mjs"),
-    label: "Pi bridge model/list",
-  });
-  await smokeBridgeModelList({
     bridgePath: join(packageDir, "host-daemon", "dist", "bb-acp-bridge.mjs"),
     label: "ACP bridge model/list",
   });
-}
-
-function collectJsonRpcMessages({ childProcess, onMessage }) {
-  const messages = [];
-  let buffer = "";
-  childProcess.stdout?.on("data", (chunk) => {
-    buffer += chunk.toString("utf8");
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
-      const message = JSON.parse(trimmed);
-      messages.push(message);
-      onMessage?.(message);
-    }
-  });
-  return messages;
-}
-
-async function waitForBridgeMessage({
-  childProcess,
-  label,
-  messages,
-  output,
-  predicate,
-}) {
-  const deadline = Date.now() + BRIDGE_WAIT_TIMEOUT_MS;
-  while (Date.now() <= deadline) {
-    const message = messages.find(predicate);
-    if (message) {
-      return message;
-    }
-    if (childProcess.exitCode !== null || childProcess.signalCode !== null) {
-      throw new Error(
-        `${label} exited before the expected message\n${formatProcessOutput(output)}`,
-      );
-    }
-    await delay(10);
-  }
-  throw new Error(
-    `${label} timed out waiting for the expected message\n${formatProcessOutput(output)}`,
-  );
-}
-
-function sendBridgeRequest(childProcess, id, method, params) {
-  childProcess.stdin.write(
-    `${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
-  );
-}
-
-function isSdkEvent(message, eventType) {
-  return (
-    isRecord(message) &&
-    message.method === "sdk/message" &&
-    isRecord(message.params) &&
-    isRecord(message.params.message) &&
-    message.params.message.type === eventType
-  );
 }
 
 async function smokePiUserConfiguration(packageDir) {
@@ -491,11 +430,11 @@ async function smokePiUserConfiguration(packageDir) {
   const extensionPath = join(testRoot, "configured-extension.ts");
   const sessionMarkerPath = join(testRoot, "session-marker.json");
   const toolMarkerPath = join(testRoot, "tool-marker.txt");
+  const threadStoragePath = join(testRoot, "thread-storage");
   await mkdir(agentDir, { recursive: true });
   await mkdir(projectConfigDir, { recursive: true });
   await mkdir(maintenanceDir, { recursive: true });
-  // Pi keys trust decisions by canonical path. macOS temp paths can resolve
-  // through /private, so the raw mkdtemp path is not always the trust key.
+  await mkdir(threadStoragePath, { recursive: true });
   const trustedWorkspaceDir = await realpath(workspaceDir);
   await writeFile(
     extensionPath,
@@ -523,73 +462,92 @@ async function smokePiUserConfiguration(packageDir) {
     ),
   );
 
-  const label = "Pi installed-package configuration E2E";
-  const bridgePath = join(
+  const label = "Pi installed-package canonical driver E2E";
+  const driverPath = join(
     packageDir,
     "host-daemon",
     "dist",
-    "bb-pi-bridge.mjs",
+    "bb-pi-driver.mjs",
   );
-  const childProcess = spawn(process.execPath, [bridgePath], {
+  const childProcess = spawn(process.execPath, [driverPath], {
     cwd: maintenanceDir,
     env: {
       ...process.env,
-      BB_PI_BRIDGE_SESSION_DIR: join(testRoot, "sessions"),
+      BB_PI_DRIVER_SESSION_DIR: join(testRoot, "sessions"),
       BB_PI_E2E_SESSION_MARKER: sessionMarkerPath,
       BB_PI_E2E_TOOL_MARKER: toolMarkerPath,
       PI_CODING_AGENT_DIR: agentDir,
       PI_OFFLINE: "1",
     },
-    stdio: ["pipe", "pipe", "pipe"],
+    // Node's fs stream wrappers require bidirectional pipe handles even though
+    // the canonical protocol assigns one direction to each fd.
+    stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
   });
   const output = collectProcessOutput(childProcess);
-  const dynamicToolCalls = [];
-  const messages = collectJsonRpcMessages({
-    childProcess,
-    onMessage(message) {
-      if (!isRecord(message) || message.method !== "item/tool/call") {
-        return;
-      }
-      dynamicToolCalls.push(message);
-      childProcess.stdin.write(
-        `${JSON.stringify({
-          jsonrpc: "2.0",
-          id: message.id,
-          result: {
-            contentItems: [{ type: "inputText", text: "BB tool result" }],
-            success: true,
-          },
-        })}\n`,
-      );
-    },
-  });
+  const peer = createProviderDriverSmokePeer({ childProcess, label, output });
 
   try {
-    sendBridgeRequest(childProcess, 101, "initialize", {
-      clientInfo: { name: "bb-app-smoke", version: "0.0.0" },
+    const initialized = await peer.request("driver.initialize", {
+      supportedProtocolVersions: [peer.protocolVersion],
+      expected: {
+        pluginId: "pi",
+        driverId: "pi",
+        providerId: "pi",
+        artifactDigest: await driverArtifactDigest(driverPath),
+      },
+      host: { platform: process.platform, architecture: process.arch },
+      paths: { providerDataDir: join(testRoot, "provider-data") },
+      config: {},
     });
-    sendBridgeRequest(childProcess, 105, "model/list", { cwd: workspaceDir });
-    const modelListResponse = await waitForBridgeMessage({
-      childProcess,
-      label,
-      messages,
-      output,
-      predicate: (message) => isRecord(message) && message.id === 105,
+    if (initialized.identity?.providerId !== "pi") {
+      throw new Error(`${label} returned the wrong identity`);
+    }
+
+    const inspected = await peer.request("driver.inspect", {
+      cwd: workspaceDir,
+      operation: null,
     });
     if (
-      !isRecord(modelListResponse.result) ||
-      !Array.isArray(modelListResponse.result.models) ||
-      !modelListResponse.result.models.some(
-        (model) =>
-          isRecord(model) && model.id === "bb-config-e2e/bb-config-e2e-model",
+      !Array.isArray(inspected.models) ||
+      !inspected.models.some(
+        (model) => model.id === "bb-config-e2e/bb-config-e2e-model",
       )
     ) {
       throw new Error(
-        `${label} did not add the extension provider to model/list: ${JSON.stringify(modelListResponse)}`,
+        `${label} did not add the extension provider to discovery: ${JSON.stringify(inspected)}`,
       );
     }
-    sendBridgeRequest(childProcess, 102, "thread/start", {
-      cwd: workspaceDir,
+
+    const execution = {
+      model: "bb-config-e2e/bb-config-e2e-model",
+      reasoningLevel: "high",
+      serviceTier: "default",
+      permission: {
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      features: {
+        workflowsEnabled: false,
+        memoryEnabled: false,
+        subagentsEnabled: true,
+      },
+      providerOptions: {},
+    };
+    await peer.request("session.open", {
+      operationId: "op-pi-smoke-open",
+      attachmentId: "attachment-pi-smoke",
+      bbThreadId: "pi-config-e2e-thread",
+      mode: { kind: "start" },
+      workspace: {
+        cwd: workspaceDir,
+        additionalWriteRoots: [],
+        threadStoragePath,
+      },
+      execution,
+      instructions: { mode: "append", text: "" },
+      skillSources: [],
       dynamicTools: [
         {
           name: "bb_dynamic_tool",
@@ -599,64 +557,53 @@ async function smokePiUserConfiguration(packageDir) {
             properties: { value: { type: "string" } },
             required: ["value"],
           },
+          statusLabels: null,
         },
       ],
-      threadId: "pi-config-e2e-thread",
-    });
-    await waitForBridgeMessage({
-      childProcess,
-      label,
-      messages,
-      output,
-      predicate: (message) => isRecord(message) && message.id === 102,
+      disallowedTools: [],
+      outputSchema: null,
+      shellEnvironment: {},
     });
 
-    sendBridgeRequest(childProcess, 103, "turn/start", {
-      input: [{ type: "text", text: "Run both configured tools." }],
-      threadId: "pi-config-e2e-thread",
+    const toolRequest = peer.handleHostRequests(async (message) => {
+      if (
+        message.method !== "host.tool.call" ||
+        message.params.tool !== "bb_dynamic_tool" ||
+        message.params.arguments?.value !== "BB tool input"
+      ) {
+        throw new Error(`${label} received invalid host request`);
+      }
+      return {
+        success: true,
+        content: [{ type: "text", text: "BB tool result" }],
+      };
     });
-    await waitForBridgeMessage({
-      childProcess,
-      label,
-      messages,
-      output,
-      predicate: (message) => isSdkEvent(message, "agent_end"),
+    await peer.request("turn.submit", {
+      operationId: "op-pi-smoke-turn",
+      clientRequestId: "creq_23456789ab",
+      attachmentId: "attachment-pi-smoke",
+      mode: "start",
+      turnId: "turn-pi-smoke",
+      inputGroups: [
+        [{ type: "text", text: "Run both configured tools.", mentions: [] }],
+      ],
+      execution,
+    });
+    await toolRequest;
+    await peer.waitFor({
+      predicate: (event) =>
+        event.type === "turn.settled" && event.turnId === "turn-pi-smoke",
     });
 
-    const errors = messages.filter(
-      (message) =>
-        isRecord(message) && ("error" in message || message.method === "error"),
-    );
-    if (errors.length > 0) {
-      throw new Error(`${label} emitted errors: ${JSON.stringify(errors)}`);
-    }
-    if (dynamicToolCalls.length !== 1) {
-      throw new Error(
-        `${label} expected one BB tool call, received ${dynamicToolCalls.length}`,
-      );
-    }
-    const dynamicToolCall = dynamicToolCalls[0];
+    const completedTools = peer.notifications
+      .filter((event) => event.type === "item.completed")
+      .map((event) => event.item?.tool)
+      .filter(Boolean);
     if (
-      !isRecord(dynamicToolCall.params) ||
-      dynamicToolCall.params.tool !== "bb_dynamic_tool" ||
-      !isRecord(dynamicToolCall.params.arguments) ||
-      dynamicToolCall.params.arguments.value !== "BB tool input"
+      !completedTools.includes("configured_tool") ||
+      !completedTools.includes("bb_dynamic_tool")
     ) {
-      throw new Error(
-        `${label} received an invalid BB tool call: ${JSON.stringify(dynamicToolCall)}`,
-      );
-    }
-
-    const completedToolNames = messages
-      .filter((message) => isSdkEvent(message, "tool_execution_end"))
-      .map((message) => message.params.message.toolName);
-    if (
-      !completedToolNames.includes("configured_tool") ||
-      !completedToolNames.includes("bb_dynamic_tool")
-    ) {
-      throw new Error(
-        `${label} did not complete both tools: ${completedToolNames.join(", ")}`,
-      );
+      throw new Error(`${label} did not complete both tools`);
     }
 
     const sessionMarker = JSON.parse(await readFile(sessionMarkerPath, "utf8"));
@@ -669,23 +616,17 @@ async function smokePiUserConfiguration(packageDir) {
         `${label} did not apply project settings: ${JSON.stringify(sessionMarker)}`,
       );
     }
-    const toolMarker = await readFile(toolMarkerPath, "utf8");
-    if (toolMarker !== "extension tool input") {
+    if ((await readFile(toolMarkerPath, "utf8")) !== "extension tool input") {
       throw new Error(`${label} did not execute the configured extension tool`);
     }
 
-    sendBridgeRequest(childProcess, 104, "thread/stop", {
-      threadId: "pi-config-e2e-thread",
+    await peer.request("session.detach", {
+      operationId: "op-pi-smoke-detach",
+      attachmentId: "attachment-pi-smoke",
     });
-    await waitForBridgeMessage({
-      childProcess,
-      label,
-      messages,
-      output,
-      predicate: (message) => isRecord(message) && message.id === 104,
-    });
+    await peer.request("driver.shutdown", {});
   } finally {
-    childProcess.stdin.end();
+    peer.close();
     if (childProcess.exitCode === null && childProcess.signalCode === null) {
       const exited = await Promise.race([
         waitForProcessExit(childProcess).then(() => true),

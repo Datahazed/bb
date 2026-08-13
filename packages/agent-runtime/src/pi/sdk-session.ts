@@ -118,7 +118,7 @@ function createBashToolWithShellEnvOverlay(
 
   // Pi exposes shell env customization through bash spawn options today. This is
   // intentionally bash-only; non-bash tools must not depend on per-thread env in
-  // this shared bridge process.
+  // this shared driver process.
   return defineTool(
     createBashToolDefinition(args.cwd, {
       commandPrefix: args.commandPrefix,
@@ -174,7 +174,7 @@ async function waitForTransientAuthRetry(): Promise<void> {
 
 /**
  * Wraps the Pi programmatic SDK (`@earendil-works/pi-coding-agent`) in a
- * session object that bridges between the BB JSON-RPC protocol and
+ * session object that adapts between the BB JSON-RPC protocol and
  * the Pi agent's event-driven API.
  */
 export class PiSdkSession {

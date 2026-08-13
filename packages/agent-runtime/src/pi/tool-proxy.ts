@@ -5,7 +5,6 @@ export interface DynamicToolDefinition {
   name: string;
   description: string;
   inputSchema: unknown;
-  statusLabels?: { pending: string; completed: string } | null;
 }
 
 export type ToolCallForwarder = (
@@ -16,7 +15,7 @@ export type ToolCallForwarder = (
 
 /**
  * Builds Pi-compatible ToolDefinition objects from dynamic tool definitions
- * that forward execution back to the server via the bridge protocol.
+ * that forward execution back to the server via the driver protocol.
  */
 export function buildDynamicTools(
   dynamicTools: DynamicToolDefinition[],

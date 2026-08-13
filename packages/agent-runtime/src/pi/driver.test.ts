@@ -53,7 +53,7 @@ class FakePiSdkSession {
 let piProviderDriver: ProviderDriverDefinition;
 
 beforeAll(async () => {
-  vi.doMock("./bridge/sdk-session.js", () => ({
+  vi.doMock("./sdk-session.js", () => ({
     PiSdkSession: FakePiSdkSession,
   }));
   ({ piProviderDriver } = await import("./driver.js"));

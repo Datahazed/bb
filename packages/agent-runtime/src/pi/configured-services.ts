@@ -32,7 +32,7 @@ function resolveProjectTrusted(
     return savedDecision;
   }
 
-  // The bridge has no trust prompt. Pi treats an unresolved `ask` decision as
+  // The driver has no trust prompt. Pi treats an unresolved `ask` decision as
   // untrusted in every non-interactive mode, so BB must do the same.
   return settingsManager.getDefaultProjectTrust() === "always";
 }

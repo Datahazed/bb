@@ -1,7 +1,7 @@
 /**
  * Shared tool call helpers for bridge processes.
  *
- * Both claude-code and pi bridges forward tool calls from the provider SDK
+ * Legacy bridges forward tool calls from the provider SDK
  * to the host-daemon and feed responses back. This module provides:
  * - The JSON-RPC request type for forwarding tool calls
  * - Response decoding for tool call results from the host-daemon

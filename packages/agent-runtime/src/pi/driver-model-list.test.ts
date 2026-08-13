@@ -14,13 +14,13 @@ vi.mock("@earendil-works/pi-ai", () => ({
 }));
 
 import {
-  listPiBridgeModels,
+  listPiDriverModels,
   resetPiModelNetworkRefreshForTests,
-} from "../model-list.js";
+} from "./driver-model-list.js";
 
 const modelRuntime = { getAvailable, refresh } as unknown as ModelRuntime;
 
-describe("pi bridge model list", () => {
+describe("pi driver model list", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetPiModelNetworkRefreshForTests();
@@ -46,7 +46,7 @@ describe("pi bridge model list", () => {
       "max",
     ]);
 
-    await expect(listPiBridgeModels(modelRuntime)).resolves.toEqual({
+    await expect(listPiDriverModels(modelRuntime)).resolves.toEqual({
       models: [
         {
           id: "anthropic/claude-sonnet-5",
@@ -104,7 +104,7 @@ describe("pi bridge model list", () => {
     ]);
     getSupportedThinkingLevels.mockReturnValue(["off"]);
 
-    const result = await listPiBridgeModels(modelRuntime);
+    const result = await listPiDriverModels(modelRuntime);
 
     expect(result.models.map((model) => model.id)).toEqual([
       "commandcode/deepseek-v4",
@@ -133,13 +133,13 @@ describe("pi bridge model list", () => {
     ]);
     getSupportedThinkingLevels.mockReturnValue(["off"]);
 
-    const result = await listPiBridgeModels(modelRuntime);
+    const result = await listPiDriverModels(modelRuntime);
 
     expect(result.models.map((model) => model.id)).toEqual([
       "anthropic/claude-sonnet-5",
     ]);
     expect(write).toHaveBeenCalledWith(
-      'pi bridge: skipped an incomplete model from provider "commandcode"\n',
+      'pi driver: skipped an incomplete model from provider "commandcode"\n',
     );
     write.mockRestore();
   });
@@ -156,7 +156,7 @@ describe("pi bridge model list", () => {
     ]);
     getSupportedThinkingLevels.mockReturnValue(["off", "high", "max"]);
 
-    const result = await listPiBridgeModels(modelRuntime);
+    const result = await listPiDriverModels(modelRuntime);
 
     expect(result.models[0]?.supportedReasoningEfforts).toEqual([
       { reasoningEffort: "high", description: "High reasoning effort" },
@@ -181,13 +181,13 @@ describe("pi bridge model list", () => {
     ]);
     getSupportedThinkingLevels.mockReturnValue(["off", "low", "medium"]);
 
-    const result = await listPiBridgeModels(modelRuntime);
+    const result = await listPiDriverModels(modelRuntime);
 
     expect(result.models).toHaveLength(1);
     expect(stderr).toHaveBeenCalled();
 
     // An aborted refresh must not pin the process to the stale catalog.
-    await listPiBridgeModels(modelRuntime);
+    await listPiDriverModels(modelRuntime);
     expect(refresh).toHaveBeenCalledTimes(2);
 
     stderr.mockRestore();
@@ -201,7 +201,7 @@ describe("pi bridge model list", () => {
     getSupportedThinkingLevels.mockReturnValue(["off"]);
 
     refresh.mockResolvedValueOnce({ aborted: true, errors: new Map() });
-    await listPiBridgeModels(modelRuntime);
+    await listPiDriverModels(modelRuntime);
 
     // A host with no route to pi.dev would otherwise pay the full timeout on
     // every early picker render. The retry must run in the background.
@@ -213,7 +213,7 @@ describe("pi bridge model list", () => {
         }),
     );
 
-    await listPiBridgeModels(modelRuntime);
+    await listPiDriverModels(modelRuntime);
 
     expect(refresh).toHaveBeenCalledTimes(2);
     expect(retrySettled).toBe(true); // retry started...
@@ -227,10 +227,10 @@ describe("pi bridge model list", () => {
     getSupportedThinkingLevels.mockReturnValue(["off"]);
 
     await Promise.all([
-      listPiBridgeModels(modelRuntime),
-      listPiBridgeModels(modelRuntime),
+      listPiDriverModels(modelRuntime),
+      listPiDriverModels(modelRuntime),
     ]);
-    await listPiBridgeModels(modelRuntime);
+    await listPiDriverModels(modelRuntime);
 
     expect(refresh).toHaveBeenCalledOnce();
   });
@@ -240,7 +240,7 @@ describe("pi bridge model list", () => {
     getAvailable.mockResolvedValue([]);
     getSupportedThinkingLevels.mockReturnValue(["off"]);
 
-    await listPiBridgeModels(modelRuntime);
+    await listPiDriverModels(modelRuntime);
 
     expect(refresh).not.toHaveBeenCalled();
     expect(getAvailable).toHaveBeenCalledOnce();

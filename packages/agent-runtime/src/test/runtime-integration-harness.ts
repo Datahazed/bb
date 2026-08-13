@@ -26,7 +26,7 @@ import {
 } from "@bb/domain";
 import { resolvePreferredTestModel } from "@bb/test-helpers";
 import { createAgentRuntime } from "../runtime.js";
-import { PI_BRIDGE_SESSION_DIR_ENV } from "../pi/bridge/session-paths.js";
+import { PI_DRIVER_SESSION_DIR_ENV } from "../pi/session-paths.js";
 import type {
   AgentRuntime,
   AgentRuntimeExecutionOptions,
@@ -850,10 +850,10 @@ function createRuntimeProcessEnv(
     return undefined;
   }
 
-  const sessionDir = join(args.tmpDir, ".bb-pi-bridge-sessions");
+  const sessionDir = join(args.tmpDir, ".bb-pi-driver-sessions");
   mkdirSync(sessionDir, { recursive: true });
   return {
-    [PI_BRIDGE_SESSION_DIR_ENV]: sessionDir,
+    [PI_DRIVER_SESSION_DIR_ENV]: sessionDir,
     [PI_CODING_AGENT_DIR_ENV]: preparePiAgentDir({ tmpDir: args.tmpDir }),
   };
 }

@@ -12,7 +12,7 @@ import { join } from "node:path";
 import {
   createConfiguredPiServices,
   loadConfiguredPiServices,
-} from "../configured-services.js";
+} from "./configured-services.js";
 
 const testRoots: string[] = [];
 

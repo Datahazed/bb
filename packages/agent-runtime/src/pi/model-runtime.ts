@@ -22,18 +22,18 @@ export function getPiModelRuntime(cwd = process.cwd()): Promise<ModelRuntime> {
       // user still learns about it before a run uses a partial setup.
       if (configErrors.length > 0) {
         for (const configError of configErrors) {
-          process.stderr.write(`pi bridge: ${configError}\n`);
+          process.stderr.write(`pi driver: ${configError}\n`);
         }
         // This runtime is missing whatever failed to load, so it must not
         // outlive the broken configuration. Drop the memo and reload on the
         // next call, which picks the repaired extension up without a restart
-        // of the long-lived bridge.
+        // of the long-lived driver.
         modelRuntimePromises.delete(resolvedCwd);
       }
       return services.modelRuntime;
     })
     // Drop the memo if creation fails. A transient failure must not poison all
-    // later model-list calls until the bridge restarts.
+    // later model-list calls until the driver restarts.
     .catch((error: unknown) => {
       modelRuntimePromises.delete(resolvedCwd);
       throw error;

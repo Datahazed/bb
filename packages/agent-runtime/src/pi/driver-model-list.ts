@@ -1,7 +1,7 @@
 import type { AvailableModel } from "@bb/domain";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { buildPiAvailableModels, type PiCatalogModel } from "../model-list.js";
+import { buildPiAvailableModels, type PiCatalogModel } from "./model-list.js";
 
 const NETWORK_REFRESH_TIMEOUT_MS = 5_000;
 
@@ -13,7 +13,7 @@ const NETWORK_REFRESH_MAX_ATTEMPTS = 3;
 // stall for the whole budget: on some hosts a single request never returns,
 // hitting the ceiling on roughly one in three cold calls. This runs on every
 // picker render and thread-detail bootstrap, so refresh at most once
-// successfully per bridge process. The bridge is long-lived (spawned once
+// successfully per driver process. The driver is long-lived (spawned once
 // under the "pi" process key and never idle-reaped), and later calls resolve
 // from the persisted model store plus the bundled static catalog, which yields
 // the same model set.
@@ -23,7 +23,7 @@ const NETWORK_REFRESH_MAX_ATTEMPTS = 3;
 // first attempt settles, later calls kick off a background retry and answer
 // immediately from the current catalog. That keeps worst-case added latency at
 // one timeout while still recovering from a transient failure without
-// restarting the bridge.
+// restarting the driver.
 //
 // Held as a promise rather than a boolean so concurrent `model/list` calls
 // await the same refresh instead of racing past it into a half-refreshed
@@ -34,7 +34,7 @@ let networkRefreshSucceeded = false;
 let firstAttemptSettled = false;
 
 function logRefreshProblem(message: string): void {
-  process.stderr.write(`pi bridge: model catalog refresh ${message}\n`);
+  process.stderr.write(`pi driver: model catalog refresh ${message}\n`);
 }
 
 // Pi disables its own catalog network access when PI_OFFLINE is set. Passing
@@ -131,7 +131,7 @@ function toPiCatalogModel(model: PiAvailableModel): PiCatalogModel | undefined {
   };
 }
 
-export async function listPiBridgeModels(modelRuntime: ModelRuntime): Promise<{
+export async function listPiDriverModels(modelRuntime: ModelRuntime): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
@@ -146,7 +146,7 @@ export async function listPiBridgeModels(modelRuntime: ModelRuntime): Promise<{
       continue;
     }
     process.stderr.write(
-      `pi bridge: skipped an incomplete model from provider "${String(model.provider)}"\n`,
+      `pi driver: skipped an incomplete model from provider "${String(model.provider)}"\n`,
     );
   }
 
