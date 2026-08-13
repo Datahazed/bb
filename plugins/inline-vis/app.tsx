@@ -4,6 +4,7 @@
 // resources work inside an opaque origin that cannot access the host page.
 import { useEffect, useState } from "react";
 import { Icon } from "@bb/shared-ui/icon";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   definePluginApp,
   useRpc,
@@ -21,6 +22,14 @@ type LoadState =
 const DEFAULT_HEIGHT_PX = 224;
 const MIN_HEIGHT_PX = 120;
 const MAX_HEIGHT_PX = 1_200;
+const SKELETON_REGIONS = [
+  { id: "region-1", layoutClass: "col-span-7 row-span-2" },
+  { id: "region-2", layoutClass: "col-span-5" },
+  { id: "region-3", layoutClass: "col-span-5" },
+  { id: "region-4", layoutClass: "col-span-4 row-span-2" },
+  { id: "region-5", layoutClass: "col-span-5 row-span-2" },
+  { id: "region-6", layoutClass: "col-span-3 row-span-2" },
+] as const;
 
 interface PrepareHtmlPreviewRpcResult {
   file: string;
@@ -153,10 +162,46 @@ function InlineVisDirective({
   if (state.status === "loading") {
     return (
       <div
-        className="my-2 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
+        className="my-2 overflow-hidden rounded-lg border border-border bg-background"
         aria-busy="true"
       >
-        Loading visualization {state.file}…
+        <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="shrink-0 font-semibold">inline-vis</span>
+            <span className="truncate opacity-70">{state.file}</span>
+          </div>
+          {openWorkspaceFile === null ? null : (
+            <span aria-hidden className="size-5 shrink-0" />
+          )}
+        </div>
+        <div
+          style={{ height: previewHeight ?? DEFAULT_HEIGHT_PX }}
+          className="w-full bg-background p-4"
+          role="status"
+          aria-label={`Loading visualization ${state.file}`}
+        >
+          <div
+            aria-hidden
+            className="grid size-full grid-cols-12 grid-rows-4 gap-3"
+            data-inline-vis-skeleton-canvas
+          >
+            {SKELETON_REGIONS.map(({ id, layoutClass }) => (
+              <div
+                key={id}
+                className={`${layoutClass} min-h-0 min-w-0`}
+                data-inline-vis-skeleton-step={id}
+              >
+                <Skeleton className="relative size-full overflow-hidden rounded-md animate-none">
+                  <span
+                    aria-hidden
+                    className="absolute inset-0 animate-shine-icon bg-foreground/10"
+                    data-inline-vis-skeleton-shimmer
+                  />
+                </Skeleton>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }

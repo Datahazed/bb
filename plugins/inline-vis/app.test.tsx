@@ -63,7 +63,9 @@ describe("InlineVisDirective", () => {
       },
     );
 
-    await slot.findByText(/Loading visualization charts\/demo file\.html/i);
+    await slot.findByRole("status", {
+      name: "Loading visualization charts/demo file.html",
+    });
 
     const iframe = await waitFor(() => {
       const el = slot.container.querySelector("iframe");
@@ -114,6 +116,103 @@ describe("InlineVisDirective", () => {
       return el as HTMLIFrameElement;
     });
     expect(iframe.style.height).toBe("480px");
+  });
+
+  it("renders a complete fixed skeleton with shimmer-only motion", async () => {
+    let resolvePreview = (_result: { file: string }) => {};
+    const pendingPreview = new Promise<{ file: string }>((resolve) => {
+      resolvePreview = resolve;
+    });
+    const openWorkspaceFile = vi.fn(() => true);
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: { file: "demo.html", height: "480" },
+        source: '::inline-vis{file="demo.html" height="480"}',
+        message,
+        openWorkspaceFile,
+      },
+      {
+        rpc: {
+          prepareHtmlPreview: () => pendingPreview,
+        },
+      },
+    );
+
+    const loadingSkeleton = await slot.findByRole("status", {
+      name: "Loading visualization demo.html",
+    });
+    expect(loadingSkeleton.style.height).toBe("480px");
+    const skeletonSteps = Array.from(
+      loadingSkeleton.querySelectorAll("[data-inline-vis-skeleton-step]"),
+    );
+    expect(
+      skeletonSteps.map((step) =>
+        step.getAttribute("data-inline-vis-skeleton-step"),
+      ),
+    ).toEqual([
+      "region-1",
+      "region-2",
+      "region-3",
+      "region-4",
+      "region-5",
+      "region-6",
+    ]);
+    for (const step of skeletonSteps) {
+      expect(
+        Array.from(step.classList).some((className) =>
+          className.startsWith("delay-"),
+        ),
+      ).toBe(false);
+      expect(step.classList.contains("animate-in")).toBe(false);
+      expect(step.classList.contains("fade-in-0")).toBe(false);
+      expect(step.classList.contains("slide-in-from-bottom-1")).toBe(false);
+      expect(step.classList.contains("fill-mode-backwards")).toBe(false);
+    }
+    const shimmerElements = Array.from(
+      loadingSkeleton.querySelectorAll("[data-inline-vis-skeleton-shimmer]"),
+    );
+    expect(shimmerElements).toHaveLength(6);
+    for (const shimmerElement of shimmerElements) {
+      expect(shimmerElement.classList.contains("animate-shine-icon")).toBe(
+        true,
+      );
+    }
+    expect(loadingSkeleton.querySelectorAll(".animate-pulse")).toHaveLength(0);
+    expect(
+      loadingSkeleton.querySelector("[data-inline-vis-skeleton-canvas]"),
+    ).not.toBeNull();
+    expect(
+      loadingSkeleton.querySelector("[data-inline-vis-skeleton-plot]"),
+    ).toBeNull();
+    expect(
+      skeletonSteps.some((step) =>
+        step.getAttribute("data-inline-vis-skeleton-step")?.includes("bar"),
+      ),
+    ).toBe(false);
+    expect(
+      loadingSkeleton.querySelector(".min-h-0.w-full.flex-1.animate-pulse"),
+    ).toBeNull();
+    const loadingCard = loadingSkeleton.parentElement;
+    const actionSpacer = loadingCard?.firstElementChild?.lastElementChild;
+    expect(actionSpacer?.getAttribute("aria-hidden")).toBe("true");
+    expect(actionSpacer?.classList.contains("size-5")).toBe(true);
+
+    resolvePreview({ file: "demo.html" });
+
+    const iframe = await waitFor(() => {
+      const el = slot.container.querySelector("iframe");
+      if (!(el instanceof HTMLIFrameElement)) {
+        throw new Error("Expected the inline visualization iframe to render");
+      }
+      return el;
+    });
+    expect(iframe.style.height).toBe("480px");
+    expect(
+      slot.queryByRole("status", {
+        name: "Loading visualization demo.html",
+      }),
+    ).toBeNull();
   });
 
   it("rejects an invalid height without calling rpc", async () => {
