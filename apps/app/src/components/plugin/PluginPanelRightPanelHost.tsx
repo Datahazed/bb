@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import { Panel, PanelGroup } from "react-resizable-panels";
+import { atom, useAtom } from "jotai";
+import { atomFamily } from "jotai-family";
 import type {
   BbNavigate,
   PluginNavPanelRightPanelTerminalTarget,
@@ -54,22 +56,30 @@ import {
 } from "@/lib/plugin-json-value";
 import { usePluginSlots, type PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
-import { PluginRightPanelNavigationProvider } from "./plugin-right-panel-navigation";
+import {
+  PluginRightPanelNavigationProvider,
+  useRegisterPluginRightPanelOpenHandler,
+} from "./plugin-right-panel-navigation";
 import { PluginSlotMount } from "./PluginSlotMount";
 import { PluginIcon } from "./PluginIcon";
 
 const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
 const TERMINAL_COLS = 100;
 const TERMINAL_ROWS = 30;
+const compactDrawerOpenAtomFamily = atomFamily((_panelStateId: string) =>
+  atom(false),
+);
 
 export function getPluginPanelRightPanelStateId({
   panelPath,
+  paneId,
   pluginId,
 }: {
   panelPath: string;
+  paneId?: string;
   pluginId: string;
 }): string {
-  return `plugin-panel:${pluginId}:${panelPath}`;
+  return `plugin-panel:${pluginId}:${panelPath}:${paneId ?? "standalone"}`;
 }
 
 function parsePluginBrowserUrl(url: string): URL | null {
@@ -122,19 +132,74 @@ function defaultViewTab(panel: PluginNavPanelSlot) {
 export function ensurePluginRightPanelDefaultView(
   state: FixedPanelTabsState,
   panel: PluginNavPanelSlot,
+  openWhenAdded = true,
 ): FixedPanelTabsState {
   const tab = defaultViewTab(panel);
-  if (tab === null || state.secondary.tabs.some(({ id }) => id === tab.id)) {
-    return state;
+  if (tab === null) return state;
+  const existingIndex = state.secondary.tabs.findIndex(
+    ({ id }) => id === tab.id,
+  );
+  if (existingIndex !== -1) {
+    const existing = state.secondary.tabs[existingIndex];
+    if (existing?.kind !== "plugin-panel" || existing.title === tab.title) {
+      return state;
+    }
+    const tabs = [...state.secondary.tabs];
+    tabs[existingIndex] = tab;
+    return { ...state, secondary: { ...state.secondary, tabs } };
   }
-  const opensFirstView = state.secondary.tabs.length === 0;
+  const activatesAddedView = state.secondary.tabs.length === 0;
   return {
     ...state,
     secondary: {
       ...state.secondary,
       tabs: [tab, ...state.secondary.tabs],
-      activeTabId: opensFirstView ? tab.id : state.secondary.activeTabId,
-      isOpen: opensFirstView ? true : state.secondary.isOpen,
+      activeTabId: activatesAddedView ? tab.id : state.secondary.activeTabId,
+      isOpen: activatesAddedView ? openWhenAdded : state.secondary.isOpen,
+    },
+  };
+}
+
+export function reconcilePluginRightPanelState(
+  state: FixedPanelTabsState,
+  panel: PluginNavPanelSlot,
+): FixedPanelTabsState {
+  const rightPanel = panel.experimental_rightPanel;
+  const viewIds = new Set(rightPanel?.views?.map((view) => view.id) ?? []);
+  const permitsBrowser = rightPanel?.tools?.includes("browser") ?? false;
+  const permitsTerminal = rightPanel?.tools?.includes("terminal") ?? false;
+  const tabs = state.secondary.tabs.filter((tab) => {
+    if (tab.kind === "plugin-panel") {
+      return tab.pluginId === panel.pluginId && viewIds.has(tab.actionId);
+    }
+    if (tab.kind === "browser") return permitsBrowser;
+    if (tab.kind === "terminal") {
+      return permitsTerminal && tab.target !== undefined;
+    }
+    return false;
+  });
+  if (tabs.length === state.secondary.tabs.length) return state;
+  const activeIndex = state.secondary.tabs.findIndex(
+    (tab) => tab.id === state.secondary.activeTabId,
+  );
+  const activeTabId = tabs.some((tab) => tab.id === state.secondary.activeTabId)
+    ? state.secondary.activeTabId
+    : (state.secondary.tabs
+        .slice(Math.max(activeIndex + 1, 0))
+        .find((candidate) => tabs.some((tab) => tab.id === candidate.id))?.id ??
+      state.secondary.tabs
+        .slice(0, Math.max(activeIndex, 0))
+        .reverse()
+        .find((candidate) => tabs.some((tab) => tab.id === candidate.id))?.id ??
+      tabs[0]?.id ??
+      null);
+  return {
+    ...state,
+    secondary: {
+      ...state.secondary,
+      tabs,
+      activeTabId,
+      isOpen: state.secondary.isOpen && activeTabId !== null,
     },
   };
 }
@@ -142,6 +207,7 @@ export function ensurePluginRightPanelDefaultView(
 function openPluginRightPanelState(
   state: FixedPanelTabsState,
   panel: PluginNavPanelSlot,
+  persistOpen = true,
 ): FixedPanelTabsState {
   const withDefault = ensurePluginRightPanelDefaultView(state, panel);
   const activeTabId =
@@ -154,22 +220,45 @@ function openPluginRightPanelState(
     secondary: {
       ...withDefault.secondary,
       activeTabId,
-      isOpen: true,
+      isOpen: persistOpen ? true : state.secondary.isOpen,
     },
   };
 }
 
-export function usePluginPanelRightPanelToggle(panel: PluginNavPanelSlot) {
+export function usePluginPanelRightPanelToggle(
+  panel: PluginNavPanelSlot,
+  paneId?: string,
+) {
+  const paneContext = useOptionalPaneContext();
   const panelStateId = getPluginPanelRightPanelStateId({
     panelPath: panel.path,
+    paneId: paneId ?? paneContext?.paneId,
     pluginId: panel.pluginId,
   });
   const state = useFixedPanelTabsState(panelStateId, null);
   const updateState = useUpdateFixedPanelTabsState(panelStateId, null);
-  const isOpen = state.secondary.isOpen && state.secondary.activeTabId !== null;
+  const renderAsDrawer = useIsCompactViewport();
+  const [isCompactDrawerOpen, setCompactDrawerOpen] = useAtom(
+    compactDrawerOpenAtomFamily(panelStateId),
+  );
+  const hasActiveTab = state.secondary.activeTabId !== null;
+  const isOpen = renderAsDrawer
+    ? isCompactDrawerOpen && hasActiveTab
+    : state.secondary.isOpen && hasActiveTab;
   const canToggle =
     defaultViewTab(panel) !== null || state.secondary.tabs.length > 0;
   const toggle = useCallback(() => {
+    if (renderAsDrawer) {
+      if (isCompactDrawerOpen) {
+        setCompactDrawerOpen(false);
+      } else {
+        updateState((current) =>
+          openPluginRightPanelState(current, panel, false),
+        );
+        setCompactDrawerOpen(true);
+      }
+      return;
+    }
     updateState((current) =>
       current.secondary.isOpen
         ? {
@@ -178,16 +267,24 @@ export function usePluginPanelRightPanelToggle(panel: PluginNavPanelSlot) {
           }
         : openPluginRightPanelState(current, panel),
     );
-  }, [panel, updateState]);
+  }, [
+    isCompactDrawerOpen,
+    panel,
+    renderAsDrawer,
+    setCompactDrawerOpen,
+    updateState,
+  ]);
   return { canToggle, isOpen, toggle };
 }
 
 export function PluginPanelRightPanelToggleButton({
   panel,
+  paneId,
 }: {
   panel: PluginNavPanelSlot;
+  paneId?: string;
 }) {
-  const rightPanel = usePluginPanelRightPanelToggle(panel);
+  const rightPanel = usePluginPanelRightPanelToggle(panel, paneId);
   if (!rightPanel.canToggle) return null;
   const label = rightPanel.isOpen ? "Hide right panel" : "Show right panel";
   return (
@@ -215,11 +312,15 @@ export function PluginPanelRightPanelHost({
   panelPath,
   pluginId,
   subPath,
+  flushPageInsets = false,
+  paneId,
 }: {
   children: ReactNode;
   panelPath: string;
   pluginId: string;
   subPath: string;
+  flushPageInsets?: boolean;
+  paneId?: string;
 }) {
   const { navPanels } = usePluginSlots();
   const panel =
@@ -229,7 +330,11 @@ export function PluginPanelRightPanelHost({
     ) ?? null;
   const rightPanel = panel?.experimental_rightPanel;
   const paneContext = useOptionalPaneContext();
-  const panelStateId = getPluginPanelRightPanelStateId({ panelPath, pluginId });
+  const panelStateId = getPluginPanelRightPanelStateId({
+    panelPath,
+    paneId: paneId ?? paneContext?.paneId,
+    pluginId,
+  });
   const panelState = useFixedPanelTabsState(panelStateId, null);
   const updatePanelState = useUpdateFixedPanelTabsState(panelStateId, null);
   const closePanel = useCloseFixedSecondaryPanel(panelStateId, null);
@@ -238,9 +343,15 @@ export function PluginPanelRightPanelHost({
       (tab) => tab.id === panelState.secondary.activeTabId,
     ) ?? null;
   const activeTerminalTab =
-    activeTab?.kind === "terminal" && activeTab.target !== undefined
+    rightPanel?.tools?.includes("terminal") &&
+    activeTab?.kind === "terminal" &&
+    activeTab.target !== undefined
       ? activeTab
       : null;
+  const renderAsDrawer = useIsCompactViewport();
+  const [isCompactDrawerOpen, setCompactDrawerOpen] = useAtom(
+    compactDrawerOpenAtomFamily(panelStateId),
+  );
   const terminalTarget = activeTerminalTab?.target ?? null;
   const terminalScope =
     terminalTarget?.kind === "host_path"
@@ -251,7 +362,10 @@ export function PluginPanelRightPanelHost({
         }
       : terminalTarget;
   const terminalQuery = useTerminals(terminalScope, {
-    enabled: panelState.secondary.isOpen && terminalTarget !== null,
+    enabled:
+      rightPanel?.tools?.includes("terminal") === true &&
+      (renderAsDrawer ? isCompactDrawerOpen : panelState.secondary.isOpen) &&
+      terminalTarget !== null,
   });
   const terminalSessions = terminalQuery.data?.sessions;
   const terminalsById = useMemo(
@@ -279,20 +393,75 @@ export function PluginPanelRightPanelHost({
   });
   const createTerminal = useCreateTerminal();
   const closeTerminal = useCloseTerminal();
-  const renderAsDrawer = useIsCompactViewport();
   const isOpen =
     rightPanel !== undefined &&
-    panelState.secondary.isOpen &&
+    (renderAsDrawer ? isCompactDrawerOpen : panelState.secondary.isOpen) &&
     activeTab !== null;
   const canShowWideNativeBrowserView =
     paneContext === null || !paneContext.isSplitPane || paneContext.isFocused;
+  const revokedTerminalIds = useMemo(
+    () =>
+      panelState.secondary.tabs.flatMap((tab) =>
+        panel !== null &&
+        tab.kind === "terminal" &&
+        (!rightPanel?.tools?.includes("terminal") || tab.target === undefined)
+          ? [tab.terminalId]
+          : [],
+      ),
+    [panel, panelState.secondary.tabs, rightPanel],
+  );
+  const closedRevokedTerminalIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
-    if (panel === null || rightPanel === undefined) return;
-    updatePanelState((state) =>
-      ensurePluginRightPanelDefaultView(state, panel),
-    );
+    for (const terminalId of revokedTerminalIds) {
+      if (closedRevokedTerminalIdsRef.current.has(terminalId)) continue;
+      closedRevokedTerminalIdsRef.current.add(terminalId);
+      closeTerminal.mutate({ mode: "force", terminalId });
+    }
+    for (const terminalId of closedRevokedTerminalIdsRef.current) {
+      if (!revokedTerminalIds.includes(terminalId)) {
+        closedRevokedTerminalIdsRef.current.delete(terminalId);
+      }
+    }
+  }, [closeTerminal, revokedTerminalIds]);
+
+  useEffect(() => {
+    if (panel === null) return;
+    updatePanelState((state) => {
+      const hadRegisteredTabs = state.secondary.tabs.length > 0;
+      const reconciled = reconcilePluginRightPanelState(state, panel);
+      if (rightPanel === undefined) return reconciled;
+      return ensurePluginRightPanelDefaultView(
+        reconciled,
+        panel,
+        !hadRegisteredTabs || state.secondary.isOpen,
+      );
+    });
   }, [panel, rightPanel, updatePanelState]);
+
+  useEffect(() => {
+    if (
+      activeTerminalTab === null ||
+      terminalQuery.isLoading ||
+      terminalQuery.error !== null ||
+      terminalSessions === undefined ||
+      terminalsById.has(activeTerminalTab.terminalId)
+    ) {
+      return;
+    }
+    closeTab(activeTerminalTab.id);
+  }, [
+    activeTerminalTab,
+    closeTab,
+    terminalQuery.error,
+    terminalQuery.isLoading,
+    terminalSessions,
+    terminalsById,
+  ]);
+
+  useEffect(() => {
+    setCompactDrawerOpen(false);
+  }, [renderAsDrawer, setCompactDrawerOpen, subPath]);
 
   const drawerBrowserSessionKey =
     renderAsDrawer && isOpen ? (activeBrowserTab?.id ?? null) : null;
@@ -394,12 +563,23 @@ export function PluginPanelRightPanelHost({
         } catch {
           return false;
         }
+        const preserveWideVisibility = panelState.secondary.isOpen;
         openPluginPanel({
           pluginId,
           actionId: view.id,
           title: request.title?.trim() || view.title,
           paramsJson,
         });
+        if (renderAsDrawer) {
+          updatePanelState((state) => ({
+            ...state,
+            secondary: {
+              ...state.secondary,
+              isOpen: preserveWideVisibility,
+            },
+          }));
+          setCompactDrawerOpen(true);
+        }
         return true;
       }
       if (!rightPanel.tools?.includes(request.kind)) return false;
@@ -411,8 +591,19 @@ export function PluginPanelRightPanelHost({
           return false;
         }
         const existing = browserTabs.find((tab) => tab.url === request.url);
+        const preserveWideVisibility = panelState.secondary.isOpen;
         if (existing) activateTab(existing.id);
         else openTab({ kind: "browser", url: request.url });
+        if (renderAsDrawer) {
+          updatePanelState((state) => ({
+            ...state,
+            secondary: {
+              ...state.secondary,
+              isOpen: preserveWideVisibility,
+            },
+          }));
+          setCompactDrawerOpen(true);
+        }
         return true;
       }
       const target = normalizeTerminalTarget(request.target);
@@ -436,9 +627,10 @@ export function PluginPanelRightPanelHost({
                 ...state.secondary,
                 tabs: [...state.secondary.tabs, tab],
                 activeTabId: tab.id,
-                isOpen: true,
+                isOpen: renderAsDrawer ? state.secondary.isOpen : true,
               },
             }));
+            if (renderAsDrawer) setCompactDrawerOpen(true);
           },
         },
       );
@@ -451,17 +643,28 @@ export function PluginPanelRightPanelHost({
       openPluginPanel,
       openTab,
       panel,
+      panelState.secondary.isOpen,
       pluginId,
       rightPanel,
+      renderAsDrawer,
+      setCompactDrawerOpen,
       updatePanelState,
     ],
+  );
+  useRegisterPluginRightPanelOpenHandler(
+    panelStateId,
+    experimentalOpenRightPanel,
   );
 
   const browserDeck = useMemo(
     () => (
       <BrowserTabDeck
-        browserTabs={browserTabs}
-        activeBrowserTabId={activeBrowserTab?.id ?? null}
+        browserTabs={rightPanel?.tools?.includes("browser") ? browserTabs : []}
+        activeBrowserTabId={
+          rightPanel?.tools?.includes("browser")
+            ? (activeBrowserTab?.id ?? null)
+            : null
+        }
         environmentId={null}
         canShowNativeBrowserView={
           isOpen &&
@@ -481,6 +684,7 @@ export function PluginPanelRightPanelHost({
       isOpen,
       panelStateId,
       renderAsDrawer,
+      rightPanel,
       updateBrowserTab,
     ],
   );
@@ -502,14 +706,22 @@ export function PluginPanelRightPanelHost({
   );
   const activeViewContent =
     activeView && activePluginPanelTab && panel ? (
-      <PluginSlotMount
-        key={`${panel.pluginId}/${panel.id}/right-panel/${activeView.id}/${activePluginPanelTab.id}/${panel.generation}`}
-        pluginId={panel.pluginId}
-        slotKind="navPanelRightPanel"
-        slotId={`${panel.id}:${activeView.id}`}
+      <div
+        className={
+          activeView.layout === "flush"
+            ? "flex h-full min-h-0 flex-col"
+            : "h-full overflow-auto p-4"
+        }
       >
-        <activeView.component subPath={subPath} params={activeViewParams} />
-      </PluginSlotMount>
+        <PluginSlotMount
+          key={`${panel.pluginId}/${panel.id}/right-panel/${activeView.id}/${activePluginPanelTab.id}/${panel.generation}`}
+          pluginId={panel.pluginId}
+          slotKind="navPanelRightPanel"
+          slotId={`${panel.id}:${activeView.id}`}
+        >
+          <activeView.component subPath={subPath} params={activeViewParams} />
+        </PluginSlotMount>
+      </div>
     ) : activePluginPanelTab ? (
       <EmptyStatePanel className="m-4 p-4 text-sm">
         This right-panel view is no longer available.
@@ -519,6 +731,8 @@ export function PluginPanelRightPanelHost({
     activeTerminalTab && terminalTarget ? (
       <ThreadTerminalPanel
         canCreateTerminal
+        fixedPanelTarget={terminalTarget}
+        fixedTerminalId={activeTerminalTab.terminalId}
         isPanelOpen={isOpen}
         isPanelPersistedOpen={panelState.secondary.isOpen}
         panelStateId={panelStateId}
@@ -530,6 +744,7 @@ export function PluginPanelRightPanelHost({
     () =>
       orderedSecondaryFileTabs.flatMap((tab) => {
         if (tab.kind === "browser") {
+          if (!rightPanel?.tools?.includes("browser")) return [];
           return [
             {
               id: tab.id,
@@ -574,6 +789,7 @@ export function PluginPanelRightPanelHost({
           ];
         }
         if (tab.kind === "terminal" && tab.target !== undefined) {
+          if (!rightPanel?.tools?.includes("terminal")) return [];
           const session = terminalsById.get(tab.terminalId);
           return [
             {
@@ -634,8 +850,12 @@ export function PluginPanelRightPanelHost({
         topChromeSurface="page"
         onPanelFocus={() => {}}
         onPanelChange={() => {}}
-        onCollapse={closePanel}
-        onClose={closePanel}
+        onCollapse={() =>
+          renderAsDrawer ? setCompactDrawerOpen(false) : closePanel()
+        }
+        onClose={() =>
+          renderAsDrawer ? setCompactDrawerOpen(false) : closePanel()
+        }
         onOpenNewTab={() => {}}
         isConversationCollapsed={false}
         onToggleConversationCollapse={() => {}}
@@ -649,7 +869,9 @@ export function PluginPanelRightPanelHost({
     <PluginRightPanelNavigationProvider
       experimentalOpenRightPanel={experimentalOpenRightPanel}
     >
-      <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div
+        className={`flex h-full min-h-0 min-w-0 flex-1 overflow-hidden ${flushPageInsets ? "-m-4 md:-m-5" : ""}`}
+      >
         {renderAsDrawer ? (
           children
         ) : (
@@ -674,7 +896,7 @@ export function PluginPanelRightPanelHost({
           <PersistentResponsiveDrawerShell
             open={isOpen}
             onOpenChange={(open) => {
-              if (!open) closePanel();
+              if (!open) setCompactDrawerOpen(false);
             }}
             srLabel="Right panel"
             contentClassName="h-[92dvh] max-h-[92dvh]"

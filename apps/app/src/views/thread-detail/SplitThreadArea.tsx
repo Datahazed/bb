@@ -585,7 +585,10 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   // useSplitWorkspaceActive.
   if (!splitWorkspaceActive || layout === null || currentContent === null) {
     return currentContent ? (
-      <StandalonePaneContent content={currentContent} />
+      <StandalonePaneContent
+        content={currentContent}
+        paneId={layout?.focusedPaneId}
+      />
     ) : null;
   }
 
@@ -992,24 +995,58 @@ function WorkspacePaneContent({
   );
 }
 
-function StandalonePaneContent({ content }: { content: PaneContent }) {
+function StandalonePaneContent({
+  content,
+  paneId,
+}: {
+  content: PaneContent;
+  paneId?: string;
+}) {
+  const { navPanels } = usePluginSlots();
   if (content.kind === "thread") {
     return <ThreadDetailView surface="page" />;
   }
   if (content.kind === "new-thread") {
     return <RootComposeView />;
   }
-  return (
-    <PluginPanelRightPanelHost
+  const panel = navPanels.find(
+    (candidate) =>
+      candidate.pluginId === content.pluginId &&
+      candidate.path === content.panelPath,
+  );
+  const hasRightPanel = panel?.experimental_rightPanel !== undefined;
+  const body = (
+    <PluginPanelView
       pluginId={content.pluginId}
       panelPath={content.panelPath}
       subPath={content.subPath}
+    />
+  );
+  return (
+    <PluginPanelRightPanelHost
+      flushPageInsets={hasRightPanel}
+      pluginId={content.pluginId}
+      panelPath={content.panelPath}
+      paneId={paneId}
+      subPath={content.subPath}
     >
-      <PluginPanelView
-        pluginId={content.pluginId}
-        panelPath={content.panelPath}
-        subPath={content.subPath}
-      />
+      {hasRightPanel && panel ? (
+        <div className="flex h-full min-h-0 flex-col">
+          <AppPageHeader
+            center={<PluginPanelHeaderCenter panel={panel} />}
+            actions={
+              <PluginPanelHeaderActions
+                panel={panel}
+                paneId={paneId}
+                subPath={content.subPath}
+              />
+            }
+          />
+          <div className="flex min-h-0 flex-1 flex-col p-4 md:p-5">{body}</div>
+        </div>
+      ) : (
+        body
+      )}
     </PluginPanelRightPanelHost>
   );
 }
