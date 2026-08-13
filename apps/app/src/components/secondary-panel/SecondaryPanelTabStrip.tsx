@@ -65,12 +65,15 @@ interface TabStripOverflowState {
   canScrollLeft: boolean;
   /** More content remains to the right. */
   canScrollRight: boolean;
+  /** Direction retained until the caret reaches the opposite edge. */
+  scrollDirection: "left" | "right";
 }
 
 const INITIAL_OVERFLOW_STATE: TabStripOverflowState = {
   hasOverflow: false,
   canScrollLeft: false,
   canScrollRight: false,
+  scrollDirection: "right",
 };
 
 export interface SecondaryPanelTabStripProps {
@@ -110,9 +113,6 @@ export function SecondaryPanelTabStrip({
   const scrollButtonRef = useRef<HTMLButtonElement>(null);
   const [overflow, setOverflow] = useState<TabStripOverflowState>(
     INITIAL_OVERFLOW_STATE,
-  );
-  const [scrollDirection, setScrollDirection] = useState<"left" | "right">(
-    "right",
   );
   // Scroll capacity (max scrollLeft). Measured only on resize / tab-list change,
   // never per scroll: reading scrollWidth/clientWidth in a scroll handler forces
@@ -158,25 +158,28 @@ export function SecondaryPanelTabStrip({
     // tab lists. Reverse only after it reaches that direction's hard edge;
     // otherwise repeated clicks at an intermediate position would bounce back
     // and forth over the same step.
-    setScrollDirection((previousDirection) => {
-      if (!isScrollable || !canScrollLeft) {
-        return "right";
-      }
-      if (!canScrollRight) {
-        return "left";
-      }
-      return previousDirection;
-    });
-    // Return the existing state object when neither flag changed so React bails
-    // out of re-rendering. With the tab tree memoized, a real change only
-    // repaints the always-mounted edge fades/chevrons (an opacity toggle).
-    setOverflow((prev) =>
-      prev.hasOverflow === hasOverflow &&
-      prev.canScrollLeft === canScrollLeft &&
-      prev.canScrollRight === canScrollRight
+    // Return the existing state object when neither an edge flag nor the stable
+    // direction changed so React bails out of re-rendering. With the tab tree
+    // memoized, a real change only repaints the fixed overflow affordances.
+    setOverflow((prev) => {
+      const scrollDirection =
+        !isScrollable || !canScrollLeft
+          ? "right"
+          : !canScrollRight
+            ? "left"
+            : prev.scrollDirection;
+      return prev.hasOverflow === hasOverflow &&
+        prev.canScrollLeft === canScrollLeft &&
+        prev.canScrollRight === canScrollRight &&
+        prev.scrollDirection === scrollDirection
         ? prev
-        : { hasOverflow, canScrollLeft, canScrollRight },
-    );
+        : {
+            hasOverflow,
+            canScrollLeft,
+            canScrollRight,
+            scrollDirection,
+          };
+    });
   }, []);
 
   // Expensive (reads scrollWidth/clientWidth): run only on resize / tab change,
@@ -374,6 +377,7 @@ export function SecondaryPanelTabStrip({
   const chevronNoDragClass = usesDesktopChrome
     ? MACOS_APP_REGION_NO_DRAG_CLASS
     : null;
+  const { scrollDirection } = overflow;
   // Memoize the sortable tab tree so the directional overflow flags — which
   // flip every time you reach a scroll edge, i.e. constantly at narrow widths —
   // re-render only the edge controls, never the tabs. Without this, each edge
