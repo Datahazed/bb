@@ -183,7 +183,8 @@ export function ThreadDetailHeader({
         }
         className={cn(
           "relative min-w-0",
-          isSplitPaneHeader && "-mx-2 -my-1 rounded-md px-2 py-1",
+          isSplitPaneHeader && "-ml-2 -my-1 rounded-md py-1 pl-2",
+          isSplitPaneHeader && isFocused && "pr-2",
           isSplitPaneHeader && isFocused && CONTEXT_SELECTION_SURFACE_CLASS,
         )}
       >

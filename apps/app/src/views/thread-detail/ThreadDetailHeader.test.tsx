@@ -156,6 +156,12 @@ describe("ThreadDetailHeader", () => {
     expect(
       container.querySelector("[data-thread-header-pane-actions]")?.classList,
     ).toContain("header-action-gap");
+    const activeTitleSurface = container.querySelector(
+      "[data-pane-header-focus-tab]",
+    );
+    expect(activeTitleSurface?.classList).toContain("-ml-2");
+    expect(activeTitleSurface?.classList).toContain("pr-2");
+    expect(activeTitleSurface?.classList).not.toContain("-mx-2");
   });
 
   it("leaves the open right-panel collapse control to the panel header", () => {
