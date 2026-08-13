@@ -2,6 +2,7 @@ import { Component, type ReactNode } from "react";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { PluginIcon } from "./PluginIcon";
 import { PluginContext } from "./plugin-context";
+import { PluginPanelRightPanelToggleButton } from "./PluginPanelRightPanelHost";
 
 /**
  * The plugin navPanel slices of the shared app header (AppPageHeader via
@@ -68,25 +69,33 @@ export function PluginPanelHeaderActions({
   subPath: string;
 }) {
   const HeaderContent = panel.headerContent;
-  if (HeaderContent === undefined) return null;
+  const hasRightPanel = panel.experimental_rightPanel !== undefined;
+  if (HeaderContent === undefined && !hasRightPanel) return null;
   return (
-    <HeaderContentBoundary
-      // Generation in the key: a P3.4 reload remounts the accessory with
-      // fresh error-boundary state.
-      key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
-      pluginId={panel.pluginId}
-    >
-      <PluginContext.Provider value={panel.pluginId}>
-        {/* data-bb-plugin-root: the accessory is plugin code, so the
-            plugin's @scope'd stylesheet must apply here too. */}
-        <div
-          data-bb-plugin-root=""
-          data-bb-plugin={panel.pluginId}
-          className="flex shrink-0 items-center gap-2"
+    <div className="flex shrink-0 items-center gap-2">
+      {HeaderContent === undefined ? null : (
+        <HeaderContentBoundary
+          // Generation in the key: a P3.4 reload remounts the accessory with
+          // fresh error-boundary state.
+          key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
+          pluginId={panel.pluginId}
         >
-          <HeaderContent subPath={subPath} />
-        </div>
-      </PluginContext.Provider>
-    </HeaderContentBoundary>
+          <PluginContext.Provider value={panel.pluginId}>
+            {/* data-bb-plugin-root: the accessory is plugin code, so the
+                plugin's @scope'd stylesheet must apply here too. */}
+            <div
+              data-bb-plugin-root=""
+              data-bb-plugin={panel.pluginId}
+              className="flex shrink-0 items-center gap-2"
+            >
+              <HeaderContent subPath={subPath} />
+            </div>
+          </PluginContext.Provider>
+        </HeaderContentBoundary>
+      )}
+      {hasRightPanel ? (
+        <PluginPanelRightPanelToggleButton panel={panel} />
+      ) : null}
+    </div>
   );
 }
