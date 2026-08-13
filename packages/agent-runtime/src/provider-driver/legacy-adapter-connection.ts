@@ -1,6 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import { z } from "zod";
-import type { RuntimeThreadExecutionOptions } from "@bb/domain";
+import type { RuntimeThreadExecutionOptions, ThreadEvent } from "@bb/domain";
 import type {
   AdapterCommand,
   ProviderAdapter,
@@ -253,7 +253,10 @@ export class LegacyAdapterConnection implements ProviderDriverConnection {
       prepared?.rollback();
       throw error;
     }
-    return this.acceptedEvents(command);
+    return {
+      disposition: "accepted" as const,
+      events: this.acceptedEvents(command),
+    };
   }
 
   async stopSession(
@@ -354,6 +357,10 @@ export class LegacyAdapterConnection implements ProviderDriverConnection {
       // duplicate-state errors mean the requested final state already holds.
     }
     return this.acceptedEvents(command);
+  }
+
+  onEvent(_listener: (events: ThreadEvent[]) => void) {
+    return () => {};
   }
 
   translateEvent(event: ProviderRuntimeEvent, context?: { threadId?: string }) {

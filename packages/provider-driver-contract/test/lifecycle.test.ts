@@ -234,11 +234,24 @@ describe("ProviderDriverLifecycle", () => {
         attachmentId: "attachment-1",
         sequence: 1,
         turnId: "turn-1",
-        itemId: "message-1",
-        itemKind: "assistant_message",
-        label: null,
-        parentToolCallId: null,
+        item: { type: "agentMessage", id: "message-1", text: "" },
       }),
+    );
+    expectLifecycleError(
+      () =>
+        lifecycle.recordEvent(
+          providerDriverEventSchema.parse({
+            type: "item.delta",
+            attachmentId: "attachment-1",
+            sequence: 2,
+            turnId: "turn-1",
+            itemId: "message-1",
+            channel: "command_output",
+            delta: "wrong channel",
+            reset: false,
+          }),
+        ),
+      "item_delta_channel_mismatch",
     );
     lifecycle.recordEvent(
       providerDriverEventSchema.parse({
@@ -252,13 +265,32 @@ describe("ProviderDriverLifecycle", () => {
         reset: false,
       }),
     );
+    expectLifecycleError(
+      () =>
+        lifecycle.recordEvent(
+          providerDriverEventSchema.parse({
+            type: "item.completed",
+            attachmentId: "attachment-1",
+            sequence: 3,
+            turnId: "turn-1",
+            item: {
+              type: "plan",
+              id: "message-1",
+              text: "Wrong type",
+            },
+            outcome: "completed",
+            error: null,
+          }),
+        ),
+      "item_type_mismatch",
+    );
     lifecycle.recordEvent(
       providerDriverEventSchema.parse({
         type: "item.completed",
         attachmentId: "attachment-1",
         sequence: 3,
         turnId: "turn-1",
-        itemId: "message-1",
+        item: { type: "agentMessage", id: "message-1", text: "Hello" },
         outcome: "completed",
         error: null,
       }),

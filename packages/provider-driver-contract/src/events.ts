@@ -1,7 +1,9 @@
 import {
   providerRateLimitStateSchema,
   threadEventContextWindowUsageSchema,
+  threadEventItemSchema,
   threadEventTokenUsageSchema,
+  type ThreadEventItem,
 } from "@bb/domain";
 import { z } from "zod";
 import { providerDriverErrorSchema } from "./errors.js";
@@ -25,19 +27,15 @@ const providerDriverTurnEventBaseSchema = providerDriverEventBaseSchema.extend({
   turnId: providerDriverTurnIdSchema,
 });
 
-export const providerDriverItemKindSchema = z.enum([
-  "assistant_message",
-  "reasoning",
-  "command",
-  "file_change",
-  "tool",
-  "plan",
-  "compaction",
-  "background_task",
-]);
-export type ProviderDriverItemKind = z.infer<
-  typeof providerDriverItemKindSchema
+export type ProviderDriverItem = Exclude<
+  ThreadEventItem,
+  { type: "userMessage" | "backgroundTask" }
 >;
+export const providerDriverItemSchema = threadEventItemSchema.refine(
+  (item): item is ProviderDriverItem =>
+    item.type !== "userMessage" && item.type !== "backgroundTask",
+  "Driver turn items cannot be user messages or background tasks",
+);
 
 export const providerDriverItemDeltaChannelSchema = z.enum([
   "assistant_text",
@@ -85,6 +83,32 @@ export type ProviderDriverTurnSettledEvent = z.infer<
   typeof providerDriverTurnSettledEventSchema
 >;
 
+export const providerDriverItemCompletedEventSchema =
+  providerDriverTurnEventBaseSchema
+    .extend({
+      type: z.literal("item.completed"),
+      item: providerDriverItemSchema,
+      outcome: z.enum(["completed", "failed", "cancelled"]),
+      error: providerDriverErrorSchema.nullable(),
+    })
+    .strict()
+    .superRefine((event, context) => {
+      if (event.outcome === "failed" && event.error === null) {
+        context.addIssue({
+          code: "custom",
+          message: 'error is required when outcome is "failed"',
+          path: ["error"],
+        });
+      }
+      if (event.outcome === "completed" && event.error !== null) {
+        context.addIssue({
+          code: "custom",
+          message: 'error must be null when outcome is "completed"',
+          path: ["error"],
+        });
+      }
+    });
+
 export const providerDriverEventSchema = z.discriminatedUnion("type", [
   providerDriverTurnSettledEventSchema,
   providerDriverTurnEventBaseSchema
@@ -98,14 +122,7 @@ export const providerDriverEventSchema = z.discriminatedUnion("type", [
   providerDriverTurnEventBaseSchema
     .extend({
       type: z.literal("item.started"),
-      itemId: providerDriverItemIdSchema,
-      itemKind: providerDriverItemKindSchema,
-      label: z.string().max(PROVIDER_DRIVER_MAX_MESSAGE_LENGTH).nullable(),
-      parentToolCallId: z
-        .string()
-        .min(1)
-        .max(PROVIDER_DRIVER_MAX_ID_LENGTH)
-        .nullable(),
+      item: providerDriverItemSchema,
     })
     .strict(),
   providerDriverTurnEventBaseSchema
@@ -117,14 +134,7 @@ export const providerDriverEventSchema = z.discriminatedUnion("type", [
       reset: z.boolean(),
     })
     .strict(),
-  providerDriverTurnEventBaseSchema
-    .extend({
-      type: z.literal("item.completed"),
-      itemId: providerDriverItemIdSchema,
-      outcome: z.enum(["completed", "failed", "cancelled"]),
-      error: providerDriverErrorSchema.nullable(),
-    })
-    .strict(),
+  providerDriverItemCompletedEventSchema,
   providerDriverEventBaseSchema
     .extend({
       type: z.literal("session.checkpoint_changed"),
@@ -134,10 +144,20 @@ export const providerDriverEventSchema = z.discriminatedUnion("type", [
         .max(PROVIDER_DRIVER_MAX_ID_LENGTH * 4),
     })
     .strict(),
+  providerDriverTurnEventBaseSchema
+    .extend({
+      type: z.literal("turn.token_usage_changed"),
+      tokenUsage: threadEventTokenUsageSchema,
+    })
+    .strict(),
+  providerDriverTurnEventBaseSchema
+    .extend({
+      type: z.literal("turn.compacted"),
+    })
+    .strict(),
   providerDriverEventBaseSchema
     .extend({
-      type: z.literal("session.usage_changed"),
-      tokenUsage: threadEventTokenUsageSchema,
+      type: z.literal("session.context_window_usage_changed"),
       contextWindowUsage: threadEventContextWindowUsageSchema,
     })
     .strict(),

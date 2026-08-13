@@ -49,16 +49,13 @@ function makeDriver(
         type: "item.started",
         attachmentId: params.attachmentId,
         turnId,
-        itemId: "item-1",
-        itemKind: "assistant_message",
-        label: null,
-        parentToolCallId: null,
+        item: { type: "agentMessage", id: "item-1", text: "" },
       });
       context.events.emit({
         type: "item.completed",
         attachmentId: params.attachmentId,
         turnId,
-        itemId: "item-1",
+        item: { type: "agentMessage", id: "item-1", text: "Hello" },
         outcome: "completed",
         error: null,
       });

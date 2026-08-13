@@ -56,6 +56,8 @@ Stdout and stderr are bounded diagnostics only. They are never parsed as protoco
 
 ### Events
 
+- Protocol version 2 carries bounded canonical item payloads on `item.started` and `item.completed`; core-owned user messages and long-lived background tasks are not accepted as ordinary turn items.
+- Token usage and compaction are turn-scoped facts; context-window usage is a session-scoped fact. Drivers do not invent a turn scope for session-only state.
 - Events use a sequence that is contiguous and monotonically increasing across one process connection, starting at 1.
 - Every event names a daemon-issued attachment. Turn/item events also name a daemon-issued canonical turn.
 - An event for an unknown attachment, an unaccepted turn, a completed item, or a settled turn is a protocol violation.

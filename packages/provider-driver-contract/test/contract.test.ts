@@ -34,8 +34,8 @@ describe("provider driver contract", () => {
         expected: { ...params.expected, artifactDigest: "not-a-digest" },
       }).success,
     ).toBe(false);
-    expect(supportsCurrentProviderDriverProtocol([1])).toBe(true);
-    expect(supportsCurrentProviderDriverProtocol([2])).toBe(false);
+    expect(supportsCurrentProviderDriverProtocol([2])).toBe(true);
+    expect(supportsCurrentProviderDriverProtocol([1])).toBe(false);
   });
 
   it("requires a classified error for a failed settlement", () => {
@@ -65,6 +65,38 @@ describe("provider driver contract", () => {
         },
       }).success,
     ).toBe(true);
+  });
+
+  it("accepts bounded provider items but not core-owned user messages", () => {
+    const base = {
+      type: "item.started",
+      attachmentId: "attachment-1",
+      sequence: 1,
+      turnId: "turn-1",
+    };
+    expect(
+      providerDriverEventSchema.safeParse({
+        ...base,
+        item: {
+          type: "commandExecution",
+          id: "command-1",
+          command: "pnpm test",
+          cwd: "/workspace",
+          status: "pending",
+          approvalStatus: null,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      providerDriverEventSchema.safeParse({
+        ...base,
+        item: {
+          type: "userMessage",
+          id: "message-1",
+          content: [{ type: "text", text: "hello" }],
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("does not accept raw provider events as canonical events", () => {

@@ -1,4 +1,8 @@
-import type { ProviderDriverEvent } from "./events.js";
+import type {
+  ProviderDriverEvent,
+  ProviderDriverItem,
+  ProviderDriverItemDeltaChannel,
+} from "./events.js";
 import type {
   ProviderDriverInitializeParams,
   ProviderDriverInitializeResult,
@@ -34,6 +38,8 @@ export const providerDriverLifecycleErrorCodeValues = [
   "duplicate_item",
   "unknown_item",
   "item_already_completed",
+  "item_type_mismatch",
+  "item_delta_channel_mismatch",
 ] as const;
 export type ProviderDriverLifecycleErrorCode =
   (typeof providerDriverLifecycleErrorCodeValues)[number];
@@ -63,6 +69,7 @@ interface RecordedOperation {
 
 interface ProviderDriverItemState {
   completed: boolean;
+  type: ProviderDriverItem["type"];
 }
 
 interface ProviderDriverAttachmentState {
@@ -112,6 +119,27 @@ function lifecycleError(
   message: string,
 ): never {
   throw new ProviderDriverLifecycleError(code, message);
+}
+
+function itemAcceptsDeltaChannel(
+  itemType: ProviderDriverItem["type"],
+  channel: ProviderDriverItemDeltaChannel,
+): boolean {
+  switch (channel) {
+    case "assistant_text":
+      return itemType === "agentMessage";
+    case "reasoning_text":
+    case "reasoning_summary":
+      return itemType === "reasoning";
+    case "command_output":
+      return itemType === "commandExecution";
+    case "file_change_output":
+      return itemType === "fileChange";
+    case "plan_text":
+      return itemType === "plan";
+    case "tool_output":
+      return itemType === "toolCall";
+  }
 }
 
 /**
@@ -364,13 +392,16 @@ export class ProviderDriverLifecycle {
       case "item.started": {
         this.requireActiveTurn(attachment, event.attachmentId, event.turnId);
         const items = this.requireTurnItems(attachment, event.turnId);
-        if (items.has(event.itemId)) {
+        if (items.has(event.item.id)) {
           lifecycleError(
             "duplicate_item",
-            `Item ${event.itemId} already exists on turn ${event.turnId}`,
+            `Item ${event.item.id} already exists on turn ${event.turnId}`,
           );
         }
-        items.set(event.itemId, { completed: false });
+        items.set(event.item.id, {
+          completed: false,
+          type: event.item.type,
+        });
         break;
       }
       case "item.delta": {
@@ -382,22 +413,38 @@ export class ProviderDriverLifecycle {
             `Item ${event.itemId} has already completed`,
           );
         }
+        if (!itemAcceptsDeltaChannel(item.type, event.channel)) {
+          lifecycleError(
+            "item_delta_channel_mismatch",
+            `Item ${event.itemId} of type ${item.type} cannot receive ${event.channel} deltas`,
+          );
+        }
         break;
       }
       case "item.completed": {
         this.requireActiveTurn(attachment, event.attachmentId, event.turnId);
-        const item = this.requireItem(attachment, event.turnId, event.itemId);
+        const item = this.requireItem(attachment, event.turnId, event.item.id);
         if (item.completed) {
           lifecycleError(
             "item_already_completed",
-            `Item ${event.itemId} has already completed`,
+            `Item ${event.item.id} has already completed`,
+          );
+        }
+        if (item.type !== event.item.type) {
+          lifecycleError(
+            "item_type_mismatch",
+            `Item ${event.item.id} started as ${item.type} and completed as ${event.item.type}`,
           );
         }
         item.completed = true;
         break;
       }
+      case "turn.token_usage_changed":
+      case "turn.compacted":
+        this.requireActiveTurn(attachment, event.attachmentId, event.turnId);
+        break;
       case "session.checkpoint_changed":
-      case "session.usage_changed":
+      case "session.context_window_usage_changed":
       case "provider.rate_limits_changed":
       case "provider.warning":
         break;

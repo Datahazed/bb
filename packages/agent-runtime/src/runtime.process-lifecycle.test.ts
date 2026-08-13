@@ -78,6 +78,7 @@ describe("createAgentRuntime process lifecycle", () => {
         identityRegistry.createProviderState({ providerId }),
       env: args.env,
       getNextRequestId: () => nextRequestId++,
+      handleConnectionEvents: () => undefined,
       handleStdoutLine: () => undefined,
       onProcessExit: args.onProcessExit,
       onProviderIdentityWaitersInterrupted: (providerProcess) =>

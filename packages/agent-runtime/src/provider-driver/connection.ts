@@ -4,6 +4,7 @@ import type {
   ClaudeCodeMockCliTrafficConfig,
   DynamicTool,
   InstructionMode,
+  JsonObject,
   PendingInteractionPayload,
   PendingInteractionResolution,
   PromptInput,
@@ -93,6 +94,7 @@ export interface ProviderDriverSessionOpenArgs {
   disallowedTools?: readonly string[];
   execution: ProviderExecutionContext;
   instructionMode: InstructionMode;
+  outputSchema?: JsonObject;
   mode:
     | { kind: "start" }
     | { kind: "resume"; providerSessionId: string }
@@ -124,6 +126,14 @@ export interface ProviderDriverTurnSubmitArgs {
   mode: { kind: "start" } | { kind: "steer"; expectedTurnId: string };
   providerSessionId: string;
 }
+
+export type ProviderDriverTurnSubmissionResult =
+  | { disposition: "accepted"; events: ThreadEvent[] }
+  | {
+      disposition: "stale";
+      activeTurnId: string | null;
+      events: ThreadEvent[];
+    };
 
 export interface ProviderDriverStopSessionArgs {
   activeTurnId: string | null;
@@ -190,7 +200,9 @@ export interface ProviderDriverConnection {
       timeoutMs?: number;
     },
   ): Promise<ProviderDriverSessionOpenResult>;
-  submitTurn(args: ProviderDriverTurnSubmitArgs): Promise<ThreadEvent[]>;
+  submitTurn(
+    args: ProviderDriverTurnSubmitArgs,
+  ): Promise<ProviderDriverTurnSubmissionResult>;
   stopSession(
     args: ProviderDriverStopSessionArgs,
   ): Promise<ProviderDriverStopSessionResult>;
@@ -203,6 +215,7 @@ export interface ProviderDriverConnection {
     args: ProviderDriverSetSessionArchivedArgs,
   ): Promise<ThreadEvent[]>;
 
+  onEvent(listener: (events: ThreadEvent[]) => void): () => void;
   translateEvent(
     event: ProviderRuntimeEvent,
     context?: ProviderTranslationContext,

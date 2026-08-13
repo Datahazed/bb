@@ -622,18 +622,30 @@ export class ProviderDriverServer {
           return;
         }
         case "turn.cancel": {
-          const { result } = await this.operations.run({
-            execute: () => this.driver.cancelTurn(request.params, context),
-            kind: request.method,
-            operationId: request.params.operationId,
-            params: request.params,
-            resultSchema: providerDriverMethodSchemas[request.method].result,
-          });
-          this.lifecycle.recordTurnCancellationRequested(
-            request.params,
-            result,
-          );
-          await this.writeResult(request.id, result);
+          this.eventWriter.beginAcceptanceBarrier(request.params.attachmentId);
+          try {
+            const { result } = await this.operations.run({
+              execute: () => this.driver.cancelTurn(request.params, context),
+              kind: request.method,
+              operationId: request.params.operationId,
+              params: request.params,
+              resultSchema: providerDriverMethodSchemas[request.method].result,
+            });
+            this.lifecycle.recordTurnCancellationRequested(
+              request.params,
+              result,
+            );
+            await this.writeResult(request.id, result);
+            this.eventWriter.releaseAcceptanceBarrier({
+              attachmentId: request.params.attachmentId,
+              emitBufferedEvents: true,
+            });
+          } catch (error) {
+            this.eventWriter.abandonAcceptanceBarrier(
+              request.params.attachmentId,
+            );
+            throw error;
+          }
           return;
         }
         case "session.rename": {

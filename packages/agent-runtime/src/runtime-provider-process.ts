@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
+import type { ThreadEvent } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import {
   sanitizeInheritedChildProcessEnv,
@@ -38,6 +39,11 @@ export interface RuntimeProviderProcessLineArgs {
   providerProcess: RuntimeProviderProcess;
 }
 
+export interface RuntimeProviderConnectionEventsArgs {
+  events: ThreadEvent[];
+  providerProcess: RuntimeProviderProcess;
+}
+
 export interface RuntimeProviderProcessManagerArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   adapterFactory?: ProviderAdapterFactory;
@@ -57,6 +63,7 @@ export interface RuntimeProviderProcessManagerArgs {
   ) => RuntimeProviderIdentityState;
   env: Record<string, string> | undefined;
   getNextRequestId: () => number;
+  handleConnectionEvents: (args: RuntimeProviderConnectionEventsArgs) => void;
   handleStdoutLine: (args: RuntimeProviderProcessLineArgs) => void;
   onProcessExit: AgentRuntimeOptions["onProcessExit"];
   onProviderIdentityWaitersInterrupted: (
@@ -324,6 +331,11 @@ export class RuntimeProviderProcessManager {
       stderrLineTail: Buffer.alloc(0),
       stderrTail: Buffer.alloc(0),
     };
+
+    providerProcess.connection.onEvent((events) => {
+      if (this.shuttingDown) return;
+      this.args.handleConnectionEvents({ events, providerProcess });
+    });
 
     const stdout = createInterface({ input: child.stdout });
     stdout.on("line", (line) => {

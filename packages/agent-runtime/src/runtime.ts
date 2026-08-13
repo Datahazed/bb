@@ -277,6 +277,11 @@ function createAgentRuntimeInternal(
       threadIdentityRegistry.createProviderState({ providerId }),
     env: options.env,
     getNextRequestId: () => nextRequestId++,
+    handleConnectionEvents: (args) =>
+      emitTranslatedEvents({
+        events: args.events,
+        proc: args.providerProcess,
+      }),
     handleStdoutLine: (args) =>
       handleStdoutLine(args.line, args.providerProcess),
     onProcessExit: options.onProcessExit,
@@ -1216,11 +1221,8 @@ function createAgentRuntimeInternal(
             dynamicTools,
             disallowedTools,
             instructionMode,
+            ...(outputSchema !== undefined ? { outputSchema } : {}),
           };
-          // Structured output was historically accepted by AgentRuntime but
-          // omitted from AdapterCommand. Keep the compatibility behavior until
-          // the canonical session contract replaces this path.
-          void outputSchema;
           const result = await executeConnectionOperation({
             proc,
             execute: (connection) =>
@@ -1623,9 +1625,11 @@ function createAgentRuntimeInternal(
           const providerSessionId = requireProviderThreadId(threadId);
           pendingTurnStartThreadIds.add(threadId);
           markProviderSessionNotIdle(threadId);
-          let events: ThreadEvent[];
+          let submission: Awaited<
+            ReturnType<ProviderDriverConnection["submitTurn"]>
+          >;
           try {
-            events = await executeConnectionOperation({
+            submission = await executeConnectionOperation({
               proc,
               execute: (connection) =>
                 connection.submitTurn({
@@ -1652,7 +1656,18 @@ function createAgentRuntimeInternal(
             markHostedProviderSessionIdle(threadId);
             throw error;
           }
-          emitTranslatedEvents({ events, proc, sourceThreadId: threadId });
+          if (submission.disposition !== "accepted") {
+            pendingTurnStartThreadIds.delete(threadId);
+            markHostedProviderSessionIdle(threadId);
+            throw new Error(
+              `Provider "${pid}" returned a stale result for a new turn on thread "${threadId}"`,
+            );
+          }
+          emitTranslatedEvents({
+            events: submission.events,
+            proc,
+            sourceThreadId: threadId,
+          });
         },
       });
     },
@@ -1706,7 +1721,7 @@ function createAgentRuntimeInternal(
           });
 
           const providerSessionId = requireProviderThreadId(threadId);
-          const events = await executeConnectionOperation({
+          const submission = await executeConnectionOperation({
             proc,
             execute: (connection) =>
               connection.submitTurn({
@@ -1728,7 +1743,17 @@ function createAgentRuntimeInternal(
               threadId,
             },
           });
-          emitTranslatedEvents({ events, proc, sourceThreadId: threadId });
+          emitTranslatedEvents({
+            events: submission.events,
+            proc,
+            sourceThreadId: threadId,
+          });
+          if (submission.disposition === "stale") {
+            return {
+              status: "stale",
+              activeTurnId: submission.activeTurnId,
+            };
+          }
           return { status: "steered" };
         },
       });

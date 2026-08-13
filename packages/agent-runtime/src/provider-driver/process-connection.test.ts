@@ -58,7 +58,7 @@ class FakeDriverPeer {
 
 function makeInitializeParams(): ProviderDriverInitializeParams {
   return providerDriverInitializeParamsSchema.parse({
-    supportedProtocolVersions: [1],
+    supportedProtocolVersions: [2],
     expected: {
       pluginId: "test-plugin",
       driverId: "test-driver",
@@ -73,7 +73,7 @@ function makeInitializeParams(): ProviderDriverInitializeParams {
 
 function makeInitializeResult(): ProviderDriverInitializeResult {
   return providerDriverInitializeResultSchema.parse({
-    protocolVersion: 1,
+    protocolVersion: 2,
     identity: {
       pluginId: "test-plugin",
       driverId: "test-driver",
