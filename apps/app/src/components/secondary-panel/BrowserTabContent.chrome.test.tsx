@@ -9,14 +9,22 @@ import {
 } from "@testing-library/react";
 import type {
   BbDesktopBrowserApi,
+  BbDesktopBrowserInspectionResult,
   BbDesktopBrowserState,
 } from "@bb/desktop-contract";
+import type { PluginBrowserActionProps } from "@bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createBbDesktopApi,
   createNoopDesktopBrowserApi,
 } from "@/test/bb-desktop-test-utils";
 import { BrowserTabContent } from "./BrowserTabContent";
+import { createBrowserViewVisibilityCoordinator } from "./browserViewVisibilityCoordinator";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+  type PluginRegistrationSet,
+} from "@/lib/plugin-slots";
 
 const desktopInfo = {
   lastCheckedAt: null,
@@ -33,16 +41,22 @@ interface BrowserChromeHarness {
   emitState: (state: BbDesktopBrowserState) => void;
   goBack: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
+  setVisible: ReturnType<typeof vi.fn>;
 }
 
-function createBrowserChromeHarness(): BrowserChromeHarness {
+function createBrowserChromeHarness(
+  inspectPage?: BbDesktopBrowserApi["experimental_inspectPage"],
+): BrowserChromeHarness {
   const stateListeners = new Set<(state: BbDesktopBrowserState) => void>();
   const goBack = vi.fn();
   const stop = vi.fn();
+  const setVisible = vi.fn();
   const api: BbDesktopBrowserApi = {
     ...createNoopDesktopBrowserApi(),
     goBack,
     stop,
+    setVisible,
+    ...(inspectPage ? { experimental_inspectPage: inspectPage } : {}),
     onState(listener) {
       stateListeners.add(listener);
       return () => stateListeners.delete(listener);
@@ -55,6 +69,22 @@ function createBrowserChromeHarness(): BrowserChromeHarness {
     },
     goBack,
     stop,
+    setVisible,
+  };
+}
+
+function registrationSet(
+  browserActions: PluginRegistrationSet["browserActions"],
+): PluginRegistrationSet {
+  return {
+    homepageSections: [],
+    settingsSections: [],
+    navPanels: [],
+    threadPanelActions: [],
+    sidebarFooterActions: [],
+    fileOpeners: [],
+    messageDirectives: [],
+    browserActions,
   };
 }
 
@@ -73,7 +103,11 @@ function browserState(
   };
 }
 
-function renderBrowserChrome(harness: BrowserChromeHarness, initialUrl = "") {
+function renderBrowserChrome(
+  harness: BrowserChromeHarness,
+  initialUrl = "",
+  canShowNativeBrowserView = false,
+) {
   window.bbDesktop = createBbDesktopApi(desktopInfo, harness.api);
   return render(
     <>
@@ -81,10 +115,15 @@ function renderBrowserChrome(harness: BrowserChromeHarness, initialUrl = "") {
         tabId="browser:test"
         initialUrl={initialUrl}
         addressFocusRequest={null}
-        canShowNativeBrowserView={false}
-        visibilityCoordinator={null}
+        canShowNativeBrowserView={canShowNativeBrowserView}
+        visibilityCoordinator={
+          canShowNativeBrowserView
+            ? createBrowserViewVisibilityCoordinator(harness.api)
+            : null
+        }
         environmentId={null}
         threadId="thread-1"
+        projectId="project-1"
         onUpdate={() => {}}
       />
       <button type="button">Outside browser</button>
@@ -107,6 +146,7 @@ describe("BrowserTabContent persistent navigation", () => {
     cleanup();
     vi.restoreAllMocks();
     window.localStorage.clear();
+    resetPluginSlotStoreForTest();
     delete window.bbDesktop;
   });
 
@@ -141,5 +181,172 @@ describe("BrowserTabContent persistent navigation", () => {
     act(() => harness.emitState(browserState({ canGoBack: true })));
     fireEvent.click(screen.getByRole("button", { name: "Go back" }));
     expect(harness.goBack).toHaveBeenCalledWith("browser:test");
+  });
+
+  it("maps inspection to the optional desktop capability with tab identity", async () => {
+    let slotProps: PluginBrowserActionProps | null = null;
+    const result = {
+      version: 1,
+      kind: "region",
+      page: {
+        url: "https://example.com/docs",
+        title: "Docs",
+        viewport: { width: 800, height: 600 },
+        scroll: { x: 0, y: 10 },
+      },
+      rect: { x: 1, y: 2, width: 20, height: 30 },
+      element: null,
+      region: { elements: [] },
+      screenshot: {
+        dataUrl: "data:image/png;base64,AA==",
+        pixelSize: { width: 800, height: 600 },
+        deviceScaleFactor: 1,
+        pageZoom: 1,
+        cssToImageScale: { x: 1, y: 1 },
+      },
+    } satisfies BbDesktopBrowserInspectionResult;
+    const inspectPage = vi.fn(async () => result);
+    setPluginSlotRegistrations(
+      "context",
+      registrationSet([
+        {
+          id: "inspect",
+          title: "Inspect page",
+          component: (props) => {
+            slotProps = props;
+            return <button type="button">Inspect page</button>;
+          },
+        },
+      ]),
+    );
+    const harness = createBrowserChromeHarness(inspectPage);
+    renderBrowserChrome(harness, "https://example.com/docs");
+
+    const controller = new AbortController();
+    const capturedProps = slotProps as PluginBrowserActionProps | null;
+    expect(capturedProps).not.toBeNull();
+    await expect(
+      capturedProps!.experimental_inspectPage(
+        { kind: "region" },
+        { signal: controller.signal },
+      ),
+    ).resolves.toEqual(result);
+    expect(inspectPage).toHaveBeenCalledWith(
+      {
+        tabId: "browser:test",
+        kind: "region",
+        identity: { threadId: "thread-1", projectId: "project-1" },
+      },
+      { signal: expect.any(AbortSignal) },
+    );
+  });
+
+  it("rejects clearly when the desktop inspection capability is missing", async () => {
+    let slotProps: PluginBrowserActionProps | null = null;
+    setPluginSlotRegistrations(
+      "context",
+      registrationSet([
+        {
+          id: "inspect",
+          title: "Inspect page",
+          component: (props) => {
+            slotProps = props;
+            return <button type="button">Inspect page</button>;
+          },
+        },
+      ]),
+    );
+    renderBrowserChrome(
+      createBrowserChromeHarness(),
+      "https://example.com/docs",
+    );
+
+    await expect(
+      slotProps!.experimental_inspectPage(
+        { kind: "element" },
+        { signal: new AbortController().signal },
+      ),
+    ).rejects.toMatchObject({
+      name: "ExperimentalBrowserInspectionUnavailableError",
+      message: expect.stringMatching(/newer BB desktop app/),
+    });
+  });
+
+  it("suppresses and restores the native view for a plugin overlay", () => {
+    function OverlayAction(props: PluginBrowserActionProps) {
+      return (
+        <>
+          <button
+            type="button"
+            aria-label="Open inspector"
+            onClick={() => props.experimental_setOverlayOpen(true)}
+          />
+          <button
+            type="button"
+            aria-label="Close inspector"
+            onClick={() => props.experimental_setOverlayOpen(false)}
+          />
+        </>
+      );
+    }
+    setPluginSlotRegistrations(
+      "context",
+      registrationSet([
+        { id: "inspect", title: "Inspect page", component: OverlayAction },
+      ]),
+    );
+    const harness = createBrowserChromeHarness();
+    renderBrowserChrome(harness, "https://example.com/docs", true);
+
+    expect(harness.setVisible).toHaveBeenLastCalledWith({
+      tabId: "browser:test",
+      visible: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open inspector" }));
+    expect(harness.setVisible).toHaveBeenLastCalledWith({
+      tabId: "browser:test",
+      visible: false,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Close inspector" }));
+    expect(harness.setVisible).toHaveBeenLastCalledWith({
+      tabId: "browser:test",
+      visible: true,
+    });
+  });
+
+  it("contains a crashing Browser action without losing native controls", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    setPluginSlotRegistrations(
+      "broken",
+      registrationSet([
+        {
+          id: "broken",
+          title: "Broken",
+          component: () => {
+            throw new Error("broken action");
+          },
+        },
+      ]),
+    );
+    setPluginSlotRegistrations(
+      "working",
+      registrationSet([
+        {
+          id: "working",
+          title: "Working",
+          component: () => <button type="button" aria-label="Working action" />,
+        },
+      ]),
+    );
+    renderBrowserChrome(
+      createBrowserChromeHarness(),
+      "https://example.com/docs",
+    );
+
+    expect(screen.getByLabelText("Address and search bar")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Working action" }),
+    ).not.toBeNull();
   });
 });

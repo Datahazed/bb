@@ -290,6 +290,47 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    exposing the full `panes` array does not leak more layout state than a row
    needs.
 
+## `app.slots.experimental_browserAction` (`@bb/plugin-sdk/app`)
+
+**What it does.** Renders one plugin-owned 28-pixel control in each active
+Browser tab's navigation chrome. The component receives the tab, thread,
+project, and URL identity; a scoped `experimental_inspectPage` callback; and
+`experimental_setOverlayOpen`, which hides the native `WebContentsView` while
+portalled plugin menus or dialogs are open. The host orders contributions by
+plugin id and registration order, then moves excess actions into a host-owned
+overflow before reducing the address bar or displacing navigation controls.
+
+The inspection bridge is optional across desktop/SPA version skew. The slot
+still mounts when the bridge is absent so the plugin can render an unavailable
+state; calling the prop rejects with a typed, actionable error. A slot crash,
+unmount, navigation, identity change, reload, or window teardown aborts its
+inspections and releases every suppression lease before the native view may be
+shown again.
+
+**Audit before stabilizing.**
+
+1. **Version skew.** Verify old hosts omit the feature-detected registration,
+   while hosts with the slot but no desktop inspection capability expose a
+   clear unavailable state rather than failing plugin setup.
+2. **Hostile pages and caps.** Re-audit the strict desktop boundary, static
+   controller, timeouts, redaction, per-field limits, 128 KiB structured cap,
+   and 8 MiB PNG cap against adversarial DOM and navigation behavior.
+3. **Multiple actions.** Confirm deterministic plugin/registration ordering,
+   the one-control footprint, the compact capacity rule, and host-owned
+   overflow with several installed plugins.
+4. **Crash containment.** Confirm render failures remove only the crashing
+   contribution, preserve sibling actions and native controls, abort pending
+   inspections, and release suppression immediately.
+5. **Suppression cleanup.** Exercise close, false twice, unmount, active-tab
+   change, navigation, thread/project change, plugin reload, crash, and window
+   teardown. No path may strand a hidden view or briefly flash a stale one.
+6. **Compact chrome.** Test narrow, ordinary desktop, and coarse-pointer rows;
+   the address field and back/forward/reload/external controls must remain
+   usable before any plugin action stays inline.
+7. **Accessibility.** Confirm every plugin supplies an accessible control name,
+   the host overflow exposes plugin titles and keyboard focus correctly, and
+   portalled menus/dialogs restore focus when they close.
+
 ## `app.slots.experimental_threadHeaderAction` (`@bb/plugin-sdk/app`)
 
 **What it does.** Renders a plugin component in the thread header's action row.

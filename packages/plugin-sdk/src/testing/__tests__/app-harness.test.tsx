@@ -224,6 +224,29 @@ const app = await loadPluginApp(
 );
 
 describe("loadPluginApp", () => {
+  it("captures Browser action registrations for renderSlot", async () => {
+    const component = () => null;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_browserAction({
+          id: "inspect",
+          title: "Inspect page",
+          icon: "ScanSearch",
+          component,
+        });
+      }),
+    );
+
+    expect(captured.browserActions).toEqual([
+      {
+        id: "inspect",
+        title: "Inspect page",
+        icon: "ScanSearch",
+        component,
+      },
+    ]);
+  });
+
   it("captures and validates New thread panel action registrations", async () => {
     const run = () => {};
     const captured = await loadPluginApp(

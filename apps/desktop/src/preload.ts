@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webFrame } from "electron";
 import { appCommandIdSchema } from "@bb/domain";
 import {
   bbDesktopBrowserOpenTabRequestSchema,
+  bbDesktopBrowserInspectionResultSchema,
   bbDesktopBrowserScopedOpenTabRequestSchema,
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
@@ -36,6 +37,8 @@ import {
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_INSPECTION_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -243,6 +246,27 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   },
   setVisible(request): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL, request);
+  },
+  async experimental_inspectPage(request, options) {
+    const signal = options?.signal;
+    if (signal?.aborted === true) return null;
+    const cancel = (): void => {
+      ipcRenderer.send(
+        BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_INSPECTION_CHANNEL,
+        { tabId: request.tabId },
+      );
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      const payload: unknown = await ipcRenderer.invoke(
+        BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_CHANNEL,
+        request,
+      );
+      if (payload === null) return null;
+      return bbDesktopBrowserInspectionResultSchema.parse(payload);
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
   },
   onState(listener): BbDesktopBrowserUnsubscribe {
     browserStateListeners.add(listener);

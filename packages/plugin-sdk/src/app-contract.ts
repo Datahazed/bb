@@ -150,6 +150,134 @@ export interface PluginThreadHeaderActionProps {
   isCompactViewport: boolean;
 }
 
+export interface ExperimentalBrowserInspectionSize {
+  width: number;
+  height: number;
+}
+
+export interface ExperimentalBrowserInspectionPoint {
+  x: number;
+  y: number;
+}
+
+export interface ExperimentalBrowserInspectionRect
+  extends
+    ExperimentalBrowserInspectionPoint,
+    ExperimentalBrowserInspectionSize {}
+
+export interface ExperimentalBrowserInspectionElementDescriptor {
+  selector: string;
+  tag: string;
+  id: string | null;
+  classNames: readonly string[];
+  text: string;
+  rect: ExperimentalBrowserInspectionRect;
+}
+
+export interface ExperimentalBrowserInspectionStyles {
+  display?: string;
+  position?: string;
+  color?: string;
+  backgroundColor?: string;
+  fontFamily?: string;
+  fontSize?: string;
+  fontWeight?: string;
+  lineHeight?: string;
+  margin?: string;
+  padding?: string;
+  border?: string;
+  borderRadius?: string;
+  boxShadow?: string;
+  opacity?: string;
+  overflow?: string;
+  zIndex?: string;
+  flex?: string;
+  grid?: string;
+  transform?: string;
+}
+
+export interface ExperimentalBrowserInspectionAriaAttributes {
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
+  "aria-expanded"?: string;
+  "aria-pressed"?: string;
+  "aria-checked"?: string;
+  "aria-current"?: string;
+  "aria-hidden"?: string;
+}
+
+export interface ExperimentalBrowserInspectionElementContext extends Omit<
+  ExperimentalBrowserInspectionElementDescriptor,
+  "text"
+> {
+  dom: string;
+  text: string;
+  styles: ExperimentalBrowserInspectionStyles;
+  accessibility: {
+    source: "dom-hint";
+    roleHint: string | null;
+    nameHint: string | null;
+    attributes: ExperimentalBrowserInspectionAriaAttributes;
+  };
+  reactComponentStack: readonly string[] | null;
+}
+
+export interface ExperimentalBrowserInspectionResult {
+  version: 1;
+  kind: "element" | "region";
+  page: {
+    url: string;
+    title: string | null;
+    viewport: ExperimentalBrowserInspectionSize;
+    scroll: ExperimentalBrowserInspectionPoint;
+  };
+  rect: ExperimentalBrowserInspectionRect;
+  element: ExperimentalBrowserInspectionElementContext | null;
+  region: {
+    elements: readonly ExperimentalBrowserInspectionElementDescriptor[];
+  } | null;
+  screenshot: {
+    dataUrl: string;
+    pixelSize: ExperimentalBrowserInspectionSize;
+    deviceScaleFactor: number;
+    pageZoom: number;
+    cssToImageScale: ExperimentalBrowserInspectionPoint;
+  };
+}
+
+/** One selection mode for the host-owned Browser inspection controller. */
+export interface ExperimentalBrowserInspectionRequest {
+  kind: "element" | "region";
+}
+
+/** Props passed to an `experimental_browserAction` component. */
+export interface PluginBrowserActionProps {
+  tabId: string;
+  threadId: string | null;
+  projectId: string | null;
+  url: string;
+  /**
+   * False when the running desktop shell predates page inspection. Plugins
+   * should keep their action visible but disabled and explain the upgrade.
+   */
+  experimental_inspectionAvailable: boolean;
+  /**
+   * Inspect the active Browser page through BB desktop. `null` means the user
+   * cancelled. Operational and version-skew failures reject with a safe error.
+   */
+  experimental_inspectPage(
+    request: ExperimentalBrowserInspectionRequest,
+    options: { signal: AbortSignal },
+  ): Promise<ExperimentalBrowserInspectionResult | null>;
+  /**
+   * Hide the native Browser view while a portalled menu or dialog is open.
+   * Calls are idempotent; the host also releases the lease on every slot
+   * lifecycle edge.
+   */
+  experimental_setOverlayOpen(open: boolean): void;
+}
+
 /**
  * Where a file being opened by a `fileOpener` lives. `path` semantics follow
  * the source: workspace paths are relative to the environment's worktree,
@@ -337,6 +465,18 @@ export interface PluginNewThreadPanelActionRegistration {
    * panel tab with defaults. Errors are contained and logged.
    */
   run?(context: PluginNewThreadPanelActionContext): void | Promise<void>;
+}
+
+/** A compact plugin-owned control in the Browser tab's navigation chrome. */
+export interface PluginBrowserActionRegistration {
+  /** Unique within this slot for the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Host label for the contribution and its overflow row. */
+  title: string;
+  /** Optional BB icon-name hint retained for future host-owned treatments. */
+  icon?: string;
+  /** Render exactly one accessible 28px control; portal larger UI. */
+  component: ComponentType<PluginBrowserActionProps>;
 }
 
 export interface PluginPendingInteractionRegistration {
@@ -781,6 +921,13 @@ export interface PluginAppSlots {
    */
   experimental_threadHeaderAction(
     registration: PluginThreadHeaderActionRegistration,
+  ): void;
+  /**
+   * Render one compact component in the Browser tab chrome. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_browserAction(
+    registration: PluginBrowserActionRegistration,
   ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;

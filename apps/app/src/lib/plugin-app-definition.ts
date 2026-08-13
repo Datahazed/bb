@@ -2,6 +2,7 @@ import {
   type ComposerCustomization,
   type PluginAppDefinition,
   type PluginAppSetup,
+  type PluginBrowserActionRegistration,
   type PluginContentScriptRegistration,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
@@ -80,6 +81,7 @@ export function collectPluginAppRegistrations(
   const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
   const threadLists: PluginThreadListRegistration[] = [];
   const threadHeaderActions: PluginThreadHeaderActionRegistration[] = [];
+  const browserActions: PluginBrowserActionRegistration[] = [];
   const fileOpeners: PluginFileOpenerRegistration[] = [];
   const messageDirectives: PluginMessageDirectiveRegistration[] = [];
   const messageActions: PluginMessageActionRegistration[] = [];
@@ -95,6 +97,7 @@ export function collectPluginAppRegistrations(
     sidebarFooterAction: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
+    browserAction: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
@@ -286,6 +289,21 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      experimental_browserAction(registration) {
+        const kind = "slots.experimental_browserAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.browserAction, id);
+        browserActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(registration.icon !== undefined
+            ? {
+                icon: requireNonEmptyString(kind, "icon", registration.icon),
+              }
+            : {}),
+          component: requireComponent(kind, registration.component),
+        });
+      },
       fileOpener(registration) {
         const kind = "slots.fileOpener";
         const id = requireSlotId(kind, registration?.id);
@@ -375,6 +393,7 @@ export function collectPluginAppRegistrations(
     sidebarFooterActions,
     threadLists,
     threadHeaderActions,
+    browserActions,
     fileOpeners,
     messageDirectives,
     messageActions,

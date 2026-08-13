@@ -1,6 +1,13 @@
-import { BrowserWindow, ipcMain, type IpcMainEvent } from "electron";
+import {
+  BrowserWindow,
+  ipcMain,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+} from "electron";
 import {
   bbDesktopBrowserAttachRequestSchema,
+  bbDesktopBrowserInspectionCancelRequestSchema,
+  bbDesktopBrowserInspectionRequestSchema,
   bbDesktopBrowserNavigateRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserSetVisibleRequestSchema,
@@ -8,6 +15,8 @@ import {
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_INSPECTION_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
@@ -32,7 +41,7 @@ interface RegisterDesktopBrowserTabCommandArgs {
 }
 
 function hostWindowFromBrowserIpcEvent(
-  event: IpcMainEvent,
+  event: IpcMainEvent | IpcMainInvokeEvent,
 ): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
 }
@@ -69,6 +78,33 @@ export function registerDesktopBrowserIpc(
     }
     manager.attach({ hostWindow, request: parsed.data });
   });
+
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_CHANNEL,
+    async (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        throw new Error("The Browser host window is unavailable");
+      }
+      const request = bbDesktopBrowserInspectionRequestSchema.parse(payload);
+      return manager.experimentalInspectPage({ hostWindow, request });
+    },
+  );
+
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_INSPECTION_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) return;
+      const request =
+        bbDesktopBrowserInspectionCancelRequestSchema.safeParse(payload);
+      if (!request.success) return;
+      manager.cancelExperimentalInspection({
+        hostWindow,
+        tabId: request.data.tabId,
+      });
+    },
+  );
 
   ipcMain.on(BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL, (event, payload: unknown) => {
     const hostWindow = hostWindowFromBrowserIpcEvent(event);

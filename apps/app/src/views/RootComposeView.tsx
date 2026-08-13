@@ -2363,6 +2363,7 @@ export function RootComposeView() {
           environmentId={rootPanelEnvironmentId}
           canShowNativeBrowserView={canShowNativeBrowserView}
           threadId={rootPanelThreadId}
+          projectId={projectId}
           onUpdate={updateBrowserTab}
         />
       );
@@ -2374,6 +2375,7 @@ export function RootComposeView() {
       handleBrowserAddressFocusRequestConsumed,
       rootPanelEnvironmentId,
       rootPanelThreadId,
+      projectId,
       updateBrowserTab,
     ],
   );

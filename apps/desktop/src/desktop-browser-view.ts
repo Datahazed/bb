@@ -4,6 +4,8 @@ import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   clampBbDesktopBrowserViewBounds,
   type BbDesktopBrowserAttachRequest,
+  type BbDesktopBrowserInspectionRequest,
+  type BbDesktopBrowserInspectionResult,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserOpenTabRequest,
   type BbDesktopBrowserScopedOpenTabRequest,
@@ -21,6 +23,10 @@ import {
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
 } from "./desktop-browser-ipc.js";
+import {
+  startDesktopBrowserInspection,
+  type DesktopBrowserInspectionSession,
+} from "./desktop-browser-inspection.js";
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
@@ -76,6 +82,7 @@ interface BrowserViewEntry {
   rendererRecoveryState: "healthy" | "pending" | "blocked";
   rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
   visible: boolean;
+  inspectionSession: DesktopBrowserInspectionSession | null;
 }
 
 export type DesktopBrowserHostWebContentsPayload =
@@ -159,6 +166,10 @@ export interface DesktopBrowserViewManager {
   setVisible(
     args: HostScopedRequestArgs<BbDesktopBrowserSetVisibleRequest>,
   ): void;
+  experimentalInspectPage(
+    args: HostScopedRequestArgs<BbDesktopBrowserInspectionRequest>,
+  ): Promise<BbDesktopBrowserInspectionResult | null>;
+  cancelExperimentalInspection(args: HostScopedTabArgs): void;
   /**
    * Hide every visible view owned by the window for the duration of a native
    * resize burst. During an interactive window resize the host chrome
@@ -316,6 +327,11 @@ export function createDesktopBrowserViewManager(
       clearTimeout(entry.rendererRecoveryTimer);
       entry.rendererRecoveryTimer = null;
     }
+  }
+
+  function cancelEntryInspection(entry: BrowserViewEntry): void {
+    entry.inspectionSession?.cancel();
+    entry.inspectionSession = null;
   }
 
   function resetEntryRendererRecovery(entry: BrowserViewEntry): void {
@@ -547,6 +563,7 @@ export function createDesktopBrowserViewManager(
     });
 
     webContents.on("render-process-gone", (_event, details) => {
+      cancelEntryInspection(entry);
       if (webContents.isDestroyed() || webContents.getURL().length === 0) {
         return;
       }
@@ -631,6 +648,7 @@ export function createDesktopBrowserViewManager(
       rendererRecoveryState: "healthy",
       rendererRecoveryTimer: null,
       visible: false,
+      inspectionSession: null,
     };
     wireWebContents(args.hostWindow, args.tabId, entry);
     args.hostWindow.contentView.addChildView(view);
@@ -666,6 +684,7 @@ export function createDesktopBrowserViewManager(
     entries.delete(key);
     entriesByWebContentsId.delete(entry.view.webContents.id);
     clearEntryRendererRecoveryTimer(entry);
+    cancelEntryInspection(entry);
     if (!hostWindow.isDestroyed()) {
       hostWindow.contentView.removeChildView(entry.view);
     }
@@ -700,6 +719,7 @@ export function createDesktopBrowserViewManager(
         });
       setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
       entry.visible = request.visible;
+      if (!request.visible) cancelEntryInspection(entry);
       applyEntryVisibility(entry, hostWindow);
       // Focus on a real not-visible → visible transition so a freshly-mounted
       // active tab (shown via attach, not setVisible) wires the Edit-menu
@@ -719,6 +739,7 @@ export function createDesktopBrowserViewManager(
     },
     navigate({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        cancelEntryInspection(entry);
         resetEntryRendererRecovery(entry);
         applyEntryVisibility(entry, hostWindow);
         loadIfNeeded(entry, request.url);
@@ -727,6 +748,7 @@ export function createDesktopBrowserViewManager(
     goBack({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoBack()) {
+          cancelEntryInspection(entry);
           resetEntryRendererRecovery(entry);
           applyEntryVisibility(entry, hostWindow);
           entry.view.webContents.navigationHistory.goBack();
@@ -736,6 +758,7 @@ export function createDesktopBrowserViewManager(
     goForward({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoForward()) {
+          cancelEntryInspection(entry);
           resetEntryRendererRecovery(entry);
           applyEntryVisibility(entry, hostWindow);
           entry.view.webContents.navigationHistory.goForward();
@@ -744,6 +767,7 @@ export function createDesktopBrowserViewManager(
     },
     reload({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
+        cancelEntryInspection(entry);
         resetEntryRendererRecovery(entry);
         entry.view.webContents.reload();
         applyEntryVisibility(entry, hostWindow);
@@ -763,6 +787,7 @@ export function createDesktopBrowserViewManager(
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
         const wasVisible = entry.visible;
         entry.visible = request.visible;
+        if (!request.visible) cancelEntryInspection(entry);
         applyEntryVisibility(entry, hostWindow);
         scheduleEntryRendererRecovery(entry, hostWindow, request.tabId);
         // Focus the view only on a real not-visible → visible transition so the
@@ -778,6 +803,33 @@ export function createDesktopBrowserViewManager(
         }
       });
     },
+    async experimentalInspectPage({ hostWindow, request }) {
+      const entry = entries.get(browserViewKey(hostWindow, request.tabId));
+      if (
+        entry === undefined ||
+        entry.view.webContents.isDestroyed() ||
+        !entry.visible ||
+        entry.view.webContents.getURL().length === 0
+      ) {
+        throw new Error("The Browser tab is not available for inspection");
+      }
+      cancelEntryInspection(entry);
+      const session = startDesktopBrowserInspection({
+        request,
+        webContents: entry.view.webContents,
+      });
+      entry.inspectionSession = session;
+      try {
+        return await session.promise;
+      } finally {
+        if (entry.inspectionSession === session) {
+          entry.inspectionSession = null;
+        }
+      }
+    },
+    cancelExperimentalInspection({ hostWindow, tabId }) {
+      withEntry({ hostWindow, tabId }, cancelEntryInspection);
+    },
     beginWindowResize(hostWindow) {
       if (isHostResizing(hostWindow)) {
         return;
@@ -789,6 +841,7 @@ export function createDesktopBrowserViewManager(
           continue;
         }
         if (entry.visible) {
+          cancelEntryInspection(entry);
           startResizeSnapshot(hostWindow, key.slice(prefix.length), entry);
         }
       }
@@ -823,6 +876,7 @@ export function createDesktopBrowserViewManager(
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);
         clearEntryRendererRecoveryTimer(entry);
+        cancelEntryInspection(entry);
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }
@@ -834,6 +888,7 @@ export function createDesktopBrowserViewManager(
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);
         clearEntryRendererRecoveryTimer(entry);
+        cancelEntryInspection(entry);
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }

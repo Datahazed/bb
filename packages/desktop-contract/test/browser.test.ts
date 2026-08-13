@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
+  BB_DESKTOP_BROWSER_INSPECTION_MAX_DOM_LENGTH,
   bbDesktopBrowserAttachRequestSchema,
+  bbDesktopBrowserInspectionPageResultSchema,
+  bbDesktopBrowserInspectionRequestSchema,
+  bbDesktopBrowserInspectionResultSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserStateSchema,
   clampBbDesktopBrowserViewBounds,
@@ -121,6 +125,112 @@ describe("desktop browser IPC schemas", () => {
         url: longUrl,
         bounds: { x: 0, y: 0, width: 800, height: 600 },
         visible: true,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+const elementPageResult = {
+  version: 1,
+  kind: "element",
+  page: {
+    url: "https://example.com/",
+    title: "Example",
+    viewport: { width: 800, height: 600 },
+    scroll: { x: 0, y: 100 },
+  },
+  rect: { x: 20, y: 30, width: 100, height: 40 },
+  deviceScaleFactor: 2,
+  element: {
+    selector: "main > button#save",
+    tag: "button",
+    id: "save",
+    classNames: ["primary"],
+    rect: { x: 20, y: 30, width: 100, height: 40 },
+    dom: '<button id="save">Save</button>',
+    text: "Save",
+    styles: { display: "block", color: "rgb(0, 0, 0)" },
+    accessibility: {
+      source: "dom-hint",
+      roleHint: "button",
+      nameHint: "Save",
+      attributes: { "aria-label": "Save" },
+    },
+    reactComponentStack: ["SaveButton", "Toolbar"],
+  },
+  region: null,
+} as const;
+
+describe("experimental desktop browser inspection schemas", () => {
+  it("keeps inspection on a separate strict identity-scoped request", () => {
+    const request = {
+      tabId: "browser:a",
+      kind: "element",
+      identity: { threadId: "thr_1", projectId: "prj_1" },
+    };
+    expect(bbDesktopBrowserInspectionRequestSchema.parse(request)).toEqual(
+      request,
+    );
+    expect(
+      bbDesktopBrowserInspectionRequestSchema.safeParse({
+        ...request,
+        instruction: "page-controlled source must never enter execution",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a bounded element result and rejects mismatched or oversized branches", () => {
+    expect(
+      bbDesktopBrowserInspectionPageResultSchema.parse(elementPageResult),
+    ).toEqual(elementPageResult);
+    expect(
+      bbDesktopBrowserInspectionPageResultSchema.safeParse({
+        ...elementPageResult,
+        kind: "region",
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopBrowserInspectionPageResultSchema.safeParse({
+        ...elementPageResult,
+        element: {
+          ...elementPageResult.element,
+          dom: "x".repeat(BB_DESKTOP_BROWSER_INSPECTION_MAX_DOM_LENGTH + 1),
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires PNG data and positive screenshot scale metadata", () => {
+    const { deviceScaleFactor, ...capture } = elementPageResult;
+    const result = {
+      ...capture,
+      screenshot: {
+        dataUrl: "data:image/png;base64,aGVsbG8=",
+        pixelSize: { width: 1600, height: 1200 },
+        deviceScaleFactor,
+        pageZoom: 1.25,
+        cssToImageScale: { x: 2, y: 2 },
+      },
+    };
+    expect(bbDesktopBrowserInspectionResultSchema.parse(result)).toEqual(
+      result,
+    );
+    expect(
+      bbDesktopBrowserInspectionResultSchema.safeParse({
+        ...result,
+        screenshot: {
+          ...result.screenshot,
+          dataUrl: "data:image/jpeg;base64,eA==",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopBrowserInspectionResultSchema.safeParse({
+        ...result,
+        screenshot: {
+          ...result.screenshot,
+          cssToImageScale: { x: 0, y: 2 },
+        },
       }).success,
     ).toBe(false);
   });

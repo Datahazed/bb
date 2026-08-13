@@ -18,6 +18,7 @@ import {
   type ComposerView,
   type PluginAppDefinition,
   type PluginAppSetup,
+  type PluginBrowserActionRegistration,
   type PluginContentScriptDisposer,
   type PluginContentScriptRegistration,
   type PluginComposerApi,
@@ -523,6 +524,7 @@ export interface CapturedPluginApp {
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  browserActions: PluginBrowserActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
@@ -554,6 +556,7 @@ function collectRegistrations(
     sidebarFooterActions: [],
     threadLists: [],
     threadHeaderActions: [],
+    browserActions: [],
     fileOpeners: [],
     messageDirectives: [],
     messageActions: [],
@@ -570,6 +573,7 @@ function collectRegistrations(
     sidebarFooterAction: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
+    browserAction: new Set<string>(),
     fileOpener: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
@@ -754,6 +758,19 @@ function collectRegistrations(
         captured.threadHeaderActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_browserAction(registration) {
+        const kind = "slots.experimental_browserAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.browserAction, id);
+        captured.browserActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(registration.icon !== undefined
+            ? { icon: requireNonEmptyString(kind, "icon", registration.icon) }
+            : {}),
           component: requireComponent(kind, registration.component),
         });
       },

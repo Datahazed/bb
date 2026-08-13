@@ -34,12 +34,18 @@ const electronMock = vi.hoisted(() => {
   }
 
   type FakeIpcListener = (event: FakeIpcEvent, payload: unknown) => void;
+  type FakeIpcHandler = (
+    event: FakeIpcEvent,
+    payload: unknown,
+  ) => Promise<unknown>;
 
   const listeners = new Map<string, FakeIpcListener>();
+  const handlers = new Map<string, FakeIpcHandler>();
   const windowsBySender = new Map<FakeWebContents, FakeBrowserWindow>();
 
   return {
     listeners,
+    handlers,
     windowsBySender,
     BrowserWindow: {
       fromWebContents(sender: FakeWebContents): FakeBrowserWindow | null {
@@ -47,6 +53,9 @@ const electronMock = vi.hoisted(() => {
       },
     },
     ipcMain: {
+      handle(channel: string, handler: FakeIpcHandler): void {
+        handlers.set(channel, handler);
+      },
       on(channel: string, listener: FakeIpcListener): void {
         listeners.set(channel, listener);
       },
@@ -67,6 +76,9 @@ type SetVisibleCall = Parameters<DesktopBrowserViewManager["setVisible"]>[0];
 type TabCommandCall = Parameters<DesktopBrowserViewManager["reload"]>[0];
 type WindowResizeCall = Parameters<
   DesktopBrowserViewManager["beginWindowResize"]
+>[0];
+type InspectCall = Parameters<
+  DesktopBrowserViewManager["experimentalInspectPage"]
 >[0];
 
 interface FakeWebContents {
@@ -102,6 +114,8 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   public readonly setBoundsCalls: SetBoundsCall[] = [];
   public readonly setVisibleCalls: SetVisibleCall[] = [];
   public readonly stopCalls: TabCommandCall[] = [];
+  public readonly inspectionCalls: InspectCall[] = [];
+  public readonly cancelInspectionCalls: TabCommandCall[] = [];
 
   attach(args: AttachCall): void {
     this.attachCalls.push(args);
@@ -154,12 +168,22 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   stop(args: TabCommandCall): void {
     this.stopCalls.push(args);
   }
+
+  experimentalInspectPage(args: InspectCall): Promise<null> {
+    this.inspectionCalls.push(args);
+    return Promise.resolve(null);
+  }
+
+  cancelExperimentalInspection(args: TabCommandCall): void {
+    this.cancelInspectionCalls.push(args);
+  }
 }
 
 let nextWebContentsId = 1;
 
 beforeEach(() => {
   electronMock.listeners.clear();
+  electronMock.handlers.clear();
   electronMock.windowsBySender.clear();
   nextWebContentsId = 1;
 });

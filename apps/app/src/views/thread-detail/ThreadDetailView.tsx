@@ -718,6 +718,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           environmentId={browserDeckEnvironmentId}
           canShowNativeBrowserView={canShowNativeBrowserView}
           threadId={browserDeckThreadId}
+          projectId={thread?.projectId ?? null}
           onUpdate={updateBrowserTab}
         />
       );
@@ -728,6 +729,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       browserTabs,
       browserDeckEnvironmentId,
       browserDeckThreadId,
+      thread?.projectId,
       handleBrowserAddressFocusRequestConsumed,
       updateBrowserTab,
     ],
