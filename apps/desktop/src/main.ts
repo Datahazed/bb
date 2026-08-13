@@ -53,6 +53,12 @@ import {
   stopForeignRuntime,
 } from "./foreign-runtime.js";
 import { createLocalViewUrl } from "./local-view.js";
+import { loadRemoteServerPage } from "./remote-server-load.js";
+import {
+  BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL,
+  startupErrorActionRequestSchema,
+  type StartupErrorAction,
+} from "./startup-error-ipc.js";
 import { installApplicationMenu } from "./menu.js";
 import {
   DEFAULT_APPLICATION_MENU_ACCELERATORS,
@@ -196,6 +202,7 @@ interface DesktopRuntime {
 }
 
 interface LoadStartupErrorArgs {
+  actions: StartupErrorAction[];
   details: string;
   logs: string;
   title: string;
@@ -301,6 +308,7 @@ let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
 let currentRuntime: DesktopRuntime | null = null;
 let currentWindowUrl: string | null = null;
 let logViewerIpcHandlersInstalled = false;
+let startupErrorIpcHandlersInstalled = false;
 let logViewerLineBuffer: LogLineBuffer | null = null;
 let logViewerPreloadPath: string | null = null;
 let logViewerTailer: LogTailer | null = null;
@@ -1170,6 +1178,7 @@ async function applyServerTarget(): Promise<void> {
     }
     if (!attached) {
       await loadStartupError({
+        actions: ["retry"],
         details:
           "Could not connect to the local bb server on this Mac. Check that the port is free or that a compatible bb server is running.",
         logs: "",
@@ -1204,9 +1213,10 @@ async function applyServerTarget(): Promise<void> {
         `[desktop] Connect authentication failed (${result.code}): ${result.detail}`,
       );
       await loadStartupError({
+        actions: ["retry", "use-this-mac"],
         details:
           "The desktop app could not establish a session for this Connect server. " +
-          `Try switching servers again. (${result.code}: ${result.detail})`,
+          `(${result.code}: ${result.detail})`,
         logs: "",
         title: "Could not authenticate with bb Connect",
       });
@@ -1217,17 +1227,23 @@ async function applyServerTarget(): Promise<void> {
       expiresAt: result.expiresAt,
       remoteServerUrl: target.server.url,
     });
-    bbAppLoaded = true;
-    await loadWindowUrl({ url: target.server.url });
+    const loaded = await loadRemoteServerTarget(target.server.url);
     if (!isCurrent()) {
+      return;
+    }
+    if (!loaded) {
+      refreshApplicationMenu();
       return;
     }
     startRemoteSystemConfigSync(target.server.url);
   } else {
     // A custom server is a plain web load with no bb Connect involved.
-    bbAppLoaded = true;
-    await loadWindowUrl({ url: target.url });
+    const loaded = await loadRemoteServerTarget(target.url);
     if (!isCurrent()) {
+      return;
+    }
+    if (!loaded) {
+      refreshApplicationMenu();
       return;
     }
     startRemoteSystemConfigSync(target.url);
@@ -1354,6 +1370,43 @@ function installLogViewerIpcHandlers(): void {
   );
 }
 
+async function handleStartupErrorAction(
+  action: StartupErrorAction,
+): Promise<void> {
+  await loadLoadingView();
+  if (action === "use-this-mac") {
+    await setActiveServerTarget("builtin");
+    return;
+  }
+  await applyServerTarget();
+}
+
+/**
+ * Wire the recovery buttons on the startup error screen.
+ *
+ * Only the window preload sends on this channel, because the app never exposes
+ * it on the main world. The `bbAppLoaded` check drops a click that arrives
+ * after a later load already opened the workspace.
+ */
+function installStartupErrorIpcHandlers(): void {
+  if (startupErrorIpcHandlersInstalled) {
+    return;
+  }
+  startupErrorIpcHandlersInstalled = true;
+  ipcMain.on(
+    BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL,
+    (_event, payload: unknown) => {
+      const parsed = startupErrorActionRequestSchema.safeParse(payload);
+      if (!parsed.success || bbAppLoaded) {
+        return;
+      }
+      void handleStartupErrorAction(parsed.data.action).catch(
+        reportUnexpectedStartupFailure,
+      );
+    },
+  );
+}
+
 async function loadLogViewerWindow(
   args: LoadLogViewerWindowArgs,
 ): Promise<void> {
@@ -1465,6 +1518,7 @@ async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
   await loadWindowUrl({
     url: createLocalViewUrl({
       viewModel: {
+        actions: args.actions,
         details: `${args.details} Logs are under ${formatLogDirectory()}/.`,
         kind: "error",
         logText: args.logs,
@@ -1472,6 +1526,45 @@ async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
       },
     }),
   });
+}
+
+/**
+ * Report a failure that has no better handler.
+ *
+ * The log gets the stack. The screen gets the message only, because an internal
+ * stack trace tells the user nothing they can act on.
+ */
+function reportUnexpectedStartupFailure(error: unknown): void {
+  process.stderr.write(
+    `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+  );
+  void loadStartupError({
+    actions: [],
+    details: error instanceof Error ? error.message : String(error),
+    logs: "",
+    title: "Could not open bb",
+  });
+}
+
+/**
+ * Load a remote target, or show the recoverable "cannot reach" screen.
+ *
+ * The app counts as loaded only after the page load resolves. An unreachable
+ * host otherwise leaves `bbAppLoaded` true while an error screen shows.
+ */
+async function loadRemoteServerTarget(serverUrl: string): Promise<boolean> {
+  const loaded = await loadRemoteServerPage({
+    loadStartupError,
+    loadUrl: loadWindowUrl,
+    logWarning(message) {
+      createDesktopLogger().warn(message);
+    },
+    serverUrl,
+  });
+  if (loaded) {
+    bbAppLoaded = true;
+  }
+  return loaded;
 }
 
 async function loadBbApp(serverUrl: string): Promise<void> {
@@ -1728,6 +1821,7 @@ async function startOwnedRuntime(
     }
     setCurrentRuntime(null);
     void loadStartupError({
+      actions: [],
       details: `The Electron-owned bb-app process stopped with ${formatExitResult(
         exit,
       )}.`,
@@ -1753,6 +1847,7 @@ async function startOwnedRuntime(
 
   if (raceResult.kind === "process-exited") {
     await loadStartupError({
+      actions: [],
       details: `bb-app exited before the server was ready with ${formatExitResult(
         raceResult.exit,
       )}.`,
@@ -1768,6 +1863,7 @@ async function startOwnedRuntime(
   }
 
   await loadStartupError({
+    actions: [],
     details:
       raceResult.result.kind === "incompatible"
         ? `Port ${args.serverUrl} is responding, but it does not look like bb: ${raceResult.result.reason}.`
@@ -1865,6 +1961,7 @@ async function decideOnExistingServer(
   });
   if (stopResult.kind === "unverified") {
     await loadStartupError({
+      actions: [],
       details:
         `The bb at ${probe.serverUrl} records process ${String(stopResult.pid)}, but that ` +
         "process no longer matches the record. bb did not stop it. Stop it yourself, then open bb again.",
@@ -1875,6 +1972,7 @@ async function decideOnExistingServer(
   }
   if (stopResult.kind === "still-running") {
     await loadStartupError({
+      actions: [],
       details: `bb could not stop process ${String(stopResult.pid)}, even after SIGKILL.`,
       logs: "",
       title: "Could not stop the running bb",
@@ -1883,6 +1981,7 @@ async function decideOnExistingServer(
   }
   if (stopResult.kind === "replaced") {
     await loadStartupError({
+      actions: [],
       details:
         `Another bb started at ${probe.serverUrl} while the question was open, so bb stopped nothing. ` +
         "Open bb again to see the copy that runs now.",
@@ -1893,6 +1992,7 @@ async function decideOnExistingServer(
   }
   if (!(await waitForServerToStop(probe.serverUrl))) {
     await loadStartupError({
+      actions: [],
       details: `The bb at ${probe.serverUrl} stopped, but the address is still in use.`,
       logs: "",
       title: "Could not stop the running bb",
@@ -1951,6 +2051,7 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
 
   if (existingProbe.kind === "incompatible") {
     await loadStartupError({
+      actions: [],
       details: `Port ${args.serverUrl} is already in use, but it is not a compatible bb server: ${existingProbe.reason}.`,
       logs: "",
       title: "Port conflict",
@@ -2268,6 +2369,7 @@ async function runDesktopApp(): Promise<void> {
     userDataPath,
   });
   installLogViewerIpcHandlers();
+  installStartupErrorIpcHandlers();
 
   refreshApplicationMenu();
   await loadLoadingView();
@@ -2289,13 +2391,4 @@ async function runDesktopApp(): Promise<void> {
   }
 }
 
-void runDesktopApp().catch((error) => {
-  const message =
-    error instanceof Error ? (error.stack ?? error.message) : String(error);
-  process.stderr.write(`${message}\n`);
-  void loadStartupError({
-    details: message,
-    logs: "",
-    title: "Could not open bb",
-  });
-});
+void runDesktopApp().catch(reportUnexpectedStartupFailure);

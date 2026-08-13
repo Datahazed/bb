@@ -61,6 +61,10 @@ import {
   type BbDesktopSpellcheckApi,
 } from "./desktop-spellcheck-contract.js";
 import { resolveBbDesktopPlatform } from "./desktop-platform.js";
+import {
+  BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL,
+  STARTUP_ERROR_ACTIONS,
+} from "./startup-error-ipc.js";
 
 function getDesktopVersion(version: string | undefined): string {
   if (version === undefined || version.length === 0) {
@@ -425,6 +429,21 @@ ipcRenderer.on(
     }
   },
 );
+
+// The startup error view has no scripts of its own (CSP default-src 'none'), so
+// the preload wires its recovery buttons from the isolated world. This channel
+// stays off the main world on purpose: a loaded page must not switch servers.
+window.addEventListener("DOMContentLoaded", () => {
+  for (const action of STARTUP_ERROR_ACTIONS) {
+    document
+      .querySelector<HTMLButtonElement>(
+        `button[data-startup-error-action="${action}"]`,
+      )
+      ?.addEventListener("click", () => {
+        ipcRenderer.send(BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL, { action });
+      });
+  }
+});
 
 void invokeDesktopInfo(BB_DESKTOP_GET_INFO_CHANNEL);
 void invokeDesktopWindowState();

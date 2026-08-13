@@ -39,6 +39,11 @@ import {
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "../src/desktop-window-command-ipc.js";
 import { BB_DESKTOP_SPELLCHECK_GLOBAL_NAME } from "../src/desktop-spellcheck-contract.js";
+import {
+  BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL,
+  STARTUP_ERROR_ACTIONS,
+  type StartupErrorAction,
+} from "../src/startup-error-ipc.js";
 
 const electronMock = vi.hoisted(() => {
   interface IpcRendererEvent {}
@@ -158,9 +163,81 @@ interface EmitIpcPayloadArgs {
   payload: unknown;
 }
 
+interface PreloadDomStub {
+  /** Runs the click listener the preload attached to a rendered button. */
+  clickButton(action: StartupErrorAction): void;
+  /** Selectors the preload looked for, in the order it looked for them. */
+  querySelectors: string[];
+  /** Fires DOMContentLoaded, the point at which the page markup exists. */
+  ready(): void;
+}
+
+/**
+ * Give the preload the DOM globals an Electron renderer would provide.
+ *
+ * The preload wires the startup error buttons from the isolated world, so a
+ * plain Node test needs a `window` to listen on and a `document` to query.
+ */
+function installPreloadDomStub(): PreloadDomStub {
+  const clickListeners = new Map<string, () => void>();
+  const querySelectors: string[] = [];
+  const readyListeners: Array<() => void> = [];
+  const documentStub = {
+    querySelector(selector: string): unknown {
+      querySelectors.push(selector);
+      const action = STARTUP_ERROR_ACTIONS.find(
+        (candidate) =>
+          selector === `button[data-startup-error-action="${candidate}"]`,
+      );
+      if (action === undefined) {
+        return null;
+      }
+      return {
+        addEventListener(_type: string, listener: () => void): void {
+          clickListeners.set(action, listener);
+        },
+      };
+    },
+  };
+  const windowStub = {
+    addEventListener(type: string, listener: () => void): void {
+      if (type === "DOMContentLoaded") {
+        readyListeners.push(listener);
+      }
+    },
+  };
+  Object.assign(globalThis, { document: documentStub, window: windowStub });
+
+  return {
+    clickButton(action: StartupErrorAction): void {
+      const listener = clickListeners.get(action);
+      if (listener === undefined) {
+        throw new Error(`Expected the preload to wire the ${action} button.`);
+      }
+      listener();
+    },
+    querySelectors,
+    ready(): void {
+      for (const listener of readyListeners) {
+        listener();
+      }
+    },
+  };
+}
+
+let preloadDom: PreloadDomStub | null = null;
+
+function requirePreloadDom(): PreloadDomStub {
+  if (preloadDom === null) {
+    throw new Error("Expected the preload DOM stub to be installed.");
+  }
+  return preloadDom;
+}
+
 async function loadPreload(): Promise<BbDesktopApi> {
   electronMock.reset();
   vi.resetModules();
+  preloadDom = installPreloadDomStub();
   process.env.BB_DESKTOP_VERSION = "0.0.0-test";
   await import("../src/preload.js");
   const api = electronMock.exposedApi;
@@ -481,5 +558,37 @@ describe("desktop preload browser API", () => {
       channel: BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
       payload: false,
     });
+  });
+
+  // The startup error screen is the only way out of an unreachable server, and
+  // its buttons carry no scripts. Without this wiring they are decoration.
+  it("forwards startup error recovery clicks to the main process", async () => {
+    await loadPreload();
+    const dom = requirePreloadDom();
+
+    dom.ready();
+
+    expect(dom.querySelectors).toEqual([
+      'button[data-startup-error-action="retry"]',
+      'button[data-startup-error-action="use-this-mac"]',
+    ]);
+
+    dom.clickButton("use-this-mac");
+    dom.clickButton("retry");
+
+    expect(
+      electronMock.sendCalls.filter(
+        (call) => call.channel === BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL,
+      ),
+    ).toEqual([
+      {
+        channel: BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL,
+        payload: { action: "use-this-mac" },
+      },
+      {
+        channel: BB_DESKTOP_STARTUP_ERROR_ACTION_CHANNEL,
+        payload: { action: "retry" },
+      },
+    ]);
   });
 });

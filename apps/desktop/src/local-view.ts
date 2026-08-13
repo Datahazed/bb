@@ -1,5 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 import { escapeHtmlText } from "@bb/domain";
+import { BUILTIN_SERVER_NAME } from "./server-target.js";
+import type { StartupErrorAction } from "./startup-error-ipc.js";
 
 export type LocalViewModel =
   | InfoViewModel
@@ -19,6 +21,8 @@ export interface InfoViewModel {
 }
 
 export interface StartupErrorViewModel {
+  /** Recovery buttons. Empty when the failure has no action the app can take. */
+  actions: StartupErrorAction[];
   details: string;
   kind: "error";
   logText: string;
@@ -52,6 +56,33 @@ function renderInfoView(viewModel: InfoViewModel): string {
   `;
 }
 
+// "Use This Mac" names the same target as the Server menu entry, so the label
+// follows that one constant.
+const STARTUP_ERROR_ACTION_LABELS: Record<StartupErrorAction, string> = {
+  retry: "Retry",
+  "use-this-mac": `Use ${BUILTIN_SERVER_NAME}`,
+};
+
+// The view carries no scripts of its own (CSP default-src 'none'). The window
+// preload finds these buttons by their data attribute and sends the click to
+// the main process.
+function renderErrorActions(actions: StartupErrorAction[]): string {
+  if (actions.length === 0) {
+    return "";
+  }
+  const buttons = actions
+    .map(
+      (action) =>
+        `<button type="button" data-startup-error-action="${action}">${escapeHtmlText(
+          STARTUP_ERROR_ACTION_LABELS[action],
+        )}</button>`,
+    )
+    .join("\n        ");
+  return `<div class="actions">
+        ${buttons}
+      </div>`;
+}
+
 function renderErrorView(viewModel: StartupErrorViewModel): string {
   const logText = formatPlainLogText(viewModel.logText);
   const logs =
@@ -60,6 +91,7 @@ function renderErrorView(viewModel: StartupErrorViewModel): string {
     <main class="shell shell-error">
       <h1>${escapeHtmlText(viewModel.title)}</h1>
       <p>${escapeHtmlText(viewModel.details)}</p>
+      ${renderErrorActions(viewModel.actions)}
       ${logs}
     </main>
   `;
@@ -145,6 +177,28 @@ function renderLocalView(viewModel: LocalViewModel): string {
       font-size: 14px;
       line-height: 1.5;
       margin: 0;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 18px 0 0;
+    }
+
+    button {
+      background: color-mix(in srgb, CanvasText 8%, Canvas);
+      border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+      border-radius: 6px;
+      color: CanvasText;
+      font-size: 13px;
+      padding: 5px 14px;
+    }
+
+    button[data-startup-error-action="retry"] {
+      background: AccentColor;
+      border-color: AccentColor;
+      color: AccentColorText;
     }
 
     pre {

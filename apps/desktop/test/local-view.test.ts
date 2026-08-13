@@ -24,6 +24,7 @@ const localViewTestCases: LocalViewTestCase[] = [
   {
     label: "error",
     viewModel: {
+      actions: [],
       details: "The local service failed to start.",
       kind: "error",
       logText: "Failed to bind port",
@@ -70,6 +71,7 @@ describe("local desktop views", () => {
   it("renders startup error logs without terminal control sequences", () => {
     const html = decodeLocalViewHtml({
       viewModel: {
+        actions: [],
         details: "The local service failed to start.",
         kind: "error",
         logText:
@@ -84,5 +86,42 @@ describe("local desktop views", () => {
     expect(html).toContain("Error: listen EADDRINUSE");
     expect(html).not.toContain("\x1b[");
     expect(html).not.toContain("\r");
+  });
+
+  // The window preload finds these buttons by this exact attribute. A rename
+  // here would leave an unreachable server on a screen with dead controls.
+  it("renders the recovery buttons the window preload wires up", () => {
+    const html = decodeLocalViewHtml({
+      viewModel: {
+        actions: ["retry", "use-this-mac"],
+        details: "bb could not reach the server at http://host.example:38886.",
+        kind: "error",
+        logText: "",
+        title: "Could not reach this bb server",
+      },
+    });
+
+    expect(html).toContain(
+      '<button type="button" data-startup-error-action="retry">Retry</button>',
+    );
+    expect(html).toContain(
+      '<button type="button" data-startup-error-action="use-this-mac">Use This Mac</button>',
+    );
+    expect(html).toContain("http://host.example:38886");
+  });
+
+  it("renders no action row for a failure with no recovery action", () => {
+    const html = decodeLocalViewHtml({
+      viewModel: {
+        actions: [],
+        details: "Port 38886 is already in use.",
+        kind: "error",
+        logText: "",
+        title: "Port conflict",
+      },
+    });
+
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain('<div class="actions">');
   });
 });
