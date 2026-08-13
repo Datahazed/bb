@@ -21,8 +21,11 @@ import {
   threadQueuedMessagesQueryKey,
   threadSearchQueryKey,
   threadTimelineQueryKey,
+  threadTimelineTurnSummaryDetailsQueryKey,
+  systemConfigQueryKey,
 } from "./queries/query-keys";
 import {
+  invalidateGeneralSettingsDependencies,
   invalidateRealtimeQueriesAfterServerReconnect,
   invalidateRealtimeQueriesFetchedBeforeInitialConnect,
 } from "./cache-owners/system-cache-effects";
@@ -190,6 +193,38 @@ describe("system cache effects", () => {
     );
   });
 
+  // `showAllAssistantMessages` changes which assistant rows a finished turn
+  // keeps, and the minimap reads the same projection as the timeline. A write
+  // that refreshed only the timeline would leave the two disagreeing.
+  it("invalidates the timeline and the outline after a General settings write", () => {
+    const queryClient = createCacheEffectQueryClient();
+    const configKey = systemConfigQueryKey();
+    const timelineKey = threadTimelineQueryKey("thread-1");
+    const conversationOutlineKey =
+      threadConversationOutlineQueryKey("thread-1");
+    const turnSummaryDetailsKey = threadTimelineTurnSummaryDetailsQueryKey({
+      sourceSeqEnd: 4,
+      sourceSeqStart: 2,
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    queryClient.setQueryData(configKey, { generalSettings: {} });
+    queryClient.setQueryData(timelineKey, { rows: [] });
+    queryClient.setQueryData(conversationOutlineKey, { items: [] });
+    queryClient.setQueryData(turnSummaryDetailsKey, { rows: [] });
+
+    invalidateGeneralSettingsDependencies({ queryClient });
+
+    expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+    expect(
+      queryClient.getQueryState(conversationOutlineKey)?.isInvalidated,
+    ).toBe(true);
+    expect(
+      queryClient.getQueryState(turnSummaryDetailsKey)?.isInvalidated,
+    ).toBe(true);
+  });
+
   // A bb self-update restarts the server, which is what the reconnect signals.
   // Without this the app would keep advertising the update it just applied
   // until the tab reloads: the version answer is cached for an hour and never
@@ -316,9 +351,7 @@ describe("system cache effects", () => {
     invalidateRealtimeQueriesAfterServerReconnect({ queryClient });
 
     // The TOC has an observer, so reconnect invalidation refetches it.
-    await vi.waitFor(() =>
-      expect(diffFilesQueryFn).toHaveBeenCalledTimes(1),
-    );
+    await vi.waitFor(() => expect(diffFilesQueryFn).toHaveBeenCalledTimes(1));
     // The observer-less patch entry is evicted so a stale patch can't survive
     // the reconnect.
     expect(queryClient.getQueryData(diffPatchKey)).toBeUndefined();

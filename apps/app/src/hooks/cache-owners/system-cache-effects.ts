@@ -128,7 +128,12 @@ export function invalidateSystemExecutionOptions({
   });
 }
 
-/** Refresh settings and timeline projections after a General settings write. */
+/**
+ * Refresh settings and timeline projections after a General settings write.
+ * The conversation outline belongs here too: `showAllAssistantMessages` selects
+ * which assistant rows a finished turn keeps, so the minimap would otherwise
+ * disagree with the timeline until its own refetch.
+ */
 export function invalidateGeneralSettingsDependencies({
   queryClient,
 }: QueryClientArg): void {
@@ -137,6 +142,7 @@ export function invalidateGeneralSettingsDependencies({
     queryKeys: [
       systemConfigQueryKey(),
       allThreadTimelineQueryKeyPrefix(),
+      allThreadConversationOutlineQueryKeyPrefix(),
       allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(),
     ],
   });
