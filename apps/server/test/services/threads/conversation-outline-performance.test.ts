@@ -150,4 +150,89 @@ describe("thread conversation outline performance", () => {
     ]);
     db.$client.close();
   });
+
+  it("lists every assistant block of a long text and tool alternation", () => {
+    const { db, thread } = setup();
+    const blockCount = 40;
+    const events: Parameters<typeof insertEvents>[2] = [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("turn-1"),
+        providerThreadId: "provider-thread-1",
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({}),
+      },
+    ];
+    for (let block = 0; block < blockCount; block += 1) {
+      events.push({
+        threadId: thread.id,
+        sequence: events.length + 1,
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        providerThreadId: "provider-thread-1",
+        itemId: `message-${block}`,
+        itemKind: "agentMessage",
+        data: JSON.stringify({
+          item: {
+            id: `message-${block}`,
+            type: "agentMessage",
+            text: `Step ${block}`,
+          },
+        }),
+      });
+      events.push({
+        threadId: thread.id,
+        sequence: events.length + 1,
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        providerThreadId: "provider-thread-1",
+        itemId: `command-${block}`,
+        itemKind: "commandExecution",
+        data: JSON.stringify({
+          item: {
+            id: `command-${block}`,
+            type: "commandExecution",
+            command: "printf step",
+            cwd: "/tmp/test",
+            status: "completed",
+            approvalStatus: null,
+            aggregatedOutput: "",
+            exitCode: 0,
+          },
+        }),
+      });
+    }
+    events.push({
+      threadId: thread.id,
+      sequence: events.length + 1,
+      type: "turn/completed",
+      scope: turnScope("turn-1"),
+      providerThreadId: "provider-thread-1",
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({ status: "completed" }),
+    });
+    insertEvents(db, noopNotifier, events);
+
+    const outline = buildThreadConversationOutline(db, thread, {
+      maxSeq: events.length,
+    });
+
+    // The outline mirrors the visible conversation rows, so one tool-heavy turn
+    // contributes one item per assistant block.
+    expect(outline.items).toHaveLength(blockCount);
+    expect(outline.items[0]).toEqual(
+      expect.objectContaining({ role: "assistant", preview: "Step 0" }),
+    );
+    expect(outline.items[blockCount - 1]).toEqual(
+      expect.objectContaining({
+        role: "assistant",
+        preview: `Step ${blockCount - 1}`,
+      }),
+    );
+    db.$client.close();
+  });
 });

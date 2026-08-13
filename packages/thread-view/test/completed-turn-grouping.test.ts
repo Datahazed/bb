@@ -80,15 +80,6 @@ function userMessage(args: UserMessageArgs): EventProjectionUserMessage {
   };
 }
 
-function legacyUserMessage(
-  args: MessageBaseArgs,
-): EventProjectionAssistantTextMessage {
-  return {
-    ...assistantMessage(args),
-    isLegacyUserMessage: true,
-  };
-}
-
 function compactionMessage(
   args: MessageBaseArgs,
 ): EventProjectionOperationMessage {
@@ -297,11 +288,11 @@ describe("groupCompletedTurnMessages", () => {
     ]);
   });
 
-  it("segments summary groups around converted legacy user messages", () => {
+  it("segments summary groups around an assistant message between tool activity", () => {
     const turn = completedTurn(
       [
         commandMessage({ id: "command-before", seq: 1 }),
-        legacyUserMessage({ id: "legacy-user-message", seq: 2 }),
+        assistantMessage({ id: "assistant-between", seq: 2 }),
         commandMessage({ id: "command-after", seq: 3 }),
       ],
       undefined,
@@ -319,7 +310,7 @@ describe("groupCompletedTurnMessages", () => {
       {
         kind: "ungrouped-message",
         message: {
-          id: "legacy-user-message",
+          id: "assistant-between",
         },
       },
       {

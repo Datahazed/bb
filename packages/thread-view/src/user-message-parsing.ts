@@ -539,6 +539,5 @@ export function parseLegacyUserMessage(
     scope: decoded.scope,
     text,
     status: "completed",
-    isLegacyUserMessage: true,
   };
 }

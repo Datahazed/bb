@@ -163,6 +163,51 @@ describe("completed turn summary rendering", () => {
     expect(rowSignatures(turnRow.children ?? [])).toEqual(["work:command"]);
   });
 
+  it("keeps both text blocks visible when a turn has no tool activity", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "explain the two options",
+    });
+
+    const timeline = renderCompletedTimeline({
+      events: [
+        request,
+        event.turnStarted(),
+        event.inputAccepted({
+          clientRequestId: request.data.requestId,
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-first",
+          text: "Option A keeps the daemon simple.",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-second",
+          text: "Option B needs a protocol bump.",
+        }),
+        event.turnCompleted(),
+      ],
+    });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "conversation:user",
+      "conversation:assistant",
+      "conversation:assistant",
+    ]);
+    expect(turnRows(timeline.rows)).toHaveLength(0);
+    expect(
+      timeline.rows
+        .filter(
+          (row): row is Extract<TimelineRow, { kind: "conversation" }> =>
+            row.kind === "conversation" && row.role === "assistant",
+        )
+        .map((row) => row.text),
+    ).toEqual([
+      "Option A keeps the daemon simple.",
+      "Option B needs a protocol bump.",
+    ]);
+  });
+
   it("keeps turn-scoped environment directory update operations inside the completed turn summary", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const request = event.clientTurnRequested({
