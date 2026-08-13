@@ -247,26 +247,19 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   setVisible(request): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL, request);
   },
-  async experimental_inspectPage(request, options) {
-    const signal = options?.signal;
-    if (signal?.aborted === true) return null;
-    const cancel = (): void => {
-      ipcRenderer.send(
-        BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_INSPECTION_CHANNEL,
-        { tabId: request.tabId },
-      );
-    };
-    signal?.addEventListener("abort", cancel, { once: true });
-    try {
-      const payload: unknown = await ipcRenderer.invoke(
-        BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_CHANNEL,
-        request,
-      );
-      if (payload === null) return null;
-      return bbDesktopBrowserInspectionResultSchema.parse(payload);
-    } finally {
-      signal?.removeEventListener("abort", cancel);
-    }
+  async experimental_inspectPage(request) {
+    const payload: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_CHANNEL,
+      request,
+    );
+    if (payload === null) return null;
+    return bbDesktopBrowserInspectionResultSchema.parse(payload);
+  },
+  experimental_cancelPageInspection(tabId, requestId): void {
+    ipcRenderer.send(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_INSPECTION_CHANNEL,
+      { tabId, requestId },
+    );
   },
   onState(listener): BbDesktopBrowserUnsubscribe {
     browserStateListeners.add(listener);

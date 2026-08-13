@@ -318,6 +318,20 @@ describe("useComposer", () => {
           >
             {label}-bad-mention
           </button>
+          <button
+            type="button"
+            onClick={() =>
+              composer.experimental_addAttachment?.({
+                type: "localImage",
+                path: "uploads/browser-context.png",
+                name: "browser-context.png",
+                mimeType: "image/png",
+                sizeBytes: 128,
+              })
+            }
+          >
+            {label}-attach
+          </button>
         </div>
       );
     }
@@ -469,17 +483,40 @@ describe("useComposer", () => {
       JSON.parse(screen.getByTestId("draft-attachments").textContent ?? "[]"),
     ).toHaveLength(1);
 
+    fireEvent.click(screen.getByText("structured-attach"));
+    fireEvent.click(screen.getByText("structured-attach"));
+    expect(screen.getByTestId("draft-text").textContent).toContain(
+      "picked text",
+    );
+    expect(
+      JSON.parse(screen.getByTestId("draft-attachments").textContent ?? "[]"),
+    ).toEqual([
+      {
+        type: "localFile",
+        path: "uploads/spec.md",
+        name: "spec.md",
+        sizeBytes: 42,
+      },
+      {
+        type: "localImage",
+        path: "uploads/browser-context.png",
+        name: "browser-context.png",
+        mimeType: "image/png",
+        sizeBytes: 128,
+      },
+    ]);
+
     fireEvent.click(screen.getByText("structured-replace"));
     expect(screen.getByTestId("draft-mentions").textContent).toBe("[]");
     expect(
       JSON.parse(screen.getByTestId("draft-attachments").textContent ?? "[]"),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
 
     fireEvent.click(screen.getByText("structured-clear"));
     expect(screen.getByTestId("draft-text").textContent).toBe("");
     expect(
       JSON.parse(screen.getByTestId("draft-attachments").textContent ?? "[]"),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
 
   it("binds composer writes to the active queued-message editor", () => {

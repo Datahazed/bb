@@ -102,6 +102,7 @@ export function registerDesktopBrowserIpc(
       manager.cancelExperimentalInspection({
         hostWindow,
         tabId: request.data.tabId,
+        requestId: request.data.requestId,
       });
     },
   );

@@ -250,7 +250,8 @@ const bbDesktopBrowserInspectionIdentitySchema = z
 export const bbDesktopBrowserInspectionRequestSchema = z
   .object({
     tabId: z.string().min(1).max(256),
-    kind: z.enum(["element", "region"]),
+    requestId: z.string().min(1).max(256),
+    kind: z.enum(["element", "region", "auto"]),
     identity: bbDesktopBrowserInspectionIdentitySchema,
   })
   .strict();
@@ -259,7 +260,10 @@ export type BbDesktopBrowserInspectionRequest = z.infer<
 >;
 
 export const bbDesktopBrowserInspectionCancelRequestSchema = z
-  .object({ tabId: z.string().min(1).max(256) })
+  .object({
+    tabId: z.string().min(1).max(256),
+    requestId: z.string().min(1).max(256),
+  })
   .strict();
 
 const bbDesktopBrowserInspectionPageSchema = z
@@ -488,14 +492,12 @@ export interface BbDesktopBrowserApi {
   stop(tabId: string): void;
   setBounds(request: BbDesktopBrowserSetBoundsRequest): void;
   setVisible(request: BbDesktopBrowserSetVisibleRequest): void;
-  /**
-   * Optional for desktop/SPA version skew. `null` means cancellation; failures
-   * reject. The signal remains preload-local and is never cloned into IPC.
-   */
+  /** Optional for desktop/SPA version skew. `null` means cancellation. */
   experimental_inspectPage?(
     request: BbDesktopBrowserInspectionRequest,
-    options?: { signal?: AbortSignal },
   ): Promise<BbDesktopBrowserInspectionResult | null>;
+  /** Cancel the active experimental inspection for `tabId`, if any. */
+  experimental_cancelPageInspection?(tabId: string, requestId: string): void;
   /** Subscribe to navigation-state pushes for every view in this window. */
   onState(listener: BbDesktopBrowserStateHandler): BbDesktopBrowserUnsubscribe;
   /** Subscribe to popup requests that should open as a new in-panel browser tab. */

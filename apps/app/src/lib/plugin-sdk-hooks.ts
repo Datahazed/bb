@@ -736,6 +736,33 @@ export function useComposer(): PluginComposerApi {
     [focusActiveComposer, getCurrent, pluginId, setDraft],
   );
 
+  const experimental_addAttachment = useCallback(
+    (
+      attachment: Parameters<
+        NonNullable<PluginComposerApi["experimental_addAttachment"]>
+      >[0],
+    ) => {
+      if (
+        attachment.path.length === 0 ||
+        attachment.path.startsWith("/") ||
+        attachment.path.includes("\\") ||
+        attachment.path.split("/").includes("..") ||
+        /^[a-z][a-z0-9+.-]*:/iu.test(attachment.path) ||
+        !Number.isFinite(attachment.sizeBytes) ||
+        attachment.sizeBytes < 0
+      ) {
+        console.warn(
+          `[plugin:${pluginId}] useComposer().experimental_addAttachment: invalid project attachment`,
+        );
+        return;
+      }
+      const current = getCurrent();
+      const next = appendQuoteAndAttachmentsToDraft(current, "", [attachment]);
+      if (next !== current) setDraft(next);
+    },
+    [getCurrent, pluginId, setDraft],
+  );
+
   const focus = focusActiveComposer;
   const composerText = composerHost?.draft.text ?? routeDraft.text;
 
@@ -755,6 +782,7 @@ export function useComposer(): PluginComposerApi {
       setThreadRowStatus: legacySetThreadRowStatus,
       addQuote,
       insertMention,
+      experimental_addAttachment,
       focus,
     }),
     [
@@ -762,6 +790,7 @@ export function useComposer(): PluginComposerApi {
       clear,
       composerScope,
       composerText,
+      experimental_addAttachment,
       focus,
       insertMention,
       projectId,

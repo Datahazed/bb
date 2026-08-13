@@ -42,6 +42,7 @@ interface BrowserChromeHarness {
   goBack: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   setVisible: ReturnType<typeof vi.fn>;
+  cancelInspection: ReturnType<typeof vi.fn>;
 }
 
 function createBrowserChromeHarness(
@@ -51,12 +52,18 @@ function createBrowserChromeHarness(
   const goBack = vi.fn();
   const stop = vi.fn();
   const setVisible = vi.fn();
+  const cancelInspection = vi.fn();
   const api: BbDesktopBrowserApi = {
     ...createNoopDesktopBrowserApi(),
     goBack,
     stop,
     setVisible,
-    ...(inspectPage ? { experimental_inspectPage: inspectPage } : {}),
+    ...(inspectPage
+      ? {
+          experimental_inspectPage: inspectPage,
+          experimental_cancelPageInspection: cancelInspection,
+        }
+      : {}),
     onState(listener) {
       stateListeners.add(listener);
       return () => stateListeners.delete(listener);
@@ -70,6 +77,7 @@ function createBrowserChromeHarness(
     goBack,
     stop,
     setVisible,
+    cancelInspection,
   };
 }
 
@@ -231,14 +239,58 @@ describe("BrowserTabContent persistent navigation", () => {
         { signal: controller.signal },
       ),
     ).resolves.toEqual(result);
-    expect(inspectPage).toHaveBeenCalledWith(
-      {
-        tabId: "browser:test",
-        kind: "region",
-        identity: { threadId: "thread-1", projectId: "project-1" },
-      },
-      { signal: expect.any(AbortSignal) },
+    expect(inspectPage).toHaveBeenCalledWith({
+      tabId: "browser:test",
+      requestId: expect.any(String),
+      kind: "region",
+      identity: { threadId: "thread-1", projectId: "project-1" },
+    });
+  });
+
+  it("keeps AbortSignal renderer-local and cancels through serializable IPC", async () => {
+    let slotProps: PluginBrowserActionProps | null = null;
+    let finishInspection: ((value: null) => void) | undefined;
+    const inspectPage = vi.fn(
+      () =>
+        new Promise<null>((resolve) => {
+          finishInspection = resolve;
+        }),
     );
+    setPluginSlotRegistrations(
+      "context",
+      registrationSet([
+        {
+          id: "inspect",
+          title: "Inspect page",
+          component: (props) => {
+            slotProps = props;
+            return <button type="button">Inspect page</button>;
+          },
+        },
+      ]),
+    );
+    const harness = createBrowserChromeHarness(inspectPage);
+    renderBrowserChrome(harness, "https://example.com/docs");
+
+    const controller = new AbortController();
+    const pending = slotProps!.experimental_inspectPage(
+      { kind: "element" },
+      { signal: controller.signal },
+    );
+    controller.abort();
+
+    expect(inspectPage).toHaveBeenCalledWith({
+      tabId: "browser:test",
+      requestId: expect.any(String),
+      kind: "element",
+      identity: { threadId: "thread-1", projectId: "project-1" },
+    });
+    expect(harness.cancelInspection).toHaveBeenCalledWith(
+      "browser:test",
+      expect.any(String),
+    );
+    finishInspection?.(null);
+    await expect(pending).resolves.toBeNull();
   });
 
   it("rejects clearly when the desktop inspection capability is missing", async () => {

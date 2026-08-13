@@ -1156,6 +1156,15 @@ export interface PluginComposerMention {
   label: string;
 }
 
+/** A project attachment already uploaded through a plugin backend. */
+export interface ExperimentalPluginComposerAttachment {
+  type: "localImage" | "localFile";
+  path: string;
+  name: string;
+  mimeType?: string;
+  sizeBytes: number;
+}
+
 /**
  * Programmatic access to the chat composer draft — the same shared draft the
  * built-in "Add to chat" affordances (file preview, diff, terminal selections)
@@ -1206,6 +1215,13 @@ export interface PluginComposerApi {
    * content should be fetched fresh when the message is sent.
    */
   insertMention(mention: PluginComposerMention): void;
+  /**
+   * Add an already-uploaded project attachment without changing draft text.
+   * Duplicate paths are ignored. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_addAttachment?(
+    attachment: ExperimentalPluginComposerAttachment,
+  ): void;
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
 }

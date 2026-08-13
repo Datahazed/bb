@@ -5,6 +5,24 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `useComposer().experimental_addAttachment` (`@bb/plugin-sdk/app`)
+
+**What it does.** Adds one project attachment that a plugin backend already
+uploaded to the active composer draft. It preserves text and mentions, ignores
+duplicate paths, and uses the same preview, removal, persistence, send, and
+queue behavior as files the user attached directly.
+
+**Audit before stabilizing.**
+
+1. Confirm plugins cannot reference paths outside the active project.
+2. Decide whether upload plus draft insertion should become one host-owned
+   transaction rather than two plugin steps.
+3. Exercise thread, queued-message, side-chat, and new-thread draft scopes.
+4. Confirm reload, removal, duplicate insertion, and failed sends preserve the
+   same attachment identity and user recovery behavior.
+5. Decide whether plugin-created attachments need visible provenance in the
+   prompt box.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React

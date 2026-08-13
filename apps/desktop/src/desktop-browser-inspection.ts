@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   BB_DESKTOP_BROWSER_INSPECTION_MAX_PNG_BYTES,
   bbDesktopBrowserInspectionPageResultSchema,
@@ -11,7 +10,7 @@ import {
 const INSPECTION_DEADLINE_MS = 60_000;
 interface PageControllerInput {
   requestId: string;
-  kind: "element" | "region";
+  kind: "element" | "region" | "auto";
 }
 
 interface PageControllerRegistry {
@@ -340,7 +339,15 @@ function desktopBrowserInspectionPageController(
       .map(descriptor);
   };
 
-  rootWindow[registryKey]?.cancel();
+  const previousController = rootWindow[registryKey];
+  if (typeof previousController?.cancel === "function") {
+    try {
+      previousController.cancel();
+    } catch {
+      // Page globals are untrusted. A poisoned prior registry must not prevent
+      // installing a fresh controller whose own cleanup remains idempotent.
+    }
+  }
   const root = document.createElement("div");
   root.setAttribute(OVERLAY_ATTRIBUTE, "true");
   root.style.cssText =
@@ -361,6 +368,10 @@ function desktopBrowserInspectionPageController(
     let dragging = false;
     let dragStart: { x: number; y: number } | null = null;
     const listeners: Array<[EventTarget, string, EventListener]> = [];
+    const previousCursor =
+      document.documentElement.style.getPropertyValue("cursor");
+    const previousCursorPriority =
+      document.documentElement.style.getPropertyPriority("cursor");
     const listen = (
       target: EventTarget,
       name: string,
@@ -373,7 +384,15 @@ function desktopBrowserInspectionPageController(
       for (const [target, name, listener] of listeners.splice(0)) {
         target.removeEventListener(name, listener, { capture: true });
       }
-      document.documentElement.style.removeProperty("cursor");
+      if (previousCursor.length === 0) {
+        document.documentElement.style.removeProperty("cursor");
+      } else {
+        document.documentElement.style.setProperty(
+          "cursor",
+          previousCursor,
+          previousCursorPriority,
+        );
+      }
     };
     const cancel = (): void => {
       stopInteractions();
@@ -466,6 +485,19 @@ function desktopBrowserInspectionPageController(
       dragStart = { x: event.clientX, y: event.clientY };
     }) as EventListener);
     listen(document, "pointermove", ((event: PointerEvent) => {
+      if (input.kind === "auto" && (!dragging || dragStart === null)) {
+        const target = document.elementFromPoint(
+          event.clientX,
+          event.clientY,
+        );
+        if (target === null || target.hasAttribute(OVERLAY_ATTRIBUTE)) return;
+        const rect = target.getBoundingClientRect();
+        draw(
+          rectValue(rect),
+          `${target.localName}${target.id ? `#${target.id}` : ""}`,
+        );
+        return;
+      }
       if (!dragging || dragStart === null) return;
       const left = Math.max(0, Math.min(dragStart.x, event.clientX));
       const top = Math.max(0, Math.min(dragStart.y, event.clientY));
@@ -500,8 +532,24 @@ function desktopBrowserInspectionPageController(
       const rect = new DOMRect(left, top, right - left, bottom - top);
       dragStart = null;
       if (rect.width < 8 || rect.height < 8) {
-        outline.style.display = "none";
-        label.style.display = "none";
+        if (input.kind !== "auto") {
+          outline.style.display = "none";
+          label.style.display = "none";
+          return;
+        }
+        const target = document.elementFromPoint(event.clientX, event.clientY);
+        if (target === null || target.hasAttribute(OVERLAY_ATTRIBUTE)) return;
+        const targetRect = target.getBoundingClientRect();
+        draw(rectValue(targetRect), selectorFor(target));
+        settle({
+          version: 1,
+          kind: "element",
+          page: pageValue(),
+          rect: rectValue(targetRect),
+          deviceScaleFactor: window.devicePixelRatio,
+          element: elementValue(target),
+          region: null,
+        });
         return;
       }
       draw(rectValue(rect), "Marked region");
@@ -523,8 +571,16 @@ function desktopBrowserInspectionPageCancel(requestId: string): void {
   const rootWindow = window as typeof window & {
     [registryKey]?: PageControllerRegistry;
   };
-  if (rootWindow[registryKey]?.requestId === requestId) {
-    rootWindow[registryKey]?.cancel();
+  const controller = rootWindow[registryKey];
+  if (
+    controller?.requestId === requestId &&
+    typeof controller.cancel === "function"
+  ) {
+    try {
+      controller.cancel();
+    } catch {
+      // Page globals are untrusted; cancellation is best effort.
+    }
   }
 }
 
@@ -586,7 +642,7 @@ function pngDataUrl(image: DesktopBrowserInspectionImage): string {
 export function startDesktopBrowserInspection(
   args: StartDesktopBrowserInspectionArgs,
 ): DesktopBrowserInspectionSession {
-  const requestId = randomUUID();
+  const requestId = args.request.requestId;
   const initialUrl = args.webContents.getURL();
   let cancelResolve: ((value: null) => void) | null = null;
   let disposed = false;
@@ -627,7 +683,8 @@ export function startDesktopBrowserInspection(
       const pageResult: BbDesktopBrowserInspectionPageResult =
         bbDesktopBrowserInspectionPageResultSchema.parse(raw);
       if (
-        pageResult.kind !== args.request.kind ||
+        (args.request.kind !== "auto" &&
+          pageResult.kind !== args.request.kind) ||
         args.webContents.getURL() !== initialUrl
       ) {
         return null;

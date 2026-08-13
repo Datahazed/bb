@@ -227,6 +227,8 @@ describe("desktop preload browser API", () => {
     expect(Object.keys(api.browser).sort()).toEqual([
       "attach",
       "detach",
+      "experimental_cancelPageInspection",
+      "experimental_inspectPage",
       "goBack",
       "goForward",
       "navigate",

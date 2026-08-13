@@ -22,6 +22,7 @@ import {
   type PluginContentScriptDisposer,
   type PluginContentScriptRegistration,
   type PluginComposerApi,
+  type ExperimentalPluginComposerAttachment,
   type PluginComposerMention,
   type PluginComposerScope,
   type PluginComposerTextEffect,
@@ -134,6 +135,7 @@ export interface ComposerLog {
   inputLockCalls: boolean[];
   quotes: string[];
   mentions: PluginComposerMention[];
+  attachments: ExperimentalPluginComposerAttachment[];
   focusCount: number;
 }
 
@@ -1283,7 +1285,7 @@ export function renderSlot<
       : { kind: "new-thread", projectId });
 
   let composerText = options.composer?.text ?? "";
-  const composerAttachmentCount = options.composer?.attachmentCount ?? 0;
+  let composerAttachmentCount = options.composer?.attachmentCount ?? 0;
   let composerVersion = 0;
   const composerListeners = new Set<() => void>();
   const notifyComposerListeners = () => {
@@ -1311,6 +1313,7 @@ export function renderSlot<
     inputLockCalls: [],
     quotes: [],
     mentions: [],
+    attachments: [],
     focusCount: 0,
   };
   const composerOwnership = { active: true };
@@ -1364,6 +1367,15 @@ export function renderSlot<
         commitComposerText(`${composerText}${separator}${label} `);
         composerLog.mentions.push(mention);
         composerLog.focusCount += 1;
+      },
+      experimental_addAttachment(attachment) {
+        if (
+          !composerLog.attachments.some(({ path }) => path === attachment.path)
+        ) {
+          composerLog.attachments.push(attachment);
+          composerAttachmentCount += 1;
+          notifyComposerListeners();
+        }
       },
       focus() {
         composerLog.focusCount += 1;

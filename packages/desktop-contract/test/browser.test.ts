@@ -166,6 +166,7 @@ describe("experimental desktop browser inspection schemas", () => {
     const request = {
       tabId: "browser:a",
       kind: "element",
+      requestId: "inspection-1",
       identity: { threadId: "thr_1", projectId: "prj_1" },
     };
     expect(bbDesktopBrowserInspectionRequestSchema.parse(request)).toEqual(
@@ -177,6 +178,12 @@ describe("experimental desktop browser inspection schemas", () => {
         instruction: "page-controlled source must never enter execution",
       }).success,
     ).toBe(false);
+    expect(
+      bbDesktopBrowserInspectionRequestSchema.parse({
+        ...request,
+        kind: "auto",
+      }).kind,
+    ).toBe("auto");
   });
 
   it("accepts a bounded element result and rejects mismatched or oversized branches", () => {

@@ -169,7 +169,9 @@ export interface DesktopBrowserViewManager {
   experimentalInspectPage(
     args: HostScopedRequestArgs<BbDesktopBrowserInspectionRequest>,
   ): Promise<BbDesktopBrowserInspectionResult | null>;
-  cancelExperimentalInspection(args: HostScopedTabArgs): void;
+  cancelExperimentalInspection(
+    args: HostScopedTabArgs & { requestId: string },
+  ): void;
   /**
    * Hide every visible view owned by the window for the duration of a native
    * resize burst. During an interactive window resize the host chrome
@@ -808,11 +810,17 @@ export function createDesktopBrowserViewManager(
       if (
         entry === undefined ||
         entry.view.webContents.isDestroyed() ||
-        !entry.visible ||
         entry.view.webContents.getURL().length === 0
       ) {
         throw new Error("The Browser tab is not available for inspection");
       }
+      // Plugin menus suppress the native view and release that lease in the
+      // same event that starts selection. IPC can overtake React's visibility
+      // effect, so make the selected page interactive before installing its
+      // pointer controller. A later renderer declaration remains authoritative.
+      entry.visible = true;
+      applyEntryVisibility(entry, hostWindow);
+      entry.view.webContents.focus();
       cancelEntryInspection(entry);
       const session = startDesktopBrowserInspection({
         request,
@@ -827,8 +835,12 @@ export function createDesktopBrowserViewManager(
         }
       }
     },
-    cancelExperimentalInspection({ hostWindow, tabId }) {
-      withEntry({ hostWindow, tabId }, cancelEntryInspection);
+    cancelExperimentalInspection({ hostWindow, tabId, requestId }) {
+      withEntry({ hostWindow, tabId }, (entry) => {
+        if (entry.inspectionSession?.requestId === requestId) {
+          cancelEntryInspection(entry);
+        }
+      });
     },
     beginWindowResize(hostWindow) {
       if (isHostResizing(hostWindow)) {

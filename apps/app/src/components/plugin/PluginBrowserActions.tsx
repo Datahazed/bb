@@ -141,17 +141,24 @@ function useBrowserActionRuntime({
       if (inspect === undefined) throw createUnavailableInspectionError();
       ensureRegistered(ownershipRegistry);
       const { controller, unlink } = abortControllerFromSignal(options.signal);
+      if (controller.signal.aborted) {
+        unlink();
+        return null;
+      }
       controllersRef.current.add(controller);
+      const requestId = crypto.randomUUID();
+      const cancel = () =>
+        desktopBrowser.experimental_cancelPageInspection?.(tabId, requestId);
+      controller.signal.addEventListener("abort", cancel, { once: true });
       try {
-        return await inspect(
-          {
-            tabId,
-            kind: request.kind,
-            identity: { threadId, projectId },
-          },
-          { signal: controller.signal },
-        );
+        return await inspect({
+          tabId,
+          requestId,
+          kind: request.kind,
+          identity: { threadId, projectId },
+        });
       } finally {
+        controller.signal.removeEventListener("abort", cancel);
         unlink();
         controllersRef.current.delete(controller);
       }
@@ -172,7 +179,8 @@ function useBrowserActionRuntime({
     projectId,
     url,
     experimental_inspectionAvailable:
-      desktopBrowser.experimental_inspectPage !== undefined,
+      desktopBrowser.experimental_inspectPage !== undefined &&
+      desktopBrowser.experimental_cancelPageInspection !== undefined,
     experimental_inspectPage,
     experimental_setOverlayOpen,
   };
