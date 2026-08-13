@@ -140,31 +140,30 @@ Consumer (host-daemon, server)
   │
   └─ createAgentRuntime(options)
        │
-       ├─ AgentRuntime            Process lifecycle, JSON-RPC framing,
-       │   ├─ ensureProvider()    event routing, tool call dispatch
-       │   ├─ startThread()      Deduplicates concurrent provider starts.
-       │   ├─ runTurn()          Fails fast if provider has crashed.
+       ├─ AgentRuntime                 Thread policy, event projection,
+       │   ├─ ensureProvider()         tool routing, process selection
+       │   ├─ startThread()           Deduplicates concurrent provider starts.
+       │   ├─ runTurn()               Fails fast if provider has crashed.
        │   └─ shutdown()
        │
-       ├─ ProviderAdapter         Command building, event translation
-       │   ├─ buildCommand()      (one instance per provider process)
-       │   ├─ translateEvent()    Per-thread turn state for multi-thread.
-       │   └─ decodeToolCallRequest()
+       ├─ ProviderDriverConnection     Semantic provider operations
+       │   └─ LegacyAdapterConnection Compatibility for current adapters
+       │       ├─ command construction and request correlation
+       │       ├─ accepted-command/event translation
+       │       └─ tool/interaction request decoding
        │
-       └─ Bridge Process          SDK-specific child process
+       └─ Bridge Process               SDK-specific child process
            ├─ codex               spawns `codex app-server` directly
            ├─ claude-code         Node.js bridge → Claude Agent SDK
            └─ pi                  Node.js bridge → Pi coding agent SDK
 ```
 
-The runtime never interprets provider-specific wire content. Each adapter owns its translation between the runtime's `AdapterCommand` and the provider's JSON-RPC format.
+`AgentRuntime` depends on `ProviderDriverConnection`, not adapter command-building callbacks. Existing providers still run through `LegacyAdapterConnection`, which preserves the current child processes and newline-delimited JSON-RPC dialect while containing adapter command construction, response parsing, accepted-command synthesis, and event/request translation. This compatibility implementation is temporary; canonical process connections will use `@bb/provider-driver-contract` directly.
 
-### The two sanctioned adapter shapes
+### Current legacy adapter shapes
 
-A new provider picks one of two shapes; both are deliberate, and they are
-not meant to converge on a shared bridge skeleton (evaluated 2026-06: the
-genuinely shared plumbing between the claude-code and pi bridges is ~470
-lines whose extraction would cost more than it deletes):
+Built-in providers currently use one of two legacy shapes. Both remain
+unchanged behind `LegacyAdapterConnection` during the compatibility stage:
 
 1. **In-process protocol adapter** (codex). The provider ships its own
    long-running JSON-RPC server (`codex app-server`); the adapter spawns it
@@ -180,7 +179,9 @@ lines whose extraction would cost more than it deletes):
 
 Shared event-translation mechanics (turn/item id registries, error-category
 mapping, unhandled-event envelopes, command-output normalization) live in
-`src/shared/` and are consumed by all adapters.
+`src/shared/` and are consumed by all adapters. Each built-in can now migrate
+independently from its legacy adapter dialect to the canonical driver protocol
+without changing `AgentRuntime` or introducing another provider process.
 
 ## Dependencies
 

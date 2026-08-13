@@ -12,11 +12,8 @@ import type {
 } from "./provider-adapter.js";
 import { createProviderForId } from "./provider-registry.js";
 import { filterSkillRootsForProvider } from "./runtime-skill-roots.js";
-import {
-  ignoredJsonRpcResultSchema,
-  type PendingJsonRpcRequest,
-  sendJsonRpcRequest,
-} from "./runtime-json-rpc.js";
+import type { ProviderDriverConnection } from "./provider-driver/connection.js";
+import { LegacyAdapterConnection } from "./provider-driver/legacy-adapter-connection.js";
 import type { RuntimeProviderIdentityState } from "./runtime-thread-identity.js";
 import type {
   AgentRuntimeOptions,
@@ -25,12 +22,11 @@ import type {
 } from "./types.js";
 
 export interface RuntimeProviderProcess {
-  adapter: ProviderAdapter;
   child: ChildProcess;
+  connection: ProviderDriverConnection;
   expectedShutdownExpectations: number;
   identity: RuntimeProviderIdentityState;
   interactiveRequestScope: string;
-  pending: Map<string | number, PendingJsonRpcRequest>;
   processKey: string;
   providerId: string;
   stderrLineTail: Buffer;
@@ -177,51 +173,11 @@ export class RuntimeProviderProcessManager {
           );
         }
 
-        const initCmd = adapter.buildCommandPlan({ type: "initialize" });
-        if (initCmd.kind === "request") {
-          await sendJsonRpcRequest({
-            child: providerProcess.child,
-            message: initCmd,
-            pending: providerProcess.pending,
-            getNextId: this.args.getNextRequestId,
-            resultSchema: ignoredJsonRpcResultSchema,
-          });
-        }
-
-        for (const request of adapter.buildPostInitializeRequests?.() ?? []) {
-          try {
-            const result = await sendJsonRpcRequest({
-              child: providerProcess.child,
-              message: request.plan,
-              pending: providerProcess.pending,
-              getNextId: this.args.getNextRequestId,
-              resultSchema: ignoredJsonRpcResultSchema,
-            });
-            request.onResult(result);
-          } catch (error) {
-            if (request.required) throw error;
-          }
-        }
-
         const providerSkillRoots = filterSkillRootsForProvider({
           providerId: args.providerId,
           skillRoots: this.args.skillRoots,
         });
-        if (providerSkillRoots.length > 0) {
-          const skillRootsCmd = adapter.buildCommandPlan({
-            type: "skills/configure",
-            skillRoots: providerSkillRoots,
-          });
-          if (skillRootsCmd.kind === "request") {
-            await sendJsonRpcRequest({
-              child: providerProcess.child,
-              message: skillRootsCmd,
-              pending: providerProcess.pending,
-              getNextId: this.args.getNextRequestId,
-              resultSchema: ignoredJsonRpcResultSchema,
-            });
-          }
-        }
+        await providerProcess.connection.initialize(providerSkillRoots);
       } catch (startupError) {
         await this.cleanupFailedStartup({
           processKey: args.processKey,
@@ -301,10 +257,9 @@ export class RuntimeProviderProcessManager {
           providerProcess.child.kill("SIGTERM");
         }),
       );
-      for (const [, pending] of providerProcess.pending) {
-        pending.reject(new Error("Runtime shutting down"));
-      }
-      providerProcess.pending.clear();
+      providerProcess.connection.rejectPendingRequests(
+        new Error("Runtime shutting down"),
+      );
       this.args.onProviderIdentityWaitersInterrupted(providerProcess);
 
       for (const threadId of providerProcess.identity.threadIds) {
@@ -356,11 +311,14 @@ export class RuntimeProviderProcessManager {
 
     const providerProcess: RuntimeProviderProcess = {
       child,
-      adapter: args.adapter,
+      connection: new LegacyAdapterConnection({
+        adapter: args.adapter,
+        child,
+        getNextRequestId: this.args.getNextRequestId,
+      }),
       expectedShutdownExpectations: 0,
-      interactiveRequestScope: randomUUID(),
       identity: this.args.createProviderIdentityState(args.providerId),
-      pending: new Map(),
+      interactiveRequestScope: randomUUID(),
       processKey: args.processKey,
       providerId: args.providerId,
       stderrLineTail: Buffer.alloc(0),
@@ -425,10 +383,7 @@ export class RuntimeProviderProcessManager {
 
     this.processes.delete(args.processKey);
     args.providerProcess.expectedShutdownExpectations += 1;
-    for (const [, pending] of args.providerProcess.pending) {
-      pending.reject(args.startupError);
-    }
-    args.providerProcess.pending.clear();
+    args.providerProcess.connection.rejectPendingRequests(args.startupError);
     this.args.onProviderIdentityWaitersInterrupted(args.providerProcess);
 
     await this.terminateProviderProcess({
@@ -470,12 +425,9 @@ export class RuntimeProviderProcessManager {
     );
     this.processes.delete(args.providerProcess.processKey);
     const message = args.err.message;
-    for (const [, pending] of args.providerProcess.pending) {
-      pending.reject(
-        new Error(`Provider "${args.providerId}" failed to start: ${message}`),
-      );
-    }
-    args.providerProcess.pending.clear();
+    args.providerProcess.connection.rejectPendingRequests(
+      new Error(`Provider "${args.providerId}" failed to start: ${message}`),
+    );
     this.args.onProviderIdentityWaitersInterrupted(args.providerProcess);
 
     this.args.onProcessExit?.({
@@ -506,16 +458,13 @@ export class RuntimeProviderProcessManager {
     for (const threadId of threadIds) {
       this.args.onProviderThreadDetached(threadId, args.providerProcess);
     }
-    for (const [, pending] of args.providerProcess.pending) {
-      pending.reject(
-        new ProviderProcessExitedError({
-          providerId: args.providerId,
-          status: { code: args.code, signal: args.signal },
-          stderrTail: args.providerProcess.stderrTail,
-        }),
-      );
-    }
-    args.providerProcess.pending.clear();
+    args.providerProcess.connection.rejectPendingRequests(
+      new ProviderProcessExitedError({
+        providerId: args.providerId,
+        status: { code: args.code, signal: args.signal },
+        stderrTail: args.providerProcess.stderrTail,
+      }),
+    );
     this.args.onProviderIdentityWaitersInterrupted(args.providerProcess);
 
     this.args.onProcessExit?.({

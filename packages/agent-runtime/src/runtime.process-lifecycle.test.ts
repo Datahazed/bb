@@ -440,8 +440,9 @@ rl.on("line", (line) => {
     const crashScript = join(tmpDir, "large-stderr-provider.cjs");
     writeFileSync(
       crashScript,
-      `process.stderr.write("a".repeat(100_000) + "stderr-tail");
-      process.exit(42);`,
+      `process.stderr.write("a".repeat(100_000) + "stderr-tail", () => {
+        process.exit(42);
+      });`,
     );
     const manager = createProviderProcessManager({
       onProcessExit: exitInfo,

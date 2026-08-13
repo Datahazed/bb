@@ -1,20 +1,22 @@
-import type { ProviderAdapter } from "./provider-adapter.js";
 import type {
   ClassifyProviderExecutionSettingsChangeArgs,
+  ProviderExecutionContext,
   ProviderExecutionSettingsChange,
-} from "./provider-adapter.js";
+} from "./provider-driver/connection.js";
 import type {
   AgentRuntimeExecutionOptions,
   AgentRuntimeSkillRoot,
 } from "./types.js";
-import type { ProviderExecutionContext } from "./provider-adapter.js";
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   type RuntimePermissionPolicy,
 } from "@bb/domain";
 
 interface AssertProviderSupportsExecutionOptionsArgs {
-  adapter: ProviderAdapter;
+  capabilities: {
+    supportedPermissionModes: readonly AgentRuntimeExecutionOptions["permissionMode"][];
+    supportsServiceTier: boolean;
+  };
   options: AgentRuntimeExecutionOptions;
   providerId: string;
 }
@@ -37,7 +39,7 @@ export function assertProviderSupportsExecutionOptions(
   if (
     args.options.serviceTier !== undefined &&
     args.options.serviceTier !== "default" &&
-    !args.adapter.capabilities.supportsServiceTier
+    !args.capabilities.supportsServiceTier
   ) {
     throw new Error(
       `Provider "${args.providerId}" does not support service tiers.`,
@@ -45,7 +47,7 @@ export function assertProviderSupportsExecutionOptions(
   }
 
   if (
-    !args.adapter.capabilities.supportedPermissionModes.includes(
+    !args.capabilities.supportedPermissionModes.includes(
       args.options.permissionMode,
     )
   ) {

@@ -10,7 +10,7 @@ import type {
   ToolCallRequest,
 } from "@bb/domain";
 import { isApprovalPendingInteractionPayload } from "@bb/domain";
-import type { ProviderAdapter } from "./provider-adapter.js";
+import type { ProviderDriverConnection } from "./provider-driver/connection.js";
 import {
   type JsonRpcMessage,
   ProviderResponseEncodeError,
@@ -24,8 +24,8 @@ import { shouldAutoDenyInteractiveRequest } from "./shared/permission-policy.js"
 export type RuntimeProviderRequestKind = "interactive request" | "tool call";
 
 export interface RuntimeProviderRequestProcess {
-  adapter: ProviderAdapter;
   child: ChildProcess;
+  connection: ProviderDriverConnection;
   interactiveRequestScope: string;
 }
 
@@ -153,9 +153,11 @@ function resolveRuntimeProviderRequestTurnId(
 function handleToolCallProviderRequest(
   args: HandleRuntimeProviderRequestArgs,
 ): boolean {
-  let toolCallReq: ReturnType<ProviderAdapter["decodeToolCallRequest"]>;
+  let toolCallReq: ReturnType<
+    ProviderDriverConnection["decodeToolCallRequest"]
+  >;
   try {
-    toolCallReq = args.providerProcess.adapter.decodeToolCallRequest(
+    toolCallReq = args.providerProcess.connection.decodeToolCallRequest(
       args.rawRequest,
     );
   } catch (error) {
@@ -226,12 +228,9 @@ function handleToolCallProviderRequest(
 function handleInteractiveProviderRequest(
   args: HandleRuntimeProviderRequestArgs,
 ): boolean {
-  const providerId = args.providerProcess.adapter.id;
-  const decodeInteractiveRequest =
-    args.providerProcess.adapter.decodeInteractiveRequest;
-  if (!decodeInteractiveRequest) {
-    return false;
-  }
+  const providerId = args.providerProcess.connection.identity.providerId;
+  const decodeInteractiveRequest = (request: JsonRpcMessage) =>
+    args.providerProcess.connection.decodeInteractiveRequest(request);
 
   let interactiveReq: ReturnType<typeof decodeInteractiveRequest>;
   try {
@@ -261,7 +260,7 @@ function handleInteractiveProviderRequest(
   if (!resolvedThreadId) {
     return true;
   }
-  if (!args.providerProcess.adapter.buildInteractiveResponse) {
+  if (!args.providerProcess.connection.supportsInteractiveResponses) {
     sendJsonRpcError({
       child: args.providerProcess.child,
       id: args.parsedId,
@@ -269,8 +268,11 @@ function handleInteractiveProviderRequest(
     });
     return true;
   }
-  const buildInteractiveResponse =
-    args.providerProcess.adapter.buildInteractiveResponse;
+  const buildInteractiveResponse = (
+    buildArgs: Parameters<
+      ProviderDriverConnection["buildInteractiveResponse"]
+    >[0],
+  ) => args.providerProcess.connection.buildInteractiveResponse(buildArgs);
   const resolvedTurnId = resolveRuntimeProviderRequestTurnId({
     ...args,
     requestKind: "interactive request",
@@ -301,7 +303,7 @@ function handleInteractiveProviderRequest(
     interactiveReq.payload,
   );
   const runtimeOwnsApprovalPolicy =
-    args.providerProcess.adapter.approvalRequestPolicy === "runtime";
+    args.providerProcess.connection.approvalRequestPolicy === "runtime";
   const executionOptions = runtimeOwnsApprovalPolicy
     ? args.getThreadExecutionOptions(resolvedThreadId)
     : undefined;

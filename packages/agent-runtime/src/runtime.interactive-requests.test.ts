@@ -9,9 +9,16 @@ import type {
   ToolCallResponse,
 } from "@bb/domain";
 import { promptTextInput } from "./test/prompt-input.js";
-import type { DecodedInteractiveRequest } from "./provider-adapter.js";
+import type {
+  DecodedInteractiveRequest,
+  ProviderAdapter,
+} from "./provider-adapter.js";
+import { LegacyAdapterConnection } from "./provider-driver/legacy-adapter-connection.js";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
-import { handleRuntimeProviderRequest } from "./runtime-provider-requests.js";
+import {
+  handleRuntimeProviderRequest,
+  type RuntimeProviderRequestProcess,
+} from "./runtime-provider-requests.js";
 import {
   parseJsonRpcLine,
   type JsonRpcMessage,
@@ -37,6 +44,22 @@ function readChildStdoutLine(child: ChildProcess): Promise<string> {
       resolve(String(chunk));
     });
   });
+}
+
+function createLegacyRequestProcess(args: {
+  adapter: ProviderAdapter;
+  child: ChildProcess;
+  scope: string;
+}): RuntimeProviderRequestProcess {
+  return {
+    child: args.child,
+    connection: new LegacyAdapterConnection({
+      adapter: args.adapter,
+      child: args.child,
+      getNextRequestId: () => 1,
+    }),
+    interactiveRequestScope: args.scope,
+  };
 }
 
 describe("createAgentRuntime interactive requests", () => {
@@ -289,11 +312,11 @@ rl.on("line", (line) => {
         onToolCall: async () => toolCallResponse,
         parsedId: rawRequest.id,
         parsedMethod: rawRequest.method,
-        providerProcess: {
+        providerProcess: createLegacyRequestProcess({
           adapter,
           child,
-          interactiveRequestScope: "scope-1",
-        },
+          scope: "scope-1",
+        }),
         rawRequest,
         resolveThreadId: () => "t1",
       });
@@ -522,11 +545,11 @@ rl.on("line", (line) => {
         }),
         parsedId: rawRequest.id,
         parsedMethod: rawRequest.method,
-        providerProcess: {
+        providerProcess: createLegacyRequestProcess({
           adapter,
           child,
-          interactiveRequestScope: "scope-provider-filtered",
-        },
+          scope: "scope-provider-filtered",
+        }),
         rawRequest,
         resolveThreadId: () => "t1",
       });
@@ -625,11 +648,11 @@ rl.on("line", (line) => {
         }),
         parsedId: rawRequest.id,
         parsedMethod: rawRequest.method,
-        providerProcess: {
+        providerProcess: createLegacyRequestProcess({
           adapter,
           child,
-          interactiveRequestScope: "scope-1",
-        },
+          scope: "scope-1",
+        }),
         rawRequest,
         resolveThreadId: () => "t1",
       });
@@ -718,11 +741,11 @@ rl.on("line", (line) => {
         }),
         parsedId: rawRequest.id,
         parsedMethod: rawRequest.method,
-        providerProcess: {
+        providerProcess: createLegacyRequestProcess({
           adapter,
           child,
-          interactiveRequestScope: "scope-1",
-        },
+          scope: "scope-1",
+        }),
         rawRequest,
         resolveThreadId: () => "t1",
       });

@@ -4,8 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent, ToolCallResponse } from "@bb/domain";
+import type { ProviderAdapter } from "./provider-adapter.js";
+import { LegacyAdapterConnection } from "./provider-driver/legacy-adapter-connection.js";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
-import { handleRuntimeProviderRequest } from "./runtime-provider-requests.js";
+import {
+  handleRuntimeProviderRequest,
+  type RuntimeProviderRequestProcess,
+} from "./runtime-provider-requests.js";
 import {
   parseJsonRpcLine,
   type JsonRpcMessage,
@@ -33,6 +38,21 @@ function readChildStdoutLine(child: ChildProcess): Promise<string> {
       resolve(String(chunk));
     });
   });
+}
+
+function createLegacyRequestProcess(args: {
+  adapter: ProviderAdapter;
+  child: ChildProcess;
+}): RuntimeProviderRequestProcess {
+  return {
+    child: args.child,
+    connection: new LegacyAdapterConnection({
+      adapter: args.adapter,
+      child: args.child,
+      getNextRequestId: () => 1,
+    }),
+    interactiveRequestScope: "scope-1",
+  };
 }
 
 describe("createAgentRuntime tool calls", () => {
@@ -207,16 +227,14 @@ describe("createAgentRuntime tool calls", () => {
         onToolCall,
         parsedId: rawRequest.id,
         parsedMethod: rawRequest.method,
-        providerProcess: {
-          adapter,
-          child,
-          interactiveRequestScope: "scope-1",
-        },
+        providerProcess: createLegacyRequestProcess({ adapter, child }),
         rawRequest,
         resolveThreadId: () => "t1",
       });
 
-      const parsed = parseJsonRpcLine((await readChildStdoutLine(child)).trim());
+      const parsed = parseJsonRpcLine(
+        (await readChildStdoutLine(child)).trim(),
+      );
       if (parsed.kind !== "response") {
         throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
       }
@@ -275,16 +293,14 @@ describe("createAgentRuntime tool calls", () => {
         onToolCall,
         parsedId: rawRequest.id,
         parsedMethod: rawRequest.method,
-        providerProcess: {
-          adapter,
-          child,
-          interactiveRequestScope: "scope-1",
-        },
+        providerProcess: createLegacyRequestProcess({ adapter, child }),
         rawRequest,
         resolveThreadId: () => "t1",
       });
 
-      const parsed = parseJsonRpcLine((await readChildStdoutLine(child)).trim());
+      const parsed = parseJsonRpcLine(
+        (await readChildStdoutLine(child)).trim(),
+      );
       if (parsed.kind !== "response") {
         throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
       }
