@@ -208,22 +208,32 @@ describe("assistant message visibility", () => {
     setupResult.db.$client.close();
   });
 
-  it("cannot resolve work summary details built under the other preference", () => {
-    // The row range of a finished turn depends on the preference, so a consumer
-    // that reads a different value describes a different turn. This is why the
-    // timeline, the details route, and the outline must share one value.
+  it("still resolves a work summary row built under the other preference", () => {
+    // A client can hold a row from before a preference change: the row range of
+    // a finished turn depends on the preference. The details request must keep
+    // working until the client renders the new rows.
     const setupResult = setup();
-    const turnRow = requireOnlyTurnRow(buildTimeline(setupResult, false));
-
-    expect(() =>
-      buildTimelineTurnSummaryDetails(setupResult.db, setupResult.thread, {
-        includeProviderUnhandledOperations: false,
-        showAllAssistantMessages: true,
-        sourceSeqEnd: turnRow.sourceSeqEnd,
-        sourceSeqStart: turnRow.sourceSeqStart,
-        turnId,
-      }),
-    ).toThrow(/could not match range/);
+    for (const rowPreference of [true, false]) {
+      const turnRow = requireOnlyTurnRow(
+        buildTimeline(setupResult, rowPreference),
+      );
+      const details = buildTimelineTurnSummaryDetails(
+        setupResult.db,
+        setupResult.thread,
+        {
+          includeProviderUnhandledOperations: false,
+          showAllAssistantMessages: !rowPreference,
+          sourceSeqEnd: turnRow.sourceSeqEnd,
+          sourceSeqStart: turnRow.sourceSeqStart,
+          turnId,
+        },
+      );
+      expect(
+        details.rows.some(
+          (row) => row.kind === "work" && row.workKind === "command",
+        ),
+      ).toBe(true);
+    }
     setupResult.db.$client.close();
   });
 

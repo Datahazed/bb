@@ -2100,25 +2100,47 @@ export function buildTimelineTurnSummaryDetails(
         : sourceSeqStart,
     sourceRange.sourceSeqStart,
   );
+  const detailEvents = eventRowsWithBackgroundTaskState.map((row) =>
+    toThreadEventWithMeta(row),
+  );
+  const detailOptions = {
+    includeProviderUnhandledOperations,
+    sourceSeqEnd: sourceRange.sourceSeqEnd,
+    sourceSeqStart: projectionSourceSeqStart,
+    providerDisplayName: options.providerDisplayName,
+    threadStatus: thread.status,
+    threadName: thread.title ?? thread.titleFallback ?? "",
+    workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
+  };
   const children = buildThreadTimelineTurnDetailsFromEvents({
-    events: eventRowsWithBackgroundTaskState.map((row) =>
-      toThreadEventWithMeta(row),
-    ),
+    events: detailEvents,
     options: {
-      includeProviderUnhandledOperations,
-      sourceSeqEnd: sourceRange.sourceSeqEnd,
-      sourceSeqStart: projectionSourceSeqStart,
-      providerDisplayName: options.providerDisplayName,
+      ...detailOptions,
       showAllAssistantMessages: options.showAllAssistantMessages,
-      threadStatus: thread.status,
-      threadName: thread.title ?? thread.titleFallback ?? "",
-      workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
     },
   });
 
   if (children.kind !== "missing-match") {
     return {
       rows: children.rows,
+    };
+  }
+
+  // The row range of a work summary depends on `showAllAssistantMessages`, and a
+  // client can hold a row that the current preference no longer produces: the
+  // preference can change between the timeline response and this request. Match
+  // the range under the other preference instead of failing, so an open work
+  // summary keeps working until the client renders the new rows.
+  const staleGroupingChildren = buildThreadTimelineTurnDetailsFromEvents({
+    events: detailEvents,
+    options: {
+      ...detailOptions,
+      showAllAssistantMessages: !options.showAllAssistantMessages,
+    },
+  });
+  if (staleGroupingChildren.kind !== "missing-match") {
+    return {
+      rows: staleGroupingChildren.rows,
     };
   }
 

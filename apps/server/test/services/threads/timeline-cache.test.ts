@@ -119,6 +119,7 @@ describe("buildThreadTimelineCacheKey", () => {
       { ...baseKeyArgs, includeNestedRows: true },
       { ...baseKeyArgs, summaryOnly: true },
       { ...baseKeyArgs, includeProviderUnhandledOperations: true },
+      { ...baseKeyArgs, showAllAssistantMessages: false },
       {
         ...baseKeyArgs,
         page: {

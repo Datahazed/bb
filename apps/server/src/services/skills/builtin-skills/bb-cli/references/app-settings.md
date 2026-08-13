@@ -65,7 +65,7 @@ every window and client sees the same value.
 - When disabled, a finished turn shows only its last assistant message and
   keeps the earlier ones inside the collapsed work summary.
 - The preference changes the timeline, the work summary details, the
-  conversation outline, and `bb thread show`.
+  conversation outline, and `bb thread log`.
 
 ## New onboarding
 
