@@ -86,6 +86,7 @@ function renderQueuedMessages(queuedMessages: readonly ThreadQueuedMessage[]) {
       processingMessageId={null}
       processingAction={null}
       onSendImmediately={noop}
+      onSendAll={noop}
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
@@ -107,6 +108,7 @@ function renderQueuedMessagesWithOptions(
       processingMessageId={null}
       processingAction={null}
       onSendImmediately={noop}
+      onSendAll={noop}
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
@@ -185,6 +187,7 @@ describe("QueuedMessagesList", () => {
       processingMessageId: null,
       processingAction: null,
       onSendImmediately: noop,
+      onSendAll: noop,
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
@@ -331,6 +334,71 @@ describe("QueuedMessagesList", () => {
     }
   });
 
+  it("offers Send all only when the leading run can group into one turn", () => {
+    const onSendAll = vi.fn();
+    const renderSendAll = (
+      queuedMessages: readonly ThreadQueuedMessage[],
+      sendDisabled = false,
+    ) =>
+      render(
+        <QueuedMessagesList
+          queuedMessages={queuedMessages}
+          sendDisabled={sendDisabled}
+          actionDisabled={false}
+          processingMessageId={null}
+          processingAction={null}
+          onSendImmediately={noop}
+          onSendAll={onSendAll}
+          onReorder={noop}
+          onSetGroupBoundary={noop}
+          onEdit={noop}
+          onDelete={noop}
+        />,
+      );
+
+    // A single queued message already has its own row send action.
+    const single = renderSendAll([makeQueuedMessage("q_one", "First")]);
+    expect(single.queryByRole("button", { name: "Send all" })).toBeNull();
+    cleanup();
+
+    const compatible = renderSendAll([
+      makeQueuedMessage("q_one", "First"),
+      makeQueuedMessage("q_two", "Second"),
+    ]);
+    const sendAllButton = compatible.getByRole("button", { name: "Send all" });
+    expect(sendAllButton).toHaveProperty("disabled", false);
+    fireEvent.click(sendAllButton);
+    expect(onSendAll).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    // The head cannot group with the next message, so there is nothing to
+    // release as one turn.
+    const mixed = renderSendAll([
+      makeQueuedMessage("q_one", "First"),
+      {
+        ...makeQueuedMessage("q_two", "Second"),
+        model: "claude-opus-5",
+      },
+    ]);
+    expect(
+      mixed.getByRole("button", { name: "Send all" }),
+    ).toHaveProperty("disabled", true);
+    cleanup();
+
+    const busy = renderSendAll(
+      [
+        makeQueuedMessage("q_one", "First"),
+        makeQueuedMessage("q_two", "Second"),
+      ],
+      true,
+    );
+    expect(busy.getByRole("button", { name: "Send all" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(onSendAll).toHaveBeenCalledTimes(1);
+  });
+
   it("replaces the edited row with the real inline composer", () => {
     const onDismiss = vi.fn();
     const queuedMessages = [
@@ -354,6 +422,7 @@ describe("QueuedMessagesList", () => {
         processingMessageId={null}
         processingAction={null}
         onSendImmediately={noop}
+        onSendAll={noop}
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
@@ -424,6 +493,7 @@ describe("QueuedMessagesList", () => {
         processingMessageId={null}
         processingAction={null}
         onSendImmediately={noop}
+        onSendAll={noop}
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
@@ -457,6 +527,7 @@ describe("QueuedMessagesList", () => {
       processingMessageId: null,
       processingAction: null,
       onSendImmediately: noop,
+      onSendAll: noop,
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
@@ -504,6 +575,7 @@ describe("QueuedMessagesList", () => {
       processingMessageId: null,
       processingAction: null,
       onSendImmediately: noop,
+      onSendAll: noop,
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
@@ -565,6 +637,7 @@ describe("QueuedMessagesList", () => {
       processingMessageId: null,
       processingAction: null,
       onSendImmediately: noop,
+      onSendAll: noop,
       onReorder: noop,
       onSetGroupBoundary: noop,
       onEdit: noop,
@@ -667,6 +740,7 @@ describe("QueuedMessagesList", () => {
             processingMessageId={null}
             processingAction={null}
             onSendImmediately={noop}
+            onSendAll={noop}
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
@@ -753,6 +827,7 @@ describe("QueuedMessagesList", () => {
             processingMessageId={null}
             processingAction={null}
             onSendImmediately={noop}
+            onSendAll={noop}
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
@@ -845,6 +920,7 @@ describe("QueuedMessagesList", () => {
               processingMessageId={null}
               processingAction={null}
               onSendImmediately={noop}
+              onSendAll={noop}
               onReorder={noop}
               onSetGroupBoundary={noop}
               onEdit={noop}
@@ -1023,6 +1099,7 @@ describe("QueuedMessagesList", () => {
         processingMessageId={queuedMessage.id}
         processingAction="send"
         onSendImmediately={noop}
+        onSendAll={noop}
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
@@ -1361,6 +1438,7 @@ describe("QueuedMessagesList", () => {
         processingMessageId={null}
         processingAction={null}
         onSendImmediately={noop}
+        onSendAll={noop}
         onReorder={noop}
         onSetGroupBoundary={onSetGroupBoundary}
         onEdit={noop}
@@ -1570,6 +1648,7 @@ describe("QueuedMessagesList", () => {
         processingMessageId={null}
         processingAction={null}
         onSendImmediately={noop}
+        onSendAll={noop}
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}
@@ -1594,6 +1673,7 @@ describe("QueuedMessagesList", () => {
         processingMessageId={null}
         processingAction={null}
         onSendImmediately={noop}
+        onSendAll={noop}
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={noop}

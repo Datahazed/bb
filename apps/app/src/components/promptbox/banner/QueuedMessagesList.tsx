@@ -64,6 +64,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  collectSendAllQueuedMessageGroupIds,
   countQueuedMessageAttachments,
   formatQueuedMessagePreview,
 } from "@/views/thread-detail/threadQueuedMessages";
@@ -106,6 +107,8 @@ export interface QueuedMessagesListProps {
   processingAction: QueuedMessageProcessingAction | null;
   inlineEditor?: QueuedMessageInlineEditor;
   onSendImmediately: (id: string) => void;
+  /** Groups the leading compatible run into one turn, then sends the head. */
+  onSendAll: () => void;
   onReorder: (request: QueuedMessageReorderRequest) => void;
   onSetGroupBoundary: (request: QueuedMessageGroupBoundaryRequest) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
@@ -958,6 +961,7 @@ export function QueuedMessagesList({
   processingAction,
   inlineEditor,
   onSendImmediately,
+  onSendAll,
   onReorder,
   onSetGroupBoundary,
   onEdit,
@@ -1174,6 +1178,10 @@ export function QueuedMessagesList({
     setOrderedMessages(queuedMessages);
   }
 
+  const sendAllGroupIds = useMemo(
+    () => collectSendAllQueuedMessageGroupIds(queuedMessages),
+    [queuedMessages],
+  );
   const groupBoundaryIndex = useMemo(() => {
     const firstUngroupedIndex = orderedMessages.findIndex(
       (queuedMessage) => !queuedMessage.groupWithNext,
@@ -1491,6 +1499,16 @@ export function QueuedMessagesList({
 
   if (queuedMessages.length === 0 && !inlineEditor) return null;
 
+  // "Send all" groups the leading compatible run and steers its head, so it
+  // only makes sense once at least two messages can travel together.
+  const sendAllGroupSize = sendAllGroupIds.length;
+  const sendAllPossible = sendAllGroupSize > 1;
+  const sendAllTooltip = !sendAllPossible
+    ? "The next queued message uses different execution options, so the queue cannot send as one turn"
+    : sendAllGroupSize === queuedMessages.length
+      ? `Send all ${queuedMessages.length} queued messages as one turn`
+      : `Send the first ${sendAllGroupSize} of ${queuedMessages.length} queued messages as one turn. The rest use different execution options.`;
+
   const queueFitsDrawer = queuedMessages.length <= DRAWER_MAX_VISIBLE_MESSAGES;
   const caretWillCollapse =
     mode === "workspace" || (mode === "drawer" && queueFitsDrawer);
@@ -1530,11 +1548,34 @@ export function QueuedMessagesList({
         )}
         data-queued-messages-mode={mode}
       >
-        <div className="flex min-w-16 items-baseline gap-1.5 pl-1">
+        <div className="flex min-w-16 items-center gap-1.5 pl-1">
           <span className="text-xs font-medium text-foreground">Queued</span>
           <span className="text-2xs text-subtle-foreground">
             {queuedMessages.length}
           </span>
+          {queuedMessages.length > 1 ? (
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {/* The span keeps the tooltip reachable while the button is
+                      disabled, which is exactly when it explains the most. */}
+                  <span className="inline-flex">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-1.5 text-2xs text-muted-foreground hover:bg-surface-recessed"
+                      disabled={sendDisabled || !sendAllPossible}
+                      onClick={onSendAll}
+                    >
+                      Send all
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{sendAllTooltip}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : null}
         </div>
         <button
           type="button"

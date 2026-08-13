@@ -760,6 +760,7 @@ function Row({
             current.filter((message) => message.id !== id),
           )
         }
+        onSendAll={() => setStoryQueuedMessages([])}
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={handleEditQueuedMessage}

@@ -208,6 +208,7 @@ function StaticQueuedMessagesList({
       processingMessageId={null}
       processingAction={null}
       onSendImmediately={noop}
+      onSendAll={noop}
       onReorder={noop}
       onSetGroupBoundary={noop}
       onEdit={noop}
@@ -312,6 +313,7 @@ function ReorderableQueuedMessagesList() {
       processingMessageId={null}
       processingAction={null}
       onSendImmediately={noop}
+      onSendAll={noop}
       onReorder={handleReorder}
       onSetGroupBoundary={handleSetGroupBoundary}
       onEdit={noop}
@@ -405,6 +407,7 @@ export function Overview() {
             processingMessageId={null}
             processingAction={null}
             onSendImmediately={noop}
+            onSendAll={noop}
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
@@ -432,6 +435,7 @@ export function Overview() {
             processingMessageId={null}
             processingAction={null}
             onSendImmediately={noop}
+            onSendAll={noop}
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
@@ -451,6 +455,7 @@ export function Overview() {
             processingMessageId={null}
             processingAction={null}
             onSendImmediately={noop}
+            onSendAll={noop}
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
@@ -470,6 +475,7 @@ export function Overview() {
             processingMessageId={null}
             processingAction={null}
             onSendImmediately={noop}
+            onSendAll={noop}
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
@@ -489,6 +495,7 @@ export function Overview() {
             processingMessageId="q_b"
             processingAction="send"
             onSendImmediately={noop}
+            onSendAll={noop}
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}
@@ -508,6 +515,7 @@ export function Overview() {
             processingMessageId={null}
             processingAction={null}
             onSendImmediately={noop}
+            onSendAll={noop}
             onReorder={noop}
             onSetGroupBoundary={noop}
             onEdit={noop}

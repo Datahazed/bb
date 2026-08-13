@@ -15,6 +15,7 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { appToast } from "@/components/ui/app-toast";
 import { BbHttpError } from "@/lib/sdk";
+import { collectSendAllQueuedMessageGroupIds } from "@/views/thread-detail/threadQueuedMessages";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
 
 export type QueuedMessageSendGuard = "current-head" | "exists" | "none";
@@ -53,8 +54,10 @@ export interface UseQueuedMessageActionsResult {
   } | null;
   queuedMessageActionPending: boolean;
   isUpdateQueuedMessagePending: boolean;
-  sendQueuedMessageById: (args: SendQueuedMessageByIdArgs) => Promise<void>;
+  /** Resolves to whether the send request succeeded. */
+  sendQueuedMessageById: (args: SendQueuedMessageByIdArgs) => Promise<boolean>;
   handleSendQueuedImmediately: (queuedMessageId: string) => void;
+  handleSendAllQueuedMessages: () => void;
   handleSaveInlineQueuedMessage: () => Promise<void>;
   handleDeleteQueuedMessage: (queuedMessageId: string) => void;
   handleReorderQueuedMessage: (request: QueuedMessageReorderRequest) => void;
@@ -108,19 +111,19 @@ export function useQueuedMessageActions({
   const sendQueuedMessageById = useCallback(
     async ({ guard, messageId }: SendQueuedMessageByIdArgs) => {
       if (threadId === null || (canSendNow !== undefined && !canSendNow())) {
-        return;
+        return false;
       }
       if (
         guard !== "none" &&
         !queuedMessagesRef.current.some((message) => message.id === messageId)
       ) {
-        return;
+        return false;
       }
       if (
         guard === "current-head" &&
         queuedMessagesRef.current[0]?.id !== messageId
       ) {
-        return;
+        return false;
       }
 
       setProcessingQueuedMessage({ id: messageId, action: "send" });
@@ -138,6 +141,7 @@ export function useQueuedMessageActions({
         }
         // With `until-left-queue`, the displayed processing state clears via
         // derivation once the message leaves the queue.
+        return true;
       } catch (error) {
         appToast.error(
           getMutationErrorMessage({
@@ -149,6 +153,7 @@ export function useQueuedMessageActions({
         setProcessingQueuedMessage((current) =>
           current?.id === messageId ? null : current,
         );
+        return false;
       }
     },
     [
@@ -166,6 +171,73 @@ export function useQueuedMessageActions({
     },
     [sendQueuedMessageById],
   );
+
+  /**
+   * Sends the whole queue as one turn. A thread runs one turn at a time and
+   * every send re-claims the queue, so this never loops the per-message send:
+   * it widens the lead group to the last compatible message and then steers the
+   * head, which claims the entire group in one call.
+   */
+  const handleSendAllQueuedMessages = useCallback(() => {
+    void (async () => {
+      if (threadId === null || (canSendNow !== undefined && !canSendNow())) {
+        return;
+      }
+      const queuedMessages = queuedMessagesRef.current;
+      const headQueuedMessage = queuedMessages[0];
+      const groupIds = collectSendAllQueuedMessageGroupIds(queuedMessages);
+      const lastGroupedQueuedMessageId = groupIds.at(-1);
+      if (
+        !headQueuedMessage ||
+        lastGroupedQueuedMessageId === undefined ||
+        groupIds.length < 2
+      ) {
+        return;
+      }
+
+      setProcessingQueuedMessage({ id: headQueuedMessage.id, action: "send" });
+      try {
+        await setQueuedMessageGroupBoundary.mutateAsync({
+          id: threadId,
+          expectedGroupedPrefixQueuedMessageIds: groupIds,
+          groupBoundaryQueuedMessageId: lastGroupedQueuedMessageId,
+        });
+      } catch (error) {
+        setProcessingQueuedMessage((current) =>
+          current?.id === headQueuedMessage.id ? null : current,
+        );
+        appToast.error(
+          getMutationErrorMessage({
+            error,
+            fallbackMessage: "Failed to group queued messages",
+            lifecycleOperation: "set_queued_message_group_boundary",
+          }),
+        );
+        return;
+      }
+
+      const sent = await sendQueuedMessageById({
+        guard: "current-head",
+        messageId: headQueuedMessage.id,
+      });
+      const remainingCount = queuedMessages.length - groupIds.length;
+      if (sent && remainingCount > 0) {
+        appToast.message(
+          `Sent ${groupIds.length} of ${queuedMessages.length} queued messages`,
+          {
+            description: `${remainingCount} ${
+              remainingCount === 1 ? "message uses" : "messages use"
+            } different execution options and stayed queued.`,
+          },
+        );
+      }
+    })();
+  }, [
+    canSendNow,
+    sendQueuedMessageById,
+    setQueuedMessageGroupBoundary,
+    threadId,
+  ]);
 
   const handleSaveInlineQueuedMessage = useCallback(async () => {
     if (
@@ -310,6 +382,7 @@ export function useQueuedMessageActions({
     isUpdateQueuedMessagePending: updateQueuedMessage.isPending,
     sendQueuedMessageById,
     handleSendQueuedImmediately,
+    handleSendAllQueuedMessages,
     handleSaveInlineQueuedMessage,
     handleDeleteQueuedMessage,
     handleReorderQueuedMessage,

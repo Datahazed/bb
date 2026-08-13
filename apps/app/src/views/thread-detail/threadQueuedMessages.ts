@@ -1,4 +1,4 @@
-import { type PromptInput } from "@bb/domain";
+import { type PromptInput, type ThreadQueuedMessage } from "@bb/domain";
 import { fileNameFromPath } from "@bb/thread-view";
 import { promptInputToDraft, type PromptDraftState } from "@/lib/prompt-draft";
 
@@ -82,6 +82,35 @@ export function formatQueuedMessagePreview(
   }
 
   return "(empty message)";
+}
+
+/**
+ * The leading run of queued messages that the server can group into one turn.
+ * A group carries a single execution envelope, so the run stops at the first
+ * message whose model, reasoning level, permission mode, or service tier
+ * differs from the head. The server applies one more rule the client cannot
+ * see — it also refuses to group messages from different sender threads — so a
+ * boundary request built from this run can still fail; surface that error.
+ */
+export function collectSendAllQueuedMessageGroupIds(
+  queuedMessages: readonly ThreadQueuedMessage[],
+): string[] {
+  const headQueuedMessage = queuedMessages[0];
+  if (!headQueuedMessage) return [];
+
+  const ids: string[] = [];
+  for (const queuedMessage of queuedMessages) {
+    if (
+      queuedMessage.model !== headQueuedMessage.model ||
+      queuedMessage.reasoningLevel !== headQueuedMessage.reasoningLevel ||
+      queuedMessage.permissionMode !== headQueuedMessage.permissionMode ||
+      queuedMessage.serviceTier !== headQueuedMessage.serviceTier
+    ) {
+      break;
+    }
+    ids.push(queuedMessage.id);
+  }
+  return ids;
 }
 
 export function queuedInputToDraft(

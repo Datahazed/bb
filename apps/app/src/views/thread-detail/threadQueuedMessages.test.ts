@@ -1,9 +1,28 @@
 import { describe, expect, it } from "vitest";
-import type { PromptInput } from "@bb/domain";
+import type { PromptInput, ThreadQueuedMessage } from "@bb/domain";
 import {
+  collectSendAllQueuedMessageGroupIds,
   formatQueuedMessagePreview,
   queuedInputToDraft,
 } from "./threadQueuedMessages";
+
+function makeQueuedMessage(
+  id: string,
+  overrides: Partial<ThreadQueuedMessage> = {},
+): ThreadQueuedMessage {
+  return {
+    id,
+    content: [{ type: "text", text: id, mentions: [] }],
+    model: "gpt-5.5",
+    reasoningLevel: "medium",
+    permissionMode: "auto",
+    serviceTier: "default",
+    groupWithNext: false,
+    createdAt: 0,
+    updatedAt: 0,
+    ...overrides,
+  };
+}
 
 describe("threadQueuedMessages", () => {
   it("formats queued-message previews from text or attachment-only inputs", () => {
@@ -112,5 +131,43 @@ describe("threadQueuedMessages", () => {
         },
       ],
     });
+  });
+
+  it("stops the send-all group at the first mismatched execution option", () => {
+    expect(collectSendAllQueuedMessageGroupIds([])).toEqual([]);
+    expect(
+      collectSendAllQueuedMessageGroupIds([
+        makeQueuedMessage("q_one"),
+        makeQueuedMessage("q_two"),
+        makeQueuedMessage("q_three"),
+      ]),
+    ).toEqual(["q_one", "q_two", "q_three"]);
+    expect(
+      collectSendAllQueuedMessageGroupIds([
+        makeQueuedMessage("q_one"),
+        makeQueuedMessage("q_two"),
+        makeQueuedMessage("q_three", { model: "claude-opus-5" }),
+        // A later match must not rejoin the group once the run is broken.
+        makeQueuedMessage("q_four"),
+      ]),
+    ).toEqual(["q_one", "q_two"]);
+    expect(
+      collectSendAllQueuedMessageGroupIds([
+        makeQueuedMessage("q_one"),
+        makeQueuedMessage("q_two", { reasoningLevel: "high" }),
+      ]),
+    ).toEqual(["q_one"]);
+    expect(
+      collectSendAllQueuedMessageGroupIds([
+        makeQueuedMessage("q_one"),
+        makeQueuedMessage("q_two", { permissionMode: "full" }),
+      ]),
+    ).toEqual(["q_one"]);
+    expect(
+      collectSendAllQueuedMessageGroupIds([
+        makeQueuedMessage("q_one"),
+        makeQueuedMessage("q_two", { serviceTier: "fast" }),
+      ]),
+    ).toEqual(["q_one"]);
   });
 });

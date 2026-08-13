@@ -561,6 +561,7 @@ function EmbeddedThreadChatWithComposer({
     queuedMessageActionPending,
     isUpdateQueuedMessagePending,
     handleSendQueuedImmediately,
+    handleSendAllQueuedMessages,
     handleSaveInlineQueuedMessage,
     handleDeleteQueuedMessage,
     handleReorderQueuedMessage,
@@ -1260,6 +1261,7 @@ function EmbeddedThreadChatWithComposer({
           processingMessageId={processingQueuedMessage?.id ?? null}
           processingAction={processingQueuedMessage?.action ?? null}
           onSendImmediately={handleSendQueuedImmediately}
+          onSendAll={handleSendAllQueuedMessages}
           onReorder={handleReorderQueuedMessage}
           onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
           onEdit={beginEditQueuedMessage}
@@ -1270,6 +1272,7 @@ function EmbeddedThreadChatWithComposer({
       beginEditQueuedMessage,
       handleDeleteQueuedMessage,
       handleReorderQueuedMessage,
+      handleSendAllQueuedMessages,
       handleSendQueuedImmediately,
       handleSetQueuedMessageGroupBoundary,
       inlineEditor,
