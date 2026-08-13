@@ -713,15 +713,17 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   (except `side-chat`, which is gated by the **"Side chat plugin"**
   experiment); official plugins install from the bundled store on demand.
 - **BB Official plugins** (store under `/api/v1/plugin-catalog`):
-  - BB's official plugins (GitHub, Docs, Memory, and Tasks) ship
-    bundled inside the app and install from the local copy — no network. Installed official
-    plugins are pinned to the bundled copy and update with BB app releases.
+  - BB's official plugins (GitHub, GitHub Activity, Docs, Memory, and Tasks)
+    ship bundled inside the app and install from the local copy — no network.
+    Installed official plugins are pinned to the bundled copy and update with
+    BB app releases.
   - `bb plugin search <query> [--json]` — search the official plugins by id,
     name, description, or category; status shows installed / compatible /
     requires newer bb.
 - Commands:
-  - `bb plugin install <src>` — official plugin name (github, docs, memory,
-    tasks), HTTP(S) Git repository URL, local path, `builtin:<name>`,
+  - `bb plugin install <src>` — official plugin name (github,
+    github-notifications, docs, memory, tasks), HTTP(S) Git repository URL,
+    local path, `builtin:<name>`,
     `git:<url>[@<ref>]`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
     required for `npm:`). Repository URLs and prefixes `path:` / `npm:` /
     `git:` / `builtin:` skip official-plugin resolution. To pin or range an

@@ -115,6 +115,12 @@ export const OFFICIAL_PLUGINS = [
     category: "Developer tools",
   },
   {
+    name: "github-notifications",
+    pluginId: "github-notifications",
+    defaultEnabled: true,
+    category: "Developer tools",
+  },
+  {
     name: "docs",
     pluginId: "simple-notes",
     defaultEnabled: true,
