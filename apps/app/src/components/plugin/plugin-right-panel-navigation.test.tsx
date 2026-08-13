@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useBbNavigate } from "@/lib/plugin-sdk-hooks";
 import { PluginSlotMount } from "./PluginSlotMount";
-import { PluginBrowserTabNavigationProvider } from "./plugin-browser-tab-navigation";
+import { PluginRightPanelNavigationProvider } from "./plugin-right-panel-navigation";
 
 afterEach(cleanup);
 
@@ -19,7 +19,8 @@ function NavigationProbe() {
         type="button"
         onClick={() =>
           setAccepted(
-            navigate.experimental_openBrowserTab({
+            navigate.experimental_openRightPanel({
+              kind: "browser",
               url: "https://github.com/get-bb/bb/pull/42",
             }),
           )
@@ -42,28 +43,29 @@ function PluginProbe() {
   );
 }
 
-describe("plugin Browser-tab navigation", () => {
+describe("plugin right-panel navigation", () => {
   it("forwards Browser-tab requests to the current nav-panel host", () => {
-    const experimentalOpenBrowserTab = vi.fn(() => true);
+    const experimentalOpenRightPanel = vi.fn(() => true);
     render(
       <MemoryRouter>
-        <PluginBrowserTabNavigationProvider
-          experimentalOpenBrowserTab={experimentalOpenBrowserTab}
+        <PluginRightPanelNavigationProvider
+          experimentalOpenRightPanel={experimentalOpenRightPanel}
         >
           <PluginProbe />
-        </PluginBrowserTabNavigationProvider>
+        </PluginRightPanelNavigationProvider>
       </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open Browser" }));
 
-    expect(experimentalOpenBrowserTab).toHaveBeenCalledWith({
+    expect(experimentalOpenRightPanel).toHaveBeenCalledWith({
+      kind: "browser",
       url: "https://github.com/get-bb/bb/pull/42",
     });
     expect(screen.getByText("accepted")).toBeTruthy();
   });
 
-  it("returns false outside a nav-panel Browser host", () => {
+  it("returns false outside a nav-panel right-panel host", () => {
     render(
       <MemoryRouter>
         <PluginProbe />

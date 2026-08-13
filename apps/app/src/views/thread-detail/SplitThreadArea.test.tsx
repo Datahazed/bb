@@ -213,8 +213,9 @@ vi.mock("@/views/RootComposeView", () => ({
   RootComposeView: RootComposeFixture,
 }));
 
-vi.mock("@/components/plugin/PluginPanelBrowserHost", () => ({
-  PluginPanelBrowserHost: ({
+vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
+  PluginPanelRightPanelToggleButton: () => null,
+  PluginPanelRightPanelHost: ({
     children,
     panelPath,
     pluginId,

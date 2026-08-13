@@ -5,32 +5,36 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
-## `useBbNavigate().experimental_openBrowserTab` (`@bb/plugin-sdk/app`)
+## Nav-panel `experimental_rightPanel` (`@bb/plugin-sdk/app`)
 
-**What it does.** Opens a validated HTTP(S) URL in BB's native Browser panel
-beside the current plugin nav panel while keeping the plugin surface mounted.
-It returns `false` when the current surface cannot host the panel, the desktop
-Browser API is unavailable, or the URL is malformed or exceeds the native IPC
-limit, so the plugin can preserve an ordinary-link fallback.
+**What it does.** `PluginNavPanelRegistration.experimental_rightPanel`
+registers plugin-defined views and explicitly enabled Browser or Terminal
+tools in BB's shared right-panel chrome. A default view can be pinned and
+opened initially. `useBbNavigate().experimental_openRightPanel(request)` opens
+a registered view or enabled tool while the plugin page stays mounted; invalid
+or unavailable requests return `false`.
 
 **Audit before stabilizing.**
 
-1. **Surface scope.** Confirm the same API should cover compact drawers,
-   standalone plugin pages, split panes, and any future plugin surface. Verify
-   focus and maximize transitions continue to hide native views owned by an
-   inactive pane.
-2. **URL contract.** Revisit HTTP(S)-only validation, the 4,096-character cap,
-   normalization, credentials, private-network destinations, and whether the
-   method should accept a `URL` object or a narrower host-owned link type.
-3. **Ownership and cleanup.** Verify tab identity, persistence, final-tab
-   destruction, navigation away, plugin reload/disable, and multiple-window
-   behavior before making the lifecycle contract stable.
-4. **Result semantics.** Confirm a synchronous boolean gives plugins enough
-   information, or replace it with a typed result that distinguishes invalid
-   input, unavailable native support, and an unsupported host surface.
-5. **Browser security.** Re-audit sandboxing, permissions, popup handling,
-   download behavior, external-protocol routing, and IPC limits as the native
-   Browser implementation evolves.
+1. **Registration shape.** Confirm real plugins need multiple custom views,
+   per-tab JSON params, a pinned default, and explicit tool allowlisting.
+   Revisit whether `layout` and `defaultViewId` are the right stable concepts.
+2. **Surface scope.** Verify standalone pages, compact drawers, split panes,
+   pane focus/maximize transitions, multiple windows, and plugin reload or
+   disable all retain coherent ownership and cleanup.
+3. **Tool contracts.** Revisit Browser URL validation and native security;
+   revisit Terminal target scope, shell-only startup, close behavior, and
+   whether plugin-opened sessions should outlive their tab.
+4. **Persistence and migration.** Confirm view/tab identity, removed-view
+   recovery, default-view initialization, plugin version changes, and stale
+   Browser or Terminal tabs degrade safely.
+5. **Result semantics.** Confirm a synchronous boolean gives plugins enough
+   information, or replace it with a typed result distinguishing invalid input,
+   unavailable native support, a disabled tool, and an unsupported surface.
+6. **Relationship to thread panels.** Keep the nav-panel contract separate
+   from `threadPanelAction` unless actual consumers need a shared lifecycle;
+   thread panels have required thread context, launcher actions, and server-tab
+   synchronization that nav pages deliberately do not inherit.
 
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
