@@ -314,6 +314,61 @@ describe("ProviderDriverLifecycle", () => {
     );
   });
 
+  it("tracks background task progress across turn settlement", () => {
+    const lifecycle = activeLifecycle();
+    const runningTask = {
+      type: "backgroundTask" as const,
+      id: "task:1",
+      taskType: "local_agent",
+      description: "Research",
+      status: "pending" as const,
+      taskStatus: "running" as const,
+      skipTranscript: false,
+    };
+    lifecycle.recordEvent(
+      providerDriverEventSchema.parse({
+        type: "item.started",
+        attachmentId: "attachment-1",
+        sequence: 1,
+        turnId: "turn-1",
+        item: runningTask,
+      }),
+    );
+    lifecycle.recordEvent(
+      providerDriverEventSchema.parse({
+        type: "turn.settled",
+        attachmentId: "attachment-1",
+        sequence: 2,
+        turnId: "turn-1",
+        outcome: "completed",
+        error: null,
+        providerCheckpointId: null,
+      }),
+    );
+    lifecycle.recordEvent(
+      providerDriverEventSchema.parse({
+        type: "background_task.progress",
+        attachmentId: "attachment-1",
+        sequence: 3,
+        item: { ...runningTask, description: "Still researching" },
+        turnId: null,
+      }),
+    );
+    lifecycle.recordEvent(
+      providerDriverEventSchema.parse({
+        type: "background_task.completed",
+        attachmentId: "attachment-1",
+        sequence: 4,
+        item: {
+          ...runningTask,
+          status: "completed",
+          taskStatus: "completed",
+        },
+        turnId: null,
+      }),
+    );
+  });
+
   it("reports accepted unsettled turns when the process exits", () => {
     const lifecycle = activeLifecycle();
 

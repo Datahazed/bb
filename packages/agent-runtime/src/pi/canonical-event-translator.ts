@@ -772,5 +772,7 @@ function initialItem(item: ProviderDriverItem): ProviderDriverItem {
     case "imageView":
     case "contextCompaction":
       return item;
+    case "backgroundTask":
+      throw new Error("Pi does not emit background-task items");
   }
 }

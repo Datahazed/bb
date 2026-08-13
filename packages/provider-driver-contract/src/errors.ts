@@ -12,6 +12,12 @@ export const providerDriverErrorCategorySchema = z.enum([
   "context_limit",
   "permission",
   "provider_unavailable",
+  "billing",
+  "budget_exceeded",
+  "max_output_tokens",
+  "max_turns",
+  "structured_output_retries",
+  "internal",
   "provider",
   "driver",
 ]);
@@ -49,6 +55,7 @@ export const providerDriverErrorSchema = z
     category: providerDriverErrorCategorySchema,
     message: z.string().min(1).max(PROVIDER_DRIVER_MAX_MESSAGE_LENGTH),
     detail: z.string().max(PROVIDER_DRIVER_MAX_DETAIL_LENGTH).optional(),
+    httpStatusCode: z.number().int().min(100).max(599).optional(),
     retry: providerDriverRetrySchema.optional(),
   })
   .strict();

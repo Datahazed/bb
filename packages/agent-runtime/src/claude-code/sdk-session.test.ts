@@ -21,7 +21,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: queryMock,
 }));
 
-import { SdkSession, type SdkSessionOptions } from "../sdk-session.js";
+import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
 
 const defaultOptions: SdkSessionOptions = {
   cwd: "/tmp/test",

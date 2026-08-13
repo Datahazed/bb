@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-const PROTOCOL_VERSION = 3;
+const PROTOCOL_VERSION = 4;
 const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 
 export function encodeProviderDriverFrame(value) {

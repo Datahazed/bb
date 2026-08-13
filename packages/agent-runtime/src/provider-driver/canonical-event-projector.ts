@@ -32,6 +32,17 @@ function providerErrorCategory(
       return "policy";
     case "provider_unavailable":
       return "overloaded";
+    case "billing":
+      return "billing";
+    case "budget_exceeded":
+      return "budget-exceeded";
+    case "max_output_tokens":
+      return "max-output-tokens";
+    case "max_turns":
+      return "max-turns";
+    case "structured_output_retries":
+      return "structured-output-retries";
+    case "internal":
     case "driver":
       return "internal";
     case "provider":
@@ -55,7 +66,7 @@ function projectError(args: {
     errorInfo: {
       category: providerErrorCategory(args.error.category),
       providerCode: args.error.code,
-      httpStatusCode: null,
+      httpStatusCode: args.error.httpStatusCode ?? null,
     },
   });
 }
@@ -242,6 +253,36 @@ export function projectProviderDriverEvent(
           category: "general",
           summary: event.message,
           details: `Driver warning code: ${event.code}`,
+        }),
+      ];
+    case "provider.model_fallback":
+      return [
+        threadEventSchema.parse({
+          type: "provider/modelFallback",
+          ...thread,
+          scope: event.turnId ? turnScope(event.turnId) : threadScope(),
+          originalModel: event.originalModel,
+          fallbackModel: event.fallbackModel,
+          reason: event.reason,
+          message: event.message,
+        }),
+      ];
+    case "background_task.progress":
+      return [
+        threadEventSchema.parse({
+          type: "item/backgroundTask/progress",
+          ...thread,
+          scope: threadScope(),
+          item: event.item,
+        }),
+      ];
+    case "background_task.completed":
+      return [
+        threadEventSchema.parse({
+          type: "item/backgroundTask/completed",
+          ...thread,
+          scope: threadScope(),
+          item: event.item,
         }),
       ];
     case "session.checkpoint_changed":

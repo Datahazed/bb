@@ -2017,8 +2017,8 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
     { label: "host daemon entry", path: context.daemonEntry },
     { label: "bundled bb CLI", path: join(context.daemonBundleDir, "bb") },
     {
-      label: "Claude Code bridge",
-      path: join(context.daemonBundleDir, "bb-claude-code-bridge.mjs"),
+      label: "Claude Code canonical driver",
+      path: join(context.daemonBundleDir, "bb-claude-code-driver.mjs"),
     },
     {
       label: "Pi canonical driver",

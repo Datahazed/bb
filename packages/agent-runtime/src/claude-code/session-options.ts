@@ -7,7 +7,7 @@ import type {
   ReasoningLevel,
   RuntimePermissionScope,
 } from "@bb/domain";
-import type { ClaudePermissionMode } from "../interactive-contract.js";
+import type { ClaudePermissionMode } from "./interactive-contract.js";
 import { buildReadonlyBashUpdatedInput } from "./readonly-bash-policy.js";
 import type {
   ClaudeMutableFlagSettings,
@@ -303,7 +303,7 @@ export function resolveClaudeCodeExecutable(
     }
   }
 
-  // Bundled bridge files cannot rely on the SDK's package-relative CLI
+  // Bundled driver files cannot rely on the SDK's package-relative CLI
   // resolution, so pass the host's Claude CLI path explicitly when available.
   const executableOnPath = resolveExecutableOnPath({
     executableName: "claude",

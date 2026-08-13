@@ -16,7 +16,7 @@ const providers = listAvailableProviders();   // [{ id: "codex", ... }, { id: "c
 const runtime = createAgentRuntime({
   workspacePath: "/path/to/workspace",
   env: { OPENAI_API_KEY: "..." },       // passed to all provider processes
-  bridgeBundleDir: "/path/to/bundled-bridges", // optional; used when bridges are packaged outside src/dist
+  bridgeBundleDir: "/path/to/provider-bundles", // optional; used when provider processes are packaged outside src/dist
   onEvent: (event) => {
     // Every event has event.threadId (bb ID) and event.providerThreadId (provider's internal ID)
     // See ProviderThreadEvent in @bb/domain for the full type
@@ -115,9 +115,9 @@ The root `test:integration --force` run also schedules `@bb/integration-tests#te
 
 **When a test hangs**, the provider is likely not responding to a JSON-RPC request. Common causes:
 
-- Bridge Zod schema rejects the request silently (check that `buildCommand` output matches what the bridge expects)
+- Provider protocol validation rejects a request
 - Provider needs credentials that aren't in the environment
-- Bridge process crashed on startup (check stderr — the runtime captures it in `proc.stderrChunks`)
+- Provider process crashed on startup (check captured stderr diagnostics)
 
 ### Test coverage
 
@@ -131,7 +131,7 @@ The root `test:integration --force` run also schedules `@bb/integration-tests#te
 ### Building
 
 `@bb/agent-runtime` is source-only inside this workspace. The host daemon build
-creates the bridge bundles it needs for runtime startup.
+creates the provider-process bundles it needs for runtime startup.
 
 ## Architecture
 
@@ -163,34 +163,19 @@ Consumer (host-daemon, server)
        │
        └─ Provider Process             isolated provider child process
            ├─ codex               spawns `codex app-server` directly
-           ├─ claude-code         legacy bridge → Claude Agent SDK
+           ├─ claude-code         canonical driver → Claude Agent SDK
            └─ pi                  canonical driver → Pi coding agent SDK
 ```
 
-`AgentRuntime` depends on `ProviderDriverConnection`, not adapter command-building callbacks. Pi now runs through the canonical isolated driver process. Codex, Claude Code, and ACP still run through `LegacyAdapterConnection`, which preserves their current child processes and newline-delimited JSON-RPC dialects while containing adapter command construction, response parsing, accepted-command synthesis, and event/request translation. The canonical path uses `ProviderDriverSupervisor` and `ProcessProviderDriverConnection` with `@bb/provider-driver-contract`. `CanonicalProcessProviderConnection` adapts that strict peer to the current runtime seam without provider-specific translation: it mints attachment/operation/turn IDs, preserves response-before-event ordering, and projects bounded canonical events. Canonical children use `@bb/provider-driver-sdk` for framing, operation replay, acceptance buffering, event sequencing, and host callbacks. Providers move onto that path one at a time.
+`AgentRuntime` depends on `ProviderDriverConnection`, not adapter command-building callbacks. Pi and Claude Code run through canonical isolated driver processes. Codex and ACP still run through `LegacyAdapterConnection`, which preserves their current child processes and newline-delimited JSON-RPC dialects while containing adapter command construction, response parsing, accepted-command synthesis, and event/request translation. The canonical path uses `ProviderDriverSupervisor` and `ProcessProviderDriverConnection` with `@bb/provider-driver-contract`. `CanonicalProcessProviderConnection` adapts that strict peer to the current runtime seam without provider-specific translation: it mints attachment/operation/turn IDs, preserves response-before-event ordering, and projects bounded canonical events. Canonical children use `@bb/provider-driver-sdk` for framing, operation replay, acceptance buffering, event sequencing, and host callbacks. Providers move onto that path one at a time.
 
-### Current legacy adapter shapes
+### Remaining legacy providers
 
-Built-in providers currently use one of two legacy shapes. Both remain
-unchanged behind `LegacyAdapterConnection` during the compatibility stage:
-
-1. **In-process protocol adapter** (codex). The provider ships its own
-   long-running JSON-RPC server (`codex app-server`); the adapter spawns it
-   directly and translates its protocol. No bridge code. Pick this when the
-   provider exposes a stable wire protocol.
-2. **Bridge-process adapter** (claude-code, pi). The provider ships an SDK
-   library; a small Node bridge process under `<provider>/bridge/` hosts the
-   SDK and exposes the same JSON-RPC surface to the runtime. Pick this when
-   the provider only offers an SDK. Each bridge owns its SDK's quirks
-   (claude-code: interactive permissions, stale-resume recovery; pi:
-   steer-with-images, context-window reporting) — keep those per-provider
-   rather than growing a generic skeleton with one-provider knobs.
-
-Shared event-translation mechanics (turn/item id registries, error-category
-mapping, unhandled-event envelopes, command-output normalization) live in
-`src/shared/` and are consumed by all adapters. Each built-in can now migrate
-independently from its legacy adapter dialect to the canonical driver protocol
-without changing `AgentRuntime` or introducing another provider process.
+Codex still uses its in-process adapter around `codex app-server`; ACP still
+uses its newline-delimited bridge. Both remain contained behind
+`LegacyAdapterConnection`. Claude Code and Pi instead translate their SDKs
+directly into bounded canonical driver events and use framed RPC on dedicated
+file descriptors.
 
 ## Dependencies
 

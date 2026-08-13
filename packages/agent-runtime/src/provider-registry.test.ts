@@ -1,9 +1,6 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  turnScope,
-} from "@bb/domain";
+import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import { createProviderForId } from "./provider-registry.js";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 
@@ -28,80 +25,26 @@ describe("provider registry", () => {
     expect(provider.process.args).toMatchObject(["app-server"]);
   });
 
-  it("creates claude-code provider with expected process config", () => {
-    const provider = createProviderForId("claude-code");
-    expect(provider.id).toBe("claude-code");
-    expect(provider.process.command).toBe("node");
-    expect(provider.process.args.slice(0, 3)).toEqual([
-      "--conditions=source",
-      "--import",
-      import.meta.resolve("tsx"),
-    ]);
-    expect(provider.process.args.at(-1)).toMatch(
-      /agent-runtime\/src\/claude-code\/bridge\/bridge\.ts$/,
-    );
-    expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
-  });
-
-  it("passes the configured bridge bundle directory to bundled providers", () => {
-    const claudeProvider = createProviderForId("claude-code", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeBundleDir: "/tmp",
-    });
-
-    expect(claudeProvider.process.args[0]).toBe(
-      "/tmp/bb-claude-code-bridge.mjs",
-    );
-  });
-
   it("passes the configured bridge node runtime to bundled providers", () => {
     const bridgeNodeEnv = { ELECTRON_RUN_AS_NODE: "1" };
-    const claudeProvider = createProviderForId("claude-code", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeNodeEnv,
-      bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
-    });
     const acpProvider = createProviderForId("acp-cursor", {
       additionalWorkspaceWriteRoots: [],
       bridgeNodeEnv,
       bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
     });
 
-    expect(claudeProvider.process.command).toBe(
-      "/Applications/bb.app/Contents/MacOS/bb",
-    );
-    expect(claudeProvider.process.env).toEqual(bridgeNodeEnv);
     expect(acpProvider.process.command).toBe(
       "/Applications/bb.app/Contents/MacOS/bb",
     );
     expect(acpProvider.process.env).toEqual(bridgeNodeEnv);
   });
 
-  it("passes the configured turn id prefix to bundled providers", () => {
-    const claudeProvider = createProviderForId("claude-code", {
-      additionalWorkspaceWriteRoots: [],
-      turnIdPrefix: "turn_runtime_",
-    });
-
-    const claudeEvents = claudeProvider.translateEvent({
-      type: "assistant",
-      message: {},
-    });
-
-    expect(claudeEvents).toContainEqual(
-      expect.objectContaining({
-        type: "turn/started",
-        threadId: "",
-        providerThreadId: "",
-        scope: turnScope("turn_runtime_1"),
-      }),
-    );
-  });
-
-  it("does not expose Pi through the legacy adapter registry", () => {
-    expect(() => createProviderForId("pi")).toThrow(
-      'Provider "pi" uses the canonical driver and has no legacy adapter.',
-    );
+  it("does not expose canonical providers through the legacy adapter registry", () => {
+    for (const providerId of ["pi", "claude-code"]) {
+      expect(() => createProviderForId(providerId)).toThrow(
+        `Provider "${providerId}" uses the canonical driver and has no legacy adapter.`,
+      );
+    }
   });
 
   it("creates the acp cursor provider with the bridge process config", () => {

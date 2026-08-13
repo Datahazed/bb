@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it } from "vitest";
-import { buildBridgeMcpServer } from "../tool-proxy-mcp.js";
+import { buildClaudeMcpServer } from "./tool-proxy-mcp.js";
 
 const RESULT_SCHEMA = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -27,7 +27,7 @@ const RESULT_SCHEMA = {
   additionalProperties: false,
 };
 
-async function connect(server: ReturnType<typeof buildBridgeMcpServer>) {
+async function connect(server: ReturnType<typeof buildClaudeMcpServer>) {
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
   await server.instance.connect(serverTransport);
@@ -36,9 +36,9 @@ async function connect(server: ReturnType<typeof buildBridgeMcpServer>) {
   return client;
 }
 
-describe("buildBridgeMcpServer", () => {
+describe("buildClaudeMcpServer", () => {
   it("serves registered JSON schemas verbatim over tools/list", async () => {
-    const server = buildBridgeMcpServer(
+    const server = buildClaudeMcpServer(
       [
         {
           name: "bb_workflow_result",
@@ -69,7 +69,7 @@ describe("buildBridgeMcpServer", () => {
   it("forwards tool calls with raw arguments and reports errors", async () => {
     const calls: Array<{ toolName: string; args: Record<string, unknown> }> =
       [];
-    const server = buildBridgeMcpServer(
+    const server = buildClaudeMcpServer(
       [
         {
           name: "bb_workflow_result",

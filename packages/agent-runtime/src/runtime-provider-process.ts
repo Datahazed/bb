@@ -9,6 +9,8 @@ import type { ThreadEvent } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import {
   PROVIDER_DRIVER_PROTOCOL_VERSION,
+  type ProviderDriverHostInteractionRequestParams,
+  type ProviderDriverHostInteractionRequestResult,
   type ProviderDriverHostToolCallParams,
   type ProviderDriverHostToolCallResult,
 } from "@bb/provider-driver-contract";
@@ -22,7 +24,11 @@ import type {
 } from "./provider-adapter.js";
 import { createProviderForId } from "./provider-registry.js";
 import { filterSkillRootsForProvider } from "./runtime-skill-roots.js";
-import { classifySessionExecutionSettingsChange } from "./execution-options.js";
+import {
+  classifyClaudeExecutionSettingsChange,
+  classifySessionExecutionSettingsChange,
+  normalizeClaudeExecutionOptions,
+} from "./execution-options.js";
 import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
 import type { ProviderDriverConnection } from "./provider-driver/connection.js";
 import { CanonicalProcessProviderConnection } from "./provider-driver/canonical-process-connection.js";
@@ -66,6 +72,11 @@ export interface RuntimeProviderCanonicalToolCallArgs {
   providerProcess: RuntimeProviderProcess;
 }
 
+export interface RuntimeProviderCanonicalInteractionArgs {
+  params: ProviderDriverHostInteractionRequestParams;
+  providerProcess: RuntimeProviderProcess;
+}
+
 export interface RuntimeProviderProcessManagerArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   adapterFactory?: ProviderAdapterFactory;
@@ -85,6 +96,9 @@ export interface RuntimeProviderProcessManagerArgs {
   ) => RuntimeProviderIdentityState;
   env: Record<string, string> | undefined;
   getNextRequestId: () => number;
+  handleCanonicalInteraction: (
+    args: RuntimeProviderCanonicalInteractionArgs,
+  ) => Promise<ProviderDriverHostInteractionRequestResult>;
   handleCanonicalToolCall: (
     args: RuntimeProviderCanonicalToolCallArgs,
   ) => Promise<ProviderDriverHostToolCallResult>;
@@ -152,6 +166,7 @@ interface ProviderProcessExitedErrorArgs {
 
 const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 const CANONICAL_PROVIDER_REQUEST_TIMEOUT_MS = 2 * 60_000;
+const CLAUDE_CODE_PROVIDER_ID = "claude-code";
 const PI_PROVIDER_ID = "pi";
 
 function createAdapterTurnIdPrefix(): string {
@@ -159,21 +174,31 @@ function createAdapterTurnIdPrefix(): string {
   return `turn_${adapterId}_`;
 }
 
-function resolvePiDriverProcessArgs(args: {
+function resolveCanonicalDriverProcessArgs(args: {
   bridgeBundleDir: string | undefined;
+  providerId: string;
 }): string[] {
+  const driver =
+    args.providerId === PI_PROVIDER_ID
+      ? {
+          bundleFileName: "bb-pi-driver.mjs",
+          bridgeRelativePath: "pi/driver-entry.js",
+        }
+      : {
+          bundleFileName: "bb-claude-code-driver.mjs",
+          bridgeRelativePath: "claude-code/driver-entry.js",
+        };
   return resolveBridgeProcessArgs({
     bridgeBundleDir: args.bridgeBundleDir,
-    bundleFileName: "bb-pi-driver.mjs",
     importMetaUrl: import.meta.url,
-    bridgeRelativePath: "pi/driver-entry.js",
+    ...driver,
   });
 }
 
 function driverArtifactDigest(processArgs: readonly string[]): string {
   const entryPath = processArgs.at(-1);
   if (!entryPath) {
-    throw new Error("Pi driver launch has no entry point");
+    throw new Error("Provider driver launch has no entry point");
   }
   return createHash("sha256").update(readFileSync(entryPath)).digest("hex");
 }
@@ -211,10 +236,11 @@ export class RuntimeProviderProcessManager {
 
     const startPromise = (async () => {
       if (
-        args.providerId === PI_PROVIDER_ID &&
+        (args.providerId === PI_PROVIDER_ID ||
+          args.providerId === CLAUDE_CODE_PROVIDER_ID) &&
         this.args.adapterFactory === undefined
       ) {
-        await this.startCanonicalPiProvider(args);
+        await this.startCanonicalProvider(args);
         return;
       }
 
@@ -341,11 +367,13 @@ export class RuntimeProviderProcessManager {
     await this.canonicalSupervisor.shutdown();
   }
 
-  private async startCanonicalPiProvider(
+  private async startCanonicalProvider(
     args: EnsureRuntimeProviderArgs,
   ): Promise<void> {
-    const processArgs = resolvePiDriverProcessArgs({
+    const providerId = args.providerId;
+    const processArgs = resolveCanonicalDriverProcessArgs({
       bridgeBundleDir: this.args.bridgeBundleDir,
+      providerId,
     });
     let diagnosticsTail: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let providerProcess: RuntimeProviderProcess | null = null;
@@ -356,9 +384,9 @@ export class RuntimeProviderProcessManager {
         initialize: {
           supportedProtocolVersions: [PROVIDER_DRIVER_PROTOCOL_VERSION],
           expected: {
-            pluginId: PI_PROVIDER_ID,
-            driverId: PI_PROVIDER_ID,
-            providerId: PI_PROVIDER_ID,
+            pluginId: providerId,
+            driverId: providerId,
+            providerId,
             artifactDigest: driverArtifactDigest(processArgs),
           },
           host: {
@@ -370,7 +398,7 @@ export class RuntimeProviderProcessManager {
               homedir(),
               ".bb",
               "provider-data",
-              PI_PROVIDER_ID,
+              providerId,
             ),
           },
           config: {},
@@ -387,9 +415,22 @@ export class RuntimeProviderProcessManager {
         hostHandlers: {
           callTool: (params) => {
             if (!providerProcess) {
-              throw new Error("Pi driver requested a tool during startup");
+              throw new Error(
+                `${providerId} driver requested a tool during startup`,
+              );
             }
             return this.args.handleCanonicalToolCall({
+              params,
+              providerProcess,
+            });
+          },
+          requestInteraction: (params) => {
+            if (!providerProcess) {
+              throw new Error(
+                `${providerId} driver requested an interaction during startup`,
+              );
+            }
+            return this.args.handleCanonicalInteraction({
               params,
               providerProcess,
             });
@@ -406,20 +447,22 @@ export class RuntimeProviderProcessManager {
           this.args.onStderr?.(
             diagnostic.stream === "stderr"
               ? diagnostic.line
-              : `Pi stdout: ${diagnostic.line}`,
+              : `${providerId} stdout: ${diagnostic.line}`,
           );
         },
         onExit: (exit) => {
           if (!providerProcess) return;
           this.handleProviderProcessExit({
             code: exit.code,
-            providerId: PI_PROVIDER_ID,
+            providerId,
             providerProcess,
             signal: exit.signal,
           });
         },
         onProtocolError: (error) => {
-          this.args.onStderr?.(`Pi driver protocol error: ${error.message}`);
+          this.args.onStderr?.(
+            `${providerId} driver protocol error: ${error.message}`,
+          );
         },
         requestTimeoutMs: CANONICAL_PROVIDER_REQUEST_TIMEOUT_MS,
         requestTimeouts: {
@@ -436,24 +479,44 @@ export class RuntimeProviderProcessManager {
       );
     }
 
-    const providerInfo = getBuiltInAgentProviderInfo(PI_PROVIDER_ID);
+    const providerInfo = getBuiltInAgentProviderInfo(
+      providerId === PI_PROVIDER_ID ? PI_PROVIDER_ID : CLAUDE_CODE_PROVIDER_ID,
+    );
     const connection = new CanonicalProcessProviderConnection({
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
+      ...(providerId === CLAUDE_CODE_PROVIDER_ID
+        ? {
+            buildProviderOptions: (execution) => ({
+              claudeCodeMockCliTraffic: execution.claudeCodeMockCliTraffic,
+              ...(execution.claudeCodePermissionMode !== undefined
+                ? {
+                    claudeCodePermissionMode:
+                      execution.claudeCodePermissionMode,
+                  }
+                : {}),
+            }),
+            classifyExecutionSettingsChange:
+              classifyClaudeExecutionSettingsChange,
+            normalizeExecutionOptions: normalizeClaudeExecutionOptions,
+          }
+        : {
+            classifyExecutionSettingsChange:
+              classifySessionExecutionSettingsChange,
+          }),
       capabilities: providerInfo.capabilities,
-      classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
       displayName: providerInfo.displayName,
       processConnection: supervised.connection,
-      providerId: PI_PROVIDER_ID,
+      providerId,
       resolveThreadStoragePath: this.args.resolveThreadStoragePath,
     });
     providerProcess = {
       child: supervised.child,
       connection,
       expectedShutdownExpectations: 0,
-      identity: this.args.createProviderIdentityState(PI_PROVIDER_ID),
+      identity: this.args.createProviderIdentityState(providerId),
       interactiveRequestScope: randomUUID(),
       processKey: args.processKey,
-      providerId: PI_PROVIDER_ID,
+      providerId,
       stop: async () => supervised.stop(),
       stderrLineTail: Buffer.alloc(0),
       stderrTail: diagnosticsTail,
@@ -467,7 +530,7 @@ export class RuntimeProviderProcessManager {
     try {
       await connection.initialize(
         filterSkillRootsForProvider({
-          providerId: PI_PROVIDER_ID,
+          providerId,
           skillRoots: this.args.skillRoots,
         }),
       );

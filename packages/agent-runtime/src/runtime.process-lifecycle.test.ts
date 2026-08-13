@@ -78,6 +78,9 @@ describe("createAgentRuntime process lifecycle", () => {
         identityRegistry.createProviderState({ providerId }),
       env: args.env,
       getNextRequestId: () => nextRequestId++,
+      handleCanonicalInteraction: async () => ({
+        resolution: { decision: "deny" },
+      }),
       handleCanonicalToolCall: async () => ({ success: true, content: [] }),
       handleConnectionEvents: () => undefined,
       handleStdoutLine: () => undefined,

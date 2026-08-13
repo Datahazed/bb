@@ -152,6 +152,56 @@ describe("projectProviderDriverEvent", () => {
     ]);
   });
 
+  it("projects background-task and model-fallback facts", () => {
+    const task = {
+      type: "backgroundTask" as const,
+      id: "task:1",
+      taskType: "local_agent",
+      description: "Research",
+      status: "pending" as const,
+      taskStatus: "running" as const,
+      skipTranscript: false,
+    };
+    expect(
+      project(
+        providerDriverEventSchema.parse({
+          type: "background_task.progress",
+          attachmentId: "attachment-1",
+          sequence: 1,
+          item: task,
+          turnId: null,
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/backgroundTask/progress",
+        scope: { kind: "thread" },
+        item: task,
+      }),
+    ]);
+    expect(
+      project(
+        providerDriverEventSchema.parse({
+          type: "provider.model_fallback",
+          attachmentId: "attachment-1",
+          sequence: 2,
+          originalModel: "opus",
+          fallbackModel: "sonnet",
+          reason: "provider",
+          message: "Switched models",
+          turnId: "turn-1",
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "provider/modelFallback",
+        scope: { kind: "turn", turnId: "turn-1" },
+        originalModel: "opus",
+        fallbackModel: "sonnet",
+      }),
+    ]);
+  });
+
   it("uses valid turn and thread scopes for usage and compaction", () => {
     const tokenUsage = {
       total: {

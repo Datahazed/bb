@@ -1,5 +1,7 @@
 import path from "node:path";
 import {
+  isApprovalPendingInteractionResolution,
+  isUserQuestionPendingInteractionResolution,
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
 } from "@bb/domain";
@@ -277,6 +279,48 @@ function createAgentRuntimeInternal(
       threadIdentityRegistry.createProviderState({ providerId }),
     env: options.env,
     getNextRequestId: () => nextRequestId++,
+    handleCanonicalInteraction: async (args) => {
+      const attachment = args.providerProcess.connection.resolveAttachment(
+        args.params.attachmentId,
+      );
+      if (!attachment) {
+        throw new Error(
+          `Cannot resolve canonical attachment ${args.params.attachmentId}`,
+        );
+      }
+      const activeTurnId = turnState.getActiveTurnId(attachment.bbThreadId);
+      if (activeTurnId !== args.params.turnId) {
+        throw new Error(
+          `Canonical interaction turn ${args.params.turnId} does not match runtime turn ${activeTurnId ?? "none"}`,
+        );
+      }
+      if (!options.onInteractiveRequest) {
+        if (
+          args.params.payload.kind === "approval" &&
+          args.params.payload.availableDecisions.includes("deny")
+        ) {
+          return { resolution: { decision: "deny" } };
+        }
+        throw new Error("No runtime interaction handler is configured");
+      }
+      const resolution = await options.onInteractiveRequest({
+        threadId: attachment.bbThreadId,
+        turnId: args.params.turnId,
+        providerId: args.providerProcess.providerId,
+        providerThreadId: attachment.providerSessionId,
+        providerRequestId: `${args.providerProcess.interactiveRequestScope}:${args.params.requestId}`,
+        payload: args.params.payload,
+      });
+      if (
+        !isApprovalPendingInteractionResolution(resolution) &&
+        !isUserQuestionPendingInteractionResolution(resolution)
+      ) {
+        throw new Error(
+          "Canonical provider interaction returned an incompatible plugin resolution",
+        );
+      }
+      return { resolution };
+    },
     handleCanonicalToolCall: async (args) => {
       const attachment = args.providerProcess.connection.resolveAttachment(
         args.params.attachmentId,

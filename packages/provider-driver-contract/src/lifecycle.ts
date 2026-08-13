@@ -443,10 +443,18 @@ export class ProviderDriverLifecycle {
       case "turn.compacted":
         this.requireActiveTurn(attachment, event.attachmentId, event.turnId);
         break;
+      case "background_task.progress":
+      case "background_task.completed": {
+        if (event.turnId !== null) {
+          this.requireActiveTurn(attachment, event.attachmentId, event.turnId);
+        }
+        break;
+      }
       case "session.checkpoint_changed":
       case "session.context_window_usage_changed":
       case "provider.rate_limits_changed":
       case "provider.warning":
+      case "provider.model_fallback":
         break;
     }
 

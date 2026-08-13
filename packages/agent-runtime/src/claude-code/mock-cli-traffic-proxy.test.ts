@@ -2,7 +2,7 @@ import { createServer, request as httpRequest } from "node:http";
 import type { IncomingHttpHeaders, IncomingMessage, Server } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import type { JsonValue } from "@bb/domain";
-import { startClaudeCodeMockCliTrafficProxy } from "../mock-cli-traffic-proxy.js";
+import { startClaudeCodeMockCliTrafficProxy } from "./mock-cli-traffic-proxy.js";
 
 interface CapturedRequest {
   body: string;

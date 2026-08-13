@@ -17,7 +17,6 @@ import {
   acpProfileFromLaunchSpec,
   ACP_AGENT_PROFILES,
 } from "./acp/profiles.js";
-import { createClaudeCodeProviderAdapter } from "./claude-code/adapter.js";
 import { createCodexProviderAdapter } from "./codex/adapter.js";
 import type {
   ProviderAdapter,
@@ -42,10 +41,6 @@ const builtInProviders = [
     // runtime-generated prefix is only for adapters that synthesize bb turn ids.
     createAdapter: (options) => createCodexProviderAdapter(options),
     info: getBuiltInAgentProviderInfo("codex"),
-  },
-  {
-    createAdapter: (options) => createClaudeCodeProviderAdapter(options),
-    info: getBuiltInAgentProviderInfo("claude-code"),
   },
   ...ACP_AGENT_PROFILES.map((profile) => ({
     createAdapter: (options: ProviderAdapterFactoryOptions) =>
@@ -84,9 +79,9 @@ export function createProviderForId(
     });
   }
 
-  if (providerId === "pi") {
+  if (providerId === "pi" || providerId === "claude-code") {
     throw new Error(
-      'Provider "pi" uses the canonical driver and has no legacy adapter.',
+      `Provider "${providerId}" uses the canonical driver and has no legacy adapter.`,
     );
   }
 

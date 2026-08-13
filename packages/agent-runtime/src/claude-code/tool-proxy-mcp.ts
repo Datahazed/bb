@@ -6,22 +6,23 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-export const BRIDGE_MCP_SERVER_NAME = "bb-bridge";
+export const CLAUDE_MCP_SERVER_NAME = "bb-driver";
 
 export type DynamicToolDefinition = DynamicTool;
 
 export type ToolCallForwarder = (
   toolName: string,
   args: Record<string, unknown>,
+  callId?: string,
 ) => Promise<{ content: string; isError?: boolean }>;
 
-export function buildBridgeMcpServer(
+export function buildClaudeMcpServer(
   dynamicTools: DynamicToolDefinition[],
   forwardToolCall: ToolCallForwarder,
 ): McpSdkServerConfigWithInstance {
   const toolsByName = new Map(dynamicTools.map((def) => [def.name, def]));
   const instance = new McpServer(
-    { name: BRIDGE_MCP_SERVER_NAME, version: "1.0.0" },
+    { name: CLAUDE_MCP_SERVER_NAME, version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
   // Low-level handlers instead of McpServer.registerTool: registerTool only
@@ -41,7 +42,10 @@ export function buildBridgeMcpServer(
     if (def === undefined) {
       return {
         content: [
-          { type: "text" as const, text: `Unknown tool: ${request.params.name}` },
+          {
+            type: "text" as const,
+            text: `Unknown tool: ${request.params.name}`,
+          },
         ],
         isError: true,
       };
@@ -55,14 +59,14 @@ export function buildBridgeMcpServer(
       ...(result.isError ? { isError: true } : {}),
     };
   });
-  return { type: "sdk", name: BRIDGE_MCP_SERVER_NAME, instance };
+  return { type: "sdk", name: CLAUDE_MCP_SERVER_NAME, instance };
 }
 
 export function getAllowedToolNames(
   dynamicTools: DynamicToolDefinition[],
 ): string[] {
   return dynamicTools.map(
-    (def) => `mcp__${BRIDGE_MCP_SERVER_NAME}__${def.name}`,
+    (def) => `mcp__${CLAUDE_MCP_SERVER_NAME}__${def.name}`,
   );
 }
 

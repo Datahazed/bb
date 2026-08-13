@@ -18,7 +18,7 @@ type MainFailureHandler = (error: unknown) => void;
 const entrypointDir = dirname(fileURLToPath(import.meta.url));
 
 function resolveEntrypointBridgeBundleDir(): string | undefined {
-  return existsSync(join(entrypointDir, "bb-claude-code-bridge.mjs"))
+  return existsSync(join(entrypointDir, "bb-claude-code-driver.mjs"))
     ? entrypointDir
     : undefined;
 }

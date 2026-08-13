@@ -29,12 +29,11 @@ const providerDriverTurnEventBaseSchema = providerDriverEventBaseSchema.extend({
 
 export type ProviderDriverItem = Exclude<
   ThreadEventItem,
-  { type: "userMessage" | "backgroundTask" }
+  { type: "userMessage" }
 >;
 export const providerDriverItemSchema = threadEventItemSchema.refine(
-  (item): item is ProviderDriverItem =>
-    item.type !== "userMessage" && item.type !== "backgroundTask",
-  "Driver turn items cannot be user messages or background tasks",
+  (item): item is ProviderDriverItem => item.type !== "userMessage",
+  "Driver turn items cannot be user messages",
 );
 
 export const providerDriverItemDeltaChannelSchema = z.enum([
@@ -172,6 +171,44 @@ export const providerDriverEventSchema = z.discriminatedUnion("type", [
       type: z.literal("provider.warning"),
       code: z.string().min(1).max(PROVIDER_DRIVER_MAX_ID_LENGTH),
       message: z.string().min(1).max(PROVIDER_DRIVER_MAX_MESSAGE_LENGTH),
+    })
+    .strict(),
+  providerDriverEventBaseSchema
+    .extend({
+      type: z.literal("provider.model_fallback"),
+      originalModel: z
+        .string()
+        .min(1)
+        .max(PROVIDER_DRIVER_MAX_ID_LENGTH * 4),
+      fallbackModel: z
+        .string()
+        .min(1)
+        .max(PROVIDER_DRIVER_MAX_ID_LENGTH * 4),
+      reason: z.enum(["refusal", "provider"]),
+      message: z.string().min(1).max(PROVIDER_DRIVER_MAX_MESSAGE_LENGTH),
+      turnId: providerDriverTurnIdSchema.nullable(),
+    })
+    .strict(),
+  providerDriverEventBaseSchema
+    .extend({
+      type: z.literal("background_task.progress"),
+      item: threadEventItemSchema.refine(
+        (item): item is Extract<ThreadEventItem, { type: "backgroundTask" }> =>
+          item.type === "backgroundTask",
+        "Background-task progress requires a backgroundTask item",
+      ),
+      turnId: providerDriverTurnIdSchema.nullable(),
+    })
+    .strict(),
+  providerDriverEventBaseSchema
+    .extend({
+      type: z.literal("background_task.completed"),
+      item: threadEventItemSchema.refine(
+        (item): item is Extract<ThreadEventItem, { type: "backgroundTask" }> =>
+          item.type === "backgroundTask",
+        "Background-task completion requires a backgroundTask item",
+      ),
+      turnId: providerDriverTurnIdSchema.nullable(),
     })
     .strict(),
 ]);

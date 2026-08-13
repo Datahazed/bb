@@ -402,23 +402,66 @@ async function smokeBridgeModelList({
 
 async function smokeProviderBridgeBundles(packageDir) {
   await access(join(packageDir, "host-daemon", "dist", "bb-pi-driver.mjs"));
-  await smokeBridgeModelList({
-    // The packaged bridge intentionally relies on the host's Claude CLI for
-    // account-scoped discovery. CI does not install that provider binary, so
-    // its explicit unavailable-provider response is a valid smoke outcome.
-    allowUnavailableProvider: true,
-    bridgePath: join(
-      packageDir,
-      "host-daemon",
-      "dist",
-      "bb-claude-code-bridge.mjs",
-    ),
-    label: "Claude Code bridge model/list",
-  });
+  await access(
+    join(packageDir, "host-daemon", "dist", "bb-claude-code-driver.mjs"),
+  );
   await smokeBridgeModelList({
     bridgePath: join(packageDir, "host-daemon", "dist", "bb-acp-bridge.mjs"),
     label: "ACP bridge model/list",
   });
+}
+
+async function smokeClaudeCanonicalDriver(packageDir) {
+  const testRoot = join(tempRoot, "claude-canonical-driver");
+  const workspaceDir = join(testRoot, "workspace");
+  await mkdir(workspaceDir, { recursive: true });
+  const label = "Claude Code installed-package canonical driver";
+  const driverPath = join(
+    packageDir,
+    "host-daemon",
+    "dist",
+    "bb-claude-code-driver.mjs",
+  );
+  const childProcess = spawn(process.execPath, [driverPath], {
+    cwd: workspaceDir,
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
+  });
+  const output = collectProcessOutput(childProcess);
+  const peer = createProviderDriverSmokePeer({ childProcess, label, output });
+  try {
+    const initialized = await peer.request("driver.initialize", {
+      supportedProtocolVersions: [peer.protocolVersion],
+      expected: {
+        pluginId: "claude-code",
+        driverId: "claude-code",
+        providerId: "claude-code",
+        artifactDigest: await driverArtifactDigest(driverPath),
+      },
+      host: { platform: process.platform, architecture: process.arch },
+      paths: { providerDataDir: join(testRoot, "provider-data") },
+      config: {},
+    });
+    if (initialized.identity?.providerId !== "claude-code") {
+      throw new Error(`${label} returned the wrong identity`);
+    }
+    const inspected = await peer.request("driver.inspect", {
+      cwd: workspaceDir,
+      operation: null,
+    });
+    if (
+      inspected.readiness?.status !== "ready" &&
+      inspected.readiness?.status !== "unavailable"
+    ) {
+      throw new Error(
+        `${label} returned invalid readiness: ${JSON.stringify(inspected)}`,
+      );
+    }
+    await peer.request("driver.shutdown", {});
+  } finally {
+    peer.close();
+    if (childProcess.exitCode === null) childProcess.kill("SIGKILL");
+  }
 }
 
 async function smokePiUserConfiguration(packageDir) {
@@ -944,6 +987,7 @@ try {
   const sdkDir = await smokeSdkPackage(tarballPath);
   const installedPackageDir = join(sdkDir, "node_modules", "bb-app");
   await smokeProviderBridgeBundles(installedPackageDir);
+  await smokeClaudeCanonicalDriver(installedPackageDir);
   await smokePiUserConfiguration(installedPackageDir);
   await smokeFullStack(tarballPath, sdkDir);
   await smokeDaemonJoin(tarballPath);

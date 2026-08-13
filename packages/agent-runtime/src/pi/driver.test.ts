@@ -61,7 +61,7 @@ beforeAll(async () => {
 
 function initializeParams() {
   return providerDriverInitializeParamsSchema.parse({
-    supportedProtocolVersions: [3],
+    supportedProtocolVersions: [4],
     expected: {
       pluginId: "pi",
       driverId: "pi",

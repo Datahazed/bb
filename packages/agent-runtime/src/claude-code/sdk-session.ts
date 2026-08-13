@@ -7,7 +7,7 @@ import {
   type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { ClaudePermissionMode } from "../interactive-contract.js";
+import type { ClaudePermissionMode } from "./interactive-contract.js";
 import {
   isMissingClaudeCliMessage,
   missingClaudeCliGuidance,
@@ -122,7 +122,7 @@ function buildSdkPermissionOptions(
   }
 
   // Claude Code refuses dangerous permission skipping under root. Keep bb's
-  // logical bypass policy in the bridge canUseTool handler, but avoid sending
+  // logical bypass policy in the driver canUseTool handler, but avoid sending
   // the SDK flags that make the CLI exit before the session starts.
   if (isCurrentProcessRoot()) {
     return { permissionMode: "default" };
