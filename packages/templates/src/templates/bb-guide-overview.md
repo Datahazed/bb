@@ -25,7 +25,7 @@ Context variables set automatically inside a thread environment:
 - BB_ENVIRONMENT_ID — current environment
 - BB_CLI — absolute path to the daemon-managed `bb` executable (prefer this if bare `bb` is wrong; official entrypoints also re-exec to it)
 
-Run `bb status` to see your current context (resolved project and thread IDs).
+Run `bb status` to see the current context and the source checkout build.
 
 All commands support --json for machine-readable output.
 

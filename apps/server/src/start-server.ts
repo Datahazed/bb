@@ -13,6 +13,10 @@ import { createMachineAuthService } from "./services/machine-auth.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
 import { SkillTreeRegistry } from "./services/skills/injected-skills.js";
 import { createAppVersionService } from "./services/system/app-version.js";
+import {
+  createRunningBuildCache,
+  resolveRunningCheckoutRoot,
+} from "./services/system/running-build.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
 import {
@@ -136,8 +140,12 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   });
   pendingInteractions.start();
 
+  const runningBuild = await createRunningBuildCache({
+    checkoutRoot: resolveRunningCheckoutRoot(selfDir),
+  });
   const appVersion = createAppVersionService({
     config: runtimeConfig,
+    getBuild: runningBuild.getBuild,
     logger,
   });
   const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
@@ -224,6 +232,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     }
     shutdownPromise = (async () => {
       eventLoopStallMonitor.stop();
+      runningBuild.stop();
       clearInterval(sweepInterval);
       await pluginService.stop().catch((error: unknown) => {
         logger.warn({ err: error }, "Plugin shutdown failed");

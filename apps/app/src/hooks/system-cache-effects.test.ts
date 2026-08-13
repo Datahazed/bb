@@ -203,6 +203,7 @@ describe("system cache effects", () => {
       source: "npm",
       updateAvailable: true,
       isDevelopment: false,
+      build: null,
       upgradeCommand: "npx bb-app@latest",
     });
 

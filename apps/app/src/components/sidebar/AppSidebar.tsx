@@ -53,6 +53,7 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
+import type { SystemBuild } from "@bb/server-contract";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -68,6 +69,7 @@ interface AppSidebarProps {
   showTopReserve: boolean;
   settingsRoutePath: string;
   toolsRoutePath?: string;
+  build: SystemBuild | null;
 }
 
 export function AppSidebar({
@@ -76,6 +78,7 @@ export function AppSidebar({
   showTopReserve,
   settingsRoutePath,
   toolsRoutePath,
+  build,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
   // A plugin may replace the sidebar's scrolling thread list. It never
@@ -398,6 +401,18 @@ export function AppSidebar({
                 <span className="sr-only">Report a bug</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            {build ? (
+              <li
+                className="flex min-w-0 items-center text-xs text-muted-foreground group-data-[collapsible=icon]:hidden"
+                title={build.commit}
+              >
+                <span className="min-w-0 truncate">{build.branch}</span>
+                <span className="shrink-0">
+                  @{build.shortCommit}
+                  {build.dirty ? "•" : null}
+                </span>
+              </li>
+            ) : null}
             <li aria-hidden="true" className="min-w-0 flex-1" />
             <SidebarUpdatesBadge onNavigate={closeOnMobile} />
           </SidebarMenu>

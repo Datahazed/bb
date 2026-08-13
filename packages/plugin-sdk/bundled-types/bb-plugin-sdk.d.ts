@@ -7268,6 +7268,12 @@ declare const systemVersionResponseSchema: z$1.ZodObject<{
     source: z$1.ZodLiteral<"npm">;
     updateAvailable: z$1.ZodBoolean;
     isDevelopment: z$1.ZodBoolean;
+    build: z$1.ZodNullable<z$1.ZodObject<{
+        branch: z$1.ZodString;
+        commit: z$1.ZodString;
+        shortCommit: z$1.ZodString;
+        dirty: z$1.ZodBoolean;
+    }, z$1.core.$strip>>;
     upgradeCommand: z$1.ZodString;
 }, z$1.core.$strip>;
 type SystemVersionResponse = z$1.infer<typeof systemVersionResponseSchema>;

@@ -192,6 +192,9 @@ export function useSystemVersion(options?: QueryOptions) {
     queryKey: systemVersionQueryKey(),
     queryFn: ({ signal }) => sdk.system.version({ signal }),
     enabled: options?.enabled ?? true,
+    // A source checkout can switch branches or commits while the app runs.
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
     ...SERVER_SESSION_QUERY_POLICY,
   });
 }

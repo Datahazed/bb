@@ -77,6 +77,7 @@ function SidebarModeHarness() {
         Change route without closing
       </button>
       <AppLayoutSidebar
+        build={null}
         mode={mode}
         onResizeMouseDown={() => {}}
         isResizing={false}

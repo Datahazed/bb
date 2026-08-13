@@ -41,6 +41,7 @@ const version = {
   source: "npm" as const,
   updateAvailable: true,
   isDevelopment: false,
+  build: null,
   upgradeCommand: "npx bb-app@latest",
 };
 

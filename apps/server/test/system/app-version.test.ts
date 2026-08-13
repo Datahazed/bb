@@ -58,6 +58,7 @@ describe("createAppVersionService", () => {
       source: "npm",
       updateAvailable: false,
       upgradeCommand: "npx bb-app@latest",
+      build: null,
     });
     expect(calls).toEqual([]);
   });
@@ -74,6 +75,26 @@ describe("createAppVersionService", () => {
     expect(response.updateAvailable).toBe(true);
     expect(calls).toHaveLength(1);
     expect(calls[0]?.url).toBe("https://registry.npmjs.org/bb-app/latest");
+  });
+
+  it("reports a checkout identity in production mode", async () => {
+    const build = {
+      branch: "feat/example",
+      commit: "e6f422ef5c1a9d3b7f0e2a4c8d1b6e9f3a5c7d20",
+      shortCommit: "e6f422e",
+      dirty: false,
+    };
+    const service = createAppVersionService({
+      config: { appVersion: "0.0.5", isDevelopment: false },
+      fetchImpl: createStubFetch([{ body: { version: "0.0.5" } }], []),
+      getBuild: () => build,
+      logger: testLogger,
+    });
+
+    const response = await service.getSystemVersion();
+
+    expect(response.isDevelopment).toBe(false);
+    expect(response.build).toEqual(build);
   });
 
   it("reports updateAvailable=false when versions are equal", async () => {
@@ -116,6 +137,7 @@ describe("createAppVersionService", () => {
       source: "npm",
       updateAvailable: false,
       upgradeCommand: "npx bb-app@latest",
+      build: null,
     });
     expect(warn).toHaveBeenCalled();
   });

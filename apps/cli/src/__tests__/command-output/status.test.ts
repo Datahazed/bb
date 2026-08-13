@@ -88,4 +88,29 @@ describe("bb status command output", () => {
     const lines = collectLogLines(vi.mocked(console.log));
     expect(lines.some((line) => line.includes("Pinned:"))).toBe(true);
   });
+
+  it("bb status prints the running checkout build", async () => {
+    stubServerApi({
+      "v1.system.version.$get": vi.fn(async () => ({
+        currentVersion: "0.37.0",
+        latestVersion: null,
+        source: "npm" as const,
+        updateAvailable: false,
+        isDevelopment: false,
+        build: {
+          branch: "feat/example",
+          commit: "e6f422ef5c1a9d3b7f0e2a4c8d1b6e9f3a5c7d20",
+          shortCommit: "e6f422e",
+          dirty: true,
+        },
+        upgradeCommand: "npx bb-app@latest",
+      })),
+    });
+
+    await runCommand(["status"], register);
+
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Build       feat/example@e6f422e (dirty)",
+    );
+  });
 });

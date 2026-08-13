@@ -26,6 +26,7 @@ export interface AppVersionGetSystemVersionArgs {
 
 export interface CreateAppVersionServiceArgs {
   config: Pick<ServerRuntimeConfig, "appVersion" | "isDevelopment">;
+  getBuild?: () => SystemVersionResponse["build"];
   fetchImpl?: typeof fetch;
   logger: ServerLogger;
   /** Override the cache TTL. Tests use this; production uses the default. */
@@ -47,6 +48,7 @@ export function createAppVersionService(
   const now = args.now ?? (() => Date.now());
   const logger = args.logger;
   const config = args.config;
+  const getBuild = args.getBuild ?? (() => null);
 
   let cache: NpmLatestCacheEntry | null = null;
   let inflight: Promise<string | null> | null = null;
@@ -137,6 +139,7 @@ export function createAppVersionService(
         source: "npm",
         updateAvailable: false,
         isDevelopment: config.isDevelopment,
+        build: getBuild(),
         upgradeCommand: UPGRADE_COMMAND,
       };
 

@@ -199,6 +199,7 @@ function makeInventory(overrides: Partial<UpdateInventory>): UpdateInventory {
       source: "npm",
       updateAvailable: false,
       isDevelopment: false,
+      build: null,
       upgradeCommand: "npx bb-app@latest",
     },
     desktopInfo: null,
@@ -388,6 +389,7 @@ describe("UpdatesSettingsSection", () => {
       source: "npm" as const,
       updateAvailable: true,
       isDevelopment: false,
+      build: null,
       upgradeCommand: "npx bb-app@latest",
     };
     useUpdateInventoryMock.mockReturnValue(

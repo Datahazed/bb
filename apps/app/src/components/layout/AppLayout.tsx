@@ -93,7 +93,10 @@ import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNaviga
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
+import {
+  useSystemConfig,
+  useSystemVersion,
+} from "@/hooks/queries/system-queries";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -514,6 +517,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const isGlobalSettingsView =
     matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
   const systemConfigQuery = useSystemConfig();
+  const systemVersionQuery = useSystemVersion();
+  const build = systemVersionQuery.data?.build ?? null;
   const toolsHubEnabled = systemConfigQuery.data?.experiments.toolsHub === true;
   const isGlobalToolsView =
     toolsHubEnabled && isToolsRoutePath(location.pathname);
@@ -720,6 +725,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     const routeTitle = resolveRouteTitle(location.pathname)?.title;
     return routeTitle && routeTitle.length > 0 ? routeTitle : "BB";
   })();
+  const buildLabel = build ? `${build.branch}@${build.shortCommit}` : null;
+  const windowTitle =
+    desktopInfo !== null && buildLabel !== null
+      ? `${documentTitle} — ${buildLabel}`
+      : documentTitle;
   // The sidebar list omits archived threads and side chats, so it can't answer
   // whether the currently-viewed thread is blocked on input. Read the current
   // thread's pending interactions directly (the thread view already warms this
@@ -821,8 +831,21 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   useEffect(() => {
     if (typeof document === "undefined") return;
-    document.title = documentTitle;
-  }, [documentTitle]);
+    document.title = windowTitle;
+  }, [windowTitle]);
+
+  useEffect(() => {
+    if (buildLabel === null) {
+      delete document.documentElement.dataset.bbBuild;
+      return;
+    }
+    document.documentElement.dataset.bbBuild = `${buildLabel}${
+      build?.dirty ? "+dirty" : ""
+    }`;
+    return () => {
+      delete document.documentElement.dataset.bbBuild;
+    };
+  }, [build?.dirty, buildLabel]);
 
   return (
     <ToolsHubExperimentProvider enabled={toolsHubEnabled}>
@@ -848,6 +871,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 settingsRoutePath={settingsRoutePath}
                 toolsBackRoutePath={toolsBackRoutePath}
                 toolsRoutePath={toolsHubEnabled ? toolsRoutePath : undefined}
+                build={build}
               />
               <SidebarInset>
                 <div

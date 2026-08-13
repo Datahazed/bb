@@ -254,6 +254,14 @@ export const themeCatalogResponseSchema = z.object({
 });
 export type ThemeCatalogResponse = z.infer<typeof themeCatalogResponseSchema>;
 
+export const systemBuildSchema = z.object({
+  branch: z.string().min(1),
+  commit: z.string().regex(/^[0-9a-f]{40}$/u),
+  shortCommit: z.string().regex(/^[0-9a-f]{7}$/u),
+  dirty: z.boolean(),
+});
+export type SystemBuild = z.infer<typeof systemBuildSchema>;
+
 export const systemVersionResponseSchema = z.object({
   /** Version of the running bb-app package, read from package.json. */
   currentVersion: z.string(),
@@ -265,6 +273,8 @@ export const systemVersionResponseSchema = z.object({
   updateAvailable: z.boolean(),
   /** Mirrors deps.config.isDevelopment so the frontend can skip the toast. */
   isDevelopment: z.boolean(),
+  /** Git identity of a source checkout. Null for installed builds. */
+  build: systemBuildSchema.nullable(),
   /** Command users should run to upgrade. Server-owned product policy. */
   upgradeCommand: z.string(),
 });

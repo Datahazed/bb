@@ -3,6 +3,7 @@ import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
 import { useSidebar } from "@/components/ui/sidebar.js";
+import type { SystemBuild } from "@bb/server-contract";
 
 export type AppLayoutSidebarMode = "app" | "settings" | "tools";
 
@@ -14,6 +15,7 @@ interface AppLayoutSidebarProps {
   settingsRoutePath: string;
   toolsBackRoutePath: string;
   toolsRoutePath?: string;
+  build: SystemBuild | null;
 }
 
 /**
@@ -32,6 +34,7 @@ export function AppLayoutSidebar({
   settingsRoutePath,
   toolsBackRoutePath,
   toolsRoutePath,
+  build,
 }: AppLayoutSidebarProps) {
   const { isCompactViewport, isMobileSidebarClosing } = useSidebar();
   const holdCurrentMode = isCompactViewport && isMobileSidebarClosing;
@@ -72,6 +75,7 @@ export function AppLayoutSidebar({
       showTopReserve={true}
       settingsRoutePath={settingsRoutePath}
       toolsRoutePath={toolsRoutePath}
+      build={build}
     />
   );
 }

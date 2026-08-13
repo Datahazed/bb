@@ -22,6 +22,7 @@ describe("GET /api/v1/system/version", () => {
           source: "npm",
           updateAvailable: false,
           isDevelopment: true,
+          build: null,
           upgradeCommand: "npx bb-app@latest",
         }),
         isDevelopment: true,
