@@ -11,13 +11,13 @@ describe("ThreadEnvironmentSummary", () => {
       <ThreadEnvironmentSummary
         projectName="project-a"
         projectRootPath="/path/to/project-a"
-        environmentPath="/path/to/project-b"
+        environmentPath="/path/to/project-b/."
         environmentLabel="Working locally"
       />,
     );
 
     const projectLabel = container.querySelector(
-      '[data-option-display][title="/path/to/project-b"]',
+      '[data-option-display][title="/path/to/project-b/."]',
     );
     expect(
       projectLabel?.querySelector("[data-promptbox-full-label]")?.textContent,
@@ -46,7 +46,7 @@ describe("ThreadEnvironmentSummary", () => {
       <ThreadEnvironmentSummary
         projectName="project-a"
         projectRootPath="/path/to/project-a/"
-        environmentPath="/path/to/project-a"
+        environmentPath="/path/to/project-a/child/.."
         environmentLabel="Working locally"
       />,
     );
