@@ -30,6 +30,7 @@ import {
   shouldShowRetainedTerminalSession,
 } from "@/lib/terminal-session-visibility";
 import { normalizeTerminalTitle } from "./thread-terminal-title";
+import type { TerminalFixedPanelTarget } from "@/lib/fixed-panel-tabs-state";
 
 export const DEFAULT_TERMINAL_COLS = 100;
 export const DEFAULT_TERMINAL_ROWS = 30;
@@ -46,6 +47,8 @@ export interface ThreadTerminalControllerArgs {
   isPanelOpen: boolean;
   isPanelPersistedOpen: boolean;
   panelStateId?: string;
+  fixedPanelTarget?: TerminalFixedPanelTarget;
+  fixedTerminalId?: string;
   target: ThreadTerminalTarget;
 }
 
@@ -135,10 +138,16 @@ export function shouldAutoCloseCleanTerminalSessionsForPanel({
   return !isPanelOpen && !isPanelPersistedOpen;
 }
 
-function pickActiveTerminalId(
+export function pickActiveTerminalId(
   sessions: readonly TerminalSession[],
   preferredTerminalId: string | null,
+  fixedTerminalId?: string,
 ): string | null {
+  if (fixedTerminalId !== undefined) {
+    return sessions.some((session) => session.id === fixedTerminalId)
+      ? fixedTerminalId
+      : null;
+  }
   if (
     preferredTerminalId &&
     sessions.some((session) => session.id === preferredTerminalId)
@@ -166,6 +175,8 @@ export function useThreadTerminalController({
   isPanelOpen,
   isPanelPersistedOpen,
   panelStateId,
+  fixedPanelTarget,
+  fixedTerminalId,
   target,
 }: ThreadTerminalControllerArgs): ThreadTerminalController {
   const queryClient = useQueryClient();
@@ -193,6 +204,7 @@ export function useThreadTerminalController({
   const setActiveFixedTerminal = useSetFixedRightTerminalActiveTerminal(
     fixedPanelStateId,
     fixedPanelSyncThreadId,
+    fixedPanelTarget,
   );
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
     fixedPanelStateId,
@@ -285,8 +297,13 @@ export function useThreadTerminalController({
     [retainedTerminalViewId, sessions],
   );
   const activeTerminalId = useMemo(
-    () => pickActiveTerminalId(visibleSessions, activeFixedTerminalId),
-    [activeFixedTerminalId, visibleSessions],
+    () =>
+      pickActiveTerminalId(
+        visibleSessions,
+        activeFixedTerminalId,
+        fixedTerminalId,
+      ),
+    [activeFixedTerminalId, fixedTerminalId, visibleSessions],
   );
   const activeSession =
     visibleSessions.find((session) => session.id === activeTerminalId) ?? null;

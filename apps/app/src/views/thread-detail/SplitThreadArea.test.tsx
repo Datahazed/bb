@@ -214,6 +214,15 @@ vi.mock("@/views/RootComposeView", () => ({
 }));
 
 vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
+  getPluginPanelRightPanelStateId: ({
+    panelPath,
+    paneId,
+    pluginId,
+  }: {
+    panelPath: string;
+    paneId?: string;
+    pluginId: string;
+  }) => `plugin-panel:${pluginId}:${panelPath}:${paneId ?? "standalone"}`,
   PluginPanelRightPanelToggleButton: () => null,
   PluginPanelRightPanelHost: ({
     children,
