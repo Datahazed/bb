@@ -1114,7 +1114,8 @@ Slot props contracts (versioned, additive-only):
   `{ views?, defaultViewId?, tools? }`. Each custom view is
   `{ id, title, icon?, component, layout? }` and receives
   `{ subPath, params }`; `defaultViewId` pins and initially opens one of those
-  views. `tools` explicitly enables host tabs (`"browser"` and/or
+  views on wide surfaces, while compact drawers stay closed until explicitly
+  opened. `tools` explicitly enables host tabs (`"browser"` and/or
   `"terminal"`). Open a registered view or enabled tool from plugin React via
   `useBbNavigate().experimental_openRightPanel(request)`: `{ kind: "view",
 viewId, title?, params? }`, `{ kind: "browser", url }`, or

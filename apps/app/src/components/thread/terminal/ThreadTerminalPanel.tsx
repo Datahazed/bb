@@ -4,12 +4,15 @@ import {
   useThreadTerminalController,
   type ThreadTerminalTarget,
 } from "./useThreadTerminalController";
+import type { TerminalFixedPanelTarget } from "@/lib/fixed-panel-tabs-state";
 
 interface ThreadTerminalPanelProps {
   autoFocus?: boolean;
   canCreateTerminal: boolean;
   isPanelOpen: boolean;
   isPanelPersistedOpen: boolean;
+  fixedPanelTarget?: TerminalFixedPanelTarget;
+  fixedTerminalId?: string;
   onAutoFocusHandled?: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
@@ -22,6 +25,8 @@ export function ThreadTerminalPanel({
   canCreateTerminal,
   isPanelOpen,
   isPanelPersistedOpen,
+  fixedPanelTarget,
+  fixedTerminalId,
   onAutoFocusHandled,
   onOpenLink,
   onSelectionAddToChat,
@@ -32,6 +37,8 @@ export function ThreadTerminalPanel({
     canCreateTerminal,
     isPanelOpen,
     isPanelPersistedOpen,
+    fixedPanelTarget,
+    fixedTerminalId,
     panelStateId,
     target,
   });

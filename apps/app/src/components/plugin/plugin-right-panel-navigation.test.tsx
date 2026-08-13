@@ -6,7 +6,11 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useBbNavigate } from "@/lib/plugin-sdk-hooks";
 import { PluginSlotMount } from "./PluginSlotMount";
-import { PluginRightPanelNavigationProvider } from "./plugin-right-panel-navigation";
+import {
+  PluginRightPanelNavigationBridgeProvider,
+  PluginRightPanelNavigationProvider,
+  useRegisterPluginRightPanelOpenHandler,
+} from "./plugin-right-panel-navigation";
 
 afterEach(cleanup);
 
@@ -44,6 +48,30 @@ function PluginProbe() {
 }
 
 describe("plugin right-panel navigation", () => {
+  it("bridges requests from nav-panel header content to the mounted host", () => {
+    const experimentalOpenRightPanel = vi.fn(() => true);
+    function Registrar() {
+      useRegisterPluginRightPanelOpenHandler(
+        "plugin-panel:github:activity:standalone",
+        experimentalOpenRightPanel,
+      );
+      return null;
+    }
+    render(
+      <MemoryRouter>
+        <Registrar />
+        <PluginRightPanelNavigationBridgeProvider panelStateId="plugin-panel:github:activity:standalone">
+          <PluginProbe />
+        </PluginRightPanelNavigationBridgeProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Browser" }));
+
+    expect(experimentalOpenRightPanel).toHaveBeenCalledOnce();
+    expect(screen.getByText("accepted")).toBeTruthy();
+  });
+
   it("forwards Browser-tab requests to the current nav-panel host", () => {
     const experimentalOpenRightPanel = vi.fn(() => true);
     render(

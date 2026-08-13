@@ -95,7 +95,9 @@ export interface PluginNavPanelRightPanelRegistration {
   views?: readonly PluginNavPanelRightPanelViewRegistration[];
   /**
    * A registered view to keep available as the panel's pinned default tab.
-   * BB opens it on first use and preserves the user's later hide/show state.
+   * BB opens it initially on wide surfaces; compact drawers remain closed
+   * until the user or plugin explicitly opens the panel. Later hide/show state
+   * is preserved independently per owning pane.
    */
   defaultViewId?: string;
   /** Host-rendered tools this panel is allowed to open. */
