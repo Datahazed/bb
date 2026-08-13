@@ -111,6 +111,9 @@ export function SecondaryPanelTabStrip({
   const [overflow, setOverflow] = useState<TabStripOverflowState>(
     INITIAL_OVERFLOW_STATE,
   );
+  const [scrollDirection, setScrollDirection] = useState<"left" | "right">(
+    "right",
+  );
   // Scroll capacity (max scrollLeft). Measured only on resize / tab-list change,
   // never per scroll: reading scrollWidth/clientWidth in a scroll handler forces
   // a synchronous reflow, which thrashes at narrow widths where every edge
@@ -151,6 +154,19 @@ export function SecondaryPanelTabStrip({
     const canScrollLeft = isScrollable && scrollLeft > EDGE_EPSILON_PX;
     const canScrollRight =
       isScrollable && scrollLeft < maxScrollLeft - EDGE_EPSILON_PX;
+    // A single caret must keep advancing in the same direction through long
+    // tab lists. Reverse only after it reaches that direction's hard edge;
+    // otherwise repeated clicks at an intermediate position would bounce back
+    // and forth over the same step.
+    setScrollDirection((previousDirection) => {
+      if (!isScrollable || !canScrollLeft) {
+        return "right";
+      }
+      if (!canScrollRight) {
+        return "left";
+      }
+      return previousDirection;
+    });
     // Return the existing state object when neither flag changed so React bails
     // out of re-rendering. With the tab tree memoized, a real change only
     // repaints the always-mounted edge fades/chevrons (an opacity toggle).
@@ -358,7 +374,6 @@ export function SecondaryPanelTabStrip({
   const chevronNoDragClass = usesDesktopChrome
     ? MACOS_APP_REGION_NO_DRAG_CLASS
     : null;
-  const scrollDirection = overflow.canScrollRight ? "right" : "left";
   // Memoize the sortable tab tree so the directional overflow flags — which
   // flip every time you reach a scroll edge, i.e. constantly at narrow widths —
   // re-render only the edge controls, never the tabs. Without this, each edge

@@ -88,7 +88,7 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(rightFade?.classList.contains("opacity-0")).toBe(true);
     Object.defineProperties(viewport!, {
       clientWidth: { configurable: true, value: 120 },
-      scrollWidth: { configurable: true, value: 240 },
+      scrollWidth: { configurable: true, value: 480 },
       scrollLeft: { configurable: true, value: 0, writable: true },
     });
     Object.defineProperty(strip!, "clientWidth", {
@@ -97,7 +97,7 @@ describe("secondary panel tab-strip edge fades", () => {
     });
     Object.defineProperty(content!, "scrollWidth", {
       configurable: true,
-      value: 240,
+      value: 480,
     });
     act(() => {
       resizeCallback?.([], {} as ResizeObserver);
@@ -135,12 +135,34 @@ describe("secondary panel tab-strip edge fades", () => {
 
     overflowButton?.focus();
     expect(document.activeElement).toBe(overflowButton);
-    viewport!.scrollLeft = 120;
+    viewport!.scrollLeft = 140;
     fireEvent.scroll(viewport!);
     act(() => animationFrameCallback?.(0));
     expect(overflowButton?.getAttribute("aria-hidden")).toBe("false");
+    expect(overflowButton?.getAttribute("aria-label")).toBe(
+      "Scroll tabs right",
+    );
+    fireEvent.click(overflowButton!);
+    expect(scrollBy).toHaveBeenLastCalledWith({
+      left: 140,
+      behavior: "smooth",
+    });
+
+    viewport!.scrollLeft = 360;
+    fireEvent.scroll(viewport!);
+    act(() => animationFrameCallback?.(0));
     expect(overflowButton?.getAttribute("aria-label")).toBe("Scroll tabs left");
     expect(document.activeElement).toBe(overflowButton);
+    fireEvent.click(overflowButton!);
+    expect(scrollBy).toHaveBeenLastCalledWith({
+      left: -140,
+      behavior: "smooth",
+    });
+
+    viewport!.scrollLeft = 220;
+    fireEvent.scroll(viewport!);
+    act(() => animationFrameCallback?.(0));
+    expect(overflowButton?.getAttribute("aria-label")).toBe("Scroll tabs left");
     fireEvent.click(overflowButton!);
     expect(scrollBy).toHaveBeenLastCalledWith({
       left: -140,
