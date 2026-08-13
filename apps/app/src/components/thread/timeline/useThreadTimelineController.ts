@@ -41,12 +41,20 @@ type NullableTimelinePaginationCursor = TimelinePaginationCursor | null;
 export interface LoadedTimelineState {
   olderCursor: NullableTimelinePaginationCursor;
   rows: TimelineRow[];
+  /**
+   * The row shape these rows were built under, or null before the first
+   * response. Older pages live in this state rather than in the query cache, so
+   * a `showAllAssistantMessages` change has to drop them: a refreshed latest
+   * page would otherwise sit above older rows of the other shape.
+   */
+  showAllAssistantMessages: boolean | null;
   surfaceKey: string;
 }
 
 interface BuildLoadedTimelineStateArgs {
   latestRows: TimelineRow[];
   olderCursor: NullableTimelinePaginationCursor;
+  showAllAssistantMessages: boolean | null;
   surfaceKey: string;
 }
 
@@ -143,11 +151,13 @@ function filterThreadTimelineResponse({
 function buildLoadedTimelineState({
   latestRows,
   olderCursor,
+  showAllAssistantMessages,
   surfaceKey,
 }: BuildLoadedTimelineStateArgs): LoadedTimelineState {
   return {
     olderCursor,
     rows: latestRows,
+    showAllAssistantMessages,
     surfaceKey,
   };
 }
@@ -349,6 +359,8 @@ export function mergeLoadedTimelineWithLatest({
 }: MergeLoadedTimelineWithLatestArgs): LoadedTimelineState {
   if (
     current.surfaceKey !== surfaceKey ||
+    current.showAllAssistantMessages !==
+      latestTimeline.showAllAssistantMessages ||
     (current.rows.length === 0 && current.olderCursor === null) ||
     !isLatestTimelineWindowContiguous({
       latestRows: latestTimeline.rows,
@@ -358,6 +370,7 @@ export function mergeLoadedTimelineWithLatest({
     return buildLoadedTimelineState({
       latestRows: latestTimeline.rows,
       olderCursor: latestTimeline.timelinePage.olderCursor,
+      showAllAssistantMessages: latestTimeline.showAllAssistantMessages,
       surfaceKey,
     });
   }
@@ -383,6 +396,7 @@ export function recoverLoadedTimelineAfterStaleCursor({
     return buildLoadedTimelineState({
       latestRows: latestTimeline.rows,
       olderCursor: latestTimeline.timelinePage.olderCursor,
+      showAllAssistantMessages: latestTimeline.showAllAssistantMessages,
       surfaceKey,
     });
   }
@@ -395,6 +409,7 @@ export function recoverLoadedTimelineAfterStaleCursor({
   return {
     olderCursor: latestTimeline.timelinePage.olderCursor,
     rows: latestMerge.rows,
+    showAllAssistantMessages: latestTimeline.showAllAssistantMessages,
     surfaceKey,
   };
 }
@@ -429,6 +444,7 @@ export function useThreadTimelineController({
       buildLoadedTimelineState({
         latestRows: [],
         olderCursor: null,
+        showAllAssistantMessages: null,
         surfaceKey,
       }),
   );
@@ -452,6 +468,7 @@ export function useThreadTimelineController({
           : buildLoadedTimelineState({
               latestRows: [],
               olderCursor: null,
+              showAllAssistantMessages: null,
               surfaceKey,
             }),
       );
@@ -498,6 +515,14 @@ export function useThreadTimelineController({
         if (current.surfaceKey !== surfaceKey) {
           return current;
         }
+        // Never splice rows of two shapes together. When the preference changed
+        // while this page was in flight, drop it: the latest window refreshes
+        // under the new shape and rebuilds the loaded rows from there.
+        if (
+          current.showAllAssistantMessages !== response.showAllAssistantMessages
+        ) {
+          return current;
+        }
         return {
           olderCursor: areTimelinePaginationCursorsEqual({
             left: current.olderCursor,
@@ -509,6 +534,7 @@ export function useThreadTimelineController({
             loadedRows: current.rows,
             olderRows,
           }),
+          showAllAssistantMessages: current.showAllAssistantMessages,
           surfaceKey,
         };
       });

@@ -105,6 +105,7 @@ function storyTimeline(
     goal,
     modelFallback: null,
     maxSeq: goal.sourceSeq,
+    showAllAssistantMessages: true,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,

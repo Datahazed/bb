@@ -107,6 +107,7 @@ beforeEach(() => {
       olderCursor: null,
     },
     maxSeq: 0,
+    showAllAssistantMessages: true,
   } satisfies ThreadTimelineResponse);
   vi.mocked(api.getThreadHostFilePreview).mockResolvedValue({
     kind: "text",
@@ -181,11 +182,13 @@ describe("useThreadDetailBootstrap", () => {
         olderCursor: null,
       },
       maxSeq: 7,
+      showAllAssistantMessages: true,
     } satisfies ThreadTimelineResponse;
     vi.mocked(sdk.threads.timeline).mockResolvedValueOnce({
       ...previousTimeline,
       rows: [],
       maxSeq: 8,
+      showAllAssistantMessages: true,
       delta: { upsertRows: [] },
     });
     const { queryClient, wrapper } = createQueryClientTestHarness();
@@ -206,6 +209,8 @@ describe("useThreadDetailBootstrap", () => {
     await waitFor(() => {
       expect(sdk.threads.timeline).toHaveBeenCalledWith({
         afterSequence: "7",
+        // The delta request names the row shape the cached window holds.
+        afterShowAllAssistantMessages: "true",
         signal: expect.any(AbortSignal),
         threadId: "thread-1",
       });
@@ -218,6 +223,7 @@ describe("useThreadDetailBootstrap", () => {
       ).toEqual({
         ...previousTimeline,
         maxSeq: 8,
+        showAllAssistantMessages: true,
       });
     });
   });

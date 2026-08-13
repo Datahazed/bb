@@ -31,6 +31,7 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
     goal: null,
     modelFallback: null,
     maxSeq: 0,
+    showAllAssistantMessages: true,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,

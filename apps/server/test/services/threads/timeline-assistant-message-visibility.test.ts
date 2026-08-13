@@ -126,6 +126,83 @@ function setup(): SetupResult {
   return { db, maxSeq: 5, thread };
 }
 
+/**
+ * A finished turn of two assistant messages and no tool activity. It has a work
+ * summary only while the preference is false, which is the case where a stale
+ * summary request must not fall back to the whole window.
+ */
+function setupNoToolTurn(): SetupResult {
+  const db = createConnection(":memory:");
+  migrate(db);
+  const host = upsertHost(db, noopNotifier, {
+    name: "test-host",
+    type: "persistent",
+  });
+  const { project } = createProject(db, noopNotifier, {
+    name: "test-project",
+    source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
+  });
+  const thread = createThread(db, noopNotifier, {
+    projectId: project.id,
+    providerId: "claude-code",
+  });
+  insertEvents(db, noopNotifier, [
+    {
+      threadId: thread.id,
+      sequence: 1,
+      type: "turn/started",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({}),
+    },
+    {
+      threadId: thread.id,
+      sequence: 2,
+      type: "item/completed",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: "message-first",
+      itemKind: "agentMessage",
+      data: JSON.stringify({
+        item: {
+          id: "message-first",
+          type: "agentMessage",
+          text: "Option A keeps the daemon simple.",
+        },
+      }),
+    },
+    {
+      threadId: thread.id,
+      sequence: 3,
+      type: "item/completed",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: "message-second",
+      itemKind: "agentMessage",
+      data: JSON.stringify({
+        item: {
+          id: "message-second",
+          type: "agentMessage",
+          text: "Option B needs a protocol bump.",
+        },
+      }),
+    },
+    {
+      threadId: thread.id,
+      sequence: 4,
+      type: "turn/completed",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({ status: "completed" }),
+    },
+  ]);
+  return { db, maxSeq: 4, thread };
+}
+
 function buildTimeline(
   setupResult: SetupResult,
   showAllAssistantMessages: boolean,
@@ -234,6 +311,36 @@ describe("assistant message visibility", () => {
         ),
       ).toBe(true);
     }
+    setupResult.db.$client.close();
+  });
+
+  it("does not repeat assistant messages for a stale summary of a no-tool turn", () => {
+    // Compact mode gives this turn a work summary holding the first message.
+    // Under the show-all preference the turn has no summary at all, so the
+    // ungrouped window would return both messages and the open box would repeat
+    // the answer the timeline already shows.
+    const setupResult = setupNoToolTurn();
+    const turnRow = requireOnlyTurnRow(buildTimeline(setupResult, false));
+
+    const details = buildTimelineTurnSummaryDetails(
+      setupResult.db,
+      setupResult.thread,
+      {
+        includeProviderUnhandledOperations: false,
+        showAllAssistantMessages: true,
+        sourceSeqEnd: turnRow.sourceSeqEnd,
+        sourceSeqStart: turnRow.sourceSeqStart,
+        turnId,
+      },
+    );
+
+    expect(
+      details.rows.flatMap((row) =>
+        row.kind === "conversation" && row.role === "assistant"
+          ? [row.text]
+          : [],
+      ),
+    ).toEqual(["Option A keeps the daemon simple."]);
     setupResult.db.$client.close();
   });
 

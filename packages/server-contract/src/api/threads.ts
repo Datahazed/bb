@@ -742,6 +742,15 @@ export const threadTimelineQuerySchema = z
      * server returns the full window and the client replaces.
      */
     afterSequence: z.string().regex(/^\d+$/),
+    /**
+     * The `showAllAssistantMessages` value the client's held rows were built
+     * under. The row composition of a finished turn depends on it, so a delta
+     * against rows of the other shape would corrupt the client's window. The
+     * server returns the full window unless this matches its current value.
+     * Omitted means the client cannot name the shape it holds, which also
+     * yields a full window.
+     */
+    afterShowAllAssistantMessages: z.enum(["true", "false"]),
   })
   .partial()
   .superRefine((query, context) => {
@@ -853,6 +862,13 @@ export const threadTimelineResponseSchema = z.object({
   timelinePage: timelinePageMetadataSchema,
   /** Thread high-water event sequence this window reflects; bumps on append. */
   maxSeq: z.number().int().nonnegative(),
+  /**
+   * The `showAllAssistantMessages` app setting these rows were built under.
+   * Clients echo it as `afterShowAllAssistantMessages` so the server never
+   * computes a delta across a change of row shape, and drop rows they hold from
+   * an older page when it changes.
+   */
+  showAllAssistantMessages: z.boolean(),
   /**
    * Present only when the request supplied a usable `afterSequence`: the
    * changed rows + ordering to apply to the client's previous window. When

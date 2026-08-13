@@ -97,6 +97,7 @@ function turnSummaryRow(args: TimelineTurnTestRowArgs): TimelineTurnRow {
 function makeTimelineResponse(
   rows: TimelineRow[],
   olderCursor: TimelinePaginationCursor | null,
+  showAllAssistantMessages = true,
 ): ThreadTimelineResponse {
   return {
     rows,
@@ -108,6 +109,7 @@ function makeTimelineResponse(
     goal: null,
     modelFallback: null,
     maxSeq: 0,
+    showAllAssistantMessages,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,
@@ -121,10 +123,12 @@ function makeTimelineResponse(
 function makeLoadedTimelineState(
   rows: TimelineRow[],
   olderCursor: TimelinePaginationCursor | null,
+  showAllAssistantMessages = true,
 ): LoadedTimelineState {
   return {
     rows,
     olderCursor,
+    showAllAssistantMessages,
     surfaceKey: "thread-1:default",
   };
 }
@@ -289,6 +293,37 @@ describe("timeline page row merging", () => {
     expect(merge.rows).toHaveLength(2);
     expect(merge.rows[0]).toBe(olderUser);
     expect(merge.rows[1]).toBe(updatedTail);
+  });
+
+  it("drops loaded older rows when the assistant visibility preference changes", () => {
+    // Older pages live in this state, not in the query cache. A refreshed latest
+    // page under the new preference must not sit above older rows built under
+    // the old one.
+    const oldestCursor = timelineCursor({ id: "oldest", sequence: 1 });
+    const current = makeLoadedTimelineState(
+      [
+        userRow({ id: "oldest", sequence: 1 }),
+        userRow({ id: "loaded", sequence: 2 }),
+      ],
+      oldestCursor,
+      false,
+    );
+    const latestCursor = timelineCursor({ id: "latest-page", sequence: 2 });
+    const latestTimeline = makeTimelineResponse(
+      [userRow({ id: "loaded", sequence: 2 })],
+      latestCursor,
+      true,
+    );
+
+    const next = mergeLoadedTimelineWithLatest({
+      current,
+      latestTimeline,
+      surfaceKey: "thread-1:default",
+    });
+
+    expect(next.rows.map((row) => row.id)).toEqual(["loaded"]);
+    expect(next.olderCursor).toEqual(latestCursor);
+    expect(next.showAllAssistantMessages).toBe(true);
   });
 
   it("rebuilds when latest advances past the loaded rows with a gap between", () => {

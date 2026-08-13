@@ -90,6 +90,7 @@ function makeBannerTimeline(): ThreadTimelineResponse {
     },
     modelFallback: null,
     maxSeq: 0,
+    showAllAssistantMessages: true,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,

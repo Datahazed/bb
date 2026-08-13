@@ -14,11 +14,18 @@ async function getTimeline(
   harness: TestAppHarness,
   threadId: string,
   afterSequence?: number,
+  // A client asking for a delta also names the row shape it holds. Omitting it
+  // is what an out-of-date client does, and the server then sends a full window.
+  afterShowAllAssistantMessages: "true" | "false" | null = "true",
 ): Promise<ThreadTimelineResponse> {
+  const shapeQuery =
+    afterShowAllAssistantMessages === null
+      ? ""
+      : `&afterShowAllAssistantMessages=${afterShowAllAssistantMessages}`;
   const url =
     afterSequence === undefined
       ? `/api/v1/threads/${threadId}/timeline`
-      : `/api/v1/threads/${threadId}/timeline?afterSequence=${afterSequence}`;
+      : `/api/v1/threads/${threadId}/timeline?afterSequence=${afterSequence}${shapeQuery}`;
   const response = await harness.app.request(url);
   if (response.status !== 200) {
     throw new Error(
@@ -45,6 +52,47 @@ describe("GET /threads/:id/timeline?afterSequence (row-patch delta)", () => {
       expect(full.delta).toBeUndefined();
       expect(full.rows.length).toBeGreaterThan(0);
       expect(full.maxSeq).toBe(1);
+    });
+  });
+
+  it("sends a full window to a client that holds the other row shape", async () => {
+    // `showAllAssistantMessages` changes the rows of a finished turn. A window
+    // still holding rows from before a change would merge an empty delta and
+    // keep them, so the server must not diff across the two shapes.
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "system/manager/user_message",
+        scope: threadScope(),
+        data: { text: "hello" },
+      });
+
+      const full = await getTimeline(harness, thread.id);
+      expect(full.showAllAssistantMessages).toBe(true);
+
+      const matchingShape = await getTimeline(harness, thread.id, full.maxSeq);
+      expect(matchingShape.delta).toBeDefined();
+
+      const otherShape = await getTimeline(
+        harness,
+        thread.id,
+        full.maxSeq,
+        "false",
+      );
+      expect(otherShape.delta).toBeUndefined();
+      expect(otherShape.rows.length).toBeGreaterThan(0);
+
+      const unnamedShape = await getTimeline(
+        harness,
+        thread.id,
+        full.maxSeq,
+        null,
+      );
+      expect(unnamedShape.delta).toBeUndefined();
+      expect(unnamedShape.rows.length).toBeGreaterThan(0);
     });
   });
 

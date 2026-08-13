@@ -187,6 +187,7 @@ function makeThreadTimelineResponse(
     goal: null,
     modelFallback: null,
     maxSeq: 0,
+    showAllAssistantMessages: true,
     rows,
     timelinePage: {
       kind: "latest",

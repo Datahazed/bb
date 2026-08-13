@@ -808,7 +808,15 @@ async function fetchThreadTimeline({
     threadId,
     signal,
     ...(previous?.maxSeq !== undefined
-      ? { afterSequence: String(previous.maxSeq) }
+      ? {
+          afterSequence: String(previous.maxSeq),
+          // Name the row shape we hold. `showAllAssistantMessages` changes the
+          // rows of a finished turn, so the server must not diff against a
+          // window built under the other value.
+          afterShowAllAssistantMessages: previous.showAllAssistantMessages
+            ? "true"
+            : "false",
+        }
       : {}),
   });
   return mergeThreadTimelineDelta(previous, response, () =>

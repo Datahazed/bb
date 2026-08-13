@@ -73,6 +73,7 @@ export function makeTimelineResponse(
     goal: null,
     modelFallback: null,
     maxSeq: 0,
+    showAllAssistantMessages: true,
     timelinePage: {
       kind: "latest",
       segmentLimit: 20,

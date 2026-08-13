@@ -384,8 +384,16 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     );
     const paramsKey = buildThreadTimelineParamsKey(keyArgs);
     const previous = timelineLatestRowsCache.get(paramsKey);
+    // A delta only describes rows of the same shape. The client names the shape
+    // it holds; a client that cannot, or that holds the other one, gets the full
+    // window. Without this a window still holding rows from before a
+    // `showAllAssistantMessages` change would merge an empty delta and keep them.
+    const holdsCurrentRowShape =
+      (query.afterShowAllAssistantMessages === "true") ===
+      showAllAssistantMessages;
     const delta =
       afterSequence !== undefined &&
+      holdsCurrentRowShape &&
       previous !== undefined &&
       previous.maxSeq === afterSequence
         ? computeTimelineRowDelta(previous.rows, full.rows)

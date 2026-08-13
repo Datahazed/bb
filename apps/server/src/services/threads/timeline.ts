@@ -1750,6 +1750,7 @@ function buildThreadTimelineInternal(
 
   const response: ThreadTimelineResponse = {
     maxSeq: options.maxSeq,
+    showAllAssistantMessages: options.showAllAssistantMessages,
     rows: options.summaryOnly ? [] : paginatedTimeline.rows,
     activePromptMode:
       options.page.kind === "latest" ? timeline.activePromptMode : null,
@@ -2071,8 +2072,7 @@ export function buildTimelineTurnSummaryDetails(
   // route actually holds, so the parent expansion spends what is left rather
   // than a pre-closure estimate of it. The subtraction may go negative, which
   // is the safe direction: the parent fetch then stays inside its bounds.
-  const detailsEventDataBytes =
-    byteLengthOfStoredEventRows(wholeItemEventRows);
+  const detailsEventDataBytes = byteLengthOfStoredEventRows(wholeItemEventRows);
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     maxInlineOutputChars: detailsInlineOutputLimit,
     outOfBoundsChildDataByteLimit:
@@ -2120,7 +2120,7 @@ export function buildTimelineTurnSummaryDetails(
     },
   });
 
-  if (children.kind !== "missing-match") {
+  if (children.kind === "matched") {
     return {
       rows: children.rows,
     };
@@ -2129,8 +2129,13 @@ export function buildTimelineTurnSummaryDetails(
   // The row range of a work summary depends on `showAllAssistantMessages`, and a
   // client can hold a row that the current preference no longer produces: the
   // preference can change between the timeline response and this request. Match
-  // the range under the other preference instead of failing, so an open work
+  // the range under the other preference before falling back, so an open work
   // summary keeps working until the client renders the new rows.
+  //
+  // A matched range under the previous preference beats an `ungrouped` window
+  // under the current one. When the current preference produces no summary row
+  // at all, `ungrouped` returns the whole window, which would repeat the
+  // assistant messages the client already renders outside the summary.
   const staleGroupingChildren = buildThreadTimelineTurnDetailsFromEvents({
     events: detailEvents,
     options: {
@@ -2138,9 +2143,15 @@ export function buildTimelineTurnSummaryDetails(
       showAllAssistantMessages: !options.showAllAssistantMessages,
     },
   });
-  if (staleGroupingChildren.kind !== "missing-match") {
+  if (staleGroupingChildren.kind === "matched") {
     return {
       rows: staleGroupingChildren.rows,
+    };
+  }
+
+  if (children.kind === "ungrouped") {
+    return {
+      rows: children.rows,
     };
   }
 
