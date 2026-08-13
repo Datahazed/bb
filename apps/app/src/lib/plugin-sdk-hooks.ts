@@ -25,7 +25,7 @@ import {
   usePluginId,
 } from "@/components/plugin/plugin-context";
 import { usePluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
-import { usePluginBrowserTabOpenHandler } from "@/components/plugin/plugin-browser-tab-navigation";
+import { usePluginRightPanelOpenHandler } from "@/components/plugin/plugin-right-panel-navigation";
 import {
   PluginComposerViewContext,
   usePluginComposerHost,
@@ -285,7 +285,7 @@ export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
   const location = useLocation();
   const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
-  const openBrowserTabHandler = usePluginBrowserTabOpenHandler();
+  const openRightPanelHandler = usePluginRightPanelOpenHandler();
   const navigate = useNavigate();
   const toThread = useCallback(
     (threadId: string) => {
@@ -344,11 +344,11 @@ export function useBbNavigate(): BbNavigate {
     (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,
     [openThreadPanelHandler, pluginId],
   );
-  const experimentalOpenBrowserTab = useCallback<
-    BbNavigate["experimental_openBrowserTab"]
+  const experimentalOpenRightPanel = useCallback<
+    BbNavigate["experimental_openRightPanel"]
   >(
-    (options) => openBrowserTabHandler?.(options) ?? false,
-    [openBrowserTabHandler],
+    (request) => openRightPanelHandler?.(request) ?? false,
+    [openRightPanelHandler],
   );
   return useMemo(
     () => ({
@@ -357,7 +357,7 @@ export function useBbNavigate(): BbNavigate {
       toPluginPanel,
       toCompose,
       openThreadPanel,
-      experimental_openBrowserTab: experimentalOpenBrowserTab,
+      experimental_openRightPanel: experimentalOpenRightPanel,
     }),
     [
       toThread,
@@ -365,7 +365,7 @@ export function useBbNavigate(): BbNavigate {
       toPluginPanel,
       toCompose,
       openThreadPanel,
-      experimentalOpenBrowserTab,
+      experimentalOpenRightPanel,
     ],
   );
 }

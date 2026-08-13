@@ -71,7 +71,7 @@ import {
 import { ThreadDetailView } from "./ThreadDetailView";
 import { RootComposeView } from "@/views/RootComposeView";
 import { PluginPanelView } from "@/views/PluginPanelView";
-import { PluginPanelBrowserHost } from "@/components/plugin/PluginPanelBrowserHost";
+import { PluginPanelRightPanelHost } from "@/components/plugin/PluginPanelRightPanelHost";
 import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
@@ -1000,16 +1000,17 @@ function StandalonePaneContent({ content }: { content: PaneContent }) {
     return <RootComposeView />;
   }
   return (
-    <PluginPanelBrowserHost
+    <PluginPanelRightPanelHost
       pluginId={content.pluginId}
       panelPath={content.panelPath}
+      subPath={content.subPath}
     >
       <PluginPanelView
         pluginId={content.pluginId}
         panelPath={content.panelPath}
         subPath={content.subPath}
       />
-    </PluginPanelBrowserHost>
+    </PluginPanelRightPanelHost>
   );
 }
 
@@ -1191,12 +1192,13 @@ function NonThreadPaneContent({
   );
 
   return content.kind === "plugin-panel" ? (
-    <PluginPanelBrowserHost
+    <PluginPanelRightPanelHost
       pluginId={content.pluginId}
       panelPath={content.panelPath}
+      subPath={content.subPath}
     >
       {contentMarkup}
-    </PluginPanelBrowserHost>
+    </PluginPanelRightPanelHost>
   ) : (
     contentMarkup
   );

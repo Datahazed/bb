@@ -15,16 +15,23 @@ import {
   type PaneContextValue,
 } from "@/views/thread-detail/PaneContext";
 import { PluginSlotMount } from "./PluginSlotMount";
-import { PluginPanelBrowserHost } from "./PluginPanelBrowserHost";
+import {
+  ensurePluginRightPanelDefaultView,
+  PluginPanelRightPanelHost,
+} from "./PluginPanelRightPanelHost";
+import { createEmptyFixedPanelTabsState } from "@/lib/fixed-panel-tabs-state";
+import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
 
 const hostState = vi.hoisted(() => ({
   activeBrowserTab: null as {
+    environmentId: null;
     id: string;
     kind: "browser";
     title: string | null;
     url: string;
   } | null,
   browserTabs: [] as Array<{
+    environmentId: null;
     id: string;
     kind: "browser";
     title: string | null;
@@ -34,6 +41,9 @@ const hostState = vi.hoisted(() => ({
   panelOpen: true,
 }));
 const openTab = vi.hoisted(() => vi.fn());
+const openPluginPanel = vi.hoisted(() => vi.fn());
+const updatePanelState = vi.hoisted(() => vi.fn());
+const createTerminalMutate = vi.hoisted(() => vi.fn());
 const drawerState = vi.hoisted(
   (): {
     onContentAnimationEnd: ((open: boolean) => void) | null;
@@ -41,6 +51,27 @@ const drawerState = vi.hoisted(
 );
 const dispatchBrowserViewBoundsSync = vi.hoisted(() => vi.fn());
 const realizeContent = vi.hoisted(() => vi.fn());
+
+const rightPanelSlot: PluginNavPanelSlot = {
+  id: "docs",
+  pluginId: "docs",
+  generation: 1,
+  title: "Docs",
+  icon: "FileText",
+  path: "docs",
+  component: () => null,
+  experimental_rightPanel: {
+    views: [
+      {
+        id: "navigation",
+        title: "Navigation",
+        component: () => null,
+        layout: "flush",
+      },
+    ],
+    defaultViewId: "navigation",
+  },
+};
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => hostState.compact,
@@ -59,6 +90,7 @@ vi.mock("@bb/shared-ui/responsive-overlay", async () => {
     return React.createElement("div", { "data-testid": "drawer" }, children);
   };
   return {
+    environmentId: null,
     PersistentResponsiveDrawerShell: Drawer,
     ResponsiveDrawerShell: Drawer,
     useResponsiveDrawerRealization: () => ({
@@ -81,17 +113,61 @@ vi.mock("react-resizable-panels", async () => {
 vi.mock("@/lib/fixed-panel-tabs", () => ({
   useCloseFixedSecondaryPanel: () => vi.fn(),
   useFixedPanelTabsState: () => ({
-    secondary: { isOpen: hostState.panelOpen },
+    version: 1,
+    lastUsedAt: 0,
+    secondary: {
+      isOpen: hostState.panelOpen,
+      activeTabId: hostState.activeBrowserTab?.id ?? null,
+      tabs: hostState.browserTabs,
+    },
   }),
+  useUpdateFixedPanelTabsState: () => updatePanelState,
+}));
+
+vi.mock("@/lib/plugin-slots", () => ({
+  usePluginSlots: () => ({
+    navPanels: [
+      {
+        id: "docs",
+        pluginId: "docs",
+        generation: 1,
+        title: "Docs",
+        icon: "FileText",
+        path: "docs",
+        component: () => null,
+        experimental_rightPanel: {
+          views: [
+            {
+              id: "navigation",
+              title: "Navigation",
+              component: () => null,
+              layout: "flush",
+            },
+          ],
+          defaultViewId: "navigation",
+          tools: ["browser", "terminal"],
+        },
+      },
+    ],
+  }),
+}));
+
+vi.mock("@/hooks/queries/thread-terminal-queries", () => ({
+  useTerminals: () => ({ data: undefined }),
+  useCreateTerminal: () => ({ isPending: false, mutate: createTerminalMutate }),
+  useCloseTerminal: () => ({ mutate: vi.fn() }),
 }));
 
 vi.mock("@/components/secondary-panel/useThreadFileTabs", () => ({
   useThreadFileTabs: () => ({
     activateTab: vi.fn(),
     activeBrowserTab: hostState.activeBrowserTab,
+    activePluginPanelTab: null,
     browserTabs: hostState.browserTabs,
     closeTab: vi.fn(),
+    openPluginPanel,
     openTab,
+    orderedSecondaryFileTabs: hostState.browserTabs,
     reorderFileTab: vi.fn(),
     updateBrowserTab: vi.fn(),
   }),
@@ -183,15 +259,46 @@ const basePaneContext: PaneContextValue = {
 function NavigationProbe({ url }: { url: string }) {
   const navigate = useBbNavigate();
   return (
-    <button
-      type="button"
-      onClick={() => {
-        const accepted = navigate.experimental_openBrowserTab({ url });
-        document.body.dataset.browserRequestAccepted = String(accepted);
-      }}
-    >
-      Open Browser
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          const accepted = navigate.experimental_openRightPanel({
+            kind: "browser",
+            url,
+          });
+          document.body.dataset.browserRequestAccepted = String(accepted);
+        }}
+      >
+        Open Browser
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const accepted = navigate.experimental_openRightPanel({
+            kind: "view",
+            viewId: "navigation",
+            params: { selected: "today" },
+          });
+          document.body.dataset.viewRequestAccepted = String(accepted);
+        }}
+      >
+        Open View
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const accepted = navigate.experimental_openRightPanel({
+            kind: "terminal",
+            target: { kind: "host_path", hostId: "host-1" },
+            title: "Plugin shell",
+          });
+          document.body.dataset.terminalRequestAccepted = String(accepted);
+        }}
+      >
+        Open Terminal
+      </button>
+    </>
   );
 }
 
@@ -205,11 +312,11 @@ function HostFixture({
   return (
     <MemoryRouter>
       <PaneContext.Provider value={paneContext}>
-        <PluginPanelBrowserHost pluginId="docs" panelPath="docs">
+        <PluginPanelRightPanelHost pluginId="docs" panelPath="docs" subPath="">
           <PluginSlotMount pluginId="docs" slotKind="test" slotId="browser">
             <NavigationProbe url={url} />
           </PluginSlotMount>
-        </PluginPanelBrowserHost>
+        </PluginPanelRightPanelHost>
       </PaneContext.Provider>
     </MemoryRouter>
   );
@@ -222,8 +329,13 @@ beforeEach(() => {
   hostState.panelOpen = true;
   drawerState.onContentAnimationEnd = null;
   delete document.body.dataset.browserRequestAccepted;
+  delete document.body.dataset.viewRequestAccepted;
+  delete document.body.dataset.terminalRequestAccepted;
   dispatchBrowserViewBoundsSync.mockClear();
   openTab.mockClear();
+  openPluginPanel.mockClear();
+  updatePanelState.mockClear();
+  createTerminalMutate.mockClear();
   realizeContent.mockClear();
 });
 
@@ -232,7 +344,37 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("PluginPanelBrowserHost", () => {
+describe("PluginPanelRightPanelHost", () => {
+  it("initializes one pinned default without reopening a hidden panel", () => {
+    const initialized = ensurePluginRightPanelDefaultView(
+      createEmptyFixedPanelTabsState(),
+      rightPanelSlot,
+    );
+    expect(initialized.secondary).toMatchObject({
+      isOpen: true,
+      activeTabId: expect.stringContaining("navigation"),
+    });
+    expect(initialized.secondary.tabs).toHaveLength(1);
+
+    const hidden = {
+      ...initialized,
+      secondary: { ...initialized.secondary, isOpen: false },
+    };
+    expect(ensurePluginRightPanelDefaultView(hidden, rightPanelSlot)).toBe(
+      hidden,
+    );
+  });
+
+  it("adds a newly registered default without stealing an existing active tab", () => {
+    const tab = browserTab();
+    const state = createEmptyFixedPanelTabsState({
+      secondary: { tabs: [tab], activeTabId: tab.id, isOpen: true },
+    });
+    const migrated = ensurePluginRightPanelDefaultView(state, rightPanelSlot);
+    expect(migrated.secondary.activeTabId).toBe(state.secondary.activeTabId);
+    expect(migrated.secondary.tabs).toHaveLength(2);
+  });
+
   it.each(["https://", "not a URL", `https://example.com/${"x".repeat(4096)}`])(
     "rejects malformed or oversized Browser URLs: %s",
     (url) => {
@@ -254,6 +396,48 @@ describe("PluginPanelBrowserHost", () => {
     expect(openTab).toHaveBeenCalledWith({
       kind: "browser",
       url: "https://example.com/path",
+    });
+  });
+
+  it("opens registered custom views with persisted JSON params", () => {
+    render(<HostFixture />);
+    fireEvent.click(screen.getByRole("button", { name: "Open View" }));
+    expect(document.body.dataset.viewRequestAccepted).toBe("true");
+    expect(openPluginPanel).toHaveBeenCalledWith({
+      pluginId: "docs",
+      actionId: "navigation",
+      title: "Navigation",
+      paramsJson: '{"selected":"today"}',
+    });
+  });
+
+  it("creates an enabled Terminal and records its target on the panel tab", () => {
+    render(<HostFixture />);
+    fireEvent.click(screen.getByRole("button", { name: "Open Terminal" }));
+    expect(document.body.dataset.terminalRequestAccepted).toBe("true");
+    expect(createTerminalMutate).toHaveBeenCalledWith(
+      {
+        cols: 100,
+        rows: 30,
+        target: { kind: "host_path", hostId: "host-1", cwd: null },
+        title: "Plugin shell",
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+    const onSuccess = createTerminalMutate.mock.calls.at(-1)?.[1].onSuccess;
+    updatePanelState.mockClear();
+    onSuccess({ id: "terminal-1" });
+    const update = updatePanelState.mock.calls[0]?.[0];
+    const next = update(createEmptyFixedPanelTabsState());
+    expect(next.secondary).toMatchObject({
+      isOpen: true,
+      tabs: [
+        expect.objectContaining({
+          kind: "terminal",
+          terminalId: "terminal-1",
+          target: { kind: "host_path", hostId: "host-1", cwd: null },
+        }),
+      ],
     });
   });
 
