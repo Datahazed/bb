@@ -190,8 +190,9 @@ added/updated/unchanged counts.
                                  invalidating the old one
   bb plugin remove <id>          Uninstall (managed git:/npm: files deleted;
                                  builtin removals are remembered)
-  bb plugin new <name> [--app]   Scaffold a new plugin (no server required;
-                                 --app adds a frontend entry, app.tsx, plus a
+  bb plugin new <name> [--app]   Scaffold a new plugin and install its npm
+                                 dependencies (no server required; --app adds
+                                 a frontend entry, app.tsx, plus a
                                  typecheck-only tsconfig.json)
   bb plugin types [path]         Write this bb's @bb/plugin-sdk declarations
                                  into the plugin's types/ (default: cwd);
@@ -288,11 +289,18 @@ form; no props in V1, optional host-rendered title),
 navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
 arrives as the component's subPath prop for panel-internal deep links; the
 host always renders the shared plugin title bar and the component owns a
-zero-padding full-bleed body, including its scrolling),
+zero-padding full-bleed body, including its scrolling; optional
+experimental_sidebarAccessory mounts a presentational live-value component at
+the trailing edge of the sidebar row on wide viewports, bounded to one short
+line, replaced visually by the host options button on hover/focus, and omitted
+on compact viewports),
 threadPanelAction
-(an entry in the thread right panel's new-tab Actions list whose run() can
+(a thread-only entry in an existing thread's right-panel new-tab Actions list;
+it is never offered on root compose, and its run() can
 open closable panel tabs with recursive `JsonValue` params; restored
-components read `JsonValue | null`), pendingInteraction (temporarily replace a thread composer with a
+components read a required `threadId` plus `JsonValue | null`),
+experimental_newThreadPanelAction (the root New thread counterpart, with
+`projectId: string | null` instead of `threadId`), pendingInteraction (temporarily replace a thread composer with a
 plugin form), fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a
 file link for a one-off choice), and messageDirective (replace a leaf
@@ -357,7 +365,7 @@ least `icon` or `logo.light`, `bb.server`
 into agent threads unless filtered by `bb.agents.configure`; default
 `skills/`), `engines.bb` (supported bb range),
 and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
-writes `"^0.4.1"` for SDK 0.4.1). Use `bb-plugin-hello` for the package name by
+writes `"^0.4.2"` for SDK 0.4.2). Use `bb-plugin-hello` for the package name by
 default. Scoped names such as `@acme/bb-plugin-hello` are also supported. The
 plugin id is the final package-name component minus `bb-plugin-`, so both forms
 use `hello`.
@@ -428,7 +436,8 @@ frontend bundle needed); bb.status.needsConfiguration (report
 reload/disable/shutdown).
 
 Frontend entries register React slots (homepageSection, settingsSection,
-navPanel, threadPanelAction, fileOpener, messageDirective) and composer
+navPanel, threadPanelAction, experimental_newThreadPanelAction, fileOpener,
+messageDirective) and composer
 customizations via `app.composer.customize({ actions, plusMenu, banners,
 richText })`; action/banner components use `useComposer()` and
 `useComposerView()`, while the host renders plus-menu rows and editor

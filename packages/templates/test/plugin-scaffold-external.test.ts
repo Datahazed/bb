@@ -30,6 +30,7 @@ const EXTERNAL_DEPENDENCIES = [
   "@types/better-sqlite3",
   "@types/node",
   "@types/react",
+  "@types/react-dom",
   "better-sqlite3",
   "class-variance-authority",
   "clsx",
@@ -202,6 +203,10 @@ async function linkExternalDependencies(targetDir: string): Promise<void> {
   for (const name of EXTERNAL_DEPENDENCIES) {
     const target = join(targetDir, "node_modules", name);
     await mkdir(dirname(target), { recursive: true });
+    // The scaffold declares some of these as real dependencies (zod), so the
+    // install above may already have fetched a registry copy. Replace it, so
+    // what is typechecked and executed is always this repo's version.
+    await rm(target, { recursive: true, force: true });
     await symlink(packageRoot(name), target, "dir");
   }
 }
@@ -349,7 +354,7 @@ describe("external plugin scaffold types", () => {
       peerDependencies?: Record<string, string>;
       exports: Record<string, { import: string; types: string }>;
     };
-    expect(installedManifest.version).toBe("0.4.1");
+    expect(installedManifest.version).toBe("0.4.2");
     expect(installedManifest.private).not.toBe(true);
     expect(JSON.stringify(installedManifest.dependencies ?? {})).not.toContain(
       "workspace:",
