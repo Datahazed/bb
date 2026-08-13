@@ -1,5 +1,6 @@
 export * from "./errors.js";
 export * from "./events.js";
+export * from "./framing.js";
 export * from "./ids.js";
 export * from "./inspection.js";
 export * from "./lifecycle.js";

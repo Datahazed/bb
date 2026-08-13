@@ -109,6 +109,37 @@ describe("ProviderDriverLifecycle", () => {
     );
   });
 
+  it("validates host request scope against the active canonical turn", () => {
+    const lifecycle = activeLifecycle();
+    expect(() =>
+      lifecycle.validateActiveTurnScope({
+        attachmentId: "attachment-1",
+        turnId: "turn-1",
+      }),
+    ).not.toThrow();
+    expectLifecycleError(
+      () =>
+        lifecycle.validateActiveTurnScope({
+          attachmentId: "attachment-1",
+          turnId: "turn-other",
+        }),
+      "stale_turn",
+    );
+  });
+
+  it("removes an idly discarded attachment and accepts exact replay", () => {
+    const lifecycle = openedLifecycle();
+    const params = {
+      operationId: "operation-discard-1",
+      attachmentId: "attachment-1",
+      providerSessionId: "provider-session-1",
+    };
+
+    expect(lifecycle.recordSessionDiscarded(params)).toBe("recorded");
+    expect(lifecycle.recordSessionDiscarded(params)).toBe("replayed");
+    expect(lifecycle.snapshot().attachments).toEqual([]);
+  });
+
   it("rejects events before the turn acceptance result", () => {
     const lifecycle = openedLifecycle();
     const event = providerDriverEventSchema.parse({

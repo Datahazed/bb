@@ -6,6 +6,7 @@ import type {
 import type {
   ProviderSessionDetachParams,
   ProviderSessionDetachResult,
+  ProviderSessionDiscardParams,
   ProviderSessionOpenParams,
   ProviderSessionOpenResult,
   ProviderTurnCancelParams,
@@ -50,7 +51,12 @@ export class ProviderDriverLifecycleError extends Error {
 export type ProviderDriverLifecycleRecordOutcome = "recorded" | "replayed";
 
 interface RecordedOperation {
-  kind: "session.open" | "session.detach" | "turn.submit" | "turn.cancel";
+  kind:
+    | "session.open"
+    | "session.detach"
+    | "session.discard"
+    | "turn.submit"
+    | "turn.cancel";
   params: string;
   result: string;
 }
@@ -185,6 +191,34 @@ export class ProviderDriverLifecycle {
     return "recorded";
   }
 
+  recordSessionDiscarded(
+    args: ProviderSessionDiscardParams,
+  ): ProviderDriverLifecycleRecordOutcome {
+    this.requireReady();
+    const result = {};
+    if (
+      this.isOperationReplay("session.discard", args.operationId, args, result)
+    ) {
+      return "replayed";
+    }
+    const attachment = this.requireAttachment(args.attachmentId);
+    if (attachment.providerSessionId !== args.providerSessionId) {
+      lifecycleError(
+        "invalid_command_result",
+        `Discard targets provider session ${args.providerSessionId}, expected ${attachment.providerSessionId}`,
+      );
+    }
+    if (attachment.activeTurnId !== null) {
+      lifecycleError(
+        "active_turn_exists",
+        `Cannot discard attachment ${args.attachmentId} while turn ${attachment.activeTurnId} is active`,
+      );
+    }
+    this.attachments.delete(args.attachmentId);
+    this.recordOperation("session.discard", args.operationId, args, result);
+    return "recorded";
+  }
+
   recordTurnSubmitted(
     params: ProviderTurnSubmitParams,
     result: ProviderTurnSubmitResult,
@@ -289,6 +323,15 @@ export class ProviderDriverLifecycle {
     }
     this.recordOperation("turn.cancel", params.operationId, params, result);
     return "recorded";
+  }
+
+  validateActiveTurnScope(args: {
+    attachmentId: string;
+    turnId: string;
+  }): void {
+    this.requireReady();
+    const attachment = this.requireAttachment(args.attachmentId);
+    this.requireActiveTurn(attachment, args.attachmentId, args.turnId);
   }
 
   recordEvent(event: ProviderDriverEvent): void {

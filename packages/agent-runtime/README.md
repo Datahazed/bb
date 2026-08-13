@@ -152,13 +152,19 @@ Consumer (host-daemon, server)
        │       ├─ accepted-command/event translation
        │       └─ tool/interaction request decoding
        │
+       ├─ ProviderDriverSupervisor     Canonical process launch/termination
+       │   └─ ProcessProviderDriverConnection
+       │       ├─ dedicated framed protocol fds
+       │       ├─ canonical lifecycle validation
+       │       └─ bounded requests, timeouts, and diagnostics
+       │
        └─ Bridge Process               SDK-specific child process
            ├─ codex               spawns `codex app-server` directly
            ├─ claude-code         Node.js bridge → Claude Agent SDK
            └─ pi                  Node.js bridge → Pi coding agent SDK
 ```
 
-`AgentRuntime` depends on `ProviderDriverConnection`, not adapter command-building callbacks. Existing providers still run through `LegacyAdapterConnection`, which preserves the current child processes and newline-delimited JSON-RPC dialect while containing adapter command construction, response parsing, accepted-command synthesis, and event/request translation. This compatibility implementation is temporary; canonical process connections will use `@bb/provider-driver-contract` directly.
+`AgentRuntime` depends on `ProviderDriverConnection`, not adapter command-building callbacks. Existing providers still run through `LegacyAdapterConnection`, which preserves the current child processes and newline-delimited JSON-RPC dialect while containing adapter command construction, response parsing, accepted-command synthesis, and event/request translation. The separately tested canonical path uses `ProviderDriverSupervisor` and `ProcessProviderDriverConnection` with `@bb/provider-driver-contract`; providers move onto that path one at a time.
 
 ### Current legacy adapter shapes
 

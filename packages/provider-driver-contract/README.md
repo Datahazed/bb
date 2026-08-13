@@ -19,13 +19,13 @@ The driver must translate provider-native behavior before crossing this boundary
 
 ## Transport
 
-The planned transport is a dedicated duplex process pipe. Frames are:
+The transport uses dedicated process pipes (host → driver on child fd 3 and driver → host on child fd 4), forming a duplex channel. Frames are:
 
 1. four-byte unsigned big-endian payload length;
 2. that many bytes of UTF-8 JSON;
 3. a JSON-RPC 2.0 request, response, or notification inside the payload.
 
-Stdout and stderr are diagnostics only. They are never parsed as protocol traffic. A transport implementation must reject a declared frame larger than `PROVIDER_DRIVER_MAX_FRAME_BYTES` before allocating or parsing the complete payload.
+Stdout and stderr are bounded diagnostics only. They are never parsed as protocol traffic. `ProviderDriverFrameDecoder` rejects a declared frame larger than `PROVIDER_DRIVER_MAX_FRAME_BYTES` before buffering or parsing the declared payload. `ProcessProviderDriverConnection` owns request correlation, timeouts, schema validation, and lifecycle enforcement; `ProviderDriverSupervisor` owns process launch, diagnostics, termination, and process-key deduplication.
 
 ## Normative lifecycle rules
 
@@ -42,6 +42,7 @@ Stdout and stderr are diagnostics only. They are never parsed as protocol traffi
 - `session.open` returns one authoritative `providerSessionId`.
 - Drivers never reveal session identity later through an event.
 - Mutable provider sessions live outside immutable artifact directories.
+- Detaching or discarding an idle attachment removes it from connection lifecycle state.
 - `operationId` identifies one mutation. Repeating it with identical input returns the same result; reusing it with different semantics is a protocol violation.
 
 ### Turns
@@ -60,6 +61,7 @@ Stdout and stderr are diagnostics only. They are never parsed as protocol traffi
 - An event for an unknown attachment, an unaccepted turn, a completed item, or a settled turn is a protocol violation.
 - `turn.settled` is the only top-level terminal turn fact. Exactly one is legal per accepted turn.
 - Rate limiting and authentication/provider failures are classifications on a failed settlement. Nonterminal provider retry activity uses `turn.retrying`.
+- Tool and interaction requests must target the accepted active turn on their attachment.
 - Provider-native diagnostics may be logged, but core lifecycle policy must not infer state from them.
 
 ### Exit
