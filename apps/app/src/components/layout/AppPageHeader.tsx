@@ -45,6 +45,12 @@ export const HEADER_PANE_ACTION_ICON_BUTTON_CLASS =
   HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS;
 
 /**
+ * Shared spacing between adjacent controls in a header action cluster. This
+ * keeps title-adjacent actions and pane-edge actions on one compact rhythm.
+ */
+export const HEADER_ACTION_GAP_CLASS = "gap-1";
+
+/**
  * Seam that separates a header row from the body below it. Every app header
  * carries this seam, so it belongs to the shared chrome instead of to each
  * call site. Panes without it read as if their title bar floats on the body.
@@ -137,7 +143,8 @@ export function AppPageHeader({
         {actions ? (
           <div
             className={cn(
-              "flex shrink-0 items-center gap-1",
+              "flex shrink-0 items-center",
+              HEADER_ACTION_GAP_CLASS,
               usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
             )}
           >

@@ -16,6 +16,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SplitButton } from "@/components/ui/split-button.js";
 import {
   AppPageHeader,
+  HEADER_ACTION_GAP_CLASS,
   HEADER_ICON_BUTTON_CLASS,
   HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
@@ -169,7 +170,13 @@ export function ThreadDetailHeader({
     secondaryPanelHost === null && !isSecondaryPanelOpen;
 
   const center = (
-    <>
+    <div
+      className={cn(
+        "flex min-w-0 max-w-full items-center",
+        HEADER_ACTION_GAP_CLASS,
+      )}
+      data-thread-header-center-actions=""
+    >
       <div
         data-pane-header-focus-tab={
           isSplitPaneHeader && isFocused ? "" : undefined
@@ -238,13 +245,13 @@ export function ThreadDetailHeader({
           {actionsMenu(usesResponsiveActionOverflow)}
         </span>
       )}
-    </>
+    </div>
   );
 
   const actions = (
     <>
       <div
-        className="flex items-center gap-1"
+        className={cn("flex items-center", HEADER_ACTION_GAP_CLASS)}
         data-thread-header-workflow-actions=""
       >
         {pluginActions}
@@ -282,7 +289,7 @@ export function ThreadDetailHeader({
         ) : null}
       </div>
       <div
-        className="ml-1 flex items-center gap-0.5"
+        className={cn("ml-1 flex items-center", HEADER_ACTION_GAP_CLASS)}
         data-thread-header-pane-actions=""
       >
         {showRightPanelToggle ? (

@@ -28,6 +28,7 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
 }));
 
 vi.mock("@/components/layout/AppPageHeader", () => ({
+  HEADER_ACTION_GAP_CLASS: "header-action-gap",
   HEADER_ICON_BUTTON_CLASS: "header-icon-button",
   HEADER_PANE_ACTION_ICON_BUTTON_CLASS: "header-pane-action-button",
   AppPageHeader: ({
@@ -119,6 +120,42 @@ describe("ThreadDetailHeader", () => {
         .querySelector("[data-thread-header-pane-actions]")
         ?.contains(spotlight),
     ).toBe(false);
+  });
+
+  it("uses one shared gap for title and pane-edge header actions", () => {
+    const { container } = render(
+      <PaneContext.Provider
+        value={{
+          ...PANE_CONTEXT,
+          isSplitPane: true,
+          beginPaneDrag: vi.fn(),
+          onRequestClose: vi.fn(),
+          onToggleMaximize: vi.fn(),
+        }}
+      >
+        <ThreadDetailHeader
+          actionsMenu={() => (
+            <button type="button" aria-label="Thread actions">
+              Actions
+            </button>
+          )}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={THREAD_ID}
+          threadTitle="Uniform header spacing"
+        />
+      </PaneContext.Provider>,
+    );
+
+    expect(
+      container.querySelector("[data-thread-header-center-actions]")?.classList,
+    ).toContain("header-action-gap");
+    expect(
+      container.querySelector("[data-thread-header-pane-actions]")?.classList,
+    ).toContain("header-action-gap");
   });
 
   it("leaves the open right-panel collapse control to the panel header", () => {
@@ -567,7 +604,10 @@ describe("ThreadDetailHeader", () => {
     fireEvent.change(input, { target: { value: "Renamed thread" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(mocks.renameThread).toHaveBeenCalledWith(THREAD_ID, "Renamed thread");
+    expect(mocks.renameThread).toHaveBeenCalledWith(
+      THREAD_ID,
+      "Renamed thread",
+    );
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     expect(screen.getByText("Focused thread")).not.toBeNull();
   });
