@@ -1,28 +1,21 @@
+import { lazy, Suspense } from "react";
 import { useParams } from "react-router-dom";
-import { WorkerPoolContextProvider } from "@pierre/diffs/react";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
-import {
-  createDiffWorker,
-  getDiffWorkerPoolSize,
-} from "@/lib/diff-worker-pool";
-import { useResolvedCodeThemePair } from "@/lib/code-theme";
-import { useSyncPierreWorkerPoolTheme } from "@/lib/pierre-worker-pool-theme";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
 // Plugins can render `@pierre/diffs` FileDiff (the specifier is shimmed to
 // the host's copy); syntax highlighting needs a worker pool in React context.
-// Thread panes get theirs from the split workspace — standalone nav panels get
-// one here.
-const WORKER_POOL_OPTIONS = {
-  workerFactory: createDiffWorker,
-  poolSize: getDiffWorkerPoolSize(),
-};
-function PierreWorkerPoolThemeSync() {
-  useSyncPierreWorkerPoolTheme();
-  return null;
-}
+// The provider is loaded on demand because this view renders inside the split
+// workspace, and a static import would put the diff renderer on the thread
+// route's preload set. Plugin frontends already arrive after first paint, so
+// the panel body waits on the same kind of boundary it already waits on.
+const DiffWorkerPoolProvider = lazy(() =>
+  import("@/components/git-diff/DiffWorkerPoolProvider").then((module) => ({
+    default: module.DiffWorkerPoolProvider,
+  })),
+);
 
 /**
  * The route surface for plugin `navPanel` slots (plugin design §5.2):
@@ -44,7 +37,6 @@ interface PluginPanelViewProps {
 }
 
 export function PluginPanelView(props: PluginPanelViewProps = {}) {
-  const theme = useResolvedCodeThemePair();
   const params = useParams<{
     pluginId: string;
     panelPath: string;
@@ -84,20 +76,6 @@ export function PluginPanelView(props: PluginPanelViewProps = {}) {
       <panel.component subPath={subPath} />
     </PluginSlotMount>
   );
-  // The provider spawns workers eagerly; environments without Worker
-  // (jsdom tests) just render diffs unhighlighted.
-  const mount =
-    typeof Worker === "undefined" ? (
-      slotMount
-    ) : (
-      <WorkerPoolContextProvider
-        poolOptions={WORKER_POOL_OPTIONS}
-        highlighterOptions={{ theme }}
-      >
-        <PierreWorkerPoolThemeSync />
-        {slotMount}
-      </WorkerPoolContextProvider>
-    );
 
   // Full-bleed: the negative margins undo the app layout's `p-4 md:p-5`
   // route padding. Plugins opt into their own padding and scrolling.
@@ -106,7 +84,9 @@ export function PluginPanelView(props: PluginPanelViewProps = {}) {
       className="-m-4 flex min-h-0 flex-1 flex-col overflow-hidden md:-m-5"
       data-testid="plugin-panel-body"
     >
-      {mount}
+      <Suspense fallback={null}>
+        <DiffWorkerPoolProvider>{slotMount}</DiffWorkerPoolProvider>
+      </Suspense>
     </div>
   );
 }

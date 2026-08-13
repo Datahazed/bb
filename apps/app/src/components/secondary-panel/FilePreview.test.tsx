@@ -401,7 +401,9 @@ describe("FilePreview", () => {
     expect(getCsvTruncationNote(preview, preview.rows.length - 1)).toBeNull();
   });
 
-  it("uses the CSV table preview for loaded CSV text files", () => {
+  // SecondaryPanelFilePreview reaches the viewer through FilePreviewLazy, so
+  // the first assertion waits for that chunk.
+  it("uses the CSV table preview for loaded CSV text files", async () => {
     render(
       <SecondaryPanelFilePreview
         activePath="exports/scores.csv"
@@ -418,7 +420,7 @@ describe("FilePreview", () => {
     );
 
     expect(
-      screen.getByRole("table", { name: "scores.csv CSV preview" }),
+      await screen.findByRole("table", { name: "scores.csv CSV preview" }),
     ).not.toBeNull();
     expect(screen.getByRole("cell", { name: "Ada" })).not.toBeNull();
     expect(screen.getByRole("cell", { name: "10" })).not.toBeNull();

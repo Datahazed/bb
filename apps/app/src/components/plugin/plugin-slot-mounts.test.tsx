@@ -1280,7 +1280,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     },
   );
 
-  it("renders a sidebar entry that routes to the plugin panel", () => {
+  it("renders a sidebar entry that routes to the plugin panel", async () => {
     setPluginSlotRegistrations(
       "demo",
       registrationSet({
@@ -1305,7 +1305,8 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByText("Demo board"));
-    expect(screen.getByText("board panel body")).toBeDefined();
+    // The panel body waits on the on-demand diff worker pool provider.
+    expect(await screen.findByText("board panel body")).toBeDefined();
   });
 
   it("shows a plugin panel's position when it is open in a split", () => {
@@ -1492,7 +1493,7 @@ describe("plugin panel shared title bar and full-bleed body", () => {
     expect(body.className).not.toMatch(/(?:^|\s)p[trblxy]?-/u);
   });
 
-  it("still contains a crashing panel inside the error boundary", () => {
+  it("still contains a crashing panel inside the error boundary", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     function Crashes(): never {
@@ -1505,7 +1506,7 @@ describe("plugin panel shared title bar and full-bleed body", () => {
       }),
     );
     renderPanelBody();
-    expect(screen.getByText("plugin demo crashed")).toBeDefined();
+    expect(await screen.findByText("plugin demo crashed")).toBeDefined();
   });
 });
 

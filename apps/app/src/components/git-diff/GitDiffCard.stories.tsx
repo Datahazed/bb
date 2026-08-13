@@ -3,10 +3,8 @@ import { builtInThemes, defaultAppTheme, type BuiltInThemeId } from "@bb/domain"
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
 import { resolveAppThemeCss } from "@/lib/themes";
-import {
-  GitDiffCard,
-  GIT_DIFF_VIEW_BASE_OPTIONS,
-} from "@/components/git-diff/GitDiffCard";
+import { GitDiffCard } from "@/components/git-diff/GitDiffCard";
+import { GIT_DIFF_VIEW_BASE_OPTIONS } from "@/components/git-diff/git-diff-view-options";
 import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
 
 /**

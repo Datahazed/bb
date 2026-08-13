@@ -10,7 +10,7 @@ import { ImageLightbox } from "../../ui/image-lightbox.js";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { TerminalOutputBlock } from "./TerminalOutputBlock.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
-import { TimelineFileDiffBlock } from "./TimelineFileDiffBlock.js";
+import { TimelineFileDiffBlock } from "./TimelineFileDiffBlockLazy.js";
 import { ToolCallDetailBlock } from "./ToolCallDetailBlock.js";
 import { QuestionWorkRowBody } from "./QuestionWorkRowBody.js";
 import { WorkflowWorkRowBody } from "./WorkflowWorkRowBody.js";

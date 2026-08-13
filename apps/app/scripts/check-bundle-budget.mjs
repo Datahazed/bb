@@ -82,6 +82,28 @@ for (const [pkg, chunks] of offenders) {
   failures.push(`${pkg} is in the boot payload (${chunks.join(", ")}). It must load on demand.`);
 }
 
+// Same rule, one level down: a lazy route pays for its own static closure, and
+// none of it is visible to the boot budget above.
+for (const route of stats.routes ?? []) {
+  const forbiddenForRoute = new Set(budget.forbiddenRoutePackages?.[route.name] ?? []);
+  if (forbiddenForRoute.size === 0) continue;
+  const routeBytes = route.chunks.reduce((total, chunk) => total + chunk.bytes, 0);
+  console.log(`${route.name} route: ${kb(routeBytes)} raw across ${route.chunks.length} chunks`);
+  const routeOffenders = new Map();
+  for (const chunk of route.chunks) {
+    for (const pkg of chunk.packages) {
+      if (!forbiddenForRoute.has(pkg)) continue;
+      if (!routeOffenders.has(pkg)) routeOffenders.set(pkg, []);
+      routeOffenders.get(pkg).push(chunk.fileName);
+    }
+  }
+  for (const [pkg, chunks] of routeOffenders) {
+    failures.push(
+      `${pkg} is on the ${route.name} route's static path (${chunks.join(", ")}). It must load on demand.`,
+    );
+  }
+}
+
 if (failures.length > 0) {
   console.error("\nBundle budget failed:\n");
   for (const failure of failures) console.error(`  - ${failure}`);

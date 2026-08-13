@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type { FileContents } from "@pierre/diffs";
 import {
-  GIT_DIFF_VIEW_BASE_OPTIONS,
   GitDiffCard,
   type DiffFileContentsResult,
   type RequestDiffFileContents,
 } from "../git-diff/GitDiffCard";
+import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/git-diff-view-options";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
   type CodeOverflowMode,

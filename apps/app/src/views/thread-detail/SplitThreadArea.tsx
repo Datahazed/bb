@@ -99,7 +99,7 @@ import {
   reconcileLayoutForContent,
   threadPaneContent,
 } from "./splitThreadNavigation";
-import { ThreadDetailWorkerPoolProvider } from "./ThreadDetailWorkerPoolProvider";
+import { ThreadDetailWorkerPoolKeepAlive } from "./ThreadDetailWorkerPoolKeepAlive";
 import {
   getBbDesktopInfo,
   MACOS_WINDOW_NO_DRAG_CLASS,
@@ -220,9 +220,10 @@ function usePreservedSplitScrollPositions(maximizedPaneId: string | null) {
 
 export function SplitThreadArea(props: SplitThreadAreaProps = {}) {
   return (
-    <ThreadDetailWorkerPoolProvider>
+    <>
+      <ThreadDetailWorkerPoolKeepAlive />
       <SplitThreadAreaContent {...props} />
-    </ThreadDetailWorkerPoolProvider>
+    </>
   );
 }
 

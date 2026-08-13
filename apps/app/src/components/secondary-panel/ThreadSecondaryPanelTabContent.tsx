@@ -22,7 +22,7 @@ import type {
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { DiffFilesPanel } from "./git-diff/DiffFilesPanel";
+import { DiffFilesPanel } from "./git-diff/DiffFilesPanelLazy";
 import { clearDiffFileCardStates } from "./git-diff/diffFilesStore";
 import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";
 import { useDiffFileContentsRequester } from "./git-diff/useDiffFileContentsRequester";

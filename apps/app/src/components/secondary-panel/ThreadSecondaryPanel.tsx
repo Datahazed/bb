@@ -37,7 +37,7 @@ import type {
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelFileTab";
 import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
-import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/GitDiffCard";
+import { GIT_DIFF_VIEW_BASE_OPTIONS } from "../git-diff/git-diff-view-options";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
 import {

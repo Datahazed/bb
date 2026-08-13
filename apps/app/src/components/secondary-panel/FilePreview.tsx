@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { File as PierreFile, useWorkerPool } from "@pierre/diffs/react";
+import { DiffWorkerPoolProvider } from "@/components/git-diff/DiffWorkerPoolProvider";
 import type { FileOptions } from "@pierre/diffs/react";
 import type { SelectedLineRange, SupportedLanguages } from "@pierre/diffs";
 import type { UrlTransform } from "react-markdown";
@@ -428,7 +429,20 @@ export function getCsvTruncationNote(
   return `Showing the first ${limits.join(" and ")}.`;
 }
 
-export function FilePreview({
+/**
+ * Supplies the worker pool here rather than inheriting it from the thread page:
+ * a page-level provider would put the diff renderer on the thread route's
+ * preload set. See {@link DiffWorkerPoolProvider}.
+ */
+export function FilePreview(props: FilePreviewProps) {
+  return (
+    <DiffWorkerPoolProvider>
+      <FilePreviewContent {...props} />
+    </DiffWorkerPoolProvider>
+  );
+}
+
+function FilePreviewContent({
   state,
   path,
   copyPath = null,

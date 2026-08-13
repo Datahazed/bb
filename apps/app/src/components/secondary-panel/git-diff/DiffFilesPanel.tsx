@@ -11,6 +11,7 @@ import {
   useEnvironmentDiffPatches,
 } from "@/hooks/queries/use-environment-diff-patches";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { DiffWorkerPoolProvider } from "@/components/git-diff/DiffWorkerPoolProvider";
 import { DiffFileCard } from "./DiffFileCard";
 import {
   diffFileCardStateAtomFamily,
@@ -71,7 +72,20 @@ export interface DiffFilesPanelProps {
  * paths drive {@link useEnvironmentDiffPatches} so patches page in as the user
  * scrolls; each loaded patch is parsed per-file and handed to its card.
  */
-export function DiffFilesPanel({
+/**
+ * Supplies the worker pool here rather than inheriting it from the thread page:
+ * a page-level provider would put the diff renderer on the thread route's
+ * preload set. See {@link DiffWorkerPoolProvider}.
+ */
+export function DiffFilesPanel(props: DiffFilesPanelProps) {
+  return (
+    <DiffWorkerPoolProvider>
+      <DiffFilesPanelContent {...props} />
+    </DiffWorkerPoolProvider>
+  );
+}
+
+function DiffFilesPanelContent({
   environmentId,
   target,
   diffIdentity,

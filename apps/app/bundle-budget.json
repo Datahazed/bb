@@ -23,10 +23,25 @@
     "large and all needed only after a user action (open a diff, focus the",
     "composer, render math). Each one reached the boot path through a barrel",
     "re-export rather than a direct import, which type checking cannot catch,",
-    "so the check names them explicitly."
+    "so the check names them explicitly.",
+    "",
+    "maxBootBrotliBytes rose from 445742 in #1072, which moved the diff",
+    "renderer, Shiki and KaTeX off the thread route. The raw boot payload grew",
+    "by 4 KB, but the new lazy boundaries made rolldown split the shared boot",
+    "code into 22 chunks instead of 12, and more small chunks compress worse.",
+    "The trade was 9 KB of brotli on boot for 938 KB off the thread route.",
+    "",
+    "forbiddenRoutePackages applies the same package rule one level down, to a",
+    "lazy route's own static closure. The boot check cannot see this: none of",
+    "the diff renderer is on the boot path, yet before #1072 every thread page",
+    "still downloaded it. Note that the thread list allows @tiptap and",
+    "prosemirror — the composer is part of the thread page and renders on",
+    "arrival. @pierre/trees and @xterm/xterm are still on the thread route and",
+    "are deliberately absent from the list; moving the file tree and the",
+    "terminal off it is separate work."
   ],
   "maxBootBytes": 1707047,
-  "maxBootBrotliBytes": 445742,
+  "maxBootBrotliBytes": 460800,
   "forbiddenBootPackages": [
     "@pierre/diffs",
     "@pierre/theming",
@@ -48,5 +63,22 @@
     "prosemirror-view",
     "rehype-katex",
     "shiki"
-  ]
+  ],
+  "forbiddenRoutePackages": {
+    "thread": [
+      "@pierre/diffs",
+      "@pierre/theming",
+      "@shikijs/core",
+      "@shikijs/engine-javascript",
+      "@shikijs/engine-oniguruma",
+      "@shikijs/langs",
+      "@shikijs/vscode-textmate",
+      "cytoscape",
+      "katex",
+      "mermaid",
+      "oniguruma-to-es",
+      "rehype-katex",
+      "shiki"
+    ]
+  }
 }

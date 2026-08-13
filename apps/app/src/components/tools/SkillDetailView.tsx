@@ -17,7 +17,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
+import { FilePreview } from "@/components/secondary-panel/FilePreviewLazy.js";
 import { appToast } from "@/components/ui/app-toast";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 

@@ -6,6 +6,7 @@ import {
   isPatchMetadataLine,
   type FileChangeAction,
 } from "@bb/thread-view";
+import { DiffWorkerPoolProvider } from "../../git-diff/DiffWorkerPoolProvider.js";
 import { GitDiffCard } from "../../git-diff/GitDiffCard.js";
 import { EventCodeBlock } from "../../ui/event-code-block.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
@@ -277,14 +278,16 @@ export const TimelineFileDiffBlock = memo(function TimelineFileDiffBlock({
         showAboveFade={false}
       >
         <div data-timeline-file-diff="">
-          <GitDiffCard
-            fileDiff={renderablePatch.fileDiff}
-            diffViewOptions={cardDiffViewOptions}
-            filePathRoot={workspaceRootPath}
-            cardClassName="rounded-none border-0 bg-transparent"
-            showStuckHeaderEdge={false}
-            stickyHeader
-          />
+          <DiffWorkerPoolProvider>
+            <GitDiffCard
+              fileDiff={renderablePatch.fileDiff}
+              diffViewOptions={cardDiffViewOptions}
+              filePathRoot={workspaceRootPath}
+              cardClassName="rounded-none border-0 bg-transparent"
+              showStuckHeaderEdge={false}
+              stickyHeader
+            />
+          </DiffWorkerPoolProvider>
         </div>
       </TimelineDetailScroll>
     );

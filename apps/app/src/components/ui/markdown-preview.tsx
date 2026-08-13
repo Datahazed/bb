@@ -3,6 +3,7 @@ import {
   cloneElement,
   isValidElement,
   memo,
+  useEffect,
   useLayoutEffect,
   useContext,
   useMemo,
@@ -32,13 +33,11 @@ import type {
   Options as ReactMarkdownOptions,
   UrlTransform,
 } from "react-markdown";
-import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import "katex/dist/katex.min.css";
 import { ImageLightbox } from "./image-lightbox.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
@@ -296,30 +295,69 @@ type MarkdownTableHeadProps = ComponentPropsWithoutRef<"thead"> & ExtraProps;
 type MarkdownTableHeaderProps = ComponentPropsWithoutRef<"th"> & ExtraProps;
 type MarkdownUnorderedListProps = ComponentPropsWithoutRef<"ul"> & ExtraProps;
 type MarkdownRehypePlugins = NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
+type MarkdownRehypePlugin = MarkdownRehypePlugins[number];
 
 const MARKDOWN_TABLE_BREAKOUT_WIDTH = "max(100%, min(1100px, 100cqw - 2rem))";
 const MARKDOWN_CONTENT_WIDTH_VARIABLE = "--md-content-w";
 const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =
   /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/iu;
-// `remark-math` emits math as `<code class="language-math">` (inline) and
-// `<pre><code class="language-math">` (display) holding the raw TeX, and
-// `rehype-katex` renders any element carrying that class. The default sanitize
-// schema already keeps `language-*` classes on `<code>`, so the wrappers survive
-// sanitization untouched — and `rehype-katex` runs LAST, after sanitize, so KaTeX
-// (which uses `trust: false` and self-escapes its TeX input) emits its rendered
-// output without it being re-sanitized.
-//
 // Security-critical order: raw HTML must become nodes (rehypeRaw) before
 // sanitization can strip unsafe elements, attributes, and URLs.
 const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
   rehypeRaw,
   rehypeSanitize,
-  rehypeKatex,
 ];
 
-// No raw HTML means nothing untrusted to sanitize, so KaTeX renders straight
-// from the `remark-math` wrappers.
-const MARKDOWN_MATH_REHYPE_PLUGINS: MarkdownRehypePlugins = [rehypeKatex];
+// No raw HTML means nothing untrusted to sanitize.
+const MARKDOWN_PLAIN_REHYPE_PLUGINS: MarkdownRehypePlugins = [];
+
+// `remark-math` runs with `singleDollarTextMath` off (see the remark plugin
+// list below), so every math node it emits — inline or display — opens with
+// `$$`. A body without those two characters can never produce math, and that is
+// nearly every message, so nearly every message skips loading KaTeX.
+function mightContainMath(body: string): boolean {
+  return body.includes("$$");
+}
+
+// One shared load per session. KaTeX is idempotent to import, but caching the
+// promise keeps a timeline of math-bearing messages from queueing one import
+// each.
+let katexRehypePluginPromise: Promise<MarkdownRehypePlugin> | null = null;
+let loadedKatexRehypePlugin: MarkdownRehypePlugin | null = null;
+
+/**
+ * Resolves `rehype-katex` once the body needs it, and `null` until then.
+ *
+ * A math-bearing body renders its TeX as plain text for the one frame before
+ * the chunk lands, then re-renders through KaTeX. Bodies without math never
+ * load the chunk at all.
+ */
+function useKatexRehypePlugin(body: string): MarkdownRehypePlugin | null {
+  const wanted = mightContainMath(body);
+  // A unified plugin is a function, so both the initializer and the setter use
+  // the callback form. Passing it bare would make React run it as a lazy
+  // initializer or a state reducer and store its return value instead.
+  const [plugin, setPlugin] = useState<MarkdownRehypePlugin | null>(
+    () => loadedKatexRehypePlugin,
+  );
+
+  useEffect(() => {
+    if (!wanted || plugin !== null) return;
+    let cancelled = false;
+    katexRehypePluginPromise ??= import("./markdown-katex.js").then(
+      (module) => module.rehypeKatex,
+    );
+    void katexRehypePluginPromise.then((loaded) => {
+      loadedKatexRehypePlugin = loaded;
+      if (!cancelled) setPlugin(() => loaded);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [wanted, plugin]);
+
+  return wanted ? plugin : null;
+}
 
 function areMarkdownAbsoluteLocalFileLinkRoutingsEqual({
   next,
@@ -1600,6 +1638,20 @@ function MarkdownPreviewComponent({
     }
     return plugins;
   }, [threadMentions, promptMentions, messageDirectiveMounts]);
+  // `remark-math` emits math as `<code class="language-math">` (inline) and
+  // `<pre><code class="language-math">` (display) holding the raw TeX, and
+  // `rehype-katex` renders any element carrying that class. The default sanitize
+  // schema already keeps `language-*` classes on `<code>`, so the wrappers survive
+  // sanitization untouched — and `rehype-katex` runs LAST, after sanitize, so KaTeX
+  // (which uses `trust: false` and self-escapes its TeX input) emits its rendered
+  // output without it being re-sanitized.
+  const katexRehypePlugin = useKatexRehypePlugin(body);
+  const rehypePlugins = useMemo((): MarkdownRehypePlugins => {
+    const base = allowHtml
+      ? MARKDOWN_HTML_REHYPE_PLUGINS
+      : MARKDOWN_PLAIN_REHYPE_PLUGINS;
+    return katexRehypePlugin === null ? base : [...base, katexRehypePlugin];
+  }, [allowHtml, katexRehypePlugin]);
   const resolvedUrlTransform = useMemo(
     () =>
       localFileRouting || localImageRouting
@@ -1614,9 +1666,7 @@ function MarkdownPreviewComponent({
 
   const renderedMarkdown = (
     <ReactMarkdown
-      rehypePlugins={
-        allowHtml ? MARKDOWN_HTML_REHYPE_PLUGINS : MARKDOWN_MATH_REHYPE_PLUGINS
-      }
+      rehypePlugins={rehypePlugins}
       remarkPlugins={remarkPlugins}
       components={markdownComponents}
       urlTransform={resolvedUrlTransform}

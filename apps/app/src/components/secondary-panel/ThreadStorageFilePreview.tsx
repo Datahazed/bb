@@ -2,7 +2,7 @@ import {
   FilePreview as FilePreviewSurface,
   type FilePreviewFile,
   type TextFilePreviewKind,
-} from "./FilePreview";
+} from "./FilePreviewLazy";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { HttpError } from "@/lib/api";
 import { buildThreadStorageRawContentUrl } from "@/lib/file-content-urls";
