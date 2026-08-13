@@ -213,6 +213,26 @@ vi.mock("@/views/RootComposeView", () => ({
   RootComposeView: RootComposeFixture,
 }));
 
+vi.mock("@/components/plugin/PluginPanelBrowserHost", () => ({
+  PluginPanelBrowserHost: ({
+    children,
+    panelPath,
+    pluginId,
+  }: {
+    children: ReactNode;
+    panelPath: string;
+    pluginId: string;
+  }) => (
+    <div
+      data-testid="plugin-browser-host"
+      data-panel-path={panelPath}
+      data-plugin-id={pluginId}
+    >
+      {children}
+    </div>
+  ),
+}));
+
 // Lightweight stand-in for the heavyweight thread view. It surfaces the pane's
 // thread id, focus, close affordance, and a real threadId-keyed draft so the
 // test exercises SplitThreadArea's wiring without its dependency tree.
@@ -567,6 +587,32 @@ afterEach(() => {
 });
 
 describe("SplitThreadArea", () => {
+  it("hosts Browser-tab navigation on compact plugin-panel routes", async () => {
+    viewportState.compact = true;
+
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: pluginSplitLayout(),
+      routeContent: docsContent,
+    });
+
+    const host = await screen.findByTestId("plugin-browser-host");
+    expect(host.dataset.pluginId).toBe("docs");
+    expect(host.dataset.panelPath).toBe("docs");
+  });
+
+  it("hosts Browser-tab navigation when split workspaces are disabled", async () => {
+    experimentState.enabled = false;
+
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: pluginSplitLayout(),
+      routeContent: docsContent,
+    });
+
+    expect(await screen.findByTestId("plugin-browser-host")).toBeTruthy();
+  });
+
   it("applies spotlight pane actions to the targeted open split and preference", async () => {
     const store = renderSplitArea({
       path: threadPath("thr-b"),

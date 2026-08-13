@@ -5,6 +5,33 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `useBbNavigate().experimental_openBrowserTab` (`@bb/plugin-sdk/app`)
+
+**What it does.** Opens a validated HTTP(S) URL in BB's native Browser panel
+beside the current plugin nav panel while keeping the plugin surface mounted.
+It returns `false` when the current surface cannot host the panel, the desktop
+Browser API is unavailable, or the URL is malformed or exceeds the native IPC
+limit, so the plugin can preserve an ordinary-link fallback.
+
+**Audit before stabilizing.**
+
+1. **Surface scope.** Confirm the same API should cover compact drawers,
+   standalone plugin pages, split panes, and any future plugin surface. Verify
+   focus and maximize transitions continue to hide native views owned by an
+   inactive pane.
+2. **URL contract.** Revisit HTTP(S)-only validation, the 4,096-character cap,
+   normalization, credentials, private-network destinations, and whether the
+   method should accept a `URL` object or a narrower host-owned link type.
+3. **Ownership and cleanup.** Verify tab identity, persistence, final-tab
+   destruction, navigation away, plugin reload/disable, and multiple-window
+   behavior before making the lifecycle contract stable.
+4. **Result semantics.** Confirm a synchronous boolean gives plugins enough
+   information, or replace it with a typed result that distinguishes invalid
+   input, unavailable native support, and an unsupported host surface.
+5. **Browser security.** Re-audit sandboxing, permissions, popup handling,
+   download behavior, external-protocol routing, and IPC limits as the native
+   Browser implementation evolves.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React

@@ -336,7 +336,9 @@ export function useBbNavigate(): BbNavigate {
     (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,
     [openThreadPanelHandler, pluginId],
   );
-  const openBrowserTab = useCallback<BbNavigate["openBrowserTab"]>(
+  const experimentalOpenBrowserTab = useCallback<
+    BbNavigate["experimental_openBrowserTab"]
+  >(
     (options) => openBrowserTabHandler?.(options) ?? false,
     [openBrowserTabHandler],
   );
@@ -347,7 +349,7 @@ export function useBbNavigate(): BbNavigate {
       toPluginPanel,
       toCompose,
       openThreadPanel,
-      openBrowserTab,
+      experimental_openBrowserTab: experimentalOpenBrowserTab,
     }),
     [
       toThread,
@@ -355,7 +357,7 @@ export function useBbNavigate(): BbNavigate {
       toPluginPanel,
       toCompose,
       openThreadPanel,
-      openBrowserTab,
+      experimentalOpenBrowserTab,
     ],
   );
 }
