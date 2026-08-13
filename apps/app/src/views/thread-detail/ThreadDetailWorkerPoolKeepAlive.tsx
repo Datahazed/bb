@@ -3,6 +3,7 @@ import {
   getDiffWorkerPoolDemand,
   subscribeToDiffWorkerPoolDemand,
 } from "@/lib/diff-worker-pool";
+import { useRouteState } from "@/hooks/useRouteState";
 
 const DiffWorkerPoolKeepAlive = lazy(() =>
   import("@/components/git-diff/DiffWorkerPoolProvider").then((module) => ({
@@ -11,7 +12,8 @@ const DiffWorkerPoolKeepAlive = lazy(() =>
 );
 
 /**
- * Holds the shared diff worker pool open for this thread area. Renders nothing.
+ * Holds the shared diff worker pool open for the thread on screen. Renders
+ * nothing.
  *
  * Each diff surface supplies the pool to its own subtree through
  * `DiffWorkerPoolProvider`, so this component exists only to stop the pool's
@@ -23,23 +25,29 @@ const DiffWorkerPoolKeepAlive = lazy(() =>
  * and mounting a wrapper later would change the tree shape around the
  * workspace, which remounts it and loses composer state.
  *
- * The latch is per mount, not global: a thread area engages only after a diff
- * surface appears inside it. Opening a diff in one thread therefore does not
- * make the next thread spawn workers it has no use for.
+ * The hold is scoped to one thread. This component outlives thread navigation,
+ * because the split workspace keeps its shell mounted, so a latch that only
+ * ever turned on would keep up to eight workers alive for the rest of the
+ * session after a single diff. Recording which thread engaged the pool releases
+ * it on navigation while keeping it steady within a thread, where the churn
+ * this guards against actually happens.
  */
 export function ThreadDetailWorkerPoolKeepAlive() {
+  const { threadId } = useRouteState();
   const diffWorkerPoolDemand = useSyncExternalStore(
     subscribeToDiffWorkerPoolDemand,
     getDiffWorkerPoolDemand,
     getDiffWorkerPoolDemand,
   );
-  const [engaged, setEngaged] = useState(false);
+  const [engagedThreadId, setEngagedThreadId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (diffWorkerPoolDemand > 0) setEngaged(true);
-  }, [diffWorkerPoolDemand]);
+    if (diffWorkerPoolDemand > 0 && engagedThreadId !== threadId) {
+      setEngagedThreadId(threadId ?? null);
+    }
+  }, [diffWorkerPoolDemand, engagedThreadId, threadId]);
 
-  if (!engaged) return null;
+  if (engagedThreadId === null || engagedThreadId !== threadId) return null;
   return (
     <Suspense fallback={null}>
       <DiffWorkerPoolKeepAlive />
