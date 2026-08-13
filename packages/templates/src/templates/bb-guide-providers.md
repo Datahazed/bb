@@ -77,8 +77,9 @@ hermes CLI on PATH appears as provider acp-opencode, acp-omp, acp-jcode,
 acp-grok, or acp-hermes-agent.
 
 bb indexes the native user and project skill roots for Codex, Claude Code, Pi,
-Cursor, OpenCode, omp, Grok Build, and Hermes Agent. This includes compatibility
-roots such as .agents/skills and .claude/skills when the provider supports them.
+Cursor, OpenCode, omp, jcode, Grok Build, and Hermes Agent. This includes
+compatibility roots such as .agents/skills and .claude/skills when the provider
+supports them.
 It also includes project ancestor roots for providers that search to the Git
 repository root. Configured Pi, omp, Grok, and Hermes directories are included.
 Enabled provider plugins also contribute skills to the selected provider's `/`

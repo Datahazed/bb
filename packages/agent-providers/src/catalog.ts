@@ -162,6 +162,16 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
   supportedPermissionModes: ["accept-edits", "full"],
 };
 
+function acpCapabilities(providerId: string): ProviderCapabilities {
+  const capabilities = cloneCapabilities(ACP_CAPABILITIES);
+  // jcode executes file and shell tools without ACP permission requests. BB
+  // cannot enforce its restricted modes, so the provider exposes only Full.
+  if (providerId === "acp-jcode") {
+    capabilities.supportedPermissionModes = ["full"];
+  }
+  return capabilities;
+}
+
 const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
@@ -339,7 +349,7 @@ export function buildAcpProviderInfo(
   }
   return {
     available: true,
-    capabilities: cloneCapabilities(ACP_CAPABILITIES),
+    capabilities: acpCapabilities(args.id),
     composerActions: ACP_COMPOSER_ACTIONS.map(cloneComposerAction),
     displayName: args.displayName,
     id: args.id,

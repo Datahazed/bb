@@ -41,11 +41,6 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
     args: ["acp"],
     env: {},
     executableName: "jcode",
-    modelCli: {
-      listArgs: ["model", "list"],
-      selectFlag: "--model",
-      primaryModels: [],
-    },
   },
   {
     // Grok Build speaks ACP over stdio via `grok agent stdio`

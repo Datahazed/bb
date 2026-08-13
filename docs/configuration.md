@@ -275,6 +275,9 @@ and can be launched as `jcode acp`. It also exposes `acp-grok` when Grok Build's
 `acp-hermes-agent` when Hermes' `hermes` CLI is on PATH and can be launched as
 `hermes acp`.
 
+jcode skills use `.jcode/skills` and `.agents/skills` in the user home. Project
+jcode skills also use `.claude/skills`.
+
 Register custom ACP agents by editing `customAcpAgents` in `~/.bb/config.json`.
 There is no `bb-app config set` or `unset` command for this list, matching the
 manual-file workflow used for custom models. After editing the file, run

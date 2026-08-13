@@ -72,6 +72,16 @@ describe("agent provider catalog", () => {
     expect(getAgentProviderServerCapabilities("not-a-provider")).toBeNull();
   });
 
+  it("requires full permission mode for jcode", () => {
+    expect(
+      buildAcpProviderInfo({
+        id: "acp-jcode",
+        displayName: "jcode",
+        logoUrl: null,
+      }).capabilities.supportedPermissionModes,
+    ).toEqual(["full"]);
+  });
+
   it("returns cloned catalog entries", () => {
     const provider = getBuiltInAgentProviderInfo("codex");
     provider.displayName = "Mutated";

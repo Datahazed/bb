@@ -304,6 +304,8 @@ environment pull-request show <id>`. Diff commands require an explicit target
   host; for example `opencode`, `omp`, `jcode`, Grok Build's `grok` CLI, or
   Hermes' `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
   `acp-jcode`, `acp-grok`, or `acp-hermes-agent`.
+- jcode skills use `.jcode/skills` and `.agents/skills` in the user home.
+  Project jcode skills also use `.claude/skills`.
 - Cursor ACP threads discover project skills from `.cursor/skills`. This root
   can link to `.agents/skills`. `bb skill list` shows linked Cursor skills under
   `cursor-project` and keeps them read-only.

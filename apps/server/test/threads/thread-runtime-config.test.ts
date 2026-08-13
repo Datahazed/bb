@@ -279,11 +279,6 @@ describe("thread runtime config", () => {
         command: "jcode",
         args: ["acp"],
         env: {},
-        modelCli: {
-          listArgs: ["model", "list"],
-          selectFlag: "--model",
-          primaryModels: [],
-        },
       },
       providerId: "acp-jcode",
       requestedModel: "anthropic/claude-sonnet-4-5",
@@ -675,6 +670,39 @@ describe("thread runtime config", () => {
           },
         }),
       ).rejects.toThrow("Provider pi only supports full permission mode.");
+    });
+  });
+
+  it("rejects restricted permission modes for jcode", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-runtime-jcode-permission-mode-unsupported",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "acp-jcode",
+      });
+
+      await expect(
+        resolveExecutionOptions(harness.deps, {
+          threadId: thread.id,
+          requestedExecution: {
+            model: "gpt-5.5",
+            permissionMode: "accept-edits",
+            source: "client/turn/requested",
+          },
+        }),
+      ).rejects.toThrow(
+        "Provider acp-jcode only supports full permission mode.",
+      );
     });
   });
 

@@ -129,6 +129,7 @@ const CLAUDE_DIR_NAME = ".claude";
 const CURSOR_DIR_NAME = ".cursor";
 const GROK_DIR_NAME = ".grok";
 const HERMES_DIR_NAME = ".hermes";
+const JCODE_DIR_NAME = ".jcode";
 const OMP_DIR_NAME = ".omp";
 const OPENCODE_DIR_NAME = ".opencode";
 const PI_DIR_NAME = ".pi";
@@ -1752,6 +1753,11 @@ const GROK_SKILL_DIRS = [
   CLAUDE_DIR_NAME,
   CURSOR_DIR_NAME,
 ];
+const JCODE_PROJECT_SKILL_DIRS = [
+  JCODE_DIR_NAME,
+  AGENTS_DIR_NAME,
+  CLAUDE_DIR_NAME,
+];
 
 const PROVIDER_SKILL_SPECS: Readonly<Record<string, ProviderSkillSpec>> = {
   "claude-code": {
@@ -1847,6 +1853,11 @@ const PROVIDER_SKILL_SPECS: Readonly<Record<string, ProviderSkillSpec>> = {
       ];
     },
     walkParents: true,
+  },
+  "acp-jcode": {
+    projectDirectories: JCODE_PROJECT_SKILL_DIRS.map(skillsPath),
+    userLocations: (resolution) =>
+      homeSkillLocations(resolution.homeDir, [JCODE_DIR_NAME, AGENTS_DIR_NAME]),
   },
   "acp-grok": {
     projectDirectories: GROK_SKILL_DIRS.map(skillsPath),

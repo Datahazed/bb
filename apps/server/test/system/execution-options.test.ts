@@ -449,11 +449,6 @@ describe("resolveSystemExecutionOptions", () => {
           command: "jcode",
           args: ["acp"],
           env: {},
-          modelCli: {
-            listArgs: ["model", "list"],
-            selectFlag: "--model",
-            primaryModels: [],
-          },
         },
       });
     });

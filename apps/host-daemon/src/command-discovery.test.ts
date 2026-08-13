@@ -1317,6 +1317,12 @@ describe("resolveCommandScanRoots", () => {
         shape: "skill-recursive",
       },
       {
+        providerId: "acp-jcode",
+        project: [".jcode/skills", ".agents/skills", ".claude/skills"],
+        user: [".jcode/skills", ".agents/skills"],
+        shape: "skill",
+      },
+      {
         providerId: "acp-grok",
         project: [
           ".grok/skills",
@@ -1571,6 +1577,12 @@ describe("resolveCommandScanRoots", () => {
         base: "cwd",
         filePath: ".omp/skills/omp-skill/SKILL.md",
         name: "omp-skill",
+      },
+      {
+        providerId: "acp-jcode",
+        base: "cwd",
+        filePath: ".jcode/skills/jcode-skill/SKILL.md",
+        name: "jcode-skill",
       },
       {
         providerId: "acp-grok",
