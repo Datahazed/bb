@@ -2905,8 +2905,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        utf8: "utf8";
         base64: "base64";
+        utf8: "utf8";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -7326,9 +7326,9 @@ declare const terminalSessionSchema: z$1.ZodObject<{
     cols: z$1.ZodNumber;
     rows: z$1.ZodNumber;
     status: z$1.ZodEnum<{
+        running: "running";
         starting: "starting";
         disconnected: "disconnected";
-        running: "running";
         exited: "exited";
     }>;
     exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -7357,9 +7357,9 @@ declare const terminalListResponseSchema: z$1.ZodObject<{
         cols: z$1.ZodNumber;
         rows: z$1.ZodNumber;
         status: z$1.ZodEnum<{
+            running: "running";
             starting: "starting";
             disconnected: "disconnected";
-            running: "running";
             exited: "exited";
         }>;
         exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -10183,8 +10183,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         updatedAt: z$1.ZodNumber;
         objective: z$1.ZodString;
         status: z$1.ZodEnum<{
-            active: "active";
             paused: "paused";
+            active: "active";
             budgetLimited: "budgetLimited";
             complete: "complete";
         }>;
@@ -10527,6 +10527,75 @@ interface PluginNavPanelProps {
      */
     subPath: string;
 }
+/** Props passed to a custom view in a nav panel's host-owned right panel. */
+interface PluginNavPanelRightPanelViewProps {
+    /** The current nav-panel route remainder, matching `PluginNavPanelProps`. */
+    subPath: string;
+    /**
+     * JSON data supplied by `experimental_openRightPanel`; null for the
+     * registration's default view.
+     */
+    params: JsonValue | null;
+}
+/** A plugin-rendered tab hosted inside BB's shared right-panel chrome. */
+interface PluginNavPanelRightPanelViewRegistration {
+    /** Unique within this nav panel; letters, digits, `-`, `_`. */
+    id: string;
+    /** Host-rendered tab label. */
+    title: string;
+    /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+    icon?: string;
+    component: ComponentType<PluginNavPanelRightPanelViewProps>;
+    /**
+     * "padded" (default) supplies BB's standard scrolling inset. "flush" gives
+     * the component the complete content region and lets it own layout/scrolling.
+     */
+    layout?: "padded" | "flush";
+}
+/** Host tools a nav panel may open beside its custom views. */
+type PluginNavPanelRightPanelTool = "browser" | "terminal";
+/**
+ * Structured right-panel capabilities for one nav panel. BB owns the panel's
+ * resize behavior, responsive drawer, tab strip, chrome, persistence, and
+ * focus lifecycle; plugins supply only view content and opt into host tools.
+ */
+interface PluginNavPanelRightPanelRegistration {
+    /** Plugin-rendered views that may be opened as tabs. */
+    views?: readonly PluginNavPanelRightPanelViewRegistration[];
+    /**
+     * A registered view to keep available as the panel's pinned default tab.
+     * BB opens it on first use and preserves the user's later hide/show state.
+     */
+    defaultViewId?: string;
+    /** Host-rendered tools this panel is allowed to open. */
+    tools?: readonly PluginNavPanelRightPanelTool[];
+}
+/** Terminal location accepted by a nav panel's host-owned Terminal tool. */
+type PluginNavPanelRightPanelTerminalTarget = {
+    kind: "thread";
+    threadId: string;
+} | {
+    kind: "environment";
+    environmentId: string;
+} | {
+    kind: "host_path";
+    hostId: string;
+    cwd?: string;
+};
+/** Request accepted by `useBbNavigate().experimental_openRightPanel`. */
+type PluginOpenRightPanelRequest = {
+    kind: "view";
+    viewId: string;
+    title?: string;
+    params?: JsonValue;
+} | {
+    kind: "browser";
+    url: string;
+} | {
+    kind: "terminal";
+    target: PluginNavPanelRightPanelTerminalTarget;
+    title?: string;
+};
 /**
  * Props passed to a panel tab opened by a `threadPanelAction`.
  *
@@ -10692,6 +10761,14 @@ interface PluginNavPanelRegistration {
     /** URL segment under `/plugins/<pluginId>/`; letters, digits, `-`, `_`. */
     path: string;
     component: ComponentType<PluginNavPanelProps>;
+    /**
+     * Optional host-owned right panel for this nav page. Register custom views
+     * and opt into Browser and/or Terminal tools; use
+     * `experimental_openRightPanel` to open non-default tabs.
+     *
+     * Experimental: see docs/api_to_audit.md.
+     */
+    experimental_rightPanel?: PluginNavPanelRightPanelRegistration;
     /**
      * Optional presentational component rendered at the trailing edge of this
      * panel's sidebar row. It receives no props so it can own a narrow live
@@ -11685,15 +11762,13 @@ interface BbNavigate {
         params?: JsonValue;
     }): boolean;
     /**
-     * Open an HTTP(S) URL in BB's native Browser tab beside the current plugin
-     * nav panel. The plugin surface stays mounted while the right panel opens.
-     * Returns false when the current surface cannot host a Browser tab or the
-     * URL is not HTTP(S), so callers can preserve an ordinary-link fallback.
+     * Open a registered custom view or enabled host tool beside the current
+     * plugin nav panel. The main plugin page stays mounted while BB owns the
+     * right-panel chrome and lifecycle. Returns false when the request is
+     * invalid, unavailable on this surface, or not enabled by the nav panel.
      * Experimental: see docs/api_to_audit.md.
      */
-    experimental_openBrowserTab(options: {
-        url: string;
-    }): boolean;
+    experimental_openRightPanel(request: PluginOpenRightPanelRequest): boolean;
 }
 /**
  * Everything `@bb/plugin-sdk/app` resolves to at runtime. The BB app builds
@@ -13604,4 +13679,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract };
-export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNavPanelRightPanelRegistration, PluginNavPanelRightPanelTerminalTarget, PluginNavPanelRightPanelTool, PluginNavPanelRightPanelViewProps, PluginNavPanelRightPanelViewRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginOpenRightPanelRequest, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
