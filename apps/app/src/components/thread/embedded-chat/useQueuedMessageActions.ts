@@ -15,7 +15,10 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
 import { appToast } from "@/components/ui/app-toast";
 import { BbHttpError } from "@/lib/sdk";
-import { collectSendAllQueuedMessageGroupIds } from "@/views/thread-detail/threadQueuedMessages";
+import {
+  collectLeadQueuedMessageGroupIds,
+  collectSendAllQueuedMessageGroupIds,
+} from "@/views/thread-detail/threadQueuedMessages";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
 
 export type QueuedMessageSendGuard = "current-head" | "exists" | "none";
@@ -183,6 +186,10 @@ export function useQueuedMessageActions({
       if (threadId === null || (canSendNow !== undefined && !canSendNow())) {
         return;
       }
+      // Sending removes the queued rows and closes the inline editor with them,
+      // so an open edit must be resolved before the queue can go.
+      if (inlineEditingQueuedMessage) return;
+
       const queuedMessages = queuedMessagesRef.current;
       const headQueuedMessage = queuedMessages[0];
       const groupIds = collectSendAllQueuedMessageGroupIds(queuedMessages);
@@ -194,6 +201,8 @@ export function useQueuedMessageActions({
       ) {
         return;
       }
+      const originalGroupIds = collectLeadQueuedMessageGroupIds(queuedMessages);
+      const originalBoundaryQueuedMessageId = originalGroupIds.at(-1);
 
       setProcessingQueuedMessage({ id: headQueuedMessage.id, action: "send" });
       try {
@@ -220,20 +229,40 @@ export function useQueuedMessageActions({
         guard: "current-head",
         messageId: headQueuedMessage.id,
       });
+      if (!sent) {
+        // The widened group only existed to carry this send. Put the previous
+        // boundary back so a failed send cannot silently change what the next
+        // turn picks up, and say so plainly when the undo cannot land.
+        if (originalBoundaryQueuedMessageId === undefined) return;
+        try {
+          await setQueuedMessageGroupBoundary.mutateAsync({
+            id: threadId,
+            expectedGroupedPrefixQueuedMessageIds: originalGroupIds,
+            groupBoundaryQueuedMessageId: originalBoundaryQueuedMessageId,
+          });
+        } catch {
+          appToast.warning("The queued messages stayed grouped", {
+            description: `The send failed after the group changed. The first ${groupIds.length} queued messages will now go together on the next turn.`,
+          });
+        }
+        return;
+      }
+
       const remainingCount = queuedMessages.length - groupIds.length;
-      if (sent && remainingCount > 0) {
+      if (remainingCount > 0) {
         appToast.message(
           `Sent ${groupIds.length} of ${queuedMessages.length} queued messages`,
           {
-            description: `${remainingCount} ${
-              remainingCount === 1 ? "message uses" : "messages use"
-            } different execution options and stayed queued.`,
+            description: `The queue cannot group past a change in execution options, so ${remainingCount} ${
+              remainingCount === 1 ? "message stayed" : "messages stayed"
+            } queued.`,
           },
         );
       }
     })();
   }, [
     canSendNow,
+    inlineEditingQueuedMessage,
     sendQueuedMessageById,
     setQueuedMessageGroupBoundary,
     threadId,

@@ -113,6 +113,18 @@ export function collectSendAllQueuedMessageGroupIds(
   return ids;
 }
 
+/** The queued messages that currently travel together as the lead group. */
+export function collectLeadQueuedMessageGroupIds(
+  queuedMessages: readonly ThreadQueuedMessage[],
+): string[] {
+  const ids: string[] = [];
+  for (const queuedMessage of queuedMessages) {
+    ids.push(queuedMessage.id);
+    if (!queuedMessage.groupWithNext) break;
+  }
+  return ids;
+}
+
 export function queuedInputToDraft(
   input: readonly PromptInput[],
 ): PromptDraftState {

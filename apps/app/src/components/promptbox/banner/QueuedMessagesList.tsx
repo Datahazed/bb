@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -64,6 +65,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  collectLeadQueuedMessageGroupIds,
   collectSendAllQueuedMessageGroupIds,
   countQueuedMessageAttachments,
   formatQueuedMessagePreview,
@@ -278,17 +280,6 @@ function CompactQueuedMarkdownPreview({
       </ReactMarkdown>
     </span>
   );
-}
-
-function collectLeadQueuedMessageGroupIds(
-  queuedMessages: readonly ThreadQueuedMessage[],
-): string[] {
-  const ids: string[] = [];
-  for (const queuedMessage of queuedMessages) {
-    ids.push(queuedMessage.id);
-    if (!queuedMessage.groupWithNext) break;
-  }
-  return ids;
 }
 
 function preserveLeadQueuedMessageGroupAfterReorder({
@@ -1178,6 +1169,7 @@ export function QueuedMessagesList({
     setOrderedMessages(queuedMessages);
   }
 
+  const sendAllHintId = useId();
   const sendAllGroupIds = useMemo(
     () => collectSendAllQueuedMessageGroupIds(queuedMessages),
     [queuedMessages],
@@ -1502,12 +1494,21 @@ export function QueuedMessagesList({
   // "Send all" groups the leading compatible run and steers its head, so it
   // only makes sense once at least two messages can travel together.
   const sendAllGroupSize = sendAllGroupIds.length;
-  const sendAllPossible = sendAllGroupSize > 1;
-  const sendAllTooltip = !sendAllPossible
-    ? "The next queued message uses different execution options, so the queue cannot send as one turn"
-    : sendAllGroupSize === queuedMessages.length
-      ? `Send all ${queuedMessages.length} queued messages as one turn`
-      : `Send the first ${sendAllGroupSize} of ${queuedMessages.length} queued messages as one turn. The rest use different execution options.`;
+  // Each reason states why the action cannot run right now. The button stays
+  // focusable while blocked so keyboard and touch users reach the reason too.
+  const sendAllBlockedReason =
+    sendAllGroupSize < 2
+      ? "The next queued message uses different execution options, so the queue cannot send as one turn."
+      : inlineEditor
+        ? "Finish editing the queued message before you send the queue."
+        : sendDisabled
+          ? "The thread cannot accept a send right now."
+          : null;
+  const sendAllHint =
+    sendAllBlockedReason ??
+    (sendAllGroupSize === queuedMessages.length
+      ? `Send all ${queuedMessages.length} queued messages as one turn.`
+      : `Send the first ${sendAllGroupSize} of ${queuedMessages.length} queued messages as one turn. The queue cannot group past a change in execution options, so the rest stay queued.`);
 
   const queueFitsDrawer = queuedMessages.length <= DRAWER_MAX_VISIBLE_MESSAGES;
   const caretWillCollapse =
@@ -1543,7 +1544,7 @@ export function QueuedMessagesList({
     >
       <header
         className={cn(
-          "group/queue-header flex h-8 shrink-0 items-center gap-2 px-2",
+          "group/queue-header relative flex h-8 shrink-0 items-center gap-2 px-2",
           mode !== "collapsed" && "border-b border-border/35",
         )}
         data-queued-messages-mode={mode}
@@ -1557,30 +1558,41 @@ export function QueuedMessagesList({
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  {/* The span keeps the tooltip reachable while the button is
-                      disabled, which is exactly when it explains the most. */}
-                  <span className="inline-flex">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 px-1.5 text-2xs text-muted-foreground hover:bg-surface-recessed"
-                      disabled={sendDisabled || !sendAllPossible}
-                      onClick={onSendAll}
-                    >
-                      Send all
-                    </Button>
-                  </span>
+                  {/* `aria-disabled` instead of `disabled` keeps the control
+                      focusable while blocked, so keyboard and touch users can
+                      still reach the reason it carries. */}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className={cn(
+                      "h-6 px-1.5 text-2xs text-muted-foreground hover:bg-surface-recessed",
+                      sendAllBlockedReason !== null &&
+                        "opacity-50 hover:bg-transparent",
+                    )}
+                    aria-disabled={sendAllBlockedReason !== null}
+                    aria-describedby={sendAllHintId}
+                    onClick={() => {
+                      if (sendAllBlockedReason === null) onSendAll();
+                    }}
+                  >
+                    Send all
+                  </Button>
                 </TooltipTrigger>
-                <TooltipContent>{sendAllTooltip}</TooltipContent>
+                <TooltipContent>{sendAllHint}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
+          ) : null}
+          {queuedMessages.length > 1 ? (
+            <span id={sendAllHintId} className="sr-only">
+              {sendAllHint}
+            </span>
           ) : null}
         </div>
         <button
           type="button"
           className={cn(
-            "group/handle flex h-full min-w-16 flex-1 touch-none select-none items-center justify-center focus-visible:rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            "group/handle flex h-full min-w-16 flex-1 touch-none select-none items-center focus-visible:rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
             surfaceDragging ? "cursor-grabbing" : "cursor-grab",
           )}
           aria-label={
@@ -1593,9 +1605,13 @@ export function QueuedMessagesList({
           onPointerUp={finishSurfaceDrag}
           onPointerCancel={finishSurfaceDrag}
           onKeyDown={handleSurfaceKeyDown}
-        >
-          <span className="h-px w-7 rounded-full bg-muted-foreground opacity-30 transition-opacity group-hover/handle:opacity-50 group-focus-visible/handle:opacity-50" />
-        </button>
+        />
+        {/* The grip centers on the header, not on the drag area, so a wider
+            left cluster cannot pull it off center. */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-1/2 h-px w-7 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted-foreground opacity-30 transition-opacity group-hover/queue-header:opacity-50"
+        />
         <div className="flex min-w-16 items-center justify-end">
           <TooltipProvider delayDuration={300}>
             <Tooltip>

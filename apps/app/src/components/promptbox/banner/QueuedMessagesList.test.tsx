@@ -338,12 +338,12 @@ describe("QueuedMessagesList", () => {
     const onSendAll = vi.fn();
     const renderSendAll = (
       queuedMessages: readonly ThreadQueuedMessage[],
-      sendDisabled = false,
+      overrides: Partial<Parameters<typeof QueuedMessagesList>[0]> = {},
     ) =>
       render(
         <QueuedMessagesList
           queuedMessages={queuedMessages}
-          sendDisabled={sendDisabled}
+          sendDisabled={false}
           actionDisabled={false}
           processingMessageId={null}
           processingAction={null}
@@ -353,6 +353,7 @@ describe("QueuedMessagesList", () => {
           onSetGroupBoundary={noop}
           onEdit={noop}
           onDelete={noop}
+          {...overrides}
         />,
       );
 
@@ -366,37 +367,104 @@ describe("QueuedMessagesList", () => {
       makeQueuedMessage("q_two", "Second"),
     ]);
     const sendAllButton = compatible.getByRole("button", { name: "Send all" });
-    expect(sendAllButton).toHaveProperty("disabled", false);
+    expect(sendAllButton.getAttribute("aria-disabled")).toBe("false");
     fireEvent.click(sendAllButton);
     expect(onSendAll).toHaveBeenCalledTimes(1);
     cleanup();
 
-    // The head cannot group with the next message, so there is nothing to
-    // release as one turn.
-    const mixed = renderSendAll([
-      makeQueuedMessage("q_one", "First"),
+    // Every blocked case keeps the control focusable and names the real
+    // reason, so keyboard and touch users are not left guessing.
+    const blockedCases: {
+      expectedReason: RegExp;
+      messages: readonly ThreadQueuedMessage[];
+      overrides?: Partial<Parameters<typeof QueuedMessagesList>[0]>;
+    }[] = [
       {
-        ...makeQueuedMessage("q_two", "Second"),
-        model: "claude-opus-5",
+        // The head cannot group with the next message, so there is nothing to
+        // release as one turn.
+        expectedReason: /different execution options/u,
+        messages: [
+          makeQueuedMessage("q_one", "First"),
+          { ...makeQueuedMessage("q_two", "Second"), model: "claude-opus-5" },
+        ],
       },
-    ]);
-    expect(
-      mixed.getByRole("button", { name: "Send all" }),
-    ).toHaveProperty("disabled", true);
-    cleanup();
+      {
+        expectedReason: /cannot accept a send right now/u,
+        messages: [
+          makeQueuedMessage("q_one", "First"),
+          makeQueuedMessage("q_two", "Second"),
+        ],
+        overrides: { sendDisabled: true },
+      },
+      {
+        // Sending would delete the row the editor is attached to.
+        expectedReason: /Finish editing/u,
+        messages: [
+          makeQueuedMessage("q_one", "First"),
+          makeQueuedMessage("q_two", "Second"),
+        ],
+        overrides: {
+          inlineEditor: {
+            queuedMessageId: "q_one",
+            queuedMessageIndex: 0,
+            content: <div>editor</div>,
+            onDismiss: noop,
+          },
+        },
+      },
+    ];
 
-    const busy = renderSendAll(
-      [
-        makeQueuedMessage("q_one", "First"),
-        makeQueuedMessage("q_two", "Second"),
-      ],
-      true,
+    for (const blockedCase of blockedCases) {
+      const blocked = renderSendAll(blockedCase.messages, blockedCase.overrides);
+      const button = blocked.getByRole("button", { name: "Send all" });
+      expect(button.getAttribute("aria-disabled")).toBe("true");
+      // Focusable while blocked: no `disabled` attribute removing it from the
+      // tab order.
+      expect(button).toHaveProperty("disabled", false);
+      const describedById = button.getAttribute("aria-describedby");
+      expect(describedById).not.toBeNull();
+      expect(
+        document.getElementById(describedById!)?.textContent ?? "",
+      ).toMatch(blockedCase.expectedReason);
+      fireEvent.click(button);
+      // Still the single click from the enabled case above.
+      expect(onSendAll).toHaveBeenCalledTimes(1);
+      cleanup();
+    }
+  });
+
+  it("describes a partial send without claiming the rest all differ", () => {
+    // A A B A: the run breaks at B, and the trailing A cannot rejoin even
+    // though its execution options match the head.
+    const { getByRole } = render(
+      <QueuedMessagesList
+        queuedMessages={[
+          makeQueuedMessage("q_one", "First"),
+          makeQueuedMessage("q_two", "Second"),
+          { ...makeQueuedMessage("q_three", "Third"), model: "claude-opus-5" },
+          makeQueuedMessage("q_four", "Fourth"),
+        ]}
+        sendDisabled={false}
+        actionDisabled={false}
+        processingMessageId={null}
+        processingAction={null}
+        onSendImmediately={noop}
+        onSendAll={noop}
+        onReorder={noop}
+        onSetGroupBoundary={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
     );
-    expect(busy.getByRole("button", { name: "Send all" })).toHaveProperty(
-      "disabled",
-      true,
+
+    const describedById = getByRole("button", { name: "Send all" }).getAttribute(
+      "aria-describedby",
     );
-    expect(onSendAll).toHaveBeenCalledTimes(1);
+    const hint =
+      document.getElementById(describedById!)?.textContent ?? "";
+    expect(hint).toContain("Send the first 2 of 4 queued messages");
+    expect(hint).toContain("cannot group past a change in execution options");
+    expect(hint).not.toContain("The rest use different execution options");
   });
 
   it("replaces the edited row with the real inline composer", () => {
