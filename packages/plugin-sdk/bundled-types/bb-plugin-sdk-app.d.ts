@@ -1426,6 +1426,15 @@ interface BbNavigate {
         title?: string;
         params?: JsonValue;
     }): boolean;
+    /**
+     * Open an HTTP(S) URL in BB's native Browser tab beside the current plugin
+     * nav panel. The plugin surface stays mounted while the right panel opens.
+     * Returns false when the current surface cannot host a Browser tab or the
+     * URL is not HTTP(S), so callers can preserve an ordinary-link fallback.
+     */
+    openBrowserTab(options: {
+        url: string;
+    }): boolean;
 }
 /**
  * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
