@@ -25,6 +25,7 @@ import {
   usePluginId,
 } from "@/components/plugin/plugin-context";
 import { usePluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
+import { usePluginBrowserTabOpenHandler } from "@/components/plugin/plugin-browser-tab-navigation";
 import {
   PluginComposerViewContext,
   usePluginComposerHost,
@@ -284,6 +285,7 @@ export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
   const location = useLocation();
   const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
+  const openBrowserTabHandler = usePluginBrowserTabOpenHandler();
   const navigate = useNavigate();
   const toThread = useCallback(
     (threadId: string) => {
@@ -342,6 +344,10 @@ export function useBbNavigate(): BbNavigate {
     (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,
     [openThreadPanelHandler, pluginId],
   );
+  const openBrowserTab = useCallback<BbNavigate["openBrowserTab"]>(
+    (options) => openBrowserTabHandler?.(options) ?? false,
+    [openBrowserTabHandler],
+  );
   return useMemo(
     () => ({
       toThread,
@@ -349,8 +355,16 @@ export function useBbNavigate(): BbNavigate {
       toPluginPanel,
       toCompose,
       openThreadPanel,
+      openBrowserTab,
     }),
-    [toThread, toProject, toPluginPanel, toCompose, openThreadPanel],
+    [
+      toThread,
+      toProject,
+      toPluginPanel,
+      toCompose,
+      openThreadPanel,
+      openBrowserTab,
+    ],
   );
 }
 

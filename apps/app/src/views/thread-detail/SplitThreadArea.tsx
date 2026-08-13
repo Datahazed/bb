@@ -71,6 +71,7 @@ import {
 import { ThreadDetailView } from "./ThreadDetailView";
 import { RootComposeView } from "@/views/RootComposeView";
 import { PluginPanelView } from "@/views/PluginPanelView";
+import { PluginPanelBrowserHost } from "@/components/plugin/PluginPanelBrowserHost";
 import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
@@ -1100,7 +1101,7 @@ function NonThreadPaneContent({
     </>
   );
 
-  return (
+  const contentMarkup = (
     <div
       className={cn(
         "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
@@ -1182,6 +1183,17 @@ function NonThreadPaneContent({
         )}
       </div>
     </div>
+  );
+
+  return content.kind === "plugin-panel" ? (
+    <PluginPanelBrowserHost
+      pluginId={content.pluginId}
+      panelPath={content.panelPath}
+    >
+      {contentMarkup}
+    </PluginPanelBrowserHost>
+  ) : (
+    contentMarkup
   );
 }
 
