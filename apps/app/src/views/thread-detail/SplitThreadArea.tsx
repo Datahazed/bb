@@ -1000,11 +1000,16 @@ function StandalonePaneContent({ content }: { content: PaneContent }) {
     return <RootComposeView />;
   }
   return (
-    <PluginPanelView
+    <PluginPanelBrowserHost
       pluginId={content.pluginId}
       panelPath={content.panelPath}
-      subPath={content.subPath}
-    />
+    >
+      <PluginPanelView
+        pluginId={content.pluginId}
+        panelPath={content.panelPath}
+        subPath={content.subPath}
+      />
+    </PluginPanelBrowserHost>
   );
 }
 

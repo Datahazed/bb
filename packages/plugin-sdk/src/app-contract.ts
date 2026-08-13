@@ -1325,8 +1325,9 @@ export interface BbNavigate {
    * nav panel. The plugin surface stays mounted while the right panel opens.
    * Returns false when the current surface cannot host a Browser tab or the
    * URL is not HTTP(S), so callers can preserve an ordinary-link fallback.
+   * Experimental: see docs/api_to_audit.md.
    */
-  openBrowserTab(options: { url: string }): boolean;
+  experimental_openBrowserTab(options: { url: string }): boolean;
 }
 
 // ---------------------------------------------------------------------------

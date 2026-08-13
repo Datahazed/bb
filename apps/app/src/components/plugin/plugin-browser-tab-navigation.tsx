@@ -2,7 +2,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import type { BbNavigate } from "@bb/plugin-sdk";
 
 export type PluginBrowserTabOpenHandler = (
-  options: Parameters<BbNavigate["openBrowserTab"]>[0],
+  options: Parameters<BbNavigate["experimental_openBrowserTab"]>[0],
 ) => boolean;
 
 const PluginBrowserTabNavigationContext =
@@ -10,13 +10,15 @@ const PluginBrowserTabNavigationContext =
 
 export function PluginBrowserTabNavigationProvider({
   children,
-  openBrowserTab,
+  experimentalOpenBrowserTab,
 }: {
   children: ReactNode;
-  openBrowserTab: PluginBrowserTabOpenHandler;
+  experimentalOpenBrowserTab: PluginBrowserTabOpenHandler;
 }) {
   return (
-    <PluginBrowserTabNavigationContext.Provider value={openBrowserTab}>
+    <PluginBrowserTabNavigationContext.Provider
+      value={experimentalOpenBrowserTab}
+    >
       {children}
     </PluginBrowserTabNavigationContext.Provider>
   );

@@ -60,8 +60,8 @@ type NavigateCall = {
     method: "openThreadPanel";
     options: Parameters<BbNavigate["openThreadPanel"]>[0];
 } | {
-    method: "openBrowserTab";
-    options: Parameters<BbNavigate["openBrowserTab"]>[0];
+    method: "experimental_openBrowserTab";
+    options: Parameters<BbNavigate["experimental_openBrowserTab"]>[0];
 };
 interface ComposerLog {
     /** Latest plain text in this isolated composer scope. */
@@ -193,8 +193,8 @@ interface RenderSlotOptions<Contract extends PluginRpcContract = PluginRpcContra
     sidebarPullRequests?: Record<string, PluginSidebarPullRequest>;
     /** Host acceptance for `useBbNavigate().openThreadPanel`. */
     openThreadPanel?: (options: Parameters<BbNavigate["openThreadPanel"]>[0]) => boolean;
-    /** Host acceptance for `useBbNavigate().openBrowserTab`. */
-    openBrowserTab?: (options: Parameters<BbNavigate["openBrowserTab"]>[0]) => boolean;
+    /** Host acceptance for `useBbNavigate().experimental_openBrowserTab`. */
+    experimental_openBrowserTab?: (options: Parameters<BbNavigate["experimental_openBrowserTab"]>[0]) => boolean;
 }
 /** Host-originated inputs a slot test can drive deterministically. */
 interface RenderedSlotBehaviorDrivers {

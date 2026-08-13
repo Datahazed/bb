@@ -19,7 +19,7 @@ function NavigationProbe() {
         type="button"
         onClick={() =>
           setAccepted(
-            navigate.openBrowserTab({
+            navigate.experimental_openBrowserTab({
               url: "https://github.com/get-bb/bb/pull/42",
             }),
           )
@@ -44,10 +44,12 @@ function PluginProbe() {
 
 describe("plugin Browser-tab navigation", () => {
   it("forwards Browser-tab requests to the current nav-panel host", () => {
-    const openBrowserTab = vi.fn(() => true);
+    const experimentalOpenBrowserTab = vi.fn(() => true);
     render(
       <MemoryRouter>
-        <PluginBrowserTabNavigationProvider openBrowserTab={openBrowserTab}>
+        <PluginBrowserTabNavigationProvider
+          experimentalOpenBrowserTab={experimentalOpenBrowserTab}
+        >
           <PluginProbe />
         </PluginBrowserTabNavigationProvider>
       </MemoryRouter>,
@@ -55,7 +57,7 @@ describe("plugin Browser-tab navigation", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open Browser" }));
 
-    expect(openBrowserTab).toHaveBeenCalledWith({
+    expect(experimentalOpenBrowserTab).toHaveBeenCalledWith({
       url: "https://github.com/get-bb/bb/pull/42",
     });
     expect(screen.getByText("accepted")).toBeTruthy();

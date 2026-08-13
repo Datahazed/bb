@@ -83,9 +83,9 @@ declare const serviceTierSchema: z.ZodEnum<{
 }>;
 type ServiceTier = z.infer<typeof serviceTierSchema>;
 declare const permissionModeSchema: z.ZodEnum<{
-    full: "full";
     auto: "auto";
     "accept-edits": "accept-edits";
+    full: "full";
 }>;
 type PermissionMode = z.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
@@ -1431,8 +1431,9 @@ interface BbNavigate {
      * nav panel. The plugin surface stays mounted while the right panel opens.
      * Returns false when the current surface cannot host a Browser tab or the
      * URL is not HTTP(S), so callers can preserve an ordinary-link fallback.
+     * Experimental: see docs/api_to_audit.md.
      */
-    openBrowserTab(options: {
+    experimental_openBrowserTab(options: {
         url: string;
     }): boolean;
 }

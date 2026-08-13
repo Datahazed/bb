@@ -118,8 +118,8 @@ export type NavigateCall =
       options: Parameters<BbNavigate["openThreadPanel"]>[0];
     }
   | {
-      method: "openBrowserTab";
-      options: Parameters<BbNavigate["openBrowserTab"]>[0];
+      method: "experimental_openBrowserTab";
+      options: Parameters<BbNavigate["experimental_openBrowserTab"]>[0];
     };
 
 export interface ComposerLog {
@@ -1047,9 +1047,9 @@ export interface RenderSlotOptions<
   openThreadPanel?: (
     options: Parameters<BbNavigate["openThreadPanel"]>[0],
   ) => boolean;
-  /** Host acceptance for `useBbNavigate().openBrowserTab`. */
-  openBrowserTab?: (
-    options: Parameters<BbNavigate["openBrowserTab"]>[0],
+  /** Host acceptance for `useBbNavigate().experimental_openBrowserTab`. */
+  experimental_openBrowserTab?: (
+    options: Parameters<BbNavigate["experimental_openBrowserTab"]>[0],
   ) => boolean;
 }
 
@@ -1263,12 +1263,12 @@ export function renderSlot<
       });
       return options.openThreadPanel?.(panelOptions) ?? false;
     },
-    openBrowserTab(browserOptions) {
+    experimental_openBrowserTab(browserOptions) {
       navigateCalls.push({
-        method: "openBrowserTab",
+        method: "experimental_openBrowserTab",
         options: browserOptions,
       });
-      return options.openBrowserTab?.(browserOptions) ?? false;
+      return options.experimental_openBrowserTab?.(browserOptions) ?? false;
     },
   };
 

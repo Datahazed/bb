@@ -2905,8 +2905,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        base64: "base64";
         utf8: "utf8";
+        base64: "base64";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -11689,8 +11689,9 @@ interface BbNavigate {
      * nav panel. The plugin surface stays mounted while the right panel opens.
      * Returns false when the current surface cannot host a Browser tab or the
      * URL is not HTTP(S), so callers can preserve an ordinary-link fallback.
+     * Experimental: see docs/api_to_audit.md.
      */
-    openBrowserTab(options: {
+    experimental_openBrowserTab(options: {
         url: string;
     }): boolean;
 }
