@@ -149,14 +149,18 @@ function NotificationLink({ item }: { item: GithubNotificationItem }) {
   const update = updatePresentation(item.activityKind);
   const actor = item.actor ? `@${item.actor}` : "Someone";
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (
+    const isPlainPrimaryClick =
       event.button === 0 &&
       !event.metaKey &&
       !event.ctrlKey &&
       !event.shiftKey &&
-      !event.altKey &&
-      navigate.experimental_openRightPanel({ kind: "browser", url: item.url })
-    ) {
+      !event.altKey;
+    if (!isPlainPrimaryClick) return;
+    const accepted = navigate.experimental_openRightPanel({
+      kind: "browser",
+      url: item.url,
+    });
+    if (accepted) {
       event.preventDefault();
     }
   };
@@ -195,9 +199,7 @@ function NotificationLink({ item }: { item: GithubNotificationItem }) {
 function LatestUpdate({ item }: { item: GithubNotificationItem }) {
   const update = updatePresentation(item.activityKind);
   const actor = item.actor ? `@${item.actor}` : "Someone";
-  const avatarUrl = item.actor
-    ? `https://github.com/${encodeURIComponent(item.actor)}.png?size=32`
-    : null;
+  const avatarUrl = item.avatarUrl;
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm">
       <Tooltip>

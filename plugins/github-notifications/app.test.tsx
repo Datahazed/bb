@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  createEvent,
+  fireEvent,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -25,6 +31,7 @@ describe("GitHub Activity panel", () => {
                 activity: "Approved",
                 activityKind: "approved",
                 actor: "alice",
+                avatarUrl: "https://ghe.example.test/avatars/alice",
                 number: 42,
                 repo: "get-bb/bb",
                 resourceKind: "pr",
@@ -38,6 +45,7 @@ describe("GitHub Activity panel", () => {
                 activity: "New comment",
                 activityKind: "comment",
                 actor: null,
+                avatarUrl: null,
                 number: 7,
                 repo: "brsbl/moss",
                 resourceKind: "issue",
@@ -51,6 +59,7 @@ describe("GitHub Activity panel", () => {
                 activity: "New review",
                 activityKind: "review",
                 actor: "carol",
+                avatarUrl: "https://ghe.example.test/avatars/carol",
                 number: 43,
                 repo: "get-bb/bb",
                 resourceKind: "pr",
@@ -64,6 +73,7 @@ describe("GitHub Activity panel", () => {
                 activity: "Mention",
                 activityKind: "mention",
                 actor: "dana",
+                avatarUrl: "https://ghe.example.test/avatars/dana",
                 number: 8,
                 repo: "brsbl/moss",
                 resourceKind: "issue",
@@ -85,7 +95,7 @@ describe("GitHub Activity panel", () => {
     expect(actor.className).toContain("font-normal");
     expect(actor.className).toContain("text-muted-foreground");
     const avatarImage = actor.querySelector(
-      'img[src="https://github.com/alice.png?size=32"]',
+      'img[src="https://ghe.example.test/avatars/alice"]',
     );
     expect(avatarImage).not.toBeNull();
     fireEvent.error(avatarImage!);
@@ -127,7 +137,9 @@ describe("GitHub Activity panel", () => {
     expect(link.querySelector("svg")?.classList.contains("text-success")).toBe(
       true,
     );
-    fireEvent.click(link);
+    const acceptedClick = createEvent.click(link, { button: 0 });
+    fireEvent(link, acceptedClick);
+    expect(acceptedClick.defaultPrevented).toBe(true);
     expect(slot.inspection.navigateCalls).toContainEqual({
       method: "experimental_openRightPanel",
       request: {
@@ -174,6 +186,52 @@ describe("GitHub Activity panel", () => {
         method: "listNotifications",
         input: { force: true },
       });
+    });
+    slot.lifecycle.unmount();
+  });
+
+  it("leaves the external-link fallback intact when the host rejects the Browser panel", async () => {
+    const app = await loadPluginApp(() => import("./app"));
+    const panel = app.navPanels[0]!;
+    const slot = renderSlot(
+      panel,
+      { subPath: "" },
+      {
+        experimental_openRightPanel: () => false,
+        rpc: {
+          listNotifications: () => ({
+            fetchedAt: "2026-08-12T12:00:00Z",
+            login: "brsbl",
+            items: [
+              {
+                id: "fallback",
+                activity: "New comment",
+                activityKind: "comment",
+                actor: "alice",
+                avatarUrl: null,
+                number: 42,
+                repo: "get-bb/bb",
+                resourceKind: "pr",
+                title: "External fallback",
+                unread: true,
+                updatedAt: "2026-08-12T12:00:00Z",
+                url: "https://github.com/get-bb/bb/pull/42",
+              },
+            ],
+          }),
+        },
+      },
+    );
+    const link = await slot.findByRole("link", { name: /External fallback/u });
+    const rejectedClick = createEvent.click(link, { button: 0 });
+    fireEvent(link, rejectedClick);
+    expect(rejectedClick.defaultPrevented).toBe(false);
+    expect(slot.inspection.navigateCalls).toContainEqual({
+      method: "experimental_openRightPanel",
+      request: {
+        kind: "browser",
+        url: "https://github.com/get-bb/bb/pull/42",
+      },
     });
     slot.lifecycle.unmount();
   });
