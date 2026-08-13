@@ -23,6 +23,7 @@ import {
   type RuntimeManagerOptions,
 } from "./runtime-manager.js";
 import { WatchManager } from "./watch-manager.js";
+import { WorkspaceStatusCache } from "./workspace-status-cache.js";
 import { ConnectTunnelClient } from "./connect-tunnel/index.js";
 import {
   TerminalManager,
@@ -428,6 +429,7 @@ export async function createHostDaemonApp(
     },
   });
 
+  const workspaceStatusCache = new WorkspaceStatusCache();
   let sendServerMessage = (_message: HostDaemonDaemonWsMessage) => false;
   watchManager = new WatchManager({
     dataDir: options.dataDir,
@@ -435,6 +437,7 @@ export async function createHostDaemonApp(
     refreshWorkspace: (args) =>
       runtimeManager.refreshEnvironmentWorkspace(args),
     threadStorageRootPath,
+    workspaceStatusCache,
     onThreadStorageChanged: ({ environmentId }) => {
       sendServerMessage({
         type: "environment-change",
@@ -553,6 +556,7 @@ export async function createHostDaemonApp(
       );
     },
     onWorkspaceStatusChanged: ({ environmentId, changeKinds }) => {
+      workspaceStatusCache.invalidateEnvironment(environmentId);
       for (const change of changeKinds) {
         sendServerMessage({
           type: "environment-change",
@@ -757,6 +761,7 @@ export async function createHostDaemonApp(
     ensureConnectTunnelIdentity: () => connectTunnel.ensureTunnelIdentity(),
     caffeinateManager,
     threadStorageRootPath,
+    workspaceStatusCache,
     logger: options.logger,
     eventSink: {
       emit: (event) => eventSink.emit(event),

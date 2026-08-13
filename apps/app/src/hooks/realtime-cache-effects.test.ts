@@ -733,7 +733,7 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refetches the active diff TOC and work-status queries but evicts the observer-less patch cache for work-status changes", async () => {
+  it("refreshes content-derived queries without rechecking pull requests for work-status changes", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const diffFilesKey = environmentDiffFilesQueryKey("env-1", "all", "main");
@@ -744,6 +744,7 @@ describe("createRealtimeCacheEffects", () => {
       "file.ts",
     );
     const workStatusKey = environmentWorkStatusQueryKey("env-1", "main");
+    const pullRequestKey = environmentPullRequestQueryKey("env-1");
     queryClient.setQueryData(diffFilesKey, {
       outcome: "available",
       files: [],
@@ -761,6 +762,7 @@ describe("createRealtimeCacheEffects", () => {
       truncated: false,
     });
     queryClient.setQueryData(workStatusKey, null);
+    queryClient.setQueryData(pullRequestKey, null);
     const diffFilesQueryFn = vi.fn(async () => ({
       outcome: "available" as const,
       files: [],
@@ -768,6 +770,7 @@ describe("createRealtimeCacheEffects", () => {
       mergeBaseRef: "base-ref",
     }));
     const workStatusQueryFn = vi.fn(async () => null);
+    const pullRequestQueryFn = vi.fn(async () => null);
     const diffFilesObserver = new QueryObserver(queryClient, {
       queryKey: diffFilesKey,
       queryFn: diffFilesQueryFn,
@@ -778,10 +781,17 @@ describe("createRealtimeCacheEffects", () => {
       queryFn: workStatusQueryFn,
       staleTime: Infinity,
     });
+    const pullRequestObserver = new QueryObserver(queryClient, {
+      queryKey: pullRequestKey,
+      queryFn: pullRequestQueryFn,
+      staleTime: Infinity,
+    });
     const unsubscribeDiffFiles = diffFilesObserver.subscribe(() => {});
     const unsubscribeWorkStatus = workStatusObserver.subscribe(() => {});
+    const unsubscribePullRequest = pullRequestObserver.subscribe(() => {});
     diffFilesQueryFn.mockClear();
     workStatusQueryFn.mockClear();
+    pullRequestQueryFn.mockClear();
 
     effects.handleChanged({
       type: "changed",
@@ -794,12 +804,42 @@ describe("createRealtimeCacheEffects", () => {
     // The observer-backed TOC and work-status queries refetch.
     expect(diffFilesQueryFn).toHaveBeenCalledTimes(1);
     expect(workStatusQueryFn).toHaveBeenCalledTimes(1);
+    expect(pullRequestQueryFn).not.toHaveBeenCalled();
     // The observer-less patch entry is evicted, not left stale — so the panel's
     // readDiffPatchEntry returns undefined and re-fetches a fresh patch.
     expect(queryClient.getQueryData(diffPatchKey)).toBeUndefined();
 
     unsubscribeDiffFiles();
     unsubscribeWorkStatus();
+    unsubscribePullRequest();
+    effects.dispose();
+  });
+
+  it("rechecks the active pull request when git refs change", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const pullRequestKey = environmentPullRequestQueryKey("env-1");
+    queryClient.setQueryData(pullRequestKey, null);
+    const pullRequestQueryFn = vi.fn(async () => null);
+    const pullRequestObserver = new QueryObserver(queryClient, {
+      queryKey: pullRequestKey,
+      queryFn: pullRequestQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribePullRequest = pullRequestObserver.subscribe(() => {});
+    pullRequestQueryFn.mockClear();
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "environment",
+      id: "env-1",
+      changes: ["git-refs-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(pullRequestQueryFn).toHaveBeenCalledTimes(1);
+
+    unsubscribePullRequest();
     effects.dispose();
   });
 

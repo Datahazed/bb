@@ -17,7 +17,7 @@ interface UseThreadStorageViewerParams {
 
 export function useThreadStorageViewer({
   activePath,
-  fileListEnabled = true,
+  fileListEnabled = false,
   fileListOptions = DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
   filePreviewEnabled = true,
   threadId,

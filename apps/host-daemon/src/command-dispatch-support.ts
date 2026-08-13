@@ -23,6 +23,7 @@ import type { TerminalManager } from "./terminals/terminal-manager.js";
 import type { FetchProjectAttachment } from "./project-attachments.js";
 import type { FetchSkillTree } from "./skill-trees.js";
 import type { CaffeinateManager } from "./command-handlers/caffeinate.js";
+import type { WorkspaceStatusCacheAccess } from "./workspace-status-cache.js";
 
 type DispatchCommand = HostDaemonCommand | HostDaemonOnlineRpcCommand;
 
@@ -68,6 +69,7 @@ export interface CommandDispatchOptions {
   caffeinateManager?: CaffeinateManager;
   ensureConnectTunnelIdentity?: () => Promise<HostDaemonConnectTunnelIdentity>;
   threadStorageRootPath: string;
+  workspaceStatusCache?: WorkspaceStatusCacheAccess;
 }
 
 export class CommandDispatchError extends Error {

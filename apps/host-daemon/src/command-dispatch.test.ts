@@ -8,6 +8,7 @@ import type {
   ProviderCliStatus,
 } from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
+import { makeWorkspaceStatus } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
   dispatchCommand,
@@ -15,6 +16,7 @@ import {
 } from "./command-dispatch.js";
 import type { CommandOf } from "./command-dispatch-support.js";
 import { RuntimeManager } from "./runtime-manager.js";
+import { WorkspaceStatusCache } from "./workspace-status-cache.js";
 
 const WORKSPACE_PATH = "/tmp/bb-command-dispatch-test";
 
@@ -319,6 +321,78 @@ async function runSuccessfulClaudeCodeUpdateVerification(args: {
 }
 
 describe("dispatchCommand", () => {
+  it("invalidates cached status before acknowledging a workspace commit", async () => {
+    const runtime = createRuntime();
+    const getStatus = vi.fn(async () => makeWorkspaceStatus());
+    const commit = vi.fn(async () => ({
+      commitSha: "commit-2",
+      commitSubject: "commit",
+    }));
+    const workspace: HostWorkspace = {
+      ...createWorkspace(),
+      managed: true,
+      isGitRepo: true,
+      isWorktree: true,
+      getStatus,
+      commit,
+    };
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => workspace,
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+    const workspaceStatusCache = new WorkspaceStatusCache();
+    const dispatchOptions = {
+      dataDir: "/tmp/bb-data",
+      eventSink: {
+        emit: vi.fn(),
+        flush: vi.fn(async () => undefined),
+      },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+      workspaceStatusCache,
+    };
+    const workspaceContext = {
+      workspacePath: WORKSPACE_PATH,
+      workspaceProvisionType: "managed-worktree" as const,
+    };
+
+    await dispatchOnlineRpcCommand(
+      {
+        type: "workspace.status",
+        environmentId: "env-1",
+        workspaceContext,
+      },
+      dispatchOptions,
+    );
+    await dispatchCommand(
+      {
+        type: "workspace.commit",
+        environmentId: "env-1",
+        message: "commit",
+        workspaceContext,
+      },
+      dispatchOptions,
+    );
+    await dispatchOnlineRpcCommand(
+      {
+        type: "workspace.status",
+        environmentId: "env-1",
+        workspaceContext,
+      },
+      dispatchOptions,
+    );
+
+    expect(commit).toHaveBeenCalledOnce();
+    expect(getStatus).toHaveBeenCalledTimes(2);
+  });
+
   it("flushes buffered events before reporting thread.stop success", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({

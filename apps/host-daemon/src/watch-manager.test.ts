@@ -8,6 +8,7 @@ import type { HostWorkspace } from "@bb/host-workspace";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { WatchManager, type WatchManagerOptions } from "./watch-manager.js";
+import { WorkspaceStatusCache } from "./workspace-status-cache.js";
 
 type GetLocalStateFingerprintResult = Awaited<
   ReturnType<HostWorkspace["getLocalStateFingerprint"]>
@@ -147,6 +148,62 @@ function createFakeHostWatcher(
 }
 
 describe("WatchManager", () => {
+  it("invalidates cached workspace status when the worktree changes", async () => {
+    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
+    const workspace = createFakeWorkspace("/tmp/env-watch");
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watchWorkspaceArgs = args;
+        return () => undefined;
+      },
+    });
+    const cache = new WorkspaceStatusCache();
+    const load = vi.fn(async () => ({
+      outcome: "available" as const,
+      workspaceStatus: makeWorkspaceStatus(),
+    }));
+    const cacheArgs = {
+      environmentId: "env-watch",
+      load,
+      workspaceContext: {
+        workspacePath: "/tmp/env-watch",
+        workspaceProvisionType: "unmanaged" as const,
+      },
+    };
+    const onWorkspaceStatusChanged = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace: vi.fn(async () => workspace),
+      onWorkspaceStatusChanged,
+      workspaceStatusCache: cache,
+    });
+
+    await cache.getOrLoad(cacheArgs);
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: [
+        {
+          environmentId: "env-watch",
+          workspaceContext: cacheArgs.workspaceContext,
+        },
+      ],
+      threadStorageTargets: [],
+    });
+    watchWorkspaceArgs?.onChange({
+      changedPaths: ["/tmp/env-watch/README.md"],
+      changeKinds: ["workspace-content-changed"],
+      kind: "workspace-status-changed",
+      environmentId: "env-watch",
+    });
+    expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+      changeKinds: ["work-status-changed"],
+      environmentId: "env-watch",
+    });
+    await cache.getOrLoad(cacheArgs);
+
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
   it("starts watching before initial workspace fingerprints finish", async () => {
     const workspace = createFakeWorkspace("/tmp/env-watch");
     const localFingerprint = createDeferred<GetLocalStateFingerprintResult>();

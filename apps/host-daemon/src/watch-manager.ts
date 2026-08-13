@@ -18,6 +18,7 @@ import type {
   WorkspaceWatchError,
 } from "@bb/host-watcher";
 import { reconnectProvisionArgsFromWorkspaceContext } from "./workspace-provision-target.js";
+import type { WorkspaceStatusCacheAccess } from "./workspace-status-cache.js";
 
 type StopWatching = () => void | Promise<void>;
 
@@ -73,6 +74,10 @@ export interface WatchManagerOptions {
     workspace: DiscoveredWorkspaceProperties;
   }) => void;
   onWorkspaceStatusWatchError?: (args: { error: WorkspaceWatchError }) => void;
+  workspaceStatusCache?: Pick<
+    WorkspaceStatusCacheAccess,
+    "invalidateEnvironment"
+  >;
 }
 
 function toErrorMessage(error: Error): string {
@@ -333,7 +338,7 @@ export class WatchManager {
       // The filesystem event itself is sufficient evidence that live content
       // is stale. Notify before any Git fingerprint work: large diffs can make
       // status/numstat slow or fail, but previews must still refresh.
-      this.options.onWorkspaceStatusChanged?.({
+      this.notifyWorkspaceStatusChanged({
         changeKinds: ["work-status-changed"],
         environmentId: args.entry.target.environmentId,
       });
@@ -408,13 +413,23 @@ export class WatchManager {
       if (changeKinds.length === 0) {
         return;
       }
-      this.options.onWorkspaceStatusChanged?.({
+      this.notifyWorkspaceStatusChanged({
         changeKinds,
         environmentId: args.entry.target.environmentId,
       });
     } catch (error) {
       this.reportWorkspaceWatchError(args.entry, error);
     }
+  }
+
+  private notifyWorkspaceStatusChanged(args: {
+    changeKinds: HostDaemonEnvironmentChange[];
+    environmentId: string;
+  }): void {
+    this.options.workspaceStatusCache?.invalidateEnvironment(
+      args.environmentId,
+    );
+    this.options.onWorkspaceStatusChanged?.(args);
   }
 
   private reportWorkspaceWatchError(

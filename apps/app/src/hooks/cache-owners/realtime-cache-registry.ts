@@ -861,9 +861,6 @@ function dirtyEnvironmentLiveWorkspaceStateQueries({
     queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
   });
   queryClient.invalidateQueries({
-    queryKey: environmentPullRequestQueryKey(environmentId),
-  });
-  queryClient.invalidateQueries({
     queryKey: environmentFilePreviewQueryKeyPrefix(environmentId),
   });
   queryClient.invalidateQueries({
@@ -886,6 +883,12 @@ function dirtyEnvironmentRefDerivedWorkspaceStateQueries({
   )) {
     queryClient.invalidateQueries({ queryKey });
   }
+  // A pull request follows the checked-out ref, not content-only worktree
+  // edits. Refresh it when refs move without paying for a PR lookup on every
+  // file-watcher event.
+  queryClient.invalidateQueries({
+    queryKey: environmentPullRequestQueryKey(environmentId),
+  });
   // A moved merge base affects every ref-derived diff target; evict the
   // observer-less patch cache so the panel re-requests fresh patches.
   removeEnvironmentDiffPatchQueries({ environmentId, queryClient });

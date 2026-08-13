@@ -525,6 +525,9 @@ const commandHandlers: CommandHandlerMap = {
     if (!resolution.ok) {
       // Treat already-missing workspaces as successful destroy (idempotent retry).
       if (resolution.failure.code === "path_not_found") {
+        options.workspaceStatusCache?.invalidateEnvironment(
+          command.environmentId,
+        );
         return {};
       }
       throw new ExpectedCommandDispatchError(
@@ -537,6 +540,7 @@ const commandHandlers: CommandHandlerMap = {
       reason: "environment-destroyed",
     });
     await options.runtimeManager.destroyEnvironment(command.environmentId);
+    options.workspaceStatusCache?.invalidateEnvironment(command.environmentId);
     return {};
   },
   "workspace.commit": async (command, options) => {
@@ -548,12 +552,20 @@ const commandHandlers: CommandHandlerMap = {
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
-    return entry.workspace.commit({
+    const result = await entry.workspace.commit({
       message: command.message,
       noVerify: true,
     });
+    // Watcher delivery is asynchronous. Invalidate before acknowledging this
+    // mutation so an immediate status read cannot observe the pre-commit cache.
+    options.workspaceStatusCache?.invalidateEnvironment(command.environmentId);
+    return result;
   },
-  "workspace.squash_merge": squashMerge,
+  "workspace.squash_merge": async (command, options) => {
+    const result = await squashMerge(command, options);
+    options.workspaceStatusCache?.invalidateEnvironment(command.environmentId);
+    return result;
+  },
   "workspace.pull_request_action": async (command, options) => {
     const entry = await requireResolvedWorkspaceForCommand({
       dataDir: options.dataDir,
@@ -594,9 +606,22 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   },
   "host.list_files": listHostFiles,
   "host.list_paths": listHostPaths,
-  "host.mkdir": mkdirHostPath,
-  "host.move_path": moveHostPath,
-  "host.remove_path": removeHostPath,
+  "host.mkdir": async (command, options) => {
+    const result = await mkdirHostPath(command);
+    options.workspaceStatusCache?.invalidatePath(command.path);
+    return result;
+  },
+  "host.move_path": async (command, options) => {
+    const result = await moveHostPath(command);
+    options.workspaceStatusCache?.invalidatePath(command.sourcePath);
+    options.workspaceStatusCache?.invalidatePath(command.destinationPath);
+    return result;
+  },
+  "host.remove_path": async (command, options) => {
+    const result = await removeHostPath(command);
+    options.workspaceStatusCache?.invalidatePath(command.path);
+    return result;
+  },
   "host.browse_directory": browseHostDirectory,
   "host.paths_exist": checkHostPathsExist,
   "project.inspect": async (command) => inspectProjectPath(command.path),
@@ -617,7 +642,13 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,
-  "host.write_file": writeHostFile,
+  "host.write_file": async (command, options) => {
+    const result = await writeHostFile(command);
+    if (result.outcome === "written") {
+      options.workspaceStatusCache?.invalidatePath(command.path);
+    }
+    return result;
+  },
   "provider.list_models": async (command, options) =>
     (options.listModels ?? defaultListModels)({
       providerId: command.providerId,
@@ -642,33 +673,48 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       env: options.runtimeManager.getShellEnv(),
     }),
   "workspace.status": async (command, options) => {
-    const resolution = await resolveWorkspaceForCommand({
-      dataDir: options.dataDir,
+    const load = async (): Promise<
+      HostDaemonOnlineRpcResult<"workspace.status">
+    > => {
+      const resolution = await resolveWorkspaceForCommand({
+        dataDir: options.dataDir,
+        environmentId: command.environmentId,
+        requireGit: true,
+        requireManagedWorktree: true,
+        runtimeManager: options.runtimeManager,
+        workspaceContext: command.workspaceContext,
+      });
+      if (!resolution.ok) {
+        return { outcome: "unavailable", failure: resolution.failure };
+      }
+      try {
+        return {
+          outcome: "available",
+          workspaceStatus: await resolution.entry.workspace.getStatus({
+            mergeBaseBranch: command.mergeBaseBranch,
+          }),
+        };
+      } catch (error) {
+        return {
+          outcome: "unavailable",
+          failure: workspaceResolutionFailureFromError({
+            error,
+            workspacePath: command.workspaceContext.workspacePath,
+          }),
+        };
+      }
+    };
+    if (!options.workspaceStatusCache) {
+      return load();
+    }
+    return options.workspaceStatusCache.getOrLoad({
       environmentId: command.environmentId,
-      requireGit: true,
-      requireManagedWorktree: true,
-      runtimeManager: options.runtimeManager,
+      load,
+      ...(command.mergeBaseBranch !== undefined
+        ? { mergeBaseBranch: command.mergeBaseBranch }
+        : {}),
       workspaceContext: command.workspaceContext,
     });
-    if (!resolution.ok) {
-      return { outcome: "unavailable", failure: resolution.failure };
-    }
-    try {
-      return {
-        outcome: "available",
-        workspaceStatus: await resolution.entry.workspace.getStatus({
-          mergeBaseBranch: command.mergeBaseBranch,
-        }),
-      };
-    } catch (error) {
-      return {
-        outcome: "unavailable",
-        failure: workspaceResolutionFailureFromError({
-          error,
-          workspacePath: command.workspaceContext.workspacePath,
-        }),
-      };
-    }
   },
   "workspace.diff": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({

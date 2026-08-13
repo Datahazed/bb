@@ -113,6 +113,7 @@ export interface CommandRouterOptions {
   caffeinateManager?: CommandDispatchOptions["caffeinateManager"];
   ensureConnectTunnelIdentity?: CommandDispatchOptions["ensureConnectTunnelIdentity"];
   threadStorageRootPath: string;
+  workspaceStatusCache?: CommandDispatchOptions["workspaceStatusCache"];
   logger: CommandRouterLogger;
 }
 
@@ -326,6 +327,9 @@ export class CommandRouter {
       caffeinateManager: this.options.caffeinateManager,
       ensureConnectTunnelIdentity: this.options.ensureConnectTunnelIdentity,
       threadStorageRootPath: this.options.threadStorageRootPath,
+      ...(this.options.workspaceStatusCache
+        ? { workspaceStatusCache: this.options.workspaceStatusCache }
+        : {}),
     };
   }
 
