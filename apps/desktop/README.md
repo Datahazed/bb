@@ -73,7 +73,8 @@ pnpm exec turbo run smoke:packaged --filter=@bb/desktop
 ```
 
 Artifacts are written under `apps/desktop/release/`. The desktop build is
-macOS-only and Apple Silicon arm64-only. Without signing secrets, local builds
+macOS-only and produces separate Apple Silicon arm64 and Intel x64 artifacts.
+Without signing secrets, local builds
 sign with a code-signing identity auto-discovered from the keychain and skip
 notarization. A valid signature matters even for local builds: macOS
 provenance-tracks unsigned apps, forcing syspolicyd to evaluate every exec in
