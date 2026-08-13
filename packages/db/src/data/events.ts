@@ -354,9 +354,6 @@ function collectDaemonTurnStartLookupKeys(
   const keys: ThreadTurnKey[] = [];
 
   for (const input of eventInputs) {
-    if (input.type === "turn/started") {
-      continue;
-    }
     const turnId = getThreadEventScopeTurnId(input.scope);
     if (turnId === undefined) {
       continue;
@@ -399,14 +396,25 @@ const ORPHAN_DROPPABLE_TURN_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set(
   "provider/unhandled",
 ]);
 
-type DaemonTurnStartDisposition = "append" | "skip-orphan-snapshot";
+type DaemonTurnStartDisposition =
+  | "append"
+  | "skip-duplicate-turn-start"
+  | "skip-orphan-snapshot";
 
 function resolveDaemonTurnStartDisposition(
   input: AppendDaemonEventInput,
   startedTurnKeys: ReadonlySet<string>,
 ): DaemonTurnStartDisposition {
   if (input.type === "turn/started") {
-    return "append";
+    const turnId = getThreadEventScopeTurnId(input.scope);
+    if (turnId === undefined) {
+      return "append";
+    }
+    const key = buildThreadTurnKey({ threadId: input.threadId, turnId });
+    // A retry after an ambiguous 5xx can repost a batch the server already
+    // committed. Turn identity is stable across that retry, so keep the first
+    // start as canonical instead of persisting a projection-breaking duplicate.
+    return startedTurnKeys.has(key) ? "skip-duplicate-turn-start" : "append";
   }
 
   const turnId = getThreadEventScopeTurnId(input.scope);
@@ -585,11 +593,15 @@ export function appendDaemonEventsInTransaction(
   );
   const now = Date.now();
   for (const [index, input] of eventInputs.entries()) {
-    if (
-      resolveDaemonTurnStartDisposition(input, startedTurnKeys) ===
-      "skip-orphan-snapshot"
-    ) {
+    const turnStartDisposition = resolveDaemonTurnStartDisposition(
+      input,
+      startedTurnKeys,
+    );
+    if (turnStartDisposition === "skip-orphan-snapshot") {
       skippedTurnUnstartedInputIndexes.push(index);
+      continue;
+    }
+    if (turnStartDisposition === "skip-duplicate-turn-start") {
       continue;
     }
 
