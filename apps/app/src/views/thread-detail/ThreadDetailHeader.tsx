@@ -111,6 +111,7 @@ export function ThreadDetailHeader({
   const {
     beginPaneDrag,
     isFocused,
+    isSplitPane,
     isTopRow,
     ownsWindowTopLeft,
     reservesWindowPanelToggle,
@@ -207,6 +208,17 @@ export function ThreadDetailHeader({
           {childPillLabel}
         </Pill>
       ) : null}
+      {isSplitPane && isFocused ? (
+        <span
+          className={cn(
+            "flex shrink-0 items-center",
+            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+          )}
+          data-thread-header-title-actions=""
+        >
+          <SplitDimmingButton />
+        </span>
+      ) : null}
       {/*
         The header's center slot sits inside the macOS title-bar drag region
         (AppPageHeader only exempts the actions slot), so the interactive
@@ -273,7 +285,6 @@ export function ThreadDetailHeader({
         className="ml-1 flex items-center gap-0.5"
         data-thread-header-pane-actions=""
       >
-        <SplitDimmingButton />
         {showRightPanelToggle ? (
           <span className="inline-flex items-center gap-1.5">
             <AppCommandShortcutHint shortcut={panelShortcut} />

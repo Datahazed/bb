@@ -53,7 +53,11 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
 }));
 
 vi.mock("./SplitDimmingButton", () => ({
-  SplitDimmingButton: () => null,
+  SplitDimmingButton: () => (
+    <button type="button" data-testid="split-dimming-button">
+      Spotlight
+    </button>
+  ),
 }));
 
 const THREAD_ID = "thr_header";
@@ -83,6 +87,39 @@ afterEach(() => {
 describe("ThreadDetailHeader", () => {
   // The header seam now belongs to AppPageHeader, so AppPageHeader.test.tsx
   // guards it for every header instead of this one call site.
+
+  it("groups the spotlight toggle with the thread title instead of pane-edge actions", () => {
+    const { container } = render(
+      <PaneContext.Provider
+        value={{
+          ...PANE_CONTEXT,
+          isSplitPane: true,
+          beginPaneDrag: vi.fn(),
+        }}
+      >
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={THREAD_ID}
+          threadTitle="Spotlight placement"
+        />
+      </PaneContext.Provider>,
+    );
+
+    const spotlight = screen.getByTestId("split-dimming-button");
+    expect(
+      spotlight.closest("[data-thread-header-title-actions]"),
+    ).not.toBeNull();
+    expect(
+      container
+        .querySelector("[data-thread-header-pane-actions]")
+        ?.contains(spotlight),
+    ).toBe(false);
+  });
 
   it("leaves the open right-panel collapse control to the panel header", () => {
     render(
