@@ -50,6 +50,16 @@ export function resolveWindowOpenAction(url: string): WindowOpenDecision {
 // public name that resolves to a private IP (DNS rebinding) is not caught here.
 // That is a deeper, separate mitigation and out of scope for v1.
 
+/**
+ * The loopback ports bb serves, or `pending` while a local runtime is up whose
+ * host-daemon port bb has not read yet. Cross-port loopback stays closed until
+ * bb can name every port of its own, so a slow — or permanently failing —
+ * system-config fetch never opens a window onto the daemon.
+ */
+export type ReservedLoopbackPorts =
+  | { kind: "known"; ports: readonly number[] }
+  | { kind: "pending" };
+
 export interface ShouldBlockBrowserRequestArgs {
   url: string;
   method: string;
@@ -60,11 +70,10 @@ export interface ShouldBlockBrowserRequestArgs {
   currentMainFrameLocalOriginKey: string | null;
   requestingFrameOriginKey: string | null;
   /**
-   * Loopback ports bb's own services occupy (the local bb server, the host
-   * daemon local API). A browsed page never reaches these, whichever loopback
-   * name it addresses them by.
+   * Loopback ports bb's own services occupy, or `pending` while bb cannot yet
+   * name them all.
    */
-  reservedLoopbackPorts: readonly number[];
+  reservedLoopbackPorts: ReservedLoopbackPorts;
 }
 
 interface ParsedBrowserRequestUrl {
@@ -418,6 +427,22 @@ export interface ResolveReservedLoopbackPortsArgs {
    * first system-config fetch lands and after the config sync stops.
    */
   localHostDaemonPort: number | null;
+  /**
+   * Raw `BB_HOST_DAEMON_PORT`. It is set for every dev instance and for a
+   * configured production deployment, so reading it names the daemon port
+   * before any fetch and keeps the pending window shut.
+   */
+  configuredHostDaemonPort: string | undefined;
+  /** Whether a local bb runtime is attached or spawned right now. */
+  hasLocalRuntime: boolean;
+}
+
+function parsePortValue(value: string | undefined): number | null {
+  if (value === undefined) {
+    return null;
+  }
+  const port = Number(value.trim());
+  return Number.isInteger(port) && port >= 1 && port <= 65_535 ? port : null;
 }
 
 /**
@@ -434,7 +459,19 @@ export interface ResolveReservedLoopbackPortsArgs {
  */
 export function resolveReservedLoopbackPorts(
   args: ResolveReservedLoopbackPortsArgs,
-): readonly number[] {
+): ReservedLoopbackPorts {
+  const configuredHostDaemonPort = parsePortValue(
+    args.configuredHostDaemonPort,
+  );
+  // A local runtime whose daemon port is neither configured nor fetched yet
+  // sits on a port bb cannot name. Stay closed rather than guess.
+  if (
+    args.hasLocalRuntime &&
+    args.localHostDaemonPort === null &&
+    configuredHostDaemonPort === null
+  ) {
+    return { kind: "pending" };
+  }
   const ports = new Set<number>([BB_PROD_HOST_DAEMON_PORT]);
   for (const url of [
     args.builtinServerUrl,
@@ -446,10 +483,12 @@ export function resolveReservedLoopbackPorts(
       ports.add(port);
     }
   }
-  if (args.localHostDaemonPort !== null) {
-    ports.add(args.localHostDaemonPort);
+  for (const port of [configuredHostDaemonPort, args.localHostDaemonPort]) {
+    if (port !== null) {
+      ports.add(port);
+    }
   }
-  return [...ports];
+  return { kind: "known", ports: [...ports] };
 }
 
 export interface ResolveRequestingFrameLocalOriginKeyArgs {
@@ -552,7 +591,12 @@ export function shouldBlockBrowserRequest(
   // A committed loopback page reaching a second loopback port is ordinary local
   // development, so it is allowed here as it is in Chrome and Safari. bb's own
   // loopback services stay unreachable, which is what this firewall protects.
-  return args.reservedLoopbackPorts.includes(effectiveRequestPort(parsed));
+  if (args.reservedLoopbackPorts.kind === "pending") {
+    return true;
+  }
+  return args.reservedLoopbackPorts.ports.includes(
+    effectiveRequestPort(parsed),
+  );
 }
 
 // --- Popup-tab rate limiting ---

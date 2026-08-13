@@ -290,6 +290,58 @@ describe("startMachineAuthProxy", () => {
     expect(upstreamUpgrades).toBe(0);
   });
 
+  // A page on a public hostname that DNS-rebinds to 127.0.0.1 reaches this
+  // socket with that name in `Host`, and Chromium sends no `Origin` or
+  // `Sec-Fetch-*` for a `no-cors` GET to a non-trustworthy URL — so the header
+  // check alone cannot see it. Verified in Electron with
+  // `--host-resolver-rules="MAP rebind.example 127.0.0.1"`.
+  it("rejects a rebound public Host without reaching upstream", async () => {
+    let upstreamRequests = 0;
+    const upstream = http.createServer((_request, response) => {
+      upstreamRequests += 1;
+      response.end();
+    });
+    const upstreamPort = await listen(upstream);
+    const proxy = await startMachineAuthProxy({
+      machineCredential: "bbcm_machine",
+      serverUrl: `http://127.0.0.1:${upstreamPort}`,
+    });
+    proxies.push(proxy);
+    const proxyUrl = new URL(proxy.serverUrl);
+
+    async function statusForHost(host: string): Promise<number | undefined> {
+      return await new Promise<number | undefined>((resolve, reject) => {
+        const request = http.request(
+          {
+            host: proxyUrl.hostname,
+            port: proxyUrl.port,
+            path: "/api/v1/threads",
+            headers: { host },
+          },
+          (response) => resolve(response.statusCode),
+        );
+        request.once("error", reject);
+        request.end();
+      });
+    }
+
+    // No Origin, no Sec-Fetch-Site: only the Host header gives it away.
+    expect(await statusForHost(`rebind.example:${proxyUrl.port}`)).toBe(403);
+    // A mismatched port on a loopback name is not this proxy either.
+    expect(await statusForHost("127.0.0.1:1")).toBe(403);
+    expect(upstreamRequests).toBe(0);
+
+    // The authorities a real runtime client sends still pass.
+    for (const host of [
+      `127.0.0.1:${proxyUrl.port}`,
+      `localhost:${proxyUrl.port}`,
+      `[::1]:${proxyUrl.port}`,
+    ]) {
+      expect(await statusForHost(host)).toBe(200);
+    }
+    expect(upstreamRequests).toBe(3);
+  });
+
   it("rejects loudly when its loopback port cannot be bound", async () => {
     const occupied = net.createServer();
     const port = await listen(occupied);

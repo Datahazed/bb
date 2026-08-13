@@ -145,6 +145,7 @@ import {
 import {
   loopbackServicePort,
   resolveReservedLoopbackPorts,
+  type ReservedLoopbackPorts,
 } from "./desktop-browser-policy.js";
 import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
@@ -951,12 +952,14 @@ function stopSystemConfigSync(): void {
  * (a user's own dev server and its separate API/WebSocket backend) stays
  * reachable, as it is in Chrome and Safari.
  */
-function reservedLoopbackPorts(): readonly number[] {
+function reservedLoopbackPorts(): ReservedLoopbackPorts {
   return resolveReservedLoopbackPorts({
     builtinServerUrl,
     localServerUrl: currentRuntime?.serverUrl ?? null,
     appWindowUrl: currentWindowUrl,
     localHostDaemonPort: currentLocalHostDaemonPort,
+    configuredHostDaemonPort: process.env.BB_HOST_DAEMON_PORT,
+    hasLocalRuntime: currentRuntime !== null,
   });
 }
 

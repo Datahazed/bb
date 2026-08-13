@@ -28,6 +28,7 @@ import {
   resolveRequestingFrameLocalOriginKey,
   resolveWindowOpenAction,
   shouldBlockBrowserRequest,
+  type ReservedLoopbackPorts,
 } from "./desktop-browser-policy.js";
 
 // At most this many popup → in-panel tabs may be spawned per view in a sliding
@@ -119,7 +120,7 @@ export interface CreateDesktopBrowserViewManagerArgs {
    * reach. Read per request rather than captured once, because the local
    * runtime and its host-daemon port attach after the manager is created.
    */
-  getReservedLoopbackPorts: () => readonly number[];
+  getReservedLoopbackPorts: () => ReservedLoopbackPorts;
   partition?: string;
   resolveAppCommand: (input: AppShortcutInput) => AppCommandId | null;
 }
@@ -265,7 +266,7 @@ function commitEntryMainFrameUrl(entry: BrowserViewEntry, url: string): void {
 function shouldBlockEntryTopLevelRequest(
   entry: BrowserViewEntry,
   url: string,
-  reservedLoopbackPorts: readonly number[],
+  reservedLoopbackPorts: ReservedLoopbackPorts,
 ): boolean {
   if (!isAllowedBrowserUrl(url)) {
     return true;
@@ -337,10 +338,7 @@ export function createDesktopBrowserViewManager(
     return resizingHostIds.has(hostWindow.webContents.id);
   }
 
-  function blockTopLevelRequest(
-    entry: BrowserViewEntry,
-    url: string,
-  ): boolean {
+  function blockTopLevelRequest(entry: BrowserViewEntry, url: string): boolean {
     return shouldBlockEntryTopLevelRequest(
       entry,
       url,

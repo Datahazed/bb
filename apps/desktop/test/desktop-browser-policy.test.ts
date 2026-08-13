@@ -19,6 +19,7 @@ import {
   resolveReservedLoopbackPorts,
   resolveWindowOpenAction,
   shouldBlockBrowserRequest,
+  type ReservedLoopbackPorts,
   type ShouldBlockBrowserRequestArgs,
 } from "../src/desktop-browser-policy.js";
 
@@ -345,26 +346,77 @@ describe("loopbackServicePort", () => {
 });
 
 describe("resolveReservedLoopbackPorts", () => {
-  // The daemon port only arrives with the first system-config fetch. A browsed
-  // page opened before that fetch lands must still reach nothing bb serves.
+  const baseArgs = {
+    builtinServerUrl: "http://127.0.0.1:38886",
+    localServerUrl: null,
+    appWindowUrl: null,
+    localHostDaemonPort: null,
+    configuredHostDaemonPort: undefined,
+    hasLocalRuntime: false,
+  };
+
+  function requireKnownPorts(result: ReservedLoopbackPorts): readonly number[] {
+    if (result.kind !== "known") {
+      throw new Error("Expected a known reserved-port set");
+    }
+    return result.ports;
+  }
+
   it("reserves the packaged host-daemon port before any port is fetched", () => {
+    expect(requireKnownPorts(resolveReservedLoopbackPorts(baseArgs))).toEqual(
+      expect.arrayContaining([BB_PROD_HOST_DAEMON_PORT, 38886]),
+    );
+  });
+
+  // A local runtime whose daemon sits on a non-default port is unnamed until
+  // the config fetch lands, and the fetch may never land. Stay closed.
+  it("stays pending while a local runtime's daemon port is unknown", () => {
     expect(
       resolveReservedLoopbackPorts({
-        builtinServerUrl: "http://127.0.0.1:38886",
-        localServerUrl: null,
-        appWindowUrl: null,
-        localHostDaemonPort: null,
+        ...baseArgs,
+        localServerUrl: "http://127.0.0.1:19123",
+        hasLocalRuntime: true,
       }),
-    ).toEqual(expect.arrayContaining([BB_PROD_HOST_DAEMON_PORT, 38886]));
+    ).toEqual({ kind: "pending" });
+  });
+
+  // `BB_HOST_DAEMON_PORT` is set for every dev instance and for a configured
+  // production deployment, so the window never opens there.
+  it("names a configured daemon port without waiting for the fetch", () => {
+    const ports = requireKnownPorts(
+      resolveReservedLoopbackPorts({
+        ...baseArgs,
+        localServerUrl: "http://127.0.0.1:19123",
+        hasLocalRuntime: true,
+        configuredHostDaemonPort: "27123",
+      }),
+    );
+    expect(ports).toEqual(
+      expect.arrayContaining([BB_PROD_HOST_DAEMON_PORT, 38886, 19123, 27123]),
+    );
+  });
+
+  it("treats an unusable BB_HOST_DAEMON_PORT as unknown", () => {
+    for (const configuredHostDaemonPort of ["", "0", "70000", "not-a-port"]) {
+      expect(
+        resolveReservedLoopbackPorts({
+          ...baseArgs,
+          hasLocalRuntime: true,
+          configuredHostDaemonPort,
+        }),
+      ).toEqual({ kind: "pending" });
+    }
   });
 
   it("adds the fetched daemon port and the attached runtime's port", () => {
-    const ports = resolveReservedLoopbackPorts({
-      builtinServerUrl: "http://127.0.0.1:38886",
-      localServerUrl: "http://127.0.0.1:19123",
-      appWindowUrl: null,
-      localHostDaemonPort: 27123,
-    });
+    const ports = requireKnownPorts(
+      resolveReservedLoopbackPorts({
+        ...baseArgs,
+        localServerUrl: "http://127.0.0.1:19123",
+        hasLocalRuntime: true,
+        localHostDaemonPort: 27123,
+      }),
+    );
     expect(ports).toEqual(
       expect.arrayContaining([BB_PROD_HOST_DAEMON_PORT, 38886, 19123, 27123]),
     );
@@ -374,24 +426,31 @@ describe("resolveReservedLoopbackPorts", () => {
   // no server URL or daemon port names.
   it("reserves the loopback app-window port in dev", () => {
     expect(
-      resolveReservedLoopbackPorts({
-        builtinServerUrl: "http://127.0.0.1:19123",
-        localServerUrl: "http://127.0.0.1:19123",
-        appWindowUrl: "http://127.0.0.1:11123/",
-        localHostDaemonPort: 27123,
-      }),
+      requireKnownPorts(
+        resolveReservedLoopbackPorts({
+          ...baseArgs,
+          builtinServerUrl: "http://127.0.0.1:19123",
+          localServerUrl: "http://127.0.0.1:19123",
+          appWindowUrl: "http://127.0.0.1:11123/",
+          hasLocalRuntime: true,
+          localHostDaemonPort: 27123,
+        }),
+      ),
     ).toEqual(expect.arrayContaining([11123, 19123, 27123]));
   });
 
   // Switching to a remote target leaves the local runtime and its daemon
   // running, so their ports must survive the switch.
   it("keeps the local daemon port reserved while pointed at a remote server", () => {
-    const ports = resolveReservedLoopbackPorts({
-      builtinServerUrl: "http://127.0.0.1:38886",
-      localServerUrl: "http://127.0.0.1:19123",
-      appWindowUrl: "https://bee.getbb.app",
-      localHostDaemonPort: 27123,
-    });
+    const ports = requireKnownPorts(
+      resolveReservedLoopbackPorts({
+        ...baseArgs,
+        localServerUrl: "http://127.0.0.1:19123",
+        appWindowUrl: "https://bee.getbb.app",
+        hasLocalRuntime: true,
+        localHostDaemonPort: 27123,
+      }),
+    );
     expect(ports).toEqual(
       expect.arrayContaining([BB_PROD_HOST_DAEMON_PORT, 38886, 19123, 27123]),
     );
@@ -414,7 +473,7 @@ describe("shouldBlockBrowserRequest", () => {
     entryWebContentsId: 1,
     currentMainFrameLocalOriginKey: null,
     requestingFrameOriginKey: null,
-    reservedLoopbackPorts: [],
+    reservedLoopbackPorts: { kind: "known", ports: [] },
   };
 
   it("allows public requests regardless of local attribution fields", () => {
@@ -637,7 +696,7 @@ describe("shouldBlockBrowserRequest", () => {
           isMainFrame: false,
           currentMainFrameLocalOriginKey: localhost3000,
           requestingFrameOriginKey: localhost3000,
-          reservedLoopbackPorts: [38886, 80],
+          reservedLoopbackPorts: { kind: "known", ports: [38886, 80] },
         }),
       ).toBe(true);
     }
@@ -653,7 +712,7 @@ describe("shouldBlockBrowserRequest", () => {
         isMainFrame: false,
         currentMainFrameLocalOriginKey: reservedOrigin,
         requestingFrameOriginKey: reservedOrigin,
-        reservedLoopbackPorts: [38886],
+        reservedLoopbackPorts: { kind: "known", ports: [38886] },
       }),
     ).toBe(false);
   });
@@ -769,7 +828,7 @@ describe("loopback SPA subresource firewall (regression)", () => {
     targetWebContentsId: 1,
     entryWebContentsId: 1,
     currentMainFrameLocalOriginKey: originKey,
-    reservedLoopbackPorts: [],
+    reservedLoopbackPorts: { kind: "known", ports: [] },
   };
 
   it("allows a same-origin top-frame subresource resolved via the URL fallback", () => {

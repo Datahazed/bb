@@ -19,7 +19,7 @@ function createDesktopBrowserViewManager(
   return createProductionDesktopBrowserViewManager({
     dispatchAppCommand: () => undefined,
     focusHostWebContents: () => undefined,
-    getReservedLoopbackPorts: () => [],
+    getReservedLoopbackPorts: () => ({ kind: "known", ports: [] }),
     resolveAppCommand: () => null,
     ...args,
   });
@@ -1318,7 +1318,10 @@ describe("DesktopBrowserViewManager", () => {
   // and Safari, while bb's own loopback services stay unreachable.
   it("allows cross-port loopback requests but never bb's own loopback ports", () => {
     const manager = createDesktopBrowserViewManager({
-      getReservedLoopbackPorts: () => [38886, 3011],
+      getReservedLoopbackPorts: () => ({
+        kind: "known",
+        ports: [38886, 3011],
+      }),
       partition: "persist:test",
     });
     const hostWindow = new FakeHostWindow({
@@ -1335,7 +1338,10 @@ describe("DesktopBrowserViewManager", () => {
     const view = requireFakeView(0);
     view.webContents.emitDidNavigate("http://127.0.0.1:3009/");
 
-    for (const url of ["ws://127.0.0.1:3210/api", "http://127.0.0.1:3210/api"]) {
+    for (const url of [
+      "ws://127.0.0.1:3210/api",
+      "http://127.0.0.1:3210/api",
+    ]) {
       expect(
         browserRequestBlocked({
           url,
@@ -1371,6 +1377,46 @@ describe("DesktopBrowserViewManager", () => {
         frameOrigin: "https://example.com",
       }),
     ).toBe(true);
+  });
+
+  // Restored tabs can load before the first system-config response names the
+  // daemon port, and that fetch may fail outright. Cross-port stays shut until
+  // bb can name every port of its own; same-origin keeps working throughout.
+  it("blocks cross-port loopback while bb cannot name its own ports", () => {
+    const manager = createDesktopBrowserViewManager({
+      getReservedLoopbackPorts: () => ({ kind: "pending" }),
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 67,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "http://127.0.0.1:3009/",
+    });
+    const view = requireFakeView(0);
+    view.webContents.emitDidNavigate("http://127.0.0.1:3009/");
+
+    expect(
+      browserRequestBlocked({
+        url: "ws://127.0.0.1:3210/api",
+        resourceType: "webSocket",
+        webContentsId: view.webContents.id,
+        frameOrigin: "http://127.0.0.1:3009",
+      }),
+    ).toBe(true);
+    expect(
+      browserRequestBlocked({
+        url: "http://127.0.0.1:3009/app.js",
+        resourceType: "script",
+        webContentsId: view.webContents.id,
+        frameOrigin: "http://127.0.0.1:3009",
+      }),
+    ).toBe(false);
   });
 
   it("allows top-level localhost frame navigation but blocks public iframe subresources", () => {
