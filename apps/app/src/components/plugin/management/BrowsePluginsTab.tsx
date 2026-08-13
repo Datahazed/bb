@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDebounceValue } from "usehooks-ts";
 import {
@@ -62,19 +63,33 @@ export function BrowsePluginsTab({
   const [query, setQuery] = useState("");
   // Example cards and the page button open the hero's inline composer through
   // this request; nonces make a repeated click on the same card still land.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const creationViewActive = searchParams.get("view") === "create";
   const [heroRequest, setHeroRequest] = useState<{
     nonce: number;
     seed?: string;
     close?: boolean;
-  } | null>(null);
+  } | null>(() =>
+    creationViewActive ? { nonce: nextComposerRequestNonce() } : null,
+  );
+  const [requestedCreationView, setRequestedCreationView] =
+    useState(creationViewActive);
   const [composing, setComposing] = useState(false);
   const openComposer = (seed?: string) =>
     setHeroRequest({
       nonce: nextComposerRequestNonce(),
       ...(seed === undefined ? {} : { seed }),
     });
-  const closeComposer = () =>
-    setHeroRequest({ nonce: nextComposerRequestNonce(), close: true });
+  // Creation is a real navigation entry so the app shell's existing sidebar
+  // Back control owns the return to Browse. POP/forward navigation then drives
+  // the inline composer without adding another page-local back affordance.
+  if (requestedCreationView !== creationViewActive) {
+    setRequestedCreationView(creationViewActive);
+    setHeroRequest({
+      nonce: nextComposerRequestNonce(),
+      ...(creationViewActive ? {} : { close: true }),
+    });
+  }
   // The composer lives in the hero at the top; opening it from a card further
   // down must bring it into view or the click appears to do nothing.
   useEffect(() => {
@@ -131,12 +146,16 @@ export function BrowsePluginsTab({
       <div className={cn("space-y-7", TOOLS_PAGE_BAND_CLASSES)}>
         {/* The create control sits at the page's top right, like every other
             collection's actions row; the hero keeps only its showcase. */}
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-3">
           <div className="flex items-stretch">
             <Button
-              aria-pressed={composing}
               className="rounded-r-none"
-              onClick={() => (composing ? closeComposer() : openComposer())}
+              onClick={() => {
+                if (creationViewActive) return;
+                const nextSearchParams = new URLSearchParams(searchParams);
+                nextSearchParams.set("view", "create");
+                setSearchParams(nextSearchParams);
+              }}
             >
               <Icon name="MessageSquarePlus" className="size-3.5" />
               Create a plugin

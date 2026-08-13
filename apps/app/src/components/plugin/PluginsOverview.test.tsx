@@ -24,6 +24,8 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { focusManager } from "@tanstack/react-query";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
+import { resetAppRouteHistoryForTest } from "@/lib/app-route-history";
 import { PluginsOverview } from "./PluginsOverview";
 
 // The hero mounts bb's real new-thread composer when a create affordance
@@ -208,6 +210,7 @@ function LocationPath() {
 afterEach(() => {
   focusManager.setFocused(undefined);
   cleanup();
+  resetAppRouteHistoryForTest();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -262,6 +265,45 @@ describe("PluginsOverview", () => {
     act(() => focusManager.setFocused(false));
     act(() => focusManager.setFocused(true));
     await waitFor(() => expect(catalogRequests()).toHaveLength(1));
+  });
+
+  it("uses the existing sidebar history control to return from creation", async () => {
+    installFetch();
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins"]}>
+        <QueryClientWrapper>
+          <SidebarHistoryNavigationControls />
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("GitHub");
+    const createPlugin = screen.getByRole("button", {
+      name: "Create a plugin",
+    });
+
+    fireEvent.click(createPlugin);
+    expect(await screen.findByTestId("inline-composer")).toBeTruthy();
+    expect(screen.queryByText("Back to browse plugins")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Close the composer" }),
+    ).toBeNull();
+
+    // Create is an enter action, not a mode toggle: a repeated activation
+    // leaves the creation surface open.
+    fireEvent.click(createPlugin);
+    expect(screen.getByTestId("inline-composer")).toBeTruthy();
+
+    const goBack = screen.getByRole("button", { name: "Go back" });
+    await waitFor(() =>
+      expect((goBack as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(goBack);
+    await waitFor(() =>
+      expect(screen.queryByTestId("inline-composer")).toBeNull(),
+    );
   });
 
   it("shows category filters only in Browse", async () => {
