@@ -141,9 +141,7 @@ describe("theme.css neutral ramp", () => {
     expect(rule).toContain(
       "linear-gradient(var(--state-active), var(--state-active))",
     );
-    expect(rule).toContain(
-      "linear-gradient(var(--sidebar), var(--sidebar))",
-    );
+    expect(rule).toContain("linear-gradient(var(--sidebar), var(--sidebar))");
   });
 
   it("resolves the open-in-split thread tint to an opaque sidebar color", () => {
@@ -320,5 +318,25 @@ describe("theme.css desktop portal hit testing", () => {
     expect(rule).toBeDefined();
     expect(rule).toMatch(/(?:^|\s)app-region:\s*no-drag;/);
     expect(rule).toMatch(/-webkit-app-region:\s*no-drag;/);
+  });
+});
+
+describe("theme.css thread header visible action spacing", () => {
+  it("derives edge and icon gaps from one semantic visible-gap token", () => {
+    const spacingRule = css.match(
+      /\.thread-header-icon-spacing\s*\{([^}]*)\}/,
+    )?.[1];
+    const edgeRule = css.match(
+      /\.thread-header-edge-to-icon-spacing\s*\{([^}]*)\}/,
+    )?.[1];
+
+    expect(spacingRule).toBeDefined();
+    expect(spacingRule).toMatch(/--thread-header-visible-action-gap:\s*1rem;/);
+    expect(spacingRule).toMatch(
+      /gap:\s*calc\(\s*var\(--thread-header-visible-action-gap\)\s*-\s*\(\s*var\(--thread-header-icon-button-size\)\s*-\s*var\(--thread-header-icon-glyph-size\)\s*\)\s*\);/,
+    );
+    expect(edgeRule).toMatch(
+      /margin-inline-start:\s*calc\(\s*var\(--thread-header-visible-action-gap\)\s*-\s*\(\s*var\(--thread-header-icon-button-size\)\s*-\s*var\(--thread-header-icon-glyph-size\)\s*\)\s*\/\s*2\s*\);/,
+    );
   });
 });

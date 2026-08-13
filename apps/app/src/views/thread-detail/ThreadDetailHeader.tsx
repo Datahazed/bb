@@ -17,7 +17,9 @@ import { SplitButton } from "@/components/ui/split-button.js";
 import {
   AppPageHeader,
   HEADER_ACTION_GAP_CLASS,
+  THREAD_HEADER_EDGE_TO_ICON_SPACING_CLASS,
   THREAD_HEADER_ICON_BUTTON_CLASS,
+  THREAD_HEADER_ICON_SPACING_CLASS,
 } from "@/components/layout/AppPageHeader";
 import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 import {
@@ -170,81 +172,81 @@ export function ThreadDetailHeader({
 
   const center = (
     <div
-      className={cn(
-        "flex min-w-0 max-w-full items-center",
-        HEADER_ACTION_GAP_CLASS,
-      )}
+      className="flex min-w-0 max-w-full items-center"
       data-thread-header-center-actions=""
     >
       <div
-        data-pane-header-focus-tab={
-          isSplitPaneHeader && isFocused ? "" : undefined
-        }
-        className={cn(
-          "relative min-w-0",
-          isSplitPaneHeader && "-ml-2 -my-1 rounded-md py-1 pl-2",
-          isSplitPaneHeader && isFocused && "pr-2",
-          isSplitPaneHeader && isFocused && CONTEXT_SELECTION_SURFACE_CLASS,
-        )}
+        className={cn("flex min-w-4 items-center", HEADER_ACTION_GAP_CLASS)}
+        data-thread-header-title-cluster=""
       >
-        <p
+        <div
+          data-pane-header-focus-tab={
+            isSplitPaneHeader && isFocused ? "" : undefined
+          }
           className={cn(
-            "relative min-w-0 text-sm font-normal transition-colors",
-            isEditing ? "overflow-visible" : "truncate",
-            isSplitPaneHeader &&
-              !isFocused &&
-              dimsInactiveSplits &&
-              CONTEXT_INACTIVE_TEXT_CLASS,
-            beginPaneDrag &&
-              !isEditing &&
-              cn(
-                "cursor-grab touch-none select-none",
-                // Opt the drag handle out of the macOS title-bar drag region so a
-                // pane-reorder gesture isn't swallowed as a window drag.
-                usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
-              ),
+            "relative min-w-0",
+            isSplitPaneHeader && "-ml-2 -my-1 rounded-md py-1 pl-2",
+            isSplitPaneHeader && isFocused && "pr-2",
+            isSplitPaneHeader && isFocused && CONTEXT_SELECTION_SURFACE_CLASS,
           )}
-          onDoubleClick={handleTitleDoubleClick}
-          onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
         >
-          {isEditing ? editor : <ThreadTitleMentions title={threadTitle} />}
-        </p>
+          <p
+            className={cn(
+              "relative min-w-0 text-sm font-normal transition-colors",
+              isEditing ? "overflow-visible" : "truncate",
+              isSplitPaneHeader &&
+                !isFocused &&
+                dimsInactiveSplits &&
+                CONTEXT_INACTIVE_TEXT_CLASS,
+              beginPaneDrag &&
+                !isEditing &&
+                cn(
+                  "cursor-grab touch-none select-none",
+                  // Opt the drag handle out of the macOS title-bar drag region so a
+                  // pane-reorder gesture isn't swallowed as a window drag.
+                  usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+                ),
+            )}
+            onDoubleClick={handleTitleDoubleClick}
+            onPointerDown={beginPaneDrag ? handleTitlePointerDown : undefined}
+          >
+            {isEditing ? editor : <ThreadTitleMentions title={threadTitle} />}
+          </p>
+        </div>
+        {childPillLabel ? (
+          <Pill variant="outline" size="sm">
+            {childPillLabel}
+          </Pill>
+        ) : null}
       </div>
-      {childPillLabel ? (
-        <Pill variant="outline" size="sm">
-          {childPillLabel}
-        </Pill>
-      ) : null}
-      {isSplitPane && isFocused ? (
-        <span
+      {(isSplitPane && isFocused) || actionsMenu != null ? (
+        <div
           className={cn(
             "flex shrink-0 items-center",
+            THREAD_HEADER_ICON_SPACING_CLASS,
+            THREAD_HEADER_EDGE_TO_ICON_SPACING_CLASS,
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
           data-thread-header-title-actions=""
         >
-          <SplitDimmingButton />
-        </span>
-      ) : null}
-      {/*
-        The header's center slot sits inside the macOS title-bar drag region
-        (AppPageHeader only exempts the actions slot), so the interactive
-        actions menu must opt out of dragging or its clicks are swallowed as
-        window drags. Gated on desktop chrome like every other no-drag site —
-        the class also carries `relative z-50`, which must not leak into the
-        web build.
-      */}
-      {actionsMenu == null ? null : (
-        <span
-          data-testid="thread-detail-header-actions-menu"
-          className={cn(
-            "flex items-center",
-            usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+          {isSplitPane && isFocused ? <SplitDimmingButton /> : null}
+          {/*
+            The header's center slot sits inside the macOS title-bar drag
+            region (AppPageHeader only exempts the actions slot), so the
+            interactive action group opts out or its clicks are swallowed as
+            window drags. The no-drag class also carries `relative z-50`, so it
+            remains gated on desktop chrome.
+          */}
+          {actionsMenu == null ? null : (
+            <span
+              data-testid="thread-detail-header-actions-menu"
+              className="flex items-center"
+            >
+              {actionsMenu(usesResponsiveActionOverflow)}
+            </span>
           )}
-        >
-          {actionsMenu(usesResponsiveActionOverflow)}
-        </span>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 
@@ -289,7 +291,10 @@ export function ThreadDetailHeader({
         ) : null}
       </div>
       <div
-        className={cn("ml-1 flex items-center", HEADER_ACTION_GAP_CLASS)}
+        className={cn(
+          "ml-1 flex items-center",
+          THREAD_HEADER_ICON_SPACING_CLASS,
+        )}
         data-thread-header-pane-actions=""
       >
         {showRightPanelToggle ? (

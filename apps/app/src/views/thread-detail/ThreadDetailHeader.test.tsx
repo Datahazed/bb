@@ -29,6 +29,9 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
 
 vi.mock("@/components/layout/AppPageHeader", () => ({
   HEADER_ACTION_GAP_CLASS: "header-action-gap",
+  THREAD_HEADER_EDGE_TO_ICON_SPACING_CLASS:
+    "thread-header-edge-to-icon-spacing",
+  THREAD_HEADER_ICON_SPACING_CLASS: "thread-header-icon-spacing",
   THREAD_HEADER_ICON_BUTTON_CLASS: "thread-header-icon-button",
   AppPageHeader: ({
     actions,
@@ -121,7 +124,7 @@ describe("ThreadDetailHeader", () => {
     ).toBe(false);
   });
 
-  it("uses one shared gap for title and pane-edge header actions", () => {
+  it("uses one shared visible gap for title and pane-edge icon actions", () => {
     const { container } = render(
       <PaneContext.Provider
         value={{
@@ -150,11 +153,20 @@ describe("ThreadDetailHeader", () => {
     );
 
     expect(
-      container.querySelector("[data-thread-header-center-actions]")?.classList,
-    ).toContain("header-action-gap");
+      container.querySelector("[data-thread-header-title-actions]")?.classList,
+    ).toContain("thread-header-icon-spacing");
+    expect(
+      container.querySelector("[data-thread-header-title-actions]")?.classList,
+    ).toContain("thread-header-edge-to-icon-spacing");
     expect(
       container.querySelector("[data-thread-header-pane-actions]")?.classList,
-    ).toContain("header-action-gap");
+    ).toContain("thread-header-icon-spacing");
+    expect(
+      container.querySelector("[data-thread-header-pane-actions]")?.classList,
+    ).not.toContain("thread-header-edge-to-icon-spacing");
+    expect(
+      container.querySelector("[data-thread-header-title-cluster]")?.classList,
+    ).toContain("min-w-4");
     const activeTitleSurface = container.querySelector(
       "[data-pane-header-focus-tab]",
     );

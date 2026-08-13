@@ -50,6 +50,19 @@ export const HEADER_PANE_ACTION_ICON_BUTTON_CLASS =
 export const THREAD_HEADER_ICON_BUTTON_CLASS = HEADER_ICON_BUTTON_CLASS;
 
 /**
+ * Shared visible-edge spacing for adjacent thread-header icons. The CSS token
+ * accounts for the transparent inset between each button box and its glyph.
+ */
+export const THREAD_HEADER_ICON_SPACING_CLASS = "thread-header-icon-spacing";
+
+/**
+ * Adapts the same visible-edge spacing token when the first icon follows a
+ * non-icon boundary, such as the active thread-title background.
+ */
+export const THREAD_HEADER_EDGE_TO_ICON_SPACING_CLASS =
+  "thread-header-edge-to-icon-spacing";
+
+/**
  * Shared spacing between adjacent controls in a header action cluster. This
  * keeps title-adjacent actions and pane-edge actions on one compact rhythm.
  */

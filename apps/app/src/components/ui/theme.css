@@ -128,6 +128,40 @@
 }
 
 @layer components {
+  .thread-header-icon-spacing {
+    /* One semantic visible gap drives both edge-to-icon and icon-to-icon
+       geometry. Fine-pointer buttons are 28px with 16px glyphs, so the
+       transparent 6px inset on each side leaves a computed 4px flex gap. */
+    --thread-header-visible-action-gap: 1rem;
+    --thread-header-icon-button-size: 1.75rem;
+    --thread-header-icon-glyph-size: 1rem;
+    gap: calc(
+      var(--thread-header-visible-action-gap) -
+        (
+          var(--thread-header-icon-button-size) -
+            var(--thread-header-icon-glyph-size)
+        )
+    );
+  }
+
+  .thread-header-edge-to-icon-spacing {
+    margin-inline-start: calc(
+      var(--thread-header-visible-action-gap) -
+        (
+          var(--thread-header-icon-button-size) -
+            var(--thread-header-icon-glyph-size)
+        ) /
+        2
+    );
+  }
+
+  @media (max-width: 767px) and (pointer: coarse) {
+    .thread-header-icon-spacing {
+      --thread-header-icon-button-size: 2.25rem;
+      --thread-header-icon-glyph-size: 1.25rem;
+    }
+  }
+
   [data-sidebar-sticky-stack] {
     /*
      * SidebarContent owns scrolling. This stack owns sticky padding, row
