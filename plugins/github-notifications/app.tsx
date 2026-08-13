@@ -6,6 +6,13 @@ import {
   type MouseEvent,
 } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Avatar } from "@bb/shared-ui/avatar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { definePluginApp, useBbNavigate, useRpc } from "@bb/plugin-sdk/app";
 
 import type {
@@ -102,35 +109,35 @@ function updatePresentation(kind: GithubNotificationItem["activityKind"]): {
     case "approved":
       return {
         icon: "CircleCheck",
-        iconClass: "bg-success/10 text-success",
+        iconClass: "text-success",
         label: "Approved",
         verb: "approved",
       };
     case "changes-requested":
       return {
         icon: "CircleX",
-        iconClass: "bg-destructive/10 text-destructive-text",
+        iconClass: "text-destructive-text",
         label: "Changes requested",
         verb: "requested changes",
       };
     case "mention":
       return {
         icon: "Mail",
-        iconClass: "bg-warning/10 text-warning-text",
+        iconClass: "text-warning-text",
         label: "Mention",
         verb: "mentioned you",
       };
     case "review":
       return {
         icon: "Eye",
-        iconClass: "bg-accent text-foreground",
+        iconClass: "text-foreground",
         label: "Review",
         verb: "reviewed",
       };
     case "comment":
       return {
         icon: "MessageSquare",
-        iconClass: "bg-muted text-muted-foreground",
+        iconClass: "text-muted-foreground",
         label: "Comment",
         verb: "commented",
       };
@@ -169,7 +176,11 @@ function NotificationLink({ item }: { item: GithubNotificationItem }) {
         <Icon
           name={item.resourceKind === "pr" ? "GitPullRequest" : "Circle"}
           aria-hidden
-          className="size-3.5 shrink-0"
+          className={`size-3.5 shrink-0 ${
+            item.resourceKind === "pr"
+              ? "text-success"
+              : "text-muted-foreground"
+          }`}
         />
         <span className="font-medium text-foreground">
           {item.resourceKind === "pr" ? "PR" : "Issue"} #{item.number}
@@ -183,27 +194,53 @@ function NotificationLink({ item }: { item: GithubNotificationItem }) {
 
 function LatestUpdate({ item }: { item: GithubNotificationItem }) {
   const update = updatePresentation(item.activityKind);
+  const actor = item.actor ? `@${item.actor}` : "Someone";
+  const avatarUrl = item.actor
+    ? `https://github.com/${encodeURIComponent(item.actor)}.png?size=32`
+    : null;
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm">
-      <span
-        className={`group/status relative grid size-6 shrink-0 place-content-center rounded-md ${update.iconClass}`}
-        aria-label={update.label}
-      >
-        <Icon name={update.icon} aria-hidden className="size-3.5" />
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-sm transition-opacity group-hover/status:opacity-100"
-        >
-          {update.label}
-        </span>
-      </span>
-      <span className="max-w-36 shrink truncate rounded-full bg-muted/75 px-2 py-0.5 text-xs font-medium text-foreground">
-        {item.actor ? `@${item.actor}` : "Someone"}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`inline-flex shrink-0 items-center ${update.iconClass}`}
+            aria-label={update.label}
+            role="img"
+            tabIndex={0}
+          >
+            <Icon name={update.icon} aria-hidden className="size-4" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{update.label}</TooltipContent>
+      </Tooltip>
+      <span className="inline-flex max-w-36 shrink items-center gap-1 rounded-full bg-muted/40 px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+        <ActorAvatar key={avatarUrl ?? "fallback"} avatarUrl={avatarUrl} />
+        <span className="truncate">{actor}</span>
       </span>
       <span className="min-w-0 truncate text-muted-foreground">
         {update.verb}
       </span>
     </div>
+  );
+}
+
+function ActorAvatar({ avatarUrl }: { avatarUrl: string | null }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <Avatar className="size-4 bg-muted/60" aria-hidden>
+      {avatarUrl && !failed ? (
+        <img
+          src={avatarUrl}
+          alt=""
+          className="aspect-square size-full"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span className="flex size-full items-center justify-center text-muted-foreground">
+          <Icon name="UserRound" aria-hidden className="size-2.5" />
+        </span>
+      )}
+    </Avatar>
   );
 }
 
@@ -523,13 +560,21 @@ function GitHubActivityPanel() {
   );
 }
 
+function GitHubActivityPanelWithTooltips() {
+  return (
+    <TooltipProvider delayDuration={0}>
+      <GitHubActivityPanel />
+    </TooltipProvider>
+  );
+}
+
 export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "activity",
     title: "GitHub Activity",
     icon: "Github",
     path: "activity",
-    component: GitHubActivityPanel,
+    component: GitHubActivityPanelWithTooltips,
     experimental_rightPanel: { tools: ["browser"] },
   });
 });
