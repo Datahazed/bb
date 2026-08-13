@@ -142,7 +142,10 @@ import {
   createDesktopBrowserViewManager,
   type DesktopBrowserViewManager,
 } from "./desktop-browser-view.js";
-import { loopbackServicePort } from "./desktop-browser-policy.js";
+import {
+  loopbackServicePort,
+  resolveReservedLoopbackPorts,
+} from "./desktop-browser-policy.js";
 import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
@@ -946,18 +949,11 @@ function stopSystemConfigSync(): void {
  * reachable, as it is in Chrome and Safari.
  */
 function reservedLoopbackPorts(): readonly number[] {
-  const ports = new Set<number>();
-  for (const serverUrl of [builtinServerUrl, currentRuntime?.serverUrl]) {
-    const port =
-      serverUrl === undefined ? null : loopbackServicePort(serverUrl);
-    if (port !== null) {
-      ports.add(port);
-    }
-  }
-  if (currentLocalHostDaemonPort !== null) {
-    ports.add(currentLocalHostDaemonPort);
-  }
-  return [...ports];
+  return resolveReservedLoopbackPorts({
+    builtinServerUrl,
+    localServerUrl: currentRuntime?.serverUrl ?? null,
+    localHostDaemonPort: currentLocalHostDaemonPort,
+  });
 }
 
 function startSystemConfigSync(serverUrl: string): void {

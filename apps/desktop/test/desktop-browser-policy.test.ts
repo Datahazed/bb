@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BB_PROD_HOST_DAEMON_PORT } from "@bb/config/runtime";
 import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   bbDesktopBrowserAttachRequestSchema,
@@ -15,6 +16,7 @@ import {
   localRequestOriginKey,
   loopbackServicePort,
   resolveRequestingFrameLocalOriginKey,
+  resolveReservedLoopbackPorts,
   resolveWindowOpenAction,
   shouldBlockBrowserRequest,
   type ShouldBlockBrowserRequestArgs,
@@ -339,6 +341,43 @@ describe("loopbackServicePort", () => {
     expect(loopbackServicePort("http://192.168.1.10:38886")).toBeNull();
     expect(loopbackServicePort("ws://127.0.0.1:38886")).toBeNull();
     expect(loopbackServicePort("not a url")).toBeNull();
+  });
+});
+
+describe("resolveReservedLoopbackPorts", () => {
+  // The daemon port only arrives with the first system-config fetch. A browsed
+  // page opened before that fetch lands must still reach nothing bb serves.
+  it("reserves the packaged host-daemon port before any port is fetched", () => {
+    expect(
+      resolveReservedLoopbackPorts({
+        builtinServerUrl: "http://127.0.0.1:38886",
+        localServerUrl: null,
+        localHostDaemonPort: null,
+      }),
+    ).toEqual(expect.arrayContaining([BB_PROD_HOST_DAEMON_PORT, 38886]));
+  });
+
+  it("adds the fetched daemon port and the attached runtime's port", () => {
+    const ports = resolveReservedLoopbackPorts({
+      builtinServerUrl: "http://127.0.0.1:38886",
+      localServerUrl: "http://127.0.0.1:19123",
+      localHostDaemonPort: 27123,
+    });
+    expect(ports).toEqual(
+      expect.arrayContaining([BB_PROD_HOST_DAEMON_PORT, 38886, 19123, 27123]),
+    );
+  });
+
+  it("keeps bb's own ports reserved when attached to a remote server", () => {
+    const ports = resolveReservedLoopbackPorts({
+      builtinServerUrl: "http://127.0.0.1:38886",
+      localServerUrl: "https://bee.getbb.app",
+      localHostDaemonPort: null,
+    });
+    expect(ports).toEqual(
+      expect.arrayContaining([BB_PROD_HOST_DAEMON_PORT, 38886]),
+    );
+    expect(ports).toHaveLength(2);
   });
 });
 

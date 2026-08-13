@@ -1,6 +1,8 @@
 // Pure navigation/popup policy for the in-app browser view. Kept free of any
 // `electron` import so it can be unit tested under vitest's node environment.
 
+import { BB_PROD_HOST_DAEMON_PORT } from "@bb/config/runtime";
+
 /**
  * Only `http`/`https` top-level navigations are allowed in the browser view.
  * Everything else (`file:`, `javascript:`, custom schemes, `about:` beyond
@@ -399,6 +401,44 @@ export function loopbackServicePort(url: string): number | null {
     return null;
   }
   return effectiveRequestPort(parsed);
+}
+
+export interface ResolveReservedLoopbackPortsArgs {
+  /** The loopback bb server URL this app starts or attaches to. */
+  builtinServerUrl: string;
+  /** The attached runtime's server URL, or null when none is attached. */
+  localServerUrl: string | null;
+  /**
+   * Host-daemon port an attached loopback server reports, or null before the
+   * first system-config fetch lands and after the config sync stops.
+   */
+  localHostDaemonPort: number | null;
+}
+
+/**
+ * The loopback ports bb itself serves, which browsed pages must never reach.
+ *
+ * The packaged host-daemon port is always reserved, because
+ * `localHostDaemonPort` only arrives with the first system-config fetch and a
+ * browsed page must not reach the daemon during that window. The cost is that
+ * a user's own service on a reserved port is unreachable from the in-app
+ * browser; that is the right trade, because a browsed page reaching bb is far
+ * worse than a browsed page missing one port.
+ */
+export function resolveReservedLoopbackPorts(
+  args: ResolveReservedLoopbackPortsArgs,
+): readonly number[] {
+  const ports = new Set<number>([BB_PROD_HOST_DAEMON_PORT]);
+  for (const serverUrl of [args.builtinServerUrl, args.localServerUrl]) {
+    const port = serverUrl === null ? null : loopbackServicePort(serverUrl);
+    if (port !== null) {
+      ports.add(port);
+    }
+  }
+  if (args.localHostDaemonPort !== null) {
+    ports.add(args.localHostDaemonPort);
+  }
+  return [...ports];
 }
 
 export interface ResolveRequestingFrameLocalOriginKeyArgs {
