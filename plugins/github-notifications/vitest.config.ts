@@ -1,13 +1,10 @@
-import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
+import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 
-export default defineConfig({
-  resolve: {
-    alias: {
-      "@": fileURLToPath(new URL(".", import.meta.url)),
-    },
-  },
+export default defineWorkspaceTestConfig({
   test: {
+    name: "bb-plugin-github-notifications",
+    include: ["**/*.test.{ts,tsx}"],
+    exclude: ["node_modules/**"],
     testTimeout: 20_000,
   },
 });

@@ -8,6 +8,7 @@ export type ActivityKind =
 
 export interface GithubNotificationRow {
   id: string;
+  latestCommentUrl: string | null;
   reason: string;
   repository: string;
   subjectType: string;
@@ -25,6 +26,7 @@ export interface GithubCommentNode {
   author?: GithubActor | null;
   bodyText?: unknown;
   createdAt?: unknown;
+  databaseId?: unknown;
 }
 
 export interface GithubReviewNode {
@@ -94,6 +96,7 @@ export function parseNotificationRows(raw: unknown): GithubNotificationRow[] {
     }
     const id = stringValue(entry.id);
     const reason = stringValue(entry.reason);
+    const latestCommentUrl = stringValue(entry.subject.latest_comment_url);
     const repository = stringValue(entry.repository.full_name);
     const subjectType = stringValue(entry.subject.type);
     const subjectUrl = stringValue(entry.subject.url);
@@ -113,6 +116,7 @@ export function parseNotificationRows(raw: unknown): GithubNotificationRow[] {
     return [
       {
         id,
+        latestCommentUrl,
         reason,
         repository,
         subjectType,
@@ -125,17 +129,17 @@ export function parseNotificationRows(raw: unknown): GithubNotificationRow[] {
   });
 }
 
-export function buildGraphqlQuery(rows: GithubNotificationRow[]): {
-  query: string;
-  lookups: GraphqlLookup[];
-} {
-  const lookups = rows.flatMap((row, index): GraphqlLookup[] => {
+function buildLookups(
+  rows: GithubNotificationRow[],
+  indexOffset: number,
+): GraphqlLookup[] {
+  return rows.flatMap((row, index): GraphqlLookup[] => {
     const [owner, repoName, ...rest] = row.repository.split("/");
     const number = parseNumberFromSubjectUrl(row.subjectUrl);
     if (!owner || !repoName || rest.length > 0 || number === null) return [];
     return [
       {
-        alias: `notification${index}`,
+        alias: `notification${index + indexOffset}`,
         number,
         owner,
         repoName,
@@ -143,28 +147,96 @@ export function buildGraphqlQuery(rows: GithubNotificationRow[]): {
       },
     ];
   });
+}
+
+export function buildOwnershipQuery(
+  rows: GithubNotificationRow[],
+  indexOffset = 0,
+): {
+  query: string;
+  lookups: GraphqlLookup[];
+} {
+  const lookups = buildLookups(rows, indexOffset);
   const fields = lookups.map((lookup) => {
     const resourceField =
       lookup.resourceKind === "pr" ? "pullRequest" : "issue";
-    const reviews =
-      lookup.resourceKind === "pr"
-        ? "reviews(last: 20) { nodes { author { login } state submittedAt } }"
-        : "";
     return `${lookup.alias}: repository(owner: ${JSON.stringify(lookup.owner)}, name: ${JSON.stringify(lookup.repoName)}) {
       resource: ${resourceField}(number: ${lookup.number}) {
         author { login }
         number
         title
-        updatedAt
         url
-        comments(last: 20) { nodes { author { login } bodyText createdAt } }
-        ${reviews}
       }
     }`;
   });
   return {
     lookups,
     query: `query GithubNotifications { viewer { login } ${fields.join("\n")} }`,
+  };
+}
+
+function rowIndexFromAlias(alias: string): number | null {
+  const index = Number(alias.replace("notification", ""));
+  return Number.isSafeInteger(index) && index >= 0 ? index : null;
+}
+
+function latestCommentDatabaseId(url: string | null): number | null {
+  if (url === null) return null;
+  const match = url.match(/\/comments\/(\d+)$/u);
+  if (match === null) return null;
+  const id = Number(match[1]);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+export function buildActivityQuery(args: {
+  lookups: GraphqlLookup[];
+  rows: GithubNotificationRow[];
+}): string {
+  const fields = args.lookups.map((lookup) => {
+    const resourceField =
+      lookup.resourceKind === "pr" ? "pullRequest" : "issue";
+    const rowIndex = rowIndexFromAlias(lookup.alias);
+    const row = rowIndex === null ? undefined : args.rows[rowIndex];
+    const needsMentionBody =
+      row !== undefined &&
+      (row.reason === "mention" || row.reason === "team_mention") &&
+      latestCommentDatabaseId(row.latestCommentUrl) === null;
+    const bodyField = needsMentionBody ? " bodyText" : "";
+    const reviews =
+      lookup.resourceKind === "pr"
+        ? "reviews(last: 20) { nodes { author { login } state submittedAt } }"
+        : "";
+    return `${lookup.alias}: repository(owner: ${JSON.stringify(lookup.owner)}, name: ${JSON.stringify(lookup.repoName)}) {
+      resource: ${resourceField}(number: ${lookup.number}) {
+        comments(last: 20) { nodes { author { login } createdAt databaseId${bodyField} } }
+        ${reviews}
+      }
+    }`;
+  });
+  return `query GithubNotificationActivity { ${fields.join("\n")} }`;
+}
+
+export function selectOwnedLookups(args: {
+  data: Record<string, unknown>;
+  lookups: GraphqlLookup[];
+}): { login: string; lookups: GraphqlLookup[] } {
+  const viewer = isRecord(args.data.viewer)
+    ? stringValue(args.data.viewer.login)
+    : null;
+  if (viewer === null)
+    throw new Error("GitHub did not return the signed-in account.");
+  return {
+    login: viewer,
+    lookups: args.lookups.filter((lookup) => {
+      const repositoryNode = args.data[lookup.alias];
+      return (
+        isRecord(repositoryNode) &&
+        isRecord(repositoryNode.resource) &&
+        stringValue(
+          (repositoryNode.resource as GithubResourceNode).author?.login,
+        ) === viewer
+      );
+    }),
   };
 }
 
@@ -189,7 +261,7 @@ function includesMention(body: string, viewer: string): boolean {
 function commentCandidates(
   node: GithubResourceNode,
   viewer: string,
-  reason: string,
+  row: GithubNotificationRow,
 ): ActivityCandidate[] {
   const rawNodes = node.comments?.nodes;
   if (!Array.isArray(rawNodes)) return [];
@@ -200,10 +272,15 @@ function commentCandidates(
     const at = dateValue(comment.createdAt);
     if (actor === null || at === null || actor === viewer) return [];
     const body = typeof comment.bodyText === "string" ? comment.bodyText : "";
+    const databaseId =
+      typeof comment.databaseId === "number" &&
+      Number.isSafeInteger(comment.databaseId)
+        ? comment.databaseId
+        : null;
+    const expectedMentionId = latestCommentDatabaseId(row.latestCommentUrl);
     const mention =
-      reason === "mention" ||
-      reason === "team_mention" ||
-      includesMention(body, viewer);
+      (expectedMentionId !== null && databaseId === expectedMentionId) ||
+      (expectedMentionId === null && includesMention(body, viewer));
     return [
       {
         actor,
@@ -264,14 +341,15 @@ export function projectOwnedNotifications(args: {
     const row = args.rows[rowIndex];
     if (row === undefined) continue;
     const candidates = [
-      ...commentCandidates(resource, viewer, row.reason),
+      ...commentCandidates(resource, viewer, row),
       ...reviewCandidates(resource, viewer),
     ].sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
-    let activity = candidates[0];
-    if (
-      activity === undefined &&
-      (row.reason === "mention" || row.reason === "team_mention")
-    ) {
+    const isMentionReason =
+      row.reason === "mention" || row.reason === "team_mention";
+    let activity = isMentionReason
+      ? candidates.find((candidate) => candidate.kind === "mention")
+      : candidates[0];
+    if (activity === undefined && isMentionReason) {
       activity = {
         actor: "",
         at: row.updatedAt,

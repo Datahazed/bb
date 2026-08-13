@@ -148,7 +148,7 @@ function NotificationLink({ item }: { item: GithubNotificationItem }) {
       !event.ctrlKey &&
       !event.shiftKey &&
       !event.altKey &&
-      navigate.openBrowserTab({ url: item.url })
+      navigate.experimental_openBrowserTab({ url: item.url })
     ) {
       event.preventDefault();
     }
