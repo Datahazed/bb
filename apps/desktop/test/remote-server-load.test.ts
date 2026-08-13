@@ -75,4 +75,82 @@ describe("loading a remote bb server", () => {
     expect(harness.warnings[0]).toContain("ERR_FAILED");
     expect(harness.warnings[0]).toContain("js2c");
   });
+
+  // A saved target keeps user information and the query string, so it can hold a
+  // password or a token. The user photographs this screen for a bug report and
+  // attaches the log to it.
+  it("keeps a credential and a query token out of the screen and the log", async () => {
+    const harness = createHarness();
+    const secretUrl = "https://alice:hunter2@bb.example:38886/?token=s3cret";
+
+    const loaded = await loadRemoteServerPage({
+      async loadStartupError(args) {
+        harness.errors.push(args);
+      },
+      loadUrl() {
+        return Promise.reject(
+          new Error(`ERR_CONNECTION_REFUSED (-102) loading '${secretUrl}'`),
+        );
+      },
+      logWarning(message) {
+        harness.warnings.push(message);
+      },
+      serverUrl: secretUrl,
+    });
+
+    expect(loaded).toBe(false);
+    const printed = [harness.errors[0]?.details ?? "", ...harness.warnings];
+    for (const text of printed) {
+      expect(text).not.toContain("hunter2");
+      expect(text).not.toContain("alice");
+      expect(text).not.toContain("s3cret");
+      expect(text).not.toContain("token=");
+    }
+    // Naming the host is the point of the screen, so that part survives.
+    expect(harness.errors[0]?.details).toContain("https://bb.example:38886/");
+    // The code is the part of the Electron message worth keeping.
+    expect(harness.warnings[0]).toContain("ERR_CONNECTION_REFUSED (-102)");
+  });
+
+  it("names no address when the saved target does not parse", async () => {
+    const harness = createHarness();
+
+    await loadRemoteServerPage({
+      async loadStartupError(args) {
+        harness.errors.push(args);
+      },
+      loadUrl() {
+        return Promise.reject(new Error("ERR_FAILED (-2) loading 'nonsense'"));
+      },
+      logWarning(message) {
+        harness.warnings.push(message);
+      },
+      serverUrl: "nonsense://it is not a url",
+    });
+
+    expect(harness.errors[0]?.details).toContain("the saved bb server");
+    expect(harness.errors[0]?.details).not.toContain("nonsense");
+    expect(harness.warnings[0]).not.toContain("nonsense");
+  });
+
+  it("still loads the complete URL, secret parts included", async () => {
+    const harness = createHarness();
+    const secretUrl = "https://alice:hunter2@bb.example:38886/?token=s3cret";
+
+    const loaded = await loadRemoteServerPage({
+      async loadStartupError(args) {
+        harness.errors.push(args);
+      },
+      async loadUrl(args) {
+        harness.loadedUrls.push(args.url);
+      },
+      logWarning(message) {
+        harness.warnings.push(message);
+      },
+      serverUrl: secretUrl,
+    });
+
+    expect(loaded).toBe(true);
+    expect(harness.loadedUrls).toEqual([secretUrl]);
+  });
 });
