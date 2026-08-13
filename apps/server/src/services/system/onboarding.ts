@@ -34,9 +34,9 @@ import {
  *   Code, and Cursor. Those are the only three that can report a plan.
  * - `provider_cli.status` — install state for the same three, plus the managed
  *   installer that makes "Install" possible at all.
- * - `known_acp_agents.status` — presence of opencode, omp, Grok Build, and
- *   Hermes Agent. Real, usable providers with no billing detail; they get no
- *   plan badge rather than a fabricated one.
+ * - `known_acp_agents.status` — presence of opencode, omp, jcode, Grok Build,
+ *   and Hermes Agent. Real, usable providers with no billing detail; they get
+ *   no plan badge rather than a fabricated one.
  */
 
 interface PlanCapableAgentConfig {

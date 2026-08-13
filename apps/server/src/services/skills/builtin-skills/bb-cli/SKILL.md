@@ -301,9 +301,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
   will run; the selectors cannot be combined. With neither selector they
   intentionally inspect the primary machine.
 - Known ACP agents can appear automatically when their CLI is installed on the
-  host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
-  `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
-  `acp-grok`, or `acp-hermes-agent`.
+  host; for example `opencode`, `omp`, `jcode`, Grok Build's `grok` CLI, or
+  Hermes' `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
+  `acp-jcode`, `acp-grok`, or `acp-hermes-agent`.
 - Cursor ACP threads discover project skills from `.cursor/skills`. This root
   can link to `.agents/skills`. `bb skill list` shows linked Cursor skills under
   `cursor-project` and keeps them read-only.

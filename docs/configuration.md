@@ -269,7 +269,8 @@ simply unavailable.
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, bb exposes `acp-opencode` when `opencode` is on PATH and can
 be launched as `opencode acp`, and `acp-omp` when `omp` (oh-my-pi) is on PATH
-and can be launched as `omp acp`. It also exposes `acp-grok` when Grok Build's
+and can be launched as `omp acp`. It exposes `acp-jcode` when `jcode` is on PATH
+and can be launched as `jcode acp`. It also exposes `acp-grok` when Grok Build's
 `grok` CLI is on PATH and can be launched as `grok agent stdio`, and
 `acp-hermes-agent` when Hermes' `hermes` CLI is on PATH and can be launched as
 `hermes acp`.

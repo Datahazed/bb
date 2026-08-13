@@ -33,6 +33,21 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
     executableName: "omp",
   },
   {
+    // jcode speaks the Agent Client Protocol over stdio via `jcode acp`.
+    // It uses the credentials configured by `jcode login`.
+    id: "acp-jcode",
+    displayName: "jcode",
+    command: "jcode",
+    args: ["acp"],
+    env: {},
+    executableName: "jcode",
+    modelCli: {
+      listArgs: ["model", "list"],
+      selectFlag: "--model",
+      primaryModels: [],
+    },
+  },
+  {
     // Grok Build speaks ACP over stdio via `grok agent stdio`
     // (https://docs.x.ai/build/cli/headless-scripting). Authentication is
     // handled by the ACP bridge using Grok's advertised auth methods.

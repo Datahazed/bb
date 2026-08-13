@@ -275,6 +275,21 @@ describe("thread runtime config", () => {
     },
     {
       expectedSpec: {
+        displayName: "jcode",
+        command: "jcode",
+        args: ["acp"],
+        env: {},
+        modelCli: {
+          listArgs: ["model", "list"],
+          selectFlag: "--model",
+          primaryModels: [],
+        },
+      },
+      providerId: "acp-jcode",
+      requestedModel: "anthropic/claude-sonnet-4-5",
+    },
+    {
+      expectedSpec: {
         displayName: "Grok Build",
         command: "grok",
         args: ["agent", "stdio"],

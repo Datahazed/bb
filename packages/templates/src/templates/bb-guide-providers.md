@@ -72,9 +72,9 @@ page. This preference also defaults off and applies to newly started, resumed,
 or forked provider sessions.
 
 Known ACP agents can appear automatically when their CLI is installed on the
-host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
-on PATH appears as provider acp-opencode, acp-omp, acp-grok, or
-acp-hermes-agent.
+host. For example, opencode, omp, jcode, Grok Build's grok CLI, or Hermes'
+hermes CLI on PATH appears as provider acp-opencode, acp-omp, acp-jcode,
+acp-grok, or acp-hermes-agent.
 
 bb indexes the native user and project skill roots for Codex, Claude Code, Pi,
 Cursor, OpenCode, omp, Grok Build, and Hermes Agent. This includes compatibility

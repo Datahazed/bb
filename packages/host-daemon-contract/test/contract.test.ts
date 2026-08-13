@@ -1056,6 +1056,7 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 118 adds jcode to the known ACP agent queries and launch specs.
   // Version 117 adds thread/context/cleared to the provider event wire model.
   // Version 116 reports provider exits that happen while a turn start is
   // pending. Older daemons can leave the server thread active until the live
@@ -1068,8 +1069,8 @@ describe("host-daemon command schemas", () => {
   // against its Pi provider ladder, so enrolled machines must not run that
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
-  it("uses protocol version 117 for context-cleared provider events", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(117);
+  it("uses protocol version 118 for jcode ACP provider support", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(118);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

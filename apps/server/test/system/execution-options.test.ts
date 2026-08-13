@@ -383,6 +383,82 @@ describe("resolveSystemExecutionOptions", () => {
     });
   });
 
+  it("includes installed jcode ACP and sends its launch spec when loading models", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-known-jcode-installed",
+      });
+      const catalogModel = availableModelFixture({
+        model: "anthropic/claude-sonnet-4-5",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "known_acp_agents.status") {
+            return {
+              ok: true,
+              result: {
+                agents: request.command.agents.map((agent) => ({
+                  ...agent,
+                  installed: agent.id === "acp-jcode",
+                  executablePath:
+                    agent.id === "acp-jcode"
+                      ? "/Users/example/.local/bin/jcode"
+                      : null,
+                })),
+              },
+            };
+          }
+          if (request.command.type === "provider.list_models") {
+            return {
+              ok: true,
+              result: {
+                models: [catalogModel],
+                selectedOnlyModels: [],
+              },
+            };
+          }
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        },
+      });
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "acp-jcode",
+      });
+
+      expect(response.providers).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "acp-jcode",
+            displayName: "jcode",
+            available: true,
+          }),
+        ]),
+      );
+      expect(response.models).toEqual([catalogModel]);
+      expect(responder.requests.map((request) => request.command.type)).toEqual(
+        ["known_acp_agents.status", "provider.list_models"],
+      );
+      expect(responder.requests[1].command).toEqual({
+        type: "provider.list_models",
+        providerId: "acp-jcode",
+        acpLaunchSpec: {
+          displayName: "jcode",
+          command: "jcode",
+          args: ["acp"],
+          env: {},
+          modelCli: {
+            listArgs: ["model", "list"],
+            selectFlag: "--model",
+            primaryModels: [],
+          },
+        },
+      });
+    });
+  });
+
   it("includes installed Hermes Agent ACP and sends its launch spec when loading models", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -693,9 +769,9 @@ describe("resolveSystemExecutionOptions", () => {
           sessionId: session.id,
           handle: (request) => {
             if (request.command.type === "known_acp_agents.status") {
-              // acp-omp, acp-grok, and acp-hermes-agent are known agents that
-              // are not overridden by custom config here, so the server probes
-              // host install status for them.
+              // acp-omp, acp-jcode, acp-grok, and acp-hermes-agent are known
+              // agents that are not overridden by custom config here, so the
+              // server probes host install status for them.
               return { ok: true, result: { agents: [] } };
             }
             if (request.command.type === "provider.list_models") {
