@@ -148,7 +148,7 @@ function NotificationLink({ item }: { item: GithubNotificationItem }) {
       !event.ctrlKey &&
       !event.shiftKey &&
       !event.altKey &&
-      navigate.experimental_openBrowserTab({ url: item.url })
+      navigate.experimental_openRightPanel({ kind: "browser", url: item.url })
     ) {
       event.preventDefault();
     }
@@ -530,5 +530,6 @@ export default definePluginApp((app) => {
     icon: "Github",
     path: "activity",
     component: GitHubActivityPanel,
+    experimental_rightPanel: { tools: ["browser"] },
   });
 });

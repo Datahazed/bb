@@ -14,7 +14,7 @@ describe("GitHub Activity panel", () => {
       panel,
       { subPath: "" },
       {
-        experimental_openBrowserTab: () => true,
+        experimental_openRightPanel: () => true,
         rpc: {
           listNotifications: () => ({
             fetchedAt: "2026-08-12T12:00:00Z",
@@ -76,8 +76,11 @@ describe("GitHub Activity panel", () => {
     expect(link.querySelector("svg")).not.toBeNull();
     fireEvent.click(link);
     expect(slot.inspection.navigateCalls).toContainEqual({
-      method: "experimental_openBrowserTab",
-      options: { url: "https://github.com/get-bb/bb/pull/42" },
+      method: "experimental_openRightPanel",
+      request: {
+        kind: "browser",
+        url: "https://github.com/get-bb/bb/pull/42",
+      },
     });
     expect(screen.getByRole("columnheader", { name: /Item/u })).toBeDefined();
     expect(
