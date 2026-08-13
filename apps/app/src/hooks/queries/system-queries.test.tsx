@@ -15,6 +15,7 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   hostProviderCliStatusQueryKey,
   onboardingAgentsQueryKey,
+  systemBuildQueryKey,
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
   systemUsageLimitsQueryKey,
@@ -22,6 +23,7 @@ import {
 import {
   useHostProviderCliStatus,
   useOnboardingAgents,
+  useSystemBuild,
   useSystemExecutionOptions,
   useSystemUsageLimits,
 } from "./system-queries";
@@ -34,6 +36,7 @@ vi.mock("@/lib/sdk", () => ({
       executionOptions: vi.fn(),
       onboardingAgents: vi.fn(),
       usageLimits: vi.fn(),
+      version: vi.fn(),
     },
   },
 }));
@@ -69,6 +72,37 @@ const PROVIDER_USAGE_RESPONSE: ProviderUsageResponse = {
   claudeCode: { status: "unauthenticated" },
   cursor: { status: "unauthenticated" },
 };
+
+describe("useSystemBuild", () => {
+  it("polls the local build without an npm update lookup", async () => {
+    vi.mocked(sdk.system.version).mockResolvedValue({
+      currentVersion: "0.37.0",
+      latestVersion: null,
+      source: "npm",
+      updateAvailable: false,
+      isDevelopment: false,
+      build: {
+        branch: "feat/example",
+        commit: "e6f422ef5c1a9d3b7f0e2a4c8d1b6e9f3a5c7d20",
+        shortCommit: "e6f422e",
+        dirty: false,
+      },
+      upgradeCommand: "npx bb-app@latest",
+    });
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(() => useSystemBuild(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.data?.branch).toBe("feat/example");
+    });
+    expect(sdk.system.version).toHaveBeenCalledWith({
+      includeUpdates: false,
+      signal: expect.any(AbortSignal),
+    });
+    expect(queryClient.getQueryState(systemBuildQueryKey())).toBeDefined();
+  });
+});
 
 afterEach(() => {
   cleanup();

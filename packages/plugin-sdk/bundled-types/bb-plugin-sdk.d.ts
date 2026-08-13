@@ -2905,8 +2905,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        base64: "base64";
         utf8: "utf8";
+        base64: "base64";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -12503,6 +12503,7 @@ interface SystemUsageLimitsArgs extends SystemUsageLimitsQuery {
 }
 interface SystemVersionArgs {
     force?: boolean;
+    includeUpdates?: boolean;
     signal?: AbortSignal;
 }
 interface SystemVoiceTranscriptionArgs {

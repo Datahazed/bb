@@ -94,8 +94,8 @@ import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import {
+  useSystemBuild,
   useSystemConfig,
-  useSystemVersion,
 } from "@/hooks/queries/system-queries";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
@@ -517,8 +517,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const isGlobalSettingsView =
     matchPath(`${SETTINGS_ROUTE_PATH}/*`, location.pathname) !== null;
   const systemConfigQuery = useSystemConfig();
-  const systemVersionQuery = useSystemVersion();
-  const build = systemVersionQuery.data?.build ?? null;
+  const systemBuildQuery = useSystemBuild();
+  const build = systemBuildQuery.data ?? null;
   const toolsHubEnabled = systemConfigQuery.data?.experiments.toolsHub === true;
   const isGlobalToolsView =
     toolsHubEnabled && isToolsRoutePath(location.pathname);

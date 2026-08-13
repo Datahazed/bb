@@ -140,7 +140,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   });
   pendingInteractions.start();
 
-  const runningBuild = await createRunningBuildCache({
+  const runningBuild = createRunningBuildCache({
     checkoutRoot: resolveRunningCheckoutRoot(selfDir),
   });
   const appVersion = createAppVersionService({
@@ -198,6 +198,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     fetch: app.fetch,
     serverConfig,
   });
+  runningBuild.start();
   injectWebSocket(server);
 
   logger.info(

@@ -10,7 +10,7 @@ const ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY = "bb.root-compose.project-id";
 
 const mockUseThread = vi.hoisted(() => vi.fn());
 const mockUseThreadDetailBootstrap = vi.hoisted(() => vi.fn());
-const mockUseSystemVersion = vi.hoisted(() => vi.fn());
+const mockUseSystemBuild = vi.hoisted(() => vi.fn());
 const desktopState = vi.hoisted(() => ({ current: null as object | null }));
 
 vi.mock("@/components/sidebar/AppSidebar", () => ({
@@ -32,7 +32,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
       },
     },
   }),
-  useSystemVersion: () => mockUseSystemVersion(),
+  useSystemBuild: () => mockUseSystemBuild(),
 }));
 
 vi.mock("@/components/project/ProjectActionsProvider", () => ({
@@ -149,7 +149,7 @@ describe("AppLayout root compose project preference", () => {
   beforeEach(() => {
     desktopState.current = null;
     window.localStorage.clear();
-    mockUseSystemVersion.mockReturnValue({ data: { build: null } });
+    mockUseSystemBuild.mockReturnValue({ data: null });
     mockUseThread.mockReturnValue({
       data: {
         id: "thr_opened",
@@ -199,14 +199,12 @@ describe("AppLayout root compose project preference", () => {
 
   it("exposes the build in the DOM and desktop window title", async () => {
     desktopState.current = {};
-    mockUseSystemVersion.mockReturnValue({
+    mockUseSystemBuild.mockReturnValue({
       data: {
-        build: {
-          branch: "feat/example",
-          commit: "e6f422ef5c1a9d3b7f0e2a4c8d1b6e9f3a5c7d20",
-          shortCommit: "e6f422e",
-          dirty: true,
-        },
+        branch: "feat/example",
+        commit: "e6f422ef5c1a9d3b7f0e2a4c8d1b6e9f3a5c7d20",
+        shortCommit: "e6f422e",
+        dirty: true,
       },
     });
 

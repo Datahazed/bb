@@ -34,7 +34,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
       },
     },
   }),
-  useSystemVersion: () => ({ data: { build: null } }),
+  useSystemBuild: () => ({ data: null }),
 }));
 
 vi.mock("@/lib/plugin-slots", () => ({

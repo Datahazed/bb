@@ -46,6 +46,7 @@ export interface SystemUsageLimitsArgs extends SystemUsageLimitsQuery {
 
 export interface SystemVersionArgs {
   force?: boolean;
+  includeUpdates?: boolean;
   signal?: AbortSignal;
 }
 
@@ -126,9 +127,14 @@ export interface SystemArea {
 }
 
 function versionQuery(args: SystemVersionArgs | undefined): SystemVersionQuery {
-  return args?.force === undefined
-    ? {}
-    : { force: args.force ? "true" : "false" };
+  return {
+    ...(args?.force === undefined
+      ? {}
+      : { force: args.force ? "true" : "false" }),
+    ...(args?.includeUpdates === undefined
+      ? {}
+      : { includeUpdates: args.includeUpdates ? "true" : "false" }),
+  };
 }
 
 export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {

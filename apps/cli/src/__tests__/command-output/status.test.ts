@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   setupCommandOutputTestEnvironment,
+  collectLogPayloads,
   collectLogLines,
   runCommand,
   stubServerApi,
@@ -112,5 +113,23 @@ describe("bb status command output", () => {
     expect(collectLogLines(vi.mocked(console.log))).toContain(
       "Build       feat/example@e6f422e (dirty)",
     );
+  });
+
+  it("bb status JSON keeps a null build from an old server", async () => {
+    stubServerApi({
+      "v1.system.version.$get": vi.fn(async () => ({
+        currentVersion: "0.36.0",
+        latestVersion: null,
+        source: "npm" as const,
+        updateAvailable: false,
+        isDevelopment: false,
+        upgradeCommand: "npx bb-app@latest",
+      })),
+    });
+
+    await runCommand(["status", "--json"], register);
+
+    const payload = JSON.parse(collectLogPayloads(vi.mocked(console.log))[0]);
+    expect(payload).toHaveProperty("build", null);
   });
 });

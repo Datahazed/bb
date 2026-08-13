@@ -54,6 +54,12 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
 import type { SystemBuild } from "@bb/server-contract";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -402,16 +408,25 @@ export function AppSidebar({
               </SidebarMenuButton>
             </SidebarMenuItem>
             {build ? (
-              <li
-                className="flex min-w-0 items-center text-xs text-muted-foreground group-data-[collapsible=icon]:hidden"
-                title={build.commit}
+              <TooltipProvider
+                delayDuration={300}
+                disableHoverableContent={false}
               >
-                <span className="min-w-0 truncate">{build.branch}</span>
-                <span className="shrink-0">
-                  @{build.shortCommit}
-                  {build.dirty ? "•" : null}
-                </span>
-              </li>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <li className="flex min-w-0 items-center text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+                      <span className="min-w-0 truncate">{build.branch}</span>
+                      <span className="shrink-0">
+                        @{build.shortCommit}
+                        {build.dirty ? "•" : null}
+                      </span>
+                    </li>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="select-all font-mono">
+                    {build.commit}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             ) : null}
             <li aria-hidden="true" className="min-w-0 flex-1" />
             <SidebarUpdatesBadge onNavigate={closeOnMobile} />

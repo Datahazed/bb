@@ -283,6 +283,8 @@ export type SystemVersionResponse = z.infer<typeof systemVersionResponseSchema>;
 export const systemVersionQuerySchema = z.object({
   /** "true" bypasses the server-side npm latest cache for a manual check. */
   force: z.enum(["true", "false"]).optional(),
+  /** "false" returns local build data without an npm update lookup. */
+  includeUpdates: z.enum(["true", "false"]).optional(),
 });
 export type SystemVersionQuery = z.infer<typeof systemVersionQuerySchema>;
 

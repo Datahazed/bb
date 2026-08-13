@@ -80,12 +80,15 @@ describe("createRunningBuildCache", () => {
       },
     ];
     const resolveBuild = vi.fn(async () => builds.shift() ?? null);
-    const cache = await createRunningBuildCache({
+    const cache = createRunningBuildCache({
       checkoutRoot: "/checkout",
       refreshIntervalMs: 100,
       resolveBuild,
     });
 
+    expect(cache.getBuild()).toBeNull();
+    cache.start();
+    await vi.advanceTimersByTimeAsync(0);
     expect(cache.getBuild()?.branch).toBe("feat/first");
     await vi.advanceTimersByTimeAsync(100);
     expect(cache.getBuild()).toEqual({
@@ -119,9 +122,13 @@ describe("createRunningBuildCache", () => {
       });
       await writeFile(join(checkoutRoot, "scratch.txt"), "scratch\n");
 
-      const cache = await createRunningBuildCache({
+      const cache = createRunningBuildCache({
         checkoutRoot,
         refreshIntervalMs: 60_000,
+      });
+      cache.start();
+      await vi.waitFor(() => {
+        expect(cache.getBuild()).not.toBeNull();
       });
       expect(cache.getBuild()).toMatchObject({
         branch: "feat/example",

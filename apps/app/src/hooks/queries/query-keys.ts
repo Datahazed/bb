@@ -60,6 +60,7 @@ export const SYSTEM_CONFIG_QUERY_KEY = "systemConfig";
 export const SYSTEM_EXECUTION_OPTIONS_QUERY_KEY = "systemExecutionOptions";
 export const SYSTEM_CLI_SKILLS_QUERY_KEY = "systemCliSkills";
 export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
+export const SYSTEM_BUILD_QUERY_KEY = "systemBuild";
 export const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
 export const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
 export const ONBOARDING_AGENTS_QUERY_KEY = "onboardingAgents";
@@ -436,6 +437,7 @@ export type SystemCliSkillsQueryKey = readonly [
   typeof SYSTEM_CLI_SKILLS_QUERY_KEY,
 ];
 export type SystemVersionQueryKey = readonly [typeof SYSTEM_VERSION_QUERY_KEY];
+export type SystemBuildQueryKey = readonly [typeof SYSTEM_BUILD_QUERY_KEY];
 export type HostProviderCliStatusQueryKey = readonly [
   typeof HOST_PROVIDER_CLI_STATUS_QUERY_KEY,
   string | null,
@@ -1058,6 +1060,10 @@ export function systemConfigQueryKey(): SystemConfigQueryKey {
 
 export function systemVersionQueryKey(): SystemVersionQueryKey {
   return [SYSTEM_VERSION_QUERY_KEY];
+}
+
+export function systemBuildQueryKey(): SystemBuildQueryKey {
+  return [SYSTEM_BUILD_QUERY_KEY];
 }
 
 export function hostProviderCliStatusQueryKey(

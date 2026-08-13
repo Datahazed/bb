@@ -16,12 +16,13 @@ const npmLatestResponseSchema = z
 
 export interface AppVersionService {
   getSystemVersion(
-    args?: AppVersionGetSystemVersionArgs,
+    args: AppVersionGetSystemVersionArgs,
   ): Promise<SystemVersionResponse>;
 }
 
 export interface AppVersionGetSystemVersionArgs {
-  forceRefresh?: boolean;
+  forceRefresh: boolean;
+  includeUpdates: boolean;
 }
 
 export interface CreateAppVersionServiceArgs {
@@ -131,7 +132,7 @@ export function createAppVersionService(
 
   return {
     async getSystemVersion(
-      args: AppVersionGetSystemVersionArgs = {},
+      args: AppVersionGetSystemVersionArgs,
     ): Promise<SystemVersionResponse> {
       const baseResponse: SystemVersionResponse = {
         currentVersion: config.appVersion,
@@ -143,7 +144,7 @@ export function createAppVersionService(
         upgradeCommand: UPGRADE_COMMAND,
       };
 
-      if (config.isDevelopment) {
+      if (config.isDevelopment || !args.includeUpdates) {
         return baseResponse;
       }
 

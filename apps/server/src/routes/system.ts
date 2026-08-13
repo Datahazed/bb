@@ -369,6 +369,7 @@ export function registerSystemRoutes(
     context.json(
       await deps.appVersion.getSystemVersion({
         forceRefresh: query.force === "true",
+        includeUpdates: query.includeUpdates !== "false",
       }),
     ),
   );

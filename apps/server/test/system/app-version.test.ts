@@ -14,6 +14,11 @@ interface FetchCall {
   signal: AbortSignal | null;
 }
 
+const DEFAULT_VERSION_ARGS = {
+  forceRefresh: false,
+  includeUpdates: true,
+};
+
 function createStubFetch(
   responses: StubFetchOptions[],
   calls: FetchCall[],
@@ -50,7 +55,7 @@ describe("createAppVersionService", () => {
       fetchImpl: createStubFetch([{ body: { version: "0.0.6" } }], calls),
       logger: testLogger,
     });
-    const response = await service.getSystemVersion();
+    const response = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(response).toEqual({
       currentVersion: "0.0.5",
       isDevelopment: true,
@@ -70,7 +75,7 @@ describe("createAppVersionService", () => {
       fetchImpl: createStubFetch([{ body: { version: "0.0.6" } }], calls),
       logger: testLogger,
     });
-    const response = await service.getSystemVersion();
+    const response = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(response.latestVersion).toBe("0.0.6");
     expect(response.updateAvailable).toBe(true);
     expect(calls).toHaveLength(1);
@@ -91,10 +96,34 @@ describe("createAppVersionService", () => {
       logger: testLogger,
     });
 
-    const response = await service.getSystemVersion();
+    const response = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
 
     expect(response.isDevelopment).toBe(false);
     expect(response.build).toEqual(build);
+  });
+
+  it("returns a production checkout identity without an npm lookup", async () => {
+    const calls: FetchCall[] = [];
+    const service = createAppVersionService({
+      config: { appVersion: "0.0.5", isDevelopment: false },
+      fetchImpl: createStubFetch([{ body: { version: "0.0.6" } }], calls),
+      getBuild: () => ({
+        branch: "feat/example",
+        commit: "e6f422ef5c1a9d3b7f0e2a4c8d1b6e9f3a5c7d20",
+        shortCommit: "e6f422e",
+        dirty: false,
+      }),
+      logger: testLogger,
+    });
+
+    const response = await service.getSystemVersion({
+      forceRefresh: false,
+      includeUpdates: false,
+    });
+
+    expect(response.build?.branch).toBe("feat/example");
+    expect(response.latestVersion).toBeNull();
+    expect(calls).toEqual([]);
   });
 
   it("reports updateAvailable=false when versions are equal", async () => {
@@ -103,7 +132,7 @@ describe("createAppVersionService", () => {
       fetchImpl: createStubFetch([{ body: { version: "0.0.6" } }], []),
       logger: testLogger,
     });
-    const response = await service.getSystemVersion();
+    const response = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(response.latestVersion).toBe("0.0.6");
     expect(response.updateAvailable).toBe(false);
   });
@@ -114,7 +143,7 @@ describe("createAppVersionService", () => {
       fetchImpl: createStubFetch([{ body: { version: "0.0.6" } }], []),
       logger: testLogger,
     });
-    const response = await service.getSystemVersion();
+    const response = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(response.latestVersion).toBe("0.0.6");
     expect(response.updateAvailable).toBe(false);
   });
@@ -129,7 +158,7 @@ describe("createAppVersionService", () => {
       ),
       logger: { ...testLogger, warn },
     });
-    const response = await service.getSystemVersion();
+    const response = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(response).toEqual({
       currentVersion: "0.0.5",
       isDevelopment: false,
@@ -148,7 +177,7 @@ describe("createAppVersionService", () => {
       fetchImpl: createStubFetch([{ ok: false, status: 429, body: {} }], []),
       logger: testLogger,
     });
-    const response = await service.getSystemVersion();
+    const response = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(response.latestVersion).toBeNull();
     expect(response.updateAvailable).toBe(false);
   });
@@ -159,7 +188,7 @@ describe("createAppVersionService", () => {
       fetchImpl: createStubFetch([{ body: { unexpected: true } }], []),
       logger: testLogger,
     });
-    const response = await service.getSystemVersion();
+    const response = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(response.latestVersion).toBeNull();
   });
 
@@ -169,7 +198,7 @@ describe("createAppVersionService", () => {
       fetchImpl: createStubFetch([{ body: { version: "0.0.6" } }], []),
       logger: testLogger,
     });
-    const response = await service.getSystemVersion();
+    const response = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(response.latestVersion).toBe("0.0.6");
     expect(response.updateAvailable).toBe(false);
   });
@@ -184,8 +213,8 @@ describe("createAppVersionService", () => {
       ),
       logger: testLogger,
     });
-    const first = await service.getSystemVersion();
-    const second = await service.getSystemVersion();
+    const first = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
+    const second = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(first.latestVersion).toBe("0.0.6");
     expect(second.latestVersion).toBe("0.0.6");
     expect(calls).toHaveLength(1);
@@ -201,8 +230,11 @@ describe("createAppVersionService", () => {
       ),
       logger: testLogger,
     });
-    const first = await service.getSystemVersion();
-    const second = await service.getSystemVersion({ forceRefresh: true });
+    const first = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
+    const second = await service.getSystemVersion({
+      forceRefresh: true,
+      includeUpdates: true,
+    });
     expect(first.latestVersion).toBe("0.0.6");
     expect(second.latestVersion).toBe("0.0.7");
     expect(calls).toHaveLength(2);
@@ -221,9 +253,9 @@ describe("createAppVersionService", () => {
       logger: testLogger,
       now: () => currentTime,
     });
-    const first = await service.getSystemVersion();
+    const first = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     currentTime += 1_000;
-    const second = await service.getSystemVersion();
+    const second = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(first.latestVersion).toBe("0.0.6");
     expect(second.latestVersion).toBe("0.0.7");
     expect(calls).toHaveLength(2);
@@ -237,8 +269,8 @@ describe("createAppVersionService", () => {
       logger: testLogger,
     });
     const [first, second] = await Promise.all([
-      service.getSystemVersion(),
-      service.getSystemVersion(),
+      service.getSystemVersion(DEFAULT_VERSION_ARGS),
+      service.getSystemVersion(DEFAULT_VERSION_ARGS),
     ]);
     expect(first.latestVersion).toBe("0.0.6");
     expect(second.latestVersion).toBe("0.0.6");
@@ -263,10 +295,10 @@ describe("createAppVersionService", () => {
       logger: testLogger,
       now: () => currentTime,
     });
-    const first = await service.getSystemVersion();
+    const first = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(first.latestVersion).toBe("0.0.6");
     currentTime += 1_000;
-    const second = await service.getSystemVersion();
+    const second = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(second.latestVersion).toBeNull();
     expect(second.updateAvailable).toBe(false);
     expect(calls).toHaveLength(2);
@@ -280,7 +312,7 @@ describe("createAppVersionService", () => {
       fetchImpl: createStubFetch([{ body: { version: "0.0.6-alpha.1" } }], []),
       logger: testLogger,
     });
-    const response = await service.getSystemVersion();
+    const response = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(response.latestVersion).toBe("0.0.6-alpha.1");
     expect(response.updateAvailable).toBe(true);
   });
@@ -292,7 +324,7 @@ describe("createAppVersionService", () => {
       fetchImpl: createStubFetch([{ body: { version: "0.0.5-alpha.1" } }], []),
       logger: testLogger,
     });
-    const response = await service.getSystemVersion();
+    const response = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(response.latestVersion).toBe("0.0.5-alpha.1");
     expect(response.updateAvailable).toBe(false);
   });
@@ -305,7 +337,7 @@ describe("createAppVersionService", () => {
       fetchImpl: createStubFetch([{ body: { version: "0.0.5+build.1" } }], []),
       logger: testLogger,
     });
-    const response = await service.getSystemVersion();
+    const response = await service.getSystemVersion(DEFAULT_VERSION_ARGS);
     expect(response.latestVersion).toBe("0.0.5+build.1");
     expect(response.updateAvailable).toBe(false);
   });

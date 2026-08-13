@@ -6,6 +6,7 @@ import {
 import { toRecord } from "@bb/core-ui";
 import type {
   SystemCliSkillsStatusResponse,
+  SystemBuild,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
   OnboardingAgentOverview,
@@ -25,6 +26,7 @@ import {
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   hostProviderCliStatusQueryKey,
+  systemBuildQueryKey,
   systemCliSkillsQueryKey,
   onboardingAgentsQueryKey,
   onboardingReposQueryKey,
@@ -191,6 +193,21 @@ export function useSystemVersion(options?: QueryOptions) {
   return useQuery<SystemVersionResponse>({
     queryKey: systemVersionQueryKey(),
     queryFn: ({ signal }) => sdk.system.version({ signal }),
+    enabled: options?.enabled ?? true,
+    ...SERVER_SESSION_QUERY_POLICY,
+  });
+}
+
+export function useSystemBuild(options?: QueryOptions) {
+  return useQuery<SystemBuild | null>({
+    queryKey: systemBuildQueryKey(),
+    queryFn: async ({ signal }) =>
+      (
+        await sdk.system.version({
+          includeUpdates: false,
+          signal,
+        })
+      ).build,
     enabled: options?.enabled ?? true,
     // A source checkout can switch branches or commits while the app runs.
     refetchInterval: 5_000,

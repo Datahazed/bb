@@ -83,8 +83,8 @@ export function registerStatusCommand(
         }
 
         try {
-          const version = await sdk.system.version();
-          payload.build = version.build;
+          const version = await sdk.system.version({ includeUpdates: false });
+          payload.build = version.build ?? null;
           serverAvailable = true;
         } catch {
           // Server unreachable — leave build null.

@@ -11,6 +11,7 @@ const GIT_TIMEOUT_MS = 5_000;
 
 export interface RunningBuildCache {
   getBuild(): SystemBuild | null;
+  start(): void;
   stop(): void;
 }
 
@@ -110,12 +111,13 @@ async function resolveGitBuild(
   }
 }
 
-export async function createRunningBuildCache(
+export function createRunningBuildCache(
   args: CreateRunningBuildCacheArgs,
-): Promise<RunningBuildCache> {
+): RunningBuildCache {
   if (args.checkoutRoot === null) {
     return {
       getBuild: () => null,
+      start() {},
       stop() {},
     };
   }
@@ -123,6 +125,8 @@ export async function createRunningBuildCache(
   const checkoutRoot = args.checkoutRoot;
   const resolveBuild = args.resolveBuild ?? resolveGitBuild;
   let build: SystemBuild | null = null;
+  let interval: NodeJS.Timeout | null = null;
+  let started = false;
   let stopped = false;
   let refreshPromise: Promise<void> | null = null;
 
@@ -143,20 +147,23 @@ export async function createRunningBuildCache(
     return trackedRefresh;
   }
 
-  // Requests only read this cache. The background refresh reflects a branch
-  // switch or commit without putting a git child process on the request path.
-  await refresh();
-  const interval = setInterval(
-    () => void refresh(),
-    args.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS,
-  );
-  interval.unref();
-
   return {
     getBuild: () => build,
+    start() {
+      if (started || stopped) return;
+      started = true;
+      // Requests only read this cache. The background refresh reflects a
+      // branch switch or commit without a git process on the request path.
+      void refresh();
+      interval = setInterval(
+        () => void refresh(),
+        args.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS,
+      );
+      interval.unref();
+    },
     stop() {
       stopped = true;
-      clearInterval(interval);
+      if (interval !== null) clearInterval(interval);
     },
   };
 }
