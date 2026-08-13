@@ -3,10 +3,13 @@ import {
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
   COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
-import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "./AppPageHeader";
+import {
+  HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+  THREAD_HEADER_ICON_BUTTON_CLASS,
+} from "./AppPageHeader";
 
 // Guards the shared header-control geometry that BB-63 depends on: the reduced
-// glyph variant (used by the pane maximize/restore control) must keep the exact
+// glyph variant used by dense non-thread pane chrome must keep the exact
 // same button box — and therefore the pointer/focus hit target — as the
 // standard header icon button, only painting the glyph smaller. Asserted at the
 // token level rather than via a brittle full-class snapshot.
@@ -28,7 +31,9 @@ function tokens(cls: string): Set<string> {
 describe("header icon button sizing contract", () => {
   it("shares the standard button box (hit target) across the reduced variant", () => {
     const standard = tokens(COARSE_POINTER_HEADER_ICON_BUTTON_CLASS);
-    const reduced = tokens(COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS);
+    const reduced = tokens(
+      COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
+    );
     for (const token of BOX_TOKENS) {
       expect(standard.has(token), `standard missing ${token}`).toBe(true);
       expect(reduced.has(token), `reduced missing ${token}`).toBe(true);
@@ -37,7 +42,9 @@ describe("header icon button sizing contract", () => {
 
   it("paints the reduced glyph smaller than the standard glyph in both pointer modes", () => {
     const standard = tokens(COARSE_POINTER_HEADER_ICON_BUTTON_CLASS);
-    const reduced = tokens(COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS);
+    const reduced = tokens(
+      COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
+    );
 
     // Fine pointer: standard 16px, reduced 13px.
     expect(standard.has("[&_svg]:size-[16px]")).toBe(true);
@@ -45,14 +52,24 @@ describe("header icon button sizing contract", () => {
     expect(reduced.has("[&_svg]:size-[16px]")).toBe(false);
 
     // Coarse pointer: standard 20px, reduced 16px.
-    expect(standard.has("max-md:pointer-coarse:[&_svg]:size-[20px]")).toBe(true);
+    expect(standard.has("max-md:pointer-coarse:[&_svg]:size-[20px]")).toBe(
+      true,
+    );
     expect(reduced.has("max-md:pointer-coarse:[&_svg]:size-[16px]")).toBe(true);
-    expect(reduced.has("max-md:pointer-coarse:[&_svg]:size-[20px]")).toBe(false);
+    expect(reduced.has("max-md:pointer-coarse:[&_svg]:size-[20px]")).toBe(
+      false,
+    );
   });
 
-  it("keeps pane maximize and close controls on one centered geometry", () => {
+  it("keeps reduced pane actions on one centered geometry", () => {
     expect(HEADER_PANE_ACTION_ICON_BUTTON_CLASS).toBe(
       COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
+    );
+  });
+
+  it("uses one standard glyph geometry for every thread-header icon button", () => {
+    expect(THREAD_HEADER_ICON_BUTTON_CLASS).toBe(
+      COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
     );
   });
 });

@@ -29,8 +29,7 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
 
 vi.mock("@/components/layout/AppPageHeader", () => ({
   HEADER_ACTION_GAP_CLASS: "header-action-gap",
-  HEADER_ICON_BUTTON_CLASS: "header-icon-button",
-  HEADER_PANE_ACTION_ICON_BUTTON_CLASS: "header-pane-action-button",
+  THREAD_HEADER_ICON_BUTTON_CLASS: "thread-header-icon-button",
   AppPageHeader: ({
     actions,
     center,
@@ -264,7 +263,7 @@ describe("ThreadDetailHeader", () => {
     expect(screen.getByText("Thread menu")).not.toBeNull();
     expect(screen.getByText("Responsive menu actions")).not.toBeNull();
     const closePane = screen.getByRole("button", { name: "Close pane" });
-    expect(closePane.classList).toContain("header-pane-action-button");
+    expect(closePane.classList).toContain("thread-header-icon-button");
     const closeIcon = closePane.querySelector('[data-icon="CloseThreadPane"]');
     expect(closeIcon).not.toBeNull();
     expect(closeIcon?.querySelectorAll("path")).toHaveLength(1);

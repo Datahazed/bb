@@ -17,8 +17,7 @@ import { SplitButton } from "@/components/ui/split-button.js";
 import {
   AppPageHeader,
   HEADER_ACTION_GAP_CLASS,
-  HEADER_ICON_BUTTON_CLASS,
-  HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+  THREAD_HEADER_ICON_BUTTON_CLASS,
 } from "@/components/layout/AppPageHeader";
 import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 import {
@@ -301,7 +300,7 @@ export function ThreadDetailHeader({
               variant="ghost"
               size="icon"
               className={cn(
-                HEADER_ICON_BUTTON_CLASS,
+                THREAD_HEADER_ICON_BUTTON_CLASS,
                 CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
               )}
               aria-label={
@@ -324,7 +323,7 @@ export function ThreadDetailHeader({
             variant="ghost"
             size="icon"
             className={cn(
-              HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+              THREAD_HEADER_ICON_BUTTON_CLASS,
               CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
             )}
             aria-label="Close pane"
@@ -339,7 +338,7 @@ export function ThreadDetailHeader({
           // consumes or covers this pane-action row. With the window panel open,
           // the toggle overlays the panel's own chrome instead, so the pane
           // actions sit flush at the pane edge.
-          <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
+          <span aria-hidden className={THREAD_HEADER_ICON_BUTTON_CLASS} />
         ) : null}
       </div>
     </>

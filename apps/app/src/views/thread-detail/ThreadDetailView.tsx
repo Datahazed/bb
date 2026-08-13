@@ -70,7 +70,7 @@ import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
+import { THREAD_HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import {
   ThreadActionsMenu,
   type ThreadActionsMenuResponsiveAction,
@@ -2549,7 +2549,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       actionsMenu={(includeResponsiveActions) => (
         <ThreadActionsMenu
           thread={thread}
-          triggerClassName={HEADER_ICON_BUTTON_CLASS}
+          triggerClassName={THREAD_HEADER_ICON_BUTTON_CLASS}
           align="end"
           responsiveActions={
             includeResponsiveActions ? responsiveHeaderActions : undefined
