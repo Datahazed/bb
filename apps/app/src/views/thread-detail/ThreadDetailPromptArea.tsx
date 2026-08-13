@@ -62,7 +62,7 @@ import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display"
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
-import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
+import { useProjectWorkspaceDisplay } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useActiveComposerDraft,
   useComposerAttachmentUploads,
@@ -151,6 +151,8 @@ interface ThreadDetailPromptAreaProps {
   > | null;
   environmentIcon?: IconName;
   environmentLabel?: string;
+  environmentHostId?: string;
+  environmentPath?: string;
   onCreateNewThreadInWorktree?: () => void;
   onEscapeEmptyPrompt?: () => void;
   onPullRequestDraft?: () => void;
@@ -314,6 +316,8 @@ export function ThreadDetailPromptArea({
   environmentGoneStatus,
   environmentIcon,
   environmentLabel,
+  environmentHostId,
+  environmentPath,
   onCreateNewThreadInWorktree,
   onEscapeEmptyPrompt,
   onPullRequestDraft,
@@ -409,8 +413,9 @@ export function ThreadDetailPromptArea({
   const clearThreadGoal = useClearThreadGoal();
   const unarchiveThread = useUnarchiveThread();
   // The personal project isn't a meaningful label in the footer, so skip it.
-  const projectName = useProjectDisplayName(
+  const projectWorkspaceDisplay = useProjectWorkspaceDisplay(
     thread.projectId === PERSONAL_PROJECT_ID ? undefined : thread.projectId,
+    environmentHostId,
   );
   const {
     promptDraft,
@@ -1160,7 +1165,9 @@ export function ThreadDetailPromptArea({
     () =>
       environmentLabel ? (
         <ThreadEnvironmentSummary
-          projectName={projectName}
+          projectName={projectWorkspaceDisplay?.name}
+          projectRootPath={projectWorkspaceDisplay?.rootPath}
+          environmentPath={environmentPath}
           environmentLabel={environmentLabel}
           environmentCompactLabel={environmentCompactLabel}
           environmentIcon={environmentIcon}
@@ -1173,8 +1180,9 @@ export function ThreadDetailPromptArea({
       environmentCompactLabel,
       environmentIcon,
       environmentLabel,
+      environmentPath,
       onCreateNewThreadInWorktree,
-      projectName,
+      projectWorkspaceDisplay,
     ],
   );
   const activePromptModeCard = useMemo(

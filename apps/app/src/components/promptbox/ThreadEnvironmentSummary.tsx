@@ -13,9 +13,18 @@ const CHECKOUT_CHIP_BASE_CLASS_NAME =
   "flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground";
 const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} cursor-pointer transition-colors hover:bg-state-hover hover:text-foreground`;
 
+function trimTrailingPathSeparators(path: string): string {
+  const trimmedPath = path.replace(/[\\/]+$/u, "");
+  return trimmedPath || path;
+}
+
 export interface ThreadEnvironmentSummaryProps {
   /** Display name of the thread's project, shown alongside the environment. */
   projectName?: string;
+  /** Project source path on the environment's host. */
+  projectRootPath?: string;
+  /** Full path of the thread's active environment. */
+  environmentPath?: string;
   /** Full mode label used for the title (e.g. "Working locally" / "Worktree"). */
   environmentLabel?: string;
   /** Visible label used in the promptbox footer. */
@@ -44,6 +53,8 @@ export interface ThreadEnvironmentSummaryProps {
  */
 export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   projectName,
+  projectRootPath,
+  environmentPath,
   environmentLabel,
   environmentCompactLabel,
   environmentIcon,
@@ -56,17 +67,34 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
 
   const checkoutCopyValue = environmentCheckout?.copyValue ?? null;
   const visibleEnvironmentLabel = environmentCompactLabel ?? environmentLabel;
+  const normalizedProjectRootPath = projectRootPath
+    ? trimTrailingPathSeparators(projectRootPath)
+    : undefined;
+  const normalizedEnvironmentPath = environmentPath
+    ? trimTrailingPathSeparators(environmentPath)
+    : undefined;
+  const environmentDirectoryName = normalizedEnvironmentPath
+    ?.split(/[\\/]/u)
+    .at(-1);
+  const visibleProjectName =
+    projectName &&
+    normalizedProjectRootPath &&
+    normalizedEnvironmentPath &&
+    normalizedProjectRootPath !== normalizedEnvironmentPath &&
+    environmentDirectoryName
+      ? `${projectName} / ${environmentDirectoryName}`
+      : projectName;
 
   return (
     <div className="flex min-w-0 max-w-full items-center gap-2 pr-1.5">
-      {projectName ? (
+      {visibleProjectName ? (
         <OptionDisplay
           label="Project"
-          value={projectName}
-          compactValue={projectName}
+          value={visibleProjectName}
+          compactValue={visibleProjectName}
           leading={<Icon name="Folder" className="size-4 shrink-0" />}
           className="h-6 max-w-[10rem] shrink-0"
-          title={`Project: ${projectName}`}
+          title={environmentPath ?? `Project: ${projectName}`}
           muted
         />
       ) : null}
