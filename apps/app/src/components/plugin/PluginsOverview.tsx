@@ -190,6 +190,7 @@ export function PluginsOverview() {
         onOpenPlugin={(pluginId) =>
           navigate(getPluginDetailRoutePath({ pluginId }))
         }
+        onInstallFromSource={() => setAddDialog({ open: true, initial: null })}
       />
     );
   } else {
