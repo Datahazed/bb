@@ -32,6 +32,7 @@
     "format:check": "prettier . --check --ignore-unknown",
     "storybook": "turbo run storybook --filter=@bb/app",
     "lint": "turbo run lint",
+    "lint:record-types": "eslint . --no-config-lookup --no-inline-config --config eslint.record-types.config.mjs --ext .ts,.tsx",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",

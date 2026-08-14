@@ -1,12 +1,12 @@
 import tsParser from "@typescript-eslint/parser";
 import reactHooks from "eslint-plugin-react-hooks";
+import { bbTypeRules } from "./scripts/eslint-rules/no-record-string-unknown.mjs";
 
 const noBlockingChildProcessSyntaxRestrictions = [
   {
     selector:
       "CallExpression[callee.name='spawnSync'], CallExpression[callee.name='execSync'], CallExpression[callee.name='execFileSync']",
-    message:
-      "Use async child_process APIs instead of blocking sync variants.",
+    message: "Use async child_process APIs instead of blocking sync variants.",
   },
 ];
 
@@ -106,9 +106,11 @@ export default [
       },
     },
     plugins: {
+      bb: bbTypeRules,
       "react-hooks": reactHooks,
     },
     rules: {
+      "bb/no-record-string-unknown": "error",
       ...reactHooks.configs.flat["recommended-latest"].rules,
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
