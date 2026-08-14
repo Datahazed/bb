@@ -291,7 +291,8 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
         key: `${capability.kind}:${capability.id}`,
         label: capability.label,
         detail: capability.detail ?? undefined,
-        mono: kind === "skill" || kind === "agent-tool",
+        mono:
+          kind === "skill" || kind === "agent-tool" || kind === "host-driver",
       }));
 
   // `kind` is the name behind the glyph, not a column. Most plugins contribute
@@ -306,6 +307,11 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
       icon: "AppWindow",
       kind: "App surface",
       items: appItems,
+    },
+    {
+      icon: "Code",
+      kind: "Host driver",
+      items: declared("host-driver"),
     },
     {
       icon: "Terminal",

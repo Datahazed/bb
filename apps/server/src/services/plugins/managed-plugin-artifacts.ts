@@ -11,7 +11,12 @@ import {
   type PluginProvenance,
   type PluginSourceIntent,
 } from "@bb/db";
-import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
+import {
+  buildPluginApp,
+  buildPluginHostDrivers,
+  buildPluginServer,
+  validatePluginHostDriverArtifactMeta,
+} from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { validatePluginArtifactMeta } from "./app-bundle.js";
 import {
@@ -228,10 +233,10 @@ export function createManagedPluginArtifacts(
     //   node_modules is kept: esbuild only bundles statically reachable code,
     //   so a dependency that reads a data file or .wasm at runtime still needs
     //   its tree, and the source fallback in `resolveServerEntry` needs it too.
-    // - path: the author owns that directory. Never install into it and
-    //   never prune it; only the frontend is built.
-    // - npm: never built here; must ship a prebuilt dist whose metadata is
-    //   compatible with this SDK.
+    // - path: the author owns that directory. Never install into it or prune
+    //   it; frontend and declared host-driver artifacts are built in place.
+    // - npm: never built here; must ship prebuilt dist artifacts whose
+    //   metadata is compatible with this SDK and provider-driver protocol.
     if (kind === "git") {
       await installGitDependencies({ rootDir: args.rootDir, manifest });
     }
@@ -257,6 +262,51 @@ export function createManagedPluginArtifacts(
         } catch (error) {
           throw new Error(
             `install failed: frontend bundle build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
+    if (manifest.hostDrivers.length > 0) {
+      if (kind === "npm") {
+        for (const driver of manifest.hostDrivers) {
+          const driverDir = join(args.rootDir, "dist", "host", driver.id);
+          const archivePresent = await stat(join(driverDir, "driver.tgz"))
+            .then((entry) => entry.isFile())
+            .catch(() => false);
+          let rawMeta: string;
+          try {
+            rawMeta = await readFile(
+              join(driverDir, "driver.meta.json"),
+              "utf8",
+            );
+          } catch {
+            rawMeta = "";
+          }
+          if (!archivePresent || rawMeta.length === 0) {
+            throw new Error(
+              `install refused: npm plugin host driver "${driver.id}" must publish dist/host/${driver.id}/driver.tgz + driver.meta.json`,
+            );
+          }
+          const problem = validatePluginHostDriverArtifactMeta({
+            raw: rawMeta,
+            pluginId: manifest.id,
+            pluginVersion: manifest.version,
+            driverId: driver.id,
+          });
+          if (problem !== null) {
+            throw new Error(`install refused: ${problem}`);
+          }
+        }
+      } else {
+        try {
+          await buildPluginHostDrivers(
+            args.rootDir,
+            deps.appVersion,
+            await getPluginBuildToolchain(deps),
+          );
+        } catch (error) {
+          throw new Error(
+            `install failed: host driver build for "${manifest.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       }

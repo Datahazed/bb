@@ -197,18 +197,13 @@ added/updated/unchanged counts.
   bb plugin types [path]         Write this bb's @bb/plugin-sdk declarations
                                  into the plugin's types/ (default: cwd);
                                  --check reports staleness and writes nothing
-  bb plugin build [path]         Compile the plugin into dist/ — the backend
-                                 bundle (server.js, server.meta.json) and,
-                                 when bb.app is declared, the frontend bundle
-                                 (app.js, app.css, app.meta.json). Each
-                                 *.meta.json is stamped with SDK major/version,
-                                 artifactFormatVersion, pluginId, pluginVersion,
-                                 and builtWith (bb + plugin SDK versions); no
-                                 server required
-  bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
-                                 on every change rebuild its frontend bundle
-                                 (if it declares bb.app) and reload the
-                                 plugin; Ctrl+C to stop
+  bb plugin build [path]         Compile the plugin into dist/ — backend and
+                                 frontend bundles plus declared experimental
+                                 host-driver bundles, metadata, and archives;
+                                 no server required
+  bb plugin dev [path]           Watch a plugin's sources (default: cwd),
+                                 rebuild frontend/host artifacts when declared,
+                                 and reload the plugin; Ctrl+C to stop
 
 BB Official plugins
 
@@ -236,13 +231,14 @@ HTTP(S) Git repository URLs, `path:`, `npm:`, `git:`, and `builtin:`
 sources—and path-like syntax—continue to bypass official-plugin resolution.
 
 Builds are automatic once installed. Git installs run `npm install`
-(lifecycle scripts disabled), then compile both bundles — so a git plugin may
-depend on third-party packages. node_modules is kept, because bundling cannot
-inline data files a dependency reads at runtime. A committed dist/ is always
-replaced by the bundles bb builds. Path installs compile dist/ at install time
-from dependencies you have already installed. A build failure fails the
-install. npm packages must ship a metadata-validated prebuilt app or the
-install is refused. The server rebuilds source-built apps after a bb upgrade.
+(lifecycle scripts disabled), then compile server, frontend, and declared host
+artifacts — so a git plugin may depend on third-party packages. node_modules is
+kept, because bundling cannot inline data files a dependency reads at runtime.
+A committed dist/ is replaced by artifacts bb builds. Path installs compile
+frontend and declared host artifacts from dependencies you already installed.
+A build failure fails the install. npm packages must ship metadata-validated
+prebuilt frontend and host-driver artifacts when declared or the install is
+refused. The server rebuilds source-built apps after a bb upgrade.
 
 Installing or updating a git plugin requires `npm` on PATH. Checking for
 updates does not: a check reads the candidate's manifest and stops, so

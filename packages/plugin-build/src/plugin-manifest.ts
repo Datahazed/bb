@@ -77,5 +77,27 @@ export async function validatePluginBuildManifest(
       assertValidPluginCompactIconSvg(await readFile(realAsset), label);
     }
   }
+  for (const driver of parsed.data.bb.experimental_hostDrivers ?? []) {
+    const label = `bb.experimental_hostDrivers.${driver.id}.entry`;
+    const entryPath = resolveManifestPath(rootDir, driver.entry, label);
+    let entryStat;
+    try {
+      entryStat = await stat(entryPath);
+    } catch {
+      throw new Error(`manifest ${label} points at a missing file`);
+    }
+    if (!entryStat.isFile()) {
+      throw new Error(`manifest ${label} must point at a file`);
+    }
+    const [realRoot, realEntry] = await Promise.all([
+      realpath(rootDir),
+      realpath(entryPath),
+    ]);
+    if (realEntry !== realRoot && !realEntry.startsWith(realRoot + "/")) {
+      throw new Error(
+        `manifest ${label} escapes the plugin directory through a symlink`,
+      );
+    }
+  }
   return parsed.data;
 }

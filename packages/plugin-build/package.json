@@ -18,7 +18,9 @@
   "dependencies": {
     "@bb/domain": "workspace:*",
     "@bb/plugin-sdk": "workspace:*",
-    "saxes": "^6.0.0"
+    "@bb/provider-driver-contract": "workspace:*",
+    "saxes": "^6.0.0",
+    "tar": "^7.5.11"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

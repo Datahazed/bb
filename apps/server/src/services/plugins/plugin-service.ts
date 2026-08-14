@@ -22,8 +22,12 @@ import {
   type StandardSchemaV1Result,
 } from "@bb/plugin-sdk";
 // The build engine's natives (esbuild, Tailwind oxide) are dynamically
-// imported inside buildPluginApp — importing this loads nothing heavy.
-import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
+// imported inside build functions — importing this loads nothing heavy.
+import {
+  buildPluginApp,
+  buildPluginHostDrivers,
+  createPluginDevLoop,
+} from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import type { PluginCapabilitySummary } from "@bb/server-contract";
@@ -933,7 +937,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     loaded,
     loadOne,
     brandingAssets,
-    setDevBuildProblem,
+    setDevArtifactBuildProblem,
     setStatus,
     sourceKind,
     stabilizingPluginIds,
@@ -1191,6 +1195,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           detail: theme.description,
         });
       }
+      for (const driver of manifest.hostDrivers) {
+        capabilities.push({
+          kind: "host-driver",
+          id: driver.id,
+          label: driver.id,
+          detail:
+            "Runs isolated provider integration code on execution machines",
+        });
+      }
     }
     for (const tool of loadedPlugin?.handle.agentTools ?? []) {
       capabilities.push({
@@ -1394,18 +1407,30 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           const manifest = await readPluginManifest(bundled.rootDir);
           const loop = createPluginDevLoop({
             pluginId: row.id,
-            hasApp: manifest.appEntry !== undefined,
-            buildApp: async () => {
+            needsArtifactBuild:
+              manifest.appEntry !== undefined ||
+              manifest.hostDrivers.length > 0,
+            buildArtifacts: async () => {
               try {
-                await buildPluginApp(
-                  bundled.rootDir,
-                  deps.appVersion,
-                  await getPluginBuildToolchain(deps),
-                );
-                setDevBuildProblem(row.id, null);
+                const toolchain = await getPluginBuildToolchain(deps);
+                if (manifest.appEntry !== undefined) {
+                  await buildPluginApp(
+                    bundled.rootDir,
+                    deps.appVersion,
+                    toolchain,
+                  );
+                }
+                if (manifest.hostDrivers.length > 0) {
+                  await buildPluginHostDrivers(
+                    bundled.rootDir,
+                    deps.appVersion,
+                    toolchain,
+                  );
+                }
+                setDevArtifactBuildProblem(row.id, null);
                 notifyPluginsChanged();
               } catch (error) {
-                setDevBuildProblem(
+                setDevArtifactBuildProblem(
                   row.id,
                   error instanceof Error ? error.message : String(error),
                 );

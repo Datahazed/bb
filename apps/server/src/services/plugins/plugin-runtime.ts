@@ -307,7 +307,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     string,
     { status: PluginRuntimeStatus; detail: string | null }
   >();
-  const devBuildProblems = new Map<string, string>();
+  const devArtifactBuildProblems = new Map<string, string>();
   const statusListeners = new Map<
     string,
     Set<(status: PluginRuntimeStatus, detail: string | null) => void>
@@ -368,7 +368,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     detail: string | null = null,
   ): void {
     baseStatuses.set(id, { status, detail });
-    const buildProblem = devBuildProblems.get(id);
+    const buildProblem = devArtifactBuildProblems.get(id);
     publishStatus(
       id,
       status,
@@ -378,9 +378,16 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     );
   }
 
-  function setDevBuildProblem(id: string, message: string | null): void {
-    if (message === null) devBuildProblems.delete(id);
-    else devBuildProblems.set(id, `frontend bundle build failed: ${message}`);
+  function setDevArtifactBuildProblem(
+    id: string,
+    message: string | null,
+  ): void {
+    if (message === null) devArtifactBuildProblems.delete(id);
+    else
+      devArtifactBuildProblems.set(
+        id,
+        `plugin artifact build failed: ${message}`,
+      );
     const base = baseStatuses.get(id);
     if (base !== undefined) setStatus(id, base.status, base.detail);
   }
@@ -1273,7 +1280,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   function clearRuntimeState(id: string): void {
     statuses.delete(id);
     baseStatuses.delete(id);
-    devBuildProblems.delete(id);
+    devArtifactBuildProblems.delete(id);
     appBundles.delete(id);
     brandingAssets.delete(id);
     needsConfiguration.delete(id);
@@ -1344,7 +1351,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     loadOne,
     brandingAssets,
     needsConfiguration,
-    setDevBuildProblem,
+    setDevArtifactBuildProblem,
     setStatus,
     sourceKind,
     stabilizingPluginIds,

@@ -647,6 +647,13 @@ Plugin state lives under the data dir:
                                    commands, injected into agent threads)
 ```
 
+Plugin authors can declare experimental isolated host-driver build entries as
+`bb.experimental_hostDrivers: [{ "id": "echo", "entry": "./host/echo.ts" }]`
+in `package.json`. Entries must stay beneath the plugin root. `bb plugin build`
+emits `dist/host/<id>/driver.js`, metadata, source map, and `driver.tgz`; Git
+and path installs build these artifacts, while npm installs must publish them.
+The declaration alone never launches code or registers a provider.
+
 BB's official plugins (GitHub, Docs, Memory, and Tasks) ship bundled
 inside the app and install from the local bundled copy — no network, no remote catalog.
 Discover them with `bb plugin search` or Extensions → Plugins → Browse; users

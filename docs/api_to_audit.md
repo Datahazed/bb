@@ -5,6 +5,35 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `bb.experimental_hostDrivers` plugin manifest declaration
+
+**What it does.** Declares up to 32 lowercase-kebab-case source entries that
+`bb plugin build` compiles into isolated Node 22 host-driver bundles. Each
+entry produces `dist/host/<id>/driver.js`, a source map, protocol/identity
+metadata, and a gzip tar archive. Entries are confined beneath the plugin root;
+Git and path installs build them, while npm installs must ship matching
+prebuilt metadata and archives. Declaring an artifact does not by itself
+register a provider or grant the daemon permission to launch it.
+
+**Audit before stabilizing.**
+
+1. **Manifest naming and cardinality.** Confirm `hostDrivers` is the right
+   stable namespace and whether 32 entries per plugin is a useful bound.
+2. **Runtime matrix.** The initial format fixes Node 22 and the current
+   provider-driver protocol. Decide how plugins declare compatible runtimes,
+   protocol ranges, CPU/OS support, and optional native artifacts without
+   introducing accepted-but-ignored fields.
+3. **Archive reproducibility.** Verify deterministic tar/gzip output across
+   supported build hosts before artifact digests become durable launch IDs.
+4. **Dependency packaging.** Audit dynamic imports, data files, WASM, native
+   modules, Pi extensions/packages, and license/source-map policy. A single
+   esbuild output is not enough for every production provider.
+5. **Trust and privileges.** Add install-time privilege presentation before a
+   declared artifact can execute on an enrolled machine. Declarations must
+   remain inert until a same-plugin registration references them.
+6. **Atomicity.** Confirm server, app, and host artifacts publish as one build
+   generation and that failed updates retain the complete previous generation.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React

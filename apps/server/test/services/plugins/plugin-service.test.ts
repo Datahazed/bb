@@ -142,9 +142,11 @@ describe("plugin service", () => {
     await writeFile(join(rootDir, "skills", "review", "SKILL.md"), "# review");
     await writeFile(join(rootDir, "skills", "triage", "SKILL.md"), "# triage");
     await writeFile(join(rootDir, "midnight.css"), ":root { --canvas: #000; }");
+    await writeFile(join(rootDir, "echo-driver.ts"), "export {};\n");
     await writePlugin(workDir, {
       name: "bb-plugin-capabilities",
       bb: {
+        experimental_hostDrivers: [{ id: "echo", entry: "./echo-driver.ts" }],
         themes: [
           {
             id: "midnight",
@@ -195,6 +197,12 @@ describe("plugin service", () => {
         detail: "A dark palette",
       },
       {
+        kind: "host-driver",
+        id: "echo",
+        label: "echo",
+        detail: "Runs isolated provider integration code on execution machines",
+      },
+      {
         kind: "agent-tool",
         id: "capabilities_probe",
         label: "capabilities_probe",
@@ -217,7 +225,7 @@ describe("plugin service", () => {
         .list()
         .find((entry) => entry.id === "capabilities")
         ?.capabilities.map((capability) => capability.kind),
-    ).toEqual(["skill", "skill", "theme"]);
+    ).toEqual(["skill", "skill", "theme", "host-driver"]);
   });
 
   it("marks a throwing factory as error without affecting others", async () => {

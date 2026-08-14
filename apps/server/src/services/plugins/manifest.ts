@@ -37,6 +37,8 @@ export interface PluginManifest {
   serverEntry: string;
   /** Absolute path of the frontend entry file, when declared. */
   appEntry: string | undefined;
+  /** Experimental isolated host-driver source entries declared by the plugin. */
+  hostDrivers: Array<{ id: string; entryPath: string }>;
   /** CSS palettes declared by `bb.themes`, with manifest-relative paths resolved. */
   themes: Array<{
     id: string;
@@ -152,6 +154,30 @@ export async function readPluginManifest(
   const skillsRootPaths = (bb.skills ?? ["skills"]).map((entry) =>
     resolveEntry(rootDir, entry.replace(/\/\*$/, ""), "bb.skills"),
   );
+  const hostDrivers: PluginManifest["hostDrivers"] = [];
+  for (const driver of bb.experimental_hostDrivers ?? []) {
+    const label = `bb.experimental_hostDrivers.${driver.id}.entry`;
+    const entryPath = resolveEntry(rootDir, driver.entry, label);
+    let entryStat;
+    try {
+      entryStat = await stat(entryPath);
+    } catch {
+      throw new Error(`manifest ${label} points at a missing file`);
+    }
+    if (!entryStat.isFile()) {
+      throw new Error(`manifest ${label} must point at a file`);
+    }
+    const [realRoot, realEntry] = await Promise.all([
+      realpath(rootDir),
+      realpath(entryPath),
+    ]);
+    if (realEntry !== realRoot && !realEntry.startsWith(realRoot + "/")) {
+      throw new Error(
+        `manifest ${label} escapes the plugin directory through a symlink`,
+      );
+    }
+    hostDrivers.push({ id: driver.id, entryPath });
+  }
   const resolveBrandingAsset = (entry: string, label: string): string => {
     if (!/\.(svg|png|webp)$/i.test(entry)) {
       throw new Error(
@@ -253,6 +279,7 @@ export async function readPluginManifest(
     bbPluginSdkRange: engines?.bbPluginSdk,
     serverEntry,
     appEntry: bb.app ? resolveEntry(rootDir, bb.app, "bb.app") : undefined,
+    hostDrivers,
     themes,
     skillsRootPaths,
     skillNames: await readSkillNames(skillsRootPaths),

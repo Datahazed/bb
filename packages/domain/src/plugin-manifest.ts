@@ -2,6 +2,19 @@ import { z } from "zod";
 
 const requiredManifestString = z.string().trim().min(1);
 
+export const pluginHostDriverDeclarationSchema = z
+  .object({
+    id: z
+      .string()
+      .regex(/^[a-z][a-z0-9-]*$/)
+      .max(64),
+    entry: requiredManifestString,
+  })
+  .strict();
+export type PluginHostDriverDeclaration = z.infer<
+  typeof pluginHostDriverDeclarationSchema
+>;
+
 /**
  * `bb.branding.icon` accepts either a host icon name or an explicit
  * plugin-relative compact SVG path.
@@ -50,6 +63,16 @@ export const pluginBbManifestSchema = z
     branding: pluginBrandingSchema,
     server: requiredManifestString,
     app: requiredManifestString.optional(),
+    /** Experimental source entries compiled into isolated host-driver artifacts. */
+    experimental_hostDrivers: z
+      .array(pluginHostDriverDeclarationSchema)
+      .max(32)
+      .refine(
+        (drivers) =>
+          new Set(drivers.map((driver) => driver.id)).size === drivers.length,
+        { message: "host driver ids must be unique" },
+      )
+      .optional(),
     skills: z.array(requiredManifestString).optional(),
     themes: z
       .array(

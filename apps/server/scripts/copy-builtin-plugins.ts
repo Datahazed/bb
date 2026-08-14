@@ -3,6 +3,7 @@ import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import {
   buildPluginApp,
+  buildPluginHostDrivers,
   buildPluginServer,
   resolvePluginBuildToolchain,
 } from "@bb/plugin-build";
@@ -84,6 +85,15 @@ async function writeRuntimePackageJson(args: {
           ...packageJson.bb,
           server: "./dist/server.js",
           ...(packageJson.bb.app === undefined ? {} : { app: "./dist/app.js" }),
+          ...(packageJson.bb.experimental_hostDrivers === undefined
+            ? {}
+            : {
+                experimental_hostDrivers:
+                  packageJson.bb.experimental_hostDrivers.map((driver) => ({
+                    ...driver,
+                    entry: `./dist/host/${driver.id}/driver.js`,
+                  })),
+              }),
         },
       },
       null,
@@ -112,6 +122,9 @@ async function copyBuiltinPlugin(args: {
     const packageJson = pluginPackageJsonSchema.parse(JSON.parse(raw));
     if (packageJson.bb.app !== undefined) {
       await buildPluginApp(args.sourceRoot, args.bbVersion, toolchain);
+    }
+    if ((packageJson.bb.experimental_hostDrivers?.length ?? 0) > 0) {
+      await buildPluginHostDrivers(args.sourceRoot, args.bbVersion, toolchain);
     }
   }
 

@@ -59,6 +59,46 @@ describe("plugin manifest", () => {
     ).toBeUndefined();
   });
 
+  it("resolves experimental host-driver entries inside the plugin root", async () => {
+    await mkdir(join(rootDir, "host"));
+    await writeFile(join(rootDir, "host", "echo.ts"), "export {};\n");
+    await writeManifest(undefined, {
+      ...validBb,
+      experimental_hostDrivers: [{ id: "echo", entry: "./host/echo.ts" }],
+    });
+
+    expect((await readPluginManifest(rootDir)).hostDrivers).toEqual([
+      { id: "echo", entryPath: join(rootDir, "host", "echo.ts") },
+    ]);
+  });
+
+  it("rejects duplicate, missing, and escaping experimental host-driver entries", async () => {
+    await writeManifest(undefined, {
+      ...validBb,
+      experimental_hostDrivers: [
+        { id: "echo", entry: "./missing.ts" },
+        { id: "echo", entry: "../outside.ts" },
+      ],
+    });
+    await expect(readPluginManifest(rootDir)).rejects.toThrow(
+      /host driver ids must be unique/,
+    );
+
+    await writeManifest(undefined, {
+      ...validBb,
+      experimental_hostDrivers: [{ id: "echo", entry: "./missing.ts" }],
+    });
+    await expect(readPluginManifest(rootDir)).rejects.toThrow(/missing file/);
+
+    await writeManifest(undefined, {
+      ...validBb,
+      experimental_hostDrivers: [{ id: "echo", entry: "../outside.ts" }],
+    });
+    await expect(readPluginManifest(rootDir)).rejects.toThrow(
+      /escapes the plugin directory/,
+    );
+  });
+
   it.each(["name", "description"] as const)(
     "requires a non-empty bb.%s string",
     async (field: "name" | "description") => {

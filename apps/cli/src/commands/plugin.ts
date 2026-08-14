@@ -21,6 +21,7 @@ import { action } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import {
   buildPluginApp,
+  buildPluginHostDrivers,
   buildPluginServer,
   createPluginDevLoop,
   PLUGIN_TOOLCHAIN_PINS,
@@ -136,6 +137,9 @@ const pluginManifestSchema = z.object({
     .object({
       server: z.unknown().optional(),
       app: z.unknown().optional(),
+      experimental_hostDrivers: z
+        .array(z.object({ id: z.string(), entry: z.string() }))
+        .optional(),
     })
     .optional(),
 });
@@ -942,7 +946,7 @@ export function registerPluginCommands(
   plugin
     .command("build [path]")
     .description(
-      "Compile the plugin into dist/: the bb.server backend bundle (server.js, server.meta.json) and, when bb.app is declared, the frontend bundle (app.js, app.css, app.meta.json); each *.meta.json stamps SDK/identity metadata; no server required",
+      "Compile the plugin into dist/: server and frontend bundles plus any bb.experimental_hostDrivers archives; metadata stamps plugin/protocol identity; no server required",
     )
     .action(
       action(async (path: string | undefined) => {
@@ -963,6 +967,19 @@ export function registerPluginCommands(
         const toolchain = await cliBuildToolchain();
         const server = await buildPluginServer(rootDir, bbVersion, toolchain);
         const files = [server.jsPath, server.mapPath, server.metaPath];
+        const hostDrivers = await buildPluginHostDrivers(
+          rootDir,
+          bbVersion,
+          toolchain,
+        );
+        for (const driver of hostDrivers) {
+          files.push(
+            driver.jsPath,
+            driver.mapPath,
+            driver.metaPath,
+            driver.archivePath,
+          );
+        }
         if (hasApp) {
           const app = await buildPluginApp(rootDir, bbVersion, toolchain);
           files.push(app.jsPath, app.cssPath, app.metaPath);
@@ -995,6 +1012,8 @@ export function registerPluginCommands(
           process.exit(1);
         }
         const hasApp = typeof manifest.bb.app === "string";
+        const hasHostDrivers =
+          (manifest.bb.experimental_hostDrivers?.length ?? 0) > 0;
         // Refresh before the watcher starts, so writing types/ cannot feed
         // the loop its own change event.
         await refreshPluginTypes(rootDir, hasApp);
@@ -1015,13 +1034,16 @@ export function registerPluginCommands(
         }
         const loop = createPluginDevLoop({
           pluginId: entry.id,
-          hasApp,
-          buildApp: async () => {
-            await buildPluginApp(
-              rootDir,
-              resolveBbCliVersion(),
-              await cliBuildToolchain(),
-            );
+          needsArtifactBuild: hasApp || hasHostDrivers,
+          buildArtifacts: async () => {
+            const bbVersion = resolveBbCliVersion();
+            const toolchain = await cliBuildToolchain();
+            if (hasApp) {
+              await buildPluginApp(rootDir, bbVersion, toolchain);
+            }
+            if (hasHostDrivers) {
+              await buildPluginHostDrivers(rootDir, bbVersion, toolchain);
+            }
           },
           reloadPlugin: async () => {
             const result = pluginMutationResultSchema.parse(
@@ -1047,7 +1069,7 @@ export function registerPluginCommands(
           },
         );
         console.log(
-          `Watching ${rootDir} for plugin "${entry.id}"${hasApp ? " (frontend rebuild + reload on change)" : " (reload on change)"} — Ctrl+C to stop.`,
+          `Watching ${rootDir} for plugin "${entry.id}"${hasApp || hasHostDrivers ? " (artifact rebuild + reload on change)" : " (reload on change)"} — Ctrl+C to stop.`,
         );
         await new Promise<void>((resolveDone) => {
           const stop = (): void => {

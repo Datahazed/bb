@@ -9,6 +9,26 @@ The authoritative contracts are the exported declarations in
 [`src/app-contract.ts`](src/app-contract.ts). Keep author-facing guidance in
 the built-in `bb-plugin-authoring` skill synchronized with those declarations.
 
+## Experimental host-driver artifacts
+
+A plugin may declare isolated Node driver entries in its manifest:
+
+```json
+{
+  "bb": {
+    "experimental_hostDrivers": [
+      { "id": "echo", "entry": "./host/echo-driver.ts" }
+    ]
+  }
+}
+```
+
+`bb plugin build` bundles each confined source entry for Node 22 and emits
+`dist/host/<id>/driver.js`, its source map and identity/protocol metadata, plus
+`driver.tgz`. Path and Git installs build these artifacts; npm installs must
+ship validated prebuilt archives. The declaration only creates an artifact —
+provider registration and host delivery are separate experimental surfaces.
+
 ## Composer customization
 
 Composer UI extensions register through `app.composer.customize(...)`. A

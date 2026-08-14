@@ -603,7 +603,7 @@ describe("builtin plugin reconciliation", () => {
     expect(globals.__hotBuiltinServerVersion).toBe("after");
   }, 30_000);
 
-  it("surfaces builtin app build failures in status until the next successful build", async () => {
+  it("surfaces builtin artifact build failures in status until the next successful build", async () => {
     const mutableRoot = join(workDir, "bb-plugin-hot-app-builtin");
     await mkdir(mutableRoot, { recursive: true });
     await writeFile(
@@ -654,7 +654,7 @@ describe("builtin plugin reconciliation", () => {
       failed = service.list()[0];
     }
     expect(failed?.status).toBe("running");
-    expect(failed?.statusDetail).toContain("frontend bundle build failed");
+    expect(failed?.statusDetail).toContain("plugin artifact build failed");
     expect(failed?.app.bundle?.hash).toBe(before?.hash);
 
     await writeFile(

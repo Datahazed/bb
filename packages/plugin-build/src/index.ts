@@ -1,6 +1,6 @@
 /**
- * The plugin bundle build engine — frontend (design §5.1) and prebuilt
- * backend (design §6) bundles. One implementation
+ * The plugin bundle build engine — frontend (design §5.1), prebuilt backend
+ * (design §6), and experimental isolated host-driver artifacts. One implementation
  * shared by its two real callers: `bb plugin build` in the CLI, and the
  * server's install-time / boot-time (SDK skew) rebuilds of path:/git:
  * plugins. The heavy toolchain (esbuild, Tailwind's native oxide scanner) is
@@ -24,6 +24,12 @@ export {
   PLUGIN_SERVER_EXTERNALS,
   type PluginServerBuildResult,
 } from "./build-plugin-server.js";
+export {
+  buildPluginHostDrivers,
+  validatePluginHostDriverArtifactMeta,
+  type PluginHostDriverArtifactMeta,
+  type PluginHostDriverBuildResult,
+} from "./build-plugin-host-drivers.js";
 export * from "./plugin-dev-loop.js";
 export {
   PLUGIN_TOOLCHAIN_PINS,

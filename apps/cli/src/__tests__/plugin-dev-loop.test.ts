@@ -9,7 +9,7 @@ describe("createPluginDevLoop", () => {
     vi.useRealTimers();
   });
 
-  function makeDeps(overrides: { hasApp?: boolean } = {}) {
+  function makeDeps(overrides: { needsArtifactBuild?: boolean } = {}) {
     const calls: string[] = [];
     const lines: string[] = [];
     return {
@@ -17,8 +17,8 @@ describe("createPluginDevLoop", () => {
       lines,
       deps: {
         pluginId: "hello",
-        hasApp: overrides.hasApp ?? true,
-        buildApp: vi.fn(async () => {
+        needsArtifactBuild: overrides.needsArtifactBuild ?? true,
+        buildArtifacts: vi.fn(async () => {
           calls.push("build");
         }),
         reloadPlugin: vi.fn(async () => {
@@ -40,7 +40,7 @@ describe("createPluginDevLoop", () => {
     await vi.advanceTimersByTimeAsync(200);
     loop.handleChange("server.ts");
     loop.handleChange("app.tsx"); // duplicate collapses
-    expect(deps.buildApp).not.toHaveBeenCalled();
+    expect(deps.buildArtifacts).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(300);
     await loop.settled();
@@ -48,26 +48,26 @@ describe("createPluginDevLoop", () => {
     expect(calls).toEqual(["build", "reload"]);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("2 files changed");
-    expect(lines[0]).toContain("rebuilt app in");
+    expect(lines[0]).toContain("rebuilt artifacts in");
     expect(lines[0]).toContain("reloaded hello");
   });
 
-  it("skips the rebuild for a headless plugin (no bb.app) and still reloads", async () => {
-    const { calls, lines, deps } = makeDeps({ hasApp: false });
+  it("skips the rebuild for a plugin without buildable artifacts and still reloads", async () => {
+    const { calls, lines, deps } = makeDeps({ needsArtifactBuild: false });
     const loop = createPluginDevLoop(deps);
 
     loop.handleChange("server.ts");
     await vi.advanceTimersByTimeAsync(300);
     await loop.settled();
 
-    expect(deps.buildApp).not.toHaveBeenCalled();
+    expect(deps.buildArtifacts).not.toHaveBeenCalled();
     expect(calls).toEqual(["reload"]);
     expect(lines[0]).toBe("1 file changed · reloaded hello");
   });
 
   it("a build failure prints the error, skips the reload, and keeps watching", async () => {
     const { calls, lines, deps } = makeDeps();
-    deps.buildApp.mockRejectedValueOnce(new Error("Unexpected token"));
+    deps.buildArtifacts.mockRejectedValueOnce(new Error("Unexpected token"));
     const loop = createPluginDevLoop(deps);
 
     loop.handleChange("app.tsx");
@@ -86,7 +86,7 @@ describe("createPluginDevLoop", () => {
   });
 
   it("a reload failure prints the error and keeps watching", async () => {
-    const { lines, deps } = makeDeps({ hasApp: false });
+    const { lines, deps } = makeDeps({ needsArtifactBuild: false });
     deps.reloadPlugin.mockRejectedValueOnce(new Error("HTTP 500"));
     const loop = createPluginDevLoop(deps);
 
@@ -102,7 +102,7 @@ describe("createPluginDevLoop", () => {
   });
 
   it("serializes cycles: a change during a running cycle runs a second full cycle afterwards", async () => {
-    const { calls, deps } = makeDeps({ hasApp: false });
+    const { calls, deps } = makeDeps({ needsArtifactBuild: false });
     let releaseFirstReload = (): void => {};
     deps.reloadPlugin.mockImplementationOnce(async () => {
       calls.push("reload-start");
@@ -126,7 +126,7 @@ describe("createPluginDevLoop", () => {
   });
 
   it("ignores changes after dispose and never cycles on them", async () => {
-    const { deps } = makeDeps({ hasApp: false });
+    const { deps } = makeDeps({ needsArtifactBuild: false });
     const loop = createPluginDevLoop(deps);
     loop.handleChange("server.ts");
     loop.dispose();

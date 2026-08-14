@@ -9,8 +9,8 @@ export function isIgnoredPluginDevPath(relativePath: string): boolean {
 
 export interface PluginDevLoopDeps {
   pluginId: string;
-  hasApp: boolean;
-  buildApp: () => Promise<void>;
+  needsArtifactBuild: boolean;
+  buildArtifacts: () => Promise<void>;
   reloadPlugin: () => Promise<void>;
   log: (line: string) => void;
   debounceMs?: number;
@@ -39,12 +39,12 @@ export function createPluginDevLoop(deps: PluginDevLoopDeps): PluginDevLoop {
     const parts = [
       `${files.length} file${files.length === 1 ? "" : "s"} changed`,
     ];
-    if (deps.hasApp) {
+    if (deps.needsArtifactBuild) {
       const startedAt = now();
       try {
-        await deps.buildApp();
+        await deps.buildArtifacts();
         parts.push(
-          `rebuilt app in ${Math.max(0, Math.round(now() - startedAt))}ms`,
+          `rebuilt artifacts in ${Math.max(0, Math.round(now() - startedAt))}ms`,
         );
       } catch (error) {
         parts.push(`build failed: ${errorMessage(error)}`);

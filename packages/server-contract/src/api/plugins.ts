@@ -149,13 +149,20 @@ export const pluginAppStateSchema = z.object({
  * RPC methods, HTTP routes, event handlers, and databases are deliberately
  * absent.
  *
- * `skill` and `theme` are manifest-declared, so they stay accurate while the
- * plugin is disabled. `agent-tool` and `thread-integration` are only observable
+ * `skill`, `theme`, and `host-driver` are manifest-declared, so they stay
+ * accurate while the plugin is disabled. `agent-tool` and
+ * `thread-integration` are only observable
  * on a loaded plugin, so a disabled plugin reports none of them and the detail
  * page says so rather than implying it has none.
  */
 export const pluginCapabilitySchema = z.object({
-  kind: z.enum(["skill", "theme", "agent-tool", "thread-integration"]),
+  kind: z.enum([
+    "skill",
+    "theme",
+    "agent-tool",
+    "thread-integration",
+    "host-driver",
+  ]),
   id: z.string(),
   label: z.string(),
   detail: z.string().nullable(),
