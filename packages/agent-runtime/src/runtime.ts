@@ -136,12 +136,6 @@ interface ArchiveOrUnarchiveThreadArgs {
   threadId: string;
 }
 
-interface CodexArchivedSessionRecoveryArgs {
-  providerId: string;
-  providerThreadId: string;
-  threadId: string;
-}
-
 interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
   adapterFactory?: RuntimeProviderProcessManagerArgs["adapterFactory"];
 }
@@ -212,9 +206,6 @@ const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_CATEGORIES =
   new Set<ProviderErrorCategory>(["rate-limit", "unauthorized"]);
 const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN =
   /\b(?:40[19]|429|auth(?:entication|orization)?|credits?|quota|rate[-\s]?limit(?:ed)?|unauthori[sz]ed|usage limit)\b/i;
-const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
-  /\b(?:session|thread)\s+\S+\s+is archived\b/i;
-
 function resolveThreadStoragePath(
   args: ResolveThreadStoragePathArgs,
 ): string | undefined {
@@ -451,48 +442,6 @@ function createAgentRuntimeInternal(
       processKey: proc.processKey,
       providerId: proc.providerId,
     });
-  }
-
-  async function executeConnectionOperation<TResult>(args: {
-    proc: ProviderProcess;
-    execute: (connection: ProviderDriverConnection) => Promise<TResult>;
-    recovery?: CodexArchivedSessionRecoveryArgs;
-  }): Promise<TResult> {
-    try {
-      return await args.execute(args.proc.connection);
-    } catch (error) {
-      const recovery = args.recovery;
-      if (
-        !recovery ||
-        !isCodexArchivedSessionError(recovery.providerId, error)
-      ) {
-        throw error;
-      }
-
-      options.onStderr?.(
-        `Codex session "${recovery.providerThreadId}" is archived; unarchiving before retrying thread "${recovery.threadId}".`,
-      );
-      let retryProc: ProviderProcess;
-      try {
-        await archiveOrUnarchiveThread({
-          commandType: "thread/unarchive",
-          ...recovery,
-        });
-        // Unarchiving can replace an exited provider process, so resolve the
-        // connection again instead of writing to the captured child process.
-        retryProc = requireProviderProcess({
-          processKey: args.proc.processKey,
-          providerId: args.proc.providerId,
-        });
-      } catch (recoveryError) {
-        // The archived-session error names the session and the CLI command
-        // that fixes it, so keep it as the reported failure whenever the
-        // recovery itself could not run.
-        throw new Error(error.message, { cause: recoveryError });
-      }
-
-      return args.execute(retryProc.connection);
-    }
   }
 
   function resolveProviderForThread(threadId: string): string {
@@ -843,17 +792,6 @@ function createAgentRuntimeInternal(
     await shutdownThreadScopedProviderProcessIfIdle(proc);
   }
 
-  function isCodexArchivedSessionError(
-    providerId: string,
-    error: unknown,
-  ): error is Error {
-    return (
-      providerId === CODEX_PROVIDER_ID &&
-      error instanceof Error &&
-      CODEX_ARCHIVED_SESSION_ERROR_PATTERN.test(error.message)
-    );
-  }
-
   async function reconfigureThreadIfNeeded(
     args: ReconfigureThreadIfNeededArgs,
   ): Promise<void> {
@@ -917,15 +855,7 @@ function createAgentRuntimeInternal(
       disallowedTools: currentConfig.disallowedTools,
       instructionMode: currentConfig.instructionMode,
     };
-    const result = await executeConnectionOperation({
-      proc,
-      execute: (connection) => connection.openSession(openArgs),
-      recovery: {
-        providerId: currentConfig.providerId,
-        providerThreadId: currentProviderSessionId,
-        threadId: args.threadId,
-      },
-    });
+    const result = await proc.connection.openSession(openArgs);
     if (result.providerSessionId) {
       recordProviderThreadIdentity(
         proc,
@@ -1317,23 +1247,8 @@ function createAgentRuntimeInternal(
             instructionMode,
             ...(outputSchema !== undefined ? { outputSchema } : {}),
           };
-          const result = await executeConnectionOperation({
-            proc,
-            execute: (connection) =>
-              connection.openSession(openArgs, {
-                timeoutMs: THREAD_CREATION_REQUEST_TIMEOUT_MS,
-              }),
-            // A fork reads the source session, so an archived source fails the
-            // same way a resume does. A plain start has no session to unarchive.
-            ...(fork
-              ? {
-                  recovery: {
-                    providerId,
-                    providerThreadId: fork.sourceProviderThreadId,
-                    threadId,
-                  },
-                }
-              : {}),
+          const result = await proc.connection.openSession(openArgs, {
+            timeoutMs: THREAD_CREATION_REQUEST_TIMEOUT_MS,
           });
           if (result.providerSessionId) {
             recordProviderThreadIdentity(
@@ -1647,15 +1562,7 @@ function createAgentRuntimeInternal(
             disallowedTools,
             instructionMode,
           };
-          const result = await executeConnectionOperation({
-            proc,
-            execute: (connection) => connection.openSession(openArgs),
-            recovery: {
-              providerId,
-              providerThreadId: currentProviderSessionId,
-              threadId,
-            },
-          });
+          const result = await proc.connection.openSession(openArgs);
           if (result.disposition === "unchanged") {
             return { providerThreadId: currentProviderSessionId };
           }
@@ -1723,27 +1630,18 @@ function createAgentRuntimeInternal(
             ReturnType<ProviderDriverConnection["submitTurn"]>
           >;
           try {
-            submission = await executeConnectionOperation({
-              proc,
-              execute: (connection) =>
-                connection.submitTurn({
-                  bbThreadId: threadId,
-                  providerSessionId,
-                  mode: { kind: "start" },
-                  input,
-                  ...(inputGroups !== undefined ? { inputGroups } : {}),
-                  clientRequestId,
-                  execution: toProviderExecutionContext({
-                    envVars: {},
-                    execOpts: effectiveExecOpts,
-                    instructions,
-                  }),
-                }),
-              recovery: {
-                providerId: pid,
-                providerThreadId: providerSessionId,
-                threadId,
-              },
+            submission = await proc.connection.submitTurn({
+              bbThreadId: threadId,
+              providerSessionId,
+              mode: { kind: "start" },
+              input,
+              ...(inputGroups !== undefined ? { inputGroups } : {}),
+              clientRequestId,
+              execution: toProviderExecutionContext({
+                envVars: {},
+                execOpts: effectiveExecOpts,
+                instructions,
+              }),
             });
           } catch (error) {
             pendingTurnStartThreadIds.delete(threadId);
@@ -1815,27 +1713,18 @@ function createAgentRuntimeInternal(
           });
 
           const providerSessionId = requireProviderThreadId(threadId);
-          const submission = await executeConnectionOperation({
-            proc,
-            execute: (connection) =>
-              connection.submitTurn({
-                bbThreadId: threadId,
-                providerSessionId,
-                mode: { kind: "steer", expectedTurnId },
-                input,
-                ...(inputGroups !== undefined ? { inputGroups } : {}),
-                clientRequestId,
-                execution: toProviderExecutionContext({
-                  envVars: {},
-                  execOpts: effectiveExecOpts,
-                  instructions,
-                }),
-              }),
-            recovery: {
-              providerId: pid,
-              providerThreadId: providerSessionId,
-              threadId,
-            },
+          const submission = await proc.connection.submitTurn({
+            bbThreadId: threadId,
+            providerSessionId,
+            mode: { kind: "steer", expectedTurnId },
+            input,
+            ...(inputGroups !== undefined ? { inputGroups } : {}),
+            clientRequestId,
+            execution: toProviderExecutionContext({
+              envVars: {},
+              execOpts: effectiveExecOpts,
+              instructions,
+            }),
           });
           emitTranslatedEvents({
             events: submission.events,

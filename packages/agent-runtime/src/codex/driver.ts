@@ -161,6 +161,77 @@ interface CodexInstructionOverrides {
   developerInstructions?: ThreadStartParams["developerInstructions"];
 }
 
+const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
+  /(?:\b(?:session|thread)\s+\S+\s+is archived\b|\bno rollout found for thread id \S+)/iu;
+
+function archivedSessionIdForOpen(
+  mode: ProviderSessionOpenParams["mode"],
+): string | null {
+  switch (mode.kind) {
+    case "start":
+      return null;
+    case "resume":
+      return mode.providerSessionId;
+    case "fork":
+      return mode.sourceProviderSessionId;
+  }
+}
+
+function isArchivedSessionError(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    CODEX_ARCHIVED_SESSION_ERROR_PATTERN.test(error.message)
+  );
+}
+
+function isAlreadyArchivedStateError(
+  archived: boolean,
+  error: unknown,
+): boolean {
+  if (!(error instanceof Error)) return false;
+  return archived
+    ? error.message.includes("no rollout found for thread id")
+    : error.message.includes("no archived rollout found for thread id");
+}
+
+async function unarchiveCodexSession(
+  connection: CodexAppServerConnection,
+  providerSessionId: string,
+): Promise<void> {
+  await connection.request({
+    method: "thread/unarchive",
+    params: { threadId: providerSessionId },
+    resultSchema: z.unknown(),
+  });
+}
+
+async function withArchivedSessionRecovery<Result>(args: {
+  providerSessionId: string | null;
+  request(): Promise<Result>;
+  unarchive(providerSessionId: string): Promise<void>;
+}): Promise<Result> {
+  try {
+    return await args.request();
+  } catch (error) {
+    if (args.providerSessionId === null || !isArchivedSessionError(error)) {
+      throw error;
+    }
+    try {
+      await args.unarchive(args.providerSessionId);
+    } catch (recoveryError) {
+      const recoveryMessage =
+        recoveryError instanceof Error
+          ? recoveryError.message
+          : String(recoveryError);
+      throw new Error(
+        `${error.message}; automatic unarchive failed: ${recoveryMessage}`,
+        { cause: recoveryError },
+      );
+    }
+    return args.request();
+  }
+}
+
 function toWorkspaceWriteCodexSandboxPolicy(
   writableRoots: readonly string[],
 ): SandboxPolicy {
@@ -914,7 +985,10 @@ function handleCodexToolRequest(args: {
 }
 
 export const codexDriverTestHelpers = {
+  archivedSessionIdForOpen,
   gitWritableRootsForWorkspace,
+  isAlreadyArchivedStateError,
+  withArchivedSessionRecovery,
   toCodexPermissionSettings,
   toCodexThreadPermissionSettings,
   buildCodexConfig,
@@ -1011,11 +1085,17 @@ async function openCodexSession(
     resultSchema: z.unknown(),
   });
   const open = buildCodexOpenParams(params, gitWritableRoots);
-  const result = await connection.request({
-    method: open.method,
-    params: open.params,
-    resultSchema: codexThreadResultSchema,
-    timeoutMs: 30_000,
+  const result = await withArchivedSessionRecovery({
+    providerSessionId: archivedSessionIdForOpen(params.mode),
+    request: () =>
+      connection.request({
+        method: open.method,
+        params: open.params,
+        resultSchema: codexThreadResultSchema,
+        timeoutMs: 30_000,
+      }),
+    unarchive: (providerSessionId) =>
+      unarchiveCodexSession(connection, providerSessionId),
   });
   session = {
     activeTurnId: null,
@@ -1122,16 +1202,22 @@ export const codexProviderDriver = defineProviderDriver({
         return { outcome: "stale", activeTurnId: session.activeTurnId };
       }
       await session.activeTurnReady;
-      await session.connection.request({
-        method: "turn/steer",
-        params: {
-          threadId: session.providerSessionId,
-          expectedTurnId: session.providerTurnId ?? params.expectedTurnId,
-          input: toCodexUserInput(
-            flattenPromptInputGroups([], params.inputGroups),
-          ),
-        },
-        resultSchema: codexOperationResultSchema,
+      await withArchivedSessionRecovery({
+        providerSessionId: session.providerSessionId,
+        request: () =>
+          session.connection.request({
+            method: "turn/steer",
+            params: {
+              threadId: session.providerSessionId,
+              expectedTurnId: session.providerTurnId ?? params.expectedTurnId,
+              input: toCodexUserInput(
+                flattenPromptInputGroups([], params.inputGroups),
+              ),
+            },
+            resultSchema: codexOperationResultSchema,
+          }),
+        unarchive: (providerSessionId) =>
+          unarchiveCodexSession(session.connection, providerSessionId),
       });
       return {
         outcome: "accepted",
@@ -1172,18 +1258,24 @@ export const codexProviderDriver = defineProviderDriver({
           gitWritableRoots: session.gitWritableRoots,
           options,
         });
-        const turnResult = await session.connection.request({
-          method: "turn/start",
-          params: {
-            threadId: session.providerSessionId,
-            input: toCodexUserInput(input),
-            approvalPolicy: permissions.approvalPolicy,
-            approvalsReviewer: permissions.approvalsReviewer,
-            sandboxPolicy: permissions.sandboxPolicy,
-            model: params.execution.model,
-            serviceTier: toCodexServiceTier(params.execution.serviceTier),
-          },
-          resultSchema: codexTurnResultSchema,
+        const turnResult = await withArchivedSessionRecovery({
+          providerSessionId: session.providerSessionId,
+          request: () =>
+            session.connection.request({
+              method: "turn/start",
+              params: {
+                threadId: session.providerSessionId,
+                input: toCodexUserInput(input),
+                approvalPolicy: permissions.approvalPolicy,
+                approvalsReviewer: permissions.approvalsReviewer,
+                sandboxPolicy: permissions.sandboxPolicy,
+                model: params.execution.model,
+                serviceTier: toCodexServiceTier(params.execution.serviceTier),
+              },
+              resultSchema: codexTurnResultSchema,
+            }),
+          unarchive: (providerSessionId) =>
+            unarchiveCodexSession(session.connection, providerSessionId),
         });
         session.translator.setProviderTurnId(turnResult.turn.id);
         session.providerTurnId = turnResult.turn.id;
@@ -1233,11 +1325,16 @@ export const codexProviderDriver = defineProviderDriver({
 
   async setSessionArchived(params) {
     const session = requireCodexSession(params.attachmentId);
-    await session.connection.request({
-      method: params.archived ? "thread/archive" : "thread/unarchive",
-      params: { threadId: session.providerSessionId },
-      resultSchema: codexOperationResultSchema,
-    });
+    try {
+      await session.connection.request({
+        method: params.archived ? "thread/archive" : "thread/unarchive",
+        params: { threadId: session.providerSessionId },
+        resultSchema: codexOperationResultSchema,
+      });
+    } catch (error) {
+      if (!isAlreadyArchivedStateError(params.archived, error)) throw error;
+      return { outcome: "unchanged" };
+    }
     return { outcome: "applied" };
   },
 

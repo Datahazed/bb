@@ -137,6 +137,78 @@ for (const providerId of providers) {
 }
 
 describe.concurrent("codex resume scenarios", () => {
+  it("recovers archived sessions for resume and fork", async () => {
+    const providerId = "codex";
+    const ctx = createTestRuntime(providerId);
+    const options = await resolveRuntimeOptions({
+      ctx,
+      providerId,
+      preset: "full",
+    });
+    const sourceThreadId = newThreadId();
+
+    try {
+      const source = await ctx.runtime.startThread({
+        environmentId: "env-1",
+        threadId: sourceThreadId,
+        projectId: "test-project",
+        providerId,
+        options,
+      });
+      expect(source.providerThreadId).toEqual(expect.any(String));
+      await ctx.runtime.runTurn({
+        clientRequestId: "creq_222222222a",
+        threadId: sourceThreadId,
+        input: [promptTextInput({ text: "Reply with exactly READY." })],
+        options,
+      });
+      await waitForThreadTurnCompleted({
+        ctx,
+        threadId: sourceThreadId,
+        timeoutMs: 30_000,
+        label: "source turn before archive",
+      });
+
+      await ctx.runtime.archiveThread({
+        threadId: sourceThreadId,
+        providerId,
+        providerThreadId: source.providerThreadId,
+      });
+
+      const resumedThreadId = newThreadId();
+      await expect(
+        ctx.runtime.resumeThread({
+          environmentId: "env-1",
+          threadId: resumedThreadId,
+          projectId: "test-project",
+          providerThreadId: source.providerThreadId,
+          providerId,
+          options,
+        }),
+      ).resolves.toMatchObject({ providerThreadId: source.providerThreadId });
+
+      await ctx.runtime.archiveThread({
+        threadId: resumedThreadId,
+        providerId,
+        providerThreadId: source.providerThreadId,
+      });
+
+      const fork = await ctx.runtime.startThread({
+        environmentId: "env-1",
+        threadId: newThreadId(),
+        projectId: "test-project",
+        providerId,
+        fork: { sourceProviderThreadId: source.providerThreadId },
+        options,
+      });
+      expect(fork.providerThreadId).toEqual(expect.any(String));
+      expect(fork.providerThreadId).not.toBe(source.providerThreadId);
+    } finally {
+      await ctx.runtime.shutdown();
+      cleanup(ctx);
+    }
+  }, 45_000);
+
   // Resume with dynamic tools
   it("preserves dynamic tools across resume", async () => {
     const providerId = "codex";
@@ -269,7 +341,9 @@ describe.concurrent("codex resume scenarios", () => {
         clientRequestId: "creq_2222222225",
         threadId,
         input: [
-          promptTextInput({ text: "Call the bb_test_ping tool again right now." }),
+          promptTextInput({
+            text: "Call the bb_test_ping tool again right now.",
+          }),
         ],
         options,
       });

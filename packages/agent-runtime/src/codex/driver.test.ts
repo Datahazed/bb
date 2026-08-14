@@ -154,6 +154,73 @@ describe("Codex canonical driver command mapping", () => {
     });
   });
 
+  it("recovers archived resume and fork sessions inside the driver", async () => {
+    expect(
+      codexDriverTestHelpers.archivedSessionIdForOpen({
+        kind: "resume",
+        providerSessionId: "resume-session",
+      }),
+    ).toBe("resume-session");
+    expect(
+      codexDriverTestHelpers.archivedSessionIdForOpen({
+        kind: "fork",
+        sourceProviderSessionId: "fork-session",
+        sourceCheckpointId: null,
+      }),
+    ).toBe("fork-session");
+
+    let attempts = 0;
+    const unarchived: string[] = [];
+    await expect(
+      codexDriverTestHelpers.withArchivedSessionRecovery({
+        providerSessionId: "resume-session",
+        request: () => {
+          attempts += 1;
+          return attempts === 1
+            ? Promise.reject(
+                new Error("no rollout found for thread id resume-session"),
+              )
+            : Promise.resolve("opened");
+        },
+        unarchive: (providerSessionId) => {
+          unarchived.push(providerSessionId);
+          return Promise.resolve();
+        },
+      }),
+    ).resolves.toBe("opened");
+    expect(attempts).toBe(2);
+    expect(unarchived).toEqual(["resume-session"]);
+  });
+
+  it("preserves the archived-session error when recovery fails", async () => {
+    const archivedError = new Error("thread source-session is archived");
+    await expect(
+      codexDriverTestHelpers.withArchivedSessionRecovery({
+        providerSessionId: "source-session",
+        request: () => Promise.reject(archivedError),
+        unarchive: () => Promise.reject(new Error("unarchive failed")),
+      }),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining(archivedError.message),
+      cause: expect.objectContaining({ message: "unarchive failed" }),
+    });
+  });
+
+  it("recognizes idempotent archive state errors", () => {
+    expect(
+      codexDriverTestHelpers.isAlreadyArchivedStateError(
+        true,
+        new Error("no rollout found for thread id session-1"),
+      ),
+    ).toBe(true);
+    expect(
+      codexDriverTestHelpers.isAlreadyArchivedStateError(
+        false,
+        new Error("no archived rollout found for thread id session-1"),
+      ),
+    ).toBe(true);
+  });
+
   it("pins durable starts and forwards fork checkpoints", () => {
     expect(
       codexDriverTestHelpers.buildCodexOpenParams(openParams(), []),
