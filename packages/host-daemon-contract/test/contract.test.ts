@@ -697,7 +697,7 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonCommandSchema.acpLaunchSpec":
     "thread.start and turn.submit include an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
   "hostDaemonCommandSchema.providerDriver":
-    "provider commands include an immutable artifact launch spec only for plugin-contributed providers; bundled providers resolve daemon-side.",
+    "provider commands include an immutable artifact launch spec only when they execute a provider; unrelated commands omit it.",
   "hostDaemonCommandSchema.acpLaunchSpec.cwd":
     "dynamic ACP launch specs may omit cwd so the daemon uses the thread workspace cwd.",
   "hostDaemonCommandSchema.acpLaunchSpec.modelCli":
@@ -741,7 +741,7 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
     "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
   "hostDaemonOnlineRpcCommandSchema.providerDriver":
-    "provider.list_models includes an immutable artifact launch spec only for plugin-contributed providers; bundled providers resolve daemon-side.",
+    "provider.list_models may omit an artifact only for contract-level compatibility tests; production providers resolve through registered host drivers.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
@@ -1074,13 +1074,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 109 carries immutable plugin provider-driver descriptors from the
-  // server to the daemon for model discovery, launch, resume, and archive.
-  // Older daemons cannot acquire or lease those artifacts. Version 108 added
-  // the distinct `unborn_head` provisioning failure and remains part of the
-  // protocol lineage.
-  it("uses protocol version 109 for plugin provider-driver launches", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(109);
+  // Version 110 identifies the provider identity expected from each driver
+  // artifact, allowing one ACP driver to serve dynamic provider ids. Version
+  // 109 introduced immutable plugin provider-driver launch descriptors and
+  // remains part of the protocol lineage.
+  it("uses protocol version 110 for explicit driver provider identity", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(110);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

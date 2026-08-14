@@ -1,0 +1,19 @@
+{
+  "name": "bb-plugin-pi",
+  "version": "0.1.0",
+  "type": "module",
+  "bb": {
+    "name": "Pi",
+    "description": "Run Pi coding-agent sessions through BB.",
+    "branding": {
+      "icon": "Code"
+    },
+    "server": "./server.ts",
+    "experimental_hostDrivers": [
+      {
+        "id": "pi",
+        "entry": "./driver.ts"
+      }
+    ]
+  }
+}

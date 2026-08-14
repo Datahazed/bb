@@ -47,7 +47,6 @@ export interface StartHostDaemonOptions {
   hostId?: string;
   hostName?: string;
   bbExecutableDirectory?: string;
-  bridgeBundleDir?: string;
   hostType?: HostType;
   enableLocalApi?: boolean;
   localApi?: HostDaemonLocalApiOverrides;
@@ -253,7 +252,6 @@ export async function startHostDaemon(
       machineCredential: options.machineCredential,
       connectMachineId: options.connectMachineId,
       autoUpdate: options.autoUpdate,
-      bridgeBundleDir: options.bridgeBundleDir,
       hostType,
       hostId: identity.hostId,
       hostName: identity.hostName,

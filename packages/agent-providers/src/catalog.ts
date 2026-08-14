@@ -208,7 +208,7 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
  *      plan, goal, or an explicit empty array.
  *   4. `serverCapabilities` (`ProviderServerCapabilities`, backend-only):
  *      workflows, execution override, host-daemon AI services, reasoning ladder.
- *   5. Its canonical driver or legacy adapter factory in `@bb/agent-runtime`.
+ *   5. A builtin plugin registration and host-driver artifact under `plugins/`.
  * Host-local specifics stay with the daemon: provider CLI executable/install
  * metadata (`provider-cli-health.ts`) and injected-skill root layout
  * (`injected-skills.ts`), both keyed by this `info.id`.

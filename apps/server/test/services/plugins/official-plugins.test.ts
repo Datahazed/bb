@@ -86,14 +86,18 @@ describe("official plugin registry invariants", () => {
 
   it("assigns every bundled plugin to one curated store category", () => {
     const expectedCategories = {
+      acp: "Agent interaction",
       "ask-user-question": "Agent interaction",
       automations: "Workflow management",
+      "claude-code": "Agent interaction",
+      codex: "Agent interaction",
       connect: "Host access",
       "custom-instructions": "Context & knowledge",
       docs: "Context & knowledge",
       github: "Developer tools",
       "inline-vis": "Interface",
       memory: "Context & knowledge",
+      pi: "Agent interaction",
       "provider-retry": "Agent interaction",
       secrets: "Developer tools",
       "side-chat": "Agent interaction",

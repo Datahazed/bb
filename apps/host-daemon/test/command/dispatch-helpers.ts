@@ -503,11 +503,29 @@ export function createHarness(
         dataDir: overrides.dataDir ?? "/tmp/bb-test-data",
         eventSink: noopEventSink,
         fetchProjectAttachment: unexpectedProjectAttachmentFetch,
+        listModels: listModelsWithRuntime(runtime),
         runtimeManager: manager,
         threadStorageRootPath:
           overrides.threadStorageRootPath ?? "/tmp/bb-test-thread-storage",
       };
     },
+  };
+}
+
+function listModelsWithRuntime(
+  runtime: AgentRuntime,
+): CommandDispatchOptions["listModels"] {
+  return async (args) => {
+    const result = await runtime.listModels(args);
+    return {
+      models: result.models,
+      selectedOnlyModels: result.selectedOnlyModels,
+      inspection: {
+        readiness: result.readiness,
+        capabilities: result.capabilities,
+        diagnostics: result.diagnostics,
+      },
+    };
   };
 }
 
@@ -520,6 +538,18 @@ export function makeDispatchOptions(
     dataDir: "/tmp/bb-test-data",
     eventSink: noopEventSink,
     fetchProjectAttachment: unexpectedProjectAttachmentFetch,
+    listModels: async () => {
+      const result = createReadyProviderInspection();
+      return {
+        models: result.models,
+        selectedOnlyModels: result.selectedOnlyModels,
+        inspection: {
+          readiness: result.readiness,
+          capabilities: result.capabilities,
+          diagnostics: result.diagnostics,
+        },
+      };
+    },
     threadStorageRootPath: "/tmp/bb-test-thread-storage",
     ...overrides,
   };

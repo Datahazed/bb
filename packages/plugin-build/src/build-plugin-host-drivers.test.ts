@@ -1,7 +1,11 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PROVIDER_DRIVER_PROTOCOL_VERSION } from "@bb/provider-driver-contract";
+import {
+  PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
+  PROVIDER_DRIVER_ARTIFACT_FORMAT_VERSION,
+  PROVIDER_DRIVER_PROTOCOL_VERSION,
+} from "@bb/provider-driver-contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { list as listTar } from "tar";
 import {
@@ -69,13 +73,13 @@ describe("buildPluginHostDrivers", () => {
     );
     const rawMeta = await readFile(result.metaPath, "utf8");
     expect(JSON.parse(rawMeta)).toEqual({
-      artifactFormatVersion: 1,
+      artifactFormatVersion: PROVIDER_DRIVER_ARTIFACT_FORMAT_VERSION,
       pluginId: "driver-fixture",
       pluginVersion: "0.1.0",
       driverId: "echo",
       providerDriverProtocolVersion: PROVIDER_DRIVER_PROTOCOL_VERSION,
       runtime: "node22",
-      entrypoint: "driver.js",
+      entrypoint: PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
       builtWith: { bbVersion: TEST_BB_VERSION },
     });
     expect(
@@ -101,9 +105,9 @@ describe("buildPluginHostDrivers", () => {
       onReadEntry: (entry) => entries.push(entry.path),
     });
     expect(entries.sort()).toEqual([
-      "driver.js",
-      "driver.js.map",
       "driver.meta.json",
+      PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
+      `${PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT}.map`,
     ]);
 
     const firstArchive = await readFile(result.archivePath);

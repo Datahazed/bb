@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
   PROVIDER_DRIVER_ARTIFACT_FORMAT_VERSION,
   PROVIDER_DRIVER_PROTOCOL_VERSION,
   type ProviderDriverArtifactDescriptor,
@@ -30,7 +31,7 @@ function artifactMeta(
     driverId: "agent",
     providerDriverProtocolVersion: PROVIDER_DRIVER_PROTOCOL_VERSION,
     runtime: "node22",
-    entrypoint: "driver.js",
+    entrypoint: PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
     builtWith: { bbVersion: "0.37.0" },
     ...overrides,
   };
@@ -67,10 +68,16 @@ describe("ProviderDriverArtifactCache", () => {
     const sourceDir = join(root, `source-${Math.random()}`);
     await mkdir(sourceDir);
     if (args.symlinkEntrypoint) {
-      await writeFile(join(sourceDir, "target.js"), "export {};\n");
-      await symlink("target.js", join(sourceDir, "driver.js"));
+      await writeFile(join(sourceDir, "target.ts"), "export {};\n");
+      await symlink(
+        "target.ts",
+        join(sourceDir, PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT),
+      );
     } else {
-      await writeFile(join(sourceDir, "driver.js"), "export {};\n");
+      await writeFile(
+        join(sourceDir, PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT),
+        "export {};\n",
+      );
     }
     const meta = args.meta ?? artifactMeta();
     await writeFile(
@@ -86,7 +93,7 @@ describe("ProviderDriverArtifactCache", () => {
         portable: true,
         mtime: new Date(0),
       },
-      ["driver.js", "driver.meta.json"],
+      [PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT, "driver.meta.json"],
     );
     const bytes = await readFile(archivePath);
     return { bytes, descriptor: { digest: digest(bytes), meta } };

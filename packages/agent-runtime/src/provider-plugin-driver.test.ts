@@ -2,7 +2,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { PROVIDER_DRIVER_PROTOCOL_VERSION } from "@bb/provider-driver-contract";
+import {
+  PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
+  PROVIDER_DRIVER_ARTIFACT_FORMAT_VERSION,
+  PROVIDER_DRIVER_PROTOCOL_VERSION,
+} from "@bb/provider-driver-contract";
 import type { HostDaemonProviderDriverLaunchSpec } from "@bb/host-daemon-contract";
 import { createAgentRuntime } from "./runtime.js";
 import {
@@ -21,6 +25,24 @@ afterEach(async () => {
 });
 
 describe("plugin provider driver launch", () => {
+  it("does not fall back to statically bundled provider drivers", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "bb-plugin-driver-"));
+    temporaryRoots.push(workspacePath);
+    const runtime = createAgentRuntime({
+      workspacePath,
+      onEvent: () => undefined,
+      onToolCall: async () => ({ contentItems: [], success: true }),
+    });
+
+    try {
+      await expect(runtime.listModels({ providerId: "pi" })).rejects.toThrow(
+        'Provider "pi" requires a registered host-driver artifact',
+      );
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
   it("launches a namespaced provider through a resolved artifact and releases its generation", async () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "bb-plugin-driver-"));
     temporaryRoots.push(workspacePath);
@@ -30,16 +52,17 @@ describe("plugin provider driver launch", () => {
       artifact: {
         digest: artifactDigest,
         meta: {
-          artifactFormatVersion: 1,
+          artifactFormatVersion: PROVIDER_DRIVER_ARTIFACT_FORMAT_VERSION,
           pluginId: "test-plugin",
           pluginVersion: "1.0.0",
           driverId: "test-driver",
           providerDriverProtocolVersion: PROVIDER_DRIVER_PROTOCOL_VERSION,
           runtime: "node22",
-          entrypoint: "driver.js",
+          entrypoint: PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
           builtWith: { bbVersion: "test" },
         },
       },
+      driverProviderId: providerId,
       displayName: "Plugin Echo",
       capabilities: {
         supportsArchive: true,
@@ -67,7 +90,11 @@ describe("plugin provider driver launch", () => {
           capabilities: spec.capabilities,
           config: spec.config,
           displayName: spec.displayName,
-          identity: { pluginId: "test-plugin", driverId: "test-driver" },
+          identity: {
+            pluginId: "test-plugin",
+            driverId: "test-driver",
+            providerId: spec.driverProviderId,
+          },
           process: {
             command: process.execPath,
             args: buildCanonicalTestDriverArgs(fakeProviderDriverPath),

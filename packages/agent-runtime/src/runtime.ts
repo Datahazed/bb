@@ -15,7 +15,6 @@ import type {
   ProviderDriverConnection,
   ProviderDriverSessionOpenArgs,
 } from "./provider-driver/connection.js";
-import { getBundledProviderDriverLaunchSpec } from "./provider-driver/bundled-launch-specs.js";
 import {
   assertProviderSupportsExecutionOptions,
   toProviderExecutionContext,
@@ -123,18 +122,14 @@ interface ArchiveOrUnarchiveThreadArgs {
 
 interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
   canonicalProviderDriverFactory?: RuntimeProviderProcessManagerArgs["canonicalProviderDriverFactory"];
+  canonicalProviderProcessScope?: (
+    providerId: string,
+  ) => "environment" | "thread";
 }
 
 interface ResolveThreadStoragePathArgs {
   options: AgentRuntimeInternalOptions;
   threadId: string;
-}
-
-function defaultBridgeNodeEnv(): Record<string, string> | undefined {
-  if (process.versions.electron === undefined) {
-    return undefined;
-  }
-  return { ELECTRON_RUN_AS_NODE: "1" };
 }
 
 // ---------------------------------------------------------------------------
@@ -197,10 +192,15 @@ export function createAgentRuntimeWithCanonicalProviderDriverFactory(
   canonicalProviderDriverFactory: NonNullable<
     RuntimeProviderProcessManagerArgs["canonicalProviderDriverFactory"]
   >,
+  canonicalProviderProcessScope: (
+    providerId: string,
+  ) => "environment" | "thread" = (providerId) =>
+    providerId === "codex" ? "thread" : "environment",
 ): AgentRuntime {
   return createAgentRuntimeInternal({
     ...options,
     canonicalProviderDriverFactory,
+    canonicalProviderProcessScope,
   });
 }
 
@@ -223,15 +223,10 @@ function createAgentRuntimeInternal(
   const turnState = new RuntimeTurnState();
   const backgroundWorkState = new RuntimeBackgroundWorkState();
   const turnReplayFilter = new RuntimeTurnReplayFilter();
-  const bridgeNodeEnv = options.bridgeNodeEnv ?? defaultBridgeNodeEnv();
 
   const providerProcesses = new RuntimeProviderProcessManager({
     additionalWorkspaceWriteRoots,
     canonicalProviderDriverFactory: options.canonicalProviderDriverFactory,
-    bridgeBundleDir: options.bridgeBundleDir,
-    ...(bridgeNodeEnv !== undefined ? { bridgeNodeEnv } : {}),
-    bridgeNodeExecutablePath:
-      options.bridgeNodeExecutablePath ?? process.execPath,
     captureThreadExitState: (threadId) => ({
       activeTurnId: turnState.getActiveTurnId(threadId),
       providerThreadId:
@@ -350,9 +345,9 @@ function createAgentRuntimeInternal(
   function resolveProviderProcessKey(
     args: ResolveProviderProcessKeyArgs,
   ): string {
-    const driverSpec = getBundledProviderDriverLaunchSpec(args.providerId);
     const processScope =
-      args.providerDriver?.process.scope ?? driverSpec?.processPolicy.scope;
+      args.providerDriver?.process.scope ??
+      options.canonicalProviderProcessScope?.(args.providerId);
     const providerGenerationKey =
       args.providerDriver === undefined
         ? args.providerId

@@ -186,7 +186,6 @@ export interface RefreshEnvironmentWorkspaceArgs {
 }
 
 export interface RuntimeManagerOptions {
-  bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"];
   createRuntime?: (options: AgentRuntimeOptions) => AgentRuntime;
   dataDir?: string;
   dataDirSkillsRootPath?: string | null;
@@ -1247,7 +1246,6 @@ export class RuntimeManager {
       ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
-      bridgeBundleDir: this.options.bridgeBundleDir,
       resolveProviderDriverLaunch: this.options.resolveProviderDriverLaunch,
       onEvent: (event) => {
         this.options.onStderr?.(
@@ -1321,7 +1319,6 @@ export class RuntimeManager {
       ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
-      bridgeBundleDir: this.options.bridgeBundleDir,
       resolveProviderDriverLaunch: this.options.resolveProviderDriverLaunch,
       onEvent: (event) => {
         this.options.onEvent?.({

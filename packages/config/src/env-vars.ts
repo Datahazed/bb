@@ -294,13 +294,6 @@ export const BB_INHERITED_SKILLS_ROOTS_ENV = defineEnvVar<string[]>({
   parse: parsePathListEnvValue,
 });
 
-export const BB_BRIDGE_DIR_ENV = defineEnvVar<string | undefined>({
-  description:
-    "Directory containing provider bridge bundles for the host daemon runtime",
-  name: "BB_BRIDGE_DIR",
-  parse: parseOptionalTrimmedStringEnvValue,
-});
-
 export const BB_CONNECT_MACHINE_CREDENTIAL_ENV = defineEnvVar<
   string | undefined
 >({

@@ -653,7 +653,7 @@ Plugin state lives under the data dir:
 Plugin authors can declare experimental isolated host-driver build entries as
 `bb.experimental_hostDrivers: [{ "id": "echo", "entry": "./host/echo.ts" }]`
 in `package.json`. Entries must stay beneath the plugin root. `bb plugin build`
-emits `dist/host/<id>/driver.js`, metadata, source map, and `driver.tgz`; Git
+emits `dist/host/<id>/driver.ts`, metadata, source map, and `driver.tgz`; Git
 and path installs build these artifacts, while npm installs must publish them.
 The declaration alone never launches code or registers a provider.
 

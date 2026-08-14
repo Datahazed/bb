@@ -8,6 +8,7 @@ import {
   resolvePluginBuildToolchain,
 } from "@bb/plugin-build";
 import { isPluginOwnedIconPath, pluginPackageJsonSchema } from "@bb/domain";
+import { PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT } from "@bb/provider-driver-contract";
 import { z } from "zod";
 import {
   BUILTIN_PLUGINS_DIRECTORY_NAME,
@@ -91,7 +92,7 @@ async function writeRuntimePackageJson(args: {
                 experimental_hostDrivers:
                   packageJson.bb.experimental_hostDrivers.map((driver) => ({
                     ...driver,
-                    entry: `./dist/host/${driver.id}/driver.js`,
+                    entry: `./dist/host/${driver.id}/driver.tgz`,
                   })),
               }),
         },
@@ -146,6 +147,16 @@ async function copyBuiltinPlugin(args: {
       await readFile(path.join(args.sourceRoot, "package.json"), "utf8"),
     ),
   );
+  for (const driver of packageJson.bb.experimental_hostDrivers ?? []) {
+    const driverDir = path.join(targetDir, "dist", "host", driver.id);
+    await rm(path.join(driverDir, PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT), {
+      force: true,
+    });
+    await rm(
+      path.join(driverDir, `${PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT}.map`),
+      { force: true },
+    );
+  }
   const logo = packageJson.bb.branding.logo;
   const compactIcon = isPluginOwnedIconPath(packageJson.bb.branding.icon ?? "")
     ? packageJson.bb.branding.icon

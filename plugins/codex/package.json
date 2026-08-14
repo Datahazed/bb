@@ -1,0 +1,19 @@
+{
+  "name": "bb-plugin-codex",
+  "version": "0.1.0",
+  "type": "module",
+  "bb": {
+    "name": "Codex",
+    "description": "Run OpenAI Codex sessions through BB.",
+    "branding": {
+      "icon": "Code"
+    },
+    "server": "./server.ts",
+    "experimental_hostDrivers": [
+      {
+        "id": "codex",
+        "entry": "./driver.ts"
+      }
+    ]
+  }
+}

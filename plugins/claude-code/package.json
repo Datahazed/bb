@@ -1,0 +1,19 @@
+{
+  "name": "bb-plugin-claude-code",
+  "version": "0.1.0",
+  "type": "module",
+  "bb": {
+    "name": "Claude Code",
+    "description": "Run Claude Code sessions through BB.",
+    "branding": {
+      "icon": "Code"
+    },
+    "server": "./server.ts",
+    "experimental_hostDrivers": [
+      {
+        "id": "claude-code",
+        "entry": "./driver.ts"
+      }
+    ]
+  }
+}

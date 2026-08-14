@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadHostDaemonStartConfig } from "@bb/config/host-daemon";
 import { loadHostDaemonEntrypointConfig } from "@bb/config/host-daemon-entrypoint";
@@ -14,14 +13,6 @@ interface ReportStartupFailureArgs {
 }
 
 type MainFailureHandler = (error: unknown) => void;
-
-const entrypointDir = dirname(fileURLToPath(import.meta.url));
-
-function resolveEntrypointBridgeBundleDir(): string | undefined {
-  return existsSync(join(entrypointDir, "bb-claude-code-driver.mjs"))
-    ? entrypointDir
-    : undefined;
-}
 
 function resolveDiagnosticsLogsDir(): string {
   const hostDaemonStartConfig = loadHostDaemonStartConfig({
@@ -61,9 +52,6 @@ async function runHostDaemonEntrypoint(): Promise<void> {
   const hostDaemonModule = await import("./start-host-daemon.js");
   const daemon = await hostDaemonModule.startHostDaemon({
     bbExecutableDirectory: hostDaemonEntrypointConfig.BB_CLI_DIR,
-    bridgeBundleDir:
-      hostDaemonEntrypointConfig.BB_BRIDGE_DIR ??
-      resolveEntrypointBridgeBundleDir(),
     machineCredential: hostDaemonEntrypointConfig.BB_CONNECT_MACHINE_CREDENTIAL,
     connectMachineId: hostDaemonEntrypointConfig.BB_CONNECT_MACHINE_ID,
     autoUpdate: hostDaemonEntrypointConfig.BB_HOST_DAEMON_AUTO_UPDATE,

@@ -31,6 +31,7 @@ import {
   providerDriverArtifactDescriptorSchema,
   providerDriverCapabilitiesSchema,
   providerDriverDiagnosticSchema,
+  providerDriverProviderIdSchema,
   providerDriverReadinessSchema,
 } from "@bb/provider-driver-contract";
 import { z } from "zod";
@@ -43,7 +44,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 109 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 110 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -230,6 +231,7 @@ export function normalizeHostDaemonAcpLaunchSpec(
 export const hostDaemonProviderDriverLaunchSpecSchema = z
   .object({
     artifact: providerDriverArtifactDescriptorSchema,
+    driverProviderId: providerDriverProviderIdSchema,
     displayName: z.string().min(1).max(128),
     capabilities: providerCapabilitiesSchema,
     config: jsonObjectSchema,

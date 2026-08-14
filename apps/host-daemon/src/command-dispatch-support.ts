@@ -1,9 +1,3 @@
-import {
-  createAgentRuntime,
-  fingerprintAcpLaunchSpec,
-  type AgentRuntime,
-  type AgentRuntimeOptions,
-} from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
@@ -113,69 +107,6 @@ const MISSING_EXECUTABLE_PATTERN = /\bENOENT\b/;
 const SPAWN_PATTERN = /\bspawn\b/;
 const ACP_AUTH_REQUIRED_PATTERN =
   /ACP agent is (?:installed but )?not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN|api key|auth token|login)/is;
-
-const defaultModelListRuntimes = new Map<string, AgentRuntime>();
-
-export async function shutdownDefaultListModelsRuntimes(): Promise<void> {
-  const runtimes = [...defaultModelListRuntimes.values()];
-  defaultModelListRuntimes.clear();
-  await Promise.all(runtimes.map((runtime) => runtime.shutdown()));
-}
-
-export async function defaultListModels(
-  args: {
-    providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-    providerDriver?: HostDaemonProviderDriverLaunchSpec;
-  },
-  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
-): Promise<{
-  models: AvailableModel[];
-  selectedOnlyModels: AvailableModel[];
-  inspection: HostDaemonProviderInspection;
-}> {
-  const runtimeKey =
-    `${options.bridgeBundleDir ?? ""}` +
-    (args.acpLaunchSpec !== undefined
-      ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
-      : "") +
-    (args.providerDriver !== undefined
-      ? `#driver:${args.providerDriver.artifact.digest}`
-      : "");
-  let runtime = defaultModelListRuntimes.get(runtimeKey);
-  if (!runtime) {
-    runtime = createAgentRuntime({
-      bridgeBundleDir: options.bridgeBundleDir,
-      workspacePath: process.cwd(),
-      onEvent: () => {},
-      onToolCall: async () => ({
-        contentItems: [],
-        success: true,
-      }),
-    });
-    defaultModelListRuntimes.set(runtimeKey, runtime);
-  }
-  try {
-    const result = await runtime.listModels(args);
-    return {
-      models: result.models,
-      selectedOnlyModels: result.selectedOnlyModels,
-      inspection: {
-        readiness: result.readiness,
-        capabilities: result.capabilities,
-        diagnostics: result.diagnostics,
-      },
-    };
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.startsWith("Unsupported provider")
-    ) {
-      throw new CommandDispatchError("unknown_provider", error.message);
-    }
-    throw error;
-  }
-}
 
 export function getErrorCode(error: unknown): string {
   if (error instanceof CommandDispatchError) {

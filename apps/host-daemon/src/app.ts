@@ -13,7 +13,6 @@ import {
 } from "./interactive-request-registry.js";
 import { startEventLoopStallMonitor } from "./event-loop-stall-monitor.js";
 import { startHostDaemonHealthMonitor } from "./host-daemon-health-monitor.js";
-import { shutdownDefaultListModelsRuntimes } from "./command-dispatch-support.js";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import type { HostDaemonLogger } from "./logger.js";
@@ -111,7 +110,6 @@ export interface CreateHostDaemonAppOptions {
   dataDir: string;
   serverUrl: string;
   hostKey: string;
-  bridgeBundleDir?: string;
   hostType: HostType;
   hostId: string;
   hostName: string;
@@ -510,7 +508,6 @@ export async function createHostDaemonApp(
     },
   });
   runtimeManager = new RuntimeManager({
-    bridgeBundleDir: options.bridgeBundleDir,
     createRuntime: options.createRuntime,
     dataDir: options.dataDir,
     dataDirSkillsRootPath,
@@ -544,6 +541,7 @@ export async function createHostDaemonApp(
         identity: {
           pluginId: lease.descriptor.meta.pluginId,
           driverId: lease.descriptor.meta.driverId,
+          providerId: spec.driverProviderId,
         },
         process: {
           command: process.execPath,
@@ -964,7 +962,6 @@ export async function createHostDaemonApp(
       await runtimeManager.shutdownAll();
       await eventSink.flush();
       await eventSink.dispose();
-      await shutdownDefaultListModelsRuntimes();
       await connection.shutdown();
     },
     onStart: async () => {

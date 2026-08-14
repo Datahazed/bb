@@ -12,7 +12,6 @@ import {
 import semver from "semver";
 import {
   CommandDispatchError,
-  defaultListModels,
   ExpectedCommandDispatchError,
   type CommandOf,
   type CommandDispatchOptions,
@@ -624,8 +623,11 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,
   "host.write_file": writeHostFile,
-  "provider.list_models": async (command, options) =>
-    (options.listModels ?? defaultListModels)({
+  "provider.list_models": async (command, options) => {
+    if (options.listModels === undefined) {
+      throw new Error("Provider model discovery is not configured");
+    }
+    return options.listModels({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       ...(command.acpLaunchSpec !== undefined
@@ -634,7 +636,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       ...(command.providerDriver !== undefined
         ? { providerDriver: command.providerDriver }
         : {}),
-    }),
+    });
+  },
   "known_acp_agents.status": async (command) =>
     getKnownAcpAgentsStatus({ agents: command.agents }),
   "provider.usage": async () => getProviderUsage(),

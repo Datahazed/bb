@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { PROVIDER_DRIVER_PROTOCOL_VERSION } from "./limits.js";
 
-export const PROVIDER_DRIVER_ARTIFACT_FORMAT_VERSION = 1 as const;
+export const PROVIDER_DRIVER_ARTIFACT_FORMAT_VERSION = 2 as const;
 export const PROVIDER_DRIVER_ARTIFACT_RUNTIME = "node22" as const;
-export const PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT = "driver.js" as const;
+export const PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT = "driver.ts" as const;
 export const PROVIDER_DRIVER_ARTIFACT_MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
 export const PROVIDER_DRIVER_ARTIFACT_MAX_EXTRACTED_BYTES = 512 * 1024 * 1024;
 

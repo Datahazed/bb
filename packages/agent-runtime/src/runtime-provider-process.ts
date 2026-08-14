@@ -3,11 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import {
-  buildAcpProviderInfo,
-  getBuiltInAgentProviderInfo,
-  isAcpProviderId,
-} from "@bb/agent-providers";
+import { isAcpProviderId } from "@bb/agent-providers";
 import type {
   JsonObject,
   ProviderCapabilities,
@@ -33,10 +29,8 @@ import {
   classifySessionExecutionSettingsChange,
   normalizeClaudeExecutionOptions,
 } from "./execution-options.js";
-import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
 import type { ProviderDriverConnection } from "./provider-driver/connection.js";
 import { CanonicalProcessProviderConnection } from "./provider-driver/canonical-process-connection.js";
-import { getBundledProviderDriverLaunchSpec } from "./provider-driver/bundled-launch-specs.js";
 import {
   ProviderDriverSupervisor,
   type SupervisedProviderDriver,
@@ -79,7 +73,7 @@ export interface RuntimeProviderCanonicalInteractionArgs {
 export interface RuntimeCanonicalProviderDriverLaunchSpec {
   artifactDigest?: string;
   capabilities: ProviderCapabilities;
-  identity: { driverId: string; pluginId: string };
+  identity: { driverId: string; pluginId: string; providerId?: string };
   classifyExecutionSettingsChange?: ProviderDriverConnection["classifyExecutionSettingsChange"];
   config: JsonObject;
   displayName: string;
@@ -99,9 +93,6 @@ export type RuntimeCanonicalProviderDriverLaunchSpecFactory = (
 export interface RuntimeProviderProcessManagerArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   canonicalProviderDriverFactory?: RuntimeCanonicalProviderDriverLaunchSpecFactory;
-  bridgeBundleDir: string | undefined;
-  bridgeNodeEnv?: Record<string, string>;
-  bridgeNodeExecutablePath?: string;
   /**
    * Snapshots a thread's turn/provider state for the process-exit
    * notification. Invoked before `onProviderThreadDetached` clears the
@@ -161,19 +152,6 @@ interface ProviderProcessExitedErrorArgs {
 const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 const CANONICAL_PROVIDER_REQUEST_TIMEOUT_MS = 2 * 60_000;
 const CLAUDE_CODE_PROVIDER_ID = "claude-code";
-
-function resolveCanonicalDriverProcessArgs(args: {
-  bridgeBundleDir: string | undefined;
-  bundleFileName: string;
-  sourceRelativePath: string;
-}): string[] {
-  return resolveBridgeProcessArgs({
-    bridgeBundleDir: args.bridgeBundleDir,
-    importMetaUrl: import.meta.url,
-    bundleFileName: args.bundleFileName,
-    bridgeRelativePath: args.sourceRelativePath,
-  });
-}
 
 function observedProviderCapabilities(
   capabilities: ProviderDriverCapabilities,
@@ -314,37 +292,22 @@ export class RuntimeProviderProcessManager {
       resolvedPluginSpec = await resolveLaunch(args.providerDriver);
     }
     const effectiveSpec = testSpec ?? resolvedPluginSpec;
-    const bundledSpec = effectiveSpec
-      ? null
-      : getBundledProviderDriverLaunchSpec(providerId);
-    if (!effectiveSpec && !bundledSpec) {
-      throw new Error(`Unsupported provider "${providerId}"`);
+    if (effectiveSpec === undefined) {
+      throw new Error(
+        `Provider "${providerId}" requires a registered host-driver artifact`,
+      );
     }
     const acpProfile = args.acpLaunchSpec;
-    if (
-      !effectiveSpec &&
-      isAcpProviderId(providerId) &&
-      acpProfile === undefined
-    ) {
+    if (isAcpProviderId(providerId) && acpProfile === undefined) {
       throw new Error(`ACP provider "${providerId}" requires a launch spec`);
     }
-    const processConfig = effectiveSpec?.process ?? {
-      command: this.args.bridgeNodeExecutablePath ?? process.execPath,
-      args: resolveCanonicalDriverProcessArgs({
-        bridgeBundleDir: this.args.bridgeBundleDir,
-        ...bundledSpec!.entrypoint,
-      }),
-    };
-    const identity = effectiveSpec?.identity ?? {
-      pluginId: bundledSpec!.driverId,
-      driverId: bundledSpec!.driverId,
-    };
+    const processConfig = effectiveSpec.process;
+    const identity = effectiveSpec.identity;
     const declaredMultiplexSessions =
-      effectiveSpec?.processCapabilities.multiplexSessions ??
-      bundledSpec!.processPolicy.multiplexSessions;
+      effectiveSpec.processCapabilities.multiplexSessions;
     let diagnosticsTail: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let providerProcess: RuntimeProviderProcess | null = null;
-    let supervised: SupervisedProviderDriver;
+    let supervised: SupervisedProviderDriver | undefined;
     let runtimeCapabilities: ProviderCapabilities;
     try {
       supervised = await this.canonicalSupervisor.launch({
@@ -354,9 +317,9 @@ export class RuntimeProviderProcessManager {
           expected: {
             pluginId: identity.pluginId,
             driverId: identity.driverId,
-            providerId: effectiveSpec ? providerId : bundledSpec!.driverId,
+            providerId: effectiveSpec.identity.providerId ?? providerId,
             artifactDigest:
-              effectiveSpec?.artifactDigest ??
+              effectiveSpec.artifactDigest ??
               driverArtifactDigest(processConfig.args),
           },
           host: {
@@ -365,10 +328,10 @@ export class RuntimeProviderProcessManager {
           },
           paths: {
             providerDataDir:
-              effectiveSpec?.providerDataDir ??
+              effectiveSpec.providerDataDir ??
               join(homedir(), ".bb", "provider-data", providerId),
           },
-          config: effectiveSpec?.config ?? acpProfile ?? {},
+          config: acpProfile ?? effectiveSpec.config,
         },
         launch: {
           command: processConfig.command,
@@ -376,10 +339,9 @@ export class RuntimeProviderProcessManager {
           cwd: this.args.workspacePath,
           env: {
             ...this.args.env,
-            ...this.args.bridgeNodeEnv,
             ...processConfig.env,
           },
-          ...(effectiveSpec?.release !== undefined
+          ...(effectiveSpec.release !== undefined
             ? { release: effectiveSpec.release }
             : {}),
         },
@@ -459,6 +421,7 @@ export class RuntimeProviderProcessManager {
         inspection.capabilities,
       );
     } catch (error) {
+      await supervised?.stop();
       const detail = formatProviderStderr(diagnosticsTail);
       throw new Error(
         `${error instanceof Error ? error.message : String(error)}${detail ? `\nstderr: ${detail}` : ""}`,
@@ -466,65 +429,46 @@ export class RuntimeProviderProcessManager {
       );
     }
 
-    let providerInfo: Pick<ProviderInfo, "capabilities" | "displayName">;
-    if (effectiveSpec) {
-      providerInfo = {
-        displayName: effectiveSpec.displayName,
-        capabilities: runtimeCapabilities,
-      };
-    } else if (isAcpProviderId(providerId)) {
-      providerInfo = {
-        ...buildAcpProviderInfo({
-          id: providerId,
-          displayName: acpProfile?.displayName ?? providerId,
-          logoUrl: null,
-        }),
-        capabilities: runtimeCapabilities,
-      };
-    } else {
-      if (bundledSpec!.driverId === "acp") {
-        throw new Error(`ACP driver cannot serve provider "${providerId}"`);
-      }
-      providerInfo = {
-        ...getBuiltInAgentProviderInfo(bundledSpec!.driverId),
-        capabilities: runtimeCapabilities,
-      };
+    if (supervised === undefined) {
+      throw new Error(`${providerId} driver launch did not return a process`);
     }
+    const providerInfo: Pick<ProviderInfo, "capabilities" | "displayName"> = {
+      displayName: effectiveSpec.displayName,
+      capabilities: runtimeCapabilities,
+    };
+    const classifyExecutionSettingsChange =
+      ("classifyExecutionSettingsChange" in effectiveSpec
+        ? effectiveSpec.classifyExecutionSettingsChange
+        : undefined) ??
+      (providerId === CLAUDE_CODE_PROVIDER_ID
+        ? classifyClaudeExecutionSettingsChange
+        : classifySessionExecutionSettingsChange);
+    const normalizeExecutionOptions =
+      ("normalizeExecutionOptions" in effectiveSpec
+        ? effectiveSpec.normalizeExecutionOptions
+        : undefined) ??
+      (providerId === CLAUDE_CODE_PROVIDER_ID
+        ? normalizeClaudeExecutionOptions
+        : undefined);
     const connection = new CanonicalProcessProviderConnection({
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
-      ...(effectiveSpec
+      ...(providerId === CLAUDE_CODE_PROVIDER_ID
         ? {
-            classifyExecutionSettingsChange:
-              ("classifyExecutionSettingsChange" in effectiveSpec
-                ? effectiveSpec.classifyExecutionSettingsChange
-                : undefined) ?? classifySessionExecutionSettingsChange,
-            ...("normalizeExecutionOptions" in effectiveSpec &&
-            effectiveSpec.normalizeExecutionOptions
-              ? {
-                  normalizeExecutionOptions:
-                    effectiveSpec.normalizeExecutionOptions,
-                }
-              : {}),
-          }
-        : providerId === CLAUDE_CODE_PROVIDER_ID
-          ? {
-              buildProviderOptions: (execution) => ({
-                claudeCodeMockCliTraffic: execution.claudeCodeMockCliTraffic,
-                ...(execution.claudeCodePermissionMode !== undefined
-                  ? {
-                      claudeCodePermissionMode:
-                        execution.claudeCodePermissionMode,
-                    }
-                  : {}),
-              }),
-              classifyExecutionSettingsChange:
-                classifyClaudeExecutionSettingsChange,
-              normalizeExecutionOptions: normalizeClaudeExecutionOptions,
-            }
-          : {
-              classifyExecutionSettingsChange:
-                classifySessionExecutionSettingsChange,
+            buildProviderOptions: (execution) => ({
+              claudeCodeMockCliTraffic: execution.claudeCodeMockCliTraffic,
+              ...(execution.claudeCodePermissionMode !== undefined
+                ? {
+                    claudeCodePermissionMode:
+                      execution.claudeCodePermissionMode,
+                  }
+                : {}),
             }),
+          }
+        : {}),
+      classifyExecutionSettingsChange,
+      ...(normalizeExecutionOptions !== undefined
+        ? { normalizeExecutionOptions }
+        : {}),
       capabilities: providerInfo.capabilities,
       displayName: providerInfo.displayName,
       processConnection: supervised.connection,

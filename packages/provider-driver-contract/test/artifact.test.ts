@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
   PROVIDER_DRIVER_ARTIFACT_FORMAT_VERSION,
   PROVIDER_DRIVER_PROTOCOL_VERSION,
   providerDriverArtifactDescriptorSchema,
@@ -15,7 +16,7 @@ describe("provider driver artifact contract", () => {
       driverId: "agent",
       providerDriverProtocolVersion: PROVIDER_DRIVER_PROTOCOL_VERSION,
       runtime: "node22",
-      entrypoint: "driver.js",
+      entrypoint: PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
       builtWith: { bbVersion: "0.37.0" },
     },
   } as const;

@@ -17,6 +17,7 @@ import {
   upsertPluginSchedule,
   type InstalledPluginRow,
 } from "@bb/db";
+import { getBuiltinProviderIdOverrides } from "../providers/builtin-provider-plugins.js";
 import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js";
 import {
   loadPluginAppBundle,
@@ -1032,6 +1033,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const handle = createPluginApi({
       pluginId: row.id,
       hostDriverIds: manifest.hostDrivers.map((driver) => driver.id),
+      providerIdOverrides: getBuiltinProviderIdOverrides({
+        builtinName: builtinName(row),
+        pluginId: row.id,
+      }),
       logger: deps.logger,
       db: deps.db,
       dataDir: deps.dataDir,

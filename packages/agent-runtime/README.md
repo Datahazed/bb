@@ -7,16 +7,15 @@ Consumers say "start a thread, run a turn, give me events" — they never touch 
 ## Public API
 
 ```typescript
-import { createAgentRuntime, listAvailableProviders } from "@bb/agent-runtime";
+import { createAgentRuntime } from "@bb/agent-runtime";
 
-// Discovery
-const providers = listAvailableProviders();   // [{ id: "codex", ... }, { id: "claude-code", ... }, { id: "pi", ... }]
-
-// Runtime — supports multiple providers and threads simultaneously
+// Provider discovery and registration are server/plugin responsibilities.
+// The host daemon verifies and acquires each immutable driver artifact.
 const runtime = createAgentRuntime({
   workspacePath: "/path/to/workspace",
-  env: { OPENAI_API_KEY: "..." },       // passed to all provider processes
-  bridgeBundleDir: "/path/to/provider-bundles", // optional; used when provider processes are packaged outside src/dist
+  env: { OPENAI_API_KEY: "..." },
+  resolveProviderDriverLaunch: async (launchSpec) =>
+    acquireVerifiedProviderDriver(launchSpec),
   onEvent: (event) => {
     // Every event has event.threadId (bb ID) and event.providerThreadId (provider's internal ID)
     // See ProviderThreadEvent in @bb/domain for the full type
@@ -32,6 +31,7 @@ const { providerThreadId } = await runtime.startThread({
   threadId: "t1",
   projectId: "p1",
   providerId: "codex",
+  providerDriver: codexPluginLaunchSpec,
   options: { permissionMode: "full", instructions: "Be concise." },
   dynamicTools: [{ name: "my_tool", description: "...", inputSchema: { ... } }],
 });
@@ -47,6 +47,7 @@ await runtime.startThread({
   threadId: "t2",
   projectId: "p1",
   providerId: "claude-code",
+  providerDriver: claudeCodePluginLaunchSpec,
 });
 
 // Resume across process lifetimes
@@ -55,6 +56,7 @@ await runtime.resumeThread({
   threadId: "t3",
   providerThreadId, // from previous session
   providerId: "codex",
+  providerDriver: codexPluginLaunchSpec,
 });
 
 await runtime.shutdown();
@@ -136,8 +138,9 @@ The root `test:integration --force` run also schedules `@bb/integration-tests#te
 
 ### Building
 
-`@bb/agent-runtime` is source-only inside this workspace. The host daemon build
-creates the provider-process bundles it needs for runtime startup.
+`@bb/agent-runtime` is source-only inside this workspace. Provider plugins
+build self-contained host-driver artifacts; the daemon downloads, verifies,
+extracts, leases, and launches those artifacts.
 
 ## Architecture
 
@@ -170,7 +173,7 @@ Consumer (host-daemon, server)
            └─ pi                  canonical driver → Pi coding agent SDK
 ```
 
-`AgentRuntime` depends on `ProviderDriverConnection`, not provider-specific command-building callbacks. Pi, Claude Code, ACP, and Codex all run through canonical isolated driver processes. Declarative bundled launch specs select each immutable entrypoint and declare whether its process is environment- or thread-scoped; startup verifies that the driver's multiplexing capability matches that declaration. The daemon-side path uses `ProviderDriverSupervisor` and `ProcessProviderDriverConnection` with `@bb/provider-driver-contract`. `CanonicalProcessProviderConnection` adapts that strict peer to the current runtime seam without provider-specific translation: it mints attachment/operation/turn IDs, preserves response-before-event ordering, and projects bounded canonical events. Canonical children use `@bb/provider-driver-sdk` for framing, operation replay, acceptance buffering, event sequencing, and host callbacks. The Codex canonical child supervises its own `codex app-server` subprocess, translates that provider-native newline-delimited protocol, recovers archived sessions, and restarts account-bound app-server state behind the canonical boundary.
+`AgentRuntime` depends on `ProviderDriverConnection`, not provider-specific command-building callbacks. Pi, Claude Code, ACP, and Codex all run through canonical isolated driver processes delivered by their builtin plugins. Immutable launch descriptors select a verified artifact and declare whether its process is environment- or thread-scoped; startup verifies that the driver's multiplexing capability matches that declaration. There is no statically bundled provider fallback. The daemon-side path uses `ProviderDriverSupervisor` and `ProcessProviderDriverConnection` with `@bb/provider-driver-contract`. `CanonicalProcessProviderConnection` adapts that strict peer to the current runtime seam without provider-specific translation: it mints attachment/operation/turn IDs, preserves response-before-event ordering, and projects bounded canonical events. Canonical children use `@bb/provider-driver-sdk` for framing, operation replay, acceptance buffering, event sequencing, and host callbacks. The Codex canonical child supervises its own `codex app-server` subprocess, translates that provider-native newline-delimited protocol, recovers archived sessions, and restarts account-bound app-server state behind the canonical boundary.
 
 ## Dependencies
 

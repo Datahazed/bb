@@ -166,7 +166,10 @@ export async function buildPluginHostDrivers(
     for (const declaration of declarations) {
       const driverDir = join(stagedHostDir, declaration.id);
       await mkdir(driverDir, { recursive: true });
-      const jsPath = join(driverDir, "driver.js");
+      // The bundle is JavaScript. Artifact format 2 deliberately keeps a .ts
+      // entrypoint so extension runtimes can select their embedded TS module
+      // shims without depending on host node_modules.
+      const jsPath = join(driverDir, PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT);
       await esbuild.build({
         entryPoints: [
           resolveDriverEntry(rootDir, declaration.id, declaration.entry),
@@ -198,7 +201,11 @@ export async function buildPluginHostDrivers(
           portable: true,
           mtime: new Date(0),
         },
-        ["driver.js", "driver.js.map", "driver.meta.json"],
+        [
+          PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
+          `${PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT}.map`,
+          "driver.meta.json",
+        ],
       );
     }
 
@@ -220,8 +227,8 @@ export async function buildPluginHostDrivers(
       return {
         driverId: declaration.id,
         archivePath: join(driverDir, "driver.tgz"),
-        jsPath: join(driverDir, "driver.js"),
-        mapPath: join(driverDir, "driver.js.map"),
+        jsPath: join(driverDir, PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT),
+        mapPath: join(driverDir, `${PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT}.map`),
         metaPath: join(driverDir, "driver.meta.json"),
       };
     });

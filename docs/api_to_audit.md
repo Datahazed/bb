@@ -9,7 +9,7 @@ and delete the entry in the same change.
 
 **What it does.** Declares up to 32 lowercase-kebab-case source entries that
 `bb plugin build` compiles into isolated Node 22 host-driver bundles. Each
-entry produces `dist/host/<id>/driver.js`, a source map, protocol/identity
+entry produces `dist/host/<id>/driver.ts`, a source map, protocol/identity
 metadata, and a gzip tar archive. Entries are confined beneath the plugin root;
 Git and path installs build them, while npm installs must ship matching
 prebuilt metadata and archives. Declaring an artifact does not by itself

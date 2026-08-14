@@ -4,6 +4,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   realpath,
   rm,
   writeFile,
@@ -12,6 +13,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { extract as extractTar } from "tar";
 import {
   createProviderDriverSmokePeer,
   driverArtifactDigest,
@@ -26,10 +28,14 @@ const PLUGIN_LOAD_INTERVAL_MS = 1_000;
 // bundles that pass health checks can still fail to load (0.0.31 shipped with
 // every builtin unable to resolve @bb/plugin-sdk at import time).
 const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
+  "acp",
   "automations",
+  "claude-code",
+  "codex",
   "connect",
   "custom-instructions",
   "inline-vis",
+  "pi",
   "secrets",
 ];
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
@@ -262,13 +268,47 @@ async function packTarball() {
   return join(tempRoot, entry.filename);
 }
 
-async function smokeProviderDriverBundles(packageDir) {
-  await access(join(packageDir, "host-daemon", "dist", "bb-codex-driver.mjs"));
-  await access(join(packageDir, "host-daemon", "dist", "bb-pi-driver.mjs"));
-  await access(
-    join(packageDir, "host-daemon", "dist", "bb-claude-code-driver.mjs"),
+async function extractBuiltinProviderDriver(packageDir, pluginId, driverId) {
+  const driverDir = join(
+    packageDir,
+    "server",
+    "dist",
+    "builtin-plugins",
+    pluginId,
+    "dist",
+    "host",
+    driverId,
   );
-  await access(join(packageDir, "host-daemon", "dist", "bb-acp-driver.mjs"));
+  const extractedDir = join(
+    tempRoot,
+    "installed-provider-drivers",
+    pluginId,
+    driverId,
+  );
+  await mkdir(extractedDir, { recursive: true });
+  await extractTar({
+    cwd: extractedDir,
+    file: join(driverDir, "driver.tgz"),
+    strict: true,
+  });
+  return join(extractedDir, "driver.ts");
+}
+
+async function smokeProviderDriverBundles(packageDir) {
+  for (const driverId of ["acp", "claude-code", "codex", "pi"]) {
+    const hostDriverDir = join(
+      packageDir,
+      "server",
+      "dist",
+      "builtin-plugins",
+      driverId,
+      "dist",
+      "host",
+      driverId,
+    );
+    await access(join(hostDriverDir, "driver.meta.json"));
+    await access(join(hostDriverDir, "driver.tgz"));
+  }
 }
 
 async function smokeCodexCanonicalDriver(packageDir) {
@@ -276,11 +316,10 @@ async function smokeCodexCanonicalDriver(packageDir) {
   const workspaceDir = join(testRoot, "workspace");
   await mkdir(workspaceDir, { recursive: true });
   const label = "Codex installed-package canonical driver";
-  const driverPath = join(
+  const driverPath = await extractBuiltinProviderDriver(
     packageDir,
-    "host-daemon",
-    "dist",
-    "bb-codex-driver.mjs",
+    "codex",
+    "codex",
   );
   const childProcess = spawn(process.execPath, [driverPath], {
     cwd: workspaceDir,
@@ -329,11 +368,10 @@ async function smokeClaudeCanonicalDriver(packageDir) {
   const workspaceDir = join(testRoot, "workspace");
   await mkdir(workspaceDir, { recursive: true });
   const label = "Claude Code installed-package canonical driver";
-  const driverPath = join(
+  const driverPath = await extractBuiltinProviderDriver(
     packageDir,
-    "host-daemon",
-    "dist",
-    "bb-claude-code-driver.mjs",
+    "claude-code",
+    "claude-code",
   );
   const childProcess = spawn(process.execPath, [driverPath], {
     cwd: workspaceDir,
@@ -382,11 +420,10 @@ async function smokeAcpCanonicalDriver(packageDir) {
   const workspaceDir = join(testRoot, "workspace");
   await mkdir(workspaceDir, { recursive: true });
   const label = "ACP installed-package canonical driver";
-  const driverPath = join(
+  const driverPath = await extractBuiltinProviderDriver(
     packageDir,
-    "host-daemon",
-    "dist",
-    "bb-acp-driver.mjs",
+    "acp",
+    "acp",
   );
   const childProcess = spawn(process.execPath, [driverPath], {
     cwd: workspaceDir,
@@ -484,12 +521,7 @@ async function smokePiUserConfiguration(packageDir) {
   );
 
   const label = "Pi installed-package canonical driver E2E";
-  const driverPath = join(
-    packageDir,
-    "host-daemon",
-    "dist",
-    "bb-pi-driver.mjs",
-  );
+  const driverPath = await extractBuiltinProviderDriver(packageDir, "pi", "pi");
   const childProcess = spawn(process.execPath, [driverPath], {
     cwd: maintenanceDir,
     env: {
@@ -876,6 +908,10 @@ async function smokeFullStack(tarballPath, sdkDir) {
           'import { BBSdk } from "bb-app";',
           "const bb = new BBSdk({ baseUrl: process.env.BB_SERVER_URL });",
           "await bb.status.get();",
+          "const providers = await bb.providers.list();",
+          'if (providers.filter(({ id }) => id === "pi").length !== 1) throw new Error("Pi provider plugin was not registered exactly once");',
+          'const options = await bb.providers.models({ providerId: "pi" });',
+          'if (!options.providers.some(({ id }) => id === "pi")) throw new Error("Pi provider model discovery did not return Pi");',
         ].join("\n"),
       ],
       command: "node",
@@ -883,8 +919,16 @@ async function smokeFullStack(tarballPath, sdkDir) {
       env: {
         BB_SERVER_URL: serverUrl,
       },
-      label: "bb-app SDK status",
+      label: "bb-app SDK provider artifact execution",
     });
+    const cachedProviderArtifacts = await readdir(
+      join(dataDir, "provider-drivers", "artifacts"),
+    );
+    if (cachedProviderArtifacts.length === 0) {
+      throw new Error(
+        "Provider model discovery did not populate the daemon artifact cache",
+      );
+    }
   } finally {
     await stopManagedProcess(stack);
   }

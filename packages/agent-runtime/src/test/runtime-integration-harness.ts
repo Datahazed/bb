@@ -25,8 +25,9 @@ import {
   isUserQuestionPendingInteractionPayload,
 } from "@bb/domain";
 import { resolvePreferredTestModel } from "@bb/test-helpers";
-import { createAgentRuntime } from "../runtime.js";
+import { createAgentRuntimeWithCanonicalProviderDriverFactory } from "../runtime.js";
 import { PI_DRIVER_SESSION_DIR_ENV } from "../pi/session-paths.js";
+import { builtinProviderDriverTestFactory } from "./builtin-provider-driver-factory.js";
 import type {
   AgentRuntime,
   AgentRuntimeExecutionOptions,
@@ -875,29 +876,32 @@ export function createTestRuntime(
     success: true,
   });
 
-  const runtime = createAgentRuntime({
-    env: createRuntimeProcessEnv({ providerId, tmpDir }),
-    skillRoots: opts?.skillRoots,
-    threadStorageRootPath: join(tmpDir, ".bb-thread-storage"),
-    workspacePath: tmpDir,
-    onEvent: (e) => events.push(e),
-    onToolCall: async (req) => {
-      toolCalls.push(req);
-      if (opts?.onToolCall) return opts.onToolCall(req);
-      return defaultToolHandler();
+  const runtime = createAgentRuntimeWithCanonicalProviderDriverFactory(
+    {
+      env: createRuntimeProcessEnv({ providerId, tmpDir }),
+      skillRoots: opts?.skillRoots,
+      threadStorageRootPath: join(tmpDir, ".bb-thread-storage"),
+      workspacePath: tmpDir,
+      onEvent: (e) => events.push(e),
+      onToolCall: async (req) => {
+        toolCalls.push(req);
+        if (opts?.onToolCall) return opts.onToolCall(req);
+        return defaultToolHandler();
+      },
+      onInteractiveRequest: async (req) => {
+        expectSemanticInteractiveRequest(req);
+        interactiveRequests.push(req);
+        if (opts?.onInteractiveRequest) {
+          return opts.onInteractiveRequest(req);
+        }
+        throw new Error(
+          `Unexpected interactive request: ${formatInteractiveRequest(req)}`,
+        );
+      },
+      onStderr: () => {},
     },
-    onInteractiveRequest: async (req) => {
-      expectSemanticInteractiveRequest(req);
-      interactiveRequests.push(req);
-      if (opts?.onInteractiveRequest) {
-        return opts.onInteractiveRequest(req);
-      }
-      throw new Error(
-        `Unexpected interactive request: ${formatInteractiveRequest(req)}`,
-      );
-    },
-    onStderr: () => {},
-  });
+    builtinProviderDriverTestFactory,
+  );
 
   return {
     runtime,

@@ -23,7 +23,7 @@ import { extract as extractTar, list as listTar } from "tar";
 
 const ALLOWED_ARTIFACT_FILES = new Set([
   PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
-  "driver.js.map",
+  `${PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT}.map`,
   "driver.meta.json",
 ]);
 const REQUIRED_ARTIFACT_FILES = [
@@ -233,8 +233,9 @@ export class ProviderDriverArtifactCache {
       await this.validateExtracted(extractDir, descriptor);
       await chmod(join(extractDir, descriptor.meta.entrypoint), 0o500);
       await chmod(join(extractDir, "driver.meta.json"), 0o400);
-      if (inspected.files.has("driver.js.map")) {
-        await chmod(join(extractDir, "driver.js.map"), 0o400);
+      const sourceMapFile = `${PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT}.map`;
+      if (inspected.files.has(sourceMapFile)) {
+        await chmod(join(extractDir, sourceMapFile), 0o400);
       }
       await writeFile(
         join(extractDir, COMPLETE_FILE_NAME),

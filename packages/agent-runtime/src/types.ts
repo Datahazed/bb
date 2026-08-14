@@ -28,7 +28,7 @@ export interface AgentRuntimeResolvedProviderDriverLaunch {
   capabilities: ProviderCapabilities;
   config: JsonObject;
   displayName: string;
-  identity: { driverId: string; pluginId: string };
+  identity: { driverId: string; pluginId: string; providerId: string };
   process: { command: string; args: string[]; env?: Record<string, string> };
   providerDataDir: string;
   processCapabilities: { multiplexSessions: boolean };
@@ -110,15 +110,6 @@ export interface AgentRuntimeOptions {
 
   /** Root directory containing per-thread storage directories. */
   threadStorageRootPath?: string;
-
-  /** Optional directory containing bundled provider bridges. */
-  bridgeBundleDir?: string;
-
-  /** Optional executable used to run Node-based provider bridges. */
-  bridgeNodeExecutablePath?: string;
-
-  /** Optional env values needed by the executable used for Node-based bridges. */
-  bridgeNodeEnv?: Record<string, string>;
 
   /** Optional caller-provided skill roots to expose to provider sessions. */
   skillRoots?: readonly AgentRuntimeSkillRoot[];

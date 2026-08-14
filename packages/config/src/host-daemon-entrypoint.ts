@@ -5,7 +5,6 @@ import {
   type EnvLoaderArgs,
 } from "./env.js";
 import {
-  BB_BRIDGE_DIR_ENV,
   BB_CLI_DIR_ENV,
   BB_CONNECT_MACHINE_CREDENTIAL_ENV,
   BB_CONNECT_MACHINE_ID_ENV,
@@ -18,7 +17,6 @@ import {
 import { assignIfDefined } from "./objects.js";
 
 export interface HostDaemonEntrypointConfig {
-  BB_BRIDGE_DIR?: string;
   BB_CLI_DIR?: string;
   BB_CONNECT_MACHINE_CREDENTIAL?: string;
   BB_CONNECT_MACHINE_ID?: string;
@@ -36,11 +34,6 @@ export function loadHostDaemonEntrypointConfig(
 ): HostDaemonEntrypointConfig {
   const loader = resolveEnvLoader(args);
   const config: HostDaemonEntrypointConfig = {};
-  const bridgeDir = readOptionalEnvVar({
-    context: loader.context,
-    definition: BB_BRIDGE_DIR_ENV,
-    env: loader.env,
-  });
   const cliDir = readOptionalEnvVar({
     context: loader.context,
     definition: BB_CLI_DIR_ENV,
@@ -82,11 +75,6 @@ export function loadHostDaemonEntrypointConfig(
     env: loader.env,
   });
 
-  assignIfDefined({
-    key: "BB_BRIDGE_DIR",
-    target: config,
-    value: bridgeDir,
-  });
   assignIfDefined({
     key: "BB_CONNECT_MACHINE_ID",
     target: config,

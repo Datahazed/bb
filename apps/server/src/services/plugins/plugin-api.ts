@@ -551,6 +551,7 @@ function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
 export function createPluginApi(options: {
   pluginId: string;
   hostDriverIds: readonly string[];
+  providerIdOverrides: ReadonlyMap<string, string>;
   logger: ServerLogger;
   db: DbConnection;
   dataDir: string;
@@ -1299,7 +1300,8 @@ export function createPluginApi(options: {
           `provider "${localId}" execution.process must declare scope and multiplexSessions`,
         );
       }
-      const providerId = `${pluginId}/${localId}`;
+      const providerId =
+        options.providerIdOverrides.get(localId) ?? `${pluginId}/${localId}`;
       if (!providerDriverProviderIdSchema.safeParse(providerId).success) {
         throw new Error(
           `provider id "${providerId}" is too long or contains unsupported characters`,

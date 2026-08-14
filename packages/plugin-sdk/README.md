@@ -24,7 +24,7 @@ A plugin may declare isolated Node driver entries in its manifest:
 ```
 
 `bb plugin build` bundles each confined source entry for Node 22 and emits
-`dist/host/<id>/driver.js`, its source map and identity/protocol metadata, plus
+`dist/host/<id>/driver.ts`, its source map and identity/protocol metadata, plus
 `driver.tgz`. Path and Git installs build these artifacts; npm installs must
 ship validated prebuilt archives. The declaration only creates an artifact —
 provider registration and host delivery are separate experimental surfaces.

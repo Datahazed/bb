@@ -29,9 +29,12 @@ Stdout and stderr are bounded diagnostics only. They are never parsed as protoco
 
 ## Immutable driver artifacts
 
-Artifact format 1 is a gzip tar containing only `driver.js`,
-`driver.meta.json`, and an optional `driver.js.map`. Metadata binds the plugin,
-plugin version, driver id, Node 22 runtime, entrypoint, and exact provider-driver
+Artifact format 2 is a gzip tar containing only `driver.ts`,
+`driver.meta.json`, and an optional `driver.ts.map`. The entrypoint contains
+bundled JavaScript but keeps the `.ts` suffix so extension-capable runtimes can
+select their embedded TypeScript module shims without host `node_modules`.
+Metadata binds the plugin, plugin version, driver id, Node 22 runtime,
+entrypoint, and exact provider-driver
 protocol version. The server stores archives by SHA-256; daemons download them
 over the authenticated internal transport, verify the digest before extraction,
 reject extra paths, links, traversal, duplicates, and size overflows, then

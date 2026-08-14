@@ -36,7 +36,6 @@ function createTestRuntimeEnv({
   serverUrl = "http://127.0.0.1:3334",
 }: TestRuntimeEnvArgs): HostDaemonRuntimeEnvironment {
   return {
-    BB_BRIDGE_DIR: undefined,
     BB_CLI_DIR: undefined,
     BB_DATA_DIR: dataDir,
     BB_HOST_ENROLL_KEY: undefined,

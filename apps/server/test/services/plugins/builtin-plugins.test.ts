@@ -196,11 +196,15 @@ describe("builtin plugin reconciliation", () => {
 
   it("gives every builtin plugin a deliberate settings icon", async () => {
     const expectedIcons = new Map([
+      ["acp", "Code"],
       ["ask-user-question", "MessageQuestion"],
       ["automations", "Clock"],
+      ["claude-code", "Code"],
+      ["codex", "Code"],
       ["connect", "Smartphone"],
       ["custom-instructions", "EditFile"],
       ["inline-vis", "AppWindow"],
+      ["pi", "Code"],
       ["provider-retry", "ArrowReloadHorizontal"],
       ["secrets", "Lock"],
       ["side-chat", "SideChat"],

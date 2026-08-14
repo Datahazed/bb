@@ -35,6 +35,7 @@ import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
   getRegisteredProviderDriverLaunchSpec,
   listRegisteredProviderInfos,
+  registeredProviderDriverIsEnabled,
 } from "../providers/provider-registry.js";
 import {
   buildKnownAcpProviderInfo,
@@ -150,11 +151,16 @@ function listConfiguredSystemProviderInfos(
 ): ProviderInfo[] {
   const providers = [
     ...listRegisteredProviderInfos(),
-    ...customAcpAgents.map(buildCustomAcpProviderInfo),
+    ...customAcpAgents
+      .map(buildCustomAcpProviderInfo)
+      .filter((provider) => registeredProviderDriverIsEnabled(provider.id)),
   ];
   const seenProviderIds = new Set(providers.map((provider) => provider.id));
   for (const agent of installedKnownAcpAgents) {
-    if (seenProviderIds.has(agent.id)) {
+    if (
+      seenProviderIds.has(agent.id) ||
+      !registeredProviderDriverIsEnabled(agent.id)
+    ) {
       continue;
     }
     seenProviderIds.add(agent.id);
@@ -174,7 +180,8 @@ function includeRequestedKnownAcpProvider(
     return providers;
   }
   const knownAgent = findKnownAcpAgentForProviderId(providerId);
-  return knownAgent === undefined
+  return knownAgent === undefined ||
+    !registeredProviderDriverIsEnabled(knownAgent.id)
     ? providers
     : [...providers, buildKnownAcpProviderInfo(knownAgent)];
 }
@@ -336,7 +343,8 @@ export async function resolveSystemProviderModels(
   const knownAcpAgent = findKnownAcpAgentForProviderId(args.providerId);
   const provider =
     configuredProvider ??
-    (knownAcpAgent === undefined
+    (knownAcpAgent === undefined ||
+    !registeredProviderDriverIsEnabled(knownAcpAgent.id)
       ? undefined
       : buildKnownAcpProviderInfo(knownAcpAgent));
   if (provider === undefined) {

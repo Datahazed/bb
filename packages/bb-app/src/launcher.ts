@@ -2016,22 +2016,18 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
     { label: "server entry", path: context.serverEntry },
     { label: "host daemon entry", path: context.daemonEntry },
     { label: "bundled bb CLI", path: join(context.daemonBundleDir, "bb") },
-    {
-      label: "Codex canonical driver",
-      path: join(context.daemonBundleDir, "bb-codex-driver.mjs"),
-    },
-    {
-      label: "Claude Code canonical driver",
-      path: join(context.daemonBundleDir, "bb-claude-code-driver.mjs"),
-    },
-    {
-      label: "Pi canonical driver",
-      path: join(context.daemonBundleDir, "bb-pi-driver.mjs"),
-    },
-    {
-      label: "ACP driver",
-      path: join(context.daemonBundleDir, "bb-acp-driver.mjs"),
-    },
+    ...["acp", "claude-code", "codex", "pi"].map((driverId) => ({
+      label: `${driverId} provider plugin artifact`,
+      path: join(
+        dirname(context.serverEntry),
+        "builtin-plugins",
+        driverId,
+        "dist",
+        "host",
+        driverId,
+        "driver.tgz",
+      ),
+    })),
     {
       label: "parcel watcher child",
       path: join(context.daemonBundleDir, "bb-parcel-watcher-child.mjs"),
@@ -2457,7 +2453,6 @@ export function createDaemonEnv(
   return {
     ...stripThreadContextEnv(autoJoinEnv),
     BB_APP_VERSION: context.appVersion,
-    BB_BRIDGE_DIR: context.daemonBundleDir,
     BB_CLI_DIR: context.daemonBundleDir,
     BB_DATA_DIR: context.dataDir,
     BB_HOST_DAEMON_PORT: String(context.daemonPort),
@@ -2493,7 +2488,6 @@ function createHostDaemonOnlyEnv(
   return {
     ...stripThreadContextEnv(args.env),
     BB_APP_VERSION: args.context.appVersion,
-    BB_BRIDGE_DIR: args.context.daemonBundleDir,
     BB_CLI_DIR: args.context.daemonBundleDir,
     BB_DATA_DIR: args.context.dataDir,
     BB_HOST_DAEMON_PORT: String(args.context.daemonPort),

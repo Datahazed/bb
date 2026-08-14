@@ -755,7 +755,6 @@ describe("consumer-specific config", () => {
   it("parses optional host-daemon entrypoint env vars in one place", () => {
     const hostDaemonEntrypointConfig = loadHostDaemonEntrypointConfig({
       env: {
-        BB_BRIDGE_DIR: " /tmp/bridges ",
         BB_CLI_DIR: " /tmp/bb-bin ",
         BB_HOST_ENROLL_KEY: " enroll-token ",
         BB_HOST_DAEMON_AUTO_UPDATE: "true",
@@ -766,7 +765,6 @@ describe("consumer-specific config", () => {
     });
 
     expect(hostDaemonEntrypointConfig).toEqual({
-      BB_BRIDGE_DIR: "/tmp/bridges",
       BB_CLI_DIR: "/tmp/bb-bin",
       BB_HOST_ENROLL_KEY: "enroll-token",
       BB_HOST_DAEMON_AUTO_UPDATE: true,
@@ -779,7 +777,6 @@ describe("consumer-specific config", () => {
   it("drops empty optional host-daemon entrypoint env vars", () => {
     const hostDaemonEntrypointConfig = loadHostDaemonEntrypointConfig({
       env: {
-        BB_BRIDGE_DIR: "",
         BB_CLI_DIR: "   ",
         BB_HOST_ENROLL_KEY: " ",
         BB_HOST_NAME: "",

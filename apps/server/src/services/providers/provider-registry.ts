@@ -22,8 +22,14 @@ import type {
 
 type ProviderContributionSource = Pick<
   PluginService,
-  "listProviderContributions"
+  "isBuiltin" | "listHostDriverArtifacts" | "listProviderContributions"
 >;
+
+const BUILTIN_PROVIDER_PLUGIN_BY_PROVIDER_ID = new Map([
+  ["claude-code", "claude-code"],
+  ["codex", "codex"],
+  ["pi", "pi"],
+]);
 
 let contributionSource: ProviderContributionSource | undefined;
 
@@ -45,6 +51,35 @@ export function findPluginProviderContribution(
   );
 }
 
+function isManagedByInstalledBuiltinProviderPlugin(
+  providerId: string,
+): boolean {
+  const pluginId = isAcpProviderId(providerId)
+    ? "acp"
+    : BUILTIN_PROVIDER_PLUGIN_BY_PROVIDER_ID.get(providerId);
+  return (
+    pluginId !== undefined && contributionSource?.isBuiltin(pluginId) === true
+  );
+}
+
+function findLoadedHostDriverArtifact(pluginId: string, driverId: string) {
+  return contributionSource
+    ?.listHostDriverArtifacts()
+    .find(
+      (artifact) =>
+        artifact.descriptor.meta.pluginId === pluginId &&
+        artifact.descriptor.meta.driverId === driverId,
+    );
+}
+
+export function registeredProviderDriverIsEnabled(providerId: string): boolean {
+  if (!isManagedByInstalledBuiltinProviderPlugin(providerId)) return true;
+  if (isAcpProviderId(providerId)) {
+    return findLoadedHostDriverArtifact("acp", "acp") !== undefined;
+  }
+  return findPluginProviderContribution(providerId) !== undefined;
+}
+
 function pluginProviderInfo(
   contribution: PluginProviderContribution,
 ): ProviderInfo {
@@ -60,9 +95,17 @@ function pluginProviderInfo(
 }
 
 export function listRegisteredProviderInfos(): ProviderInfo[] {
+  const pluginProviders = listPluginProviderContributions();
+  const pluginProviderIds = new Set(
+    pluginProviders.map((contribution) => contribution.registration.providerId),
+  );
   return [
-    ...listBuiltInAgentProviderInfos(),
-    ...listPluginProviderContributions().map(pluginProviderInfo),
+    ...listBuiltInAgentProviderInfos().filter(
+      (provider) =>
+        !pluginProviderIds.has(provider.id) &&
+        registeredProviderDriverIsEnabled(provider.id),
+    ),
+    ...pluginProviders.map(pluginProviderInfo),
   ];
 }
 
@@ -71,6 +114,12 @@ export function getRegisteredProviderInfo(
 ): ProviderInfo | null {
   const plugin = findPluginProviderContribution(providerId);
   if (plugin !== undefined) return pluginProviderInfo(plugin);
+  if (
+    isManagedByInstalledBuiltinProviderPlugin(providerId) &&
+    !registeredProviderDriverIsEnabled(providerId)
+  ) {
+    return null;
+  }
   if (isAgentProviderId(providerId)) {
     return (
       listBuiltInAgentProviderInfos().find(
@@ -92,13 +141,44 @@ export function getRegisteredProviderDriverLaunchSpec(
   providerId: string,
 ): HostDaemonProviderDriverLaunchSpec | undefined {
   const contribution = findPluginProviderContribution(providerId);
-  if (contribution === undefined) return undefined;
+  if (contribution !== undefined) {
+    return {
+      artifact: structuredClone(contribution.artifact.descriptor),
+      driverProviderId: contribution.registration.providerId,
+      displayName: contribution.registration.displayName,
+      capabilities: structuredClone(contribution.registration.capabilities),
+      config: structuredClone(contribution.registration.execution.config),
+      process: structuredClone(contribution.registration.execution.process),
+    };
+  }
+  const builtinPluginId =
+    BUILTIN_PROVIDER_PLUGIN_BY_PROVIDER_ID.get(providerId);
+  if (
+    builtinPluginId !== undefined &&
+    contributionSource?.isBuiltin(builtinPluginId) === true
+  ) {
+    throw new Error(`${providerId} provider driver plugin is not running`);
+  }
+  if (!isAcpProviderId(providerId)) return undefined;
+  const artifact = findLoadedHostDriverArtifact("acp", "acp");
+  if (artifact === undefined) {
+    if (contributionSource?.isBuiltin("acp") === true) {
+      throw new Error("ACP provider driver plugin is not running");
+    }
+    return undefined;
+  }
+  const info = buildAcpProviderInfo({
+    id: providerId,
+    displayName: providerId,
+    logoUrl: null,
+  });
   return {
-    artifact: structuredClone(contribution.artifact.descriptor),
-    displayName: contribution.registration.displayName,
-    capabilities: structuredClone(contribution.registration.capabilities),
-    config: structuredClone(contribution.registration.execution.config),
-    process: structuredClone(contribution.registration.execution.process),
+    artifact: structuredClone(artifact.descriptor),
+    driverProviderId: "acp",
+    displayName: info.displayName,
+    capabilities: info.capabilities,
+    config: {},
+    process: { scope: "environment", multiplexSessions: true },
   };
 }
 
@@ -116,16 +196,29 @@ export function getRegisteredProviderServerCapabilities(
       reasoningLevels: [...plugin.registration.reasoningLevels],
     };
   }
+  if (
+    isManagedByInstalledBuiltinProviderPlugin(providerId) &&
+    !registeredProviderDriverIsEnabled(providerId)
+  ) {
+    return null;
+  }
   return getStaticProviderServerCapabilities(providerId);
 }
 
 export function getRegisteredProviderPermissionModes(
   providerId: string,
 ): readonly PermissionMode[] | null {
-  return (
-    findPluginProviderContribution(providerId)?.registration.capabilities
-      .supportedPermissionModes ?? getStaticSupportedPermissionModes(providerId)
-  );
+  const plugin = findPluginProviderContribution(providerId);
+  if (plugin !== undefined) {
+    return plugin.registration.capabilities.supportedPermissionModes;
+  }
+  if (
+    isManagedByInstalledBuiltinProviderPlugin(providerId) &&
+    !registeredProviderDriverIsEnabled(providerId)
+  ) {
+    return null;
+  }
+  return getStaticSupportedPermissionModes(providerId);
 }
 
 export function getRegisteredProviderComposerActions(
@@ -141,17 +234,31 @@ export function getRegisteredProviderComposerActions(
 export function registeredProviderSupportsNativeFork(
   providerId: string,
 ): boolean {
-  return (
-    findPluginProviderContribution(providerId)?.registration.capabilities
-      .supportsFork ?? staticSupportsNativeFork(providerId)
-  );
+  const plugin = findPluginProviderContribution(providerId);
+  if (plugin !== undefined) {
+    return plugin.registration.capabilities.supportsFork;
+  }
+  if (
+    isManagedByInstalledBuiltinProviderPlugin(providerId) &&
+    !registeredProviderDriverIsEnabled(providerId)
+  ) {
+    return false;
+  }
+  return staticSupportsNativeFork(providerId);
 }
 
 export function registeredProviderSupportsManualCompaction(
   providerId: string,
 ): boolean {
-  return (
-    findPluginProviderContribution(providerId)?.registration.productCapabilities
-      .supportsManualCompaction ?? staticSupportsManualCompaction(providerId)
-  );
+  const plugin = findPluginProviderContribution(providerId);
+  if (plugin !== undefined) {
+    return plugin.registration.productCapabilities.supportsManualCompaction;
+  }
+  if (
+    isManagedByInstalledBuiltinProviderPlugin(providerId) &&
+    !registeredProviderDriverIsEnabled(providerId)
+  ) {
+    return false;
+  }
+  return staticSupportsManualCompaction(providerId);
 }

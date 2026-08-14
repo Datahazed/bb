@@ -43,6 +43,12 @@ export const PLUGIN_CATALOG_CATEGORIES = [
 
 export const BUILTIN_PLUGINS = [
   {
+    name: "acp",
+    pluginId: "acp",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
     name: "ask-user-question",
     pluginId: "ask-user-question",
     defaultEnabled: false,
@@ -53,6 +59,18 @@ export const BUILTIN_PLUGINS = [
     pluginId: "automations",
     defaultEnabled: true,
     category: "Workflow management",
+  },
+  {
+    name: "claude-code",
+    pluginId: "claude-code",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
+    name: "codex",
+    pluginId: "codex",
+    defaultEnabled: true,
+    category: "Agent interaction",
   },
   {
     name: "connect",
@@ -71,6 +89,12 @@ export const BUILTIN_PLUGINS = [
     pluginId: "inline-vis",
     defaultEnabled: true,
     category: "Interface",
+  },
+  {
+    name: "pi",
+    pluginId: "pi",
+    defaultEnabled: true,
+    category: "Agent interaction",
   },
   {
     name: "provider-retry",

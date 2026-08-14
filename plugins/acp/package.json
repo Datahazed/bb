@@ -1,0 +1,19 @@
+{
+  "name": "bb-plugin-acp",
+  "version": "0.1.0",
+  "type": "module",
+  "bb": {
+    "name": "ACP providers",
+    "description": "Run Agent Client Protocol providers through BB.",
+    "branding": {
+      "icon": "Code"
+    },
+    "server": "./server.ts",
+    "experimental_hostDrivers": [
+      {
+        "id": "acp",
+        "entry": "./driver.ts"
+      }
+    ]
+  }
+}

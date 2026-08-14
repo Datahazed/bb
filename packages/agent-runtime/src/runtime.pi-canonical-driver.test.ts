@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import { createAgentRuntime } from "./runtime.js";
+import { createAgentRuntimeWithCanonicalProviderDriverFactory } from "./runtime.js";
+import { builtinProviderDriverTestFactory } from "./test/builtin-provider-driver-factory.js";
 
 describe("AgentRuntime Pi canonical driver", () => {
   const directories: string[] = [];
@@ -18,13 +19,16 @@ describe("AgentRuntime Pi canonical driver", () => {
     const directory = mkdtempSync(join(tmpdir(), "bb-pi-canonical-runtime-"));
     directories.push(directory);
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntime({
-      workspacePath: directory,
-      threadStorageRootPath: join(directory, "thread-storage"),
-      env: { PI_OFFLINE: "1" },
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({ success: true, contentItems: [] }),
-    });
+    const runtime = createAgentRuntimeWithCanonicalProviderDriverFactory(
+      {
+        workspacePath: directory,
+        threadStorageRootPath: join(directory, "thread-storage"),
+        env: { PI_OFFLINE: "1" },
+        onEvent: (event) => events.push(event),
+        onToolCall: async () => ({ success: true, contentItems: [] }),
+      },
+      builtinProviderDriverTestFactory,
+    );
 
     const models = await runtime.listModels({
       providerId: "pi",
