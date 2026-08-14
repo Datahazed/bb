@@ -248,7 +248,11 @@ export interface ExperimentalBrowserInspectionResult {
 
 /** One selection mode for the host-owned Browser inspection controller. */
 export interface ExperimentalBrowserInspectionRequest {
-  kind: "element" | "region";
+  /**
+   * `auto` lets one selection session resolve a click to an element or a drag
+   * to a region. The result still reports the concrete resolved kind.
+   */
+  kind: "element" | "region" | "auto";
 }
 
 /** Props passed to an `experimental_browserAction` component. */

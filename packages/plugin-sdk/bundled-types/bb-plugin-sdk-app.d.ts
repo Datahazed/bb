@@ -83,9 +83,9 @@ declare const serviceTierSchema: z.ZodEnum<{
 }>;
 type ServiceTier = z.infer<typeof serviceTierSchema>;
 declare const permissionModeSchema: z.ZodEnum<{
+    full: "full";
     auto: "auto";
     "accept-edits": "accept-edits";
-    full: "full";
 }>;
 type PermissionMode = z.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
@@ -443,7 +443,11 @@ interface ExperimentalBrowserInspectionResult {
 }
 /** One selection mode for the host-owned Browser inspection controller. */
 interface ExperimentalBrowserInspectionRequest {
-    kind: "element" | "region";
+    /**
+     * `auto` lets one selection session resolve a click to an element or a drag
+     * to a region. The result still reports the concrete resolved kind.
+     */
+    kind: "element" | "region" | "auto";
 }
 /** Props passed to an `experimental_browserAction` component. */
 interface PluginBrowserActionProps {
