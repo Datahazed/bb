@@ -23,19 +23,11 @@ export interface ProviderInboundRequest {
 
 export type ProviderRuntimeEvent = JsonRpcObject;
 
-export type JsonValue =
-  | boolean
-  | number
-  | string
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue | undefined };
-
-interface OutboundJsonRpcMessage {
+interface OutboundJsonRpcMessageCandidate {
   jsonrpc: "2.0";
   id?: string | number;
   method: string;
-  params?: JsonValue;
+  params?: unknown;
 }
 
 export const JSON_RPC_INVALID_PARAMS_CODE = -32602;
@@ -152,10 +144,9 @@ interface SettleJsonRpcResponseArgs {
 const closedJsonRpcStdinErrorCodes = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
 const jsonRpcStdinErrorHandledStreams = new WeakSet<Writable>();
 
-function toOutboundJsonValue(value: unknown): JsonValue {
-  let serialized: string | undefined;
+function stringifyOutboundJson(value: unknown): string {
   try {
-    serialized = JSON.stringify(value, (_key, nestedValue: unknown) => {
+    const serialized = JSON.stringify(value, (_key, nestedValue: unknown) => {
       if (
         typeof nestedValue === "bigint" ||
         typeof nestedValue === "function" ||
@@ -167,6 +158,12 @@ function toOutboundJsonValue(value: unknown): JsonValue {
       }
       return nestedValue;
     });
+    if (serialized === undefined) {
+      throw new ProviderResponseEncodeError(
+        "JSON-RPC data is not serializable",
+      );
+    }
+    return serialized;
   } catch (error) {
     if (error instanceof ProviderResponseEncodeError) {
       throw error;
@@ -175,10 +172,6 @@ function toOutboundJsonValue(value: unknown): JsonValue {
       error instanceof Error ? error.message : String(error),
     );
   }
-  if (serialized === undefined) {
-    throw new ProviderResponseEncodeError("JSON-RPC data is not serializable");
-  }
-  return JSON.parse(serialized) as JsonValue;
 }
 
 function isJsonRpcObject(value: unknown): value is JsonRpcObject {
@@ -318,20 +311,18 @@ export function sendJsonRpc(
   child: ChildProcess,
   message: JsonRpcMessage | ProviderRequestCommandPlan,
 ): void {
-  const line = JSON.stringify(toJsonRpcMessage(message));
+  const line = stringifyOutboundJson(toJsonRpcMessage(message));
   writeJsonRpcLine(child, line);
 }
 
 export function toJsonRpcMessage(
   message: JsonRpcMessage | ProviderRequestCommandPlan,
-): OutboundJsonRpcMessage {
+): OutboundJsonRpcMessageCandidate {
   return {
     jsonrpc: "2.0",
     method: message.method,
     ...("id" in message && message.id !== undefined ? { id: message.id } : {}),
-    ...(message.params !== undefined
-      ? { params: toOutboundJsonValue(message.params) }
-      : {}),
+    ...(message.params !== undefined ? { params: message.params } : {}),
   };
 }
 
@@ -340,7 +331,7 @@ export function sendJsonRpcRequest<TResult>(
 ): Promise<TResult> {
   const id = args.getNextId();
   const message = toJsonRpcMessage(args.message);
-  const withId: OutboundJsonRpcMessage = { ...message, id };
+  const withId: OutboundJsonRpcMessageCandidate = { ...message, id };
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       args.pending.delete(id);
@@ -361,17 +352,17 @@ export function sendJsonRpcRequest<TResult>(
         reject(error);
       },
     });
-    writeJsonRpcLine(args.child, JSON.stringify(withId));
+    writeJsonRpcLine(args.child, stringifyOutboundJson(withId));
   });
 }
 
 export function sendJsonRpcResult(args: SendJsonRpcResultArgs): void {
   writeJsonRpcLine(
     args.child,
-    JSON.stringify({
+    stringifyOutboundJson({
       jsonrpc: "2.0",
       id: args.id,
-      result: toOutboundJsonValue(args.result),
+      result: args.result,
     }),
   );
 }

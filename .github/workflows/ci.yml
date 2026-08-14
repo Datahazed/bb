@@ -34,8 +34,7 @@ jobs:
 
       - name: Build, typecheck, and lint
         run: |
-          pnpm exec turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only
-          pnpm run lint:record-types
+          pnpm exec turbo run build typecheck lint '//#lint:record-types' --cache-dir=.turbo/cache --output-logs=new-only
 
       # Runs after build and typecheck, so the guard's own turbo build is a
       # cache hit and the package it packs is the one this commit really ships.

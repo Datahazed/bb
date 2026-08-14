@@ -1093,7 +1093,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(123);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(124);
   });
 
   it("requires an explicit intent on a thread stop command", () => {

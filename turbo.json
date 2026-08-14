@@ -1,6 +1,25 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
+    "//#lint:record-types": {
+      "inputs": [
+        "$TURBO_ROOT$/apps/**/*.ts",
+        "$TURBO_ROOT$/apps/**/*.tsx",
+        "!$TURBO_ROOT$/apps/app/**",
+        "$TURBO_ROOT$/eslint.record-types.config.mjs",
+        "$TURBO_ROOT$/examples/**/*.ts",
+        "$TURBO_ROOT$/examples/**/*.tsx",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages/**/*.ts",
+        "$TURBO_ROOT$/packages/**/*.tsx",
+        "$TURBO_ROOT$/plugins/**/*.ts",
+        "$TURBO_ROOT$/plugins/**/*.tsx",
+        "$TURBO_ROOT$/scripts/**/*.ts",
+        "$TURBO_ROOT$/scripts/eslint-rules/no-record-string-unknown.mjs",
+        "$TURBO_ROOT$/tests/**/*.ts",
+        "$TURBO_ROOT$/tests/**/*.tsx"
+      ]
+    },
     "@bb/web#build": {
       "inputs": [
         "$TURBO_DEFAULT$",

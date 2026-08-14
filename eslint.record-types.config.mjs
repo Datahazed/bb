@@ -8,6 +8,7 @@ export default [
       "**/dist/**",
       "**/coverage/**",
       "**/routeTree.gen.ts",
+      "apps/app/**",
       "packages/core/src/generated/**",
     ],
   },

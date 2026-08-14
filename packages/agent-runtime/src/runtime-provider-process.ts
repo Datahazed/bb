@@ -286,6 +286,16 @@ export class RuntimeProviderProcessManager {
     ];
   }
 
+  terminateFailedProvider(providerProcess: RuntimeProviderProcess): void {
+    if (
+      !this.isCurrentProviderProcess({ providerProcess }) ||
+      hasChildProcessExited(providerProcess.child)
+    ) {
+      return;
+    }
+    providerProcess.child.kill("SIGTERM");
+  }
+
   async shutdownProvider(args: ShutdownRuntimeProviderArgs): Promise<void> {
     const providerProcess = this.processes.get(args.processKey);
     if (!providerProcess) {

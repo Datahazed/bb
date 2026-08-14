@@ -3,8 +3,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import {
   ProviderResponseEncodeError,
+  sendJsonRpc,
   sendJsonRpcResult,
-  toJsonRpcMessage,
 } from "./runtime-json-rpc.js";
 
 const EPIPE_PAYLOAD_SIZE = 1024 * 1024;
@@ -36,8 +36,16 @@ describe("runtime JSON-RPC transport", () => {
   it.each([1n, () => undefined, Symbol("value")])(
     "rejects an unsupported outbound value",
     (value) => {
+      const child = {
+        stdin: {
+          destroyed: false,
+          on: () => undefined,
+          writable: true,
+          write: () => true,
+        },
+      } as unknown as ChildProcess;
       expect(() =>
-        toJsonRpcMessage({
+        sendJsonRpc(child, {
           jsonrpc: "2.0",
           method: "test",
           params: { value },

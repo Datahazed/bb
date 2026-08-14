@@ -404,20 +404,14 @@ rl.on("line", (line) => {
     await runtime2.shutdown();
   });
 
-  it("contains provider event translation errors", async () => {
+  it("fails a provider whose terminal event cannot be translated", async () => {
     const stderrLines: string[] = [];
-    const notificationScript = join(tmpDir, "translation-error-provider.cjs");
-    writeFileSync(
-      notificationScript,
-      `setTimeout(() => {
-        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "test/event", params: {} }) + "\\n");
-      }, 10);
-      setInterval(() => {}, 1000);`,
-    );
-    const baseAdapter = createNoopInitializeAdapter(notificationScript);
+    const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
+    const baseAdapter = createFakeAdapter(scriptPath);
     const runtime = createAgentRuntimeWithAdapters({
       workspacePath: tmpDir,
       onEvent: () => {},
+      onProcessExit: exitInfo,
       onStderr: (line) => stderrLines.push(line),
       onToolCall: async () => ({
         contentItems: [{ type: "inputText", text: "ok" }],
@@ -425,20 +419,47 @@ rl.on("line", (line) => {
       }),
       adapterFactory: () => ({
         ...baseAdapter,
-        translateEvent() {
-          throw new Error("invalid nested provider data");
+        translateEvent(event, context) {
+          if (event.method === "turn/completed") {
+            throw new Error("invalid terminal provider data");
+          }
+          return baseAdapter.translateEvent(event, context);
         },
       }),
     });
 
-    await runtime.ensureProvider({ providerId: "fake" });
+    await runtime.startThread({
+      environmentId: "env-1",
+      threadId: "t1",
+      projectId: "p1",
+      providerId: "fake",
+      options: fullRuntimeOptions,
+    });
+    await runtime.runTurn({
+      clientRequestId: "creq_222222224z",
+      threadId: "t1",
+      input: [promptTextInput({ text: "hi" })],
+      options: fullRuntimeOptions,
+    });
     await waitForRuntimeState({
-      label: "provider translation error",
-      predicate: () => stderrLines.length > 0,
+      label: "provider exit after translation error",
+      predicate: () => exitInfo.mock.calls.length === 1,
     });
 
     expect(stderrLines).toContain(
-      "Failed to translate provider event: invalid nested provider data",
+      "Failed to translate provider event: invalid terminal provider data",
+    );
+    expect(exitInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expected: false,
+        threads: [
+          expect.objectContaining({
+            activeTurnId: expect.any(String),
+            pendingTurnStart: false,
+            threadId: "t1",
+          }),
+        ],
+      }),
     );
     await runtime.shutdown();
   });

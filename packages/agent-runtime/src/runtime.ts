@@ -1152,6 +1152,7 @@ function createAgentRuntimeInternal(
         `Failed to translate provider event: ${error instanceof Error ? error.message : String(error)}`,
         sourceThreadId,
       );
+      providerProcesses.terminateFailedProvider(args.proc);
       return;
     }
     emitTranslatedEvents({ events, proc: args.proc, sourceThreadId });

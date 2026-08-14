@@ -11,7 +11,11 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
-import { derivePluginId, PLUGIN_SDK_VERSION } from "@bb/domain";
+import {
+  derivePluginId,
+  PLUGIN_SDK_VERSION,
+  type JsonObject,
+} from "@bb/domain";
 import {
   PLUGIN_SDK_APP_DTS,
   PLUGIN_SDK_DTS,
@@ -21,12 +25,6 @@ import {
   PLUGIN_STARTER_FILES,
   PLUGIN_STARTER_TYPE_DEPENDENCIES,
 } from "./generated/plugin-starter-files.generated.js";
-
-interface JsonObject {
-  [key: string]: JsonValue;
-}
-
-type JsonValue = boolean | number | string | null | JsonValue[] | JsonObject;
 
 /**
  * `bb plugin new` scaffold. Lives in @bb/templates because both the CLI
