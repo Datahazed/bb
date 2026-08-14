@@ -263,11 +263,65 @@ async function packTarball() {
 }
 
 async function smokeProviderDriverBundles(packageDir) {
+  await access(join(packageDir, "host-daemon", "dist", "bb-codex-driver.mjs"));
   await access(join(packageDir, "host-daemon", "dist", "bb-pi-driver.mjs"));
   await access(
     join(packageDir, "host-daemon", "dist", "bb-claude-code-driver.mjs"),
   );
   await access(join(packageDir, "host-daemon", "dist", "bb-acp-driver.mjs"));
+}
+
+async function smokeCodexCanonicalDriver(packageDir) {
+  const testRoot = join(tempRoot, "codex-canonical-driver");
+  const workspaceDir = join(testRoot, "workspace");
+  await mkdir(workspaceDir, { recursive: true });
+  const label = "Codex installed-package canonical driver";
+  const driverPath = join(
+    packageDir,
+    "host-daemon",
+    "dist",
+    "bb-codex-driver.mjs",
+  );
+  const childProcess = spawn(process.execPath, [driverPath], {
+    cwd: workspaceDir,
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
+  });
+  const output = collectProcessOutput(childProcess);
+  const peer = createProviderDriverSmokePeer({ childProcess, label, output });
+  try {
+    const initialized = await peer.request("driver.initialize", {
+      supportedProtocolVersions: [peer.protocolVersion],
+      expected: {
+        pluginId: "codex",
+        driverId: "codex",
+        providerId: "codex",
+        artifactDigest: await driverArtifactDigest(driverPath),
+      },
+      host: { platform: process.platform, architecture: process.arch },
+      paths: { providerDataDir: join(testRoot, "provider-data") },
+      config: {},
+    });
+    if (initialized.identity?.providerId !== "codex") {
+      throw new Error(`${label} returned the wrong identity`);
+    }
+    const inspected = await peer.request("driver.inspect", {
+      cwd: workspaceDir,
+      operation: null,
+    });
+    if (
+      inspected.readiness?.status !== "ready" &&
+      inspected.readiness?.status !== "unavailable"
+    ) {
+      throw new Error(
+        `${label} returned invalid readiness: ${JSON.stringify(inspected)}`,
+      );
+    }
+    await peer.request("driver.shutdown", {});
+  } finally {
+    peer.close();
+    if (childProcess.exitCode === null) childProcess.kill("SIGKILL");
+  }
 }
 
 async function smokeClaudeCanonicalDriver(packageDir) {
@@ -911,6 +965,7 @@ try {
   const sdkDir = await smokeSdkPackage(tarballPath);
   const installedPackageDir = join(sdkDir, "node_modules", "bb-app");
   await smokeProviderDriverBundles(installedPackageDir);
+  await smokeCodexCanonicalDriver(installedPackageDir);
   await smokeClaudeCanonicalDriver(installedPackageDir);
   await smokeAcpCanonicalDriver(installedPackageDir);
   await smokePiUserConfiguration(installedPackageDir);

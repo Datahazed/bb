@@ -2,7 +2,7 @@
 
 Runtime-validated contract for the local connection between the BB host daemon and an isolated agent-provider driver process.
 
-This package defines the target protocol and its pure lifecycle validator. `@bb/provider-driver-sdk` implements the driver side, while `ProcessProviderDriverConnection` and `ProviderDriverSupervisor` implement the host side. Pi and Claude Code use the canonical path. Codex and ACP continue through `ProviderAdapter` until they are migrated individually.
+This package defines the provider-driver protocol and its pure lifecycle validator. `@bb/provider-driver-sdk` implements the driver side, while `ProcessProviderDriverConnection` and `ProviderDriverSupervisor` implement the host side. Pi, Claude Code, Codex, and ACP all use this canonical path.
 
 ## Boundary
 

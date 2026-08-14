@@ -37,7 +37,6 @@ import {
   type CodexRateLimitSnapshotUpdate,
   type CodexTurnStatus,
 } from "./schemas.js";
-import { codexVisibilityMetadata } from "./visibility.js";
 
 function assertNever(value: never, message?: string): never {
   throw new Error(message ?? `Unexpected value: ${String(value)}`);
@@ -338,16 +337,11 @@ interface CodexUnhandledEventArgs {
 function buildUnhandledCodexEvent(
   args: CodexUnhandledEventArgs,
 ): ThreadEvent[] {
-  const description = codexVisibilityMetadata.describeRawEvent(args.rawEvent);
-  if (description.coverage !== "unknown" && args.rawType === undefined) {
-    return [];
-  }
-
   return [
     createUnhandledProviderEvent({
       providerId: "codex",
       rawEvent: args.rawEvent,
-      rawType: args.rawType ?? description.kind,
+      rawType: args.rawType ?? args.rawEvent.method,
       ...(args.threadId ? { threadId: args.threadId } : {}),
       ...(args.providerThreadId
         ? { providerThreadId: args.providerThreadId }

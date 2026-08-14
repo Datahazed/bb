@@ -76,7 +76,7 @@ The runtime fails fast when providers crash or are unavailable:
 
 ### Multi-thread / multi-provider
 
-A single runtime can manage multiple threads across multiple providers simultaneously. Each provider process is spawned once and shared across threads. The runtime stamps every event with the correct bb `threadId` and `providerThreadId` regardless of how the provider internally identifies threads.
+A single runtime can manage multiple threads across multiple providers simultaneously. Providers that support multiplexing share a process; Codex uses one isolated provider process per live thread. The runtime stamps every event with the correct bb `threadId` and `providerThreadId` regardless of how the provider internally identifies threads.
 
 ## Running Tests
 
@@ -121,7 +121,7 @@ The root `test:integration --force` run also schedules `@bb/integration-tests#te
 
 ### Test coverage
 
-**Unit tests (110)** — runtime lifecycle, multi-thread event routing, multi-provider, tool call round-trips, JSON-RPC error handling, fail-fast on crashes (binary not found, crash during init, crash mid-turn, crash between turns), concurrent `ensureProvider` deduplication, resume across runtimes, adapter event translation.
+**Unit tests** — runtime lifecycle, multi-thread event routing, multi-provider, tool call round-trips, protocol error handling, fail-fast on crashes (binary not found, crash during init, crash mid-turn, crash between turns), concurrent `ensureProvider` deduplication, resume across runtimes, and canonical event translation.
 
 **Integration tests (27)** run all 3 providers concurrently in ~45 seconds:
 
@@ -147,10 +147,6 @@ Consumer (host-daemon, server)
        │   └─ shutdown()
        │
        ├─ ProviderDriverConnection     Semantic provider operations
-       │   └─ LegacyAdapterConnection Compatibility for current adapters
-       │       ├─ command construction and request correlation
-       │       ├─ accepted-command/event translation
-       │       └─ tool/interaction request decoding
        │
        ├─ ProviderDriverSupervisor     Canonical process launch/termination
        │   └─ ProcessProviderDriverConnection
@@ -168,14 +164,7 @@ Consumer (host-daemon, server)
            └─ pi                  canonical driver → Pi coding agent SDK
 ```
 
-`AgentRuntime` depends on `ProviderDriverConnection`, not adapter command-building callbacks. Pi, Claude Code, and ACP run through canonical isolated driver processes. Codex still runs through `LegacyAdapterConnection`, which preserves its current child process and newline-delimited JSON-RPC dialect while containing adapter command construction, response parsing, accepted-command synthesis, and event/request translation. The canonical path uses `ProviderDriverSupervisor` and `ProcessProviderDriverConnection` with `@bb/provider-driver-contract`. `CanonicalProcessProviderConnection` adapts that strict peer to the current runtime seam without provider-specific translation: it mints attachment/operation/turn IDs, preserves response-before-event ordering, and projects bounded canonical events. Canonical children use `@bb/provider-driver-sdk` for framing, operation replay, acceptance buffering, event sequencing, and host callbacks. Providers move onto that path one at a time.
-
-### Remaining legacy providers
-
-Codex still uses its in-process adapter around `codex app-server`, contained
-behind `LegacyAdapterConnection`. Claude Code, ACP, and Pi translate their
-provider protocols directly into bounded canonical driver events and use framed
-RPC on dedicated file descriptors.
+`AgentRuntime` depends on `ProviderDriverConnection`, not provider-specific command-building callbacks. Pi, Claude Code, ACP, and Codex all run through canonical isolated driver processes. The daemon-side path uses `ProviderDriverSupervisor` and `ProcessProviderDriverConnection` with `@bb/provider-driver-contract`. `CanonicalProcessProviderConnection` adapts that strict peer to the current runtime seam without provider-specific translation: it mints attachment/operation/turn IDs, preserves response-before-event ordering, and projects bounded canonical events. Canonical children use `@bb/provider-driver-sdk` for framing, operation replay, acceptance buffering, event sequencing, and host callbacks. The Codex canonical child supervises its own `codex app-server` subprocess and translates that provider-native newline-delimited protocol behind the canonical boundary.
 
 ## Dependencies
 

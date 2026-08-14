@@ -172,6 +172,7 @@ const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 const CANONICAL_PROVIDER_REQUEST_TIMEOUT_MS = 2 * 60_000;
 const ACP_DRIVER_ID = "acp";
 const CLAUDE_CODE_PROVIDER_ID = "claude-code";
+const CODEX_PROVIDER_ID = "codex";
 const PI_PROVIDER_ID = "pi";
 
 function createAdapterTurnIdPrefix(): string {
@@ -188,15 +189,20 @@ function resolveCanonicalDriverProcessArgs(args: {
         bundleFileName: "bb-acp-driver.mjs",
         bridgeRelativePath: "acp/driver-entry.js",
       }
-    : args.providerId === PI_PROVIDER_ID
+    : args.providerId === CODEX_PROVIDER_ID
       ? {
-          bundleFileName: "bb-pi-driver.mjs",
-          bridgeRelativePath: "pi/driver-entry.js",
+          bundleFileName: "bb-codex-driver.mjs",
+          bridgeRelativePath: "codex/driver-entry.js",
         }
-      : {
-          bundleFileName: "bb-claude-code-driver.mjs",
-          bridgeRelativePath: "claude-code/driver-entry.js",
-        };
+      : args.providerId === PI_PROVIDER_ID
+        ? {
+            bundleFileName: "bb-pi-driver.mjs",
+            bridgeRelativePath: "pi/driver-entry.js",
+          }
+        : {
+            bundleFileName: "bb-claude-code-driver.mjs",
+            bridgeRelativePath: "claude-code/driver-entry.js",
+          };
   return resolveBridgeProcessArgs({
     bridgeBundleDir: args.bridgeBundleDir,
     importMetaUrl: import.meta.url,
@@ -247,6 +253,7 @@ export class RuntimeProviderProcessManager {
       if (
         (args.providerId === PI_PROVIDER_ID ||
           args.providerId === CLAUDE_CODE_PROVIDER_ID ||
+          args.providerId === CODEX_PROVIDER_ID ||
           isAcpProviderId(args.providerId)) &&
         this.args.adapterFactory === undefined
       ) {
@@ -505,7 +512,9 @@ export class RuntimeProviderProcessManager {
       : getBuiltInAgentProviderInfo(
           providerId === PI_PROVIDER_ID
             ? PI_PROVIDER_ID
-            : CLAUDE_CODE_PROVIDER_ID,
+            : providerId === CODEX_PROVIDER_ID
+              ? CODEX_PROVIDER_ID
+              : CLAUDE_CODE_PROVIDER_ID,
         );
     const connection = new CanonicalProcessProviderConnection({
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,

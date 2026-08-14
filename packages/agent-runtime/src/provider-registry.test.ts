@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createProviderForId } from "./provider-registry.js";
 
 const canonicalProviderIds = [
+  "codex",
   "pi",
   "claude-code",
   "acp-cursor",
@@ -9,13 +10,6 @@ const canonicalProviderIds = [
 ] as const;
 
 describe("provider registry", () => {
-  it("creates the remaining Codex legacy adapter", () => {
-    const provider = createProviderForId("codex");
-    expect(provider.id).toBe("codex");
-    expect(provider.process.command).toBe("codex");
-    expect(provider.process.args).toMatchObject(["app-server"]);
-  });
-
   it.each(canonicalProviderIds)(
     "does not expose canonical provider %s through the legacy registry",
     (providerId) => {

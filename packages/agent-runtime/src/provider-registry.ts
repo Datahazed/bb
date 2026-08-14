@@ -1,47 +1,20 @@
 /**
  * Provider registry.
  *
- * Manages the set of available built-in provider metadata and adapter factories
- * (codex, claude-code, pi).
+ * Exposes built-in provider metadata and rejects legacy adapter construction
+ * for providers that now run through canonical drivers.
  */
 
 import {
-  getBuiltInAgentProviderInfo,
   isAcpProviderId,
   isAgentProviderId,
   listBuiltInAgentProviderInfos,
 } from "@bb/agent-providers";
 import type { ProviderInfo } from "@bb/domain";
-import { createCodexProviderAdapter } from "./codex/adapter.js";
 import type {
   ProviderAdapter,
   ProviderAdapterFactoryOptions,
 } from "./provider-adapter.js";
-
-// ---------------------------------------------------------------------------
-// Registry state
-// ---------------------------------------------------------------------------
-
-type ProviderFactory = (
-  options: ProviderAdapterFactoryOptions,
-) => ProviderAdapter;
-interface BuiltInProviderDescriptor {
-  createAdapter: ProviderFactory;
-  info: ProviderInfo;
-}
-
-const builtInProviders = [
-  {
-    // Codex app-server events already carry Codex-owned turn ids; the
-    // runtime-generated prefix is only for adapters that synthesize bb turn ids.
-    createAdapter: (options) => createCodexProviderAdapter(options),
-    info: getBuiltInAgentProviderInfo("codex"),
-  },
-] satisfies BuiltInProviderDescriptor[];
-
-const builtInProvidersById = new Map(
-  builtInProviders.map((descriptor) => [descriptor.info.id, descriptor]),
-);
 
 // ---------------------------------------------------------------------------
 // Lookup
@@ -62,58 +35,16 @@ export function createProviderForId(
     );
   }
 
-  if (
-    providerId === "pi" ||
-    providerId === "claude-code" ||
-    isAcpProviderId(providerId)
-  ) {
+  if (isAgentProviderId(providerId) || isAcpProviderId(providerId)) {
     throw new Error(
       `Provider "${providerId}" uses the canonical driver and has no legacy adapter.`,
     );
   }
 
-  if (!isAgentProviderId(providerId)) {
-    const allIds = builtInProviders.map((provider) => provider.info.id);
-    throw new Error(
-      `Unsupported provider "${providerId}". Available providers: ${allIds.join(", ")}.`,
-    );
-  }
-
-  const descriptor = builtInProvidersById.get(providerId);
-
-  if (!descriptor) {
-    const allIds = builtInProviders.map((provider) => provider.info.id);
-    throw new Error(
-      `Unsupported provider "${providerId}". Available providers: ${allIds.join(", ")}.`,
-    );
-  }
-
-  const adapterOptions = toProviderAdapterFactoryOptions(options);
-
-  return descriptor.createAdapter(adapterOptions);
-}
-
-function toProviderAdapterFactoryOptions(
-  options?: ProviderAdapterFactoryOptions,
-): ProviderAdapterFactoryOptions {
-  return {
-    additionalWorkspaceWriteRoots: options?.additionalWorkspaceWriteRoots ?? [],
-    ...(options?.acpLaunchSpec !== undefined
-      ? { acpLaunchSpec: options.acpLaunchSpec }
-      : {}),
-    ...(options?.bridgeBundleDir !== undefined
-      ? { bridgeBundleDir: options.bridgeBundleDir }
-      : {}),
-    ...(options?.bridgeNodeEnv !== undefined
-      ? { bridgeNodeEnv: options.bridgeNodeEnv }
-      : {}),
-    ...(options?.bridgeNodeExecutablePath !== undefined
-      ? { bridgeNodeExecutablePath: options.bridgeNodeExecutablePath }
-      : {}),
-    ...(options?.turnIdPrefix !== undefined
-      ? { turnIdPrefix: options.turnIdPrefix }
-      : {}),
-  };
+  const allIds = listBuiltInAgentProviderInfos().map((provider) => provider.id);
+  throw new Error(
+    `Unsupported provider "${providerId}". Available providers: ${allIds.join(", ")}.`,
+  );
 }
 
 /**
