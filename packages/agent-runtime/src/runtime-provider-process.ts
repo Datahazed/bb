@@ -9,7 +9,7 @@ import {
   getBuiltInAgentProviderInfo,
   isAcpProviderId,
 } from "@bb/agent-providers";
-import type { ThreadEvent } from "@bb/domain";
+import type { ProviderInfo, ThreadEvent } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import {
   PROVIDER_DRIVER_PROTOCOL_VERSION,
@@ -35,6 +35,7 @@ import {
 import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
 import type { ProviderDriverConnection } from "./provider-driver/connection.js";
 import { CanonicalProcessProviderConnection } from "./provider-driver/canonical-process-connection.js";
+import { getBundledProviderDriverLaunchSpec } from "./provider-driver/bundled-launch-specs.js";
 import { LegacyAdapterConnection } from "./provider-driver/legacy-adapter-connection.js";
 import {
   ProviderDriverSupervisor,
@@ -169,10 +170,7 @@ interface ProviderProcessExitedErrorArgs {
 
 const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 const CANONICAL_PROVIDER_REQUEST_TIMEOUT_MS = 2 * 60_000;
-const ACP_DRIVER_ID = "acp";
 const CLAUDE_CODE_PROVIDER_ID = "claude-code";
-const CODEX_PROVIDER_ID = "codex";
-const PI_PROVIDER_ID = "pi";
 
 function createAdapterTurnIdPrefix(): string {
   const adapterId = randomUUID().replaceAll("-", "").slice(0, 16);
@@ -181,31 +179,14 @@ function createAdapterTurnIdPrefix(): string {
 
 function resolveCanonicalDriverProcessArgs(args: {
   bridgeBundleDir: string | undefined;
-  providerId: string;
+  bundleFileName: string;
+  sourceRelativePath: string;
 }): string[] {
-  const driver = isAcpProviderId(args.providerId)
-    ? {
-        bundleFileName: "bb-acp-driver.mjs",
-        bridgeRelativePath: "acp/driver-entry.js",
-      }
-    : args.providerId === CODEX_PROVIDER_ID
-      ? {
-          bundleFileName: "bb-codex-driver.mjs",
-          bridgeRelativePath: "codex/driver-entry.js",
-        }
-      : args.providerId === PI_PROVIDER_ID
-        ? {
-            bundleFileName: "bb-pi-driver.mjs",
-            bridgeRelativePath: "pi/driver-entry.js",
-          }
-        : {
-            bundleFileName: "bb-claude-code-driver.mjs",
-            bridgeRelativePath: "claude-code/driver-entry.js",
-          };
   return resolveBridgeProcessArgs({
     bridgeBundleDir: args.bridgeBundleDir,
     importMetaUrl: import.meta.url,
-    ...driver,
+    bundleFileName: args.bundleFileName,
+    bridgeRelativePath: args.sourceRelativePath,
   });
 }
 
@@ -381,24 +362,17 @@ export class RuntimeProviderProcessManager {
     args: EnsureRuntimeProviderArgs,
   ): Promise<void> {
     const providerId = args.providerId;
-    if (
-      providerId !== PI_PROVIDER_ID &&
-      providerId !== CLAUDE_CODE_PROVIDER_ID &&
-      providerId !== CODEX_PROVIDER_ID &&
-      !isAcpProviderId(providerId)
-    ) {
+    const driverSpec = getBundledProviderDriverLaunchSpec(providerId);
+    if (!driverSpec) {
       throw new Error(`Unsupported provider "${providerId}"`);
     }
     const acpProfile = args.acpLaunchSpec;
     if (isAcpProviderId(providerId) && acpProfile === undefined) {
       throw new Error(`ACP provider "${providerId}" requires a launch spec`);
     }
-    const driverIdentity = isAcpProviderId(providerId)
-      ? ACP_DRIVER_ID
-      : providerId;
     const processArgs = resolveCanonicalDriverProcessArgs({
       bridgeBundleDir: this.args.bridgeBundleDir,
-      providerId,
+      ...driverSpec.entrypoint,
     });
     let diagnosticsTail: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let providerProcess: RuntimeProviderProcess | null = null;
@@ -409,9 +383,9 @@ export class RuntimeProviderProcessManager {
         initialize: {
           supportedProtocolVersions: [PROVIDER_DRIVER_PROTOCOL_VERSION],
           expected: {
-            pluginId: driverIdentity,
-            driverId: driverIdentity,
-            providerId: driverIdentity,
+            pluginId: driverSpec.driverId,
+            driverId: driverSpec.driverId,
+            providerId: driverSpec.driverId,
             artifactDigest: driverArtifactDigest(processArgs),
           },
           host: {
@@ -496,6 +470,15 @@ export class RuntimeProviderProcessManager {
           sessionOpenMs: 30_000,
         },
       });
+      if (
+        supervised.initialization.processCapabilities.multiplexSessions !==
+        driverSpec.processPolicy.multiplexSessions
+      ) {
+        await supervised.stop();
+        throw new Error(
+          `Bundled ${providerId} driver process policy does not match its declared launch spec`,
+        );
+      }
     } catch (error) {
       const detail = formatProviderStderr(diagnosticsTail);
       throw new Error(
@@ -504,19 +487,19 @@ export class RuntimeProviderProcessManager {
       );
     }
 
-    const providerInfo = isAcpProviderId(providerId)
-      ? buildAcpProviderInfo({
-          id: providerId,
-          displayName: acpProfile?.displayName ?? providerId,
-          logoUrl: null,
-        })
-      : getBuiltInAgentProviderInfo(
-          providerId === PI_PROVIDER_ID
-            ? PI_PROVIDER_ID
-            : providerId === CODEX_PROVIDER_ID
-              ? CODEX_PROVIDER_ID
-              : CLAUDE_CODE_PROVIDER_ID,
-        );
+    let providerInfo: ProviderInfo;
+    if (isAcpProviderId(providerId)) {
+      providerInfo = buildAcpProviderInfo({
+        id: providerId,
+        displayName: acpProfile?.displayName ?? providerId,
+        logoUrl: null,
+      });
+    } else {
+      if (driverSpec.driverId === "acp") {
+        throw new Error(`ACP driver cannot serve provider "${providerId}"`);
+      }
+      providerInfo = getBuiltInAgentProviderInfo(driverSpec.driverId);
+    }
     const connection = new CanonicalProcessProviderConnection({
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
       ...(providerId === CLAUDE_CODE_PROVIDER_ID

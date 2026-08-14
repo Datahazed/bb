@@ -158,13 +158,13 @@ Consumer (host-daemon, server)
        │               ↕ @bb/provider-driver-sdk in canonical children
        │
        └─ Provider Process             isolated provider child process
-           ├─ codex               spawns `codex app-server` directly
+           ├─ codex               canonical driver → `codex app-server`
            ├─ claude-code         canonical driver → Claude Agent SDK
            ├─ acp-*               canonical driver → ACP-compatible agent
            └─ pi                  canonical driver → Pi coding agent SDK
 ```
 
-`AgentRuntime` depends on `ProviderDriverConnection`, not provider-specific command-building callbacks. Pi, Claude Code, ACP, and Codex all run through canonical isolated driver processes. The daemon-side path uses `ProviderDriverSupervisor` and `ProcessProviderDriverConnection` with `@bb/provider-driver-contract`. `CanonicalProcessProviderConnection` adapts that strict peer to the current runtime seam without provider-specific translation: it mints attachment/operation/turn IDs, preserves response-before-event ordering, and projects bounded canonical events. Canonical children use `@bb/provider-driver-sdk` for framing, operation replay, acceptance buffering, event sequencing, and host callbacks. The Codex canonical child supervises its own `codex app-server` subprocess and translates that provider-native newline-delimited protocol behind the canonical boundary.
+`AgentRuntime` depends on `ProviderDriverConnection`, not provider-specific command-building callbacks. Pi, Claude Code, ACP, and Codex all run through canonical isolated driver processes. Declarative bundled launch specs select each immutable entrypoint and declare whether its process is environment- or thread-scoped; startup verifies that the driver's multiplexing capability matches that declaration. The daemon-side path uses `ProviderDriverSupervisor` and `ProcessProviderDriverConnection` with `@bb/provider-driver-contract`. `CanonicalProcessProviderConnection` adapts that strict peer to the current runtime seam without provider-specific translation: it mints attachment/operation/turn IDs, preserves response-before-event ordering, and projects bounded canonical events. Canonical children use `@bb/provider-driver-sdk` for framing, operation replay, acceptance buffering, event sequencing, and host callbacks. The Codex canonical child supervises its own `codex app-server` subprocess and translates that provider-native newline-delimited protocol behind the canonical boundary.
 
 ## Dependencies
 

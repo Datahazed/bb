@@ -258,6 +258,9 @@ describe("ProviderDriverSupervisor", () => {
         env: {},
       },
     });
+    expect(driver.initialization.processCapabilities).toEqual({
+      multiplexSessions: true,
+    });
     await expect(
       driver.connection.openSession(makeSessionOpenParams()),
     ).resolves.toMatchObject({ providerSessionId: "sdk-provider-session" });

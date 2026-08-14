@@ -16,6 +16,7 @@ import type {
   ProviderDriverConnection,
   ProviderDriverSessionOpenArgs,
 } from "./provider-driver/connection.js";
+import { getBundledProviderDriverLaunchSpec } from "./provider-driver/bundled-launch-specs.js";
 import {
   assertProviderSupportsExecutionOptions,
   toProviderExecutionContext,
@@ -205,7 +206,7 @@ interface EmitTranslatedEventsArgs {
 }
 
 const CODEX_PROVIDER_ID = "codex";
-const CODEX_THREAD_PROCESS_KEY_PREFIX = `${CODEX_PROVIDER_ID}\0thread:`;
+const THREAD_PROCESS_KEY_SEPARATOR = "\0thread:";
 const THREAD_CREATION_REQUEST_TIMEOUT_MS = 2 * 60_000;
 const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_CATEGORIES =
   new Set<ProviderErrorCategory>(["rate-limit", "unauthorized"]);
@@ -405,10 +406,12 @@ function createAgentRuntimeInternal(
   function resolveProviderProcessKey(
     args: ResolveProviderProcessKeyArgs,
   ): string {
+    const driverSpec = getBundledProviderDriverLaunchSpec(args.providerId);
     const baseKey =
-      args.providerId !== CODEX_PROVIDER_ID || args.threadId === undefined
+      driverSpec?.processPolicy.scope !== "thread" ||
+      args.threadId === undefined
         ? args.providerId
-        : `${CODEX_THREAD_PROCESS_KEY_PREFIX}${args.threadId}`;
+        : `${args.providerId}${THREAD_PROCESS_KEY_SEPARATOR}${args.threadId}`;
     if (args.acpLaunchSpec === undefined) {
       return baseKey;
     }
@@ -429,17 +432,19 @@ function createAgentRuntimeInternal(
     return requireProviderProcess({ processKey, providerId });
   }
 
-  function isThreadScopedCodexProcess(proc: ProviderProcess): boolean {
-    return (
-      proc.providerId === CODEX_PROVIDER_ID &&
-      proc.processKey.startsWith(CODEX_THREAD_PROCESS_KEY_PREFIX)
+  function isThreadScopedProviderProcess(proc: ProviderProcess): boolean {
+    return proc.processKey.startsWith(
+      `${proc.providerId}${THREAD_PROCESS_KEY_SEPARATOR}`,
     );
   }
 
-  async function shutdownThreadScopedCodexProcessIfIdle(
+  async function shutdownThreadScopedProviderProcessIfIdle(
     proc: ProviderProcess,
   ): Promise<void> {
-    if (!isThreadScopedCodexProcess(proc) || proc.identity.threadIds.size > 0) {
+    if (
+      !isThreadScopedProviderProcess(proc) ||
+      proc.identity.threadIds.size > 0
+    ) {
       return;
     }
     await providerProcesses.shutdownProvider({
@@ -775,7 +780,7 @@ function createAgentRuntimeInternal(
       processKey: currentConfig.processKey,
       providerId: currentConfig.providerId,
     });
-    if (!isThreadScopedCodexProcess(proc)) {
+    if (!isThreadScopedProviderProcess(proc)) {
       codexThreadsRequiringAccountRestart.delete(args.threadId);
       return;
     }
@@ -835,7 +840,7 @@ function createAgentRuntimeInternal(
       // must resume it (after unarchive) instead of reusing stale state.
       forgetThreadRuntimeState(proc, threadId);
     }
-    await shutdownThreadScopedCodexProcessIfIdle(proc);
+    await shutdownThreadScopedProviderProcessIfIdle(proc);
   }
 
   function isCodexArchivedSessionError(
@@ -1185,7 +1190,7 @@ function createAgentRuntimeInternal(
       forgetThreadRuntimeState(proc, prepared.stagingThreadId);
       finishPreparedThreadRewindCleanup(leaseId, prepared);
       try {
-        await shutdownThreadScopedCodexProcessIfIdle(proc);
+        await shutdownThreadScopedProviderProcessIfIdle(proc);
       } catch (error) {
         options.onStderr?.(
           `Failed to stop the idle provider after discarding staged rewind ${leaseId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1874,7 +1879,7 @@ function createAgentRuntimeInternal(
             sourceThreadId: threadId,
           });
           forgetThreadRuntimeState(proc, threadId);
-          await shutdownThreadScopedCodexProcessIfIdle(proc);
+          await shutdownThreadScopedProviderProcessIfIdle(proc);
           return {
             providerCheckpointId: result.providerCheckpointId ?? null,
           };
@@ -2015,12 +2020,12 @@ function createAgentRuntimeInternal(
         } catch {
           continue;
         }
-        if (!isThreadScopedCodexProcess(proc)) {
+        if (!isThreadScopedProviderProcess(proc)) {
           continue;
         }
 
         forgetThreadRuntimeState(proc, candidate.threadId);
-        await shutdownThreadScopedCodexProcessIfIdle(proc);
+        await shutdownThreadScopedProviderProcessIfIdle(proc);
         reapedSessions.push({
           idleForMs: Math.max(0, nowMs - candidate.idleSinceMs),
           providerId: candidate.runtimeConfig.providerId,

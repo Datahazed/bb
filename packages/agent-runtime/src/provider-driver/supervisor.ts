@@ -1,6 +1,9 @@
 import type { ChildProcess } from "node:child_process";
 import { Readable, Writable } from "node:stream";
-import type { ProviderDriverInitializeParams } from "@bb/provider-driver-contract";
+import type {
+  ProviderDriverInitializeParams,
+  ProviderDriverInitializeResult,
+} from "@bb/provider-driver-contract";
 import {
   sanitizeInheritedChildProcessEnv,
   spawnPortableProcess,
@@ -43,6 +46,7 @@ export interface ProviderDriverSupervisorLaunchArgs {
 export interface SupervisedProviderDriver {
   readonly child: ChildProcess;
   readonly connection: ProcessProviderDriverConnection;
+  readonly initialization: ProviderDriverInitializeResult;
   readonly processKey: string;
   stop(): Promise<void>;
 }
@@ -241,9 +245,39 @@ export class ProviderDriverSupervisor {
         connection.configureRequestTimeouts(args.requestTimeouts);
       }
       let stopped = false;
-      const handle: SupervisedProviderDriver = {
+      let handle: SupervisedProviderDriver | null = null;
+
+      connection.onExit((exit) => {
+        args.onExit?.(exit);
+        const current = this.drivers.get(args.processKey);
+        if (current !== undefined) {
+          void current.then(
+            (resolved) => {
+              if (handle !== null && resolved === handle) {
+                this.drivers.delete(args.processKey);
+              }
+            },
+            () => {
+              // Startup failure removes the promise in launch().
+            },
+          );
+        }
+      });
+      child.once("error", () => {
+        connection.recordProcessExit({ code: null, signal: null });
+      });
+      child.once("exit", (code, signal) => {
+        connection.recordProcessExit({
+          code: code ?? null,
+          signal: signal ?? null,
+        });
+      });
+
+      const initialization = await connection.initialize(args.initialize);
+      handle = {
         child,
         connection,
+        initialization,
         processKey: args.processKey,
         stop: async () => {
           if (stopped) return;
@@ -269,34 +303,6 @@ export class ProviderDriverSupervisor {
           }
         },
       };
-
-      connection.onExit((exit) => {
-        args.onExit?.(exit);
-        const current = this.drivers.get(args.processKey);
-        if (current !== undefined) {
-          void current.then(
-            (resolved) => {
-              if (resolved === handle) {
-                this.drivers.delete(args.processKey);
-              }
-            },
-            () => {
-              // Startup failure removes the promise in launch().
-            },
-          );
-        }
-      });
-      child.once("error", () => {
-        connection.recordProcessExit({ code: null, signal: null });
-      });
-      child.once("exit", (code, signal) => {
-        connection.recordProcessExit({
-          code: code ?? null,
-          signal: signal ?? null,
-        });
-      });
-
-      await connection.initialize(args.initialize);
       return handle;
     } catch (error) {
       await terminateChild(child);
