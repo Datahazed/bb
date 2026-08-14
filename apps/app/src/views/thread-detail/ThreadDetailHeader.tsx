@@ -20,6 +20,7 @@ import {
   THREAD_HEADER_EDGE_TO_ICON_SPACING_CLASS,
   THREAD_HEADER_ICON_BUTTON_CLASS,
   THREAD_HEADER_ICON_SPACING_CLASS,
+  THREAD_HEADER_TITLE_ACTION_SPACING_CLASS,
 } from "@/components/layout/AppPageHeader";
 import type { ThreadGitActionDialogTarget } from "@/components/dialogs/ThreadGitActionDialog";
 import {
@@ -169,26 +170,32 @@ export function ThreadDetailHeader({
   // stable positions in the thread header.
   const showRightPanelToggle =
     secondaryPanelHost === null && !isSecondaryPanelOpen;
+  const showTitleSpotlight = isSplitPane && isFocused;
 
   const center = (
     <div
-      className="flex min-w-0 max-w-full items-center"
+      className={cn(
+        "flex min-w-0 max-w-full items-center",
+        showTitleSpotlight &&
+          actionsMenu != null &&
+          THREAD_HEADER_ICON_SPACING_CLASS,
+      )}
       data-thread-header-center-actions=""
     >
       <div
-        className={cn("flex min-w-4 items-center", HEADER_ACTION_GAP_CLASS)}
+        data-pane-header-focus-tab={
+          isSplitPaneHeader && isFocused ? "" : undefined
+        }
+        className={cn(
+          "relative flex min-w-4 items-center",
+          isSplitPaneHeader && "-ml-2 rounded-md pl-2",
+          isSplitPaneHeader && isFocused && CONTEXT_SELECTION_SURFACE_CLASS,
+          showTitleSpotlight && THREAD_HEADER_TITLE_ACTION_SPACING_CLASS,
+        )}
         data-thread-header-title-cluster=""
       >
         <div
-          data-pane-header-focus-tab={
-            isSplitPaneHeader && isFocused ? "" : undefined
-          }
-          className={cn(
-            "relative min-w-0",
-            isSplitPaneHeader && "-ml-2 -my-1 rounded-md py-1 pl-2",
-            isSplitPaneHeader && isFocused && "pr-2",
-            isSplitPaneHeader && isFocused && CONTEXT_SELECTION_SURFACE_CLASS,
-          )}
+          className={cn("flex min-w-0 items-center", HEADER_ACTION_GAP_CLASS)}
         >
           <p
             className={cn(
@@ -212,24 +219,33 @@ export function ThreadDetailHeader({
           >
             {isEditing ? editor : <ThreadTitleMentions title={threadTitle} />}
           </p>
+          {childPillLabel ? (
+            <Pill variant="outline" size="sm">
+              {childPillLabel}
+            </Pill>
+          ) : null}
         </div>
-        {childPillLabel ? (
-          <Pill variant="outline" size="sm">
-            {childPillLabel}
-          </Pill>
+        {showTitleSpotlight ? (
+          <span
+            className={cn(
+              "shrink-0",
+              usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+            )}
+          >
+            <SplitDimmingButton />
+          </span>
         ) : null}
       </div>
-      {(isSplitPane && isFocused) || actionsMenu != null ? (
+      {actionsMenu != null ? (
         <div
           className={cn(
             "flex shrink-0 items-center",
-            THREAD_HEADER_ICON_SPACING_CLASS,
-            THREAD_HEADER_EDGE_TO_ICON_SPACING_CLASS,
+            !showTitleSpotlight && THREAD_HEADER_ICON_SPACING_CLASS,
+            !showTitleSpotlight && THREAD_HEADER_EDGE_TO_ICON_SPACING_CLASS,
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
           data-thread-header-title-actions=""
         >
-          {isSplitPane && isFocused ? <SplitDimmingButton /> : null}
           {/*
             The header's center slot sits inside the macOS title-bar drag
             region (AppPageHeader only exempts the actions slot), so the
@@ -237,14 +253,12 @@ export function ThreadDetailHeader({
             window drags. The no-drag class also carries `relative z-50`, so it
             remains gated on desktop chrome.
           */}
-          {actionsMenu == null ? null : (
-            <span
-              data-testid="thread-detail-header-actions-menu"
-              className="flex items-center"
-            >
-              {actionsMenu(usesResponsiveActionOverflow)}
-            </span>
-          )}
+          <span
+            data-testid="thread-detail-header-actions-menu"
+            className="flex items-center"
+          >
+            {actionsMenu(usesResponsiveActionOverflow)}
+          </span>
         </div>
       ) : null}
     </div>

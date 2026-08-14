@@ -322,12 +322,15 @@ describe("theme.css desktop portal hit testing", () => {
 });
 
 describe("theme.css thread header visible action spacing", () => {
-  it("derives edge and icon gaps from one semantic visible-gap token", () => {
+  it("derives toolbar and connected-title gaps from semantic visible-gap tokens", () => {
     const spacingRule = css.match(
       /\.thread-header-icon-spacing\s*\{([^}]*)\}/,
     )?.[1];
     const edgeRule = css.match(
       /\.thread-header-edge-to-icon-spacing\s*\{([^}]*)\}/,
+    )?.[1];
+    const titleActionRule = css.match(
+      /\.thread-header-title-action-spacing\s*\{([^}]*)\}/,
     )?.[1];
 
     expect(spacingRule).toBeDefined();
@@ -337,6 +340,13 @@ describe("theme.css thread header visible action spacing", () => {
     );
     expect(edgeRule).toMatch(
       /margin-inline-start:\s*calc\(\s*var\(--thread-header-visible-action-gap\)\s*-\s*\(\s*var\(--thread-header-icon-button-size\)\s*-\s*var\(--thread-header-icon-glyph-size\)\s*\)\s*\/\s*2\s*\);/,
+    );
+    expect(titleActionRule).toBeDefined();
+    expect(titleActionRule).toMatch(
+      /--thread-header-title-action-visible-gap:\s*0\.5rem;/,
+    );
+    expect(titleActionRule).toMatch(
+      /gap:\s*calc\(\s*var\(--thread-header-title-action-visible-gap\)\s*-\s*\(\s*var\(--thread-header-icon-button-size\)\s*-\s*var\(--thread-header-icon-glyph-size\)\s*\)\s*\/\s*2\s*\);/,
     );
   });
 });

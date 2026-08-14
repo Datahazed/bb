@@ -56,6 +56,14 @@ export const THREAD_HEADER_ICON_BUTTON_CLASS = HEADER_ICON_BUTTON_CLASS;
 export const THREAD_HEADER_ICON_SPACING_CLASS = "thread-header-icon-spacing";
 
 /**
+ * Connected spacing between the thread title content and its owning Spotlight
+ * control. Both stay inside the active title surface so the control reads as
+ * part of the title section rather than as a separate toolbar action.
+ */
+export const THREAD_HEADER_TITLE_ACTION_SPACING_CLASS =
+  "thread-header-title-action-spacing";
+
+/**
  * Adapts the same visible-edge spacing token when the first icon follows a
  * non-icon boundary, such as the active thread-title background.
  */

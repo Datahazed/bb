@@ -33,6 +33,8 @@ vi.mock("@/components/layout/AppPageHeader", () => ({
     "thread-header-edge-to-icon-spacing",
   THREAD_HEADER_ICON_SPACING_CLASS: "thread-header-icon-spacing",
   THREAD_HEADER_ICON_BUTTON_CLASS: "thread-header-icon-button",
+  THREAD_HEADER_TITLE_ACTION_SPACING_CLASS:
+    "thread-header-title-action-spacing",
   AppPageHeader: ({
     actions,
     center,
@@ -91,7 +93,7 @@ describe("ThreadDetailHeader", () => {
   // The header seam now belongs to AppPageHeader, so AppPageHeader.test.tsx
   // guards it for every header instead of this one call site.
 
-  it("groups the spotlight toggle with the thread title instead of pane-edge actions", () => {
+  it("groups spotlight inside the active thread title surface", () => {
     const { container } = render(
       <PaneContext.Provider
         value={{
@@ -115,8 +117,10 @@ describe("ThreadDetailHeader", () => {
 
     const spotlight = screen.getByTestId("split-dimming-button");
     expect(
-      spotlight.closest("[data-thread-header-title-actions]"),
+      spotlight.closest("[data-thread-header-title-cluster]"),
     ).not.toBeNull();
+    expect(spotlight.closest("[data-pane-header-focus-tab]")).not.toBeNull();
+    expect(spotlight.closest("[data-thread-header-title-actions]")).toBeNull();
     expect(
       container
         .querySelector("[data-thread-header-pane-actions]")
@@ -124,7 +128,7 @@ describe("ThreadDetailHeader", () => {
     ).toBe(false);
   });
 
-  it("uses one shared visible gap for title and pane-edge icon actions", () => {
+  it("uses connected title spacing while preserving toolbar icon spacing", () => {
     const { container } = render(
       <PaneContext.Provider
         value={{
@@ -153,11 +157,11 @@ describe("ThreadDetailHeader", () => {
     );
 
     expect(
-      container.querySelector("[data-thread-header-title-actions]")?.classList,
+      container.querySelector("[data-thread-header-center-actions]")?.classList,
     ).toContain("thread-header-icon-spacing");
     expect(
       container.querySelector("[data-thread-header-title-actions]")?.classList,
-    ).toContain("thread-header-edge-to-icon-spacing");
+    ).not.toContain("thread-header-edge-to-icon-spacing");
     expect(
       container.querySelector("[data-thread-header-pane-actions]")?.classList,
     ).toContain("thread-header-icon-spacing");
@@ -167,11 +171,16 @@ describe("ThreadDetailHeader", () => {
     expect(
       container.querySelector("[data-thread-header-title-cluster]")?.classList,
     ).toContain("min-w-4");
+    expect(
+      container.querySelector("[data-thread-header-title-cluster]")?.classList,
+    ).toContain("thread-header-title-action-spacing");
     const activeTitleSurface = container.querySelector(
       "[data-pane-header-focus-tab]",
     );
     expect(activeTitleSurface?.classList).toContain("-ml-2");
-    expect(activeTitleSurface?.classList).toContain("pr-2");
+    expect(activeTitleSurface?.classList).not.toContain("-my-1");
+    expect(activeTitleSurface?.classList).not.toContain("py-1");
+    expect(activeTitleSurface?.classList).not.toContain("pr-2");
     expect(activeTitleSurface?.classList).not.toContain("-mx-2");
   });
 
