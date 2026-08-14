@@ -1531,10 +1531,16 @@ export function QueuedMessagesList({
         data-queued-messages-mode={mode}
       >
         <div className="flex min-w-16 items-baseline gap-1.5 pl-1">
-          <span className="text-xs font-medium text-muted-foreground">Follow-ups</span>
-          <span className="text-2xs text-subtle-foreground">
-            {queuedMessages.length}
-          </span>
+          {!inlineEditor && (
+            <>
+              <span className="text-xs font-light text-subtle-foreground">
+                Follow-ups
+              </span>
+              <span className="text-2xs font-normal text-subtle-foreground">
+                {queuedMessages.length}
+              </span>
+            </>
+          )}
         </div>
         <button
           type="button"
@@ -1553,7 +1559,7 @@ export function QueuedMessagesList({
           onPointerCancel={finishSurfaceDrag}
           onKeyDown={handleSurfaceKeyDown}
         >
-          <span className="h-px w-7 rounded-full bg-muted-foreground opacity-30 transition-opacity group-hover/handle:opacity-50 group-focus-visible/handle:opacity-50" />
+          <span className="h-px w-7 rounded-full bg-subtle-foreground opacity-30 transition-opacity group-hover/handle:opacity-50 group-focus-visible/handle:opacity-50" />
         </button>
         <div className="flex min-w-16 items-center justify-end">
           <TooltipProvider delayDuration={300}>
@@ -1563,14 +1569,14 @@ export function QueuedMessagesList({
                   type="button"
                   size="icon"
                   variant="ghost"
-                  className="size-6 text-muted-foreground hover:bg-surface-recessed"
+                  className="size-6 text-subtle-foreground hover:bg-surface-recessed"
                   onClick={handleCaretClick}
                   aria-label={caretLabel}
                   aria-expanded={mode !== "collapsed"}
                 >
                   <Icon
                     name={caretWillCollapse ? "ChevronDown" : "ChevronUp"}
-                    className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover/queue-header:opacity-65 group-focus-within/queue-header:opacity-65 [@media(hover:none)]:opacity-45"
+                    className="size-3.5 text-subtle-foreground opacity-0 transition-opacity group-hover/queue-header:opacity-65 group-focus-within/queue-header:opacity-65 [@media(hover:none)]:opacity-45"
                     aria-hidden
                   />
                 </Button>
