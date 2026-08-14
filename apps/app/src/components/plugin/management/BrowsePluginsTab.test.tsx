@@ -25,6 +25,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   entryId: "memory",
+  marketplace: "bb-official",
   pluginId: "memory",
   displayName: "Memory",
   description: "Provider-independent durable memory for agents.",
@@ -32,6 +33,9 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   iconUrl: null,
   category: "Context & knowledge",
   source: "builtin:memory",
+  marketplaceDisplayName: "BB Official",
+  official: true,
+  author: null,
   installed: false,
   compatible: true,
   incompatibleReason: null,
@@ -46,6 +50,7 @@ const CATALOG_STATUS = {
 const INCOMPATIBLE_ENTRY: PluginCatalogSearchEntry = {
   ...MEMORY_ENTRY,
   entryId: "future-memory",
+  marketplace: "bb-official",
   pluginId: "future-memory",
   displayName: "Future Memory",
   compatible: false,
@@ -55,6 +60,7 @@ const INCOMPATIBLE_ENTRY: PluginCatalogSearchEntry = {
 const GITHUB_ENTRY: PluginCatalogSearchEntry = {
   ...MEMORY_ENTRY,
   entryId: "github",
+  marketplace: "bb-official",
   pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests in BB.",
@@ -97,7 +103,9 @@ afterEach(() => {
 });
 
 describe("BrowsePluginsTab", () => {
-  it("sorts by plugin name ascending by default and reverses direction", async () => {
+  // Browse groups by marketplace only; entries render as one flat grid per
+  // marketplace, so the sort direction orders the whole group.
+  it("sorts by plugin name across the grid and reverses direction", async () => {
     const entries = [
       { ...MEMORY_ENTRY, displayName: "Zulu" },
       { ...GITHUB_ENTRY, displayName: "Alpha" },
@@ -140,9 +148,9 @@ describe("BrowsePluginsTab", () => {
           'button[aria-label^="Open "][aria-label$=" details"]',
         ),
       ].map((button) => button.getAttribute("aria-label"));
+    // "Middle" is the incompatible entry: hidden from Browse entirely.
     expect(cardOrder()).toEqual([
       "Open Alpha details",
-      "Open Middle details",
       "Open Zulu details",
     ]);
 
@@ -154,9 +162,64 @@ describe("BrowsePluginsTab", () => {
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
     expect(cardOrder()).toEqual([
       "Open Zulu details",
-      "Open Middle details",
       "Open Alpha details",
     ]);
+    // Category never renders as a heading; it stays a filter only.
+    expect(screen.queryByText("Context & knowledge")).toBeNull();
+    expect(screen.queryByText("Developer tools")).toBeNull();
+  });
+
+  it("groups entries by marketplace and names third-party origins on cards", async () => {
+    const entries = [
+      { ...MEMORY_ENTRY, displayName: "Memory" },
+      {
+        ...MEMORY_ENTRY,
+        entryId: "notes",
+        pluginId: "notes",
+        displayName: "Acme Notes",
+        category: "Git Tools",
+        marketplace: "acme-plugins",
+        marketplaceDisplayName: "Acme Plugins",
+        official: false,
+        author: { name: "Acme", url: "https://github.com/acme" },
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({ results: entries });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    await screen.findByText("Acme Notes");
+    // Two marketplaces, so each group names itself and the third-party one
+    // says what it is.
+    expect(screen.getByText("BB Official")).toBeTruthy();
+    expect(screen.getAllByText("Acme Plugins").length).toBeGreaterThan(0);
+    expect(screen.getByText("third-party marketplace")).toBeTruthy();
+    // Cards carry the author with the "By:" prefix.
+    expect(screen.getByText("By: Acme")).toBeTruthy();
   });
 
   it("renders every catalog entry once and filters the grid by category", async () => {
@@ -316,12 +379,13 @@ describe("BrowsePluginsTab", () => {
     expect(screen.queryByText("BB Official plugins")).toBeNull();
 
     expect(screen.queryByText(MEMORY_ENTRY.source)).toBeNull();
-    expect(screen.getByText("Requires a newer BB version")).toBeTruthy();
+    // Incompatible entries never render on Browse: an entry this BB cannot
+    // install is noise. The CLI search still reports them with reasons.
+    expect(screen.queryByText("Future Memory")).toBeNull();
+    expect(screen.queryByText("Requires a newer BB version")).toBeNull();
     expect(
-      screen
-        .getByRole("button", { name: "Install Future Memory" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
+      screen.queryByRole("button", { name: "Install Future Memory" }),
+    ).toBeNull();
 
     // The remote-catalog Refresh action is gone: plugins ship with the app.
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
@@ -336,6 +400,7 @@ describe("BrowsePluginsTab", () => {
     fireEvent.click(install);
     expect(onInstall).toHaveBeenCalledWith({
       entryId: "memory",
+      marketplace: "bb-official",
       displayName: "Memory",
       icon: "Brain",
       iconUrl: null,
@@ -432,10 +497,12 @@ describe("BrowsePluginsTab", () => {
     expect(installed.className).toContain("w-7");
     fireEvent.pointerMove(installed);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Uninstall Memory",
+      "Installed — uninstall Memory",
     );
-    expect(installed.querySelector('[data-icon="Download"]')).not.toBeNull();
-    expect(installed.querySelector('[data-icon="Check"]')).toBeNull();
+    // A check, not a download arrow: the corner glyph must read as state
+    // ("installed"), never as an available install action.
+    expect(installed.querySelector('[data-icon="Check"]')).not.toBeNull();
+    expect(installed.querySelector('[data-icon="Download"]')).toBeNull();
     // The installed state reads as a plain success-tinted glyph: no outline,
     // no fill, at rest or on hover/focus.
     // Tokenize: `toContain` also matches inside the hover:/focus-visible:
@@ -488,6 +555,7 @@ describe("BrowsePluginsTab", () => {
               {
                 ...MEMORY_ENTRY,
                 entryId: "docs",
+                marketplace: "bb-official",
                 pluginId: "simple-notes",
                 displayName: "Docs",
                 source: "builtin:docs",

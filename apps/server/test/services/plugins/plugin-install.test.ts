@@ -20,6 +20,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
+  getInstalledPlugin,
   getInstalledPluginRegistration,
   listPluginArtifacts,
   migrate,
@@ -430,6 +431,25 @@ describe("plugin install flows", () => {
       });
     });
 
+    it("refuses a git commit that changed after marketplace confirmation", async () => {
+      const repoDir = join(workDir, "repo-catalog-confirmed");
+      await writePluginFixture(repoDir, { name: "bb-plugin-confirmed" });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "initial");
+
+      await expect(
+        service.installCatalogPlugin({
+          marketplace: "acme-plugins",
+          entryId: "confirmed",
+          pluginId: "confirmed",
+          source: `git:${repoDir}@main`,
+          selection: { kind: "root" },
+          expectedGitCommit: "f".repeat(40),
+        }),
+      ).rejects.toThrow(/git source changed after confirmation/u);
+      expect(getInstalledPlugin(db, "confirmed")).toBeUndefined();
+    });
+
     it("refuses a catalog entry that widens the plugin's engine range", async () => {
       const repoDir = join(workDir, "repo-catalog-widening");
       await writePluginFixture(repoDir, {
@@ -464,7 +484,7 @@ describe("plugin install flows", () => {
           service.installCatalogPlugin({
             marketplace: "bb-official",
             entryId: "catalog-npm-entry",
-            pluginId: "bb-plugin-registry",
+            pluginId: "registry",
             source: "npm:bb-plugin-registry@^1.0.0",
             selection: ROOT_PLUGIN_SOURCE_SELECTION,
             npmRegistry: registry,
@@ -472,8 +492,19 @@ describe("plugin install flows", () => {
         ).rejects.toThrow(/marketplace/);
       }
       expect(
-        getInstalledPluginRegistration(db, "bb-plugin-registry"),
+        getInstalledPluginRegistration(db, "registry"),
       ).toBeUndefined();
+    });
+
+    it("guards a listed npm registry while it resolves an install plan", async () => {
+      await expect(
+        service.resolveCatalogNpmSource({
+          packageName: "bb-plugin-registry",
+          registry: "https://localhost/registry",
+          requestedSpec: "latest",
+          specKind: "tag",
+        }),
+      ).rejects.toThrow(/not public/u);
     });
 
     it("refuses a git catalog install whose manifest id differs from the entry", async () => {

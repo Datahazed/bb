@@ -62,6 +62,7 @@ const GITHUB_PLUGIN = {
 
 const GITHUB_CATALOG_ENTRY = {
   entryId: "github",
+  marketplace: "bb-official",
   pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests in BB.",
@@ -69,6 +70,9 @@ const GITHUB_CATALOG_ENTRY = {
   iconUrl: null,
   category: "Developer tools",
   source: "builtin:github",
+  marketplaceDisplayName: "BB Official",
+  official: true,
+  author: null,
   installed: false,
   compatible: true,
   incompatibleReason: null,
@@ -287,10 +291,10 @@ describe("PluginDetail official catalog lifecycle", () => {
       </MemoryRouter>,
     );
 
-    // Provenance is a passive label beside the name, not a control. It used to
-    // be a button that swapped to a red Uninstall on hover — a status that
-    // deleted on click.
-    expect(screen.getByText("BB Official")).toBeTruthy();
+    // Only builtin plugins wear the BB Official pill: a catalog install can
+    // come from any marketplace, so this catalog-provenance plugin shows no
+    // provenance label — and no uninstall-on-hover control either.
+    expect(screen.queryByText("BB Official")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();

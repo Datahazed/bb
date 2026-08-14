@@ -61,6 +61,7 @@ import {
   type GitSemverTag,
   type NpmResolvedCandidate,
   type NpmSourceIntentForResolution,
+  type NpmSpecKind,
 } from "./update-resolver.js";
 
 export interface InstallRegistrationIdentity {
@@ -89,6 +90,8 @@ export interface InstallContext {
    * declares any other id; absent means direct installs with no expectation.
    */
   expectedPluginId?: string;
+  /** Git commit shown in the third-party install confirmation. */
+  expectedGitCommit?: string;
   /**
    * Engine ranges a marketplace listing declared. They may narrow the plugin
    * manifest's own ranges; {@link RegisterInstalledArgs} refuses widening.
@@ -96,6 +99,15 @@ export interface InstallContext {
   marketplaceEngines?: MarketplaceEngines;
   /** npm registry a listing pins, replacing the host's npm configuration. */
   npmRegistry?: string;
+  /**
+   * Exact npm version the user confirmed for a third-party listing. Present
+   * means the install must refuse when the registry now resolves the same
+   * range or dist-tag to another version — the npm counterpart of
+   * {@link InstallContext.expectedGitCommit}.
+   */
+  expectedNpmVersion?: string;
+  /** Integrity confirmed with that version, when the registry published one. */
+  expectedNpmIntegrity?: string;
 }
 
 interface ActivateManagedUpdateArgs {
@@ -224,6 +236,26 @@ export function createManagedPluginArtifacts(
     return context.marketplaceEngines === undefined
       ? {}
       : { marketplaceEngines: context.marketplaceEngines };
+  }
+
+  /** Use the guarded network and byte policy only for a listing's registry. */
+  function npmResolverRun(listedRegistry: string | undefined) {
+    if (listedRegistry === undefined) return createNpmResolverRun();
+    assertPublicMarketplaceUrl(listedRegistry);
+    return createNpmResolverRun({
+      fetch: (input, init) =>
+        publicMarketplaceFetch(input, {
+          ...init,
+          redirect: "error",
+          signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
+        }),
+      readJson: (response) =>
+        boundedResponseJson(
+          response,
+          MARKETPLACE_PACKUMENT_MAX_BYTES,
+          "npm registry metadata",
+        ),
+    });
   }
 
   function assertExpectedPluginId(
@@ -673,6 +705,14 @@ export function createManagedPluginArtifacts(
       context,
     );
     const resolvedCommit = resolution.commit;
+    if (
+      context.expectedGitCommit !== undefined &&
+      resolvedCommit !== context.expectedGitCommit
+    ) {
+      throw new Error(
+        `install refused: the git source changed after confirmation; expected ${context.expectedGitCommit}, resolved ${resolvedCommit}`,
+      );
+    }
     const resolvedSelector = resolution.selector;
     const checkoutRef = gitSelectorRefName(resolvedSelector);
     function identityFor(
@@ -904,6 +944,53 @@ export function createManagedPluginArtifacts(
     });
   }
 
+  /**
+   * The exact version and integrity a listing's npm spec resolves to now.
+   * The install confirmation needs this before anything runs, and it must
+   * resolve through the same registry and the same selection rules the
+   * install itself will use, or the two would disagree by construction.
+   */
+  async function resolveNpmCandidateForPlan(args: {
+    packageName: string;
+    /** Registry the listing pins; absent uses the host's npm configuration. */
+    registry?: string;
+    requestedSpec: string;
+    specKind: NpmSpecKind;
+  }): Promise<
+    | { outcome: "resolved"; version: string; integrity: string }
+    | { outcome: "unavailable"; detail: string }
+  > {
+    const registryProbe = join(deps.dataDir, "plugins", "npm", ".registry");
+    await mkdir(registryProbe, { recursive: true });
+    const registry =
+      args.registry ??
+      (await resolveNpmRegistry(registryProbe, args.packageName));
+    const selected = await selectNpmCandidate({
+      intent: {
+        packageName: args.packageName,
+        registry,
+        requestedSpec: args.requestedSpec,
+        specKind: args.specKind,
+      },
+      appVersion: deps.appVersion,
+      run: npmResolverRun(args.registry),
+    });
+    if (selected.outcome === "selected") {
+      return {
+        outcome: "resolved",
+        version: selected.candidate.version,
+        integrity: selected.candidate.integrity,
+      };
+    }
+    return {
+      outcome: "unavailable",
+      detail:
+        selected.outcome === "unavailable"
+          ? selected.detail
+          : `${selected.newest.display} ${selected.reasons.map((problem) => problem.message).join("; ")}`,
+    };
+  }
+
   async function installNpmSource(
     parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "npm" }>,
     source: string,
@@ -917,9 +1004,6 @@ export function createManagedPluginArtifacts(
     // listing is untrusted input: it gets the marketplace network policy, so
     // it cannot aim BB at an internal service.
     const listedRegistry = context.npmRegistry;
-    if (listedRegistry !== undefined) {
-      assertPublicMarketplaceUrl(listedRegistry);
-    }
     const registry =
       listedRegistry ?? (await resolveNpmRegistry(registryProbe, parsed.name));
     const intent: NpmSourceIntentForResolution = {
@@ -946,24 +1030,7 @@ export function createManagedPluginArtifacts(
       appVersion: deps.appVersion,
       // A listed registry is contacted through the guarded socket, so a
       // hostile DNS answer cannot reach a private host either.
-      run: createNpmResolverRun(
-        listedRegistry === undefined
-          ? {}
-          : {
-              fetch: (input, init) =>
-                publicMarketplaceFetch(input, {
-                  ...init,
-                  redirect: "error",
-                  signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
-                }),
-              readJson: (response) =>
-                boundedResponseJson(
-                  response,
-                  MARKETPLACE_PACKUMENT_MAX_BYTES,
-                  "npm registry metadata",
-                ),
-            },
-      ),
+      run: npmResolverRun(listedRegistry),
     });
     if (selected.outcome === "unavailable") {
       throw new Error(`install failed: ${selected.detail}`);
@@ -974,6 +1041,22 @@ export function createManagedPluginArtifacts(
       );
     }
     const candidate = selected.candidate;
+    if (
+      context.expectedNpmVersion !== undefined &&
+      candidate.version !== context.expectedNpmVersion
+    ) {
+      throw new Error(
+        `install refused: the npm source changed after confirmation; expected ${parsed.name}@${context.expectedNpmVersion}, resolved ${candidate.display}`,
+      );
+    }
+    if (
+      context.expectedNpmIntegrity !== undefined &&
+      candidate.integrity !== context.expectedNpmIntegrity
+    ) {
+      throw new Error(
+        `install refused: the npm integrity changed after confirmation; expected ${context.expectedNpmIntegrity}, resolved ${candidate.integrity}`,
+      );
+    }
     const prefix = npmArtifactCacheDir(
       deps.dataDir,
       parsed.name,
@@ -1053,6 +1136,7 @@ export function createManagedPluginArtifacts(
           parsed.name,
         );
         if (
+          candidate.integrity.length > 0 &&
           installedIntegrity !== null &&
           installedIntegrity !== candidate.integrity
         ) {
@@ -1513,6 +1597,7 @@ export function createManagedPluginArtifacts(
           args.selectionIntent.packageName,
         );
         if (
+          args.candidate.integrity.length > 0 &&
           installedIntegrity !== null &&
           installedIntegrity !== args.candidate.integrity
         ) {
@@ -1584,6 +1669,7 @@ export function createManagedPluginArtifacts(
     applyNpmCandidate,
     installGitSource,
     installNpmSource,
+    resolveNpmCandidateForPlan,
     stageGitCandidate,
     validateInstallDir,
   };

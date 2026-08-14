@@ -1,4 +1,7 @@
+import { join } from "node:path";
 import {
+  OFFICIAL_PLUGIN_MARKETPLACE_NAME,
+  pluginMarketplaceNameSchema,
   ROOT_PLUGIN_SOURCE_SELECTION,
   type PluginSourceSelection,
 } from "@bb/server-contract";
@@ -17,7 +20,7 @@ const MARKETPLACE_SCHEMA_URL =
   "https://getbb.app/schemas/marketplace.schema.json";
 
 /** Reserved name of the marketplace BB itself curates. */
-export const OFFICIAL_MARKETPLACE_NAME = "bb-official";
+export const OFFICIAL_MARKETPLACE_NAME = OFFICIAL_PLUGIN_MARKETPLACE_NAME;
 
 /**
  * Entries one manifest may list. The 1 MiB document limit alone still allows
@@ -26,6 +29,12 @@ export const OFFICIAL_MARKETPLACE_NAME = "bb-official";
 export const MARKETPLACE_MAX_ENTRIES = 256;
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
+/**
+ * A marketplace's own name is the handle every route and command addresses it
+ * by, so the manifest must accept exactly what those contracts accept. A name
+ * bb stored but could not refresh or remove by name would be unmanageable.
+ */
+const manifestNameSchema = pluginMarketplaceNameSchema;
 /** Lowercase kebab-case, the store's grouping vocabulary. */
 const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 /** A GitHub login or organization, as GitHub itself accepts them. */
@@ -66,7 +75,7 @@ function iconExtensionProblem(pathname: string): string | null {
  * An icon URL is absolute `https:` or relative to the manifest's own URL, so a
  * git-hosted marketplace can keep icons beside its manifest. Plain `http:` is
  * rejected; the relative form is only checkable once a base URL is known, so
- * the schema enforces shape here and {@link resolveEntryIconUrl} enforces the
+ * the schema enforces shape here and {@link resolveEntryIcon} enforces the
  * resolved protocol.
  */
 const iconUrlSchema = z
@@ -249,7 +258,7 @@ const marketplaceManifestSchema = z
   .object({
     $schema: z.literal(MARKETPLACE_SCHEMA_URL).optional(),
     schemaVersion: z.literal(1),
-    name: z.string().regex(NAME_PATTERN),
+    name: manifestNameSchema,
     displayName: z.string().min(1),
     description: z.string().min(1).optional(),
     plugins: z
@@ -333,21 +342,55 @@ export function entryIconName(entry: MarketplaceEntry): string | null {
 }
 
 /**
- * Absolute https URL of an entry's image icon, or null when the entry names a
- * host icon instead. Relative URLs resolve against the manifest's own URL.
+ * Where an entry's icon is read from. A marketplace bb fetched over HTTPS
+ * resolves relative icons against the manifest URL; one bb read from a git
+ * checkout or a directory resolves them beside the manifest on disk.
  */
-export function resolveEntryIconUrl(
+export type MarketplaceIconBase =
+  | { kind: "url"; manifestUrl: string }
+  | { kind: "dir"; root: string };
+
+export type MarketplaceIconLocation =
+  | { kind: "remote"; url: string }
+  | { kind: "local"; path: string; relativePath: string };
+
+/**
+ * Where an entry's image icon lives, or null when the entry names a host icon
+ * instead. Absolute URLs are always https and always remote; relative URLs
+ * follow the manifest's own base.
+ */
+export function resolveEntryIcon(
   entry: MarketplaceEntry,
-  manifestUrl: string,
-): string | null {
+  base: MarketplaceIconBase,
+): MarketplaceIconLocation | null {
   if (typeof entry.icon === "string") return null;
-  const resolved = new URL(entry.icon.url, manifestUrl);
-  if (resolved.protocol !== "https:") {
-    throw new Error(
-      `icon URL ${JSON.stringify(entry.icon.url)} resolves to a non-https URL`,
+  const declared = entry.icon.url;
+  const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(declared);
+  if (base.kind === "url" || absolute) {
+    const resolved = new URL(
+      declared,
+      base.kind === "url" ? base.manifestUrl : "https://marketplace.invalid/",
     );
+    if (resolved.protocol !== "https:") {
+      throw new Error(
+        `icon URL ${JSON.stringify(declared)} resolves to a non-https URL`,
+      );
+    }
+    return { kind: "remote", url: resolved.toString() };
   }
-  return resolved.toString();
+  // A local base reads the icon beside the manifest, which sits at the
+  // checkout root. Resolving through URL drops any query or fragment and
+  // collapses "." and ".." against that root, so the result names a path
+  // inside the checkout; realPathInside enforces the same bound at read time.
+  const resolved = new URL(declared, "https://marketplace.invalid/");
+  const relativePath = normalizePluginSubdirectory(
+    decodeURIComponent(resolved.pathname).replace(/^\/+/u, ""),
+  );
+  return {
+    kind: "local",
+    path: join(base.root, ...relativePath.split("/")),
+    relativePath,
+  };
 }
 
 /**

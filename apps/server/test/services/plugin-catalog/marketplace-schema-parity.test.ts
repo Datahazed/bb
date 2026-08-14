@@ -34,7 +34,7 @@ interface Fixture {
   readonly manifest: unknown;
 }
 
-function manifestWith(entry: Record<string, unknown>): unknown {
+function manifestWith(entry: Record<string, unknown>): Record<string, unknown> {
   return {
     schemaVersion: 1,
     name: "acme",
@@ -87,6 +87,32 @@ const fixtures: readonly Fixture[] = [
     }),
   },
   {
+    label: "git semver range entry",
+    valid: true,
+    manifest: manifestWith({
+      source: {
+        git: {
+          url: "https://example.com/acme/plugin.git",
+          range: "^1.2.3",
+          tagPrefix: "acme/",
+          subdir: "plugins/acme",
+        },
+      },
+    }),
+  },
+  {
+    label: "invalid git semver range",
+    valid: false,
+    manifest: manifestWith({
+      source: {
+        git: {
+          url: "https://example.com/acme/plugin.git",
+          range: "latest",
+        },
+      },
+    }),
+  },
+  {
     label: "unknown entry field",
     valid: false,
     manifest: manifestWith({ surprise: true }),
@@ -130,6 +156,17 @@ const fixtures: readonly Fixture[] = [
 
   enginesFixture("engines range", ">=0.30.0", true),
   enginesFixture("engines prose", "newest", false),
+
+  {
+    label: "marketplace name at the route limit",
+    valid: true,
+    manifest: { ...manifestWith({}), name: "a".repeat(64) },
+  },
+  {
+    label: "marketplace name past the route limit",
+    valid: false,
+    manifest: { ...manifestWith({}), name: "a".repeat(65) },
+  },
 ];
 
 describe("published marketplace schema parity", () => {

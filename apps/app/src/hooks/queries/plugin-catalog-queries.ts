@@ -1,14 +1,24 @@
 import type {
   InstalledPlugin,
   PluginApplyUpdateResult as SdkPluginApplyUpdateResult,
+  PluginCatalogAuthor,
+  PluginCatalogInstallPlan,
+  PluginCatalogResolvedSource,
   PluginCatalogSearchResult as SdkPluginCatalogSearchResult,
+  PluginMarketplace,
+  PluginMarketplaceRefreshResult,
   PluginSourceDetail as SdkPluginSourceDetail,
   PluginUpdateCheckEntry,
 } from "@bb/server-contract";
 import { useQuery } from "@tanstack/react-query";
 import { createPluginsClient } from "./plugin-client";
 import { toEpochMs } from "./plugin-settings-queries";
-import { pluginCatalogSearchQueryKey, pluginSourceQueryKey } from "./query-keys";
+import {
+  pluginCatalogInstallPlanQueryKey,
+  pluginCatalogSearchQueryKey,
+  pluginMarketplacesQueryKey,
+  pluginSourceQueryKey,
+} from "./query-keys";
 
 type FetchLike = typeof fetch;
 
@@ -77,9 +87,82 @@ export async function installPlugin(
 
 export async function installCatalogPlugin(
   fetchImpl: FetchLike,
-  args: { entryId: string },
+  args: {
+    entryId: string;
+    marketplace?: string;
+    confirmedSource?: PluginCatalogResolvedSource;
+  },
 ): Promise<InstalledPlugin> {
   return createPluginsClient(fetchImpl).catalog.install(args);
+}
+
+/** The true resolved source an install would use, fetched before confirming. */
+export async function fetchCatalogInstallPlan(
+  fetchImpl: FetchLike,
+  args: { entryId: string; marketplace?: string },
+): Promise<PluginCatalogInstallPlan> {
+  return createPluginsClient(fetchImpl).catalog.installPlan(args);
+}
+
+/**
+ * Resolve an install before the user confirms it. Third-party entries pay a
+ * network round trip for the resolved tag and commit, so this never runs until
+ * the confirmation is actually open.
+ */
+export function useCatalogInstallPlan(
+  args: { entryId: string; marketplace?: string } | null,
+) {
+  const request = args ?? { entryId: "" };
+  return useQuery({
+    queryKey: pluginCatalogInstallPlanQueryKey(request),
+    queryFn: () => fetchCatalogInstallPlan(fetch, request),
+    enabled: args !== null,
+    // The plan describes one confirmation, and a git range resolves to a
+    // different commit over time: never serve it from cache.
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
+export type PluginMarketplaceEntry = PluginMarketplace;
+
+export async function listPluginMarketplaces(
+  fetchImpl: FetchLike,
+): Promise<PluginMarketplace[]> {
+  return createPluginsClient(fetchImpl).marketplaces.list();
+}
+
+export async function addPluginMarketplace(
+  fetchImpl: FetchLike,
+  source: string,
+): Promise<PluginMarketplace> {
+  return createPluginsClient(fetchImpl).marketplaces.add({ source });
+}
+
+export async function removePluginMarketplace(
+  fetchImpl: FetchLike,
+  name: string,
+): Promise<{ convertedPluginIds: string[] }> {
+  return createPluginsClient(fetchImpl).marketplaces.remove({ name });
+}
+
+export async function refreshPluginMarketplaces(
+  fetchImpl: FetchLike,
+  name?: string,
+): Promise<PluginMarketplaceRefreshResult[]> {
+  return createPluginsClient(fetchImpl).marketplaces.refresh(
+    name === undefined ? {} : { name },
+  );
+}
+
+export function usePluginMarketplaces(options: { enabled: boolean }) {
+  return useQuery({
+    queryKey: pluginMarketplacesQueryKey(),
+    queryFn: () => listPluginMarketplaces(fetch),
+    enabled: options.enabled,
+    staleTime: 30_000,
+  });
 }
 
 export interface PluginResolvedVersion {
@@ -152,6 +235,10 @@ export interface PluginCatalogSearchEntry {
   iconUrl: string | null;
   category: string;
   source: string;
+  marketplace: string;
+  marketplaceDisplayName: string;
+  official: boolean;
+  author: PluginCatalogAuthor | null;
   installed: boolean;
   compatible: boolean;
   incompatibleReason: string | null;
@@ -169,6 +256,10 @@ function toPluginCatalogSearchEntry(
     iconUrl: data.iconUrl,
     category: data.category,
     source: data.source,
+    marketplace: data.marketplace,
+    marketplaceDisplayName: data.marketplaceDisplayName,
+    official: data.official,
+    author: data.author,
     installed: data.installed,
     compatible: data.compatible,
     incompatibleReason: data.incompatibleReason ?? null,

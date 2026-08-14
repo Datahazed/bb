@@ -75,14 +75,20 @@ describe("plugin catalog service", () => {
   let installedNames: string[];
   let installedCatalogEntries: unknown[];
 
-  beforeEach(() => {
+  let dataDir: string;
+
+  beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);
     installedNames = [];
     installedCatalogEntries = [];
+    dataDir = await mkdtemp(join(tmpdir(), "bb-catalog-data-"));
   });
 
-  afterEach(() => db.$client.close());
+  afterEach(async () => {
+    db.$client.close();
+    await rm(dataDir, { recursive: true, force: true });
+  });
 
   function service(options?: {
     bundledPlugins?: Parameters<
@@ -95,6 +101,7 @@ describe("plugin catalog service", () => {
       db,
       appVersion: "1.0.0",
       marketplaceUrl: MANIFEST_URL,
+      dataDir,
       plugins: {
         installOfficialPlugin: async (name: string) => {
           installedNames.push(name);
@@ -104,6 +111,10 @@ describe("plugin catalog service", () => {
           installedCatalogEntries.push(args);
           throw new Error("catalog installation stopped by test");
         },
+        resolveCatalogNpmSource: async () => ({
+          outcome: "unavailable" as const,
+          detail: "no registry in this test",
+        }),
       },
       ...(options?.bundledPlugins === undefined
         ? {}
@@ -219,7 +230,7 @@ describe("plugin catalog service", () => {
 
   it("delegates install to the plugin service by bundled name", async () => {
     const catalog = service();
-    await expect(catalog.install("docs")).rejects.toThrow(
+    await expect(catalog.install({ entryId: "docs" })).rejects.toThrow(
       "installation stopped by test",
     );
     expect(installedNames).toEqual(["docs"]);
@@ -227,9 +238,9 @@ describe("plugin catalog service", () => {
 
   it("rejects unknown catalog entries", async () => {
     const catalog = service();
-    await expect(catalog.install("does-not-exist")).rejects.toThrow(
-      'unknown plugin catalog entry "does-not-exist"',
-    );
+    await expect(
+      catalog.install({ entryId: "does-not-exist" }),
+    ).rejects.toThrow('unknown plugin catalog entry "does-not-exist"');
   });
 
   it("drops entries whose bundled manifest is unreadable", async () => {
@@ -534,7 +545,7 @@ describe("plugin catalog service", () => {
 
     it("routes a subdirectory entry through the install pipeline", async () => {
       const catalog = await refreshedCatalog(remoteEntry());
-      await expect(catalog.install("widgets")).rejects.toThrow(
+      await expect(catalog.install({ entryId: "widgets" })).rejects.toThrow(
         "catalog installation stopped by test",
       );
       expect(installedCatalogEntries).toEqual([
@@ -563,7 +574,7 @@ describe("plugin catalog service", () => {
           },
         }),
       );
-      await expect(catalog.install("widgets")).rejects.toThrow(
+      await expect(catalog.install({ entryId: "widgets" })).rejects.toThrow(
         "catalog installation stopped by test",
       );
       expect(installedCatalogEntries).toEqual([
@@ -588,7 +599,7 @@ describe("plugin catalog service", () => {
         compatible: false,
         incompatibleReason: expect.stringContaining(">=99.0.0"),
       });
-      await expect(catalog.install("widgets")).rejects.toThrow(
+      await expect(catalog.install({ entryId: "widgets" })).rejects.toThrow(
         /install refused/,
       );
       expect(installedCatalogEntries).toEqual([]);
