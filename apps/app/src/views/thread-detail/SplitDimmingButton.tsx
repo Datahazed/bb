@@ -4,7 +4,6 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { useAtom } from "jotai";
 import { THREAD_HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
-import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import { usePaneContext } from "./PaneContext";
 
@@ -27,8 +26,7 @@ export function SplitDimmingButton() {
           size="icon"
           className={cn(
             THREAD_HEADER_ICON_BUTTON_CLASS,
-            CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
-            "aria-pressed:bg-transparent aria-pressed:text-foreground aria-pressed:hover:bg-state-hover",
+            "text-subtle-foreground/60 hover:text-muted-foreground data-[state=open]:text-subtle-foreground/60 aria-pressed:bg-transparent aria-pressed:text-foreground aria-pressed:hover:bg-state-hover aria-pressed:hover:text-foreground aria-pressed:data-[state=open]:text-foreground",
           )}
           aria-label={label}
           aria-pressed={dimsInactiveSplits}

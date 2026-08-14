@@ -978,6 +978,8 @@ describe("SplitThreadArea", () => {
     ).toHaveLength(1);
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect(toggle.className).toContain("aria-pressed:bg-transparent");
+    expect(toggle.className).toContain("text-subtle-foreground/60");
+    expect(toggle.className).toContain("aria-pressed:text-foreground");
     expect(toggle.className).not.toContain("aria-pressed:bg-state-active");
     expect(toggle.querySelector('[data-icon="Sun"]')).not.toBeNull();
 
