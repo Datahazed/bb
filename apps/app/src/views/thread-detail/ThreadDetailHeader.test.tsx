@@ -93,7 +93,7 @@ describe("ThreadDetailHeader", () => {
   // The header seam now belongs to AppPageHeader, so AppPageHeader.test.tsx
   // guards it for every header instead of this one call site.
 
-  it("groups spotlight inside the active thread title surface", () => {
+  it("keeps spotlight outside the active title surface and away from pane actions", () => {
     const { container } = render(
       <PaneContext.Provider
         value={{
@@ -117,10 +117,10 @@ describe("ThreadDetailHeader", () => {
 
     const spotlight = screen.getByTestId("split-dimming-button");
     expect(
-      spotlight.closest("[data-thread-header-title-cluster]"),
+      spotlight.closest("[data-thread-header-title-actions]"),
     ).not.toBeNull();
-    expect(spotlight.closest("[data-pane-header-focus-tab]")).not.toBeNull();
-    expect(spotlight.closest("[data-thread-header-title-actions]")).toBeNull();
+    expect(spotlight.closest("[data-pane-header-focus-tab]")).toBeNull();
+    expect(spotlight.closest("[data-thread-header-title-cluster]")).toBeNull();
     expect(
       container
         .querySelector("[data-thread-header-pane-actions]")
@@ -128,7 +128,7 @@ describe("ThreadDetailHeader", () => {
     ).toBe(false);
   });
 
-  it("uses connected title spacing while preserving toolbar icon spacing", () => {
+  it("uses close title spacing while preserving toolbar icon spacing", () => {
     const { container } = render(
       <PaneContext.Provider
         value={{
@@ -157,11 +157,11 @@ describe("ThreadDetailHeader", () => {
     );
 
     expect(
-      container.querySelector("[data-thread-header-center-actions]")?.classList,
+      container.querySelector("[data-thread-header-title-actions]")?.classList,
     ).toContain("thread-header-icon-spacing");
     expect(
       container.querySelector("[data-thread-header-title-actions]")?.classList,
-    ).not.toContain("thread-header-edge-to-icon-spacing");
+    ).toContain("thread-header-title-action-spacing");
     expect(
       container.querySelector("[data-thread-header-pane-actions]")?.classList,
     ).toContain("thread-header-icon-spacing");
@@ -171,16 +171,13 @@ describe("ThreadDetailHeader", () => {
     expect(
       container.querySelector("[data-thread-header-title-cluster]")?.classList,
     ).toContain("min-w-4");
-    expect(
-      container.querySelector("[data-thread-header-title-cluster]")?.classList,
-    ).toContain("thread-header-title-action-spacing");
     const activeTitleSurface = container.querySelector(
       "[data-pane-header-focus-tab]",
     );
     expect(activeTitleSurface?.classList).toContain("-ml-2");
-    expect(activeTitleSurface?.classList).not.toContain("-my-1");
-    expect(activeTitleSurface?.classList).not.toContain("py-1");
-    expect(activeTitleSurface?.classList).not.toContain("pr-2");
+    expect(activeTitleSurface?.classList).toContain("-my-1");
+    expect(activeTitleSurface?.classList).toContain("py-1");
+    expect(activeTitleSurface?.classList).toContain("pr-2");
     expect(activeTitleSurface?.classList).not.toContain("-mx-2");
   });
 

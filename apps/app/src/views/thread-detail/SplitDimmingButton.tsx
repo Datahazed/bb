@@ -34,7 +34,7 @@ export function SplitDimmingButton() {
           aria-pressed={dimsInactiveSplits}
           onClick={() => setDimsInactiveSplits((current) => !current)}
         >
-          <Icon name={dimsInactiveSplits ? "Idea" : "LightbulbOff"} />
+          <Icon name="Sun" />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">{label}</TooltipContent>

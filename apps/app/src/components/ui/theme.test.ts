@@ -346,7 +346,7 @@ describe("theme.css thread header visible action spacing", () => {
       /--thread-header-title-action-visible-gap:\s*0\.5rem;/,
     );
     expect(titleActionRule).toMatch(
-      /gap:\s*calc\(\s*var\(--thread-header-title-action-visible-gap\)\s*-\s*\(\s*var\(--thread-header-icon-button-size\)\s*-\s*var\(--thread-header-icon-glyph-size\)\s*\)\s*\/\s*2\s*\);/,
+      /margin-inline-start:\s*calc\(\s*var\(--thread-header-title-action-visible-gap\)\s*-\s*\(\s*var\(--thread-header-icon-button-size\)\s*-\s*var\(--thread-header-icon-glyph-size\)\s*\)\s*\/\s*2\s*\);/,
     );
   });
 });

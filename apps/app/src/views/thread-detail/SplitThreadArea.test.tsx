@@ -979,7 +979,7 @@ describe("SplitThreadArea", () => {
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect(toggle.className).toContain("aria-pressed:bg-transparent");
     expect(toggle.className).not.toContain("aria-pressed:bg-state-active");
-    expect(toggle.querySelector('[data-icon="Idea"]')).not.toBeNull();
+    expect(toggle.querySelector('[data-icon="Sun"]')).not.toBeNull();
 
     fireEvent.focus(toggle);
     await waitFor(() => {
@@ -993,7 +993,7 @@ describe("SplitThreadArea", () => {
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(toggle.getAttribute("aria-label")).toBe("Spotlight this split");
-    expect(toggle.querySelector('[data-icon="LightbulbOff"]')).not.toBeNull();
+    expect(toggle.querySelector('[data-icon="Sun"]')).not.toBeNull();
     expect(window.localStorage.getItem(DIM_INACTIVE_SPLITS_STORAGE_KEY)).toBe(
       "false",
     );
@@ -1020,9 +1020,7 @@ describe("SplitThreadArea", () => {
       name: "Spotlight this split",
     });
     expect(reloadedToggle.getAttribute("aria-pressed")).toBe("false");
-    expect(
-      reloadedToggle.querySelector('[data-icon="LightbulbOff"]'),
-    ).not.toBeNull();
+    expect(reloadedToggle.querySelector('[data-icon="Sun"]')).not.toBeNull();
     expect(
       document
         .querySelector('[data-split-pane-id="pane-2"] [data-pane-focus-scrim]')

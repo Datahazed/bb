@@ -145,12 +145,12 @@
   }
 
   .thread-header-title-action-spacing {
-    /* The active title surface owns Spotlight. Keep its glyph one compact
-       8px step from the title while preserving the transparent button inset. */
+    /* Spotlight stays outside the active title surface, but its glyph sits one
+       compact 8px step from that surface instead of the toolbar's 16px step. */
     --thread-header-title-action-visible-gap: 0.5rem;
     --thread-header-icon-button-size: 1.75rem;
     --thread-header-icon-glyph-size: 1rem;
-    gap: calc(
+    margin-inline-start: calc(
       var(--thread-header-title-action-visible-gap) -
         (
           var(--thread-header-icon-button-size) -
