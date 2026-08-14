@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   entrySourceDisplay,
   marketplacePolicyWideningProblem,
@@ -10,6 +12,35 @@ import {
 import { BUNDLED_OFFICIAL_MARKETPLACE } from "../../../src/services/plugin-catalog/official-marketplace.js";
 
 const MANIFEST_URL = "https://getbb.app/marketplace/v1/marketplace.json";
+
+const publishedSchemaShape = z.object({
+  $defs: z.object({
+    gitRangeSource: z.object({
+      properties: z.object({
+        git: z.object({
+          properties: z.object({
+            tagPrefix: z.object({ pattern: z.string() }),
+          }),
+        }),
+      }),
+    }),
+  }),
+});
+
+const publishedTagPrefixPattern = new RegExp(
+  publishedSchemaShape.parse(
+    JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../../web/public/schemas/marketplace.schema.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ),
+  ).$defs.gitRangeSource.properties.git.properties.tagPrefix.pattern,
+  "u",
+);
 
 function entry(overrides: Record<string, unknown> = {}): unknown {
   return {
@@ -217,6 +248,66 @@ describe("marketplace manifest schema", () => {
           ]),
         ).toThrow(/git ref/);
       }
+    });
+
+    it("accepts a git range entry and rejects one that also names a ref", () => {
+      const ranged = firstEntry([
+        entry({
+          source: {
+            git: {
+              url: "https://github.com/acme/plugins.git",
+              range: "^1.0.0",
+              tagPrefix: "widgets/",
+              subdir: "plugins/widgets",
+            },
+          },
+        }),
+      ]);
+      expect(resolvedEntrySource(ranged)).toEqual({
+        source:
+          "git:https://github.com/acme/plugins.git@semver:widgets/:^1.0.0",
+        selection: { kind: "subdirectory", path: "plugins/widgets" },
+      });
+      expect(entrySourceDisplay(ranged)).toBe(
+        "git:https://github.com/acme/plugins.git@^1.0.0#plugins/widgets (tags widgets/vX.Y.Z)",
+      );
+
+      // ref and range are mutually exclusive, and a range entry still needs
+      // one of them.
+      for (const git of [
+        {
+          url: "https://github.com/acme/plugins.git",
+          ref: "v1.0.0",
+          range: "^1.0.0",
+        },
+        { url: "https://github.com/acme/plugins.git" },
+        { url: "https://github.com/acme/plugins.git", range: "not a range" },
+        {
+          url: "https://github.com/acme/plugins.git",
+          range: "^1.0.0",
+          tagPrefix: "../evil/",
+        },
+        {
+          url: "https://github.com/acme/plugins.git",
+          range: "^1.0.0",
+          tagPrefix: "widgets/.hidden/",
+        },
+        {
+          url: "https://github.com/acme/plugins.git",
+          range: "^1.0.0",
+          tagPrefix: "widgets.lock/",
+        },
+        {
+          url: "https://github.com/acme/plugins.git",
+          ref: "v1.0.0",
+          tagPrefix: "widgets/",
+        },
+      ]) {
+        expect(() => parse([entry({ source: { git } })])).toThrow();
+      }
+      expect(publishedTagPrefixPattern.test("widgets/.hidden/")).toBe(false);
+      expect(publishedTagPrefixPattern.test("widgets.lock/")).toBe(false);
+      expect(publishedTagPrefixPattern.test("widgets./")).toBe(true);
     });
 
     it("translates entries into install-pipeline inputs", () => {

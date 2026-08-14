@@ -85,6 +85,12 @@ export const pluginSourceDetailSchema = z.object({
   resolved: z.string(),
   /** Repository-relative plugin directory; absent for a root install. */
   subdirectory: z.string().optional(),
+  /** Semver range over git tags; absent when the source names one ref. */
+  range: z.string().optional(),
+  /** Tag prefix the range matches; absent for repository-wide `vX.Y.Z` tags. */
+  tagPrefix: z.string().optional(),
+  /** Git tag the range resolved to; absent when the source names one ref. */
+  resolvedTag: z.string().optional(),
   integrity: z.string().optional(),
   registry: z.string().optional(),
   engines: z.object({
@@ -98,6 +104,8 @@ export type PluginSourceDetail = z.infer<typeof pluginSourceDetailSchema>;
 
 export const pluginUpdateStateSchema = z.object({
   outcome: pluginUpdateOutcomeSchema.optional(),
+  /** Actionable reason when bb could not verify the update source. */
+  detail: z.string().optional(),
   availableVersion: z.string().optional(),
   blockedVersion: z.string().optional(),
   blockedReasons: z.array(z.string()).optional(),
