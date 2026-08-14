@@ -396,6 +396,10 @@
         "//#ensure-native-modules",
         "topo"
       ],
+      "env": [
+        "BB_TEST_ACP_OPENCODE",
+        "BB_TEST_ACP_OPENCODE_COMMAND"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/vitest.shared.ts"
