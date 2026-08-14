@@ -32,7 +32,11 @@ import {
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
-import type { PluginCapabilitySummary } from "@bb/server-contract";
+import {
+  ROOT_PLUGIN_SOURCE_SELECTION,
+  type PluginCapabilitySummary,
+  type PluginSourceSelection,
+} from "@bb/server-contract";
 import {
   claimPluginScheduledRun,
   deleteAllPluginSettings,
@@ -41,6 +45,7 @@ import {
   getInstalledPlugin,
   listDuePluginSchedules,
   listInstalledPlugins,
+  listPendingGitPluginArtifacts,
   listPluginSchedules,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
@@ -53,7 +58,11 @@ import {
 } from "../threads/thread-data.js";
 import type { PluginBrandingAssetVariant } from "./app-bundle.js";
 import { readPluginThemeCodeTheme } from "../system/code-themes.js";
-import { npmInstallPrefix, parsePluginSource } from "./install-sources.js";
+import {
+  npmInstallPrefix,
+  parsePluginSource,
+  recoverInterruptedGitPluginPromotion,
+} from "./install-sources.js";
 import {
   derivePluginId,
   readPluginManifest,
@@ -167,8 +176,14 @@ export interface PluginService {
    * with npm --ignore-scripts under <dataDir>/plugins/npm). git/npm installs
    * hard-fail on an engines.bb mismatch and refuse already-registered ids;
    * use update for an existing managed plugin.
+   *
+   * `selection` picks one plugin out of a multi-plugin `git:`/`path:`
+   * repository, either by directory or by `.bb/plugins.json` entry name.
    */
-  install(source: string): Promise<PluginListEntry>;
+  install(
+    source: string,
+    selection: PluginSourceSelection,
+  ): Promise<PluginListEntry>;
   /**
    * Install a bundled official plugin by its registry name (store install).
    * Registers with catalog provenance so the opt-in survives reconciliation.
@@ -1378,10 +1393,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async start() {
       await backfillNormalizedPluginRegistrations();
-      await withPluginOperationLock(
-        REGISTRATION_MUTATION_KEY,
-        recoverIncompletePluginRollbacks,
-      );
+      await withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        for (const artifact of listPendingGitPluginArtifacts(deps.db)) {
+          await withArtifactLock(artifact.path, () =>
+            recoverInterruptedGitPluginPromotion(artifact.path),
+          );
+        }
+        await recoverIncompletePluginRollbacks();
+      });
       await reconcileBundled();
       await loadAll();
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, runArtifactGc);
@@ -1453,16 +1472,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     list,
 
-    async install(source) {
+    async install(source, selection) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const parsed = parsePluginSource(source);
-        if (parsed.kind === "builtin") return installBuiltinSource(parsed);
-        if (parsed.kind === "git") return installGitSource(parsed, source);
-        if (parsed.kind === "npm") {
-          refuseBuiltinShadow(derivePluginId(parsed.name));
-          return installNpmSource(parsed, source);
+        if (parsed.kind === "git") {
+          return installGitSource(parsed, source, selection);
         }
-        return installPathSource(parsed.path);
+        if (parsed.kind === "path") {
+          return installPathSource(parsed.path, selection);
+        }
+        // Only a repository holds several plugins; npm and builtin sources
+        // are one package each.
+        if (selection.kind !== "root") {
+          throw new Error(
+            `install refused: ${selection.kind === "entry" ? "--plugin" : "--subdirectory"} applies to git: and path: sources only`,
+          );
+        }
+        if (parsed.kind === "builtin") return installBuiltinSource(parsed);
+        refuseBuiltinShadow(derivePluginId(parsed.name));
+        return installNpmSource(parsed, source);
       });
     },
 
@@ -1486,7 +1514,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             `catalog entry "${entryId}" has a non-git source "${source}"`,
           );
         }
-        return installGitSource(parsed, source, {
+        return installGitSource(parsed, source, ROOT_PLUGIN_SOURCE_SELECTION, {
           provenance: { kind: "catalog", entryId },
           expectedPluginId: pluginId,
         });
@@ -1495,7 +1523,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     installPath: (path) =>
       withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
-        installPathSource(path),
+        installPathSource(path, ROOT_PLUGIN_SOURCE_SELECTION),
       ),
 
     ...pluginUpdates,

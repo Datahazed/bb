@@ -3,11 +3,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { pluginCatalogSearchQueryKey } from "@/hooks/queries/plugin-catalog-queries";
+import type { PluginListResult } from "@/hooks/queries/plugin-settings-queries";
 import {
+  pluginCatalogSearchQueryKey,
   pluginListQueryKey,
-  type PluginListResult,
-} from "@/hooks/queries/plugin-settings-queries";
+} from "@/hooks/queries/query-keys";
 import { appToast } from "@/components/ui/app-toast.js";
 import { AddPluginDialog } from "./AddPluginDialog";
 
@@ -112,7 +112,10 @@ describe("AddPluginDialog", () => {
       const post = requests.find(
         (request) => request.url === "/api/v1/plugins/install",
       );
-      expect(JSON.parse(String(post?.init?.body))).toEqual({ source });
+      expect(JSON.parse(String(post?.init?.body))).toEqual({
+        source,
+        selection: { kind: "root" },
+      });
     });
   });
 
@@ -141,6 +144,7 @@ describe("AddPluginDialog", () => {
       expect(post).toBeDefined();
       expect(JSON.parse(String(post?.init?.body))).toEqual({
         source: "./plugins/linear",
+        selection: { kind: "root" },
       });
     });
   });

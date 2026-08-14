@@ -112,7 +112,7 @@ describe("plugin update service and routes", () => {
       stabilizationWindowMs: 0,
       afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
     });
-    await service.install(`git:${repo}@main`);
+    await service.install(`git:${repo}@main`, { kind: "root" });
     app = new Hono();
     registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
   });
@@ -759,10 +759,82 @@ describe("plugin update service and routes", () => {
     });
   });
 
+  it("checks, updates, and rolls back a nested git plugin", async () => {
+    await service.remove("updater");
+    const nestedRoot = join(repo, "plugins", "nested");
+    const commitNested = async (
+      version: string,
+      serverSource?: string,
+    ): Promise<string> => {
+      await mkdir(nestedRoot, { recursive: true });
+      await writeFile(
+        join(nestedRoot, "package.json"),
+        JSON.stringify({
+          name: "bb-plugin-nested-updater",
+          version,
+          bb: {
+            name: "Nested updater fixture",
+            description: "Nested plugin update fixture.",
+            branding: { icon: "Zap" },
+            server: "./server.ts",
+          },
+        }),
+      );
+      await writeFile(
+        join(nestedRoot, "server.ts"),
+        serverSource ??
+          `export default function plugin(bb: any) { bb.log.info(${JSON.stringify(version)}); }`,
+      );
+      await git(repo, ["add", "-A"]);
+      await git(repo, ["commit", "-qm", `nested ${version}`]);
+      return git(repo, ["rev-parse", "HEAD"]);
+    };
+
+    await commitNested("1.0.0");
+    await service.install(`git:${repo}@main`, {
+      kind: "subdirectory",
+      path: "plugins/nested",
+    });
+    const nextCommit = await commitNested("1.1.0");
+
+    await expect(
+      service.checkForUpdates("nested-updater"),
+    ).resolves.toMatchObject([
+      {
+        outcome: "update-available",
+        candidate: { version: nextCommit },
+      },
+    ]);
+    await expect(service.applyUpdate("nested-updater")).resolves.toMatchObject({
+      ok: true,
+      result: { applied: true, outcome: "updated" },
+    });
+    expect(getInstalledPluginRegistration(db, "nested-updater")).toMatchObject({
+      sourceGitSubdirectory: "plugins/nested",
+      gitResolvedCommit: nextCommit,
+      version: "1.1.0",
+    });
+
+    await commitNested(
+      "1.2.0",
+      'export default function plugin() { throw new Error("nested activation failed"); }',
+    );
+    await expect(service.applyUpdate("nested-updater")).resolves.toMatchObject({
+      ok: true,
+      result: { applied: false, outcome: "rolled-back" },
+    });
+    expect(getInstalledPluginRegistration(db, "nested-updater")).toMatchObject({
+      sourceGitSubdirectory: "plugins/nested",
+      gitResolvedCommit: nextCommit,
+      version: "1.1.0",
+      lastFailureDetail: expect.stringContaining("nested activation failed"),
+    });
+  });
+
   it("refuses a pinned git tag unless the source is changed explicitly", async () => {
     await service.remove("updater");
     await git(repo, ["tag", "v1"]);
-    await service.install(`git:${repo}@v1`);
+    await service.install(`git:${repo}@v1`, { kind: "root" });
     const response = await app.request("/plugins/updater/update", {
       method: "POST",
       headers: { "content-type": "application/json" },
