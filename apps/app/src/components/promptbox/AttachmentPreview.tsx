@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getWrappedImageIndex,
   ImageLightbox,
 } from "@/components/ui/image-lightbox.js";
-import { Icon } from "@bb/shared-ui/icon";
+import { Button } from "@bb/shared-ui/button";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@bb/shared-ui/dialog";
+import { Icon } from "@bb/shared-ui/icon";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import { sdk } from "@/lib/sdk";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
@@ -53,6 +57,23 @@ function formatFileSize(sizeBytes: number): string {
     : `${Math.round(kibibytes)} KB`;
 }
 
+function markdownSummary(contents: string): string {
+  const lines = contents.split(/\r?\n/u);
+  const commentIndex = lines.findIndex(
+    (line) => line.trim().toLowerCase() === "## comment",
+  );
+  const candidates =
+    commentIndex >= 0 ? lines.slice(commentIndex + 1) : lines.slice(0);
+  return (
+    candidates
+      .find((line) => {
+        const trimmed = line.trim();
+        return trimmed.length > 0 && !trimmed.startsWith("#");
+      })
+      ?.trim() ?? "Open to preview and edit"
+  );
+}
+
 interface FileAttachmentCardProps {
   attachment: PromptDraftAttachment;
   projectId?: string;
@@ -75,7 +96,7 @@ function FileAttachmentCard({
     projectId.length > 0 &&
     onReplaceAttachment !== undefined &&
     attachment.sizeBytes <= MAX_EDITABLE_TEXT_ATTACHMENT_BYTES;
-  const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState(false);
   const [contents, setContents] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -83,7 +104,6 @@ function FileAttachmentCard({
   const [saveError, setSaveError] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const savingRef = useRef(false);
-  const editorId = useId();
 
   useEffect(() => {
     mountedRef.current = true;
@@ -124,6 +144,11 @@ function FileAttachmentCard({
     return () => controller.abort();
   }, [attachment.path, editable, projectId]);
 
+  const preview = useMemo(
+    () => (contents === null ? "Loading preview…" : markdownSummary(contents)),
+    [contents],
+  );
+
   const handleSave = useCallback(async () => {
     if (
       projectId === undefined ||
@@ -144,7 +169,7 @@ function FileAttachmentCard({
       });
       if (!mountedRef.current) return;
       setContents(draft);
-      setExpanded(false);
+      setOpen(false);
       onReplaceAttachment(attachment.path, {
         ...uploaded,
         type: "localFile",
@@ -168,112 +193,104 @@ function FileAttachmentCard({
     projectId,
   ]);
 
-  const cardContents = (
-    <>
-      <Icon name="File" className="size-5 shrink-0 text-muted-foreground" />
+  const card = (
+    <div className="group relative flex h-16 w-60 max-w-full items-center gap-2.5 rounded-md border border-border bg-surface-recessed px-2.5 text-left">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded bg-background text-muted-foreground">
+        <Icon name="File" className="size-4" />
+      </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-medium text-foreground">
           {attachment.name}
         </span>
-        <span className="mt-0.5 block text-[10px] leading-3 text-subtle-foreground">
+        <span className="mt-0.5 block truncate text-[11px] leading-4 text-muted-foreground">
+          {loadError ?? preview}
+        </span>
+        <span className="block text-[10px] leading-3 text-subtle-foreground">
           {formatFileSize(attachment.sizeBytes)}
+          {editable ? " · Markdown · Editable" : ""}
         </span>
       </span>
-    </>
+    </div>
   );
 
   return (
-    <div className="relative w-[28rem] max-w-full rounded-md border border-border bg-surface-recessed/35 transition-colors hover:bg-surface-recessed/50">
-      <div className="relative flex h-12 max-w-full items-center gap-2.5 px-2.5 pr-8 text-left">
+    <>
+      <div className="relative max-w-full">
         {editable ? (
           <button
             type="button"
-            className="absolute inset-0 flex max-w-full items-center gap-2.5 rounded-md px-2.5 pr-8 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-            onClick={() => setExpanded((current) => !current)}
-            aria-expanded={expanded}
-            aria-controls={editorId}
-            aria-label={`${expanded ? "Collapse" : "Expand"} ${attachment.name}`}
+            className="max-w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            onClick={() => setOpen(true)}
+            aria-label={`Open and edit ${attachment.name}`}
           >
-            {cardContents}
+            {card}
           </button>
         ) : (
-          cardContents
+          card
         )}
         {onRemoveAttachment ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => onRemoveAttachment(attachment.path)}
-                className="absolute right-1.5 top-1/2 z-10 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={`Remove ${attachment.name}`}
-              >
-                <Icon name="X" className="size-3" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Remove attachment</TooltipContent>
-          </Tooltip>
+          <button
+            type="button"
+            onClick={() => onRemoveAttachment(attachment.path)}
+            className="absolute right-1 top-1 z-10 rounded-full bg-background/90 p-0.5 text-muted-foreground shadow-sm transition-colors hover:bg-state-hover hover:text-foreground"
+            aria-label={`Remove ${attachment.name}`}
+          >
+            <Icon name="X" className="size-3" />
+          </button>
         ) : null}
       </div>
 
-      {editable && expanded ? (
-        <div id={editorId} className="border-t border-border/70 p-2.5 pt-2">
-          {loadError !== null ? (
-            <div
-              className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive"
-              role="alert"
-            >
-              {loadError}
-            </div>
-          ) : contents === null ? (
-            <p className="m-0 py-3 text-center text-xs text-muted-foreground">
-              Loading…
-            </p>
-          ) : (
-            <textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              aria-label={`Edit ${attachment.name}`}
-              spellCheck={false}
-              autoFocus
-              className="max-h-72 min-h-48 w-full resize-y rounded-md border border-border bg-background/75 p-2.5 font-mono text-xs leading-5 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          )}
-          {saveError !== null ? (
-            <p className="mb-0 mt-2 text-xs text-destructive" role="alert">
-              {saveError}
-            </p>
-          ) : null}
-          <div className="mt-2 flex items-center justify-end gap-1.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label={`Cancel editing ${attachment.name}`}
-                  onClick={() => {
-                    setDraft(contents ?? "");
-                    setSaveError(null);
-                    setExpanded(false);
-                  }}
-                >
-                  <Icon name="X" className="size-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Cancel editing</TooltipContent>
-            </Tooltip>
-            <button
-              type="button"
-              className="h-7 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-55"
-              onClick={() => void handleSave()}
-              disabled={contents === null || loadError !== null || saving}
-            >
-              {saving ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </div>
+      {editable ? (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="flex max-h-[min(82vh,48rem)] max-w-3xl flex-col gap-3">
+            <DialogHeader>
+              <DialogTitle>{attachment.name}</DialogTitle>
+              <DialogDescription>
+                Edit the Markdown context the agent will receive with this
+                prompt.
+              </DialogDescription>
+            </DialogHeader>
+            {loadError !== null ? (
+              <div
+                className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+                role="alert"
+              >
+                {loadError}
+              </div>
+            ) : (
+              <textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                aria-label={`Edit ${attachment.name}`}
+                spellCheck={false}
+                className="min-h-80 w-full resize-y rounded-md border border-border bg-background p-3 font-mono text-xs leading-5 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            )}
+            {saveError !== null ? (
+              <p className="text-sm text-destructive" role="alert">
+                {saveError}
+              </p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={contents === null || loadError !== null || saving}
+              >
+                {saving ? "Saving…" : "Save attachment"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       ) : null}
-    </div>
+    </>
   );
 }
 
