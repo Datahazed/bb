@@ -168,10 +168,9 @@ export interface ProviderDriverClearSessionGoalResult {
 /**
  * Daemon-side semantic seam for one provider process.
  *
- * The first implementation is a compatibility connection around the existing
- * adapter protocol. Its ThreadEvent translation and asynchronous session-id
- * fallback are explicit migration debt. Canonical process connections will
- * replace those behaviors with @bb/provider-driver-contract results/events.
+ * Production providers use canonical process connections. A legacy
+ * implementation remains only in the test harness while old scripted runtime
+ * fixtures are converted to canonical fake drivers.
  */
 export interface ProviderDriverConnection {
   readonly approvalRequestPolicy: "runtime" | "provider";

@@ -34,7 +34,7 @@ import type {
   ProviderDriverStopSessionArgs,
   ProviderDriverStopSessionResult,
   ProviderDriverTurnSubmitArgs,
-} from "./connection.js";
+} from "../provider-driver/connection.js";
 
 interface LegacyAdapterConnectionArgs {
   adapter: ProviderAdapter;

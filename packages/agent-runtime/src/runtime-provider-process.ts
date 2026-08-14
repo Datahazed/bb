@@ -22,10 +22,6 @@ import {
   sanitizeInheritedChildProcessEnv,
   spawnPortablePipedProcess,
 } from "@bb/process-utils";
-import type {
-  ProviderAdapter,
-  ProviderAdapterFactory,
-} from "./provider-adapter.js";
 import { filterSkillRootsForProvider } from "./runtime-skill-roots.js";
 import {
   classifyClaudeExecutionSettingsChange,
@@ -36,7 +32,6 @@ import { resolveBridgeProcessArgs } from "./shared/bridge-path.js";
 import type { ProviderDriverConnection } from "./provider-driver/connection.js";
 import { CanonicalProcessProviderConnection } from "./provider-driver/canonical-process-connection.js";
 import { getBundledProviderDriverLaunchSpec } from "./provider-driver/bundled-launch-specs.js";
-import { LegacyAdapterConnection } from "./provider-driver/legacy-adapter-connection.js";
 import {
   ProviderDriverSupervisor,
   type SupervisedProviderDriver,
@@ -81,9 +76,31 @@ export interface RuntimeProviderCanonicalInteractionArgs {
   providerProcess: RuntimeProviderProcess;
 }
 
+export interface RuntimeProviderProcessLaunchSpecFactoryOptions {
+  additionalWorkspaceWriteRoots: readonly string[];
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeBundleDir?: string;
+  bridgeNodeEnv?: Record<string, string>;
+  bridgeNodeExecutablePath?: string;
+  turnIdPrefix: string;
+}
+
+export interface RuntimeProviderProcessLaunchSpec {
+  createConnection(args: {
+    child: ChildProcess;
+    getNextRequestId: () => number;
+  }): ProviderDriverConnection;
+  process: { command: string; args: string[]; env?: Record<string, string> };
+}
+
+export type RuntimeProviderProcessLaunchSpecFactory = (
+  providerId: string,
+  options: RuntimeProviderProcessLaunchSpecFactoryOptions,
+) => RuntimeProviderProcessLaunchSpec;
+
 export interface RuntimeProviderProcessManagerArgs {
   additionalWorkspaceWriteRoots: readonly string[];
-  adapterFactory?: ProviderAdapterFactory;
+  providerProcessFactory?: RuntimeProviderProcessLaunchSpecFactory;
   bridgeBundleDir: string | undefined;
   bridgeNodeEnv?: Record<string, string>;
   bridgeNodeExecutablePath?: string;
@@ -152,9 +169,9 @@ interface TerminateProviderProcessArgs {
 }
 
 interface SpawnProviderArgs {
-  adapter: ProviderAdapter;
   processKey: string;
   providerId: string;
+  spec: RuntimeProviderProcessLaunchSpec;
 }
 
 interface ProviderProcessExitStatus {
@@ -172,9 +189,9 @@ const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 const CANONICAL_PROVIDER_REQUEST_TIMEOUT_MS = 2 * 60_000;
 const CLAUDE_CODE_PROVIDER_ID = "claude-code";
 
-function createAdapterTurnIdPrefix(): string {
-  const adapterId = randomUUID().replaceAll("-", "").slice(0, 16);
-  return `turn_${adapterId}_`;
+function createTestProviderTurnIdPrefix(): string {
+  const processId = randomUUID().replaceAll("-", "").slice(0, 16);
+  return `turn_${processId}_`;
 }
 
 function resolveCanonicalDriverProcessArgs(args: {
@@ -230,16 +247,19 @@ export class RuntimeProviderProcessManager {
     if (this.processes.has(args.processKey)) return;
 
     const startPromise = (async () => {
-      if (this.args.adapterFactory === undefined) {
+      if (this.args.providerProcessFactory === undefined) {
         await this.startCanonicalProvider(args);
         return;
       }
 
-      const adapter = this.getTestAdapter(args.providerId, args.acpLaunchSpec);
+      const spec = this.getTestProviderProcessSpec(
+        args.providerId,
+        args.acpLaunchSpec,
+      );
       const providerProcess = this.spawnProvider({
-        adapter,
         processKey: args.processKey,
         providerId: args.providerId,
+        spec,
       });
 
       try {
@@ -559,11 +579,11 @@ export class RuntimeProviderProcessManager {
     }
   }
 
-  private getTestAdapter(
+  private getTestProviderProcessSpec(
     providerId: string,
     acpLaunchSpec: HostDaemonAcpLaunchSpec | undefined,
-  ): ProviderAdapter {
-    const adapterOptions = {
+  ): RuntimeProviderProcessLaunchSpec {
+    const factoryOptions = {
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
       ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
       bridgeBundleDir: this.args.bridgeBundleDir,
@@ -573,17 +593,17 @@ export class RuntimeProviderProcessManager {
       ...(this.args.bridgeNodeExecutablePath !== undefined
         ? { bridgeNodeExecutablePath: this.args.bridgeNodeExecutablePath }
         : {}),
-      turnIdPrefix: createAdapterTurnIdPrefix(),
+      turnIdPrefix: createTestProviderTurnIdPrefix(),
     };
 
-    if (!this.args.adapterFactory) {
-      throw new Error("Test adapter factory is not configured");
+    if (!this.args.providerProcessFactory) {
+      throw new Error("Test provider process factory is not configured");
     }
-    return this.args.adapterFactory(providerId, adapterOptions);
+    return this.args.providerProcessFactory(providerId, factoryOptions);
   }
 
   private spawnProvider(args: SpawnProviderArgs): RuntimeProviderProcess {
-    const processConfig = args.adapter.process;
+    const processConfig = args.spec.process;
     const env: NodeJS.ProcessEnv = {
       ...sanitizeInheritedChildProcessEnv({ env: process.env }),
       ...this.args.env,
@@ -599,8 +619,7 @@ export class RuntimeProviderProcessManager {
 
     const providerProcess: RuntimeProviderProcess = {
       child,
-      connection: new LegacyAdapterConnection({
-        adapter: args.adapter,
+      connection: args.spec.createConnection({
         child,
         getNextRequestId: this.args.getNextRequestId,
       }),

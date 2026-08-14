@@ -126,7 +126,7 @@ interface ArchiveOrUnarchiveThreadArgs {
 }
 
 interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
-  adapterFactory?: RuntimeProviderProcessManagerArgs["adapterFactory"];
+  providerProcessFactory?: RuntimeProviderProcessManagerArgs["providerProcessFactory"];
 }
 
 interface ResolveProviderRequestThreadIdArgs extends ResolveRuntimeProviderRequestThreadIdArgs {
@@ -209,10 +209,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   return createAgentRuntimeInternal(options);
 }
 
-export function createAgentRuntimeWithAdapters(
-  options: AgentRuntimeInternalOptions,
+export function createAgentRuntimeWithProviderProcessFactory(
+  options: AgentRuntimeOptions,
+  providerProcessFactory: NonNullable<
+    RuntimeProviderProcessManagerArgs["providerProcessFactory"]
+  >,
 ): AgentRuntime {
-  return createAgentRuntimeInternal(options);
+  return createAgentRuntimeInternal({ ...options, providerProcessFactory });
 }
 
 function createAgentRuntimeInternal(
@@ -239,7 +242,7 @@ function createAgentRuntimeInternal(
 
   const providerProcesses = new RuntimeProviderProcessManager({
     additionalWorkspaceWriteRoots,
-    adapterFactory: options.adapterFactory,
+    providerProcessFactory: options.providerProcessFactory,
     bridgeBundleDir: options.bridgeBundleDir,
     ...(bridgeNodeEnv !== undefined ? { bridgeNodeEnv } : {}),
     bridgeNodeExecutablePath:

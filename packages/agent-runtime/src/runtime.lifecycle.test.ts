@@ -8,7 +8,7 @@ import type {
   ProviderCommandPlan,
 } from "./provider-adapter.js";
 import { promptTextInput } from "./test/prompt-input.js";
-import { createAgentRuntimeWithAdapters } from "./runtime.js";
+import { createAgentRuntimeWithAdapters } from "./test/runtime-with-adapters.js";
 import {
   classifyClaudeExecutionSettingsChange,
   normalizeClaudeExecutionOptions,

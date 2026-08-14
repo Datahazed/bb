@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
-import { createAgentRuntimeWithAdapters } from "./runtime.js";
+import { createAgentRuntimeWithAdapters } from "./test/runtime-with-adapters.js";
 import { fakeProviderScriptPath } from "./test/index.js";
 import {
   createFakeAdapter,

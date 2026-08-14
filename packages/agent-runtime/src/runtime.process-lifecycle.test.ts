@@ -10,7 +10,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { turnScope, type ThreadEvent } from "@bb/domain";
 import type { ProviderAdapter } from "./provider-adapter.js";
-import { createAgentRuntimeWithAdapters } from "./runtime.js";
+import {
+  createAgentRuntimeWithAdapters,
+  createLegacyProviderProcessLaunchSpecFactory,
+} from "./test/runtime-with-adapters.js";
 import { RuntimeProviderProcessManager } from "./runtime-provider-process.js";
 import { RuntimeThreadIdentityRegistry } from "./runtime-thread-identity.js";
 import { fakeProviderScriptPath } from "./test/index.js";
@@ -65,8 +68,9 @@ describe("createAgentRuntime process lifecycle", () => {
     let nextRequestId = 1;
     return new RuntimeProviderProcessManager({
       additionalWorkspaceWriteRoots: [],
-      adapterFactory: () =>
+      providerProcessFactory: createLegacyProviderProcessLaunchSpecFactory(() =>
         createNoopInitializeAdapter(args.scriptPath, args.adapterProcessEnv),
+      ),
       bridgeBundleDir: undefined,
       captureThreadExitState: (threadId) => ({
         activeTurnId: null,

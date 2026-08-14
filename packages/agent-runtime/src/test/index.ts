@@ -1,4 +1,4 @@
-export { createAgentRuntimeWithAdapters } from "../runtime.js";
+export { createAgentRuntimeWithAdapters } from "./runtime-with-adapters.js";
 export type {
   ProviderAdapter,
   ProviderAdapterFactory,
