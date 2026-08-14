@@ -11,7 +11,6 @@ import {
 } from "@bb/host-daemon-contract";
 import semver from "semver";
 import {
-  CommandDispatchError,
   defaultListModels,
   ExpectedCommandDispatchError,
   type CommandOf,
@@ -419,13 +418,7 @@ const commandHandlers: CommandHandlerMap = {
       command.environmentId,
     );
     if (!entry) {
-      if (released.releasedEnvironmentIds.length === 0) {
-        throw new CommandDispatchError(
-          "unknown_environment",
-          `No runtime exists for environment ${command.environmentId}`,
-        );
-      }
-      // The old owner stopped, so the stop reached the running turn.
+      // No loaded runtime means the idempotent stop already reached its goal.
       await options.eventSink.flush();
       return {
         providerCheckpointId: released.providerCheckpointId,
@@ -437,10 +430,24 @@ const commandHandlers: CommandHandlerMap = {
       // and the turn/started event has not been observed yet. Wait for the
       // runtime to learn the active turn (event-driven, resolves null on
       // timeout or when the thread goes idle) so the provider stop carries
-      // the right turn id.
-      await entry.runtime.waitForActiveTurn(command.threadId, {
-        timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
-      });
+      // the right turn id. A release does not wait: the server already
+      // settled the thread as idle, so waiting only burns the full timeout on
+      // every runtime it unloads.
+      //
+      // A release can still lose a race with a turn that started after the
+      // server read the thread. Stopping then would end accepted work and
+      // leave the server holding an active thread with no runtime, so a
+      // release skips a busy runtime instead. A later idle release unloads it.
+      if (command.intent === "release") {
+        if (entry.runtime.getActiveTurnId(command.threadId) !== null) {
+          await options.eventSink.flush();
+          return { providerCheckpointId };
+        }
+      } else {
+        await entry.runtime.waitForActiveTurn(command.threadId, {
+          timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
+        });
+      }
       const result = await entry.runtime.stopThread({
         threadId: command.threadId,
       });
