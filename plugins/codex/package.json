@@ -2,9 +2,36 @@
   "name": "bb-plugin-codex",
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    "./driver-entry": {
+      "source": "./src/driver-entry.ts",
+      "types": "./src/driver-entry.ts",
+      "default": "./src/driver-entry.ts"
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@bb/agent-providers": "workspace:*",
+    "@bb/domain": "workspace:*",
+    "@bb/plugin-sdk": "workspace:*",
+    "@bb/provider-driver-contract": "workspace:*",
+    "@bb/provider-driver-helpers": "workspace:*",
+    "@bb/provider-driver-sdk": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  },
   "bb": {
     "name": "Codex",
-    "description": "Run OpenAI Codex sessions through BB.",
+    "description": "Run Codex sessions through BB.",
     "branding": {
       "icon": "Code"
     },

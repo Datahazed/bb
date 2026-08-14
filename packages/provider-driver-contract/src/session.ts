@@ -38,6 +38,7 @@ export const providerDriverExecutionOptionsSchema = z
       .object({
         workflowsEnabled: z.boolean(),
         memoryEnabled: z.boolean(),
+        planModeEnabled: z.boolean(),
         subagentsEnabled: z.boolean(),
       })
       .strict(),
@@ -51,6 +52,7 @@ export type ProviderDriverExecutionOptions = z.infer<
 export const providerDriverSkillSourceSchema = z
   .object({
     id: z.string().min(1).max(PROVIDER_DRIVER_MAX_ID_LENGTH),
+    /** Root of a staged skill package. Skill folders are under `skills/`. */
     rootPath: pathSchema,
     skills: z
       .array(

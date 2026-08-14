@@ -2,9 +2,41 @@
   "name": "bb-plugin-acp",
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    "./driver-entry": {
+      "source": "./src/driver-entry.ts",
+      "types": "./src/driver-entry.ts",
+      "default": "./src/driver-entry.ts"
+    },
+    "./launch-config": {
+      "source": "./src/launch-config.ts",
+      "types": "./src/launch-config.ts",
+      "default": "./src/launch-config.ts"
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@bb/domain": "workspace:*",
+    "@bb/host-daemon-contract": "workspace:*",
+    "@bb/plugin-sdk": "workspace:*",
+    "@bb/provider-driver-contract": "workspace:*",
+    "@bb/provider-driver-helpers": "workspace:*",
+    "@bb/provider-driver-sdk": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  },
   "bb": {
-    "name": "ACP providers",
-    "description": "Run Agent Client Protocol providers through BB.",
+    "name": "ACP Providers",
+    "description": "Run configured Agent Client Protocol providers through BB.",
     "branding": {
       "icon": "Code"
     },

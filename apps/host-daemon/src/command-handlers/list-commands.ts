@@ -5,7 +5,7 @@ import path from "node:path";
 import { resolveCodexHome } from "@bb/config/codex-home";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import type { ProviderNativeSkillRoots } from "@bb/domain";
-import { createConfiguredPiSettingsManager } from "@bb/agent-runtime";
+import { createConfiguredPiSettingsManager } from "bb-plugin-pi/configured-services";
 import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
@@ -878,7 +878,7 @@ async function addPluginCommandPathRoots(
   }
 }
 
-async function addDefaultPluginSkillRoots(
+async function addDefaultPluginSkillSources(
   args: AddPluginDirectoryRootsArgs,
 ): Promise<void> {
   const rootSkillFilePath = path.join(args.pluginRootPath, "SKILL.md");
@@ -916,7 +916,7 @@ async function addDefaultPluginSkillRoots(
 async function addDefaultPluginDirectoryRoots(
   args: AddPluginDirectoryRootsArgs,
 ): Promise<void> {
-  await addDefaultPluginSkillRoots(args);
+  await addDefaultPluginSkillSources(args);
 
   const commandsRootPath = path.join(args.pluginRootPath, "commands");
   const commandsRootStat = await fs.lstat(commandsRootPath).catch(() => null);
@@ -944,7 +944,7 @@ async function addCodexPluginComponentRoots(
     seenRoots: new Set<string>(),
   };
 
-  await addDefaultPluginSkillRoots(baseArgs);
+  await addDefaultPluginSkillSources(baseArgs);
   await addPluginSkillPathRoots({
     ...baseArgs,
     entries: normalizePluginPathList(args.plugin.manifest.skills),
@@ -1436,7 +1436,7 @@ async function childDirectoryPaths(directoryPath: string): Promise<string[]> {
   }
 }
 
-async function addGrokPluginSkillRoots(args: {
+async function addGrokPluginSkillSources(args: {
   autoEnabled: boolean;
   boundaryPath?: string;
   config: z.infer<typeof grokSkillConfigSchema> | null;
@@ -1560,7 +1560,7 @@ async function resolveGrokPluginSkillScanRoots(
       continue;
     }
     seen.add(key);
-    await addGrokPluginSkillRoots({ ...candidate, config, roots });
+    await addGrokPluginSkillSources({ ...candidate, config, roots });
   }
   return roots;
 }

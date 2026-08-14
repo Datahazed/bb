@@ -74,17 +74,20 @@ export function createFakeCanonicalProviderDriverSpec(
       },
     },
     processCapabilities: { multiplexSessions: true },
+    supportsLiveExecutionChanges: false,
   };
 }
 
 export interface AgentRuntimeWithProviderDriversOptions extends AgentRuntimeOptions {
   providerDriverFactory?: RuntimeCanonicalProviderDriverLaunchSpecFactory;
+  providerProcessScope?: (providerId: string) => "environment" | "thread";
 }
 
 export function createAgentRuntimeWithProviderDrivers(
   options: AgentRuntimeWithProviderDriversOptions,
 ): AgentRuntime {
-  const { providerDriverFactory, ...runtimeOptions } = options;
+  const { providerDriverFactory, providerProcessScope, ...runtimeOptions } =
+    options;
   return createAgentRuntimeWithCanonicalProviderDriverFactory(
     {
       ...runtimeOptions,
@@ -94,5 +97,6 @@ export function createAgentRuntimeWithProviderDrivers(
     },
     providerDriverFactory ??
       ((providerId) => createFakeCanonicalProviderDriverSpec(providerId)),
+    providerProcessScope,
   );
 }

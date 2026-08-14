@@ -13,10 +13,7 @@ import type {
   ToolCallResponse,
 } from "@bb/domain";
 import type { ProviderDriverInspectResult } from "@bb/provider-driver-contract";
-import type {
-  HostDaemonAcpLaunchSpec,
-  HostDaemonProviderDriverLaunchSpec,
-} from "@bb/host-daemon-contract";
+import type { HostDaemonProviderDriverLaunchSpec } from "@bb/host-daemon-contract";
 
 export type AgentRuntimeShellEnvironment = Record<string, string>;
 
@@ -32,44 +29,16 @@ export interface AgentRuntimeResolvedProviderDriverLaunch {
   process: { command: string; args: string[]; env?: Record<string, string> };
   providerDataDir: string;
   processCapabilities: { multiplexSessions: boolean };
+  supportsLiveExecutionChanges: boolean;
   release(): void;
 }
 
-export interface AgentRuntimeCodexSkillRoot {
+export interface AgentRuntimeSkillSource {
   id: string;
-  providerId: "codex";
-  skillDirectoryRootPath: string;
+  /** Root of the staged skill package. Skills live under its `skills/` child. */
+  rootPath: string;
+  skills: readonly { description: string; name: string }[];
 }
-
-export interface AgentRuntimeClaudeCodeSkillRoot {
-  id: string;
-  providerId: "claude-code";
-  localPluginPath: string;
-}
-
-export interface AgentRuntimePiSkillRoot {
-  id: string;
-  providerId: "pi";
-  skillDirectoryRootPath: string;
-}
-
-export interface AgentRuntimeAcpSkill {
-  description: string;
-  name: string;
-}
-
-export interface AgentRuntimeAcpSkillRoot {
-  id: string;
-  providerId: "acp";
-  skillDirectoryRootPath: string;
-  skills: readonly AgentRuntimeAcpSkill[];
-}
-
-export type AgentRuntimeSkillRoot =
-  | AgentRuntimeAcpSkillRoot
-  | AgentRuntimeClaudeCodeSkillRoot
-  | AgentRuntimeCodexSkillRoot
-  | AgentRuntimePiSkillRoot;
 
 /**
  * Final per-thread state snapshot taken when a provider process exits,
@@ -111,8 +80,8 @@ export interface AgentRuntimeOptions {
   /** Root directory containing per-thread storage directories. */
   threadStorageRootPath?: string;
 
-  /** Optional caller-provided skill roots to expose to provider sessions. */
-  skillRoots?: readonly AgentRuntimeSkillRoot[];
+  /** Optional caller-provided staged skill packages to expose to sessions. */
+  skillSources?: readonly AgentRuntimeSkillSource[];
 
   /** Acquire and verify a plugin-contributed provider driver on this host. */
   resolveProviderDriverLaunch?: (
@@ -145,7 +114,6 @@ export interface AgentRuntimeOptions {
 // ---------------------------------------------------------------------------
 
 export interface EnsureProviderArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   providerDriver?: HostDaemonProviderDriverLaunchSpec;
   /**
    * Providers with thread-scoped processes use this to start the process for a
@@ -157,7 +125,6 @@ export interface EnsureProviderArgs {
 }
 
 export interface StartThreadArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   providerDriver?: HostDaemonProviderDriverLaunchSpec;
   environmentId: string;
   threadId: string;
@@ -171,10 +138,8 @@ export interface StartThreadArgs {
   dynamicTools?: DynamicTool[];
   disallowedTools?: readonly string[];
   instructionMode?: InstructionMode;
-  /** JSON Schema constraining the session's structured output. Session-level
-   *  structured output is claude-code only (SDK `outputFormat` is fixed at
-   *  query creation); other providers reject it. Absent means no structured
-   *  output. */
+  /** JSON Schema constraining the session's structured output. Drivers that
+   *  do not support structured output reject it. Absent means unconstrained. */
   outputSchema?: JsonObject;
   /**
    * Present means fork the new thread from this source provider session
@@ -188,7 +153,6 @@ export interface StartThreadResult {
 }
 
 export interface PrepareThreadRewindArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   providerDriver?: HostDaemonProviderDriverLaunchSpec;
   environmentId: string;
   threadId: string;
@@ -213,7 +177,6 @@ export interface DiscardThreadRewindArgs {
 }
 
 export interface ResumeThreadArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   providerDriver?: HostDaemonProviderDriverLaunchSpec;
   environmentId: string;
   threadId: string;
@@ -320,7 +283,6 @@ export interface UnarchiveThreadArgs {
 export interface ListModelsArgs {
   providerDriver?: HostDaemonProviderDriverLaunchSpec;
   providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   cwd?: string;
 }
 

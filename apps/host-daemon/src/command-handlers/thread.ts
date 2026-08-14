@@ -180,11 +180,6 @@ async function resumeThreadRuntimeIfMissing(
     );
   }
   await entry.runtime.resumeThread({
-    ...(command.resumeContext.acpLaunchSpec !== undefined
-      ? { acpLaunchSpec: command.resumeContext.acpLaunchSpec }
-      : command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
     ...(command.resumeContext.providerDriver !== undefined
       ? { providerDriver: command.resumeContext.providerDriver }
       : {}),
@@ -229,9 +224,6 @@ export async function startThread(
       workspaceContext: command.workspaceContext,
     });
     const result = await entry.runtime.startThread({
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       ...(command.providerDriver !== undefined
         ? { providerDriver: command.providerDriver }
         : {}),
@@ -272,9 +264,6 @@ export async function prepareThreadRewind(
     workspaceContext: command.workspaceContext,
   });
   return entry.runtime.prepareThreadRewind({
-    ...(command.acpLaunchSpec !== undefined
-      ? { acpLaunchSpec: command.acpLaunchSpec }
-      : {}),
     ...(command.providerDriver !== undefined
       ? { providerDriver: command.providerDriver }
       : {}),

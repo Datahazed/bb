@@ -2,6 +2,44 @@
   "name": "bb-plugin-pi",
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    "./configured-services": {
+      "source": "./src/configured-services.ts",
+      "types": "./src/configured-services.ts",
+      "default": "./src/configured-services.ts"
+    },
+    "./driver-entry": {
+      "source": "./src/driver-entry.ts",
+      "types": "./src/driver-entry.ts",
+      "default": "./src/driver-entry.ts"
+    },
+    "./session-paths": {
+      "source": "./src/session-paths.ts",
+      "types": "./src/session-paths.ts",
+      "default": "./src/session-paths.ts"
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@bb/agent-providers": "workspace:*",
+    "@bb/domain": "workspace:*",
+    "@bb/plugin-sdk": "workspace:*",
+    "@bb/provider-driver-contract": "workspace:*",
+    "@bb/provider-driver-helpers": "workspace:*",
+    "@bb/provider-driver-sdk": "workspace:*",
+    "@earendil-works/pi-ai": "0.84.0",
+    "@earendil-works/pi-coding-agent": "0.84.0"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  },
   "bb": {
     "name": "Pi",
     "description": "Run Pi coding-agent sessions through BB.",

@@ -1,1 +1,1 @@
-import "../../packages/agent-runtime/src/codex/driver-entry.js";
+import "./src/driver-entry.js";

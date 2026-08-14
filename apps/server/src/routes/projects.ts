@@ -85,7 +85,7 @@ import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
 import { resolveWorkspaceProjectSkills } from "../services/skills/workspace-skills.js";
 import { resolveSharedSkills } from "../services/skills/shared-skills.js";
 import { assertUsableHostId } from "../services/hosts/primary-host.js";
-import { resolveAcpLaunchSpecForProviderId } from "../services/system/acp-launch-spec.js";
+import { resolveAcpProviderConfigForProviderId } from "../services/system/acp-provider-config.js";
 import {
   resolveProjectCommandWorkspace,
   resolveProjectWorkspaceTarget,
@@ -698,7 +698,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         : {}),
       ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
     });
-    const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
+    const acpConfig = resolveAcpProviderConfigForProviderId(
       deps,
       query.provider,
     );
@@ -710,8 +710,8 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
           type: "host.list_commands",
           providerId: query.provider,
           cwd: workspace.cwd,
-          ...(acpLaunchSpec?.nativeSkillRoots !== undefined
-            ? { nativeSkillRoots: acpLaunchSpec.nativeSkillRoots }
+          ...(acpConfig?.nativeSkillRoots !== undefined
+            ? { nativeSkillRoots: acpConfig.nativeSkillRoots }
             : {}),
         },
       }),

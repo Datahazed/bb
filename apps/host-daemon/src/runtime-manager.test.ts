@@ -471,48 +471,14 @@ describe("RuntimeManager", () => {
     });
 
     expect(entry.skillCatalogHash).toMatch(/^[a-f0-9]{64}$/u);
-    expect(runtimeOptions.current?.skillRoots).toEqual([
+    expect(runtimeOptions.current?.skillSources).toEqual([
       {
-        id: `global-skills:${entry.skillCatalogHash}:codex`,
-        providerId: "codex",
-        skillDirectoryRootPath: path.join(
+        id: `global-skills:${entry.skillCatalogHash}`,
+        rootPath: path.join(
           dataDir,
           "runtime",
           "global-skills",
           entry.skillCatalogHash ?? "",
-          "skills",
-        ),
-      },
-      {
-        id: `global-skills:${entry.skillCatalogHash}:claude-code`,
-        providerId: "claude-code",
-        localPluginPath: path.join(
-          dataDir,
-          "runtime",
-          "global-skills",
-          entry.skillCatalogHash ?? "",
-        ),
-      },
-      {
-        id: `global-skills:${entry.skillCatalogHash}:pi`,
-        providerId: "pi",
-        skillDirectoryRootPath: path.join(
-          dataDir,
-          "runtime",
-          "global-skills",
-          entry.skillCatalogHash ?? "",
-          "skills",
-        ),
-      },
-      {
-        id: `global-skills:${entry.skillCatalogHash}:acp`,
-        providerId: "acp",
-        skillDirectoryRootPath: path.join(
-          dataDir,
-          "runtime",
-          "global-skills",
-          entry.skillCatalogHash ?? "",
-          "skills",
         ),
         skills: [
           {

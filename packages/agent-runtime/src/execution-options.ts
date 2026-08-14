@@ -1,16 +1,11 @@
+import { isDeepStrictEqual } from "node:util";
 import type {
   ClassifyProviderExecutionSettingsChangeArgs,
   ProviderExecutionContext,
   ProviderExecutionSettingsChange,
 } from "./provider-driver/connection.js";
-import type {
-  AgentRuntimeExecutionOptions,
-  AgentRuntimeSkillRoot,
-} from "./types.js";
-import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  type RuntimePermissionPolicy,
-} from "@bb/domain";
+import type { AgentRuntimeExecutionOptions } from "./types.js";
+import type { RuntimePermissionPolicy } from "@bb/domain";
 
 interface AssertProviderSupportsExecutionOptionsArgs {
   capabilities: {
@@ -25,7 +20,6 @@ interface ToProviderExecutionContextArgs {
   envVars: Record<string, string>;
   execOpts: AgentRuntimeExecutionOptions;
   instructions: string | undefined;
-  skillRoots?: readonly AgentRuntimeSkillRoot[];
 }
 
 interface SameExecutionSettingsArgs {
@@ -37,7 +31,6 @@ export function assertProviderSupportsExecutionOptions(
   args: AssertProviderSupportsExecutionOptionsArgs,
 ): void {
   if (
-    args.options.serviceTier !== undefined &&
     args.options.serviceTier !== "default" &&
     !args.capabilities.supportsServiceTier
   ) {
@@ -45,7 +38,6 @@ export function assertProviderSupportsExecutionOptions(
       `Provider "${args.providerId}" does not support service tiers.`,
     );
   }
-
   if (
     !args.capabilities.supportedPermissionModes.includes(
       args.options.permissionMode,
@@ -55,43 +47,12 @@ export function assertProviderSupportsExecutionOptions(
       `Provider "${args.providerId}" does not support permission mode "${args.options.permissionMode}".`,
     );
   }
-
-  if (
-    args.options.claudeCodePermissionMode !== undefined &&
-    args.providerId !== "claude-code"
-  ) {
-    throw new Error(
-      `Provider "${args.providerId}" does not support Claude Code permission mode overrides.`,
-    );
-  }
 }
 
 export function sameExecutionSettings(
   args: SameExecutionSettingsArgs,
 ): boolean {
-  const leftMockCliTraffic =
-    args.left.claudeCodeMockCliTraffic ??
-    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
-  const rightMockCliTraffic =
-    args.right.claudeCodeMockCliTraffic ??
-    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
-  return (
-    args.left.model === args.right.model &&
-    args.left.serviceTier === args.right.serviceTier &&
-    args.left.reasoningLevel === args.right.reasoningLevel &&
-    args.left.workflowsEnabled === args.right.workflowsEnabled &&
-    args.left.memoryEnabled === args.right.memoryEnabled &&
-    args.left.providerSubagentsEnabled ===
-      args.right.providerSubagentsEnabled &&
-    args.left.claudeCodePermissionMode ===
-      args.right.claudeCodePermissionMode &&
-    leftMockCliTraffic.enabled === rightMockCliTraffic.enabled &&
-    leftMockCliTraffic.endpoint === rightMockCliTraffic.endpoint &&
-    args.left.permissionMode === args.right.permissionMode &&
-    args.left.permissionScope === args.right.permissionScope &&
-    args.left.approvalReviewer === args.right.approvalReviewer &&
-    args.left.permissionEscalation === args.right.permissionEscalation
-  );
+  return isDeepStrictEqual(args.left, args.right);
 }
 
 export function classifySessionExecutionSettingsChange(
@@ -102,57 +63,29 @@ export function classifySessionExecutionSettingsChange(
     : "session";
 }
 
-function sameClaudeSessionSettings(
+function sameSessionConstructionSettings(
   args: ClassifyProviderExecutionSettingsChangeArgs,
 ): boolean {
-  const currentMockCliTraffic =
-    args.current.claudeCodeMockCliTraffic ??
-    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
-  const nextMockCliTraffic =
-    args.next.claudeCodeMockCliTraffic ??
-    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
   return (
-    args.current.claudeCodePermissionMode ===
-      args.next.claudeCodePermissionMode &&
-    currentMockCliTraffic.enabled === nextMockCliTraffic.enabled &&
-    currentMockCliTraffic.endpoint === nextMockCliTraffic.endpoint &&
+    args.current.serviceTier === args.next.serviceTier &&
+    args.current.planModeEnabled === args.next.planModeEnabled &&
+    isDeepStrictEqual(
+      args.current.providerOptions,
+      args.next.providerOptions,
+    ) &&
     args.current.permissionMode === args.next.permissionMode &&
     args.current.permissionScope === args.next.permissionScope &&
     args.current.approvalReviewer === args.next.approvalReviewer
   );
 }
 
-function sameClaudeLiveSettings(
-  args: ClassifyProviderExecutionSettingsChangeArgs,
-): boolean {
-  return (
-    args.current.model === args.next.model &&
-    args.current.reasoningLevel === args.next.reasoningLevel &&
-    args.current.workflowsEnabled === args.next.workflowsEnabled &&
-    (args.current.memoryEnabled ?? true) ===
-      (args.next.memoryEnabled ?? true) &&
-    (args.current.providerSubagentsEnabled ?? true) ===
-      (args.next.providerSubagentsEnabled ?? true) &&
-    args.current.permissionEscalation === args.next.permissionEscalation
-  );
-}
-
-export function classifyClaudeExecutionSettingsChange(
+export function classifyLiveExecutionSettingsChange(
   args: ClassifyProviderExecutionSettingsChangeArgs,
 ): ProviderExecutionSettingsChange {
-  if (!sameClaudeSessionSettings(args)) {
-    return "session";
-  }
-  return sameClaudeLiveSettings(args) ? "unchanged" : "live";
-}
-
-export function normalizeClaudeExecutionOptions(
-  options: AgentRuntimeExecutionOptions,
-): AgentRuntimeExecutionOptions {
-  if (options.serviceTier !== "fast") {
-    return options;
-  }
-  return { ...options, serviceTier: "default" };
+  if (!sameSessionConstructionSettings(args)) return "session";
+  return sameExecutionSettings({ left: args.current, right: args.next })
+    ? "unchanged"
+    : "live";
 }
 
 export function toProviderExecutionContext(
@@ -163,20 +96,13 @@ export function toProviderExecutionContext(
     model: args.execOpts.model,
     serviceTier: args.execOpts.serviceTier,
     reasoningLevel: args.execOpts.reasoningLevel,
-    ...(args.execOpts.claudeCodePermissionMode !== undefined
-      ? { claudeCodePermissionMode: args.execOpts.claudeCodePermissionMode }
-      : {}),
-    claudeCodeMockCliTraffic:
-      args.execOpts.claudeCodeMockCliTraffic ??
-      DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+    providerOptions: args.execOpts.providerOptions,
+    planModeEnabled: args.execOpts.planModeEnabled,
     workflowsEnabled: args.execOpts.workflowsEnabled,
     memoryEnabled: args.execOpts.memoryEnabled,
     providerSubagentsEnabled: args.execOpts.providerSubagentsEnabled,
     ...permissionPolicy,
     instructions: args.instructions,
     envVars: args.envVars,
-    ...(args.skillRoots && args.skillRoots.length > 0
-      ? { skillRoots: args.skillRoots }
-      : {}),
   };
 }

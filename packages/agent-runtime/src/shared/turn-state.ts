@@ -8,7 +8,7 @@ import {
   getOrCreateScopedItemId,
   resolveCompletedScopedItemId,
 } from "./scoped-item-ids.js";
-import { UNSTAMPED_THREAD_ID } from "./unstamped-thread-id.js";
+import { UNSTAMPED_THREAD_ID } from "@bb/provider-driver-helpers/unstamped-thread-id";
 
 const DEFAULT_PROVIDER_TURN_STATE_MAX_ENTRIES = 256;
 const DEFAULT_PROVIDER_TURN_ID_PREFIX = "turn-";

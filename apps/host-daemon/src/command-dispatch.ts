@@ -630,9 +630,6 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     return options.listModels({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       ...(command.providerDriver !== undefined
         ? { providerDriver: command.providerDriver }
         : {}),

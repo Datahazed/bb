@@ -16,13 +16,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
-  AgentRuntimeAcpSkillRoot,
-  AgentRuntimeClaudeCodeSkillRoot,
-  AgentRuntimeCodexSkillRoot,
-  AgentRuntimePiSkillRoot,
-  AgentRuntimeSkillRoot,
-} from "@bb/agent-runtime";
-import type {
   HostDaemonInjectedSkillSource,
   HostDaemonSkillTree,
 } from "@bb/host-daemon-contract";
@@ -62,30 +55,6 @@ afterEach(async () => {
     tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );
 });
-
-function isCodexSkillRoot(
-  root: AgentRuntimeSkillRoot,
-): root is AgentRuntimeCodexSkillRoot {
-  return root.providerId === "codex";
-}
-
-function isClaudeCodeSkillRoot(
-  root: AgentRuntimeSkillRoot,
-): root is AgentRuntimeClaudeCodeSkillRoot {
-  return root.providerId === "claude-code";
-}
-
-function isPiSkillRoot(
-  root: AgentRuntimeSkillRoot,
-): root is AgentRuntimePiSkillRoot {
-  return root.providerId === "pi";
-}
-
-function isAcpSkillRoot(
-  root: AgentRuntimeSkillRoot,
-): root is AgentRuntimeAcpSkillRoot {
-  return root.providerId === "acp";
-}
 
 async function writeSkill(args: WriteSkillArgs): Promise<string> {
   const skillRootPath = path.join(args.rootPath, args.name);
@@ -206,12 +175,13 @@ describe("injected skill staging", () => {
       injectedSkillSources: [source],
     });
 
-    const codexRoot = first.skillRoots.find(isCodexSkillRoot);
-    if (!codexRoot) {
-      throw new Error("Expected Codex skill root");
+    const skillSource = first.skillSources[0];
+    if (!skillSource) {
+      throw new Error("Expected staged skill source");
     }
     const stagedScript = path.join(
-      codexRoot.skillDirectoryRootPath,
+      skillSource.rootPath,
+      "skills",
       "synced-skill",
       "scripts",
       "run.sh",
@@ -317,7 +287,7 @@ describe("injected skill staging", () => {
           createTreeSource("unicode-paths", payload.treeHash),
         ],
       }),
-    ).resolves.toMatchObject({ skillRoots: expect.any(Array) });
+    ).resolves.toMatchObject({ skillSources: expect.any(Array) });
   });
 
   it("garbage-collects the least-recently-used trees beyond the store cap", async () => {
@@ -407,7 +377,7 @@ describe("injected skill staging", () => {
       resumeCollection();
 
       await expect(protectedStage).resolves.toMatchObject({
-        skillRoots: expect.any(Array),
+        skillSources: expect.any(Array),
       });
       await expect(lstat(protectedRoot)).resolves.toBeDefined();
     } finally {
@@ -435,51 +405,14 @@ describe("injected skill staging", () => {
       ],
     });
 
-    const codexRoot = staged.skillRoots.find(isCodexSkillRoot);
-    const claudeRoot = staged.skillRoots.find(isClaudeCodeSkillRoot);
-    const piRoot = staged.skillRoots.find(isPiSkillRoot);
-    const acpRoot = staged.skillRoots.find(isAcpSkillRoot);
-    expect(codexRoot).toEqual({
-      id: `global-skills:${staged.catalogHash}:codex`,
-      providerId: "codex",
-      skillDirectoryRootPath: path.join(
+    const skillSource = staged.skillSources[0];
+    expect(skillSource).toEqual({
+      id: `global-skills:${staged.catalogHash}`,
+      rootPath: path.join(
         dataDir,
         "runtime",
         "global-skills",
         staged.catalogHash,
-        "skills",
-      ),
-    });
-    expect(claudeRoot).toEqual({
-      id: `global-skills:${staged.catalogHash}:claude-code`,
-      providerId: "claude-code",
-      localPluginPath: path.join(
-        dataDir,
-        "runtime",
-        "global-skills",
-        staged.catalogHash,
-      ),
-    });
-    expect(piRoot).toEqual({
-      id: `global-skills:${staged.catalogHash}:pi`,
-      providerId: "pi",
-      skillDirectoryRootPath: path.join(
-        dataDir,
-        "runtime",
-        "global-skills",
-        staged.catalogHash,
-        "skills",
-      ),
-    });
-    expect(acpRoot).toEqual({
-      id: `global-skills:${staged.catalogHash}:acp`,
-      providerId: "acp",
-      skillDirectoryRootPath: path.join(
-        dataDir,
-        "runtime",
-        "global-skills",
-        staged.catalogHash,
-        "skills",
       ),
       skills: [
         {
@@ -489,24 +422,19 @@ describe("injected skill staging", () => {
       ],
     });
 
-    if (!claudeRoot) {
-      throw new Error("Expected Claude Code skill root");
+    if (!skillSource) {
+      throw new Error("Expected staged skill source");
     }
     await expect(
       readFile(
-        path.join(
-          claudeRoot.localPluginPath,
-          "skills",
-          "release-notes",
-          "SKILL.md",
-        ),
+        path.join(skillSource.rootPath, "skills", "release-notes", "SKILL.md"),
         "utf8",
       ),
     ).resolves.toContain("name: release-notes");
     await expect(
       readFile(
         path.join(
-          claudeRoot.localPluginPath,
+          skillSource.rootPath,
           "skills",
           "release-notes",
           "references",
@@ -516,14 +444,8 @@ describe("injected skill staging", () => {
       ),
     ).resolves.toBe("supporting notes\n");
     await expect(
-      readFile(
-        path.join(claudeRoot.localPluginPath, ".claude-plugin", "plugin.json"),
-        "utf8",
-      ).then((content) => JSON.parse(content)),
-    ).resolves.toMatchObject({
-      name: "bb-global-skills",
-      skills: ["./skills/release-notes"],
-    });
+      access(path.join(skillSource.rootPath, ".claude-plugin")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("stages workspace-path skill sources into the shared catalog", async () => {
@@ -548,23 +470,14 @@ describe("injected skill staging", () => {
       ],
     });
 
-    const claudeRoot = staged.skillRoots.find(isClaudeCodeSkillRoot);
-    if (!claudeRoot) {
-      throw new Error("Expected Claude Code skill root");
+    const skillSource = staged.skillSources[0];
+    if (!skillSource) {
+      throw new Error("Expected staged skill source");
     }
     await expect(
-      readFile(
-        path.join(claudeRoot.localPluginPath, ".claude-plugin", "plugin.json"),
-        "utf8",
-      ).then((content) => JSON.parse(content)),
-    ).resolves.toMatchObject({
-      skills: ["./skills/workflow-help"],
-    });
-    await expect(
-      readFile(
-        path.join(claudeRoot.localPluginPath, "catalog.json"),
-        "utf8",
-      ).then((content) => JSON.parse(content)),
+      readFile(path.join(skillSource.rootPath, "catalog.json"), "utf8").then(
+        (content) => JSON.parse(content),
+      ),
     ).resolves.toMatchObject({
       catalogHash: staged.catalogHash,
       skills: [
@@ -599,17 +512,12 @@ describe("injected skill staging", () => {
       ],
     });
 
-    expect(staged.skillRoots.map((root) => root.providerId)).toEqual([
-      "codex",
-      "claude-code",
-      "pi",
-      "acp",
-    ]);
-    const piRoot = staged.skillRoots.find(isPiSkillRoot);
-    if (!piRoot) throw new Error("Expected Pi skill root");
+    expect(staged.skillSources).toHaveLength(1);
+    const skillSource = staged.skillSources[0];
+    if (!skillSource) throw new Error("Expected staged skill source");
     await expect(
       readFile(
-        path.join(piRoot.skillDirectoryRootPath, "shared-review", "SKILL.md"),
+        path.join(skillSource.rootPath, "skills", "shared-review", "SKILL.md"),
         "utf8",
       ),
     ).resolves.toContain("name: shared-review");
@@ -684,15 +592,8 @@ describe("injected skill staging", () => {
         throw new Error("Expected staged skill catalogs");
       }
       for (const entry of staged) {
-        const codexRoot = entry.skillRoots.find(isCodexSkillRoot);
-        expect(codexRoot?.skillDirectoryRootPath).toBe(
-          path.join(
-            dataDir,
-            "runtime",
-            "global-skills",
-            entry.catalogHash,
-            "skills",
-          ),
+        expect(entry.skillSources[0]?.rootPath).toBe(
+          path.join(dataDir, "runtime", "global-skills", entry.catalogHash),
         );
       }
       await expect(
@@ -745,7 +646,7 @@ describe("injected skill staging", () => {
       },
     });
 
-    expect(staged.skillRoots).toEqual([]);
+    expect(staged.skillSources).toEqual([]);
     expect(warnings).toEqual([
       expect.objectContaining({
         message: "Skipping injected skill during staging",

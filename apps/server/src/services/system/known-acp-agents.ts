@@ -1,8 +1,8 @@
 import { buildAcpProviderInfo } from "@bb/agent-providers";
 import type { ProviderInfo } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import type { AcpLaunchConfig } from "bb-plugin-acp/launch-config";
 
-export interface KnownAcpAgent extends HostDaemonAcpLaunchSpec {
+export interface KnownAcpAgent extends AcpLaunchConfig {
   id: string;
   executableName: string;
 }

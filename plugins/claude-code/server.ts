@@ -1,37 +1,26 @@
+import {
+  getBuiltInAgentProviderInfo,
+  getBuiltInAgentProviderServerCapabilities,
+  supportsManualCompaction,
+} from "@bb/agent-providers";
 import type { BbPluginApi } from "@bb/plugin-sdk";
 
 export default function claudeCodeProviderPlugin(bb: BbPluginApi): void {
+  const providerId = "claude-code";
+  const info = getBuiltInAgentProviderInfo(providerId);
+  const serverCapabilities =
+    getBuiltInAgentProviderServerCapabilities(providerId);
   bb.experimental_providers.register({
     id: "default",
-    displayName: "Claude Code",
+    displayName: info.displayName,
     description: "Anthropic Claude Code coding agent.",
-    capabilities: {
-      supportsArchive: false,
-      supportsRename: false,
-      supportsServiceTier: false,
-      supportsUserQuestion: true,
-      supportsFork: true,
-      supportedPermissionModes: ["accept-edits", "auto", "full"],
-    },
-    composerActions: [
-      { kind: "skills", trigger: "/" },
-      {
-        kind: "plan",
-        command: { trigger: "/", name: "plan", trailingText: " " },
-      },
-    ],
-    reasoningLevels: [
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "ultracode",
-      "max",
-    ],
+    capabilities: info.capabilities,
+    composerActions: info.composerActions,
+    reasoningLevels: [...serverCapabilities.reasoningLevels],
     productCapabilities: {
-      supportsWorkflows: true,
-      supportsExecutionOverride: true,
-      supportsManualCompaction: true,
+      supportsWorkflows: serverCapabilities.supportsWorkflows,
+      supportsExecutionOverride: serverCapabilities.supportsExecutionOverride,
+      supportsManualCompaction: supportsManualCompaction(providerId),
     },
     execution: {
       kind: "host-driver",

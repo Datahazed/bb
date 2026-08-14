@@ -32,48 +32,10 @@ import {
   hostDaemonSessionOpenRequestSchema,
   hostDaemonSessionOpenResponseSchema,
   hostDaemonTerminalOutputChunkSchema,
-  normalizeHostDaemonAcpLaunchSpec,
-  type HostDaemonAcpLaunchSpec,
   type HostDaemonSettledCommandType,
 } from "../src/index.js";
 
 const CLIENT_REQUEST_ID = "creq_23456789ab";
-const ACP_LAUNCH_SPEC: HostDaemonAcpLaunchSpec = {
-  displayName: "Local ACP",
-  command: "local-acp",
-  args: ["serve"],
-  env: {
-    LOCAL_ACP_MODE: "test",
-  },
-  cwd: "/tmp/local-acp",
-  modelCli: {
-    listArgs: ["models", "list"],
-    selectFlag: "--model",
-    primaryModels: ["local-default"],
-  },
-  reasoningCli: {
-    flag: "--reasoning-effort",
-    supportedLevels: ["low", "medium", "high"],
-    levelValues: {
-      max: "high",
-    },
-    defaultLevel: "high",
-  },
-  nativeReasoning: {
-    configId: "reasoning_effort",
-    supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
-    defaultLevel: "medium",
-  },
-  nativeSkillRoots: {
-    user: [".agents/skills"],
-    project: [".agents/skills"],
-  },
-  permissionCli: {
-    full: ["--always-approve"],
-    insertAfterArgs: 1,
-  },
-};
-
 type OnlineRpcResponseResultFixtures = Record<
   HostDaemonOnlineRpcCommandType,
   JsonObject
@@ -694,40 +656,8 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
-  "hostDaemonCommandSchema.acpLaunchSpec":
-    "thread.start and turn.submit include an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
   "hostDaemonCommandSchema.providerDriver":
     "provider commands include an immutable artifact launch spec only when they execute a provider; unrelated commands omit it.",
-  "hostDaemonCommandSchema.acpLaunchSpec.cwd":
-    "dynamic ACP launch specs may omit cwd so the daemon uses the thread workspace cwd.",
-  "hostDaemonCommandSchema.acpLaunchSpec.modelCli":
-    "dynamic ACP agents may omit modelCli so ACP uses the shared default-model sentinel path.",
-  "hostDaemonCommandSchema.acpLaunchSpec.modelCli.selectFlag":
-    "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
-  "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli":
-    "dynamic ACP agents may omit reasoningCli when reasoning is protocol-native, encoded in model ids, or agent-managed.",
-  "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli.defaultLevel":
-    "ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli.levelValues":
-    "ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
-  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning":
-    "dynamic ACP agents may omit nativeReasoning when they advertise thought_level themselves or do not support bb-managed ACP reasoning.",
-  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.defaultLevel":
-    "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
-    "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
-  "hostDaemonCommandSchema.acpLaunchSpec.nativeSkillRoots":
-    "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skills.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli":
-    "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.full":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.workspaceWrite":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.readonly":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
-    "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonCommandSchema.targetPath":
@@ -738,42 +668,10 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "host.write_file may omit mode to preserve existing permissions; when present it only controls newly created files.",
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
-    "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
   "hostDaemonOnlineRpcCommandSchema.providerDriver":
     "provider.list_models may omit an artifact only for contract-level compatibility tests; production providers resolve through registered host drivers.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
-    "dynamic ACP launch specs may omit cwd so the daemon uses the caller's workspace cwd.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli":
-    "dynamic ACP agents may omit modelCli so ACP uses the shared default-model sentinel path.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli.selectFlag":
-    "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli":
-    "dynamic ACP agents may omit reasoningCli when reasoning is protocol-native, encoded in model ids, or agent-managed.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli.defaultLevel":
-    "ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli.levelValues":
-    "ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning":
-    "dynamic ACP agents may omit nativeReasoning when they advertise thought_level themselves or do not support bb-managed ACP reasoning.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.defaultLevel":
-    "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
-    "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeSkillRoots":
-    "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skills.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli":
-    "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.full":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.workspaceWrite":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.readonly":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
-    "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonOnlineRpcCommandSchema.query":
     "host.list_files may omit a search string to list files without filtering.",
   "hostDaemonOnlineRpcCommandSchema.path":
@@ -794,50 +692,14 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
   "hostDaemonCommandSchema.disallowedTools":
     "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
-  "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
-    "thread runtime options may omit mock CLI traffic settings unless the server explicitly enables Claude traffic replay.",
-  "hostDaemonCommandSchema.options.claudeCodePermissionMode":
-    "thread runtime options may omit the Claude Code native permission override unless a provider command requests plan mode.",
   "hostDaemonCommandSchema.options.memoryEnabled":
     "legacy runtime commands may omit provider memory policy; current servers always send the persisted provider preference.",
   "hostDaemonCommandSchema.options.providerSubagentsEnabled":
     "legacy runtime commands may omit provider subagent policy; current servers always send the persisted provider preference.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec":
-    "turn.submit resume context carries an ACP launch spec only for dynamic ACP providers that may need lazy resume.",
   "hostDaemonCommandSchema.resumeContext.providerDriver":
     "turn resume carries an immutable artifact launch spec only for a plugin-contributed provider that may need lazy cross-process resume.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.cwd":
-    "resume-context ACP launch specs may omit cwd so the daemon uses the resumed thread workspace cwd.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.modelCli":
-    "resume-context ACP launch specs may omit modelCli so ACP uses the shared default-model sentinel path.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.modelCli.selectFlag":
-    "resume-context ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli":
-    "resume-context ACP launch specs may omit reasoningCli when reasoning is protocol-native, encoded in model ids, or agent-managed.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli.defaultLevel":
-    "resume-context ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli.levelValues":
-    "resume-context ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning":
-    "resume-context ACP launch specs may omit nativeReasoning when the agent advertises thought_level itself or does not support bb-managed ACP reasoning.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.defaultLevel":
-    "resume-context ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.levelValues":
-    "resume-context ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeSkillRoots":
-    "resume-context ACP launch specs may omit nativeSkillRoots when the agent does not expose provider-native skills.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli":
-    "resume-context ACP launch specs may omit permissionCli when the agent's prompt policy does not need launch-time permission flags.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.full":
-    "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.workspaceWrite":
-    "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.readonly":
-    "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.insertAfterArgs":
-    "resume-context ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
 };
 
 describe("host-daemon local schemas", () => {
@@ -1074,12 +936,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 110 identifies the provider identity expected from each driver
-  // artifact, allowing one ACP driver to serve dynamic provider ids. Version
-  // 109 introduced immutable plugin provider-driver launch descriptors and
-  // remains part of the protocol lineage.
-  it("uses protocol version 110 for explicit driver provider identity", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(110);
+  // Version 111 carries all provider configuration inside the generic driver
+  // launch descriptor and declares whether execution changes apply live.
+  it("uses protocol version 111 for generic driver configuration", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(111);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
@@ -1125,39 +985,6 @@ describe("host-daemon command schemas", () => {
       usedPercent: 10,
       resetsAt: null,
       cost: { usedUsdCents: 500, limitUsdCents: 5_000 },
-    });
-  });
-
-  it("normalizes ACP launch specs at the contract boundary", () => {
-    expect(
-      normalizeHostDaemonAcpLaunchSpec({
-        displayName: "Custom ACP",
-        command: "custom-agent",
-        args: [],
-        env: {},
-        modelCli: {
-          listArgs: [],
-          selectFlag: "--model",
-          primaryModels: ["model-a"],
-        },
-        reasoningCli: {
-          flag: "--reasoning-effort",
-          supportedLevels: ["low", "medium", "high"],
-          levelValues: { max: "high" },
-          defaultLevel: "high",
-        },
-      }),
-    ).toEqual({
-      displayName: "Custom ACP",
-      command: "custom-agent",
-      args: [],
-      env: {},
-      reasoningCli: {
-        flag: "--reasoning-effort",
-        supportedLevels: ["low", "medium", "high"],
-        levelValues: { max: "high" },
-        defaultLevel: "high",
-      },
     });
   });
 
@@ -1784,6 +1611,8 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1809,6 +1638,8 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1867,6 +1698,8 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1936,6 +1769,8 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default" as const,
           reasoningLevel: "medium" as const,
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode,
           permissionScope,
@@ -1988,6 +1823,8 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -2045,6 +1882,8 @@ describe("host-daemon command schemas", () => {
         model: "gpt-5",
         serviceTier: "default",
         reasoningLevel: "medium",
+        providerOptions: {},
+        planModeEnabled: false,
         workflowsEnabled: false,
         permissionMode: "full",
         permissionScope: "full",
@@ -2079,6 +1918,8 @@ describe("host-daemon command schemas", () => {
         model: "gpt-5",
         serviceTier: "default",
         reasoningLevel: "medium",
+        providerOptions: {},
+        planModeEnabled: false,
         workflowsEnabled: false,
         permissionMode: "full",
         permissionScope: "full",
@@ -2105,11 +1946,44 @@ describe("host-daemon command schemas", () => {
     );
   });
 
-  it("round-trips dynamic ACP launch specs on provider.list_models, thread.start, and turn.submit", () => {
+  it("round-trips dynamic provider config inside the generic driver launch", () => {
+    const providerDriver = {
+      artifact: {
+        digest: "a".repeat(64),
+        meta: {
+          artifactFormatVersion: 2,
+          pluginId: "acp",
+          pluginVersion: "0.1.0",
+          driverId: "acp",
+          providerDriverProtocolVersion: 6,
+          runtime: "node22",
+          entrypoint: "driver.ts",
+          builtWith: { bbVersion: "test" },
+        },
+      },
+      driverProviderId: "acp",
+      displayName: "Local ACP",
+      capabilities: {
+        supportsArchive: false,
+        supportsRename: false,
+        supportsServiceTier: true,
+        supportsUserQuestion: false,
+        supportsFork: false,
+        supportedPermissionModes: ["accept-edits", "full"],
+      },
+      supportsLiveExecutionChanges: false,
+      config: {
+        displayName: "Local ACP",
+        command: "local-acp",
+        args: ["serve"],
+        env: { LOCAL_ACP_MODE: "test" },
+      },
+      process: { scope: "environment", multiplexSessions: true },
+    };
     const providerListModelsCommand = {
       type: "provider.list_models",
       providerId: "acp-local",
-      acpLaunchSpec: ACP_LAUNCH_SPEC,
+      providerDriver,
       cwd: "/tmp/workspace",
     };
     const providerListModelsRoundTrip = JSON.parse(
@@ -2141,13 +2015,15 @@ describe("host-daemon command schemas", () => {
       },
       projectId: "proj_123",
       providerId: "acp-local",
-      acpLaunchSpec: ACP_LAUNCH_SPEC,
+      providerDriver,
       requestId: CLIENT_REQUEST_ID,
       input: [{ type: "text", text: "hello", mentions: [] }],
       options: {
         model: "acp-default",
         serviceTier: "default",
         reasoningLevel: "medium",
+        providerOptions: {},
+        planModeEnabled: false,
         workflowsEnabled: false,
         permissionMode: "full",
         permissionScope: "full",
@@ -2175,13 +2051,14 @@ describe("host-daemon command schemas", () => {
         model: "acp-default",
         serviceTier: "default",
         reasoningLevel: "medium",
+        providerOptions: {},
+        planModeEnabled: false,
         workflowsEnabled: false,
         permissionMode: "full",
         permissionScope: "full",
         approvalReviewer: null,
         permissionEscalation: null,
       },
-      acpLaunchSpec: ACP_LAUNCH_SPEC,
       resumeContext: {
         workspaceContext: {
           workspacePath: "/tmp/workspace",
@@ -2189,8 +2066,8 @@ describe("host-daemon command schemas", () => {
         },
         projectId: "proj_123",
         providerId: "acp-local",
+        providerDriver,
         providerThreadId: "provider_123",
-        acpLaunchSpec: ACP_LAUNCH_SPEC,
         instructions: "Be a helpful thread.",
         dynamicTools: [],
         injectedSkillSources: [],
@@ -2296,6 +2173,8 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -2340,6 +2219,8 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -2377,6 +2258,8 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -2414,6 +2297,8 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -2445,6 +2330,8 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -2470,6 +2357,8 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",

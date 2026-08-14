@@ -30,6 +30,8 @@
     "@bb/templates": "workspace:*",
     "@bb/thread-view": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",
+    "bb-plugin-acp": "workspace:*",
+    "bb-plugin-claude-code": "workspace:*",
     "@better-auth/api-key": "^1.6.23",
     "@better-auth/drizzle-adapter": "^1.6.23",
     "@earendil-works/pi-ai": "0.84.0",

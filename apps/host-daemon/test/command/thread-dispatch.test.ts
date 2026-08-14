@@ -3,7 +3,6 @@ import path from "node:path";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import { createReadyProviderInspection } from "@bb/agent-runtime/test";
 import type {
-  HostDaemonAcpLaunchSpec,
   HostDaemonCommand,
   HostDaemonProviderDriverLaunchSpec,
 } from "@bb/host-daemon-contract";
@@ -41,15 +40,6 @@ function textPromptInput(text: string): TextPromptInput {
   return { type: "text", text, mentions: [] };
 }
 
-function customAcpLaunchSpec(): HostDaemonAcpLaunchSpec {
-  return {
-    displayName: "Custom ACP",
-    command: "custom-agent",
-    args: ["serve"],
-    env: { CUSTOM_AGENT_TOKEN: "token" },
-  };
-}
-
 function nextClientRequestId(): ClientTurnRequestId {
   const requestId = encodeClientTurnRequestIdNumber({
     value: nextClientRequestIdValue,
@@ -82,6 +72,8 @@ describe("thread command dispatch", () => {
         model: "gpt-5",
         serviceTier: "default",
         reasoningLevel: "medium",
+        providerOptions: {},
+        planModeEnabled: false,
         workflowsEnabled: false,
         permissionMode: "full",
         permissionScope: "full",
@@ -136,6 +128,8 @@ describe("thread command dispatch", () => {
             model: "gpt-5",
             serviceTier: "default",
             reasoningLevel: "medium",
+            providerOptions: {},
+            planModeEnabled: false,
             workflowsEnabled: false,
             permissionMode: "full",
             permissionScope: "full",
@@ -206,6 +200,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -307,6 +303,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -401,6 +399,8 @@ describe("thread command dispatch", () => {
             model: "gpt-5",
             serviceTier: "default",
             reasoningLevel: "medium",
+            providerOptions: {},
+            planModeEnabled: false,
             workflowsEnabled: false,
             permissionMode: "full",
             permissionScope: "full",
@@ -460,6 +460,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -523,6 +525,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -584,6 +588,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -661,6 +667,8 @@ describe("thread command dispatch", () => {
             model: "gpt-5",
             serviceTier: "default",
             reasoningLevel: "medium",
+            providerOptions: {},
+            planModeEnabled: false,
             workflowsEnabled: false,
             permissionMode: "full",
             permissionScope: "full",
@@ -732,6 +740,8 @@ describe("thread command dispatch", () => {
             model: "gpt-5",
             serviceTier: "default",
             reasoningLevel: "medium",
+            providerOptions: {},
+            planModeEnabled: false,
             workflowsEnabled: false,
             permissionMode: "full",
             permissionScope: "full",
@@ -793,6 +803,8 @@ describe("thread command dispatch", () => {
             model: "gpt-5",
             serviceTier: "default",
             reasoningLevel: "medium",
+            providerOptions: {},
+            planModeEnabled: false,
             workflowsEnabled: false,
             permissionMode: "full",
             permissionScope: "full",
@@ -847,6 +859,8 @@ describe("thread command dispatch", () => {
             model: "gpt-5",
             serviceTier: "default",
             reasoningLevel: "medium",
+            providerOptions: {},
+            planModeEnabled: false,
             workflowsEnabled: false,
             permissionMode: "full",
             permissionScope: "full",
@@ -906,6 +920,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1008,6 +1024,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1104,6 +1122,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1147,6 +1167,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1235,6 +1257,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1269,6 +1293,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1326,6 +1352,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1364,6 +1392,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1418,6 +1448,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1482,6 +1514,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1540,6 +1574,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1592,6 +1628,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1624,20 +1662,20 @@ describe("thread command dispatch", () => {
 
   it("lazily resumes a missing thread runtime before turn.submit", async () => {
     const harness = createHarness({ workspacePath: "/tmp/env-lazy" });
-    const acpLaunchSpec = customAcpLaunchSpec();
 
     const result = await dispatchCommand(
       {
         type: "turn.submit",
         environmentId: "env-lazy",
         threadId: "thread-1",
-        acpLaunchSpec,
         requestId: nextClientRequestId(),
         input: [textPromptInput("hello")],
         options: {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1651,7 +1689,6 @@ describe("thread command dispatch", () => {
           },
           projectId: "project-1",
           providerId: "fake",
-          acpLaunchSpec,
           providerThreadId: "provider-1",
           instructions: "Be a helpful coding agent.",
           dynamicTools: [],
@@ -1672,7 +1709,6 @@ describe("thread command dispatch", () => {
       }),
     ]);
     expect(harness.runtimeState.resumedEnvironmentId).toBe("env-lazy");
-    expect(harness.runtimeState.resumedAcpLaunchSpec).toBe(acpLaunchSpec);
     expect(harness.runtimeState.resumedProviderThreadId).toBe("provider-1");
     expect(harness.runtimeState.ranTurnText).toBe("hello");
   });
@@ -1733,6 +1769,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1767,11 +1805,9 @@ describe("thread command dispatch", () => {
 
   it("covers provider.list_models", async () => {
     const harness = createHarness();
-    const acpLaunchSpec = customAcpLaunchSpec();
     let capturedListModelsArgs:
       | {
           providerId: string;
-          acpLaunchSpec?: HostDaemonAcpLaunchSpec;
           providerDriver?: HostDaemonProviderDriverLaunchSpec;
           cwd?: string;
         }
@@ -1787,7 +1823,6 @@ describe("thread command dispatch", () => {
       {
         type: "provider.list_models",
         providerId: "fake",
-        acpLaunchSpec,
         cwd: "/tmp/worktree",
       },
       {
@@ -1825,7 +1860,6 @@ describe("thread command dispatch", () => {
 
     expect(capturedListModelsArgs).toEqual({
       providerId: "fake",
-      acpLaunchSpec,
       cwd: "/tmp/worktree",
     });
     expect(result).toEqual({
@@ -1858,7 +1892,6 @@ describe("thread command dispatch", () => {
   it("uses the server-provided thread runtime config", async () => {
     const threadStorage = await makeTempDir("bb-thread-runtime-");
     const harness = createHarness({ workspacePath: threadStorage });
-    const acpLaunchSpec = customAcpLaunchSpec();
     const threadInstructions = [
       "You are a thread in a project inside bb.",
       "Prefer concise user updates.",
@@ -1878,13 +1911,14 @@ describe("thread command dispatch", () => {
         },
         projectId: "project-1",
         providerId: "fake",
-        acpLaunchSpec,
         requestId: nextClientRequestId(),
         input: [textPromptInput("hello")],
         options: {
           model: "claude-opus-4-7",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1918,7 +1952,6 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.startedDynamicTools).toEqual([
       expect.objectContaining({ name: "notify_user" }),
     ]);
-    expect(harness.runtimeState.startedAcpLaunchSpec).toBe(acpLaunchSpec);
     expect(harness.runtimeState.startedInstructions).toBe(threadInstructions);
   });
 
@@ -1944,6 +1977,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -1983,6 +2018,8 @@ describe("thread command dispatch", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
+          providerOptions: {},
+          planModeEnabled: false,
           workflowsEnabled: false,
           permissionMode: "full",
           permissionScope: "full",
@@ -2022,6 +2059,8 @@ describe("thread command dispatch", () => {
             model: "gpt-5",
             serviceTier: "default",
             reasoningLevel: "medium",
+            providerOptions: {},
+            planModeEnabled: false,
             workflowsEnabled: false,
             permissionMode: "full",
             permissionScope: "full",

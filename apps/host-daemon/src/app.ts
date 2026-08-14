@@ -554,6 +554,7 @@ export async function createHostDaemonApp(
         processCapabilities: {
           multiplexSessions: spec.process.multiplexSessions,
         },
+        supportsLiveExecutionChanges: spec.supportsLiveExecutionChanges,
         release: lease.release,
       };
     },

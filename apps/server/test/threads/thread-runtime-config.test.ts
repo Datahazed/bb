@@ -40,6 +40,10 @@ import {
   type HostRpcResponder,
 } from "../helpers/host-rpc.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
+import {
+  useTestAcpProviderDriver,
+  useTestClaudeCodeProviderDriver,
+} from "../helpers/provider-driver.js";
 import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -174,6 +178,7 @@ describe("thread runtime config", () => {
         ],
       },
       async (harness) => {
+        useTestAcpProviderDriver();
         const { host } = seedHostSession(harness.deps, {
           id: "host-runtime-custom-acp",
         });
@@ -227,7 +232,7 @@ describe("thread runtime config", () => {
           syncGeneratedTitle: false,
           thread,
         });
-        expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+        expect(startCommand.providerDriver?.config).toEqual(expectedSpec);
         expect(startCommand.dynamicTools).toEqual([
           expect.objectContaining({
             name: "update_environment_directory",
@@ -248,8 +253,10 @@ describe("thread runtime config", () => {
             thread,
           },
         );
-        expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
-        expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
+        expect(submitCommand.providerDriver?.config).toEqual(expectedSpec);
+        expect(submitCommand.resumeContext.providerDriver?.config).toEqual(
+          expectedSpec,
+        );
         expect(submitCommand.resumeContext.dynamicTools).toEqual([
           expect.objectContaining({
             name: "update_environment_directory",
@@ -322,6 +329,7 @@ describe("thread runtime config", () => {
     "attaches known ACP launch specs for $providerId to thread start and turn submit commands",
     async ({ expectedSpec, providerId, requestedModel }) => {
       await withTestHarness(async (harness) => {
+        useTestAcpProviderDriver();
         const { host } = seedHostSession(harness.deps, {
           id: `host-runtime-known-${providerId}`,
         });
@@ -363,7 +371,7 @@ describe("thread runtime config", () => {
           syncGeneratedTitle: false,
           thread,
         });
-        expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+        expect(startCommand.providerDriver?.config).toEqual(expectedSpec);
         expect(startCommand.dynamicTools).toEqual([
           expect.objectContaining({
             name: "update_environment_directory",
@@ -384,8 +392,10 @@ describe("thread runtime config", () => {
             thread,
           },
         );
-        expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
-        expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
+        expect(submitCommand.providerDriver?.config).toEqual(expectedSpec);
+        expect(submitCommand.resumeContext.providerDriver?.config).toEqual(
+          expectedSpec,
+        );
         expect(submitCommand.resumeContext.dynamicTools).toEqual([
           expect.objectContaining({
             name: "update_environment_directory",
@@ -814,6 +824,7 @@ describe("thread runtime config", () => {
 
   it("gates Claude Code mock CLI traffic on its experiment with the fixed endpoint", async () => {
     await withTestHarness(async (harness) => {
+      useTestClaudeCodeProviderDriver();
       const { host } = seedHostSession(harness.deps, {
         id: "host-runtime-mock-cli-traffic-experiment",
       });
@@ -827,12 +838,12 @@ describe("thread runtime config", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        providerId: "codex",
+        providerId: "claude-code",
       });
       const execution = await resolveExecutionOptions(harness.deps, {
         threadId: thread.id,
         requestedExecution: {
-          model: "gpt-5",
+          model: "claude-sonnet-4-6",
           source: "client/turn/requested",
         },
       });
@@ -844,13 +855,15 @@ describe("thread runtime config", () => {
           permissionEscalation: "ask",
           input: textInput("hello"),
           projectId: project.id,
-          providerId: "codex",
+          providerId: "claude-code",
           requestId: encodeClientTurnRequestIdNumber({ value: requestValue }),
           syncGeneratedTitle: false,
           thread,
         });
 
-      expect((await buildCommand(1)).options.claudeCodeMockCliTraffic).toEqual({
+      expect(
+        (await buildCommand(1)).providerDriver?.config.mockCliTraffic,
+      ).toEqual({
         enabled: false,
         endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
       });
@@ -862,7 +875,9 @@ describe("thread runtime config", () => {
         toolsHub: false,
       });
 
-      expect((await buildCommand(2)).options.claudeCodeMockCliTraffic).toEqual({
+      expect(
+        (await buildCommand(2)).providerDriver?.config.mockCliTraffic,
+      ).toEqual({
         enabled: true,
         endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
       });
@@ -1035,7 +1050,7 @@ describe("thread runtime config", () => {
       });
 
       expect(command.input).toEqual(input);
-      expect(command.options.claudeCodePermissionMode).toBe("plan");
+      expect(command.options.planModeEnabled).toBe(true);
     });
   });
 

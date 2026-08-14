@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { createAgentRuntimeWithCanonicalProviderDriverFactory } from "./runtime.js";
-import { builtinProviderDriverTestFactory } from "./test/builtin-provider-driver-factory.js";
+import {
+  builtinProviderDriverTestFactory,
+  builtinProviderProcessScope,
+} from "./test/builtin-provider-driver-factory.js";
 
 describe("AgentRuntime Pi canonical driver", () => {
   const directories: string[] = [];
@@ -28,6 +31,7 @@ describe("AgentRuntime Pi canonical driver", () => {
         onToolCall: async () => ({ success: true, contentItems: [] }),
       },
       builtinProviderDriverTestFactory,
+      builtinProviderProcessScope,
     );
 
     const models = await runtime.listModels({

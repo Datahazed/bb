@@ -22,10 +22,8 @@ function execution() {
     permissionScope: "full" as const,
     approvalReviewer: null,
     permissionEscalation: null,
-    claudeCodeMockCliTraffic: {
-      enabled: false,
-      endpoint: "http://127.0.0.1:1",
-    },
+    providerOptions: {},
+    planModeEnabled: false,
     workflowsEnabled: false,
     memoryEnabled: false,
     providerSubagentsEnabled: false,
@@ -165,7 +163,7 @@ async function createConnection() {
   });
   await peer.initialize(
     providerDriverInitializeParamsSchema.parse({
-      supportedProtocolVersions: [5],
+      supportedProtocolVersions: [6],
       expected: {
         pluginId: "fake",
         driverId: "fake",
@@ -195,9 +193,9 @@ async function createConnection() {
   });
   await connection.initialize([
     {
-      id: "pi-skills",
-      providerId: "pi",
-      skillDirectoryRootPath: "/skills",
+      id: "test-skills",
+      rootPath: "/skill-package",
+      skills: [{ name: "review", description: "Review code" }],
     },
   ]);
   return {
@@ -238,7 +236,13 @@ describe("CanonicalProcessProviderConnection", () => {
         threadStoragePath: "/thread-storage/thread-1",
       },
       instructions: { mode: "append", text: "Test instructions" },
-      skillSources: [{ id: "pi-skills", rootPath: "/skills" }],
+      skillSources: [
+        {
+          id: "test-skills",
+          rootPath: "/skill-package",
+          skills: [{ name: "review", description: "Review code" }],
+        },
+      ],
       dynamicTools: [{ name: "test_tool" }],
       disallowedTools: ["dangerous"],
       shellEnvironment: { BB_THREAD_ID: "thread-1" },

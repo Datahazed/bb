@@ -584,6 +584,7 @@ async function smokePiUserConfiguration(packageDir) {
       features: {
         workflowsEnabled: false,
         memoryEnabled: false,
+        planModeEnabled: false,
         subagentsEnabled: true,
       },
       providerOptions: {},

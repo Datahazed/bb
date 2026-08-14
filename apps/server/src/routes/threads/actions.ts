@@ -589,9 +589,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         threadId: thread.id,
         options: preparedRuntimeCommand.options,
         resumeContext: preparedRuntimeCommand.resumeContext,
-        ...(preparedRuntimeCommand.acpLaunchSpec !== undefined
-          ? { acpLaunchSpec: preparedRuntimeCommand.acpLaunchSpec }
-          : {}),
       },
       hostId: environment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,

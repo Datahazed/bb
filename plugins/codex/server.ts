@@ -1,34 +1,26 @@
+import {
+  getBuiltInAgentProviderInfo,
+  getBuiltInAgentProviderServerCapabilities,
+  supportsManualCompaction,
+} from "@bb/agent-providers";
 import type { BbPluginApi } from "@bb/plugin-sdk";
 
 export default function codexProviderPlugin(bb: BbPluginApi): void {
+  const providerId = "codex";
+  const info = getBuiltInAgentProviderInfo(providerId);
+  const serverCapabilities =
+    getBuiltInAgentProviderServerCapabilities(providerId);
   bb.experimental_providers.register({
     id: "default",
-    displayName: "Codex",
+    displayName: info.displayName,
     description: "OpenAI Codex coding agent.",
-    capabilities: {
-      supportsArchive: true,
-      supportsRename: true,
-      supportsServiceTier: true,
-      supportsUserQuestion: false,
-      supportsFork: true,
-      supportedPermissionModes: ["accept-edits", "auto", "full"],
-    },
-    composerActions: [
-      { kind: "skills", trigger: "/" },
-      {
-        kind: "plan",
-        command: { trigger: "/", name: "plan", trailingText: " " },
-      },
-      {
-        kind: "goal",
-        command: { trigger: "/", name: "goal", trailingText: " " },
-      },
-    ],
-    reasoningLevels: ["low", "medium", "high", "xhigh", "max", "ultra"],
+    capabilities: info.capabilities,
+    composerActions: info.composerActions,
+    reasoningLevels: [...serverCapabilities.reasoningLevels],
     productCapabilities: {
-      supportsWorkflows: false,
-      supportsExecutionOverride: false,
-      supportsManualCompaction: true,
+      supportsWorkflows: serverCapabilities.supportsWorkflows,
+      supportsExecutionOverride: serverCapabilities.supportsExecutionOverride,
+      supportsManualCompaction: supportsManualCompaction(providerId),
     },
     execution: {
       kind: "host-driver",

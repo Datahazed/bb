@@ -9,7 +9,7 @@
  */
 
 import { z } from "zod";
-import { providerToolCallResponseSchema } from "./provider-tool-call-contract.js";
+import { providerToolCallResponseSchema } from "@bb/provider-driver-helpers/provider-tool-call-contract";
 
 // ---------------------------------------------------------------------------
 // Tool call request — bridge → host-daemon

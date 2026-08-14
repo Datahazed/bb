@@ -121,7 +121,7 @@ describe("fuzzyMatchPaths", () => {
     const paths = [
       "packages/db/test/query-plans.test.ts",
       "packages/workflow-runtime/src/playback.ts",
-      "packages/agent-runtime/src/codex/generated/codex-app-server/schema/v2/TurnPlanStep.ts",
+      "plugins/codex/src/generated/codex-app-server/schema/v2/TurnPlanStep.ts",
       "apps/server/src/services/threads/thread-execution-plan.ts",
       "plans/askuserquestion-option-preview.md",
       "plans/background-command-support.md",

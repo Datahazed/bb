@@ -1,4 +1,5 @@
 import {
+  PROVIDER_DRIVER_PROTOCOL_VERSION,
   providerDriverInitializeParamsSchema,
   providerDriverInitializeResultSchema,
   providerSessionOpenParamsSchema,
@@ -15,7 +16,7 @@ import {
 
 export function makeInitializeParams(): ProviderDriverInitializeParams {
   return providerDriverInitializeParamsSchema.parse({
-    supportedProtocolVersions: [5],
+    supportedProtocolVersions: [PROVIDER_DRIVER_PROTOCOL_VERSION],
     expected: {
       pluginId: "pi",
       driverId: "pi",
@@ -35,7 +36,7 @@ export function makeInitializeParams(): ProviderDriverInitializeParams {
 
 export function makeInitializeResult(): ProviderDriverInitializeResult {
   return providerDriverInitializeResultSchema.parse({
-    protocolVersion: 5,
+    protocolVersion: PROVIDER_DRIVER_PROTOCOL_VERSION,
     identity: {
       pluginId: "pi",
       driverId: "pi",
@@ -73,6 +74,7 @@ export function makeSessionOpenParams(
       features: {
         workflowsEnabled: false,
         memoryEnabled: false,
+        planModeEnabled: false,
         subagentsEnabled: true,
       },
       providerOptions: {},

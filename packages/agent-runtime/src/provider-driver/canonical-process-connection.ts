@@ -5,7 +5,6 @@ import {
   threadEventSchema,
   threadScope,
   turnScope,
-  type JsonObject,
   type ProviderCapabilities,
   type RuntimeThreadExecutionOptions,
   type ThreadEvent,
@@ -18,7 +17,7 @@ import {
   type ProviderDriverSkillSource,
   type ProviderSessionOpenParams,
 } from "@bb/provider-driver-contract";
-import type { AgentRuntimeSkillRoot } from "../types.js";
+import type { AgentRuntimeSkillSource } from "../types.js";
 import { buildAcceptedUserMessageEvent } from "../shared/accepted-user-messages.js";
 import { projectProviderDriverEvent } from "./canonical-event-projector.js";
 import type {
@@ -56,9 +55,6 @@ interface CanonicalAttachment {
 
 export interface CanonicalProcessProviderConnectionOptions {
   readonly additionalWorkspaceWriteRoots: readonly string[];
-  readonly buildProviderOptions?: (
-    execution: ProviderDriverTurnSubmitArgs["execution"],
-  ) => JsonObject;
   readonly capabilities: ProviderCapabilities;
   readonly classifyExecutionSettingsChange: ProviderDriverConnection["classifyExecutionSettingsChange"];
   readonly displayName: string;
@@ -91,25 +87,16 @@ function requiredExecutionValue<Value>(
   return value;
 }
 
-function skillRootPath(skillRoot: AgentRuntimeSkillRoot): string {
-  return skillRoot.providerId === "claude-code"
-    ? skillRoot.localPluginPath
-    : skillRoot.skillDirectoryRootPath;
-}
-
 function toSkillSource(
-  skillRoot: AgentRuntimeSkillRoot,
+  source: AgentRuntimeSkillSource,
 ): ProviderDriverSkillSource {
   return {
-    id: skillRoot.id,
-    rootPath: skillRootPath(skillRoot),
-    skills:
-      skillRoot.providerId === "acp"
-        ? skillRoot.skills.map((skill) => ({
-            name: skill.name,
-            description: skill.description,
-          }))
-        : [],
+    id: source.id,
+    rootPath: source.rootPath,
+    skills: source.skills.map((skill) => ({
+      name: skill.name,
+      description: skill.description,
+    })),
   };
 }
 
@@ -133,9 +120,6 @@ export class CanonicalProcessProviderConnection implements ProviderDriverConnect
     string,
     CanonicalAttachment
   >();
-  private readonly buildProviderOptions: (
-    execution: ProviderDriverTurnSubmitArgs["execution"],
-  ) => JsonObject;
   private readonly classifySettings: ProviderDriverConnection["classifyExecutionSettingsChange"];
   private readonly eventListeners = new Set<(events: ThreadEvent[]) => void>();
   private readonly normalizeOptions:
@@ -145,11 +129,10 @@ export class CanonicalProcessProviderConnection implements ProviderDriverConnect
     | undefined;
   private readonly processConnection: ProcessProviderDriverConnection;
   private readonly resolveThreadStoragePath: (bbThreadId: string) => string;
-  private skillRoots: readonly AgentRuntimeSkillRoot[] = [];
+  private skillSources: readonly AgentRuntimeSkillSource[] = [];
 
   constructor(options: CanonicalProcessProviderConnectionOptions) {
     this.additionalWorkspaceWriteRoots = options.additionalWorkspaceWriteRoots;
-    this.buildProviderOptions = options.buildProviderOptions ?? (() => ({}));
     this.capabilities = options.capabilities;
     this.classifySettings = options.classifyExecutionSettingsChange;
     this.identity = {
@@ -183,9 +166,9 @@ export class CanonicalProcessProviderConnection implements ProviderDriverConnect
   }
 
   async initialize(
-    skillRoots: readonly AgentRuntimeSkillRoot[],
+    skillSources: readonly AgentRuntimeSkillSource[],
   ): Promise<void> {
-    this.skillRoots = [...skillRoots];
+    this.skillSources = [...skillSources];
   }
 
   async inspectModels(args: { cwd?: string }) {
@@ -441,11 +424,10 @@ export class CanonicalProcessProviderConnection implements ProviderDriverConnect
       features: {
         workflowsEnabled: execution.workflowsEnabled,
         memoryEnabled: execution.memoryEnabled ?? false,
+        planModeEnabled: execution.planModeEnabled,
         subagentsEnabled: execution.providerSubagentsEnabled ?? false,
       },
-      providerOptions: jsonObjectSchema.parse(
-        this.buildProviderOptions(execution),
-      ),
+      providerOptions: jsonObjectSchema.parse(execution.providerOptions),
     };
   }
 
@@ -475,7 +457,7 @@ export class CanonicalProcessProviderConnection implements ProviderDriverConnect
         mode: args.instructionMode,
         text: args.execution.instructions ?? "",
       },
-      skillSources: this.skillRoots.map(toSkillSource),
+      skillSources: this.skillSources.map(toSkillSource),
       dynamicTools: (args.dynamicTools ?? []).map((tool) => ({
         name: tool.name,
         description: tool.description,

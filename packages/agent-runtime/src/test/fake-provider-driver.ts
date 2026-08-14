@@ -214,14 +214,20 @@ const driver = defineProviderDriver({
     providerId,
   },
   processCapabilities: { multiplexSessions: true },
-  initialize: (params) => {
+  initialize: async (params) => {
     failDiscardOnce = params.config.failDiscardOnce === true;
     sessionOpenLogPath =
       typeof params.config.sessionOpenLogPath === "string"
         ? params.config.sessionOpenLogPath
         : null;
-    if (typeof params.config.stderrText === "string") {
-      process.stderr.write(params.config.stderrText);
+    const stderrText = params.config.stderrText;
+    if (typeof stderrText === "string") {
+      await new Promise<void>((resolve, reject) => {
+        process.stderr.write(stderrText, "utf8", (error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
     }
     if (params.config.crashDuringInitialize === true) {
       process.kill(process.pid, "SIGKILL");

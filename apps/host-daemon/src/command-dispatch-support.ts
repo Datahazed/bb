@@ -2,7 +2,6 @@ import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
   HostDaemonCommand,
-  HostDaemonAcpLaunchSpec,
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
   HostDaemonProviderDriverLaunchSpec,
@@ -46,7 +45,6 @@ export interface CommandDispatchOptions {
   eventSink: EventSink;
   listModels?: (args: {
     providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     providerDriver?: HostDaemonProviderDriverLaunchSpec;
     cwd?: string;
   }) => Promise<{

@@ -12,6 +12,8 @@ export const fullRuntimeOptions = {
   model: "test-model",
   serviceTier: "default",
   reasoningLevel: "medium",
+  providerOptions: {},
+  planModeEnabled: false,
   workflowsEnabled: false,
   permissionMode: "full",
   permissionScope: "full",

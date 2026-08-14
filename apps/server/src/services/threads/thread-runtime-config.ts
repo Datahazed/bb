@@ -1,22 +1,25 @@
-import { getEnvironment, getHost, getProject } from "@bb/db";
-import type {
-  DynamicTool,
-  InstructionMode,
-  PermissionEscalation,
-  ProjectExecutionDefaults,
-  ResolvedThreadExecutionOptions,
-  Thread,
-  ThreadExecutionOptions,
-  ThreadExecutionSource,
-  ThreadTurnInitiator,
-  WorkspaceProvisionType,
-  EnvironmentStatus,
+import { getEnvironment, getExperiments, getHost, getProject } from "@bb/db";
+import {
+  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+  jsonObjectSchema,
+  type DynamicTool,
+  type InstructionMode,
+  type PermissionEscalation,
+  type ProjectExecutionDefaults,
+  type ResolvedThreadExecutionOptions,
+  type Thread,
+  type ThreadExecutionOptions,
+  type ThreadExecutionSource,
+  type ThreadTurnInitiator,
+  type WorkspaceProvisionType,
+  type EnvironmentStatus,
 } from "@bb/domain";
 import type {
   HostDaemonInjectedSkillSource,
   HostDaemonProviderDriverLaunchSpec,
 } from "@bb/host-daemon-contract";
 import { renderTemplate } from "@bb/templates";
+import { claudeCodeLaunchConfigSchema } from "bb-plugin-claude-code/launch-config";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
@@ -37,6 +40,7 @@ import { resolveWorkspaceProjectSkills } from "../skills/workspace-skills.js";
 import { resolveSharedSkills } from "../skills/shared-skills.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL } from "./thread-environment-directory.js";
 import { getRegisteredProviderDriverLaunchSpec } from "../providers/provider-registry.js";
+import { resolveAcpProviderConfigForProviderId } from "../system/acp-provider-config.js";
 import {
   DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH,
   WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH,
@@ -318,9 +322,29 @@ export async function resolveThreadRuntimeCommandConfig(
     hostId: args.environment.hostId,
     threadId: args.thread.id,
   });
-  const providerDriver = getRegisteredProviderDriverLaunchSpec(
+  const registeredProviderDriver = getRegisteredProviderDriverLaunchSpec(
     args.thread.providerId,
   );
+  const providerConfig =
+    resolveAcpProviderConfigForProviderId(deps, args.thread.providerId) ??
+    (args.thread.providerId === "claude-code"
+      ? claudeCodeLaunchConfigSchema.parse({
+          mockCliTraffic: {
+            enabled: getExperiments(deps.db).claudeCodeMockCliTraffic,
+            endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
+          },
+        })
+      : undefined);
+  const providerDriver =
+    registeredProviderDriver === undefined
+      ? undefined
+      : {
+          ...registeredProviderDriver,
+          config:
+            providerConfig === undefined
+              ? registeredProviderDriver.config
+              : jsonObjectSchema.parse(providerConfig),
+        };
   return {
     dynamicTools,
     injectedSkillSources,

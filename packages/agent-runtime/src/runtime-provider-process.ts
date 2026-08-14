@@ -3,7 +3,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { isAcpProviderId } from "@bb/agent-providers";
 import type {
   JsonObject,
   ProviderCapabilities,
@@ -11,10 +10,7 @@ import type {
   RuntimeThreadExecutionOptions,
   ThreadEvent,
 } from "@bb/domain";
-import type {
-  HostDaemonAcpLaunchSpec,
-  HostDaemonProviderDriverLaunchSpec,
-} from "@bb/host-daemon-contract";
+import type { HostDaemonProviderDriverLaunchSpec } from "@bb/host-daemon-contract";
 import {
   PROVIDER_DRIVER_PROTOCOL_VERSION,
   type ProviderDriverCapabilities,
@@ -23,11 +19,9 @@ import {
   type ProviderDriverHostToolCallParams,
   type ProviderDriverHostToolCallResult,
 } from "@bb/provider-driver-contract";
-import { filterSkillRootsForProvider } from "./runtime-skill-roots.js";
 import {
-  classifyClaudeExecutionSettingsChange,
+  classifyLiveExecutionSettingsChange,
   classifySessionExecutionSettingsChange,
-  normalizeClaudeExecutionOptions,
 } from "./execution-options.js";
 import type { ProviderDriverConnection } from "./provider-driver/connection.js";
 import { CanonicalProcessProviderConnection } from "./provider-driver/canonical-process-connection.js";
@@ -40,7 +34,7 @@ import type {
   AgentRuntimeOptions,
   AgentRuntimeProcessExitThreadState,
   AgentRuntimeResolvedProviderDriverLaunch,
-  AgentRuntimeSkillRoot,
+  AgentRuntimeSkillSource,
 } from "./types.js";
 
 export interface RuntimeProviderProcess {
@@ -80,6 +74,7 @@ export interface RuntimeCanonicalProviderDriverLaunchSpec {
   process: { command: string; args: string[]; env?: Record<string, string> };
   providerDataDir?: string;
   processCapabilities: { multiplexSessions: boolean };
+  supportsLiveExecutionChanges: boolean;
   release?: () => void;
   normalizeExecutionOptions?: (
     options: RuntimeThreadExecutionOptions,
@@ -117,12 +112,11 @@ export interface RuntimeProviderProcessManagerArgs {
   onStderr: AgentRuntimeOptions["onStderr"];
   resolveProviderDriverLaunch?: AgentRuntimeOptions["resolveProviderDriverLaunch"];
   resolveThreadStoragePath: (threadId: string) => string;
-  skillRoots: readonly AgentRuntimeSkillRoot[];
+  skillSources: readonly AgentRuntimeSkillSource[];
   workspacePath: string;
 }
 
 export interface EnsureRuntimeProviderArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   providerDriver?: HostDaemonProviderDriverLaunchSpec;
   processKey: string;
   providerId: string;
@@ -151,7 +145,6 @@ interface ProviderProcessExitedErrorArgs {
 
 const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 const CANONICAL_PROVIDER_REQUEST_TIMEOUT_MS = 2 * 60_000;
-const CLAUDE_CODE_PROVIDER_ID = "claude-code";
 
 function observedProviderCapabilities(
   capabilities: ProviderDriverCapabilities,
@@ -282,7 +275,7 @@ export class RuntimeProviderProcessManager {
     let resolvedPluginSpec:
       | AgentRuntimeResolvedProviderDriverLaunch
       | undefined;
-    if (args.providerDriver !== undefined) {
+    if (args.providerDriver !== undefined && testSpec === undefined) {
       const resolveLaunch = this.args.resolveProviderDriverLaunch;
       if (resolveLaunch === undefined) {
         throw new Error(
@@ -291,15 +284,17 @@ export class RuntimeProviderProcessManager {
       }
       resolvedPluginSpec = await resolveLaunch(args.providerDriver);
     }
-    const effectiveSpec = testSpec ?? resolvedPluginSpec;
+    const effectiveSpec =
+      testSpec === undefined
+        ? resolvedPluginSpec
+        : {
+            ...testSpec,
+            config: args.providerDriver?.config ?? testSpec.config,
+          };
     if (effectiveSpec === undefined) {
       throw new Error(
         `Provider "${providerId}" requires a registered host-driver artifact`,
       );
-    }
-    const acpProfile = args.acpLaunchSpec;
-    if (isAcpProviderId(providerId) && acpProfile === undefined) {
-      throw new Error(`ACP provider "${providerId}" requires a launch spec`);
     }
     const processConfig = effectiveSpec.process;
     const identity = effectiveSpec.identity;
@@ -331,7 +326,7 @@ export class RuntimeProviderProcessManager {
               effectiveSpec.providerDataDir ??
               join(homedir(), ".bb", "provider-data", providerId),
           },
-          config: acpProfile ?? effectiveSpec.config,
+          config: effectiveSpec.config,
         },
         launch: {
           command: processConfig.command,
@@ -440,31 +435,15 @@ export class RuntimeProviderProcessManager {
       ("classifyExecutionSettingsChange" in effectiveSpec
         ? effectiveSpec.classifyExecutionSettingsChange
         : undefined) ??
-      (providerId === CLAUDE_CODE_PROVIDER_ID
-        ? classifyClaudeExecutionSettingsChange
+      (effectiveSpec.supportsLiveExecutionChanges
+        ? classifyLiveExecutionSettingsChange
         : classifySessionExecutionSettingsChange);
     const normalizeExecutionOptions =
-      ("normalizeExecutionOptions" in effectiveSpec
+      "normalizeExecutionOptions" in effectiveSpec
         ? effectiveSpec.normalizeExecutionOptions
-        : undefined) ??
-      (providerId === CLAUDE_CODE_PROVIDER_ID
-        ? normalizeClaudeExecutionOptions
-        : undefined);
+        : undefined;
     const connection = new CanonicalProcessProviderConnection({
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
-      ...(providerId === CLAUDE_CODE_PROVIDER_ID
-        ? {
-            buildProviderOptions: (execution) => ({
-              claudeCodeMockCliTraffic: execution.claudeCodeMockCliTraffic,
-              ...(execution.claudeCodePermissionMode !== undefined
-                ? {
-                    claudeCodePermissionMode:
-                      execution.claudeCodePermissionMode,
-                  }
-                : {}),
-            }),
-          }
-        : {}),
       classifyExecutionSettingsChange,
       ...(normalizeExecutionOptions !== undefined
         ? { normalizeExecutionOptions }
@@ -493,12 +472,7 @@ export class RuntimeProviderProcessManager {
     this.processes.set(args.processKey, providerProcess);
 
     try {
-      await connection.initialize(
-        filterSkillRootsForProvider({
-          providerId,
-          skillRoots: this.args.skillRoots,
-        }),
-      );
+      await connection.initialize(this.args.skillSources);
     } catch (error) {
       this.processes.delete(args.processKey);
       await supervised.stop();

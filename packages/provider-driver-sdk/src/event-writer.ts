@@ -15,7 +15,7 @@ const MAX_QUEUED_PROVIDER_DRIVER_FRAME_BYTES = 32 * 1024 * 1024;
 const MAX_BARRIERED_PROVIDER_DRIVER_EVENTS = 1_024;
 
 interface QueuedFrame {
-  readonly bytes: Buffer;
+  readonly bytes: Uint8Array;
   readonly reject: (error: Error) => void;
   readonly resolve: () => void;
 }
@@ -44,7 +44,7 @@ export class ProviderDriverMessageWriter {
       return Promise.reject(new Error("Provider driver output is closed"));
     }
 
-    let bytes: Buffer;
+    let bytes: Uint8Array;
     try {
       bytes = encodeProviderDriverFrame(message);
     } catch (error) {

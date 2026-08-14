@@ -1,24 +1,26 @@
+import {
+  getBuiltInAgentProviderInfo,
+  getBuiltInAgentProviderServerCapabilities,
+  supportsManualCompaction,
+} from "@bb/agent-providers";
 import type { BbPluginApi } from "@bb/plugin-sdk";
 
 export default function piProviderPlugin(bb: BbPluginApi): void {
+  const providerId = "pi";
+  const info = getBuiltInAgentProviderInfo(providerId);
+  const serverCapabilities =
+    getBuiltInAgentProviderServerCapabilities(providerId);
   bb.experimental_providers.register({
     id: "default",
-    displayName: "Pi",
+    displayName: info.displayName,
     description: "Pi coding agent with multi-provider model support.",
-    capabilities: {
-      supportsArchive: false,
-      supportsRename: false,
-      supportsServiceTier: false,
-      supportsUserQuestion: false,
-      supportsFork: true,
-      supportedPermissionModes: ["full"],
-    },
-    composerActions: [{ kind: "skills", trigger: "/" }],
-    reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+    capabilities: info.capabilities,
+    composerActions: info.composerActions,
+    reasoningLevels: [...serverCapabilities.reasoningLevels],
     productCapabilities: {
-      supportsWorkflows: false,
-      supportsExecutionOverride: false,
-      supportsManualCompaction: true,
+      supportsWorkflows: serverCapabilities.supportsWorkflows,
+      supportsExecutionOverride: serverCapabilities.supportsExecutionOverride,
+      supportsManualCompaction: supportsManualCompaction(providerId),
     },
     execution: {
       kind: "host-driver",

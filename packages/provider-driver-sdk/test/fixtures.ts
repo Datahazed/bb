@@ -1,4 +1,5 @@
 import {
+  PROVIDER_DRIVER_PROTOCOL_VERSION,
   providerDriverInitializeParamsSchema,
   providerSessionOpenParamsSchema,
   providerTurnSubmitParamsSchema,
@@ -9,7 +10,7 @@ import {
 
 export function makeInitializeParams(): ProviderDriverInitializeParams {
   return providerDriverInitializeParamsSchema.parse({
-    supportedProtocolVersions: [5],
+    supportedProtocolVersions: [PROVIDER_DRIVER_PROTOCOL_VERSION],
     expected: {
       pluginId: "fake",
       driverId: "fake",
@@ -46,6 +47,7 @@ export function makeSessionOpenParams(): ProviderSessionOpenParams {
       features: {
         workflowsEnabled: false,
         memoryEnabled: false,
+        planModeEnabled: false,
         subagentsEnabled: false,
       },
       providerOptions: {},

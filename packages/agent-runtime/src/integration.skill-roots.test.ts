@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { AgentRuntimeSkillRoot } from "./types.js";
+import type { AgentRuntimeSkillSource } from "./types.js";
 import {
   cleanup,
   createTestRuntime,
@@ -17,9 +17,11 @@ import {
 import { promptTextInput } from "./test/prompt-input.js";
 
 type SkillRootProviderId = "claude-code" | "codex" | "pi";
-type DirectorySkillRootProviderId = "codex" | "pi";
-
-const providers: readonly SkillRootProviderId[] = ["codex", "claude-code", "pi"];
+const providers: readonly SkillRootProviderId[] = [
+  "codex",
+  "claude-code",
+  "pi",
+];
 const skillName = "bb-runtime-skill-integration";
 
 interface CreateSkillMarkdownArgs {
@@ -28,12 +30,6 @@ interface CreateSkillMarkdownArgs {
 
 interface CreateProviderSkillRootArgs {
   providerId: SkillRootProviderId;
-  token: string;
-  workspacePath: string;
-}
-
-interface CreateDirectorySkillRootArgs {
-  providerId: DirectorySkillRootProviderId;
   token: string;
   workspacePath: string;
 }
@@ -67,70 +63,19 @@ function writeSkillFile(args: WriteSkillFileArgs): void {
   );
 }
 
-function createClaudeSkillPlugin(
-  args: CreateProviderSkillRootArgs,
-): AgentRuntimeSkillRoot {
-  const pluginDir = join(args.workspacePath, "claude-runtime-skill-plugin");
-  const manifestDir = join(pluginDir, ".claude-plugin");
-  mkdirSync(manifestDir, { recursive: true });
-  writeFileSync(
-    join(manifestDir, "plugin.json"),
-    JSON.stringify(
-      {
-        $schema: "https://anthropic.com/claude-code/plugin.schema.json",
-        name: skillName,
-        version: "0.1.0",
-        description: "BB runtime dynamic skill integration test plugin.",
-        author: {
-          name: "BB Integration Tests",
-          email: "bb@example.com",
-        },
-        skills: ["./"],
-      },
-      null,
-      2,
-    ),
-    "utf8",
-  );
-  writeSkillFile({ skillDir: pluginDir, token: args.token });
-  return {
-    id: skillName,
-    providerId: "claude-code",
-    localPluginPath: pluginDir,
-  };
-}
-
-function createDirectorySkillRoot(
-  args: CreateDirectorySkillRootArgs,
-): AgentRuntimeSkillRoot {
-  const rootPath = join(args.workspacePath, `${args.providerId}-skill-roots`);
-  writeSkillFile({ skillDir: join(rootPath, skillName), token: args.token });
-  return {
-    id: skillName,
-    providerId: args.providerId,
-    skillDirectoryRootPath: rootPath,
-  };
-}
-
 function createProviderSkillRoot(
   args: CreateProviderSkillRootArgs,
-): AgentRuntimeSkillRoot {
-  switch (args.providerId) {
-    case "claude-code":
-      return createClaudeSkillPlugin(args);
-    case "codex":
-      return createDirectorySkillRoot({
-        providerId: "codex",
-        token: args.token,
-        workspacePath: args.workspacePath,
-      });
-    case "pi":
-      return createDirectorySkillRoot({
-        providerId: "pi",
-        token: args.token,
-        workspacePath: args.workspacePath,
-      });
-  }
+): AgentRuntimeSkillSource {
+  const rootPath = join(args.workspacePath, `${args.providerId}-skill-package`);
+  writeSkillFile({
+    skillDir: join(rootPath, "skills", skillName),
+    token: args.token,
+  });
+  return {
+    id: skillName,
+    rootPath,
+    skills: [{ name: skillName, description: "Integration test skill" }],
+  };
 }
 
 for (const providerId of providers) {
@@ -148,7 +93,7 @@ for (const providerId of providers) {
         workspacePath,
       });
       const ctx = createTestRuntime(providerId, {
-        skillRoots: [skillRoot],
+        skillSources: [skillRoot],
         workspacePath,
       });
 

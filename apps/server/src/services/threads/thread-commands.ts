@@ -1,18 +1,10 @@
-import {
-  environments,
-  events,
-  getAppSettings,
-  getExperiments,
-  threads,
-} from "@bb/db";
+import { environments, events, getAppSettings, threads } from "@bb/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   getRegisteredProviderDriverLaunchSpec,
   getRegisteredProviderInfo,
 } from "../providers/provider-registry.js";
 import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
-  type ClaudeCodeMockCliTrafficConfig,
   PromptInput,
   ProjectExecutionDefaults,
   PermissionEscalation,
@@ -50,7 +42,6 @@ import {
 } from "./thread-execution-plan.js";
 import { clampPermissionModeToHost } from "../hosts/permission-ceiling.js";
 import { workspaceContextFromPath } from "../environments/workspace-command-target.js";
-import { resolveAcpLaunchSpecForProviderId } from "../system/acp-launch-spec.js";
 
 export type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 
@@ -96,7 +87,6 @@ export interface ThreadStartCommandArgs {
 }
 
 interface PreparedTurnSubmitCommandBuildArgs {
-  claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   deps: Pick<AppDeps, "config" | "db">;
   environmentId: string;
   hostId: string;
@@ -132,7 +122,6 @@ export type PreparedTurnSubmitCommandPayload = Omit<
 >;
 
 interface RuntimeExecutionOptionsArgs {
-  claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   deps: Pick<AppDeps, "db">;
   execution: ResolvedThreadExecutionOptions;
   hostId: string;
@@ -185,15 +174,6 @@ function providerSupportsThreadArchiveForwarding(providerId: string): boolean {
   );
 }
 
-function resolveClaudeCodeMockCliTrafficConfig(
-  deps: Pick<AppDeps, "db">,
-): ClaudeCodeMockCliTrafficConfig {
-  return {
-    enabled: getExperiments(deps.db).claudeCodeMockCliTraffic,
-    endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
-  };
-}
-
 function resolveProviderMemoryEnabled(
   deps: Pick<AppDeps, "db">,
   providerId: string,
@@ -237,19 +217,17 @@ function toRuntimeExecutionOptions(
     permissionMode: args.execution.permissionMode,
     providerId: args.providerId,
   });
-  const claudeCodePermissionMode: "plan" | undefined =
-    args.providerId === "claude-code" &&
-    promptInputHasCommandMention(args.input, { trigger: "/", name: "plan" })
-      ? "plan"
-      : undefined;
+  const planAction = getRegisteredProviderInfo(
+    args.providerId,
+  )?.composerActions.find((action) => action.kind === "plan");
   const base = {
     model: args.execution.model,
     serviceTier: args.execution.serviceTier,
     reasoningLevel: args.execution.reasoningLevel,
-    ...(claudeCodePermissionMode !== undefined
-      ? { claudeCodePermissionMode }
-      : {}),
-    claudeCodeMockCliTraffic: args.claudeCodeMockCliTraffic,
+    providerOptions: {},
+    planModeEnabled:
+      planAction !== undefined &&
+      promptInputHasCommandMention(args.input, planAction.command),
     workflowsEnabled: args.workflowsEnabled,
     memoryEnabled: args.memoryEnabled,
     providerSubagentsEnabled: args.providerSubagentsEnabled,
@@ -308,10 +286,6 @@ export async function buildThreadStartCommand(
     environment: args.environment,
     model: args.execution.model,
   });
-  const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
-    deps,
-    args.providerId,
-  );
   return {
     type: "thread.start",
     environmentId: args.environment.id,
@@ -322,7 +296,6 @@ export async function buildThreadStartCommand(
     }),
     projectId: args.projectId,
     providerId: args.providerId,
-    ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
     ...(runtimeContext.providerDriver !== undefined
       ? { providerDriver: runtimeContext.providerDriver }
       : {}),
@@ -335,7 +308,6 @@ export async function buildThreadStartCommand(
       ...args,
       deps,
       hostId: args.environment.hostId,
-      claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
       memoryEnabled: resolveProviderMemoryEnabled(deps, args.providerId),
       providerSubagentsEnabled: resolveProviderSubagentsEnabled(
         deps,
@@ -356,15 +328,10 @@ export async function buildThreadStartCommand(
 function buildPreparedTurnSubmitCommandPayload(
   args: PreparedTurnSubmitCommandBuildArgs,
 ): PreparedTurnSubmitCommandPayload {
-  const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
-    args.deps,
-    args.runtimeContext.providerId,
-  );
   return {
     type: "turn.submit",
     environmentId: args.environmentId,
     threadId: args.threadId,
-    ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
     ...(args.runtimeContext.providerDriver !== undefined
       ? { providerDriver: args.runtimeContext.providerDriver }
       : {}),
@@ -374,7 +341,6 @@ function buildPreparedTurnSubmitCommandPayload(
       : {}),
     options: toRuntimeExecutionOptions({
       ...args,
-      claudeCodeMockCliTraffic: args.claudeCodeMockCliTraffic,
       input: args.input,
       providerId: args.runtimeContext.providerId,
       memoryEnabled: resolveProviderMemoryEnabled(
@@ -398,7 +364,6 @@ function buildPreparedTurnSubmitCommandPayload(
       }),
       projectId: args.runtimeContext.projectId,
       providerId: args.runtimeContext.providerId,
-      ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
       ...(args.runtimeContext.providerDriver !== undefined
         ? { providerDriver: args.runtimeContext.providerDriver }
         : {}),
@@ -434,7 +399,6 @@ export async function prepareTurnSubmitCommandPayload(
     model: args.execution.model,
   });
   return buildPreparedTurnSubmitCommandPayload({
-    claudeCodeMockCliTraffic: resolveClaudeCodeMockCliTrafficConfig(deps),
     deps,
     environmentId: args.environment.id,
     hostId: args.environment.hostId,

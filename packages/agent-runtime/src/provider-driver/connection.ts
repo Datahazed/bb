@@ -1,6 +1,5 @@
 import type {
   ClientTurnRequestId,
-  ClaudeCodeMockCliTrafficConfig,
   DynamicTool,
   InstructionMode,
   JsonObject,
@@ -15,20 +14,19 @@ import type {
   ThreadEvent,
 } from "@bb/domain";
 import type { ProviderDriverInspectResult } from "@bb/provider-driver-contract";
-import type { AgentRuntimeSkillRoot } from "../types.js";
+import type { AgentRuntimeSkillSource } from "../types.js";
 
 export type ProviderExecutionContext = {
   model?: string;
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
-  claudeCodePermissionMode?: "plan";
-  claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
+  providerOptions: JsonObject;
+  planModeEnabled: boolean;
   workflowsEnabled: boolean;
   memoryEnabled?: boolean;
   providerSubagentsEnabled?: boolean;
   instructions?: string;
   envVars?: Record<string, string>;
-  skillRoots?: readonly AgentRuntimeSkillRoot[];
 } & RuntimePermissionPolicy;
 
 export interface DecodedToolCallRequest {
@@ -170,7 +168,7 @@ export interface ProviderDriverConnection {
     next: RuntimeThreadExecutionOptions;
   }): ProviderExecutionSettingsChange;
 
-  initialize(skillRoots: readonly AgentRuntimeSkillRoot[]): Promise<void>;
+  initialize(skillSources: readonly AgentRuntimeSkillSource[]): Promise<void>;
   inspectModels(args: { cwd?: string }): Promise<ProviderDriverInspectResult>;
   openSession(
     args: ProviderDriverSessionOpenArgs,

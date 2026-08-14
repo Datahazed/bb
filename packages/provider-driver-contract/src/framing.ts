@@ -28,7 +28,7 @@ function frameError(
 }
 
 /** Encodes one JSON value as a four-byte big-endian length-prefixed frame. */
-export function encodeProviderDriverFrame(value: unknown): Buffer {
+export function encodeProviderDriverFrame(value: unknown): Uint8Array {
   let json: string | undefined;
   try {
     json = JSON.stringify(value);
@@ -45,7 +45,7 @@ export function encodeProviderDriverFrame(value: unknown): Buffer {
     );
   }
 
-  const payload = Buffer.from(json, "utf8");
+  const payload = new TextEncoder().encode(json);
   if (payload.length === 0) {
     frameError("empty_frame", "Provider driver frame cannot be empty");
   }
@@ -56,11 +56,11 @@ export function encodeProviderDriverFrame(value: unknown): Buffer {
     );
   }
 
-  const frame = Buffer.allocUnsafe(
+  const frame = new Uint8Array(
     PROVIDER_DRIVER_FRAME_HEADER_BYTES + payload.length,
   );
-  frame.writeUInt32BE(payload.length, 0);
-  payload.copy(frame, PROVIDER_DRIVER_FRAME_HEADER_BYTES);
+  new DataView(frame.buffer).setUint32(0, payload.length, false);
+  frame.set(payload, PROVIDER_DRIVER_FRAME_HEADER_BYTES);
   return frame;
 }
 
@@ -69,27 +69,24 @@ export function encodeProviderDriverFrame(value: unknown): Buffer {
  * It rejects oversized lengths before buffering the declared payload.
  */
 export class ProviderDriverFrameDecoder {
-  private readonly header = Buffer.alloc(PROVIDER_DRIVER_FRAME_HEADER_BYTES);
+  private readonly header = new Uint8Array(PROVIDER_DRIVER_FRAME_HEADER_BYTES);
   private headerBytes = 0;
-  private payload: Buffer | null = null;
+  private payload: Uint8Array | null = null;
   private payloadBytes = 0;
 
   push(chunk: Uint8Array): unknown[] {
-    const bytes = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
     const values: unknown[] = [];
     let offset = 0;
 
-    while (offset < bytes.length) {
+    while (offset < chunk.length) {
       if (this.payload === null) {
         const headerBytesToCopy = Math.min(
           PROVIDER_DRIVER_FRAME_HEADER_BYTES - this.headerBytes,
-          bytes.length - offset,
+          chunk.length - offset,
         );
-        bytes.copy(
-          this.header,
+        this.header.set(
+          chunk.subarray(offset, offset + headerBytesToCopy),
           this.headerBytes,
-          offset,
-          offset + headerBytesToCopy,
         );
         this.headerBytes += headerBytesToCopy;
         offset += headerBytesToCopy;
@@ -97,7 +94,11 @@ export class ProviderDriverFrameDecoder {
           continue;
         }
 
-        const payloadLength = this.header.readUInt32BE(0);
+        const payloadLength = new DataView(
+          this.header.buffer,
+          this.header.byteOffset,
+          this.header.byteLength,
+        ).getUint32(0, false);
         if (payloadLength === 0) {
           frameError("empty_frame", "Provider driver frame cannot be empty");
         }
@@ -107,19 +108,17 @@ export class ProviderDriverFrameDecoder {
             `Provider driver frame declares ${payloadLength} bytes; maximum is ${PROVIDER_DRIVER_MAX_FRAME_BYTES}`,
           );
         }
-        this.payload = Buffer.allocUnsafe(payloadLength);
+        this.payload = new Uint8Array(payloadLength);
         this.payloadBytes = 0;
       }
 
       const payloadBytesToCopy = Math.min(
         this.payload.length - this.payloadBytes,
-        bytes.length - offset,
+        chunk.length - offset,
       );
-      bytes.copy(
-        this.payload,
+      this.payload.set(
+        chunk.subarray(offset, offset + payloadBytesToCopy),
         this.payloadBytes,
-        offset,
-        offset + payloadBytesToCopy,
       );
       this.payloadBytes += payloadBytesToCopy;
       offset += payloadBytesToCopy;
@@ -145,7 +144,7 @@ export class ProviderDriverFrameDecoder {
     }
   }
 
-  private parsePayload(payload: Buffer): unknown {
+  private parsePayload(payload: Uint8Array): unknown {
     let json: string;
     try {
       json = new TextDecoder("utf-8", { fatal: true }).decode(payload);

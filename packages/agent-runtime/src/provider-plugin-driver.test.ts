@@ -73,6 +73,7 @@ describe("plugin provider driver launch", () => {
         supportedPermissionModes: ["full"],
       },
       config: { fixture: true },
+      supportsLiveExecutionChanges: false,
       process: { scope: "environment", multiplexSessions: true },
     };
     let resolutions = 0;
@@ -102,6 +103,7 @@ describe("plugin provider driver launch", () => {
           },
           providerDataDir: join(workspacePath, "provider-data"),
           processCapabilities: { multiplexSessions: true },
+          supportsLiveExecutionChanges: false,
           release: () => {
             releases += 1;
           },

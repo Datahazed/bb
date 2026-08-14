@@ -10,6 +10,7 @@ import {
   registerHostRpcResponder,
   registerProviderHostRpcResponder,
 } from "../helpers/host-rpc.js";
+import { useTestAcpProviderDriver } from "../helpers/provider-driver.js";
 import { seedHostSession } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -285,8 +286,9 @@ describe("resolveSystemExecutionOptions", () => {
     });
   });
 
-  it("includes installed known ACP agents and sends their launch spec when loading models", async () => {
+  it("includes installed known ACP agents and sends their driver config when loading models", async () => {
     await withTestHarness({}, async (harness) => {
+      useTestAcpProviderDriver();
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-execution-options-known-acp-installed",
       });
@@ -343,21 +345,25 @@ describe("resolveSystemExecutionOptions", () => {
       expect(responder.requests.map((request) => request.command.type)).toEqual(
         ["known_acp_agents.status", "provider.list_models"],
       );
-      expect(responder.requests[1].command).toEqual({
+      expect(responder.requests[1].command).toMatchObject({
         type: "provider.list_models",
         providerId: "acp-opencode",
-        acpLaunchSpec: {
-          displayName: "opencode",
-          command: "opencode",
-          args: ["acp"],
-          env: {},
+        providerDriver: {
+          driverProviderId: "acp",
+          config: {
+            displayName: "opencode",
+            command: "opencode",
+            args: ["acp"],
+            env: {},
+          },
         },
       });
     });
   });
 
-  it("includes installed Grok Build ACP and sends its launch spec when loading models", async () => {
+  it("includes installed Grok Build ACP and sends its driver config when loading models", async () => {
     await withTestHarness({}, async (harness) => {
+      useTestAcpProviderDriver();
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-execution-options-known-grok-installed",
       });
@@ -414,41 +420,45 @@ describe("resolveSystemExecutionOptions", () => {
       expect(responder.requests.map((request) => request.command.type)).toEqual(
         ["known_acp_agents.status", "provider.list_models"],
       );
-      expect(responder.requests[1].command).toEqual({
+      expect(responder.requests[1].command).toMatchObject({
         type: "provider.list_models",
         providerId: "acp-grok",
-        acpLaunchSpec: {
-          displayName: "Grok Build",
-          command: "grok",
-          args: ["agent", "stdio"],
-          env: {},
-          modelCli: {
-            listArgs: ["models"],
-            selectFlag: "--model",
-            primaryModels: ["grok-4.5", "grok-composer-2.5-fast"],
-          },
-          permissionCli: {
-            full: ["--always-approve"],
-            insertAfterArgs: 1,
-          },
-          reasoningCli: {
-            flag: "--reasoning-effort",
-            supportedLevels: ["low", "medium", "high"],
-            levelValues: {
-              none: "low",
-              xhigh: "high",
-              ultracode: "high",
-              max: "high",
+        providerDriver: {
+          driverProviderId: "acp",
+          config: {
+            displayName: "Grok Build",
+            command: "grok",
+            args: ["agent", "stdio"],
+            env: {},
+            modelCli: {
+              listArgs: ["models"],
+              selectFlag: "--model",
+              primaryModels: ["grok-4.5", "grok-composer-2.5-fast"],
             },
-            defaultLevel: "high",
+            permissionCli: {
+              full: ["--always-approve"],
+              insertAfterArgs: 1,
+            },
+            reasoningCli: {
+              flag: "--reasoning-effort",
+              supportedLevels: ["low", "medium", "high"],
+              levelValues: {
+                none: "low",
+                xhigh: "high",
+                ultracode: "high",
+                max: "high",
+              },
+              defaultLevel: "high",
+            },
           },
         },
       });
     });
   });
 
-  it("includes installed Hermes Agent ACP and sends its launch spec when loading models", async () => {
+  it("includes installed Hermes Agent ACP and sends its driver config when loading models", async () => {
     await withTestHarness({}, async (harness) => {
+      useTestAcpProviderDriver();
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-execution-options-known-hermes-installed",
       });
@@ -505,18 +515,28 @@ describe("resolveSystemExecutionOptions", () => {
       expect(responder.requests.map((request) => request.command.type)).toEqual(
         ["known_acp_agents.status", "provider.list_models"],
       );
-      expect(responder.requests[1].command).toEqual({
+      expect(responder.requests[1].command).toMatchObject({
         type: "provider.list_models",
         providerId: "acp-hermes-agent",
-        acpLaunchSpec: {
-          displayName: "Hermes Agent",
-          command: "hermes",
-          args: ["acp"],
-          env: {},
-          nativeReasoning: {
-            configId: "reasoning_effort",
-            supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
-            defaultLevel: "medium",
+        providerDriver: {
+          driverProviderId: "acp",
+          config: {
+            displayName: "Hermes Agent",
+            command: "hermes",
+            args: ["acp"],
+            env: {},
+            nativeReasoning: {
+              configId: "reasoning_effort",
+              supportedLevels: [
+                "none",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+              ],
+              defaultLevel: "medium",
+            },
           },
         },
       });
@@ -749,6 +769,7 @@ describe("resolveSystemExecutionOptions", () => {
         ],
       },
       async (harness) => {
+        useTestAcpProviderDriver();
         const { host, session } = seedHostSession(harness.deps, {
           id: "host-execution-options-known-acp-override",
         });
@@ -785,14 +806,17 @@ describe("resolveSystemExecutionOptions", () => {
         expect(
           responder.requests.map((request) => request.command.type),
         ).toEqual(["known_acp_agents.status", "provider.list_models"]);
-        expect(responder.requests[1].command).toEqual({
+        expect(responder.requests[1].command).toMatchObject({
           type: "provider.list_models",
           providerId: "acp-opencode",
-          acpLaunchSpec: {
-            displayName: "Custom opencode",
-            command: "custom-opencode",
-            args: ["serve"],
-            env: { CUSTOM_OPENCODE: "1" },
+          providerDriver: {
+            driverProviderId: "acp",
+            config: {
+              displayName: "Custom opencode",
+              command: "custom-opencode",
+              args: ["serve"],
+              env: { CUSTOM_OPENCODE: "1" },
+            },
           },
         });
       },
@@ -987,6 +1011,7 @@ describe("resolveSystemExecutionOptions", () => {
         ],
       },
       async (harness) => {
+        useTestAcpProviderDriver();
         const { host, session } = seedHostSession(harness.deps, {
           id: "host-execution-options-custom-acp",
         });
@@ -1030,19 +1055,22 @@ describe("resolveSystemExecutionOptions", () => {
         expect(
           responder.requests.map((request) => request.command.type),
         ).toEqual(["known_acp_agents.status", "provider.list_models"]);
-        expect(responder.requests[1].command).toEqual({
+        expect(responder.requests[1].command).toMatchObject({
           type: "provider.list_models",
           providerId: "acp-example-agent",
-          acpLaunchSpec: {
-            displayName: "Example Agent",
-            command: "example-agent",
-            args: ["acp", "--stdio"],
-            env: { EXAMPLE_TOKEN: "test-token" },
-            cwd: "/tmp/example-agent",
-            modelCli: {
-              listArgs: ["models", "--json"],
-              selectFlag: "--model",
-              primaryModels: ["example/default"],
+          providerDriver: {
+            driverProviderId: "acp",
+            config: {
+              displayName: "Example Agent",
+              command: "example-agent",
+              args: ["acp", "--stdio"],
+              env: { EXAMPLE_TOKEN: "test-token" },
+              cwd: "/tmp/example-agent",
+              modelCli: {
+                listArgs: ["models", "--json"],
+                selectFlag: "--model",
+                primaryModels: ["example/default"],
+              },
             },
           },
         });

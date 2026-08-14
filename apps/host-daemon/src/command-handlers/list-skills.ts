@@ -144,16 +144,16 @@ function classifySkillRoot(
 export async function resolveSkillScanRoots(
   resolution: SkillRootResolution,
 ): Promise<SkillScanRoot[]> {
-  const skillRoots = resolveBbSkillScanRoots(resolution);
+  const skillSources = resolveBbSkillScanRoots(resolution);
   const providerRoots = await resolveProviderCommandScanRoots(resolution);
   for (const root of providerRoots) {
     const classification = classifySkillRoot(root, resolution);
     if (classification === null) {
       continue;
     }
-    skillRoots.push({ ...root, ...classification });
+    skillSources.push({ ...root, ...classification });
   }
-  return skillRoots;
+  return skillSources;
 }
 
 export async function listHostSkills(

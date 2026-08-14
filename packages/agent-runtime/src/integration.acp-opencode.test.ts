@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DynamicTool } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type { AgentRuntimeExecutionOptions } from "./types.js";
+import { builtinProviderDriverLaunchSpec } from "./test/builtin-provider-driver-factory.js";
 import {
   cleanup,
   createTestRuntime,
@@ -22,7 +22,7 @@ const dynamicTool = {
   inputSchema: { type: "object", properties: {} },
 } satisfies DynamicTool;
 
-function launchSpec(): HostDaemonAcpLaunchSpec {
+function launchSpec() {
   return {
     displayName: "OpenCode (live ACP validation)",
     command: process.env.BB_TEST_ACP_OPENCODE_COMMAND ?? "opencode",
@@ -32,12 +32,12 @@ function launchSpec(): HostDaemonAcpLaunchSpec {
 }
 
 async function resolveOptions(args: {
-  acpLaunchSpec: HostDaemonAcpLaunchSpec;
+  providerDriver: ReturnType<typeof builtinProviderDriverLaunchSpec>;
   ctx: ReturnType<typeof createTestRuntime>;
 }): Promise<AgentRuntimeExecutionOptions> {
   const catalog = await args.ctx.runtime.listModels({
     providerId,
-    acpLaunchSpec: args.acpLaunchSpec,
+    providerDriver: args.providerDriver,
     cwd: args.ctx.tmpDir,
   });
   const model =
@@ -50,6 +50,8 @@ async function resolveOptions(args: {
     model: model.id,
     reasoningLevel: model.defaultReasoningEffort ?? "medium",
     serviceTier: "default",
+    providerOptions: {},
+    planModeEnabled: false,
     workflowsEnabled: false,
     permissionMode: "full",
     permissionScope: "full",
@@ -60,7 +62,10 @@ async function resolveOptions(args: {
 
 describe.skipIf(!runLiveOpenCodeAcp)("OpenCode live ACP provider", () => {
   it("runs tools and preserves context across process resume", async () => {
-    const acpLaunchSpec = launchSpec();
+    const providerDriver = builtinProviderDriverLaunchSpec(
+      providerId,
+      launchSpec(),
+    );
     const rememberedToken = "BANANA_ACP_RESUME";
     const ctx1 = createTestRuntime(providerId, {
       onToolCall: async (request) => ({
@@ -71,14 +76,14 @@ describe.skipIf(!runLiveOpenCodeAcp)("OpenCode live ACP provider", () => {
     let ctx2: ReturnType<typeof createTestRuntime> | undefined;
 
     try {
-      const options = await resolveOptions({ acpLaunchSpec, ctx: ctx1 });
+      const options = await resolveOptions({ providerDriver, ctx: ctx1 });
       const threadId = newThreadId();
       const start = await ctx1.runtime.startThread({
         environmentId: "env-live-acp",
         projectId: "project-live-acp",
         threadId,
         providerId,
-        acpLaunchSpec,
+        providerDriver,
         options,
         dynamicTools: [dynamicTool],
       });
@@ -135,7 +140,7 @@ describe.skipIf(!runLiveOpenCodeAcp)("OpenCode live ACP provider", () => {
         threadId,
         providerThreadId: start.providerThreadId,
         providerId,
-        acpLaunchSpec,
+        providerDriver,
         options,
         dynamicTools: [dynamicTool],
       });

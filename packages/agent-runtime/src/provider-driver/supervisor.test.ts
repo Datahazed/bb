@@ -38,7 +38,7 @@ function handle(message) {
       jsonrpc: "2.0",
       id: message.id,
       result: {
-        protocolVersion: 5,
+        protocolVersion: 6,
         identity: {
           pluginId: message.params.expected.pluginId,
           driverId: message.params.expected.driverId,
@@ -103,7 +103,7 @@ if (process.env.FAKE_DRIVER_SCENARIO === "oversized") {
 
 function makeInitializeParams(): ProviderDriverInitializeParams {
   return providerDriverInitializeParamsSchema.parse({
-    supportedProtocolVersions: [5],
+    supportedProtocolVersions: [6],
     expected: {
       pluginId: "test-plugin",
       driverId: "test-driver",
@@ -140,6 +140,7 @@ function makeSessionOpenParams(): ProviderSessionOpenParams {
       features: {
         workflowsEnabled: false,
         memoryEnabled: false,
+        planModeEnabled: false,
         subagentsEnabled: false,
       },
       providerOptions: {},

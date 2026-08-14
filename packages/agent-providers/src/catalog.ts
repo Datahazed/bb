@@ -209,9 +209,9 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
  *   4. `serverCapabilities` (`ProviderServerCapabilities`, backend-only):
  *      workflows, execution override, host-daemon AI services, reasoning ladder.
  *   5. A builtin plugin registration and host-driver artifact under `plugins/`.
- * Host-local specifics stay with the daemon: provider CLI executable/install
- * metadata (`provider-cli-health.ts`) and injected-skill root layout
- * (`injected-skills.ts`), both keyed by this `info.id`.
+ * Host-local executable/install metadata stays with the daemon
+ * (`provider-cli-health.ts`). Runtime skill staging is provider-neutral; each
+ * host driver interprets the generic staged package for its native SDK.
  */
 const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
   {

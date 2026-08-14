@@ -147,6 +147,8 @@ export function getRegisteredProviderDriverLaunchSpec(
       driverProviderId: contribution.registration.providerId,
       displayName: contribution.registration.displayName,
       capabilities: structuredClone(contribution.registration.capabilities),
+      supportsLiveExecutionChanges:
+        contribution.registration.productCapabilities.supportsExecutionOverride,
       config: structuredClone(contribution.registration.execution.config),
       process: structuredClone(contribution.registration.execution.process),
     };
@@ -177,6 +179,7 @@ export function getRegisteredProviderDriverLaunchSpec(
     driverProviderId: "acp",
     displayName: info.displayName,
     capabilities: info.capabilities,
+    supportsLiveExecutionChanges: false,
     config: {},
     process: { scope: "environment", multiplexSessions: true },
   };

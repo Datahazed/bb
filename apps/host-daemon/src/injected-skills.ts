@@ -3,7 +3,7 @@ import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
-import type { AgentRuntimeSkillRoot } from "@bb/agent-runtime";
+import type { AgentRuntimeSkillSource } from "@bb/agent-runtime";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import type { HostDaemonSkillTree } from "@bb/host-daemon-contract";
 import type { FetchSkillTree } from "./skill-trees.js";
@@ -44,7 +44,7 @@ export interface CleanupInjectedSkillStagingDirsArgs {
 
 export interface StagedInjectedSkills {
   catalogHash: string;
-  skillRoots: readonly AgentRuntimeSkillRoot[];
+  skillSources: readonly AgentRuntimeSkillSource[];
 }
 
 export interface CopyInjectedSkillSourceArgs {
@@ -107,23 +107,10 @@ interface WriteStageRootArgs {
   trees: readonly CollectedSkillTree[];
 }
 
-interface BuildSkillRootsArgs {
+interface BuildSkillSourcesArgs {
   catalogHash: string;
   stageRootPath: string;
   trees: readonly CollectedSkillTree[];
-}
-
-interface PluginManifestAuthor {
-  name: string;
-}
-
-interface ClaudePluginManifest {
-  $schema: string;
-  name: string;
-  version: string;
-  description: string;
-  author: PluginManifestAuthor;
-  skills: string[];
 }
 
 interface CatalogSkillEntry {
@@ -455,21 +442,6 @@ export async function copyInjectedSkillSource(
   });
 }
 
-function createClaudePluginManifest(
-  skillNames: readonly string[],
-): ClaudePluginManifest {
-  return {
-    $schema: "https://anthropic.com/claude-code/plugin.schema.json",
-    name: "bb-global-skills",
-    version: "0.1.0",
-    description: "Global skills staged by bb.",
-    author: {
-      name: "bb",
-    },
-    skills: skillNames.map((skillName) => `./skills/${skillName}`),
-  };
-}
-
 function createCatalogFile(args: CreateCatalogFileArgs): CatalogFile {
   return {
     catalogHash: args.catalogHash,
@@ -505,23 +477,14 @@ async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
   );
   await fs.rm(tempRootPath, { recursive: true, force: true });
   await fs.mkdir(path.join(tempRootPath, "skills"), { recursive: true });
-  await fs.mkdir(path.join(tempRootPath, ".claude-plugin"), {
-    recursive: true,
-  });
 
   try {
-    const skillNames = args.trees.map((tree) => tree.source.name);
     for (const tree of args.trees) {
       await copyCollectedTree({
         skillDirectoryPath: path.join(tempRootPath, "skills", tree.source.name),
         tree,
       });
     }
-    await fs.writeFile(
-      path.join(tempRootPath, ".claude-plugin", "plugin.json"),
-      `${JSON.stringify(createClaudePluginManifest(skillNames), null, 2)}\n`,
-      "utf8",
-    );
     await fs.writeFile(
       path.join(tempRootPath, "catalog.json"),
       `${JSON.stringify(
@@ -569,28 +532,13 @@ async function writeStageRootOnce(args: WriteStageRootArgs): Promise<string> {
   return write;
 }
 
-function buildSkillRoots(args: BuildSkillRootsArgs): AgentRuntimeSkillRoot[] {
-  const skillDirectoryRootPath = path.join(args.stageRootPath, "skills");
+function buildSkillSources(
+  args: BuildSkillSourcesArgs,
+): AgentRuntimeSkillSource[] {
   return [
     {
-      id: `global-skills:${args.catalogHash}:codex`,
-      providerId: "codex",
-      skillDirectoryRootPath,
-    },
-    {
-      id: `global-skills:${args.catalogHash}:claude-code`,
-      providerId: "claude-code",
-      localPluginPath: args.stageRootPath,
-    },
-    {
-      id: `global-skills:${args.catalogHash}:pi`,
-      providerId: "pi",
-      skillDirectoryRootPath,
-    },
-    {
-      id: `global-skills:${args.catalogHash}:acp`,
-      providerId: "acp",
-      skillDirectoryRootPath,
+      id: `global-skills:${args.catalogHash}`,
+      rootPath: args.stageRootPath,
       skills: args.trees.map((tree) => ({
         description: tree.source.description,
         name: tree.source.name,
@@ -855,7 +803,7 @@ export async function stageInjectedSkillSources(
   if (args.injectedSkillSources.length === 0) {
     return {
       catalogHash: EMPTY_SKILL_CATALOG_HASH,
-      skillRoots: [],
+      skillSources: [],
     };
   }
 
@@ -938,7 +886,7 @@ export async function stageInjectedSkillSources(
   if (sortedTrees.length === 0) {
     return {
       catalogHash: EMPTY_SKILL_CATALOG_HASH,
-      skillRoots: [],
+      skillSources: [],
     };
   }
 
@@ -950,7 +898,7 @@ export async function stageInjectedSkillSources(
   });
   return {
     catalogHash,
-    skillRoots: buildSkillRoots({
+    skillSources: buildSkillSources({
       catalogHash,
       stageRootPath,
       trees: sortedTrees,

@@ -15,15 +15,13 @@ import {
   type CustomProviderModel,
 } from "@bb/config/bb-app-managed-config";
 import {
+  jsonObjectSchema,
   reasoningEffortsForLevels,
   type AvailableModel,
   type ProviderCapabilities,
   type ProviderInfo,
 } from "@bb/domain";
-import {
-  normalizeHostDaemonAcpLaunchSpec,
-  type HostDaemonProviderInspection,
-} from "@bb/host-daemon-contract";
+import type { HostDaemonProviderInspection } from "@bb/host-daemon-contract";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
@@ -31,6 +29,7 @@ import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
+import { resolveAcpProviderConfigForProviderId } from "./acp-provider-config.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
   getRegisteredProviderDriverLaunchSpec,
@@ -317,15 +316,6 @@ export async function listSystemProviderInfos(
   return (await resolveSystemProviderInfos(deps, query)).providers;
 }
 
-function findCustomAcpAgentForProviderId(
-  customAcpAgents: CustomAcpAgent[],
-  providerId: string,
-): CustomAcpAgent | undefined {
-  return customAcpAgents.find(
-    (agent) => formatCustomAcpAgentProviderId(agent.id) === providerId,
-  );
-}
-
 /**
  * Load one provider's model catalog on an already-resolved host. Unlike the
  * full execution-options response, this does not probe for other installed ACP
@@ -559,15 +549,23 @@ async function loadSystemProviderModels(
     provider: ProviderInfo;
   },
 ): Promise<ModelListResult> {
-  const customAcpAgent = findCustomAcpAgentForProviderId(
-    deps.config.customAcpAgents,
+  const registeredProviderDriver = getRegisteredProviderDriverLaunchSpec(
     provider.id,
   );
-  const knownAcpAgent =
-    customAcpAgent === undefined
-      ? findKnownAcpAgentForProviderId(provider.id)
-      : undefined;
-  const providerDriver = getRegisteredProviderDriverLaunchSpec(provider.id);
+  const providerConfig = resolveAcpProviderConfigForProviderId(
+    deps,
+    provider.id,
+  );
+  const providerDriver =
+    registeredProviderDriver === undefined
+      ? undefined
+      : {
+          ...registeredProviderDriver,
+          config:
+            providerConfig === undefined
+              ? registeredProviderDriver.config
+              : jsonObjectSchema.parse(providerConfig),
+        };
   try {
     const { models, selectedOnlyModels, inspection } =
       await callHostRetryableOnlineRpc(deps, {
@@ -578,16 +576,6 @@ async function loadSystemProviderModels(
           providerId: provider.id,
           ...(cwd !== undefined ? { cwd } : {}),
           ...(providerDriver !== undefined ? { providerDriver } : {}),
-          ...(customAcpAgent !== undefined
-            ? {
-                acpLaunchSpec: normalizeHostDaemonAcpLaunchSpec(customAcpAgent),
-              }
-            : knownAcpAgent !== undefined
-              ? {
-                  acpLaunchSpec:
-                    normalizeHostDaemonAcpLaunchSpec(knownAcpAgent),
-                }
-              : {}),
         },
       });
     return {

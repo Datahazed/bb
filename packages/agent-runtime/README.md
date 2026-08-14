@@ -1,6 +1,6 @@
 # @bb/agent-runtime
 
-Manages isolated provider-driver processes (Codex, Claude Code, Pi, and ACP) and exposes a clean session interface. Handles process supervision, framed RPC, canonical lifecycle validation, event projection, tool and interaction routing, crash detection, and shutdown.
+Manages isolated provider-driver processes and exposes a clean session interface. Handles process supervision, framed RPC, canonical lifecycle validation, event projection, tool and interaction routing, crash detection, and shutdown. Provider implementations live in plugins, not this package.
 
 Consumers say "start a thread, run a turn, give me events" — they never touch provider processes or wire formats.
 
@@ -132,7 +132,7 @@ The root `test:integration --force` run also schedules `@bb/integration-tests#te
 
 ### Test coverage
 
-**Unit tests** — runtime lifecycle through a canonical fake driver, multi-thread event routing, multi-provider isolation, tool and interaction round-trips, framed-protocol errors, crash handling, concurrent `ensureProvider` deduplication, resume across runtimes, and canonical event translation.
+**Unit tests** — runtime lifecycle through a canonical fake driver, multi-thread event routing, multi-provider isolation, tool and interaction round-trips, framed-protocol errors, crash handling, concurrent `ensureProvider` deduplication, and resume across runtimes. Provider plugins test their own event translation and native protocol handling.
 
 **Integration tests** exercise the real Codex, Claude Code, and Pi implementations across model discovery, single and follow-up turns, steering, cancellation and recovery, developer instructions, bad-request recovery, dynamic tools, process resume, command output, workspace/environment isolation, and multi-provider concurrency. The opt-in OpenCode ACP test covers model discovery, tool routing, and context-preserving cross-process resume.
 
@@ -177,8 +177,15 @@ Consumer (host-daemon, server)
 
 ## Dependencies
 
-- `@bb/domain` — shared types (ThreadEvent, ProviderThreadEvent, PromptInput, ToolCallRequest, etc.)
-- `@bb/templates` — markdown templates for provider instructions
-- `@anthropic-ai/claude-agent-sdk` — Claude Code
-- `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent` — Pi
-- `zod` — schema validation at provider boundaries
+The production dependency graph is provider-neutral:
+
+- `@bb/domain` — shared events, inputs, permissions, and execution types
+- `@bb/host-daemon-contract` — immutable driver launch descriptors
+- `@bb/process-utils` — portable child-process launch
+- `@bb/provider-driver-contract` — canonical framed protocol
+- `@bb/provider-driver-helpers` — provider-neutral shared wire helpers
+- `@bb/provider-driver-sdk` — canonical driver test peers
+- `zod` — boundary validation
+
+Provider SDKs belong to their plugin packages. Provider plugin dependencies in
+this package are development-only and support cross-plugin integration tests.

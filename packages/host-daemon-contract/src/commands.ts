@@ -1,7 +1,4 @@
 import {
-  acpPermissionCliSchema,
-  acpNativeReasoningSchema,
-  acpReasoningCliSchema,
   availableModelSchema,
   discoveredWorkspacePropertiesSchema,
   dynamicToolSchema,
@@ -44,7 +41,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 110 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 111 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -163,77 +160,13 @@ export type HostDaemonInjectedSkillSource = z.infer<
   typeof hostDaemonInjectedSkillSourceSchema
 >;
 
-export const hostDaemonAcpLaunchSpecSchema = z
-  .object({
-    displayName: z.string().min(1),
-    command: z.string().min(1),
-    args: z.array(z.string()),
-    env: z.record(z.string().min(1), z.string()),
-    cwd: z.string().min(1).optional(),
-    modelCli: z
-      .object({
-        listArgs: z.array(z.string()),
-        selectFlag: z.string().min(1).optional(),
-        primaryModels: z.array(z.string()),
-      })
-      .strict()
-      .transform((modelCli) =>
-        modelCli.listArgs.length > 0 ? modelCli : undefined,
-      )
-      .optional(),
-    reasoningCli: acpReasoningCliSchema.optional(),
-    nativeReasoning: acpNativeReasoningSchema.optional(),
-    nativeSkillRoots: providerNativeSkillRootsSchema.optional(),
-    permissionCli: acpPermissionCliSchema.optional(),
-  })
-  .strict();
-export type HostDaemonAcpLaunchSpec = z.infer<
-  typeof hostDaemonAcpLaunchSpecSchema
->;
-
-export function normalizeHostDaemonAcpLaunchSpec(
-  spec: HostDaemonAcpLaunchSpec,
-): HostDaemonAcpLaunchSpec {
-  const {
-    displayName,
-    command,
-    args,
-    env,
-    cwd,
-    modelCli,
-    reasoningCli,
-    nativeReasoning,
-    nativeSkillRoots,
-    permissionCli,
-  } = spec;
-  const permissionCliHasMode =
-    permissionCli?.full !== undefined ||
-    permissionCli?.workspaceWrite !== undefined ||
-    permissionCli?.readonly !== undefined;
-  return {
-    displayName,
-    command,
-    args,
-    env,
-    ...(cwd !== undefined ? { cwd } : {}),
-    ...(modelCli !== undefined && modelCli.listArgs.length > 0
-      ? { modelCli }
-      : {}),
-    ...(reasoningCli !== undefined ? { reasoningCli } : {}),
-    ...(nativeReasoning !== undefined ? { nativeReasoning } : {}),
-    ...(nativeSkillRoots !== undefined ? { nativeSkillRoots } : {}),
-    ...(permissionCli !== undefined && permissionCliHasMode
-      ? { permissionCli }
-      : {}),
-  };
-}
-
 export const hostDaemonProviderDriverLaunchSpecSchema = z
   .object({
     artifact: providerDriverArtifactDescriptorSchema,
     driverProviderId: providerDriverProviderIdSchema,
     displayName: z.string().min(1).max(128),
     capabilities: providerCapabilitiesSchema,
+    supportsLiveExecutionChanges: z.boolean(),
     config: jsonObjectSchema,
     process: z
       .object({
@@ -252,7 +185,6 @@ const hostDaemonThreadRuntimeContextSchema = z
     workspaceContext: workspaceContextSchema,
     projectId: z.string().min(1),
     providerId: z.string().min(1),
-    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     providerDriver: hostDaemonProviderDriverLaunchSpecSchema.optional(),
     options: runtimeThreadExecutionOptionsSchema,
     instructions: z.string().min(1),
@@ -397,7 +329,6 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
     input: z.array(promptInputSchema).min(1),
     inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
     options: runtimeThreadExecutionOptionsSchema,
-    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     providerDriver: hostDaemonProviderDriverLaunchSpecSchema.optional(),
     resumeContext: turnResumeContextSchema,
     target: turnSubmitTargetSchema,
@@ -415,7 +346,6 @@ const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.goal.clear"),
     options: runtimeThreadExecutionOptionsSchema,
-    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     resumeContext: turnResumeContextSchema,
   })
   .strict();
@@ -938,7 +868,6 @@ const hostListBranchesCommandSchema = z.object({
 const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
-  acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
   providerDriver: hostDaemonProviderDriverLaunchSpecSchema.optional(),
   cwd: z.string().min(1).optional(),
 });

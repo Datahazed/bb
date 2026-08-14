@@ -169,6 +169,7 @@ describe("server provider registry", () => {
       driverProviderId: "echo/default",
       displayName: "Echo",
       capabilities: registration.capabilities,
+      supportsLiveExecutionChanges: false,
       config: { greeting: "hello" },
       process: { scope: "thread", multiplexSessions: false },
     });

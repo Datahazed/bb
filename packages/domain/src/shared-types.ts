@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonObjectSchema } from "./json-value.js";
 
 /**
  * Order is load-bearing: `reasoningRank` (index) drives model-switch
@@ -611,10 +612,10 @@ const runtimeThreadExecutionBaseOptionsSchema = z.object({
   model: z.string().min(1),
   serviceTier: serviceTierSchema,
   reasoningLevel: reasoningLevelSchema,
-  claudeCodePermissionMode: z.literal("plan").optional(),
-  // Optional for legacy command compatibility; the server fills the current
-  // app setting before dispatching new runtime work.
-  claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema.optional(),
+  /** Provider-owned, non-secret per-session and per-turn execution settings. */
+  providerOptions: jsonObjectSchema,
+  /** Whether the submitted input selected the provider's registered plan mode. */
+  planModeEnabled: z.boolean(),
   /**
    * Server-owned product policy: whether the provider session may use the
    * Workflows feature. Filled explicitly at the server boundary (per-provider

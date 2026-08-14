@@ -73,7 +73,7 @@ directories.
 
 ### Events
 
-- Protocol version 5 marks the release where all non-Codex built-ins use the canonical driver protocol, including ACP. Version 4 added Claude Code's long-lived background-task lifecycle, model-fallback facts, detailed error categories, and HTTP status codes. Version 3 introduced rich canonical item payloads and explicit dynamic-tool status labels; core-owned user messages remain excluded.
+- Protocol version 6 standardizes each `skillSources[].rootPath` as the root of a staged skill package whose skill folders live under `skills/`, removes provider-shaped skill paths from the host runtime, and carries plan-mode selection as a generic execution feature. The package has no provider-native metadata; each driver prepares any native wrapper it needs. Version 5 marks the release where all non-Codex built-ins use the canonical driver protocol, including ACP. Version 4 added Claude Code's long-lived background-task lifecycle, model-fallback facts, detailed error categories, and HTTP status codes. Version 3 introduced rich canonical item payloads and explicit dynamic-tool status labels; core-owned user messages remain excluded.
 - Token usage and compaction are turn-scoped facts; context-window usage is a session-scoped fact. Drivers do not invent a turn scope for session-only state.
 - Events use a sequence that is contiguous and monotonically increasing across one process connection, starting at 1.
 - Every event names a daemon-issued attachment. Turn/item events also name a daemon-issued canonical turn.

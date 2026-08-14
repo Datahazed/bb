@@ -3,16 +3,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { createAgentRuntimeWithCanonicalProviderDriverFactory } from "./runtime.js";
-import { builtinProviderDriverTestFactory } from "./test/builtin-provider-driver-factory.js";
+import {
+  builtinProviderDriverLaunchSpec,
+  builtinProviderDriverTestFactory,
+  builtinProviderProcessScope,
+} from "./test/builtin-provider-driver-factory.js";
 import { promptTextInput } from "./test/prompt-input.js";
 import {
   fullRuntimeOptions,
   waitForRuntimeThreadEvent,
 } from "./test/runtime-test-harness.js";
 
-const fakeAgentPath = join(import.meta.dirname, "acp", "fake-acp-agent.mjs");
+const fakeAgentPath = join(
+  import.meta.dirname,
+  "../../../plugins/acp/src/fake-acp-agent.mjs",
+);
 
 describe("AgentRuntime ACP canonical driver", () => {
   const directories: string[] = [];
@@ -35,8 +41,9 @@ describe("AgentRuntime ACP canonical driver", () => {
         onToolCall: async () => ({ success: true, contentItems: [] }),
       },
       builtinProviderDriverTestFactory,
+      builtinProviderProcessScope,
     );
-    const acpLaunchSpec: HostDaemonAcpLaunchSpec = {
+    const providerDriver = builtinProviderDriverLaunchSpec("acp-fake", {
       displayName: "Fake ACP",
       command: process.execPath,
       args: [fakeAgentPath],
@@ -46,11 +53,11 @@ describe("AgentRuntime ACP canonical driver", () => {
         supportedLevels: ["none", "low", "medium", "high", "xhigh"],
         defaultLevel: "medium",
       },
-    };
+    });
 
     const models = await runtime.listModels({
       providerId: "acp-fake",
-      acpLaunchSpec,
+      providerDriver,
       cwd: directory,
     });
     expect(models.models.length).toBeGreaterThan(0);
@@ -60,7 +67,7 @@ describe("AgentRuntime ACP canonical driver", () => {
       projectId: "project-1",
       threadId: "thread-1",
       providerId: "acp-fake",
-      acpLaunchSpec,
+      providerDriver,
       options: {
         ...fullRuntimeOptions,
         model: models.models[0]?.id ?? "fake/default",

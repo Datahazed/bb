@@ -15,7 +15,6 @@ import type {
   GitHostPullRequest,
   PromptInput,
 } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import type {
   HostWorkspace,
@@ -53,7 +52,6 @@ interface FakeWorkspaceState {
   lastDiffTarget: FakeWorkspaceDiffTarget | undefined;
   lastPullRequestAction: PullRequestActionOptions | undefined;
   listedModelsProviderId: string | undefined;
-  listedModelsAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
   pullRequest: GitHostPullRequest | null;
   pullRequestLookupError: string | null;
   resetCount: number;
@@ -79,7 +77,6 @@ interface FakeRuntimeState {
   archivedProviderThreadId: string | undefined;
   archivedThreadId: string | undefined;
   listedModelsProviderId: string | undefined;
-  listedModelsAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
   ranTurnClientRequestId: ClientTurnRequestId | undefined;
   ranTurnInput: PromptInput[] | undefined;
   ranTurnInputGroups: PromptInput[][] | undefined;
@@ -88,7 +85,6 @@ interface FakeRuntimeState {
   ranTurnText: string | undefined;
   renamedTitle: string | undefined;
   resumedDynamicTools: DynamicTool[] | undefined;
-  resumedAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
   resumedEnvironmentId: string | undefined;
   resumedInstructions: string | undefined;
   resumedOptions: AgentRuntimeExecutionOptions | undefined;
@@ -97,7 +93,6 @@ interface FakeRuntimeState {
   runningProviders: string[];
   shutdownCount: number;
   startedDynamicTools: DynamicTool[] | undefined;
-  startedAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
   startedEnvironmentId: string | undefined;
   startedInput: PromptInput[] | undefined;
   startedInputGroups: PromptInput[][] | undefined;
@@ -131,7 +126,6 @@ export function createFakeWorkspace(pathname: string) {
     resetCount: 0,
     destroyed: false,
     listedModelsProviderId: undefined,
-    listedModelsAcpLaunchSpec: undefined,
     lastPullRequestAction: undefined,
     pullRequest: null,
     pullRequestLookupError: null,
@@ -265,7 +259,6 @@ export function createFakeRuntime() {
     archivedProviderThreadId: undefined,
     archivedThreadId: undefined,
     listedModelsProviderId: undefined,
-    listedModelsAcpLaunchSpec: undefined,
     ranTurnClientRequestId: undefined,
     ranTurnInput: undefined,
     ranTurnInputGroups: undefined,
@@ -274,7 +267,6 @@ export function createFakeRuntime() {
     ranTurnText: undefined,
     renamedTitle: undefined,
     resumedDynamicTools: undefined,
-    resumedAcpLaunchSpec: undefined,
     resumedEnvironmentId: undefined,
     resumedInstructions: undefined,
     resumedOptions: undefined,
@@ -283,7 +275,6 @@ export function createFakeRuntime() {
     runningProviders: [],
     shutdownCount: 0,
     startedDynamicTools: undefined,
-    startedAcpLaunchSpec: undefined,
     startedEnvironmentId: undefined,
     startedInput: undefined,
     startedInputGroups: undefined,
@@ -332,7 +323,6 @@ export function createFakeRuntime() {
   const runtime: AgentRuntime = {
     async ensureProvider() {},
     async startThread(args) {
-      state.startedAcpLaunchSpec = args.acpLaunchSpec;
       state.startedEnvironmentId = args.environmentId;
       state.startedThreadId = args.threadId;
       state.startedDynamicTools = args.dynamicTools;
@@ -356,7 +346,6 @@ export function createFakeRuntime() {
     },
     async discardThreadRewind() {},
     async resumeThread(args) {
-      state.resumedAcpLaunchSpec = args.acpLaunchSpec;
       state.resumedEnvironmentId = args.environmentId;
       state.resumedThreadId = args.threadId;
       state.resumedDynamicTools = args.dynamicTools;
@@ -443,7 +432,6 @@ export function createFakeRuntime() {
     },
     async listModels(args) {
       state.listedModelsProviderId = args.providerId;
-      state.listedModelsAcpLaunchSpec = args.acpLaunchSpec;
       return createReadyProviderInspection();
     },
     async shutdown() {

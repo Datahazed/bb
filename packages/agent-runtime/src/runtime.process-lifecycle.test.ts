@@ -8,6 +8,7 @@ import {
   createAgentRuntimeWithProviderDrivers,
   createFakeCanonicalProviderDriverSpec,
 } from "./test/runtime-with-provider-drivers.js";
+import { builtinProviderDriverLaunchSpec } from "./test/builtin-provider-driver-factory.js";
 import {
   fullRuntimeOptions,
   waitForRuntimeThreadEvent,
@@ -183,6 +184,8 @@ describe("createAgentRuntime canonical process lifecycle", () => {
       workspacePath: tmpDir,
       onEvent: (event) => events.push(event),
       onToolCall: async () => ({ success: true, contentItems: [] }),
+      providerProcessScope: (providerId) =>
+        providerId === "codex" ? "thread" : "environment",
     });
 
     try {
@@ -224,6 +227,8 @@ describe("createAgentRuntime canonical process lifecycle", () => {
       workspacePath: tmpDir,
       onEvent: (event) => events.push(event),
       onToolCall: async () => ({ success: true, contentItems: [] }),
+      providerProcessScope: (providerId) =>
+        providerId === "codex" ? "thread" : "environment",
     });
 
     try {
@@ -259,8 +264,9 @@ describe("createAgentRuntime canonical process lifecycle", () => {
     }
   });
 
-  it("reaps an idle thread-scoped process and resumes it later", async () => {
+  it("reaps a registered thread-scoped driver process and resumes it later", async () => {
     const events: ThreadEvent[] = [];
+    const providerDriver = builtinProviderDriverLaunchSpec("codex");
     const runtime = createAgentRuntimeWithProviderDrivers({
       workspacePath: tmpDir,
       onEvent: (event) => events.push(event),
@@ -273,6 +279,7 @@ describe("createAgentRuntime canonical process lifecycle", () => {
         threadId: "t1",
         projectId: "p1",
         providerId: "codex",
+        providerDriver,
         options: fullRuntimeOptions,
       });
       await runtime.runTurn({
@@ -304,6 +311,7 @@ describe("createAgentRuntime canonical process lifecycle", () => {
         projectId: "p1",
         providerThreadId,
         providerId: "codex",
+        providerDriver,
         options: fullRuntimeOptions,
       });
       expect(runtime.hasThread("t1")).toBe(true);
@@ -318,6 +326,8 @@ describe("createAgentRuntime canonical process lifecycle", () => {
       workspacePath: tmpDir,
       onEvent: (event) => events.push(event),
       onToolCall: async () => ({ success: true, contentItems: [] }),
+      providerProcessScope: (providerId) =>
+        providerId === "codex" ? "thread" : "environment",
     });
 
     try {

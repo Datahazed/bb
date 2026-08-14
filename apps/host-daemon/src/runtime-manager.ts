@@ -4,7 +4,7 @@ import {
   createAgentRuntime,
   type AgentRuntime,
   type AgentRuntimeOptions,
-  type AgentRuntimeSkillRoot,
+  type AgentRuntimeSkillSource,
   type AgentRuntimeProcessExitInfo,
   type ReapedIdleProviderSession,
 } from "@bb/agent-runtime";
@@ -50,7 +50,7 @@ const PROVIDER_PROCESS_EXIT_DETAIL_MAX_LENGTH = 4000;
 
 interface RuntimeSkillConfig {
   catalogHash: string;
-  skillRoots: readonly AgentRuntimeSkillRoot[];
+  skillSources: readonly AgentRuntimeSkillSource[];
 }
 
 interface CreateEntryArgs extends Omit<
@@ -635,7 +635,7 @@ export class RuntimeManager {
     if (args.injectedSkillSources.length === 0) {
       return {
         catalogHash: EMPTY_SKILL_CATALOG_HASH,
-        skillRoots: [],
+        skillSources: [],
       };
     }
     if (!this.options.dataDir) {
@@ -752,7 +752,7 @@ export class RuntimeManager {
       args.skillConfig === null ||
       args.entry.skillCatalogHash === args.skillConfig.catalogHash ||
       (args.entry.skillCatalogHash === null &&
-        args.skillConfig.skillRoots.length === 0)
+        args.skillConfig.skillSources.length === 0)
     ) {
       return args.entry;
     }
@@ -1315,7 +1315,9 @@ export class RuntimeManager {
     runtime = this.createRuntime({
       workspacePath: workspace.path,
       additionalWorkspaceWriteRoots,
-      ...(args.skillConfig ? { skillRoots: args.skillConfig.skillRoots } : {}),
+      ...(args.skillConfig
+        ? { skillSources: args.skillConfig.skillSources }
+        : {}),
       ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,

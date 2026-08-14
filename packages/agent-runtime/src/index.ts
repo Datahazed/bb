@@ -1,20 +1,12 @@
 export { createAgentRuntime } from "./runtime.js";
-export { fingerprintAcpLaunchSpec } from "./acp-launch-spec-fingerprint.js";
-export { createConfiguredPiSettingsManager } from "./pi/configured-services.js";
-export { listAvailableProviderInfos as listAvailableProviders } from "./provider-registry.js";
 export type {
   AgentRuntime,
-  AgentRuntimeAcpSkill,
-  AgentRuntimeAcpSkillRoot,
-  AgentRuntimeClaudeCodeSkillRoot,
-  AgentRuntimeCodexSkillRoot,
   AgentRuntimeExecutionOptions,
   AgentRuntimeOptions,
-  AgentRuntimePiSkillRoot,
   AgentRuntimeProcessExitInfo,
   AgentRuntimeProcessExitThreadState,
   AgentRuntimeProviderSession,
-  AgentRuntimeSkillRoot,
+  AgentRuntimeSkillSource,
   EnsureProviderArgs,
   ListModelsArgs,
   ReapedIdleProviderSession,
@@ -31,8 +23,3 @@ export type {
   StopThreadResult,
   WaitForActiveTurnArgs,
 } from "./types.js";
-export type {
-  ProviderRawEventCoverage,
-  ProviderRawEventDescription,
-  ProviderVisibilityMetadata,
-} from "./provider-visibility.js";

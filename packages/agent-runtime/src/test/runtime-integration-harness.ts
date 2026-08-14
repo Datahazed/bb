@@ -26,12 +26,15 @@ import {
 } from "@bb/domain";
 import { resolvePreferredTestModel } from "@bb/test-helpers";
 import { createAgentRuntimeWithCanonicalProviderDriverFactory } from "../runtime.js";
-import { PI_DRIVER_SESSION_DIR_ENV } from "../pi/session-paths.js";
-import { builtinProviderDriverTestFactory } from "./builtin-provider-driver-factory.js";
+import { PI_DRIVER_SESSION_DIR_ENV } from "bb-plugin-pi/session-paths";
+import {
+  builtinProviderDriverTestFactory,
+  builtinProviderProcessScope,
+} from "./builtin-provider-driver-factory.js";
 import type {
   AgentRuntime,
   AgentRuntimeExecutionOptions,
-  AgentRuntimeSkillRoot,
+  AgentRuntimeSkillSource,
 } from "../types.js";
 import {
   waitForRuntimeConditionUnsafe,
@@ -110,6 +113,8 @@ export interface ResolveRuntimeOptionsArgs {
 const fullRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
+  providerOptions: {},
+  planModeEnabled: false,
   workflowsEnabled: false,
   permissionMode: "full",
   permissionScope: "full",
@@ -120,6 +125,8 @@ const fullRuntimeOptionsTemplate = {
 const workspaceWriteAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
+  providerOptions: {},
+  planModeEnabled: false,
   workflowsEnabled: false,
   permissionMode: "accept-edits",
   permissionScope: "workspace",
@@ -130,6 +137,8 @@ const workspaceWriteAskRuntimeOptionsTemplate = {
 const workspaceWriteDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
+  providerOptions: {},
+  planModeEnabled: false,
   workflowsEnabled: false,
   permissionMode: "accept-edits",
   permissionScope: "workspace",
@@ -140,6 +149,8 @@ const workspaceWriteDenyRuntimeOptionsTemplate = {
 const readonlyAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
+  providerOptions: {},
+  planModeEnabled: false,
   workflowsEnabled: false,
   permissionMode: "auto",
   permissionScope: "workspace",
@@ -150,6 +161,8 @@ const readonlyAskRuntimeOptionsTemplate = {
 const readonlyDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
+  providerOptions: {},
+  planModeEnabled: false,
   workflowsEnabled: false,
   permissionMode: "auto",
   permissionScope: "workspace",
@@ -798,7 +811,7 @@ export type TestInteractiveRequestHandler = (
 export interface CreateTestRuntimeOptions {
   onInteractiveRequest?: TestInteractiveRequestHandler;
   onToolCall?: TestToolCallHandler;
-  skillRoots?: readonly AgentRuntimeSkillRoot[];
+  skillSources?: readonly AgentRuntimeSkillSource[];
   workspacePath?: string;
 }
 
@@ -879,7 +892,7 @@ export function createTestRuntime(
   const runtime = createAgentRuntimeWithCanonicalProviderDriverFactory(
     {
       env: createRuntimeProcessEnv({ providerId, tmpDir }),
-      skillRoots: opts?.skillRoots,
+      skillSources: opts?.skillSources,
       threadStorageRootPath: join(tmpDir, ".bb-thread-storage"),
       workspacePath: tmpDir,
       onEvent: (e) => events.push(e),
@@ -901,6 +914,7 @@ export function createTestRuntime(
       onStderr: () => {},
     },
     builtinProviderDriverTestFactory,
+    builtinProviderProcessScope,
   );
 
   return {

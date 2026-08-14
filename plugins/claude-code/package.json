@@ -2,6 +2,40 @@
   "name": "bb-plugin-claude-code",
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    "./driver-entry": {
+      "source": "./src/driver-entry.ts",
+      "types": "./src/driver-entry.ts",
+      "default": "./src/driver-entry.ts"
+    },
+    "./launch-config": {
+      "source": "./src/launch-config.ts",
+      "types": "./src/launch-config.ts",
+      "default": "./src/launch-config.ts"
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.197",
+    "@bb/agent-providers": "workspace:*",
+    "@bb/domain": "workspace:*",
+    "@bb/plugin-sdk": "workspace:*",
+    "@bb/provider-driver-contract": "workspace:*",
+    "@bb/provider-driver-helpers": "workspace:*",
+    "@bb/provider-driver-sdk": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  },
   "bb": {
     "name": "Claude Code",
     "description": "Run Claude Code sessions through BB.",

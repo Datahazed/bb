@@ -58,7 +58,7 @@ class FakeDriverPeer {
 
 function makeInitializeParams(): ProviderDriverInitializeParams {
   return providerDriverInitializeParamsSchema.parse({
-    supportedProtocolVersions: [5],
+    supportedProtocolVersions: [6],
     expected: {
       pluginId: "test-plugin",
       driverId: "test-driver",
@@ -73,7 +73,7 @@ function makeInitializeParams(): ProviderDriverInitializeParams {
 
 function makeInitializeResult(): ProviderDriverInitializeResult {
   return providerDriverInitializeResultSchema.parse({
-    protocolVersion: 5,
+    protocolVersion: 6,
     identity: {
       pluginId: "test-plugin",
       driverId: "test-driver",
@@ -107,6 +107,7 @@ function makeSessionOpenParams(): ProviderSessionOpenParams {
       features: {
         workflowsEnabled: false,
         memoryEnabled: false,
+        planModeEnabled: false,
         subagentsEnabled: false,
       },
       providerOptions: {},
