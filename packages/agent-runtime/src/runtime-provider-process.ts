@@ -26,7 +26,6 @@ import type {
   ProviderAdapter,
   ProviderAdapterFactory,
 } from "./provider-adapter.js";
-import { createProviderForId } from "./provider-registry.js";
 import { filterSkillRootsForProvider } from "./runtime-skill-roots.js";
 import {
   classifyClaudeExecutionSettingsChange,
@@ -250,18 +249,12 @@ export class RuntimeProviderProcessManager {
     if (this.processes.has(args.processKey)) return;
 
     const startPromise = (async () => {
-      if (
-        (args.providerId === PI_PROVIDER_ID ||
-          args.providerId === CLAUDE_CODE_PROVIDER_ID ||
-          args.providerId === CODEX_PROVIDER_ID ||
-          isAcpProviderId(args.providerId)) &&
-        this.args.adapterFactory === undefined
-      ) {
+      if (this.args.adapterFactory === undefined) {
         await this.startCanonicalProvider(args);
         return;
       }
 
-      const adapter = this.getAdapter(args.providerId, args.acpLaunchSpec);
+      const adapter = this.getTestAdapter(args.providerId, args.acpLaunchSpec);
       const providerProcess = this.spawnProvider({
         adapter,
         processKey: args.processKey,
@@ -388,6 +381,14 @@ export class RuntimeProviderProcessManager {
     args: EnsureRuntimeProviderArgs,
   ): Promise<void> {
     const providerId = args.providerId;
+    if (
+      providerId !== PI_PROVIDER_ID &&
+      providerId !== CLAUDE_CODE_PROVIDER_ID &&
+      providerId !== CODEX_PROVIDER_ID &&
+      !isAcpProviderId(providerId)
+    ) {
+      throw new Error(`Unsupported provider "${providerId}"`);
+    }
     const acpProfile = args.acpLaunchSpec;
     if (isAcpProviderId(providerId) && acpProfile === undefined) {
       throw new Error(`ACP provider "${providerId}" requires a launch spec`);
@@ -575,7 +576,7 @@ export class RuntimeProviderProcessManager {
     }
   }
 
-  private getAdapter(
+  private getTestAdapter(
     providerId: string,
     acpLaunchSpec: HostDaemonAcpLaunchSpec | undefined,
   ): ProviderAdapter {
@@ -592,10 +593,10 @@ export class RuntimeProviderProcessManager {
       turnIdPrefix: createAdapterTurnIdPrefix(),
     };
 
-    if (this.args.adapterFactory) {
-      return this.args.adapterFactory(providerId, adapterOptions);
+    if (!this.args.adapterFactory) {
+      throw new Error("Test adapter factory is not configured");
     }
-    return createProviderForId(providerId, adapterOptions);
+    return this.args.adapterFactory(providerId, adapterOptions);
   }
 
   private spawnProvider(args: SpawnProviderArgs): RuntimeProviderProcess {
