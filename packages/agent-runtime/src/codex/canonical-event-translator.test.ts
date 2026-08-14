@@ -6,7 +6,9 @@ import type {
 import { describe, expect, it } from "vitest";
 import { CodexCanonicalEventTranslator } from "./canonical-event-translator.js";
 
-function createTranslator() {
+function createTranslator(
+  options: { onAccountRestartRequired?: () => void } = {},
+) {
   const inputs: ProviderDriverEventInput[] = [];
   const events: ProviderDriverEventEmitter = {
     emit: (event) => inputs.push(event),
@@ -15,6 +17,7 @@ function createTranslator() {
     translator: new CodexCanonicalEventTranslator({
       attachmentId: "attachment-1",
       events,
+      ...options,
     }),
     events: () =>
       inputs.map((event, index) =>
@@ -182,6 +185,40 @@ describe("Codex canonical event translator", () => {
         item: expect.objectContaining({
           type: "commandExecution",
           aggregatedOutput: "FIRST\nSECOND\nTHIRD\n",
+        }),
+      }),
+    );
+  });
+
+  it("settles terminal account errors and requests an app-server restart", () => {
+    let restartRequests = 0;
+    const fixture = createTranslator({
+      onAccountRestartRequired: () => {
+        restartRequests += 1;
+      },
+    });
+    fixture.translator.beginTurn("canonical-turn-1");
+    fixture.translator.translate("error", {
+      threadId: "codex-thread-1",
+      turnId: "native-turn-1",
+      error: {
+        message: "401 Unauthorized",
+        codexErrorInfo: null,
+        additionalDetails: "Missing authentication",
+      },
+      willRetry: false,
+    });
+
+    expect(restartRequests).toBe(1);
+    expect(fixture.translator.activeTurn).toBeNull();
+    expect(fixture.events()).toContainEqual(
+      expect.objectContaining({
+        type: "turn.settled",
+        turnId: "canonical-turn-1",
+        outcome: "failed",
+        error: expect.objectContaining({
+          code: "codex_account_error",
+          category: "authentication",
         }),
       }),
     );

@@ -5,12 +5,7 @@ import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
 } from "@bb/domain";
-import type {
-  DynamicTool,
-  InstructionMode,
-  ProviderErrorCategory,
-  ThreadEvent,
-} from "@bb/domain";
+import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type {
   ProviderDriverConnection,
@@ -59,12 +54,6 @@ import { buildThreadShellEnvironment } from "./thread-shell-environment.js";
 import { fingerprintAcpLaunchSpec } from "./acp-launch-spec-fingerprint.js";
 
 interface ReconfigureThreadIfNeededArgs {
-  options: AgentRuntimeExecutionOptions;
-  threadId: string;
-}
-
-interface RestartCodexThreadForNextTurnArgs {
-  instructions: string | undefined;
   options: AgentRuntimeExecutionOptions;
   threadId: string;
 }
@@ -199,13 +188,8 @@ interface EmitTranslatedEventsArgs {
   sourceThreadId?: string;
 }
 
-const CODEX_PROVIDER_ID = "codex";
 const THREAD_PROCESS_KEY_SEPARATOR = "\0thread:";
 const THREAD_CREATION_REQUEST_TIMEOUT_MS = 2 * 60_000;
-const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_CATEGORIES =
-  new Set<ProviderErrorCategory>(["rate-limit", "unauthorized"]);
-const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN =
-  /\b(?:40[19]|429|auth(?:entication|orization)?|credits?|quota|rate[-\s]?limit(?:ed)?|unauthori[sz]ed|usage limit)\b/i;
 function resolveThreadStoragePath(
   args: ResolveThreadStoragePathArgs,
 ): string | undefined {
@@ -242,7 +226,6 @@ function createAgentRuntimeInternal(
   let nextRequestId = 1;
   const threadIdentityRegistry = new RuntimeThreadIdentityRegistry();
   const threadRuntimeConfigs = new Map<string, ThreadRuntimeConfig>();
-  const codexThreadsRequiringAccountRestart = new Set<string>();
   const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
   const pendingTurnStartThreadIds = new Set<string>();
   const threadOperationCounts = new Map<string, number>();
@@ -502,12 +485,10 @@ function createAgentRuntimeInternal(
     threadId: string,
     config: ThreadRuntimeConfig,
   ): void {
-    codexThreadsRequiringAccountRestart.delete(threadId);
     threadRuntimeConfigs.set(threadId, config);
   }
 
   function clearThreadRuntimeConfig(threadId: string): void {
-    codexThreadsRequiringAccountRestart.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
     pendingTurnStartThreadIds.delete(threadId);
     threadGoalState.clearThread(threadId);
@@ -643,7 +624,12 @@ function createAgentRuntimeInternal(
     }
 
     const runtimeConfig = threadRuntimeConfigs.get(args.threadId);
-    if (runtimeConfig?.providerId !== CODEX_PROVIDER_ID) {
+    if (
+      !runtimeConfig ||
+      !runtimeConfig.processKey.startsWith(
+        `${runtimeConfig.providerId}${THREAD_PROCESS_KEY_SEPARATOR}`,
+      )
+    ) {
       return null;
     }
 
@@ -678,89 +664,6 @@ function createAgentRuntimeInternal(
       throw new Error(`No provider thread id available for ${threadId}`);
     }
     return providerThreadId;
-  }
-
-  function shouldRestartCodexThreadAfterEvent(
-    event: ThreadEvent,
-    proc: ProviderProcess,
-  ): boolean {
-    if (
-      proc.providerId !== CODEX_PROVIDER_ID ||
-      event.type !== "provider/error" ||
-      event.willRetry === true
-    ) {
-      return false;
-    }
-
-    if (
-      event.errorInfo !== undefined &&
-      CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_CATEGORIES.has(
-        event.errorInfo.category,
-      )
-    ) {
-      return true;
-    }
-
-    const errorText = [event.message, event.detail]
-      .filter((part) => part !== undefined)
-      .join("\n");
-    return CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN.test(errorText);
-  }
-
-  async function restartCodexThreadForNextTurnIfNeeded(
-    args: RestartCodexThreadForNextTurnArgs,
-  ): Promise<void> {
-    if (!codexThreadsRequiringAccountRestart.has(args.threadId)) {
-      return;
-    }
-
-    const currentConfig = threadRuntimeConfigs.get(args.threadId);
-    if (!currentConfig || currentConfig.providerId !== CODEX_PROVIDER_ID) {
-      codexThreadsRequiringAccountRestart.delete(args.threadId);
-      return;
-    }
-
-    if (turnState.getActiveTurnId(args.threadId) !== null) {
-      return;
-    }
-
-    const providerThreadId = requireProviderThreadId(args.threadId);
-    const proc = requireProviderProcess({
-      processKey: currentConfig.processKey,
-      providerId: currentConfig.providerId,
-    });
-    if (!isThreadScopedProviderProcess(proc)) {
-      codexThreadsRequiringAccountRestart.delete(args.threadId);
-      return;
-    }
-
-    codexThreadsRequiringAccountRestart.delete(args.threadId);
-    await providerProcesses.shutdownProvider({
-      processKey: proc.processKey,
-      providerId: proc.providerId,
-    });
-
-    const resumeInstructions = args.instructions ?? currentConfig.instructions;
-    await runtime.resumeThread({
-      environmentId: currentConfig.environmentId,
-      threadId: args.threadId,
-      ...(currentConfig.projectId !== undefined
-        ? { projectId: currentConfig.projectId }
-        : {}),
-      providerThreadId,
-      providerId: currentConfig.providerId,
-      options: args.options,
-      ...(resumeInstructions !== undefined
-        ? { instructions: resumeInstructions }
-        : {}),
-      ...(currentConfig.dynamicTools !== undefined
-        ? { dynamicTools: currentConfig.dynamicTools }
-        : {}),
-      ...(currentConfig.disallowedTools !== undefined
-        ? { disallowedTools: currentConfig.disallowedTools }
-        : {}),
-      instructionMode: currentConfig.instructionMode,
-    });
   }
 
   async function archiveOrUnarchiveThread(
@@ -949,9 +852,6 @@ function createAgentRuntimeInternal(
         turnState.observe(normalizedEvent);
         backgroundWorkState.observe(normalizedEvent);
         observeProviderSessionIdleState(normalizedEvent);
-        if (shouldRestartCodexThreadAfterEvent(normalizedEvent, args.proc)) {
-          codexThreadsRequiringAccountRestart.add(normalizedEvent.threadId);
-        }
         options.onEvent(normalizedEvent);
         threadGoalState.observe(normalizedEvent);
       }
@@ -1600,19 +1500,11 @@ function createAgentRuntimeInternal(
         threadId,
         work: async () => {
           const pid = resolveProviderForThread(threadId);
-          const currentProc = requireProviderProcessForThread(threadId);
+          const proc = requireProviderProcessForThread(threadId);
           const effectiveExecOpts = normalizeExecutionOptions({
-            connection: currentProc.connection,
+            connection: proc.connection,
             options: execOpts,
           });
-          await restartCodexThreadForNextTurnIfNeeded({
-            threadId,
-            options: effectiveExecOpts,
-            instructions,
-          });
-          // An account restart replaces a thread-scoped Codex process, so
-          // resolve the process again before constructing the turn command.
-          const proc = requireProviderProcessForThread(threadId);
           assertProviderSupportsExecutionOptions({
             capabilities: proc.connection.capabilities,
             options: effectiveExecOpts,
@@ -1699,14 +1591,7 @@ function createAgentRuntimeInternal(
             };
           }
 
-          await restartCodexThreadForNextTurnIfNeeded({
-            threadId,
-            options: effectiveExecOpts,
-            instructions,
-          });
-          // An account restart replaces a thread-scoped Codex process, so
-          // resolve the process again before constructing the steer command.
-          const proc = requireProviderProcessForThread(threadId);
+          const proc = currentProc;
           await reconfigureThreadIfNeeded({
             threadId,
             options: effectiveExecOpts,

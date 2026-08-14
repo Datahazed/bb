@@ -221,6 +221,39 @@ describe("Codex canonical driver command mapping", () => {
     ).toBe(true);
   });
 
+  it("reopens the same session with current execution after an account error", () => {
+    const original = openParams({
+      dynamicTools: [
+        {
+          name: "ping",
+          description: "Ping",
+          inputSchema: { type: "object", properties: {} },
+          statusLabels: null,
+        },
+      ],
+    });
+    const execution = {
+      ...original.execution,
+      model: "gpt-5.4-mini",
+      reasoningLevel: "low" as const,
+    };
+
+    expect(
+      codexDriverTestHelpers.toAccountRestartOpenParams({
+        execution,
+        openParams: original,
+        providerSessionId: "provider-session-1",
+      }),
+    ).toEqual({
+      ...original,
+      execution,
+      mode: {
+        kind: "resume",
+        providerSessionId: "provider-session-1",
+      },
+    });
+  });
+
   it("pins durable starts and forwards fork checkpoints", () => {
     expect(
       codexDriverTestHelpers.buildCodexOpenParams(openParams(), []),

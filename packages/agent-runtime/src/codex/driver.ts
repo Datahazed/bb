@@ -751,8 +751,10 @@ interface CodexDriverSession {
   readonly connection: CodexAppServerConnection;
   readonly context: ProviderDriverContext;
   readonly gitWritableRoots: readonly string[];
+  readonly openParams: ProviderSessionOpenParams;
   readonly providerSessionId: string;
   providerTurnId: string | null;
+  restartBeforeNextTurn: boolean;
   readonly translator: CodexCanonicalEventTranslator;
 }
 
@@ -989,6 +991,7 @@ export const codexDriverTestHelpers = {
   gitWritableRootsForWorkspace,
   isAlreadyArchivedStateError,
   withArchivedSessionRecovery,
+  toAccountRestartOpenParams,
   toCodexPermissionSettings,
   toCodexThreadPermissionSettings,
   buildCodexConfig,
@@ -1003,11 +1006,14 @@ async function openCodexSession(
     params.execution.permission.permissionScope === "workspace"
       ? gitWritableRootsForWorkspace(params.workspace.cwd)
       : [];
+  let session: CodexDriverSession | null = null;
   const translator = new CodexCanonicalEventTranslator({
     attachmentId: params.attachmentId,
     events: context.events,
+    onAccountRestartRequired: () => {
+      if (session) session.restartBeforeNextTurn = true;
+    },
   });
-  let session: CodexDriverSession | null = null;
   const connection = createCodexAppServerConnection({
     cwd: params.workspace.cwd,
     env: params.shellEnvironment,
@@ -1024,8 +1030,8 @@ async function openCodexSession(
         session.activeTurnReady = null;
       }
       if (
-        method === "turn/completed" &&
         session &&
+        session.activeTurnId !== null &&
         translator.activeTurn === null
       ) {
         session.resolveActiveTurnReady?.();
@@ -1105,13 +1111,55 @@ async function openCodexSession(
     connection,
     context,
     gitWritableRoots,
+    openParams: params,
     providerSessionId: result.thread.id,
     providerTurnId: null,
     resolveActiveTurnReady: null,
+    restartBeforeNextTurn: false,
     translator,
   };
   codexSessions.set(params.attachmentId, session);
   return session;
+}
+
+function toAccountRestartOpenParams(args: {
+  execution: ProviderTurnSubmitParams["execution"];
+  openParams: ProviderSessionOpenParams;
+  providerSessionId: string;
+}): ProviderSessionOpenParams {
+  return {
+    ...args.openParams,
+    mode: {
+      kind: "resume",
+      providerSessionId: args.providerSessionId,
+    },
+    execution: args.execution,
+  };
+}
+
+async function restartCodexSessionForNextTurn(
+  session: CodexDriverSession,
+  execution: ProviderTurnSubmitParams["execution"],
+): Promise<CodexDriverSession> {
+  if (!session.restartBeforeNextTurn) return session;
+  if (session.activeTurnId !== null) {
+    rejectCodexRequest({
+      code: "codex_turn_active",
+      category: "provider",
+      message: "Cannot restart Codex while a turn is active",
+    });
+  }
+
+  codexSessions.delete(session.attachmentId);
+  await session.connection.stop();
+  return openCodexSession(
+    toAccountRestartOpenParams({
+      execution,
+      openParams: session.openParams,
+      providerSessionId: session.providerSessionId,
+    }),
+    session.context,
+  );
 }
 
 export const codexProviderDriver = defineProviderDriver({
@@ -1196,7 +1244,8 @@ export const codexProviderDriver = defineProviderDriver({
   },
 
   async submitTurn(params) {
-    const session = requireCodexSession(params.attachmentId);
+    let session = requireCodexSession(params.attachmentId);
+    session = await restartCodexSessionForNextTurn(session, params.execution);
     if (params.mode === "steer") {
       if (session.activeTurnId !== params.expectedTurnId) {
         return { outcome: "stale", activeTurnId: session.activeTurnId };
@@ -1242,6 +1291,7 @@ export const codexProviderDriver = defineProviderDriver({
       session.resolveActiveTurnReady = resolve;
     });
     session.translator.beginTurn(params.turnId);
+    let acceptedProviderTurnId: string | null = null;
     try {
       if (isStandaloneBuiltinCompactCommand(input)) {
         await session.connection.request({
@@ -1277,8 +1327,11 @@ export const codexProviderDriver = defineProviderDriver({
           unarchive: (providerSessionId) =>
             unarchiveCodexSession(session.connection, providerSessionId),
         });
-        session.translator.setProviderTurnId(turnResult.turn.id);
-        session.providerTurnId = turnResult.turn.id;
+        acceptedProviderTurnId = turnResult.turn.id;
+        if (session.translator.activeTurn !== null) {
+          session.translator.setProviderTurnId(turnResult.turn.id);
+          session.providerTurnId = turnResult.turn.id;
+        }
       }
     } catch (error) {
       session.resolveActiveTurnReady?.();
@@ -1292,7 +1345,7 @@ export const codexProviderDriver = defineProviderDriver({
       outcome: "accepted",
       disposition: "started",
       turnId: params.turnId,
-      providerTurnId: session.providerTurnId,
+      providerTurnId: acceptedProviderTurnId,
     };
   },
 

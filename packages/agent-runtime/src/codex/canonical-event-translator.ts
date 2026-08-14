@@ -22,6 +22,8 @@ import { extractResultText } from "../shared/adapter-utils.js";
 import { codexRateLimitReadResponseSchema } from "./schemas.js";
 
 const CODEX_SHELL_TOOL_NAMES = new Set(["exec_command", "Bash", "bash"]);
+const CODEX_ACCOUNT_ERROR_TEXT_PATTERN =
+  /\b(?:40[19]|429|auth(?:entication|orization)?|credits?|quota|rate[-\s]?limit(?:ed)?|unauthori[sz]ed|usage limit)\b/iu;
 
 interface CodexRawCommandOutputState {
   readonly outputsByCallId: Map<string, string>;
@@ -71,6 +73,7 @@ function mergeCommandOutput(
 interface CodexCanonicalEventTranslatorOptions {
   readonly attachmentId: string;
   readonly events: ProviderDriverEventEmitter;
+  readonly onAccountRestartRequired?: () => void;
 }
 
 function canonicalCodexError(args: {
@@ -125,6 +128,23 @@ function itemStatus(item: ProviderDriverItem): string {
   return "status" in item ? item.status : "completed";
 }
 
+function terminalAccountErrorCategory(
+  event: Extract<ThreadEvent, { type: "provider/error" }>,
+): ProviderDriverError["category"] | null {
+  if (event.willRetry === true) return null;
+  if (event.errorInfo?.category === "rate-limit") return "rate_limit";
+  if (event.errorInfo?.category === "unauthorized") return "authentication";
+  const text = [event.message, event.detail]
+    .filter((part) => part !== undefined)
+    .join("\n");
+  if (!CODEX_ACCOUNT_ERROR_TEXT_PATTERN.test(text)) return null;
+  return /\b(?:40[19]|auth(?:entication|orization)?|unauthori[sz]ed)\b/iu.test(
+    text,
+  )
+    ? "authentication"
+    : "rate_limit";
+}
+
 function failedItemError(item: ProviderDriverItem): ProviderDriverError {
   return canonicalCodexError({
     code: "codex_item_failed",
@@ -136,6 +156,7 @@ function failedItemError(item: ProviderDriverItem): ProviderDriverError {
 export class CodexCanonicalEventTranslator {
   private readonly attachmentId: string;
   private readonly events: ProviderDriverEventEmitter;
+  private readonly onAccountRestartRequired: () => void;
   private readonly openItems = new Map<string, ProviderDriverItem>();
   private readonly pendingCommandCompletions = new Map<
     string,
@@ -164,6 +185,8 @@ export class CodexCanonicalEventTranslator {
   constructor(options: CodexCanonicalEventTranslatorOptions) {
     this.attachmentId = options.attachmentId;
     this.events = options.events;
+    this.onAccountRestartRequired =
+      options.onAccountRestartRequired ?? (() => {});
   }
 
   get activeTurn(): string | null {
@@ -375,7 +398,7 @@ export class CodexCanonicalEventTranslator {
             : event.summary || "Codex warning",
         });
         return;
-      case "provider/error":
+      case "provider/error": {
         if (event.willRetry === true && turnId) {
           this.events.emit({
             type: "turn.retrying",
@@ -385,8 +408,29 @@ export class CodexCanonicalEventTranslator {
             message: event.detail ?? event.message,
             retryAt: null,
           });
+          return;
         }
+        const accountCategory = terminalAccountErrorCategory(event);
+        if (accountCategory === null) return;
+        this.onAccountRestartRequired();
+        if (!turnId) return;
+        this.completeOpenItems("failed");
+        this.events.emit({
+          type: "turn.settled",
+          attachmentId: this.attachmentId,
+          turnId,
+          outcome: "failed",
+          error: {
+            code: "codex_account_error",
+            category: accountCategory,
+            message: event.detail ?? event.message,
+            retry: { disposition: "never" },
+          },
+          providerCheckpointId: providerTurnId ?? null,
+        });
+        this.finishTurn();
         return;
+      }
       case "turn/plan/updated": {
         if (!turnId) return;
         const text = event.plan

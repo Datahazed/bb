@@ -312,15 +312,6 @@ rl.on("line", (line) => {
     if (inputText.includes("hold_turn")) {
       return;
     }
-    if (inputText.includes("account_error")) {
-      send({
-        jsonrpc: "2.0",
-        method: "provider/account_error",
-        params: { threadId, providerThreadId, turnId },
-      });
-      finishTurn(threadId, providerThreadId, turnId, "failed", "");
-      return;
-    }
     finishTurn(threadId, providerThreadId, turnId, "completed", "pid:" + processId + ":" + inputText);
     return;
   }
@@ -668,117 +659,6 @@ rl.on("line", (line) => {
     });
 
     await runtime.shutdown();
-  });
-
-  it("restarts a codex thread process after a terminal account error before the next turn", async () => {
-    const events: ThreadEvent[] = [];
-    const processLogPath = join(tmpDir, "account-restart-provider.log");
-    const threadScopedProviderScript = join(
-      tmpDir,
-      "account-restart-provider.cjs",
-    );
-    writeThreadScopedProviderScript({
-      logPath: processLogPath,
-      scriptPath: threadScopedProviderScript,
-    });
-
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => {
-        events.push(event);
-      },
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () =>
-        createCodexAccountErrorAdapter(threadScopedProviderScript),
-    });
-
-    try {
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "codex",
-        options: fullRuntimeOptions,
-      });
-      const initialSession = runtime.getProviderSession("t1");
-      if (!initialSession) {
-        throw new Error("Expected initial provider session");
-      }
-
-      await runtime.runTurn({
-        clientRequestId: "creq_2222222253",
-        threadId: "t1",
-        input: [promptTextInput({ text: "account_error" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForRuntimeState({
-        label: "terminal codex account error turn",
-        predicate: () =>
-          events.some(
-            (event) =>
-              event.type === "provider/error" &&
-              event.threadId === "t1" &&
-              event.detail?.includes("401 Unauthorized") &&
-              event.willRetry === false,
-          ) &&
-          events.some(
-            (event) =>
-              event.type === "turn/completed" &&
-              event.threadId === "t1" &&
-              event.status === "failed",
-          ),
-        runtime,
-      });
-      events.splice(0, events.length);
-
-      await runtime.runTurn({
-        clientRequestId: "creq_2222222254",
-        threadId: "t1",
-        input: [promptTextInput({ text: "after reauth" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadAgentMessageText({
-        events,
-        providerId: "codex",
-        runtime,
-        text: "after reauth",
-        threadId: "t1",
-      });
-
-      expect(runtime.getProviderSession("t1")).toEqual(initialSession);
-      const logLines = readLogLines(processLogPath);
-      expect(logLines.filter((line) => line.startsWith("spawn:"))).toHaveLength(
-        2,
-      );
-      expect(logLines.filter((line) => line.startsWith("exit:"))).toHaveLength(
-        1,
-      );
-      expect(
-        logLines.filter(
-          (line) =>
-            line.startsWith("thread-resume:") &&
-            line.endsWith(`:t1:${initialSession.providerThreadId}`),
-        ),
-      ).toHaveLength(1);
-
-      const accountErrorTurn = logLines.find((line) =>
-        line.endsWith(":t1:account_error"),
-      );
-      const afterReauthTurn = logLines.find((line) =>
-        line.endsWith(":t1:after reauth"),
-      );
-      if (!accountErrorTurn || !afterReauthTurn) {
-        throw new Error("Expected account-error and post-reauth turn logs");
-      }
-      const accountErrorProcessId = accountErrorTurn.split(":")[1];
-      const afterReauthProcessId = afterReauthTurn.split(":")[1];
-      expect(afterReauthProcessId).not.toBe(accountErrorProcessId);
-    } finally {
-      await runtime.shutdown();
-    }
   });
 
   it("reaps a codex thread process after a terminal provider error before turn start", async () => {
