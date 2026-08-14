@@ -1,4 +1,5 @@
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
+import { createReadyProviderInspection } from "@bb/agent-runtime/test";
 import type { AvailableModel } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -135,14 +136,12 @@ describe("command dispatch support", () => {
     const secondModel = makeModel({ id: "model-second" });
     const listModels = vi
       .fn<AgentRuntime["listModels"]>()
-      .mockResolvedValueOnce({
-        models: [firstModel],
-        selectedOnlyModels: [],
-      })
-      .mockResolvedValueOnce({
-        models: [secondModel],
-        selectedOnlyModels: [],
-      });
+      .mockResolvedValueOnce(
+        createReadyProviderInspection({ models: [firstModel] }),
+      )
+      .mockResolvedValueOnce(
+        createReadyProviderInspection({ models: [secondModel] }),
+      );
     createAgentRuntimeMock.mockReturnValue(
       makeRuntime({
         listModels,
@@ -152,14 +151,12 @@ describe("command dispatch support", () => {
       }),
     );
 
-    await expect(defaultListModels({ providerId: "codex" })).resolves.toEqual({
-      models: [firstModel],
-      selectedOnlyModels: [],
-    });
-    await expect(defaultListModels({ providerId: "codex" })).resolves.toEqual({
-      models: [secondModel],
-      selectedOnlyModels: [],
-    });
+    await expect(
+      defaultListModels({ providerId: "codex" }),
+    ).resolves.toMatchObject({ models: [firstModel] });
+    await expect(
+      defaultListModels({ providerId: "codex" }),
+    ).resolves.toMatchObject({ models: [secondModel] });
 
     expect(createAgentRuntimeMock).toHaveBeenCalledTimes(1);
     expect(listModels).toHaveBeenCalledTimes(2);
@@ -176,10 +173,9 @@ describe("command dispatch support", () => {
       args: ["serve"],
       env: {},
     };
-    const listModels = vi.fn<AgentRuntime["listModels"]>().mockResolvedValue({
-      models: [],
-      selectedOnlyModels: [],
-    });
+    const listModels = vi
+      .fn<AgentRuntime["listModels"]>()
+      .mockResolvedValue(createReadyProviderInspection());
     createAgentRuntimeMock.mockReturnValue(
       makeRuntime({
         listModels,
@@ -215,10 +211,11 @@ describe("command dispatch support", () => {
     createAgentRuntimeMock
       .mockReturnValueOnce(
         makeRuntime({
-          listModels: vi.fn<AgentRuntime["listModels"]>().mockResolvedValue({
-            models: [makeModel({ id: "first" })],
-            selectedOnlyModels: [],
-          }),
+          listModels: vi.fn<AgentRuntime["listModels"]>().mockResolvedValue(
+            createReadyProviderInspection({
+              models: [makeModel({ id: "first" })],
+            }),
+          ),
           shutdown: async () => {
             shutdowns.push("first");
           },
@@ -226,10 +223,11 @@ describe("command dispatch support", () => {
       )
       .mockReturnValueOnce(
         makeRuntime({
-          listModels: vi.fn<AgentRuntime["listModels"]>().mockResolvedValue({
-            models: [makeModel({ id: "second" })],
-            selectedOnlyModels: [],
-          }),
+          listModels: vi.fn<AgentRuntime["listModels"]>().mockResolvedValue(
+            createReadyProviderInspection({
+              models: [makeModel({ id: "second" })],
+            }),
+          ),
           shutdown: async () => {
             shutdowns.push("second");
           },

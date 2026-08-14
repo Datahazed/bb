@@ -7,7 +7,6 @@ import type {
 } from "@bb/server-contract";
 import {
   buildAcpProviderInfo,
-  listBuiltInAgentProviderInfos,
   listClaudeCodeFallbackModels,
 } from "@bb/agent-providers";
 import {
@@ -18,9 +17,13 @@ import {
 import {
   reasoningEffortsForLevels,
   type AvailableModel,
+  type ProviderCapabilities,
   type ProviderInfo,
 } from "@bb/domain";
-import { normalizeHostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import {
+  normalizeHostDaemonAcpLaunchSpec,
+  type HostDaemonProviderInspection,
+} from "@bb/host-daemon-contract";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
@@ -29,6 +32,10 @@ import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
+import {
+  getRegisteredProviderDriverLaunchSpec,
+  listRegisteredProviderInfos,
+} from "../providers/provider-registry.js";
 import {
   buildKnownAcpProviderInfo,
   findKnownAcpAgentForProviderId,
@@ -60,7 +67,43 @@ interface ExpectedFallbackErrorLogFields {
 type ModelListResult = Pick<
   SystemExecutionOptionsResponse,
   "modelLoadError" | "models" | "selectedOnlyModels"
->;
+> & { inspection: HostDaemonProviderInspection | null };
+
+function capabilitiesFromHostInspection(
+  inspection: HostDaemonProviderInspection,
+): ProviderCapabilities {
+  const operations = new Set(
+    inspection.capabilities.supportedSessionOperations,
+  );
+  return {
+    supportsArchive: operations.has("archive"),
+    supportsRename: operations.has("rename"),
+    supportsServiceTier: inspection.capabilities.supportsServiceTier,
+    supportsUserQuestion: inspection.capabilities.supportsUserQuestions,
+    supportsFork: operations.has("fork"),
+    supportedPermissionModes: [
+      ...inspection.capabilities.supportedPermissionModes,
+    ],
+  };
+}
+
+function applyHostProviderInspection(args: {
+  inspection: HostDaemonProviderInspection | null;
+  providerId: string;
+  providers: ProviderInfo[];
+}): ProviderInfo[] {
+  const inspection = args.inspection;
+  if (inspection === null) return args.providers;
+  return args.providers.map((provider) =>
+    provider.id === args.providerId
+      ? {
+          ...provider,
+          available: inspection.readiness.status === "ready",
+          capabilities: capabilitiesFromHostInspection(inspection),
+        }
+      : provider,
+  );
+}
 
 interface AppendCustomModelsArgs {
   customModels: CustomProviderModel[];
@@ -106,7 +149,7 @@ function listConfiguredSystemProviderInfos(
   installedKnownAcpAgents: readonly KnownAcpAgent[],
 ): ProviderInfo[] {
   const providers = [
-    ...listBuiltInAgentProviderInfos(),
+    ...listRegisteredProviderInfos(),
     ...customAcpAgents.map(buildCustomAcpProviderInfo),
   ];
   const seenProviderIds = new Set(providers.map((provider) => provider.id));
@@ -319,6 +362,7 @@ export async function resolveSystemProviderModels(
     models,
     selectedOnlyModels,
     modelLoadError: result.modelLoadError,
+    inspection: result.inspection,
   };
 }
 
@@ -474,6 +518,11 @@ export async function resolveSystemExecutionOptions(
           provider: modelsProvider,
         });
 
+  providers = applyHostProviderInspection({
+    inspection: modelResult.inspection,
+    providerId: modelsProvider.id,
+    providers,
+  });
   const { models, selectedOnlyModels } = appendCustomModels({
     customModels: deps.config.customModels,
     models: modelResult.models,
@@ -510,16 +559,17 @@ async function loadSystemProviderModels(
     customAcpAgent === undefined
       ? findKnownAcpAgentForProviderId(provider.id)
       : undefined;
+  const providerDriver = getRegisteredProviderDriverLaunchSpec(provider.id);
   try {
-    const { models, selectedOnlyModels } = await callHostRetryableOnlineRpc(
-      deps,
-      {
+    const { models, selectedOnlyModels, inspection } =
+      await callHostRetryableOnlineRpc(deps, {
         hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "provider.list_models",
           providerId: provider.id,
           ...(cwd !== undefined ? { cwd } : {}),
+          ...(providerDriver !== undefined ? { providerDriver } : {}),
           ...(customAcpAgent !== undefined
             ? {
                 acpLaunchSpec: normalizeHostDaemonAcpLaunchSpec(customAcpAgent),
@@ -531,12 +581,15 @@ async function loadSystemProviderModels(
                 }
               : {}),
         },
-      },
-    );
+      });
     return {
       models,
       selectedOnlyModels,
-      modelLoadError: null,
+      modelLoadError:
+        inspection !== undefined && inspection.readiness.status !== "ready"
+          ? { providerId: provider.id, code: "failed" }
+          : null,
+      inspection: inspection ?? null,
     };
   } catch (error) {
     if (
@@ -564,6 +617,7 @@ async function loadSystemProviderModels(
       }),
       selectedOnlyModels: [],
       modelLoadError,
+      inspection: null,
     };
   }
 }

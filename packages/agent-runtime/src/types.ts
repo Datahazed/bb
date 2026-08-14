@@ -1,5 +1,4 @@
 import type {
-  AvailableModel,
   ClientTurnRequestId,
   DynamicTool,
   InstructionMode,
@@ -7,16 +6,34 @@ import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
   PromptInput,
+  ProviderCapabilities,
   RuntimeThreadExecutionOptions,
   ThreadEvent,
   ToolCallRequest,
   ToolCallResponse,
 } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import type { ProviderDriverInspectResult } from "@bb/provider-driver-contract";
+import type {
+  HostDaemonAcpLaunchSpec,
+  HostDaemonProviderDriverLaunchSpec,
+} from "@bb/host-daemon-contract";
 
 export type AgentRuntimeShellEnvironment = Record<string, string>;
 
 export type AgentRuntimeExecutionOptions = RuntimeThreadExecutionOptions;
+
+/** Host-local executable acquired from an immutable provider-driver artifact. */
+export interface AgentRuntimeResolvedProviderDriverLaunch {
+  artifactDigest: string;
+  capabilities: ProviderCapabilities;
+  config: JsonObject;
+  displayName: string;
+  identity: { driverId: string; pluginId: string };
+  process: { command: string; args: string[]; env?: Record<string, string> };
+  providerDataDir: string;
+  processCapabilities: { multiplexSessions: boolean };
+  release(): void;
+}
 
 export interface AgentRuntimeCodexSkillRoot {
   id: string;
@@ -106,6 +123,11 @@ export interface AgentRuntimeOptions {
   /** Optional caller-provided skill roots to expose to provider sessions. */
   skillRoots?: readonly AgentRuntimeSkillRoot[];
 
+  /** Acquire and verify a plugin-contributed provider driver on this host. */
+  resolveProviderDriverLaunch?: (
+    spec: HostDaemonProviderDriverLaunchSpec,
+  ) => Promise<AgentRuntimeResolvedProviderDriverLaunch>;
+
   /** Called when a provider emits a translated event.
    *  Every event has `threadId` (bb ID) and `providerThreadId` (provider's internal ID). */
   onEvent: (event: ThreadEvent) => void;
@@ -133,6 +155,7 @@ export interface AgentRuntimeOptions {
 
 export interface EnsureProviderArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  providerDriver?: HostDaemonProviderDriverLaunchSpec;
   /**
    * Providers with thread-scoped processes use this to start the process for a
    * specific bb thread. Omit it for provider-scoped maintenance work such as
@@ -144,6 +167,7 @@ export interface EnsureProviderArgs {
 
 export interface StartThreadArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  providerDriver?: HostDaemonProviderDriverLaunchSpec;
   environmentId: string;
   threadId: string;
   projectId: string;
@@ -174,6 +198,7 @@ export interface StartThreadResult {
 
 export interface PrepareThreadRewindArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  providerDriver?: HostDaemonProviderDriverLaunchSpec;
   environmentId: string;
   threadId: string;
   leaseId: string;
@@ -198,6 +223,7 @@ export interface DiscardThreadRewindArgs {
 
 export interface ResumeThreadArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  providerDriver?: HostDaemonProviderDriverLaunchSpec;
   environmentId: string;
   threadId: string;
   projectId?: string;
@@ -287,18 +313,21 @@ export interface ClearThreadGoalArgs {
 }
 
 export interface ArchiveThreadArgs {
+  providerDriver?: HostDaemonProviderDriverLaunchSpec;
   providerId: string;
   providerThreadId: string;
   threadId: string;
 }
 
 export interface UnarchiveThreadArgs {
+  providerDriver?: HostDaemonProviderDriverLaunchSpec;
   providerId: string;
   providerThreadId: string;
   threadId: string;
 }
 
 export interface ListModelsArgs {
+  providerDriver?: HostDaemonProviderDriverLaunchSpec;
   providerId: string;
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   cwd?: string;
@@ -337,10 +366,7 @@ export interface AgentRuntime {
 
   unarchiveThread(args: UnarchiveThreadArgs): Promise<void>;
 
-  listModels(args: ListModelsArgs): Promise<{
-    models: AvailableModel[];
-    selectedOnlyModels: AvailableModel[];
-  }>;
+  listModels(args: ListModelsArgs): Promise<ProviderDriverInspectResult>;
 
   listRunningProviders(): string[];
 

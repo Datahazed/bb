@@ -1031,6 +1031,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
     const handle = createPluginApi({
       pluginId: row.id,
+      hostDriverIds: manifest.hostDrivers.map((driver) => driver.id),
       logger: deps.logger,
       db: deps.db,
       dataDir: deps.dataDir,

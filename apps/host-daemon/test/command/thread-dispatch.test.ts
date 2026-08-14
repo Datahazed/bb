@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
+import { createReadyProviderInspection } from "@bb/agent-runtime/test";
 import type {
   HostDaemonAcpLaunchSpec,
   HostDaemonCommand,
+  HostDaemonProviderDriverLaunchSpec,
 } from "@bb/host-daemon-contract";
 import {
   encodeClientTurnRequestIdNumber,
@@ -1770,10 +1772,17 @@ describe("thread command dispatch", () => {
       | {
           providerId: string;
           acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+          providerDriver?: HostDaemonProviderDriverLaunchSpec;
           cwd?: string;
         }
       | undefined;
 
+    const readyInspection = createReadyProviderInspection();
+    const inspection = {
+      readiness: readyInspection.readiness,
+      capabilities: readyInspection.capabilities,
+      diagnostics: readyInspection.diagnostics,
+    };
     const result = await dispatchOnlineRpcCommand(
       {
         type: "provider.list_models",
@@ -1808,6 +1817,7 @@ describe("thread command dispatch", () => {
                 isDefault: false,
               },
             ],
+            inspection,
           };
         },
       },
@@ -1841,6 +1851,7 @@ describe("thread command dispatch", () => {
           isDefault: false,
         },
       ],
+      inspection,
     });
   });
 

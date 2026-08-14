@@ -29,6 +29,14 @@ A plugin may declare isolated Node driver entries in its manifest:
 ship validated prebuilt archives. The declaration only creates an artifact —
 provider registration and host delivery are separate experimental surfaces.
 
+A backend factory references one of its own declarations with
+`bb.experimental_providers.register(...)`. The host namespaces the persisted
+provider id as `<pluginId>/<localId>`, validates bounded metadata/configuration,
+and atomically removes the contribution on reload or disable. Registration
+metadata describes picker/product expectations; host driver inspection remains
+authoritative for readiness, models, permission modes, and executable session
+operations.
+
 ## Composer customization
 
 Composer UI extensions register through `app.composer.customize(...)`. A

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@bb/agent-runtime";
+import { createReadyProviderInspection } from "@bb/agent-runtime/test";
 import type {
   HostDaemonInjectedSkillSource,
   ProviderCliInstallEvent,
@@ -196,10 +197,7 @@ function createRuntime(): FakeDispatchRuntime {
     renameThread: vi.fn(async () => undefined),
     archiveThread: vi.fn(async () => undefined),
     unarchiveThread: vi.fn(async () => undefined),
-    listModels: vi.fn(async () => ({
-      models: [],
-      selectedOnlyModels: [],
-    })),
+    listModels: vi.fn(async () => createReadyProviderInspection()),
     listRunningProviders: vi.fn(() => ["fake"]),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
     waitForActiveTurn: async (threadId) =>

@@ -158,6 +158,32 @@ describe("plugin service", () => {
       },
       serverSource: `
         export default function plugin(bb: any) {
+          bb.experimental_providers.register({
+            id: "default",
+            displayName: "Capability provider",
+            description: "Provider registration fixture",
+            capabilities: {
+              supportsArchive: false,
+              supportsRename: false,
+              supportsServiceTier: false,
+              supportsUserQuestion: false,
+              supportsFork: false,
+              supportedPermissionModes: ["full"],
+            },
+            composerActions: [],
+            reasoningLevels: ["medium"],
+            productCapabilities: {
+              supportsWorkflows: false,
+              supportsExecutionOverride: false,
+              supportsManualCompaction: false,
+            },
+            execution: {
+              kind: "host-driver",
+              driverId: "echo",
+              config: {},
+              process: { scope: "thread", multiplexSessions: false },
+            },
+          });
           bb.agents.registerTool({
             name: "capabilities_probe",
             description: "Probe capabilities",
@@ -177,6 +203,20 @@ describe("plugin service", () => {
     await service.installPath(rootDir);
 
     const enabled = service.list().find((entry) => entry.id === "capabilities");
+    expect(service.listProviderContributions()).toEqual([
+      expect.objectContaining({
+        pluginId: "capabilities",
+        registration: expect.objectContaining({
+          providerId: "capabilities/default",
+          displayName: "Capability provider",
+        }),
+        artifact: expect.objectContaining({
+          descriptor: expect.objectContaining({
+            digest: expect.stringMatching(/^[a-f0-9]{64}$/),
+          }),
+        }),
+      }),
+    ]);
     expect(service.listHostDriverArtifacts()).toEqual([
       expect.objectContaining({
         archivePath: expect.stringContaining(
@@ -217,6 +257,12 @@ describe("plugin service", () => {
         detail: "Runs isolated provider integration code on execution machines",
       },
       {
+        kind: "provider",
+        id: "capabilities/default",
+        label: "Capability provider",
+        detail: "Provider registration fixture",
+      },
+      {
         kind: "agent-tool",
         id: "capabilities_probe",
         label: "capabilities_probe",
@@ -231,6 +277,7 @@ describe("plugin service", () => {
     ]);
 
     await service.setEnabled("capabilities", false);
+    expect(service.listProviderContributions()).toEqual([]);
     expect(service.listHostDriverArtifacts()).toEqual([]);
 
     // A disabled plugin has no runtime, so only its manifest-declared
@@ -241,6 +288,53 @@ describe("plugin service", () => {
         .find((entry) => entry.id === "capabilities")
         ?.capabilities.map((capability) => capability.kind),
     ).toEqual(["skill", "skill", "theme", "host-driver"]);
+  });
+
+  it("rejects a provider registration that references another artifact id", async () => {
+    const rootDir = join(workDir, "bb-plugin-invalid-provider");
+    await mkdir(rootDir, { recursive: true });
+    await writeFile(join(rootDir, "echo-driver.ts"), "export {};\n");
+    await writePlugin(workDir, {
+      name: "bb-plugin-invalid-provider",
+      bb: {
+        experimental_hostDrivers: [{ id: "echo", entry: "./echo-driver.ts" }],
+      },
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.experimental_providers.register({
+            id: "default",
+            displayName: "Invalid",
+            description: "Wrong artifact",
+            capabilities: {
+              supportsArchive: false,
+              supportsRename: false,
+              supportsServiceTier: false,
+              supportsUserQuestion: false,
+              supportsFork: false,
+              supportedPermissionModes: ["full"],
+            },
+            composerActions: [],
+            reasoningLevels: ["medium"],
+            productCapabilities: {
+              supportsWorkflows: false,
+              supportsExecutionOverride: false,
+              supportsManualCompaction: false,
+            },
+            execution: {
+              kind: "host-driver",
+              driverId: "other",
+              config: {},
+              process: { scope: "thread", multiplexSessions: false },
+            },
+          });
+        }
+      `,
+    });
+
+    const installed = await service.installPath(rootDir);
+    expect(installed.status).toBe("error");
+    expect(installed.statusDetail).toContain("declared host drivers: echo");
+    expect(service.listProviderContributions()).toEqual([]);
   });
 
   it("marks a throwing factory as error without affecting others", async () => {

@@ -7,9 +7,9 @@ import {
 } from "@bb/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
-  getBuiltInAgentProviderInfo,
-  isAgentProviderId,
-} from "@bb/agent-providers";
+  getRegisteredProviderDriverLaunchSpec,
+  getRegisteredProviderInfo,
+} from "../providers/provider-registry.js";
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   type ClaudeCodeMockCliTrafficConfig,
@@ -174,19 +174,15 @@ interface DispatchArchivedThreadProviderArchiveCommandArgs {
 }
 
 function providerSupportsThreadRename(providerId: string): boolean {
-  if (!isAgentProviderId(providerId)) {
-    return true;
-  }
-
-  return getBuiltInAgentProviderInfo(providerId).capabilities.supportsRename;
+  return (
+    getRegisteredProviderInfo(providerId)?.capabilities.supportsRename ?? true
+  );
 }
 
 function providerSupportsThreadArchiveForwarding(providerId: string): boolean {
-  if (!isAgentProviderId(providerId)) {
-    return false;
-  }
-
-  return getBuiltInAgentProviderInfo(providerId).capabilities.supportsArchive;
+  return (
+    getRegisteredProviderInfo(providerId)?.capabilities.supportsArchive ?? false
+  );
 }
 
 function resolveClaudeCodeMockCliTrafficConfig(
@@ -327,6 +323,9 @@ export async function buildThreadStartCommand(
     projectId: args.projectId,
     providerId: args.providerId,
     ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+    ...(runtimeContext.providerDriver !== undefined
+      ? { providerDriver: runtimeContext.providerDriver }
+      : {}),
     requestId: args.requestId,
     input: args.input,
     ...(args.inputGroups !== undefined
@@ -366,6 +365,9 @@ function buildPreparedTurnSubmitCommandPayload(
     environmentId: args.environmentId,
     threadId: args.threadId,
     ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+    ...(args.runtimeContext.providerDriver !== undefined
+      ? { providerDriver: args.runtimeContext.providerDriver }
+      : {}),
     input: args.input,
     ...(args.inputGroups !== undefined
       ? { inputGroups: args.inputGroups }
@@ -397,6 +399,9 @@ function buildPreparedTurnSubmitCommandPayload(
       projectId: args.runtimeContext.projectId,
       providerId: args.runtimeContext.providerId,
       ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+      ...(args.runtimeContext.providerDriver !== undefined
+        ? { providerDriver: args.runtimeContext.providerDriver }
+        : {}),
       providerThreadId: args.providerThreadId,
       instructions: args.runtimeContext.instructions,
       dynamicTools: args.runtimeContext.dynamicTools,
@@ -573,6 +578,9 @@ export function dispatchArchivedThreadProviderArchiveCommand(
     path: environment.path,
     workspaceProvisionType: environment.workspaceProvisionType,
   });
+  const providerDriver = getRegisteredProviderDriverLaunchSpec(
+    thread.providerId,
+  );
 
   startLiveHostCommand(deps, {
     command: {
@@ -582,6 +590,7 @@ export function dispatchArchivedThreadProviderArchiveCommand(
       workspaceContext,
       providerId: thread.providerId,
       providerThreadId,
+      ...(providerDriver !== undefined ? { providerDriver } : {}),
     },
     hostId: environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
@@ -605,6 +614,9 @@ export function dispatchThreadUnarchiveCommand(
   if (args.environment.status !== "ready") {
     return false;
   }
+  const providerDriver = getRegisteredProviderDriverLaunchSpec(
+    args.thread.providerId,
+  );
 
   startLiveHostCommand(deps, {
     command: {
@@ -613,6 +625,7 @@ export function dispatchThreadUnarchiveCommand(
       threadId: args.thread.id,
       providerId: args.thread.providerId,
       providerThreadId: args.providerThreadId,
+      ...(providerDriver !== undefined ? { providerDriver } : {}),
     },
     hostId: args.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,

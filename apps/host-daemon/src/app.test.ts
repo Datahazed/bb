@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
+import { createReadyProviderInspection } from "@bb/agent-runtime/test";
 import {
   turnScope,
   type PendingInteractionCreate,
@@ -261,10 +262,7 @@ function createFakeRuntime(): AgentRuntime {
     async archiveThread() {},
     async unarchiveThread() {},
     async listModels() {
-      return {
-        models: [],
-        selectedOnlyModels: [],
-      };
+      return createReadyProviderInspection();
     },
     listRunningProviders() {
       return [];
@@ -418,10 +416,9 @@ describe("createHostDaemonApp", () => {
       defaultReasoningEffort: "medium" as const,
       isDefault: true,
     };
-    const listModels = vi.fn<AgentRuntime["listModels"]>(async () => ({
-      models: [model],
-      selectedOnlyModels: [],
-    }));
+    const listModels = vi.fn<AgentRuntime["listModels"]>(async () =>
+      createReadyProviderInspection({ models: [model] }),
+    );
     const resolveRuntimeShellEnv = vi.fn(async () => ({
       PATH: "/shell/bin:/usr/bin",
       BB_SERVER_URL: "http://127.0.0.1:3334",
@@ -513,10 +510,9 @@ describe("createHostDaemonApp", () => {
       defaultReasoningEffort: "medium" as const,
       isDefault: true,
     };
-    const listModels = vi.fn<AgentRuntime["listModels"]>(async () => ({
-      models: [model],
-      selectedOnlyModels: [],
-    }));
+    const listModels = vi.fn<AgentRuntime["listModels"]>(async () =>
+      createReadyProviderInspection({ models: [model] }),
+    );
     const resolveRuntimeShellEnv = vi.fn(async () => ({
       PATH: "/slow-shell/bin:/usr/bin",
       BB_SERVER_URL: "http://127.0.0.1:3334",

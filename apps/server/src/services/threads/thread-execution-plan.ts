@@ -1,4 +1,4 @@
-import { getSupportedPermissionModes } from "@bb/agent-providers";
+import { getRegisteredProviderPermissionModes } from "../providers/provider-registry.js";
 import { getProjectExecutionDefaults, getThread } from "@bb/db";
 import type {
   CallerExecutionInputSource,
@@ -241,7 +241,7 @@ function validateProviderPermissionMode(
     return;
   }
 
-  const supported = getSupportedPermissionModes(providerId);
+  const supported = getRegisteredProviderPermissionModes(providerId);
   if (!supported || supported.includes(permissionMode)) {
     return;
   }

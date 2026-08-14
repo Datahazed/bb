@@ -5,7 +5,7 @@ import {
   type PromptInput,
   type Thread,
 } from "@bb/domain";
-import { supportsNativeFork } from "@bb/agent-providers";
+import { registeredProviderSupportsNativeFork } from "../providers/provider-registry.js";
 import type { EnvironmentArgs, ForkThreadRequest } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
@@ -34,7 +34,7 @@ function requireForkSourceThread(
 }
 
 function requireForkCapableProvider(sourceThread: Thread): void {
-  if (!supportsNativeFork(sourceThread.providerId)) {
+  if (!registeredProviderSupportsNativeFork(sourceThread.providerId)) {
     throw new ApiError(
       400,
       "invalid_request",

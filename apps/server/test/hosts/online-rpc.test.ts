@@ -17,6 +17,7 @@ import {
   feedRawDaemonWebSocketMessage,
   type TestDaemonWebSocket,
 } from "../helpers/daemon-ws.js";
+import { READY_HOST_PROVIDER_INSPECTION } from "../helpers/host-rpc.js";
 import { seedHostSession } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -93,7 +94,11 @@ describe("host online RPC retry semantics", () => {
               requestId: request.requestId,
               commandType: request.command.type,
               ok: true,
-              result: { models: [], selectedOnlyModels: [] },
+              result: {
+                models: [],
+                selectedOnlyModels: [],
+                inspection: READY_HOST_PROVIDER_INSPECTION,
+              },
             }),
           });
         },
@@ -111,7 +116,11 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: { type: "provider.list_models", providerId: "codex" },
         }),
-      ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
+      ).resolves.toEqual({
+        models: [],
+        selectedOnlyModels: [],
+        inspection: READY_HOST_PROVIDER_INSPECTION,
+      });
 
       const updatedSession = harness.db
         .select()
@@ -146,7 +155,11 @@ describe("host online RPC retry semantics", () => {
                 requestId: request.requestId,
                 commandType: request.command.type,
                 ok: true,
-                result: { models: [], selectedOnlyModels: [] },
+                result: {
+                  models: [],
+                  selectedOnlyModels: [],
+                  inspection: READY_HOST_PROVIDER_INSPECTION,
+                },
               }),
             });
           },
@@ -160,7 +173,11 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: { type: "provider.list_models", providerId: "codex" },
         }),
-      ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
+      ).resolves.toEqual({
+        models: [],
+        selectedOnlyModels: [],
+        inspection: READY_HOST_PROVIDER_INSPECTION,
+      });
       expect(requests.map((request) => request.command.type)).toEqual([
         "provider.list_models",
       ]);
@@ -178,7 +195,11 @@ describe("host online RPC retry semantics", () => {
         hub: harness.hub,
         requests,
         sessionId: session.id,
-        successResult: { models: [], selectedOnlyModels: [] },
+        successResult: {
+          models: [],
+          selectedOnlyModels: [],
+          inspection: READY_HOST_PROVIDER_INSPECTION,
+        },
       });
 
       await expect(
@@ -187,7 +208,11 @@ describe("host online RPC retry semantics", () => {
           timeoutMs: 1_000,
           command: { type: "provider.list_models", providerId: "codex" },
         }),
-      ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
+      ).resolves.toEqual({
+        models: [],
+        selectedOnlyModels: [],
+        inspection: READY_HOST_PROVIDER_INSPECTION,
+      });
       expect(requests.map((request) => request.command.type)).toEqual([
         "provider.list_models",
         "provider.list_models",
@@ -206,7 +231,11 @@ describe("host online RPC retry semantics", () => {
         hub: harness.hub,
         requests,
         sessionId: session.id,
-        successResult: { models: [], selectedOnlyModels: [] },
+        successResult: {
+          models: [],
+          selectedOnlyModels: [],
+          inspection: READY_HOST_PROVIDER_INSPECTION,
+        },
       });
 
       try {

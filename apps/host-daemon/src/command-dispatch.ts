@@ -486,6 +486,9 @@ const commandHandlers: CommandHandlerMap = {
       threadId: command.threadId,
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
+      ...(command.providerDriver !== undefined
+        ? { providerDriver: command.providerDriver }
+        : {}),
     });
     return {};
   },
@@ -498,6 +501,9 @@ const commandHandlers: CommandHandlerMap = {
       threadId: command.threadId,
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
+      ...(command.providerDriver !== undefined
+        ? { providerDriver: command.providerDriver }
+        : {}),
     });
     return {};
   },
@@ -624,6 +630,9 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
+      ...(command.providerDriver !== undefined
+        ? { providerDriver: command.providerDriver }
         : {}),
     }),
   "known_acp_agents.status": async (command) =>

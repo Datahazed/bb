@@ -11,6 +11,8 @@ import type {
   HostDaemonAcpLaunchSpec,
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
+  HostDaemonProviderDriverLaunchSpec,
+  HostDaemonProviderInspection,
   HostDaemonConnectTunnelIdentity,
   ProviderCliInstallRequest,
   ProviderCliStatus,
@@ -51,10 +53,12 @@ export interface CommandDispatchOptions {
   listModels?: (args: {
     providerId: string;
     acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    providerDriver?: HostDaemonProviderDriverLaunchSpec;
     cwd?: string;
   }) => Promise<{
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
+    inspection: HostDaemonProviderInspection;
   }>;
   getProviderCliStatusForProvider?: (
     providerId: string,
@@ -119,16 +123,24 @@ export async function shutdownDefaultListModelsRuntimes(): Promise<void> {
 }
 
 export async function defaultListModels(
-  args: { providerId: string; acpLaunchSpec?: HostDaemonAcpLaunchSpec },
+  args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    providerDriver?: HostDaemonProviderDriverLaunchSpec;
+  },
   options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
 ): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
+  inspection: HostDaemonProviderInspection;
 }> {
   const runtimeKey =
     `${options.bridgeBundleDir ?? ""}` +
     (args.acpLaunchSpec !== undefined
       ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
+      : "") +
+    (args.providerDriver !== undefined
+      ? `#driver:${args.providerDriver.artifact.digest}`
       : "");
   let runtime = defaultModelListRuntimes.get(runtimeKey);
   if (!runtime) {
@@ -144,7 +156,16 @@ export async function defaultListModels(
     defaultModelListRuntimes.set(runtimeKey, runtime);
   }
   try {
-    return await runtime.listModels(args);
+    const result = await runtime.listModels(args);
+    return {
+      models: result.models,
+      selectedOnlyModels: result.selectedOnlyModels,
+      inspection: {
+        readiness: result.readiness,
+        capabilities: result.capabilities,
+        diagnostics: result.diagnostics,
+      },
+    };
   } catch (error) {
     if (
       error instanceof Error &&

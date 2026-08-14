@@ -193,10 +193,7 @@ export class CanonicalProcessProviderConnection implements ProviderDriverConnect
       cwd: args.cwd ?? null,
       operation: null,
     });
-    return {
-      models: result.models,
-      selectedOnlyModels: result.selectedOnlyModels,
-    };
+    return result;
   }
 
   async openSession(

@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { CommandRouter } from "./command-router.js";
 import { createDaemon, type HostDaemon } from "./daemon.js";
 import {
@@ -519,6 +521,44 @@ export async function createHostDaemonApp(
       }),
     hostWatcher: options.hostWatcher,
     logger: options.logger,
+    resolveProviderDriverLaunch: async (spec) => {
+      const lease = await providerDriverArtifacts.acquire(spec.artifact);
+      const providerDataDir = join(
+        options.dataDir,
+        "provider-drivers",
+        "data",
+        lease.descriptor.meta.pluginId,
+        lease.descriptor.meta.driverId,
+      );
+      try {
+        await mkdir(providerDataDir, { recursive: true });
+      } catch (error) {
+        lease.release();
+        throw error;
+      }
+      return {
+        artifactDigest: lease.descriptor.digest,
+        capabilities: spec.capabilities,
+        config: spec.config,
+        displayName: spec.displayName,
+        identity: {
+          pluginId: lease.descriptor.meta.pluginId,
+          driverId: lease.descriptor.meta.driverId,
+        },
+        process: {
+          command: process.execPath,
+          args: [lease.entrypointPath],
+          ...(process.versions.electron !== undefined
+            ? { env: { ELECTRON_RUN_AS_NODE: "1" } }
+            : {}),
+        },
+        providerDataDir,
+        processCapabilities: {
+          multiplexSessions: spec.process.multiplexSessions,
+        },
+        release: lease.release,
+      };
+    },
     shellEnv: options.runtimeShellEnv,
     onEvent: ({ environmentId, event }) => {
       try {
@@ -757,7 +797,16 @@ export async function createHostDaemonApp(
       const runtime = await runtimeManager.ensureProviderMaintenanceRuntime({
         dataDir: options.dataDir,
       });
-      return runtime.listModels(args);
+      const result = await runtime.listModels(args);
+      return {
+        models: result.models,
+        selectedOnlyModels: result.selectedOnlyModels,
+        inspection: {
+          readiness: result.readiness,
+          capabilities: result.capabilities,
+          diagnostics: result.diagnostics,
+        },
+      };
     },
     resolveInteractiveRequest: async (request) => {
       interactiveRequestRegistry.resolve(request);

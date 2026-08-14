@@ -1,8 +1,8 @@
+import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import {
-  getAgentProviderServerCapabilities,
-  getSupportedPermissionModes,
-  listBuiltInAgentProviderInfos,
-} from "@bb/agent-providers";
+  getRegisteredProviderPermissionModes,
+  getRegisteredProviderServerCapabilities,
+} from "../providers/provider-registry.js";
 import type {
   PermissionMode,
   ProjectExecutionDefaults,
@@ -34,7 +34,8 @@ export const DEFAULT_REASONING_LEVEL: ReasoningLevel = "medium";
  */
 export function resolveWorkflowsEnabledPolicy(providerId: string): boolean {
   return (
-    getAgentProviderServerCapabilities(providerId)?.supportsWorkflows ?? false
+    getRegisteredProviderServerCapabilities(providerId)?.supportsWorkflows ??
+    false
   );
 }
 const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
@@ -152,7 +153,9 @@ function resolveSupportedPermissionMode(
     return args.preferredPermissionMode;
   }
 
-  const supportedPermissionModes = getSupportedPermissionModes(args.providerId);
+  const supportedPermissionModes = getRegisteredProviderPermissionModes(
+    args.providerId,
+  );
   if (!supportedPermissionModes) {
     return args.preferredPermissionMode;
   }

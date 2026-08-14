@@ -196,6 +196,7 @@ export interface RuntimeManagerOptions {
   provisionWorkspace?: (
     options: ProvisionWorkspaceArgs,
   ) => Promise<HostWorkspace>;
+  resolveProviderDriverLaunch?: AgentRuntimeOptions["resolveProviderDriverLaunch"];
   shellEnv?: AgentRuntimeOptions["shellEnv"];
   onEvent?: (args: { environmentId: string; event: ThreadEvent }) => void;
   threadStorageRootPath?: string | null;
@@ -1247,6 +1248,7 @@ export class RuntimeManager {
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
+      resolveProviderDriverLaunch: this.options.resolveProviderDriverLaunch,
       onEvent: (event) => {
         this.options.onStderr?.(
           `Dropping provider maintenance event ${event.type}; no environment owns provider-only maintenance commands.`,
@@ -1320,6 +1322,7 @@ export class RuntimeManager {
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
       bridgeBundleDir: this.options.bridgeBundleDir,
+      resolveProviderDriverLaunch: this.options.resolveProviderDriverLaunch,
       onEvent: (event) => {
         this.options.onEvent?.({
           environmentId: args.environmentId,

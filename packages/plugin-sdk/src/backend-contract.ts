@@ -3,6 +3,12 @@ import type { Context } from "hono";
 import type * as z from "zod";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
+import type {
+  JsonObject,
+  ProviderCapabilities,
+  ProviderComposerAction,
+  ReasoningLevel,
+} from "@bb/domain";
 import type { JsonValue } from "./json-value.js";
 import type { PluginRpcContract, PluginRpcHandlers } from "./rpc-contract.js";
 
@@ -647,6 +653,43 @@ export interface PluginHosts {
 }
 
 // ---------------------------------------------------------------------------
+// Experimental selectable providers backed by manifest host drivers.
+// ---------------------------------------------------------------------------
+
+export interface PluginHostDriverProviderRegistration {
+  /** Local lowercase-kebab-case id. The host persists `<pluginId>/<id>`. */
+  id: string;
+  displayName: string;
+  description: string;
+  /** Expected picker capabilities; host inspection remains authoritative. */
+  capabilities: ProviderCapabilities;
+  composerActions: ProviderComposerAction[];
+  /** Coarse fallback ladder used before/without per-model inspection. */
+  reasoningLevels: ReasoningLevel[];
+  productCapabilities: {
+    supportsWorkflows: boolean;
+    supportsExecutionOverride: boolean;
+    supportsManualCompaction: boolean;
+  };
+  execution: {
+    kind: "host-driver";
+    /** Must name this plugin's `bb.experimental_hostDrivers` declaration. */
+    driverId: string;
+    /** Immutable, bounded, non-secret launch configuration. */
+    config: JsonObject;
+    process: {
+      scope: "environment" | "thread";
+      multiplexSessions: boolean;
+    };
+  };
+}
+
+export interface PluginProviders {
+  /** Register one selectable provider backed by this plugin's host artifact. */
+  register(registration: PluginHostDriverProviderRegistration): void;
+}
+
+// ---------------------------------------------------------------------------
 // Status + the API root.
 // ---------------------------------------------------------------------------
 
@@ -697,6 +740,8 @@ export interface BbPluginApi {
   readonly server: PluginServerApi;
   /** Server-to-daemon host control-plane declarations. */
   readonly hosts: PluginHosts;
+  /** Experimental selectable provider registrations. */
+  readonly experimental_providers: PluginProviders;
   /**
    * The full BB SDK, bound to this server over loopback (design §4.1).
    * Bind-gated: reading this before the host binds the SDK throws. The real

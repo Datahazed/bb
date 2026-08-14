@@ -662,6 +662,52 @@ invocation and are never persisted. Pair `rendererId` with a frontend
 `pendingInteraction` slot. Pass a CLI handler's `ctx.signal` so disconnecting
 the caller cancels the request.
 
+### bb.experimental_providers — selectable host-driver providers
+
+A plugin can register a selectable provider only when its manifest declares
+the referenced `bb.experimental_hostDrivers` id. The host persists the global
+provider id as `<pluginId>/<localId>`; plugins cannot claim built-in or another
+plugin's ids. Registration is plain, bounded data and becomes visible only when
+the plugin load commits:
+
+```ts
+bb.experimental_providers.register({
+  id: "default",
+  displayName: "Acme Agent",
+  description: "Runs Acme's coding agent on the selected machine.",
+  capabilities: {
+    supportsArchive: false,
+    supportsRename: false,
+    supportsServiceTier: false,
+    supportsUserQuestion: true,
+    supportsFork: false,
+    supportedPermissionModes: ["accept-edits", "full"],
+  },
+  composerActions: [{ kind: "skills", trigger: "/" }],
+  reasoningLevels: ["low", "medium", "high"],
+  productCapabilities: {
+    supportsWorkflows: false,
+    supportsExecutionOverride: false,
+    supportsManualCompaction: false,
+  },
+  execution: {
+    kind: "host-driver",
+    driverId: "agent",
+    config: {}, // immutable, non-secret JSON; 64 KiB maximum
+    process: { scope: "thread", multiplexSessions: false },
+  },
+});
+```
+
+Registered capabilities are picker/product expectations. Driver inspection is
+authoritative for actual readiness, models, permission modes, and optional
+session operations. The driver definition's identity must match the normalized
+plugin id, manifest driver id, and namespaced provider id (for this example,
+`<pluginId>/default`). Keep secrets and mutable session data out of `config` and
+the artifact; driver data lives in the daemon-provided data namespace.
+
+This API is experimental; see `docs/api_to_audit.md`.
+
 ### bb.agents — native tools and conditional session configuration
 
 To give agents standing knowledge (conventions, workflows), ship a

@@ -7,6 +7,7 @@ type ExpectedBbPluginApiKey =
   | "background"
   | "cli"
   | "events"
+  | "experimental_providers"
   | "hosts"
   | "http"
   | "log"
@@ -45,6 +46,7 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginHttp",
   "PluginHttpAuthMode",
   "PluginHttpHandler",
+  "PluginHostDriverProviderRegistration",
   "PluginInteractionCancelReason",
   "PluginInteractionRequest",
   "PluginInteractionResult",
@@ -54,6 +56,7 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginMentionProviderRegistration",
   "PluginMentionSearchContext",
   "PluginMentionTrigger",
+  "PluginProviders",
   "PluginRealtime",
   "PluginRpc",
   "PluginServerApi",

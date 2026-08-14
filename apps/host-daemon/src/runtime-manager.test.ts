@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
+import { createReadyProviderInspection } from "@bb/agent-runtime/test";
 import type { ThreadEvent } from "@bb/domain";
 import { turnScope } from "@bb/domain";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
@@ -275,10 +276,9 @@ function createFakeRuntime() {
     renameThread: vi.fn(async (_args: RenameThreadArgs) => undefined),
     archiveThread: vi.fn(async () => undefined),
     unarchiveThread: vi.fn(async () => undefined),
-    listModels: vi.fn(async (_args: ListModelsArgs) => ({
-      models: [],
-      selectedOnlyModels: [],
-    })),
+    listModels: vi.fn(async (_args: ListModelsArgs) =>
+      createReadyProviderInspection(),
+    ),
     listRunningProviders: vi.fn((): string[] => []),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
     waitForActiveTurn: async (threadId) =>

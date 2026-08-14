@@ -5,7 +5,7 @@
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/get-bb/bb
 
-import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolExperimentalStatusLabels, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginInteractionRequest } from '@bb/plugin-sdk';
+import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolExperimentalStatusLabels, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginHostDriverProviderRegistration, PluginInteractionRequest } from '@bb/plugin-sdk';
 
 type BbSdk = BbPluginApi["sdk"];
 /**
@@ -121,6 +121,9 @@ interface FakeAgentToolRecord {
     };
     execute(params: unknown, ctx: PluginAgentToolContext): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
+interface FakeProviderRegistration extends PluginHostDriverProviderRegistration {
+    providerId: string;
+}
 interface FakeMentionProviderRecord {
     id: string;
     label: string;
@@ -155,6 +158,7 @@ interface FakePluginRegistrations {
     }) => string | null) | null;
     threadEventHandlers: Record<PluginThreadEventName, number>;
     mentionProviders: FakeMentionProviderRecord[];
+    providers: FakeProviderRegistration[];
 }
 /** Read-only state for assertions after a plugin registers or handles work. */
 interface FakePluginInspectionState {
@@ -287,6 +291,8 @@ interface CreateFakePluginHostOptions {
     sdk?: FakeSdkOverrides;
     /** Static manifest skill ids available to configure() in this fake host. */
     agentSkillIds?: readonly string[];
+    /** Static `bb.experimental_hostDrivers` ids available to provider registrations. */
+    hostDriverIds?: readonly string[];
     /** Read-only identities returned by bb.hosts.ensureSharedPortTunnel. */
     sharedPortTunnelIdentities?: Record<string, PluginSharedPortTunnelIdentity>;
 }

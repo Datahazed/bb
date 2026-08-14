@@ -339,6 +339,18 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
     selectedOnlyModels: [],
+    inspection: {
+      readiness: { status: "ready" },
+      capabilities: {
+        multiplexSessions: false,
+        supportedSessionOperations: ["fork", "rename", "archive"],
+        supportedPermissionModes: ["accept-edits", "auto", "full"],
+        supportsServiceTier: false,
+        supportsSteering: true,
+        supportsUserQuestions: true,
+      },
+      diagnostics: [],
+    },
   },
   "known_acp_agents.status": {
     agents: [
@@ -684,6 +696,8 @@ function terminalDataBase64(byteLength: number): string {
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonCommandSchema.acpLaunchSpec":
     "thread.start and turn.submit include an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
+  "hostDaemonCommandSchema.providerDriver":
+    "provider commands include an immutable artifact launch spec only for plugin-contributed providers; bundled providers resolve daemon-side.",
   "hostDaemonCommandSchema.acpLaunchSpec.cwd":
     "dynamic ACP launch specs may omit cwd so the daemon uses the thread workspace cwd.",
   "hostDaemonCommandSchema.acpLaunchSpec.modelCli":
@@ -726,6 +740,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
     "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
+  "hostDaemonOnlineRpcCommandSchema.providerDriver":
+    "provider.list_models includes an immutable artifact launch spec only for plugin-contributed providers; bundled providers resolve daemon-side.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
@@ -790,6 +806,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec":
     "turn.submit resume context carries an ACP launch spec only for dynamic ACP providers that may need lazy resume.",
+  "hostDaemonCommandSchema.resumeContext.providerDriver":
+    "turn resume carries an immutable artifact launch spec only for a plugin-contributed provider that may need lazy cross-process resume.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.cwd":
     "resume-context ACP launch specs may omit cwd so the daemon uses the resumed thread workspace cwd.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.modelCli":
@@ -1056,13 +1074,13 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 108 adds the distinct `unborn_head` provisioning failure sent by
-  // the daemon when a project source has no commits. Older daemons report the
-  // internal missing-default-branch failure, so enrolled machines must update
-  // for the actionable worktree error. Version 107 carried stopped-turn
-  // provider checkpoints and remains part of the protocol lineage.
-  it("uses protocol version 108 for commitless worktree source errors", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(108);
+  // Version 109 carries immutable plugin provider-driver descriptors from the
+  // server to the daemon for model discovery, launch, resume, and archive.
+  // Older daemons cannot acquire or lease those artifacts. Version 108 added
+  // the distinct `unborn_head` provisioning failure and remains part of the
+  // protocol lineage.
+  it("uses protocol version 109 for plugin provider-driver launches", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(109);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

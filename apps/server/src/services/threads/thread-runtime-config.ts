@@ -12,7 +12,10 @@ import type {
   WorkspaceProvisionType,
   EnvironmentStatus,
 } from "@bb/domain";
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonInjectedSkillSource,
+  HostDaemonProviderDriverLaunchSpec,
+} from "@bb/host-daemon-contract";
 import { renderTemplate } from "@bb/templates";
 import { ApiError } from "../../errors.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
@@ -33,6 +36,7 @@ import { discoverPluginSkillIds } from "../skills/injected-skills.js";
 import { resolveWorkspaceProjectSkills } from "../skills/workspace-skills.js";
 import { resolveSharedSkills } from "../skills/shared-skills.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL } from "./thread-environment-directory.js";
+import { getRegisteredProviderDriverLaunchSpec } from "../providers/provider-registry.js";
 import {
   DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH,
   WORKSPACE_AGENT_INSTRUCTIONS_RELATIVE_PATH,
@@ -87,6 +91,7 @@ export interface ResolvedThreadRuntimeCommandConfig {
   instructions: string;
   projectId: string;
   providerId: string;
+  providerDriver?: HostDaemonProviderDriverLaunchSpec;
   threadStoragePath: string;
   workspacePath: string;
   workspaceProvisionType: WorkspaceProvisionType;
@@ -313,6 +318,9 @@ export async function resolveThreadRuntimeCommandConfig(
     hostId: args.environment.hostId,
     threadId: args.thread.id,
   });
+  const providerDriver = getRegisteredProviderDriverLaunchSpec(
+    args.thread.providerId,
+  );
   return {
     dynamicTools,
     injectedSkillSources,
@@ -320,6 +328,7 @@ export async function resolveThreadRuntimeCommandConfig(
     instructions,
     projectId: args.thread.projectId,
     providerId: args.thread.providerId,
+    ...(providerDriver !== undefined ? { providerDriver } : {}),
     threadStoragePath,
     workspacePath,
     workspaceProvisionType,

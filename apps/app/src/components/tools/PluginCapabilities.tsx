@@ -309,6 +309,11 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
       items: appItems,
     },
     {
+      icon: "Brain",
+      kind: "Provider",
+      items: declared("provider"),
+    },
+    {
       icon: "Code",
       kind: "Host driver",
       items: declared("host-driver"),

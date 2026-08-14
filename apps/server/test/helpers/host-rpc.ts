@@ -3,11 +3,14 @@ import {
   hostDaemonServerWsMessageSchema,
   type HostDaemonOnlineRpcRequestMessage,
   type HostDaemonOnlineRpcResponseMessage,
+  type HostDaemonProviderInspection,
   type HostDaemonRpcResultForCommand,
 } from "@bb/host-daemon-contract";
 import type { AvailableModel } from "@bb/domain";
 import type { TestAppHarness } from "./test-app.js";
 import { registerTestHostRpcCapture } from "./commands.js";
+import { readyHostProviderInspectionFor } from "./provider-inspection.js";
+export { READY_HOST_PROVIDER_INSPECTION } from "./provider-inspection.js";
 
 interface TestHostRpcSocket {
   close(code?: number, reason?: string): void;
@@ -17,6 +20,7 @@ interface TestHostRpcSocket {
 interface ProviderModelResponse {
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
+  inspection?: HostDaemonProviderInspection;
 }
 
 interface ProviderModelError {
@@ -37,12 +41,19 @@ export interface ProviderHostRpcResponder {
   unregister(): void;
 }
 
+type ProviderModelResultWithoutInspection = Pick<
+  ProviderModelResponse,
+  "models" | "selectedOnlyModels"
+>;
+
 export type HostRpcHandlerResult =
   | {
       ok: true;
-      result: HostDaemonRpcResultForCommand<
-        HostDaemonOnlineRpcRequestMessage["command"]
-      >;
+      result:
+        | HostDaemonRpcResultForCommand<
+            HostDaemonOnlineRpcRequestMessage["command"]
+          >
+        | ProviderModelResultWithoutInspection;
     }
   | {
       ok: false;
@@ -110,7 +121,11 @@ function buildProviderRpcResponse(
     requestId: request.requestId,
     commandType: request.command.type,
     ok: true,
-    result,
+    result: {
+      ...result,
+      inspection:
+        result.inspection ?? readyHostProviderInspectionFor(providerId),
+    },
   };
 }
 
@@ -119,12 +134,24 @@ function buildHostRpcResponse(
   result: HostRpcHandlerResult,
 ): HostDaemonOnlineRpcResponseMessage {
   if (result.ok) {
+    const responseResult =
+      request.command.type === "provider.list_models" &&
+      "models" in result.result &&
+      "selectedOnlyModels" in result.result
+        ? {
+            ...result.result,
+            inspection:
+              "inspection" in result.result
+                ? result.result.inspection
+                : readyHostProviderInspectionFor(request.command.providerId),
+          }
+        : result.result;
     return hostDaemonOnlineRpcResponseMessageSchema.parse({
       type: "host-rpc.response",
       requestId: request.requestId,
       commandType: request.command.type,
       ok: true,
-      result: result.result,
+      result: responseResult,
     });
   }
   return {

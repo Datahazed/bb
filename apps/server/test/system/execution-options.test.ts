@@ -220,6 +220,71 @@ describe("appendCustomModels", () => {
 });
 
 describe("resolveSystemExecutionOptions", () => {
+  it("uses host-inspected provider capabilities for the selected provider", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-observed-provider",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "known_acp_agents.status") {
+            return {
+              ok: true,
+              result: {
+                agents: request.command.agents.map((agent) => ({
+                  ...agent,
+                  installed: false,
+                  executablePath: null,
+                })),
+              },
+            };
+          }
+          if (request.command.type === "provider.list_models") {
+            return {
+              ok: true,
+              result: {
+                models: [],
+                selectedOnlyModels: [],
+                inspection: {
+                  readiness: { status: "ready" },
+                  capabilities: {
+                    multiplexSessions: false,
+                    supportedSessionOperations: ["rename"],
+                    supportedPermissionModes: ["full"],
+                    supportsServiceTier: false,
+                    supportsSteering: true,
+                    supportsUserQuestions: false,
+                  },
+                  diagnostics: [],
+                },
+              },
+            };
+          }
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        },
+      });
+
+      const response = await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "pi",
+      });
+
+      expect(
+        response.providers.find((provider) => provider.id === "pi"),
+      ).toMatchObject({
+        available: true,
+        capabilities: {
+          supportsArchive: false,
+          supportsRename: true,
+          supportsFork: false,
+          supportedPermissionModes: ["full"],
+        },
+      });
+    });
+  });
+
   it("includes installed known ACP agents and sends their launch spec when loading models", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

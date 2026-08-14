@@ -1,9 +1,4 @@
-import {
-  buildAcpProviderInfo,
-  getBuiltInAgentProviderInfo,
-  isAcpProviderId,
-  isAgentProviderId,
-} from "@bb/agent-providers";
+import { getRegisteredProviderComposerActions } from "../providers/provider-registry.js";
 import {
   providerCommandSectionRank,
   type CommandListResponse,
@@ -34,21 +29,9 @@ function providerComposerHasSkillsAction(
  * providers (`acp-*`) share the ACP catalog template via `buildAcpProviderInfo`.
  */
 export function providerHasCommandSurface(providerId: string): boolean {
-  if (isAgentProviderId(providerId)) {
-    return providerComposerHasSkillsAction(
-      getBuiltInAgentProviderInfo(providerId).composerActions,
-    );
-  }
-  if (isAcpProviderId(providerId)) {
-    return providerComposerHasSkillsAction(
-      buildAcpProviderInfo({
-        id: providerId,
-        displayName: providerId,
-        logoUrl: null,
-      }).composerActions,
-    );
-  }
-  return false;
+  return providerComposerHasSkillsAction(
+    getRegisteredProviderComposerActions(providerId),
+  );
 }
 
 function toProviderCommand(command: HostProviderCommand): ProviderCommand {

@@ -15,9 +15,13 @@ import type {
   RuntimeThreadExecutionOptions,
   ThreadEvent,
 } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonAcpLaunchSpec,
+  HostDaemonProviderDriverLaunchSpec,
+} from "@bb/host-daemon-contract";
 import {
   PROVIDER_DRIVER_PROTOCOL_VERSION,
+  type ProviderDriverCapabilities,
   type ProviderDriverHostInteractionRequestParams,
   type ProviderDriverHostInteractionRequestResult,
   type ProviderDriverHostToolCallParams,
@@ -41,6 +45,7 @@ import type { RuntimeProviderIdentityState } from "./runtime-thread-identity.js"
 import type {
   AgentRuntimeOptions,
   AgentRuntimeProcessExitThreadState,
+  AgentRuntimeResolvedProviderDriverLaunch,
   AgentRuntimeSkillRoot,
 } from "./types.js";
 
@@ -72,13 +77,16 @@ export interface RuntimeProviderCanonicalInteractionArgs {
 }
 
 export interface RuntimeCanonicalProviderDriverLaunchSpec {
+  artifactDigest?: string;
   capabilities: ProviderCapabilities;
   identity: { driverId: string; pluginId: string };
   classifyExecutionSettingsChange?: ProviderDriverConnection["classifyExecutionSettingsChange"];
   config: JsonObject;
   displayName: string;
   process: { command: string; args: string[]; env?: Record<string, string> };
+  providerDataDir?: string;
   processCapabilities: { multiplexSessions: boolean };
+  release?: () => void;
   normalizeExecutionOptions?: (
     options: RuntimeThreadExecutionOptions,
   ) => RuntimeThreadExecutionOptions;
@@ -116,6 +124,7 @@ export interface RuntimeProviderProcessManagerArgs {
   onProcessExit: AgentRuntimeOptions["onProcessExit"];
   onProviderThreadDetached: (threadId: string) => void;
   onStderr: AgentRuntimeOptions["onStderr"];
+  resolveProviderDriverLaunch?: AgentRuntimeOptions["resolveProviderDriverLaunch"];
   resolveThreadStoragePath: (threadId: string) => string;
   skillRoots: readonly AgentRuntimeSkillRoot[];
   workspacePath: string;
@@ -123,6 +132,7 @@ export interface RuntimeProviderProcessManagerArgs {
 
 export interface EnsureRuntimeProviderArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  providerDriver?: HostDaemonProviderDriverLaunchSpec;
   processKey: string;
   providerId: string;
 }
@@ -163,6 +173,20 @@ function resolveCanonicalDriverProcessArgs(args: {
     bundleFileName: args.bundleFileName,
     bridgeRelativePath: args.sourceRelativePath,
   });
+}
+
+function observedProviderCapabilities(
+  capabilities: ProviderDriverCapabilities,
+): ProviderCapabilities {
+  const operations = new Set(capabilities.supportedSessionOperations);
+  return {
+    supportsArchive: operations.has("archive"),
+    supportsRename: operations.has("rename"),
+    supportsServiceTier: capabilities.supportsServiceTier,
+    supportsUserQuestion: capabilities.supportsUserQuestions,
+    supportsFork: operations.has("fork"),
+    supportedPermissionModes: [...capabilities.supportedPermissionModes],
+  };
 }
 
 function driverArtifactDigest(processArgs: readonly string[]): string {
@@ -277,33 +301,51 @@ export class RuntimeProviderProcessManager {
     testSpec?: RuntimeCanonicalProviderDriverLaunchSpec,
   ): Promise<void> {
     const providerId = args.providerId;
-    const bundledSpec = testSpec
+    let resolvedPluginSpec:
+      | AgentRuntimeResolvedProviderDriverLaunch
+      | undefined;
+    if (args.providerDriver !== undefined) {
+      const resolveLaunch = this.args.resolveProviderDriverLaunch;
+      if (resolveLaunch === undefined) {
+        throw new Error(
+          `Provider "${providerId}" requires host-driver artifact resolution`,
+        );
+      }
+      resolvedPluginSpec = await resolveLaunch(args.providerDriver);
+    }
+    const effectiveSpec = testSpec ?? resolvedPluginSpec;
+    const bundledSpec = effectiveSpec
       ? null
       : getBundledProviderDriverLaunchSpec(providerId);
-    if (!testSpec && !bundledSpec) {
+    if (!effectiveSpec && !bundledSpec) {
       throw new Error(`Unsupported provider "${providerId}"`);
     }
     const acpProfile = args.acpLaunchSpec;
-    if (!testSpec && isAcpProviderId(providerId) && acpProfile === undefined) {
+    if (
+      !effectiveSpec &&
+      isAcpProviderId(providerId) &&
+      acpProfile === undefined
+    ) {
       throw new Error(`ACP provider "${providerId}" requires a launch spec`);
     }
-    const processConfig = testSpec?.process ?? {
+    const processConfig = effectiveSpec?.process ?? {
       command: this.args.bridgeNodeExecutablePath ?? process.execPath,
       args: resolveCanonicalDriverProcessArgs({
         bridgeBundleDir: this.args.bridgeBundleDir,
         ...bundledSpec!.entrypoint,
       }),
     };
-    const identity = testSpec?.identity ?? {
+    const identity = effectiveSpec?.identity ?? {
       pluginId: bundledSpec!.driverId,
       driverId: bundledSpec!.driverId,
     };
     const declaredMultiplexSessions =
-      testSpec?.processCapabilities.multiplexSessions ??
+      effectiveSpec?.processCapabilities.multiplexSessions ??
       bundledSpec!.processPolicy.multiplexSessions;
     let diagnosticsTail: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let providerProcess: RuntimeProviderProcess | null = null;
     let supervised: SupervisedProviderDriver;
+    let runtimeCapabilities: ProviderCapabilities;
     try {
       supervised = await this.canonicalSupervisor.launch({
         processKey: args.processKey,
@@ -312,22 +354,21 @@ export class RuntimeProviderProcessManager {
           expected: {
             pluginId: identity.pluginId,
             driverId: identity.driverId,
-            providerId: testSpec ? providerId : bundledSpec!.driverId,
-            artifactDigest: driverArtifactDigest(processConfig.args),
+            providerId: effectiveSpec ? providerId : bundledSpec!.driverId,
+            artifactDigest:
+              effectiveSpec?.artifactDigest ??
+              driverArtifactDigest(processConfig.args),
           },
           host: {
             platform: process.platform,
             architecture: process.arch,
           },
           paths: {
-            providerDataDir: join(
-              homedir(),
-              ".bb",
-              "provider-data",
-              providerId,
-            ),
+            providerDataDir:
+              effectiveSpec?.providerDataDir ??
+              join(homedir(), ".bb", "provider-data", providerId),
           },
-          config: testSpec?.config ?? acpProfile ?? {},
+          config: effectiveSpec?.config ?? acpProfile ?? {},
         },
         launch: {
           command: processConfig.command,
@@ -338,6 +379,9 @@ export class RuntimeProviderProcessManager {
             ...this.args.bridgeNodeEnv,
             ...processConfig.env,
           },
+          ...(effectiveSpec?.release !== undefined
+            ? { release: effectiveSpec.release }
+            : {}),
         },
         hostHandlers: {
           callTool: (params) => {
@@ -407,6 +451,13 @@ export class RuntimeProviderProcessManager {
           `${providerId} driver process policy does not match its declared launch spec`,
         );
       }
+      const inspection = await supervised.connection.inspect({
+        cwd: this.args.workspacePath,
+        operation: null,
+      });
+      runtimeCapabilities = observedProviderCapabilities(
+        inspection.capabilities,
+      );
     } catch (error) {
       const detail = formatProviderStderr(diagnosticsTail);
       throw new Error(
@@ -416,33 +467,42 @@ export class RuntimeProviderProcessManager {
     }
 
     let providerInfo: Pick<ProviderInfo, "capabilities" | "displayName">;
-    if (testSpec) {
+    if (effectiveSpec) {
       providerInfo = {
-        displayName: testSpec.displayName,
-        capabilities: testSpec.capabilities,
+        displayName: effectiveSpec.displayName,
+        capabilities: runtimeCapabilities,
       };
     } else if (isAcpProviderId(providerId)) {
-      providerInfo = buildAcpProviderInfo({
-        id: providerId,
-        displayName: acpProfile?.displayName ?? providerId,
-        logoUrl: null,
-      });
+      providerInfo = {
+        ...buildAcpProviderInfo({
+          id: providerId,
+          displayName: acpProfile?.displayName ?? providerId,
+          logoUrl: null,
+        }),
+        capabilities: runtimeCapabilities,
+      };
     } else {
       if (bundledSpec!.driverId === "acp") {
         throw new Error(`ACP driver cannot serve provider "${providerId}"`);
       }
-      providerInfo = getBuiltInAgentProviderInfo(bundledSpec!.driverId);
+      providerInfo = {
+        ...getBuiltInAgentProviderInfo(bundledSpec!.driverId),
+        capabilities: runtimeCapabilities,
+      };
     }
     const connection = new CanonicalProcessProviderConnection({
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
-      ...(testSpec
+      ...(effectiveSpec
         ? {
             classifyExecutionSettingsChange:
-              testSpec.classifyExecutionSettingsChange ??
-              classifySessionExecutionSettingsChange,
-            ...(testSpec.normalizeExecutionOptions
+              ("classifyExecutionSettingsChange" in effectiveSpec
+                ? effectiveSpec.classifyExecutionSettingsChange
+                : undefined) ?? classifySessionExecutionSettingsChange,
+            ...("normalizeExecutionOptions" in effectiveSpec &&
+            effectiveSpec.normalizeExecutionOptions
               ? {
-                  normalizeExecutionOptions: testSpec.normalizeExecutionOptions,
+                  normalizeExecutionOptions:
+                    effectiveSpec.normalizeExecutionOptions,
                 }
               : {}),
           }

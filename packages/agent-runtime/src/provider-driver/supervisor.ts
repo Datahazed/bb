@@ -24,6 +24,7 @@ export interface ProviderDriverLaunchSpec {
   readonly command: string;
   readonly cwd: string;
   readonly env: Readonly<Record<string, string>>;
+  readonly release?: () => void;
 }
 
 export interface ProviderDriverDiagnostic {
@@ -194,18 +195,31 @@ export class ProviderDriverSupervisor {
   private async launchNew(
     args: ProviderDriverSupervisorLaunchArgs,
   ): Promise<SupervisedProviderDriver> {
-    const child = spawnPortableProcess({
-      command: args.launch.command,
-      args: [...args.launch.args],
-      cwd: args.launch.cwd,
-      env: {
-        ...sanitizeInheritedChildProcessEnv({ env: process.env }),
-        ...args.launch.env,
-      },
-      // fd 3: host -> driver; fd 4: driver -> host. stdout and stderr are
-      // diagnostics only and can never corrupt protocol framing.
-      stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
-    });
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      args.launch.release?.();
+    };
+    const child = (() => {
+      try {
+        return spawnPortableProcess({
+          command: args.launch.command,
+          args: [...args.launch.args],
+          cwd: args.launch.cwd,
+          env: {
+            ...sanitizeInheritedChildProcessEnv({ env: process.env }),
+            ...args.launch.env,
+          },
+          // fd 3: host -> driver; fd 4: driver -> host. stdout and stderr are
+          // diagnostics only and can never corrupt protocol framing.
+          stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
+        });
+      } catch (error) {
+        release();
+        throw error;
+      }
+    })();
 
     try {
       const stdout = requireReadable(child.stdout, "stdout");
@@ -248,6 +262,7 @@ export class ProviderDriverSupervisor {
       let handle: SupervisedProviderDriver | null = null;
 
       connection.onExit((exit) => {
+        release();
         args.onExit?.(exit);
         const current = this.drivers.get(args.processKey);
         if (current !== undefined) {
@@ -288,6 +303,7 @@ export class ProviderDriverSupervisor {
             // Process termination below is authoritative during shutdown.
           }
           await terminateChild(child);
+          release();
           const current = this.drivers.get(args.processKey);
           if (current !== undefined) {
             await current.then(
@@ -306,6 +322,7 @@ export class ProviderDriverSupervisor {
       return handle;
     } catch (error) {
       await terminateChild(child);
+      release();
       throw error;
     }
   }

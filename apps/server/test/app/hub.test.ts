@@ -9,6 +9,7 @@ import {
 } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NotificationHub } from "../../src/ws/hub.js";
+import { READY_HOST_PROVIDER_INSPECTION } from "../helpers/host-rpc.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 /**
@@ -308,13 +309,18 @@ describe("NotificationHub", () => {
         command: { type: "provider.list_models", providerId: "codex" },
       },
     ]);
+    const providerModelsResult = {
+      models: [],
+      selectedOnlyModels: [],
+      inspection: READY_HOST_PROVIDER_INSPECTION,
+    };
     const disposition = hub.recordHostOnlineRpcResponse({
       message: {
         type: "host-rpc.response",
         requestId: "rpc-1",
         commandType: "provider.list_models",
         ok: true,
-        result: { models: [], selectedOnlyModels: [] },
+        result: providerModelsResult,
       },
       sessionId: "session-1",
     });
@@ -325,7 +331,7 @@ describe("NotificationHub", () => {
       requestId: "rpc-1",
       commandType: "provider.list_models",
       ok: true,
-      result: { models: [], selectedOnlyModels: [] },
+      result: providerModelsResult,
     });
   });
 
@@ -350,13 +356,18 @@ describe("NotificationHub", () => {
       return response;
     });
 
+    const providerModelsResult = {
+      models: [],
+      selectedOnlyModels: [],
+      inspection: READY_HOST_PROVIDER_INSPECTION,
+    };
     const mismatch = hub.recordHostOnlineRpcResponse({
       message: {
         type: "host-rpc.response",
         requestId: "rpc-session-scoped",
         commandType: "provider.list_models",
         ok: true,
-        result: { models: [], selectedOnlyModels: [] },
+        result: providerModelsResult,
       },
       sessionId: "session-2",
     });
@@ -374,7 +385,7 @@ describe("NotificationHub", () => {
         requestId: "rpc-session-scoped",
         commandType: "provider.list_models",
         ok: true,
-        result: { models: [], selectedOnlyModels: [] },
+        result: providerModelsResult,
       },
       sessionId: "session-1",
     });
@@ -384,7 +395,7 @@ describe("NotificationHub", () => {
       requestId: "rpc-session-scoped",
       commandType: "provider.list_models",
       ok: true,
-      result: { models: [], selectedOnlyModels: [] },
+      result: providerModelsResult,
     });
   });
 

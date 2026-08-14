@@ -23,6 +23,7 @@ import type {
 } from "@bb/host-daemon-contract";
 import type { TestAppHarness } from "./test-app.js";
 import { availableModelFixture } from "./available-models.js";
+import { READY_HOST_PROVIDER_INSPECTION } from "./provider-inspection.js";
 import { createTestDaemonHostKey } from "./test-app.js";
 
 interface CapturedRpcRow {
@@ -252,6 +253,7 @@ function respondToProviderModelListCommand(
           }),
         ],
         selectedOnlyModels: [],
+        inspection: READY_HOST_PROVIDER_INSPECTION,
       },
     }),
     sessionId: args.sessionId,

@@ -29,6 +29,7 @@ import {
   type PluginService,
 } from "./services/plugins/plugin-service.js";
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
+import { setPluginProviderContributions } from "./services/providers/provider-registry.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
@@ -410,6 +411,8 @@ export function createApp(
   setPluginThreadEventEmitter(pluginService.events);
   // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
+  // Bridge provider policy/enumeration to atomically loaded plugin generations.
+  setPluginProviderContributions(pluginService);
   const publicApi = new Hono();
   const pluginCatalogService = createPluginCatalogService({
     db: deps.db,

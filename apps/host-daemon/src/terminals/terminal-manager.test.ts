@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@bb/agent-runtime";
+import { createReadyProviderInspection } from "@bb/agent-runtime/test";
 import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
@@ -226,7 +227,7 @@ function createFakeRuntime(): AgentRuntime {
     renameThread: vi.fn(async () => undefined),
     archiveThread: vi.fn(async () => undefined),
     unarchiveThread: vi.fn(async () => undefined),
-    listModels: vi.fn(async () => ({ models: [], selectedOnlyModels: [] })),
+    listModels: vi.fn(async () => createReadyProviderInspection()),
     listRunningProviders: vi.fn(() => []),
     getActiveTurnId: vi.fn(() => null),
     waitForActiveTurn: vi.fn(async () => null),

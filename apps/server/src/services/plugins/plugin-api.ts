@@ -12,7 +12,15 @@ import {
 } from "@bb/db";
 import {
   PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+  jsonObjectSchema,
+  providerCapabilitiesSchema,
+  providerComposerActionSchema,
+  reasoningLevelSchema,
+  type JsonObject,
   type JsonValue,
+  type ProviderCapabilities,
+  type ProviderComposerAction,
+  type ReasoningLevel,
 } from "@bb/domain";
 import type {
   BbPluginApi,
@@ -31,12 +39,14 @@ import type {
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
+  PluginHostDriverProviderRegistration,
   PluginHosts,
   PluginKvStorage,
   PluginLogger,
   PluginMentionItem,
   PluginMentionSearchContext,
   PluginMentionTrigger,
+  PluginProviders,
   PluginRealtime,
   PluginRpc,
   PluginRpcMethodContract,
@@ -52,6 +62,7 @@ import type {
   PluginUi,
   StandardSchemaV1,
 } from "@bb/plugin-sdk";
+import { providerDriverProviderIdSchema } from "@bb/provider-driver-contract";
 import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
@@ -84,6 +95,7 @@ export type {
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
+  PluginHostDriverProviderRegistration,
   PluginHosts,
   PluginKvStorage,
   PluginLogger,
@@ -91,6 +103,7 @@ export type {
   PluginMentionProviderRegistration,
   PluginMentionSearchContext,
   PluginMentionTrigger,
+  PluginProviders,
   PluginRealtime,
   PluginRpc,
   PluginRpcContract,
@@ -266,6 +279,30 @@ export const RESERVED_AGENT_TOOL_NAMES: readonly string[] = [
 ];
 
 /** Runtime record of a registered mention provider. */
+export interface PluginProviderRecord {
+  localId: string;
+  providerId: string;
+  displayName: string;
+  description: string;
+  capabilities: ProviderCapabilities;
+  composerActions: ProviderComposerAction[];
+  reasoningLevels: ReasoningLevel[];
+  productCapabilities: {
+    supportsWorkflows: boolean;
+    supportsExecutionOverride: boolean;
+    supportsManualCompaction: boolean;
+  };
+  execution: {
+    kind: "host-driver";
+    driverId: string;
+    config: JsonObject;
+    process: {
+      scope: "environment" | "thread";
+      multiplexSessions: boolean;
+    };
+  };
+}
+
 export interface PluginMentionProviderRecord {
   id: string;
   label: string;
@@ -277,7 +314,6 @@ export interface PluginMentionProviderRecord {
     itemId: string,
   ) => { context: string } | Promise<{ context: string }>;
 }
-
 
 /** Runtime record of a registered background service. */
 export interface PluginBackgroundServiceRecord {
@@ -324,6 +360,10 @@ const CLI_COMMAND_NAME_PATTERN = /^[a-z0-9-]+$/;
 
 // Agent tool names are shown to (and called by) the model.
 const AGENT_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const PROVIDER_LOCAL_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+const PLUGIN_PROVIDER_CONFIG_MAX_BYTES = 64 * 1024;
+const PLUGIN_PROVIDER_DESCRIPTION_MAX_CHARS = 1000;
+const PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS = 120;
 const PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS = 4096;
 /** Status labels ride on every tool-call event and share one timeline row. */
 const PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS = 80;
@@ -424,6 +464,8 @@ export interface PluginApiHandle {
    * `bb.agents.contributeInstructions` (at most one; null when none).
    */
   instructionProvider: PluginInstructionProvider | null;
+  /** Selectable providers recorded by `bb.experimental_providers.register`. */
+  providers: PluginProviderRecord[];
   /** Mention providers recorded by `bb.ui.registerMentionProvider`. */
   mentionProviders: PluginMentionProviderRecord[];
   /** Publish factory-time host declarations and status only after commit. */
@@ -508,6 +550,7 @@ function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
 
 export function createPluginApi(options: {
   pluginId: string;
+  hostDriverIds: readonly string[];
   logger: ServerLogger;
   db: DbConnection;
   dataDir: string;
@@ -548,6 +591,7 @@ export function createPluginApi(options: {
 }): PluginApiHandle {
   const {
     pluginId,
+    hostDriverIds,
     logger,
     db,
     dataDir,
@@ -1122,6 +1166,173 @@ export function createPluginApi(options: {
     },
   };
 
+  const providers: PluginProviderRecord[] = [];
+  const experimentalProviders: PluginProviders = {
+    register(registration: PluginHostDriverProviderRegistration) {
+      assertLive();
+      const localId = registration?.id;
+      if (
+        typeof localId !== "string" ||
+        localId.length > 64 ||
+        !PROVIDER_LOCAL_ID_PATTERN.test(localId)
+      ) {
+        throw new Error(
+          `invalid provider id ${JSON.stringify(localId)} — use at most 64 lowercase letters, digits, and "-", beginning with a letter`,
+        );
+      }
+      if (providers.some((provider) => provider.localId === localId)) {
+        throw new Error(`provider "${localId}" is already registered`);
+      }
+      const displayName = registration.displayName?.trim();
+      if (
+        typeof displayName !== "string" ||
+        displayName.length === 0 ||
+        displayName.length > PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS
+      ) {
+        throw new Error(
+          `provider "${localId}" displayName must be 1-${PLUGIN_PROVIDER_DISPLAY_NAME_MAX_CHARS} characters`,
+        );
+      }
+      const description = registration.description?.trim();
+      if (
+        typeof description !== "string" ||
+        description.length === 0 ||
+        description.length > PLUGIN_PROVIDER_DESCRIPTION_MAX_CHARS
+      ) {
+        throw new Error(
+          `provider "${localId}" description must be 1-${PLUGIN_PROVIDER_DESCRIPTION_MAX_CHARS} characters`,
+        );
+      }
+      const capabilities = providerCapabilitiesSchema.safeParse(
+        registration.capabilities,
+      );
+      if (!capabilities.success) {
+        throw new Error(`provider "${localId}" capabilities are invalid`);
+      }
+      if (!Array.isArray(registration.composerActions)) {
+        throw new Error(
+          `provider "${localId}" composerActions must be an array`,
+        );
+      }
+      const composerActions = registration.composerActions.map(
+        (action, index) => {
+          const parsed = providerComposerActionSchema.safeParse(action);
+          if (!parsed.success) {
+            throw new Error(
+              `provider "${localId}" composerActions[${index}] is invalid`,
+            );
+          }
+          return parsed.data;
+        },
+      );
+      if (!Array.isArray(registration.reasoningLevels)) {
+        throw new Error(
+          `provider "${localId}" reasoningLevels must be an array`,
+        );
+      }
+      const reasoningLevels = registration.reasoningLevels.map(
+        (level, index) => {
+          const parsed = reasoningLevelSchema.safeParse(level);
+          if (!parsed.success) {
+            throw new Error(
+              `provider "${localId}" reasoningLevels[${index}] is invalid`,
+            );
+          }
+          return parsed.data;
+        },
+      );
+      if (
+        reasoningLevels.length === 0 ||
+        new Set(reasoningLevels).size !== reasoningLevels.length
+      ) {
+        throw new Error(
+          `provider "${localId}" reasoningLevels must be non-empty and unique`,
+        );
+      }
+      const productCapabilities = registration.productCapabilities;
+      if (
+        typeof productCapabilities !== "object" ||
+        productCapabilities === null ||
+        typeof productCapabilities.supportsWorkflows !== "boolean" ||
+        typeof productCapabilities.supportsExecutionOverride !== "boolean" ||
+        typeof productCapabilities.supportsManualCompaction !== "boolean"
+      ) {
+        throw new Error(
+          `provider "${localId}" productCapabilities must declare supportsWorkflows, supportsExecutionOverride, and supportsManualCompaction`,
+        );
+      }
+      const execution = registration.execution;
+      if (
+        typeof execution !== "object" ||
+        execution === null ||
+        execution.kind !== "host-driver" ||
+        typeof execution.driverId !== "string" ||
+        !hostDriverIds.includes(execution.driverId)
+      ) {
+        throw new Error(
+          `provider "${localId}" must reference one of this plugin's declared host drivers: ${hostDriverIds.join(", ") || "(none)"}`,
+        );
+      }
+      const config = jsonObjectSchema.safeParse(execution.config);
+      if (!config.success) {
+        throw new Error(
+          `provider "${localId}" execution.config must be a JSON object`,
+        );
+      }
+      const configBytes = Buffer.byteLength(
+        JSON.stringify(config.data),
+        "utf8",
+      );
+      if (configBytes > PLUGIN_PROVIDER_CONFIG_MAX_BYTES) {
+        throw new Error(
+          `provider "${localId}" execution.config exceeds the ${PLUGIN_PROVIDER_CONFIG_MAX_BYTES}-byte limit`,
+        );
+      }
+      if (
+        typeof execution.process !== "object" ||
+        execution.process === null ||
+        (execution.process.scope !== "environment" &&
+          execution.process.scope !== "thread") ||
+        typeof execution.process.multiplexSessions !== "boolean"
+      ) {
+        throw new Error(
+          `provider "${localId}" execution.process must declare scope and multiplexSessions`,
+        );
+      }
+      const providerId = `${pluginId}/${localId}`;
+      if (!providerDriverProviderIdSchema.safeParse(providerId).success) {
+        throw new Error(
+          `provider id "${providerId}" is too long or contains unsupported characters`,
+        );
+      }
+      providers.push({
+        localId,
+        providerId,
+        displayName,
+        description,
+        capabilities: capabilities.data,
+        composerActions,
+        reasoningLevels,
+        productCapabilities: {
+          supportsWorkflows: productCapabilities.supportsWorkflows,
+          supportsExecutionOverride:
+            productCapabilities.supportsExecutionOverride,
+          supportsManualCompaction:
+            productCapabilities.supportsManualCompaction,
+        },
+        execution: {
+          kind: "host-driver",
+          driverId: execution.driverId,
+          config: config.data,
+          process: {
+            scope: execution.process.scope,
+            multiplexSessions: execution.process.multiplexSessions,
+          },
+        },
+      });
+    },
+  };
+
   const mentionProviders: PluginMentionProviderRecord[] = [];
   const ui: PluginUi = {
     requestInput,
@@ -1296,6 +1507,7 @@ export function createPluginApi(options: {
     status,
     server,
     hosts,
+    experimental_providers: experimentalProviders,
     get sdk(): BbSdk {
       assertLive();
       const sdk = getSdk();
@@ -1332,6 +1544,7 @@ export function createPluginApi(options: {
     get instructionProvider() {
       return instructionProvider;
     },
+    providers,
     mentionProviders,
     activate() {
       if (activated) return;

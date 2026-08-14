@@ -1,8 +1,7 @@
 import {
-  getBuiltInAgentProviderServerCapabilities,
-  isAgentProviderId,
-  listBuiltInAgentProviderInfos,
-} from "@bb/agent-providers";
+  getRegisteredProviderServerCapabilities,
+  listRegisteredProviderInfos,
+} from "../providers/provider-registry.js";
 import {
   getProjectExecutionDefaults,
   getThreadExecutionOverride,
@@ -29,18 +28,18 @@ import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-polic
  * changes always require respawning the thread.
  */
 function providerSupportsExecutionOverride(providerId: string): boolean {
-  if (!isAgentProviderId(providerId)) {
-    return false;
-  }
-  return getBuiltInAgentProviderServerCapabilities(providerId)
-    .supportsExecutionOverride;
+  return (
+    getRegisteredProviderServerCapabilities(providerId)
+      ?.supportsExecutionOverride ?? false
+  );
 }
 
 function listExecutionOverrideProviderIds(): string[] {
-  return listBuiltInAgentProviderInfos()
-    .filter((info) =>
-      getBuiltInAgentProviderServerCapabilities(info.id)
-        .supportsExecutionOverride,
+  return listRegisteredProviderInfos()
+    .filter(
+      (info) =>
+        getRegisteredProviderServerCapabilities(info.id)
+          ?.supportsExecutionOverride === true,
     )
     .map((info) => info.id);
 }
@@ -99,7 +98,9 @@ export function resolveThreadExecutionOverrideUpdate(
     if (patch.model === null || patch.model === undefined) {
       nextModel = null;
     } else {
-      const target = models.find((candidate) => candidate.model === patch.model);
+      const target = models.find(
+        (candidate) => candidate.model === patch.model,
+      );
       if (!target) {
         throw new ApiError(
           400,
@@ -136,7 +137,9 @@ export function resolveThreadExecutionOverrideUpdate(
           400,
           "invalid_request",
           `Reasoning level "${patch.reasoningLevel}" is not supported by ${
-            effectiveModel ? `model "${effectiveModel}"` : `provider ${providerId}`
+            effectiveModel
+              ? `model "${effectiveModel}"`
+              : `provider ${providerId}`
           }. Supported reasoning levels: ${supportedReasoning.join(", ")}.`,
         );
       }

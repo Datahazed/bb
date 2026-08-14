@@ -17,6 +17,7 @@ import type {
   PluginApiHandle,
   PluginBackgroundServiceRecord,
   PluginMentionTrigger,
+  PluginProviderRecord,
 } from "./plugin-api.js";
 import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
 export type {
@@ -132,6 +133,14 @@ export interface PluginServiceDeps {
   }) => Promise<void>;
   /** Test observation seam; called immediately before a managed download. */
   onArtifactMaterialize?: (args: { path: string }) => void;
+}
+
+/** One selectable provider backed by a running plugin's immutable artifact. */
+export interface PluginProviderContribution {
+  pluginId: string;
+  registration: PluginProviderRecord;
+  artifact: MaterializedPluginHostDriverArtifact;
+  logoUrl: string | null;
 }
 
 /** One native tool contributed by a running plugin (design §4.4). */

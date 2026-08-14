@@ -162,6 +162,7 @@ export const pluginCapabilitySchema = z.object({
     "agent-tool",
     "thread-integration",
     "host-driver",
+    "provider",
   ]),
   id: z.string(),
   label: z.string(),

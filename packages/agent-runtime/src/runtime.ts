@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import {
   isApprovalPendingInteractionResolution,
@@ -6,7 +7,10 @@ import {
   toProviderExternalThreadName,
 } from "@bb/domain";
 import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonAcpLaunchSpec,
+  HostDaemonProviderDriverLaunchSpec,
+} from "@bb/host-daemon-contract";
 import type {
   ProviderDriverConnection,
   ProviderDriverSessionOpenArgs,
@@ -99,6 +103,7 @@ interface FindReapableIdleProviderSessionArgs {
 
 interface ResolveProviderProcessKeyArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  providerDriver?: HostDaemonProviderDriverLaunchSpec;
   providerId: string;
   threadId?: string;
 }
@@ -110,6 +115,7 @@ interface RequireProviderProcessArgs {
 
 interface ArchiveOrUnarchiveThreadArgs {
   commandType: "thread/archive" | "thread/unarchive";
+  providerDriver?: HostDaemonProviderDriverLaunchSpec;
   providerId: string;
   providerThreadId: string;
   threadId: string;
@@ -327,6 +333,7 @@ function createAgentRuntimeInternal(
       turnReplayFilter.clearThread(threadId);
     },
     onStderr: options.onStderr,
+    resolveProviderDriverLaunch: options.resolveProviderDriverLaunch,
     resolveThreadStoragePath: (threadId) => {
       const resolved = resolveThreadStoragePath({ options, threadId });
       if (!resolved) {
@@ -344,11 +351,24 @@ function createAgentRuntimeInternal(
     args: ResolveProviderProcessKeyArgs,
   ): string {
     const driverSpec = getBundledProviderDriverLaunchSpec(args.providerId);
-    const baseKey =
-      driverSpec?.processPolicy.scope !== "thread" ||
-      args.threadId === undefined
+    const processScope =
+      args.providerDriver?.process.scope ?? driverSpec?.processPolicy.scope;
+    const providerGenerationKey =
+      args.providerDriver === undefined
         ? args.providerId
-        : `${args.providerId}${THREAD_PROCESS_KEY_SEPARATOR}${args.threadId}`;
+        : `${args.providerId}#driver:${createHash("sha256")
+            .update(
+              JSON.stringify({
+                artifactDigest: args.providerDriver.artifact.digest,
+                config: args.providerDriver.config,
+                process: args.providerDriver.process,
+              }),
+            )
+            .digest("hex")}`;
+    const baseKey =
+      processScope !== "thread" || args.threadId === undefined
+        ? providerGenerationKey
+        : `${providerGenerationKey}${THREAD_PROCESS_KEY_SEPARATOR}${args.threadId}`;
     if (args.acpLaunchSpec === undefined) {
       return baseKey;
     }
@@ -577,11 +597,25 @@ function createAgentRuntimeInternal(
   async function archiveOrUnarchiveThread(
     args: ArchiveOrUnarchiveThreadArgs,
   ): Promise<void> {
-    const { commandType, providerId, providerThreadId, threadId } = args;
+    const {
+      commandType,
+      providerDriver,
+      providerId,
+      providerThreadId,
+      threadId,
+    } = args;
     const processKey =
       threadRuntimeConfigs.get(threadId)?.processKey ??
-      resolveProviderProcessKey({ providerId, threadId });
-    await providerProcesses.ensureProvider({ processKey, providerId });
+      resolveProviderProcessKey({
+        ...(providerDriver !== undefined ? { providerDriver } : {}),
+        providerId,
+        threadId,
+      });
+    await providerProcesses.ensureProvider({
+      processKey,
+      providerId,
+      ...(providerDriver !== undefined ? { providerDriver } : {}),
+    });
     const proc = requireProviderProcess({ processKey, providerId });
     if (!proc.connection.capabilities.supportsArchive) {
       throw new Error(
@@ -848,15 +882,22 @@ function createAgentRuntimeInternal(
   }
 
   const runtime: AgentRuntime = {
-    async ensureProvider({ providerId, forThreadId, acpLaunchSpec }) {
+    async ensureProvider({
+      providerId,
+      forThreadId,
+      acpLaunchSpec,
+      providerDriver,
+    }) {
       await providerProcesses.ensureProvider({
         processKey: resolveProviderProcessKey({
           ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          ...(providerDriver !== undefined ? { providerDriver } : {}),
           providerId,
           ...(forThreadId !== undefined ? { threadId: forThreadId } : {}),
         }),
         providerId,
         ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+        ...(providerDriver !== undefined ? { providerDriver } : {}),
       });
     },
 
@@ -866,6 +907,7 @@ function createAgentRuntimeInternal(
       projectId,
       providerId,
       acpLaunchSpec,
+      providerDriver,
       clientRequestId,
       input,
       inputGroups,
@@ -882,6 +924,7 @@ function createAgentRuntimeInternal(
         work: async () => {
           const processKey = resolveProviderProcessKey({
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            ...(providerDriver !== undefined ? { providerDriver } : {}),
             providerId,
             threadId,
           });
@@ -889,6 +932,7 @@ function createAgentRuntimeInternal(
             providerId,
             forThreadId: threadId,
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            ...(providerDriver !== undefined ? { providerDriver } : {}),
           });
 
           const proc = requireProviderProcess({ processKey, providerId });
@@ -994,6 +1038,7 @@ function createAgentRuntimeInternal(
       sourceProviderThreadId,
       retainThroughProviderCheckpoint,
       acpLaunchSpec,
+      providerDriver,
       options: execOpts,
       instructions,
       dynamicTools,
@@ -1014,6 +1059,7 @@ function createAgentRuntimeInternal(
         work: async () => {
           const processKey = resolveProviderProcessKey({
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            ...(providerDriver !== undefined ? { providerDriver } : {}),
             providerId,
             threadId,
           });
@@ -1021,6 +1067,7 @@ function createAgentRuntimeInternal(
             providerId,
             forThreadId: threadId,
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            ...(providerDriver !== undefined ? { providerDriver } : {}),
           });
           const proc = requireProviderProcess({ processKey, providerId });
           if (!proc.connection.capabilities.supportsFork) {
@@ -1150,6 +1197,7 @@ function createAgentRuntimeInternal(
       providerThreadId,
       providerId,
       acpLaunchSpec,
+      providerDriver,
       options: execOpts,
       instructions,
       dynamicTools,
@@ -1161,6 +1209,7 @@ function createAgentRuntimeInternal(
         work: async () => {
           const processKey = resolveProviderProcessKey({
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            ...(providerDriver !== undefined ? { providerDriver } : {}),
             providerId,
             threadId,
           });
@@ -1168,6 +1217,7 @@ function createAgentRuntimeInternal(
             providerId,
             forThreadId: threadId,
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            ...(providerDriver !== undefined ? { providerDriver } : {}),
           });
 
           const proc = requireProviderProcess({ processKey, providerId });
@@ -1469,7 +1519,12 @@ function createAgentRuntimeInternal(
       });
     },
 
-    async archiveThread({ threadId, providerId, providerThreadId }) {
+    async archiveThread({
+      threadId,
+      providerId,
+      providerThreadId,
+      providerDriver,
+    }) {
       return runThreadOperation({
         threadId,
         work: async () => {
@@ -1478,12 +1533,18 @@ function createAgentRuntimeInternal(
             providerId,
             providerThreadId,
             threadId,
+            ...(providerDriver !== undefined ? { providerDriver } : {}),
           });
         },
       });
     },
 
-    async unarchiveThread({ threadId, providerId, providerThreadId }) {
+    async unarchiveThread({
+      threadId,
+      providerId,
+      providerThreadId,
+      providerDriver,
+    }) {
       return runThreadOperation({
         threadId,
         work: async () => {
@@ -1492,19 +1553,22 @@ function createAgentRuntimeInternal(
             providerId,
             providerThreadId,
             threadId,
+            ...(providerDriver !== undefined ? { providerDriver } : {}),
           });
         },
       });
     },
 
-    async listModels({ providerId, acpLaunchSpec, cwd }) {
+    async listModels({ providerId, acpLaunchSpec, providerDriver, cwd }) {
       await runtime.ensureProvider({
         providerId,
         ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+        ...(providerDriver !== undefined ? { providerDriver } : {}),
       });
       const proc = requireProviderProcess({
         processKey: resolveProviderProcessKey({
           ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          ...(providerDriver !== undefined ? { providerDriver } : {}),
           providerId,
         }),
         providerId,

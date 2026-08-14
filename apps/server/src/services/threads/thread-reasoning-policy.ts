@@ -1,6 +1,4 @@
-import {
-  getAgentProviderServerCapabilities,
-} from "@bb/agent-providers";
+import { getRegisteredProviderServerCapabilities } from "../providers/provider-registry.js";
 import type { ReasoningLevel } from "@bb/domain";
 
 /**
@@ -13,5 +11,7 @@ import type { ReasoningLevel } from "@bb/domain";
 export function getSupportedReasoningLevelsForProvider(
   providerId: string,
 ): readonly ReasoningLevel[] {
-  return getAgentProviderServerCapabilities(providerId)?.reasoningLevels ?? [];
+  return (
+    getRegisteredProviderServerCapabilities(providerId)?.reasoningLevels ?? []
+  );
 }

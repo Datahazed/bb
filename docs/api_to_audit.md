@@ -34,6 +34,37 @@ register a provider or grant the daemon permission to launch it.
 6. **Atomicity.** Confirm server, app, and host artifacts publish as one build
    generation and that failed updates retain the complete previous generation.
 
+## `bb.experimental_providers.register`
+
+**What it does.** Registers a selectable provider backed by one of the same
+plugin's `bb.experimental_hostDrivers` artifacts. The plugin supplies a local
+id, display metadata, expected picker capabilities, composer actions, a coarse
+reasoning ladder, product-policy flags, bounded non-secret launch config, and
+process scope. BB persists the global id as `<pluginId>/<localId>` and records
+the contribution atomically with the plugin generation.
+
+**Audit before stabilizing.**
+
+1. **Registered versus observed capabilities.** Confirm which fields remain
+   server-owned product policy and which should disappear once driver
+   inspection is always available. Host-observed execution capabilities must
+   win and mismatches need structured diagnostics.
+2. **Identity.** Validate namespacing against real third-party providers and
+   define the deliberate path that lets official provider plugins retain
+   historical ids such as `pi` without letting arbitrary plugins claim them.
+3. **Process policy.** Audit whether plugins should choose environment/thread
+   scope and multiplexing directly or whether those facts should be derived
+   from inspected driver capabilities and kernel safety policy.
+4. **Configuration.** Confirm 64 KiB immutable JSON is sufficient, cannot
+   carry secrets, hashes canonically for process reuse, and remains readable
+   and migratable across plugin generations.
+5. **Disable/update semantics.** Prove new work is revoked immediately,
+   accepted work drains safely on a leased generation, resume moves to a
+   compatible generation, and historical timelines remain renderable.
+6. **Presentation.** Audit display-name/description/branding ownership,
+   composer actions, and how unavailable providers appear in pickers and
+   project defaults.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React

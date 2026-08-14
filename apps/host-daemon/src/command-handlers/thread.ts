@@ -185,6 +185,9 @@ async function resumeThreadRuntimeIfMissing(
       : command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
+    ...(command.resumeContext.providerDriver !== undefined
+      ? { providerDriver: command.resumeContext.providerDriver }
+      : {}),
     environmentId: command.environmentId,
     threadId: command.threadId,
     projectId: resumeContext.projectId,
@@ -229,6 +232,9 @@ export async function startThread(
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
+      ...(command.providerDriver !== undefined
+        ? { providerDriver: command.providerDriver }
+        : {}),
       environmentId: command.environmentId,
       threadId: command.threadId,
       projectId: command.projectId,
@@ -268,6 +274,9 @@ export async function prepareThreadRewind(
   return entry.runtime.prepareThreadRewind({
     ...(command.acpLaunchSpec !== undefined
       ? { acpLaunchSpec: command.acpLaunchSpec }
+      : {}),
+    ...(command.providerDriver !== undefined
+      ? { providerDriver: command.providerDriver }
       : {}),
     environmentId: command.environmentId,
     threadId: command.threadId,

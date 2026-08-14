@@ -25,7 +25,9 @@ import type {
   PluginHttp,
   PluginHttpAuthMode,
   PluginHttpHandler,
+  PluginHostDriverProviderRegistration,
   PluginHosts,
+  PluginProviders,
   PluginSharedPortTunnelIdentity,
   PluginInteractionRequest,
   PluginInteractionResult,
@@ -283,6 +285,9 @@ export interface FakeAgentToolRecord {
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
 
+export interface FakeProviderRegistration extends PluginHostDriverProviderRegistration {
+  providerId: string;
+}
 
 export interface FakeMentionProviderRecord {
   id: string;
@@ -321,6 +326,7 @@ export interface FakePluginRegistrations {
     | null;
   threadEventHandlers: Record<PluginThreadEventName, number>;
   mentionProviders: FakeMentionProviderRecord[];
+  providers: FakeProviderRegistration[];
 }
 
 /** Read-only state for assertions after a plugin registers or handles work. */
@@ -476,6 +482,8 @@ export interface CreateFakePluginHostOptions {
   sdk?: FakeSdkOverrides;
   /** Static manifest skill ids available to configure() in this fake host. */
   agentSkillIds?: readonly string[];
+  /** Static `bb.experimental_hostDrivers` ids available to provider registrations. */
+  hostDriverIds?: readonly string[];
   /** Read-only identities returned by bb.hosts.ensureSharedPortTunnel. */
   sharedPortTunnelIdentities?: Record<string, PluginSharedPortTunnelIdentity>;
 }
@@ -1071,6 +1079,10 @@ function createFakePluginHostInternal(
   if (new Set(agentSkillIds).size !== agentSkillIds.length) {
     throw new Error("agentSkillIds must not contain duplicates");
   }
+  const hostDriverIds = [...(options.hostDriverIds ?? [])];
+  if (new Set(hostDriverIds).size !== hostDriverIds.length) {
+    throw new Error("hostDriverIds must not contain duplicates");
+  }
   let invalidated = false;
   let disposed = false;
 
@@ -1601,6 +1613,42 @@ function createFakePluginHostInternal(
   };
 
   // --- ui ---
+  const providers: FakeProviderRegistration[] = [];
+  const experimentalProviders: PluginProviders = {
+    register(registration) {
+      assertLive();
+      const id = registration?.id;
+      if (
+        typeof id !== "string" ||
+        id.length > 64 ||
+        !/^[a-z][a-z0-9-]*$/.test(id)
+      ) {
+        throw new Error(
+          `invalid provider id ${JSON.stringify(id)} — use at most 64 lowercase letters, digits, and "-", beginning with a letter`,
+        );
+      }
+      if (providers.some((provider) => provider.id === id)) {
+        throw new Error(`provider "${id}" is already registered`);
+      }
+      if (!hostDriverIds.includes(registration.execution?.driverId)) {
+        throw new Error(
+          `provider "${id}" must reference one of this plugin's declared host drivers: ${hostDriverIds.join(", ") || "(none)"}`,
+        );
+      }
+      let normalized: PluginHostDriverProviderRegistration;
+      try {
+        normalized = structuredClone(registration);
+        JSON.stringify(normalized.execution.config);
+      } catch {
+        throw new Error(`provider "${id}" must contain cloneable JSON data`);
+      }
+      providers.push({
+        ...normalized,
+        providerId: `${pluginId}/${id}`,
+      });
+    },
+  };
+
   const mentionProviders: FakeMentionProviderRecord[] = [];
   const ui: PluginUi = {
     requestInput,
@@ -1849,6 +1897,7 @@ function createFakePluginHostInternal(
     status,
     server,
     hosts,
+    experimental_providers: experimentalProviders,
     get sdk() {
       assertLive();
       return sdk;
@@ -1935,6 +1984,7 @@ function createFakePluginHostInternal(
         };
       },
       mentionProviders,
+      providers,
     },
     get pendingInteractions() {
       return [...pendingInteractions].map(([id, pending]) => ({

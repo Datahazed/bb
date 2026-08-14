@@ -4,6 +4,7 @@ import {
   PLUGIN_CLI_OUTPUT_MAX_BYTES,
   type BbPluginApi,
   type PluginAgentConfigurationContext,
+  type PluginHostDriverProviderRegistration,
 } from "../../backend-contract.js";
 import { defineRpcContract } from "../../rpc-contract.js";
 import { createFakePluginHost, makeThreadResponse } from "../index.js";
@@ -647,6 +648,47 @@ describe("agent tools", () => {
     expect(() =>
       bb.agents.configure(() => ({ tools: [], skills: [] })),
     ).toThrow("agent configuration is already registered");
+  });
+
+  it("records namespaced provider registrations against declared host drivers", () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "echo",
+      hostDriverIds: ["agent"],
+    });
+    const registration: PluginHostDriverProviderRegistration = {
+      id: "default",
+      displayName: "Echo",
+      description: "Echo test provider",
+      capabilities: {
+        supportsArchive: false,
+        supportsRename: false,
+        supportsServiceTier: false,
+        supportsUserQuestion: false,
+        supportsFork: false,
+        supportedPermissionModes: ["full"],
+      },
+      composerActions: [],
+      reasoningLevels: ["medium"],
+      productCapabilities: {
+        supportsWorkflows: false,
+        supportsExecutionOverride: false,
+        supportsManualCompaction: false,
+      },
+      execution: {
+        kind: "host-driver",
+        driverId: "agent",
+        config: {},
+        process: { scope: "thread", multiplexSessions: false },
+      },
+    };
+    bb.experimental_providers.register(registration);
+
+    expect(harness.inspection.registrations.providers).toMatchObject([
+      { id: "default", providerId: "echo/default" },
+    ]);
+    expect(() => bb.experimental_providers.register(registration)).toThrow(
+      /already registered/,
+    );
   });
 
   it("resolves conditional tools, skills, context, and capped instructions without rebuilding registrations", async () => {

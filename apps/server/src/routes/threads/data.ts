@@ -1,8 +1,5 @@
 import path from "node:path";
-import {
-  getBuiltInAgentProviderInfo,
-  isAgentProviderId,
-} from "@bb/agent-providers";
+import { getRegisteredProviderInfo } from "../../services/providers/provider-registry.js";
 import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
 import {
   getAppSettings,
@@ -94,9 +91,7 @@ function resolveThreadProviderDisplayName(
   if (knownAcpAgent) {
     return knownAcpAgent.displayName;
   }
-  return isAgentProviderId(providerId)
-    ? getBuiltInAgentProviderInfo(providerId).displayName
-    : undefined;
+  return getRegisteredProviderInfo(providerId)?.displayName;
 }
 
 function validateFilePath(filePath: string): void {

@@ -8,9 +8,9 @@ import type {
   AgentRuntimeExecutionOptions,
   AgentRuntimeProviderSession,
 } from "@bb/agent-runtime";
+import { createReadyProviderInspection } from "@bb/agent-runtime/test";
 import type {
   ClientTurnRequestId,
-  AvailableModel,
   DynamicTool,
   GitHostPullRequest,
   PromptInput,
@@ -444,10 +444,7 @@ export function createFakeRuntime() {
     async listModels(args) {
       state.listedModelsProviderId = args.providerId;
       state.listedModelsAcpLaunchSpec = args.acpLaunchSpec;
-      return {
-        models: [] satisfies AvailableModel[],
-        selectedOnlyModels: [] satisfies AvailableModel[],
-      };
+      return createReadyProviderInspection();
     },
     async shutdown() {
       state.shutdownCount += 1;

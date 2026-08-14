@@ -1,5 +1,4 @@
 import type {
-  AvailableModel,
   ClientTurnRequestId,
   ClaudeCodeMockCliTrafficConfig,
   DynamicTool,
@@ -15,6 +14,7 @@ import type {
   ServiceTier,
   ThreadEvent,
 } from "@bb/domain";
+import type { ProviderDriverInspectResult } from "@bb/provider-driver-contract";
 import type { AgentRuntimeSkillRoot } from "../types.js";
 
 export type ProviderExecutionContext = {
@@ -171,10 +171,7 @@ export interface ProviderDriverConnection {
   }): ProviderExecutionSettingsChange;
 
   initialize(skillRoots: readonly AgentRuntimeSkillRoot[]): Promise<void>;
-  inspectModels(args: { cwd?: string }): Promise<{
-    models: AvailableModel[];
-    selectedOnlyModels: AvailableModel[];
-  }>;
+  inspectModels(args: { cwd?: string }): Promise<ProviderDriverInspectResult>;
   openSession(
     args: ProviderDriverSessionOpenArgs,
     options?: { timeoutMs?: number },

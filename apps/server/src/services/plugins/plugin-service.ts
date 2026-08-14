@@ -103,6 +103,7 @@ import type {
   PluginMentionResolveResult,
   PluginMentionSearchGroup,
   PluginMentionSearchItem,
+  PluginProviderContribution,
   PluginServiceDeps,
   PluginSourceView,
   PluginThreadEventEmitter,
@@ -122,6 +123,7 @@ export type {
   PluginMentionResolveResult,
   PluginMentionSearchGroup,
   PluginMentionSearchItem,
+  PluginProviderContribution,
   PluginRuntimeStatus,
   PluginScheduleEntry,
   PluginServiceDeps,
@@ -194,6 +196,8 @@ export interface PluginService {
     id: string,
     kind: "js" | "css",
   ): { path: string; hash: string } | undefined;
+  /** Selectable providers contributed by currently loaded plugins. */
+  listProviderContributions(): PluginProviderContribution[];
   /** Host-driver artifacts contributed by currently loaded plugins. */
   listHostDriverArtifacts(): MaterializedPluginHostDriverArtifact[];
   /** Content-addressed host-driver archive owned by a currently loaded plugin. */
@@ -1212,6 +1216,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         });
       }
     }
+    for (const provider of loadedPlugin?.handle.providers ?? []) {
+      capabilities.push({
+        kind: "provider",
+        id: provider.providerId,
+        label: provider.displayName,
+        detail: provider.description,
+      });
+    }
     for (const tool of loadedPlugin?.handle.agentTools ?? []) {
       capabilities.push({
         kind: "agent-tool",
@@ -1619,6 +1631,33 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const path = kind === "js" ? assets.jsPath : assets.cssPath;
       if (path === null) return undefined;
       return { path, hash: assets.hash };
+    },
+
+    listProviderContributions() {
+      return [...loaded.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .flatMap(([pluginId, plugin]) =>
+          plugin.handle.providers.map((registration) => {
+            const artifact = plugin.hostDriverArtifacts.find(
+              (candidate) =>
+                candidate.descriptor.meta.driverId ===
+                registration.execution.driverId,
+            );
+            if (artifact === undefined) {
+              throw new Error(
+                `Plugin provider ${registration.providerId} references missing materialized driver ${registration.execution.driverId}`,
+              );
+            }
+            const branding = brandingAssets.get(pluginId);
+            return {
+              pluginId,
+              registration: structuredClone(registration),
+              artifact,
+              logoUrl:
+                branding?.logo?.url ?? branding?.compactIcon?.url ?? null,
+            };
+          }),
+        );
     },
 
     listHostDriverArtifacts() {

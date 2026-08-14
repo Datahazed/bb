@@ -11,7 +11,7 @@ import type {
   ThreadOriginKind,
   ThreadVisibility,
 } from "@bb/domain";
-import { supportsNativeFork } from "@bb/agent-providers";
+import { registeredProviderSupportsNativeFork } from "../providers/provider-registry.js";
 import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -183,7 +183,7 @@ function resolveForkDescriptor(
   if (args.originKind === null || args.sourceThread === null) {
     return null;
   }
-  if (!supportsNativeFork(args.providerId)) {
+  if (!registeredProviderSupportsNativeFork(args.providerId)) {
     return null;
   }
   const sourceProviderThreadId =

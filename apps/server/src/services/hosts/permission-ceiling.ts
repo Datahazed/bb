@@ -1,6 +1,6 @@
 import { getEnvironment, getHost } from "@bb/db";
 import { clampPermissionModeToCeiling, type PermissionMode } from "@bb/domain";
-import { getSupportedPermissionModes } from "@bb/agent-providers";
+import { getRegisteredProviderPermissionModes } from "../providers/provider-registry.js";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 
@@ -60,7 +60,7 @@ export function clampPermissionModeToHost(
 ): PermissionMode {
   const ceiling = getHostPermissionCeiling(deps, args.hostId);
   const supported = args.providerId
-    ? getSupportedPermissionModes(args.providerId)
+    ? getRegisteredProviderPermissionModes(args.providerId)
     : null;
   const clamped = clampPermissionModeToCeiling({
     ceiling,

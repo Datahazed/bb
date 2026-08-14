@@ -20,12 +20,19 @@ import {
   clientTurnRequestIdSchema,
   gitBranchNameSchema,
   jsonObjectSchema,
+  providerCapabilitiesSchema,
   providerNativeSkillRootsSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,
 } from "@bb/domain";
+import {
+  providerDriverArtifactDescriptorSchema,
+  providerDriverCapabilitiesSchema,
+  providerDriverDiagnosticSchema,
+  providerDriverReadinessSchema,
+} from "@bb/provider-driver-contract";
 import { z } from "zod";
 import {
   pathsExistRequestSchema,
@@ -36,7 +43,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 108 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 109 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -220,12 +227,31 @@ export function normalizeHostDaemonAcpLaunchSpec(
   };
 }
 
+export const hostDaemonProviderDriverLaunchSpecSchema = z
+  .object({
+    artifact: providerDriverArtifactDescriptorSchema,
+    displayName: z.string().min(1).max(128),
+    capabilities: providerCapabilitiesSchema,
+    config: jsonObjectSchema,
+    process: z
+      .object({
+        scope: z.enum(["environment", "thread"]),
+        multiplexSessions: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+export type HostDaemonProviderDriverLaunchSpec = z.infer<
+  typeof hostDaemonProviderDriverLaunchSpecSchema
+>;
+
 const hostDaemonThreadRuntimeContextSchema = z
   .object({
     workspaceContext: workspaceContextSchema,
     projectId: z.string().min(1),
     providerId: z.string().min(1),
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    providerDriver: hostDaemonProviderDriverLaunchSpecSchema.optional(),
     options: runtimeThreadExecutionOptionsSchema,
     instructions: z.string().min(1),
     dynamicTools: z.array(dynamicToolSchema),
@@ -370,6 +396,7 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
     inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
     options: runtimeThreadExecutionOptionsSchema,
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    providerDriver: hostDaemonProviderDriverLaunchSpecSchema.optional(),
     resumeContext: turnResumeContextSchema,
     target: turnSubmitTargetSchema,
   })
@@ -410,6 +437,7 @@ const threadArchiveCommandSchema = hostDaemonThreadWorkspaceTargetSchema
     type: z.literal("thread.archive"),
     providerId: z.string().min(1),
     providerThreadId: z.string().min(1),
+    providerDriver: hostDaemonProviderDriverLaunchSpecSchema.optional(),
   })
   .strict();
 
@@ -422,6 +450,7 @@ const threadUnarchiveCommandSchema = hostDaemonThreadTargetSchema
     type: z.literal("thread.unarchive"),
     providerId: z.string().min(1),
     providerThreadId: z.string().min(1),
+    providerDriver: hostDaemonProviderDriverLaunchSpecSchema.optional(),
   })
   .strict();
 
@@ -908,6 +937,7 @@ const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
   acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+  providerDriver: hostDaemonProviderDriverLaunchSpecSchema.optional(),
   cwd: z.string().min(1).optional(),
 });
 
@@ -1343,9 +1373,21 @@ const writeSkillResultSchema = z.discriminatedUnion("outcome", [
   }),
 ]);
 
+export const hostDaemonProviderInspectionSchema = z
+  .object({
+    readiness: providerDriverReadinessSchema,
+    capabilities: providerDriverCapabilitiesSchema,
+    diagnostics: z.array(providerDriverDiagnosticSchema).max(256),
+  })
+  .strict();
+export type HostDaemonProviderInspection = z.infer<
+  typeof hostDaemonProviderInspectionSchema
+>;
+
 const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),
   selectedOnlyModels: z.array(availableModelSchema),
+  inspection: hostDaemonProviderInspectionSchema,
 });
 
 const knownAcpAgentExecutableStatusSchema = z
