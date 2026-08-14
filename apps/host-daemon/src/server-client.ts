@@ -23,6 +23,7 @@ import {
   type HostDaemonToolCallResponse,
   type HostDaemonSkillTree,
 } from "@bb/host-daemon-contract";
+import { providerDriverArtifactDigestSchema } from "@bb/provider-driver-contract";
 import type { PendingInteractionCreate, ToolCallRequest } from "@bb/domain";
 import type { HostDaemonLogger } from "./logger.js";
 import type { EventPostResult } from "./event-sink.js";
@@ -183,6 +184,7 @@ export interface ServerClient {
     args: FetchProjectAttachmentArgs,
   ): Promise<FetchedProjectAttachment>;
   fetchSkillTree(treeHash: string): Promise<HostDaemonSkillTree>;
+  downloadProviderDriverArtifact(digest: string): Promise<Response>;
   postEvents(events: HostDaemonEventEnvelope[]): Promise<EventPostResult>;
   callTool(request: ToolCallRequest): Promise<HostDaemonToolCallResponse>;
   registerInteractiveRequest(
@@ -418,6 +420,23 @@ export function createServerClient(
       return {
         bytes,
       };
+    },
+
+    async downloadProviderDriverArtifact(digest: string): Promise<Response> {
+      const parsedDigest = providerDriverArtifactDigestSchema.parse(digest);
+      const response = await fetchFn(
+        buildInternalUrl(
+          `/provider-drivers/artifacts/${encodeURIComponent(parsedDigest)}`,
+        ),
+        { method: "GET", headers: headers() },
+      );
+      if (!response.ok) {
+        throw await createResponseError(
+          "download provider driver artifact",
+          response,
+        );
+      }
+      return response;
     },
 
     async fetchSkillTree(treeHash: string): Promise<HostDaemonSkillTree> {

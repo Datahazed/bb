@@ -8,24 +8,20 @@ import {
 } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { derivePluginId, type PluginPackageJson } from "@bb/domain";
-import { PROVIDER_DRIVER_PROTOCOL_VERSION } from "@bb/provider-driver-contract";
+import {
+  PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
+  PROVIDER_DRIVER_ARTIFACT_FORMAT_VERSION,
+  PROVIDER_DRIVER_ARTIFACT_RUNTIME,
+  PROVIDER_DRIVER_PROTOCOL_VERSION,
+  providerDriverArtifactMetaSchema,
+  type ProviderDriverArtifactMeta,
+} from "@bb/provider-driver-contract";
 import { create as createTar } from "tar";
 import { NODE_ESM_REQUIRE_BANNER } from "./node-esm-banner.js";
 import { validatePluginBuildManifest } from "./plugin-manifest.js";
 import type { PluginBuildToolchain } from "./toolchain.js";
 
-export interface PluginHostDriverArtifactMeta {
-  artifactFormatVersion: 1;
-  pluginId: string;
-  pluginVersion: string;
-  driverId: string;
-  providerDriverProtocolVersion: number;
-  runtime: "node22";
-  entrypoint: "driver.js";
-  builtWith: {
-    bbVersion: string;
-  };
-}
+export type PluginHostDriverArtifactMeta = ProviderDriverArtifactMeta;
 
 export interface PluginHostDriverBuildResult {
   driverId: string;
@@ -88,13 +84,13 @@ function createMeta(args: {
   bbVersion: string;
 }): PluginHostDriverArtifactMeta {
   return {
-    artifactFormatVersion: 1,
+    artifactFormatVersion: PROVIDER_DRIVER_ARTIFACT_FORMAT_VERSION,
     pluginId: derivePluginId(args.packageName),
     pluginVersion: args.pluginVersion,
     driverId: args.driverId,
     providerDriverProtocolVersion: PROVIDER_DRIVER_PROTOCOL_VERSION,
-    runtime: "node22",
-    entrypoint: "driver.js",
+    runtime: PROVIDER_DRIVER_ARTIFACT_RUNTIME,
+    entrypoint: PROVIDER_DRIVER_ARTIFACT_ENTRYPOINT,
     builtWith: { bbVersion: args.bbVersion },
   };
 }
@@ -111,28 +107,28 @@ export function validatePluginHostDriverArtifactMeta(args: {
   } catch {
     return `host driver artifact metadata for "${args.driverId}" is not valid JSON`;
   }
-  if (!isRecord(value)) {
-    return `host driver artifact metadata for "${args.driverId}" must be an object`;
+  const parsed = providerDriverArtifactMetaSchema.safeParse(value);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return `host driver artifact metadata for "${args.driverId}" is invalid${issue ? ` at ${issue.path.join(".") || "(root)"}: ${issue.message}` : ""}`;
   }
-  const expected: Array<[string, unknown]> = [
-    ["artifactFormatVersion", 1],
+  const expected: Array<
+    [
+      keyof Pick<
+        ProviderDriverArtifactMeta,
+        "pluginId" | "pluginVersion" | "driverId"
+      >,
+      string,
+    ]
+  > = [
     ["pluginId", args.pluginId],
     ["pluginVersion", args.pluginVersion],
     ["driverId", args.driverId],
-    ["providerDriverProtocolVersion", PROVIDER_DRIVER_PROTOCOL_VERSION],
-    ["runtime", "node22"],
-    ["entrypoint", "driver.js"],
   ];
   for (const [field, expectedValue] of expected) {
-    if (value[field] !== expectedValue) {
-      return `host driver artifact metadata for "${args.driverId}" has ${field}=${JSON.stringify(value[field])}; expected ${JSON.stringify(expectedValue)}`;
+    if (parsed.data[field] !== expectedValue) {
+      return `host driver artifact metadata for "${args.driverId}" has ${field}=${JSON.stringify(parsed.data[field])}; expected ${JSON.stringify(expectedValue)}`;
     }
-  }
-  if (
-    !isRecord(value.builtWith) ||
-    typeof value.builtWith.bbVersion !== "string"
-  ) {
-    return `host driver artifact metadata for "${args.driverId}" must declare builtWith.bbVersion`;
   }
   return null;
 }

@@ -32,6 +32,7 @@ import { setPluginAgentContributions } from "./services/plugins/plugin-agent-con
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
+import { registerInternalProviderDriverArtifactRoutes } from "./internal/provider-driver-artifacts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
 import { registerInternalSessionRoutes } from "./internal/session.js";
 import { registerInternalSkillRoutes } from "./internal/skills.js";
@@ -434,6 +435,7 @@ export function createApp(
 
   const internalApi = new Hono();
   registerInternalHostRoutes(internalApi, deps);
+  registerInternalProviderDriverArtifactRoutes(internalApi, pluginService);
   registerInternalSessionRoutes(internalApi, deps);
   registerInternalSkillRoutes(internalApi, deps);
   registerInternalEventRoutes(internalApi, deps);

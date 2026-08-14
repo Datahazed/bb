@@ -11,6 +11,7 @@ import {
 import type { ServerLogger } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import type { BundledPluginRegistration } from "./builtin-registry.js";
+import type { MaterializedPluginHostDriverArtifact } from "./host-driver-artifacts.js";
 import type { PluginManifest } from "./manifest.js";
 import type {
   PluginApiHandle,
@@ -58,6 +59,7 @@ export interface ServiceRuntime {
 
 export interface LoadedPlugin {
   manifest: PluginManifest;
+  hostDriverArtifacts: MaterializedPluginHostDriverArtifact[];
   handle: PluginApiHandle;
   services: ServiceRuntime[];
   isBuiltin: boolean;

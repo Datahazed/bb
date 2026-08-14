@@ -27,6 +27,20 @@ The transport uses dedicated process pipes (host → driver on child fd 3 and dr
 
 Stdout and stderr are bounded diagnostics only. They are never parsed as protocol traffic. `ProviderDriverFrameDecoder` rejects a declared frame larger than `PROVIDER_DRIVER_MAX_FRAME_BYTES` before buffering or parsing the declared payload. `ProcessProviderDriverConnection` owns request correlation, timeouts, schema validation, and lifecycle enforcement; `ProviderDriverSupervisor` owns process launch, diagnostics, termination, and process-key deduplication.
 
+## Immutable driver artifacts
+
+Artifact format 1 is a gzip tar containing only `driver.js`,
+`driver.meta.json`, and an optional `driver.js.map`. Metadata binds the plugin,
+plugin version, driver id, Node 22 runtime, entrypoint, and exact provider-driver
+protocol version. The server stores archives by SHA-256; daemons download them
+over the authenticated internal transport, verify the digest before extraction,
+reject extra paths, links, traversal, duplicates, and size overflows, then
+publish a read-only extracted directory. Active driver processes lease their
+generation so cache collection cannot remove it.
+
+Mutable provider sessions and configuration never live inside artifact
+directories.
+
 ## Normative lifecycle rules
 
 ### Initialization

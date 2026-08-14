@@ -28,6 +28,7 @@ import {
   type PluginBrandingAssetSet,
 } from "./app-bundle.js";
 import { parsePluginSource } from "./install-sources.js";
+import { materializePluginHostDriverArtifacts } from "./host-driver-artifacts.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import {
   createPluginApi,
@@ -1015,6 +1016,19 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       row.id,
       manifest,
     );
+    let hostDriverArtifacts;
+    try {
+      hostDriverArtifacts = await materializePluginHostDriverArtifacts({
+        dataDir: deps.dataDir,
+        manifest,
+      });
+    } catch (error) {
+      failBeforeFactory(
+        "error",
+        error instanceof Error ? error.message : String(error),
+      );
+      return;
+    }
     const handle = createPluginApi({
       pluginId: row.id,
       logger: deps.logger,
@@ -1136,6 +1150,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const loadedBuiltinName = builtinName(row);
     const plugin: LoadedPlugin = {
       manifest,
+      hostDriverArtifacts,
       handle,
       services: handle.backgroundServices.map((record) => ({
         record,

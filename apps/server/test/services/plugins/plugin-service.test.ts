@@ -177,6 +177,20 @@ describe("plugin service", () => {
     await service.installPath(rootDir);
 
     const enabled = service.list().find((entry) => entry.id === "capabilities");
+    expect(service.listHostDriverArtifacts()).toEqual([
+      expect.objectContaining({
+        archivePath: expect.stringContaining(
+          join("provider-drivers", "artifacts"),
+        ),
+        descriptor: expect.objectContaining({
+          digest: expect.stringMatching(/^[a-f0-9]{64}$/),
+          meta: expect.objectContaining({
+            pluginId: "capabilities",
+            driverId: "echo",
+          }),
+        }),
+      }),
+    ]);
     expect(enabled?.capabilities).toEqual([
       {
         kind: "skill",
@@ -217,6 +231,7 @@ describe("plugin service", () => {
     ]);
 
     await service.setEnabled("capabilities", false);
+    expect(service.listHostDriverArtifacts()).toEqual([]);
 
     // A disabled plugin has no runtime, so only its manifest-declared
     // capabilities survive — the detail page says the rest need enabling.

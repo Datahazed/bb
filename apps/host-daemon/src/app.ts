@@ -51,6 +51,7 @@ import { runtimeErrorLogFields, summarizeError } from "./error-utils.js";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import { createProtocolSelfUpdater } from "./protocol-self-update.js";
+import { ProviderDriverArtifactCache } from "./provider-driver-artifact-cache.js";
 import {
   type HostType,
   type ToolCallRequest,
@@ -149,6 +150,7 @@ export interface HostDaemonApp {
   terminalManager: TerminalManager;
   router: CommandRouter;
   connection: ServerConnection;
+  providerDriverArtifacts: ProviderDriverArtifactCache;
 }
 
 interface PendingInteractiveInterruptRequest {
@@ -315,6 +317,12 @@ export async function createHostDaemonApp(
     beforeInteractiveRequestRegistrationAttempt:
       flushThreadEventsBeforeInteractiveRegistration,
     fetchFn: options.fetchFn,
+  });
+
+  const providerDriverArtifacts = new ProviderDriverArtifactCache({
+    dataDir: options.dataDir,
+    downloadArtifact: (digest) =>
+      serverClient.downloadProviderDriverArtifact(digest),
   });
 
   function buildInteractiveInterruptKey(
@@ -937,5 +945,6 @@ export async function createHostDaemonApp(
     terminalManager,
     router,
     connection,
+    providerDriverArtifacts,
   };
 }

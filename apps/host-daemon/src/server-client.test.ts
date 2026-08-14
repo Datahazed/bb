@@ -228,6 +228,35 @@ describe("createServerClient", () => {
     });
   });
 
+  it("downloads provider driver artifacts by digest with daemon authentication", async () => {
+    const artifactDigest = "d".repeat(64);
+    const fetchFn = vi.fn<FetchFn>(async (input, init) => {
+      const url = new URL(String(input));
+      expect(url.pathname).toBe(
+        `/internal/provider-drivers/artifacts/${artifactDigest}`,
+      );
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer host-key",
+      );
+      return new Response("artifact", { status: 200 });
+    });
+    const client = createServerClient({
+      fetchFn,
+      getSessionId: () => "session-1",
+      hostKey: "host-key",
+      logger: createLogger(),
+      serverUrl: "https://bb.example.test",
+    });
+
+    await expect(
+      (await client.downloadProviderDriverArtifact(artifactDigest)).text(),
+    ).resolves.toBe("artifact");
+    await expect(
+      client.downloadProviderDriverArtifact("not-a-digest"),
+    ).rejects.toThrow();
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
   it("adds the connect machine credential to internal HTTP requests", async () => {
     const treeHash = "b".repeat(64);
     const fetchFn = vi.fn<FetchFn>(async (_input, init) => {

@@ -642,6 +642,9 @@ Plugin state lives under the data dir:
 <dataDir>/plugins/<id>/logs/       bb.log output (plugin.log, JSONL, rotated
                                    at 5MB; read with `bb plugin logs <id>`)
 <dataDir>/plugins/git/, npm/       Managed installs for git:/npm: sources
+<dataDir>/provider-drivers/         Content-addressed driver archives on the
+                                   server; verified extracted artifacts and
+                                   staging directories on execution machines
 <dataDir>/skills-generated/        Server-generated skills (the
                                    plugin-commands skill listing plugin CLI
                                    commands, injected into agent threads)

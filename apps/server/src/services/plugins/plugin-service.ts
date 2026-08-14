@@ -29,6 +29,7 @@ import {
   createPluginDevLoop,
 } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
+import type { MaterializedPluginHostDriverArtifact } from "./host-driver-artifacts.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import type { PluginCapabilitySummary } from "@bb/server-contract";
 import {
@@ -193,6 +194,12 @@ export interface PluginService {
     id: string,
     kind: "js" | "css",
   ): { path: string; hash: string } | undefined;
+  /** Host-driver artifacts contributed by currently loaded plugins. */
+  listHostDriverArtifacts(): MaterializedPluginHostDriverArtifact[];
+  /** Content-addressed host-driver archive owned by a currently loaded plugin. */
+  getHostDriverArtifact(
+    digest: string,
+  ): MaterializedPluginHostDriverArtifact | undefined;
   /** Immutable byte snapshot backing one plugin branding asset route. */
   getBrandingAsset(
     id: string,
@@ -1612,6 +1619,31 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const path = kind === "js" ? assets.jsPath : assets.cssPath;
       if (path === null) return undefined;
       return { path, hash: assets.hash };
+    },
+
+    listHostDriverArtifacts() {
+      return [...loaded.values()].flatMap((plugin) =>
+        plugin.hostDriverArtifacts.map((artifact) => ({
+          ...artifact,
+          descriptor: {
+            digest: artifact.descriptor.digest,
+            meta: {
+              ...artifact.descriptor.meta,
+              builtWith: { ...artifact.descriptor.meta.builtWith },
+            },
+          },
+        })),
+      );
+    },
+
+    getHostDriverArtifact(digest) {
+      for (const plugin of loaded.values()) {
+        const artifact = plugin.hostDriverArtifacts.find(
+          (candidate) => candidate.descriptor.digest === digest,
+        );
+        if (artifact !== undefined) return artifact;
+      }
+      return undefined;
     },
 
     getBrandingAsset(id, variant) {

@@ -642,6 +642,9 @@ importers:
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../../packages/process-utils
+      '@bb/provider-driver-contract':
+        specifier: workspace:*
+        version: link:../../packages/provider-driver-contract
       '@bb/templates':
         specifier: workspace:*
         version: link:../../packages/templates
@@ -708,6 +711,9 @@ importers:
       smol-toml:
         specifier: ^1.7.1
         version: 1.7.1
+      tar:
+        specifier: ^7.5.11
+        version: 7.5.15
       ws:
         specifier: ^8.19.0
         version: 8.21.0
@@ -787,6 +793,9 @@ importers:
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../../packages/process-utils
+      '@bb/provider-driver-contract':
+        specifier: workspace:*
+        version: link:../../packages/provider-driver-contract
       '@bb/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
