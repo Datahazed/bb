@@ -1,7 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
-import { describe, it } from "vitest";
-import { sendJsonRpcResult } from "./runtime-json-rpc.js";
+import { describe, expect, it } from "vitest";
+import {
+  ProviderResponseEncodeError,
+  sendJsonRpcResult,
+  toJsonRpcMessage,
+} from "./runtime-json-rpc.js";
 
 const EPIPE_PAYLOAD_SIZE = 1024 * 1024;
 
@@ -29,6 +33,19 @@ function waitForChildExit(child: ChildProcess): Promise<void> {
 }
 
 describe("runtime JSON-RPC transport", () => {
+  it.each([1n, () => undefined, Symbol("value")])(
+    "rejects an unsupported outbound value",
+    (value) => {
+      expect(() =>
+        toJsonRpcMessage({
+          jsonrpc: "2.0",
+          method: "test",
+          params: { value },
+        }),
+      ).toThrow(ProviderResponseEncodeError);
+    },
+  );
+
   it("does not surface closed provider stdin errors as unhandled process errors", async () => {
     const child = spawn(
       process.execPath,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createConnection, migrate } from "@bb/db";
 import { parseStoredThreadEvent } from "@bb/domain";
+import type { StoredThreadEventParseArgs } from "@bb/domain";
 import { seedPerfFixture } from "../src/lib/seed-perf-fixture.js";
 
 interface SeededEventRow {
@@ -9,6 +10,12 @@ interface SeededEventRow {
   threadId: string;
   turnId: string | null;
   type: string;
+}
+
+function isStoredEventData(
+  value: unknown,
+): value is StoredThreadEventParseArgs["data"] {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 describe("seedPerfFixture", () => {
@@ -66,8 +73,11 @@ describe("seedPerfFixture", () => {
     for (const row of eventRows) {
       const parsedData: unknown = JSON.parse(row.data);
       try {
+        if (!isStoredEventData(parsedData)) {
+          throw new Error("Stored event data must be an object");
+        }
         parseStoredThreadEvent({
-          data: parsedData as object,
+          data: parsedData,
           providerThreadId: row.providerThreadId,
           scope:
             row.turnId === null

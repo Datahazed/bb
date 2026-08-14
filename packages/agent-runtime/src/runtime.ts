@@ -1142,13 +1142,19 @@ function createAgentRuntimeInternal(
     ) {
       return;
     }
-    emitTranslatedEvents({
-      events: args.proc.adapter.translateEvent(args.parsed, {
+    let events: ThreadEvent[];
+    try {
+      events = args.proc.adapter.translateEvent(args.parsed, {
         threadId: sourceThreadId,
-      }),
-      proc: args.proc,
-      sourceThreadId,
-    });
+      });
+    } catch (error) {
+      options.onStderr?.(
+        `Failed to translate provider event: ${error instanceof Error ? error.message : String(error)}`,
+        sourceThreadId,
+      );
+      return;
+    }
+    emitTranslatedEvents({ events, proc: args.proc, sourceThreadId });
   }
 
   function handleStdoutLine(line: string, proc: ProviderProcess): void {

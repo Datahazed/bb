@@ -6,6 +6,31 @@ import {
 import { threadScope, turnScope } from "../src/thread-event-scope.js";
 
 describe("parseStoredThreadEvent", () => {
+  it("rejects array event data", () => {
+    expect(() =>
+      parseThreadEventRow({
+        id: "evt-1",
+        type: "thread/context/cleared",
+        threadId: "thread-1",
+        seq: 1,
+        scope: threadScope(),
+        data: [],
+        createdAt: 1,
+      }),
+    ).toThrow();
+  });
+
+  it("rejects array data at the stored event boundary", () => {
+    expect(() =>
+      parseStoredThreadEvent({
+        type: "thread/context/cleared",
+        threadId: "thread-1",
+        scope: threadScope(),
+        data: [] as never,
+      }),
+    ).toThrow(/data must be an object/);
+  });
+
   it("rejects assistant deltas without an itemId", () => {
     expect(() =>
       parseStoredThreadEvent({

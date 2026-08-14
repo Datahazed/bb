@@ -7,7 +7,6 @@
 
 import { z } from "zod";
 import {
-  jsonObjectSchema,
   type JsonObject,
   type ThreadEventItem,
 } from "@bb/domain";
@@ -243,8 +242,7 @@ export function toOptionalString(value: unknown): string | undefined {
 }
 
 export function toOptionalRecord(value: unknown): JsonObject | undefined {
-  const parsed = jsonObjectSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
+  return isRecord(value) ? (value as JsonObject) : undefined;
 }
 
 export function withParentToolCallId<TItem extends ThreadEventItem>(

@@ -6,9 +6,19 @@ import {
   extractEnvOverrides,
   extractResultText,
   normalizeProviderCommandOutput,
+  toOptionalRecord,
 } from "./adapter-utils.js";
 
 describe("adapter-utils", () => {
+  it("checks provider records without recursive validation", () => {
+    let value: unknown = "leaf";
+    for (let depth = 0; depth < 2_000; depth += 1) {
+      value = { value };
+    }
+
+    expect(toOptionalRecord(value)).toBe(value);
+  });
+
   function countChangedLines(diff: string | undefined): {
     added: number;
     removed: number;

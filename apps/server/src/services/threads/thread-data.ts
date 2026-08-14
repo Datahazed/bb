@@ -5,17 +5,14 @@ import {
   listStoredEventRows as listStoredEventRowRecords,
 } from "@bb/db";
 import type { DbConnection, StoredEventRow } from "@bb/db";
-import {
-  buildThreadEventRow,
-  jsonObjectSchema,
-  parseStoredThreadEvent,
-} from "@bb/domain";
+import { buildThreadEventRow, parseStoredThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import type {
   ThreadEvent,
   ThreadEventRow,
   ThreadEventScope,
   ThreadEventType,
+  StoredThreadEventParseArgs,
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 
@@ -36,7 +33,15 @@ export interface FindThreadEventArgs {
   type: ThreadEventType;
 }
 
-function parseStoredEventPayload(row: StoredEventPayloadRow): object {
+function isStoredEventPayload(
+  value: unknown,
+): value is StoredThreadEventParseArgs["data"] {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseStoredEventPayload(
+  row: StoredEventPayloadRow,
+): StoredThreadEventParseArgs["data"] {
   let data: unknown;
   try {
     data = JSON.parse(row.data);
@@ -48,8 +53,7 @@ function parseStoredEventPayload(row: StoredEventPayloadRow): object {
     );
   }
 
-  const record = jsonObjectSchema.safeParse(data);
-  if (!record.success) {
+  if (!isStoredEventPayload(data)) {
     throw new ApiError(
       500,
       "internal_error",
@@ -57,7 +61,7 @@ function parseStoredEventPayload(row: StoredEventPayloadRow): object {
     );
   }
 
-  return record.data;
+  return data;
 }
 
 function parseStoredEventScope(row: StoredEventRow): ThreadEventScope {

@@ -33,13 +33,17 @@ interface ThreadEventRowBase {
   createdAt: number;
 }
 
+interface StoredThreadEventDataInput {
+  [key: string]: unknown;
+}
+
 interface ThreadEventRowInput extends ThreadEventRowBase {
   type: ThreadEventType;
-  data: object;
+  data: StoredThreadEventDataInput;
 }
 
 export interface StoredThreadEventParseArgs {
-  data: object;
+  data: StoredThreadEventDataInput;
   providerThreadId?: string | null;
   scope: ThreadEventScope;
   threadId: string;
@@ -114,15 +118,23 @@ function toStoredThreadEventData<TEvent extends ThreadEvent>(
   return data;
 }
 
-function omitStoredScopeFields(data: object): object {
-  const candidate = data as { scope?: unknown; turnId?: unknown };
-  const { scope: _scope, turnId: _turnId, ...rest } = candidate;
+function omitStoredScopeFields(
+  data: StoredThreadEventDataInput,
+): StoredThreadEventDataInput {
+  const { scope: _scope, turnId: _turnId, ...rest } = data;
   return rest;
 }
 
 export function parseStoredThreadEvent(
   args: StoredThreadEventParseArgs,
 ): ThreadEvent {
+  if (
+    args.data === null ||
+    typeof args.data !== "object" ||
+    Array.isArray(args.data)
+  ) {
+    throw new Error("Stored thread event data must be an object");
+  }
   const scopeResult = threadEventScopeSchema.safeParse(args.scope);
   if (!scopeResult.success) {
     throw new Error("Stored thread event is missing valid scope");

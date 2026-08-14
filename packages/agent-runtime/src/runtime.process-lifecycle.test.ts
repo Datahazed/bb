@@ -404,6 +404,45 @@ rl.on("line", (line) => {
     await runtime2.shutdown();
   });
 
+  it("contains provider event translation errors", async () => {
+    const stderrLines: string[] = [];
+    const notificationScript = join(tmpDir, "translation-error-provider.cjs");
+    writeFileSync(
+      notificationScript,
+      `setTimeout(() => {
+        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", method: "test/event", params: {} }) + "\\n");
+      }, 10);
+      setInterval(() => {}, 1000);`,
+    );
+    const baseAdapter = createNoopInitializeAdapter(notificationScript);
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onStderr: (line) => stderrLines.push(line),
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => ({
+        ...baseAdapter,
+        translateEvent() {
+          throw new Error("invalid nested provider data");
+        },
+      }),
+    });
+
+    await runtime.ensureProvider({ providerId: "fake" });
+    await waitForRuntimeState({
+      label: "provider translation error",
+      predicate: () => stderrLines.length > 0,
+    });
+
+    expect(stderrLines).toContain(
+      "Failed to translate provider event: invalid nested provider data",
+    );
+    await runtime.shutdown();
+  });
+
   // ---- Process lifecycle ----
 
   it("fires onProcessExit when provider crashes", async () => {
