@@ -179,6 +179,11 @@ interface MigratedPluginCatalogProvenanceRow {
   catalogEntryId: string | null;
 }
 
+interface MigratedNamedCatalogProvenanceRow {
+  id: string;
+  catalogMarketplaceName: string | null;
+}
+
 interface MigratedPluginCatalogRow {
   catalogJson: string;
   lastAttemptedRefreshAt: number | null;
@@ -289,6 +294,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS plugin_artifacts").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_catalog").run();
   db.$client.prepare("DROP TABLE IF EXISTS marketplaces").run();
+  dropMarketplaceCatalogSchema(db);
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
@@ -433,6 +439,12 @@ const pluginArtifactCheckoutRootMigrationPath = resolve(
   "..",
   "drizzle",
   "0094_mighty_polaris.sql",
+);
+const namedMarketplaceCatalogMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0095_normal_elektra.sql",
 );
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
@@ -608,6 +620,24 @@ function resetMigrationsAfterThreadSearch(db: DbConnection): void {
   db.$client
     .prepare<[number]>("DELETE FROM __drizzle_migrations WHERE created_at > ?")
     .run(threadSearchRowidFtsMigrationWhen);
+}
+
+/**
+ * Migration 0094 adds the marketplace catalog tables and the plugins
+ * marketplace-name column. Rewind scenarios that clear its journal row must
+ * remove both, or migrate() replays the CREATE/ADD against a DB that has them.
+ */
+function dropMarketplaceCatalogSchema(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplace_icons").run();
+  db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplaces").run();
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(plugins)")
+    .all();
+  if (columns.some((column) => column.name === "catalog_marketplace_name")) {
+    db.$client
+      .prepare("ALTER TABLE plugins DROP COLUMN catalog_marketplace_name")
+      .run();
+  }
 }
 
 function dropEnvironmentNameColumn(db: DbConnection): void {
@@ -1475,6 +1505,7 @@ describe("migrate", () => {
     dropNewOnboardingExperimentColumn(db);
     dropEnvironmentRetireRequestedAtColumn(db);
     dropPluginArtifactGitCheckoutRootColumn(db);
+    dropMarketplaceCatalogSchema(db);
     // Delete by the journal timestamp, not a hash substring: migration hashes
     // are hex and can contain "0085" by coincidence.
     db.$client
@@ -1767,6 +1798,7 @@ describe("migrate", () => {
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
+      dropMarketplaceCatalogSchema(db);
 
       restoreLegacyThreadOriginColumn(db);
       migrate(db);
@@ -2168,6 +2200,7 @@ describe("migrate", () => {
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
+      dropMarketplaceCatalogSchema(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(
@@ -2266,6 +2299,7 @@ describe("migrate", () => {
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
+      dropMarketplaceCatalogSchema(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(() => migrate(db)).not.toThrow();
@@ -4549,6 +4583,47 @@ describe("migrate", () => {
           >("SELECT COUNT(*) AS count FROM plugin_catalog")
           .get(),
       ).toEqual({ count: 0 });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("names only catalog provenance during the marketplace upgrade", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE plugins (
+          id text PRIMARY KEY NOT NULL,
+          provenance text NOT NULL,
+          catalog_entry_id text
+        );
+        INSERT INTO plugins VALUES
+          ('catalog-plugin', 'catalog', 'catalog-entry'),
+          ('direct-plugin', 'direct', NULL),
+          ('builtin-plugin', 'builtin', NULL);
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: namedMarketplaceCatalogMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<[], MigratedNamedCatalogProvenanceRow>(
+            `
+              SELECT id,
+                catalog_marketplace_name AS catalogMarketplaceName
+              FROM plugins
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ).toEqual([
+        { id: "builtin-plugin", catalogMarketplaceName: null },
+        { id: "catalog-plugin", catalogMarketplaceName: "bb-official" },
+        { id: "direct-plugin", catalogMarketplaceName: null },
+      ]);
     } finally {
       closeConnection(db);
     }

@@ -134,7 +134,11 @@ describe("plugin activation snapshots and garbage collection", () => {
     upsertInstalledPlugin(db, {
       id: "legacy-snapshot",
       source: "npm:bb-plugin-legacy@^1.0.0",
-      provenance: { kind: "catalog", entryId: "legacy-entry" },
+      provenance: {
+        kind: "catalog",
+        marketplace: "bb-official",
+        entryId: "legacy-entry",
+      },
       sourceIntent: {
         kind: "npm",
         packageName: "bb-plugin-legacy",
@@ -173,8 +177,29 @@ describe("plugin activation snapshots and garbage collection", () => {
     if (snapshot.registrationPath === null) {
       throw new Error("missing snapshot registration path");
     }
-    const { catalogEntryId: _catalogEntryId, ...legacyRegistration } =
-      registration;
+    const {
+      catalogEntryId: _catalogEntryId,
+      catalogMarketplaceName: _catalogMarketplaceName,
+      ...legacyRegistration
+    } = registration;
+    const {
+      catalogMarketplaceName: _preNamedMarketplace,
+      ...preNamedMarketplaceRegistration
+    } = registration;
+    await writeFile(
+      snapshot.registrationPath,
+      JSON.stringify(preNamedMarketplaceRegistration),
+    );
+    await expect(
+      readPluginSnapshotRegistration({ db, snapshotId: snapshot.id }),
+    ).resolves.toMatchObject({
+      provenance: "catalog",
+      catalogEntryId: "legacy-entry",
+      catalogMarketplaceName: null,
+      sourceNpmRequestedSpec: "^1.0.0",
+      npmResolvedVersion: "1.2.0",
+    });
+
     await writeFile(
       snapshot.registrationPath,
       JSON.stringify({

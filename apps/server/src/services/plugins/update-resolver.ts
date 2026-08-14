@@ -103,9 +103,16 @@ export interface NpmResolverRun {
 }
 
 export function createNpmResolverRun(options?: {
-  fetch?: typeof fetch;
+  /**
+   * Narrower than `typeof fetch` on purpose: a caller can hand in a guarded
+   * transport that only speaks (url, init), such as the marketplace fetch.
+   */
+  fetch?: (input: string, init: RequestInit) => Promise<Response>;
+  /** Optional bounded JSON reader for untrusted marketplace registries. */
+  readJson?: (response: Response) => Promise<unknown>;
 }): NpmResolverRun {
   const fetchImpl = options?.fetch ?? fetch;
+  const readJson = options?.readJson ?? ((response: Response) => response.json());
   const cache = new Map<string, Promise<Packument>>();
   return {
     getPackument(intent) {
@@ -135,7 +142,7 @@ export function createNpmResolverRun(options?: {
             `${intent.packageName} registry request failed: ${response.status} ${response.statusText}`,
           );
         }
-        const json: unknown = await response.json();
+        const json = await readJson(response);
         const parsed = packumentSchema.safeParse(json);
         if (!parsed.success) {
           throw new Error(

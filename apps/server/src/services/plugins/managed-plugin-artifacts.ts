@@ -15,6 +15,13 @@ import {
   type PluginSourceIntent,
 } from "@bb/db";
 import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
+import {
+  assertPublicMarketplaceUrl,
+  boundedResponseJson,
+  publicMarketplaceFetch,
+  MARKETPLACE_FETCH_TIMEOUT_MS,
+  MARKETPLACE_PACKUMENT_MAX_BYTES,
+} from "../plugin-catalog/marketplace-http.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { validatePluginArtifactMeta } from "./app-bundle.js";
 import type { PluginSourceSelection } from "@bb/server-contract";
@@ -40,6 +47,7 @@ import type {
   PluginListEntry,
   PluginServiceDeps,
 } from "./plugin-service-internal.js";
+import type { MarketplaceEngines } from "../plugin-catalog/marketplace-manifest.js";
 import {
   createNpmResolverRun,
   evaluateCompatibility,
@@ -59,6 +67,8 @@ export interface InstallRegistrationIdentity {
 export interface RegisterInstalledArgs extends InstallRegistrationIdentity {
   rootDir: string;
   source: string;
+  /** Engine ranges the marketplace listing declared, when it declared any. */
+  marketplaceEngines?: MarketplaceEngines;
   exactResolution: PluginExactResolution;
   refuseEngineMismatch: boolean;
   validated: boolean;
@@ -75,6 +85,13 @@ export interface InstallContext {
    * declares any other id; absent means direct installs with no expectation.
    */
   expectedPluginId?: string;
+  /**
+   * Engine ranges a marketplace listing declared. They may narrow the plugin
+   * manifest's own ranges; {@link RegisterInstalledArgs} refuses widening.
+   */
+  marketplaceEngines?: MarketplaceEngines;
+  /** npm registry a listing pins, replacing the host's npm configuration. */
+  npmRegistry?: string;
 }
 
 interface ActivateManagedUpdateArgs {
@@ -170,6 +187,7 @@ async function installNpmCandidate(args: {
       "--no-fund",
       "--registry",
       args.registry,
+      "--",
       `${args.packageName}@${args.candidate.version}`,
     ],
     { notFoundHint: args.notFoundHint },
@@ -194,6 +212,15 @@ export function createManagedPluginArtifacts(
   const directInstallContext: InstallContext = {
     provenance: { kind: "direct" },
   };
+
+  /** Listing policy carried into `registerInstalled` from an install context. */
+  function marketplacePolicy(context: InstallContext): {
+    marketplaceEngines?: MarketplaceEngines;
+  } {
+    return context.marketplaceEngines === undefined
+      ? {}
+      : { marketplaceEngines: context.marketplaceEngines };
+  }
 
   function assertExpectedPluginId(
     context: InstallContext,
@@ -570,6 +597,7 @@ export function createManagedPluginArtifacts(
             rootDir: targetRoot,
             source,
             ...cachedRegistrationIdentity,
+            ...marketplacePolicy(context),
             exactResolution: { kind: "git", commit: resolvedCommit },
             refuseEngineMismatch: true,
             validated: true,
@@ -668,6 +696,7 @@ export function createManagedPluginArtifacts(
           rootDir: stagedTargetRoot,
           source,
           ...stagedRegistrationIdentity,
+          ...marketplacePolicy(context),
           exactResolution: { kind: "git", commit: resolvedCommit },
           refuseEngineMismatch: true,
           validated: true,
@@ -717,7 +746,17 @@ export function createManagedPluginArtifacts(
   ): Promise<PluginListEntry> {
     const registryProbe = join(deps.dataDir, "plugins", "npm", ".registry");
     await mkdir(registryProbe, { recursive: true });
-    const registry = await resolveNpmRegistry(registryProbe, parsed.name);
+    // A listing that pins its own registry wins over the host's npm config;
+    // the pinned value is persisted, so updates re-resolve against it too.
+    // The host's own configured registry is the operator's choice, but a
+    // listing is untrusted input: it gets the marketplace network policy, so
+    // it cannot aim BB at an internal service.
+    const listedRegistry = context.npmRegistry;
+    if (listedRegistry !== undefined) {
+      assertPublicMarketplaceUrl(listedRegistry);
+    }
+    const registry =
+      listedRegistry ?? (await resolveNpmRegistry(registryProbe, parsed.name));
     const intent: NpmSourceIntentForResolution = {
       packageName: parsed.name,
       registry,
@@ -729,6 +768,9 @@ export function createManagedPluginArtifacts(
       sourceIntent: { kind: "npm", ...intent },
     };
     const pluginId = derivePluginId(parsed.name);
+    // An npm plugin's id comes from its package name, so a listing that names
+    // the wrong plugin fails before any registry request.
+    assertExpectedPluginId(context, pluginId, source);
     assertInstallRegistrationAvailable(
       getInstalledPlugin(deps.db, pluginId),
       registrationIdentity,
@@ -737,7 +779,26 @@ export function createManagedPluginArtifacts(
     const selected = await selectNpmCandidate({
       intent,
       appVersion: deps.appVersion,
-      run: createNpmResolverRun(),
+      // A listed registry is contacted through the guarded socket, so a
+      // hostile DNS answer cannot reach a private host either.
+      run: createNpmResolverRun(
+        listedRegistry === undefined
+          ? {}
+          : {
+              fetch: (input, init) =>
+                publicMarketplaceFetch(input, {
+                  ...init,
+                  redirect: "error",
+                  signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
+                }),
+              readJson: (response) =>
+                boundedResponseJson(
+                  response,
+                  MARKETPLACE_PACKUMENT_MAX_BYTES,
+                  "npm registry metadata",
+                ),
+            },
+      ),
     });
     if (selected.outcome === "unavailable") {
       throw new Error(`install failed: ${selected.detail}`);
@@ -790,6 +851,7 @@ export function createManagedPluginArtifacts(
             rootDir,
             source,
             ...registrationIdentity,
+            ...marketplacePolicy(context),
             exactResolution: {
               kind: "npm",
               version: candidate.version,
@@ -875,6 +937,7 @@ export function createManagedPluginArtifacts(
           rootDir,
           source,
           ...registrationIdentity,
+          ...marketplacePolicy(context),
           exactResolution: {
             kind: "npm",
             version: candidate.version,

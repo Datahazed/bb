@@ -188,6 +188,7 @@ describe("AddPluginDialog", () => {
       entryId: "linear",
       displayName: "Linear",
       icon: "Github",
+      iconUrl: null,
       source: "builtin:linear",
     });
     expect(
@@ -195,20 +196,54 @@ describe("AddPluginDialog", () => {
     ).not.toBeNull();
     unmount();
 
-    // Git catalog entries install from their pinned commit, not the app
-    // bundle — the dialog must not claim otherwise.
-    renderDialog({
+    // Git catalog entries install from their listed repository, not the app
+    // bundle. A ref can be a branch, so the dialog must not call it pinned.
+    const git = renderDialog({
       entryId: "thread-hover-cards",
       displayName: "Thread Hover Cards",
       icon: "Github",
+      iconUrl: null,
       source: "git:https://github.com/brsbl/bb-plugins@b173b67",
     });
     expect(
       screen.getByText(
-        "Install this official plugin from its pinned source repository.",
+        "Install this official plugin from its listed source repository.",
       ),
     ).not.toBeNull();
     expect(screen.queryByText(/bundled with BB/)).toBeNull();
+    git.unmount();
+
+    renderDialog({
+      entryId: "widgets",
+      displayName: "Widgets",
+      icon: "Zap",
+      iconUrl: null,
+      source: "npm:bb-plugin-widgets@^1.0.0",
+    });
+    expect(
+      screen.getByText(
+        "Install this official plugin from its listed npm package.",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("shows the exact source, including a pinned npm registry", () => {
+    stubFetch();
+    // A listing can send BB to another registry. The confirmation names it,
+    // so nobody confirms an install whose code comes from an unseen host.
+    renderDialog({
+      entryId: "widgets",
+      displayName: "Widgets",
+      icon: "Zap",
+      iconUrl: null,
+      source: "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
+    });
+
+    expect(
+      screen.getByText(
+        "npm:bb-plugin-widgets@^1.0.0 (registry https://npm.acme.test)",
+      ),
+    ).not.toBeNull();
   });
 
   it("installs official catalog entries through the catalog endpoint", async () => {
@@ -217,6 +252,7 @@ describe("AddPluginDialog", () => {
       entryId: "linear",
       displayName: "Linear",
       icon: "Github",
+      iconUrl: null,
       source: "builtin:linear",
     });
 
@@ -236,6 +272,21 @@ describe("AddPluginDialog", () => {
     });
   });
 
+  it("shows the cached marketplace icon in the confirmation", () => {
+    stubFetch();
+    const iconUrl =
+      "/api/v1/plugin-catalog/icons/bb-official/widgets?h=icon-hash";
+    renderDialog({
+      entryId: "widgets",
+      displayName: "Widgets",
+      icon: null,
+      iconUrl,
+      source: "npm:bb-plugin-widgets@1.0.0",
+    });
+
+    expect(document.querySelector(`img[src="${iconUrl}"]`)).not.toBeNull();
+  });
+
   it("returns the installed plugin so the caller can open canonical details", async () => {
     stubFetch();
     const onInstalled = vi.fn();
@@ -251,6 +302,7 @@ describe("AddPluginDialog", () => {
           entryId: "linear",
           displayName: "Linear",
           icon: "Github",
+          iconUrl: null,
           source: "builtin:linear",
         }}
         onInstalled={(plugin) => {

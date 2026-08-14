@@ -25,6 +25,7 @@ import {
   migrate,
   type DbConnection,
 } from "@bb/db";
+import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
 import type { Logger } from "@bb/logger";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
@@ -221,6 +222,9 @@ describe("plugin install sources", () => {
       spec: "",
       specKind: "default",
     });
+    expect(() => parsePluginSource("npm:--registry@latest")).toThrow(
+      /invalid npm package name/,
+    );
   });
 
   it("treats bare non-URL strings and path: as local paths with no managed dir", () => {
@@ -337,10 +341,12 @@ describe("plugin install flows", () => {
       await git(repoDir, ["branch", "plugin/catalog-git"]);
 
       const source = `git:${repoDir}@plugin/catalog-git`;
-      const entry = await service.installGitCatalogPlugin({
+      const entry = await service.installCatalogPlugin({
+        marketplace: "bb-official",
         entryId: "catalog-git-entry",
         pluginId: "catalog-git",
         source,
+        selection: ROOT_PLUGIN_SOURCE_SELECTION,
       });
 
       expect(entry).toMatchObject({
@@ -348,17 +354,65 @@ describe("plugin install flows", () => {
         source,
         provenance: "catalog",
         catalogEntryId: "catalog-git-entry",
+        catalogMarketplaceName: "bb-official",
         status: "running",
       });
       expect(getInstalledPluginRegistration(db, "catalog-git")).toMatchObject({
         provenance: "catalog",
         catalogEntryId: "catalog-git-entry",
+        catalogMarketplaceName: "bb-official",
         sourceKind: "git",
         sourceGitUrl: repoDir,
         sourceGitRequestedRef: "plugin/catalog-git",
         sourceGitRefKind: "branch",
         gitResolvedCommit: commit,
       });
+    });
+
+    it("refuses a catalog entry that widens the plugin's engine range", async () => {
+      const repoDir = join(workDir, "repo-catalog-widening");
+      await writePluginFixture(repoDir, {
+        name: "bb-plugin-narrow",
+        engines: ">=0.5.0",
+      });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      await git(repoDir, ["branch", "plugin/narrow"]);
+
+      await expect(
+        service.installCatalogPlugin({
+          marketplace: "bb-official",
+          entryId: "narrow",
+          pluginId: "narrow",
+          source: `git:${repoDir}@plugin/narrow`,
+          selection: ROOT_PLUGIN_SOURCE_SELECTION,
+          engines: { bb: ">=0.1.0" },
+        }),
+      ).rejects.toThrow(/widens plugin manifest range/);
+      expect(getInstalledPluginRegistration(db, "narrow")).toBeUndefined();
+    });
+
+    it("refuses a listed npm registry that is not a public https host", async () => {
+      for (const registry of [
+        "https://127.0.0.1/registry",
+        "https://localhost/registry",
+        "https://registry.acme.test:8443/",
+        "https://user:secret@registry.acme.test/",
+      ]) {
+        await expect(
+          service.installCatalogPlugin({
+            marketplace: "bb-official",
+            entryId: "catalog-npm-entry",
+            pluginId: "bb-plugin-registry",
+            source: "npm:bb-plugin-registry@^1.0.0",
+            selection: ROOT_PLUGIN_SOURCE_SELECTION,
+            npmRegistry: registry,
+          }),
+        ).rejects.toThrow(/marketplace/);
+      }
+      expect(
+        getInstalledPluginRegistration(db, "bb-plugin-registry"),
+      ).toBeUndefined();
     });
 
     it("refuses a git catalog install whose manifest id differs from the entry", async () => {
@@ -369,10 +423,12 @@ describe("plugin install flows", () => {
       await git(repoDir, ["branch", "plugin/imposter"]);
 
       await expect(
-        service.installGitCatalogPlugin({
+        service.installCatalogPlugin({
+          marketplace: "bb-official",
           entryId: "catalog-git-entry",
           pluginId: "expected-id",
           source: `git:${repoDir}@plugin/imposter`,
+          selection: ROOT_PLUGIN_SOURCE_SELECTION,
         }),
       ).rejects.toThrow(/expects "expected-id"/);
     });

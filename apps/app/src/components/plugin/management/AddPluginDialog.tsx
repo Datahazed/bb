@@ -12,7 +12,6 @@ import {
 } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
-import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { appToast } from "@/components/ui/app-toast.js";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
@@ -24,7 +23,7 @@ import {
   installCatalogPlugin,
   installPlugin,
 } from "@/hooks/queries/plugin-catalog-queries";
-import { FullTrustWarning, PlaceholderBadge } from "./plugin-ui";
+import { CatalogEntryIcon, FullTrustWarning } from "./plugin-ui";
 
 /**
  * Pre-fill for Browse-tab installs: the dialog shows the official catalog
@@ -34,19 +33,23 @@ export type AddPluginInitial = {
   entryId: string;
   displayName: string;
   icon: string | null;
+  iconUrl: string | null;
   /** The entry's install source; decides how the dialog describes the install. */
   source: string;
 };
 
 /**
- * Official catalog entries install from two kinds of source, and the dialog
- * must not claim one is the other: `builtin:` plugins ship inside the app,
- * while git-catalog entries are fetched from their pinned, reviewed commit.
+ * The dialog describes each catalog source without claiming that a remote
+ * package is bundled or that a mutable Git reference is pinned.
  */
 function catalogInstallDescription(source: string): string {
-  return source.startsWith("builtin:")
-    ? "Install this official plugin, bundled with BB."
-    : "Install this official plugin from its pinned source repository.";
+  if (source.startsWith("builtin:")) {
+    return "Install this official plugin, bundled with BB.";
+  }
+  if (source.startsWith("npm:")) {
+    return "Install this official plugin from its listed npm package.";
+  }
+  return "Install this official plugin from its listed source repository.";
 }
 
 export interface AddPluginDialogProps {
@@ -149,17 +152,21 @@ function AddPluginDialogContent({
       </DialogHeader>
       <div className="space-y-3">
         {initial !== null ? (
-          <div className="flex items-center gap-2.5 rounded-md border border-border bg-muted/30 px-3 py-2">
-            <PlaceholderBadge
-              className="size-6"
-              iconName={pluginIconName(initial.icon)}
-            />
-            <span className="text-sm font-medium text-foreground">
-              {initial.displayName}
-            </span>
-            <span className="ml-auto font-mono text-xs text-subtle-foreground">
-              {initial.entryId}
-            </span>
+          <div className="space-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
+            <div className="flex items-center gap-2.5">
+              <CatalogEntryIcon entry={initial} className="size-6" />
+              <span className="text-sm font-medium text-foreground">
+                {initial.displayName}
+              </span>
+              <span className="ml-auto font-mono text-xs text-subtle-foreground">
+                {initial.entryId}
+              </span>
+            </div>
+            {/* The exact source, including a pinned npm registry: a listing
+                must not send BB somewhere the confirmation never named. */}
+            <p className="break-all font-mono text-2xs text-subtle-foreground">
+              {initial.source}
+            </p>
           </div>
         ) : (
           <div>
