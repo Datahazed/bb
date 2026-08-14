@@ -508,6 +508,7 @@ function EmbeddedThreadChatWithComposer({
     setActiveComposerDraft,
     handleChangeMessage,
     removeActiveComposerAttachment,
+    replaceActiveComposerAttachment,
   } = useActiveComposerDraft({
     draftScope: composer.draftScope,
     inlineEditingQueuedMessage,
@@ -1040,6 +1041,7 @@ function EmbeddedThreadChatWithComposer({
       error: bottomAttachmentError,
       onAttachFiles: handleAttachBottomFiles,
       onRemove: promptDraft.removeAttachment,
+      onReplace: promptDraft.replaceAttachment,
     }),
     [
       bottomAttachmentError,
@@ -1048,6 +1050,7 @@ function EmbeddedThreadChatWithComposer({
       isAttachingBottomFiles,
       projectId,
       promptDraft.removeAttachment,
+      promptDraft.replaceAttachment,
     ],
   );
   const inlineAttachmentsConfig = useMemo<AttachmentsConfig>(
@@ -1058,6 +1061,7 @@ function EmbeddedThreadChatWithComposer({
       error: inlineAttachmentError,
       onAttachFiles: handleAttachInlineFiles,
       onRemove: removeActiveComposerAttachment,
+      onReplace: replaceActiveComposerAttachment,
     }),
     [
       activeComposerDraft.attachments,
@@ -1066,6 +1070,7 @@ function EmbeddedThreadChatWithComposer({
       isAttachingInlineFiles,
       projectId,
       removeActiveComposerAttachment,
+      replaceActiveComposerAttachment,
     ],
   );
 

@@ -233,6 +233,9 @@ describe("BrowserTabContent persistent navigation", () => {
     const controller = new AbortController();
     const capturedProps = slotProps as PluginBrowserActionProps | null;
     expect(capturedProps).not.toBeNull();
+    expect(capturedProps!.experimental_overlayRoot).toBe(
+      document.querySelector("[data-browser-plugin-overlay-root]"),
+    );
     await expect(
       capturedProps!.experimental_inspectPage(
         { kind: "region" },

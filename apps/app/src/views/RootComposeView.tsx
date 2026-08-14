@@ -3077,6 +3077,7 @@ export function RootComposeView() {
       projectId: projectId ?? "",
       onAttachFiles: handleAttachFiles,
       onRemove: promptDraft.removeAttachment,
+      onReplace: promptDraft.replaceAttachment,
       isAttaching:
         uploadPromptAttachment.isPending || isCopyingPromptAttachments,
       error: attachmentError,
@@ -3087,6 +3088,7 @@ export function RootComposeView() {
       projectId,
       promptDraft.attachments,
       promptDraft.removeAttachment,
+      promptDraft.replaceAttachment,
       isCopyingPromptAttachments,
       uploadPromptAttachment.isPending,
     ],

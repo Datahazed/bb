@@ -306,6 +306,10 @@ export interface AttachmentsConfig {
   error?: string | null;
   onAttachFiles?: (files: File[]) => void | Promise<void>;
   onRemove?: (path: string) => void;
+  onReplace?: (
+    previousPath: string,
+    attachment: PromptDraftAttachment,
+  ) => void;
   projectId?: string;
 }
 
@@ -1173,6 +1177,7 @@ export function PromptBoxInternal({
     error: attachmentError = null,
     onAttachFiles,
     onRemove: onRemoveAttachment,
+    onReplace: onReplaceAttachment,
     projectId: attachmentProjectId,
   } = attachmentConfig;
   const {
@@ -3315,6 +3320,7 @@ export function PromptBoxInternal({
                   expandedImageIndex={expandedImageIndex}
                   onExpandedImageIndexChange={setExpandedImageIndex}
                   onRemoveAttachment={onRemoveAttachment}
+                  onReplaceAttachment={onReplaceAttachment}
                 />
 
                 {attachmentError ? (

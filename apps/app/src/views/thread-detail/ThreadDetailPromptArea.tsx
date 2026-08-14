@@ -421,6 +421,7 @@ export function ThreadDetailPromptArea({
     setActiveComposerDraft,
     handleChangeMessage: handleComposerMessageChange,
     removeActiveComposerAttachment,
+    replaceActiveComposerAttachment,
   } = useActiveComposerDraft({
     draftScope: {
       kind: "thread",
@@ -942,6 +943,7 @@ export function ThreadDetailPromptArea({
       error: bottomAttachmentError,
       onAttachFiles: handleAttachBottomFiles,
       onRemove: promptDraft.removeAttachment,
+      onReplace: promptDraft.replaceAttachment,
     }),
     [
       bottomAttachmentError,
@@ -950,6 +952,7 @@ export function ThreadDetailPromptArea({
       isAttachingBottomFiles,
       projectId,
       promptDraft.removeAttachment,
+      promptDraft.replaceAttachment,
     ],
   );
   const handleBottomComposerSubmit = useCallback(() => {
@@ -1256,6 +1259,7 @@ export function ThreadDetailPromptArea({
           error: inlineAttachmentError,
           onAttachFiles: handleAttachInlineFiles,
           onRemove: removeActiveComposerAttachment,
+          onReplace: replaceActiveComposerAttachment,
         },
         canModifierSubmit:
           activeComposerDraftInput.length > 0 && !isUpdateQueuedMessagePending,
@@ -1305,6 +1309,7 @@ export function ThreadDetailPromptArea({
     promptPlaceholder,
     queuedComposerTextEffects,
     removeActiveComposerAttachment,
+    replaceActiveComposerAttachment,
     runtimeDisplayStatus,
     setActiveComposerDraft,
     thread.id,
@@ -1339,6 +1344,25 @@ export function ThreadDetailPromptArea({
                   (attachment) => attachment.path !== path,
                 ),
               }));
+            },
+            onReplace: (previousPath, attachment) => {
+              sentMessageEdit.updateDraft((current) => {
+                const previousIndex = current.attachments.findIndex(
+                  (existing) => existing.path === previousPath,
+                );
+                if (previousIndex < 0) return current;
+                return {
+                  ...current,
+                  attachments: current.attachments.flatMap(
+                    (existing, index) => {
+                      if (index === previousIndex) return [attachment];
+                      return existing.path === attachment.path
+                        ? []
+                        : [existing];
+                    },
+                  ),
+                };
+              });
             },
           },
           canModifierSubmit: canSubmitSentMessageEdit,
@@ -1421,9 +1445,7 @@ export function ThreadDetailPromptArea({
             >
               From child thread: {item.childTitle}
             </NavLink>
-            <PluginPendingInteractionComposer
-              interaction={item.interaction}
-            />
+            <PluginPendingInteractionComposer interaction={item.interaction} />
           </div>
         ) : (
           <ThreadPendingInteractionBanner

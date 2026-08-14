@@ -44,6 +44,7 @@ interface PluginBrowserActionsProps {
   threadId: string | null;
   projectId: string | null;
   url: string;
+  overlayRoot: HTMLElement | null;
   onOverlayLeaseChange(owner: symbol, open: boolean): void;
 }
 
@@ -54,6 +55,7 @@ interface BrowserActionSlotRuntimeProps {
   threadId: string | null;
   projectId: string | null;
   url: string;
+  overlayRoot: HTMLElement | null;
   onOverlayLeaseChange(owner: symbol, open: boolean): void;
 }
 
@@ -87,6 +89,7 @@ function useBrowserActionRuntime({
   threadId,
   projectId,
   url,
+  overlayRoot,
   onOverlayLeaseChange,
 }: Omit<BrowserActionSlotRuntimeProps, "slot">): PluginBrowserActionProps {
   const ownershipRegistry = useContext(PluginSlotOwnershipContext);
@@ -178,6 +181,7 @@ function useBrowserActionRuntime({
     threadId,
     projectId,
     url,
+    experimental_overlayRoot: overlayRoot,
     experimental_inspectionAvailable:
       desktopBrowser.experimental_inspectPage !== undefined &&
       desktopBrowser.experimental_cancelPageInspection !== undefined,
@@ -242,6 +246,7 @@ export function PluginBrowserActions({
   threadId,
   projectId,
   url,
+  overlayRoot,
   onOverlayLeaseChange,
 }: PluginBrowserActionsProps) {
   const { browserActions } = usePluginSlots();
@@ -260,6 +265,7 @@ export function PluginBrowserActions({
     threadId,
     projectId,
     url,
+    overlayRoot,
     onOverlayLeaseChange,
   };
 

@@ -481,6 +481,8 @@ export function BrowserTabContent({
   const [pluginOverlayLeases, setPluginOverlayLeases] = useState<
     ReadonlySet<symbol>
   >(() => new Set());
+  const [pluginOverlayRoot, setPluginOverlayRoot] =
+    useState<HTMLDivElement | null>(null);
   // Bitmap stand-in pushed by the desktop main process while the native view
   // is hidden during a native window resize; null outside resize bursts.
   const [resizeSnapshotUrl, setResizeSnapshotUrl] = useState<string | null>(
@@ -872,11 +874,17 @@ export function BrowserTabContent({
             threadId={threadId}
             projectId={projectId}
             url={currentUrl}
+            overlayRoot={pluginOverlayRoot}
             onOverlayLeaseChange={handlePluginOverlayLeaseChange}
           />
         }
       />
       <div ref={contentRef} className="relative min-h-0 flex-1">
+        <div
+          ref={setPluginOverlayRoot}
+          data-browser-plugin-overlay-root=""
+          className="pointer-events-none absolute inset-0 z-20 overflow-hidden"
+        />
         {hasPageLoadError ? (
           <BrowserPageLoadError
             errorText={pageLoadErrorText}

@@ -10,7 +10,8 @@ and delete the entry in the same change.
 **What it does.** Adds one project attachment that a plugin backend already
 uploaded to the active composer draft. It preserves text and mentions, ignores
 duplicate paths, and uses the same preview, removal, persistence, send, and
-queue behavior as files the user attached directly.
+queue behavior as files the user attached directly. Markdown attachments render
+as file-preview cards; users can open, edit, and re-upload them before sending.
 
 **Audit before stabilizing.**
 
@@ -22,6 +23,8 @@ queue behavior as files the user attached directly.
    same attachment identity and user recovery behavior.
 5. Decide whether plugin-created attachments need visible provenance in the
    prompt box.
+6. Confirm editable Markdown size limits, stale-save races, replacement
+   semantics, and orphan cleanup are appropriate for long-lived drafts.
 
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
@@ -314,9 +317,12 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
 Browser tab's navigation chrome. The component receives the tab, thread,
 project, and URL identity; a scoped `experimental_inspectPage` callback; and
 `experimental_setOverlayOpen`, which hides the native `WebContentsView` while
-portalled plugin menus or dialogs are open. The host orders contributions by
-plugin id and registration order, then moves excess actions into a host-owned
-overflow before reducing the address bar or displacing navigation controls.
+portalled plugin menus or dialogs are open. The renderer-local
+`experimental_overlayRoot` is an optional host-owned layer covering the Browser
+viewport, so a plugin can render an interactive capture preview without
+discovering internal DOM bounds. The host orders contributions by plugin id and
+registration order, then moves excess actions into a host-owned overflow before
+reducing the address bar or displacing navigation controls.
 
 The inspection bridge is optional across desktop/SPA version skew. The slot
 still mounts when the bridge is absent so the plugin can render an unavailable
@@ -348,6 +354,9 @@ shown again.
 7. **Accessibility.** Confirm every plugin supplies an accessible control name,
    the host overflow exposes plugin titles and keyboard focus correctly, and
    portalled menus/dialogs restore focus when they close.
+8. **Overlay ownership.** Confirm an `HTMLElement` is the right renderer-local
+   boundary, the root remains clipped to one Browser viewport through resizes,
+   and pointer ownership cannot escape after an action unmounts or crashes.
 
 ## `app.slots.experimental_threadHeaderAction` (`@bb/plugin-sdk/app`)
 
