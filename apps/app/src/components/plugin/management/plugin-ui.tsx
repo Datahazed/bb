@@ -255,8 +255,8 @@ export function FullTrustWarning() {
     >
       <Icon name="Lock" className="mt-0.5 size-3 shrink-0" />
       <span>
-        Plugins run as full-trust code with access to all local bb data. Only
-        install sources you trust.
+        Plugins run as full-trust code with access to your computer. Only
+        install from sources you trust.
       </span>
     </p>
   );

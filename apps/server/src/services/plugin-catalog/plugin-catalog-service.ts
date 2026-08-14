@@ -50,9 +50,11 @@ import {
   type MarketplaceFetch,
 } from "./marketplace-http.js";
 import {
+  BUILTIN_PUBLISHER_KEY,
+  BUILTIN_PUBLISHER_LABEL,
   entryIconName,
   entrySourceDisplay,
-  OFFICIAL_MARKETPLACE_NAME,
+  CURATED_MARKETPLACE_NAME,
   parseMarketplaceManifestJson,
   resolvedEntrySource,
   type MarketplaceEntry,
@@ -65,7 +67,8 @@ import {
   materializeMarketplace,
   parseMarketplaceSource,
 } from "./marketplace-source.js";
-import { BUNDLED_OFFICIAL_MARKETPLACE } from "./official-marketplace.js";
+import { BUNDLED_CURATED_MARKETPLACE } from "./curated-marketplace.js";
+import { marketplacePublisherLabel } from "./marketplace-publishers.js";
 
 const MARKETPLACE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 
@@ -235,7 +238,7 @@ export function createPluginCatalogService(deps: {
    * rather than leaving the store empty.
    */
   function seedOfficialMarketplace(): void {
-    const existing = getPluginMarketplace(deps.db, OFFICIAL_MARKETPLACE_NAME);
+    const existing = getPluginMarketplace(deps.db, CURATED_MARKETPLACE_NAME);
     if (
       existing !== undefined &&
       existing.sourceKind === "https" &&
@@ -249,17 +252,17 @@ export function createPluginCatalogService(deps: {
         return;
       } catch (error) {
         deps.warn?.(
-          `stored ${OFFICIAL_MARKETPLACE_NAME} catalog was rejected; using the bundled snapshot: ${marketplaceErrorMessage(error)}`,
+          `stored ${CURATED_MARKETPLACE_NAME} catalog was rejected; using the bundled snapshot: ${marketplaceErrorMessage(error)}`,
         );
       }
     }
     upsertPluginMarketplace(deps.db, {
-      name: OFFICIAL_MARKETPLACE_NAME,
+      name: CURATED_MARKETPLACE_NAME,
       sourceKind: "https",
       manifestUrl: deps.marketplaceUrl,
       sourceGitRef: null,
       sourceGitCommit: null,
-      manifestJson: JSON.stringify(BUNDLED_OFFICIAL_MARKETPLACE),
+      manifestJson: JSON.stringify(BUNDLED_CURATED_MARKETPLACE),
       etag: null,
       lastModified: null,
       lastSuccessfulRefreshAt: null,
@@ -295,8 +298,8 @@ export function createPluginCatalogService(deps: {
   function orderedMarketplaces(): PluginMarketplaceRow[] {
     return listPluginMarketplaces(deps.db).sort((left, right) => {
       const officialDifference =
-        Number(right.name === OFFICIAL_MARKETPLACE_NAME) -
-        Number(left.name === OFFICIAL_MARKETPLACE_NAME);
+        Number(right.name === CURATED_MARKETPLACE_NAME) -
+        Number(left.name === CURATED_MARKETPLACE_NAME);
       return officialDifference || left.name.localeCompare(right.name);
     });
   }
@@ -307,7 +310,7 @@ export function createPluginCatalogService(deps: {
       name: row.name,
       displayName: catalog?.displayName ?? row.name,
       description: catalog?.description ?? null,
-      official: row.name === OFFICIAL_MARKETPLACE_NAME,
+      official: row.name === CURATED_MARKETPLACE_NAME,
       sourceKind: row.sourceKind,
       source: marketplaceSourceDisplay(marketplaceSourceFromRow(row)),
       resolvedCommit: row.sourceGitCommit,
@@ -373,8 +376,12 @@ export function createPluginCatalogService(deps: {
       source: builtinPluginSource(entry.name),
       // Plugins bundled with the app are BB's own, so the store groups them
       // with the official marketplace rather than inventing a fourth origin.
-      marketplace: OFFICIAL_MARKETPLACE_NAME,
-      marketplaceDisplayName: BUNDLED_OFFICIAL_MARKETPLACE.displayName,
+      marketplace: CURATED_MARKETPLACE_NAME,
+      marketplaceDisplayName: BUNDLED_CURATED_MARKETPLACE.displayName,
+      // Listed under the curated marketplace, but published by the build, so
+      // it groups and badges as its own publisher.
+      publisherKey: BUILTIN_PUBLISHER_KEY,
+      publisherLabel: BUILTIN_PUBLISHER_LABEL,
       official: true,
       // Bundled plugins are BB's own; attribute them like the seed entries.
       author: { name: "BB Team", url: "https://getbb.app" },
@@ -416,7 +423,7 @@ export function createPluginCatalogService(deps: {
     installedEntryIds: ReadonlySet<string>;
   }): PluginCatalogSearchResult {
     const { entry, row, catalog } = args;
-    const official = row.name === OFFICIAL_MARKETPLACE_NAME;
+    const official = row.name === CURATED_MARKETPLACE_NAME;
     return {
       entryId: entry.id,
       // An entry id is the plugin id it installs; the install aborts when the
@@ -430,6 +437,11 @@ export function createPluginCatalogService(deps: {
       source: entrySourceDisplay(entry),
       marketplace: row.name,
       marketplaceDisplayName: catalog.displayName,
+      publisherKey: row.name,
+      publisherLabel: marketplacePublisherLabel({
+        marketplaceName: row.name,
+        displayName: catalog.displayName,
+      }),
       official,
       author: entryAuthor(entry),
       installed:
@@ -588,7 +600,7 @@ export function createPluginCatalogService(deps: {
     if (periodicStopped) return;
     cancelPeriodic?.();
     const lastAttempt = requireRow(
-      OFFICIAL_MARKETPLACE_NAME,
+      CURATED_MARKETPLACE_NAME,
     ).lastAttemptedRefreshAt;
     const delay =
       lastAttempt === null
@@ -637,9 +649,9 @@ export function createPluginCatalogService(deps: {
       );
       if (entry !== undefined) return { kind: "marketplace", row, entry };
       // Plugins bundled with the app are BB's own, and the store lists them
-      // under bb-official, so "<id>@bb-official" names them too.
+      // under bb-community, so "<id>@bb-community" names them too.
       const bundled =
-        selector.marketplace === OFFICIAL_MARKETPLACE_NAME
+        selector.marketplace === CURATED_MARKETPLACE_NAME
           ? officialPlugins.find((candidate) => candidate.name === entryId)
           : undefined;
       if (bundled !== undefined) return { kind: "bundled", entry: bundled };
@@ -909,7 +921,7 @@ export function createPluginCatalogService(deps: {
 
     async refresh(attemptedAt = now()) {
       const [result] = await refreshMarketplaces({
-        name: OFFICIAL_MARKETPLACE_NAME,
+        name: CURATED_MARKETPLACE_NAME,
         attemptedAt,
       });
       scheduleNextPeriodicRefresh();
@@ -949,9 +961,9 @@ export function createPluginCatalogService(deps: {
           const name = materialized.catalog.name;
           // The manifest's own name is the marketplace's identity, so a
           // listing cannot impersonate the catalog BB curates.
-          if (name === OFFICIAL_MARKETPLACE_NAME) {
+          if (name === CURATED_MARKETPLACE_NAME) {
             throw new Error(
-              `marketplace name "${OFFICIAL_MARKETPLACE_NAME}" is reserved for the marketplace BB curates`,
+              `marketplace name "${CURATED_MARKETPLACE_NAME}" is reserved for the marketplace BB curates`,
             );
           }
           if (getPluginMarketplace(deps.db, name) !== undefined) {
@@ -991,9 +1003,9 @@ export function createPluginCatalogService(deps: {
 
     async removeMarketplace(name) {
       return withLock(name, async () => {
-        if (name === OFFICIAL_MARKETPLACE_NAME) {
+        if (name === CURATED_MARKETPLACE_NAME) {
           throw new Error(
-            `marketplace "${OFFICIAL_MARKETPLACE_NAME}" cannot be removed`,
+            `marketplace "${CURATED_MARKETPLACE_NAME}" cannot be removed`,
           );
         }
         requireRow(name);
@@ -1121,7 +1133,7 @@ export function createPluginCatalogService(deps: {
         };
       }
       const { row, entry } = resolved;
-      const official = row.name === OFFICIAL_MARKETPLACE_NAME;
+      const official = row.name === CURATED_MARKETPLACE_NAME;
       return {
         kind: "marketplace",
         entryId: entry.id,
@@ -1157,7 +1169,7 @@ export function createPluginCatalogService(deps: {
               `install refused: "${input.entryId}" is no longer listed by marketplace "${resolved.row.name}"`,
             );
           }
-          const thirdParty = current.row.name !== OFFICIAL_MARKETPLACE_NAME;
+          const thirdParty = current.row.name !== CURATED_MARKETPLACE_NAME;
           if (!thirdParty && input.confirmedSource !== undefined) {
             throw new Error(
               "install refused: confirmedSource applies only to third-party marketplaces",

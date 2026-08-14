@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  OFFICIAL_PLUGIN_MARKETPLACE_NAME,
+  CURATED_PLUGIN_MARKETPLACE_NAME,
   type InstalledPlugin,
   type PluginCatalogInstallPlan,
   type PluginCatalogResolvedSource,
@@ -39,6 +39,8 @@ export type AddPluginInitial = {
   entryId: string;
   /** Marketplace that listed the entry; the install routes through it. */
   marketplace: string;
+  /** Who published the entry, as the confirmation names them. */
+  publisherLabel: string;
   displayName: string;
   icon: string | null;
   iconUrl: string | null;
@@ -49,15 +51,22 @@ export type AddPluginInitial = {
 /**
  * The dialog describes each catalog source without claiming that a remote
  * package is bundled or that a mutable Git reference is pinned.
+ *
+ * It names the publisher rather than calling every catalog entry official: the
+ * catalog also lists community and third-party plugins, and "official" is the
+ * one claim a confirmation for full-trust code must not overstate.
  */
-function catalogInstallDescription(source: string): string {
+function catalogInstallDescription(
+  source: string,
+  publisherLabel: string,
+): string {
   if (source.startsWith("builtin:")) {
-    return "Install this official plugin, bundled with BB.";
+    return "Install this plugin, bundled with BB.";
   }
   if (source.startsWith("npm:")) {
-    return "Install this official plugin from its listed npm package.";
+    return `Install this ${publisherLabel} plugin from its listed npm package.`;
   }
-  return "Install this official plugin from its listed source repository.";
+  return `Install this ${publisherLabel} plugin from its listed source repository.`;
 }
 
 export interface AddPluginDialogProps {
@@ -248,7 +257,7 @@ function AddPluginDialogContent({
   // the official catalog is BB's own and installs without a round trip.
   const thirdParty =
     initial !== null &&
-    initial.marketplace !== OFFICIAL_PLUGIN_MARKETPLACE_NAME;
+    initial.marketplace !== CURATED_PLUGIN_MARKETPLACE_NAME;
   const planQuery = useCatalogInstallPlan(
     thirdParty && initial !== null
       ? { entryId: initial.entryId, marketplace: initial.marketplace }
@@ -294,7 +303,10 @@ function AddPluginDialogContent({
             ? "Install from npm, a Git repository, or a local path."
             : thirdParty
               ? "Install this plugin from the source its marketplace lists."
-              : catalogInstallDescription(initial.source)}
+              : catalogInstallDescription(
+                  initial.source,
+                  initial.publisherLabel,
+                )}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3">
@@ -310,8 +322,11 @@ function AddPluginDialogContent({
               </span>
             </div>
             {/* The exact source, including a pinned npm registry: a listing
-                must not send BB somewhere the confirmation never named. */}
-            <p className="break-all font-mono text-2xs text-subtle-foreground">
+                must not send BB somewhere the confirmation never named. It
+                scrolls on one line rather than wrapping: a long git ref broken
+                across three lines pushes the buttons around and reads as
+                damage rather than as an address. */}
+            <p className="overflow-x-auto whitespace-nowrap font-mono text-2xs text-subtle-foreground">
               {initial.source}
             </p>
           </div>

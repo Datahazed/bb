@@ -31,6 +31,10 @@ import {
 // imported inside buildPluginApp — importing this loads nothing heavy.
 import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
+import {
+  marketplacePublisherLabels,
+  pluginPublisherLabel,
+} from "../plugin-catalog/marketplace-publishers.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import {
   ROOT_PLUGIN_SOURCE_SELECTION,
@@ -196,7 +200,7 @@ export interface PluginService {
    * provenance, so the plugin traces back to the marketplace that listed it.
    */
   installCatalogPlugin(args: {
-    /** Marketplace that listed the entry, e.g. `bb-official`. */
+    /** Marketplace that listed the entry, e.g. `bb-community`. */
     marketplace: string;
     entryId: string;
     /** Manifest id the catalog entry promises; the install aborts on mismatch. */
@@ -1248,7 +1252,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
-    return listInstalledPlugins(deps.db)
+    const rows = listInstalledPlugins(deps.db);
+    // Resolving labels parses every marketplace's stored manifest, so it only
+    // runs when a plugin actually traces back to one. The common case — every
+    // plugin bundled or added from a source — reads no manifest at all.
+    const publisherLabels = rows.some((row) => row.provenance === "catalog")
+      ? marketplacePublisherLabels(deps.db)
+      : new Map<string, string>();
+    return rows
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((row) => {
         const runtime = statuses.get(row.id);
@@ -1272,6 +1283,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ...(row.catalogMarketplaceName === null
             ? {}
             : { catalogMarketplaceName: row.catalogMarketplaceName }),
+          publisherLabel: pluginPublisherLabel({
+            sourceKind: row.sourceKind,
+            provenance: row.provenance,
+            catalogMarketplaceName: row.catalogMarketplaceName,
+            labels: publisherLabels,
+          }),
           isOrphanedBuiltin:
             row.sourceKind === "builtin" &&
             !bundledPlugins.some(

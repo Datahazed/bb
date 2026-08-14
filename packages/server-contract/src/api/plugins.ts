@@ -188,6 +188,12 @@ export const installedPluginSchema = z.object({
   catalogEntryId: z.string().optional(),
   /** Marketplace that listed the entry; present only on catalog installs. */
   catalogMarketplaceName: z.string().optional(),
+  /**
+   * Publisher badge: `BB Official` for a bundled plugin, the listing
+   * marketplace's display name for a catalog install, and null for a plugin
+   * the user added from a source, which has no publisher bb can vouch for.
+   */
+  publisherLabel: z.string().nullable(),
   sourceDisplay: z.string(),
   updateState: pluginUpdateStateSchema,
   enabled: z.boolean(),
@@ -253,7 +259,7 @@ export const PLUGIN_MARKETPLACE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
  * Reserved name of the marketplace BB curates. It cannot be added, cannot be
  * removed, and is the only marketplace whose listings BB reviews.
  */
-export const OFFICIAL_PLUGIN_MARKETPLACE_NAME = "bb-official";
+export const CURATED_PLUGIN_MARKETPLACE_NAME = "bb-community";
 
 export const pluginMarketplaceNameSchema = z
   .string()
@@ -404,10 +410,24 @@ export const pluginCatalogSearchResultSchema = z.object({
   iconUrl: z.string().nullable(),
   category: z.string(),
   source: z.string(),
-  /** Marketplace that lists the entry; plugins bundled with the app use `bb-official`. */
+  /** Marketplace that lists the entry; plugins bundled with the app use `bb-community`. */
   marketplace: z.string(),
   marketplaceDisplayName: z.string(),
-  /** Whether the listing marketplace is the reserved `bb-official` one. */
+  /**
+   * Stable identity of the publisher, for grouping. A marketplace names itself,
+   * so grouping on the label alone let a third-party marketplace merge its
+   * entries into another publisher's group by copying its display name.
+   * `builtin` for plugins bundled with the app; otherwise the marketplace name.
+   */
+  publisherKey: z.string(),
+  /**
+   * Publisher badge for the entry: the listing marketplace's display name, or
+   * `BB Official` for plugins bundled with the app. It is separate from
+   * `marketplaceDisplayName` because bundled plugins are grouped under the
+   * curated marketplace but are not published through it.
+   */
+  publisherLabel: z.string(),
+  /** Whether the listing marketplace is the reserved `bb-community` one. */
   official: z.boolean(),
   /** Null for plugins bundled with the app, which list no separate author. */
   author: pluginCatalogAuthorSchema.nullable(),
@@ -534,7 +554,7 @@ export const pluginMarketplaceSchema = z.object({
   name: z.string(),
   displayName: z.string(),
   description: z.string().nullable(),
-  /** The reserved `bb-official` marketplace, which cannot be removed. */
+  /** The reserved `bb-community` marketplace, which cannot be removed. */
   official: z.boolean(),
   sourceKind: pluginMarketplaceSourceKindSchema,
   /** Canonical spec that re-adds this marketplace. */

@@ -237,6 +237,11 @@ export interface PluginCatalogSearchEntry {
   source: string;
   marketplace: string;
   marketplaceDisplayName: string;
+  /** Stable publisher identity, for grouping; never the label, which a
+   * marketplace chooses for itself. */
+  publisherKey: string;
+  /** Publisher badge: the marketplace's name, or `BB Official` when bundled. */
+  publisherLabel: string;
   official: boolean;
   author: PluginCatalogAuthor | null;
   installed: boolean;
@@ -258,6 +263,8 @@ function toPluginCatalogSearchEntry(
     source: data.source,
     marketplace: data.marketplace,
     marketplaceDisplayName: data.marketplaceDisplayName,
+    publisherKey: data.publisherKey,
+    publisherLabel: data.publisherLabel,
     official: data.official,
     author: data.author,
     installed: data.installed,

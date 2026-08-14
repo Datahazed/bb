@@ -18,8 +18,10 @@ const searchResult = {
   iconUrl: null,
   category: "Developer tools",
   source: "builtin:linear",
-  marketplace: "bb-official",
+  marketplace: "bb-community",
   marketplaceDisplayName: "BB Official",
+  publisherKey: "builtin",
+  publisherLabel: "BB Official",
   official: true,
   author: null,
   installed: false,
@@ -45,6 +47,8 @@ const thirdPartyPlan = {
   displayName: "Acme Notes",
   marketplace: "acme-plugins",
   marketplaceDisplayName: "Acme Plugins",
+  publisherKey: "acme-plugins",
+  publisherLabel: "Acme Plugins",
   official: false,
   author: { name: "Acme", url: "https://github.com/acme" },
   source: "git:https://github.com/acme/plugins.git@semver:notes/:^1.0.0",
@@ -69,6 +73,7 @@ const installedPlugin = {
   provenance: "catalog",
   isOrphanedBuiltin: false,
   catalogEntryId: "linear",
+  publisherLabel: "BB Community",
   sourceDisplay: "builtin · linear",
   updateState: {},
   enabled: true,
@@ -124,6 +129,8 @@ describe("bb plugin catalog", () => {
             displayName: "Acme Notes",
             marketplace: "acme-plugins",
             marketplaceDisplayName: "Acme Plugins",
+            publisherKey: "acme-plugins",
+            publisherLabel: "Acme Plugins",
             official: false,
             author: { name: "Acme", url: null },
           },
@@ -425,12 +432,12 @@ describe("bb plugin catalog", () => {
       .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
 
     await runCommand(
-      ["plugin", "install", "linear@bb-official", "--yes"],
+      ["plugin", "install", "linear@bb-community", "--yes"],
       register,
     );
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "http://server/api/v1/plugin-catalog/install-plan?entryId=linear&marketplace=bb-official",
+      "http://server/api/v1/plugin-catalog/install-plan?entryId=linear&marketplace=bb-community",
     );
   });
 

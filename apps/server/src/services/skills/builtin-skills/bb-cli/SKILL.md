@@ -726,7 +726,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - BB's official plugins (GitHub, Docs, Memory, and Tasks) ship
     bundled inside the app and install from the local copy — no network. Installed official
     plugins are pinned to the bundled copy and update with BB app releases.
-  - The store also lists the **BB Official marketplace** catalog: a manifest
+  - The store also lists the **BB Community marketplace** catalog: a manifest
     the server re-reads at startup and every six hours from
     `https://getbb.app/marketplace/v1/marketplace.json`
     (override with `BB_MARKETPLACE_URL`, which the server reads only at
@@ -743,7 +743,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     or `path:<directory>` on the bb server's machine. bb validates the
     manifest, caches the catalog, and fetches its icons. **Adding a
     marketplace installs nothing.** The manifest's own `name` is the
-    marketplace's identity, so a name collision is refused; `bb-official` is
+    marketplace's identity, so a name collision is refused; `bb-community` is
     reserved and can be neither added nor removed.
   - `bb marketplace list [--json]` — name, source, entry count, last refresh.
   - `bb marketplace refresh [name] [--json]` — re-read one catalog or every
@@ -759,7 +759,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     across every marketplace: exactly one match installs, no match falls back
     to the bundled official plugin of that name, and several matches fail and
     list the `id@marketplace` choices.
-  - Installing from a marketplace other than `bb-official` first resolves and
+  - Installing from a marketplace other than `bb-community` first resolves and
     prints the true source — npm package with its range or dist-tag, or git
     URL with its ref or semver range, subdirectory, and the exact release tag
     and commit that range currently lands on — plus the marketplace and the

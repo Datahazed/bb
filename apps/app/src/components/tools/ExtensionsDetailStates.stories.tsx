@@ -402,6 +402,7 @@ const PLUGIN: PluginListItem = {
   provenance: "direct",
   isOrphanedBuiltin: false,
   catalogEntryId: null,
+  publisherLabel: null,
   sourceDisplay: "npm · @bb-plugins/github",
   updateState: EMPTY_PLUGIN_UPDATE_STATE,
 };
@@ -558,7 +559,7 @@ const BUNDLED_PLUGIN: PluginListItem = {
 
 const UNINSTALLED_CATALOG_PLUGIN = {
   entryId: "github",
-  marketplace: "bb-official",
+  marketplace: "bb-community",
   pluginId: "github",
   displayName: "GitHub",
   description: "Browse GitHub issues and pull requests without leaving bb.",
@@ -566,7 +567,9 @@ const UNINSTALLED_CATALOG_PLUGIN = {
   iconUrl: null,
   category: "Developer tools",
   source: "builtin:github",
-  marketplaceDisplayName: "BB Official",
+  marketplaceDisplayName: "BB Community",
+  publisherKey: "builtin",
+  publisherLabel: "BB Official",
   official: true,
   author: null,
   installed: false,
@@ -692,7 +695,8 @@ function CatalogPlugin({
         open={installOpen}
         initial={{
           entryId: entry.entryId,
-          marketplace: "bb-official",
+          marketplace: "bb-community",
+          publisherLabel: "BB Community",
           displayName: entry.displayName,
           icon: entry.icon,
           iconUrl: entry.iconUrl,
@@ -1104,6 +1108,7 @@ const CATALOG_PLUGIN = {
   id: "github-official",
   provenance: "catalog",
   catalogEntryId: "github",
+  publisherLabel: "BB Community",
 } satisfies PluginListItem;
 
 const pluginUninstallItems = [
