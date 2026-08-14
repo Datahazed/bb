@@ -1,4 +1,4 @@
-import type { ProviderAdapterFactory } from "../provider-adapter.js";
+import type { ProviderAdapterFactory } from "./provider-adapter.js";
 import { LegacyAdapterConnection } from "./legacy-adapter-connection.js";
 import { createAgentRuntimeWithProviderProcessFactory } from "../runtime.js";
 import type { RuntimeProviderProcessLaunchSpecFactory } from "../runtime-provider-process.js";

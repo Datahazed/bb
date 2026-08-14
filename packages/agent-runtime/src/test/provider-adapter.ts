@@ -11,8 +11,8 @@ import type {
 import type {
   ProviderInboundRequest,
   ProviderRuntimeEvent,
-} from "./runtime-json-rpc.js";
-import type { AgentRuntimeSkillRoot } from "./types.js";
+} from "../runtime-json-rpc.js";
+import type { AgentRuntimeSkillRoot } from "../types.js";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type {
   BuildInteractiveResponseArgs,
@@ -23,7 +23,7 @@ import type {
   ProviderExecutionSettingsChange,
   ProviderInteractiveResponse,
   ProviderTranslationContext,
-} from "./provider-driver/connection.js";
+} from "../provider-driver/connection.js";
 export type {
   BuildInteractiveResponseArgs,
   ClassifyProviderExecutionSettingsChangeArgs,
@@ -33,7 +33,7 @@ export type {
   ProviderExecutionSettingsChange,
   ProviderInteractiveResponse,
   ProviderTranslationContext,
-} from "./provider-driver/connection.js";
+} from "../provider-driver/connection.js";
 
 export interface ProviderAcceptedCommandTranslationArgs {
   command: AdapterCommand;
@@ -180,20 +180,6 @@ export type TurnStartAdapterCommand = Extract<
   AdapterCommand,
   { type: "turn/start" }
 >;
-
-export function flattenPromptInputGroups(
-  input: PromptInput[],
-  inputGroups: PromptInput[][] | undefined,
-): PromptInput[] {
-  if (inputGroups === undefined) {
-    return input;
-  }
-  return inputGroups.flatMap((group, index) =>
-    index === 0
-      ? group
-      : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...group],
-  );
-}
 
 export interface PreparedProviderCommandDispatch {
   rollback(): void;

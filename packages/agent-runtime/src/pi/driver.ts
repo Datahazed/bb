@@ -22,7 +22,7 @@ import {
   defineProviderDriver,
   type ProviderDriverContext,
 } from "@bb/provider-driver-sdk";
-import { flattenPromptInputGroups } from "../provider-adapter.js";
+import { flattenPromptInputGroups } from "../shared/prompt-input-groups.js";
 import { PiCanonicalEventTranslator } from "./canonical-event-translator.js";
 import { listPiDriverModels } from "./driver-model-list.js";
 import { getPiModelRuntime } from "./model-runtime.js";

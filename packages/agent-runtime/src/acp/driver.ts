@@ -36,7 +36,7 @@ import { z } from "zod";
 import { buildEditDiff } from "../shared/adapter-utils.js";
 import { withoutBridgeRuntimeEnv } from "../shared/bridge-runtime-env.js";
 import { mimeTypeFromExtension } from "../shared/mime-types.js";
-import { flattenPromptInputGroups } from "../provider-adapter.js";
+import { flattenPromptInputGroups } from "../shared/prompt-input-groups.js";
 import {
   ACP_DEFAULT_MODEL_ID,
   type AcpBridgeAgentCommand,

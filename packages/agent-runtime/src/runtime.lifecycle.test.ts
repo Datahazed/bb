@@ -6,7 +6,7 @@ import type { ThreadEvent } from "@bb/domain";
 import type {
   AdapterCommand,
   ProviderCommandPlan,
-} from "./provider-adapter.js";
+} from "./test/provider-adapter.js";
 import { promptTextInput } from "./test/prompt-input.js";
 import { createAgentRuntimeWithAdapters } from "./test/runtime-with-adapters.js";
 import {

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import type { AdapterCommand } from "./provider-adapter.js";
+import type { AdapterCommand } from "./test/provider-adapter.js";
 import { createAgentRuntimeWithAdapters } from "./test/runtime-with-adapters.js";
 import {
   createRecordingAdapter,

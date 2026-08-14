@@ -54,8 +54,8 @@ import type { AskForApproval } from "./generated/codex-app-server/schema/v2/AskF
 import type { ApprovalsReviewer } from "./generated/codex-app-server/schema/v2/ApprovalsReviewer.js";
 import { mapBbReasoningLevelToCodex, parseModelsResponse } from "./models.js";
 import { buildShellEnvironmentPolicyConfig } from "../shared/adapter-utils.js";
-import type { ProviderExecutionContext } from "../provider-adapter.js";
-import { flattenPromptInputGroups } from "../provider-adapter.js";
+import type { ProviderExecutionContext } from "../provider-driver/connection.js";
+import { flattenPromptInputGroups } from "../shared/prompt-input-groups.js";
 
 interface CodexPermissionSettings {
   approvalPolicy: AskForApproval;

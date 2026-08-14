@@ -5,8 +5,8 @@ import type {
   DecodedToolCallRequest,
   ProviderAdapter,
   ProviderCommandPlan,
-} from "../provider-adapter.js";
-import { noPreparedProviderCommandDispatch } from "../provider-adapter.js";
+} from "./provider-adapter.js";
+import { noPreparedProviderCommandDispatch } from "./provider-adapter.js";
 import { classifySessionExecutionSettingsChange } from "../execution-options.js";
 import { ProviderRequestDecodeError } from "../runtime-json-rpc.js";
 import { parseAvailableModelList } from "../shared/available-models.js";

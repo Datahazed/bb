@@ -19,11 +19,9 @@ import type {
   ProviderAdapter,
   ProviderCommandPlan,
   ProviderInteractiveResponse,
-} from "../provider-adapter.js";
-import {
-  flattenPromptInputGroups,
-  noPreparedProviderCommandDispatch,
-} from "../provider-adapter.js";
+} from "./provider-adapter.js";
+import { noPreparedProviderCommandDispatch } from "./provider-adapter.js";
+import { flattenPromptInputGroups } from "../shared/prompt-input-groups.js";
 import type {
   ProviderInboundRequest,
   ProviderRuntimeEvent,

@@ -12,7 +12,7 @@ import { promptTextInput } from "./test/prompt-input.js";
 import type {
   DecodedInteractiveRequest,
   ProviderAdapter,
-} from "./provider-adapter.js";
+} from "./test/provider-adapter.js";
 import { LegacyAdapterConnection } from "./test/legacy-adapter-connection.js";
 import { createAgentRuntimeWithAdapters } from "./test/runtime-with-adapters.js";
 import {

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { turnScope, type ThreadEvent } from "@bb/domain";
-import type { ProviderAdapter } from "./provider-adapter.js";
+import type { ProviderAdapter } from "./test/provider-adapter.js";
 import {
   createAgentRuntimeWithAdapters,
   createLegacyProviderProcessLaunchSpecFactory,

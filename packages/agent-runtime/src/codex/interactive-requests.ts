@@ -4,7 +4,7 @@ import type { PermissionsRequestApprovalResponse } from "./generated/codex-app-s
 import type {
   BuildInteractiveResponseArgs,
   DecodedInteractiveRequest,
-} from "../provider-adapter.js";
+} from "../provider-driver/connection.js";
 import type { ProviderInboundRequest } from "../runtime-json-rpc.js";
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,

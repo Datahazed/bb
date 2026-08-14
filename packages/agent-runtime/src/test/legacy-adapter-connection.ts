@@ -6,7 +6,7 @@ import type {
   ProviderAdapter,
   ProviderCommandPlan,
   ProviderRequestCommandPlan,
-} from "../provider-adapter.js";
+} from "./provider-adapter.js";
 import {
   ignoredJsonRpcResultSchema,
   type JsonRpcObject,

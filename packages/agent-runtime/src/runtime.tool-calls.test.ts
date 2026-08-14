@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent, ToolCallResponse } from "@bb/domain";
-import type { ProviderAdapter } from "./provider-adapter.js";
+import type { ProviderAdapter } from "./test/provider-adapter.js";
 import { LegacyAdapterConnection } from "./test/legacy-adapter-connection.js";
 import { createAgentRuntimeWithAdapters } from "./test/runtime-with-adapters.js";
 import {
