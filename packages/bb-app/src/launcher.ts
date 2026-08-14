@@ -38,6 +38,7 @@ import {
   parseBbAppManagedConfig,
   type BbAppManagedConfig,
   type BbAppManagedConfigKey,
+  type BbAppManagedConfigWarningLogger,
   type BbAppManagedConfigValues,
   type BbAppManagedEnvConfig,
   type BbAppManagedEnvFile,
@@ -67,6 +68,12 @@ import {
   stripThreadContextEnv,
 } from "@bb/config/runtime";
 import { z } from "zod";
+
+interface JsonObject {
+  [key: string]: JsonValue;
+}
+
+type JsonValue = boolean | number | string | null | JsonValue[] | JsonObject;
 
 const HOST_AUTH_FILE_NAME = "auth.json";
 const HOST_ID_FILE_NAME = "host-id";
@@ -918,12 +925,12 @@ async function readManagedConfig(
   }
 }
 
-function isJsonObject(value: unknown): value is Record<string, unknown> {
+function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const launcherConfigWarningLogger = {
-  warn(fields: Record<string, unknown>, message: string): void {
+const launcherConfigWarningLogger: BbAppManagedConfigWarningLogger = {
+  warn(fields, message): void {
     process.stderr.write(`${message}: ${JSON.stringify(fields)}\n`);
   },
 };

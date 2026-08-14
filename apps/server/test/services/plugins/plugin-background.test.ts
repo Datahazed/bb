@@ -61,7 +61,16 @@ function setNextRunAt(
     .run();
 }
 
-const globals = globalThis as Record<string, unknown>;
+const globals = globalThis as typeof globalThis & {
+  __connStarts?: number;
+  __connAborts?: number;
+  __disposeRequestErrors?: string[];
+  __slowStarts?: number;
+  __slowMaxActive?: number;
+  __crashyStarts?: number;
+  __needyStarts?: number;
+  __tickRuns?: number;
+};
 
 describe("plugin background services", () => {
   let db: DbConnection;

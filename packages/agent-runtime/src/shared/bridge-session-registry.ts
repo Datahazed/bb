@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import {
   decodeToolCallResponsePayload,
   type BridgeJsonRpcResponse,
@@ -35,7 +36,7 @@ interface BridgeSessionRegistryOptions<
 
 export type BridgeToolCallForwarder = (
   toolName: string,
-  args: Record<string, unknown>,
+  args: JsonRpcObject,
 ) => Promise<ToolCallResult>;
 
 export function createBridgeSessionRegistry<

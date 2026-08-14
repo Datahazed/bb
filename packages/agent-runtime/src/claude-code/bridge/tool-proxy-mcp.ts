@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../../runtime-json-rpc.js";
 import type { McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
 import type { DynamicTool } from "@bb/domain";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -12,7 +13,7 @@ export type DynamicToolDefinition = DynamicTool;
 
 export type ToolCallForwarder = (
   toolName: string,
-  args: Record<string, unknown>,
+  args: JsonRpcObject,
 ) => Promise<{ content: string; isError?: boolean }>;
 
 export function buildBridgeMcpServer(
@@ -41,7 +42,10 @@ export function buildBridgeMcpServer(
     if (def === undefined) {
       return {
         content: [
-          { type: "text" as const, text: `Unknown tool: ${request.params.name}` },
+          {
+            type: "text" as const,
+            text: `Unknown tool: ${request.params.name}`,
+          },
         ],
         isError: true,
       };
@@ -68,14 +72,14 @@ export function getAllowedToolNames(
 
 function normalizeInputSchema(
   inputSchema: unknown,
-): Record<string, unknown> & { type: "object" } {
+): JsonRpcObject & { type: "object" } {
   if (
     inputSchema !== null &&
     typeof inputSchema === "object" &&
     !Array.isArray(inputSchema) &&
     (inputSchema as { type?: unknown }).type === "object"
   ) {
-    return inputSchema as Record<string, unknown> & { type: "object" };
+    return inputSchema as JsonRpcObject & { type: "object" };
   }
   return { type: "object" };
 }

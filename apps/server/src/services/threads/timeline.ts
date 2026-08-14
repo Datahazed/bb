@@ -6,7 +6,7 @@ import {
   type AcceptedClientRequestContext,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
-import type { ClientTurnRequestId, Thread } from "@bb/domain";
+import type { ClientTurnRequestId, JsonObject, Thread } from "@bb/domain";
 import type {
   ThreadConversationOutlineItem,
   ThreadConversationOutlineResponse,
@@ -394,13 +394,13 @@ function mergeStoredEventRowsById(
   );
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
+function asRecord(value: unknown): JsonObject | null {
   return typeof value === "object" && value !== null
-    ? (value as Record<string, unknown>)
+    ? (value as JsonObject)
     : null;
 }
 
-function parseStoredEventData(row: StoredEventRow): Record<string, unknown> {
+function parseStoredEventData(row: StoredEventRow): JsonObject {
   return asRecord(JSON.parse(row.data)) ?? {};
 }
 
@@ -2071,8 +2071,7 @@ export function buildTimelineTurnSummaryDetails(
   // route actually holds, so the parent expansion spends what is left rather
   // than a pre-closure estimate of it. The subtraction may go negative, which
   // is the safe direction: the parent fetch then stays inside its bounds.
-  const detailsEventDataBytes =
-    byteLengthOfStoredEventRows(wholeItemEventRows);
+  const detailsEventDataBytes = byteLengthOfStoredEventRows(wholeItemEventRows);
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     maxInlineOutputChars: detailsInlineOutputLimit,
     outOfBoundsChildDataByteLimit:

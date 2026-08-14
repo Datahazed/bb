@@ -3,6 +3,7 @@ import type {
   ParcelWatcherBackend,
   ParcelWatcherError,
   ParcelWatcherEventBatch,
+  ParcelWatcherBackendLogFields,
   ParcelWatcherSubscribeOptions,
 } from "../parcel-watcher-backend.js";
 import { RESCAN_REQUIRED_MESSAGE } from "../watch-recovery.js";
@@ -39,7 +40,7 @@ export interface ParcelWatcherProxyOptions {
   log?: (
     level: ProxyLogLevel,
     message: string,
-    fields?: Record<string, unknown>,
+    fields?: ParcelWatcherBackendLogFields,
   ) => void;
 }
 

@@ -30,9 +30,7 @@ interface DelegationMetadata {
   description?: string;
 }
 
-function parseToolArgs(
-  args: Record<string, unknown> | null,
-): JsonObject | null {
+function parseToolArgs(args: JsonObject | null): JsonObject | null {
   if (!args) return null;
   const toolArgs: JsonObject = {};
   for (const [key, value] of Object.entries(args)) {
@@ -154,7 +152,7 @@ function toExecDefaultStatus(
 
 function buildStructuredReadIntents(
   toolName: string,
-  args: Record<string, unknown> | null,
+  args: JsonObject | null,
 ): EventProjectionToolParsedIntent[] {
   const path = getFirstStringField(args, ["file_path", "file", "path"]);
   if (!path) {
@@ -173,7 +171,7 @@ function buildStructuredReadIntents(
 
 function buildStructuredSearchIntents(
   toolName: string,
-  args: Record<string, unknown> | null,
+  args: JsonObject | null,
 ): EventProjectionToolParsedIntent[] {
   const query = getFirstStringField(args, ["pattern", "query"]);
   if (!query) {
@@ -192,7 +190,7 @@ function buildStructuredSearchIntents(
 
 function buildStructuredListIntents(
   toolName: string,
-  args: Record<string, unknown> | null,
+  args: JsonObject | null,
 ): EventProjectionToolParsedIntent[] {
   const path = getFirstStringField(args, ["path", "pattern"]);
   if (!path) {
@@ -210,7 +208,7 @@ function buildStructuredListIntents(
 
 function getStructuredToolParsedIntents(
   toolName: string,
-  args: Record<string, unknown> | null,
+  args: JsonObject | null,
 ): EventProjectionToolParsedIntent[] {
   const baseName = baseToolName(toolName);
   if (isStructuredReadToolName(baseName)) {
@@ -227,7 +225,7 @@ function getStructuredToolParsedIntents(
 
 function getDelegationMetadata(
   toolName: string,
-  args: Record<string, unknown> | null,
+  args: JsonObject | null,
 ): DelegationMetadata {
   if (!isDelegationToolName(toolName)) {
     return {};

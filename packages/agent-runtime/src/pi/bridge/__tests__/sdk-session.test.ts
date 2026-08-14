@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../../../runtime-json-rpc.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AgentSessionEvent,
@@ -30,7 +31,7 @@ interface MockCreateAgentSessionServicesOptions {
   agentDir?: string;
   cwd: string;
   modelRuntime?: object;
-  resourceLoaderOptions: Record<string, unknown>;
+  resourceLoaderOptions: JsonRpcObject;
 }
 
 interface MockBashToolTextContent {

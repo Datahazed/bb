@@ -148,7 +148,27 @@ interface ParsedArgv {
 
 class CliError extends Error {}
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+interface MemoryDatabaseRowCandidate {
+  id?: unknown;
+  scope?: unknown;
+  project_id?: unknown;
+  name?: unknown;
+  summary?: unknown;
+  details?: unknown;
+  kind?: unknown;
+  tags_json?: unknown;
+  importance?: unknown;
+  pinned?: unknown;
+  source_thread_id?: unknown;
+  write_reason?: unknown;
+  version?: unknown;
+  created_at?: unknown;
+  updated_at?: unknown;
+}
+
+function isMemoryDatabaseRowCandidate(
+  value: unknown,
+): value is MemoryDatabaseRowCandidate {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -165,7 +185,7 @@ function parseTags(raw: unknown): string[] {
 }
 
 function parseMemoryRow(row: unknown): MemoryRecord {
-  if (!isRecord(row))
+  if (!isMemoryDatabaseRowCandidate(row))
     throw new Error("memory database returned an invalid row");
   const scope: MemoryScope = row.scope === "project" ? "project" : "global";
   const kind = isMemoryKind(row.kind) ? row.kind : "fact";
@@ -422,7 +442,7 @@ function searchExpression(query: string): string {
     .join(" OR ");
 }
 
-function memorySnapshot(memory: MemoryRecord): Record<string, unknown> {
+function memorySnapshot(memory: MemoryRecord): MemoryRecord {
   return {
     id: memory.id,
     scope: memory.scope,
@@ -680,7 +700,10 @@ class MemoryStore {
          WHERE m.deleted_at IS NULL AND ${scoped.sql}`,
       )
       .get(...scoped.params);
-    const total = isRecord(countRow) ? Number(countRow.count) : 0;
+    const total =
+      typeof countRow === "object" && countRow !== null
+        ? Number(Reflect.get(countRow, "count"))
+        : 0;
     return { memories: rows.map(parseMemoryRow), total };
   }
 
@@ -837,38 +860,6 @@ function assertNoRpcInput(input: unknown): void {
   if (input !== null && input !== undefined) {
     throw new Error("expected no input");
   }
-}
-
-function parseRpcRecord(input: unknown): Record<string, unknown> {
-  if (!isRecord(input)) throw new Error("expected an object");
-  return input;
-}
-
-function rpcString(record: Record<string, unknown>, key: string): string {
-  const value = record[key];
-  if (typeof value !== "string") throw new Error(`${key} must be a string`);
-  return value;
-}
-
-function rpcInteger(
-  record: Record<string, unknown>,
-  key: string,
-  min: number,
-  max: number,
-): number {
-  const value = record[key];
-  if (!Number.isInteger(value) || Number(value) < min || Number(value) > max) {
-    throw new Error(`${key} must be an integer between ${min} and ${max}`);
-  }
-  return Number(value);
-}
-
-function parseRpcTags(record: Record<string, unknown>): string[] {
-  const value = record.tags;
-  if (!Array.isArray(value) || !value.every((tag) => typeof tag === "string")) {
-    throw new Error("tags must be an array of strings");
-  }
-  return value;
 }
 
 export default async function plugin(bb: BbPluginApi) {

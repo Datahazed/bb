@@ -25,7 +25,7 @@ describe("plugin manifest", () => {
 
   async function writeManifest(
     bbPluginSdk?: string,
-    bb: Record<string, unknown> = validBb,
+    bb: object = validBb,
   ): Promise<void> {
     await writeFile(
       join(rootDir, "package.json"),

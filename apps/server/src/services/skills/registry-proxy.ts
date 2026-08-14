@@ -11,7 +11,6 @@ import {
   githubRepoForSource,
   hasLoadableSkillContent,
   isApiSkill,
-  isRecord,
   parsePublicDetailSkill,
   parsePublicDirectorySkills,
   parsePublicSkillMarkdown,
@@ -37,6 +36,10 @@ const GITHUB_REPOSITORY_STARS_FAILURE_TTL_MS = 5 * 60 * 1000;
 const REGISTRY_ENTRY_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_DETAIL_CACHE_TTL_MS = 30 * 60 * 1000;
 const REGISTRY_FETCH_TIMEOUT_MS = 10_000;
+
+function isObject(value: unknown): value is object {
+  return typeof value === "object" && value !== null;
+}
 
 const registryDetailCache = new Map<
   string,
@@ -82,7 +85,9 @@ async function fetchRegistryJson(url: URL): Promise<SkillsApiPage | null> {
   } | null;
   if (!Array.isArray(body?.data)) return null;
   const skills = body.data.filter(isApiSkill);
-  const pagination = isRecord(body.pagination) ? body.pagination : null;
+  const pagination = isObject(body.pagination)
+    ? (body.pagination as { hasMore?: unknown; total?: unknown })
+    : null;
   const total =
     pagination && typeof pagination.total === "number"
       ? pagination.total
@@ -125,14 +130,15 @@ async function fetchAuthenticatedRegistryDetail(
   });
   if (!response.ok) return null;
   const body: unknown = await response.json().catch(() => null);
-  if (!isRecord(body)) return null;
-  const files = parseRegistryDetailFiles(body.files);
-  if (body.files !== null && files === null) return null;
+  if (!isObject(body)) return null;
+  const detail = body as { files?: unknown; hash?: unknown };
+  const files = parseRegistryDetailFiles(detail.files);
+  if (detail.files !== null && files === null) return null;
   return {
     id,
     source,
     skillId,
-    hash: typeof body.hash === "string" ? body.hash : null,
+    hash: typeof detail.hash === "string" ? detail.hash : null,
     files,
   };
 }
@@ -237,14 +243,16 @@ async function fetchGithubSkillPaths(repo: string): Promise<string[] | null> {
       );
       if (!response.ok) return null;
       const body: unknown = await response.json().catch(() => null);
-      if (!isRecord(body) || !Array.isArray(body.tree)) return null;
-      const paths = body.tree.flatMap((entry) =>
-        isRecord(entry) &&
-        entry.type === "blob" &&
-        typeof entry.path === "string"
-          ? [entry.path]
-          : [],
-      );
+      if (!isObject(body)) return null;
+      const tree = (body as { tree?: unknown }).tree;
+      if (!Array.isArray(tree)) return null;
+      const paths = tree.flatMap((entry) => {
+        if (!isObject(entry)) return [];
+        const candidate = entry as { path?: unknown; type?: unknown };
+        return candidate.type === "blob" && typeof candidate.path === "string"
+          ? [candidate.path]
+          : [];
+      });
       githubSkillPathCache.set(repo, {
         paths,
         expiresAt: Date.now() + GITHUB_SKILL_PATH_CACHE_TTL_MS,
@@ -297,15 +305,12 @@ export async function fetchRegistryRepositoryStars(
       );
       if (!response.ok) return cacheStars(null);
       const body: unknown = await response.json().catch(() => null);
-      if (
-        !isRecord(body) ||
-        typeof body.stargazers_count !== "number" ||
-        !Number.isInteger(body.stargazers_count) ||
-        body.stargazers_count < 0
-      ) {
+      if (!isObject(body)) return cacheStars(null);
+      const stars = (body as { stargazers_count?: unknown }).stargazers_count;
+      if (typeof stars !== "number" || !Number.isInteger(stars) || stars < 0) {
         return cacheStars(null);
       }
-      return cacheStars(body.stargazers_count);
+      return cacheStars(stars);
     } catch {
       return cacheStars(null);
     } finally {

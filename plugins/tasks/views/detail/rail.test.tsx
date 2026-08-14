@@ -21,6 +21,11 @@ if (!window.matchMedia) {
 // imported before it runs.
 const app = await loadPluginApp(() => import("../../app"));
 
+type TaskRpcHandlers = Parameters<typeof app.setRpcHandlers>[0];
+type UpdateProjectInput = Parameters<
+  NonNullable<TaskRpcHandlers["updateProject"]>
+>[0];
+
 afterEach(cleanup);
 
 const PROJECT_ID = "01HZZZZZZZZZZZZZZZZZZZZZP1";
@@ -58,7 +63,7 @@ const task = {
 
 function detailRpc(
   linkedBbProjectId: string | null,
-  overrides: Record<string, unknown> = {},
+  overrides: Partial<TaskRpcHandlers> = {},
 ) {
   return {
     listProjects: () => ({ projects: [projectRow(linkedBbProjectId)] }),
@@ -83,7 +88,7 @@ function detailRpc(
 
 describe("dispatch target rail control", () => {
   it("links a discovered bb project", async () => {
-    const updateCalls: Array<Record<string, unknown>> = [];
+    const updateCalls: UpdateProjectInput[] = [];
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "task/TSK-5" },
@@ -92,7 +97,7 @@ describe("dispatch target rail control", () => {
           listBbProjects: () => ({
             bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
           }),
-          updateProject: (input: Record<string, unknown>) => {
+          updateProject: (input: UpdateProjectInput) => {
             updateCalls.push(input);
             return {
               project: {
@@ -117,7 +122,7 @@ describe("dispatch target rail control", () => {
   });
 
   it("shows the linked bb project's name and unlinks it", async () => {
-    const updateCalls: Array<Record<string, unknown>> = [];
+    const updateCalls: UpdateProjectInput[] = [];
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "task/TSK-5" },
@@ -126,7 +131,7 @@ describe("dispatch target rail control", () => {
           listBbProjects: () => ({
             bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
           }),
-          updateProject: (input: Record<string, unknown>) => {
+          updateProject: (input: UpdateProjectInput) => {
             updateCalls.push(input);
             return {
               project: {

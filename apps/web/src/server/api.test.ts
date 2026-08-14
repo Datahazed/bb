@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -39,7 +40,7 @@ const MIGRATIONS_DIR = fileURLToPath(
 );
 
 let sqlite: Database.Database;
-let db: ReturnType<typeof drizzle>;
+let db: BetterSQLite3Database<typeof schema>;
 let closeTunnel: ReturnType<typeof vi.fn<(subdomain: string) => Promise<void>>>;
 let deps: Deps;
 

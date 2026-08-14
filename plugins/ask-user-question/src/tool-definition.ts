@@ -78,7 +78,7 @@ export function buildTimeoutMessage(elapsedMs: number): string {
  * schema cannot express `multiSelect` as required *and* defaulted. Execution
  * still validates against `toolInputSchema`; this only narrows it.
  */
-export const TOOL_INPUT_JSON_SCHEMA: Record<string, unknown> = {
+export const TOOL_INPUT_JSON_SCHEMA = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   additionalProperties: false,
   properties: {

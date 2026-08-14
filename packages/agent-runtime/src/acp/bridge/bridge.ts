@@ -11,6 +11,7 @@
  * workspace write policy on client `fs/write_text_file` requests.
  */
 
+import type { JsonRpcObject } from "../../runtime-json-rpc.js";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";
@@ -166,30 +167,27 @@ const THREAD_STOP_CANCEL_TIMEOUT_MS = 4_000;
 interface BridgeNotification {
   jsonrpc: "2.0";
   method: string;
-  params: Record<string, unknown>;
+  params: JsonRpcObject;
 }
 
 interface BridgeRuntimeRequest {
   jsonrpc: "2.0";
   id: number;
   method: string;
-  params: Record<string, unknown>;
+  params: JsonRpcObject;
 }
 
 const { send, sendResult, sendError } = createBridgeIo<
   BridgeNotification | BridgeRuntimeRequest
 >();
 
-function sendNotification(
-  method: string,
-  params: Record<string, unknown>,
-): void {
+function sendNotification(method: string, params: JsonRpcObject): void {
   send({ jsonrpc: "2.0", method, params });
 }
 
 function sendRuntimeRequest(
   method: string,
-  params: Record<string, unknown>,
+  params: JsonRpcObject,
 ): Promise<unknown> {
   runtimeRequestIdCounter += 1;
   const requestId = runtimeRequestIdCounter;
@@ -234,7 +232,7 @@ function resolveBridgeProcessEnvForMcpServer(): AcpMcpServerConfig["env"] {
 }
 
 async function forwardDynamicToolCall(args: {
-  arguments: Record<string, unknown>;
+  arguments: JsonRpcObject;
   callId: string;
   threadId: string;
   tool: string;

@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import { describe, expect, it } from "vitest";
 import {
   createStandaloneBuiltinCompactCommandInput,
@@ -51,7 +52,7 @@ const CURSOR_LIST_COMMAND = {
 
 const THREAD_CONTEXT = { threadId: "thread-1" };
 
-function updateNotification(update: Record<string, unknown>) {
+function updateNotification(update: JsonRpcObject) {
   return {
     jsonrpc: "2.0" as const,
     method: "acp/update",
@@ -521,7 +522,7 @@ describe("acp adapter model cli", () => {
       method: "model/list",
       params: { listCommand: CURSOR_LIST_COMMAND },
     });
-    const params = (plan as { params: Record<string, unknown> }).params;
+    const params = (plan as { params: JsonRpcObject }).params;
     const primaryModels = params.primaryModels as string[];
     expect(primaryModels).toContain("auto");
     expect(primaryModels.length).toBeGreaterThan(1);
@@ -654,8 +655,8 @@ describe("acp adapter model cli", () => {
         modelSelection: { model: "gpt-5.3-codex" },
       },
     });
-    const params = (plan as { params: Record<string, unknown> }).params;
-    const selection = params.modelSelection as Record<string, unknown>;
+    const params = (plan as { params: JsonRpcObject }).params;
+    const selection = params.modelSelection as JsonRpcObject;
     expect("reasoningLevel" in selection).toBe(false);
   });
 
@@ -690,8 +691,8 @@ describe("acp adapter model cli", () => {
       },
       instructionMode: "append",
     });
-    const params = (plan as { params: Record<string, unknown> }).params;
-    const selection = params.modelSelection as Record<string, unknown>;
+    const params = (plan as { params: JsonRpcObject }).params;
+    const selection = params.modelSelection as JsonRpcObject;
     expect("serviceTier" in selection).toBe(false);
   });
 
@@ -703,7 +704,7 @@ describe("acp adapter model cli", () => {
       options: { ...fullProviderExecutionContext, model: "acp-default" },
       instructionMode: "append",
     });
-    const params = (plan as { params: Record<string, unknown> }).params;
+    const params = (plan as { params: JsonRpcObject }).params;
     expect("modelSelection" in params).toBe(false);
     expect(params.agent).toEqual({
       command: "cursor-agent",

@@ -35,12 +35,16 @@ export type SideChatPanelParams = {
   sourceSeqEnd: number | null;
 };
 
+type SideChatPanelParamsCandidate = {
+  [K in keyof SideChatPanelParams]?: unknown;
+};
+
 /** Narrow the persisted (untrusted, JSON-round-tripped) panel params. */
 export function parsePanelParams(value: unknown): SideChatPanelParams | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
-  const record = value as Record<string, unknown>;
+  const record = value as SideChatPanelParamsCandidate;
   if (
     typeof record.threadId !== "string" ||
     record.threadId.length === 0 ||

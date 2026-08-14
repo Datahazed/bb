@@ -35,12 +35,20 @@ interface MemoryRecord {
   updatedAt: number;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+type MemoryRecordCandidate = {
+  [K in keyof MemoryRecord]?: unknown;
+};
+
+function isMemoryRecordCandidate(
+  value: unknown,
+): value is MemoryRecordCandidate {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseMemory(value: unknown): MemoryRecord {
-  if (!isRecord(value)) throw new Error("Memory returned an invalid record.");
+  if (!isMemoryRecordCandidate(value)) {
+    throw new Error("Memory returned an invalid record.");
+  }
   const kind = value.kind;
   if (
     typeof value.id !== "string" ||
@@ -77,15 +85,23 @@ function parseMemory(value: unknown): MemoryRecord {
 }
 
 function parseMemoryList(value: unknown): MemoryRecord[] {
-  if (!isRecord(value) || !Array.isArray(value.memories)) {
+  const candidate = value as { memories?: unknown } | null;
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !Array.isArray(candidate?.memories)
+  ) {
     throw new Error("Memory returned an invalid list.");
   }
-  return value.memories.map(parseMemory);
+  return candidate.memories.map(parseMemory);
 }
 
 function parseUpdatedMemory(value: unknown): MemoryRecord {
-  if (!isRecord(value)) throw new Error("Memory returned an invalid update.");
-  return parseMemory(value.memory);
+  if (typeof value !== "object" || value === null) {
+    throw new Error("Memory returned an invalid update.");
+  }
+  const candidate = value as { memory?: unknown };
+  return parseMemory(candidate.memory);
 }
 
 function errorMessage(error: unknown): string {

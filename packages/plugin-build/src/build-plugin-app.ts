@@ -213,11 +213,21 @@ type ScannerSource = {
   negated: boolean;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+interface PackageJsonCandidate {
+  bb?: unknown;
+  dependencies?: unknown;
+  devDependencies?: unknown;
+}
+
+interface PluginBuildPackageConfigCandidate {
+  pluginTailwindContent?: unknown;
+}
+
+function isRecord(value: unknown): value is object {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function readDependencyNames(pkg: Record<string, unknown>): string[] {
+function readDependencyNames(pkg: PackageJsonCandidate): string[] {
   const names = new Set<string>();
   for (const field of ["dependencies", "devDependencies"] as const) {
     const dependencies = pkg[field];
@@ -231,7 +241,7 @@ function readDependencyNames(pkg: Record<string, unknown>): string[] {
 
 async function readPackageJson(
   filePath: string,
-): Promise<Record<string, unknown>> {
+): Promise<PackageJsonCandidate> {
   let raw: string;
   try {
     raw = await readFile(filePath, "utf8");
@@ -251,14 +261,16 @@ async function readPackageJson(
 }
 
 function readTailwindContentPatterns(
-  pkg: Record<string, unknown>,
+  pkg: PackageJsonCandidate,
   packageJsonPath: string,
 ): string[] {
   const bb = pkg.bb;
-  if (!isRecord(bb) || bb.pluginTailwindContent === undefined) {
+  if (!isRecord(bb)) {
     return [];
   }
-  const patterns = bb.pluginTailwindContent;
+  const config = bb as PluginBuildPackageConfigCandidate;
+  if (config.pluginTailwindContent === undefined) return [];
+  const patterns = config.pluginTailwindContent;
   if (
     !Array.isArray(patterns) ||
     !patterns.every((pattern) => typeof pattern === "string")
@@ -526,7 +538,13 @@ export async function buildPluginApp(
     try {
       authoredCss = await readFile(stagedCssPath, "utf8");
     } catch (error) {
-      if (!isRecord(error) || error.code !== "ENOENT") throw error;
+      if (
+        typeof error !== "object" ||
+        error === null ||
+        Reflect.get(error, "code") !== "ENOENT"
+      ) {
+        throw error;
+      }
     }
     const tailwindCss = (
       await buildTailwindCss(rootDir, pluginId, toolchain)

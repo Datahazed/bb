@@ -78,11 +78,15 @@ export function useTaskEmbed(taskKey: string): {
     [refresh],
   );
   useRealtime("tasks:changed", (payload) => {
-    const taskId = isRecord(payload) ? payload.taskId : undefined;
+    const taskId = isTaskRealtimePayloadCandidate(payload)
+      ? payload.taskId
+      : undefined;
     onEvent((task) => typeof taskId !== "string" || taskId === task.id);
   });
   useRealtime("projects:changed", (payload) => {
-    const projectId = isRecord(payload) ? payload.projectId : undefined;
+    const projectId = isTaskRealtimePayloadCandidate(payload)
+      ? payload.projectId
+      : undefined;
     onEvent(
       (task) => typeof projectId !== "string" || projectId === task.projectId,
     );
@@ -91,7 +95,15 @@ export function useTaskEmbed(taskKey: string): {
   return { state, retry: refresh };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+interface TaskRealtimePayloadCandidate {
+  taskId?: unknown;
+  projectId?: unknown;
+  taskKey?: unknown;
+}
+
+function isTaskRealtimePayloadCandidate(
+  value: unknown,
+): value is TaskRealtimePayloadCandidate {
   return typeof value === "object" && value !== null;
 }
 
@@ -294,7 +306,7 @@ export function TaskDirectiveCard({ attributes }: PluginMessageDirectiveProps) {
  */
 function TaskEmbedPanelContent({ params }: PluginThreadPanelProps) {
   const taskKey =
-    isRecord(params) && typeof params.taskKey === "string"
+    isTaskRealtimePayloadCandidate(params) && typeof params.taskKey === "string"
       ? params.taskKey
       : null;
   if (taskKey === null || !TASK_KEY_PATTERN.test(taskKey.trim())) {

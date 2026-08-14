@@ -58,7 +58,9 @@ function taskThreadRow(id: string, threadId: string, title: string) {
   };
 }
 
-function detailRpc(overrides: Record<string, unknown> = {}) {
+function detailRpc(
+  overrides: Partial<Parameters<typeof app.setRpcHandlers>[0]> = {},
+) {
   return {
     listProjects: () => ({
       projects: [

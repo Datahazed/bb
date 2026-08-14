@@ -97,7 +97,7 @@ describe("useForkThreadFromMessage", () => {
     });
 
     const navigateState = mocks.navigate.mock.calls[0]?.[1]?.state as
-      | Record<string, unknown>
+      | { [FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY]?: ForkThreadCreateSeed }
       | undefined;
     const seed = navigateState?.[FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY] as
       | ForkThreadCreateSeed

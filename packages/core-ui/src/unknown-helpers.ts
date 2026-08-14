@@ -1,9 +1,14 @@
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is object {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-export function toRecord(value: unknown): Record<string, unknown> | null {
+function toRecord(value: unknown): object | null {
   return isRecord(value) ? value : null;
+}
+
+export function getObjectProperty(value: unknown, key: PropertyKey): unknown {
+  const record = toRecord(value);
+  return record === null ? undefined : (Reflect.get(record, key) as unknown);
 }
 
 /**
@@ -31,12 +36,13 @@ export function extractErrorMessage(
   }
   const record = toRecord(value);
   if (!record) return null;
-  if (typeof record.message === "string") {
-    const message = extractErrorMessage(record.message, opts);
+  const recordMessage = getObjectProperty(record, "message");
+  if (typeof recordMessage === "string") {
+    const message = extractErrorMessage(recordMessage, opts);
     if (message) return message;
   }
   for (const key of opts?.legacyKeys ?? ["detail"]) {
-    const message = extractErrorMessage(record[key], opts);
+    const message = extractErrorMessage(getObjectProperty(record, key), opts);
     if (message) return message;
   }
   return null;

@@ -27,6 +27,7 @@ import {
 } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NewThreadRequest } from "@get-bb/plugin-sdk";
+import type { NewThreadPromptBoxProps } from "@/components/promptbox/NewThreadPromptBox";
 import {
   NewThreadComposer,
   type NewThreadComposerState,
@@ -46,7 +47,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
-  NewThreadPromptBox: (props: Record<string, unknown>) => {
+  NewThreadPromptBox: (props: NewThreadPromptBoxProps) => {
     mocks.promptBoxProps.push(props);
     return <div data-testid="new-thread-prompt-box" />;
   },

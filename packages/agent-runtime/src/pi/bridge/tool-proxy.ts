@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../../runtime-json-rpc.js";
 import { Type, type TSchema } from "@earendil-works/pi-ai";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
@@ -9,7 +10,7 @@ export interface DynamicToolDefinition {
 
 export type ToolCallForwarder = (
   toolName: string,
-  args: Record<string, unknown>,
+  args: JsonRpcObject,
 ) => Promise<{ content: string; isError?: boolean }>;
 
 /**
@@ -29,7 +30,7 @@ export function buildDynamicTools(
       parameters,
       async execute(
         _toolCallId: string,
-        params: Record<string, unknown>,
+        params: JsonRpcObject,
         _signal: AbortSignal | undefined,
       ) {
         const result = await forwardToolCall(def.name, params);

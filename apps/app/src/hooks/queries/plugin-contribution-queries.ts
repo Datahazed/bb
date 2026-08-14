@@ -24,6 +24,7 @@ export interface PluginContributions {
   mentionProviders: PluginMentionProviderContribution[];
 }
 
+type Candidate<T> = { [K in keyof T]?: unknown };
 
 const EMPTY_CONTRIBUTIONS: PluginContributions = {
   mentionProviders: [],
@@ -33,7 +34,7 @@ function toMentionProviderContribution(
   value: unknown,
 ): PluginMentionProviderContribution | null {
   if (typeof value !== "object" || value === null) return null;
-  const provider = value as Record<string, unknown>;
+  const provider = value as Candidate<PluginMentionProviderContribution>;
   const triggers = normalizePluginMentionTriggers(provider.triggers);
   if (triggers === null) return null;
   if (
@@ -102,7 +103,7 @@ export interface PluginMentionSearchGroup {
 
 function isMentionSearchItem(value: unknown): value is PluginMentionSearchItem {
   if (typeof value !== "object" || value === null) return false;
-  const item = value as Record<string, unknown>;
+  const item = value as Candidate<PluginMentionSearchItem>;
   return (
     typeof item.itemId === "string" &&
     typeof item.title === "string" &&
@@ -115,7 +116,7 @@ function isMentionSearchGroup(
   value: unknown,
 ): value is PluginMentionSearchGroup {
   if (typeof value !== "object" || value === null) return false;
-  const group = value as Record<string, unknown>;
+  const group = value as Candidate<PluginMentionSearchGroup>;
   return (
     typeof group.pluginId === "string" &&
     typeof group.providerId === "string" &&

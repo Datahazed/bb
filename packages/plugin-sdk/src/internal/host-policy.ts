@@ -12,6 +12,7 @@ import type {
   PluginRpcMethodContract,
   StandardSchemaV1,
 } from "../rpc-contract.js";
+import type { JsonValue } from "../json-value.js";
 
 /**
  * Shared registration policy for the real plugin host and the in-process fake.
@@ -117,7 +118,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
  */
 export function registerSettingDescriptors(
   target: PluginSettingDescriptors,
-  added: Record<string, unknown>,
+  added: object,
 ): PluginSettingDescriptors {
   const validated: PluginSettingDescriptors = {};
   for (const [key, raw] of Object.entries(added)) {
@@ -156,7 +157,7 @@ export function registerSettingDescriptors(
 /** Validate a settings update. `null` means unset. */
 export function validateSettingsUpdate(
   descriptors: PluginSettingDescriptors,
-  values: Record<string, unknown>,
+  values: Record<string, JsonValue>,
 ): string[] {
   const errors: string[] = [];
   for (const [key, value] of Object.entries(values)) {

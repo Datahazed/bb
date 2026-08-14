@@ -1,6 +1,7 @@
 import { jsonObjectSchema, turnScope } from "@bb/domain";
 import type {
   ClaudeTaskToolName,
+  JsonObject,
   Thread,
   ThreadEventItemStatus,
   ThreadEventPlanStep,
@@ -28,7 +29,7 @@ interface TurnPlanEventArgs {
 }
 
 interface TaskToolEventArgs {
-  args?: Record<string, unknown>;
+  args?: JsonObject;
   itemId?: string;
   result?: unknown;
   seq: number;
@@ -638,12 +639,7 @@ describe("extractThreadTimelinePendingTodos", () => {
     });
   });
 
-  it.each<Thread["status"]>([
-    "idle",
-    "starting",
-    "stopping",
-    "error",
-  ])(
+  it.each<Thread["status"]>(["idle", "starting", "stopping", "error"])(
     "returns null when the thread status is %s, even with valid TodoWrite snapshots",
     (status) => {
       const result = extractThreadTimelinePendingTodos(status, [

@@ -3,7 +3,9 @@ import type { Writable } from "node:stream";
 import { z } from "zod";
 import type { ProviderRequestCommandPlan } from "./provider-adapter.js";
 
-export type JsonRpcObject = Record<string, unknown>;
+export interface JsonRpcObject {
+  [key: string]: unknown;
+}
 
 export interface JsonRpcMessage extends JsonRpcObject {
   jsonrpc: "2.0";

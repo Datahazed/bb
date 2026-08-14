@@ -10,7 +10,7 @@ import simpleNotes, { docsRpcContract } from "./server";
 
 const temporaryDirectories: string[] = [];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function hasVaultId(value: unknown): value is { vaultId?: unknown } {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -1084,7 +1084,7 @@ describe("Docs vault operations", () => {
           harness.realtimeSignals.some(
             (signal) =>
               signal.channel === "vault-changed" &&
-              isRecord(signal.payload) &&
+              hasVaultId(signal.payload) &&
               signal.payload.vaultId === "personal",
           ),
         1_000,

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getLatestThreadSequence, getThread } from "@bb/db";
-import { turnScope } from "@bb/domain";
+import { turnScope, type JsonObject } from "@bb/domain";
 import {
   generatedSkillsRootPath,
   pluginCommandsSkillDir,
@@ -162,8 +162,7 @@ describe("hero plugin: slack-bot", () => {
   it("webhook → spawn → thread.idle → chat.postMessage, end to end", async () => {
     const server = await startTestServer({ appVersion: APP_VERSION });
     const realFetch = globalThis.fetch;
-    const slackCalls: Array<{ url: string; body: Record<string, unknown> }> =
-      [];
+    const slackCalls: Array<{ url: string; body: JsonObject }> = [];
     try {
       const { host } = seedHostSession(server.deps);
       seedPrimaryHost(server.deps, host.id);
@@ -188,7 +187,7 @@ describe("hero plugin: slack-bot", () => {
         if (url.startsWith("https://slack.com/")) {
           slackCalls.push({
             url,
-            body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+            body: JSON.parse(String(init?.body)) as JsonObject,
           });
           return new Response(JSON.stringify({ ok: true }), {
             headers: { "content-type": "application/json" },

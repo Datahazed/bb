@@ -583,7 +583,7 @@ export function createPluginApi(options: {
       assertLive();
       const validated = registerSettingDescriptors(
         settingsRecord.descriptors,
-        descriptors as Record<string, unknown>,
+        descriptors,
       );
       type Values = PluginSettingsValues<typeof descriptors>;
       return {

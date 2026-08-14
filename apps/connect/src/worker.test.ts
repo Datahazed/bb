@@ -1249,7 +1249,9 @@ type MockState = {
   api: DurableObjectState;
 };
 
-function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
+function mockDoState(
+  initialStorage: { machineId?: string; protocolVersion?: number } = {},
+): MockState {
   const storage = new Map<string, unknown>(Object.entries(initialStorage));
   const entries: Array<{ ws: WebSocket; tags: string[] }> = [];
   let restore = Promise.resolve();

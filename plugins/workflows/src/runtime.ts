@@ -81,14 +81,13 @@ function assertJsonValue(
     if (Object.getOwnPropertySymbols(value).length > 0) {
       throw new Error(`${path} contains symbol properties`);
     }
-    const object = value as Record<string, unknown>;
-    for (const key of Object.getOwnPropertyNames(object)) {
+    for (const key of Object.getOwnPropertyNames(value)) {
       if (key === "__proto__" || key === "constructor" || key === "prototype") {
         throw new Error(
           `${path} contains forbidden key ${JSON.stringify(key)}`,
         );
       }
-      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor === undefined || !("value" in descriptor)) {
         throw new Error(`${path}.${key} must be a data property`);
       }

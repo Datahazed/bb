@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
@@ -44,7 +45,7 @@ export interface CreateFakeProviderExecutionContext {
 
 interface FakeEventMessage {
   method: string;
-  params: Record<string, unknown>;
+  params: JsonRpcObject;
 }
 
 const DEFAULT_ADAPTER_ID = "fake";
@@ -216,34 +217,29 @@ function buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is JsonRpcObject {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function stringParam(
-  params: Record<string, unknown>,
-  key: string,
-): string | null {
+function stringParam(params: JsonRpcObject, key: string): string | null {
   const value = params[key];
   return typeof value === "string" ? value : null;
 }
 
 function optionalStringParam(
-  params: Record<string, unknown>,
+  params: JsonRpcObject,
   key: string,
 ): string | undefined {
   const value = params[key];
   return typeof value === "string" ? value : undefined;
 }
 
-function booleanParam(params: Record<string, unknown>, key: string): boolean {
+function booleanParam(params: JsonRpcObject, key: string): boolean {
   const value = params[key];
   return typeof value === "boolean" ? value : false;
 }
 
-function turnIdParam(
-  params: Record<string, unknown>,
-): string | null | undefined {
+function turnIdParam(params: JsonRpcObject): string | null | undefined {
   const value = params.turnId;
   if (value === null) {
     return null;

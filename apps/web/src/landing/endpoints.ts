@@ -31,8 +31,8 @@ export type MarketingEnv = {
 };
 
 type DownloadEventProperties = {
-  "$current_url": string;
-  "$referrer"?: string;
+  $current_url: string;
+  $referrer?: string;
   download_target: typeof DOWNLOAD_TARGET;
   placement: DownloadPlacement;
   tracking_source: typeof TRACKING_SOURCE;
@@ -76,7 +76,10 @@ export async function handleDownloadMacos(
 
 function jsonResponse(body: object, status: number): Response {
   return new Response(JSON.stringify(body), {
-    headers: { "Cache-Control": "no-store", "content-type": "application/json" },
+    headers: {
+      "Cache-Control": "no-store",
+      "content-type": "application/json",
+    },
     status,
   });
 }
@@ -185,16 +188,20 @@ async function resolveMacosDownloadUrl(): Promise<string> {
 }
 
 function findMacosInstallerAssetName(feed: unknown): string | null {
-  if (!isRecord(feed) || !Array.isArray(feed.files)) {
+  if (!isRecord(feed)) {
     return null;
   }
 
-  for (const file of feed.files) {
-    if (!isRecord(file) || typeof file.url !== "string") {
+  const files = (feed as { files?: unknown }).files;
+  if (!Array.isArray(files)) return null;
+
+  for (const file of files) {
+    if (!isRecord(file)) {
       continue;
     }
-    if (isMacosInstallerAssetName(file.url)) {
-      return file.url;
+    const url = (file as { url?: unknown }).url;
+    if (typeof url === "string" && isMacosInstallerAssetName(url)) {
+      return url;
     }
   }
   return null;
@@ -209,13 +216,11 @@ function isMacosInstallerAssetName(value: string): boolean {
   );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is object {
   return typeof value === "object" && value !== null;
 }
 
-async function trackDownloadClick(
-  args: TrackDownloadClickArgs,
-): Promise<void> {
+async function trackDownloadClick(args: TrackDownloadClickArgs): Promise<void> {
   if (!args.postHogKey) {
     return;
   }
@@ -285,7 +290,9 @@ function parseDownloadPlacement(
   }
 }
 
-function readReferrerSearchParams(referrer: string | null): URLSearchParams | null {
+function readReferrerSearchParams(
+  referrer: string | null,
+): URLSearchParams | null {
   if (!referrer) {
     return null;
   }

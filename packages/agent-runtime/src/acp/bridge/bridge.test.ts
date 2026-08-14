@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../../runtime-json-rpc.js";
 import {
   chmodSync,
   existsSync,
@@ -234,7 +235,7 @@ function callDynamicToolBridge(args: {
   threadId: string;
   token: string;
   tool: string;
-  toolArguments: Record<string, unknown>;
+  toolArguments: JsonRpcObject;
 }): Promise<unknown> {
   return new Promise((resolveCall, rejectCall) => {
     const socket = createConnection({ host: args.host, port: args.port });

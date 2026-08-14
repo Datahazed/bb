@@ -1,6 +1,7 @@
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import { createInterface } from "node:readline";
 
-type JsonRecord = Record<string, unknown>;
+type JsonRecord = JsonRpcObject;
 type JsonRpcId = number | string;
 
 interface ActiveTurn {

@@ -9,6 +9,7 @@ import {
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
+import type { JsonObject } from "@bb/domain";
 import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
@@ -30,7 +31,7 @@ const VALID_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/></svg>',
 );
 
-function remoteEntry(overrides: Record<string, unknown> = {}) {
+function remoteEntry(overrides: JsonObject = {}): JsonObject {
   return {
     id: "widgets",
     displayName: "Acme Widgets",
@@ -49,7 +50,7 @@ function remoteEntry(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function manifest(plugins: unknown[]): unknown {
+function manifest(plugins: JsonObject[]): JsonObject {
   return {
     schemaVersion: 1,
     name: "bb-official",
@@ -364,7 +365,7 @@ describe("plugin catalog service", () => {
       const catalog = service({
         fetch: async () =>
           jsonResponse({
-            ...(manifest([remoteEntry()]) as Record<string, unknown>),
+            ...manifest([remoteEntry()]),
             name: "someone-else",
           }),
       });
@@ -530,7 +531,7 @@ describe("plugin catalog service", () => {
   });
 
   describe("catalog installs", () => {
-    async function refreshedCatalog(entry: Record<string, unknown>) {
+    async function refreshedCatalog(entry: JsonObject) {
       const catalog = service({
         fetch: async (url) =>
           url === MANIFEST_URL

@@ -5,10 +5,7 @@ import {
   type TaskStatus,
 } from "../../shared/contract.js";
 import { TASK_SORTS, type TaskSort } from "../../shared/sort.js";
-import {
-  EMPTY_FILTERS,
-  type ListFilterState,
-} from "./filter-bar.js";
+import { EMPTY_FILTERS, type ListFilterState } from "./filter-bar.js";
 
 /**
  * Client-local list filter/sort preferences. Stored in the browser profile so
@@ -21,10 +18,7 @@ import {
 export const LIST_PREFERENCE_STORAGE_KEY = "bb-tasks:list-preferences";
 export const LIST_PREFERENCE_VERSION = 1 as const;
 
-export type ListPreferenceScope =
-  | "all"
-  | "active"
-  | `project:${string}`;
+export type ListPreferenceScope = "all" | "active" | `project:${string}`;
 
 export interface ListPreference {
   filters: ListFilterState;
@@ -38,8 +32,23 @@ export const DEFAULT_LIST_PREFERENCE: ListPreference = {
 
 interface StoredDocumentV1 {
   version: typeof LIST_PREFERENCE_VERSION;
-  scopes: Record<string, unknown>;
+  scopes: StoredScopes;
 }
+
+interface ListPreferenceCandidate {
+  filters?: unknown;
+  statuses?: unknown;
+  priorities?: unknown;
+  labelNames?: unknown;
+  sort?: unknown;
+}
+
+interface StoredDocumentCandidate {
+  version?: unknown;
+  scopes?: unknown;
+}
+
+type StoredScopes = { [scope: string]: unknown };
 
 export function listPreferenceScope(
   projectId: string | null,
@@ -116,13 +125,13 @@ export function sanitizeListPreference(raw: unknown): ListPreference {
       sort: DEFAULT_LIST_PREFERENCE.sort,
     };
   }
-  const record = raw as Record<string, unknown>;
+  const record = raw as ListPreferenceCandidate;
   const filtersRaw =
     record.filters !== undefined &&
     record.filters !== null &&
     typeof record.filters === "object" &&
     !Array.isArray(record.filters)
-      ? (record.filters as Record<string, unknown>)
+      ? (record.filters as ListPreferenceCandidate)
       : record;
   return {
     filters: {
@@ -137,7 +146,7 @@ export function sanitizeListPreference(raw: unknown): ListPreference {
 interface ParsedStorage {
   /** Document version as stored, when a number. */
   version: number | null;
-  scopes: Record<string, unknown>;
+  scopes: StoredScopes;
   /** True when version is greater than this build understands. */
   isFutureVersion: boolean;
 }
@@ -154,7 +163,7 @@ function readStorage(): ParsedStorage | null {
     ) {
       return null;
     }
-    const record = parsed as Record<string, unknown>;
+    const record = parsed as StoredDocumentCandidate;
     if (
       record.scopes === null ||
       typeof record.scopes !== "object" ||
@@ -171,16 +180,13 @@ function readStorage(): ParsedStorage | null {
     // Only v1 (or missing version with a scopes map from early experiments)
     // is a fully known shape. Future versions may still expose a scopes map
     // for best-effort reads of known fields.
-    if (
-      version !== null &&
-      version < LIST_PREFERENCE_VERSION
-    ) {
+    if (version !== null && version < LIST_PREFERENCE_VERSION) {
       // No older versions shipped; refuse rather than silently invent fields.
       return null;
     }
     return {
       version,
-      scopes: record.scopes as Record<string, unknown>,
+      scopes: record.scopes as StoredScopes,
       isFutureVersion,
     };
   } catch {

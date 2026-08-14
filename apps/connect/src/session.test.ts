@@ -3,7 +3,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import {
+  drizzle,
+  type BetterSQLite3Database,
+} from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   labelClaim,
@@ -31,7 +34,7 @@ const MIGRATIONS_DIR = fileURLToPath(
 );
 
 let sqlite: Database.Database;
-let db: ReturnType<typeof drizzle>;
+let db: BetterSQLite3Database<typeof schema>;
 
 beforeEach(() => {
   sqlite = new Database(":memory:");

@@ -5,6 +5,7 @@ import type {
 } from "@bb/server-contract";
 import { pluginSettingsUpdateRequestSchema } from "@bb/server-contract";
 import { useQuery } from "@tanstack/react-query";
+import type { z } from "zod";
 import { createPluginsClient } from "./plugin-client";
 import { pluginListQueryKey, pluginSettingsViewQueryKey } from "./query-keys";
 
@@ -141,6 +142,10 @@ export interface PluginSettingsView {
   values: PluginSettingsResponse["values"];
 }
 
+export type PluginSettingsUpdate = z.infer<
+  typeof pluginSettingsUpdateRequestSchema
+>["values"];
+
 export async function fetchPluginSettingsView(
   fetchImpl: FetchLike,
   pluginId: string,
@@ -158,7 +163,7 @@ export async function fetchPluginSettingsView(
 export async function updatePluginSettings(
   fetchImpl: FetchLike,
   pluginId: string,
-  values: Record<string, unknown>,
+  values: PluginSettingsUpdate,
 ): Promise<PluginSettingsView> {
   const request = pluginSettingsUpdateRequestSchema.parse({ values });
   const result = await createPluginsClient(fetchImpl).updateSettings({

@@ -498,9 +498,7 @@ describe("plugin install flows", () => {
           }),
         ).rejects.toThrow(/marketplace/);
       }
-      expect(
-        getInstalledPluginRegistration(db, "registry"),
-      ).toBeUndefined();
+      expect(getInstalledPluginRegistration(db, "registry")).toBeUndefined();
     });
 
     it("guards a listed npm registry while it resolves an install plan", async () => {
@@ -1129,7 +1127,11 @@ describe("plugin install flows", () => {
         await writeFile(
           manifestPath,
           JSON.stringify({
-            ...(manifest as Record<string, unknown>),
+            ...(manifest as {
+              name?: unknown;
+              version?: unknown;
+              bb?: unknown;
+            }),
             dependencies: { "bb-test-greeter": `file:${depDir}` },
           }),
         );

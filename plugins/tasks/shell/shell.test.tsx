@@ -52,7 +52,9 @@ const folder = {
   createdAt: "2026-07-15T00:00:00.000Z",
 };
 
-function seededRpc(overrides: Record<string, unknown> = {}) {
+function seededRpc(
+  overrides: Partial<Parameters<typeof app.setRpcHandlers>[0]> = {},
+) {
   return {
     listProjects: () => ({ projects: [project] }),
     listFolders: () => ({ folders: [folder] }),

@@ -1200,7 +1200,13 @@ describe("useComposer", () => {
     ) as Array<{
       start: number;
       end: number;
-      resource: Record<string, unknown>;
+      resource: {
+        kind: string;
+        pluginId: string;
+        icon: string | null;
+        itemId: string;
+        label: string;
+      };
     }>;
     expect(mentions).toEqual([
       {
@@ -1596,7 +1602,7 @@ describe("plugin thread panel actions", () => {
 
   it("contains a throwing run and rejects non-JSON params without opening", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const cyclic: Record<string, unknown> = {};
+    const cyclic: { self?: unknown } = {};
     cyclic.self = cyclic;
     setPluginSlotRegistrations(
       "demo",

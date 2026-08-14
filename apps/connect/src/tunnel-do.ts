@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { machine, server } from "@bb/connect-db";
+import { machine, schema, server } from "@bb/connect-db";
 import {
   HEARTBEAT_REQUEST,
   HEARTBEAT_RESPONSE,
@@ -232,7 +232,7 @@ export class TunnelDO {
     const machineId = await this.state.storage.get<string>("machineId");
     if (!serverId && !machineId) return;
     try {
-      const db = drizzle(this.env.DB);
+      const db = drizzle(this.env.DB, { schema });
       if (machineId) {
         await db
           .update(machine)

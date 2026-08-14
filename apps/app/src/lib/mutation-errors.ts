@@ -1,4 +1,4 @@
-import { extractErrorMessage, toRecord } from "@bb/core-ui";
+import { extractErrorMessage, getObjectProperty } from "@bb/core-ui";
 import { BbHttpError } from "@bb/sdk/browser";
 import { appToast } from "@/components/ui/app-toast";
 import { HttpError } from "./api";
@@ -26,7 +26,9 @@ export interface MutationErrorMeta {
   showErrorToast?: boolean;
 }
 
-type MutationErrorMetaInput = Readonly<Record<string, unknown>> | undefined;
+type MutationErrorMetaInput =
+  | Readonly<{ [K in keyof MutationErrorMeta]?: unknown }>
+  | undefined;
 
 function normalizeMessage(message: string): string {
   return message.replace(/\s+/g, " ").trim();
@@ -45,8 +47,7 @@ function isAbortLikeError(error: unknown): boolean {
     return true;
   }
 
-  const record = toRecord(error);
-  return record?.name === "AbortError";
+  return getObjectProperty(error, "name") === "AbortError";
 }
 
 function isNetworkTransportError(error: unknown): boolean {
@@ -58,12 +59,12 @@ function isNetworkTransportError(error: unknown): boolean {
     return false;
   }
 
-  const record = toRecord(error);
-  if (!record || typeof record.message !== "string") {
+  const message = getObjectProperty(error, "message");
+  if (typeof message !== "string") {
     return false;
   }
 
-  const normalizedMessage = normalizeMessage(record.message).toLowerCase();
+  const normalizedMessage = normalizeMessage(message).toLowerCase();
   return (
     normalizedMessage.includes("failed to fetch") ||
     normalizedMessage.includes("load failed") ||

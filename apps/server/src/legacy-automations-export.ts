@@ -6,7 +6,14 @@ import { resolveContainedPath } from "@bb/process-utils";
 
 interface LegacyAutomationsExportLogger {
   error(fields: { err: unknown }, message: string): void;
-  info(fields: Record<string, unknown>, message: string): void;
+  info(fields: LegacyAutomationsExportLogFields, message: string): void;
+}
+
+interface LegacyAutomationsExportLogFields {
+  automationCount: number;
+  importPath: string;
+  runCount: number;
+  scriptCount: number;
 }
 
 interface SqliteCountRow {
@@ -33,7 +40,9 @@ const automationRowSchema = z
     nextRunAt: z.number().int().nullable(),
     lastRunAt: z.number().int().nullable(),
     runCount: z.number().int().min(0),
-    lastRunStatus: z.enum(["running", "succeeded", "failed", "skipped"]).nullable(),
+    lastRunStatus: z
+      .enum(["running", "succeeded", "failed", "skipped"])
+      .nullable(),
     lastRunThreadId: z.string().min(1).nullable(),
     lastError: z.string().nullable(),
     createdAt: z.number().int(),
@@ -100,7 +109,9 @@ function containedPath(rootPath: string, pathFromRoot: string): string {
     candidatePath: resolve(rootPath, pathFromRoot),
   });
   if (candidate !== null) return candidate;
-  throw new Error(`Legacy automation script path escapes its directory: ${pathFromRoot}`);
+  throw new Error(
+    `Legacy automation script path escapes its directory: ${pathFromRoot}`,
+  );
 }
 
 function readLegacyAutomationScripts(args: {
@@ -156,13 +167,23 @@ const legacyAutomationExportFileSchema = z
   })
   .strict();
 
-type LegacyAutomationExportFile = z.infer<typeof legacyAutomationExportFileSchema>;
+type LegacyAutomationExportFile = z.infer<
+  typeof legacyAutomationExportFileSchema
+>;
 
 function legacyImportPath(dataDir: string): string {
-  return join(dataDir, "plugins", "automations", "import", "legacy-automations.json");
+  return join(
+    dataDir,
+    "plugins",
+    "automations",
+    "import",
+    "legacy-automations.json",
+  );
 }
 
-function listLegacyAutomations(db: DbConnection): LegacyAutomationExportFile["automations"] {
+function listLegacyAutomations(
+  db: DbConnection,
+): LegacyAutomationExportFile["automations"] {
   return z
     .array(automationRowSchema)
     .parse(

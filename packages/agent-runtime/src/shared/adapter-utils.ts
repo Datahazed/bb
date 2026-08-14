@@ -6,7 +6,12 @@
  */
 
 import { z } from "zod";
-import type { ThreadEventItem } from "@bb/domain";
+import {
+  jsonObjectSchema,
+  type JsonObject,
+  type ThreadEventItem,
+} from "@bb/domain";
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import { contentWrapperSchema, textBlockSchema } from "./tool-arg-schemas.js";
 import { getStringProperty, isRecord } from "./provider-visibility-helpers.js";
 
@@ -237,10 +242,9 @@ export function toOptionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-export function toOptionalRecord(
-  value: unknown,
-): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
+export function toOptionalRecord(value: unknown): JsonObject | undefined {
+  const parsed = jsonObjectSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function withParentToolCallId<TItem extends ThreadEventItem>(
@@ -275,7 +279,7 @@ export function buildShellEnvironmentPolicyConfig(
 }
 
 export function extractEnvOverrides(
-  config: Record<string, unknown> | undefined,
+  config: JsonRpcObject | undefined,
 ): Record<string, string> {
   const envOverrides: Record<string, string> = {};
   for (const [key, value] of Object.entries(config ?? {})) {

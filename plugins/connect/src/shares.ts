@@ -635,7 +635,8 @@ export class ShareRegistry {
       await this.options.kv.delete(SHARES_KV_KEY);
       return;
     }
-    const map: Record<string, unknown> = {};
+    const map: { [storageKey: string]: z.infer<typeof persistedShareSchema> } =
+      {};
     for (const share of this.shares.values()) {
       const storageKey =
         share.hostId === null

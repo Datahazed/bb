@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -447,7 +448,7 @@ describe("pi provider adapter", () => {
       },
     });
     expect(
-      (cmd as { params: { config?: Record<string, unknown> } }).params.config,
+      (cmd as { params: { config?: JsonRpcObject } }).params.config,
     ).toMatchObject({
       "shell_environment_policy.set.BB_THREAD_ID": "bb-thread-1",
       "shell_environment_policy.set.TEST_VAR": "123",

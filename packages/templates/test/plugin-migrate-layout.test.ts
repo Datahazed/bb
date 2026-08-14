@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { JsonObject } from "@bb/domain";
 import {
   migratePluginToPackageLayout,
   resolvePluginSdkLayout,
@@ -26,8 +27,8 @@ const SDK_VERSION = "0.4.3";
 async function writeVendoredPlugin(
   rootDir: string,
   overrides: {
-    manifest?: Record<string, unknown>;
-    tsconfig?: Record<string, unknown>;
+    manifest?: JsonObject;
+    tsconfig?: JsonObject;
     declarations?: string[];
   } = {},
 ): Promise<void> {
@@ -76,9 +77,9 @@ async function writeVendoredPlugin(
   }
 }
 
-async function readJson(path: string): Promise<Record<string, unknown>> {
+async function readJson(path: string): Promise<JsonObject> {
   const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
-  return parsed as Record<string, unknown>;
+  return parsed as JsonObject;
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -130,7 +131,10 @@ describe("migratePluginToPackageLayout", () => {
     expect(manifest.dependencies).toEqual({ zod: "^4.3.6" });
 
     const tsconfig = await readJson(join(rootDir, "tsconfig.json"));
-    const compilerOptions = tsconfig.compilerOptions as Record<string, unknown>;
+    const compilerOptions = tsconfig.compilerOptions as {
+      paths?: unknown;
+      strict?: unknown;
+    };
     // The SDK maps are gone; the shadcn alias the author owns is not.
     expect(compilerOptions.paths).toEqual({ "@/*": ["./*"] });
     expect(compilerOptions.strict).toBe(true);
@@ -148,9 +152,11 @@ describe("migratePluginToPackageLayout", () => {
     });
     expect(raised.enginesFloor).toEqual({ from: ">=0.2.0", to: ">=0.4.3" });
     expect(
-      ((await readJson(join(rootDir, "package.json"))).engines as
-        | Record<string, string>
-        | undefined)?.bbPluginSdk,
+      (
+        (await readJson(join(rootDir, "package.json"))).engines as
+          | Record<string, string>
+          | undefined
+      )?.bbPluginSdk,
     ).toBe(">=0.4.3");
 
     // A plugin that already demands more of the host keeps that requirement:
@@ -170,10 +176,12 @@ describe("migratePluginToPackageLayout", () => {
       });
       expect(result.enginesFloor).toBeNull();
       expect(
-        ((await readJson(join(newer, "package.json"))).engines as Record<
-          string,
-          string
-        >).bbPluginSdk,
+        (
+          (await readJson(join(newer, "package.json"))).engines as Record<
+            string,
+            string
+          >
+        ).bbPluginSdk,
       ).toBe(">=9.1.0");
     } finally {
       await rm(newer, { recursive: true, force: true });
@@ -295,9 +303,9 @@ describe("migratePluginToPackageLayout", () => {
       "@bb/plugin-sdk/app",
     ]);
     const tsconfig = await readJson(join(rootDir, "tsconfig.json"));
-    expect(
-      (tsconfig.compilerOptions as Record<string, unknown>).paths,
-    ).toEqual({ "@/*": ["./*"] });
+    expect((tsconfig.compilerOptions as { paths?: unknown }).paths).toEqual({
+      "@/*": ["./*"],
+    });
     expect((await resolvePluginSdkLayout(rootDir)).kind).toBe("package");
   });
 
@@ -547,7 +555,10 @@ describe("migratePluginToPackageLayout", () => {
       join(rootDir, "tsconfig.json"),
       '{\n  // paths\n  "compilerOptions": { "paths": {} }\n}\n',
     );
-    const manifestBefore = await readFile(join(rootDir, "package.json"), "utf8");
+    const manifestBefore = await readFile(
+      join(rootDir, "package.json"),
+      "utf8",
+    );
 
     await expect(
       migratePluginToPackageLayout({ rootDir, sdkVersion: SDK_VERSION }),
@@ -611,7 +622,9 @@ describe("setPluginSdkPin", () => {
     expect((manifest.engines as Record<string, string>).bbPluginSdk).toBe(
       ">=0.2.0",
     );
-    expect(await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION })).toBeNull();
+    expect(
+      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION }),
+    ).toBeNull();
   });
 
   it("moves a runtime-declared SDK into devDependencies rather than duplicating it", async () => {
@@ -667,6 +680,8 @@ describe("setPluginSdkPin", () => {
       "@get-bb/plugin-sdk": SDK_VERSION,
     });
     // And now it really is a no-op.
-    expect(await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION })).toBeNull();
+    expect(
+      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION }),
+    ).toBeNull();
   });
 });

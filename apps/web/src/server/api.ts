@@ -12,6 +12,7 @@ import {
   machineRoutingKey,
   profile,
   server,
+  schema,
   user,
 } from "@bb/connect-db";
 import type { ConnectDb, LabelAvailability, LabelClaim } from "@bb/connect-db";
@@ -63,7 +64,7 @@ function serverUrlForLabel(label: string, template: string): string {
 
 export function depsFromEnv(env: Env): Deps {
   return {
-    db: drizzle(env.DB),
+    db: drizzle(env.DB, { schema }),
     appUrl: env.APP_URL,
     serverUrlTemplate: resolveServerUrlTemplate(
       env.CONNECT_SERVER_URL_TEMPLATE,
@@ -237,7 +238,8 @@ export async function getAccountState(
         id: row.id,
         name: row.name,
         subdomain: row.subdomain,
-        online: lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
+        online:
+          lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
         lastSeenAt: lastSeenMs,
         createdAt: row.createdAt.getTime(),
       };

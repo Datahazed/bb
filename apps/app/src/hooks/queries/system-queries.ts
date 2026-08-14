@@ -3,7 +3,7 @@ import {
   listBuiltInAgentProviderInfos,
   listClaudeCodeFallbackModels,
 } from "@bb/agent-providers";
-import { toRecord } from "@bb/core-ui";
+import { getObjectProperty } from "@bb/core-ui";
 import type {
   SystemCliSkillsStatusResponse,
   SystemConfigResponse,
@@ -88,7 +88,7 @@ function claudeCodePlaceholderExecutionOptions(
 }
 
 function isAbortLikeError(error: unknown): boolean {
-  return toRecord(error)?.name === "AbortError";
+  return getObjectProperty(error, "name") === "AbortError";
 }
 
 function shouldRetrySystemExecutionOptions(

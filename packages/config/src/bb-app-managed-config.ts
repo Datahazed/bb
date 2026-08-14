@@ -30,7 +30,13 @@ const CUSTOM_ACP_AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 const CUSTOM_ACP_AGENT_LOGO_PATTERN = /\.(?:svg|png|webp)$/iu;
 
 export interface BbAppManagedConfigWarningLogger {
-  warn(fields: Record<string, unknown>, message: string): void;
+  warn(fields: CustomAcpAgentWarningFields, message: string): void;
+}
+
+export interface CustomAcpAgentWarningFields {
+  error: string;
+  index: number;
+  providerId?: string;
 }
 
 export interface ParseBbAppManagedConfigOptions {
@@ -188,7 +194,7 @@ export type BbAppManagedEnvFile = z.infer<typeof bbAppManagedEnvFileSchema>;
 
 function warnInvalidCustomAcpAgent(
   logger: BbAppManagedConfigWarningLogger | undefined,
-  fields: Record<string, unknown>,
+  fields: CustomAcpAgentWarningFields,
 ): void {
   logger?.warn(fields, "Ignoring invalid custom ACP agent config entry");
 }

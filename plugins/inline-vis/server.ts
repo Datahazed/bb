@@ -32,7 +32,13 @@ function requireNonEmptyString(value: unknown, field: string): string {
   return value.trim();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+type PrepareHtmlPreviewInputCandidate = {
+  [K in keyof PrepareHtmlPreviewInput]?: unknown;
+};
+
+function isPrepareHtmlPreviewInputCandidate(
+  value: unknown,
+): value is PrepareHtmlPreviewInputCandidate {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -95,7 +101,7 @@ export function resolveContainedHtmlPath(
 }
 
 function parsePrepareHtmlPreviewInput(input: unknown): PrepareHtmlPreviewInput {
-  if (!isRecord(input)) {
+  if (!isPrepareHtmlPreviewInputCandidate(input)) {
     throw new Error("expected { threadId: string, file: string }");
   }
   // Reject unknown keys so the contract stays explicit.
@@ -112,10 +118,10 @@ function parsePrepareHtmlPreviewInput(input: unknown): PrepareHtmlPreviewInput {
 }
 
 function httpStatus(error: unknown): number | null {
-  if (!isRecord(error)) {
+  if (typeof error !== "object" || error === null) {
     return null;
   }
-  const status = error.status;
+  const status = Reflect.get(error, "status");
   return typeof status === "number" ? status : null;
 }
 

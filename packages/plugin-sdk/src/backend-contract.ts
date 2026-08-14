@@ -6,6 +6,8 @@ import type { ThreadResponse } from "@bb/server-contract";
 import type { JsonValue } from "./json-value.js";
 import type { PluginRpcContract, PluginRpcHandlers } from "./rpc-contract.js";
 
+type PluginAgentToolParameters = { [key: string]: JsonValue };
+
 /**
  * The backend plugin API contract — the `bb` object handed to a plugin's
  * `server.ts` factory (`export default function plugin(bb: BbPluginApi)`).
@@ -432,7 +434,7 @@ export interface PluginAgentToolSelection {
    * parameter schema. Execution-side validation still runs the registered
    * parameters, so the override must only narrow what the registered schema
    * already accepts. */
-  parameters: Record<string, unknown>;
+  parameters: PluginAgentToolParameters;
 }
 
 /** Per-resolution selection returned by {@link PluginAgents.configure}. */
@@ -495,7 +497,7 @@ export interface PluginAgents {
   registerTool(
     tool: PluginAgentToolRegistrationBase & {
       /** Raw JSON-schema escape hatch; params arrive unvalidated. */
-      parameters: Record<string, unknown>;
+      parameters: PluginAgentToolParameters;
       execute(
         params: unknown,
         ctx: PluginAgentToolContext,

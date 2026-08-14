@@ -25,7 +25,18 @@ interface RecordedThreadPayload {
   error?: string | null;
 }
 
-const globals = globalThis as Record<string, unknown>;
+const globals = globalThis as typeof globalThis & {
+  __activeEvents?: RecordedThreadPayload[];
+  __idleEvents?: RecordedThreadPayload[];
+  __failedEvents?: RecordedThreadPayload[];
+  __createdEvents?: RecordedThreadPayload[];
+  __hiddenCreatedEvents?: RecordedThreadPayload[];
+  __rollbackDeletedEvents?: RecordedThreadPayload[];
+  __deletedEvents?: RecordedThreadPayload[];
+  __archivedEvents?: RecordedThreadPayload[];
+  __survivorEvents?: RecordedThreadPayload[];
+  __disabledEvents?: RecordedThreadPayload[];
+};
 
 /**
  * Full-app harness (createApp registers the lifecycle→plugin bridge) with one

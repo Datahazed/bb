@@ -3,7 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { acquireDaemonLock, DAEMON_LOCK_FILE_NAME } from "./lock.js";
+import {
+  acquireDaemonLock,
+  DAEMON_LOCK_FILE_NAME,
+  type DaemonLockLogFields,
+} from "./lock.js";
 
 async function waitFor(
   predicate: () => boolean,
@@ -23,10 +27,10 @@ function createRecordingLogger() {
   const errors: string[] = [];
   return {
     logger: {
-      warn: (_fields: Record<string, unknown>, message: string) => {
+      warn: (_fields: DaemonLockLogFields, message: string) => {
         warnings.push(message);
       },
-      error: (_fields: Record<string, unknown>, message: string) => {
+      error: (_fields: DaemonLockLogFields, message: string) => {
         errors.push(message);
       },
     },

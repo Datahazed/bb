@@ -85,12 +85,16 @@ export interface PluginFrontendCandidate {
   bundle: PluginFrontendBundle;
 }
 
+interface PluginModuleNamespace {
+  default?: unknown;
+}
+
 export type PluginFrontendRecord =
   | {
       pluginId: string;
       status: "loaded";
       /** The bundle's ESM namespace (default export = the plugin app). */
-      module: Record<string, unknown>;
+      module: PluginModuleNamespace;
     }
   | { pluginId: string; status: "failed"; error: string }
   | {
@@ -182,7 +186,7 @@ async function loadOneBundle(
     return {
       pluginId,
       status: "loaded",
-      module: mod as Record<string, unknown>,
+      module: mod as PluginModuleNamespace,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -197,7 +201,7 @@ async function loadOneBundle(
 // Shared runtime + boot wiring (real browser paths).
 // ---------------------------------------------------------------------------
 
-interface BbPluginRuntime {
+export interface BbPluginRuntime {
   react: unknown;
   reactDom: unknown;
   reactDomClient: unknown;
@@ -260,7 +264,7 @@ export function installPluginRuntime(): void {
 
 function isFrontendBundle(value: unknown): value is PluginFrontendBundle {
   if (typeof value !== "object" || value === null) return false;
-  const bundle = value as Record<string, unknown>;
+  const bundle = value as { [K in keyof PluginFrontendBundle]?: unknown };
   return (
     typeof bundle.jsUrl === "string" &&
     (bundle.cssUrl === null || typeof bundle.cssUrl === "string") &&

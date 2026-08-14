@@ -18,6 +18,7 @@ import {
 import type { SQL } from "drizzle-orm";
 import type {
   ClientTurnRequestId,
+  JsonObject,
   PromptInput,
   ThreadEvent,
   StoredThreadEventDataForType,
@@ -431,7 +432,7 @@ function resolveDaemonTurnStartDisposition(
   });
 }
 
-function isStoredEventPayload(value: unknown): value is Record<string, unknown> {
+function isStoredEventPayload(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

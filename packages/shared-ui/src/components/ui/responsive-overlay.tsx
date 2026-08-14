@@ -182,16 +182,12 @@ const RADIX_CONTENT_KEYS: ReadonlySet<string> = new Set(
   RADIX_CONTENT_PROP_NAMES,
 );
 
-export function stripRadixContentProps<T extends Record<string, unknown>>(
+export function stripRadixContentProps<T extends object>(
   props: T,
 ): Omit<T, RadixContentPropName> {
-  const result = {} as Record<string, unknown>;
-  for (const key of Object.keys(props)) {
-    if (!RADIX_CONTENT_KEYS.has(key)) {
-      result[key] = props[key];
-    }
-  }
-  return result as Omit<T, RadixContentPropName>;
+  return Object.fromEntries(
+    Object.entries(props).filter(([key]) => !RADIX_CONTENT_KEYS.has(key)),
+  ) as Omit<T, RadixContentPropName>;
 }
 
 // ---------------------------------------------------------------------------

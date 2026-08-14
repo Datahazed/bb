@@ -8,7 +8,7 @@
 import { eq } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { type HandleValidationError, validateSubdomain } from "./constants.js";
-import { labelClaim } from "./schema.js";
+import { labelClaim, schema } from "./schema.js";
 
 export type LabelClaim = typeof labelClaim.$inferSelect;
 
@@ -25,8 +25,7 @@ export type LabelClaim = typeof labelClaim.$inferSelect;
 export type ConnectDb = BaseSQLiteDatabase<
   "sync" | "async",
   unknown,
-  Record<string, unknown>,
-  any
+  typeof schema
 >;
 
 /**

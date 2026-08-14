@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import type { JsonRpcObject } from "../../runtime-json-rpc.js";
 import {
   existsSync,
   mkdirSync,
@@ -263,7 +264,7 @@ interface SdkEventNotification {
 interface BridgeEventNotification {
   jsonrpc: "2.0";
   method: string;
-  params: Record<string, unknown>;
+  params: JsonRpcObject;
 }
 
 interface CurrentThreadSessionArgs {

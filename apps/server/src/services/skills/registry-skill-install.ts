@@ -144,7 +144,7 @@ async function validateSkillFile(
       "Skill is missing SKILL.md",
     );
   }
-  let data: Record<string, unknown>;
+  let data: { description?: unknown; name?: unknown };
   try {
     data = matter(content).data;
   } catch {

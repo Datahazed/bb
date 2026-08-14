@@ -25,7 +25,7 @@ const THREAD_LIMIT = 400;
  */
 function isNewThreadRequest(value: unknown): value is NewThreadRequest {
   if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Record<string, unknown>;
+  const candidate = value as { [K in keyof NewThreadRequest]?: unknown };
   const isNonEmptyString = (field: unknown) =>
     typeof field === "string" && field.length > 0;
   return (

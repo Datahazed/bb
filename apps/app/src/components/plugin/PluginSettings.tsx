@@ -29,6 +29,7 @@ import {
   usePluginSettingsView,
   type PluginListItem,
   type PluginSettingFieldDescriptor,
+  type PluginSettingsUpdate,
 } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -204,7 +205,7 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
   const viewQuery = usePluginSettingsView(pluginId, { enabled: true });
   const [drafts, setDrafts] = useState<Record<string, string | boolean>>({});
   const save = useMutation({
-    mutationFn: (values: Record<string, unknown>) =>
+    mutationFn: (values: PluginSettingsUpdate) =>
       updatePluginSettings(fetch, pluginId, values),
     onSuccess: (view) => {
       applyPluginSettingsView({ queryClient, pluginId, view });
@@ -223,7 +224,7 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
 
   // Secrets are write-only; an untouched or emptied secret input means
   // "leave unchanged", so it never rides the update payload.
-  const changedValues: Record<string, unknown> = {};
+  const changedValues: PluginSettingsUpdate = {};
   for (const [key, draft] of Object.entries(drafts)) {
     const descriptor = view.schema[key];
     if (descriptor === undefined) continue;

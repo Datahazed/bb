@@ -15,6 +15,7 @@
  * - Emits `thread/identity` when the SDK session ID is captured
  */
 
+import type { JsonRpcObject } from "../../runtime-json-rpc.js";
 import { randomUUID } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -136,7 +137,7 @@ interface SdkMessageNotification {
 interface BridgeEventNotification {
   jsonrpc: "2.0";
   method: string;
-  params: Record<string, unknown>;
+  params: JsonRpcObject;
 }
 
 interface ThreadIdRef {
@@ -160,7 +161,7 @@ interface PendingInteractiveRequestBase {
 
 interface PendingPermissionRequest extends PendingInteractiveRequestBase {
   kind: "permission_request";
-  originalInput: Record<string, unknown>;
+  originalInput: JsonRpcObject;
   permissions: PendingInteractionGrantedPermissionProfile;
   toolName: string;
 }
@@ -309,7 +310,7 @@ interface BuildInteractiveRequestParamsArgs {
   threadId: string;
   toolName: string;
   toolUseId: string;
-  input: Record<string, unknown>;
+  input: JsonRpcObject;
   decisionReason: string | undefined;
   promptText: string | undefined;
   blockedPath: string | undefined;

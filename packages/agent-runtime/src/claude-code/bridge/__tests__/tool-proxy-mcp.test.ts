@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../../../runtime-json-rpc.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it } from "vitest";
@@ -67,8 +68,7 @@ describe("buildBridgeMcpServer", () => {
   });
 
   it("forwards tool calls with raw arguments and reports errors", async () => {
-    const calls: Array<{ toolName: string; args: Record<string, unknown> }> =
-      [];
+    const calls: Array<{ toolName: string; args: JsonRpcObject }> = [];
     const server = buildBridgeMcpServer(
       [
         {

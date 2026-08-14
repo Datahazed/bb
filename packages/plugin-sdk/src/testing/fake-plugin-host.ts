@@ -82,6 +82,8 @@ import {
   type FakeSdkOverrides,
 } from "./fake-sdk.js";
 
+type JsonObject = { [key: string]: JsonValue };
+
 /**
  * `createFakePluginHost` — an in-process stand-in for the BB server's plugin
  * runtime (apps/server/src/services/plugins/plugin-api.ts), for unit-testing
@@ -545,7 +547,7 @@ function normalizeAgentToolSelections(args: {
   value: unknown;
 }): {
   toolIds: string[];
-  parameterOverrides: Map<string, Record<string, unknown>>;
+  parameterOverrides: Map<string, JsonObject>;
 } {
   if (!Array.isArray(args.value)) {
     throw new Error("configure() output.tools must be an array");
@@ -556,12 +558,12 @@ function normalizeAgentToolSelections(args: {
     );
   }
   const toolIds: string[] = [];
-  const parameterOverrides = new Map<string, Record<string, unknown>>();
+  const parameterOverrides = new Map<string, JsonObject>();
   const seen = new Set<string>();
   for (let index = 0; index < args.value.length; index += 1) {
     const entry = args.value[index];
     let name: unknown;
-    let parameters: Record<string, unknown> | null = null;
+    let parameters: JsonObject | null = null;
     if (typeof entry === "string") {
       name = entry;
     } else if (
@@ -569,7 +571,7 @@ function normalizeAgentToolSelections(args: {
       entry !== null &&
       !Array.isArray(entry)
     ) {
-      const typed = entry as Record<string, unknown>;
+      const typed = entry as { name?: unknown; parameters?: unknown };
       const unknownKeys = Object.keys(typed)
         .filter((key) => !["name", "parameters"].includes(key))
         .sort();
@@ -613,7 +615,7 @@ function normalizeAgentToolSelections(args: {
 function normalizeAgentToolParameters(args: {
   index: number;
   value: unknown;
-}): Record<string, unknown> {
+}): JsonObject {
   const { index, value } = args;
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(
@@ -641,7 +643,7 @@ function normalizeAgentToolParameters(args: {
       `configure() output.tools[${index}].parameters exceeds the ${PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES}-byte limit`,
     );
   }
-  const parameters = JSON.parse(serialized) as Record<string, unknown>;
+  const parameters = JSON.parse(serialized) as JsonObject;
   if (parameters.type !== "object") {
     throw new Error(
       `configure() output.tools[${index}].parameters must have root type "object"`,
@@ -696,7 +698,7 @@ function normalizeAgentConfiguration(args: {
   value: unknown;
 }): {
   toolIds: string[];
-  toolParameterOverrides: Map<string, Record<string, unknown>>;
+  toolParameterOverrides: Map<string, JsonObject>;
   skillIds: string[];
   instructions: string | null;
 } {
@@ -709,7 +711,11 @@ function normalizeAgentConfiguration(args: {
       "configure() must return { tools: string[], skills: string[], instructions?: string }",
     );
   }
-  const output = args.value as Record<string, unknown>;
+  const output = args.value as {
+    instructions?: unknown;
+    skills?: unknown;
+    tools?: unknown;
+  };
   const unknownKeys = Object.keys(output)
     .filter((key) => !["tools", "skills", "instructions"].includes(key))
     .sort();
@@ -892,10 +898,7 @@ function createFakePluginHostInternal(
   const settings: PluginSettings = {
     define(descriptors) {
       assertLive();
-      registerSettingDescriptors(
-        settingsDescriptors,
-        descriptors as Record<string, unknown>,
-      );
+      registerSettingDescriptors(settingsDescriptors, descriptors);
       type Values = PluginSettingsValues<typeof descriptors>;
       return {
         async get() {

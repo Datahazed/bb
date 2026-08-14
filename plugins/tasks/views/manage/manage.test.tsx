@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import type { Task } from "../../shared/contract.js";
+import type { Preset, Task } from "../../shared/contract.js";
 
 // jsdom lacks ResizeObserver; cmdk's list observes its size on mount.
 if (!globalThis.ResizeObserver) {
@@ -35,6 +35,13 @@ if (!window.matchMedia) {
 // loadPluginApp installs the fake SDK runtime; nothing SDK-touching may be
 // imported before it runs.
 const app = await loadPluginApp(() => import("../../app"));
+type TaskRpcHandlers = Parameters<typeof app.setRpcHandlers>[0];
+type RpcInput<K extends keyof TaskRpcHandlers> = Parameters<
+  NonNullable<TaskRpcHandlers[K]>
+>[0];
+type CreateTaskInput = RpcInput<"createTask">;
+type CreateLabelInput = RpcInput<"createLabel">;
+type CreateProjectInput = RpcInput<"createProject">;
 const { derivePrefix } = await import("./shared.js");
 const { defaultPermissionMode, describePresetEnvironment, savePresetDraft } =
   await import("./preset-dialog.js");
@@ -55,7 +62,7 @@ const project = {
   createdAt: "2026-07-15T00:00:00.000Z",
 };
 
-function createdTask(input: Record<string, unknown>): Task {
+function createdTask(input: CreateTaskInput): Task {
   return {
     id: TASK_ID,
     projectId: PROJECT_ID,
@@ -88,7 +95,7 @@ describe("derivePrefix", () => {
 
 describe("NewTaskDialog", () => {
   it("creates a task in the route's project with column defaults and navigates to it", async () => {
-    const createCalls: Array<Record<string, unknown>> = [];
+    const createCalls: CreateTaskInput[] = [];
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
@@ -100,7 +107,7 @@ describe("NewTaskDialog", () => {
           sidebarSummary: () => ({ projects: [] }),
           listTasks: () => ({ tasks: [] }),
           listLabels: () => ({ labels: [] }),
-          createTask: (input: Record<string, unknown>) => {
+          createTask: (input: CreateTaskInput) => {
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
@@ -132,7 +139,7 @@ describe("NewTaskDialog", () => {
   });
 
   it("keeps the dialog open and clears the draft when Create more is on", async () => {
-    const createCalls: Array<Record<string, unknown>> = [];
+    const createCalls: CreateTaskInput[] = [];
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
@@ -144,7 +151,7 @@ describe("NewTaskDialog", () => {
           sidebarSummary: () => ({ projects: [] }),
           listTasks: () => ({ tasks: [] }),
           listLabels: () => ({ labels: [] }),
-          createTask: (input: Record<string, unknown>) => {
+          createTask: (input: CreateTaskInput) => {
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
@@ -197,7 +204,7 @@ describe("NewTaskDialog", () => {
   });
 
   it("offers a compact create-label action when the query matches no label", async () => {
-    const createLabelCalls: Array<Record<string, unknown>> = [];
+    const createLabelCalls: CreateLabelInput[] = [];
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
@@ -220,7 +227,7 @@ describe("NewTaskDialog", () => {
               },
             ],
           }),
-          createLabel: (input: Record<string, unknown>) => {
+          createLabel: (input: CreateLabelInput) => {
             createLabelCalls.push(input);
             return {
               label: {
@@ -308,7 +315,7 @@ describe("NewTaskDialog attachments", () => {
     sidebarSummary: () => ({ projects: [] }),
     listTasks: () => ({ tasks: [] }),
     listLabels: () => ({ labels: [] }),
-    createTask: (input: Record<string, unknown>) => ({
+    createTask: (input: CreateTaskInput) => ({
       ok: true,
       task: createdTask(input),
     }),
@@ -558,7 +565,7 @@ describe("NewTaskDialog attachments", () => {
 
 const MACHINES = [{ id: "mach_1", name: "Sawyer Air" }];
 
-function presetRow(overrides: Record<string, unknown> = {}) {
+function presetRow(overrides: Partial<Preset> = {}): Preset {
   return {
     id: "01HZZZZZZZZZZZZZZZZZZZZZE1",
     name: "FB3 BE live worktree",
@@ -751,7 +758,7 @@ describe("PresetDialog environment section", () => {
 });
 
 describe("NewProjectDialog", () => {
-  function renderEmptyState(overrides: Record<string, unknown> = {}) {
+  function renderEmptyState(overrides: Partial<TaskRpcHandlers> = {}) {
     return renderSlot(
       app.navPanels[0]!,
       { subPath: "" },
@@ -769,9 +776,9 @@ describe("NewProjectDialog", () => {
   }
 
   it("derives the prefix from the name and creates the project", async () => {
-    const createCalls: Array<Record<string, unknown>> = [];
+    const createCalls: CreateProjectInput[] = [];
     const slot = renderEmptyState({
-      createProject: (input: Record<string, unknown>) => {
+      createProject: (input: CreateProjectInput) => {
         createCalls.push(input);
         return { project: { ...project, ...input, id: PROJECT_ID } };
       },
@@ -821,12 +828,12 @@ describe("NewProjectDialog", () => {
   });
 
   it("links the personal project from the discovered project picker", async () => {
-    const createCalls: Array<Record<string, unknown>> = [];
+    const createCalls: CreateProjectInput[] = [];
     const slot = renderEmptyState({
       listBbProjects: () => ({
         bbProjects: [{ id: "proj_personal", name: "Personal" }],
       }),
-      createProject: (input: Record<string, unknown>) => {
+      createProject: (input: CreateProjectInput) => {
         createCalls.push(input);
         return { project: { ...project, ...input, id: PROJECT_ID } };
       },

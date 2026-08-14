@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,11 +18,11 @@ import { CLAUDE_TASK_PROGRESS_THROTTLE_MS } from "./task-translation.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, "../__fixtures__/claude-code");
 
-function isFixtureObject(value: unknown): value is Record<string, unknown> {
+function isFixtureObject(value: unknown): value is JsonRpcObject {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function loadFixture(name: string): Record<string, unknown> {
+function loadFixture(name: string): JsonRpcObject {
   const parsed: unknown = JSON.parse(
     readFileSync(resolve(FIXTURES, name), "utf8"),
   );
@@ -31,7 +32,7 @@ function loadFixture(name: string): Record<string, unknown> {
   return parsed;
 }
 
-function loadSessionFixture(name: string): Record<string, unknown>[] {
+function loadSessionFixture(name: string): JsonRpcObject[] {
   return readFileSync(resolve(FIXTURES, "sessions", name), "utf8")
     .trim()
     .split("\n")

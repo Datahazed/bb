@@ -43,7 +43,28 @@ export interface SkillsApiPage {
   hasMore: boolean;
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
+interface PublicSkillJsonLdCandidate {
+  "@type"?: unknown;
+  description?: unknown;
+  interactionStatistic?: unknown;
+  name?: unknown;
+  url?: unknown;
+}
+
+interface InteractionStatisticCandidate {
+  userInteractionCount?: unknown;
+}
+
+interface RegistrySkillFileCandidate {
+  contents?: unknown;
+  path?: unknown;
+}
+
+type SkillsApiSkillCandidate = {
+  [K in keyof SkillsApiSkill]?: unknown;
+};
+
+function isRecord(value: unknown): value is object {
   return typeof value === "object" && value !== null;
 }
 
@@ -208,13 +229,18 @@ export function parsePublicDetailSkill(
     } catch {
       continue;
     }
+    if (!isRecord(body)) {
+      continue;
+    }
+    const candidate = body as PublicSkillJsonLdCandidate;
+    if (!isRecord(candidate.interactionStatistic)) continue;
+    const interactionStatistic =
+      candidate.interactionStatistic as InteractionStatisticCandidate;
     if (
-      !isRecord(body) ||
-      body["@type"] !== "SoftwareApplication" ||
-      body.url !== registrySkillUrl(id) ||
-      typeof body.name !== "string" ||
-      !isRecord(body.interactionStatistic) ||
-      typeof body.interactionStatistic.userInteractionCount !== "number"
+      candidate["@type"] !== "SoftwareApplication" ||
+      candidate.url !== registrySkillUrl(id) ||
+      typeof candidate.name !== "string" ||
+      typeof interactionStatistic.userInteractionCount !== "number"
     ) {
       continue;
     }
@@ -223,16 +249,16 @@ export function parsePublicDetailSkill(
       id,
       source,
       skillId,
-      name: body.name,
-      installs: body.interactionStatistic.userInteractionCount,
+      name: candidate.name,
+      installs: interactionStatistic.userInteractionCount,
       stars: null,
       installUrl: null,
       url: registrySkillUrl(id),
       topic: detail.topic,
       summary:
         detail.summary ??
-        (typeof body.description === "string"
-          ? body.description.slice(0, 280)
+        (typeof candidate.description === "string"
+          ? candidate.description.slice(0, 280)
           : null),
     };
   }
@@ -241,7 +267,7 @@ export function parsePublicDetailSkill(
 
 export function isApiSkill(value: unknown): value is SkillsApiSkill {
   if (typeof value !== "object" || value === null) return false;
-  const skill = value as Record<string, unknown>;
+  const skill = value as SkillsApiSkillCandidate;
   return (
     typeof skill.id === "string" &&
     typeof skill.slug === "string" &&
@@ -262,18 +288,19 @@ export function parseRegistryDetailFiles(
   let totalSize = 0;
   const files: RegistrySkillFile[] = [];
   for (const file of value) {
+    const candidate = file as RegistrySkillFileCandidate;
     if (
       !isRecord(file) ||
-      typeof file.path !== "string" ||
-      file.path.length === 0 ||
-      typeof file.contents !== "string" ||
-      file.contents.length > REGISTRY_DETAIL_FILE_SIZE_LIMIT
+      typeof candidate.path !== "string" ||
+      candidate.path.length === 0 ||
+      typeof candidate.contents !== "string" ||
+      candidate.contents.length > REGISTRY_DETAIL_FILE_SIZE_LIMIT
     ) {
       return null;
     }
-    totalSize += file.contents.length;
+    totalSize += candidate.contents.length;
     if (totalSize > REGISTRY_DETAIL_TOTAL_SIZE_LIMIT) return null;
-    files.push({ path: file.path, contents: file.contents });
+    files.push({ path: candidate.path, contents: candidate.contents });
   }
   return files;
 }

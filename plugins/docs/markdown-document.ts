@@ -23,7 +23,11 @@ function readLine(content: string, start: number): MarkdownLine {
   };
 }
 
-function isMapping(value: unknown): value is Record<string, unknown> {
+interface FrontmatterMetadata {
+  title?: unknown;
+}
+
+function isMapping(value: unknown): value is object {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -33,9 +37,7 @@ function isMapping(value: unknown): value is Record<string, unknown> {
  * so the fenced block must parse to a mapping (or to nothing) before we hide it
  * from the editor. Returns null when the block is not frontmatter.
  */
-function parseFrontmatterMetadata(
-  source: string,
-): Record<string, unknown> | null {
+function parseFrontmatterMetadata(source: string): FrontmatterMetadata | null {
   let metadata: unknown;
   try {
     metadata = parse(source, { maxAliasCount: 20 });
@@ -43,10 +45,10 @@ function parseFrontmatterMetadata(
     return null;
   }
   if (metadata === null || metadata === undefined) return {};
-  return isMapping(metadata) ? metadata : null;
+  return isMapping(metadata) ? (metadata as FrontmatterMetadata) : null;
 }
 
-function frontmatterTitle(metadata: Record<string, unknown>): string | null {
+function frontmatterTitle(metadata: FrontmatterMetadata): string | null {
   const title = metadata.title;
   return typeof title === "string" && title.trim() ? title.trim() : null;
 }

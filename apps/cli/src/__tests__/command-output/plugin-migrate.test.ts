@@ -1,8 +1,15 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PLUGIN_SDK_VERSION } from "@bb/domain";
+import { PLUGIN_SDK_VERSION, type JsonObject } from "@bb/domain";
 import {
   collectLogPayloads,
   readlineMocks,
@@ -37,7 +44,7 @@ afterEach(async () => {
   await rm(toolsDir, { recursive: true, force: true });
 });
 
-async function writeManifest(value: Record<string, unknown>): Promise<void> {
+async function writeManifest(value: JsonObject): Promise<void> {
   await writeFile(
     join(rootDir, "package.json"),
     `${JSON.stringify(value, null, 2)}\n`,
@@ -69,11 +76,11 @@ async function writeVendoredPlugin(): Promise<void> {
   await writeFile(join(rootDir, "types", "bb-plugin-sdk.d.ts"), "// old\n");
 }
 
-async function readManifest(): Promise<Record<string, unknown>> {
+async function readManifest(): Promise<JsonObject> {
   const parsed: unknown = JSON.parse(
     await readFile(join(rootDir, "package.json"), "utf8"),
   );
-  return parsed as Record<string, unknown>;
+  return parsed as JsonObject;
 }
 
 function setTty(value: boolean): void {
@@ -101,7 +108,9 @@ describe("bb plugin migrate", () => {
 
     // The plan is still shown — the author learns what the migration would do.
     const logged = collectLogPayloads(logSpy).join("\n");
-    expect(logged).toContain(`"@get-bb/plugin-sdk": (none) → ${PLUGIN_SDK_VERSION}`);
+    expect(logged).toContain(
+      `"@get-bb/plugin-sdk": (none) → ${PLUGIN_SDK_VERSION}`,
+    );
     expect(logged).toContain("delete         types/bb-plugin-sdk.d.ts");
     expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
       "Refusing to migrate without confirmation",

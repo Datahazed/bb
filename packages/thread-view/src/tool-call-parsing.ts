@@ -1,3 +1,4 @@
+import type { JsonObject } from "@bb/domain";
 import type { EventProjectionToolParsedIntent } from "./event-projection-types.js";
 
 const SHELL_WRAPPER_NAMES = new Set(["sh", "bash", "zsh"]);
@@ -685,7 +686,7 @@ export function parseShellCommandIntents(
 
 export function formatToolCallCommand(
   toolName: string,
-  args: Record<string, unknown> | null,
+  args: JsonObject | null,
 ): string {
   if (!args) return toolName;
   const entries = Object.entries(args).filter(([, v]) => v !== undefined);

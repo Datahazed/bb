@@ -95,14 +95,14 @@ function manifestFieldsDiffer(a, b) {
  * @param {object} input
  * @param {string} input.version local package version
  * @param {object} input.local one of:
- *   {kind:"packed", files: Record<string,string>, manifest: Record<string,unknown>}
+ *   {kind:"packed", files: Record<string,string>, manifest: object}
  *   {kind:"pack-failed", message}
  *   Only consulted when the registry says this version is published.
  * @param {object} input.registry one of:
  *   {kind:"network-error", message}
  *   {kind:"package-not-found"}
  *   {kind:"version-not-found"}
- *   {kind:"published", files: Record<string,string>, manifest: Record<string,unknown>}
+ *   {kind:"published", files: Record<string,string>, manifest: object}
  * @returns {{status:"pass"|"fail"|"error", exitCode:0|1|2, reason:string,
  *   message:string, changedFiles:string[]}}
  */

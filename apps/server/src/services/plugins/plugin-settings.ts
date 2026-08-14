@@ -6,6 +6,7 @@ import {
   type DbConnection,
 } from "@bb/db";
 import type {
+  JsonValue,
   PluginSettingDescriptor,
   PluginSettingDescriptors,
   PluginSettingValue,
@@ -28,6 +29,11 @@ export type {
   PluginSettingDescriptors,
   PluginSettingValue,
 } from "@get-bb/plugin-sdk";
+
+export type PluginSettingsUpdate = Record<string, PluginSettingValue | null>;
+export type PluginSettingsUpdateInput = Record<string, JsonValue>;
+
+export type PluginSettingsViewValue = PluginSettingValue | { set: boolean };
 
 /** A settings update the routes rejected: unknown key or wrong value type. */
 export class PluginSettingsValidationError extends Error {
@@ -114,7 +120,7 @@ export async function readPluginSettingsValues(
 
 /** Persist a pre-validated update: secrets to files, the rest to plugin_settings. */
 export async function writePluginSettingsUpdate(
-  args: PluginSettingsStoreArgs & { values: Record<string, unknown> },
+  args: PluginSettingsStoreArgs & { values: PluginSettingsUpdate },
 ): Promise<void> {
   const rowUpdates: Record<string, string | null> = {};
   for (const [key, value] of Object.entries(args.values)) {
@@ -136,14 +142,14 @@ export async function writePluginSettingsUpdate(
 export interface PluginSettingsView {
   schema: PluginSettingDescriptors;
   /** Effective non-secret values; secret keys map to `{ set: boolean }`. */
-  values: Record<string, unknown>;
+  values: Record<string, PluginSettingsViewValue>;
 }
 
 export async function buildPluginSettingsView(
   args: PluginSettingsStoreArgs,
 ): Promise<PluginSettingsView> {
   const effective = await readPluginSettingsValues(args);
-  const values: Record<string, unknown> = {};
+  const values: Record<string, PluginSettingsViewValue> = {};
   for (const [key, descriptor] of Object.entries(args.descriptors)) {
     if (isSecret(descriptor)) {
       values[key] = {

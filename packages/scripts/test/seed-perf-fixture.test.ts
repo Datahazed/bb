@@ -67,7 +67,7 @@ describe("seedPerfFixture", () => {
       const parsedData: unknown = JSON.parse(row.data);
       try {
         parseStoredThreadEvent({
-          data: parsedData as Record<string, unknown>,
+          data: parsedData as object,
           providerThreadId: row.providerThreadId,
           scope:
             row.turnId === null

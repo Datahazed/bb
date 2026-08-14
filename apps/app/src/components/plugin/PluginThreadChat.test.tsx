@@ -8,10 +8,13 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { PluginSlotMount } from "./PluginSlotMount";
+import type { EmbeddedThreadChatComposerModeProps } from "@/components/thread/embedded-chat/EmbeddedThreadChat";
+import type { ThreadTimelinePanelContentProps } from "@/components/thread/timeline/ThreadTimelinePanelContent";
+import type { ThreadTimelineConsumerMessageAction } from "@/components/thread/timeline/types";
 
 const mocks = vi.hoisted(() => ({
-  embeddedChatProps: [] as Array<Record<string, unknown>>,
-  timelinePanelProps: [] as Array<Record<string, unknown>>,
+  embeddedChatProps: [] as EmbeddedThreadChatComposerModeProps[],
+  timelinePanelProps: [] as ThreadTimelinePanelContentProps[],
 }));
 
 vi.mock("@/lib/sdk", () => ({
@@ -39,14 +42,14 @@ vi.mock("@/hooks/useHostDaemon", () => ({
 }));
 
 vi.mock("@/components/thread/embedded-chat", () => ({
-  EmbeddedThreadChat: (props: Record<string, unknown>) => {
+  EmbeddedThreadChat: (props: EmbeddedThreadChatComposerModeProps) => {
     mocks.embeddedChatProps.push(props);
     return <div data-testid="embedded-thread-chat" />;
   },
 }));
 
 vi.mock("@/components/thread/timeline", () => ({
-  ThreadTimelinePanelContent: (props: Record<string, unknown>) => {
+  ThreadTimelinePanelContent: (props: ThreadTimelinePanelContentProps) => {
     mocks.timelinePanelProps.push(props);
     return <div data-testid="timeline-panel-content" />;
   },
@@ -263,9 +266,8 @@ describe("PluginThreadChat", () => {
     );
     const props = mocks.embeddedChatProps.at(-1)!;
     expect(props.leadingContent).toBeTruthy();
-    const actions = props.consumerMessageActions as Array<
-      Record<string, unknown>
-    >;
+    const actions = (props.consumerMessageActions ??
+      []) as readonly ThreadTimelineConsumerMessageAction[];
     expect(actions).toHaveLength(1);
     expect(actions[0]).toEqual(
       expect.objectContaining({

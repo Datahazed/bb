@@ -41,7 +41,7 @@ const publishedTagPrefixPattern = new RegExp(
   "u",
 );
 
-function entry(overrides: Record<string, unknown> = {}): unknown {
+function entry(overrides: object = {}): object {
   return {
     id: "widgets",
     displayName: "Acme Widgets",

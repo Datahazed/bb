@@ -22,7 +22,7 @@ export type {
 
 export const REGISTRY_PAGE_SIZE = RESOURCE_GRID_PAGE_SIZE;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isErrorBody(value: unknown): value is { message?: unknown } {
   return typeof value === "object" && value !== null;
 }
 
@@ -96,7 +96,7 @@ export async function installRegistrySkill(args: { skill: RegistrySkill }) {
   } catch (error) {
     if (error instanceof BbHttpError) {
       throw new Error(
-        isRecord(error.body) && typeof error.body.message === "string"
+        isErrorBody(error.body) && typeof error.body.message === "string"
           ? error.body.message
           : "Couldn't save skill",
       );

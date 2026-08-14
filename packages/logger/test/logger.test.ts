@@ -6,6 +6,15 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 const LOGGER_IMPORT_SPECIFIER = "@bb/logger";
 
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+type StructuredLogLine = { [key: string]: JsonValue };
+
 const tempDirs: string[] = [];
 
 function createTempDir(): string {
@@ -154,7 +163,7 @@ function getComponentLogFiles(logDir: string, component: string): string[] {
 function readComponentLogLines(
   logDir: string,
   component: string,
-): Array<Record<string, unknown>> {
+): StructuredLogLine[] {
   return getComponentLogFiles(logDir, component).flatMap((entry) => {
     const contents = fs.readFileSync(path.join(logDir, entry), "utf8").trim();
     if (!contents) {
@@ -164,7 +173,7 @@ function readComponentLogLines(
     return contents
       .split("\n")
       .filter(Boolean)
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
+      .map((line) => JSON.parse(line) as StructuredLogLine);
   });
 }
 

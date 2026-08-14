@@ -485,7 +485,7 @@ export function registerPluginRoutes(
     const body = pluginSettingsUpdateRequestSchema.safeParse(json);
     if (!body.success) {
       return context.json(
-        { ok: false, error: "expected { values: Record<string, unknown> }" },
+        { ok: false, error: "expected an object of plugin setting values" },
         400,
       );
     }

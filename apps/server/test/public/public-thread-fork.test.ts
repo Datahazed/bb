@@ -16,6 +16,8 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+import { forkThreadRequestSchema } from "@bb/server-contract";
+import type { z } from "zod";
 
 function seedForkSource(
   harness: TestAppHarness,
@@ -94,7 +96,7 @@ function seedPersonalDirectoryForkSource(harness: TestAppHarness) {
 
 async function postFork(
   harness: TestAppHarness,
-  body: Record<string, unknown>,
+  body: z.input<typeof forkThreadRequestSchema>,
 ) {
   return harness.app.request("/api/v1/threads/fork", {
     method: "POST",

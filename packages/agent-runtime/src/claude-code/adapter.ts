@@ -7,6 +7,7 @@
  * and produces `ThreadEvent[]`.
  */
 
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import { getBuiltInAgentProviderInfo } from "@bb/agent-providers";
 import type {
   ApprovalPendingInteractionPayload,
@@ -40,6 +41,7 @@ import { bashArgsSchema } from "../shared/tool-arg-schemas.js";
 import {
   buildShellEnvironmentPolicyConfig,
   extractResultText,
+  toOptionalRecord,
   toOptionalString,
 } from "../shared/adapter-utils.js";
 import {
@@ -494,14 +496,15 @@ function translateClaudeToolUseItem(
     },
     parseFileChange(args) {
       const parsed = claudeFileEditArgsSchema.safeParse(args);
-      return parsed.success
-        ? {
-            arguments: parsed.data,
-            path: getClaudeFileEditPath(parsed.data) ?? undefined,
-            oldText: parsed.data.old_string,
-            newText: parsed.data.new_string ?? parsed.data.content,
-          }
-        : null;
+      if (!parsed.success) return null;
+      const argumentsObject = toOptionalRecord(parsed.data);
+      if (!argumentsObject) return null;
+      return {
+        arguments: argumentsObject,
+        path: getClaudeFileEditPath(parsed.data) ?? undefined,
+        oldText: parsed.data.old_string,
+        newText: parsed.data.new_string ?? parsed.data.content,
+      };
     },
     translateSpecialToolUse: translateClaudeWebToolUse,
   });
@@ -610,7 +613,7 @@ function translateClaudeToolResultItem(
 
 function buildClaudeCodeConfig(
   envVars?: Record<string, string>,
-): Record<string, unknown> | undefined {
+): JsonRpcObject | undefined {
   const config = buildShellEnvironmentPolicyConfig(envVars);
   return config ? { ...config } : undefined;
 }

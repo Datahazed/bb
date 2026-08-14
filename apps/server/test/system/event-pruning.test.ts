@@ -39,9 +39,7 @@ interface CreateContextWindowUsageDataArgs {
   usedTokens: number | null;
 }
 
-function createTokenUsageData(
-  args: CreateTokenUsageDataArgs,
-): Record<string, unknown> {
+function createTokenUsageData(args: CreateTokenUsageDataArgs) {
   return {
     tokenUsage: {
       total: {
@@ -63,9 +61,7 @@ function createTokenUsageData(
   };
 }
 
-function createContextWindowUsageData(
-  args: CreateContextWindowUsageDataArgs,
-): Record<string, unknown> {
+function createContextWindowUsageData(args: CreateContextWindowUsageDataArgs) {
   return {
     contextWindowUsage: {
       usedTokens: args.usedTokens,
@@ -253,7 +249,7 @@ describe("thread event pruning", () => {
         eventBudget: 1_000_000,
         includeProviderUnhandledOperations: true,
         maxInlineOutputChars: null,
-      maxSeq: 0,
+        maxSeq: 0,
         page: {
           kind: "latest",
           segmentLimit: Number.MAX_SAFE_INTEGER,

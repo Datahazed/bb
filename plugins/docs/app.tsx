@@ -130,17 +130,24 @@ type SaveResult =
   | { outcome: "written"; sha256: string }
   | { outcome: "conflict"; currentSha256: string | null };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+type Candidate<T extends object> = {
+  [K in keyof T]?: unknown;
+};
+
+function candidate<T extends object>(value: unknown): Candidate<T> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Candidate<T>)
+    : null;
 }
 
 function parseNotesData(value: unknown): NotesData {
+  const response = candidate<NotesData>(value);
   if (
-    !isRecord(value) ||
-    !Array.isArray(value.vaults) ||
-    !isRecord(value.vault) ||
-    !Array.isArray(value.entryOrder) ||
-    value.entryOrder.some((entry) => typeof entry !== "string")
+    response === null ||
+    !Array.isArray(response.vaults) ||
+    candidate<NotesData["vault"]>(response.vault) === null ||
+    !Array.isArray(response.entryOrder) ||
+    response.entryOrder.some((entry) => typeof entry !== "string")
   ) {
     throw new Error("Docs returned an invalid notebook response");
   }
@@ -150,42 +157,50 @@ function parseNotesData(value: unknown): NotesData {
 }
 
 function parseNoteContent(value: unknown): NoteContent {
+  const response = candidate<NoteContent>(value);
   if (
-    !isRecord(value) ||
-    typeof value.content !== "string" ||
-    typeof value.sha256 !== "string"
+    response === null ||
+    typeof response.content !== "string" ||
+    typeof response.sha256 !== "string"
   ) {
     throw new Error("Docs returned invalid file content");
   }
-  return { content: value.content, sha256: value.sha256 };
+  return { content: response.content, sha256: response.sha256 };
 }
 
 function parsePreviewLease(value: unknown): PreviewLease {
+  const response = candidate<PreviewLease>(value);
   if (
-    !isRecord(value) ||
-    typeof value.baseUrl !== "string" ||
-    typeof value.expiresAtMs !== "number"
+    response === null ||
+    typeof response.baseUrl !== "string" ||
+    typeof response.expiresAtMs !== "number"
   ) {
     throw new Error("Docs returned an invalid preview lease");
   }
-  return { baseUrl: value.baseUrl, expiresAtMs: value.expiresAtMs };
+  return { baseUrl: response.baseUrl, expiresAtMs: response.expiresAtMs };
 }
 
 function parseSaveResult(value: unknown): SaveResult {
+  const response = candidate<{
+    outcome: SaveResult["outcome"];
+    sha256: string;
+    currentSha256: string | null;
+  }>(value);
   if (
-    !isRecord(value) ||
-    (value.outcome !== "written" && value.outcome !== "conflict")
+    response === null ||
+    (response.outcome !== "written" && response.outcome !== "conflict")
   ) {
     throw new Error("Docs returned an invalid save response");
   }
-  if (value.outcome === "written" && typeof value.sha256 === "string") {
-    return { outcome: "written", sha256: value.sha256 };
+  if (response.outcome === "written" && typeof response.sha256 === "string") {
+    return { outcome: "written", sha256: response.sha256 };
   }
   if (
-    value.outcome === "conflict" &&
-    (typeof value.currentSha256 === "string" || value.currentSha256 === null)
+    response.outcome === "conflict" &&
+    (typeof response.currentSha256 === "string" ||
+      response.currentSha256 === null)
   ) {
-    return { outcome: "conflict", currentSha256: value.currentSha256 };
+    return { outcome: "conflict", currentSha256: response.currentSha256 };
   }
   throw new Error("Docs returned an invalid save response");
 }
@@ -195,13 +210,19 @@ function parseOpenedFile(value: unknown): {
   preview: PreviewLease;
   previewPath: string;
 } {
-  if (!isRecord(value) || typeof value.previewPath !== "string") {
+  type OpenedFile = {
+    file: NoteContent;
+    preview: PreviewLease;
+    previewPath: string;
+  };
+  const response = candidate<OpenedFile>(value);
+  if (response === null || typeof response.previewPath !== "string") {
     throw new Error("Docs returned an invalid opened file");
   }
   return {
-    file: parseNoteContent(value.file),
-    preview: parsePreviewLease(value.preview),
-    previewPath: value.previewPath,
+    file: parseNoteContent(response.file),
+    preview: parsePreviewLease(response.preview),
+    previewPath: response.previewPath,
   };
 }
 
@@ -665,17 +686,18 @@ function documentTitle(path: string): string {
 }
 
 function parseDocumentRef(value: unknown): DocumentRef | null {
-  if (!isRecord(value)) return null;
+  const reference = candidate<DocumentRef & { vault: string }>(value);
+  if (reference === null) return null;
   const vaultId =
-    typeof value.vaultId === "string"
-      ? value.vaultId
-      : typeof value.vault === "string"
-        ? value.vault
+    typeof reference.vaultId === "string"
+      ? reference.vaultId
+      : typeof reference.vault === "string"
+        ? reference.vault
         : "";
-  const path = typeof value.path === "string" ? value.path : "";
+  const path = typeof reference.path === "string" ? reference.path : "";
   const title =
-    typeof value.title === "string" && value.title.trim()
-      ? value.title.trim()
+    typeof reference.title === "string" && reference.title.trim()
+      ? reference.title.trim()
       : documentTitle(path);
   if (
     !vaultId ||
@@ -919,13 +941,13 @@ function NotePane({
             vaultId,
             path: pathRef.current,
           });
+          const renamedPath = candidate<{ path: string }>(renamed)?.path;
           if (
-            isRecord(renamed) &&
-            typeof renamed.path === "string" &&
-            renamed.path !== pathRef.current
+            typeof renamedPath === "string" &&
+            renamedPath !== pathRef.current
           ) {
-            pathRef.current = renamed.path;
-            renamedRef.current(renamed.path);
+            pathRef.current = renamedPath;
+            renamedRef.current(renamedPath);
           }
         }
       } catch (error) {
@@ -988,9 +1010,12 @@ function NotePane({
             name: file.name,
             content,
           });
-          if (!isRecord(value) || typeof value.markdownPath !== "string")
+          const markdownPath = candidate<{ markdownPath: string }>(
+            value,
+          )?.markdownPath;
+          if (typeof markdownPath !== "string")
             throw new Error("Upload returned an invalid path");
-          return { markdownPath: value.markdownPath };
+          return { markdownPath };
         }}
         onFirstRender={(markdown) => {
           markdownRef.current = markdown;
@@ -2066,9 +2091,10 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
         name: "Untitled",
       })
       .then((value) => {
-        if (isRecord(value) && typeof value.path === "string") {
+        const path = candidate<{ path: string }>(value)?.path;
+        if (typeof path === "string") {
           refresh();
-          open(value.path);
+          open(path);
         }
       });
   const createFolder = async () => {
@@ -2097,15 +2123,16 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
         rootPath,
         ...(vaultHostId === "primary" ? {} : { hostId: vaultHostId }),
       });
-      if (!isRecord(value) || typeof value.id !== "string")
+      const id = candidate<{ id: string }>(value)?.id;
+      if (typeof id !== "string")
         throw new Error("Create vault returned an invalid response");
       setVaultName("");
       setVaultRootPath("");
       setVaultHostId("primary");
       setVaultDialogOpen(false);
-      setVaultId(value.id);
+      setVaultId(id);
       navigate.toPluginPanel("docs", {
-        subPath: value.id,
+        subPath: id,
       });
     } catch (error) {
       setVaultError(error instanceof Error ? error.message : String(error));

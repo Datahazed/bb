@@ -10,7 +10,7 @@ export type LoggerTransportMode = "stream" | "worker";
 
 export interface CreateLoggerOptions {
   component: string;
-  base?: Record<string, unknown>;
+  base?: pino.Bindings;
   dataDir?: string;
   transportMode?: LoggerTransportMode;
 }

@@ -10,11 +10,15 @@ interface InstructionsResponse {
   maxLength: number;
 }
 
+type InstructionsResponseCandidate = {
+  [K in keyof InstructionsResponse]?: unknown;
+};
+
 function parseInstructionsResponse(value: unknown): InstructionsResponse {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("Custom instructions returned an invalid response.");
   }
-  const response = value as Record<string, unknown>;
+  const response = value as InstructionsResponseCandidate;
   if (
     typeof response.instructions !== "string" ||
     typeof response.maxLength !== "number"

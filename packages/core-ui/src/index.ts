@@ -17,4 +17,4 @@ export {
   formatPendingInteractionUserQuestionOptionLabel,
 } from "./pending-interaction-presentation.js";
 
-export { extractErrorMessage, toRecord } from "./unknown-helpers.js";
+export { extractErrorMessage, getObjectProperty } from "./unknown-helpers.js";

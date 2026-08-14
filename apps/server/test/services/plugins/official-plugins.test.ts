@@ -34,7 +34,9 @@ const fixtureRoot = resolve(
   "plugins",
   "bb-plugin-builtin-fixture",
 );
-const globals = globalThis as Record<string, unknown>;
+const globals = globalThis as typeof globalThis & {
+  __builtinFixtureLoads?: number;
+};
 
 function loadCount(): number {
   return (globals.__builtinFixtureLoads as number | undefined) ?? 0;

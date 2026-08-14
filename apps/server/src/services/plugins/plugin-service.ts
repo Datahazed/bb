@@ -8,6 +8,7 @@ import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
   formatPluginThemeId,
   type DeclaredCodeTheme,
+  type JsonObject,
   type JsonValue,
   type PluginThemeMeta,
   type ToolCallResponse,
@@ -91,6 +92,8 @@ import {
   validatePluginSettingsUpdate,
   writePluginSettingsUpdate,
   PluginSettingsValidationError,
+  type PluginSettingsUpdate,
+  type PluginSettingsUpdateInput,
   type PluginSettingsView,
 } from "./plugin-settings.js";
 import { createPluginActivation } from "./plugin-activation.js";
@@ -268,7 +271,7 @@ export interface PluginService {
    */
   updateSettings(
     id: string,
-    values: Record<string, unknown>,
+    values: PluginSettingsUpdateInput,
   ): Promise<PluginSettingsView | undefined>;
   /** Live http route lookup for the boot-time dispatcher (exact method+path). */
   getHttpRoute(
@@ -703,7 +706,7 @@ function normalizeMentionSearchItems(
 
 interface NormalizedPluginAgentConfiguration {
   toolIds: string[];
-  toolParameterOverrides: Map<string, Record<string, unknown>>;
+  toolParameterOverrides: Map<string, JsonObject>;
   skillIds: string[];
   instructions: string | null;
 }
@@ -711,7 +714,7 @@ interface NormalizedPluginAgentConfiguration {
 function normalizePluginAgentToolParameters(args: {
   index: number;
   value: unknown;
-}): Record<string, unknown> {
+}): JsonObject {
   const { index, value } = args;
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(
@@ -739,7 +742,7 @@ function normalizePluginAgentToolParameters(args: {
       `configure() output.tools[${index}].parameters exceeds the ${PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES}-byte limit`,
     );
   }
-  const parameters = JSON.parse(serialized) as Record<string, unknown>;
+  const parameters = JSON.parse(serialized) as JsonObject;
   if (parameters.type !== "object") {
     throw new Error(
       `configure() output.tools[${index}].parameters must have root type "object"`,
@@ -754,7 +757,7 @@ function normalizePluginAgentToolSelections(args: {
   value: unknown;
 }): {
   toolIds: string[];
-  parameterOverrides: Map<string, Record<string, unknown>>;
+  parameterOverrides: Map<string, JsonObject>;
 } {
   if (!Array.isArray(args.value)) {
     throw new Error("configure() output.tools must be an array");
@@ -765,12 +768,12 @@ function normalizePluginAgentToolSelections(args: {
     );
   }
   const toolIds: string[] = [];
-  const parameterOverrides = new Map<string, Record<string, unknown>>();
+  const parameterOverrides = new Map<string, JsonObject>();
   const seen = new Set<string>();
   for (let index = 0; index < args.value.length; index += 1) {
     const entry = args.value[index];
     let name: unknown;
-    let parameters: Record<string, unknown> | null = null;
+    let parameters: JsonObject | null = null;
     if (typeof entry === "string") {
       name = entry;
     } else if (
@@ -778,7 +781,7 @@ function normalizePluginAgentToolSelections(args: {
       entry !== null &&
       !Array.isArray(entry)
     ) {
-      const typed = entry as Record<string, unknown>;
+      const typed = entry as { name?: unknown; parameters?: unknown };
       const unknownKeys = Object.keys(typed)
         .filter((key) => !["name", "parameters"].includes(key))
         .sort();
@@ -873,7 +876,11 @@ function normalizePluginAgentConfiguration(args: {
       "configure() must return { tools: string[], skills: string[], instructions?: string }",
     );
   }
-  const output = args.value as Record<string, unknown>;
+  const output = args.value as {
+    instructions?: unknown;
+    skills?: unknown;
+    tools?: unknown;
+  };
   const unknownKeys = Object.keys(output)
     .filter((key) => !["tools", "skills", "instructions"].includes(key))
     .sort();
@@ -1753,8 +1760,18 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       if (errors.length > 0) {
         throw new PluginSettingsValidationError(errors.join("; "));
       }
+      const update: PluginSettingsUpdate = {};
+      for (const [key, value] of Object.entries(values)) {
+        if (
+          value === null ||
+          typeof value === "string" ||
+          typeof value === "boolean"
+        ) {
+          update[key] = value;
+        }
+      }
       const prev = await readPluginSettingsValues(storeArgs);
-      await writePluginSettingsUpdate({ ...storeArgs, values });
+      await writePluginSettingsUpdate({ ...storeArgs, values: update });
       const next = await readPluginSettingsValues(storeArgs);
       if (JSON.stringify(next) !== JSON.stringify(prev)) {
         for (const listener of plugin.handle.settings.listeners) {

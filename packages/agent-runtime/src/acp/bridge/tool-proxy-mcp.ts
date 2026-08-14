@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../../runtime-json-rpc.js";
 import { createConnection } from "node:net";
 import { createInterface } from "node:readline";
 import { dynamicToolSchema, type DynamicTool } from "@bb/domain";
@@ -30,7 +31,7 @@ export interface BuildAcpMcpServerConfigArgs {
 }
 
 interface BridgeToolCallRequest {
-  arguments: Record<string, unknown>;
+  arguments: JsonRpcObject;
   callId: string;
   threadId: string;
   token: string;
@@ -163,9 +164,9 @@ function callBridge(
   });
 }
 
-function objectParams(params: unknown): Record<string, unknown> {
+function objectParams(params: unknown): JsonRpcObject {
   return params && typeof params === "object" && !Array.isArray(params)
-    ? (params as Record<string, unknown>)
+    ? (params as JsonRpcObject)
     : {};
 }
 
@@ -212,7 +213,7 @@ async function handleRequest(
         rawArguments &&
         typeof rawArguments === "object" &&
         !Array.isArray(rawArguments)
-          ? (rawArguments as Record<string, unknown>)
+          ? (rawArguments as JsonRpcObject)
           : {};
       try {
         const result = await callBridge(env, {

@@ -5,6 +5,7 @@
  * non-mutating pwd/Git probes are allowed consistently without widening the
  * shell surface beyond the explicitly parsed command and option sets below.
  */
+import type { JsonRpcObject } from "../../runtime-json-rpc.js";
 import { z } from "zod";
 
 const READONLY_GIT_TOP_LEVEL_OPTIONS = new Set([
@@ -393,7 +394,7 @@ function parseReadonlyBashCommand(command: string): ReadonlyBashCommand | null {
 
 export function buildReadonlyBashUpdatedInput(
   input: unknown,
-): Record<string, unknown> | null {
+): JsonRpcObject | null {
   const parsed = bashToolInputSchema.safeParse(input);
   if (!parsed.success) {
     return null;

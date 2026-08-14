@@ -129,18 +129,16 @@ describe("prebuilt server bundle loading", () => {
       version: "0.1.0",
       enabled: true,
     });
-    const before =
-      ((globalThis as Record<string, unknown>).__prebuiltDistLoads as
-        | number
-        | undefined) ?? 0;
+    const globals = globalThis as typeof globalThis & {
+      __prebuiltDistLoads?: number;
+    };
+    const before = globals.__prebuiltDistLoads ?? 0;
     await service.reload("gitdist");
 
     const entry = service.list().find((plugin) => plugin.id === "gitdist");
     expect(entry?.status).toBe("running");
     expect(entry?.statusDetail).toBeNull();
-    expect((globalThis as Record<string, unknown>).__prebuiltDistLoads).toBe(
-      before + 1,
-    );
+    expect(globals.__prebuiltDistLoads).toBe(before + 1);
   });
 
   it("never prefers dist for path installs — edited source must win", async () => {

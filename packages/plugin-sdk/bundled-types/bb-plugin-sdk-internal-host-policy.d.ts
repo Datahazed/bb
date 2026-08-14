@@ -17,6 +17,16 @@
 declare const RESERVED_BB_CLI_COMMANDS: readonly string[];
 
 /**
+ * A value that survives a JSON round trip without coercion or data loss.
+ *
+ * Host boundaries still validate values at runtime because TypeScript cannot
+ * exclude non-finite numbers and plugin bundles can bypass static types.
+ */
+type JsonValue = string | number | boolean | null | JsonValue[] | {
+    [key: string]: JsonValue;
+};
+
+/**
  * The validator-neutral subset of Standard Schema v1 used by plugin RPC.
  * Zod 4 schemas implement this interface directly; other validators can do
  * the same without becoming part of BB's public protocol.
@@ -123,9 +133,9 @@ declare const SETTING_KEY_PATTERN: RegExp;
  * plugin's registered schema. Plugin source is not type-safe at runtime, so
  * both the production and fake hosts must enforce this boundary identically.
  */
-declare function registerSettingDescriptors(target: PluginSettingDescriptors, added: Record<string, unknown>): PluginSettingDescriptors;
+declare function registerSettingDescriptors(target: PluginSettingDescriptors, added: object): PluginSettingDescriptors;
 /** Validate a settings update. `null` means unset. */
-declare function validateSettingsUpdate(descriptors: PluginSettingDescriptors, values: Record<string, unknown>): string[];
+declare function validateSettingsUpdate(descriptors: PluginSettingDescriptors, values: Record<string, JsonValue>): string[];
 declare const PLUGIN_MENTION_TRIGGER_VALUES: readonly ["@", "#", "$", "!", "~"];
 declare function isPluginMentionTrigger(value: unknown): value is PluginMentionTrigger;
 declare function normalizeMentionProviderTriggers(providerId: string, triggers: unknown): readonly PluginMentionTrigger[];

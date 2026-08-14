@@ -50,7 +50,9 @@ function candidate(
 }
 
 /** A module namespace whose default export registers one homepage section. */
-function pluginModule(sectionTitle: string): Record<string, unknown> {
+function pluginModule(sectionTitle: string): {
+  default: ReturnType<typeof definePluginApp>;
+} {
   return {
     default: definePluginApp((app) => {
       app.slots.homepageSection({
@@ -62,9 +64,9 @@ function pluginModule(sectionTitle: string): Record<string, unknown> {
   };
 }
 
-function contentScriptModule(
-  setup: Parameters<typeof definePluginApp>[0],
-): Record<string, unknown> {
+function contentScriptModule(setup: Parameters<typeof definePluginApp>[0]): {
+  default: ReturnType<typeof definePluginApp>;
+} {
   return { default: definePluginApp(setup) };
 }
 

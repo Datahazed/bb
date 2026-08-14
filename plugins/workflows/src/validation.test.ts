@@ -99,16 +99,13 @@ describe("safe workflow JSON Schema subset", () => {
   });
 
   it("retains cycle and prototype defenses before schema compilation", () => {
-    const cyclic: Record<string, unknown> = { type: "object" };
+    const cyclic: { type: string; self?: unknown } = { type: "object" };
     cyclic.self = cyclic;
     expect(() => assertValidJsonSchema(cyclic as never, "schema")).toThrow(
       "cyclic value",
     );
 
-    const inherited = Object.create({ poisoned: true }) as Record<
-      string,
-      unknown
-    >;
+    const inherited = Object.create({ poisoned: true }) as { type?: unknown };
     inherited.type = "object";
     expect(() => assertValidJsonSchema(inherited as never, "schema")).toThrow(
       "unsafe prototype",

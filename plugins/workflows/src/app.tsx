@@ -70,7 +70,13 @@ const WORKFLOW_HEADER_BUTTON_CLASS =
 const WORKFLOW_OPEN_BUTTON_CLASS =
   "flex min-h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-none border-l border-border/35 bg-transparent text-muted-foreground transition-colors hover:text-foreground";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+interface WorkflowPanelParamsCandidate {
+  runId?: unknown;
+}
+
+function isWorkflowPanelParamsCandidate(
+  value: unknown,
+): value is WorkflowPanelParamsCandidate {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -89,7 +95,10 @@ function directiveRunId(
 
 function panelRunId(params: unknown): string | null | undefined {
   if (params === null) return null;
-  if (!isRecord(params) || Object.keys(params).some((key) => key !== "runId")) {
+  if (
+    !isWorkflowPanelParamsCandidate(params) ||
+    Object.keys(params).some((key) => key !== "runId")
+  ) {
     return undefined;
   }
   return requireRunId(params.runId) ?? undefined;

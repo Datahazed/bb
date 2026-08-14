@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { JsonObject } from "@bb/domain";
 import {
   getPullRequestForCurrentBranch,
   parseGitHostPullRequest,
@@ -40,7 +41,7 @@ beforeEach(() => {
   execFileMock.mockReset();
 });
 
-function ghJson(overrides: Record<string, unknown> = {}): string {
+function ghJson(overrides: JsonObject = {}): string {
   return JSON.stringify({
     number: 42,
     title: "Add pull request section",

@@ -8,6 +8,7 @@
  * instead expose model and thought-level config options over the protocol.
  */
 
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import path from "node:path";
 import {
   buildAcpProviderInfo,
@@ -543,19 +544,19 @@ export function createAcpProviderAdapter(
     };
   }
 
-  function buildReasoningCliParam(): Record<string, unknown> {
+  function buildReasoningCliParam(): JsonRpcObject {
     return profile.reasoningCli === undefined
       ? {}
       : { reasoningCli: profile.reasoningCli };
   }
 
-  function buildNativeReasoningParam(): Record<string, unknown> {
+  function buildNativeReasoningParam(): JsonRpcObject {
     return profile.nativeReasoning === undefined
       ? {}
       : { nativeReasoning: profile.nativeReasoning };
   }
 
-  function buildPermissionCliParam(): Record<string, unknown> {
+  function buildPermissionCliParam(): JsonRpcObject {
     return profile.permissionCli === undefined
       ? {}
       : { permissionCli: profile.permissionCli };
@@ -1288,7 +1289,7 @@ export function createAcpProviderAdapter(
       AdapterCommand,
       { type: "thread/start" | "thread/resume" | "thread/fork" }
     >,
-  ): Record<string, unknown> {
+  ): JsonRpcObject {
     const instructions = buildAcpSessionInstructions(command.options);
     const cwd = profile.cwd ?? command.cwd;
     const envVars = {
@@ -1333,7 +1334,7 @@ export function createAcpProviderAdapter(
    */
   function buildModelSelectionParam(
     options: ProviderExecutionContext,
-  ): Record<string, unknown> {
+  ): JsonRpcObject {
     const model = options.model;
     const listCommand = buildModelListCommand();
     if (!model || model === ACP_DEFAULT_MODEL_ID) {

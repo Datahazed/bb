@@ -5,7 +5,11 @@ import {
   listStoredEventRows as listStoredEventRowRecords,
 } from "@bb/db";
 import type { DbConnection, StoredEventRow } from "@bb/db";
-import { buildThreadEventRow, parseStoredThreadEvent } from "@bb/domain";
+import {
+  buildThreadEventRow,
+  jsonObjectSchema,
+  parseStoredThreadEvent,
+} from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import type {
   ThreadEvent,
@@ -32,17 +36,7 @@ export interface FindThreadEventArgs {
   type: ThreadEventType;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function toRecord(value: unknown): Record<string, unknown> | null {
-  return isRecord(value) ? value : null;
-}
-
-function parseStoredEventPayload(
-  row: StoredEventPayloadRow,
-): Record<string, unknown> {
+function parseStoredEventPayload(row: StoredEventPayloadRow): object {
   let data: unknown;
   try {
     data = JSON.parse(row.data);
@@ -54,8 +48,8 @@ function parseStoredEventPayload(
     );
   }
 
-  const record = toRecord(data);
-  if (!record) {
+  const record = jsonObjectSchema.safeParse(data);
+  if (!record.success) {
     throw new ApiError(
       500,
       "internal_error",
@@ -63,7 +57,7 @@ function parseStoredEventPayload(
     );
   }
 
-  return record;
+  return record.data;
 }
 
 function parseStoredEventScope(row: StoredEventRow): ThreadEventScope {

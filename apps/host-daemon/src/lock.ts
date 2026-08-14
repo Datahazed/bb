@@ -18,8 +18,13 @@ const DAEMON_LOCK_ACQUIRE_RETRIES = 13;
 const DAEMON_LOCK_REACQUIRE_MAX_CYCLES = 20;
 
 export interface DaemonLockLogger {
-  warn(fields: Record<string, unknown>, message: string): void;
-  error(fields: Record<string, unknown>, message: string): void;
+  warn(fields: DaemonLockLogFields, message: string): void;
+  error(fields: DaemonLockLogFields, message: string): void;
+}
+
+export interface DaemonLockLogFields {
+  cycle?: number;
+  err?: unknown;
 }
 
 export interface AcquireDaemonLockOptions {
@@ -50,8 +55,7 @@ const consoleLockLogger: DaemonLockLogger = {
 
 function isErrorWithCode(error: unknown, code: string): boolean {
   return (
-    error instanceof Error &&
-    (error as NodeJS.ErrnoException).code === code
+    error instanceof Error && (error as NodeJS.ErrnoException).code === code
   );
 }
 

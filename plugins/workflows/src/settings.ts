@@ -175,7 +175,9 @@ export function parseStoredWorkflowSettings(value: unknown): WorkflowSettings {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("Workflow settings snapshot must be an object");
   }
-  const object = value as Record<string, unknown>;
+  const object = value as {
+    [K in keyof WorkflowSettings]?: unknown;
+  };
   const expected = Object.keys(INTEGER_FIELDS);
   const actual = Object.keys(object);
   if (
@@ -190,7 +192,7 @@ export function parseStoredWorkflowSettings(value: unknown): WorkflowSettings {
   }
   const raw = Object.fromEntries(
     expected.map((key) => {
-      const stored = object[key];
+      const stored = Reflect.get(object, key);
       if (typeof stored !== "number" || !Number.isSafeInteger(stored)) {
         throw new Error(`Workflow settings snapshot.${key} must be an integer`);
       }

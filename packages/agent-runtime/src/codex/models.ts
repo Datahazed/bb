@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import {
   reasoningEffortsForLevels,
   reasoningLevelSchema,
@@ -60,13 +61,11 @@ function cloneDefaultReasoningEfforts(): ModelReasoningEffort[] {
   return DEFAULT_REASONING_EFFORTS.map((effort) => ({ ...effort }));
 }
 
-function parseReasoningEffortOption(
-  raw: unknown,
-): ModelReasoningEffort | null {
+function parseReasoningEffortOption(raw: unknown): ModelReasoningEffort | null {
   if (raw == null || typeof raw !== "object") {
     return null;
   }
-  const record = raw as Record<string, unknown>;
+  const record = raw as JsonRpcObject;
   const level = mapCodexReasoningLevelToBb(record.reasoningEffort);
   if (!level) {
     return null;
@@ -81,9 +80,7 @@ function parseReasoningEffortOption(
   };
 }
 
-function parseSupportedReasoningEfforts(
-  raw: unknown,
-): ModelReasoningEffort[] {
+function parseSupportedReasoningEfforts(raw: unknown): ModelReasoningEffort[] {
   if (!Array.isArray(raw) || raw.length === 0) {
     return cloneDefaultReasoningEfforts();
   }
@@ -106,9 +103,7 @@ function parseSupportedReasoningEfforts(
 function toAvailableModel(
   raw: z.infer<typeof codexModelIdentitySchema>,
 ): AvailableModel {
-  const efforts = parseSupportedReasoningEfforts(
-    raw.supportedReasoningEfforts,
-  );
+  const efforts = parseSupportedReasoningEfforts(raw.supportedReasoningEfforts);
   const mappedDefault = mapCodexReasoningLevelToBb(raw.defaultReasoningEffort);
   const defaultReasoningEffort =
     mappedDefault &&

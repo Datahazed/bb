@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getCall, getRunRequired, migrations } from "./data.js";
 import plugin from "./server.js";
 import { createWorkflowService } from "./service.js";
+import type { JsonObject } from "./types.js";
 
 async function eventually(
   assertion: () => void | Promise<void>,
@@ -25,7 +26,7 @@ const STRUCTURED_WORKFLOW_TEST_TIMEOUT_MS = 30_000;
 async function workflowStatus(
   harness: ReturnType<typeof createFakePluginHost>["harness"],
   runId: string,
-): Promise<Record<string, unknown>> {
+): Promise<JsonObject> {
   const result = await harness.runCli(["status", runId], {
     threadId: "thread-test",
     projectId: "project-test",
@@ -33,7 +34,7 @@ async function workflowStatus(
   if (result.exitCode !== 0 || result.stdout === undefined) {
     throw new Error(result.stderr ?? `Could not inspect workflow ${runId}`);
   }
-  return JSON.parse(result.stdout) as Record<string, unknown>;
+  return JSON.parse(result.stdout) as JsonObject;
 }
 
 describe("workflows plugin", () => {
@@ -370,9 +371,7 @@ describe("workflows plugin", () => {
       projectId: "project-test",
     });
     expect(listResult).toMatchObject({ exitCode: 0 });
-    const listed = JSON.parse(listResult.stdout!) as Array<
-      Record<string, unknown>
-    >;
+    const listed = JSON.parse(listResult.stdout!) as JsonObject[];
     expect(listed).toHaveLength(1);
     expect(listed[0]).toMatchObject({
       id: started.runId,
@@ -389,7 +388,7 @@ describe("workflows plugin", () => {
     const records = historyResult
       .stdout!.trimEnd()
       .split("\n")
-      .map((line) => JSON.parse(line)) as Array<Record<string, unknown>>;
+      .map((line) => JSON.parse(line)) as JsonObject[];
     expect(records).toHaveLength(3);
     expect(records[0]).toMatchObject({
       type: "run",

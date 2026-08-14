@@ -6,8 +6,10 @@ export function getMessageStartedAt(message: {
   return message.startedAt ?? message.createdAt;
 }
 
+import type { JsonObject } from "@bb/domain";
+
 function getNonEmptyStringField(
-  record: Record<string, unknown> | null,
+  record: JsonObject | null,
   key: string,
 ): string | undefined {
   const value = record?.[key];
@@ -15,7 +17,7 @@ function getNonEmptyStringField(
 }
 
 export function getFirstStringField(
-  record: Record<string, unknown> | null,
+  record: JsonObject | null,
   keys: readonly string[],
 ): string | undefined {
   for (const key of keys) {

@@ -3973,11 +3973,20 @@ describe("events", () => {
 describe("timeline read-boundary output truncation", () => {
   const maxInlineOutputChars = 1_000;
 
+  interface TimelineWindowItemCandidate {
+    aggregatedOutput?: unknown;
+    result?: unknown;
+  }
+
+  interface TimelineWindowDataCandidate {
+    item: TimelineWindowItemCandidate;
+  }
+
   function readWindowData(
     db: ReturnType<typeof setup>["db"],
     threadId: string,
     limit: number | null,
-  ): Record<string, unknown> {
+  ): TimelineWindowDataCandidate {
     const rows = listStoredTimelineWindowEventRows(db, {
       maxInlineOutputChars: limit,
       sequenceStart: 0,
@@ -3987,7 +3996,7 @@ describe("timeline read-boundary output truncation", () => {
     if (!row) {
       throw new Error("expected a window row");
     }
-    return JSON.parse(row.data) as Record<string, unknown>;
+    return JSON.parse(row.data) as TimelineWindowDataCandidate;
   }
 
   it("measures the exact UTF-8 bytes returned by the capped read", () => {
@@ -4165,8 +4174,8 @@ describe("timeline read-boundary output truncation", () => {
 
     const stored = readWindowData(db, thread.id, null);
     const capped = readWindowData(db, thread.id, maxInlineOutputChars);
-    const storedItem = stored.item as Record<string, unknown>;
-    const cappedItem = capped.item as Record<string, unknown>;
+    const storedItem = stored.item;
+    const cappedItem = capped.item;
 
     expect(storedItem.aggregatedOutput).toBe(output);
     // Byte-identical to what the response-level truncator would produce, so a
@@ -4207,7 +4216,7 @@ describe("timeline read-boundary output truncation", () => {
     ]);
 
     const capped = readWindowData(db, thread.id, maxInlineOutputChars);
-    expect((capped.item as Record<string, unknown>).result).toEqual(result);
+    expect(capped.item.result).toEqual(result);
   });
 
   it("returns a payload under the cap exactly as stored", () => {

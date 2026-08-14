@@ -481,7 +481,7 @@ describe("provider rate-limit recovery", () => {
       }).map((row) =>
         parseStoredThreadEvent({
           type: row.type,
-          data: JSON.parse(row.data) as Record<string, unknown>,
+          data: JSON.parse(row.data) as object,
           providerThreadId: row.providerThreadId,
           scope:
             row.scopeKind === "turn" && row.turnId

@@ -289,7 +289,7 @@ export const provisioningTranscriptEntrySchema = z.object({
   text: z.string(),
   startedAt: z.number().optional(),
   status: z.enum(["started", "completed", "failed"]).optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string(), jsonValueSchema).optional(),
 });
 export type ProvisioningTranscriptEntry = z.infer<
   typeof provisioningTranscriptEntrySchema

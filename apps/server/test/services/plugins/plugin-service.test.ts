@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
-import type { SystemChangeKind } from "@bb/domain";
+import type { JsonObject, SystemChangeKind } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import {
   createPluginService,
@@ -13,6 +13,21 @@ import { testLogger } from "../../helpers/test-app.js";
 
 const logger = testLogger as unknown as Logger;
 
+type PluginServiceTestGlobals = typeof globalThis & {
+  __cyclerVersion?: string;
+  __cyclerDisposals?: string[];
+  esmReloader?: string;
+  cjsChild?: string;
+  importerReadShared?: () => Promise<string>;
+  imported?: string;
+  failImporterRead?: () => Promise<string>;
+  symlinked?: string;
+  nestedGuest?: string;
+  rollbackerLoadLazy?: () => Promise<string>;
+  __stalerApi?: { onDispose(hook: () => void): void };
+  __switchableDisposed?: boolean;
+};
+
 async function writePlugin(
   dir: string,
   options: {
@@ -20,7 +35,7 @@ async function writePlugin(
     version?: string;
     engines?: string;
     serverSource: string;
-    bb?: Record<string, unknown>;
+    bb?: JsonObject;
   },
 ): Promise<string> {
   const rootDir = join(dir, options.name);
@@ -258,7 +273,7 @@ describe("plugin service", () => {
       `export default function plugin() { (globalThis as any).__cyclerVersion = "v2"; }`,
     );
     await service.reload("cycler");
-    const globals = globalThis as Record<string, unknown>;
+    const globals = globalThis as PluginServiceTestGlobals;
     expect(globals.__cyclerVersion).toBe("v2");
     // LIFO: the second-registered hook runs first.
     expect(globals.__cyclerDisposals).toEqual(["second", "first"]);
@@ -276,7 +291,7 @@ describe("plugin service", () => {
   it("reload re-reads an ESM plugin's entry and its submodules", async () => {
     const rootDir = join(workDir, "bb-plugin-esm-reloader");
     await writeEsmPlugin(rootDir, "esm-reloader");
-    const globals = globalThis as Record<string, unknown>;
+    const globals = globalThis as PluginServiceTestGlobals;
 
     await writeEsmSources(rootDir, "esmReloader", "entry1", "sub1");
     await service.installPath(rootDir);
@@ -316,7 +331,7 @@ describe("plugin service", () => {
          globalThis.cjsChild = helper.H + ":" + require("./required.cjs").R;
        }\n`,
     );
-    const globals = globalThis as Record<string, unknown>;
+    const globals = globalThis as PluginServiceTestGlobals;
 
     await writeSources("cjs-before");
     await service.installPath(rootDir);
@@ -349,7 +364,7 @@ describe("plugin service", () => {
     );
     await service.installPath(importedDir);
     await service.installPath(importerDir);
-    const globals = globalThis as Record<string, unknown>;
+    const globals = globalThis as PluginServiceTestGlobals;
     const readShared = globals.importerReadShared as () => Promise<string>;
     expect(await readShared()).toBe("shared1");
 
@@ -398,7 +413,7 @@ describe("plugin service", () => {
     );
     await service.installPath(importedDir);
     await service.installPath(importerDir);
-    const globals = globalThis as Record<string, unknown>;
+    const globals = globalThis as PluginServiceTestGlobals;
     const read = globals.failImporterRead as () => Promise<string>;
     expect(await read()).toBe("shared1:cjs1");
 
@@ -428,7 +443,7 @@ describe("plugin service", () => {
     const linkDir = join(workDir, "link-symlinked");
     await writeEsmPlugin(realDir, "symlinked");
     await symlink(realDir, linkDir);
-    const globals = globalThis as Record<string, unknown>;
+    const globals = globalThis as PluginServiceTestGlobals;
 
     await writeEsmSources(realDir, "symlinked", "entry1", "sub1");
     await service.installPath(linkDir);
@@ -447,7 +462,7 @@ describe("plugin service", () => {
     const nestedDir = join(outerDir, "vendor", "nested-guest");
     await writeEsmPlugin(outerDir, "outer-host");
     await writeEsmPlugin(nestedDir, "nested-guest");
-    const globals = globalThis as Record<string, unknown>;
+    const globals = globalThis as PluginServiceTestGlobals;
 
     await writeEsmSources(outerDir, "outerHost", "entry1", "sub1");
     await writeEsmSources(nestedDir, "nestedGuest", "entry1", "sub1");
@@ -482,7 +497,7 @@ describe("plugin service", () => {
       `export const MARKER = "sub1";\n`,
     );
     await service.installPath(rootDir);
-    const globals = globalThis as Record<string, unknown>;
+    const globals = globalThis as PluginServiceTestGlobals;
     const loadLazy = globals.rollbackerLoadLazy as () => Promise<string>;
     expect(await loadLazy()).toBe("lazy1");
 
@@ -507,9 +522,7 @@ describe("plugin service", () => {
       `,
     });
     await service.installPath(rootDir);
-    const captured = (globalThis as Record<string, unknown>).__stalerApi as {
-      onDispose(hook: () => void): void;
-    };
+    const captured = (globalThis as PluginServiceTestGlobals).__stalerApi!;
     await service.reload("staler");
     expect(() => captured.onDispose(() => {})).toThrowError(/stale API handle/);
   });
@@ -583,7 +596,7 @@ describe("plugin service", () => {
     await service.installPath(rootDir);
     const disabled = await service.setEnabled("switchable", false);
     expect(disabled?.status).toBe("disabled");
-    expect((globalThis as Record<string, unknown>).__switchableDisposed).toBe(
+    expect((globalThis as PluginServiceTestGlobals).__switchableDisposed).toBe(
       true,
     );
     const enabled = await service.setEnabled("switchable", true);

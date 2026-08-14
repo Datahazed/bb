@@ -7,6 +7,7 @@
  * the Pi SDK and produces `ThreadEvent[]`.
  */
 
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import {
   getBuiltinModels,
   getBuiltinProviders,
@@ -36,6 +37,7 @@ import {
   extractResultText,
   normalizeProviderCommandOutput,
   toNonNegativeNumber,
+  toOptionalRecord,
   toOptionalString,
   withParentToolCallId,
 } from "../shared/adapter-utils.js";
@@ -406,8 +408,10 @@ function translatePiToolUseItem(
       if (!parsed.success) {
         return null;
       }
+      const argumentsObject = toOptionalRecord(parsed.data);
+      if (!argumentsObject) return null;
       return {
-        arguments: parsed.data,
+        arguments: argumentsObject,
         path: parsed.data.path,
         oldText: parsed.data.oldText,
         newText: parsed.data.newText ?? parsed.data.content,
@@ -491,8 +495,8 @@ function toPiThinkingLevel(
 function buildPiConfig(
   threadId: string,
   options?: ProviderExecutionContext,
-): Record<string, unknown> | undefined {
-  const config: Record<string, unknown> = {};
+): JsonRpcObject | undefined {
+  const config: JsonRpcObject = {};
   if (threadId) config["shell_environment_policy.set.BB_THREAD_ID"] = threadId;
   const shellEnvironmentConfig = buildShellEnvironmentPolicyConfig(
     options?.envVars,

@@ -3,6 +3,7 @@ import {
   bbAppManagedConfigSchema,
   formatCustomAcpAgentProviderId,
   parseBbAppManagedConfig,
+  type CustomAcpAgentWarningFields,
 } from "../src/bb-app-managed-config.js";
 
 describe("bbAppManagedConfigSchema", () => {
@@ -65,7 +66,7 @@ describe("bbAppManagedConfigSchema", () => {
   });
 
   it("drops invalid custom model entries with warnings at the config boundary", () => {
-    const warnings: Record<string, unknown>[] = [];
+    const warnings: CustomAcpAgentWarningFields[] = [];
     const parsed = parseBbAppManagedConfig(
       {
         customModels: [
@@ -349,7 +350,7 @@ describe("bbAppManagedConfigSchema", () => {
   });
 
   it("drops invalid custom ACP agent entries with warnings at the config boundary", () => {
-    const warnings: Record<string, unknown>[] = [];
+    const warnings: CustomAcpAgentWarningFields[] = [];
     const parsed = parseBbAppManagedConfig(
       {
         customAcpAgents: [

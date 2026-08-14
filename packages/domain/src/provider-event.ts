@@ -347,7 +347,7 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
     id: z.string(),
     server: z.string().optional(),
     tool: z.string(),
-    arguments: z.record(z.string(), z.unknown()).optional(),
+    arguments: z.record(z.string(), jsonValueSchema).optional(),
     /** Server-enriched labels for a native plugin tool's timeline row. */
     statusLabels: z
       .object({ pending: z.string(), completed: z.string() })

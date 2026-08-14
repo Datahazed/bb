@@ -11,14 +11,21 @@ export interface BbDesktopSpellcheckApi {
   ): BbDesktopSpellcheckCorrectionContext | null;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+interface BbDesktopSpellcheckCorrectionCandidate {
+  dictionarySuggestions?: unknown;
+  misspelledWord?: unknown;
+}
+
+function isCorrectionCandidate(
+  value: unknown,
+): value is BbDesktopSpellcheckCorrectionCandidate {
   return typeof value === "object" && value !== null;
 }
 
 export function parseBbDesktopSpellcheckCorrectionContext(
   value: unknown,
 ): BbDesktopSpellcheckCorrectionContext | null {
-  if (!isRecord(value)) {
+  if (!isCorrectionCandidate(value)) {
     return null;
   }
   const { dictionarySuggestions, misspelledWord } = value;

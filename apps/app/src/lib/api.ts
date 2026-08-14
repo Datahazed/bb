@@ -1,5 +1,5 @@
 // Legacy raw-HTTP escape hatch. New call sites must use @/lib/sdk.
-import { extractErrorMessage, toRecord } from "@bb/core-ui";
+import { extractErrorMessage, getObjectProperty } from "@bb/core-ui";
 import type { SystemVoiceTranscriptionResponse } from "@bb/server-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
 import { appSurfaceRequestInit } from "./app-surface";
@@ -106,13 +106,8 @@ function parseHttpErrorBody(
 }
 
 function extractErrorCode(value: unknown): string | undefined {
-  const record = toRecord(value);
-  if (!record) {
-    return undefined;
-  }
-  return typeof record.code === "string" && record.code.trim().length > 0
-    ? record.code
-    : undefined;
+  const code = getObjectProperty(value, "code");
+  return typeof code === "string" && code.trim().length > 0 ? code : undefined;
 }
 
 async function throwHttpError(res: Response): Promise<never> {

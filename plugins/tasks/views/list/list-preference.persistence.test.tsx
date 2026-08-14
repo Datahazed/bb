@@ -130,7 +130,9 @@ const labelsA = [
   },
 ];
 
-function baseRpc(overrides: Record<string, unknown> = {}) {
+function baseRpc(
+  overrides: Partial<Parameters<typeof app.setRpcHandlers>[0]> = {},
+) {
   const listTasksCalls: unknown[] = [];
   const rpc = {
     listProjects: () => ({ projects: [projectA, projectB] }),

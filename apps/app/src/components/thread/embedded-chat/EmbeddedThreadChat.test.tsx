@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FollowUpComposerProps } from "@/components/promptbox/FollowUpPromptBox";
 import { EmbeddedThreadChat } from "./EmbeddedThreadChat";
+import type { ThreadTimelinePanelContentProps } from "@/components/thread/timeline/ThreadTimelinePanelContent";
 
 const mocks = vi.hoisted(() => ({
   createQueuedMessageMutateAsync: vi.fn(),
@@ -24,7 +25,7 @@ const mocks = vi.hoisted(() => ({
   // while the component is unmounted must appear after a remount.
   timelineRows: [] as Array<{ text: string }>,
   injectedTimelineProps: [] as Array<unknown>,
-  timelinePanelProps: [] as Array<Record<string, unknown>>,
+  timelinePanelProps: [] as ThreadTimelinePanelContentProps[],
   timelineProjectIds: [] as Array<string | undefined>,
   resolveMentionLink: vi.fn(),
 }));
@@ -94,7 +95,7 @@ vi.mock("@/components/ui/overflow-fade", () => ({
 
 vi.mock("@/components/thread/timeline", () => ({
   isRunningThreadRuntimeDisplayStatus: (status: string) => status === "active",
-  ThreadTimelinePanelContent: (props: Record<string, unknown>) => {
+  ThreadTimelinePanelContent: (props: ThreadTimelinePanelContentProps) => {
     mocks.timelinePanelProps.push(props);
     mocks.injectedTimelineProps.push(props.timeline);
     mocks.timelineProjectIds.push(props.projectId as string | undefined);

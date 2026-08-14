@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import { threadScope, turnScope } from "@bb/domain";
 import type {
   AdapterCommand,
@@ -39,7 +40,7 @@ interface CreateRecordingAdapterArgs {
   scriptPath: string;
 }
 
-type RuntimeTestRecord = Record<string, unknown>;
+type RuntimeTestRecord = JsonRpcObject;
 
 export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

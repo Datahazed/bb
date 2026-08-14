@@ -465,13 +465,41 @@ export const docsRpcContract = defineRpcContract({
   },
 });
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isObject(value: unknown): value is object {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function requireRecord(value: unknown): Record<string, unknown> {
-  if (!isRecord(value)) throw new Error("Expected an object");
+interface DocsCliResultCandidate {
+  outcome?: unknown;
+  conflicts?: unknown;
+  rootPath?: unknown;
+  errors?: unknown;
+  written?: unknown;
+  deleted?: unknown;
+  deletedDirectories?: unknown;
+  writes?: unknown;
+  deletes?: unknown;
+  directories?: unknown;
+  deleteDirectories?: unknown;
+  warnings?: unknown;
+  diffs?: unknown;
+  vaultId?: unknown;
+  content?: unknown;
+}
+
+function isDocsCliResultCandidate(
+  value: unknown,
+): value is DocsCliResultCandidate {
+  return isObject(value);
+}
+
+function requireObject(value: unknown): object {
+  if (!isObject(value)) throw new Error("Expected an object");
   return value;
+}
+
+function objectField(value: object, field: string): unknown {
+  return Reflect.get(value, field);
 }
 
 function requireString(value: unknown, field: string): string {
@@ -486,20 +514,25 @@ function optionalString(value: unknown): string | undefined {
 }
 
 function parseOpenerSource(value: unknown): OpenerSource {
-  const source = requireRecord(value);
-  if (
-    source.kind !== "workspace" &&
-    source.kind !== "host" &&
-    source.kind !== "thread-storage"
-  ) {
+  const source = requireObject(value);
+  const kind = objectField(source, "kind");
+  if (kind !== "workspace" && kind !== "host" && kind !== "thread-storage") {
     throw new Error('"source.kind" must be workspace, host, or thread-storage');
   }
   return {
-    kind: source.kind,
-    threadId: typeof source.threadId === "string" ? source.threadId : null,
+    kind,
+    threadId:
+      typeof objectField(source, "threadId") === "string"
+        ? String(objectField(source, "threadId"))
+        : null,
     environmentId:
-      typeof source.environmentId === "string" ? source.environmentId : null,
-    projectId: typeof source.projectId === "string" ? source.projectId : null,
+      typeof objectField(source, "environmentId") === "string"
+        ? String(objectField(source, "environmentId"))
+        : null,
+    projectId:
+      typeof objectField(source, "projectId") === "string"
+        ? String(objectField(source, "projectId"))
+        : null,
   };
 }
 
@@ -651,12 +684,13 @@ function sanitizeName(raw: string): string {
 }
 
 function parseVaultRow(value: unknown): Vault {
-  const row = requireRecord(value);
+  const row = requireObject(value);
+  const hostId = objectField(row, "host_id");
   return {
-    id: requireString(row.id, "id"),
-    name: requireString(row.name, "name"),
-    hostId: typeof row.host_id === "string" && row.host_id ? row.host_id : null,
-    rootPath: requireString(row.root_path, "root_path"),
+    id: requireString(objectField(row, "id"), "id"),
+    name: requireString(objectField(row, "name"), "name"),
+    hostId: typeof hostId === "string" && hostId ? hostId : null,
+    rootPath: requireString(objectField(row, "root_path"), "root_path"),
   };
 }
 
@@ -838,7 +872,12 @@ export default async function plugin(
         "SELECT child_path FROM entry_order WHERE vault_id = ? ORDER BY parent_path, position",
       )
       .all(vaultId)
-      .map((row) => requireString(requireRecord(row).child_path, "child_path"));
+      .map((row) =>
+        requireString(
+          objectField(requireObject(row), "child_path"),
+          "child_path",
+        ),
+      );
   }
 
   if (seededDefaultVault) {
@@ -1020,7 +1059,7 @@ export default async function plugin(
 
   async function createNote(
     vaultId: string | undefined,
-    input: Record<string, unknown>,
+    input: z.infer<(typeof docsRpcContract)["createNote"]["input"]>,
   ) {
     const vault = getVault(vaultId);
     const parent = requireOptionalDirectory(input.parent);
@@ -2508,7 +2547,8 @@ export default async function plugin(
   }
 
   function formatSyncHumanOutput(command: string, result: unknown): string {
-    if (!isRecord(result)) return JSON.stringify(result, null, 2);
+    if (!isDocsCliResultCandidate(result))
+      return JSON.stringify(result, null, 2);
     if (command === "pull") {
       if (result.outcome === "conflict") {
         return `Pull stopped: ${Array.isArray(result.conflicts) ? result.conflicts.length : 0} conflict(s). No files were changed.\n${JSON.stringify(result.conflicts, null, 2)}`;
@@ -2750,14 +2790,19 @@ export default async function plugin(
           result = await readFile(args.vaultId, args.positionals[0]);
         else if (args.command === "pull") {
           result = await runPull(args, context);
-          if (isRecord(result) && result.outcome === "conflict") exitCode = 3;
-          else if (isRecord(result) && result.outcome === "partial")
+          if (isDocsCliResultCandidate(result) && result.outcome === "conflict")
+            exitCode = 3;
+          else if (
+            isDocsCliResultCandidate(result) &&
+            result.outcome === "partial"
+          )
             exitCode = 1;
         } else if (args.command === "status") {
           result = await runPushPlan(args, context, false);
-          if (isRecord(result) && result.outcome === "conflict") exitCode = 3;
+          if (isDocsCliResultCandidate(result) && result.outcome === "conflict")
+            exitCode = 3;
           else if (
-            isRecord(result) &&
+            isDocsCliResultCandidate(result) &&
             ((Array.isArray(result.writes) && result.writes.length > 0) ||
               (Array.isArray(result.deletes) && result.deletes.length > 0) ||
               (Array.isArray(result.directories) &&
@@ -2770,7 +2815,7 @@ export default async function plugin(
         } else if (args.command === "push") {
           result = await runPushPlan(args, context, true);
           if (
-            isRecord(result) &&
+            isDocsCliResultCandidate(result) &&
             (result.outcome === "conflict" || result.outcome === "partial")
           )
             exitCode = result.outcome === "conflict" ? 3 : 1;
@@ -2816,7 +2861,7 @@ export default async function plugin(
         const output =
           args.command === "read" &&
           !args.json &&
-          isRecord(result) &&
+          isDocsCliResultCandidate(result) &&
           typeof result.content === "string"
             ? result.content
             : args.json

@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "./runtime-json-rpc.js";
 import { once } from "node:events";
 import {
   existsSync,
@@ -124,15 +125,12 @@ describe("createAgentRuntime process lifecycle", () => {
     return content.length > 0 ? content.split("\n") : [];
   }
 
-  function readStringParam(
-    params: Record<string, unknown>,
-    key: string,
-  ): string | null {
+  function readStringParam(params: JsonRpcObject, key: string): string | null {
     const value = params[key];
     return typeof value === "string" ? value : null;
   }
 
-  function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  function isJsonRecord(value: unknown): value is JsonRpcObject {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 

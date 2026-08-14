@@ -81,7 +81,7 @@ interface ComposerLog {
 interface SidebarActionCall {
     method: keyof PluginSidebarThreadActions;
     threadId?: string;
-    options?: Record<string, unknown>;
+    options?: Parameters<PluginSidebarThreadActions["open"]>[1] | Parameters<PluginSidebarThreadActions["openNewThread"]>[0];
     title?: string;
     pinned?: boolean;
     read?: boolean;

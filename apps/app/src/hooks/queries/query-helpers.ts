@@ -1,4 +1,4 @@
-import { toRecord } from "@bb/core-ui";
+import { getObjectProperty } from "@bb/core-ui";
 import { HttpError } from "@/lib/api";
 import { BbHttpError } from "@/lib/sdk";
 
@@ -46,19 +46,19 @@ export function isTransientReadError(error: unknown): boolean {
     return true;
   }
 
-  if (toRecord(error)?.name === "AbortError") {
+  if (getObjectProperty(error, "name") === "AbortError") {
     return true;
   }
   if (error instanceof HttpError || error instanceof BbHttpError) {
     return false;
   }
 
-  const record = toRecord(error);
-  if (!record || typeof record.message !== "string") {
+  const errorMessage = getObjectProperty(error, "message");
+  if (typeof errorMessage !== "string") {
     return false;
   }
 
-  const message = normalizeErrorMessage(record.message);
+  const message = normalizeErrorMessage(errorMessage);
   return (
     message.includes("failed to fetch") ||
     message.includes("load failed") ||

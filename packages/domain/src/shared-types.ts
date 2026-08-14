@@ -269,7 +269,7 @@ function normalizeLegacyPromptMentionResource(value: unknown): unknown {
     return value;
   }
 
-  const record = value as Record<string, unknown>;
+  const record = value as { kind?: unknown; folderId?: unknown };
   if (record.kind !== "folder" || typeof record.folderId !== "string") {
     return value;
   }

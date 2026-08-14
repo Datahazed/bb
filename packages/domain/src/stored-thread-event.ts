@@ -35,11 +35,11 @@ interface ThreadEventRowBase {
 
 interface ThreadEventRowInput extends ThreadEventRowBase {
   type: ThreadEventType;
-  data: Record<string, unknown>;
+  data: object;
 }
 
 export interface StoredThreadEventParseArgs {
-  data: Record<string, unknown>;
+  data: object;
   providerThreadId?: string | null;
   scope: ThreadEventScope;
   threadId: string;
@@ -114,10 +114,9 @@ function toStoredThreadEventData<TEvent extends ThreadEvent>(
   return data;
 }
 
-function omitStoredScopeFields(
-  data: Record<string, unknown>,
-): Record<string, unknown> {
-  const { scope: _scope, turnId: _turnId, ...rest } = data;
+function omitStoredScopeFields(data: object): object {
+  const candidate = data as { scope?: unknown; turnId?: unknown };
+  const { scope: _scope, turnId: _turnId, ...rest } = candidate;
   return rest;
 }
 

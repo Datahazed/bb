@@ -158,9 +158,15 @@ function hasSupportedFrontmatterDelimiter(content: string): boolean {
   );
 }
 
+interface CommandFrontmatter {
+  name?: unknown;
+  description?: unknown;
+  "argument-hint"?: unknown;
+}
+
 function readFrontmatterString(
-  data: Record<string, unknown>,
-  key: string,
+  data: CommandFrontmatter,
+  key: keyof CommandFrontmatter,
 ): string | null {
   const value = data[key];
   if (typeof value !== "string") {
@@ -187,7 +193,7 @@ async function parseFrontmatter(filePath: string): Promise<ParsedFrontmatter> {
     return { name: null, description: null, argumentHint: null };
   }
 
-  let data: Record<string, unknown>;
+  let data: CommandFrontmatter;
   try {
     data = matter(content).data;
   } catch {

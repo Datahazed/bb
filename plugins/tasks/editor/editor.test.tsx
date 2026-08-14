@@ -80,10 +80,10 @@ describe("mention extension", () => {
       content: "Ping [TSK-42](bbtask://TSK-42) today.",
     });
     const findMentions = () => {
-      const found: Array<Record<string, unknown>> = [];
+      const found: Array<{ key?: unknown; label?: unknown }> = [];
       editor.state.doc.descendants((node) => {
         if (node.type.name === "taskMention")
-          found.push(node.attrs as Record<string, unknown>);
+          found.push(node.attrs as { key?: unknown; label?: unknown });
       });
       return found;
     };
@@ -127,7 +127,9 @@ describe("mention extension", () => {
                 key: "TSK-7",
                 title: "Detail panel",
               },
-            ].filter((item) => item.key.toLowerCase().includes(query.toLowerCase())),
+            ].filter((item) =>
+              item.key.toLowerCase().includes(query.toLowerCase()),
+            ),
           )
         }
         onEditorReady={(editor) => {
@@ -202,9 +204,7 @@ describe("mention extension", () => {
       ),
     );
     expect(
-      screen.container.querySelector(
-        '[data-thread-mention="thr_a82u8wp8qq"]',
-      ),
+      screen.container.querySelector('[data-thread-mention="thr_a82u8wp8qq"]'),
     ).toBeTruthy();
   });
 });
@@ -262,7 +262,11 @@ describe("heading toggle", () => {
   }
 
   /** Puts a text selection inside the (1-based) nth block, or across two. */
-  function selectBlocks(editor: Editor, fromBlock: number, toBlock = fromBlock) {
+  function selectBlocks(
+    editor: Editor,
+    fromBlock: number,
+    toBlock = fromBlock,
+  ) {
     const positions: number[] = [];
     editor.state.doc.forEach((_node, offset) => {
       positions.push(offset + 2); // one char into the block's text

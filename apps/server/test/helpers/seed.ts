@@ -51,7 +51,7 @@ export interface SeedEventArgs<TType extends ThreadEventType> {
 
 export interface SeedStoredEventArgs {
   createdAt?: number;
-  data: Record<string, unknown>;
+  data: object;
   environmentId?: string | null;
   itemId?: string | null;
   itemKind?: ThreadEventItemType | null;

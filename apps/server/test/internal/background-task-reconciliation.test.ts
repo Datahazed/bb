@@ -25,7 +25,7 @@ function backgroundTaskItemData(args: {
   itemId: string;
   taskStatus: string;
   status: string;
-}): Record<string, unknown> {
+}) {
   return {
     providerThreadId: "claude-session-1",
     item: {

@@ -44,7 +44,10 @@ const FIXTURE_SOURCE = `
 describe("review fixes: idempotent enable, cli auth, dispose drain", () => {
   let harness: TestAppHarness;
   let workDir: string;
-  const globals = globalThis as Record<string, unknown>;
+  const globals = globalThis as typeof globalThis & {
+    __rfLoads?: number;
+    __rfDisposals?: number;
+  };
 
   beforeEach(async () => {
     harness = await createTestAppHarness();

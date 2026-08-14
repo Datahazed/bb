@@ -7,6 +7,23 @@ export const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 type RejectionReporter = (reason: string) => void;
+type Candidate<T> = { [K in keyof T]?: unknown };
+type ComposerCustomizationCandidate = Candidate<ComposerCustomization>;
+type ComposerActionCandidate = Candidate<
+  NonNullable<ComposerCustomization["actions"]>[number]
+>;
+type ComposerBannerCandidate = Candidate<
+  NonNullable<ComposerCustomization["banners"]>[number]
+>;
+type ComposerPlusMenuCandidate = Candidate<
+  NonNullable<ComposerCustomization["plusMenu"]>[number]
+>;
+type ComposerRichTextCandidate = Candidate<
+  NonNullable<ComposerCustomization["richText"]>
+>;
+type ComposerTextEffectCandidate = Candidate<
+  NonNullable<NonNullable<ComposerCustomization["richText"]>["effects"]>[number]
+>;
 
 /**
  * Parse the runtime value handed to
@@ -24,7 +41,7 @@ export function normalizePluginThreadRowStatus(
     return undefined;
   }
 
-  const status = value as Record<string, unknown>;
+  const status = value as Candidate<PluginComposerThreadRowStatus>;
   const icon = status.icon;
   if (typeof icon !== "string" || icon.trim() === "") {
     onRejected(`${kind}: "icon" must be a non-blank string`);
@@ -155,7 +172,7 @@ function parseContributionArray<T extends { id: string }>(
 
 function parseRegions(
   kind: string,
-  registration: Record<string, unknown>,
+  registration: ComposerCustomizationCandidate,
   onRejected: RejectionReporter,
 ): Pick<
   ComposerCustomization,
@@ -164,7 +181,7 @@ function parseRegions(
   const actions = parseContributionArray<
     NonNullable<ComposerCustomization["actions"]>[number]
   >(`${kind}.actions`, registration.actions, onRejected, (entryKind, value) => {
-    const entry = value as Record<string, unknown> | null;
+    const entry = value as ComposerActionCandidate | null;
     return {
       id: requireSlotId(entryKind, entry?.id),
       component: requireComponent(entryKind, entry?.component),
@@ -173,7 +190,7 @@ function parseRegions(
   const banners = parseContributionArray<
     NonNullable<ComposerCustomization["banners"]>[number]
   >(`${kind}.banners`, registration.banners, onRejected, (entryKind, value) => {
-    const entry = value as Record<string, unknown> | null;
+    const entry = value as ComposerBannerCandidate | null;
     const id = requireSlotId(entryKind, entry?.id);
     const chrome = entry?.chrome;
     if (chrome !== undefined && chrome !== "card" && chrome !== "bare") {
@@ -194,7 +211,7 @@ function parseRegions(
     registration.plusMenu,
     onRejected,
     (entryKind, value) => {
-      const entry = value as Record<string, unknown> | null;
+      const entry = value as ComposerPlusMenuCandidate | null;
       const id = requireSlotId(entryKind, entry?.id);
       const icon = requireOptionalString(entryKind, "icon", entry?.icon);
       const description = requireOptionalString(
@@ -235,7 +252,7 @@ function parseRegions(
 
   let richText: ComposerCustomization["richText"];
   if (registration.richText !== undefined) {
-    const raw = registration.richText as Record<string, unknown> | null;
+    const raw = registration.richText as ComposerRichTextCandidate | null;
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
       onRejected(`${kind}.richText: must be an object when set`);
     } else {
@@ -248,7 +265,7 @@ function parseRegions(
         raw.effects,
         onRejected,
         (entryKind, value) => {
-          const entry = value as Record<string, unknown> | null;
+          const entry = value as ComposerTextEffectCandidate | null;
           return {
             id: requireSlotId(entryKind, entry?.id),
             match: requireFunction<
@@ -302,7 +319,7 @@ export function collectComposerCustomization(
 ): ComposerCustomization | null {
   const kind = "composer.customize";
   try {
-    const raw = registration as Record<string, unknown> | null;
+    const raw = registration as ComposerCustomizationCandidate | null;
     const id = requireSlotId(kind, raw?.id);
     const scopes = raw?.scopes;
     if (scopes !== undefined) {

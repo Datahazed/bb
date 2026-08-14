@@ -55,6 +55,7 @@ import {
 } from "./settings.js";
 import { workflowReferenceToSourceInput } from "./source-resolution.js";
 import type {
+  JsonObject,
   JsonSchema,
   JsonValue,
   NestedWorkflowContext,
@@ -103,7 +104,12 @@ function message(error: unknown): string {
 
 export function isRetryableProviderFailure(error: unknown): boolean {
   if (typeof error === "object" && error !== null) {
-    const candidate = error as Record<string, unknown>;
+    const candidate = error as {
+      retryable?: unknown;
+      status?: unknown;
+      statusCode?: unknown;
+      code?: unknown;
+    };
     if (candidate.retryable === true) return true;
     const status = candidate.status ?? candidate.statusCode;
     if (
@@ -288,9 +294,7 @@ function validateValue(
   }
 }
 
-function resultToolParameters(
-  outputSchema: JsonSchema,
-): Record<string, unknown> {
+function resultToolParameters(outputSchema: JsonSchema): JsonObject {
   return {
     type: "object",
     properties: { value: outputSchema },
@@ -376,7 +380,7 @@ export interface WorkflowService {
   agentConfiguration(threadId: string): {
     /** Parameter schema for bb_workflow_result; null when the call is not a
      * running structured call. */
-    resultParameters: Record<string, unknown> | null;
+    resultParameters: JsonObject | null;
     terminal: boolean;
     instructions: string | null;
   } | null;

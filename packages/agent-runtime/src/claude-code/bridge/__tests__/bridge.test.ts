@@ -1,3 +1,4 @@
+import type { JsonRpcObject } from "../../../runtime-json-rpc.js";
 import {
   chmodSync,
   mkdirSync,
@@ -69,14 +70,14 @@ interface DeniedReadonlyBashCase {
 
 interface AssistantToolUseMessageArgs {
   parentToolUseId: string | null;
-  toolInput: Record<string, unknown>;
+  toolInput: JsonRpcObject;
   toolName: string;
   toolUseId: string;
 }
 
 interface CanUseToolPolicyAllowExpectation {
   behavior: "allow";
-  updatedInput: Record<string, unknown>;
+  updatedInput: JsonRpcObject;
 }
 
 interface CanUseToolPolicyDenyExpectation {
@@ -93,7 +94,7 @@ interface CanUseToolPolicyCase {
   decisionReason?: string;
   expected: CanUseToolPolicyExpectation;
   id: string;
-  input: Record<string, unknown>;
+  input: JsonRpcObject;
   name: string;
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
@@ -186,7 +187,7 @@ interface ForwardedAskUserQuestion {
   resultPromise: ReturnType<CanUseTool>;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is JsonRpcObject {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 

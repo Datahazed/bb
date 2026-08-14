@@ -68,7 +68,15 @@ interface PluginServerConfig {
   pluginVersion: string;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+interface PluginServerManifestCandidate {
+  bb?: unknown;
+}
+
+interface PluginServerConfigCandidate {
+  server?: unknown;
+}
+
+function isRecord(value: unknown): value is object {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -89,7 +97,19 @@ async function readPluginServerConfig(
   } catch {
     throw new Error(`package.json is not valid JSON at ${packageJsonPath}`);
   }
-  if (!isRecord(json) || !isRecord(json.bb) || json.bb.server === undefined) {
+  if (!isRecord(json)) {
+    throw new Error(
+      `no server entry: ${packageJsonPath} has no "bb": { "server": "./server.ts" } field`,
+    );
+  }
+  const manifestCandidate = json as PluginServerManifestCandidate;
+  if (!isRecord(manifestCandidate.bb)) {
+    throw new Error(
+      `no server entry: ${packageJsonPath} has no "bb": { "server": "./server.ts" } field`,
+    );
+  }
+  const configCandidate = manifestCandidate.bb as PluginServerConfigCandidate;
+  if (configCandidate.server === undefined) {
     throw new Error(
       `no server entry: ${packageJsonPath} has no "bb": { "server": "./server.ts" } field`,
     );

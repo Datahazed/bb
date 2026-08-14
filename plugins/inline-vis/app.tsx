@@ -26,14 +26,20 @@ interface PrepareHtmlPreviewRpcResult {
   file: string;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+type PrepareHtmlPreviewRpcResultCandidate = {
+  [K in keyof PrepareHtmlPreviewRpcResult]?: unknown;
+};
+
+function isPrepareHtmlPreviewRpcResultCandidate(
+  value: unknown,
+): value is PrepareHtmlPreviewRpcResultCandidate {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parsePrepareHtmlPreviewRpcResult(
   value: unknown,
 ): PrepareHtmlPreviewRpcResult {
-  if (!isRecord(value)) {
+  if (!isPrepareHtmlPreviewRpcResultCandidate(value)) {
     throw new Error("Plugin returned an unexpected response.");
   }
   if (typeof value.file !== "string") {

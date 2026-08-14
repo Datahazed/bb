@@ -8,6 +8,7 @@
  * - Generic JSON-RPC response decoding (for matching tool call responses)
  */
 
+import type { JsonRpcObject } from "../runtime-json-rpc.js";
 import { z } from "zod";
 import { providerToolCallResponseSchema } from "./provider-tool-call-contract.js";
 
@@ -25,7 +26,7 @@ export interface BridgeToolCallRequest {
     turnId: string | null;
     callId: string;
     tool: string;
-    arguments: Record<string, unknown>;
+    arguments: JsonRpcObject;
   };
 }
 

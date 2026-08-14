@@ -384,11 +384,15 @@ function readForkThreadCreateSeedFromLocationState(
   state: unknown,
 ): ForkThreadCreateSeed | null {
   if (!state || typeof state !== "object") return null;
-  const candidate = (state as Record<string, unknown>)[
-    FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY
-  ];
+  const candidate = (
+    state as {
+      [FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY]?: unknown;
+    }
+  )[FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY];
   if (!candidate || typeof candidate !== "object") return null;
-  const value = candidate as Record<string, unknown>;
+  const value = candidate as {
+    [K in keyof ForkThreadCreateSeed]?: unknown;
+  };
   if (
     typeof value.environmentId !== "string" ||
     value.environmentId.length === 0 ||

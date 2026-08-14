@@ -120,7 +120,13 @@ describe("ask-user-question builtin plugin", () => {
               options: {
                 minItems: number;
                 maxItems: number;
-                items: { properties: Record<string, unknown> };
+                items: {
+                  properties: {
+                    label?: unknown;
+                    description?: unknown;
+                    preview?: unknown;
+                  };
+                };
               };
             };
           };

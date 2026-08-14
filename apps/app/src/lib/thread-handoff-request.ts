@@ -17,6 +17,14 @@ export interface ThreadHandoffLocationState {
   [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: ThreadHandoffCreateSeed;
 }
 
+type ThreadHandoffCreateSeedCandidate = {
+  [K in keyof ThreadHandoffCreateSeed]?: unknown;
+};
+
+interface ThreadHandoffLocationStateCandidate {
+  [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]?: unknown;
+}
+
 export function buildThreadHandoffLocationState(
   seed: ThreadHandoffCreateSeed,
 ): ThreadHandoffLocationState {
@@ -33,11 +41,11 @@ export function readThreadHandoffCreateSeedFromLocationState(
   state: unknown,
 ): ThreadHandoffCreateSeed | null {
   if (!state || typeof state !== "object") return null;
-  const candidate = (state as Record<string, unknown>)[
+  const candidate = (state as ThreadHandoffLocationStateCandidate)[
     THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY
   ];
   if (!candidate || typeof candidate !== "object") return null;
-  const value = candidate as Record<string, unknown>;
+  const value = candidate as ThreadHandoffCreateSeedCandidate;
   if (
     typeof value.projectId !== "string" ||
     value.projectId.length === 0 ||

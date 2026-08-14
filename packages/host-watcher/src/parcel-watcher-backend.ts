@@ -48,10 +48,17 @@ function createInProcessBackend(): ParcelWatcherBackend {
 }
 
 export type ParcelWatcherBackendLogLevel = "info" | "warn" | "error";
+export interface ParcelWatcherBackendLogFields {
+  activeSubscriptions?: number;
+  consecutiveRestarts?: number;
+  delayMs?: number;
+  sinceLastPongMs?: number;
+  watchError?: string;
+}
 export type ParcelWatcherBackendLogger = (
   level: ParcelWatcherBackendLogLevel,
   message: string,
-  fields?: Record<string, unknown>,
+  fields?: ParcelWatcherBackendLogFields,
 ) => void;
 
 /**

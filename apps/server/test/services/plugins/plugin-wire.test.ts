@@ -476,7 +476,10 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
   });
 
   it("rpc rejects invalid input before invocation and rejects invalid output", async () => {
-    delete (globalThis as Record<string, unknown>).__validatedRpcCalls;
+    const globals = globalThis as typeof globalThis & {
+      __validatedRpcCalls?: number;
+    };
+    delete globals.__validatedRpcCalls;
     const invalidInput = await rpc(harness, "validated", { value: "" });
     expect(invalidInput.status).toBe(400);
     expect(await invalidInput.json()).toMatchObject({
@@ -487,9 +490,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
         issues: [{ path: ["value"] }],
       },
     });
-    expect(
-      (globalThis as Record<string, unknown>).__validatedRpcCalls,
-    ).toBeUndefined();
+    expect(globals.__validatedRpcCalls).toBeUndefined();
 
     const invalidOutput = await rpc(harness, "invalidOutput", null);
     expect(invalidOutput.status).toBe(500);
@@ -594,8 +595,8 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     });
     const installed = await harness.pluginService.installPath(genDir);
     expect(installed.status).toBe("running");
-    const firstGen = (globalThis as Record<string, unknown>)
-      .__wireGen as number;
+    const firstGen = (globalThis as typeof globalThis & { __wireGen?: number })
+      .__wireGen!;
 
     let releaseBody!: () => void;
     const gate = new Promise<void>((resolveGate) => {

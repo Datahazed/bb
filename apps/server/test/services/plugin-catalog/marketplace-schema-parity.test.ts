@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import type { JsonObject } from "@bb/domain";
 import { parseMarketplaceManifest } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 
 /**
@@ -34,7 +35,7 @@ interface Fixture {
   readonly manifest: unknown;
 }
 
-function manifestWith(entry: Record<string, unknown>): Record<string, unknown> {
+function manifestWith(entry: JsonObject): JsonObject {
   return {
     schemaVersion: 1,
     name: "acme",
@@ -72,7 +73,7 @@ function rangeFixture(label: string, range: string, valid: boolean): Fixture {
  * old `engines` key alike, so a stale manifest fails in the registry's CI
  * rather than only inside bb.
  */
-function enginesFixture(label: string, engines: unknown): Fixture {
+function enginesFixture(label: string, engines: JsonObject): Fixture {
   return { label, valid: false, manifest: manifestWith({ engines }) };
 }
 

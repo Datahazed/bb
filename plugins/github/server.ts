@@ -350,12 +350,12 @@ function run(
   });
 }
 
-export function parsePaginatedGhApi(raw: string): Record<string, unknown>[] {
+export function parsePaginatedGhApi(raw: string): object[] {
   const parsed: unknown = JSON.parse(raw);
   if (!Array.isArray(parsed)) {
     throw new Error("GitHub API pagination returned a non-array response");
   }
-  const rows: Record<string, unknown>[] = [];
+  const rows: object[] = [];
   for (const page of parsed) {
     if (!Array.isArray(page)) {
       throw new Error("GitHub API pagination returned a malformed page");
@@ -364,7 +364,7 @@ export function parsePaginatedGhApi(raw: string): Record<string, unknown>[] {
       if (typeof row !== "object" || row === null || Array.isArray(row)) {
         throw new Error("GitHub API pagination returned a malformed row");
       }
-      rows.push(row as Record<string, unknown>);
+      rows.push(row);
     }
   }
   return rows;
@@ -584,7 +584,21 @@ export default async function plugin(bb: BbPluginApi) {
     return [];
   }
 
-  function rowToItem(row: Record<string, unknown>): CachedItem {
+  interface CachedItemRow {
+    repo: unknown;
+    number: unknown;
+    kind: unknown;
+    title: unknown;
+    state: unknown;
+    author: unknown;
+    labels: unknown;
+    assignees: unknown;
+    url: unknown;
+    body: unknown;
+    updated_at: unknown;
+  }
+
+  function rowToItem(row: CachedItemRow): CachedItem {
     return {
       repo: String(row.repo),
       number: Number(row.number),
@@ -637,7 +651,7 @@ export default async function plugin(bb: BbPluginApi) {
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     const rows = db
       .prepare(`SELECT * FROM items ${where} ORDER BY updated_at DESC`)
-      .all(...params) as Record<string, unknown>[];
+      .all(...params) as CachedItemRow[];
     return rows.map(rowToItem);
   }
 
@@ -648,7 +662,7 @@ export default async function plugin(bb: BbPluginApi) {
   ): CachedItem | null {
     const row = db
       .prepare("SELECT * FROM items WHERE repo = ? AND kind = ? AND number = ?")
-      .get(repo, kind, number) as Record<string, unknown> | undefined;
+      .get(repo, kind, number) as CachedItemRow | undefined;
     return row === undefined ? null : rowToItem(row);
   }
 

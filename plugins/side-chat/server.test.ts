@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeThreadResponse,
+  type FakeSdkOverrides,
 } from "@get-bb/plugin-sdk/testing";
 import plugin, {
   EMPTY_FORK_MAX_AGE_MS,
@@ -28,7 +29,9 @@ function timelineResult(rows: SideChatTimelineRowLike[]) {
   return { rows };
 }
 
-async function loadPlugin(sdkThreads: Record<string, unknown>) {
+async function loadPlugin(
+  sdkThreads: NonNullable<FakeSdkOverrides["threads"]>,
+) {
   const host = createFakePluginHost({
     pluginId: PLUGIN_ID,
     sdk: { threads: sdkThreads },
@@ -357,8 +360,8 @@ describe("empty-fork sweep", () => {
           createdAt: old,
         }),
     );
-    const list = vi.fn(async ({ offset }: { offset?: number }) =>
-      offset === 0 ? firstPage : [],
+    const list = vi.fn(async (args?: { offset?: number }) =>
+      (args?.offset ?? 0) === 0 ? firstPage : [],
     );
     const { harness } = await loadPlugin({
       list,
@@ -374,7 +377,7 @@ describe("empty-fork sweep", () => {
 
     // The single retained fork is the only row still in the set, so the next
     // page starts at 1 — not at a full page past it.
-    expect(list.mock.calls.map(([args]) => args.offset)).toEqual([0, 1]);
+    expect(list.mock.calls.map(([args]) => args?.offset ?? 0)).toEqual([0, 1]);
   });
 
   it("keeps an old empty-timeline fork that has queued-but-unsent input", async () => {

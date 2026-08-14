@@ -17,7 +17,7 @@ import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 interface CountingLogger {
   logger: ServerLogger;
-  warnings(): Array<{ fields: Record<string, unknown>; message: string }>;
+  warnings(): Array<{ fields: object; message: string }>;
   warningCount(): number;
 }
 
@@ -30,26 +30,25 @@ function createTestLogger(): ServerLogger {
   };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isObject(value: unknown): value is object {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function createCountingLogger(): CountingLogger {
-  const warnings: Array<{ fields: Record<string, unknown>; message: string }> =
-    [];
+  const warnings: Array<{ fields: object; message: string }> = [];
   return {
     logger: {
       debug(): void {},
       error(): void {},
       info(): void {},
       warn(...args: unknown[]): void {
-        const fields = isRecord(args[0]) ? args[0] : {};
+        const fields = isObject(args[0]) ? args[0] : {};
         const message =
           typeof args[1] === "string" ? args[1] : String(args[0] ?? "");
         warnings.push({ fields, message });
       },
     },
-    warnings(): Array<{ fields: Record<string, unknown>; message: string }> {
+    warnings(): Array<{ fields: object; message: string }> {
       return warnings;
     },
     warningCount(): number {

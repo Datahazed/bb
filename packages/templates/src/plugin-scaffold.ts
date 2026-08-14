@@ -22,6 +22,12 @@ import {
   PLUGIN_STARTER_TYPE_DEPENDENCIES,
 } from "./generated/plugin-starter-files.generated.js";
 
+interface JsonObject {
+  [key: string]: JsonValue;
+}
+
+type JsonValue = boolean | number | string | null | JsonValue[] | JsonObject;
+
 /**
  * `bb plugin new` scaffold. Lives in @bb/templates because both the CLI
  * (which writes it) and the server test suite (which verifies the scaffold
@@ -186,7 +192,8 @@ const VENDORED_DECLARATIONS = [
  * same rule. A quoted specifier inside a comment is rewritten too — the
  * comment is talking about the import that just moved.
  */
-const LEGACY_SDK_SPECIFIER_PATTERN = /(["'])@bb\/plugin-sdk((?:\/[^"'\n]*)?)\1/g;
+const LEGACY_SDK_SPECIFIER_PATTERN =
+  /(["'])@bb\/plugin-sdk((?:\/[^"'\n]*)?)\1/g;
 
 /**
  * Source extensions the migration scans, and the directories it never enters.
@@ -195,7 +202,12 @@ const LEGACY_SDK_SPECIFIER_PATTERN = /(["'])@bb\/plugin-sdk((?:\/[^"'\n]*)?)\1/g
  * deleting — and any other dot-directory.
  */
 const PLUGIN_SOURCE_EXTENSIONS = [".ts", ".tsx"] as const;
-const UNSCANNED_DIRECTORIES = new Set(["dist", "node_modules", ".git", "types"]);
+const UNSCANNED_DIRECTORIES = new Set([
+  "dist",
+  "node_modules",
+  ".git",
+  "types",
+]);
 /** Depth guard for a pathological tree; real plugins nest a few levels. */
 const MAX_SOURCE_SCAN_DEPTH = 12;
 
@@ -357,8 +369,7 @@ export async function migratePluginToPackageLayout(
     // report and the tsconfig edit below must then follow the directory that is
     // still there, not the plan that expected it gone.
     await rmdir(typesDir).catch(() => undefined);
-    result.removedTypesDir =
-      (await statNoFollow(typesDir, "types")) === null;
+    result.removedTypesDir = (await statNoFollow(typesDir, "types")) === null;
   }
   // The tsconfig write happens last so the `types` include entries are dropped
   // only against a directory that is verifiably gone. When the rmdir did not
@@ -454,7 +465,8 @@ async function planSdkImportRewrites(
       // Dirent.isSymbolicLink is the lstat-equivalent readdir reports, so a
       // linked file or directory is skipped rather than followed.
       if (entry.isSymbolicLink()) continue;
-      const relativePath = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      const relativePath =
+        prefix === "" ? entry.name : `${prefix}/${entry.name}`;
       if (entry.isDirectory()) {
         if (UNSCANNED_DIRECTORIES.has(entry.name)) continue;
         if (entry.name.startsWith(".")) continue;
@@ -572,13 +584,17 @@ async function planManifest(
   } catch {
     throw new Error("package.json could not be read");
   }
-  let manifest: Record<string, unknown>;
+  let manifest: JsonObject;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
       throw new Error("not an object");
     }
-    manifest = parsed as Record<string, unknown>;
+    manifest = parsed as JsonObject;
   } catch {
     throw new Error("package.json is not valid JSON");
   }
@@ -643,7 +659,7 @@ async function planManifest(
  * manifest that declares it in both sections reports the devDependencies
  * version — that is the one the migration keeps.
  */
-function readSdkPinFrom(manifest: Record<string, unknown>): {
+function readSdkPinFrom(manifest: JsonObject): {
   inDependencies: boolean;
   version: string | null;
 } {
@@ -651,14 +667,15 @@ function readSdkPinFrom(manifest: Record<string, unknown>): {
     typeof asRecord(manifest.dependencies)["@get-bb/plugin-sdk"] === "string";
   for (const field of ["devDependencies", "dependencies"] as const) {
     const declared = asRecord(manifest[field])["@get-bb/plugin-sdk"];
-    if (typeof declared === "string") return { inDependencies, version: declared };
+    if (typeof declared === "string")
+      return { inDependencies, version: declared };
   }
   return { inDependencies, version: null };
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
+function asRecord(value: unknown): JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
+    ? (value as JsonObject)
     : {};
 }
 
@@ -669,15 +686,17 @@ function asRecord(value: unknown): Record<string, unknown> {
  * rather than being reshuffled.
  */
 function insertDependency(
-  deps: Record<string, unknown>,
+  deps: JsonObject,
   name: string,
   version: string,
-): Record<string, unknown> {
+): JsonObject {
   if (name in deps) return { ...deps, [name]: version };
   const keys = Object.keys(deps);
-  const sorted = keys.every((key, index) => index === 0 || keys[index - 1]! < key);
+  const sorted = keys.every(
+    (key, index) => index === 0 || keys[index - 1]! < key,
+  );
   if (!sorted) return { ...deps, [name]: version };
-  const next: Record<string, unknown> = {};
+  const next: JsonObject = {};
   let inserted = false;
   for (const key of keys) {
     if (!inserted && name < key) {
@@ -755,13 +774,17 @@ async function planTsconfig(
   const path = join(rootDir, "tsconfig.json");
   if ((await statNoFollow(path, "tsconfig.json")) === null) return empty;
   const raw = await readFile(path, "utf8");
-  let tsconfig: Record<string, unknown>;
+  let tsconfig: JsonObject;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
       throw new Error("not an object");
     }
-    tsconfig = parsed as Record<string, unknown>;
+    tsconfig = parsed as JsonObject;
   } catch {
     // A tsconfig with comments or a trailing comma parses here as invalid.
     // Rewriting it would destroy the author's file, so refuse the whole
@@ -793,9 +816,7 @@ async function planTsconfig(
 
   if (removedPathMaps.length > 0) {
     const nextPaths = Object.fromEntries(
-      Object.entries(paths).filter(
-        ([key]) => !removedPathMaps.includes(key),
-      ),
+      Object.entries(paths).filter(([key]) => !removedPathMaps.includes(key)),
     );
     if (Object.keys(nextPaths).length === 0) {
       delete compilerOptions.paths;
@@ -847,7 +868,7 @@ async function planVendoredDeletions(
  * the file already used, so the diff shows the fields that changed rather than
  * a whole-file reformat.
  */
-function reserialize(raw: string, value: Record<string, unknown>): string {
+function reserialize(raw: string, value: JsonObject): string {
   const indentMatch = /\n([ \t]+)"/.exec(raw);
   const indent = indentMatch === null ? 2 : indentMatch[1]!;
   const serialized = JSON.stringify(value, null, indent);
@@ -878,7 +899,7 @@ async function readDeclaredSdkPin(rootDir: string): Promise<string | null> {
   for (const field of ["devDependencies", "dependencies"] as const) {
     const deps = manifest[field];
     if (typeof deps !== "object" || deps === null) continue;
-    const declared = (deps as Record<string, unknown>)["@get-bb/plugin-sdk"];
+    const declared = (deps as JsonObject)["@get-bb/plugin-sdk"];
     if (typeof declared === "string") return declared;
   }
   return null;
@@ -910,7 +931,7 @@ async function tsconfigMapsSdk(rootDir: string): Promise<boolean> {
   if (typeof compilerOptions !== "object" || compilerOptions === null) {
     return false;
   }
-  const paths = (compilerOptions as Record<string, unknown>).paths;
+  const paths = (compilerOptions as JsonObject).paths;
   if (typeof paths !== "object" || paths === null) return false;
   return Object.keys(paths).some(
     (key) =>
@@ -926,13 +947,11 @@ async function tsconfigMapsSdk(rootDir: string): Promise<boolean> {
  * detection is a hint for whether to refresh declarations; a plugin with a
  * broken manifest is rejected with a real error by the caller, not here.
  */
-async function readJsonFile(
-  path: string,
-): Promise<Record<string, unknown> | null> {
+async function readJsonFile(path: string): Promise<JsonObject | null> {
   try {
     const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
     if (typeof parsed !== "object" || parsed === null) return null;
-    return parsed as Record<string, unknown>;
+    return parsed as JsonObject;
   } catch {
     return null;
   }
@@ -1007,7 +1026,9 @@ async function writeFileAtomically(
   const suffix = `${process.pid}-${randomBytes(6).toString("hex")}.bb-tmp`;
   const tempPath = `${filePath}.${suffix}`;
   if (await pathExists(tempPath)) {
-    throw new Error(`refusing to overwrite the temporary file ${label}.${suffix}`);
+    throw new Error(
+      `refusing to overwrite the temporary file ${label}.${suffix}`,
+    );
   }
   await writeFile(tempPath, content, { flag: "wx" });
   try {

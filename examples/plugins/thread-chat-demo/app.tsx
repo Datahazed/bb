@@ -63,7 +63,7 @@ interface DemoPanelParams {
 
 function readDemoPanelParams(params: unknown): DemoPanelParams {
   if (typeof params !== "object" || params === null) return {};
-  const record = params as Record<string, unknown>;
+  const record = params as { [K in keyof DemoPanelParams]?: unknown };
   return {
     anchorText:
       typeof record.anchorText === "string" ? record.anchorText : undefined,

@@ -16,6 +16,7 @@ import {
   type PluginSourceIntent,
 } from "@bb/db";
 import { buildPluginApp, buildPluginServer } from "@bb/plugin-build";
+import type { JsonObject } from "@bb/domain";
 import {
   assertPublicMarketplaceUrl,
   boundedResponseJson,
@@ -405,19 +406,17 @@ export function createManagedPluginArtifacts(
       return null;
     }
     if (typeof value !== "object" || value === null) return null;
-    const lock = value as Record<string, unknown>;
+    const lock = value as JsonObject;
     const packages = lock.packages;
     if (typeof packages === "object" && packages !== null) {
-      const entry = (packages as Record<string, unknown>)[
-        `node_modules/${packageName}`
-      ];
+      const entry = (packages as JsonObject)[`node_modules/${packageName}`];
       if (typeof entry === "object" && entry !== null && "integrity" in entry) {
         if (typeof entry.integrity === "string") return entry.integrity;
       }
     }
     const dependencies = lock.dependencies;
     if (typeof dependencies !== "object" || dependencies === null) return null;
-    const dependency = (dependencies as Record<string, unknown>)[packageName];
+    const dependency = (dependencies as JsonObject)[packageName];
     if (
       typeof dependency !== "object" ||
       dependency === null ||

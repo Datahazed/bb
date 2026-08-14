@@ -8,6 +8,7 @@ import {
   type GitHostPullRequestMergeStateStatus,
   type GitHostPullRequestMergeable,
   type GitHostPullRequestReviewDecision,
+  type JsonObject,
   gitHostPullRequestSchema,
 } from "@bb/domain";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
@@ -62,8 +63,6 @@ interface RunPullRequestActionForCurrentBranchArgs {
   localBranch: string;
   action: GitHostPullRequestAction;
 }
-
-type JsonObject = Record<string, unknown>;
 
 function asObject(value: unknown): JsonObject | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {

@@ -267,8 +267,12 @@ function resolveMigrationsFolder(): string {
   });
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
+function isObject(value: unknown): value is object {
   return typeof value === "object" && value !== null;
+}
+
+function objectField(value: object, key: string): unknown {
+  return Reflect.get(value, key) as unknown;
 }
 
 function parseTableInfoColumn(value: unknown): SqliteTableInfoColumn {
@@ -276,10 +280,10 @@ function parseTableInfoColumn(value: unknown): SqliteTableInfoColumn {
     throw new Error("Unexpected PRAGMA table_info row shape");
   }
 
-  const name = value.name;
-  const type = value.type;
-  const notNull = value.notnull;
-  const primaryKey = value.pk;
+  const name = objectField(value, "name");
+  const type = objectField(value, "type");
+  const notNull = objectField(value, "notnull");
+  const primaryKey = objectField(value, "pk");
   if (
     typeof name !== "string" ||
     typeof type !== "string" ||
@@ -302,11 +306,11 @@ function parseForeignKey(value: unknown): SqliteForeignKey {
     throw new Error("Unexpected PRAGMA foreign_key_list row shape");
   }
 
-  const table = value.table;
-  const from = value.from;
-  const to = value.to;
-  const onUpdate = value.on_update;
-  const onDelete = value.on_delete;
+  const table = objectField(value, "table");
+  const from = objectField(value, "from");
+  const to = objectField(value, "to");
+  const onUpdate = objectField(value, "on_update");
+  const onDelete = objectField(value, "on_delete");
   if (
     typeof table !== "string" ||
     typeof from !== "string" ||
@@ -331,8 +335,8 @@ function parseIndex(value: unknown): SqliteIndex {
     throw new Error("Unexpected PRAGMA index_list row shape");
   }
 
-  const name = value.name;
-  const unique = value.unique;
+  const name = objectField(value, "name");
+  const unique = objectField(value, "unique");
   if (typeof name !== "string" || typeof unique !== "number") {
     throw new Error("Unexpected PRAGMA index_list fields");
   }
@@ -344,11 +348,15 @@ function parseIndex(value: unknown): SqliteIndex {
 }
 
 function parseIndexColumnName(value: unknown): string {
-  if (!isObject(value) || typeof value.name !== "string") {
+  if (!isObject(value)) {
     throw new Error("Unexpected PRAGMA index_info row shape");
   }
 
-  return value.name;
+  const name = objectField(value, "name");
+  if (typeof name !== "string") {
+    throw new Error("Unexpected PRAGMA index_info row shape");
+  }
+  return name;
 }
 
 function parseMigrationJournalEntry(value: unknown): MigrationJournalEntry {
@@ -356,8 +364,8 @@ function parseMigrationJournalEntry(value: unknown): MigrationJournalEntry {
     throw new Error("Unexpected migration journal entry shape");
   }
 
-  const tag = value.tag;
-  const when = value.when;
+  const tag = objectField(value, "tag");
+  const when = objectField(value, "when");
   if (typeof tag !== "string" || typeof when !== "number") {
     throw new Error("Unexpected migration journal entry fields");
   }
@@ -366,12 +374,17 @@ function parseMigrationJournalEntry(value: unknown): MigrationJournalEntry {
 }
 
 function parseMigrationJournal(value: unknown): MigrationJournal {
-  if (!isObject(value) || !Array.isArray(value.entries)) {
+  if (!isObject(value)) {
+    throw new Error("Unexpected migration journal shape");
+  }
+
+  const entries = objectField(value, "entries");
+  if (!Array.isArray(entries)) {
     throw new Error("Unexpected migration journal shape");
   }
 
   return {
-    entries: value.entries.map(parseMigrationJournalEntry),
+    entries: entries.map(parseMigrationJournalEntry),
   };
 }
 

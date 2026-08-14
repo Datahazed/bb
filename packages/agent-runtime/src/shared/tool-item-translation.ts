@@ -1,4 +1,8 @@
-import type { ThreadEventItem, ThreadEventItemStatus } from "@bb/domain";
+import type {
+  JsonObject,
+  ThreadEventItem,
+  ThreadEventItemStatus,
+} from "@bb/domain";
 import {
   buildEditDiff,
   toOptionalRecord,
@@ -20,7 +24,7 @@ export interface ParsedCommandToolArguments {
 }
 
 export interface ParsedFileChangeToolArguments {
-  arguments: Record<string, unknown>;
+  arguments: JsonObject;
   newText?: string;
   oldText?: string;
   path?: string;

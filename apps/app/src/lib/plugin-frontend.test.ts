@@ -4,6 +4,7 @@ import * as jsxRuntime from "react/jsx-runtime";
 import {
   installPluginRuntime,
   loadPluginFrontends,
+  type BbPluginRuntime,
   type PluginFrontendCandidate,
 } from "./plugin-frontend";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
@@ -137,7 +138,9 @@ describe("loadPluginFrontends", () => {
 });
 
 describe("installPluginRuntime", () => {
-  type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: unknown };
+  type RuntimeHost = typeof globalThis & {
+    __bbPluginRuntime?: BbPluginRuntime;
+  };
 
   afterEach(() => {
     delete (globalThis as RuntimeHost).__bbPluginRuntime;
@@ -145,10 +148,7 @@ describe("installPluginRuntime", () => {
 
   it("exposes the app's own runtime modules on every shim slot, exactly once", () => {
     installPluginRuntime();
-    const runtime = (globalThis as RuntimeHost).__bbPluginRuntime as Record<
-      string,
-      unknown
-    >;
+    const runtime = (globalThis as RuntimeHost).__bbPluginRuntime!;
     // The shim slot names `bb plugin build` emits (react ×5 + SDK + the
     // shared-singleton packages: portal radix families, sonner, vaul,
     // @pierre/diffs).

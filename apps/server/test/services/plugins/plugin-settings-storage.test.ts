@@ -22,10 +22,38 @@ import {
   createPluginService,
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
-import { PluginSettingsValidationError } from "../../../src/services/plugins/plugin-settings.js";
+import {
+  PluginSettingsValidationError,
+  type PluginSettingsView,
+} from "../../../src/services/plugins/plugin-settings.js";
 import { testLogger } from "../../helpers/test-app.js";
 
 const logger = testLogger as unknown as Logger;
+
+interface ConfigurableSettings {
+  apiKey: string | undefined;
+  teamKey: string;
+  mode: string;
+  autoSync: boolean;
+  note: string | undefined;
+}
+
+type SettingsStorageTestGlobals = typeof globalThis & {
+  __configurable?: {
+    initial: ConfigurableSettings;
+    changes: Array<{
+      next: ConfigurableSettings;
+      prev: ConfigurableSettings;
+    }>;
+    settings: { get(): Promise<ConfigurableSettings> };
+  };
+  __sqler?: {
+    db: { prepare(sql: string): { get(): { count: number } } };
+    journalMode: string;
+  };
+  __needsKeyLoads?: number;
+  __healthyLoads?: number;
+};
 
 async function writePlugin(
   dir: string,
@@ -109,15 +137,10 @@ describe("plugin settings + storage", () => {
       expect(entry.status).toBe("running");
     }
 
-    function state(): {
-      initial: Record<string, unknown>;
-      changes: Array<{
-        next: Record<string, unknown>;
-        prev: Record<string, unknown>;
-      }>;
-      settings: { get(): Promise<Record<string, unknown>> };
-    } {
-      return (globalThis as Record<string, unknown>).__configurable as never;
+    function state(): NonNullable<
+      SettingsStorageTestGlobals["__configurable"]
+    > {
+      return (globalThis as SettingsStorageTestGlobals).__configurable!;
     }
 
     it("get() is load-safe and applies typed defaults", async () => {
@@ -244,8 +267,8 @@ describe("plugin settings + storage", () => {
       expect(got.status).toBe(200);
       const body = (await got.json()) as {
         ok: boolean;
-        schema: Record<string, { type: string; secret?: true }>;
-        values: Record<string, unknown>;
+        schema: PluginSettingsView["schema"];
+        values: PluginSettingsView["values"];
       };
       expect(body.ok).toBe(true);
       expect(body.schema.apiKey).toEqual({
@@ -264,7 +287,9 @@ describe("plugin settings + storage", () => {
         }),
       });
       expect(put.status).toBe(200);
-      const putBody = (await put.json()) as { values: Record<string, unknown> };
+      const putBody = (await put.json()) as {
+        values: PluginSettingsView["values"];
+      };
       expect(putBody.values.apiKey).toEqual({ set: true });
       expect(JSON.stringify(putBody)).not.toContain("wire-secret");
 
@@ -353,13 +378,8 @@ describe("plugin settings + storage", () => {
       }
     `;
 
-    function sqler(): {
-      db: {
-        prepare(sql: string): { get(): { count: number } };
-      };
-      journalMode: string;
-    } {
-      return (globalThis as Record<string, unknown>).__sqler as never;
+    function sqler(): NonNullable<SettingsStorageTestGlobals["__sqler"]> {
+      return (globalThis as SettingsStorageTestGlobals).__sqler!;
     }
 
     it("vends a WAL handle, applies migrations once, and closes handles on reload", async () => {
@@ -412,7 +432,7 @@ describe("plugin settings + storage", () => {
         }
       `,
     });
-    const globals = globalThis as Record<string, unknown>;
+    const globals = globalThis as SettingsStorageTestGlobals;
     delete globals.__needsKeyLoads;
     await service.installPath(rootDir);
     expect(service.list().find((p) => p.id === "needs-key")?.status).toBe(
@@ -441,7 +461,7 @@ describe("plugin settings + storage", () => {
         }
       `,
     });
-    const globals = globalThis as Record<string, unknown>;
+    const globals = globalThis as SettingsStorageTestGlobals;
     delete globals.__healthyLoads;
     await service.installPath(rootDir);
     await service.updateSettings("healthy", { note: "hi" });

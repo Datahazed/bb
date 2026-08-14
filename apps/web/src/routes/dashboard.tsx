@@ -40,9 +40,9 @@ interface DashboardSearch {
 // Absent means absent: never surface the literal strings "null"/"undefined" (or
 // empty) as a return target, and omit the key entirely when there is none so the
 // router never re-serializes `?returnTo=null` back into the URL.
-function validateDashboardSearch(
-  search: Record<string, unknown>,
-): DashboardSearch {
+function validateDashboardSearch(search: {
+  returnTo?: unknown;
+}): DashboardSearch {
   const raw = search.returnTo;
   if (
     typeof raw === "string" &&

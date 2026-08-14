@@ -29,7 +29,7 @@ const OTHER_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M1 1h14v14H1z"/></svg>',
 );
 
-function entry(overrides: Record<string, unknown> = {}) {
+function entry(overrides: object = {}): object {
   return {
     id: "notes",
     displayName: "Acme Notes",
@@ -47,8 +47,8 @@ function entry(overrides: Record<string, unknown> = {}) {
 function manifest(
   name: string,
   plugins: unknown[],
-  overrides: Record<string, unknown> = {},
-) {
+  overrides: object = {},
+): object {
   return {
     schemaVersion: 1,
     name,
@@ -131,7 +131,7 @@ describe("third-party marketplaces", () => {
 
   /** A fetch that serves one https marketplace manifest plus its icons. */
   function marketplaceFetch(
-    documents: Record<string, unknown>,
+    documents: { [url: string]: object },
     icons: Record<string, Buffer> = {},
   ): MarketplaceFetch {
     return async (url) => {
