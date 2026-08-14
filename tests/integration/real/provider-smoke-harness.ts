@@ -117,7 +117,7 @@ interface ResolveExecutionOptionsArgs {
 // Active-turn waits: enough time to confirm the provider has started a long-running turn.
 export const ACTIVE_TIMEOUT_MS = scaleTimeoutMs(15_000);
 export const REAL_POLL_INTERVAL_MS = 200;
-// Whole-turn waits: real providers can take much longer than the fake adapter to respond.
+// Whole-turn waits: real providers can take much longer than the canonical fake driver to respond.
 export const TURN_TIMEOUT_MS = scaleTimeoutMs(60_000);
 // Stop waits: give the daemon time to interrupt an in-flight real-provider turn cleanly.
 export const STOP_TIMEOUT_MS = scaleTimeoutMs(30_000);
@@ -476,7 +476,9 @@ export function hasAssistantTimelineMessage(
 
 export async function createRealThread(args: CreateRealThreadArgs) {
   await assertProviderPrerequisites(args.providerId);
-  const harness = await createIntegrationHarness({ adapterFactory: undefined });
+  const harness = await createIntegrationHarness({
+    providerDriverFactory: undefined,
+  });
   const project = await createProjectFixture(harness, {
     name: `Real Provider ${args.providerId}`,
   });
@@ -485,9 +487,7 @@ export async function createRealThread(args: CreateRealThreadArgs) {
       harness,
       providerId: args.providerId,
     }),
-    input: [
-      { type: "text", text: REAL_PROVIDER_BOOTSTRAP_TEXT, mentions: [] },
-    ],
+    input: [{ type: "text", text: REAL_PROVIDER_BOOTSTRAP_TEXT, mentions: [] }],
     projectId: project.id,
     providerId: args.providerId,
     timeoutMs: TURN_TIMEOUT_MS,

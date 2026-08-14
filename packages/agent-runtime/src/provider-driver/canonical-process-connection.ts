@@ -124,10 +124,8 @@ function operationApplied(result: ProviderDriverOperationResult): boolean {
  * provider-specific translation.
  */
 export class CanonicalProcessProviderConnection implements ProviderDriverConnection {
-  readonly approvalRequestPolicy = "runtime" as const;
   readonly capabilities: ProviderCapabilities;
   readonly identity: { displayName: string; providerId: string };
-  readonly supportsInteractiveResponses = false;
 
   private readonly additionalWorkspaceWriteRoots: readonly string[];
   private readonly attachmentsById = new Map<string, CanonicalAttachment>();
@@ -231,7 +229,6 @@ export class CanonicalProcessProviderConnection implements ProviderDriverConnect
       attachment.opening = false;
       const events = this.drainQueuedEvents(attachment);
       return {
-        disposition: "opened",
         events,
         providerSessionId: result.providerSessionId,
         providerSessionIdForCleanup: result.providerSessionId,
@@ -425,32 +422,6 @@ export class CanonicalProcessProviderConnection implements ProviderDriverConnect
     this.eventListeners.add(listener);
     return () => this.eventListeners.delete(listener);
   }
-
-  translateEvent(): ThreadEvent[] {
-    return [];
-  }
-
-  buildSessionDetachedEvents(): ThreadEvent[] {
-    return [];
-  }
-
-  decodeToolCallRequest() {
-    return null;
-  }
-
-  decodeInteractiveRequest() {
-    return null;
-  }
-
-  buildInteractiveResponse(): never {
-    throw new Error(
-      "Canonical provider interactions are handled on the framed connection",
-    );
-  }
-
-  settleResponse(): void {}
-  sendError(): void {}
-  sendResult(): void {}
 
   rejectPendingRequests(error: Error): void {
     this.rejectSettlementWaiters(error);

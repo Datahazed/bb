@@ -1,8 +1,8 @@
 # @bb/agent-runtime
 
-Manages agent provider processes (codex, claude-code, pi) and exposes a clean session interface. Handles process spawning, stdio framing, JSON-RPC dispatch, event translation, tool call routing, crash detection, and shutdown.
+Manages isolated provider-driver processes (Codex, Claude Code, Pi, and ACP) and exposes a clean session interface. Handles process supervision, framed RPC, canonical lifecycle validation, event projection, tool and interaction routing, crash detection, and shutdown.
 
-Consumers say "start a thread, run a turn, give me events" — they never touch processes, adapters, or wire formats.
+Consumers say "start a thread, run a turn, give me events" — they never touch provider processes or wire formats.
 
 ## Public API
 
@@ -72,7 +72,7 @@ The runtime fails fast when providers crash or are unavailable:
 - **Crash during initialize** → `ensureProvider` rejects with stderr output
 - **Crash during a turn** → pending `runTurn` promise rejects with "exited unexpectedly"
 - **Crash between turns** → next `runTurn` call rejects immediately
-- **Identity not resolved** → `startThread` throws after 5s instead of silently returning wrong data
+- **Invalid session identity** → the canonical driver response is rejected at the protocol boundary
 
 ### Multi-thread / multi-provider
 
@@ -81,19 +81,28 @@ A single runtime can manage multiple threads across multiple providers simultane
 ## Running Tests
 
 ```bash
-# Unit tests (no credentials needed, uses fake provider process)
-pnpm --filter @bb/agent-runtime test:unit
+# Unit tests (no credentials needed, uses a canonical fake driver)
+pnpm exec turbo run test:unit --filter=@bb/agent-runtime
 
 # Integration tests (requires real provider credentials)
-pnpm --filter @bb/agent-runtime test:integration
+pnpm exec turbo run test:integration --filter=@bb/agent-runtime --force
 
-# All tests
-pnpm --filter @bb/agent-runtime test
+# All package tests
+pnpm exec turbo run test --filter=@bb/agent-runtime --force
 ```
 
 ### Integration test requirements
 
-All providers must be authenticated in the current environment before running integration tests. Each provider manages its own credentials (auth files, env vars, etc.).
+Codex, Claude Code, and Pi must be authenticated in the current environment before running integration tests. Each provider manages its own credentials (auth files, env vars, etc.). The repeatable live OpenCode ACP check is opt-in:
+
+```bash
+BB_TEST_ACP_OPENCODE=1 pnpm exec turbo run test:integration \
+  --filter=@bb/agent-runtime --force -- \
+  --testNamePattern='^OpenCode live ACP provider' \
+  src/integration.acp-opencode.test.ts
+```
+
+Set `BB_TEST_ACP_OPENCODE_COMMAND` if `opencode` is not on `PATH`.
 
 ### Working with integration tests
 
@@ -113,7 +122,7 @@ grep -E "(✓|×|Test Files|Tests )" /tmp/integ-out.txt
 
 The root `test:integration --force` run also schedules `@bb/integration-tests#test:integration` after `@bb/agent-runtime#test:integration`. Those two package-level suites both exercise real providers and can share local subscription auth/session state, so only the cross-package real-provider suites are ordered. Concurrency inside each suite remains covered, including multi-provider runtime tests and `real/provider-concurrency.test.ts`.
 
-**When a test hangs**, the provider is likely not responding to a JSON-RPC request. Common causes:
+**When a test hangs**, the provider driver or its provider-native child is likely not responding. Common causes:
 
 - Provider protocol validation rejects a request
 - Provider needs credentials that aren't in the environment
@@ -121,12 +130,9 @@ The root `test:integration --force` run also schedules `@bb/integration-tests#te
 
 ### Test coverage
 
-**Unit tests** — runtime lifecycle, multi-thread event routing, multi-provider, tool call round-trips, protocol error handling, fail-fast on crashes (binary not found, crash during init, crash mid-turn, crash between turns), concurrent `ensureProvider` deduplication, resume across runtimes, and canonical event translation.
+**Unit tests** — runtime lifecycle through a canonical fake driver, multi-thread event routing, multi-provider isolation, tool and interaction round-trips, framed-protocol errors, crash handling, concurrent `ensureProvider` deduplication, resume across runtimes, and canonical event translation.
 
-**Integration tests (27)** run all 3 providers concurrently in ~45 seconds:
-
-- **Per-provider tests** (7 × 3 = 21): lists models, single turn, follow-up turn, developer instructions, error recovery, dynamic tool calls, resume across process lifetimes
-- **Cross-provider tests** (6): multi-thread on same runtime, multi-provider in single runtime, dynamic tools across resume, memory recall across resume, combined memory+tools across restart, multi-provider matrix with resume
+**Integration tests** exercise the real Codex, Claude Code, and Pi implementations across model discovery, single and follow-up turns, steering, cancellation and recovery, developer instructions, bad-request recovery, dynamic tools, process resume, command output, workspace/environment isolation, and multi-provider concurrency. The opt-in OpenCode ACP test covers model discovery, tool routing, and context-preserving cross-process resume.
 
 ### Building
 

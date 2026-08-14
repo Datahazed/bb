@@ -24,13 +24,11 @@ codex app-server generate-ts --experimental --out <tmp-dir>
 ## Committed state: pruned to the reachable subset
 
 We do **not** commit the generator's full output. The hand-written Codex
-adapter imports concrete schema files directly (e.g.
-`schema/v2/SandboxPolicy.js`) and never imports the barrels, so most emitted
+driver and translation modules import concrete schema files directly (e.g.
+`schema/v2/SandboxPolicy.js`) and never import the barrels, so most emitted
 types are unreachable. The committed tree is therefore pruned to the
-transitive type-import closure of the hand-written importers:
-
-- `adapter.ts`, `visibility.ts`, `permission-mapping.ts`,
-  `interactive-requests.ts`, `adapter.test.ts`.
+transitive type-import closure of the hand-written Codex implementation and
+its tests.
 
 At the time of pruning that was 336 of the ~580 emitted files; the
 unreachable files and all three `export *` barrels (`index.ts`,
@@ -54,5 +52,5 @@ the kept subset is complete. Keep it pruned to avoid re-vendoring dead types.
 ## Source of truth
 
 - `schema/*.ts`: generated from Codex app-server, pruned to the reachable subset (see above).
-- `index.ts` / barrels: intentionally **not** committed; the adapter imports concrete `schema/**` files directly.
+- `index.ts` / barrels: intentionally **not** committed; the driver imports concrete `schema/**` files directly.
 - `packages/agent-runtime/src/codex/event-translation.ts`: translates Codex app-server events into bb thread events.

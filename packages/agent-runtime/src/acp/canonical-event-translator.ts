@@ -17,7 +17,7 @@ import {
   buildEditDiff,
   extractResultText,
   toOptionalString,
-} from "../shared/adapter-utils.js";
+} from "../shared/provider-utils.js";
 import { completeStartedToolItem } from "../shared/tool-item-translation.js";
 import type { AcpPermissionOption } from "./wire.js";
 import {

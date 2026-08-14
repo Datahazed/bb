@@ -27,7 +27,7 @@ describe("real provider concurrency integration", () => {
       await assertProviderPrerequisites("claude-code");
 
       const harness = await createIntegrationHarness({
-        adapterFactory: undefined,
+        providerDriverFactory: undefined,
       });
 
       try {

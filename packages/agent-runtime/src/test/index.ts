@@ -1,6 +1,10 @@
-export { createAgentRuntimeWithAdapters } from "./runtime-with-adapters.js";
+export {
+  createAgentRuntimeWithProviderDrivers,
+  createFakeCanonicalProviderDriverSpec,
+  fakeProviderDriverPath,
+} from "./runtime-with-provider-drivers.js";
 export type {
-  ProviderAdapter,
-  ProviderAdapterFactory,
-} from "./provider-adapter.js";
-export { createFakeAdapter, fakeProviderScriptPath } from "./fake-adapter.js";
+  AgentRuntimeWithProviderDriversOptions,
+  CreateFakeCanonicalProviderDriverSpecOptions,
+} from "./runtime-with-provider-drivers.js";
+export type { RuntimeCanonicalProviderDriverLaunchSpecFactory } from "../runtime-provider-process.js";

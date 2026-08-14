@@ -5,9 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import {
-  createAgentRuntimeWithAdapters,
-  createFakeAdapter,
-  type ProviderAdapterFactory,
+  createAgentRuntimeWithProviderDrivers,
+  createFakeCanonicalProviderDriverSpec,
+  type RuntimeCanonicalProviderDriverLaunchSpecFactory,
 } from "@bb/agent-runtime/test";
 import type { DbConnection } from "@bb/db";
 import { defaultFeatureFlags } from "@bb/domain";
@@ -97,7 +97,7 @@ export interface IntegrationHarness {
 }
 
 export interface CreateHarnessOptions {
-  adapterFactory?: ProviderAdapterFactory;
+  providerDriverFactory?: RuntimeCanonicalProviderDriverLaunchSpecFactory;
 }
 
 export type WithHarnessCallback<T> = (
@@ -126,17 +126,19 @@ function requireListeningAddress(
   return address;
 }
 
-function hasAdapterFactoryOverride(options: CreateHarnessOptions): boolean {
-  return Object.prototype.hasOwnProperty.call(options, "adapterFactory");
+function hasProviderDriverFactoryOverride(
+  options: CreateHarnessOptions,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(options, "providerDriverFactory");
 }
 
-function resolveAdapterFactory(
+function resolveProviderDriverFactory(
   options: CreateHarnessOptions,
-): ProviderAdapterFactory | undefined {
-  if (hasAdapterFactoryOverride(options)) {
-    return options.adapterFactory;
+): RuntimeCanonicalProviderDriverLaunchSpecFactory | undefined {
+  if (hasProviderDriverFactoryOverride(options)) {
+    return options.providerDriverFactory;
   }
-  return () => createFakeAdapter();
+  return (providerId) => createFakeCanonicalProviderDriverSpec(providerId);
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
@@ -362,13 +364,13 @@ async function startHarnessDaemon(
     // enrollment. Once that succeeds, persist the generated host ID so daemon
     // restarts stay attached to the same host.
     await persistHostId({ dataDir, hostId: identity.hostId });
-    const adapterFactory = resolveAdapterFactory(options);
+    const providerDriverFactory = resolveProviderDriverFactory(options);
     const daemonApp = await createHostDaemonApp({
-      createRuntime: adapterFactory
+      createRuntime: providerDriverFactory
         ? (runtimeOptions) =>
-            createAgentRuntimeWithAdapters({
+            createAgentRuntimeWithProviderDrivers({
               ...runtimeOptions,
-              adapterFactory,
+              providerDriverFactory,
             })
         : undefined,
       dataDir,

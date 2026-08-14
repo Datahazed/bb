@@ -6,9 +6,9 @@ import {
   extractEnvOverrides,
   extractResultText,
   normalizeProviderCommandOutput,
-} from "./adapter-utils.js";
+} from "./provider-utils.js";
 
-describe("adapter-utils", () => {
+describe("provider-utils", () => {
   function countChangedLines(diff: string | undefined): {
     added: number;
     removed: number;

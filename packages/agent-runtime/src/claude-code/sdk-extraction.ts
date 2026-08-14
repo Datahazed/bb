@@ -10,7 +10,7 @@ import {
   extractResultText,
   normalizeProviderCommandOutput,
   toNonNegativeNumber,
-} from "../shared/adapter-utils.js";
+} from "../shared/provider-utils.js";
 import {
   claudeAssistantUsageMessageSchema,
   claudeModelUsageSchema,
@@ -85,9 +85,7 @@ const LARGE_CLAUDE_CONTEXT_MODELS = new Set([
   "fable",
 ]);
 
-export function getNestedParentToolUseId(
-  message: unknown,
-): string | undefined {
+export function getNestedParentToolUseId(message: unknown): string | undefined {
   if (typeof message !== "object" || message === null) {
     return undefined;
   }

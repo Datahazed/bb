@@ -15,17 +15,7 @@ import type {
   ServiceTier,
   ThreadEvent,
 } from "@bb/domain";
-import type {
-  JsonRpcObject,
-  ProviderInboundRequest,
-  ProviderRuntimeEvent,
-} from "../runtime-json-rpc.js";
 import type { AgentRuntimeSkillRoot } from "../types.js";
-
-export interface ProviderTranslationContext {
-  threadId?: string;
-  parentToolCallId?: string;
-}
 
 export type ProviderExecutionContext = {
   model?: string;
@@ -106,15 +96,13 @@ export interface ProviderDriverSessionOpenArgs {
 }
 
 /**
- * Legacy adapters can return identity in the request result, in a later event,
- * or both. `providerSessionIdForCleanup` is an intentionally broader identity
- * candidate used only to discard a partially opened compatibility session.
+ * The cleanup identity remains explicit so a partially opened provider
+ * session can be discarded if later runtime setup fails.
  */
 export interface ProviderDriverSessionOpenResult {
-  disposition: "opened" | "unchanged";
   events: ThreadEvent[];
-  providerSessionId: string | null;
-  providerSessionIdForCleanup: string | null;
+  providerSessionId: string;
+  providerSessionIdForCleanup: string;
 }
 
 export interface ProviderDriverTurnSubmitArgs {
@@ -168,15 +156,11 @@ export interface ProviderDriverClearSessionGoalResult {
 /**
  * Daemon-side semantic seam for one provider process.
  *
- * Production providers use canonical process connections. A legacy
- * implementation remains only in the test harness while old scripted runtime
- * fixtures are converted to canonical fake drivers.
+ * Every production and test provider uses a canonical process connection.
  */
 export interface ProviderDriverConnection {
-  readonly approvalRequestPolicy: "runtime" | "provider";
   readonly capabilities: ProviderCapabilities;
   readonly identity: ProviderDriverConnectionIdentity;
-  readonly supportsInteractiveResponses: boolean;
 
   normalizeExecutionOptions(
     options: RuntimeThreadExecutionOptions,
@@ -193,11 +177,7 @@ export interface ProviderDriverConnection {
   }>;
   openSession(
     args: ProviderDriverSessionOpenArgs,
-    options?: {
-      /** Legacy rewind staging never invoked accepted-command translation. */
-      synthesizeAcceptedEvents?: boolean;
-      timeoutMs?: number;
-    },
+    options?: { timeoutMs?: number },
   ): Promise<ProviderDriverSessionOpenResult>;
   submitTurn(
     args: ProviderDriverTurnSubmitArgs,
@@ -219,28 +199,5 @@ export interface ProviderDriverConnection {
     providerSessionId: string;
   } | null;
   onEvent(listener: (events: ThreadEvent[]) => void): () => void;
-  translateEvent(
-    event: ProviderRuntimeEvent,
-    context?: ProviderTranslationContext,
-  ): ThreadEvent[];
-  buildSessionDetachedEvents(bbThreadId: string): ThreadEvent[];
-
-  decodeToolCallRequest(
-    request: ProviderInboundRequest,
-  ): DecodedToolCallRequest | null;
-  decodeInteractiveRequest(
-    request: ProviderInboundRequest,
-  ): DecodedInteractiveRequest | null;
-  buildInteractiveResponse(
-    args: BuildInteractiveResponseArgs,
-  ): ProviderInteractiveResponse;
-
-  settleResponse(id: string | number, response: JsonRpcObject): void;
-  sendError(args: {
-    code?: number;
-    id: string | number;
-    message: string;
-  }): void;
-  sendResult(args: { id: string | number; result: unknown }): void;
   rejectPendingRequests(error: Error): void;
 }

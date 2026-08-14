@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createFakeAdapter } from "@bb/agent-runtime/test";
+import { createFakeCanonicalProviderDriverSpec } from "@bb/agent-runtime/test";
 import { shellSingleQuote, waitForSetupMarkerCount } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
 import {
@@ -117,11 +117,8 @@ describe.sequential(
     it("starts five fresh managed-worktree threads per provider concurrently", () =>
       withHarness(
         {
-          adapterFactory: (providerId) =>
-            createFakeAdapter({
-              displayName: providerId,
-              id: providerId,
-            }),
+          providerDriverFactory: (providerId) =>
+            createFakeCanonicalProviderDriverSpec(providerId),
         },
         async (harness) => {
           const project = await createProjectFixture(harness, {

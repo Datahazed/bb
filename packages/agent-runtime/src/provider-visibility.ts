@@ -1,4 +1,4 @@
-import type { JsonRpcMessage } from "./runtime-json-rpc.js";
+import type { JsonRpcMessage } from "./provider-json-rpc.js";
 
 export type ProviderRawEventCoverage = "normalized" | "noise" | "unknown";
 

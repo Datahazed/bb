@@ -1,14 +1,7 @@
 import type { ThreadEvent } from "@bb/domain";
 import type { AgentRuntimeProviderSession } from "./types.js";
 
-interface PendingIdentityWaiter {
-  resolve: (providerThreadId: string | null) => void;
-  timeout: ReturnType<typeof setTimeout>;
-}
-
 export interface RuntimeProviderIdentityState {
-  identityWaiters: Map<string, PendingIdentityWaiter>;
-  pendingIdentityThreadIds: string[];
   providerId: string;
   threadIds: Set<string>;
 }
@@ -20,25 +13,12 @@ export interface CreateRuntimeProviderIdentityStateArgs {
 export interface RegisterThreadProviderArgs {
   providerId: string;
   providerState: RuntimeProviderIdentityState;
-  shouldWaitForProviderIdentity: boolean;
   threadId: string;
 }
 
 export interface RecordProviderThreadIdentityArgs {
-  providerState: RuntimeProviderIdentityState;
   providerThreadId: string;
   threadId: string;
-}
-
-export interface ResolveBbThreadIdForProviderThreadArgs {
-  providerState: RuntimeProviderIdentityState;
-  providerThreadId: string | undefined;
-}
-
-export interface WaitForProviderThreadIdentityArgs {
-  providerState: RuntimeProviderIdentityState;
-  threadId: string;
-  timeoutMs: number;
 }
 
 export interface ForgetThreadArgs {
@@ -66,8 +46,6 @@ export class RuntimeThreadIdentityRegistry {
     args: CreateRuntimeProviderIdentityStateArgs,
   ): RuntimeProviderIdentityState {
     return {
-      identityWaiters: new Map(),
-      pendingIdentityThreadIds: [],
       providerId: args.providerId,
       threadIds: new Set(),
     };
@@ -76,9 +54,6 @@ export class RuntimeThreadIdentityRegistry {
   registerThreadProvider(args: RegisterThreadProviderArgs): void {
     this.threadToProvider.set(args.threadId, args.providerId);
     args.providerState.threadIds.add(args.threadId);
-    if (args.shouldWaitForProviderIdentity) {
-      args.providerState.pendingIdentityThreadIds.push(args.threadId);
-    }
   }
 
   resolveProviderForThread(threadId: string): string {
@@ -104,53 +79,6 @@ export class RuntimeThreadIdentityRegistry {
 
   recordProviderThreadIdentity(args: RecordProviderThreadIdentityArgs): void {
     this.threadToProviderThread.set(args.threadId, args.providerThreadId);
-    const waiter = args.providerState.identityWaiters.get(args.threadId);
-    if (!waiter) {
-      return;
-    }
-    clearTimeout(waiter.timeout);
-    args.providerState.identityWaiters.delete(args.threadId);
-    waiter.resolve(args.providerThreadId);
-  }
-
-  waitForProviderThreadIdentity(
-    args: WaitForProviderThreadIdentityArgs,
-  ): Promise<string | null> {
-    const existing = this.threadToProviderThread.get(args.threadId);
-    if (existing) {
-      return Promise.resolve(existing);
-    }
-
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        args.providerState.identityWaiters.delete(args.threadId);
-        resolve(null);
-      }, args.timeoutMs);
-      args.providerState.identityWaiters.set(args.threadId, {
-        resolve,
-        timeout,
-      });
-    });
-  }
-
-  resolveBbThreadIdForProviderThread(
-    args: ResolveBbThreadIdForProviderThreadArgs,
-  ): string | undefined {
-    if (!args.providerThreadId) {
-      return undefined;
-    }
-
-    for (const [bbThreadId, mappedProviderThreadId] of this
-      .threadToProviderThread) {
-      if (
-        mappedProviderThreadId === args.providerThreadId &&
-        args.providerState.threadIds.has(bbThreadId)
-      ) {
-        return bbThreadId;
-      }
-    }
-
-    return undefined;
   }
 
   resolveProviderEventThreadId(
@@ -170,30 +98,7 @@ export class RuntimeThreadIdentityRegistry {
       return args.eventThreadId;
     }
 
-    const lookupId = args.sourceThreadId || args.eventThreadId;
-    if (lookupId) {
-      for (const [bbThreadId, providerThreadId] of this
-        .threadToProviderThread) {
-        if (
-          providerThreadId === lookupId &&
-          args.providerState.threadIds.has(bbThreadId)
-        ) {
-          return bbThreadId;
-        }
-      }
-    }
-
-    if (args.providerState.threadIds.size === 1) {
-      return [...args.providerState.threadIds][0];
-    }
-
     return undefined;
-  }
-
-  resolvePendingProviderThreadIdentity(
-    providerState: RuntimeProviderIdentityState,
-  ): string | undefined {
-    return providerState.pendingIdentityThreadIds.shift();
   }
 
   clearThread(threadId: string): void {
@@ -201,44 +106,17 @@ export class RuntimeThreadIdentityRegistry {
     this.threadToProviderThread.delete(threadId);
   }
 
-  /**
-   * Fully detaches one thread from a still-running provider process: clears
-   * the identity maps, drops the thread from the provider's bookkeeping, and
-   * resolves any pending identity waiter with `null`. Used when a thread ends
-   * its residency (stop/archive) while the provider process keeps serving
-   * other threads.
-   */
+  /** Fully detaches one thread from a still-running provider process. */
   forgetThread(args: ForgetThreadArgs): void {
     args.providerState.threadIds.delete(args.threadId);
-    args.providerState.pendingIdentityThreadIds =
-      args.providerState.pendingIdentityThreadIds.filter(
-        (pendingThreadId) => pendingThreadId !== args.threadId,
-      );
-    const waiter = args.providerState.identityWaiters.get(args.threadId);
-    if (waiter) {
-      clearTimeout(waiter.timeout);
-      args.providerState.identityWaiters.delete(args.threadId);
-      waiter.resolve(null);
-    }
     this.clearThread(args.threadId);
   }
 
   clearProviderState(providerState: RuntimeProviderIdentityState): void {
-    providerState.pendingIdentityThreadIds = [];
     for (const threadId of providerState.threadIds) {
       this.clearThread(threadId);
     }
-    this.resolvePendingIdentityWaiters(providerState);
-  }
-
-  resolvePendingIdentityWaiters(
-    providerState: RuntimeProviderIdentityState,
-  ): void {
-    for (const [threadId, waiter] of providerState.identityWaiters) {
-      clearTimeout(waiter.timeout);
-      providerState.identityWaiters.delete(threadId);
-      waiter.resolve(null);
-    }
+    providerState.threadIds.clear();
   }
 }
 

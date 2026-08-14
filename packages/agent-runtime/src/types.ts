@@ -88,7 +88,7 @@ export interface AgentRuntimeOptions {
   /** Environment variables passed to ALL provider processes. */
   env?: Record<string, string>;
 
-  /** Environment variables injected into agent shell execution via adapters. */
+  /** Environment variables injected into agent shell execution through provider drivers. */
   shellEnv?: AgentRuntimeShellEnvironment;
 
   /** Root directory containing per-thread storage directories. */
@@ -158,7 +158,7 @@ export interface StartThreadArgs {
   instructionMode?: InstructionMode;
   /** JSON Schema constraining the session's structured output. Session-level
    *  structured output is claude-code only (SDK `outputFormat` is fixed at
-   *  query creation); other adapters reject it. Absent means no structured
+   *  query creation); other providers reject it. Absent means no structured
    *  output. */
   outputSchema?: JsonObject;
   /**

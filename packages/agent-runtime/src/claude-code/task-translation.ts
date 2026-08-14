@@ -30,7 +30,7 @@ import {
 
 /**
  * Minimum gap between persisted progress snapshots per task. The CLI flushes
- * progress batches every 16ms; every batch is folded into adapter state, but
+ * progress batches every 16ms; every batch is folded into translator state, but
  * only snapshots at this cadence become events. Status transitions flush
  * immediately, and the terminal completed event always carries the final
  * state, so skipped intermediate snapshots are never load-bearing.

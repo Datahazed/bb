@@ -15,13 +15,13 @@ import type {
   ThreadEventUserContent,
 } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import { toOptionalRecord } from "../shared/adapter-utils.js";
+import { toOptionalRecord } from "../shared/provider-utils.js";
 import { createUnhandledProviderEvent } from "../shared/provider-unhandled-event.js";
 import { UNSTAMPED_THREAD_ID } from "../shared/unstamped-thread-id.js";
 import type {
   JsonRpcMessage,
   ProviderRuntimeEvent,
-} from "../runtime-json-rpc.js";
+} from "../provider-json-rpc.js";
 import {
   codexBridgeEnvelopeSchema,
   codexHandledEventSchema,
@@ -674,7 +674,7 @@ function translateCodexItem(
         },
       };
     case "subAgentActivity":
-      // The adapter translates this statefully so it can correlate the
+      // The driver translates this statefully so it can correlate the
       // activity with the child turn and close the synthetic delegation row.
       return { kind: "ignored" };
     case "webSearch": {

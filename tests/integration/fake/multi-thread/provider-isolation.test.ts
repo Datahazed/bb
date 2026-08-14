@@ -1,5 +1,5 @@
 import path from "node:path";
-import { createFakeAdapter } from "@bb/agent-runtime/test";
+import { createFakeCanonicalProviderDriverSpec } from "@bb/agent-runtime/test";
 import { describe, expect, it } from "vitest";
 import {
   getThreadEvents,
@@ -27,11 +27,8 @@ describe.sequential(
     it("keeps provider processes isolated for different providers in one environment", async () => {
       await withHarness(
         {
-          adapterFactory: (providerId) =>
-            createFakeAdapter({
-              displayName: providerId,
-              id: providerId,
-            }),
+          providerDriverFactory: (providerId) =>
+            createFakeCanonicalProviderDriverSpec(providerId),
         },
         async (harness) => {
           const project = await createProjectFixture(harness, {

@@ -88,7 +88,7 @@ describe("execution setting classification", () => {
     }
   });
 
-  it("keeps setting changes session-scoped for adapters without live controls", () => {
+  it("keeps setting changes session-scoped for providers without live controls", () => {
     expect(
       classifySessionExecutionSettingsChange({
         current: baseOptions,

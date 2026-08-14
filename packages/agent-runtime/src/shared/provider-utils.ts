@@ -1,8 +1,8 @@
 /**
- * Shared adapter utilities.
+ * Shared provider utilities.
  *
  * Functions and constants duplicated across the claude-code, pi, and codex
- * adapters are extracted here so each adapter imports from one place.
+ * drivers are extracted here so each driver imports from one place.
  */
 
 import { z } from "zod";
@@ -186,7 +186,7 @@ function formatLineDiff(args: {
 
 /**
  * Builds a compact unified-diff-like string from old/new text pairs.
- * Exported so each adapter can call it with its own arg names.
+ * Exported so each driver can call it with its own argument names.
  */
 export function buildEditDiff(
   filePath: string,

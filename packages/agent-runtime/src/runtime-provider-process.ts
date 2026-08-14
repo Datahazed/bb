@@ -3,13 +3,18 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 import {
   buildAcpProviderInfo,
   getBuiltInAgentProviderInfo,
   isAcpProviderId,
 } from "@bb/agent-providers";
-import type { ProviderInfo, ThreadEvent } from "@bb/domain";
+import type {
+  JsonObject,
+  ProviderCapabilities,
+  ProviderInfo,
+  RuntimeThreadExecutionOptions,
+  ThreadEvent,
+} from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import {
   PROVIDER_DRIVER_PROTOCOL_VERSION,
@@ -18,10 +23,6 @@ import {
   type ProviderDriverHostToolCallParams,
   type ProviderDriverHostToolCallResult,
 } from "@bb/provider-driver-contract";
-import {
-  sanitizeInheritedChildProcessEnv,
-  spawnPortablePipedProcess,
-} from "@bb/process-utils";
 import { filterSkillRootsForProvider } from "./runtime-skill-roots.js";
 import {
   classifyClaudeExecutionSettingsChange,
@@ -51,14 +52,8 @@ export interface RuntimeProviderProcess {
   interactiveRequestScope: string;
   processKey: string;
   providerId: string;
-  stop?: () => Promise<void>;
-  stderrLineTail: Buffer;
+  stop: () => Promise<void>;
   stderrTail: Buffer;
-}
-
-export interface RuntimeProviderProcessLineArgs {
-  line: string;
-  providerProcess: RuntimeProviderProcess;
 }
 
 export interface RuntimeProviderConnectionEventsArgs {
@@ -76,31 +71,26 @@ export interface RuntimeProviderCanonicalInteractionArgs {
   providerProcess: RuntimeProviderProcess;
 }
 
-export interface RuntimeProviderProcessLaunchSpecFactoryOptions {
-  additionalWorkspaceWriteRoots: readonly string[];
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeBundleDir?: string;
-  bridgeNodeEnv?: Record<string, string>;
-  bridgeNodeExecutablePath?: string;
-  turnIdPrefix: string;
-}
-
-export interface RuntimeProviderProcessLaunchSpec {
-  createConnection(args: {
-    child: ChildProcess;
-    getNextRequestId: () => number;
-  }): ProviderDriverConnection;
+export interface RuntimeCanonicalProviderDriverLaunchSpec {
+  capabilities: ProviderCapabilities;
+  identity: { driverId: string; pluginId: string };
+  classifyExecutionSettingsChange?: ProviderDriverConnection["classifyExecutionSettingsChange"];
+  config: JsonObject;
+  displayName: string;
   process: { command: string; args: string[]; env?: Record<string, string> };
+  processCapabilities: { multiplexSessions: boolean };
+  normalizeExecutionOptions?: (
+    options: RuntimeThreadExecutionOptions,
+  ) => RuntimeThreadExecutionOptions;
 }
 
-export type RuntimeProviderProcessLaunchSpecFactory = (
+export type RuntimeCanonicalProviderDriverLaunchSpecFactory = (
   providerId: string,
-  options: RuntimeProviderProcessLaunchSpecFactoryOptions,
-) => RuntimeProviderProcessLaunchSpec;
+) => RuntimeCanonicalProviderDriverLaunchSpec;
 
 export interface RuntimeProviderProcessManagerArgs {
   additionalWorkspaceWriteRoots: readonly string[];
-  providerProcessFactory?: RuntimeProviderProcessLaunchSpecFactory;
+  canonicalProviderDriverFactory?: RuntimeCanonicalProviderDriverLaunchSpecFactory;
   bridgeBundleDir: string | undefined;
   bridgeNodeEnv?: Record<string, string>;
   bridgeNodeExecutablePath?: string;
@@ -116,7 +106,6 @@ export interface RuntimeProviderProcessManagerArgs {
     providerId: string,
   ) => RuntimeProviderIdentityState;
   env: Record<string, string> | undefined;
-  getNextRequestId: () => number;
   handleCanonicalInteraction: (
     args: RuntimeProviderCanonicalInteractionArgs,
   ) => Promise<ProviderDriverHostInteractionRequestResult>;
@@ -124,15 +113,8 @@ export interface RuntimeProviderProcessManagerArgs {
     args: RuntimeProviderCanonicalToolCallArgs,
   ) => Promise<ProviderDriverHostToolCallResult>;
   handleConnectionEvents: (args: RuntimeProviderConnectionEventsArgs) => void;
-  handleStdoutLine: (args: RuntimeProviderProcessLineArgs) => void;
   onProcessExit: AgentRuntimeOptions["onProcessExit"];
-  onProviderIdentityWaitersInterrupted: (
-    providerProcess: RuntimeProviderProcess,
-  ) => void;
-  onProviderThreadDetached: (
-    threadId: string,
-    providerProcess: RuntimeProviderProcess,
-  ) => void;
+  onProviderThreadDetached: (threadId: string) => void;
   onStderr: AgentRuntimeOptions["onStderr"];
   resolveThreadStoragePath: (threadId: string) => string;
   skillRoots: readonly AgentRuntimeSkillRoot[];
@@ -153,25 +135,6 @@ export interface RequireRuntimeProviderProcessArgs {
 export interface ShutdownRuntimeProviderArgs {
   processKey: string;
   providerId: string;
-  timeoutMs?: number;
-}
-
-interface CleanupFailedStartupArgs {
-  processKey: string;
-  providerId: string;
-  providerProcess: RuntimeProviderProcess;
-  startupError: Error;
-}
-
-interface TerminateProviderProcessArgs {
-  providerProcess: RuntimeProviderProcess;
-  timeoutMs?: number;
-}
-
-interface SpawnProviderArgs {
-  processKey: string;
-  providerId: string;
-  spec: RuntimeProviderProcessLaunchSpec;
 }
 
 interface ProviderProcessExitStatus {
@@ -188,11 +151,6 @@ interface ProviderProcessExitedErrorArgs {
 const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 const CANONICAL_PROVIDER_REQUEST_TIMEOUT_MS = 2 * 60_000;
 const CLAUDE_CODE_PROVIDER_ID = "claude-code";
-
-function createTestProviderTurnIdPrefix(): string {
-  const processId = randomUUID().replaceAll("-", "").slice(0, 16);
-  return `turn_${processId}_`;
-}
 
 function resolveCanonicalDriverProcessArgs(args: {
   bridgeBundleDir: string | undefined;
@@ -246,51 +204,12 @@ export class RuntimeProviderProcessManager {
 
     if (this.processes.has(args.processKey)) return;
 
-    const startPromise = (async () => {
-      if (this.args.providerProcessFactory === undefined) {
-        await this.startCanonicalProvider(args);
-        return;
-      }
-
-      const spec = this.getTestProviderProcessSpec(
-        args.providerId,
-        args.acpLaunchSpec,
-      );
-      const providerProcess = this.spawnProvider({
-        processKey: args.processKey,
-        providerId: args.providerId,
-        spec,
-      });
-
-      try {
-        if (hasChildProcessExited(providerProcess.child)) {
-          const stderr = formatProviderStderr(
-            providerProcess.stderrTail,
-          )?.slice(0, 500);
-          throw new Error(
-            `Provider "${args.providerId}" exited during startup with ${formatChildProcessExitStatus(providerProcess.child)}` +
-              (stderr ? `\nstderr: ${stderr}` : ""),
-          );
-        }
-
-        const providerSkillRoots = filterSkillRootsForProvider({
-          providerId: args.providerId,
-          skillRoots: this.args.skillRoots,
-        });
-        await providerProcess.connection.initialize(providerSkillRoots);
-      } catch (startupError) {
-        await this.cleanupFailedStartup({
-          processKey: args.processKey,
-          providerId: args.providerId,
-          providerProcess,
-          startupError:
-            startupError instanceof Error
-              ? startupError
-              : new Error(String(startupError)),
-        });
-        throw startupError;
-      }
-    })();
+    const startPromise = this.startCanonicalProvider(
+      args,
+      this.args.canonicalProviderDriverFactory
+        ? this.getTestCanonicalDriverSpec(args.providerId)
+        : undefined,
+    );
 
     this.providerStarting.set(args.processKey, startPromise);
     try {
@@ -331,14 +250,7 @@ export class RuntimeProviderProcessManager {
     }
 
     providerProcess.expectedShutdownExpectations += 1;
-    if (providerProcess.stop) {
-      await providerProcess.stop();
-      return;
-    }
-    await this.terminateProviderProcess({
-      providerProcess,
-      timeoutMs: args.timeoutMs,
-    });
+    await providerProcess.stop();
   }
 
   async shutdown(): Promise<void> {
@@ -346,30 +258,12 @@ export class RuntimeProviderProcessManager {
     const shutdownPromises: Promise<void>[] = [];
 
     for (const [processKey, providerProcess] of this.processes) {
-      shutdownPromises.push(
-        providerProcess.stop
-          ? providerProcess.stop()
-          : new Promise<void>((resolve) => {
-              const timer = setTimeout(() => {
-                providerProcess.child.kill("SIGKILL");
-                resolve();
-              }, 5000);
-
-              providerProcess.child.on("exit", () => {
-                clearTimeout(timer);
-                resolve();
-              });
-
-              providerProcess.child.kill("SIGTERM");
-            }),
-      );
+      shutdownPromises.push(providerProcess.stop());
       providerProcess.connection.rejectPendingRequests(
         new Error("Runtime shutting down"),
       );
-      this.args.onProviderIdentityWaitersInterrupted(providerProcess);
-
       for (const threadId of providerProcess.identity.threadIds) {
-        this.args.onProviderThreadDetached(threadId, providerProcess);
+        this.args.onProviderThreadDetached(threadId);
       }
       this.processes.delete(processKey);
     }
@@ -380,20 +274,33 @@ export class RuntimeProviderProcessManager {
 
   private async startCanonicalProvider(
     args: EnsureRuntimeProviderArgs,
+    testSpec?: RuntimeCanonicalProviderDriverLaunchSpec,
   ): Promise<void> {
     const providerId = args.providerId;
-    const driverSpec = getBundledProviderDriverLaunchSpec(providerId);
-    if (!driverSpec) {
+    const bundledSpec = testSpec
+      ? null
+      : getBundledProviderDriverLaunchSpec(providerId);
+    if (!testSpec && !bundledSpec) {
       throw new Error(`Unsupported provider "${providerId}"`);
     }
     const acpProfile = args.acpLaunchSpec;
-    if (isAcpProviderId(providerId) && acpProfile === undefined) {
+    if (!testSpec && isAcpProviderId(providerId) && acpProfile === undefined) {
       throw new Error(`ACP provider "${providerId}" requires a launch spec`);
     }
-    const processArgs = resolveCanonicalDriverProcessArgs({
-      bridgeBundleDir: this.args.bridgeBundleDir,
-      ...driverSpec.entrypoint,
-    });
+    const processConfig = testSpec?.process ?? {
+      command: this.args.bridgeNodeExecutablePath ?? process.execPath,
+      args: resolveCanonicalDriverProcessArgs({
+        bridgeBundleDir: this.args.bridgeBundleDir,
+        ...bundledSpec!.entrypoint,
+      }),
+    };
+    const identity = testSpec?.identity ?? {
+      pluginId: bundledSpec!.driverId,
+      driverId: bundledSpec!.driverId,
+    };
+    const declaredMultiplexSessions =
+      testSpec?.processCapabilities.multiplexSessions ??
+      bundledSpec!.processPolicy.multiplexSessions;
     let diagnosticsTail: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let providerProcess: RuntimeProviderProcess | null = null;
     let supervised: SupervisedProviderDriver;
@@ -403,10 +310,10 @@ export class RuntimeProviderProcessManager {
         initialize: {
           supportedProtocolVersions: [PROVIDER_DRIVER_PROTOCOL_VERSION],
           expected: {
-            pluginId: driverSpec.driverId,
-            driverId: driverSpec.driverId,
-            providerId: driverSpec.driverId,
-            artifactDigest: driverArtifactDigest(processArgs),
+            pluginId: identity.pluginId,
+            driverId: identity.driverId,
+            providerId: testSpec ? providerId : bundledSpec!.driverId,
+            artifactDigest: driverArtifactDigest(processConfig.args),
           },
           host: {
             platform: process.platform,
@@ -420,15 +327,16 @@ export class RuntimeProviderProcessManager {
               providerId,
             ),
           },
-          config: acpProfile ?? {},
+          config: testSpec?.config ?? acpProfile ?? {},
         },
         launch: {
-          command: this.args.bridgeNodeExecutablePath ?? process.execPath,
-          args: processArgs,
+          command: processConfig.command,
+          args: processConfig.args,
           cwd: this.args.workspacePath,
           env: {
             ...this.args.env,
             ...this.args.bridgeNodeEnv,
+            ...processConfig.env,
           },
         },
         hostHandlers: {
@@ -492,11 +400,11 @@ export class RuntimeProviderProcessManager {
       });
       if (
         supervised.initialization.processCapabilities.multiplexSessions !==
-        driverSpec.processPolicy.multiplexSessions
+        declaredMultiplexSessions
       ) {
         await supervised.stop();
         throw new Error(
-          `Bundled ${providerId} driver process policy does not match its declared launch spec`,
+          `${providerId} driver process policy does not match its declared launch spec`,
         );
       }
     } catch (error) {
@@ -507,40 +415,56 @@ export class RuntimeProviderProcessManager {
       );
     }
 
-    let providerInfo: ProviderInfo;
-    if (isAcpProviderId(providerId)) {
+    let providerInfo: Pick<ProviderInfo, "capabilities" | "displayName">;
+    if (testSpec) {
+      providerInfo = {
+        displayName: testSpec.displayName,
+        capabilities: testSpec.capabilities,
+      };
+    } else if (isAcpProviderId(providerId)) {
       providerInfo = buildAcpProviderInfo({
         id: providerId,
         displayName: acpProfile?.displayName ?? providerId,
         logoUrl: null,
       });
     } else {
-      if (driverSpec.driverId === "acp") {
+      if (bundledSpec!.driverId === "acp") {
         throw new Error(`ACP driver cannot serve provider "${providerId}"`);
       }
-      providerInfo = getBuiltInAgentProviderInfo(driverSpec.driverId);
+      providerInfo = getBuiltInAgentProviderInfo(bundledSpec!.driverId);
     }
     const connection = new CanonicalProcessProviderConnection({
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
-      ...(providerId === CLAUDE_CODE_PROVIDER_ID
+      ...(testSpec
         ? {
-            buildProviderOptions: (execution) => ({
-              claudeCodeMockCliTraffic: execution.claudeCodeMockCliTraffic,
-              ...(execution.claudeCodePermissionMode !== undefined
-                ? {
-                    claudeCodePermissionMode:
-                      execution.claudeCodePermissionMode,
-                  }
-                : {}),
-            }),
             classifyExecutionSettingsChange:
-              classifyClaudeExecutionSettingsChange,
-            normalizeExecutionOptions: normalizeClaudeExecutionOptions,
-          }
-        : {
-            classifyExecutionSettingsChange:
+              testSpec.classifyExecutionSettingsChange ??
               classifySessionExecutionSettingsChange,
-          }),
+            ...(testSpec.normalizeExecutionOptions
+              ? {
+                  normalizeExecutionOptions: testSpec.normalizeExecutionOptions,
+                }
+              : {}),
+          }
+        : providerId === CLAUDE_CODE_PROVIDER_ID
+          ? {
+              buildProviderOptions: (execution) => ({
+                claudeCodeMockCliTraffic: execution.claudeCodeMockCliTraffic,
+                ...(execution.claudeCodePermissionMode !== undefined
+                  ? {
+                      claudeCodePermissionMode:
+                        execution.claudeCodePermissionMode,
+                    }
+                  : {}),
+              }),
+              classifyExecutionSettingsChange:
+                classifyClaudeExecutionSettingsChange,
+              normalizeExecutionOptions: normalizeClaudeExecutionOptions,
+            }
+          : {
+              classifyExecutionSettingsChange:
+                classifySessionExecutionSettingsChange,
+            }),
       capabilities: providerInfo.capabilities,
       displayName: providerInfo.displayName,
       processConnection: supervised.connection,
@@ -556,7 +480,6 @@ export class RuntimeProviderProcessManager {
       processKey: args.processKey,
       providerId,
       stop: async () => supervised.stop(),
-      stderrLineTail: Buffer.alloc(0),
       stderrTail: diagnosticsTail,
     };
     connection.onEvent((events) => {
@@ -579,183 +502,16 @@ export class RuntimeProviderProcessManager {
     }
   }
 
-  private getTestProviderProcessSpec(
+  private getTestCanonicalDriverSpec(
     providerId: string,
-    acpLaunchSpec: HostDaemonAcpLaunchSpec | undefined,
-  ): RuntimeProviderProcessLaunchSpec {
-    const factoryOptions = {
-      additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
-      ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
-      bridgeBundleDir: this.args.bridgeBundleDir,
-      ...(this.args.bridgeNodeEnv !== undefined
-        ? { bridgeNodeEnv: this.args.bridgeNodeEnv }
-        : {}),
-      ...(this.args.bridgeNodeExecutablePath !== undefined
-        ? { bridgeNodeExecutablePath: this.args.bridgeNodeExecutablePath }
-        : {}),
-      turnIdPrefix: createTestProviderTurnIdPrefix(),
-    };
-
-    if (!this.args.providerProcessFactory) {
-      throw new Error("Test provider process factory is not configured");
+  ): RuntimeCanonicalProviderDriverLaunchSpec {
+    const factory = this.args.canonicalProviderDriverFactory;
+    if (!factory) {
+      throw new Error(
+        "Test canonical provider driver factory is not configured",
+      );
     }
-    return this.args.providerProcessFactory(providerId, factoryOptions);
-  }
-
-  private spawnProvider(args: SpawnProviderArgs): RuntimeProviderProcess {
-    const processConfig = args.spec.process;
-    const env: NodeJS.ProcessEnv = {
-      ...sanitizeInheritedChildProcessEnv({ env: process.env }),
-      ...this.args.env,
-      ...processConfig.env,
-    };
-
-    const child = spawnPortablePipedProcess({
-      command: processConfig.command,
-      args: processConfig.args,
-      cwd: this.args.workspacePath,
-      env,
-    });
-
-    const providerProcess: RuntimeProviderProcess = {
-      child,
-      connection: args.spec.createConnection({
-        child,
-        getNextRequestId: this.args.getNextRequestId,
-      }),
-      expectedShutdownExpectations: 0,
-      identity: this.args.createProviderIdentityState(args.providerId),
-      interactiveRequestScope: randomUUID(),
-      processKey: args.processKey,
-      providerId: args.providerId,
-      stderrLineTail: Buffer.alloc(0),
-      stderrTail: Buffer.alloc(0),
-    };
-
-    providerProcess.connection.onEvent((events) => {
-      if (this.shuttingDown) return;
-      this.args.handleConnectionEvents({ events, providerProcess });
-    });
-
-    const stdout = createInterface({ input: child.stdout });
-    stdout.on("line", (line) => {
-      if (this.shuttingDown) {
-        return;
-      }
-      this.args.handleStdoutLine({
-        line,
-        providerProcess,
-      });
-    });
-
-    child.stderr.on("data", (chunk: Buffer) => {
-      if (this.shuttingDown) {
-        return;
-      }
-      consumeProviderStderrChunk({
-        chunk,
-        onLine: this.args.onStderr,
-        providerProcess,
-      });
-    });
-    child.stderr.on("end", () => {
-      if (this.shuttingDown || providerProcess.stderrLineTail.length === 0) {
-        return;
-      }
-      this.args.onStderr?.(decodeStderrLine(providerProcess.stderrLineTail));
-      providerProcess.stderrLineTail = Buffer.alloc(0);
-    });
-
-    child.on("error", (err) => {
-      this.handleProviderProcessError({
-        err,
-        providerId: args.providerId,
-        providerProcess,
-      });
-    });
-    child.on("exit", (code, signal) => {
-      this.handleProviderProcessExit({
-        code: code ?? null,
-        providerId: args.providerId,
-        providerProcess,
-        signal: signal ?? null,
-      });
-    });
-
-    this.processes.set(args.processKey, providerProcess);
-    return providerProcess;
-  }
-
-  private async cleanupFailedStartup(
-    args: CleanupFailedStartupArgs,
-  ): Promise<void> {
-    if (this.processes.get(args.processKey) !== args.providerProcess) {
-      return;
-    }
-
-    this.processes.delete(args.processKey);
-    args.providerProcess.expectedShutdownExpectations += 1;
-    args.providerProcess.connection.rejectPendingRequests(args.startupError);
-    this.args.onProviderIdentityWaitersInterrupted(args.providerProcess);
-
-    if (args.providerProcess.stop) {
-      await args.providerProcess.stop();
-      return;
-    }
-    await this.terminateProviderProcess({
-      providerProcess: args.providerProcess,
-    });
-  }
-
-  private async terminateProviderProcess(
-    args: TerminateProviderProcessArgs,
-  ): Promise<void> {
-    if (hasChildProcessExited(args.providerProcess.child)) {
-      return;
-    }
-
-    await new Promise<void>((resolve) => {
-      const timeoutMs = args.timeoutMs ?? 5000;
-      const softTimer = setTimeout(() => {
-        if (!hasChildProcessExited(args.providerProcess.child)) {
-          args.providerProcess.child.kill("SIGKILL");
-        }
-      }, timeoutMs);
-      const hardTimer = setTimeout(resolve, timeoutMs + 1000);
-
-      args.providerProcess.child.once("exit", () => {
-        clearTimeout(softTimer);
-        clearTimeout(hardTimer);
-        resolve();
-      });
-
-      args.providerProcess.child.kill("SIGTERM");
-    });
-  }
-
-  private handleProviderProcessError(args: ProviderProcessErrorArgs): void {
-    if (this.shuttingDown) return;
-    if (!this.isCurrentProviderProcess(args)) return;
-    const expected = consumeExpectedProviderProcessShutdown(
-      args.providerProcess,
-    );
-    this.processes.delete(args.providerProcess.processKey);
-    const message = args.err.message;
-    args.providerProcess.connection.rejectPendingRequests(
-      new Error(`Provider "${args.providerId}" failed to start: ${message}`),
-    );
-    this.args.onProviderIdentityWaitersInterrupted(args.providerProcess);
-
-    this.args.onProcessExit?.({
-      providerId: args.providerId,
-      threads: [...args.providerProcess.identity.threadIds].map((threadId) =>
-        this.args.captureThreadExitState(threadId),
-      ),
-      code: null,
-      expected,
-      signal: null,
-      stderr: null,
-    });
+    return factory(providerId);
   }
 
   private handleProviderProcessExit(args: ProviderProcessExitArgs): void {
@@ -772,7 +528,7 @@ export class RuntimeProviderProcessManager {
       this.args.captureThreadExitState(threadId),
     );
     for (const threadId of threadIds) {
-      this.args.onProviderThreadDetached(threadId, args.providerProcess);
+      this.args.onProviderThreadDetached(threadId);
     }
     args.providerProcess.connection.rejectPendingRequests(
       new ProviderProcessExitedError({
@@ -781,8 +537,6 @@ export class RuntimeProviderProcessManager {
         stderrTail: args.providerProcess.stderrTail,
       }),
     );
-    this.args.onProviderIdentityWaitersInterrupted(args.providerProcess);
-
     this.args.onProcessExit?.({
       providerId: args.providerId,
       threads,
@@ -858,42 +612,6 @@ function appendBoundedStderrBytes(current: Buffer, chunk: Buffer): Buffer {
   ]);
 }
 
-function decodeStderrLine(line: Buffer): string {
-  const end = line.at(-1) === 0x0d ? line.length - 1 : line.length;
-  return line.toString("utf8", 0, end);
-}
-
-function consumeProviderStderrChunk(args: {
-  chunk: Buffer;
-  onLine: AgentRuntimeOptions["onStderr"];
-  providerProcess: RuntimeProviderProcess;
-}): void {
-  args.providerProcess.stderrTail = appendBoundedStderrBytes(
-    args.providerProcess.stderrTail,
-    args.chunk,
-  );
-
-  let offset = 0;
-  let newline = args.chunk.indexOf(0x0a, offset);
-  while (newline !== -1) {
-    args.providerProcess.stderrLineTail = appendBoundedStderrBytes(
-      args.providerProcess.stderrLineTail,
-      args.chunk.subarray(offset, newline),
-    );
-    args.onLine?.(decodeStderrLine(args.providerProcess.stderrLineTail));
-    args.providerProcess.stderrLineTail = Buffer.alloc(0);
-    offset = newline + 1;
-    newline = args.chunk.indexOf(0x0a, offset);
-  }
-
-  if (offset < args.chunk.length) {
-    args.providerProcess.stderrLineTail = appendBoundedStderrBytes(
-      args.providerProcess.stderrLineTail,
-      args.chunk.subarray(offset),
-    );
-  }
-}
-
 function consumeExpectedProviderProcessShutdown(
   providerProcess: RuntimeProviderProcess,
 ): boolean {
@@ -901,12 +619,6 @@ function consumeExpectedProviderProcessShutdown(
   const expected = providerProcess.expectedShutdownExpectations > 0;
   providerProcess.expectedShutdownExpectations = 0;
   return expected;
-}
-
-interface ProviderProcessErrorArgs {
-  err: Error;
-  providerId: string;
-  providerProcess: RuntimeProviderProcess;
 }
 
 interface ProviderProcessExitArgs {

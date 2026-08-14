@@ -33,7 +33,7 @@ import {
   type ProviderDriverContext,
 } from "@bb/provider-driver-sdk";
 import { z } from "zod";
-import { buildEditDiff } from "../shared/adapter-utils.js";
+import { buildEditDiff } from "../shared/provider-utils.js";
 import { withoutBridgeRuntimeEnv } from "../shared/bridge-runtime-env.js";
 import { mimeTypeFromExtension } from "../shared/mime-types.js";
 import { flattenPromptInputGroups } from "../shared/prompt-input-groups.js";

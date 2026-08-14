@@ -53,7 +53,7 @@ import type { UserInput as CodexUserInput } from "./generated/codex-app-server/s
 import type { AskForApproval } from "./generated/codex-app-server/schema/v2/AskForApproval.js";
 import type { ApprovalsReviewer } from "./generated/codex-app-server/schema/v2/ApprovalsReviewer.js";
 import { mapBbReasoningLevelToCodex, parseModelsResponse } from "./models.js";
-import { buildShellEnvironmentPolicyConfig } from "../shared/adapter-utils.js";
+import { buildShellEnvironmentPolicyConfig } from "../shared/provider-utils.js";
 import type { ProviderExecutionContext } from "../provider-driver/connection.js";
 import { flattenPromptInputGroups } from "../shared/prompt-input-groups.js";
 

@@ -1,4 +1,4 @@
-import { createFakeAdapter } from "@bb/agent-runtime/test";
+import { createFakeCanonicalProviderDriverSpec } from "@bb/agent-runtime/test";
 import {
   isUserQuestionPendingInteractionPayload,
   type PendingInteraction,
@@ -59,12 +59,8 @@ describe.sequential("fake provider user-question integration", () => {
   it("pauses for a user question and resumes with the answer", () =>
     withHarness(
       {
-        adapterFactory: (providerId) =>
-          createFakeAdapter({
-            displayName: providerId,
-            id: providerId,
-            supportsUserQuestion: true,
-          }),
+        providerDriverFactory: (providerId) =>
+          createFakeCanonicalProviderDriverSpec(providerId),
       },
       async (harness) => {
         const project = await createProjectFixture(

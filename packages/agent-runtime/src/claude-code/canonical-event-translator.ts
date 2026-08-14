@@ -19,7 +19,7 @@ import {
   extractResultText,
   toOptionalRecord,
   withParentToolCallId,
-} from "../shared/adapter-utils.js";
+} from "../shared/provider-utils.js";
 import {
   buildToolResultItem,
   buildToolUseItem,

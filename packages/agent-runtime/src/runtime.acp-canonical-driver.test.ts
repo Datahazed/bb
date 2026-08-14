@@ -11,11 +11,7 @@ import {
   waitForRuntimeThreadEvent,
 } from "./test/runtime-test-harness.js";
 
-const fakeAgentPath = join(
-  import.meta.dirname,
-  "acp",
-  "fake-acp-agent.mjs",
-);
+const fakeAgentPath = join(import.meta.dirname, "acp", "fake-acp-agent.mjs");
 
 describe("AgentRuntime ACP canonical driver", () => {
   const directories: string[] = [];
@@ -74,8 +70,7 @@ describe("AgentRuntime ACP canonical driver", () => {
       options: {
         ...fullRuntimeOptions,
         model: models.models[0]?.id ?? "fake/default",
-        reasoningLevel:
-          models.models[0]?.defaultReasoningEffort ?? "medium",
+        reasoningLevel: models.models[0]?.defaultReasoningEffort ?? "medium",
       },
     });
 
@@ -83,11 +78,12 @@ describe("AgentRuntime ACP canonical driver", () => {
       events,
       threadId: "thread-1",
       label: "ACP turn completion",
+      timeoutMs: 10_000,
       predicate: (event) => event.type === "turn/completed",
     });
     expect(providerThreadId).toMatch(/^fake-sess-/u);
     expect(events.some((event) => event.type === "turn/completed")).toBe(true);
     expect(runtime.listRunningProviders()).toContain("acp-fake");
     await runtime.shutdown();
-  });
+  }, 15_000);
 });

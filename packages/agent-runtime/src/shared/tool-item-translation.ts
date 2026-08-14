@@ -3,7 +3,7 @@ import {
   buildEditDiff,
   toOptionalRecord,
   withParentToolCallId,
-} from "./adapter-utils.js";
+} from "./provider-utils.js";
 
 type FileChangeItem = Extract<ThreadEventItem, { type: "fileChange" }>;
 

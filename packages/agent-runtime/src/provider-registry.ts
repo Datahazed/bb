@@ -2,7 +2,7 @@
  * Provider registry.
  *
  * Exposes built-in provider metadata. Provider implementations are launched
- * through canonical drivers rather than a static adapter registry.
+ * through canonical drivers rather than an in-process implementation registry.
  */
 
 import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";

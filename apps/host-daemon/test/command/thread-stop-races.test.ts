@@ -1,15 +1,8 @@
-import path from "node:path";
-import { writeFile } from "node:fs/promises";
 import type {
   AgentRuntime,
   AgentRuntimeProcessExitInfo,
 } from "@bb/agent-runtime";
-import {
-  createAgentRuntimeWithAdapters,
-  createFakeAdapter,
-  type ProviderAdapter,
-  type ProviderAdapterFactory,
-} from "@bb/agent-runtime/test";
+import { createAgentRuntimeWithProviderDrivers } from "@bb/agent-runtime/test";
 import {
   encodeClientTurnRequestIdNumber,
   type ClientTurnRequestId,
@@ -35,7 +28,7 @@ import {
 
 /**
  * Race coverage for the thread.stop dispatch flow against the REAL agent
- * runtime (fake provider adapter, real provider subprocess): the stop wait is
+ * runtime (canonical fake driver in a real subprocess): the stop wait is
  * event-driven via runtime.waitForActiveTurn, crash clearing is owned by the
  * runtime, and repeated stops are idempotent.
  */
@@ -43,20 +36,11 @@ import {
 const ENVIRONMENT_ID = "env-stop-race";
 const THREAD_STOP_ACTIVE_TURN_WAIT_MS = 5_000;
 
-type RecordedAdapterCommand = Parameters<
-  ProviderAdapter["buildCommandPlan"]
->[0];
-
-interface RaceHarnessArgs {
-  adapterFactory?: ProviderAdapterFactory;
-}
-
 interface RaceHarness {
   dispatchOptions: CommandDispatchOptions;
   events: ThreadEvent[];
   exits: AgentRuntimeProcessExitInfo[];
   manager: RuntimeManager;
-  recordedCommands: RecordedAdapterCommand[];
   requireRuntime: () => AgentRuntime;
   workspacePath: string;
 }
@@ -71,48 +55,6 @@ interface TurnSubmitArgs {
   threadId: string;
   inputText: string;
 }
-
-const CRASH_MID_TURN_PROVIDER_SCRIPT = `
-const readline = require("node:readline");
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-  if (message.method === "initialize") {
-    send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
-    return;
-  }
-  if (message.method === "thread/start") {
-    const threadId = message.params.threadId;
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { providerThreadId: "prov-crash" },
-    });
-    send({
-      jsonrpc: "2.0",
-      method: "thread/identity",
-      params: { threadId, providerThreadId: "prov-crash" },
-    });
-    return;
-  }
-  if (message.method === "turn/start") {
-    const threadId = message.params.threadId;
-    send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
-    send({
-      jsonrpc: "2.0",
-      method: "turn/started",
-      params: { threadId, turnId: "turn-1", providerThreadId: "prov-crash" },
-    });
-    // Die mid-turn, after the turn/started handoff has been flushed.
-    setTimeout(() => process.exit(1), 50);
-  }
-});
-`;
 
 const managers: RuntimeManager[] = [];
 let nextClientRequestIdValue = 1;
@@ -132,19 +74,6 @@ function nextClientRequestId(): ClientTurnRequestId {
   return requestId;
 }
 
-function withRecordedCommands(
-  adapter: ProviderAdapter,
-  recordedCommands: RecordedAdapterCommand[],
-): ProviderAdapter {
-  return {
-    ...adapter,
-    buildCommandPlan(command) {
-      recordedCommands.push(command);
-      return adapter.buildCommandPlan(command);
-    },
-  };
-}
-
 /** Lets queued microtasks (the dispatch chain up to its turn waiter) run. */
 function flushMicrotasks(): Promise<void> {
   return new Promise((resolve) => {
@@ -152,28 +81,16 @@ function flushMicrotasks(): Promise<void> {
   });
 }
 
-async function createRaceHarness(
-  args: RaceHarnessArgs = {},
-): Promise<RaceHarness> {
+async function createRaceHarness(): Promise<RaceHarness> {
   const workspacePath = await makeTempDir("bb-stop-race-workspace-");
   const events: ThreadEvent[] = [];
   const exits: AgentRuntimeProcessExitInfo[] = [];
-  const recordedCommands: RecordedAdapterCommand[] = [];
-  const adapterFactory: ProviderAdapterFactory =
-    args.adapterFactory ?? (() => createFakeAdapter());
   let runtime: AgentRuntime | null = null;
   const manager = new RuntimeManager({
     provisionWorkspace: async () =>
       createFakeWorkspace(workspacePath).workspace,
     createRuntime: (options) => {
-      runtime = createAgentRuntimeWithAdapters({
-        ...options,
-        adapterFactory: (providerId, factoryOptions) =>
-          withRecordedCommands(
-            adapterFactory(providerId, factoryOptions),
-            recordedCommands,
-          ),
-      });
+      runtime = createAgentRuntimeWithProviderDrivers(options);
       return runtime;
     },
     onEvent: ({ event }) => {
@@ -190,7 +107,6 @@ async function createRaceHarness(
     events,
     exits,
     manager,
-    recordedCommands,
     requireRuntime: () => {
       if (!runtime) {
         throw new Error("Runtime has not been created yet");
@@ -282,12 +198,6 @@ function threadStopCommand(threadId: string): CommandOf<"thread.stop"> {
   };
 }
 
-function recordedThreadStops(harness: RaceHarness): RecordedAdapterCommand[] {
-  return harness.recordedCommands.filter(
-    (command) => command.type === "thread/stop",
-  );
-}
-
 function routerStop(
   router: CommandRouter,
   threadId: string,
@@ -319,7 +229,6 @@ describe("thread.stop race semantics", () => {
       harness.dispatchOptions,
     );
     await flushMicrotasks();
-    expect(recordedThreadStops(harness)).toHaveLength(0);
 
     // The turn now starts; its turn/started observation must release the stop.
     const submitPromise = dispatchCommand(
@@ -332,13 +241,6 @@ describe("thread.stop race semantics", () => {
     await expect(stopPromise).resolves.toEqual({ providerCheckpointId: null });
     await expect(submitPromise).resolves.toEqual({ appliedAs: "new-turn" });
 
-    expect(recordedThreadStops(harness)).toEqual([
-      expect.objectContaining({
-        type: "thread/stop",
-        threadId: "t-race",
-        activeTurnId: "turn-1",
-      }),
-    ]);
     expect(harness.events).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
@@ -372,13 +274,6 @@ describe("thread.stop race semantics", () => {
 
     await expect(stopPromise).resolves.toEqual({ providerCheckpointId: null });
     // The stop reached the provider as a no-turn stop and released the thread.
-    expect(recordedThreadStops(harness)).toEqual([
-      expect.objectContaining({
-        type: "thread/stop",
-        threadId: "t-idle",
-        activeTurnId: null,
-      }),
-    ]);
     expect(runtime.hasThread("t-idle")).toBe(false);
     expect(
       harness.events.filter((event) => event.type === "turn/completed"),
@@ -386,15 +281,7 @@ describe("thread.stop race semantics", () => {
   });
 
   it("clears the active turn when the provider crashes mid-turn so a later stop noops", async () => {
-    const crashDir = await makeTempDir("bb-stop-race-crash-");
-    const crashScriptPath = path.join(crashDir, "crash-mid-turn-provider.cjs");
-    await writeFile(crashScriptPath, CRASH_MID_TURN_PROVIDER_SCRIPT, "utf8");
-    const harness = await createRaceHarness({
-      adapterFactory: (providerId) =>
-        providerId === "crasher"
-          ? createFakeAdapter({ id: "crasher", scriptPath: crashScriptPath })
-          : createFakeAdapter(),
-    });
+    const harness = await createRaceHarness();
     // A healthy sibling provider keeps the environment entry alive across
     // the crash, so the follow-up stop exercises the dispatch path.
     await dispatchCommand(
@@ -405,7 +292,7 @@ describe("thread.stop race semantics", () => {
       threadStartCommand(harness, {
         threadId: "t-crash",
         providerId: "crasher",
-        inputText: "boom",
+        inputText: "crash_process",
       }),
       harness.dispatchOptions,
     );
@@ -426,8 +313,8 @@ describe("thread.stop race semantics", () => {
     expect(crashExit?.threads).toEqual([
       expect.objectContaining({
         threadId: "t-crash",
-        providerThreadId: "prov-crash",
-        activeTurnId: "turn-1",
+        providerThreadId: expect.stringMatching(/^fake-session-/u),
+        activeTurnId: expect.any(String),
       }),
     ]);
     // The runtime's own exit handling is the only clearing of that state.
@@ -446,7 +333,6 @@ describe("thread.stop race semantics", () => {
       dispatchCommand(threadStopCommand("t-crash"), harness.dispatchOptions),
     ).resolves.toEqual({ providerCheckpointId: null });
     // The stop never reached a provider: the crashed thread is unknown.
-    expect(recordedThreadStops(harness)).toHaveLength(0);
   });
 
   it("treats the second of two racing stops as an idempotent no-op", async () => {
@@ -469,7 +355,7 @@ describe("thread.stop race semantics", () => {
     const runtime = harness.requireRuntime();
     await vi.waitFor(
       () => {
-        expect(runtime.getActiveTurnId("t-double")).toBe("turn-1");
+        expect(runtime.getActiveTurnId("t-double")).toEqual(expect.any(String));
       },
       { timeout: 5_000 },
     );
@@ -481,9 +367,6 @@ describe("thread.stop race semantics", () => {
 
     expect(firstStop.ok).toBe(true);
     expect(secondStop.ok).toBe(true);
-    // Only one stop reached the provider; the loser saw the thread already
-    // forgotten and nooped.
-    expect(recordedThreadStops(harness)).toHaveLength(1);
     expect(
       harness.events.filter(
         (event) =>

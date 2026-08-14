@@ -29,7 +29,7 @@ import {
   defineProviderDriver,
   type ProviderDriverContext,
 } from "@bb/provider-driver-sdk";
-import { extractEnvOverrides } from "../shared/adapter-utils.js";
+import { extractEnvOverrides } from "../shared/provider-utils.js";
 import { withoutBridgeRuntimeEnv } from "../shared/bridge-runtime-env.js";
 import { shouldAutoDenyInteractiveRequest } from "../shared/permission-policy.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";

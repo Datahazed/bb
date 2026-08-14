@@ -5,11 +5,11 @@ import type {
   BuildInteractiveResponseArgs,
   DecodedInteractiveRequest,
 } from "../provider-driver/connection.js";
-import type { ProviderInboundRequest } from "../runtime-json-rpc.js";
+import type { ProviderInboundRequest } from "../provider-json-rpc.js";
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
-} from "../runtime-json-rpc.js";
+} from "../provider-json-rpc.js";
 import {
   parseCodexAvailableDecisions,
   pendingInteractionToCodexFileChangeApprovalDecision,

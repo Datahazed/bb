@@ -1,7 +1,7 @@
 /**
  * Zod schemas for the subset of the Agent Client Protocol (ACP) that BB
  * consumes — https://agentclientprotocol.com. The bridge validates agent
- * traffic with these before forwarding, and the adapter re-validates the
+ * traffic with these before forwarding, and the driver re-validates the
  * `update` payloads it translates into thread events.
  */
 

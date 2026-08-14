@@ -21,7 +21,7 @@ import {
   normalizeProviderCommandOutput,
   toNonNegativeNumber,
   toOptionalString,
-} from "../shared/adapter-utils.js";
+} from "../shared/provider-utils.js";
 import { bashArgsSchema } from "../shared/tool-arg-schemas.js";
 import {
   buildToolResultItem,

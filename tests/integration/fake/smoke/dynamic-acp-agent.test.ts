@@ -50,7 +50,7 @@ function buildDynamicAcpAgents(): CustomAcpAgent[] {
 
 describe.sequential("dynamic ACP integration smoke", () => {
   it("spawns configured ACP agents for model list, start, submit, and lazy resume", () =>
-    withHarness({ adapterFactory: undefined }, async (harness) => {
+    withHarness({ providerDriverFactory: undefined }, async (harness) => {
       harness.server.config.customAcpAgents = buildDynamicAcpAgents();
 
       const providersResponse = await harness.api.system.providers.$get({});

@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { createFakeAdapter } from "@bb/agent-runtime/test";
+import { createFakeCanonicalProviderDriverSpec } from "@bb/agent-runtime/test";
 import { describe, expect, it } from "vitest";
 import {
   createReuseThread,
@@ -86,137 +88,141 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
     }));
 
   it("starts parent and child threads with the shared runtime config", async () => {
-    const runtimeConfigCommands: RuntimeConfigCommand[] = [];
-    await withHarness(
-      {
-        adapterFactory: (providerId) => {
-          const baseAdapter = createFakeAdapter({
-            displayName: providerId,
-            id: providerId,
-          });
-          const buildCommandPlan: typeof baseAdapter.buildCommandPlan = (
-            command,
-          ) => {
-            if (
-              command.type === "thread/start" ||
-              command.type === "thread/resume"
-            ) {
-              runtimeConfigCommands.push({
-                commandType: command.type,
-                dynamicToolNames: (command.dynamicTools ?? [])
-                  .map((tool) => tool.name)
-                  .sort(),
-                instructions: command.options?.instructions,
-                skillRootPaths: (command.options?.skillRoots ?? [])
-                  .map((skillRoot) =>
-                    "skillDirectoryRootPath" in skillRoot
-                      ? skillRoot.skillDirectoryRootPath
-                      : skillRoot.localPluginPath,
-                  )
-                  .sort(),
-                threadId: command.threadId,
-              });
-            }
-            return baseAdapter.buildCommandPlan(command);
-          };
-          return {
-            ...baseAdapter,
-            buildCommandPlan,
-          };
+    const runtimeConfigLogPath = path.join(
+      tmpdir(),
+      `bb-runtime-config-${randomUUID()}.jsonl`,
+    );
+    try {
+      await withHarness(
+        {
+          providerDriverFactory: (providerId) =>
+            createFakeCanonicalProviderDriverSpec(providerId, {
+              config: { sessionOpenLogPath: runtimeConfigLogPath },
+            }),
         },
-      },
-      async (harness) => {
-        const project = await createProjectFixture(
-          harness,
-          "Parent Thread Smoke",
-        );
-        const { environment: parentEnvironment, thread: parentThread } =
-          await createReadyThread(harness, {
+        async (harness) => {
+          const project = await createProjectFixture(
+            harness,
+            "Parent Thread Smoke",
+          );
+          const { environment: parentEnvironment, thread: parentThread } =
+            await createReadyThread(harness, {
+              execution: {
+                model: "fake-model",
+                reasoningLevel: "medium",
+              },
+              projectId: project.id,
+              providerId: "codex",
+              title: "Parent thread",
+              workspace: {
+                type: "unmanaged",
+                path: harness.repoDir,
+              },
+            });
+
+          const childThread = await createReuseThread(harness.api, {
+            environmentId: parentEnvironment.id,
             execution: {
               model: "fake-model",
               reasoningLevel: "medium",
             },
+            parentThreadId: parentThread.id,
             projectId: project.id,
             providerId: "codex",
-            title: "Parent thread",
-            workspace: {
-              type: "unmanaged",
-              path: harness.repoDir,
-            },
+            title: "Child thread",
           });
+          expect(childThread.parentThreadId).toBe(parentThread.id);
+          expect(childThread.environmentId).toBe(parentEnvironment.id);
 
-        const childThread = await createReuseThread(harness.api, {
-          environmentId: parentEnvironment.id,
-          execution: {
-            model: "fake-model",
-            reasoningLevel: "medium",
-          },
-          parentThreadId: parentThread.id,
-          projectId: project.id,
-          providerId: "codex",
-          title: "Child thread",
-        });
-        expect(childThread.parentThreadId).toBe(parentThread.id);
-        expect(childThread.environmentId).toBe(parentEnvironment.id);
+          await waitForThreadStatus(
+            harness.api,
+            childThread.id,
+            "idle",
+            TURN_TIMEOUT_MS,
+          );
 
-        await waitForThreadStatus(
-          harness.api,
-          childThread.id,
-          "idle",
-          TURN_TIMEOUT_MS,
-        );
+          const runtimeConfigCommands = (
+            await fs.readFile(runtimeConfigLogPath, "utf8")
+          )
+            .trim()
+            .split("\n")
+            .map((line): RuntimeConfigCommand => {
+              const params = JSON.parse(line) as {
+                bbThreadId: string;
+                dynamicTools: { name: string }[];
+                instructions: { text: string };
+                mode: { kind: "fork" | "resume" | "start" };
+                skillSources: { rootPath: string }[];
+              };
+              return {
+                commandType:
+                  params.mode.kind === "resume"
+                    ? "thread/resume"
+                    : "thread/start",
+                dynamicToolNames: params.dynamicTools
+                  .map((tool) => tool.name)
+                  .sort(),
+                instructions: params.instructions.text,
+                skillRootPaths: params.skillSources
+                  .map((skill) => skill.rootPath)
+                  .sort(),
+                threadId: params.bbThreadId,
+              };
+            });
+          const parentRuntimeCommand = runtimeConfigCommands.find(
+            (command) => command.threadId === parentThread.id,
+          );
+          const childRuntimeCommand = runtimeConfigCommands.find(
+            (command) => command.threadId === childThread.id,
+          );
+          if (!parentRuntimeCommand || !childRuntimeCommand) {
+            throw new Error("Expected runtime commands for parent and child");
+          }
 
-        const parentRuntimeCommand = runtimeConfigCommands.find(
-          (command) => command.threadId === parentThread.id,
-        );
-        const childRuntimeCommand = runtimeConfigCommands.find(
-          (command) => command.threadId === childThread.id,
-        );
-        if (!parentRuntimeCommand || !childRuntimeCommand) {
-          throw new Error("Expected runtime commands for parent and child");
-        }
+          expect(parentRuntimeCommand.commandType).toBe("thread/start");
+          expect(childRuntimeCommand.commandType).toBe("thread/start");
+          expect(parentRuntimeCommand.dynamicToolNames).toEqual([
+            "update_environment_directory",
+          ]);
+          expect(childRuntimeCommand.dynamicToolNames).toEqual([
+            "update_environment_directory",
+          ]);
+          expect(parentRuntimeCommand.instructions).toContain("bb status");
+          expect(parentRuntimeCommand.instructions).toContain("bb guide");
+          expect(parentRuntimeCommand.instructions).toContain("Markdown links");
+          expect(childRuntimeCommand.instructions).toContain("bb status");
+          expect(childRuntimeCommand.instructions).toContain("bb guide");
+          expect(childRuntimeCommand.instructions).toContain("Markdown links");
+          expect(parentRuntimeCommand.instructions).not.toContain("manager");
+          expect(childRuntimeCommand.instructions).not.toContain("manager");
 
-        expect(parentRuntimeCommand.commandType).toBe("thread/start");
-        expect(childRuntimeCommand.commandType).toBe("thread/start");
-        expect(parentRuntimeCommand.dynamicToolNames).toEqual([
-          "update_environment_directory",
-        ]);
-        expect(childRuntimeCommand.dynamicToolNames).toEqual([
-          "update_environment_directory",
-        ]);
-        expect(parentRuntimeCommand.instructions).toContain("bb status");
-        expect(parentRuntimeCommand.instructions).toContain("bb guide");
-        expect(parentRuntimeCommand.instructions).toContain("Markdown links");
-        expect(childRuntimeCommand.instructions).toContain("bb status");
-        expect(childRuntimeCommand.instructions).toContain("bb guide");
-        expect(childRuntimeCommand.instructions).toContain("Markdown links");
-        expect(parentRuntimeCommand.instructions).not.toContain("manager");
-        expect(childRuntimeCommand.instructions).not.toContain("manager");
-
-        const parentHasBbCliSkill = await Promise.all(
-          parentRuntimeCommand.skillRootPaths.map(async (rootPath) => {
-            try {
-              await fs.access(path.join(rootPath, "bb-cli", "SKILL.md"));
-              return true;
-            } catch {
-              return false;
-            }
-          }),
-        );
-        const childHasBbCliSkill = await Promise.all(
-          childRuntimeCommand.skillRootPaths.map(async (rootPath) => {
-            try {
-              await fs.access(path.join(rootPath, "bb-cli", "SKILL.md"));
-              return true;
-            } catch {
-              return false;
-            }
-          }),
-        );
-        expect(parentHasBbCliSkill).toContain(true);
-        expect(childHasBbCliSkill).toContain(true);
-      },
-    );
+          const parentHasBbCliSkill = await Promise.all(
+            parentRuntimeCommand.skillRootPaths.map(async (rootPath) => {
+              try {
+                await fs.access(path.join(rootPath, "bb-cli", "SKILL.md"));
+                return true;
+              } catch {
+                return false;
+              }
+            }),
+          );
+          const childHasBbCliSkill = await Promise.all(
+            childRuntimeCommand.skillRootPaths.map(async (rootPath) => {
+              try {
+                await fs.access(path.join(rootPath, "bb-cli", "SKILL.md"));
+                return true;
+              } catch {
+                return false;
+              }
+            }),
+          );
+          expect(parentHasBbCliSkill).toContain(true);
+          expect(childHasBbCliSkill).toContain(true);
+        },
+      );
+    } finally {
+      await fs.rm(runtimeConfigLogPath, { force: true });
+    }
   });
 
   it("sends a message, runs the provider, and records timeline/output data", () =>

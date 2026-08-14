@@ -1,17 +1,12 @@
-import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import { createAgentRuntimeWithAdapters } from "./test/runtime-with-adapters.js";
-import { fakeProviderScriptPath } from "./test/index.js";
+import { createAgentRuntimeWithProviderDrivers } from "./test/runtime-with-provider-drivers.js";
 import type { AgentRuntime } from "./types.js";
 import {
-  createFakeAdapter,
-  createStartedEventAdapter,
-  createWarningEventAdapter,
   fullRuntimeOptions,
-  waitForRuntimeThreadEvent,
   waitForRuntimeState,
   waitForThreadAgentMessageText,
   waitForThreadTurnCompleted,
@@ -51,11 +46,8 @@ async function waitForBothThreadsStarted(
 
 describe("createAgentRuntime multi-thread routing", () => {
   let tmpDir: string;
-  let scriptPath: string;
-
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "bb-runtime-test-"));
-    scriptPath = fakeProviderScriptPath;
   });
 
   afterEach(() => {
@@ -64,14 +56,13 @@ describe("createAgentRuntime multi-thread routing", () => {
 
   it("handles multiple threads on the same provider", async () => {
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
+    const runtime = createAgentRuntimeWithProviderDrivers({
       workspacePath: tmpDir,
       onEvent: (e) => events.push(e),
       onToolCall: async () => ({
         contentItems: [{ type: "inputText", text: "ok" }],
         success: true,
       }),
-      adapterFactory: () => createFakeAdapter(scriptPath),
     });
 
     const r1 = await runtime.startThread({
@@ -137,24 +128,16 @@ describe("createAgentRuntime multi-thread routing", () => {
     await runtime.shutdown();
   });
 
-  it("keeps sibling threads running for keep-provider adapters after stopping one thread", async () => {
+  it("keeps sibling threads running for multiplexed providers after stopping one thread", async () => {
     const events: ThreadEvent[] = [];
     const providerId = "keep-provider-fake";
-    const runtime = createAgentRuntimeWithAdapters({
+    const runtime = createAgentRuntimeWithProviderDrivers({
       workspacePath: tmpDir,
       onEvent: (event) => events.push(event),
       onToolCall: async () => ({
         contentItems: [{ type: "inputText", text: "ok" }],
         success: true,
       }),
-      adapterFactory: () => {
-        const adapter = createFakeAdapter(scriptPath);
-        return {
-          ...adapter,
-          displayName: "Keep Provider Fake",
-          id: providerId,
-        };
-      },
     });
 
     await runtime.startThread({
@@ -224,14 +207,13 @@ describe("createAgentRuntime multi-thread routing", () => {
 
   it("stamps all events with bb threadId and providerThreadId", async () => {
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
+    const runtime = createAgentRuntimeWithProviderDrivers({
       workspacePath: tmpDir,
       onEvent: (e) => events.push(e),
       onToolCall: async () => ({
         contentItems: [{ type: "inputText", text: "ok" }],
         success: true,
       }),
-      adapterFactory: () => createFakeAdapter(scriptPath),
     });
 
     const { providerThreadId } = await runtime.startThread({
@@ -269,14 +251,13 @@ describe("createAgentRuntime multi-thread routing", () => {
 
   it("stamps events correctly for multiple threads", async () => {
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
+    const runtime = createAgentRuntimeWithProviderDrivers({
       workspacePath: tmpDir,
       onEvent: (e) => events.push(e),
       onToolCall: async () => ({
         contentItems: [{ type: "inputText", text: "ok" }],
         success: true,
       }),
-      adapterFactory: () => createFakeAdapter(scriptPath),
     });
 
     const r1 = await runtime.startThread({
@@ -348,258 +329,20 @@ describe("createAgentRuntime multi-thread routing", () => {
     await runtime.shutdown();
   });
 
-  it("maps thread/started before identity for multiple threads on one provider", async () => {
-    const events: ThreadEvent[] = [];
-    const startedScriptPath = join(tmpDir, "started-provider.cjs");
-    writeFileSync(
-      startedScriptPath,
-      `
-let nextThreadId = 1;
-const readline = require("node:readline");
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-  if (message.method === "initialize") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    return;
-  }
-
-  if (message.method === "thread/start") {
-    const providerThreadId = "prov-" + String(nextThreadId++);
-    send({
-      jsonrpc: "2.0",
-      method: "thread/started",
-      params: {
-        thread: {
-          id: providerThreadId,
-        },
-      },
-    });
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { providerThreadId },
-    });
-  }
-});
-`,
-      "utf8",
-    );
-
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => createStartedEventAdapter(startedScriptPath),
-    });
-
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t1",
-      projectId: "p1",
-      providerId: "started-fake",
-      options: fullRuntimeOptions,
-    });
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t2",
-      projectId: "p1",
-      providerId: "started-fake",
-      options: fullRuntimeOptions,
-    });
-    await Promise.all([
-      waitForRuntimeThreadEvent({
-        events,
-        label: "thread/started for t1",
-        predicate: (event) =>
-          event.type === "thread/started" && event.threadId === "t1",
-        providerId: "started-fake",
-        runtime,
-        threadId: "t1",
-      }),
-      waitForRuntimeThreadEvent({
-        events,
-        label: "thread/started for t2",
-        predicate: (event) =>
-          event.type === "thread/started" && event.threadId === "t2",
-        providerId: "started-fake",
-        runtime,
-        threadId: "t2",
-      }),
-    ]);
-
-    expect(
-      events.filter(
-        (event) => event.type === "thread/started" && event.threadId === "t1",
-      ),
-    ).toHaveLength(1);
-    expect(
-      events.filter(
-        (event) => event.type === "thread/started" && event.threadId === "t2",
-      ),
-    ).toHaveLength(1);
-    expect(
-      events.some(
-        (event) =>
-          event.type === "thread/started" && event.threadId.startsWith("prov-"),
-      ),
-    ).toBe(false);
-
-    await runtime.shutdown();
-  });
-
-  it("drops unscoped provider events when multiple threads share one provider", async () => {
-    const events: ThreadEvent[] = [];
-    const warningScriptPath = join(tmpDir, "warning-provider.cjs");
-    writeFileSync(
-      warningScriptPath,
-      `
-let nextThreadId = 1;
-const readline = require("node:readline");
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-  if (message.method === "initialize") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    return;
-  }
-
-  if (message.method === "thread/start") {
-    const providerThreadId = "prov-" + String(nextThreadId++);
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { providerThreadId },
-    });
-    return;
-  }
-
-  if (message.method === "turn/start") {
-    const providerThreadId = message.params.threadId;
-    const turnId = "turn-" + providerThreadId;
-    send({ jsonrpc: "2.0", method: "warning", params: {} });
-    send({
-      jsonrpc: "2.0",
-      method: "turn/started",
-      params: { threadId: providerThreadId, providerThreadId, turnId },
-    });
-    send({
-      jsonrpc: "2.0",
-      method: "turn/completed",
-      params: { threadId: providerThreadId, providerThreadId, turnId },
-    });
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-  }
-});
-`,
-      "utf8",
-    );
-
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (e) => events.push(e),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => createWarningEventAdapter(warningScriptPath),
-    });
-
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t1",
-      projectId: "p1",
-      providerId: "warning-fake",
-      options: fullRuntimeOptions,
-    });
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t2",
-      projectId: "p1",
-      providerId: "warning-fake",
-      options: fullRuntimeOptions,
-    });
-
-    await Promise.all([
-      runtime.runTurn({
-        clientRequestId: "creq_222222222j",
-        threadId: "t1",
-        input: [promptTextInput({ text: "from t1" })],
-        options: fullRuntimeOptions,
-      }),
-      runtime.runTurn({
-        clientRequestId: "creq_222222222k",
-        threadId: "t2",
-        input: [promptTextInput({ text: "from t2" })],
-        options: fullRuntimeOptions,
-      }),
-    ]);
-    await Promise.all([
-      waitForThreadTurnCompleted({
-        events,
-        providerId: "warning-fake",
-        runtime,
-        threadId: "t1",
-      }),
-      waitForThreadTurnCompleted({
-        events,
-        providerId: "warning-fake",
-        runtime,
-        threadId: "t2",
-      }),
-    ]);
-
-    expect(
-      events.find((event) => event.type === "provider/warning"),
-    ).toBeUndefined();
-    expect(
-      events.filter(
-        (event) => event.type === "turn/completed" && event.threadId === "t1",
-      ),
-    ).toHaveLength(1);
-    expect(
-      events.filter(
-        (event) => event.type === "turn/completed" && event.threadId === "t2",
-      ),
-    ).toHaveLength(1);
-
-    await runtime.shutdown();
-  });
+  // Canonical drivers bind attachments before events are accepted, so the
+  // former pre-identity and unscoped-event ambiguity cases are impossible.
 
   // ---- Multi-provider ----
 
   it("handles multiple providers in a single runtime", async () => {
     const events: ThreadEvent[] = [];
-    const script2 = fakeProviderScriptPath;
-
-    let adapterCallCount = 0;
-    const runtime = createAgentRuntimeWithAdapters({
+    const runtime = createAgentRuntimeWithProviderDrivers({
       workspacePath: tmpDir,
       onEvent: (e) => events.push(e),
       onToolCall: async () => ({
         contentItems: [{ type: "inputText", text: "ok" }],
         success: true,
       }),
-      adapterFactory: (providerId) => {
-        adapterCallCount++;
-        const adapter = createFakeAdapter(
-          adapterCallCount === 1 ? scriptPath : script2,
-        );
-        return { ...adapter, id: providerId };
-      },
     });
 
     await runtime.startThread({
@@ -657,14 +400,13 @@ rl.on("line", (line) => {
   it("resumes across runtime instances", async () => {
     // Runtime 1: start a thread
     const events1: ThreadEvent[] = [];
-    const runtime1 = createAgentRuntimeWithAdapters({
+    const runtime1 = createAgentRuntimeWithProviderDrivers({
       workspacePath: tmpDir,
       onEvent: (e) => events1.push(e),
       onToolCall: async () => ({
         contentItems: [{ type: "inputText", text: "ok" }],
         success: true,
       }),
-      adapterFactory: () => createFakeAdapter(scriptPath),
     });
 
     const { providerThreadId } = await runtime1.startThread({
@@ -690,14 +432,13 @@ rl.on("line", (line) => {
 
     // Runtime 2: resume the thread
     const events2: ThreadEvent[] = [];
-    const runtime2 = createAgentRuntimeWithAdapters({
+    const runtime2 = createAgentRuntimeWithProviderDrivers({
       workspacePath: tmpDir,
       onEvent: (e) => events2.push(e),
       onToolCall: async () => ({
         contentItems: [{ type: "inputText", text: "ok" }],
         success: true,
       }),
-      adapterFactory: () => createFakeAdapter(scriptPath),
     });
 
     await runtime2.resumeThread({

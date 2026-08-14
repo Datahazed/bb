@@ -17,8 +17,8 @@ import {
   codexRawResponseItemCompletedParamsSchema,
   codexSubAgentActivityItemSchema,
 } from "./schemas.js";
-import type { ProviderRuntimeEvent } from "../runtime-json-rpc.js";
-import { extractResultText } from "../shared/adapter-utils.js";
+import type { ProviderRuntimeEvent } from "../provider-json-rpc.js";
+import { extractResultText } from "../shared/provider-utils.js";
 import { codexRateLimitReadResponseSchema } from "./schemas.js";
 
 const CODEX_SHELL_TOOL_NAMES = new Set(["exec_command", "Bash", "bash"]);
