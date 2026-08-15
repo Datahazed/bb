@@ -16,7 +16,7 @@ import {
   type PluginThreadListRegistration,
   type PluginThreadHeaderActionRegistration,
   type PluginThreadPanelActionRegistration,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import {
   collectComposerCustomization,
   PLUGIN_SLOT_ID_PATTERN,
@@ -26,7 +26,7 @@ import {
   requireOptionalString,
   requireSlotId,
   requireUniqueId,
-} from "@bb/plugin-sdk/internal/composer-customization-validation";
+} from "@get-bb/plugin-sdk/internal/composer-customization-validation";
 import type { PluginRegistrationSet } from "./plugin-slots";
 
 export type CollectedPluginAppRegistrations = PluginRegistrationSet & {
@@ -42,7 +42,7 @@ export type CollectedPluginAppRegistrations = PluginRegistrationSet & {
  * plugin's frontend failed without touching other plugins or its backend.
  */
 
-/** Real `@bb/plugin-sdk/app` implementation of `definePluginApp`. */
+/** Real `@get-bb/plugin-sdk/app` implementation of `definePluginApp`. */
 export function definePluginApp(setup: PluginAppSetup): PluginAppDefinition {
   if (typeof setup !== "function") {
     throw new Error("definePluginApp expects a setup function");

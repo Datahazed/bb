@@ -47,6 +47,7 @@ import {
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import { PluginBrowserActions } from "@/components/plugin/PluginBrowserActions";
+import { isLoopbackHostname } from "@/lib/loopback-hostname";
 
 export interface BrowserTabContentProps {
   tabId: string;
@@ -186,13 +187,7 @@ function browserViewBoundsEqual(args: BrowserViewBoundsEqualArgs): boolean {
 
 function isLocalBrowserUrl(url: string): boolean {
   try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    return (
-      hostname === "localhost" ||
-      hostname.endsWith(".localhost") ||
-      hostname === "::1" ||
-      hostname.startsWith("127.")
-    );
+    return isLoopbackHostname(new URL(url).hostname);
   } catch {
     return false;
   }

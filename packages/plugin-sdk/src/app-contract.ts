@@ -17,10 +17,10 @@ import type {
 } from "./rpc-contract.js";
 
 /**
- * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
+ * The `@get-bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
  * side effects. The BB app imports these to keep its real implementation in
  * sync (`satisfies PluginSdkApp`). Plugin authors import the same shapes through
- * `@bb/plugin-sdk/app`.
+ * `@get-bb/plugin-sdk/app`.
  *
  * Per-slot props are versioned contracts: additive-only within an SDK major.
  */
@@ -1168,15 +1168,6 @@ export interface PluginComposerMention {
   label: string;
 }
 
-/** A project attachment already uploaded through a plugin backend. */
-export interface ExperimentalPluginComposerAttachment {
-  type: "localImage" | "localFile";
-  path: string;
-  name: string;
-  mimeType?: string;
-  sizeBytes: number;
-}
-
 /**
  * Programmatic access to the chat composer draft — the same shared draft the
  * built-in "Add to chat" affordances (file preview, diff, terminal selections)
@@ -1227,13 +1218,6 @@ export interface PluginComposerApi {
    * content should be fetched fresh when the message is sent.
    */
   insertMention(mention: PluginComposerMention): void;
-  /**
-   * Add an already-uploaded project attachment without changing draft text.
-   * Duplicate paths are ignored. Experimental: see docs/api_to_audit.md.
-   */
-  experimental_addAttachment?(
-    attachment: ExperimentalPluginComposerAttachment,
-  ): void;
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
 }
@@ -1499,7 +1483,7 @@ export interface BbNavigate {
 
 // ---------------------------------------------------------------------------
 // The whole runtime surface. Declaration-versus-runtime parity is tested
-// against the actual `@bb/plugin-sdk/app` module namespace.
+// against the actual `@get-bb/plugin-sdk/app` module namespace.
 //
 // Components are deliberately NOT part of this surface (removed 2026-07-03,
 // plugin design §5.5): plugins vendor shadcn-style component source from the
@@ -1510,7 +1494,7 @@ export interface BbNavigate {
 // ---------------------------------------------------------------------------
 
 /**
- * Everything `@bb/plugin-sdk/app` resolves to at runtime. The BB app builds
+ * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
  * the real implementation and `satisfies` this interface; `bb plugin build`
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */

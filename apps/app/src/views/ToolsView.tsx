@@ -380,8 +380,11 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
                 ? null
                 : {
                     entryId: installTarget.entryId,
+                    marketplace: installTarget.marketplace,
+                    publisherLabel: installTarget.publisherLabel,
                     displayName: installTarget.displayName,
                     icon: installTarget.icon,
+                    iconUrl: installTarget.iconUrl,
                     source: installTarget.source,
                   }
             }

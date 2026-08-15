@@ -332,28 +332,6 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     [storageKey],
   );
 
-  const replaceAttachment = useCallback(
-    (previousPath: string, attachment: PromptDraftAttachment) => {
-      const currentDraft = readPromptDraft(storageKey);
-      const previousIndex = currentDraft.attachments.findIndex(
-        (existing) => existing.path === previousPath,
-      );
-      if (previousIndex < 0) return;
-
-      const nextAttachments = currentDraft.attachments.flatMap(
-        (existing, index) => {
-          if (index === previousIndex) return [attachment];
-          return existing.path === attachment.path ? [] : [existing];
-        },
-      );
-      writePromptDraft(storageKey, {
-        ...currentDraft,
-        attachments: nextAttachments,
-      });
-    },
-    [storageKey],
-  );
-
   const addQuote = useCallback(
     (text: string, attachments: readonly PromptDraftAttachment[] = []) => {
       const currentDraft = readPromptDraft(storageKey);
@@ -421,7 +399,6 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       setAttachments,
       addAttachment,
       removeAttachment,
-      replaceAttachment,
       addQuote,
       clear,
       clearIfCurrentMatches,
@@ -437,7 +414,6 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       draft.text,
       getCurrent,
       removeAttachment,
-      replaceAttachment,
       restoreIfEmpty,
       setAttachments,
       setDraftAndPersist,

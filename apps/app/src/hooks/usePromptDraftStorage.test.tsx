@@ -210,39 +210,3 @@ describe("usePromptDraftStorage addQuote", () => {
     expect(second.result.current.text).toBe("> shared selection\n");
   });
 });
-
-describe("usePromptDraftStorage attachments", () => {
-  it("replaces an edited attachment in place and persists the new path", () => {
-    const scope = uniqueScope();
-    const { result } = renderHook(() => usePromptDraftStorage(scope));
-    act(() =>
-      result.current.addAttachment({
-        type: "localFile",
-        path: "uploads/browser-context.md",
-        name: "browser-context.md",
-        mimeType: "text/markdown",
-        sizeBytes: 120,
-      }),
-    );
-
-    act(() =>
-      result.current.replaceAttachment("uploads/browser-context.md", {
-        type: "localFile",
-        path: "uploads/browser-context-edited.md",
-        name: "browser-context.md",
-        mimeType: "text/markdown",
-        sizeBytes: 132,
-      }),
-    );
-
-    expect(result.current.attachments).toEqual([
-      expect.objectContaining({
-        path: "uploads/browser-context-edited.md",
-        sizeBytes: 132,
-      }),
-    ]);
-    const stored = window.localStorage.getItem(result.current.storageKey);
-    expect(stored).toContain("browser-context-edited.md");
-    expect(stored).not.toContain('"path":"uploads/browser-context.md"');
-  });
-});

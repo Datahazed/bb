@@ -17,7 +17,7 @@ import {
 } from "../app.js";
 import { defineRpcContract } from "../../rpc-contract.js";
 
-// Install before touching @bb/plugin-sdk/app — it binds the runtime global
+// Install before touching @get-bb/plugin-sdk/app — it binds the runtime global
 // at import time (same constraint real plugin app.tsx files have).
 installTestPluginRuntime();
 const {
@@ -148,20 +148,6 @@ function ComposerProbe() {
         }
       >
         mention
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          composer.experimental_addAttachment?.({
-            type: "localImage",
-            path: "uploads/browser-context.png",
-            name: "browser-context.png",
-            mimeType: "image/png",
-            sizeBytes: 128,
-          })
-        }
-      >
-        attach
       </button>
       <button type="button" onClick={() => composer.focus()}>
         focus
@@ -1082,29 +1068,6 @@ describe("renderSlot", () => {
       { provider: "notes", id: "ideas", label: "Ideas" },
     ]);
     expect(slot.composer.focusCount).toBe(3);
-  });
-
-  it("adds uploaded attachments without changing text and deduplicates paths", () => {
-    const slot = renderSlot(
-      app.composerCustomizations[0]!.actions![0]!,
-      {},
-      { composer: { text: "draft", attachmentCount: 2 } },
-    );
-
-    fireEvent.click(slot.getByText("attach"));
-    fireEvent.click(slot.getByText("attach"));
-
-    expect(slot.composer.text).toBe("draft");
-    expect(slot.composer.attachmentCount).toBe(3);
-    expect(slot.composer.attachments).toEqual([
-      {
-        type: "localImage",
-        path: "uploads/browser-context.png",
-        name: "browser-context.png",
-        mimeType: "image/png",
-        sizeBytes: 128,
-      },
-    ]);
   });
 
   it("invalidates visual-state setters through both unmount controls", () => {

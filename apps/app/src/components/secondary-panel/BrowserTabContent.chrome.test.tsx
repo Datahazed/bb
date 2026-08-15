@@ -12,7 +12,7 @@ import type {
   BbDesktopBrowserInspectionResult,
   BbDesktopBrowserState,
 } from "@bb/desktop-contract";
-import type { PluginBrowserActionProps } from "@bb/plugin-sdk";
+import type { PluginBrowserActionProps } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createBbDesktopApi,

@@ -5,27 +5,6 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
-## `useComposer().experimental_addAttachment` (`@bb/plugin-sdk/app`)
-
-**What it does.** Adds one project attachment that a plugin backend already
-uploaded to the active composer draft. It preserves text and mentions, ignores
-duplicate paths, and uses the same preview, removal, persistence, send, and
-queue behavior as files the user attached directly. Markdown attachments render
-as file-preview cards; users can open, edit, and re-upload them before sending.
-
-**Audit before stabilizing.**
-
-1. Confirm plugins cannot reference paths outside the active project.
-2. Decide whether upload plus draft insertion should become one host-owned
-   transaction rather than two plugin steps.
-3. Exercise thread, queued-message, side-chat, and new-thread draft scopes.
-4. Confirm reload, removal, duplicate insertion, and failed sends preserve the
-   same attachment identity and user recovery behavior.
-5. Decide whether plugin-created attachments need visible provenance in the
-   prompt box.
-6. Confirm editable Markdown size limits, stale-save races, replacement
-   semantics, and orphan cleanup are appropriate for long-lived drafts.
-
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React
@@ -101,7 +80,7 @@ Each label is capped at 80 characters and rendered as a truncating segment.
    only for non-MCP native plugin tools. Confirm that distinction stays sound
    as provider adapters and dynamic-tool provenance evolve.
 
-## `experimental_NewThreadComposer` (`@bb/plugin-sdk/app`)
+## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** The host-owned new-thread compose surface, the create-side
 counterpart to `ThreadChat`. It renders bb's full control set — prompt editor
@@ -117,24 +96,14 @@ host's `useCreateThread` and the thread would look host-originated. So the
 rule is: the composer owns user selections; the plugin owns filing
 (`sectionId`, `parentThreadId`, `title`, `visibility`) and attribution.
 
-Implementation: `apps/app/src/components/plugin/PluginNewThreadComposer.tsx`,
-bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
+Implementation: the shared workflow is
+`apps/app/src/components/promptbox/NewThreadComposer.tsx`; the SDK adapter is
+`apps/app/src/components/plugin/PluginNewThreadComposer.tsx`, bound in
+`apps/app/src/lib/plugin-sdk-app-impl.tsx`.
 
 **Audit before stabilizing.**
 
-1. **Duplicated config assembly vs. `RootComposeView`.** The adapter builds
-   `environmentConfig`, `branchConfig`, `worktreeConfig`, `permissionConfig`,
-   `executionConfig`, `attachmentsConfig`, `typeaheadConfig`, `historyConfig`,
-   and `projectOptions` for `NewThreadPromptBox` a second time — the first
-   copy is the `useMemo` block in `apps/app/src/views/RootComposeView.tsx`.
-   This was chosen over refactoring that ~3700-line view (additive, zero
-   regression risk to the primary compose surface), mirroring how
-   `PluginThreadChat` adapts `EmbeddedThreadChat`. Only the pure resolvers are
-   shared (`apps/app/src/views/root-compose-environment-selection.ts`). Check
-   whether the two copies have drifted, and whether the shared surface should
-   grow to cover the config assembly itself before this is stable.
-
-2. **`NewThreadRequest` vs. what `threads.spawn` accepts.** The type mirrors
+1. **`NewThreadRequest` vs. what `threads.spawn` accepts.** The type mirrors
    the subset of `CreateThreadRequest` a composer can resolve. Confirm every
    field still round-trips through `bb.sdk.threads.spawn` unchanged, that
    `executionInputSources` still means the same thing to the server, and that
@@ -144,7 +113,7 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
    composer always sends an explicit `providerId`; decide whether that is
    correct before freezing the shape.
 
-3. **Page-level behavior the adapter skips.** Fork seeds,
+2. **Page-level behavior the adapter skips.** Fork seeds,
    quick-create-project, the guided machine-setup dialog, welcome/empty
    states, and codex-version submit blocking are all deliberately absent.
    Confirm none of them has become load-bearing for correctness (rather than
@@ -152,19 +121,19 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
    means a plugin can submit to a machine whose CLI the primary surface would
    have refused.
 
-4. **Draft and selection scoping.** Drafts persist under a
+3. **Draft and selection scoping.** Drafts persist under a
    `plugin-new-thread` scope keyed by `draftKey ?? pluginId`, and execution
    selections are component-local so a plugin panel never rewrites the user's
    persisted root-composer defaults. Confirm that is still the behavior
    plugin authors expect, and that `draftKey` is the right knob (versus, say,
    a per-instance ephemeral draft).
 
-5. **No plugin composer host binding.** The instance passes no
+4. **No plugin composer host binding.** The instance passes no
    `pluginComposerHost`, so plugin composer customizations, banners, and
    `useComposer()` writes do not reach it. Decide whether composers rendered
    by a plugin should participate in that surface before stabilizing.
 
-6. **Seeding props and the round-trip guarantee.** The `default*` props
+5. **Seeding props and the round-trip guarantee.** The `default*` props
    (`defaultProviderId`, `defaultModel`, `defaultReasoningLevel`,
    `defaultServiceTier`, `defaultPermissionMode`, `defaultEnvironment`) seed
    the composer from a stored `NewThreadRequest` so a plugin can re-open a
@@ -182,7 +151,7 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
    `PluginNewThreadComposer.test.tsx` guard this) and re-decide whether the
    re-seed-on-change rule should instead be an explicit reset nonce.
 
-## `app.slots.experimental_newThreadPanelAction` (`@bb/plugin-sdk/app`)
+## `app.slots.experimental_newThreadPanelAction` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Adds a plugin row to the root New thread screen's
 right-panel Actions list. Activating it can open a closable panel tab whose
@@ -211,7 +180,7 @@ Before stabilization, audit:
    preferable to a unified discriminated context after external plugins have
    had time to adopt the root surface deliberately.
 
-## `app.slots.experimental_threadList` (`@bb/plugin-sdk/app`)
+## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin
 component. Unlike every other `app.slots.*` member this slot is **exclusive**:
@@ -245,7 +214,7 @@ and a disabled or uninstalled plugin gets its list back when it returns.
    focus order, and the mobile close behavior when a plugin owns the markup —
    `onNavigate` is currently the plugin's responsibility to call.
 
-## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@bb/plugin-sdk/app`)
+## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Gives a plugin component the sidebar's live thread view and
 the actions that mutate it. The read hook wraps the host's own
@@ -311,7 +280,7 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    exposing the full `panes` array does not leak more layout state than a row
    needs.
 
-## `app.slots.experimental_browserAction` (`@bb/plugin-sdk/app`)
+## `app.slots.experimental_browserAction` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Renders one plugin-owned 28-pixel control in each active
 Browser tab's navigation chrome. The component receives the tab, thread,
@@ -358,7 +327,7 @@ shown again.
    boundary, the root remains clipped to one Browser viewport through resizes,
    and pointer ownership cannot escape after an action unmounts or crashes.
 
-## `app.slots.experimental_threadHeaderAction` (`@bb/plugin-sdk/app`)
+## `app.slots.experimental_threadHeaderAction` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Renders a plugin component in the thread header's action row.
 The frontend sibling of the backend `bb.ui.registerThreadAction`, which renders

@@ -11,7 +11,7 @@ import type {
   ExperimentalBrowserInspectionRequest,
   ExperimentalBrowserInspectionResult,
   PluginBrowserActionProps,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import {
   DropdownMenu,
   DropdownMenuContent,

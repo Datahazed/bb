@@ -6,7 +6,7 @@ import {
   useRef,
   useSyncExternalStore,
 } from "react";
-import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import type { PromptTextMention } from "@bb/domain";
 import type {
@@ -19,7 +19,7 @@ import type {
   PluginRpcContract,
   PluginRpcClient,
   PluginSettingsState,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import {
   PluginSlotOwnershipContext,
   usePluginId,
@@ -51,9 +51,10 @@ import {
 import { useRouteState } from "@/hooks/useRouteState";
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
+import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
 
 /**
- * Host implementations of the `@bb/plugin-sdk/app` hooks (plugin design
+ * Host implementations of the `@get-bb/plugin-sdk/app` hooks (plugin design
  * §5.2). Every hook requires the PluginContext provider that PluginSlotMount
  * wraps around mounted slot components; the fetch-backed parts are split
  * into pure functions taking an injected `fetch` so tests can exercise the
@@ -207,15 +208,6 @@ export async function fetchPluginSdkSettings(
     }
   }
   return values;
-}
-
-export function pluginSdkSettingsQueryKey(pluginId: string): QueryKey {
-  return ["plugin-settings", pluginId];
-}
-
-/** Prefix the realtime `plugins-changed` broadcast invalidates. */
-export function allPluginSettingsQueryKeyPrefix(): QueryKey {
-  return ["plugin-settings"];
 }
 
 export function useRpc<
@@ -736,33 +728,6 @@ export function useComposer(): PluginComposerApi {
     [focusActiveComposer, getCurrent, pluginId, setDraft],
   );
 
-  const experimental_addAttachment = useCallback(
-    (
-      attachment: Parameters<
-        NonNullable<PluginComposerApi["experimental_addAttachment"]>
-      >[0],
-    ) => {
-      if (
-        attachment.path.length === 0 ||
-        attachment.path.startsWith("/") ||
-        attachment.path.includes("\\") ||
-        attachment.path.split("/").includes("..") ||
-        /^[a-z][a-z0-9+.-]*:/iu.test(attachment.path) ||
-        !Number.isFinite(attachment.sizeBytes) ||
-        attachment.sizeBytes < 0
-      ) {
-        console.warn(
-          `[plugin:${pluginId}] useComposer().experimental_addAttachment: invalid project attachment`,
-        );
-        return;
-      }
-      const current = getCurrent();
-      const next = appendQuoteAndAttachmentsToDraft(current, "", [attachment]);
-      if (next !== current) setDraft(next);
-    },
-    [getCurrent, pluginId, setDraft],
-  );
-
   const focus = focusActiveComposer;
   const composerText = composerHost?.draft.text ?? routeDraft.text;
 
@@ -782,7 +747,6 @@ export function useComposer(): PluginComposerApi {
       setThreadRowStatus: legacySetThreadRowStatus,
       addQuote,
       insertMention,
-      experimental_addAttachment,
       focus,
     }),
     [
@@ -790,7 +754,6 @@ export function useComposer(): PluginComposerApi {
       clear,
       composerScope,
       composerText,
-      experimental_addAttachment,
       focus,
       insertMention,
       projectId,

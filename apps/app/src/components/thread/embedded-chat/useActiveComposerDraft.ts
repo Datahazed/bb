@@ -29,10 +29,6 @@ export interface UseActiveComposerDraftResult {
   setActiveComposerDraft: (draft: PromptDraftState) => void;
   handleChangeMessage: (text: string, mentions: PromptTextMention[]) => void;
   removeActiveComposerAttachment: (path: string) => void;
-  replaceActiveComposerAttachment: (
-    previousPath: string,
-    attachment: PromptDraftState["attachments"][number],
-  ) => void;
 }
 
 /**
@@ -51,7 +47,6 @@ export function useActiveComposerDraft({
   const setStoredPromptDraft = promptDraft.setDraft;
   const setStoredPromptTextAndMentions = promptDraft.setTextAndMentions;
   const removeStoredPromptAttachment = promptDraft.removeAttachment;
-  const replaceStoredPromptAttachment = promptDraft.replaceAttachment;
 
   const currentPromptDraft = useMemo(
     () => ({
@@ -128,39 +123,6 @@ export function useActiveComposerDraft({
       removeStoredPromptAttachment,
     ],
   );
-  const replaceActiveComposerAttachment = useCallback(
-    (
-      previousPath: string,
-      attachment: PromptDraftState["attachments"][number],
-    ) => {
-      const current = inlineEditingQueuedMessageRef.current;
-      if (current) {
-        const previousIndex = current.draft.attachments.findIndex(
-          (existing) => existing.path === previousPath,
-        );
-        if (previousIndex < 0) return;
-        commitInlineQueuedMessage({
-          ...current,
-          draft: {
-            ...current.draft,
-            attachments: current.draft.attachments.flatMap(
-              (existing, index) => {
-                if (index === previousIndex) return [attachment];
-                return existing.path === attachment.path ? [] : [existing];
-              },
-            ),
-          },
-        });
-        return;
-      }
-      replaceStoredPromptAttachment(previousPath, attachment);
-    },
-    [
-      commitInlineQueuedMessage,
-      inlineEditingQueuedMessageRef,
-      replaceStoredPromptAttachment,
-    ],
-  );
 
   return {
     promptDraft,
@@ -171,6 +133,5 @@ export function useActiveComposerDraft({
     setActiveComposerDraft,
     handleChangeMessage,
     removeActiveComposerAttachment,
-    replaceActiveComposerAttachment,
   };
 }

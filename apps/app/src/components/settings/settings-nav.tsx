@@ -1,6 +1,6 @@
 import { matchPath, useLocation } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
-import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
@@ -23,6 +23,7 @@ export const SETTINGS_NAV_SECTIONS = [
   { icon: "Folder", id: "files", label: "Files" },
   { icon: "Laptop", id: "machines", label: "Machines" },
   { icon: "PackageReceive", id: "updates", label: "Updates" },
+  { icon: "Puzzle", id: "marketplaces", label: "Plugin marketplaces" },
   { icon: "Beaker", id: "experiments", label: "Experiments" },
   { icon: "MessageSquare", id: "community", label: "Community" },
   { icon: "Archive", id: "archived", label: "Archived threads" },
@@ -77,6 +78,7 @@ export interface SettingsNavState {
 export function useSettingsNavState(): SettingsNavState {
   const location = useLocation();
   const { hasDaemon } = useHostDaemon();
+  const { accessState } = useLocalHostDaemonAccess();
   const { fileOpeners, settingsSections } = usePluginSlots();
   const pluginListQuery = usePluginList({ enabled: true });
 
@@ -117,7 +119,9 @@ export function useSettingsNavState(): SettingsNavState {
 
   const sections = SETTINGS_NAV_SECTIONS.filter((section) => {
     if (section.id === "files") {
-      return hasDaemon || fileOpeners.length > 0;
+      return (
+        hasDaemon || accessState !== "unavailable" || fileOpeners.length > 0
+      );
     }
     return true;
   });

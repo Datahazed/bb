@@ -4,7 +4,7 @@ import type {
   PromptMentionCommandTrigger,
   PromptTextMention,
 } from "@bb/domain";
-import type { ComposerView } from "@bb/plugin-sdk";
+import type { ComposerView } from "@get-bb/plugin-sdk";
 import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
@@ -306,10 +306,6 @@ export interface AttachmentsConfig {
   error?: string | null;
   onAttachFiles?: (files: File[]) => void | Promise<void>;
   onRemove?: (path: string) => void;
-  onReplace?: (
-    previousPath: string,
-    attachment: PromptDraftAttachment,
-  ) => void;
   projectId?: string;
 }
 
@@ -1177,7 +1173,6 @@ export function PromptBoxInternal({
     error: attachmentError = null,
     onAttachFiles,
     onRemove: onRemoveAttachment,
-    onReplace: onReplaceAttachment,
     projectId: attachmentProjectId,
   } = attachmentConfig;
   const {
@@ -3320,7 +3315,6 @@ export function PromptBoxInternal({
                   expandedImageIndex={expandedImageIndex}
                   onExpandedImageIndexChange={setExpandedImageIndex}
                   onRemoveAttachment={onRemoveAttachment}
-                  onReplaceAttachment={onReplaceAttachment}
                 />
 
                 {attachmentError ? (

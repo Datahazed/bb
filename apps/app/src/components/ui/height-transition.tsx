@@ -250,6 +250,11 @@ export interface AutoHeightContainerProps {
   children: ReactNode;
   className?: string;
   durationMs?: number;
+  /**
+   * A revision for authoritative layout replacements that should not animate
+   * through their intermediate height. Normal child growth still animates.
+   */
+  snapRevision?: string;
 }
 
 /**
@@ -280,9 +285,12 @@ export function AutoHeightContainer({
   children,
   className,
   durationMs = HEIGHT_TRANSITION_DURATION_MS,
+  snapRevision,
 }: AutoHeightContainerProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  const snapToCurrentHeightRef = useRef<(() => void) | null>(null);
+  const previousSnapRevisionRef = useRef(snapRevision);
   const store = useStore();
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
@@ -300,6 +308,12 @@ export function AutoHeightContainer({
       restoreTimerId: null,
       usingIntrinsicHeight: false,
     };
+    const snapToCurrentHeight = () => {
+      cancelIntrinsicHeightRestore(resizeState);
+      resizeState.usingIntrinsicHeight = false;
+      applyHeight(wrapper, `${inner.offsetHeight}px`, true, snapState);
+    };
+    snapToCurrentHeightRef.current = snapToCurrentHeight;
     const deferInitialSettleComplete = () => {
       if (initialSettleComplete) {
         return;
@@ -350,13 +364,12 @@ export function AutoHeightContainer({
     const onVisibility = () => {
       if (!isDocumentVisible()) return;
       pendingVisibilitySnap = true;
-      cancelIntrinsicHeightRestore(resizeState);
-      resizeState.usingIntrinsicHeight = false;
-      applyHeight(wrapper, `${inner.offsetHeight}px`, true, snapState);
+      snapToCurrentHeight();
     };
     const unsubscribeFromDocumentVisibility =
       subscribeToDocumentVisibility(onVisibility);
     return () => {
+      snapToCurrentHeightRef.current = null;
       observer.disconnect();
       unsubscribeFromDocumentVisibility();
       window.clearTimeout(initialSettleTimerId);
@@ -364,6 +377,15 @@ export function AutoHeightContainer({
       cleanupSnapState(wrapper, snapState);
     };
   }, [store]);
+  // Authoritative replacements (turn completion) must update before paint,
+  // but they must not reinstall the observer and reset its settle/resize state.
+  useLayoutEffect(() => {
+    if (previousSnapRevisionRef.current === snapRevision) {
+      return;
+    }
+    previousSnapRevisionRef.current = snapRevision;
+    snapToCurrentHeightRef.current?.();
+  }, [snapRevision]);
   return (
     <div
       ref={wrapperRef}

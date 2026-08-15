@@ -322,11 +322,13 @@ function FilePreferencesStory() {
 
   return (
     <LocalOpenTargetSettingsSection
+      accessState="available"
       directoryTargetId={state.directoryTargetId}
       fileTargetId={state.fileTargetId}
       hasDaemon={true}
       onDirectoryTargetChange={handleDirectoryTargetChange}
       onFileTargetChange={handleFileTargetChange}
+      onRequestAccess={async () => true}
       targets={connectedTargets}
     />
   );
@@ -343,6 +345,7 @@ function ExperimentsStory() {
       disabled={false}
       editMessagesEnabled={state.experiments.editMessages}
       newOnboardingEnabled={state.experiments.newOnboarding}
+      providerSessionReapingEnabled={state.experiments.providerSessionReaping}
       onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
@@ -359,6 +362,12 @@ function ExperimentsStory() {
         state.setExperiments((current) => ({
           ...current,
           newOnboarding: enabled,
+        }))
+      }
+      onProviderSessionReapingEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          providerSessionReaping: enabled,
         }))
       }
     />
