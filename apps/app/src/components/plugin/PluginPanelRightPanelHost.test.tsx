@@ -54,6 +54,8 @@ const hostState = vi.hoisted(() => ({
   desktopBrowserApiMode: "scoped" as "legacy" | "scoped",
   frontendLoadState: "loading" as "loading" | "settled",
   panelAvailable: true,
+  panelPath: "docs",
+  pluginId: "docs",
   rightPanelAvailable: true,
   panelOpen: true,
   activeTerminalTab: null as {
@@ -203,12 +205,12 @@ vi.mock("@/lib/plugin-slots", async () => {
       navPanels: hostState.panelAvailable
         ? [
             {
-              id: "docs",
-              pluginId: "docs",
+              id: hostState.panelPath,
+              pluginId: hostState.pluginId,
               generation: 1,
               title: "Docs",
               icon: "FileText",
-              path: "docs",
+              path: hostState.panelPath,
               component: () => null,
               experimental_rightPanel: hostState.rightPanelAvailable
                 ? {
@@ -475,12 +477,16 @@ function NavigationProbe({ url }: { url: string }) {
 function HostFixture({
   flushPageInsets = false,
   paneContext = basePaneContext,
+  panelPath = "docs",
+  pluginId = "docs",
   subPath = "",
   togglePortal,
   url = "https://example.com",
 }: {
   flushPageInsets?: boolean;
   paneContext?: PaneContextValue;
+  panelPath?: string;
+  pluginId?: string;
   subPath?: string;
   togglePortal?: { panelStateId: string; testId: string };
   url?: string;
@@ -489,8 +495,8 @@ function HostFixture({
     <MemoryRouter>
       <PaneContext.Provider value={paneContext}>
         <PluginPanelRightPanelHost
-          pluginId="docs"
-          panelPath="docs"
+          pluginId={pluginId}
+          panelPath={panelPath}
           subPath={subPath}
           flushPageInsets={flushPageInsets}
         >
@@ -500,7 +506,7 @@ function HostFixture({
               data-testid={togglePortal.testId}
             />
           ) : null}
-          <PluginSlotMount pluginId="docs" slotKind="test" slotId="browser">
+          <PluginSlotMount pluginId={pluginId} slotKind="test" slotId="browser">
             <NavigationProbe url={url} />
           </PluginSlotMount>
         </PluginPanelRightPanelHost>
@@ -517,6 +523,8 @@ beforeEach(() => {
   hostState.desktopBrowserApiMode = "scoped";
   hostState.frontendLoadState = "loading";
   hostState.panelAvailable = true;
+  hostState.panelPath = "docs";
+  hostState.pluginId = "docs";
   hostState.rightPanelAvailable = true;
   hostState.panelOpen = true;
   hostState.activeTerminalTab = null;
@@ -1055,6 +1063,28 @@ describe("PluginPanelRightPanelHost", () => {
       expect(closeTerminalMutateAsync).toHaveBeenCalledWith({
         mode: "force",
         terminalId: "terminal-orphan",
+      }),
+    );
+    expect(updatePanelState).not.toHaveBeenCalled();
+  });
+
+  it("force-closes a pending Terminal when the mounted host changes owners", async () => {
+    const pending = deferred<{ id: string }>();
+    createTerminalMutateAsync.mockReturnValueOnce(pending.promise);
+    const view = render(<HostFixture />);
+    fireEvent.click(screen.getByRole("button", { name: "Open Terminal" }));
+    updatePanelState.mockClear();
+
+    hostState.pluginId = "tasks";
+    hostState.panelPath = "tasks";
+    view.rerender(<HostFixture pluginId="tasks" panelPath="tasks" />);
+    updatePanelState.mockClear();
+    pending.resolve({ id: "terminal-old-owner" });
+
+    await waitFor(() =>
+      expect(closeTerminalMutateAsync).toHaveBeenCalledWith({
+        mode: "force",
+        terminalId: "terminal-old-owner",
       }),
     );
     expect(updatePanelState).not.toHaveBeenCalled();

@@ -391,6 +391,10 @@ export function PluginPanelRightPanelHost({
   const hasObservedPanelRef = useRef(panel !== null);
   const isMountedRef = useRef(false);
   const panelRef = useRef(panel);
+  const panelOwnerRef = useRef({
+    generation: panel?.generation ?? null,
+    panelStateId,
+  });
   const closedRevokedTerminalIdsRef = useRef(new Set<string>());
   const closingRevokedTerminalIdsRef = useRef(new Set<string>());
 
@@ -403,7 +407,11 @@ export function PluginPanelRightPanelHost({
 
   useLayoutEffect(() => {
     panelRef.current = panel;
-  }, [panel]);
+    panelOwnerRef.current = {
+      generation: panel?.generation ?? null,
+      panelStateId,
+    };
+  }, [panel, panelStateId]);
 
   useEffect(() => {
     if (panel !== null) hasObservedPanelRef.current = true;
@@ -666,6 +674,10 @@ export function PluginPanelRightPanelHost({
       }
       const target = normalizeTerminalTarget(request.target);
       if (target === null || createTerminal.isPending) return false;
+      const requestOwner = {
+        generation: panel.generation,
+        panelStateId,
+      };
       void createTerminal
         .mutateAsync({
           cols: TERMINAL_COLS,
@@ -686,16 +698,17 @@ export function PluginPanelRightPanelHost({
                 tabs: [...state.secondary.tabs, tab],
                 activeTabId: activate ? tab.id : state.secondary.activeTabId,
                 isOpen:
-                  activate && !renderAsDrawer
-                    ? true
-                    : state.secondary.isOpen,
+                  activate && !renderAsDrawer ? true : state.secondary.isOpen,
               },
             }));
             if (activate && renderAsDrawer) setCompactDrawerOpen(true);
           };
           const currentPanel = panelRef.current;
+          const currentOwner = panelOwnerRef.current;
           if (
             !isMountedRef.current ||
+            currentOwner.panelStateId !== requestOwner.panelStateId ||
+            currentOwner.generation !== requestOwner.generation ||
             currentPanel?.experimental_rightPanel?.tools?.includes(
               "terminal",
             ) !== true
@@ -722,6 +735,7 @@ export function PluginPanelRightPanelHost({
       openTab,
       panel,
       panelState.secondary.isOpen,
+      panelStateId,
       pluginId,
       rightPanel,
       renderAsDrawer,

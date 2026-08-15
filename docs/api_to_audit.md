@@ -19,7 +19,7 @@ or unavailable requests return `false`.
 
 1. **Registration shape.** Confirm real plugins need multiple custom views,
    per-tab JSON params, a pinned default, and explicit tool allowlisting.
-   Revisit whether `layout`, `defaultViewId`, and the retained-view
+   Revisit whether `layout`, `defaultViewId`, and the retained-active-view
    `isVisible` signal are the right stable concepts.
 2. **Surface scope.** Verify standalone pages, compact drawers, split panes,
    pane focus/maximize transitions, multiple windows, and plugin reload or
