@@ -11,6 +11,7 @@ import {
   useBbNavigate,
   useRpc,
   useRealtime,
+  useRealtimeConnectionState,
   type PluginFileOpenerProps,
   type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
@@ -596,7 +597,12 @@ interface NotebookStore {
   inFlight: Promise<void> | null;
   listeners: Set<() => void>;
   owner: symbol | null;
+  evictionId: number;
+  hasConnected: boolean;
+  lastConnectionState: ReturnType<typeof useRealtimeConnectionState>;
+  queuedRefresh: boolean;
   requestId: number;
+  rpc: DocsRpcClient | null;
   vaultId: string | null;
 }
 
@@ -611,7 +617,12 @@ function getNotebookStore(vaultId: string | null): NotebookStore {
     inFlight: null,
     listeners: new Set(),
     owner: null,
+    evictionId: 0,
+    hasConnected: false,
+    lastConnectionState: "connecting",
+    queuedRefresh: false,
     requestId: 0,
+    rpc: null,
     vaultId,
   };
   notebookStores.set(vaultId, store);
@@ -626,9 +637,12 @@ function refreshNotebookStore(
   store: NotebookStore,
   rpc: DocsRpcClient,
 ): Promise<void> {
-  if (notebookStores.get(store.vaultId) !== store)
-    return Promise.resolve();
-  if (store.inFlight) return store.inFlight;
+  if (notebookStores.get(store.vaultId) !== store) return Promise.resolve();
+  store.rpc = rpc;
+  if (store.inFlight) {
+    store.queuedRefresh = true;
+    return store.inFlight;
+  }
   const requestId = ++store.requestId;
   const request = rpc
     .call("listNotes", store.vaultId ? { vaultId: store.vaultId } : {})
@@ -655,7 +669,17 @@ function refreshNotebookStore(
       notifyNotebookStore(store);
     })
     .finally(() => {
-      if (store.inFlight === request) store.inFlight = null;
+      if (store.inFlight !== request) return;
+      store.inFlight = null;
+      if (
+        store.queuedRefresh &&
+        store.consumers.size > 0 &&
+        notebookStores.get(store.vaultId) === store &&
+        store.rpc !== null
+      ) {
+        store.queuedRefresh = false;
+        void refreshNotebookStore(store, store.rpc);
+      }
     });
   store.inFlight = request;
   return request;
@@ -667,6 +691,7 @@ function useNotebook(vaultId: string | null) {
   rpcRef.current = rpc;
   const store = useMemo(() => getNotebookStore(vaultId), [vaultId]);
   const consumerRef = useRef(Symbol("docs-notebook-consumer"));
+  const connectionState = useRealtimeConnectionState();
   const [, rerender] = useState(0);
   const refresh = useCallback(() => {
     void refreshNotebookStore(store, rpcRef.current);
@@ -677,16 +702,29 @@ function useNotebook(vaultId: string | null) {
     const listener = () => rerender((version) => version + 1);
     store.consumers.add(consumer);
     store.listeners.add(listener);
+    store.evictionId += 1;
     store.owner ??= consumer;
-    if (store.data === null) refresh();
+    if (store.data === null && store.inFlight === null) refresh();
     return () => {
       store.consumers.delete(consumer);
       store.listeners.delete(listener);
       if (store.owner === consumer)
         store.owner = store.consumers.values().next().value ?? null;
       if (store.consumers.size === 0) {
-        store.requestId += 1;
-        notebookStores.delete(store.vaultId);
+        const evictionId = ++store.evictionId;
+        queueMicrotask(() => {
+          if (
+            store.evictionId !== evictionId ||
+            store.consumers.size > 0 ||
+            notebookStores.get(store.vaultId) !== store
+          ) {
+            return;
+          }
+          store.requestId += 1;
+          store.queuedRefresh = false;
+          store.rpc = null;
+          notebookStores.delete(store.vaultId);
+        });
       }
     };
   }, [refresh, store]);
@@ -697,6 +735,15 @@ function useNotebook(vaultId: string | null) {
       if (store.owner === consumerRef.current) refresh();
     }, [refresh, store]),
   );
+
+  useEffect(() => {
+    if (store.owner !== consumerRef.current) return;
+    const previous = store.lastConnectionState;
+    store.lastConnectionState = connectionState;
+    if (connectionState !== "connected") return;
+    if (store.hasConnected && previous !== "connected") refresh();
+    store.hasConnected = true;
+  }, [connectionState, refresh, store]);
 
   const data =
     store.data && (vaultId === null || store.data.vault.id === vaultId)

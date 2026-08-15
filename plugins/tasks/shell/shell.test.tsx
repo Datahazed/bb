@@ -810,4 +810,66 @@ describe("tasks app shell", () => {
     await slot.emitRealtime("comments:changed", { taskId: "x" });
     expect(projectCalls).toBe(settled);
   });
+
+  it("pauses hidden navigation work and refreshes once when revealed", async () => {
+    const calls = {
+      listFolders: 0,
+      listPresets: 0,
+      listProjects: 0,
+      listTasks: 0,
+      sidebarSummary: 0,
+    };
+    const rpc = seededRpc({
+      listFolders: () => {
+        calls.listFolders += 1;
+        return { folders: [folder] };
+      },
+      listPresets: () => {
+        calls.listPresets += 1;
+        return { presets: [] };
+      },
+      listProjects: () => {
+        calls.listProjects += 1;
+        return { projects: [project] };
+      },
+      listTasks: () => {
+        calls.listTasks += 1;
+        return { tasks: [] };
+      },
+      sidebarSummary: () => {
+        calls.sidebarSummary += 1;
+        return { projects: [] };
+      },
+    });
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "all", params: null, isVisible: false },
+      { rpc },
+    );
+
+    await slot.emitRealtime("projects:changed", { projectId: null });
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    await slot.behavior.setRealtimeConnectionState("connected");
+    expect(calls).toEqual({
+      listFolders: 0,
+      listPresets: 0,
+      listProjects: 0,
+      listTasks: 0,
+      sidebarSummary: 0,
+    });
+
+    slot.rerender(
+      <navigationView.component subPath="all" params={null} isVisible />,
+    );
+    await slot.findByText("Tasks Plugin");
+    await waitFor(() =>
+      expect(calls).toEqual({
+        listFolders: 1,
+        listPresets: 1,
+        listProjects: 1,
+        listTasks: 1,
+        sidebarSummary: 1,
+      }),
+    );
+  });
 });

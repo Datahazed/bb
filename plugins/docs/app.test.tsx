@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { StrictMode } from "react";
 
 const app = await loadPluginApp(() => import("./app"));
 const docsRegistration = app.navPanels[0]!;
@@ -438,6 +439,93 @@ describe("Docs nav panel", () => {
         input: { vaultId: "work", parent: "", name: "Untitled" },
       }),
     );
+  });
+
+  it("keeps one shared notebook request through StrictMode effect probes", async () => {
+    const pending = deferred<ReturnType<typeof listNotesResult>>();
+    const listNotes = vi.fn(() => pending.promise);
+    const DualRoot = () => (
+      <StrictMode>
+        <docsRegistration.component subPath="personal/one.md" />
+        <navigationView.component
+          subPath="personal/one.md"
+          params={null}
+          isVisible
+        />
+      </StrictMode>
+    );
+    const slot = renderSlot(
+      { component: DualRoot },
+      {},
+      {
+        rpc: {
+          listNotes,
+          readNote: () => ({ content: "# Strict document", sha256: "one" }),
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "one.md" }),
+        },
+      },
+    );
+
+    await waitFor(() => expect(listNotes).toHaveBeenCalledTimes(1));
+    pending.resolve(
+      listNotesResult([
+        { path: "one.md", title: "Strict note", preview: "", modifiedAtMs: 1 },
+      ]),
+    );
+
+    await slot.findByText("Strict document");
+    await slot.findByText("Strict note");
+    expect(listNotes).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs one trailing notebook refresh when invalidated in flight", async () => {
+    const first = deferred<ReturnType<typeof listNotesResult>>();
+    const listNotes = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce(
+        listNotesResult([
+          {
+            path: "fresh.md",
+            title: "Fresh note",
+            preview: "",
+            modifiedAtMs: 2,
+          },
+        ]),
+      );
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "personal/one.md", params: null, isVisible: true },
+      { rpc: { listNotes } },
+    );
+
+    await waitFor(() => expect(listNotes).toHaveBeenCalledTimes(1));
+    await slot.emitRealtime("vault-changed", { vaultId: "personal" });
+    first.resolve(
+      listNotesResult([
+        { path: "stale.md", title: "Stale note", preview: "", modifiedAtMs: 1 },
+      ]),
+    );
+
+    await waitFor(() => expect(listNotes).toHaveBeenCalledTimes(2));
+    await slot.findByText("Fresh note");
+    expect(slot.queryByText("Stale note")).toBeNull();
+  });
+
+  it("reconciles once after reconnect but not on the initial connection", async () => {
+    const listNotes = vi.fn(() => listNotesResult([]));
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "personal", params: null, isVisible: true },
+      { rpc: { listNotes }, realtimeConnectionState: "connected" },
+    );
+
+    await waitFor(() => expect(listNotes).toHaveBeenCalledTimes(1));
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    expect(listNotes).toHaveBeenCalledTimes(1);
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await waitFor(() => expect(listNotes).toHaveBeenCalledTimes(2));
   });
 
   it("ignores an obsolete vault refresh and rename after a deferred save", async () => {

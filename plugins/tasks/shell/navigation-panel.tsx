@@ -14,7 +14,10 @@ import { useState } from "react";
 
 function TasksNavigationPanelContent({
   subPath,
-}: PluginNavPanelRightPanelViewProps) {
+  onNewProject,
+}: Pick<PluginNavPanelRightPanelViewProps, "subPath"> & {
+  onNewProject: () => void;
+}) {
   const route = parseTasksRoute(subPath);
   const navigation = useTasksNavigation();
   const folders = useFolders();
@@ -22,32 +25,38 @@ function TasksNavigationPanelContent({
   const summaries = useSidebarSummary();
   const presets = usePresets();
   const activeTasks = useActiveTasks();
-  const [newProjectOpen, setNewProjectOpen] = useState(false);
 
   return (
-    <>
-      <TasksSidebar
-        route={route}
-        folders={folders.data}
-        projects={projects.data}
-        summaries={summaries.data}
-        presets={presets.data}
-        activeTasks={activeTasks.data}
-        isLoading={projects.isLoading || summaries.isLoading}
-        onNavigate={navigation.go}
-        onNewProject={() => setNewProjectOpen(true)}
-      />
-      {newProjectOpen ? (
-        <NewProjectDialog open onOpenChange={setNewProjectOpen} />
-      ) : null}
-    </>
+    <TasksSidebar
+      route={route}
+      folders={folders.data}
+      projects={projects.data}
+      summaries={summaries.data}
+      presets={presets.data}
+      activeTasks={activeTasks.data}
+      isLoading={projects.isLoading || summaries.isLoading}
+      onNavigate={navigation.go}
+      onNewProject={onNewProject}
+    />
   );
 }
 
-export function TasksNavigationPanel(props: PluginNavPanelRightPanelViewProps) {
+export function TasksNavigationPanel({
+  isVisible = true,
+  subPath,
+}: PluginNavPanelRightPanelViewProps) {
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   return (
     <TasksRefreshProvider>
-      <TasksNavigationPanelContent {...props} />
+      {isVisible ? (
+        <TasksNavigationPanelContent
+          subPath={subPath}
+          onNewProject={() => setNewProjectOpen(true)}
+        />
+      ) : null}
+      {newProjectOpen ? (
+        <NewProjectDialog open onOpenChange={setNewProjectOpen} />
+      ) : null}
     </TasksRefreshProvider>
   );
 }
