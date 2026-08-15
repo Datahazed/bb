@@ -55,6 +55,7 @@ const MENTION_SOURCE = `
             id: "ISS-42",
             title: "Fix login bug",
             subtitle: "ctx:" + ctx.trigger + ":" + ctx.query + ":" + ctx.projectId + ":" + ctx.threadId,
+            preview: "Issue ISS-42\\nOwner: Web platform\\nStatus: In progress",
           },
           { id: "ISS-43", title: "Ship mention providers" },
         ];
@@ -63,6 +64,18 @@ const MENTION_SOURCE = `
         resolveCalls += 1;
         return {
           context: "Issue " + itemId + " details (resolve call " + resolveCalls + ")",
+        };
+      },
+      async experimental_inspect(itemId: string) {
+        return {
+          title: "Inspect " + itemId,
+          description: "Provider-owned details",
+          preview: {
+            kind: "image",
+            dataUrl: "data:image/png;base64,aQ==",
+            alt: "Issue preview",
+          },
+          metadata: "issue.id = \\\"" + itemId + "\\\"",
         };
       },
     });
@@ -202,8 +215,14 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
         id: "issues",
         label: "Linear issues",
         triggers: ["@", "#"],
+        experimentalInspectability: true,
       },
-      { pluginId: "mentions", id: "docs", label: "Docs", triggers: ["@"] },
+      {
+        pluginId: "mentions",
+        id: "docs",
+        label: "Docs",
+        triggers: ["@"],
+      },
       {
         pluginId: "mentions",
         id: "broken",
@@ -232,12 +251,16 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
             // The provider saw the forwarded query + project/thread context.
             subtitle: "ctx:@:fix:proj_1:thr_1",
             icon: null,
+            preview: "Issue ISS-42\nOwner: Web platform\nStatus: In progress",
+            experimentalInspectability: true,
           },
           {
             itemId: "issues:ISS-43",
             title: "Ship mention providers",
             subtitle: null,
             icon: null,
+            preview: null,
+            experimentalInspectability: true,
           },
         ],
       },
@@ -251,6 +274,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
             title: "Onboarding guide",
             subtitle: null,
             icon: null,
+            preview: null,
           },
         ],
       },
@@ -260,6 +284,35 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       .list()
       .find((plugin) => plugin.id === "mentions");
     expect(entry?.handlerStats.errorCount).toBe(1);
+  });
+
+  it("opens optional provider-agnostic mention inspection without resolving agent context", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/mentions/inspect?pluginId=mentions&itemId=issues%3AISS-42`,
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      inspection: {
+        title: "Inspect ISS-42",
+        description: "Provider-owned details",
+        preview: {
+          kind: "image",
+          dataUrl: "data:image/png;base64,aQ==",
+          alt: "Issue preview",
+        },
+        metadata: 'issue.id = "ISS-42"',
+      },
+    });
+
+    const unsupported = await harness.app.request(
+      `${BASE}/api/v1/plugins/mentions/inspect?pluginId=mentions&itemId=docs%3Aonboarding`,
+    );
+    expect(unsupported.status).toBe(422);
+    await expect(unsupported.json()).resolves.toEqual({
+      ok: false,
+      error: "This mention is not inspectable",
+    });
   });
 
   it("searches only providers registered for the requested trigger", async () => {
@@ -280,12 +333,16 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
             title: "Fix login bug",
             subtitle: "ctx:#:fix:proj_1:thr_1",
             icon: null,
+            preview: "Issue ISS-42\nOwner: Web platform\nStatus: In progress",
+            experimentalInspectability: true,
           },
           {
             itemId: "issues:ISS-43",
             title: "Ship mention providers",
             subtitle: null,
             icon: null,
+            preview: null,
+            experimentalInspectability: true,
           },
         ],
       },
@@ -400,6 +457,9 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       type: "text",
       text: "@Fix login bug then @Fix login bug then @Ship mention providers",
     });
+    expect(JSON.stringify(queued.command.input)).not.toContain(
+      "data:image/png;base64,aQ==",
+    );
   });
 
   it("resolves plugin mentions when a queued message dispatches on the idle-provider fast path", async () => {
@@ -684,7 +744,13 @@ describe("mention search time box", () => {
         providerId: "fast",
         label: "Fast",
         items: [
-          { itemId: "fast:one", title: "One", subtitle: null, icon: null },
+          {
+            itemId: "fast:one",
+            title: "One",
+            subtitle: null,
+            icon: null,
+            preview: null,
+          },
         ],
       },
     ]);
@@ -757,6 +823,38 @@ describe("mention resolve time box", () => {
     const listEntry = service
       .list()
       .find((plugin) => plugin.id === "slow-resolve");
+    expect(listEntry?.handlerStats.errorCount).toBe(1);
+  });
+
+  it("fails inspection after the same time box instead of hanging the UI", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-slow-inspect",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.ui.registerMentionProvider({
+            id: "stuck",
+            label: "Stuck",
+            search: () => [{ id: "one", title: "One" }],
+            resolve: () => ({ context: "context" }),
+            experimental_inspect: () => new Promise(() => {}),
+          });
+        }
+      `,
+    });
+    const entry = await service.installPath(rootDir);
+    expect(entry.status).toBe("running");
+
+    const result = await service.inspectMention({
+      pluginId: "slow-inspect",
+      itemId: "stuck:one",
+    });
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringContaining("timed out after 100ms"),
+    });
+    const listEntry = service
+      .list()
+      .find((plugin) => plugin.id === "slow-inspect");
     expect(listEntry?.handlerStats.errorCount).toBe(1);
   });
 });

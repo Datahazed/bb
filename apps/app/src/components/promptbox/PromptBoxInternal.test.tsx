@@ -2809,6 +2809,83 @@ describe("PromptBoxInternal mention triggers", () => {
     );
   });
 
+  it("keeps a plugin mention preview in the inserted pill tooltip", async () => {
+    const suggestion = {
+      ...githubIssueSuggestion,
+      preview: "Issue context\nOwner: Web platform\nStatus: In progress",
+    };
+    const { promptBoxRef } = renderPromptBox("@fix", {
+      mentionSuggestions: [suggestion],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    fireEvent.mouseDown(
+      await screen.findByRole("button", { name: /Fix login bug/u }),
+      { button: 0 },
+    );
+
+    const pill = await waitFor(() => {
+      const element = getPromptEditorElement().querySelector<HTMLElement>(
+        ".prompt-mention-pill",
+      );
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    fireEvent.focus(pill);
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "Issue context\nOwner: Web platform\nStatus: In progress",
+    );
+  });
+
+  it("opens and reopens an inspectable plugin mention without changing adjacent text", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          inspection: {
+            title: "Invite member · Acme Team Settings",
+            description: "Immutable captured context",
+            preview: null,
+            metadata: 'capture.element.selector = "button.invite"',
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const suggestion = {
+      ...githubIssueSuggestion,
+      title: "Invite member · Acme Team Settings",
+      replacement: "Invite member · Acme Team Settings",
+      experimentalInspectability: true,
+    };
+    const { changes, promptBoxRef } = renderPromptBox("@invite", {
+      mentionSuggestions: [suggestion],
+    });
+    await focusPromptEnd(promptBoxRef);
+    fireEvent.mouseDown(
+      await screen.findByRole("button", { name: /Invite member/u }),
+      { button: 0 },
+    );
+    const pill = await waitFor(() => {
+      const element = getPromptEditorElement().querySelector<HTMLElement>(
+        ".prompt-mention-pill",
+      );
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    fireEvent.click(pill);
+    expect(
+      await screen.findByRole("heading", {
+        name: "Invite member · Acme Team Settings",
+      }),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(pill);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(latestValue(changes)).toBe("@Invite member · Acme Team Settings ");
+  });
+
   it("reports hash mention queries with the active trigger", async () => {
     const { onMentionQueryChange, promptBoxRef } = renderPromptBox("#42", {
       mentionTriggers: ["@", "#"],

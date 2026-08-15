@@ -239,6 +239,23 @@ export function registerPluginRoutes(
     return context.json({ ok: true, groups });
   });
 
+  app.get("/plugins/mentions/inspect", async (context) => {
+    const problem = localAuthProblem(context, deps);
+    if (problem) {
+      return context.json({ ok: false, error: problem.error }, problem.status);
+    }
+    const pluginId = context.req.query("pluginId") ?? "";
+    const itemId = context.req.query("itemId") ?? "";
+    if (pluginId.length === 0 || itemId.length === 0) {
+      return context.json(
+        { ok: false, error: "pluginId and itemId are required" },
+        400,
+      );
+    }
+    const result = await plugins.inspectMention({ pluginId, itemId });
+    return result.ok ? context.json(result) : context.json(result, 422);
+  });
+
   // Proxied `bb <plugin-command>` / `bb plugin run` invocation (design §4.4).
   // Dispatch problems come back as { exitCode: 1, stderr } rather than HTTP
   // errors so the CLI can uniformly print stderr and exit with exitCode.

@@ -907,17 +907,39 @@ bb.ui.registerMentionProvider({
   triggers: ["@", "#"], // optional; defaults to ["@"]. Valid: @ # $ ! ~
   search({ trigger, query, projectId, threadId }) {
     // 2s time box, failure = empty list
-    return [{ id: "42", title: "ENG-42 Fix flake", subtitle: "Todo" }];
+    return [
+      {
+        id: "42",
+        title: "ENG-42 Fix flake",
+        subtitle: "Todo",
+        preview: "Status: Todo\nOwner: Priya\nThe checkout test flakes in CI.",
+      },
+    ];
   },
   resolve(itemId) {
     // once per unique item AT SEND TIME
     return { context: "# ENG-42…" }; // attached as agent-only context; throwing BLOCKS the send
   },
+  experimental_inspect(itemId) {
+    return {
+      title: "ENG-42 Fix flake",
+      description: "Captured when this mention was inserted",
+      metadata: 'issue.id = "ENG-42"',
+      // Optional image previews are user-visible only and are never sent.
+      preview: { kind: "image", dataUrl: "data:image/png;base64,…", alt: "Issue preview" },
+    };
+  },
 });
 ```
 
 Thread actions render in the thread header; mention items render under
-`label` in the menu for each registered trigger. All handlers run server-side.
+`label` in the menu for each registered trigger. Optional `preview` text is
+shown in an accessible, scrollable tooltip from the resulting mention pill;
+`resolve` remains the authoritative agent context fetched at send time. All
+handlers run server-side. `experimental_inspect` is optional and
+provider-agnostic; programmatic insertions opt in with
+`experimental_inspectable: true`. Existing providers and mentions are inert
+when these fields are omitted. See `docs/api_to_audit.md`.
 There is deliberately no plugin slash-command surface: the composer's `/`
 menu lists skills, so a plugin capability that crafts a prompt for the agent
 ships as a `skills/` entry instead.
@@ -1532,9 +1554,10 @@ openThreadPanel({ actionId, title?, params? }) }`.
   from the plugin stylesheet (`null` clears it); `setInputLock(locked)` makes
   the editor read-only and busy and auto-releases when the customization
   unmounts or changes scope;
-  `insertMention({ provider, id, label })` inserts an @-mention pill bound
+  `insertMention({ provider, id, label, preview? })` inserts an @-mention pill bound
   to one of YOUR `bb.ui.registerMentionProvider` providers, resolved to
-  fresh context at send time; `focus()` focuses the caret; `scope` reports
+  fresh context at send time. Optional human-readable `preview` text is shown
+  from the pill on pointer hover or keyboard focus; `focus()` focuses the caret; `scope` reports
   where writes land (`{ kind: "thread", threadId }` inside a thread
   context, `{ kind: "new-thread", projectId }` from nav panels and
   homepage sections — those seed the composer the user lands on next).
@@ -1543,6 +1566,13 @@ openThreadPanel({ actionId, title?, params? }) }`.
   `"expanded" | "compact" | "zen"`; `draft` is
   `{ text, isEmpty, attachmentCount }`; `run` is
   `{ isRunning, isSubmitting }`.
+- `experimental_browserAction` renders one compact component in Browser tab
+  chrome. Its props are `tabId`, `threadId`, `projectId`, `url`,
+  `experimental_inspectionAvailable`, `experimental_inspectPage`, optional
+  `experimental_overlayRoot`, and `experimental_setOverlayOpen`. Treat the
+  inspection result and overlay host as experimental renderer-local browser
+  capabilities; feature-detect availability and keep cancellation signals in
+  the renderer.
 
 ```tsx
 const composer = useComposer();

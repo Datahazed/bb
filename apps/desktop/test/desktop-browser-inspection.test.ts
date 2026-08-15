@@ -20,7 +20,13 @@ const pageResult: BbDesktopBrowserInspectionPageResult = {
   rect: { x: 10, y: 20, width: 200, height: 100 },
   deviceScaleFactor: 2,
   element: null,
-  region: { elements: [] },
+  region: {
+    commonAncestor: null,
+    targets: [],
+    groups: [],
+    omittedTargetCount: 0,
+    omittedGroupCount: 0,
+  },
 };
 
 class FakeInspectionWebContents

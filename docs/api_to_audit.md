@@ -5,6 +5,23 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `PluginMentionProviderRegistration.experimental_inspect`
+
+**What it does.** Lets a mention provider resolve one inserted mention into a
+host-rendered inspector containing a title, optional description and image
+preview, and exact human-readable metadata. It is provider-agnostic and opt-in;
+`resolve` remains the only source of hidden agent context at send time.
+
+**Audit before stabilizing.**
+
+1. Validate preview media limits and whether non-image previews are needed.
+2. Exercise files, comments, design nodes, and database records in addition to
+   captured UI selections.
+3. Confirm stale/deleted records, provider reloads, and offline states recover
+   clearly without changing the draft.
+4. Decide whether inspector availability should be discovered entirely from
+   provider registration instead of carried on programmatic mention insertion.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React

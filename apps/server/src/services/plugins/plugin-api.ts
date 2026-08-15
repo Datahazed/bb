@@ -35,6 +35,7 @@ import type {
   PluginKvStorage,
   PluginLogger,
   PluginMentionItem,
+  PluginMentionProviderRegistration,
   PluginMentionSearchContext,
   PluginMentionTrigger,
   PluginRealtime,
@@ -229,6 +230,7 @@ export interface PluginMentionProviderRecord {
   resolve: (
     itemId: string,
   ) => { context: string } | Promise<{ context: string }>;
+  experimentalInspect?: PluginMentionProviderRegistration["experimental_inspect"];
 }
 
 /** Runtime record of a registered background service. */
@@ -997,6 +999,11 @@ export function createPluginApi(options: {
         triggers: normalizeMentionProviderTriggers(id, provider.triggers),
         search: provider.search.bind(provider),
         resolve: provider.resolve.bind(provider),
+        ...(provider.experimental_inspect === undefined
+          ? {}
+          : {
+              experimentalInspect: provider.experimental_inspect.bind(provider),
+            }),
       });
     },
   };

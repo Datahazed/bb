@@ -14,6 +14,8 @@ import {
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
+import { PromptMentionPreviewTooltip } from "@/components/promptbox/mentions/PromptMentionPreviewTooltip";
+import type { PromptMentionPreviewTooltipProps } from "@/components/promptbox/mentions/PromptMentionPreviewTooltip";
 
 interface PromptMentionPillProps {
   /** Render visual mention styling without allowing navigation or activation. */
@@ -134,6 +136,8 @@ export function PromptMentionPill({
   onActivate,
 }: PromptMentionPillProps) {
   const title = promptMentionTooltipLabel(resource);
+  const preview = resource.kind === "plugin" ? resource.preview : undefined;
+  const nativeTitle = preview?.trim() ? undefined : title;
   const clipboardAttributes = promptMentionClipboardDataAttributes({
     resource,
     serializedText,
@@ -145,21 +149,26 @@ export function PromptMentionPill({
       <span className="truncate">{resource.label}</span>
     </>
   );
+  const withPreview = (pill: PromptMentionPreviewTooltipProps["children"]) => (
+    <PromptMentionPreviewTooltip content={preview}>
+      {pill}
+    </PromptMentionPreviewTooltip>
+  );
 
   if (!interactive) {
-    return (
+    return withPreview(
       <span
         className={mentionPillClassName(false)}
         {...clipboardAttributes}
-        title={title}
+        title={nativeTitle}
       >
         {labelNode}
-      </span>
+      </span>,
     );
   }
 
   if (onActivate) {
-    return (
+    return withPreview(
       <span
         role="link"
         tabIndex={0}
@@ -176,10 +185,10 @@ export function PromptMentionPill({
             onActivate();
           }
         }}
-        title={title}
+        title={nativeTitle}
       >
         {labelNode}
-      </span>
+      </span>,
     );
   }
 
@@ -187,20 +196,20 @@ export function PromptMentionPill({
   // (same resolver the title links use); the plain-text path passes no
   // `linkHref` and keeps the `resource.projectId` react-router link below.
   if (resource.kind === "thread" && linkHref) {
-    return (
+    return withPreview(
       <RouteAnchor
         className={mentionPillClassName(true)}
         {...clipboardAttributes}
         href={linkHref}
-        title={title}
+        title={nativeTitle}
       >
         {labelNode}
-      </RouteAnchor>
+      </RouteAnchor>,
     );
   }
 
   if (resource.kind === "thread" && resource.projectId) {
-    return (
+    return withPreview(
       <Link
         className={mentionPillClassName(true)}
         {...clipboardAttributes}
@@ -208,39 +217,39 @@ export function PromptMentionPill({
           projectId: resource.projectId,
           threadId: resource.threadId,
         })}
-        title={title}
+        title={nativeTitle}
       >
         {labelNode}
-      </Link>
+      </Link>,
     );
   }
 
   if (resource.kind === "project") {
-    return (
+    return withPreview(
       <Link
         className={mentionPillClassName(true)}
         {...clipboardAttributes}
         to={getProjectComposeRoutePath(resource.projectId)}
-        title={title}
+        title={nativeTitle}
       >
         {labelNode}
-      </Link>
+      </Link>,
     );
   }
 
   if (resource.kind === "path") {
     const activate = resolveMentionLink?.(resource) ?? null;
     if (activate) {
-      return (
+      return withPreview(
         <button
           type="button"
           className={mentionPillClassName(true)}
           {...clipboardAttributes}
           onClick={activate}
-          title={title}
+          title={nativeTitle}
         >
           {labelNode}
-        </button>
+        </button>,
       );
     }
   }
@@ -250,14 +259,14 @@ export function PromptMentionPill({
   // owner; without a resolver, they stay display-only.
   // Thread mentions without project context are also display-only; linking
   // through the current page project can misroute cross-project mentions.
-  return (
+  return withPreview(
     <span
       className={mentionPillClassName(false)}
       {...clipboardAttributes}
-      title={title}
+      title={nativeTitle}
     >
       {labelNode}
-    </span>
+    </span>,
   );
 }
 

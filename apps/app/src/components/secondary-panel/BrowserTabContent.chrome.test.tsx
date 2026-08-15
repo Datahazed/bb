@@ -204,7 +204,13 @@ describe("BrowserTabContent persistent navigation", () => {
       },
       rect: { x: 1, y: 2, width: 20, height: 30 },
       element: null,
-      region: { elements: [] },
+      region: {
+        commonAncestor: null,
+        targets: [],
+        groups: [],
+        omittedTargetCount: 0,
+        omittedGroupCount: 0,
+      },
       screenshot: {
         dataUrl: "data:image/png;base64,AA==",
         pixelSize: { width: 800, height: 600 },

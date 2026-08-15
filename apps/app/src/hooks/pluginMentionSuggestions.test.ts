@@ -13,6 +13,7 @@ const GROUPS: PluginMentionSearchGroup[] = [
         title: "Fix login bug",
         subtitle: "In progress",
         icon: "FileText",
+        preview: "Issue context\nStatus: In progress",
       },
       {
         itemId: "issues:ISS-43",
@@ -42,6 +43,7 @@ describe("buildPluginMentionSuggestions", () => {
     expect(buildPluginMentionSuggestions(GROUPS)).toEqual([
       {
         kind: "plugin",
+        experimentalInspectability: false,
         pluginId: "linear",
         providerId: "issues",
         itemId: "issues:ISS-42",
@@ -49,10 +51,12 @@ describe("buildPluginMentionSuggestions", () => {
         title: "Fix login bug",
         subtitle: "In progress",
         icon: "FileText",
+        preview: "Issue context\nStatus: In progress",
         replacement: "Fix login bug",
       },
       {
         kind: "plugin",
+        experimentalInspectability: false,
         pluginId: "linear",
         providerId: "issues",
         itemId: "issues:ISS-43",
@@ -60,10 +64,12 @@ describe("buildPluginMentionSuggestions", () => {
         title: "Ship mention providers",
         subtitle: null,
         icon: null,
+        preview: null,
         replacement: "Ship mention providers",
       },
       {
         kind: "plugin",
+        experimentalInspectability: false,
         pluginId: "linear",
         providerId: "docs",
         itemId: "docs:onboarding",
@@ -71,6 +77,7 @@ describe("buildPluginMentionSuggestions", () => {
         title: "Onboarding",
         subtitle: null,
         icon: null,
+        preview: null,
         replacement: "Onboarding",
       },
     ]);

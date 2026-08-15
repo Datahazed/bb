@@ -580,6 +580,8 @@ declare const promptInputSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
             icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
             itemId: z$1.ZodString;
             label: z$1.ZodString;
+            preview: z$1.ZodOptional<z$1.ZodString>;
+            experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
         }, z$1.core.$strip>], "kind">>;
     }, z$1.core.$strip>>>;
 }, z$1.core.$strip>, z$1.ZodObject<{
@@ -1664,6 +1666,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -1745,6 +1749,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -2169,6 +2175,8 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -2490,6 +2498,8 @@ declare const promptHistoryResponseSchema: z$1.ZodArray<z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -3572,16 +3582,16 @@ declare const hostDaemonCommandRegistry: {
             permissionScope: z$1.ZodLiteral<"workspace">;
             approvalReviewer: z$1.ZodLiteral<"user">;
             permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
                 deny: "deny";
+                ask: "ask";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"auto">;
             permissionScope: z$1.ZodLiteral<"workspace">;
             approvalReviewer: z$1.ZodLiteral<"automatic">;
             permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
                 deny: "deny";
+                ask: "ask";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"full">;
@@ -3773,16 +3783,16 @@ declare const hostDaemonCommandRegistry: {
             permissionScope: z$1.ZodLiteral<"workspace">;
             approvalReviewer: z$1.ZodLiteral<"user">;
             permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
                 deny: "deny";
+                ask: "ask";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"auto">;
             permissionScope: z$1.ZodLiteral<"workspace">;
             approvalReviewer: z$1.ZodLiteral<"automatic">;
             permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
                 deny: "deny";
+                ask: "ask";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"full">;
@@ -3876,9 +3886,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
-                        builtin: "builtin";
-                        project: "project";
                         user: "user";
+                        project: "project";
+                        builtin: "builtin";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -3888,6 +3898,8 @@ declare const hostDaemonCommandRegistry: {
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
+                    preview: z$1.ZodOptional<z$1.ZodString>;
+                    experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
@@ -3957,9 +3969,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
-                        builtin: "builtin";
-                        project: "project";
                         user: "user";
+                        project: "project";
+                        builtin: "builtin";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -3969,6 +3981,8 @@ declare const hostDaemonCommandRegistry: {
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
+                    preview: z$1.ZodOptional<z$1.ZodString>;
+                    experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
@@ -4050,9 +4064,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
-                        builtin: "builtin";
-                        project: "project";
                         user: "user";
+                        project: "project";
+                        builtin: "builtin";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -4062,6 +4076,8 @@ declare const hostDaemonCommandRegistry: {
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
+                    preview: z$1.ZodOptional<z$1.ZodString>;
+                    experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
@@ -4131,9 +4147,9 @@ declare const hostDaemonCommandRegistry: {
                         skill: "skill";
                     }>;
                     origin: z$1.ZodEnum<{
-                        builtin: "builtin";
-                        project: "project";
                         user: "user";
+                        project: "project";
+                        builtin: "builtin";
                     }>;
                     label: z$1.ZodString;
                     argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -4143,6 +4159,8 @@ declare const hostDaemonCommandRegistry: {
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
+                    preview: z$1.ZodOptional<z$1.ZodString>;
+                    experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
@@ -4196,16 +4214,16 @@ declare const hostDaemonCommandRegistry: {
             permissionScope: z$1.ZodLiteral<"workspace">;
             approvalReviewer: z$1.ZodLiteral<"user">;
             permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
                 deny: "deny";
+                ask: "ask";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"auto">;
             permissionScope: z$1.ZodLiteral<"workspace">;
             approvalReviewer: z$1.ZodLiteral<"automatic">;
             permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
                 deny: "deny";
+                ask: "ask";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"full">;
@@ -4318,12 +4336,13 @@ declare const hostDaemonCommandRegistry: {
                     personal: "personal";
                 }>;
             }, z$1.core.$strip>;
+            projectId: z$1.ZodString;
+            providerThreadId: z$1.ZodString;
+            providerId: z$1.ZodString;
             instructionMode: z$1.ZodEnum<{
                 append: "append";
                 replace: "replace";
             }>;
-            projectId: z$1.ZodString;
-            providerId: z$1.ZodString;
             acpLaunchSpec: z$1.ZodOptional<z$1.ZodObject<{
                 displayName: z$1.ZodString;
                 command: z$1.ZodString;
@@ -4455,7 +4474,6 @@ declare const hostDaemonCommandRegistry: {
                 skillFilePath: z$1.ZodString;
             }, z$1.core.$strict>], "kind">>;
             disallowedTools: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
-            providerThreadId: z$1.ZodString;
         }, z$1.core.$strict>;
         target: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
             mode: z$1.ZodLiteral<"start">;
@@ -4468,8 +4486,8 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>], "mode">;
     }, z$1.core.$strict>, z$1.ZodObject<{
         appliedAs: z$1.ZodEnum<{
-            steer: "steer";
             "new-turn": "new-turn";
+            steer: "steer";
         }>;
     }, z$1.core.$strip>, "settled", false>;
     "thread.stop": HostDaemonCommandDescriptor<"thread.stop", z$1.ZodObject<{
@@ -4516,16 +4534,16 @@ declare const hostDaemonCommandRegistry: {
             permissionScope: z$1.ZodLiteral<"workspace">;
             approvalReviewer: z$1.ZodLiteral<"user">;
             permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
                 deny: "deny";
+                ask: "ask";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"auto">;
             permissionScope: z$1.ZodLiteral<"workspace">;
             approvalReviewer: z$1.ZodLiteral<"automatic">;
             permissionEscalation: z$1.ZodEnum<{
-                ask: "ask";
                 deny: "deny";
+                ask: "ask";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
             permissionMode: z$1.ZodLiteral<"full">;
@@ -4638,12 +4656,13 @@ declare const hostDaemonCommandRegistry: {
                     personal: "personal";
                 }>;
             }, z$1.core.$strip>;
+            projectId: z$1.ZodString;
+            providerThreadId: z$1.ZodString;
+            providerId: z$1.ZodString;
             instructionMode: z$1.ZodEnum<{
                 append: "append";
                 replace: "replace";
             }>;
-            projectId: z$1.ZodString;
-            providerId: z$1.ZodString;
             acpLaunchSpec: z$1.ZodOptional<z$1.ZodObject<{
                 displayName: z$1.ZodString;
                 command: z$1.ZodString;
@@ -4775,7 +4794,6 @@ declare const hostDaemonCommandRegistry: {
                 skillFilePath: z$1.ZodString;
             }, z$1.core.$strict>], "kind">>;
             disallowedTools: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
-            providerThreadId: z$1.ZodString;
         }, z$1.core.$strict>;
     }, z$1.core.$strict>, z$1.ZodObject<{
         cleared: z$1.ZodBoolean;
@@ -4935,9 +4953,9 @@ declare const hostDaemonCommandRegistry: {
             text: z$1.ZodString;
             startedAt: z$1.ZodOptional<z$1.ZodNumber>;
             status: z$1.ZodOptional<z$1.ZodEnum<{
-                started: "started";
                 completed: "completed";
                 failed: "failed";
+                started: "started";
             }>>;
             metadata: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodString, z$1.ZodUnknown>>;
         }, z$1.core.$strip>>;
@@ -5169,8 +5187,8 @@ declare const hostDaemonCommandRegistry: {
                 skill: "skill";
             }>;
             origin: z$1.ZodEnum<{
-                project: "project";
                 user: "user";
+                project: "project";
             }>;
             description: z$1.ZodNullable<z$1.ZodString>;
             argumentHint: z$1.ZodNullable<z$1.ZodString>;
@@ -5191,9 +5209,9 @@ declare const hostDaemonCommandRegistry: {
             description: z$1.ZodNullable<z$1.ZodString>;
             filePath: z$1.ZodString;
             rootKind: z$1.ZodEnum<{
+                plugin: "plugin";
                 "shared-user": "shared-user";
                 "shared-project": "shared-project";
-                plugin: "plugin";
                 "bb-project": "bb-project";
                 "bb-data-dir": "bb-data-dir";
                 "bb-builtin": "bb-builtin";
@@ -5687,8 +5705,8 @@ declare const hostDaemonCommandRegistry: {
         npmGlobalPackageVersion: z$1.ZodNullable<z$1.ZodString>;
         installAction: z$1.ZodNullable<z$1.ZodObject<{
             kind: z$1.ZodEnum<{
-                install: "install";
                 update: "update";
+                install: "install";
             }>;
             label: z$1.ZodEnum<{
                 Install: "Install";
@@ -5710,8 +5728,8 @@ declare const hostDaemonCommandRegistry: {
             cursor: "cursor";
         }>;
         actionKind: z$1.ZodEnum<{
-            install: "install";
             update: "update";
+            install: "install";
         }>;
         type: z$1.ZodLiteral<"provider_cli.install">;
     }, z$1.core.$strict>, z$1.ZodObject<{
@@ -5855,13 +5873,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5906,13 +5924,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -5970,13 +5988,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -6018,13 +6036,13 @@ declare const hostDaemonCommandRegistry: {
         outcome: z$1.ZodLiteral<"unavailable">;
         failure: z$1.ZodObject<{
             code: z$1.ZodEnum<{
+                unknown: "unknown";
                 path_not_found: "path_not_found";
                 not_git_repo: "not_git_repo";
                 not_worktree: "not_worktree";
                 workspace_type_mismatch: "workspace_type_mismatch";
                 permission_denied: "permission_denied";
                 unknown_environment: "unknown_environment";
-                unknown: "unknown";
             }>;
             workspacePath: z$1.ZodString;
             message: z$1.ZodString;
@@ -6067,9 +6085,9 @@ declare const hostDaemonCommandRegistry: {
                 conclusion: z$1.ZodNullable<z$1.ZodEnum<{
                     unknown: "unknown";
                     success: "success";
+                    skipped: "skipped";
                     cancelled: "cancelled";
                     failure: "failure";
-                    skipped: "skipped";
                     neutral: "neutral";
                     timed_out: "timed_out";
                     action_required: "action_required";
@@ -6154,8 +6172,8 @@ declare const providerCliStatusResponseSchema: z$1.ZodRecord<z$1.ZodEnum<{
     npmGlobalPackageVersion: z$1.ZodNullable<z$1.ZodString>;
     installAction: z$1.ZodNullable<z$1.ZodObject<{
         kind: z$1.ZodEnum<{
-            install: "install";
             update: "update";
+            install: "install";
         }>;
         label: z$1.ZodEnum<{
             Install: "Install";
@@ -6178,8 +6196,8 @@ declare const providerCliInstallRequestSchema: z$1.ZodObject<{
         cursor: "cursor";
     }>;
     actionKind: z$1.ZodEnum<{
-        install: "install";
         update: "update";
+        install: "install";
     }>;
 }, z$1.core.$strip>;
 type ProviderCliInstallRequest = z$1.infer<typeof providerCliInstallRequestSchema>;
@@ -7731,6 +7749,8 @@ declare const timelineConversationRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
             icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
             itemId: z$1.ZodString;
             label: z$1.ZodString;
+            preview: z$1.ZodOptional<z$1.ZodString>;
+            experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
         }, z$1.core.$strip>], "kind">>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>, z$1.ZodObject<{
@@ -8344,6 +8364,8 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -8516,6 +8538,8 @@ declare const forkThreadRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -8597,6 +8621,8 @@ declare const forkThreadRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -8704,6 +8730,8 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -8939,6 +8967,8 @@ declare const editMessageRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -9070,6 +9100,8 @@ declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -9194,6 +9226,8 @@ declare const updateQueuedMessageRequestSchema: z$1.ZodObject<{
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -9299,6 +9333,8 @@ declare const sendQueuedMessageResponseSchema: z$1.ZodObject<{
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     label: z$1.ZodString;
+                    preview: z$1.ZodOptional<z$1.ZodString>;
+                    experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 }, z$1.core.$strip>], "kind">>;
             }, z$1.core.$strip>>>;
         }, z$1.core.$strip>, z$1.ZodObject<{
@@ -9972,6 +10008,8 @@ declare const threadQueuedMessageListResponseSchema: z$1.ZodArray<z$1.ZodObject<
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 label: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             }, z$1.core.$strip>], "kind">>;
         }, z$1.core.$strip>>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
@@ -10812,6 +10850,14 @@ interface ExperimentalBrowserInspectionElementDescriptor {
     text: string;
     rect: ExperimentalBrowserInspectionRect;
 }
+/**
+ * A locator starts in the document (absolute) or exact region common ancestor
+ * (relative). Each selector except the last must resolve to one open shadow
+ * host; resolution continues in that host's shadow root.
+ */
+interface ExperimentalBrowserInspectionLocator {
+    selectors: readonly string[];
+}
 interface ExperimentalBrowserInspectionStyles {
     display?: string;
     position?: string;
@@ -10855,6 +10901,32 @@ interface ExperimentalBrowserInspectionElementContext extends Omit<ExperimentalB
     };
     reactComponentStack: readonly string[] | null;
 }
+interface ExperimentalBrowserInspectionRegionTarget {
+    absoluteLocator: ExperimentalBrowserInspectionLocator;
+    relativeLocator: ExperimentalBrowserInspectionLocator;
+    text: string;
+    rect: ExperimentalBrowserInspectionRect;
+    accessibility?: {
+        source: "dom-hint";
+        roleHint: string | null;
+        nameHint: string | null;
+        attributes: ExperimentalBrowserInspectionAriaAttributes;
+    };
+    react?: {
+        componentStack: readonly string[];
+        source?: {
+            fileName: string;
+            lineNumber: number;
+            columnNumber: number | null;
+        };
+    };
+}
+interface ExperimentalBrowserInspectionRegionGroup {
+    absoluteLocator: ExperimentalBrowserInspectionLocator;
+    relativeLocator: ExperimentalBrowserInspectionLocator;
+    count: number;
+    rect: ExperimentalBrowserInspectionRect;
+}
 interface ExperimentalBrowserInspectionResult {
     version: 1;
     kind: "element" | "region";
@@ -10867,7 +10939,23 @@ interface ExperimentalBrowserInspectionResult {
     rect: ExperimentalBrowserInspectionRect;
     element: ExperimentalBrowserInspectionElementContext | null;
     region: {
-        elements: readonly ExperimentalBrowserInspectionElementDescriptor[];
+        commonAncestor: {
+            /**
+             * `element` and `shadow-root` are true DOM LCAs. For a shadow root,
+             * `absoluteLocator` resolves its host and relative locators start in the
+             * host's open shadow root. `composed-element` is explicit when selected
+             * targets cross DOM roots and therefore have no true DOM LCA. It is the
+             * nearest composed-tree element from which every relative locator can be
+             * resolved, widening across a slot boundary when CSS cannot address an
+             * assigned light-DOM node from inside the shadow tree.
+             */
+            kind: "element" | "shadow-root" | "composed-element";
+            absoluteLocator: ExperimentalBrowserInspectionLocator;
+        } | null;
+        targets: readonly ExperimentalBrowserInspectionRegionTarget[];
+        groups: readonly ExperimentalBrowserInspectionRegionGroup[];
+        omittedTargetCount: number;
+        omittedGroupCount: number;
     } | null;
     screenshot: {
         dataUrl: string;
@@ -11675,6 +11763,9 @@ interface ComposerStructuredDraft {
         provider: string;
         id: string;
         label: string;
+        /** Human-readable preview carried by a plugin mention, when provided. */
+        preview?: string;
+        experimental_inspectable?: boolean;
     }[];
 }
 /** Host-rendered paint applied to the editable composer text. */
@@ -11702,6 +11793,10 @@ interface PluginComposerMention {
     id: string;
     /** Pill text shown in the composer. */
     label: string;
+    /** Optional human-readable content shown when the pill is hovered or focused. */
+    preview?: string;
+    /** Activate this mention's optional provider inspector. Experimental. */
+    experimental_inspectable?: boolean;
 }
 /**
  * Programmatic access to the chat composer draft — the same shared draft the
@@ -13841,6 +13936,21 @@ interface PluginMentionItem {
     title: string;
     subtitle?: string;
     icon?: string;
+    /** Optional human-readable content shown when the inserted pill is previewed. */
+    preview?: string;
+}
+/** Provider-owned detail shown when an inspectable mention is activated. */
+interface ExperimentalPluginMentionInspection {
+    title: string;
+    description?: string;
+    /** Optional visual preview. It is presentation-only and is never sent. */
+    preview?: {
+        kind: "image";
+        dataUrl: string;
+        alt: string;
+    };
+    /** Exact, human-readable metadata represented by this mention. */
+    metadata: string;
 }
 interface PluginMentionProviderRegistration {
     /** Unique within this plugin: [a-zA-Z0-9_-]+ (no ":" — the host composes
@@ -13871,6 +13981,8 @@ interface PluginMentionProviderRegistration {
     } | Promise<{
         context: string;
     }>;
+    /** Optional host-rendered detail; independent from send-time `resolve`. */
+    experimental_inspect?(itemId: string): ExperimentalPluginMentionInspection | Promise<ExperimentalPluginMentionInspection>;
 }
 interface PluginUi {
     /** Block until the app submits or cancels a plugin-owned composer form. */
@@ -13989,4 +14101,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract };
-export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalBrowserInspectionAriaAttributes, ExperimentalBrowserInspectionElementContext, ExperimentalBrowserInspectionElementDescriptor, ExperimentalBrowserInspectionPoint, ExperimentalBrowserInspectionRect, ExperimentalBrowserInspectionRequest, ExperimentalBrowserInspectionResult, ExperimentalBrowserInspectionSize, ExperimentalBrowserInspectionStyles, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginBrowserActionProps, PluginBrowserActionRegistration, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalBrowserInspectionAriaAttributes, ExperimentalBrowserInspectionElementContext, ExperimentalBrowserInspectionElementDescriptor, ExperimentalBrowserInspectionLocator, ExperimentalBrowserInspectionPoint, ExperimentalBrowserInspectionRect, ExperimentalBrowserInspectionRegionGroup, ExperimentalBrowserInspectionRegionTarget, ExperimentalBrowserInspectionRequest, ExperimentalBrowserInspectionResult, ExperimentalBrowserInspectionSize, ExperimentalBrowserInspectionStyles, ExperimentalPluginMentionInspection, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginBrowserActionProps, PluginBrowserActionRegistration, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

@@ -25,6 +25,8 @@ export function buildPluginMentionSuggestions(
         title,
         subtitle: item.subtitle,
         icon: item.icon,
+        preview: item.preview ?? null,
+        experimentalInspectability: item.experimentalInspectability === true,
         replacement: title,
       });
     }
