@@ -482,6 +482,7 @@ async function deactivateCommittedGeneration(
   pluginId: string,
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
+  options?: { retainPresentation?: boolean },
 ): Promise<PluginFrontendFailure[]> {
   const active = state.activeGenerations.get(pluginId);
   if (active === undefined) {
@@ -492,8 +493,10 @@ async function deactivateCommittedGeneration(
   clearPluginThreadRowStatuses(pluginId);
   state.activeGenerations.delete(pluginId);
   state.appliedHashes.delete(pluginId);
-  deps.removeRegistrations(pluginId);
-  deps.applyCss(pluginId, null);
+  if (options?.retainPresentation !== true) {
+    deps.removeRegistrations(pluginId);
+    deps.applyCss(pluginId, null);
+  }
   return failures;
 }
 
@@ -764,6 +767,7 @@ export async function reconcilePluginFrontends(
         pluginId,
         state,
         deps,
+        { retainPresentation: true },
       );
       const controller = new AbortController();
       const statusOwner = Symbol(
@@ -789,6 +793,8 @@ export async function reconcilePluginFrontends(
         return;
       }
       if (!activationResult.ok) {
+        deps.removeRegistrations(pluginId);
+        deps.applyCss(pluginId, null);
         const failed: PluginFrontendRecord = {
           pluginId,
           status: "failed",

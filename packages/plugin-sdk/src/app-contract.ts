@@ -60,6 +60,13 @@ export interface PluginNavPanelRightPanelViewProps {
   /** The current nav-panel route remainder, matching `PluginNavPanelProps`. */
   subPath: string;
   /**
+   * Whether this view is the currently visible right-panel tab. BB retains
+   * hidden custom views so plugins can preserve local UI state; pause costly
+   * queries and subscriptions while false. Optional for compatibility with
+   * older test hosts, which should be treated as visible.
+   */
+  isVisible?: boolean;
+  /**
    * JSON data supplied by `experimental_openRightPanel`; null for the
    * registration's default view.
    */

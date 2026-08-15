@@ -3,8 +3,6 @@ import { PANE_FOCUS_APP_COMMAND_IDS } from "@bb/domain";
 import { useAtom, useAtomValue, useStore } from "jotai";
 import {
   Fragment,
-  lazy,
-  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -116,12 +114,7 @@ import {
 } from "@/components/ui/context-selection";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
 import { wsManager } from "@/lib/ws";
-
-const LazyPluginPanelRightPanelHost = lazy(() =>
-  import("@/components/plugin/PluginPanelRightPanelHost").then(
-    ({ PluginPanelRightPanelHost }) => ({ default: PluginPanelRightPanelHost }),
-  ),
-);
+import { PluginPanelRightPanelHost } from "@/components/plugin/PluginPanelRightPanelHost";
 
 function PluginPanelRightPanelHostBoundary({
   children,
@@ -135,11 +128,7 @@ function PluginPanelRightPanelHostBoundary({
   subPath: string;
 }) {
   return (
-    <Suspense fallback={children}>
-      <LazyPluginPanelRightPanelHost {...props}>
-        {children}
-      </LazyPluginPanelRightPanelHost>
-    </Suspense>
+    <PluginPanelRightPanelHost {...props}>{children}</PluginPanelRightPanelHost>
   );
 }
 

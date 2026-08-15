@@ -344,7 +344,7 @@ export function PluginPanelRightPanelHost({
     terminalSessions: undefined,
   });
   const createTerminal = useCreateTerminal();
-  const { mutate: closeTerminalMutate } = useCloseTerminal();
+  const { mutateAsync: closeTerminalMutateAsync } = useCloseTerminal();
   const isOpen =
     (rightPanel !== undefined || activeTerminalTab !== null) &&
     (renderAsDrawer ? isCompactDrawerOpen : panelState.secondary.isOpen) &&
@@ -389,8 +389,21 @@ export function PluginPanelRightPanelHost({
   const canShowWideNativeBrowserView =
     paneContext === null || !paneContext.isSplitPane || paneContext.isFocused;
   const hasObservedPanelRef = useRef(panel !== null);
+  const isMountedRef = useRef(false);
+  const panelRef = useRef(panel);
   const closedRevokedTerminalIdsRef = useRef(new Set<string>());
   const closingRevokedTerminalIdsRef = useRef(new Set<string>());
+
+  useLayoutEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    panelRef.current = panel;
+  }, [panel]);
 
   useEffect(() => {
     if (panel !== null) hasObservedPanelRef.current = true;
@@ -415,18 +428,15 @@ export function PluginPanelRightPanelHost({
         continue;
       }
       closingRevokedTerminalIdsRef.current.add(terminalId);
-      closeTerminalMutate(
-        { mode: "force", terminalId },
-        {
-          onSuccess: () => {
-            closedRevokedTerminalIdsRef.current.add(terminalId);
-            closeTab(tabId);
-          },
-          onSettled: () => {
-            closingRevokedTerminalIdsRef.current.delete(terminalId);
-          },
-        },
-      );
+      void closeTerminalMutateAsync({ mode: "force", terminalId })
+        .then(() => {
+          closedRevokedTerminalIdsRef.current.add(terminalId);
+          closeTab(tabId);
+        })
+        .catch(() => {})
+        .finally(() => {
+          closingRevokedTerminalIdsRef.current.delete(terminalId);
+        });
     }
     const revokedTerminalIds = new Set(
       revokedTerminalTabs.map(({ terminalId }) => terminalId),
@@ -438,7 +448,7 @@ export function PluginPanelRightPanelHost({
     }
   }, [
     closeTab,
-    closeTerminalMutate,
+    closeTerminalMutateAsync,
     frontendLoadState,
     panel,
     panelState.secondary.tabs,
@@ -656,15 +666,15 @@ export function PluginPanelRightPanelHost({
       }
       const target = normalizeTerminalTarget(request.target);
       if (target === null || createTerminal.isPending) return false;
-      createTerminal.mutate(
-        {
+      void createTerminal
+        .mutateAsync({
           cols: TERMINAL_COLS,
           rows: TERMINAL_ROWS,
           target,
           ...(request.title?.trim() ? { title: request.title.trim() } : {}),
-        },
-        {
-          onSuccess: (session) => {
+        })
+        .then((session) => {
+          const persistTerminal = (activate: boolean) => {
             const tab = createTerminalFixedPanelTab({
               terminalId: session.id,
               target,
@@ -674,19 +684,40 @@ export function PluginPanelRightPanelHost({
               secondary: {
                 ...state.secondary,
                 tabs: [...state.secondary.tabs, tab],
-                activeTabId: tab.id,
-                isOpen: renderAsDrawer ? state.secondary.isOpen : true,
+                activeTabId: activate ? tab.id : state.secondary.activeTabId,
+                isOpen:
+                  activate && !renderAsDrawer
+                    ? true
+                    : state.secondary.isOpen,
               },
             }));
-            if (renderAsDrawer) setCompactDrawerOpen(true);
-          },
-        },
-      );
+            if (activate && renderAsDrawer) setCompactDrawerOpen(true);
+          };
+          const currentPanel = panelRef.current;
+          if (
+            !isMountedRef.current ||
+            currentPanel?.experimental_rightPanel?.tools?.includes(
+              "terminal",
+            ) !== true
+          ) {
+            return closeTerminalMutateAsync({
+              mode: "force",
+              terminalId: session.id,
+            }).catch(() => {
+              // A failed cleanup still needs a durable owner. Persist the tab
+              // closed so a future host mount can retry reconciliation.
+              persistTerminal(false);
+            });
+          }
+          persistTerminal(true);
+        })
+        .catch(() => {});
       return true;
     },
     [
       browserTabs,
       createTerminal,
+      closeTerminalMutateAsync,
       openPluginPanel,
       openTab,
       panel,
@@ -792,7 +823,11 @@ export function PluginPanelRightPanelHost({
           slotKind="navPanelRightPanel"
           slotId={`${panel.id}:${activeView.id}`}
         >
-          <activeView.component subPath={subPath} params={activeViewParams} />
+          <activeView.component
+            subPath={subPath}
+            params={activeViewParams}
+            isVisible={isOpen}
+          />
         </PluginSlotMount>
       </div>
     ) : activePluginPanelTab ? (
@@ -879,10 +914,19 @@ export function PluginPanelRightPanelHost({
                   : terminalStatusLabel(session),
               onSelect: () => activateTab(tab.id),
               onClose: () => {
-                closeTerminalMutate(
-                  { mode: "force", terminalId: tab.terminalId },
-                  { onSuccess: () => closeTab(tab.id) },
-                );
+                if (closingRevokedTerminalIdsRef.current.has(tab.terminalId)) {
+                  return;
+                }
+                closingRevokedTerminalIdsRef.current.add(tab.terminalId);
+                void closeTerminalMutateAsync({
+                  mode: "force",
+                  terminalId: tab.terminalId,
+                })
+                  .then(() => closeTab(tab.id))
+                  .catch(() => {})
+                  .finally(() => {
+                    closingRevokedTerminalIdsRef.current.delete(tab.terminalId);
+                  });
               },
             },
           ];
@@ -893,7 +937,7 @@ export function PluginPanelRightPanelHost({
       activateTab,
       activeTab?.id,
       closeTab,
-      closeTerminalMutate,
+      closeTerminalMutateAsync,
       orderedSecondaryFileTabs,
       panel?.icon,
       pluginId,

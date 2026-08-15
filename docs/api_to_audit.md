@@ -5,7 +5,7 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
-## Nav-panel `experimental_rightPanel` (`@bb/plugin-sdk/app`)
+## Nav-panel `experimental_rightPanel` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** `PluginNavPanelRegistration.experimental_rightPanel`
 registers plugin-defined views and explicitly enabled Browser or Terminal
@@ -19,7 +19,8 @@ or unavailable requests return `false`.
 
 1. **Registration shape.** Confirm real plugins need multiple custom views,
    per-tab JSON params, a pinned default, and explicit tool allowlisting.
-   Revisit whether `layout` and `defaultViewId` are the right stable concepts.
+   Revisit whether `layout`, `defaultViewId`, and the retained-view
+   `isVisible` signal are the right stable concepts.
 2. **Surface scope.** Verify standalone pages, compact drawers, split panes,
    pane focus/maximize transitions, multiple windows, and plugin reload or
    disable all retain coherent ownership and cleanup.

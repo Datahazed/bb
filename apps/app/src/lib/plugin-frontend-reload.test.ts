@@ -153,6 +153,9 @@ describe("reconcilePluginFrontends", () => {
         homepageSections: [expect.objectContaining({ id: "section" })],
       }),
     );
+    // A valid replacement never publishes an empty registration generation:
+    // mounted panel resources remain owned until the wholesale swap commits.
+    expect(deps.removeRegistrations).not.toHaveBeenCalled();
     // Crashed-slot latches reset before the new registrations remount.
     expect(deps.resetCrashedSlots).toHaveBeenCalledWith("hello");
     // The CSS link is swapped to the fresh-hash URL.

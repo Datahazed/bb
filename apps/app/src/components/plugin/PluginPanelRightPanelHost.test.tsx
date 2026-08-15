@@ -62,6 +62,12 @@ const hostState = vi.hoisted(() => ({
     terminalId: string;
     target: { kind: "host_path"; hostId: string; cwd: null };
   } | null,
+  extraTerminalTabs: [] as Array<{
+    id: string;
+    kind: "terminal";
+    terminalId: string;
+    target: { kind: "host_path"; hostId: string; cwd: null };
+  }>,
   terminalSessions: undefined as
     | Array<{ id: string; status: "running"; title: string }>
     | undefined,
@@ -71,9 +77,9 @@ const hostState = vi.hoisted(() => ({
 const openTab = vi.hoisted(() => vi.fn());
 const openPluginPanel = vi.hoisted(() => vi.fn());
 const updatePanelState = vi.hoisted(() => vi.fn());
-const createTerminalMutate = vi.hoisted(() => vi.fn());
+const createTerminalMutateAsync = vi.hoisted(() => vi.fn());
 const closeTab = vi.hoisted(() => vi.fn());
-const closeTerminalMutate = vi.hoisted(() => vi.fn());
+const closeTerminalMutateAsync = vi.hoisted(() => vi.fn());
 const drawerState = vi.hoisted(
   (): {
     onContentAnimationEnd: ((open: boolean) => void) | null;
@@ -182,6 +188,7 @@ vi.mock("@/lib/fixed-panel-tabs", () => ({
           ? [hostState.activePluginPanelTab]
           : []),
         ...(hostState.activeTerminalTab ? [hostState.activeTerminalTab] : []),
+        ...hostState.extraTerminalTabs,
       ],
     },
   }),
@@ -210,15 +217,20 @@ vi.mock("@/lib/plugin-slots", async () => {
                         id: "navigation",
                         title: "Navigation",
                         component: ({
+                          isVisible,
                           params,
                           subPath,
                         }: {
+                          isVisible?: boolean;
                           params: unknown;
                           subPath: string;
                         }) =>
                           React.createElement(
                             "div",
-                            { "data-testid": "custom-view" },
+                            {
+                              "data-is-visible": String(isVisible),
+                              "data-testid": "custom-view",
+                            },
                             `${subPath}:${JSON.stringify(params)}`,
                           ),
                         layout: "flush",
@@ -247,8 +259,11 @@ vi.mock("@/hooks/queries/thread-terminal-queries", () => ({
       isLoading: false,
     };
   },
-  useCreateTerminal: () => ({ isPending: false, mutate: createTerminalMutate }),
-  useCloseTerminal: () => ({ mutate: closeTerminalMutate }),
+  useCreateTerminal: () => ({
+    isPending: false,
+    mutateAsync: createTerminalMutateAsync,
+  }),
+  useCloseTerminal: () => ({ mutateAsync: closeTerminalMutateAsync }),
 }));
 
 vi.mock("@/components/secondary-panel/useThreadFileTabs", () => ({
@@ -266,6 +281,7 @@ vi.mock("@/components/secondary-panel/useThreadFileTabs", () => ({
         ? [hostState.activePluginPanelTab]
         : []),
       ...(hostState.activeTerminalTab ? [hostState.activeTerminalTab] : []),
+      ...hostState.extraTerminalTabs,
     ],
     reorderFileTab: vi.fn(),
     updateBrowserTab: vi.fn(),
@@ -369,6 +385,16 @@ function browserTab(url = "https://example.com") {
     title: null,
     url,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
 }
 
 const basePaneContext: PaneContextValue = {
@@ -494,6 +520,7 @@ beforeEach(() => {
   hostState.rightPanelAvailable = true;
   hostState.panelOpen = true;
   hostState.activeTerminalTab = null;
+  hostState.extraTerminalTabs = [];
   hostState.terminalSessions = undefined;
   hostState.terminalQueryEnabled = false;
   hostState.tools = ["browser", "terminal"];
@@ -506,9 +533,11 @@ beforeEach(() => {
   openTab.mockClear();
   openPluginPanel.mockClear();
   updatePanelState.mockClear();
-  createTerminalMutate.mockClear();
+  createTerminalMutateAsync.mockReset();
+  createTerminalMutateAsync.mockImplementation(() => new Promise(() => {}));
   closeTab.mockClear();
-  closeTerminalMutate.mockClear();
+  closeTerminalMutateAsync.mockReset();
+  closeTerminalMutateAsync.mockImplementation(() => new Promise(() => {}));
   realizeContent.mockClear();
   desktopBrowserApiState.onOpenTab = [];
   desktopBrowserApiState.onScopedOpenTab = null;
@@ -950,26 +979,40 @@ describe("PluginPanelRightPanelHost", () => {
 
     const view = screen.getByTestId("custom-view");
     expect(view.textContent).toBe('vault/note.md:{"selected":"today"}');
+    expect(view.dataset.isVisible).toBe("true");
     expect(view.parentElement?.parentElement?.className).toContain("h-full");
     expect(view.parentElement?.parentElement?.className).not.toContain("p-4");
   });
 
-  it("creates an enabled Terminal and records its target on the panel tab", () => {
+  it("keeps a hidden custom view mounted while reporting its visibility", () => {
+    hostState.panelOpen = false;
+    hostState.activePluginPanelTab = {
+      actionId: "navigation",
+      id: "plugin-panel:docs:navigation:default",
+      kind: "plugin-panel",
+      paramsJson: null,
+      pluginId: "docs",
+      title: "Navigation",
+    };
+
+    render(<HostFixture />);
+
+    expect(screen.getByTestId("custom-view").dataset.isVisible).toBe("false");
+  });
+
+  it("creates an enabled Terminal and records its target on the panel tab", async () => {
+    createTerminalMutateAsync.mockResolvedValueOnce({ id: "terminal-1" });
     render(<HostFixture />);
     fireEvent.click(screen.getByRole("button", { name: "Open Terminal" }));
     expect(document.body.dataset.terminalRequestAccepted).toBe("true");
-    expect(createTerminalMutate).toHaveBeenCalledWith(
-      {
-        cols: 100,
-        rows: 30,
-        target: { kind: "host_path", hostId: "host-1", cwd: null },
-        title: "Plugin shell",
-      },
-      expect.objectContaining({ onSuccess: expect.any(Function) }),
-    );
-    const onSuccess = createTerminalMutate.mock.calls.at(-1)?.[1].onSuccess;
+    expect(createTerminalMutateAsync).toHaveBeenCalledWith({
+      cols: 100,
+      rows: 30,
+      target: { kind: "host_path", hostId: "host-1", cwd: null },
+      title: "Plugin shell",
+    });
     updatePanelState.mockClear();
-    onSuccess({ id: "terminal-1" });
+    await waitFor(() => expect(updatePanelState).toHaveBeenCalled());
     const update = updatePanelState.mock.calls[0]?.[0];
     const next = update(createEmptyFixedPanelTabsState());
     expect(next.secondary).toMatchObject({
@@ -995,7 +1038,52 @@ describe("PluginPanelRightPanelHost", () => {
     expect(document.body.dataset.malformedTerminalRequestAccepted).toBe(
       "false",
     );
-    expect(createTerminalMutate).not.toHaveBeenCalled();
+    expect(createTerminalMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("force-closes a Terminal that finishes creating after its panel unmounts", async () => {
+    const pending = deferred<{ id: string }>();
+    createTerminalMutateAsync.mockReturnValueOnce(pending.promise);
+    const view = render(<HostFixture />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Terminal" }));
+    updatePanelState.mockClear();
+    view.unmount();
+    pending.resolve({ id: "terminal-orphan" });
+
+    await waitFor(() =>
+      expect(closeTerminalMutateAsync).toHaveBeenCalledWith({
+        mode: "force",
+        terminalId: "terminal-orphan",
+      }),
+    );
+    expect(updatePanelState).not.toHaveBeenCalled();
+  });
+
+  it("persists an unowned Terminal for later cleanup when its force-close fails", async () => {
+    const pending = deferred<{ id: string }>();
+    createTerminalMutateAsync.mockReturnValueOnce(pending.promise);
+    closeTerminalMutateAsync.mockRejectedValueOnce(new Error("host offline"));
+    const view = render(<HostFixture />);
+    fireEvent.click(screen.getByRole("button", { name: "Open Terminal" }));
+    updatePanelState.mockClear();
+    view.unmount();
+
+    pending.resolve({ id: "terminal-needs-cleanup" });
+
+    await waitFor(() => expect(updatePanelState).toHaveBeenCalledTimes(1));
+    const update = updatePanelState.mock.calls[0]?.[0];
+    const next = update(createEmptyFixedPanelTabsState());
+    expect(next.secondary).toMatchObject({
+      activeTabId: null,
+      isOpen: false,
+      tabs: [
+        expect.objectContaining({
+          kind: "terminal",
+          terminalId: "terminal-needs-cleanup",
+        }),
+      ],
+    });
   });
 
   it("removes a restored Terminal tab after its target reports it missing", async () => {
@@ -1017,10 +1105,10 @@ describe("PluginPanelRightPanelHost", () => {
   it("queries and prunes a missing Terminal while a compact drawer is open over a hidden wide panel", async () => {
     hostState.compact = true;
     hostState.panelOpen = false;
+    createTerminalMutateAsync.mockResolvedValueOnce({ id: "terminal-missing" });
     const view = render(<HostFixture />);
     fireEvent.click(screen.getByRole("button", { name: "Open Terminal" }));
-    const onSuccess = createTerminalMutate.mock.calls.at(-1)?.[1].onSuccess;
-    onSuccess({ id: "terminal-missing" });
+    await waitFor(() => expect(updatePanelState).toHaveBeenCalled());
     hostState.activeTerminalTab = {
       id: "terminal:terminal-missing",
       kind: "terminal",
@@ -1049,13 +1137,49 @@ describe("PluginPanelRightPanelHost", () => {
     render(<HostFixture />);
 
     await waitFor(() =>
-      expect(closeTerminalMutate).toHaveBeenCalledWith(
-        { mode: "force", terminalId: "terminal-revoked" },
-        expect.objectContaining({
-          onSettled: expect.any(Function),
-          onSuccess: expect.any(Function),
-        }),
-      ),
+      expect(closeTerminalMutateAsync).toHaveBeenCalledWith({
+        mode: "force",
+        terminalId: "terminal-revoked",
+      }),
+    );
+  });
+
+  it("correlates concurrent revoked Terminal closes independently", async () => {
+    const firstClose = deferred<{ id: string }>();
+    const secondClose = deferred<{ id: string }>();
+    closeTerminalMutateAsync
+      .mockReturnValueOnce(firstClose.promise)
+      .mockReturnValueOnce(secondClose.promise);
+    hostState.tools = [];
+    hostState.activeTerminalTab = {
+      id: "terminal:first",
+      kind: "terminal",
+      terminalId: "first",
+      target: { kind: "host_path", hostId: "host-1", cwd: null },
+    };
+    hostState.extraTerminalTabs = [
+      {
+        id: "terminal:second",
+        kind: "terminal",
+        terminalId: "second",
+        target: { kind: "host_path", hostId: "host-1", cwd: null },
+      },
+    ];
+
+    render(<HostFixture />);
+    await waitFor(() =>
+      expect(closeTerminalMutateAsync).toHaveBeenCalledTimes(2),
+    );
+
+    secondClose.resolve({ id: "second" });
+    await waitFor(() =>
+      expect(closeTab).toHaveBeenCalledWith("terminal:second"),
+    );
+    expect(closeTab).not.toHaveBeenCalledWith("terminal:first");
+
+    firstClose.resolve({ id: "first" });
+    await waitFor(() =>
+      expect(closeTab).toHaveBeenCalledWith("terminal:first"),
     );
   });
 
@@ -1097,6 +1221,10 @@ describe("PluginPanelRightPanelHost", () => {
   });
 
   it("retries a failed revoked Terminal close and removes the tab on success", async () => {
+    const retry = deferred<{ id: string }>();
+    closeTerminalMutateAsync
+      .mockRejectedValueOnce(new Error("close failed"))
+      .mockReturnValueOnce(retry.promise);
     hostState.tools = [];
     hostState.activeTerminalTab = {
       id: "terminal:terminal-retry",
@@ -1105,15 +1233,20 @@ describe("PluginPanelRightPanelHost", () => {
       target: { kind: "host_path", hostId: "host-1", cwd: null },
     };
     const view = render(<HostFixture />);
-    await waitFor(() => expect(closeTerminalMutate).toHaveBeenCalledTimes(1));
-
-    closeTerminalMutate.mock.calls[0]?.[1].onSettled();
-    view.rerender(<HostFixture />);
-    await waitFor(() => expect(closeTerminalMutate).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(closeTerminalMutateAsync).toHaveBeenCalledTimes(1),
+    );
+    await act(async () => Promise.resolve());
     expect(closeTab).not.toHaveBeenCalledWith("terminal:terminal-retry");
-
-    closeTerminalMutate.mock.calls[1]?.[1].onSuccess();
-    expect(closeTab).toHaveBeenCalledWith("terminal:terminal-retry");
+    view.rerender(<HostFixture />);
+    await waitFor(() =>
+      expect(closeTerminalMutateAsync).toHaveBeenCalledTimes(2),
+    );
+    expect(closeTab).not.toHaveBeenCalledWith("terminal:terminal-retry");
+    retry.resolve({ id: "terminal-retry" });
+    await waitFor(() =>
+      expect(closeTab).toHaveBeenCalledWith("terminal:terminal-retry"),
+    );
   });
 
   it("closes a persisted Terminal when an observed panel registration disappears", async () => {
@@ -1124,16 +1257,16 @@ describe("PluginPanelRightPanelHost", () => {
       target: { kind: "host_path", hostId: "host-1", cwd: null },
     };
     const view = render(<HostFixture />);
-    expect(closeTerminalMutate).not.toHaveBeenCalled();
+    expect(closeTerminalMutateAsync).not.toHaveBeenCalled();
 
     hostState.panelAvailable = false;
     view.rerender(<HostFixture />);
 
     await waitFor(() =>
-      expect(closeTerminalMutate).toHaveBeenCalledWith(
-        { mode: "force", terminalId: "terminal-panel-removed" },
-        expect.objectContaining({ onSuccess: expect.any(Function) }),
-      ),
+      expect(closeTerminalMutateAsync).toHaveBeenCalledWith({
+        mode: "force",
+        terminalId: "terminal-panel-removed",
+      }),
     );
   });
 
@@ -1148,7 +1281,7 @@ describe("PluginPanelRightPanelHost", () => {
 
     render(<HostFixture />);
 
-    expect(closeTerminalMutate).not.toHaveBeenCalled();
+    expect(closeTerminalMutateAsync).not.toHaveBeenCalled();
     expect(updatePanelState).not.toHaveBeenCalled();
   });
 
@@ -1161,16 +1294,16 @@ describe("PluginPanelRightPanelHost", () => {
       target: { kind: "host_path", hostId: "host-1", cwd: null },
     };
     const view = render(<HostFixture />);
-    expect(closeTerminalMutate).not.toHaveBeenCalled();
+    expect(closeTerminalMutateAsync).not.toHaveBeenCalled();
 
     hostState.frontendLoadState = "settled";
     view.rerender(<HostFixture />);
 
     await waitFor(() =>
-      expect(closeTerminalMutate).toHaveBeenCalledWith(
-        { mode: "force", terminalId: "terminal-disabled-before-start" },
-        expect.objectContaining({ onSuccess: expect.any(Function) }),
-      ),
+      expect(closeTerminalMutateAsync).toHaveBeenCalledWith({
+        mode: "force",
+        terminalId: "terminal-disabled-before-start",
+      }),
     );
   });
 
