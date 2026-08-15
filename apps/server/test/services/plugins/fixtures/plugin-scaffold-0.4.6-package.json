@@ -1,0 +1,21 @@
+{
+  "name": "bb-plugin-upgrade-fixture",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bb": ">=0.9",
+    "bbPluginSdk": ">=0.4.6"
+  },
+  "bb": {
+    "name": "Upgrade fixture",
+    "description": "Persisted output from the 0.4.6 plugin scaffold.",
+    "branding": {
+      "icon": "Zap"
+    },
+    "server": "./server.ts"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.4.6"
+  }
+}
