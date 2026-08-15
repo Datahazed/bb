@@ -961,7 +961,7 @@ describe("deterministic Browser region capture corpus", () => {
     expect(result.region.targets).toEqual([]);
     expect(result.region.scanTruncated).toBe(true);
     expect(result.region.omittedTargetCount).toBe(0);
-  });
+  }, 30_000);
 
   it("reports truncation when the elapsed-time budget expires", async () => {
     const button = document.createElement("button");

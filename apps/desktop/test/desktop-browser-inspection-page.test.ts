@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDesktopBrowserInspectionCancelSource,
   createDesktopBrowserInspectionControllerSource,
 } from "../src/desktop-browser-inspection.js";
+
+beforeEach(() => {
+  // Corpus assertions exercise deterministic capture semantics. The region
+  // suite separately advances this clock to verify the production deadline.
+  vi.spyOn(performance, "now").mockReturnValue(0);
+});
 
 afterEach(() => {
   document.body.replaceChildren();
