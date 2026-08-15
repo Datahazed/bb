@@ -296,11 +296,6 @@ export function collectPluginAppRegistrations(
         browserActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
-          ...(registration.icon !== undefined
-            ? {
-                icon: requireNonEmptyString(kind, "icon", registration.icon),
-              }
-            : {}),
           component: requireComponent(kind, registration.component),
         });
       },

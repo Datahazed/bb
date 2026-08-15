@@ -94,7 +94,6 @@ describe("collectPluginAppRegistrations — experimental_browserAction", () => {
       app.slots.experimental_browserAction({
         id: "inspect",
         title: "Inspect page",
-        icon: "ScanSearch",
         component: Component,
       });
     });
@@ -103,7 +102,6 @@ describe("collectPluginAppRegistrations — experimental_browserAction", () => {
       {
         id: "inspect",
         title: "Inspect page",
-        icon: "ScanSearch",
         component: Component,
       },
     ]);

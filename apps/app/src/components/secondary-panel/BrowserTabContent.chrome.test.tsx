@@ -191,7 +191,7 @@ describe("BrowserTabContent persistent navigation", () => {
     expect(harness.goBack).toHaveBeenCalledWith("browser:test");
   });
 
-  it("maps inspection to the optional desktop capability with tab identity", async () => {
+  it("maps inspection to the optional desktop capability for the active tab", async () => {
     let slotProps: PluginBrowserActionProps | null = null;
     const result = {
       version: 1,
@@ -252,7 +252,6 @@ describe("BrowserTabContent persistent navigation", () => {
       tabId: "browser:test",
       requestId: expect.any(String),
       kind: "region",
-      identity: { threadId: "thread-1", projectId: "project-1" },
     });
   });
 
@@ -292,7 +291,6 @@ describe("BrowserTabContent persistent navigation", () => {
       tabId: "browser:test",
       requestId: expect.any(String),
       kind: "element",
-      identity: { threadId: "thread-1", projectId: "project-1" },
     });
     expect(harness.cancelInspection).toHaveBeenCalledWith(
       "browser:test",
@@ -300,6 +298,52 @@ describe("BrowserTabContent persistent navigation", () => {
     );
     finishInspection?.(null);
     await expect(pending).resolves.toBeNull();
+  });
+
+  it("rejects retained inspection and overlay callbacks after the action unmounts", async () => {
+    let slotProps: PluginBrowserActionProps | null = null;
+    const inspectPage = vi.fn(async () => null);
+    setPluginSlotRegistrations(
+      "context",
+      registrationSet([
+        {
+          id: "inspect",
+          title: "Inspect page",
+          component: (props) => {
+            slotProps = props;
+            return <button type="button">Inspect page</button>;
+          },
+        },
+      ]),
+    );
+    const harness = createBrowserChromeHarness(inspectPage);
+    const mounted = renderBrowserChrome(
+      harness,
+      "https://example.com/docs",
+      true,
+    );
+    const retained = slotProps as PluginBrowserActionProps | null;
+    if (retained === null) throw new Error("Expected retained Browser action");
+
+    mounted.unmount();
+    const visibilityCallCountAfterUnmount =
+      harness.setVisible.mock.calls.length;
+
+    expect(() => retained.experimental_setOverlayOpen(true)).toThrow(
+      /no longer active/u,
+    );
+    await expect(
+      retained.experimental_inspectPage(
+        { kind: "element" },
+        { signal: new AbortController().signal },
+      ),
+    ).rejects.toMatchObject({
+      name: "ExperimentalBrowserActionDisposedError",
+    });
+    expect(inspectPage).not.toHaveBeenCalled();
+    expect(harness.setVisible).toHaveBeenCalledTimes(
+      visibilityCallCountAfterUnmount,
+    );
   });
 
   it("rejects clearly when the desktop inspection capability is missing", async () => {

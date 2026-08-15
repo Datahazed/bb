@@ -719,8 +719,6 @@ interface PluginBrowserActionRegistration {
     id: string;
     /** Host label for the contribution and its overflow row. */
     title: string;
-    /** Optional BB icon-name hint retained for future host-owned treatments. */
-    icon?: string;
     /** Render exactly one accessible 28px control; portal larger UI. */
     component: ComponentType<PluginBrowserActionProps>;
 }

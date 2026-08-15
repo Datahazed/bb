@@ -99,72 +99,110 @@ function desktopBrowserInspectionPageController(
     }
     return cap(parts.join(" > "), MAX_SELECTOR);
   };
-  const pruneClone = (
-    element: Element,
+  const SECRET_ATTRIBUTE_NAMES = new Set([
+    "action",
+    "checked",
+    "formaction",
+    "href",
+    "poster",
+    "selected",
+    "src",
+    "srcdoc",
+    "srcset",
+    "style",
+    "value",
+    "xlink:href",
+  ]);
+  const shouldRedactAttribute = (name: string): boolean => {
+    const lower = name.toLowerCase();
+    return (
+      SECRET_ATTRIBUTE_NAMES.has(lower) ||
+      (lower.startsWith("data-") &&
+        /(auth|credential|key|password|secret|session|token)/u.test(lower))
+    );
+  };
+  const isEffectivelyEditable = (element: Element): boolean => {
+    if ((document.designMode ?? "off").toLowerCase() === "on") return true;
+    let current: Element | null = element;
+    while (current !== null) {
+      const value = current.getAttribute("contenteditable");
+      if (value !== null) {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === "false") return false;
+        if (
+          normalized === "" ||
+          normalized === "true" ||
+          normalized === "plaintext-only"
+        ) {
+          return true;
+        }
+      }
+      current = current.parentElement;
+    }
+    return element instanceof HTMLElement && element.isContentEditable === true;
+  };
+  interface SanitizedTreeBudget {
+    characters: number;
+    nodes: number;
+  }
+  const sanitizedCopy = (
+    source: Element,
     depth: number,
-    budget: { count: number },
-  ): void => {
-    budget.count += 1;
-    const attributeNames = element.getAttributeNames();
-    for (const name of attributeNames) {
-      const lower = name.toLowerCase();
-      if (
-        lower === "value" ||
-        lower === "checked" ||
-        lower === "selected" ||
-        lower === "srcdoc" ||
-        (lower.startsWith("data-") &&
-          /(auth|credential|key|password|secret|session|token)/u.test(lower))
-      ) {
-        element.removeAttribute(name);
+    budget: SanitizedTreeBudget,
+  ): Element => {
+    budget.nodes += 1;
+    const copy = document.createElementNS(
+      source.namespaceURI,
+      source.localName,
+    );
+    for (const attribute of [...source.attributes]) {
+      if (shouldRedactAttribute(attribute.name)) continue;
+      const remaining = MAX_DOM - budget.characters;
+      if (remaining <= 0) break;
+      const value = cap(attribute.value, remaining);
+      try {
+        copy.setAttribute(attribute.name, value);
+        budget.characters += value.length;
+      } catch {
+        // A page can expose unusual namespace attributes. Omit attributes that
+        // cannot be represented safely in the sanitized copy.
       }
     }
-    const tag = element.localName.toLowerCase();
+
+    const tag = source.localName.toLowerCase();
     const inputType =
       tag === "input"
-        ? (element.getAttribute("type") ?? "text").toLowerCase()
+        ? (source.getAttribute("type") ?? "text").toLowerCase()
         : "";
-    const editable =
-      element.hasAttribute("contenteditable") &&
-      element.getAttribute("contenteditable")?.toLowerCase() !== "false";
     if (
       tag === "textarea" ||
-      editable ||
+      isEffectivelyEditable(source) ||
       (tag === "input" && (inputType === "password" || inputType === "hidden"))
     ) {
-      element.replaceChildren();
+      return copy;
     }
-    if (depth >= MAX_TREE_DEPTH) {
-      element.replaceChildren();
-      return;
-    }
-    for (const child of [...element.children]) {
-      if (budget.count >= MAX_TREE_NODES) {
-        child.remove();
+    if (depth >= MAX_TREE_DEPTH) return copy;
+
+    for (const child of [...source.childNodes]) {
+      if (budget.nodes >= MAX_TREE_NODES) break;
+      if (child instanceof Element) {
+        copy.append(sanitizedCopy(child, depth + 1, budget));
         continue;
       }
-      pruneClone(child, depth + 1, budget);
+      if (child.nodeType !== Node.TEXT_NODE) continue;
+      budget.nodes += 1;
+      const remaining = MAX_DOM - budget.characters;
+      if (remaining <= 0) break;
+      const text = cap(child.textContent ?? "", remaining);
+      budget.characters += text.length;
+      copy.append(document.createTextNode(text));
     }
+    return copy;
   };
   const sanitizedClone = (element: Element): Element => {
-    const clone = element.cloneNode(true) as Element;
-    pruneClone(clone, 0, { count: 0 });
-    for (const control of clone.querySelectorAll("input, textarea")) {
-      control.removeAttribute("value");
-      if (control.localName === "textarea") control.replaceChildren();
-    }
-    for (const option of clone.querySelectorAll("option")) {
-      option.removeAttribute("selected");
-    }
-    for (const editable of clone.querySelectorAll(
-      "[contenteditable]:not([contenteditable='false'])",
-    )) {
-      editable.replaceChildren();
-    }
-    return clone;
+    return sanitizedCopy(element, 0, { characters: 0, nodes: 0 });
   };
-  const descriptor = (element: Element) => {
-    const clone = sanitizedClone(element);
+  const descriptorFromClone = (element: Element, clone: Element) => {
     return {
       selector: selectorFor(element),
       tag: cap(element.localName.toLowerCase(), 64),
@@ -176,6 +214,8 @@ function desktopBrowserInspectionPageController(
       rect: rectValue(element.getBoundingClientRect()),
     };
   };
+  const descriptor = (element: Element) =>
+    descriptorFromClone(element, sanitizedClone(element));
   const reactStack = (element: Element): string[] | null => {
     try {
       const keyed = element as Element & Record<string, unknown>;
@@ -402,7 +442,7 @@ function desktopBrowserInspectionPageController(
         styles[name] = cap(value, 512);
     }
     return {
-      ...descriptor(element),
+      ...descriptorFromClone(element, clone),
       dom: cap(clone.outerHTML, MAX_DOM),
       text: normalizedText(clone.textContent ?? "", MAX_TEXT),
       styles,
@@ -1110,6 +1150,9 @@ function desktopBrowserInspectionPageController(
     let settled = false;
     let dragging = false;
     let dragStart: { x: number; y: number } | null = null;
+    let animationFrameId: number | null = null;
+    let pendingPointerMove: { x: number; y: number } | null = null;
+    let handlePointerMove: ((x: number, y: number) => void) | null = null;
     const listeners: Array<[EventTarget, string, EventListener]> = [];
     const previousCursor =
       document.documentElement.style.getPropertyValue("cursor");
@@ -1126,6 +1169,11 @@ function desktopBrowserInspectionPageController(
     const stopInteractions = (): void => {
       for (const [target, name, listener] of listeners.splice(0)) {
         target.removeEventListener(name, listener, { capture: true });
+      }
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+        pendingPointerMove = null;
       }
       if (previousCursor.length === 0) {
         document.documentElement.style.removeProperty("cursor");
@@ -1169,6 +1217,16 @@ function desktopBrowserInspectionPageController(
       label.style.top = `${Math.max(0, rect.y - 24)}px`;
       label.textContent = text;
     };
+    const schedulePointerMove = (event: PointerEvent): void => {
+      pendingPointerMove = { x: event.clientX, y: event.clientY };
+      if (animationFrameId !== null) return;
+      animationFrameId = window.requestAnimationFrame(() => {
+        animationFrameId = null;
+        const point = pendingPointerMove;
+        pendingPointerMove = null;
+        if (point !== null) handlePointerMove?.(point.x, point.y);
+      });
+    };
     listen(window, "keydown", ((event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -1186,15 +1244,16 @@ function desktopBrowserInspectionPageController(
         "crosshair",
         "important",
       );
-      listen(document, "pointermove", ((event: PointerEvent) => {
-        const target = document.elementFromPoint(event.clientX, event.clientY);
+      handlePointerMove = (x, y) => {
+        const target = document.elementFromPoint(x, y);
         if (target === null || target.hasAttribute(OVERLAY_ATTRIBUTE)) return;
         const rect = target.getBoundingClientRect();
         draw(
           rectValue(rect),
           `${target.localName}${target.id ? `#${target.id}` : ""}`,
         );
-      }) as EventListener);
+      };
+      listen(document, "pointermove", schedulePointerMove as EventListener);
       listen(document, "click", ((event: MouseEvent) => {
         const target = document.elementFromPoint(event.clientX, event.clientY);
         if (target === null || target.hasAttribute(OVERLAY_ATTRIBUTE)) return;
@@ -1227,9 +1286,9 @@ function desktopBrowserInspectionPageController(
       dragging = true;
       dragStart = { x: event.clientX, y: event.clientY };
     }) as EventListener);
-    listen(document, "pointermove", ((event: PointerEvent) => {
+    handlePointerMove = (x, y) => {
       if (input.kind === "auto" && (!dragging || dragStart === null)) {
-        const target = document.elementFromPoint(event.clientX, event.clientY);
+        const target = document.elementFromPoint(x, y);
         if (target === null || target.hasAttribute(OVERLAY_ATTRIBUTE)) return;
         const rect = target.getBoundingClientRect();
         draw(
@@ -1239,21 +1298,16 @@ function desktopBrowserInspectionPageController(
         return;
       }
       if (!dragging || dragStart === null) return;
-      const left = Math.max(0, Math.min(dragStart.x, event.clientX));
-      const top = Math.max(0, Math.min(dragStart.y, event.clientY));
-      const right = Math.min(
-        window.innerWidth,
-        Math.max(dragStart.x, event.clientX),
-      );
-      const bottom = Math.min(
-        window.innerHeight,
-        Math.max(dragStart.y, event.clientY),
-      );
+      const left = Math.max(0, Math.min(dragStart.x, x));
+      const top = Math.max(0, Math.min(dragStart.y, y));
+      const right = Math.min(window.innerWidth, Math.max(dragStart.x, x));
+      const bottom = Math.min(window.innerHeight, Math.max(dragStart.y, y));
       draw(
         { x: left, y: top, width: right - left, height: bottom - top },
         "Marked region",
       );
-    }) as EventListener);
+    };
+    listen(document, "pointermove", schedulePointerMove as EventListener);
     listen(document, "pointerup", ((event: PointerEvent) => {
       if (!dragging || dragStart === null || event.button !== 0) return;
       event.preventDefault();
