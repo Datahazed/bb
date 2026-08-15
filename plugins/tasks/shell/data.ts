@@ -79,6 +79,10 @@ export interface TasksQuery<T> {
   refresh: () => void;
 }
 
+interface TasksQueryOptions {
+  enabled?: boolean;
+}
+
 /**
  * Fetch-and-subscribe primitive: runs `fetcher` on mount and again whenever
  * one of `channels` fires or `deps` change. Stale responses (superseded by a
@@ -92,6 +96,7 @@ export function useTasksQuery<T>(
   fetcher: (rpc: TasksRpc) => Promise<T>,
   channels: readonly InvalidationChannel[],
   deps: readonly unknown[] = [],
+  options: TasksQueryOptions = {},
 ): TasksQuery<T> {
   const rpc = useTasksRpc();
   const { generation, beginGenerationWork, endGenerationWork } =
@@ -106,7 +111,9 @@ export function useTasksQuery<T>(
   const seqRef = useRef(0);
   const previousGenerationRef = useRef(generation);
   const depsKey = JSON.stringify(deps);
+  const enabled = options.enabled ?? true;
   const refresh = useCallback(() => {
+    if (!enabled) return Promise.resolve();
     const seq = ++seqRef.current;
     return fetcherRef.current(rpc).then(
       (data) => {
@@ -122,10 +129,15 @@ export function useTasksQuery<T>(
         }));
       },
     );
-  }, [rpc, depsKey]);
+  }, [rpc, depsKey, enabled]);
   useEffect(() => {
     const generationBumped = previousGenerationRef.current !== generation;
     previousGenerationRef.current = generation;
+    if (!enabled) {
+      seqRef.current += 1;
+      setState((current) => ({ ...current, isLoading: false }));
+      return;
+    }
     setState((current) => ({ ...current, isLoading: true }));
     if (generationBumped) beginGenerationWork();
     let settled = false;
@@ -138,36 +150,44 @@ export function useTasksQuery<T>(
     return () => {
       finish();
     };
-  }, [refresh, generation, beginGenerationWork, endGenerationWork]);
+  }, [refresh, generation, beginGenerationWork, endGenerationWork, enabled]);
   useInvalidation(channels, refresh);
   return { ...state, refresh };
 }
 
-export function useFolders() {
+export function useFolders(options?: TasksQueryOptions) {
   return useTasksQuery(
     async (rpc) => (await rpc.call("listFolders")).folders,
     ["projects:changed"],
+    [],
+    options,
   );
 }
 
-export function useProjects() {
+export function useProjects(options?: TasksQueryOptions) {
   return useTasksQuery(
     async (rpc) => (await rpc.call("listProjects", {})).projects,
     ["projects:changed"],
+    [],
+    options,
   );
 }
 
-export function usePresets() {
+export function usePresets(options?: TasksQueryOptions) {
   return useTasksQuery(
     async (rpc) => (await rpc.call("listPresets")).presets,
     ["projects:changed"],
+    [],
+    options,
   );
 }
 
-export function useSidebarSummary() {
+export function useSidebarSummary(options?: TasksQueryOptions) {
   return useTasksQuery(
     async (rpc) => (await rpc.call("sidebarSummary")).projects,
     ["tasks:changed", "projects:changed", "threads:changed"],
+    [],
+    options,
   );
 }
 
@@ -210,9 +230,11 @@ export function useMentionItems() {
 }
 
 /** Tasks with agents currently working, for the Active view count. */
-export function useActiveTasks() {
+export function useActiveTasks(options?: TasksQueryOptions) {
   return useTasksQuery(
     async (rpc) => listAllTasks(rpc, { activeOnly: true }),
     ["tasks:changed", "threads:changed"],
+    [],
+    options,
   );
 }

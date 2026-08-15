@@ -44,15 +44,20 @@ const NO_FOLDER = "__none__";
 const NEW_FOLDER = "__new__";
 
 export interface NewProjectDialogProps {
+  isVisible?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) {
+export function NewProjectDialog({
+  isVisible = true,
+  open,
+  onOpenChange,
+}: NewProjectDialogProps) {
   const rpc = useTasksRpc();
   const navigation = useTasksNavigation();
-  const projects = useProjects();
-  const folders = useFolders();
+  const projects = useProjects({ enabled: isVisible });
+  const folders = useFolders({ enabled: isVisible });
 
   const [name, setName] = useState("");
   const [prefix, setPrefix] = useState("");
@@ -71,6 +76,8 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
   const bbProjects = useTasksQuery(
     async (rpc) => (await rpc.call("listBbProjects")).bbProjects,
     [],
+    [],
+    { enabled: isVisible },
   );
   const bbProjectList = bbProjects.data ?? [];
 
@@ -159,7 +166,7 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open && isVisible} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-md"
         onKeyDown={(event) => {
@@ -179,6 +186,7 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
           <Field label="Name">
             <Input
               autoFocus
+              aria-label="Name"
               value={name}
               placeholder="e.g. Tasks Plugin"
               onChange={(event) => {
@@ -196,6 +204,7 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
             }
           >
             <Input
+              aria-label="Prefix"
               value={prefix}
               placeholder="TSK"
               aria-invalid={prefixError !== null}

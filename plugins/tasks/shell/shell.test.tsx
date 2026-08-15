@@ -872,4 +872,58 @@ describe("tasks app shell", () => {
       }),
     );
   });
+
+  it("retains hidden navigation and dialog state without hidden RPC work", async () => {
+    let rpcCalls = 0;
+    const count =
+      <T,>(value: T) =>
+      () => {
+        rpcCalls += 1;
+        return value;
+      };
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "all", params: null, isVisible: true },
+      {
+        rpc: seededRpc({
+          listBbProjects: count({ bbProjects: [] }),
+          listFolders: count({ folders: [folder] }),
+          listPresets: count({ presets: [] }),
+          listProjects: count({ projects: [project] }),
+          listTasks: count({ tasks: [] }),
+          sidebarSummary: count({ projects: [] }),
+        }),
+      },
+    );
+    await slot.findByText("Tasks Plugin");
+
+    const folderToggle = slot.getByRole("button", { name: "bb" });
+    fireEvent.click(folderToggle);
+    expect(folderToggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(slot.getByRole("button", { name: "New project" }));
+    const nameInput = await slot.findByRole("textbox", { name: "Name" });
+    fireEvent.change(nameInput, { target: { value: "Retained draft" } });
+    const beforeHide = rpcCalls;
+
+    slot.rerender(
+      <navigationView.component
+        subPath="all"
+        params={null}
+        isVisible={false}
+      />,
+    );
+    expect(slot.queryByRole("dialog", { name: "New project" })).toBeNull();
+    await slot.emitRealtime("projects:changed", { projectId: null });
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    await slot.behavior.setRealtimeConnectionState("connected");
+    expect(rpcCalls).toBe(beforeHide);
+
+    slot.rerender(
+      <navigationView.component subPath="all" params={null} isVisible />,
+    );
+    const restoredInput = await slot.findByRole("textbox", { name: "Name" });
+    expect((restoredInput as HTMLInputElement).value).toBe("Retained draft");
+    expect(folderToggle.getAttribute("aria-expanded")).toBe("false");
+    await waitFor(() => expect(rpcCalls).toBeGreaterThan(beforeHide));
+  });
 });

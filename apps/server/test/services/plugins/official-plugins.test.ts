@@ -116,6 +116,17 @@ describe("official plugin registry invariants", () => {
       ),
     ).toBe(true);
   });
+
+  it("requires the right-panel SDK before offering migrated navigation", async () => {
+    for (const name of ["docs", "tasks"]) {
+      const registration = listBundledPluginRegistrations().find(
+        (candidate) => candidate.name === name,
+      );
+      if (registration === undefined) throw new Error(`missing ${name}`);
+      const manifest = await readPluginManifest(registration.rootDir);
+      expect(manifest.bbPluginSdkRange, name).toBe(">=0.4.7");
+    }
+  });
 });
 
 describe("store-installed official plugins", () => {

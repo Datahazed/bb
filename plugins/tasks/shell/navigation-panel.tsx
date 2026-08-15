@@ -13,18 +13,20 @@ import { NewProjectDialog } from "../views/manage/index.js";
 import { useState } from "react";
 
 function TasksNavigationPanelContent({
+  isVisible,
   subPath,
   onNewProject,
 }: Pick<PluginNavPanelRightPanelViewProps, "subPath"> & {
+  isVisible: boolean;
   onNewProject: () => void;
 }) {
   const route = parseTasksRoute(subPath);
   const navigation = useTasksNavigation();
-  const folders = useFolders();
-  const projects = useProjects();
-  const summaries = useSidebarSummary();
-  const presets = usePresets();
-  const activeTasks = useActiveTasks();
+  const folders = useFolders({ enabled: isVisible });
+  const projects = useProjects({ enabled: isVisible });
+  const summaries = useSidebarSummary({ enabled: isVisible });
+  const presets = usePresets({ enabled: isVisible });
+  const activeTasks = useActiveTasks({ enabled: isVisible });
 
   return (
     <TasksSidebar
@@ -48,14 +50,17 @@ export function TasksNavigationPanel({
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   return (
     <TasksRefreshProvider>
-      {isVisible ? (
-        <TasksNavigationPanelContent
-          subPath={subPath}
-          onNewProject={() => setNewProjectOpen(true)}
-        />
-      ) : null}
+      <TasksNavigationPanelContent
+        isVisible={isVisible}
+        subPath={subPath}
+        onNewProject={() => setNewProjectOpen(true)}
+      />
       {newProjectOpen ? (
-        <NewProjectDialog open onOpenChange={setNewProjectOpen} />
+        <NewProjectDialog
+          open
+          isVisible={isVisible}
+          onOpenChange={setNewProjectOpen}
+        />
       ) : null}
     </TasksRefreshProvider>
   );
