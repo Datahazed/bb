@@ -1,10 +1,17 @@
-import { useContext, type KeyboardEvent, type MouseEvent } from "react";
+import {
+  useContext,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import {
   PROMPT_MENTION_PILL_CLASS,
   promptMentionTooltipLabel,
 } from "@/components/promptbox/mentions/prompt-mention-display";
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
+import { PromptMentionPreviewTooltip } from "@/components/promptbox/mentions/PromptMentionPreviewTooltip";
+import { PromptMentionInspector } from "@/components/promptbox/mentions/PromptMentionInspector";
 import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PromptMentionLinkContext } from "./prompt-mention-link";
@@ -35,6 +42,7 @@ export function PromptMentionPillNodeView({
   decorations,
 }: NodeViewProps) {
   const resolveLink = useContext(PromptMentionLinkContext);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const attrs = parsePromptEditorMentionAttrs(node.attrs);
   const fallbackSerializedText =
     typeof node.attrs.serializedText === "string"
@@ -58,9 +66,14 @@ export function PromptMentionPillNodeView({
   }
 
   const resource = attrs.resource;
-  const activate = resolveLink?.(resource) ?? null;
+  const inspectable =
+    resource.kind === "plugin" && resource.experimentalInspectability === true;
+  const activate = inspectable
+    ? () => setInspectorOpen(true)
+    : (resolveLink?.(resource) ?? null);
   const title = promptMentionTooltipLabel(resource);
   const activationLabel = activate ? `Open ${title}` : undefined;
+  const preview = resource.kind === "plugin" ? resource.preview : undefined;
   const handleClick = activate
     ? (event: MouseEvent<HTMLElement>) => {
         // Plain primary click only — leave modifier clicks and drag-selection
@@ -95,27 +108,40 @@ export function PromptMentionPillNodeView({
     : undefined;
 
   return (
-    <NodeViewWrapper
-      as="span"
-      className={cn(
-        EDITOR_MENTION_PILL_CLASS,
-        selectedClass,
-        activate && "cursor-pointer",
-      )}
-      {...promptMentionClipboardDataAttributes(attrs)}
-      role={activate ? "button" : undefined}
-      tabIndex={activate ? 0 : undefined}
-      aria-label={activationLabel}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
-    >
-      <PromptMentionIcon
-        resource={resource}
-        className="-ml-px size-4 shrink-0 self-center"
-      />
-      <span className={cn("truncate", activate && "group-hover:underline")}>
-        {resource.label}
-      </span>
-    </NodeViewWrapper>
+    <>
+      <PromptMentionPreviewTooltip content={preview}>
+        <NodeViewWrapper
+          as="span"
+          className={cn(
+            EDITOR_MENTION_PILL_CLASS,
+            selectedClass,
+            activate && "cursor-pointer",
+          )}
+          {...promptMentionClipboardDataAttributes(attrs)}
+          role={activate ? "button" : undefined}
+          tabIndex={activate ? 0 : undefined}
+          aria-label={activationLabel}
+          onClick={handleClick}
+          onKeyDown={handleKeyDown}
+        >
+          <PromptMentionIcon
+            resource={resource}
+            className="-ml-px size-4 shrink-0 self-center"
+          />
+          <span className={cn("truncate", activate && "group-hover:underline")}>
+            {resource.label}
+          </span>
+        </NodeViewWrapper>
+      </PromptMentionPreviewTooltip>
+      {inspectable ? (
+        <PromptMentionInspector
+          open={inspectorOpen}
+          onOpenChange={setInspectorOpen}
+          pluginId={resource.pluginId}
+          itemId={resource.itemId}
+          label={resource.label}
+        />
+      ) : null}
+    </>
   );
 }

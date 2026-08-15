@@ -119,8 +119,81 @@ describe("desktop Browser page controller", () => {
       kind: "region",
       rect: { x: 20, y: 30, width: 160, height: 130 },
       element: null,
-      region: { elements: expect.any(Array) },
+      region: {
+        commonAncestor: expect.any(Object),
+        targets: expect.any(Array),
+        groups: expect.any(Array),
+        omittedTargetCount: 0,
+        omittedGroupCount: 0,
+      },
     });
+  });
+
+  it("captures the exact common ancestor and deepest targets in document order", async () => {
+    document.body.innerHTML = `
+      <section id="actions">
+        <article><button id="first">First</button></article>
+        <article><button id="second">Second</button></article>
+      </section>`;
+    const section = document.querySelector("section");
+    const articles = [...document.querySelectorAll("article")];
+    const buttons = [...document.querySelectorAll("button")];
+    expect(section).not.toBeNull();
+    if (section === null) throw new Error("Expected section fixture");
+    for (const element of [section, ...articles, ...buttons]) {
+      Object.defineProperty(element, "getBoundingClientRect", {
+        configurable: true,
+        value: () => new DOMRect(10, 10, 180, 120),
+      });
+    }
+    Object.defineProperty(document, "elementsFromPoint", {
+      configurable: true,
+      value: vi.fn(() => [
+        buttons[1],
+        articles[1],
+        buttons[0],
+        articles[0],
+        section,
+      ]),
+    });
+    const resultPromise = window.eval(
+      createDesktopBrowserInspectionControllerSource({
+        requestId: "ordered-region-test",
+        kind: "region",
+      }),
+    ) as Promise<unknown>;
+
+    document.dispatchEvent(
+      new MouseEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 10,
+        clientY: 10,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("pointerup", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 200,
+        clientY: 150,
+      }),
+    );
+
+    await expect(resultPromise).resolves.toMatchObject({
+      kind: "region",
+      region: {
+        commonAncestor: {
+          kind: "element",
+          absoluteLocator: { selectors: ["section#actions"] },
+        },
+        targets: [{ text: "First" }, { text: "Second" }],
+        omittedTargetCount: 0,
+      },
+    });
+    expect(document.elementsFromPoint).not.toHaveBeenCalled();
   });
 
   it("redacts form state, editable content, srcdoc, and sensitive data attributes", async () => {

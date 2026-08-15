@@ -542,6 +542,18 @@ export interface PluginMentionItem {
   title: string;
   subtitle?: string;
   icon?: string;
+  /** Optional human-readable content shown when the inserted pill is previewed. */
+  preview?: string;
+}
+
+/** Provider-owned detail shown when an inspectable mention is activated. */
+export interface ExperimentalPluginMentionInspection {
+  title: string;
+  description?: string;
+  /** Optional visual preview. It is presentation-only and is never sent. */
+  preview?: { kind: "image"; dataUrl: string; alt: string };
+  /** Exact, human-readable metadata represented by this mention. */
+  metadata: string;
 }
 
 export interface PluginMentionProviderRegistration {
@@ -571,6 +583,12 @@ export interface PluginMentionProviderRegistration {
    * the send with a visible error.
    */
   resolve(itemId: string): { context: string } | Promise<{ context: string }>;
+  /** Optional host-rendered detail; independent from send-time `resolve`. */
+  experimental_inspect?(
+    itemId: string,
+  ):
+    | ExperimentalPluginMentionInspection
+    | Promise<ExperimentalPluginMentionInspection>;
 }
 
 export interface PluginUi {

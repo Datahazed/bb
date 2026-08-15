@@ -259,6 +259,10 @@ function structuredMention(
           ? resource.itemId
           : resource.itemId.slice(separator + 1),
       label: resource.label,
+      ...(resource.preview === undefined ? {} : { preview: resource.preview }),
+      ...(resource.experimentalInspectability === true
+        ? { experimental_inspectable: true }
+        : {}),
     };
   }
 

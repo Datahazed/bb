@@ -144,6 +144,8 @@ function ComposerProbe() {
             provider: "notes",
             id: "ideas",
             label: "Ideas",
+            preview: "Ideas selected from the project notebook.",
+            experimental_inspectable: true,
           })
         }
       >
@@ -1079,7 +1081,13 @@ describe("renderSlot", () => {
     expect(slot.composer.text).toBe("draft\n> picked text\nIdeas ");
     expect(slot.composer.quotes).toEqual(["picked text"]);
     expect(slot.composer.mentions).toEqual([
-      { provider: "notes", id: "ideas", label: "Ideas" },
+      {
+        provider: "notes",
+        id: "ideas",
+        label: "Ideas",
+        preview: "Ideas selected from the project notebook.",
+        experimental_inspectable: true,
+      },
     ]);
     expect(slot.composer.focusCount).toBe(3);
   });

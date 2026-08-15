@@ -301,10 +301,30 @@ describe("useComposer", () => {
                 provider: "notes",
                 id: "work/ideas.md",
                 label: "ideas.md",
+                preview: "The complete ideas note preview.",
+                experimental_inspectable: true,
               })
             }
           >
             {label}-mention
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              composer.updateText((current) => current.replace("ideas.md ", ""))
+            }
+          >
+            {label}-remove-first-mention
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              composer.updateText(
+                (current) => `${current}Keep this action prominent.\n`,
+              )
+            }
+          >
+            {label}-comment
           </button>
           <button
             type="button"
@@ -1249,6 +1269,8 @@ describe("useComposer", () => {
           icon: null,
           itemId: "notes:work/ideas.md",
           label: "ideas.md",
+          preview: "The complete ideas note preview.",
+          experimentalInspectability: true,
         },
       },
     ]);
@@ -1258,6 +1280,43 @@ describe("useComposer", () => {
     expect(screen.getByTestId("draft-text").textContent).toBe(
       "ideas.md ideas.md ",
     );
+
+    fireEvent.click(screen.getByText("n-remove-first-mention"));
+    expect(screen.getByTestId("draft-text").textContent).toBe("ideas.md ");
+    const remaining = JSON.parse(
+      screen.getByTestId("draft-mentions").textContent ?? "[]",
+    ) as Array<{ start: number; end: number; resource: { itemId: string } }>;
+    expect(remaining).toEqual([
+      expect.objectContaining({
+        start: 0,
+        end: 8,
+        resource: expect.objectContaining({ itemId: "notes:work/ideas.md" }),
+      }),
+    ]);
+  });
+
+  it("removes one inserted mention without removing its comment or another reference", () => {
+    registerComposerProbe("refs");
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <ComposerCustomizationMount />
+        <NewThreadDraftViewer />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByText("refs-mention"));
+    fireEvent.click(screen.getByText("refs-comment"));
+    fireEvent.click(screen.getByText("refs-mention"));
+    expect(
+      JSON.parse(screen.getByTestId("draft-mentions").textContent ?? "[]"),
+    ).toHaveLength(2);
+
+    fireEvent.click(screen.getByText("refs-remove-first-mention"));
+    expect(screen.getByTestId("draft-text").textContent).toBe(
+      "Keep this action prominent.\nideas.md ",
+    );
+    expect(
+      JSON.parse(screen.getByTestId("draft-mentions").textContent ?? "[]"),
+    ).toMatchObject([{ start: 28, end: 36 }]);
   });
 
   it("rejects provider ids containing ':' without touching the draft", () => {

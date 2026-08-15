@@ -161,6 +161,66 @@ const elementPageResult = {
   region: null,
 } as const;
 
+const regionPageResult = {
+  version: 1,
+  kind: "region",
+  page: {
+    url: "https://example.com/members",
+    title: "Members",
+    viewport: { width: 800, height: 600 },
+    scroll: { x: 0, y: 100 },
+  },
+  rect: { x: 20, y: 30, width: 400, height: 140 },
+  deviceScaleFactor: 2,
+  element: null,
+  region: {
+    commonAncestor: {
+      kind: "element",
+      absoluteLocator: { selectors: ["table#members > tbody"] },
+    },
+    targets: [
+      {
+        absoluteLocator: {
+          selectors: ["table#members > tbody > tr:nth-of-type(2) > td"],
+        },
+        relativeLocator: { selectors: ["tr:nth-of-type(2) > td"] },
+        text: "Ben",
+        rect: { x: 20, y: 30, width: 180, height: 40 },
+        accessibility: {
+          source: "dom-hint",
+          roleHint: null,
+          nameHint: null,
+          attributes: { "aria-current": "true" },
+        },
+        react: {
+          componentStack: ["MemberCell", "MembersTable"],
+          source: {
+            fileName: "/src/MembersTable.tsx",
+            lineNumber: 24,
+            columnNumber: 9,
+          },
+        },
+      },
+    ],
+    groups: [
+      {
+        absoluteLocator: {
+          selectors: [
+            "table#members > tbody > tr:nth-of-type(2), table#members > tbody > tr:nth-of-type(3)",
+          ],
+        },
+        relativeLocator: {
+          selectors: ["tr:nth-of-type(2), tr:nth-of-type(3)"],
+        },
+        count: 2,
+        rect: { x: 20, y: 30, width: 400, height: 90 },
+      },
+    ],
+    omittedTargetCount: 0,
+    omittedGroupCount: 0,
+  },
+} as const;
+
 describe("experimental desktop browser inspection schemas", () => {
   it("keeps inspection on a separate strict identity-scoped request", () => {
     const request = {
@@ -202,6 +262,69 @@ describe("experimental desktop browser inspection schemas", () => {
         element: {
           ...elementPageResult.element,
           dom: "x".repeat(BB_DESKTOP_BROWSER_INSPECTION_MAX_DOM_LENGTH + 1),
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts exact region locators and rejects the removed sampled-elements shape", () => {
+    expect(
+      bbDesktopBrowserInspectionPageResultSchema.parse(regionPageResult),
+    ).toEqual(regionPageResult);
+    expect(
+      bbDesktopBrowserInspectionPageResultSchema.safeParse({
+        ...regionPageResult,
+        region: { elements: [] },
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopBrowserInspectionPageResultSchema.safeParse({
+        ...regionPageResult,
+        region: {
+          ...regionPageResult.region,
+          targets: [
+            {
+              ...regionPageResult.region.targets[0],
+              absoluteLocator: { selectors: [] },
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopBrowserInspectionPageResultSchema.safeParse({
+        ...regionPageResult,
+        region: {
+          ...regionPageResult.region,
+          groups: [{ ...regionPageResult.region.groups[0], count: 0 }],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopBrowserInspectionPageResultSchema.safeParse({
+        ...regionPageResult,
+        region: {
+          ...regionPageResult.region,
+          commonAncestor: null,
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopBrowserInspectionPageResultSchema.safeParse({
+        ...regionPageResult,
+        region: {
+          ...regionPageResult.region,
+          targets: [
+            {
+              ...regionPageResult.region.targets[0],
+              accessibility: {
+                source: "dom-hint",
+                roleHint: null,
+                nameHint: null,
+                attributes: {},
+              },
+            },
+          ],
         },
       }).success,
     ).toBe(false);

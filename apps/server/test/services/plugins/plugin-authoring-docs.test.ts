@@ -6,6 +6,7 @@ import {
   type BbPluginApi,
   type PluginAppBuilder,
   type PluginAppSlots,
+  type PluginBrowserActionProps,
   type PluginContentScriptContext,
   type PluginContentScriptRegistration,
   type PluginFileOpenerProps,
@@ -160,6 +161,7 @@ type SlotPropsByName = {
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
+  experimental_browserAction: PluginBrowserActionProps;
   fileOpener: PluginFileOpenerProps;
   messageDirective: PluginMessageDirectiveProps;
   messageAction: PluginMessageActionContext;
@@ -233,6 +235,16 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "threadId",
     "projectId",
     "isCompactViewport",
+  ],
+  experimental_browserAction: [
+    "tabId",
+    "threadId",
+    "projectId",
+    "url",
+    "experimental_inspectionAvailable",
+    "experimental_inspectPage",
+    "experimental_overlayRoot",
+    "experimental_setOverlayOpen",
   ],
   fileOpener: ["path", "source"],
   messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],

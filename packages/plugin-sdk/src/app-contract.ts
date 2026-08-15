@@ -174,6 +174,15 @@ export interface ExperimentalBrowserInspectionElementDescriptor {
   rect: ExperimentalBrowserInspectionRect;
 }
 
+/**
+ * A locator starts in the document (absolute) or exact region common ancestor
+ * (relative). Each selector except the last must resolve to one open shadow
+ * host; resolution continues in that host's shadow root.
+ */
+export interface ExperimentalBrowserInspectionLocator {
+  selectors: readonly string[];
+}
+
 export interface ExperimentalBrowserInspectionStyles {
   display?: string;
   position?: string;
@@ -223,6 +232,34 @@ export interface ExperimentalBrowserInspectionElementContext extends Omit<
   reactComponentStack: readonly string[] | null;
 }
 
+export interface ExperimentalBrowserInspectionRegionTarget {
+  absoluteLocator: ExperimentalBrowserInspectionLocator;
+  relativeLocator: ExperimentalBrowserInspectionLocator;
+  text: string;
+  rect: ExperimentalBrowserInspectionRect;
+  accessibility?: {
+    source: "dom-hint";
+    roleHint: string | null;
+    nameHint: string | null;
+    attributes: ExperimentalBrowserInspectionAriaAttributes;
+  };
+  react?: {
+    componentStack: readonly string[];
+    source?: {
+      fileName: string;
+      lineNumber: number;
+      columnNumber: number | null;
+    };
+  };
+}
+
+export interface ExperimentalBrowserInspectionRegionGroup {
+  absoluteLocator: ExperimentalBrowserInspectionLocator;
+  relativeLocator: ExperimentalBrowserInspectionLocator;
+  count: number;
+  rect: ExperimentalBrowserInspectionRect;
+}
+
 export interface ExperimentalBrowserInspectionResult {
   version: 1;
   kind: "element" | "region";
@@ -235,7 +272,23 @@ export interface ExperimentalBrowserInspectionResult {
   rect: ExperimentalBrowserInspectionRect;
   element: ExperimentalBrowserInspectionElementContext | null;
   region: {
-    elements: readonly ExperimentalBrowserInspectionElementDescriptor[];
+    commonAncestor: {
+      /**
+       * `element` and `shadow-root` are true DOM LCAs. For a shadow root,
+       * `absoluteLocator` resolves its host and relative locators start in the
+       * host's open shadow root. `composed-element` is explicit when selected
+       * targets cross DOM roots and therefore have no true DOM LCA. It is the
+       * nearest composed-tree element from which every relative locator can be
+       * resolved, widening across a slot boundary when CSS cannot address an
+       * assigned light-DOM node from inside the shadow tree.
+       */
+      kind: "element" | "shadow-root" | "composed-element";
+      absoluteLocator: ExperimentalBrowserInspectionLocator;
+    } | null;
+    targets: readonly ExperimentalBrowserInspectionRegionTarget[];
+    groups: readonly ExperimentalBrowserInspectionRegionGroup[];
+    omittedTargetCount: number;
+    omittedGroupCount: number;
   } | null;
   screenshot: {
     dataUrl: string;
@@ -1136,6 +1189,9 @@ export interface ComposerStructuredDraft {
     provider: string;
     id: string;
     label: string;
+    /** Human-readable preview carried by a plugin mention, when provided. */
+    preview?: string;
+    experimental_inspectable?: boolean;
   }[];
 }
 
@@ -1166,6 +1222,10 @@ export interface PluginComposerMention {
   id: string;
   /** Pill text shown in the composer. */
   label: string;
+  /** Optional human-readable content shown when the pill is hovered or focused. */
+  preview?: string;
+  /** Activate this mention's optional provider inspector. Experimental. */
+  experimental_inspectable?: boolean;
 }
 
 /** A project attachment already uploaded through a plugin backend. */

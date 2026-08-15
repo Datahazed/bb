@@ -5,7 +5,7 @@
 // Confused by the API, or need a symbol that isn't here? Clone the BB repo
 // and read the real source: https://github.com/get-bb/bb
 
-import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolExperimentalStatusLabels, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginInteractionRequest } from '@bb/plugin-sdk';
+import { BbPluginApi, PluginSettingValue, PluginSharedPortTunnelIdentity, PluginAgentToolExperimentalStatusLabels, PluginAgentToolContext, PluginAgentToolResult, PluginCliCommandInfo, PluginCliContext, PluginCliResult, PluginHttpAuthMode, PluginHttpHandler, PluginMentionTrigger, PluginMentionSearchContext, PluginMentionItem, PluginMentionProviderRegistration, JsonValue, PluginCliExecutionResult, PluginThreadEventName, PluginThreadEventPayloads, PluginAgentConfigurationContext, PluginSettingDescriptors, PluginAgentConfiguration, PluginInteractionRequest } from '@bb/plugin-sdk';
 
 type BbSdk = BbPluginApi["sdk"];
 /**
@@ -131,6 +131,7 @@ interface FakeMentionProviderRecord {
     } | Promise<{
         context: string;
     }>;
+    experimentalInspect?: PluginMentionProviderRegistration["experimental_inspect"];
 }
 interface FakeRealtimeSignal {
     channel: string;

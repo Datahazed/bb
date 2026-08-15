@@ -32,6 +32,7 @@ import type {
   PluginKvStorage,
   PluginLogger,
   PluginMentionItem,
+  PluginMentionProviderRegistration,
   PluginMentionSearchContext,
   PluginMentionTrigger,
   PluginRealtime,
@@ -283,7 +284,6 @@ export interface FakeAgentToolRecord {
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
 
-
 export interface FakeMentionProviderRecord {
   id: string;
   label: string;
@@ -294,6 +294,7 @@ export interface FakeMentionProviderRecord {
   resolve: (
     itemId: string,
   ) => { context: string } | Promise<{ context: string }>;
+  experimentalInspect?: PluginMentionProviderRegistration["experimental_inspect"];
 }
 
 export interface FakeRealtimeSignal {
@@ -1637,6 +1638,11 @@ function createFakePluginHostInternal(
         triggers: normalizeMentionProviderTriggers(id, provider.triggers),
         search: provider.search.bind(provider),
         resolve: provider.resolve.bind(provider),
+        ...(provider.experimental_inspect === undefined
+          ? {}
+          : {
+              experimentalInspect: provider.experimental_inspect.bind(provider),
+            }),
       });
     },
   };

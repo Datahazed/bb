@@ -69,6 +69,9 @@ export type PromptMentionSuggestion =
       subtitle: string | null;
       /** Named shared-UI icon hint supplied by the plugin item. */
       icon: string | null;
+      /** Optional human-readable content shown from the inserted pill. */
+      preview?: string | null;
+      experimentalInspectability?: boolean;
       replacement: string;
     };
 

@@ -125,6 +125,29 @@ describe("prompt mention command triggers", () => {
     ).toBe(false);
   });
 
+  it("preserves an optional plugin mention preview", () => {
+    const resource = {
+      kind: "plugin",
+      pluginId: "browser-context",
+      itemId: "capture:invite-member",
+      label: "Invite member",
+      preview: "Target: button.invite\nComment: Keep prominent",
+    };
+
+    expect(promptMentionResourceSchema.parse(resource)).toEqual(resource);
+  });
+
+  it("preserves optional experimental plugin mention inspectability", () => {
+    const resource = {
+      kind: "plugin",
+      pluginId: "browser-context",
+      itemId: "captures:stable-id",
+      label: "Invite member",
+      experimentalInspectability: true as const,
+    };
+    expect(promptMentionResourceSchema.parse(resource)).toEqual(resource);
+  });
+
   it("normalizes persisted pre-section mention resources", () => {
     expect(
       promptMentionResourceSchema.parse({

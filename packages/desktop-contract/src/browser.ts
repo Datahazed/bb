@@ -323,6 +323,56 @@ const bbDesktopBrowserInspectionElementDescriptorSchema = z
   })
   .strict();
 
+export const bbDesktopBrowserInspectionLocatorSchema = z
+  .object({
+    selectors: z
+      .array(
+        z
+          .string()
+          .min(1)
+          .max(BB_DESKTOP_BROWSER_INSPECTION_MAX_SELECTOR_LENGTH),
+      )
+      .min(1)
+      .max(8),
+  })
+  .strict();
+
+const bbDesktopBrowserInspectionAccessibilityHintSchema = z
+  .object({
+    source: z.literal("dom-hint"),
+    roleHint: z.string().max(256).nullable(),
+    nameHint: z.string().max(512).nullable(),
+    attributes: bbDesktopBrowserInspectionAriaAttributesSchema,
+  })
+  .strict();
+
+const bbDesktopBrowserInspectionRegionAccessibilityHintSchema =
+  bbDesktopBrowserInspectionAccessibilityHintSchema.refine(
+    (value) =>
+      value.roleHint !== null ||
+      value.nameHint !== null ||
+      Object.keys(value.attributes).length > 0,
+    "Region accessibility hints must contain target-specific signal",
+  );
+
+const bbDesktopBrowserInspectionReactHintSchema = z
+  .object({
+    componentStack: z.array(z.string().min(1).max(256)).max(20),
+    source: z
+      .object({
+        fileName: z.string().min(1).max(1_024),
+        lineNumber: z.number().int().positive().max(10_000_000),
+        columnNumber: z.number().int().positive().max(10_000_000).nullable(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.componentStack.length > 0 || value.source !== undefined,
+    "Region React hints must contain target-specific signal",
+  );
+
 const bbDesktopBrowserInspectionElementContextSchema =
   bbDesktopBrowserInspectionElementDescriptorSchema
     .omit({ text: true })
@@ -330,14 +380,7 @@ const bbDesktopBrowserInspectionElementContextSchema =
       dom: z.string().max(BB_DESKTOP_BROWSER_INSPECTION_MAX_DOM_LENGTH),
       text: z.string().max(BB_DESKTOP_BROWSER_INSPECTION_MAX_TEXT_LENGTH),
       styles: bbDesktopBrowserInspectionStylesSchema,
-      accessibility: z
-        .object({
-          source: z.literal("dom-hint"),
-          roleHint: z.string().max(256).nullable(),
-          nameHint: z.string().max(512).nullable(),
-          attributes: bbDesktopBrowserInspectionAriaAttributesSchema,
-        })
-        .strict(),
+      accessibility: bbDesktopBrowserInspectionAccessibilityHintSchema,
       reactComponentStack: z
         .array(z.string().min(1).max(256))
         .max(20)
@@ -345,11 +388,40 @@ const bbDesktopBrowserInspectionElementContextSchema =
     })
     .strict();
 
+const bbDesktopBrowserInspectionRegionTargetSchema = z
+  .object({
+    absoluteLocator: bbDesktopBrowserInspectionLocatorSchema,
+    relativeLocator: bbDesktopBrowserInspectionLocatorSchema,
+    text: z.string().max(240),
+    rect: bbDesktopBrowserInspectionRectSchema,
+    accessibility:
+      bbDesktopBrowserInspectionRegionAccessibilityHintSchema.optional(),
+    react: bbDesktopBrowserInspectionReactHintSchema.optional(),
+  })
+  .strict();
+
+const bbDesktopBrowserInspectionRegionGroupSchema = z
+  .object({
+    absoluteLocator: bbDesktopBrowserInspectionLocatorSchema,
+    relativeLocator: bbDesktopBrowserInspectionLocatorSchema,
+    count: z.number().int().positive().max(1_000_000),
+    rect: bbDesktopBrowserInspectionRectSchema,
+  })
+  .strict();
+
 const bbDesktopBrowserInspectionRegionContextSchema = z
   .object({
-    elements: z
-      .array(bbDesktopBrowserInspectionElementDescriptorSchema)
-      .max(20),
+    commonAncestor: z
+      .object({
+        kind: z.enum(["element", "shadow-root", "composed-element"]),
+        absoluteLocator: bbDesktopBrowserInspectionLocatorSchema,
+      })
+      .strict()
+      .nullable(),
+    targets: z.array(bbDesktopBrowserInspectionRegionTargetSchema).max(64),
+    groups: z.array(bbDesktopBrowserInspectionRegionGroupSchema).max(24),
+    omittedTargetCount: z.number().int().nonnegative().max(10_000_000),
+    omittedGroupCount: z.number().int().nonnegative().max(10_000_000),
   })
   .strict();
 
@@ -377,6 +449,21 @@ export const bbDesktopBrowserInspectionPageResultSchema =
         context.addIssue({
           code: "custom",
           message: "Inspection result does not match its capture kind",
+        });
+      }
+      if (
+        value.region !== null &&
+        value.region.commonAncestor === null &&
+        (value.region.targets.length > 0 ||
+          value.region.groups.length > 0 ||
+          value.region.omittedTargetCount > 0 ||
+          value.region.omittedGroupCount > 0)
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["region", "commonAncestor"],
+          message:
+            "Only an empty geometric region may omit its common ancestor",
         });
       }
       if (
