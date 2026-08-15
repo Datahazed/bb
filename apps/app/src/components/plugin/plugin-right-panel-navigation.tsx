@@ -6,7 +6,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import type { BbNavigate } from "@bb/plugin-sdk";
+import type { BbNavigate } from "@get-bb/plugin-sdk";
 
 export type PluginRightPanelOpenHandler = (
   request: Parameters<BbNavigate["experimental_openRightPanel"]>[0],

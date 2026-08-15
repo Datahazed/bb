@@ -16,7 +16,7 @@ import { atomFamily } from "jotai-family";
 import type {
   BbNavigate,
   PluginNavPanelRightPanelTerminalTarget,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import { BB_DESKTOP_BROWSER_MAX_URL_LENGTH } from "@bb/desktop-contract";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
