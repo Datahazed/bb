@@ -162,6 +162,7 @@ export interface TasksSidebarProps {
   presets: Preset[] | undefined;
   activeTasks: Task[] | undefined;
   isLoading: boolean;
+  isVisible: boolean;
   onNavigate: (route: TasksRoute) => void;
   onNewProject: () => void;
 }
@@ -174,6 +175,7 @@ export function TasksSidebar({
   presets,
   activeTasks,
   isLoading,
+  isVisible,
   onNavigate,
   onNewProject,
 }: TasksSidebarProps) {
@@ -369,6 +371,7 @@ export function TasksSidebar({
         <PresetDialog
           key={presetDialog.key}
           open
+          isVisible={isVisible}
           onOpenChange={(open) => {
             if (!open) setPresetDialog(null);
           }}

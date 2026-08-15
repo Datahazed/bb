@@ -37,6 +37,7 @@ function TasksNavigationPanelContent({
       presets={presets.data}
       activeTasks={activeTasks.data}
       isLoading={projects.isLoading || summaries.isLoading}
+      isVisible={isVisible}
       onNavigate={navigation.go}
       onNewProject={onNewProject}
     />

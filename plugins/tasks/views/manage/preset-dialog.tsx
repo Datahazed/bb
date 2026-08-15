@@ -177,11 +177,14 @@ export async function savePresetDraft(
 
 export function PresetDialog({
   open,
+  isVisible = true,
   onOpenChange,
   editing,
   onSave,
 }: {
   open: boolean;
+  /** Whether the owning panel is currently presented by the host. */
+  isVisible?: boolean;
   onOpenChange: (open: boolean) => void;
   /** Preset being edited, or null to create. */
   editing: Preset | null;
@@ -200,11 +203,15 @@ export function PresetDialog({
   const providersQuery = useTasksQuery(
     async (rpc) => (await rpc.call("listProviders", {})).providers,
     [],
+    [],
+    { enabled: isVisible },
   );
   const providers = providersQuery.data;
   const machinesQuery = useTasksQuery(
     async (rpc) => (await rpc.call("listMachines", {})).machines,
     [],
+    [],
+    { enabled: isVisible },
   );
   const machines = machinesQuery.data;
 
@@ -239,6 +246,7 @@ export function PresetDialog({
           }),
     [],
     [providerForModels],
+    { enabled: isVisible },
   );
   const models = modelsQuery.data?.models;
   const providerPermissionModes =
@@ -302,7 +310,7 @@ export function PresetDialog({
     !submitting;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open && isVisible} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{editing ? "Edit preset" : "New preset"}</DialogTitle>

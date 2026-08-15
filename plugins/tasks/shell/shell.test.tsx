@@ -926,4 +926,90 @@ describe("tasks app shell", () => {
     expect(folderToggle.getAttribute("aria-expanded")).toBe("false");
     await waitFor(() => expect(rpcCalls).toBeGreaterThan(beforeHide));
   });
+
+  it("retains a hidden preset draft without hidden provider RPC work", async () => {
+    let rpcCalls = 0;
+    const count =
+      <T,>(value: T) =>
+      () => {
+        rpcCalls += 1;
+        return value;
+      };
+    const preset = {
+      id: "01HZZZZZZZZZZZZZZZZZZZZZE1",
+      name: "Default agent",
+      providerId: "claude-code",
+      modelId: "claude-sonnet-5",
+      reasoningLevel: "medium",
+      permissionMode: "accept-edits",
+      environmentKind: "project-default",
+      baseBranch: null,
+      machineId: null,
+      instructions: "",
+      builtin: false,
+      createdAt: "2026-07-15T00:00:00.000Z",
+    };
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "all", params: null, isVisible: true },
+      {
+        rpc: seededRpc({
+          listFolders: () => ({ folders: [folder] }),
+          listPresets: () => ({ presets: [preset] }),
+          listProjects: () => ({ projects: [project] }),
+          listTasks: () => ({ tasks: [] }),
+          sidebarSummary: () => ({ projects: [] }),
+          listProviders: count({
+            providers: [
+              {
+                id: "claude-code",
+                name: "Claude Code",
+                supportedPermissionModes: ["accept-edits", "auto", "full"],
+              },
+            ],
+          }),
+          listProviderModels: count({
+            models: [
+              { id: "claude-sonnet-5", name: "Sonnet", isDefault: true },
+            ],
+            reasoningLevels: ["low", "medium", "high"],
+          }),
+          listMachines: count({ machines: [] }),
+        }),
+      },
+    );
+    const presetRow = (await slot.findByText("Default agent")).closest(
+      "button",
+    );
+    expect(presetRow).not.toBeNull();
+    fireEvent.click(presetRow!);
+    const nameInput = (await slot.findByPlaceholderText(
+      "e.g. Sonnet · high",
+    )) as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: "Retained preset draft" } });
+    await waitFor(() => expect(rpcCalls).toBe(3));
+    const beforeHide = rpcCalls;
+
+    slot.rerender(
+      <navigationView.component
+        subPath="all"
+        params={null}
+        isVisible={false}
+      />,
+    );
+    expect(slot.queryByRole("dialog", { name: "Edit preset" })).toBeNull();
+    await slot.emitRealtime("projects:changed", { projectId: null });
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    await slot.behavior.setRealtimeConnectionState("connected");
+    expect(rpcCalls).toBe(beforeHide);
+
+    slot.rerender(
+      <navigationView.component subPath="all" params={null} isVisible />,
+    );
+    const restoredInput = (await slot.findByPlaceholderText(
+      "e.g. Sonnet · high",
+    )) as HTMLInputElement;
+    expect(restoredInput.value).toBe("Retained preset draft");
+    await waitFor(() => expect(rpcCalls).toBeGreaterThan(beforeHide));
+  });
 });
