@@ -855,7 +855,7 @@ function desktopBrowserInspectionPageController(
     }
     return hasDirectText(element) ? 1 : 0;
   };
-  const collectMeaningfulElements = (): {
+  const collectMeaningfulElements = (deadlineAt: number): {
     elements: Element[];
     order: Map<Element, number>;
     truncated: boolean;
@@ -877,7 +877,6 @@ function desktopBrowserInspectionPageController(
       return [...root.children];
     };
     const visited = new Set<Element>();
-    const startedAt = performance.now();
     const stack = composedChildren(document)
       .reverse()
       .map((element) => ({ element, depth: 1 }));
@@ -887,7 +886,7 @@ function desktopBrowserInspectionPageController(
       if (
         scannedNodes >= MAX_REGION_SCAN_NODES ||
         elements.length >= MAX_REGION_CANDIDATES ||
-        performance.now() - startedAt >= MAX_REGION_SCAN_MS
+        performance.now() >= deadlineAt
       ) {
         truncated = true;
         break;
@@ -1022,13 +1021,25 @@ function desktopBrowserInspectionPageController(
     return groups;
   };
   const regionValue = (selection: DOMRect) => {
-    const collected = collectMeaningfulElements();
-    const intersecting = collected.elements.filter((element) =>
-      intersects(element, selection),
-    );
+    const deadlineAt = performance.now() + MAX_REGION_SCAN_MS;
+    const collected = collectMeaningfulElements(deadlineAt);
+    let scanTruncated = collected.truncated;
+    const withinDeadline = () => performance.now() < deadlineAt;
+    const intersecting: Element[] = [];
+    for (const element of collected.elements) {
+      if (!withinDeadline()) {
+        scanTruncated = true;
+        break;
+      }
+      if (intersects(element, selection)) intersecting.push(element);
+    }
     const matched = new Set(intersecting);
     const suppressed = new Set<Element>();
     for (const element of intersecting) {
+      if (!withinDeadline()) {
+        scanTruncated = true;
+        break;
+      }
       let parent = composedParent(element);
       while (parent !== null) {
         if (matched.has(parent)) {
@@ -1062,7 +1073,7 @@ function desktopBrowserInspectionPageController(
         groups: [] as RegionGroup[],
         omittedTargetCount: 0,
         omittedGroupCount: 0,
-        scanTruncated: collected.truncated,
+        scanTruncated,
       };
     }
     const commonAncestorLocator = locatorFrom(
@@ -1074,33 +1085,35 @@ function desktopBrowserInspectionPageController(
     if (commonAncestorLocator === null) {
       throw new Error("Unable to locate the selected region's common ancestor");
     }
-    const allTargets = targetElements
-      .slice(0, MAX_REGION_TARGETS)
-      .flatMap((element): RegionTarget[] => {
-        const absoluteLocator = locatorFrom(element, document);
-        const relativeLocator = locatorFrom(element, commonAncestor);
-        if (absoluteLocator === null || relativeLocator === null) return [];
-        const clone = sanitizedClone(element);
-        const targetAccessibility = accessibilityHint(element);
-        const targetReact = reactHint(element);
-        return [
-          {
-            absoluteLocator,
-            relativeLocator,
-            text: normalizedText(clone.textContent ?? "", 240),
-            rect: rectValue(element.getBoundingClientRect()),
-            ...(targetAccessibility === null
-              ? {}
-              : { accessibility: targetAccessibility }),
-            ...(targetReact === null ? {} : { react: targetReact }),
-          },
-        ];
+    const allTargets: RegionTarget[] = [];
+    for (const element of targetElements.slice(0, MAX_REGION_TARGETS)) {
+      if (!withinDeadline()) {
+        scanTruncated = true;
+        break;
+      }
+      const absoluteLocator = locatorFrom(element, document);
+      const relativeLocator = locatorFrom(element, commonAncestor);
+      if (absoluteLocator === null || relativeLocator === null) continue;
+      const clone = sanitizedClone(element);
+      const targetAccessibility = accessibilityHint(element);
+      const targetReact = reactHint(element);
+      allTargets.push({
+        absoluteLocator,
+        relativeLocator,
+        text: normalizedText(clone.textContent ?? "", 240),
+        rect: rectValue(element.getBoundingClientRect()),
+        ...(targetAccessibility === null
+          ? {}
+          : { accessibility: targetAccessibility }),
+        ...(targetReact === null ? {} : { react: targetReact }),
       });
-    const groupElements = repeatedGroups(
-      targetElements,
-      commonAncestor,
-      collected.order,
-    );
+    }
+    const groupInputs = targetElements.slice(0, MAX_REGION_TARGETS + 1);
+    if (groupInputs.length < targetElements.length) scanTruncated = true;
+    const groupElements = withinDeadline()
+      ? repeatedGroups(groupInputs, commonAncestor, collected.order)
+      : [];
+    if (!withinDeadline()) scanTruncated = true;
     const allGroups = groupElements
       .slice(0, MAX_REGION_GROUPS)
       .flatMap((elements): RegionGroup[] => {
@@ -1133,7 +1146,7 @@ function desktopBrowserInspectionPageController(
       groups,
       omittedTargetCount: targetElements.length - targets.length,
       omittedGroupCount: groupElements.length - groups.length,
-      scanTruncated: collected.truncated,
+      scanTruncated,
     };
     const encoder = new TextEncoder();
     while (

@@ -160,8 +160,11 @@ export function PromptMentionPill({
       <span className="truncate">{resource.label}</span>
     </>
   );
-  const withPreview = (pill: PromptMentionPreviewTooltipProps["children"]) => (
-    <PromptMentionPreviewTooltip content={preview}>
+  const withPreview = (
+    pill: PromptMentionPreviewTooltipProps["children"],
+    content = preview,
+  ) => (
+    <PromptMentionPreviewTooltip content={content}>
       {pill}
     </PromptMentionPreviewTooltip>
   );
@@ -216,10 +219,10 @@ export function PromptMentionPill({
               event.stopPropagation();
               setInspectorOpen(true);
             }}
-            title={nativeTitle}
           >
             {labelNode}
           </button>,
+          preview ?? title,
         )}
         <PromptMentionInspector
           open={inspectorOpen}
