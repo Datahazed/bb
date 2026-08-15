@@ -125,6 +125,7 @@ interface FakeWebContentsEventMap {
   "did-navigate": FakeDidNavigateListener;
   "did-navigate-in-page": FakeDidNavigateInPageListener;
   "did-start-navigation": FakeVoidWebContentsListener;
+  destroyed: FakeVoidWebContentsListener;
   "page-title-updated": FakeVoidWebContentsListener;
   "did-fail-load": FakeDidFailLoadListener;
   "context-menu": FakeContextMenuListener;
@@ -166,8 +167,10 @@ type FakeWindowOpenHandler = (
 
 const electronMock = vi.hoisted(() => {
   interface FakeNativeImage {
+    getSize(): { height: number; width: number };
     isEmpty(): boolean;
     toJPEG(quality: number): Buffer;
+    toPNG(): Buffer;
   }
 
   interface FakeDidFailLoadArgs {
@@ -219,8 +222,10 @@ const electronMock = vi.hoisted(() => {
   const fakeWebContentsEvent: FakeWebContentsEvent = {};
 
   const fakeCapturedImage: FakeNativeImage = {
+    getSize: () => ({ height: 600, width: 800 }),
     isEmpty: () => false,
     toJPEG: () => Buffer.from("jpeg-bytes"),
+    toPNG: () => Buffer.from("png-bytes"),
   };
 
   class FakeWebContents {
@@ -234,6 +239,7 @@ const electronMock = vi.hoisted(() => {
     public historyEntries: Array<{ title: string; url: string }> = [];
     public readonly id: number;
     public readonly loadURLCalls: string[] = [];
+    public readonly executeJavaScriptCalls: string[] = [];
     public reloadCalls = 0;
     public readonly pendingCaptureResolvers: Array<
       (image: FakeNativeImage) => void
@@ -249,6 +255,7 @@ const electronMock = vi.hoisted(() => {
       "did-navigate": [],
       "did-navigate-in-page": [],
       "did-start-navigation": [],
+      destroyed: [],
       "page-title-updated": [],
       "did-fail-load": [],
       "context-menu": [],
@@ -282,6 +289,14 @@ const electronMock = vi.hoisted(() => {
       });
     }
 
+    executeJavaScript(source: string): Promise<unknown> {
+      this.executeJavaScriptCalls.push(source);
+      if (source.includes("desktopBrowserInspectionPageCancel")) {
+        return Promise.resolve(undefined);
+      }
+      return new Promise(() => {});
+    }
+
     close(): void {
       this.destroyed = true;
     }
@@ -296,6 +311,10 @@ const electronMock = vi.hoisted(() => {
 
     getURL(): string {
       return this.url;
+    }
+
+    getZoomFactor(): number {
+      return 1;
     }
 
     isDestroyed(): boolean {
@@ -317,6 +336,14 @@ const electronMock = vi.hoisted(() => {
       listener: FakeWebContentsEventMap[TEventName],
     ): void {
       this.listeners[eventName].push(listener);
+    }
+
+    removeListener<TEventName extends keyof FakeWebContentsEventMap>(
+      eventName: TEventName,
+      listener: FakeWebContentsEventMap[TEventName],
+    ): void {
+      const index = this.listeners[eventName].indexOf(listener);
+      if (index >= 0) this.listeners[eventName].splice(index, 1);
     }
 
     reload(): void {
@@ -655,6 +682,51 @@ function scopedOpenTabPushesOf(
 }
 
 describe("DesktopBrowserViewManager", () => {
+  it("uses temporary inspection visibility without replacing renderer policy", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 79,
+    });
+    manager.attach({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        url: "https://example.com",
+        bounds: { x: 100, y: 50, width: 500, height: 350 },
+        visible: false,
+      },
+    });
+    const view = requireFakeView(0);
+    expect(view.visible).toBe(false);
+
+    const pending = manager.experimentalInspectPage({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        requestId: "inspection-1",
+        kind: "auto",
+      },
+    });
+    expect(view.visible).toBe(true);
+
+    manager.cancelExperimentalInspection({
+      hostWindow,
+      tabId: "browser:a",
+      requestId: "inspection-1",
+    });
+    await expect(pending).resolves.toBeNull();
+    expect(view.visible).toBe(false);
+
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: true },
+    });
+    expect(view.visible).toBe(true);
+  });
+
   it("forwards resolved browser shortcuts and suppresses the untrusted page", () => {
     const dispatchAppCommand = vi.fn();
     const focusHostWebContents = vi.fn();

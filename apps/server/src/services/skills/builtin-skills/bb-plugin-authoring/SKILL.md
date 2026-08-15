@@ -165,7 +165,7 @@ does not cover:
      `types/bb-plugin-sdk.d.ts` (`types/bb-plugin-sdk-app.d.ts`), which the
      plugin's `tsconfig.json` maps `@get-bb/plugin-sdk` onto. Read whichever
      the plugin in front of you has. That layout still works; `bb plugin
-     migrate` converts such a plugin to the npm package (it prints the plan
+migrate` converts such a plugin to the npm package (it prints the plan
      and asks first, and needs `--yes` when stdin is not a terminal). Never
      migrate a plugin the user did not ask you to migrate.
 3. **`git clone --depth 1 https://github.com/get-bb/bb`** for host behavior or
@@ -1081,6 +1081,29 @@ state in the component, never in a module-level singleton.
 A common pairing with a replaced sidebar: hide child threads from the list and
 surface them here instead, filtering `experimental_useSidebarThreads()` by
 `parentThreadId === threadId`.
+
+### A control in Browser chrome
+
+`app.slots.experimental_browserAction` renders one compact plugin-owned control
+in the active Browser tab's navigation row:
+
+```tsx
+app.slots.experimental_browserAction({
+  id: "inspect",
+  title: "Inspect page",
+  component: BrowserInspectAction,
+});
+```
+
+The registration takes `id`, `title`, and `component`. Its component receives
+`tabId`, `threadId`, `projectId`, and `url`, plus the optional desktop-backed
+inspection surface. Check `experimental_inspectionAvailable` before calling
+`experimental_inspectPage({ kind }, { signal })`; cancellation is renderer-local
+and `null` means the user cancelled. `experimental_overlayRoot` is the
+host-owned Browser viewport layer for portalled plugin UI. Pair it with
+`experimental_setOverlayOpen(true)` while that UI is interactive, and always
+release it with `experimental_setOverlayOpen(false)`. Both callbacks belong to
+the mounted action and must not be retained after it unmounts.
 
 ### Replacing the sidebar thread list
 

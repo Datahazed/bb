@@ -81,6 +81,9 @@ interface BrowserViewEntry {
   rendererRecoveryAttempts: number;
   rendererRecoveryState: "healthy" | "pending" | "blocked";
   rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
+  /** Temporary native visibility while the page-owned pointer controller runs. */
+  inspectionVisible: boolean;
+  /** Renderer-declared desired visibility; never overwritten by inspection. */
   visible: boolean;
   inspectionSession: DesktopBrowserInspectionSession | null;
 }
@@ -318,7 +321,7 @@ export function createDesktopBrowserViewManager(
       return;
     }
     entry.view.setVisible(
-      entry.visible &&
+      (entry.visible || entry.inspectionVisible) &&
         entry.rendererRecoveryState === "healthy" &&
         !isHostResizing(hostWindow),
     );
@@ -334,6 +337,7 @@ export function createDesktopBrowserViewManager(
   function cancelEntryInspection(entry: BrowserViewEntry): void {
     entry.inspectionSession?.cancel();
     entry.inspectionSession = null;
+    entry.inspectionVisible = false;
   }
 
   function resetEntryRendererRecovery(entry: BrowserViewEntry): void {
@@ -649,6 +653,7 @@ export function createDesktopBrowserViewManager(
       rendererRecoveryAttempts: 0,
       rendererRecoveryState: "healthy",
       rendererRecoveryTimer: null,
+      inspectionVisible: false,
       visible: false,
       inspectionSession: null,
     };
@@ -814,14 +819,14 @@ export function createDesktopBrowserViewManager(
       ) {
         throw new Error("The Browser tab is not available for inspection");
       }
+      cancelEntryInspection(entry);
       // Plugin menus suppress the native view and release that lease in the
       // same event that starts selection. IPC can overtake React's visibility
-      // effect, so make the selected page interactive before installing its
-      // pointer controller. A later renderer declaration remains authoritative.
-      entry.visible = true;
+      // effect, so temporarily make the selected page interactive without
+      // changing the renderer's desired visibility policy.
+      entry.inspectionVisible = true;
       applyEntryVisibility(entry, hostWindow);
       entry.view.webContents.focus();
-      cancelEntryInspection(entry);
       const session = startDesktopBrowserInspection({
         request,
         webContents: entry.view.webContents,
@@ -832,6 +837,8 @@ export function createDesktopBrowserViewManager(
       } finally {
         if (entry.inspectionSession === session) {
           entry.inspectionSession = null;
+          entry.inspectionVisible = false;
+          applyEntryVisibility(entry, hostWindow);
         }
       }
     },
@@ -839,6 +846,7 @@ export function createDesktopBrowserViewManager(
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.inspectionSession?.requestId === requestId) {
           cancelEntryInspection(entry);
+          applyEntryVisibility(entry, hostWindow);
         }
       });
     },
@@ -855,6 +863,9 @@ export function createDesktopBrowserViewManager(
         if (entry.visible) {
           cancelEntryInspection(entry);
           startResizeSnapshot(hostWindow, key.slice(prefix.length), entry);
+        } else if (entry.inspectionVisible) {
+          cancelEntryInspection(entry);
+          applyEntryVisibility(entry, hostWindow);
         }
       }
     },

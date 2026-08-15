@@ -36,6 +36,8 @@ const BROWSER_ACTION_FOOTPRINT_PX = 32;
 
 export const EXPERIMENTAL_BROWSER_INSPECTION_UNAVAILABLE_MESSAGE =
   "Browser page inspection requires a newer BB desktop app.";
+export const EXPERIMENTAL_BROWSER_ACTION_DISPOSED_MESSAGE =
+  "This Browser action is no longer active.";
 
 interface PluginBrowserActionsProps {
   chromeWidth: number | null;
@@ -97,6 +99,18 @@ function useBrowserActionRuntime({
   const overlayOpenRef = useRef(false);
   const controllersRef = useRef(new Set<AbortController>());
   const registeredRef = useRef(false);
+  const activeRef = useRef(true);
+
+  const assertActive = useCallback(() => {
+    if (!activeRef.current) {
+      throw Object.assign(
+        new Error(EXPERIMENTAL_BROWSER_ACTION_DISPOSED_MESSAGE),
+        {
+          name: "ExperimentalBrowserActionDisposedError",
+        },
+      );
+    }
+  }, []);
 
   const releaseAll = useCallback(() => {
     for (const controller of controllersRef.current) controller.abort();
@@ -109,16 +123,19 @@ function useBrowserActionRuntime({
 
   const ensureRegistered = useCallback(
     (registry: PluginSlotOwnershipRegistry | null) => {
+      assertActive();
       if (registry === null || registeredRef.current) return;
       registry.register(owner, releaseAll);
       registeredRef.current = true;
     },
-    [owner, releaseAll],
+    [assertActive, owner, releaseAll],
   );
 
   useEffect(() => {
+    activeRef.current = true;
     ensureRegistered(ownershipRegistry);
     return () => {
+      activeRef.current = false;
       releaseAll();
       if (registeredRef.current) ownershipRegistry?.unregister(owner);
       registeredRef.current = false;
@@ -158,7 +175,6 @@ function useBrowserActionRuntime({
           tabId,
           requestId,
           kind: request.kind,
-          identity: { threadId, projectId },
         });
       } finally {
         controller.signal.removeEventListener("abort", cancel);
@@ -166,14 +182,7 @@ function useBrowserActionRuntime({
         controllersRef.current.delete(controller);
       }
     },
-    [
-      desktopBrowser,
-      ensureRegistered,
-      ownershipRegistry,
-      projectId,
-      tabId,
-      threadId,
-    ],
+    [desktopBrowser, ensureRegistered, ownershipRegistry, tabId],
   );
 
   return {

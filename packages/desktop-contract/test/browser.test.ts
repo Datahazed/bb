@@ -162,16 +162,21 @@ const elementPageResult = {
 } as const;
 
 describe("experimental desktop browser inspection schemas", () => {
-  it("keeps inspection on a separate strict identity-scoped request", () => {
+  it("keeps inspection on a separate strict tab-scoped request", () => {
     const request = {
       tabId: "browser:a",
       kind: "element",
       requestId: "inspection-1",
-      identity: { threadId: "thr_1", projectId: "prj_1" },
     };
     expect(bbDesktopBrowserInspectionRequestSchema.parse(request)).toEqual(
       request,
     );
+    expect(
+      bbDesktopBrowserInspectionRequestSchema.safeParse({
+        ...request,
+        identity: { threadId: "thr_1", projectId: "prj_1" },
+      }).success,
+    ).toBe(false);
     expect(
       bbDesktopBrowserInspectionRequestSchema.safeParse({
         ...request,

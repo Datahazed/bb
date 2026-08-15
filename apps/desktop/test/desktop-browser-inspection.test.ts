@@ -69,7 +69,6 @@ function inspectionRequest() {
     tabId: "browser:a",
     kind: "region" as const,
     requestId: "inspection-1",
-    identity: { threadId: "thr_1", projectId: "prj_1" },
   };
 }
 

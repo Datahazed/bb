@@ -9,6 +9,8 @@ import {
 afterEach(() => {
   document.body.replaceChildren();
   document.documentElement.style.removeProperty("cursor");
+  document.designMode = "off";
+  vi.restoreAllMocks();
 });
 
 function startElementInspection(target: Element): Promise<unknown> {
@@ -123,9 +125,12 @@ describe("desktop Browser page controller", () => {
     });
   });
 
-  it("redacts form state, editable content, srcdoc, and sensitive data attributes", async () => {
+  it("redacts form state, secret-bearing URLs, editable content, and sensitive attributes", async () => {
     document.body.innerHTML = `
-      <form id="account" data-token="top-secret" data-safe="kept">
+      <form id="account" action="https://example.com/reset?token=action-secret" data-token="top-secret" data-safe="kept" style="background:url(https://example.com/style-secret)">
+        <a href="https://example.com/reset?token=href-secret">Reset</a>
+        <img src="https://example.com/image?signature=src-secret" srcset="https://example.com/image?signature=srcset-secret 2x">
+        <button formaction="https://example.com/reset?token=formaction-secret">Submit</button>
         <input type="password" value="password-secret">
         <input type="text" value="text-secret" checked>
         <input type="hidden" value="hidden-secret">
@@ -153,10 +158,10 @@ describe("desktop Browser page controller", () => {
 
     expect(result.element.dom).toContain('data-safe="kept"');
     expect(result.element.dom).not.toMatch(
-      /password-secret|text-secret|hidden-secret|textarea-secret|attribute-secret|editable-secret|frame-secret|top-secret/u,
+      /action-secret|formaction-secret|href-secret|password-secret|src-secret|srcset-secret|style-secret|text-secret|hidden-secret|textarea-secret|attribute-secret|editable-secret|frame-secret|top-secret/u,
     );
     expect(result.element.dom).not.toMatch(
-      /\s(value|checked|selected|srcdoc|data-token)=/u,
+      /\s(action|formaction|href|src|srcset|style|value|checked|selected|srcdoc|data-token)=/u,
     );
     expect(result.element.text).not.toMatch(/textarea-secret|editable-secret/u);
 
@@ -166,6 +171,128 @@ describe("desktop Browser page controller", () => {
     expect(
       document.querySelector("[data-bb-page-inspection-overlay]"),
     ).toBeNull();
+  });
+
+  it("redacts a selected child whose editable state is inherited", async () => {
+    document.body.innerHTML = `
+      <div contenteditable="true">
+        <span id="selected">inherited-editable-secret</span>
+      </div>`;
+    const target = document.querySelector("#selected");
+    expect(target).not.toBeNull();
+    if (target === null) throw new Error("Expected editable child fixture");
+    const resultPromise = startElementInspection(target);
+
+    document.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 20,
+        clientY: 30,
+      }),
+    );
+
+    await expect(resultPromise).resolves.toMatchObject({
+      element: { dom: '<span id="selected"></span>', text: "" },
+    });
+  });
+
+  it("redacts page text while document design mode is active", async () => {
+    document.body.innerHTML = `<section id="selected">design-mode-secret</section>`;
+    document.designMode = "on";
+    const target = document.querySelector("#selected");
+    expect(target).not.toBeNull();
+    if (target === null) throw new Error("Expected design-mode fixture");
+    const resultPromise = startElementInspection(target);
+
+    document.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 20,
+        clientY: 30,
+      }),
+    );
+
+    await expect(resultPromise).resolves.toMatchObject({
+      element: { dom: '<section id="selected"></section>', text: "" },
+    });
+  });
+
+  it("bounds source traversal without deep-cloning a large selected subtree", async () => {
+    const target = document.body.appendChild(document.createElement("main"));
+    for (let index = 0; index < 1_000; index += 1) {
+      const child = target.appendChild(document.createElement("div"));
+      child.textContent = `row-${index}`;
+    }
+    Object.defineProperty(target, "cloneNode", {
+      configurable: true,
+      value: () => {
+        throw new Error("unbounded cloneNode must not run");
+      },
+    });
+    const resultPromise = startElementInspection(target);
+
+    document.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 20,
+        clientY: 30,
+      }),
+    );
+    const result = (await resultPromise) as { element: { dom: string } };
+    const parsed = new DOMParser().parseFromString(
+      result.element.dom,
+      "text/html",
+    );
+
+    expect(parsed.querySelectorAll("main *").length).toBeLessThan(200);
+    expect(result.element.dom).toContain("row-0");
+    expect(result.element.dom).not.toContain("row-999");
+  });
+
+  it("coalesces hover hit-testing to one animation frame", async () => {
+    const target = document.body.appendChild(document.createElement("button"));
+    const elementFromPoint = vi.fn(() => target);
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: elementFromPoint,
+    });
+    Object.defineProperty(target, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(10, 20, 200, 100),
+    });
+    let frame: FrameRequestCallback | null = null;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frame = callback;
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const resultPromise = window.eval(
+      createDesktopBrowserInspectionControllerSource({
+        requestId: "raf-test",
+        kind: "element",
+      }),
+    ) as Promise<unknown>;
+
+    for (const clientX of [20, 30, 40]) {
+      document.dispatchEvent(
+        new MouseEvent("pointermove", {
+          bubbles: true,
+          clientX,
+          clientY: 30,
+        }),
+      );
+    }
+    expect(elementFromPoint).not.toHaveBeenCalled();
+    expect(frame).not.toBeNull();
+    frame!(0);
+    expect(elementFromPoint).toHaveBeenCalledTimes(1);
+    expect(elementFromPoint).toHaveBeenCalledWith(40, 30);
+
+    await window.eval(createDesktopBrowserInspectionCancelSource("raf-test"));
+    await expect(resultPromise).resolves.toBeNull();
   });
 
   it("cancels idempotently and settles null", async () => {

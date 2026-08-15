@@ -83,9 +83,9 @@ declare const serviceTierSchema: z.ZodEnum<{
 }>;
 type ServiceTier = z.infer<typeof serviceTierSchema>;
 declare const permissionModeSchema: z.ZodEnum<{
+    full: "full";
     auto: "auto";
     "accept-edits": "accept-edits";
-    full: "full";
 }>;
 type PermissionMode = z.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
@@ -667,8 +667,6 @@ interface PluginBrowserActionRegistration {
     id: string;
     /** Host label for the contribution and its overflow row. */
     title: string;
-    /** Optional BB icon-name hint retained for future host-owned treatments. */
-    icon?: string;
     /** Render exactly one accessible 28px control; portal larger UI. */
     component: ComponentType<PluginBrowserActionProps>;
 }

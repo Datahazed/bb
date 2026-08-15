@@ -239,20 +239,12 @@ export const bbDesktopBrowserInspectionRectSchema = z
   })
   .strict();
 
-const bbDesktopBrowserInspectionIdentitySchema = z
-  .object({
-    threadId: z.string().min(1).max(256).nullable(),
-    projectId: z.string().min(1).max(256).nullable(),
-  })
-  .strict();
-
 /** A new channel carries this shape; the frozen attach wire is unchanged. */
 export const bbDesktopBrowserInspectionRequestSchema = z
   .object({
     tabId: z.string().min(1).max(256),
     requestId: z.string().min(1).max(256),
     kind: z.enum(["element", "region", "auto"]),
-    identity: bbDesktopBrowserInspectionIdentitySchema,
   })
   .strict();
 export type BbDesktopBrowserInspectionRequest = z.infer<

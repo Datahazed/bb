@@ -231,7 +231,6 @@ describe("loadPluginApp", () => {
         builder.slots.experimental_browserAction({
           id: "inspect",
           title: "Inspect page",
-          icon: "ScanSearch",
           component,
         });
       }),
@@ -241,7 +240,6 @@ describe("loadPluginApp", () => {
       {
         id: "inspect",
         title: "Inspect page",
-        icon: "ScanSearch",
         component,
       },
     ]);
