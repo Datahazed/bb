@@ -54,39 +54,57 @@ function setRect(
 async function captureRegion(
   bounds: { x: number; y: number; width: number; height: number },
   requestId: string,
+  options?: { now?: () => number },
 ): Promise<RegionResult> {
-  const resultPromise = window.eval(
-    createDesktopBrowserInspectionControllerSource({
-      requestId,
-      kind: "region",
-    }),
-  ) as Promise<unknown>;
-  document.dispatchEvent(
-    new MouseEvent("pointerdown", {
-      bubbles: true,
-      cancelable: true,
-      button: 0,
-      clientX: bounds.x,
-      clientY: bounds.y,
-    }),
-  );
-  document.dispatchEvent(
-    new MouseEvent("pointerup", {
-      bubbles: true,
-      cancelable: true,
-      button: 0,
-      clientX: bounds.x + bounds.width,
-      clientY: bounds.y + bounds.height,
-    }),
-  );
-  const parsed = bbDesktopBrowserInspectionPageResultV2Schema.parse(
-    await resultPromise,
-  );
-  await window.eval(createDesktopBrowserInspectionCancelSource(requestId));
-  if (parsed.kind !== "region" || parsed.region === null) {
-    throw new Error("Expected a region result");
+  const originalNow = Object.getOwnPropertyDescriptor(performance, "now");
+  if (options?.now !== undefined) {
+    Object.defineProperty(performance, "now", {
+      configurable: true,
+      value: options.now,
+    });
   }
-  return parsed as RegionResult;
+  try {
+    const resultPromise = window.eval(
+      createDesktopBrowserInspectionControllerSource({
+        requestId,
+        kind: "region",
+      }),
+    ) as Promise<unknown>;
+    document.dispatchEvent(
+      new MouseEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: bounds.x,
+        clientY: bounds.y,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("pointerup", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: bounds.x + bounds.width,
+        clientY: bounds.y + bounds.height,
+      }),
+    );
+    const parsed = bbDesktopBrowserInspectionPageResultV2Schema.parse(
+      await resultPromise,
+    );
+    await window.eval(createDesktopBrowserInspectionCancelSource(requestId));
+    if (parsed.kind !== "region" || parsed.region === null) {
+      throw new Error("Expected a region result");
+    }
+    return parsed as RegionResult;
+  } finally {
+    if (options?.now !== undefined) {
+      if (originalNow === undefined) {
+        Reflect.deleteProperty(performance, "now");
+      } else {
+        Object.defineProperty(performance, "now", originalNow);
+      }
+    }
+  }
 }
 
 function resolveLocator(
@@ -916,6 +934,7 @@ describe("deterministic Browser region capture corpus", () => {
     const result = await captureRegion(
       { x: 0, y: 0, width: 140, height: 60 },
       "large-repeated-index",
+      { now: () => 0 },
     );
     const elapsedMs = performance.now() - startedAt;
 
@@ -940,11 +959,38 @@ describe("deterministic Browser region capture corpus", () => {
     const result = await captureRegion(
       { x: 0, y: 0, width: 140, height: 60 },
       "bounded-candidate-scan",
+      { now: () => 0 },
     );
 
     expect(result.region.targets).toHaveLength(64);
     expect(result.region.scanTruncated).toBe(true);
     expect(result.region.omittedTargetCount).toBe(960);
+  });
+
+  it("reports truncation when the elapsed-time budget expires", async () => {
+    const button = document.createElement("button");
+    button.textContent = "Action";
+    setRect(button, 10, 10, 100, 30);
+    document.body.append(button);
+    let now = 0;
+
+    const result = await captureRegion(
+      { x: 0, y: 0, width: 140, height: 60 },
+      "bounded-time-scan",
+      {
+        now: () => {
+          const current = now;
+          now += 101;
+          return current;
+        },
+      },
+    );
+
+    expect(result.region).toMatchObject({
+      commonAncestor: null,
+      targets: [],
+      scanTruncated: true,
+    });
   });
 
   it("bounds deeply nested pages without recursive traversal overflow", async () => {
