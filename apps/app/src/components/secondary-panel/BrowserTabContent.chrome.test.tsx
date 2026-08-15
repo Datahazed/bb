@@ -9,7 +9,7 @@ import {
 } from "@testing-library/react";
 import type {
   BbDesktopBrowserApi,
-  BbDesktopBrowserInspectionResult,
+  BbDesktopBrowserInspectionResultV2,
   BbDesktopBrowserState,
 } from "@bb/desktop-contract";
 import type { PluginBrowserActionProps } from "@get-bb/plugin-sdk";
@@ -46,7 +46,7 @@ interface BrowserChromeHarness {
 }
 
 function createBrowserChromeHarness(
-  inspectPage?: BbDesktopBrowserApi["experimental_inspectPage"],
+  inspectPage?: BbDesktopBrowserApi["experimental_inspectPageV2"],
 ): BrowserChromeHarness {
   const stateListeners = new Set<(state: BbDesktopBrowserState) => void>();
   const goBack = vi.fn();
@@ -60,7 +60,7 @@ function createBrowserChromeHarness(
     setVisible,
     ...(inspectPage
       ? {
-          experimental_inspectPage: inspectPage,
+          experimental_inspectPageV2: inspectPage,
           experimental_cancelPageInspection: cancelInspection,
         }
       : {}),
@@ -194,7 +194,7 @@ describe("BrowserTabContent persistent navigation", () => {
   it("maps inspection to the optional desktop capability for the active tab", async () => {
     let slotProps: PluginBrowserActionProps | null = null;
     const result = {
-      version: 1,
+      version: 2,
       kind: "region",
       page: {
         url: "https://example.com/docs",
@@ -210,6 +210,7 @@ describe("BrowserTabContent persistent navigation", () => {
         groups: [],
         omittedTargetCount: 0,
         omittedGroupCount: 0,
+        scanTruncated: false,
       },
       screenshot: {
         dataUrl: "data:image/png;base64,AA==",
@@ -218,7 +219,7 @@ describe("BrowserTabContent persistent navigation", () => {
         pageZoom: 1,
         cssToImageScale: { x: 1, y: 1 },
       },
-    } satisfies BbDesktopBrowserInspectionResult;
+    } satisfies BbDesktopBrowserInspectionResultV2;
     const inspectPage = vi.fn(async () => result);
     setPluginSlotRegistrations(
       "context",
@@ -332,6 +333,7 @@ describe("BrowserTabContent persistent navigation", () => {
     expect(() => retained.experimental_setOverlayOpen(true)).toThrow(
       /no longer active/u,
     );
+    expect(() => retained.experimental_setOverlayOpen(false)).not.toThrow();
     await expect(
       retained.experimental_inspectPage(
         { kind: "element" },

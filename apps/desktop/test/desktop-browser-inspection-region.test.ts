@@ -2,8 +2,8 @@
 
 import {
   BB_DESKTOP_BROWSER_INSPECTION_MAX_STRUCTURED_BYTES,
-  bbDesktopBrowserInspectionPageResultSchema,
-  type BbDesktopBrowserInspectionPageResult,
+  bbDesktopBrowserInspectionPageResultV2Schema,
+  type BbDesktopBrowserInspectionPageResultV2,
 } from "@bb/desktop-contract";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -12,9 +12,9 @@ import {
 } from "../src/desktop-browser-inspection.js";
 
 type Locator = { selectors: readonly string[] };
-type RegionResult = BbDesktopBrowserInspectionPageResult & {
+type RegionResult = BbDesktopBrowserInspectionPageResultV2 & {
   kind: "region";
-  region: NonNullable<BbDesktopBrowserInspectionPageResult["region"]>;
+  region: NonNullable<BbDesktopBrowserInspectionPageResultV2["region"]>;
 };
 
 function setViewport(
@@ -79,7 +79,7 @@ async function captureRegion(
       clientY: bounds.y + bounds.height,
     }),
   );
-  const parsed = bbDesktopBrowserInspectionPageResultSchema.parse(
+  const parsed = bbDesktopBrowserInspectionPageResultV2Schema.parse(
     await resultPromise,
   );
   await window.eval(createDesktopBrowserInspectionCancelSource(requestId));
@@ -198,6 +198,7 @@ function evaluateAblationCapture(
       }>;
       omittedTargetCount?: number;
       omittedGroupCount?: number;
+      scanTruncated?: boolean;
     } | null;
   };
   if (
@@ -310,6 +311,7 @@ function evaluateAblationCapture(
   }
   if (region?.omittedTargetCount !== 0) issues.push("target-omission-honesty");
   if (region?.omittedGroupCount !== 0) issues.push("group-omission-honesty");
+  if (region?.scanTruncated !== false) issues.push("scan-bound-honesty");
   return [...new Set(issues)];
 }
 
@@ -707,6 +709,7 @@ describe("deterministic Browser region capture corpus", () => {
       groups: [],
       omittedTargetCount: 0,
       omittedGroupCount: 0,
+      scanTruncated: false,
     });
   });
 
@@ -920,8 +923,103 @@ describe("deterministic Browser region capture corpus", () => {
     expect(result.region.omittedTargetCount).toBe(936);
     expect(result.region.groups).toEqual([]);
     expect(result.region.omittedGroupCount).toBe(1);
+    expect(result.region.scanTruncated).toBe(false);
     expect(elapsedMs).toBeLessThan(7_000);
   }, 15_000);
+
+  it("reports when the bounded candidate scan truncates a hostile page", async () => {
+    const list = document.createElement("section");
+    for (let index = 0; index < 1_200; index += 1) {
+      const button = document.createElement("button");
+      button.textContent = `Action ${index}`;
+      setRect(button, 10, 10, 100, 30);
+      list.append(button);
+    }
+    document.body.append(list);
+
+    const result = await captureRegion(
+      { x: 0, y: 0, width: 140, height: 60 },
+      "bounded-candidate-scan",
+    );
+
+    expect(result.region.targets).toHaveLength(64);
+    expect(result.region.scanTruncated).toBe(true);
+    expect(result.region.omittedTargetCount).toBe(960);
+  });
+
+  it("bounds deeply nested pages without recursive traversal overflow", async () => {
+    let parent: Element = document.body;
+    for (let depth = 0; depth < 600; depth += 1) {
+      const child = document.createElement("div");
+      parent.append(child);
+      parent = child;
+    }
+    const button = document.createElement("button");
+    button.textContent = "Deep action";
+    setRect(button, 10, 10, 100, 30);
+    parent.append(button);
+
+    const result = await captureRegion(
+      { x: 0, y: 0, width: 140, height: 60 },
+      "bounded-depth-scan",
+    );
+
+    expect(result.region).toMatchObject({
+      commonAncestor: null,
+      targets: [],
+      scanTruncated: true,
+    });
+  });
+
+  it("rejects immediately and cleans up when region locator creation fails", async () => {
+    const button = document.createElement("button");
+    button.textContent = "Action";
+    setRect(button, 10, 10, 100, 30);
+    document.body.append(button);
+    const requestId = "locator-failure";
+    const resultPromise = window.eval(
+      createDesktopBrowserInspectionControllerSource({
+        requestId,
+        kind: "region",
+      }),
+    ) as Promise<unknown>;
+    document.dispatchEvent(
+      new MouseEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 0,
+        clientY: 0,
+      }),
+    );
+    const querySelectorAll = document.querySelectorAll.bind(document);
+    Object.defineProperty(document, "querySelectorAll", {
+      configurable: true,
+      value: () => {
+        throw new Error("poisoned locator lookup");
+      },
+    });
+    document.dispatchEvent(
+      new MouseEvent("pointerup", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 140,
+        clientY: 60,
+      }),
+    );
+    Object.defineProperty(document, "querySelectorAll", {
+      configurable: true,
+      value: querySelectorAll,
+    });
+
+    await expect(resultPromise).rejects.toThrow(
+      "Unable to locate the selected region's common ancestor",
+    );
+    expect(
+      document.querySelector("[data-bb-page-inspection-overlay]"),
+    ).toBeNull();
+  });
 
   it("keeps selection, viewport, scroll, and responsive geometry deterministic", async () => {
     document.title = "Responsive fixture";
@@ -1120,6 +1218,11 @@ describe("Browser region capture field ablation", () => {
         field: "region.omittedGroupCount",
         path: ["region", "omittedGroupCount"],
         lostCapability: "group-omission-honesty",
+      },
+      {
+        field: "region.scanTruncated",
+        path: ["region", "scanTruncated"],
+        lostCapability: "scan-bound-honesty",
       },
     ];
     for (const evaluationCase of cases) {

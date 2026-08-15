@@ -1040,6 +1040,22 @@ describe("FollowUpPromptBox", () => {
     );
   });
 
+  it("expands for an explicit focus request when the editor was already active", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    const view = render(<FollowUpPromptBox {...props} focusEndKey={0} />);
+    const composer = document.querySelector("[data-follow-up-composer]");
+
+    expect(composer?.hasAttribute("data-follow-up-composer-expanded")).toBe(
+      false,
+    );
+
+    view.rerender(<FollowUpPromptBox {...props} focusEndKey={1} />);
+
+    expect(composer?.hasAttribute("data-follow-up-composer-expanded")).toBe(
+      true,
+    );
+  });
+
   it("keeps the composer mounted across compact breakpoint changes", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     const { rerender } = render(<FollowUpPromptBox {...props} />);

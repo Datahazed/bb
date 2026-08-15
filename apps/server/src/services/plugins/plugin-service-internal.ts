@@ -161,7 +161,6 @@ export interface PluginMentionProviderContribution {
   id: string;
   label: string;
   triggers: readonly PluginMentionTrigger[];
-  experimentalInspectability?: true;
 }
 
 /** One row in a mention search group. `itemId` is the wire-composed
@@ -171,7 +170,7 @@ export interface PluginMentionSearchItem {
   title: string;
   subtitle: string | null;
   icon: string | null;
-  preview: string | null;
+  preview?: string;
   experimentalInspectability?: true;
 }
 
@@ -180,8 +179,8 @@ export type PluginMentionInspectionResult =
       ok: true;
       inspection: {
         title: string;
-        description: string | null;
-        preview: { kind: "image"; dataUrl: string; alt: string } | null;
+        description?: string;
+        preview?: { kind: "image"; dataUrl: string; alt: string };
         metadata: string;
       };
     }

@@ -6,6 +6,7 @@ import {
   type BbDesktopBrowserAttachRequest,
   type BbDesktopBrowserInspectionRequest,
   type BbDesktopBrowserInspectionResult,
+  type BbDesktopBrowserInspectionResultV2,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserOpenTabRequest,
   type BbDesktopBrowserScopedOpenTabRequest,
@@ -25,6 +26,7 @@ import {
 } from "./desktop-browser-ipc.js";
 import {
   startDesktopBrowserInspection,
+  startDesktopBrowserInspectionV2,
   type DesktopBrowserInspectionSession,
 } from "./desktop-browser-inspection.js";
 import {
@@ -85,7 +87,7 @@ interface BrowserViewEntry {
   inspectionVisible: boolean;
   /** Renderer-declared desired visibility; never overwritten by inspection. */
   visible: boolean;
-  inspectionSession: DesktopBrowserInspectionSession | null;
+  inspectionSession: DesktopBrowserInspectionSession<unknown> | null;
 }
 
 export type DesktopBrowserHostWebContentsPayload =
@@ -172,6 +174,9 @@ export interface DesktopBrowserViewManager {
   experimentalInspectPage(
     args: HostScopedRequestArgs<BbDesktopBrowserInspectionRequest>,
   ): Promise<BbDesktopBrowserInspectionResult | null>;
+  experimentalInspectPageV2(
+    args: HostScopedRequestArgs<BbDesktopBrowserInspectionRequest>,
+  ): Promise<BbDesktopBrowserInspectionResultV2 | null>;
   cancelExperimentalInspection(
     args: HostScopedTabArgs & { requestId: string },
   ): void;
@@ -828,6 +833,34 @@ export function createDesktopBrowserViewManager(
       applyEntryVisibility(entry, hostWindow);
       entry.view.webContents.focus();
       const session = startDesktopBrowserInspection({
+        request,
+        webContents: entry.view.webContents,
+      });
+      entry.inspectionSession = session;
+      try {
+        return await session.promise;
+      } finally {
+        if (entry.inspectionSession === session) {
+          entry.inspectionSession = null;
+          entry.inspectionVisible = false;
+          applyEntryVisibility(entry, hostWindow);
+        }
+      }
+    },
+    async experimentalInspectPageV2({ hostWindow, request }) {
+      const entry = entries.get(browserViewKey(hostWindow, request.tabId));
+      if (
+        entry === undefined ||
+        entry.view.webContents.isDestroyed() ||
+        entry.view.webContents.getURL().length === 0
+      ) {
+        throw new Error("The Browser tab is not available for inspection");
+      }
+      cancelEntryInspection(entry);
+      entry.inspectionVisible = true;
+      applyEntryVisibility(entry, hostWindow);
+      entry.view.webContents.focus();
+      const session = startDesktopBrowserInspectionV2({
         request,
         webContents: entry.view.webContents,
       });

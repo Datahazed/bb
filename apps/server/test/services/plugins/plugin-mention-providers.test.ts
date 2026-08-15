@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import { type PromptInput } from "@bb/domain";
 import type { Logger } from "@bb/logger";
+import { PLUGIN_MENTION_CONTENT_LIMITS } from "@get-bb/plugin-sdk";
 import {
   createPluginService,
   type PluginService,
@@ -33,6 +34,8 @@ import {
 // origin allowlist the "local" auth mode enforces.
 const BASE = "http://127.0.0.1:3334";
 const EVIL_ORIGIN = "https://evil.example";
+const PNG_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+X8XzWQAAAABJRU5ErkJggg==";
 
 const logger = testLogger as unknown as Logger;
 
@@ -67,12 +70,18 @@ const MENTION_SOURCE = `
         };
       },
       async experimental_inspect(itemId: string) {
+        if (itemId === "ISS-43") {
+          return {
+            title: "Inspect " + itemId,
+            metadata: "issue.id = \\\"" + itemId + "\\\"",
+          };
+        }
         return {
           title: "Inspect " + itemId,
           description: "Provider-owned details",
           preview: {
             kind: "image",
-            dataUrl: "data:image/png;base64,aQ==",
+            dataUrl: "${PNG_DATA_URL}",
             alt: "Issue preview",
           },
           metadata: "issue.id = \\\"" + itemId + "\\\"",
@@ -215,7 +224,6 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
         id: "issues",
         label: "Linear issues",
         triggers: ["@", "#"],
-        experimentalInspectability: true,
       },
       {
         pluginId: "mentions",
@@ -259,7 +267,6 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
             title: "Ship mention providers",
             subtitle: null,
             icon: null,
-            preview: null,
             experimentalInspectability: true,
           },
         ],
@@ -274,7 +281,6 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
             title: "Onboarding guide",
             subtitle: null,
             icon: null,
-            preview: null,
           },
         ],
       },
@@ -288,7 +294,15 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
 
   it("opens optional provider-agnostic mention inspection without resolving agent context", async () => {
     const response = await harness.app.request(
-      `${BASE}/api/v1/plugins/mentions/inspect?pluginId=mentions&itemId=issues%3AISS-42`,
+      `${BASE}/api/v1/plugins/mentions/inspect`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          pluginId: "mentions",
+          itemId: "issues:ISS-42",
+        }),
+      },
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -298,7 +312,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
         description: "Provider-owned details",
         preview: {
           kind: "image",
-          dataUrl: "data:image/png;base64,aQ==",
+          dataUrl: PNG_DATA_URL,
           alt: "Issue preview",
         },
         metadata: 'issue.id = "ISS-42"',
@@ -306,12 +320,62 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
     });
 
     const unsupported = await harness.app.request(
-      `${BASE}/api/v1/plugins/mentions/inspect?pluginId=mentions&itemId=docs%3Aonboarding`,
+      `${BASE}/api/v1/plugins/mentions/inspect`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          pluginId: "mentions",
+          itemId: "docs:onboarding",
+        }),
+      },
     );
     expect(unsupported.status).toBe(422);
     await expect(unsupported.json()).resolves.toEqual({
       ok: false,
       error: "This mention is not inspectable",
+    });
+
+    const optional = await harness.app.request(
+      `${BASE}/api/v1/plugins/mentions/inspect`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          pluginId: "mentions",
+          itemId: "issues:ISS-43",
+        }),
+      },
+    );
+    expect(optional.status).toBe(200);
+    await expect(optional.json()).resolves.toEqual({
+      ok: true,
+      inspection: {
+        title: "Inspect ISS-43",
+        metadata: 'issue.id = "ISS-43"',
+      },
+    });
+  });
+
+  it("rejects originless cross-site inspection requests before running plugin code", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/mentions/inspect`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "sec-fetch-site": "cross-site",
+        },
+        body: JSON.stringify({
+          pluginId: "mentions",
+          itemId: "issues:ISS-42",
+        }),
+      },
+    );
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      code: "forbidden_origin",
+      message: "cross-site browser requests are not allowed",
     });
   });
 
@@ -341,7 +405,6 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
             title: "Ship mention providers",
             subtitle: null,
             icon: null,
-            preview: null,
             experimentalInspectability: true,
           },
         ],
@@ -398,6 +461,117 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       { headers: { origin: EVIL_ORIGIN } },
     );
     expect(foreign.status).toBe(403);
+  });
+
+  it("bounds preview and inspection content and accepts only safe raster data URLs", async () => {
+    const rootDir = await writePlugin(
+      join(harness.config.dataDir, "fixtures"),
+      {
+        name: "bb-plugin-mention-limits",
+        serverSource: `
+          export default function plugin(bb: any) {
+            bb.ui.registerMentionProvider({
+              id: "bounded",
+              label: "Bounded",
+              search(ctx: any) {
+                if (ctx.query === "preview-field") {
+                  return [{
+                    id: "one",
+                    title: "One",
+                    preview: "x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes + 1}),
+                  }];
+                }
+                if (ctx.query === "preview-total") {
+                  return Array.from({ length: 9 }, (_, index) => ({
+                    id: String(index),
+                    title: String(index),
+                    preview: "x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes}),
+                  }));
+                }
+                return [];
+              },
+              resolve: () => ({ context: "context" }),
+              experimental_inspect(itemId: string) {
+                if (itemId === "unsafe-image") {
+                  return {
+                    title: "Unsafe",
+                    metadata: "metadata",
+                    preview: {
+                      kind: "image",
+                      dataUrl: "data:image/svg+xml;base64,PHN2Zy8+",
+                      alt: "Unsafe image",
+                    },
+                  };
+                }
+                if (itemId === "bad-base64" || itemId === "wrong-signature") {
+                  return {
+                    title: "Bad image",
+                    metadata: "metadata",
+                    preview: {
+                      kind: "image",
+                      dataUrl: itemId === "bad-base64"
+                        ? "data:image/png;base64,%%%%"
+                        : "data:image/png;base64,aQ==",
+                      alt: "Bad image",
+                    },
+                  };
+                }
+                if (itemId === "metadata-field") {
+                  return {
+                    title: "Large metadata",
+                    metadata: "x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.inspectionMetadataBytes + 1}),
+                  };
+                }
+                const image = Buffer.alloc(6_150_000);
+                Buffer.from("89504e470d0a1a0a", "hex").copy(image);
+                return {
+                  title: "Large total",
+                  metadata: "x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.inspectionMetadataBytes}),
+                  preview: {
+                    kind: "image",
+                    dataUrl: "data:image/png;base64," + image.toString("base64"),
+                    alt: "Large image",
+                  },
+                };
+              },
+            });
+          }
+        `,
+      },
+    );
+    const entry = await harness.pluginService.installPath(rootDir);
+    expect(entry.status).toBe("running");
+
+    for (const query of ["preview-field", "preview-total"]) {
+      const groups = await harness.pluginService.searchMentions({
+        trigger: "@",
+        query,
+        projectId: null,
+        threadId: null,
+      });
+      expect(groups.some((group) => group.pluginId === "mention-limits")).toBe(
+        false,
+      );
+    }
+
+    for (const itemId of [
+      "unsafe-image",
+      "bad-base64",
+      "wrong-signature",
+      "metadata-field",
+      "total",
+    ]) {
+      const result = await harness.pluginService.inspectMention({
+        pluginId: "mention-limits",
+        itemId: `bounded:${itemId}`,
+      });
+      expect(result.ok).toBe(false);
+    }
+
+    const listEntry = harness.pluginService
+      .list()
+      .find((plugin) => plugin.id === "mention-limits");
+    expect(listEntry?.handlerStats.errorCount).toBeGreaterThanOrEqual(7);
   });
 
   it("resolves each unique mention once at send and attaches agent-only context inputs", async () => {
@@ -457,9 +631,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       type: "text",
       text: "@Fix login bug then @Fix login bug then @Ship mention providers",
     });
-    expect(JSON.stringify(queued.command.input)).not.toContain(
-      "data:image/png;base64,aQ==",
-    );
+    expect(JSON.stringify(queued.command.input)).not.toContain(PNG_DATA_URL);
   });
 
   it("resolves plugin mentions when a queued message dispatches on the idle-provider fast path", async () => {
@@ -749,7 +921,6 @@ describe("mention search time box", () => {
             title: "One",
             subtitle: null,
             icon: null,
-            preview: null,
           },
         ],
       },

@@ -1,10 +1,12 @@
 import {
   BB_DESKTOP_BROWSER_INSPECTION_MAX_PNG_BYTES,
-  bbDesktopBrowserInspectionPageResultSchema,
+  bbDesktopBrowserInspectionPageResultV2Schema,
   bbDesktopBrowserInspectionResultSchema,
-  type BbDesktopBrowserInspectionPageResult,
+  bbDesktopBrowserInspectionResultV2Schema,
+  type BbDesktopBrowserInspectionPageResultV2,
   type BbDesktopBrowserInspectionRequest,
   type BbDesktopBrowserInspectionResult,
+  type BbDesktopBrowserInspectionResultV2,
 } from "@bb/desktop-contract";
 
 const INSPECTION_DEADLINE_MS = 60_000;
@@ -25,7 +27,7 @@ interface PageControllerRegistry {
 function desktopBrowserInspectionPageController(
   input: PageControllerInput,
 ): Promise<unknown> {
-  const registryKey = "__bbExperimentalPageInspectionV1";
+  const registryKey = "__bbExperimentalPageInspectionV2";
   const rootWindow = window as typeof window & {
     [registryKey]?: PageControllerRegistry;
   };
@@ -37,6 +39,10 @@ function desktopBrowserInspectionPageController(
   const MAX_REGION_TARGETS = 64;
   const MAX_REGION_GROUPS = 24;
   const MAX_REGION_STRUCTURED_BYTES = 100_000;
+  const MAX_REGION_SCAN_NODES = 10_000;
+  const MAX_REGION_SCAN_DEPTH = 256;
+  const MAX_REGION_CANDIDATES = 1_024;
+  const MAX_REGION_SCAN_MS = 100;
   const OVERLAY_ATTRIBUTE = "data-bb-page-inspection-overlay";
 
   const cap = (value: string, max: number): string =>
@@ -214,8 +220,6 @@ function desktopBrowserInspectionPageController(
       rect: rectValue(element.getBoundingClientRect()),
     };
   };
-  const descriptor = (element: Element) =>
-    descriptorFromClone(element, sanitizedClone(element));
   const reactStack = (element: Element): string[] | null => {
     try {
       const keyed = element as Element & Record<string, unknown>;
@@ -854,6 +858,7 @@ function desktopBrowserInspectionPageController(
   const collectMeaningfulElements = (): {
     elements: Element[];
     order: Map<Element, number>;
+    truncated: boolean;
   } => {
     const elements: Element[] = [];
     const order = new Map<Element, number>();
@@ -872,18 +877,44 @@ function desktopBrowserInspectionPageController(
       return [...root.children];
     };
     const visited = new Set<Element>();
-    const visit = (root: Document | ShadowRoot | Element): void => {
-      for (const child of composedChildren(root)) {
-        if (child.hasAttribute(OVERLAY_ATTRIBUTE)) continue;
-        if (visited.has(child)) continue;
-        visited.add(child);
-        order.set(child, order.size);
-        if (isMeaningful(child)) elements.push(child);
-        visit(child);
+    const startedAt = performance.now();
+    const stack = composedChildren(document)
+      .reverse()
+      .map((element) => ({ element, depth: 1 }));
+    let scannedNodes = 0;
+    let truncated = false;
+    while (stack.length > 0) {
+      if (
+        scannedNodes >= MAX_REGION_SCAN_NODES ||
+        elements.length >= MAX_REGION_CANDIDATES ||
+        performance.now() - startedAt >= MAX_REGION_SCAN_MS
+      ) {
+        truncated = true;
+        break;
       }
-    };
-    visit(document);
-    return { elements, order };
+      const next = stack.pop();
+      if (next === undefined) break;
+      scannedNodes += 1;
+      const { element, depth } = next;
+      if (element.hasAttribute(OVERLAY_ATTRIBUTE) || visited.has(element)) {
+        continue;
+      }
+      visited.add(element);
+      order.set(element, order.size);
+      if (isMeaningful(element)) elements.push(element);
+      const children = composedChildren(element);
+      if (children.length === 0) continue;
+      if (depth >= MAX_REGION_SCAN_DEPTH) {
+        truncated = true;
+        continue;
+      }
+      for (let index = children.length - 1; index >= 0; index -= 1) {
+        const child = children[index];
+        if (child !== undefined)
+          stack.push({ element: child, depth: depth + 1 });
+      }
+    }
+    return { elements, order, truncated };
   };
   const accessibilityHint = (
     element: Element,
@@ -1031,6 +1062,7 @@ function desktopBrowserInspectionPageController(
         groups: [] as RegionGroup[],
         omittedTargetCount: 0,
         omittedGroupCount: 0,
+        scanTruncated: collected.truncated,
       };
     }
     const commonAncestorLocator = locatorFrom(
@@ -1101,6 +1133,7 @@ function desktopBrowserInspectionPageController(
       groups,
       omittedTargetCount: targetElements.length - targets.length,
       omittedGroupCount: groupElements.length - groups.length,
+      scanTruncated: collected.truncated,
     };
     const encoder = new TextEncoder();
     while (
@@ -1146,7 +1179,7 @@ function desktopBrowserInspectionPageController(
   root.append(outline, label);
   document.documentElement.append(root);
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let settled = false;
     let dragging = false;
     let dragStart: { x: number; y: number } | null = null;
@@ -1203,6 +1236,16 @@ function desktopBrowserInspectionPageController(
       stopInteractions();
       resolve(value);
     };
+    const fail = (cause: unknown): void => {
+      if (settled) return;
+      settled = true;
+      stopInteractions();
+      root.remove();
+      if (rootWindow[registryKey]?.requestId === input.requestId) {
+        delete rootWindow[registryKey];
+      }
+      reject(cause instanceof Error ? cause : new Error(String(cause)));
+    };
     const draw = (
       rect: { x: number; y: number; width: number; height: number },
       text: string,
@@ -1255,21 +1298,28 @@ function desktopBrowserInspectionPageController(
       };
       listen(document, "pointermove", schedulePointerMove as EventListener);
       listen(document, "click", ((event: MouseEvent) => {
-        const target = document.elementFromPoint(event.clientX, event.clientY);
-        if (target === null || target.hasAttribute(OVERLAY_ATTRIBUTE)) return;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        const rect = target.getBoundingClientRect();
-        draw(rectValue(rect), selectorFor(target));
-        settle({
-          version: 1,
-          kind: "element",
-          page: pageValue(),
-          rect: rectValue(rect),
-          deviceScaleFactor: window.devicePixelRatio,
-          element: elementValue(target),
-          region: null,
-        });
+        try {
+          const target = document.elementFromPoint(
+            event.clientX,
+            event.clientY,
+          );
+          if (target === null || target.hasAttribute(OVERLAY_ATTRIBUTE)) return;
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          const rect = target.getBoundingClientRect();
+          draw(rectValue(rect), selectorFor(target));
+          settle({
+            version: 2,
+            kind: "element",
+            page: pageValue(),
+            rect: rectValue(rect),
+            deviceScaleFactor: window.devicePixelRatio,
+            element: elementValue(target),
+            region: null,
+          });
+        } catch (cause) {
+          fail(cause);
+        }
       }) as EventListener);
       return;
     }
@@ -1309,59 +1359,66 @@ function desktopBrowserInspectionPageController(
     };
     listen(document, "pointermove", schedulePointerMove as EventListener);
     listen(document, "pointerup", ((event: PointerEvent) => {
-      if (!dragging || dragStart === null || event.button !== 0) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      dragging = false;
-      const left = Math.max(0, Math.min(dragStart.x, event.clientX));
-      const top = Math.max(0, Math.min(dragStart.y, event.clientY));
-      const right = Math.min(
-        window.innerWidth,
-        Math.max(dragStart.x, event.clientX),
-      );
-      const bottom = Math.min(
-        window.innerHeight,
-        Math.max(dragStart.y, event.clientY),
-      );
-      const rect = new DOMRect(left, top, right - left, bottom - top);
-      dragStart = null;
-      if (rect.width < 8 || rect.height < 8) {
-        if (input.kind !== "auto") {
-          outline.style.display = "none";
-          label.style.display = "none";
+      try {
+        if (!dragging || dragStart === null || event.button !== 0) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        dragging = false;
+        const left = Math.max(0, Math.min(dragStart.x, event.clientX));
+        const top = Math.max(0, Math.min(dragStart.y, event.clientY));
+        const right = Math.min(
+          window.innerWidth,
+          Math.max(dragStart.x, event.clientX),
+        );
+        const bottom = Math.min(
+          window.innerHeight,
+          Math.max(dragStart.y, event.clientY),
+        );
+        const rect = new DOMRect(left, top, right - left, bottom - top);
+        dragStart = null;
+        if (rect.width < 8 || rect.height < 8) {
+          if (input.kind !== "auto") {
+            outline.style.display = "none";
+            label.style.display = "none";
+            return;
+          }
+          const target = document.elementFromPoint(
+            event.clientX,
+            event.clientY,
+          );
+          if (target === null || target.hasAttribute(OVERLAY_ATTRIBUTE)) return;
+          const targetRect = target.getBoundingClientRect();
+          draw(rectValue(targetRect), selectorFor(target));
+          settle({
+            version: 2,
+            kind: "element",
+            page: pageValue(),
+            rect: rectValue(targetRect),
+            deviceScaleFactor: window.devicePixelRatio,
+            element: elementValue(target),
+            region: null,
+          });
           return;
         }
-        const target = document.elementFromPoint(event.clientX, event.clientY);
-        if (target === null || target.hasAttribute(OVERLAY_ATTRIBUTE)) return;
-        const targetRect = target.getBoundingClientRect();
-        draw(rectValue(targetRect), selectorFor(target));
+        draw(rectValue(rect), "Marked region");
         settle({
-          version: 1,
-          kind: "element",
+          version: 2,
+          kind: "region",
           page: pageValue(),
-          rect: rectValue(targetRect),
+          rect: rectValue(rect),
           deviceScaleFactor: window.devicePixelRatio,
-          element: elementValue(target),
-          region: null,
+          element: null,
+          region: regionValue(rect),
         });
-        return;
+      } catch (cause) {
+        fail(cause);
       }
-      draw(rectValue(rect), "Marked region");
-      settle({
-        version: 1,
-        kind: "region",
-        page: pageValue(),
-        rect: rectValue(rect),
-        deviceScaleFactor: window.devicePixelRatio,
-        element: null,
-        region: regionValue(rect),
-      });
     }) as EventListener);
   });
 }
 
 function desktopBrowserInspectionPageCancel(requestId: string): void {
-  const registryKey = "__bbExperimentalPageInspectionV1";
+  const registryKey = "__bbExperimentalPageInspectionV2";
   const rootWindow = window as typeof window & {
     [registryKey]?: PageControllerRegistry;
   };
@@ -1419,9 +1476,11 @@ interface StartDesktopBrowserInspectionArgs {
   deadlineMs?: number;
 }
 
-export interface DesktopBrowserInspectionSession {
+export interface DesktopBrowserInspectionSession<
+  TResult = BbDesktopBrowserInspectionResult,
+> {
   requestId: string;
-  promise: Promise<BbDesktopBrowserInspectionResult | null>;
+  promise: Promise<TResult | null>;
   cancel(): void;
 }
 
@@ -1433,9 +1492,9 @@ function pngDataUrl(image: DesktopBrowserInspectionImage): string {
   return `data:image/png;base64,${png.toString("base64")}`;
 }
 
-export function startDesktopBrowserInspection(
+export function startDesktopBrowserInspectionV2(
   args: StartDesktopBrowserInspectionArgs,
-): DesktopBrowserInspectionSession {
+): DesktopBrowserInspectionSession<BbDesktopBrowserInspectionResultV2> {
   const requestId = args.request.requestId;
   const initialUrl = args.webContents.getURL();
   let cancelResolve: ((value: null) => void) | null = null;
@@ -1466,7 +1525,7 @@ export function startDesktopBrowserInspection(
   );
 
   const capture =
-    async (): Promise<BbDesktopBrowserInspectionResult | null> => {
+    async (): Promise<BbDesktopBrowserInspectionResultV2 | null> => {
       const raw: unknown = await args.webContents.executeJavaScript(
         createDesktopBrowserInspectionControllerSource({
           requestId,
@@ -1474,8 +1533,8 @@ export function startDesktopBrowserInspection(
         }),
       );
       if (raw === null || disposed) return null;
-      const pageResult: BbDesktopBrowserInspectionPageResult =
-        bbDesktopBrowserInspectionPageResultSchema.parse(raw);
+      const pageResult: BbDesktopBrowserInspectionPageResultV2 =
+        bbDesktopBrowserInspectionPageResultV2Schema.parse(raw);
       if (
         (args.request.kind !== "auto" &&
           pageResult.kind !== args.request.kind) ||
@@ -1501,7 +1560,7 @@ export function startDesktopBrowserInspection(
         throw new Error("The inspected page has no visible viewport");
       }
       const { deviceScaleFactor, ...captureData } = pageResult;
-      return bbDesktopBrowserInspectionResultSchema.parse({
+      return bbDesktopBrowserInspectionResultV2Schema.parse({
         ...captureData,
         screenshot: {
           dataUrl: pngDataUrl(image),
@@ -1524,4 +1583,53 @@ export function startDesktopBrowserInspection(
     cancelPage();
   });
   return { requestId, promise, cancel };
+}
+
+function projectInspectionV2ToV1(
+  value: BbDesktopBrowserInspectionResultV2,
+): BbDesktopBrowserInspectionResult {
+  const region =
+    value.region === null
+      ? null
+      : {
+          elements: value.region.targets.slice(0, 20).map((target) => {
+            const selector = target.absoluteLocator.selectors
+              .join(" >>> ")
+              .slice(0, 2_048);
+            const finalSelector =
+              target.absoluteLocator.selectors.at(-1) ?? "element";
+            const tag = [
+              ...finalSelector.matchAll(
+                /(?:^|[\s>+~])([a-zA-Z][a-zA-Z0-9-]*)/gu,
+              ),
+            ].at(-1)?.[1];
+            return {
+              selector,
+              tag: (tag ?? "element").toLowerCase().slice(0, 64),
+              id: null,
+              classNames: [],
+              text: target.text,
+              rect: target.rect,
+            };
+          }),
+        };
+  return bbDesktopBrowserInspectionResultSchema.parse({
+    ...value,
+    version: 1,
+    region,
+  });
+}
+
+/** Compatibility method for the original V1 region wire shape. */
+export function startDesktopBrowserInspection(
+  args: StartDesktopBrowserInspectionArgs,
+): DesktopBrowserInspectionSession {
+  const session = startDesktopBrowserInspectionV2(args);
+  return {
+    requestId: session.requestId,
+    cancel: session.cancel,
+    promise: session.promise.then((value) =>
+      value === null ? null : projectInspectionV2ToV1(value),
+    ),
+  };
 }

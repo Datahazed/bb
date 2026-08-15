@@ -1,4 +1,9 @@
-import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
+import {
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
@@ -16,6 +21,7 @@ import { promptMentionClipboardDataAttributes } from "@/components/promptbox/men
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { PromptMentionPreviewTooltip } from "@/components/promptbox/mentions/PromptMentionPreviewTooltip";
 import type { PromptMentionPreviewTooltipProps } from "@/components/promptbox/mentions/PromptMentionPreviewTooltip";
+import { PromptMentionInspector } from "@/components/promptbox/mentions/PromptMentionInspector";
 
 interface PromptMentionPillProps {
   /** Render visual mention styling without allowing navigation or activation. */
@@ -135,8 +141,13 @@ export function PromptMentionPill({
   linkHref,
   onActivate,
 }: PromptMentionPillProps) {
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const title = promptMentionTooltipLabel(resource);
   const preview = resource.kind === "plugin" ? resource.preview : undefined;
+  const inspectable =
+    interactive &&
+    resource.kind === "plugin" &&
+    resource.experimentalInspectability === true;
   const nativeTitle = preview?.trim() ? undefined : title;
   const clipboardAttributes = promptMentionClipboardDataAttributes({
     resource,
@@ -189,6 +200,35 @@ export function PromptMentionPill({
       >
         {labelNode}
       </span>,
+    );
+  }
+
+  if (inspectable) {
+    return (
+      <>
+        {withPreview(
+          <button
+            type="button"
+            className={mentionPillClassName(true)}
+            {...clipboardAttributes}
+            aria-label={`Inspect ${title}`}
+            onClick={(event: MouseEvent<HTMLButtonElement>) => {
+              event.stopPropagation();
+              setInspectorOpen(true);
+            }}
+            title={nativeTitle}
+          >
+            {labelNode}
+          </button>,
+        )}
+        <PromptMentionInspector
+          open={inspectorOpen}
+          onOpenChange={setInspectorOpen}
+          pluginId={resource.pluginId}
+          itemId={resource.itemId}
+          label={resource.label}
+        />
+      </>
     );
   }
 

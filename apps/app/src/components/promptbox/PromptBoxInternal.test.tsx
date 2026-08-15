@@ -2845,7 +2845,6 @@ describe("PromptBoxInternal mention triggers", () => {
           inspection: {
             title: "Invite member · Acme Team Settings",
             description: "Immutable captured context",
-            preview: null,
             metadata: 'capture.element.selector = "button.invite"',
           },
         }),

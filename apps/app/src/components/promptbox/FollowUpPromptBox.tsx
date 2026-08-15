@@ -396,6 +396,17 @@ function FollowUpPromptBoxWithComposer({
     promptBoxRef.current?.captureHeightForLayoutChange();
     setIsInteractionExpanded(nextExpanded);
   }, []);
+  const lastFocusExpansionKeyRef = useRef(focusEndKey);
+  useEffect(() => {
+    if (focusEndKey === undefined) return;
+    if (focusEndKey === lastFocusExpansionKeyRef.current) return;
+    lastFocusExpansionKeyRef.current = focusEndKey;
+    // A native WebContentsView can keep the renderer's editor as
+    // document.activeElement while focus is actually on the page. In that
+    // case a plugin focus request moves the caret without producing another
+    // React focus event, so expand from the explicit request as well.
+    setInteractionExpanded(true);
+  }, [focusEndKey, setInteractionExpanded]);
   const cancelPendingFocusExpansion = useCallback(() => {
     pendingFocusExpansionCleanupRef.current?.();
     pendingFocusExpansionCleanupRef.current = null;

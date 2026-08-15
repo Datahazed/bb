@@ -3,6 +3,7 @@ import { appCommandIdSchema } from "@bb/domain";
 import {
   bbDesktopBrowserOpenTabRequestSchema,
   bbDesktopBrowserInspectionResultSchema,
+  bbDesktopBrowserInspectionResultV2Schema,
   bbDesktopBrowserScopedOpenTabRequestSchema,
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
@@ -39,6 +40,7 @@ import {
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_INSPECTION_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_V2_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -254,6 +256,14 @@ const bbBrowserApi: BbDesktopBrowserApi = {
     );
     if (payload === null) return null;
     return bbDesktopBrowserInspectionResultSchema.parse(payload);
+  },
+  async experimental_inspectPageV2(request) {
+    const payload: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_V2_CHANNEL,
+      request,
+    );
+    if (payload === null) return null;
+    return bbDesktopBrowserInspectionResultV2Schema.parse(payload);
   },
   experimental_cancelPageInspection(tabId, requestId): void {
     ipcRenderer.send(

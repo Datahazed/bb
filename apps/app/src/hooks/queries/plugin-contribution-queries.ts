@@ -18,7 +18,6 @@ export interface PluginMentionProviderContribution {
   id: string;
   label: string;
   triggers: readonly PluginMentionTrigger[];
-  experimentalInspectability?: boolean;
 }
 
 export interface PluginContributions {
@@ -48,7 +47,6 @@ function toMentionProviderContribution(
     id: provider.id,
     label: provider.label,
     triggers,
-    experimentalInspectability: provider.experimentalInspectability === true,
   };
 }
 
@@ -92,7 +90,9 @@ export interface PluginMentionSearchItem {
   subtitle: string | null;
   icon: string | null;
   /** Absent when talking to a server from before mention previews shipped. */
+  /** `null` remains accepted from an older server and normalizes to absent. */
   preview?: string | null;
+  /** `false` remains accepted from an older server and normalizes to absent. */
   experimentalInspectability?: boolean;
 }
 

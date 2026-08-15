@@ -702,7 +702,7 @@ describe("DesktopBrowserViewManager", () => {
     const view = requireFakeView(0);
     expect(view.visible).toBe(false);
 
-    const pending = manager.experimentalInspectPage({
+    const pending = manager.experimentalInspectPageV2({
       hostWindow,
       request: {
         tabId: "browser:a",

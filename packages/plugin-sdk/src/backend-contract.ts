@@ -288,6 +288,22 @@ export interface PluginCliResult {
  */
 export const PLUGIN_CLI_OUTPUT_MAX_BYTES = 1024 * 1024;
 
+/**
+ * UTF-8 byte limits for plugin mention previews and inspections. Production
+ * and plugin tests share these values so a provider can bound content before
+ * returning it. `inspectionTotalBytes` covers the normalized JSON object.
+ */
+export const PLUGIN_MENTION_CONTENT_LIMITS = {
+  searchPreviewBytes: 16 * 1024,
+  searchPreviewsTotalBytes: 128 * 1024,
+  inspectionTitleBytes: 4 * 1024,
+  inspectionDescriptionBytes: 16 * 1024,
+  inspectionMetadataBytes: 256 * 1024,
+  inspectionImageAltBytes: 4 * 1024,
+  inspectionImageDataUrlBytes: 8 * 1024 * 1024,
+  inspectionTotalBytes: 8 * 1024 * 1024,
+} as const;
+
 export interface PluginCliOutputLimitError {
   code: "plugin_cli_output_too_large";
   message: string;
@@ -542,17 +558,30 @@ export interface PluginMentionItem {
   title: string;
   subtitle?: string;
   icon?: string;
-  /** Optional human-readable content shown when the inserted pill is previewed. */
+  /**
+   * Optional human-readable content shown when the inserted pill is previewed.
+   * Limited by `PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes` and the
+   * provider-call aggregate preview limit.
+   */
   preview?: string;
 }
 
 /** Provider-owned detail shown when an inspectable mention is activated. */
 export interface ExperimentalPluginMentionInspection {
+  /** Limited by `PLUGIN_MENTION_CONTENT_LIMITS.inspectionTitleBytes`. */
   title: string;
+  /** Limited by `PLUGIN_MENTION_CONTENT_LIMITS.inspectionDescriptionBytes`. */
   description?: string;
-  /** Optional visual preview. It is presentation-only and is never sent. */
+  /**
+   * Optional visual preview. It is presentation-only and is never sent. The
+   * host accepts strict base64 PNG, JPEG, WebP, and GIF data URLs within the
+   * shared image and total inspection limits.
+   */
   preview?: { kind: "image"; dataUrl: string; alt: string };
-  /** Exact, human-readable metadata represented by this mention. */
+  /**
+   * Exact, human-readable metadata represented by this mention. Limited by
+   * `PLUGIN_MENTION_CONTENT_LIMITS.inspectionMetadataBytes`.
+   */
   metadata: string;
 }
 

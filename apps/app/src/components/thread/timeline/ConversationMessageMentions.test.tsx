@@ -1,14 +1,65 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   messageBodyHasQuote,
+  PromptMentionPill,
   renderMessageBodyWithQuotes,
 } from "./ConversationMessageMentions";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+});
+
+describe("PromptMentionPill", () => {
+  it("opens the inspector from a sent inspectable plugin mention", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          inspection: {
+            title: "Invite member · Acme Team Settings",
+            metadata: 'capture.element.selector = "button.invite"',
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    render(
+      <PromptMentionPill
+        resource={{
+          kind: "plugin",
+          pluginId: "browser-context",
+          itemId: "captures:stable-id",
+          label: "Invite member",
+          experimentalInspectability: true,
+        }}
+        serializedText="@Invite member"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Inspect.*Invite member/u }),
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: "Invite member · Acme Team Settings",
+      }),
+    ).toBeDefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/plugins/mentions/inspect",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          pluginId: "browser-context",
+          itemId: "captures:stable-id",
+        }),
+      }),
+    );
+  });
 });
 
 describe("messageBodyHasQuote", () => {

@@ -401,7 +401,15 @@ const bbDesktopBrowserInspectionRegionGroupSchema = z
   })
   .strict();
 
-const bbDesktopBrowserInspectionRegionContextSchema = z
+const bbDesktopBrowserInspectionRegionContextV1Schema = z
+  .object({
+    elements: z
+      .array(bbDesktopBrowserInspectionElementDescriptorSchema)
+      .max(20),
+  })
+  .strict();
+
+const bbDesktopBrowserInspectionRegionContextV2Schema = z
   .object({
     commonAncestor: z
       .object({
@@ -414,10 +422,11 @@ const bbDesktopBrowserInspectionRegionContextSchema = z
     groups: z.array(bbDesktopBrowserInspectionRegionGroupSchema).max(24),
     omittedTargetCount: z.number().int().nonnegative().max(10_000_000),
     omittedGroupCount: z.number().int().nonnegative().max(10_000_000),
+    scanTruncated: z.boolean(),
   })
   .strict();
 
-const bbDesktopBrowserInspectionPageResultObjectSchema = z
+const bbDesktopBrowserInspectionPageResultV1ObjectSchema = z
   .object({
     version: z.literal(1),
     kind: z.enum(["element", "region"]),
@@ -425,13 +434,54 @@ const bbDesktopBrowserInspectionPageResultObjectSchema = z
     rect: bbDesktopBrowserInspectionRectSchema,
     deviceScaleFactor: z.number().finite().positive().max(16),
     element: bbDesktopBrowserInspectionElementContextSchema.nullable(),
-    region: bbDesktopBrowserInspectionRegionContextSchema.nullable(),
+    region: bbDesktopBrowserInspectionRegionContextV1Schema.nullable(),
+  })
+  .strict();
+
+const bbDesktopBrowserInspectionPageResultV2ObjectSchema = z
+  .object({
+    version: z.literal(2),
+    kind: z.enum(["element", "region"]),
+    page: bbDesktopBrowserInspectionPageSchema,
+    rect: bbDesktopBrowserInspectionRectSchema,
+    deviceScaleFactor: z.number().finite().positive().max(16),
+    element: bbDesktopBrowserInspectionElementContextSchema.nullable(),
+    region: bbDesktopBrowserInspectionRegionContextV2Schema.nullable(),
   })
   .strict();
 
 /** Untrusted result returned by the page-world controller before capturePage. */
 export const bbDesktopBrowserInspectionPageResultSchema =
-  bbDesktopBrowserInspectionPageResultObjectSchema.superRefine(
+  bbDesktopBrowserInspectionPageResultV1ObjectSchema.superRefine(
+    (value, context) => {
+      const correctBranch =
+        value.kind === "element"
+          ? value.element !== null && value.region === null
+          : value.region !== null && value.element === null;
+      if (!correctBranch) {
+        context.addIssue({
+          code: "custom",
+          message: "Inspection result does not match its capture kind",
+        });
+      }
+      if (
+        new TextEncoder().encode(JSON.stringify(value)).byteLength >
+        BB_DESKTOP_BROWSER_INSPECTION_MAX_STRUCTURED_BYTES
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Inspection result exceeds the structured payload limit",
+        });
+      }
+    },
+  );
+export type BbDesktopBrowserInspectionPageResult = z.infer<
+  typeof bbDesktopBrowserInspectionPageResultSchema
+>;
+
+/** Version-two page result for deterministic, shadow-aware region capture. */
+export const bbDesktopBrowserInspectionPageResultV2Schema =
+  bbDesktopBrowserInspectionPageResultV2ObjectSchema.superRefine(
     (value, context) => {
       const correctBranch =
         value.kind === "element"
@@ -469,8 +519,8 @@ export const bbDesktopBrowserInspectionPageResultSchema =
       }
     },
   );
-export type BbDesktopBrowserInspectionPageResult = z.infer<
-  typeof bbDesktopBrowserInspectionPageResultSchema
+export type BbDesktopBrowserInspectionPageResultV2 = z.infer<
+  typeof bbDesktopBrowserInspectionPageResultV2Schema
 >;
 
 function decodedPngBytes(dataUrl: string): number {
@@ -481,47 +531,65 @@ function decodedPngBytes(dataUrl: string): number {
   return Math.floor((payload.length * 3) / 4) - padding;
 }
 
-export const bbDesktopBrowserInspectionResultSchema =
-  bbDesktopBrowserInspectionPageResultObjectSchema
+const bbDesktopBrowserInspectionScreenshotSchema = z
+  .object({
+    dataUrl: z
+      .string()
+      .max(BB_DESKTOP_BROWSER_INSPECTION_MAX_PNG_DATA_URL_LENGTH)
+      .refine(
+        (value) =>
+          decodedPngBytes(value) <= BB_DESKTOP_BROWSER_INSPECTION_MAX_PNG_BYTES,
+        "Inspection PNG exceeds the image limit",
+      ),
+    pixelSize: bbDesktopBrowserInspectionSizeSchema,
+    deviceScaleFactor: z.number().finite().positive().max(16),
+    pageZoom: z.number().finite().positive().max(16),
+    cssToImageScale: bbDesktopBrowserInspectionPointSchema.refine(
+      (value) => value.x > 0 && value.y > 0,
+      "Image scale must be positive",
+    ),
+  })
+  .strict();
+
+const withInspectionResultLimit = <T extends z.ZodType>(schema: T) =>
+  schema.superRefine((value, context) => {
+    const record = value as { screenshot: { dataUrl: string } };
+    const { dataUrl: _dataUrl, ...screenshot } = record.screenshot;
+    const structured = { ...(value as object), screenshot };
+    if (
+      new TextEncoder().encode(JSON.stringify(structured)).byteLength >
+      BB_DESKTOP_BROWSER_INSPECTION_MAX_STRUCTURED_BYTES
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Inspection result exceeds the structured payload limit",
+      });
+    }
+  });
+
+export const bbDesktopBrowserInspectionResultSchema = withInspectionResultLimit(
+  bbDesktopBrowserInspectionPageResultV1ObjectSchema
     .omit({ deviceScaleFactor: true })
     .extend({
-      screenshot: z
-        .object({
-          dataUrl: z
-            .string()
-            .max(BB_DESKTOP_BROWSER_INSPECTION_MAX_PNG_DATA_URL_LENGTH)
-            .refine(
-              (value) =>
-                decodedPngBytes(value) <=
-                BB_DESKTOP_BROWSER_INSPECTION_MAX_PNG_BYTES,
-              "Inspection PNG exceeds the image limit",
-            ),
-          pixelSize: bbDesktopBrowserInspectionSizeSchema,
-          deviceScaleFactor: z.number().finite().positive().max(16),
-          pageZoom: z.number().finite().positive().max(16),
-          cssToImageScale: bbDesktopBrowserInspectionPointSchema.refine(
-            (value) => value.x > 0 && value.y > 0,
-            "Image scale must be positive",
-          ),
-        })
-        .strict(),
+      screenshot: bbDesktopBrowserInspectionScreenshotSchema,
     })
-    .strict()
-    .superRefine((value, context) => {
-      const { dataUrl: _dataUrl, ...screenshot } = value.screenshot;
-      const structured = { ...value, screenshot };
-      if (
-        new TextEncoder().encode(JSON.stringify(structured)).byteLength >
-        BB_DESKTOP_BROWSER_INSPECTION_MAX_STRUCTURED_BYTES
-      ) {
-        context.addIssue({
-          code: "custom",
-          message: "Inspection result exceeds the structured payload limit",
-        });
-      }
-    });
+    .strict(),
+);
 export type BbDesktopBrowserInspectionResult = z.infer<
   typeof bbDesktopBrowserInspectionResultSchema
+>;
+
+export const bbDesktopBrowserInspectionResultV2Schema =
+  withInspectionResultLimit(
+    bbDesktopBrowserInspectionPageResultV2ObjectSchema
+      .omit({ deviceScaleFactor: true })
+      .extend({
+        screenshot: bbDesktopBrowserInspectionScreenshotSchema,
+      })
+      .strict(),
+  );
+export type BbDesktopBrowserInspectionResultV2 = z.infer<
+  typeof bbDesktopBrowserInspectionResultV2Schema
 >;
 
 /**
@@ -575,6 +643,10 @@ export interface BbDesktopBrowserApi {
   experimental_inspectPage?(
     request: BbDesktopBrowserInspectionRequest,
   ): Promise<BbDesktopBrowserInspectionResult | null>;
+  /** Optional V2 capability with deterministic, shadow-aware region results. */
+  experimental_inspectPageV2?(
+    request: BbDesktopBrowserInspectionRequest,
+  ): Promise<BbDesktopBrowserInspectionResultV2 | null>;
   /** Cancel the active experimental inspection for `tabId`, if any. */
   experimental_cancelPageInspection?(tabId: string, requestId: string): void;
   /** Subscribe to navigation-state pushes for every view in this window. */

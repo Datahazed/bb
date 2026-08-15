@@ -17,6 +17,7 @@ import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_INSPECTION_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_V2_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
@@ -88,6 +89,18 @@ export function registerDesktopBrowserIpc(
       }
       const request = bbDesktopBrowserInspectionRequestSchema.parse(payload);
       return manager.experimentalInspectPage({ hostWindow, request });
+    },
+  );
+
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_V2_CHANNEL,
+    async (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        throw new Error("The Browser host window is unavailable");
+      }
+      const request = bbDesktopBrowserInspectionRequestSchema.parse(payload);
+      return manager.experimentalInspectPageV2({ hostWindow, request });
     },
   );
 

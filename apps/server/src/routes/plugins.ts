@@ -239,14 +239,18 @@ export function registerPluginRoutes(
     return context.json({ ok: true, groups });
   });
 
-  app.get("/plugins/mentions/inspect", async (context) => {
+  app.post("/plugins/mentions/inspect", async (context) => {
     const problem = localAuthProblem(context, deps);
     if (problem) {
       return context.json({ ok: false, error: problem.error }, problem.status);
     }
-    const pluginId = context.req.query("pluginId") ?? "";
-    const itemId = context.req.query("itemId") ?? "";
-    if (pluginId.length === 0 || itemId.length === 0) {
+    const body = (await context.req.json().catch(() => null)) as {
+      pluginId?: unknown;
+      itemId?: unknown;
+    } | null;
+    const pluginId = typeof body?.pluginId === "string" ? body.pluginId : "";
+    const itemId = typeof body?.itemId === "string" ? body.itemId : "";
+    if (pluginId.trim().length === 0 || itemId.trim().length === 0) {
       return context.json(
         { ok: false, error: "pluginId and itemId are required" },
         400,

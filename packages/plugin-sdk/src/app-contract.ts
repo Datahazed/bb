@@ -261,7 +261,7 @@ export interface ExperimentalBrowserInspectionRegionGroup {
 }
 
 export interface ExperimentalBrowserInspectionResult {
-  version: 1;
+  version: 2;
   kind: "element" | "region";
   page: {
     url: string;
@@ -289,6 +289,8 @@ export interface ExperimentalBrowserInspectionResult {
     groups: readonly ExperimentalBrowserInspectionRegionGroup[];
     omittedTargetCount: number;
     omittedGroupCount: number;
+    /** True when node, depth, candidate, or time bounds ended the page scan. */
+    scanTruncated: boolean;
   } | null;
   screenshot: {
     dataUrl: string;

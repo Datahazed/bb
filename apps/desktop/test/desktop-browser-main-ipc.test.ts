@@ -9,6 +9,8 @@ import {
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_V2_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -115,6 +117,7 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   public readonly setVisibleCalls: SetVisibleCall[] = [];
   public readonly stopCalls: TabCommandCall[] = [];
   public readonly inspectionCalls: InspectCall[] = [];
+  public readonly inspectionV2Calls: InspectCall[] = [];
   public readonly cancelInspectionCalls: TabCommandCall[] = [];
 
   attach(args: AttachCall): void {
@@ -174,6 +177,11 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     return Promise.resolve(null);
   }
 
+  experimentalInspectPageV2(args: InspectCall): Promise<null> {
+    this.inspectionV2Calls.push(args);
+    return Promise.resolve(null);
+  }
+
   cancelExperimentalInspection(args: TabCommandCall): void {
     this.cancelInspectionCalls.push(args);
   }
@@ -216,6 +224,31 @@ function oversizedBrowserUrl(): string {
 }
 
 describe("registerDesktopBrowserIpc", () => {
+  it("keeps V1 and V2 inspection on distinct handlers for version skew", async () => {
+    const manager = new RecordingDesktopBrowserViewManager();
+    registerDesktopBrowserIpc(manager);
+    const renderer = createTrustedRenderer("main-window");
+    const payload = {
+      tabId: "browser:a",
+      requestId: "request-1",
+      kind: "region",
+    };
+
+    await electronMock.handlers.get(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_CHANNEL,
+    )?.({ sender: renderer.sender }, payload);
+    expect(manager.inspectionCalls).toEqual([
+      { hostWindow: renderer.hostWindow, request: payload },
+    ]);
+    expect(manager.inspectionV2Calls).toEqual([]);
+
+    await electronMock.handlers.get(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_V2_CHANNEL,
+    )?.({ sender: renderer.sender }, payload);
+    expect(manager.inspectionV2Calls).toEqual([
+      { hostWindow: renderer.hostWindow, request: payload },
+    ]);
+  });
   it("dispatches valid browser commands only from BrowserWindow-owned senders", () => {
     const manager = new RecordingDesktopBrowserViewManager();
     registerDesktopBrowserIpc(manager);

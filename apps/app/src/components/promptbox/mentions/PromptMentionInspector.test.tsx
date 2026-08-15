@@ -44,10 +44,15 @@ describe("PromptMentionInspector", () => {
     ).toBeDefined();
     expect(screen.getByAltText("Invite member capture")).toBeDefined();
     expect(screen.getByText(/capture\.element\.selector/u)).toBeDefined();
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/plugins/mentions/inspect?pluginId=browser-context&itemId=captures%3Astable-id",
-      { signal: expect.any(AbortSignal) },
-    );
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/plugins/mentions/inspect", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        pluginId: "browser-context",
+        itemId: "captures:stable-id",
+      }),
+      signal: expect.any(AbortSignal),
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -79,8 +84,6 @@ describe("PromptMentionInspector", () => {
           ok: true,
           inspection: {
             title: "Members table",
-            description: null,
-            preview: null,
             metadata: 'capture.kind = "region"',
           },
         }),

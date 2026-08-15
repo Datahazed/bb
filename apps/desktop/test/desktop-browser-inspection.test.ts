@@ -1,15 +1,16 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import type { BbDesktopBrowserInspectionPageResult } from "@bb/desktop-contract";
+import type { BbDesktopBrowserInspectionPageResultV2 } from "@bb/desktop-contract";
 import {
   createDesktopBrowserInspectionCancelSource,
   createDesktopBrowserInspectionControllerSource,
   startDesktopBrowserInspection,
+  startDesktopBrowserInspectionV2,
   type DesktopBrowserInspectionWebContents,
 } from "../src/desktop-browser-inspection.js";
 
-const pageResult: BbDesktopBrowserInspectionPageResult = {
-  version: 1,
+const pageResult: BbDesktopBrowserInspectionPageResultV2 = {
+  version: 2,
   kind: "region",
   page: {
     url: "https://example.com/",
@@ -26,6 +27,7 @@ const pageResult: BbDesktopBrowserInspectionPageResult = {
     groups: [],
     omittedTargetCount: 0,
     omittedGroupCount: 0,
+    scanTruncated: false,
   },
 };
 
@@ -79,9 +81,49 @@ function inspectionRequest() {
 }
 
 describe("desktop Browser inspection session", () => {
+  it("projects deterministic V2 regions to the frozen V1 elements shape", async () => {
+    const webContents = new FakeInspectionWebContents();
+    const v2Region = {
+      ...pageResult,
+      region: {
+        ...pageResult.region,
+        commonAncestor: {
+          kind: "element" as const,
+          absoluteLocator: { selectors: ["#list"] },
+        },
+        targets: [
+          {
+            absoluteLocator: { selectors: ["#list > button:nth-of-type(1)"] },
+            relativeLocator: { selectors: [":scope > button:nth-of-type(1)"] },
+            text: "Invite member",
+            rect: { x: 10, y: 20, width: 100, height: 30 },
+          },
+        ],
+      },
+    };
+    const session = startDesktopBrowserInspection({
+      request: inspectionRequest(),
+      webContents,
+    });
+    webContents.resolveController?.(v2Region);
+
+    await expect(session.promise).resolves.toMatchObject({
+      version: 1,
+      region: {
+        elements: [
+          {
+            selector: "#list > button:nth-of-type(1)",
+            tag: "button",
+            text: "Invite member",
+          },
+        ],
+      },
+    });
+  });
+
   it("captures only after bounded page data and records exact scale metadata", async () => {
     const webContents = new FakeInspectionWebContents();
-    const session = startDesktopBrowserInspection({
+    const session = startDesktopBrowserInspectionV2({
       request: inspectionRequest(),
       webContents,
     });
@@ -103,7 +145,7 @@ describe("desktop Browser inspection session", () => {
 
   it("settles null and disposes once on navigation cancellation", async () => {
     const webContents = new FakeInspectionWebContents();
-    const session = startDesktopBrowserInspection({
+    const session = startDesktopBrowserInspectionV2({
       request: inspectionRequest(),
       webContents,
     });
@@ -134,7 +176,7 @@ describe("desktop Browser inspection session", () => {
     vi.useFakeTimers();
     try {
       const webContents = new FakeInspectionWebContents();
-      const session = startDesktopBrowserInspection({
+      const session = startDesktopBrowserInspectionV2({
         request: inspectionRequest(),
         webContents,
         deadlineMs: 20,

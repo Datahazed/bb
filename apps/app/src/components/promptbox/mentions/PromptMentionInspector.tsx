@@ -9,8 +9,10 @@ import {
 
 interface MentionInspection {
   title: string;
-  description: string | null;
-  preview: { kind: "image"; dataUrl: string; alt: string } | null;
+  /** `null` remains accepted from an older server build. */
+  description?: string | null;
+  /** `null` remains accepted from an older server build. */
+  preview?: { kind: "image"; dataUrl: string; alt: string } | null;
   metadata: string;
 }
 
@@ -37,8 +39,10 @@ export function PromptMentionInspector({
     const controller = new AbortController();
     setInspection(null);
     setError(null);
-    const params = new URLSearchParams({ pluginId, itemId });
-    void fetch(`/api/v1/plugins/mentions/inspect?${params.toString()}`, {
+    void fetch("/api/v1/plugins/mentions/inspect", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pluginId, itemId }),
       signal: controller.signal,
     })
       .then(async (response) => {

@@ -13,6 +13,7 @@ import {
   type ToolCallResponse,
 } from "@bb/domain";
 import {
+  PLUGIN_MENTION_CONTENT_LIMITS,
   type PluginCliExecutionResult,
   type PluginRpcError,
   type PluginRpcValidationIssue,
@@ -678,6 +679,7 @@ function normalizeMentionSearchItems(
       `mention provider "${providerId}" search() must return an array of items`,
     );
   }
+  let totalPreviewBytes = 0;
   return result.map((item, index) => {
     const typed = item as {
       id?: unknown;
@@ -699,6 +701,27 @@ function normalizeMentionSearchItems(
         `mention provider "${providerId}" items[${index}] must be { id: string, title: string, subtitle?, icon?, preview? }`,
       );
     }
+    const preview =
+      typeof typed.preview === "string" && typed.preview.trim().length > 0
+        ? typed.preview
+        : undefined;
+    if (preview !== undefined) {
+      const previewBytes = Buffer.byteLength(preview, "utf8");
+      if (previewBytes > PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes) {
+        throw new Error(
+          `mention provider "${providerId}" items[${index}].preview exceeds the ${PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes}-byte limit`,
+        );
+      }
+      totalPreviewBytes += previewBytes;
+      if (
+        totalPreviewBytes >
+        PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewsTotalBytes
+      ) {
+        throw new Error(
+          `mention provider "${providerId}" previews exceed the ${PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewsTotalBytes}-byte total limit`,
+        );
+      }
+    }
     return {
       itemId: `${providerId}:${typed.id}`,
       title: typed.title,
@@ -710,15 +733,81 @@ function normalizeMentionSearchItems(
         typeof typed.icon === "string" && typed.icon.trim().length > 0
           ? typed.icon
           : null,
-      preview:
-        typeof typed.preview === "string" && typed.preview.trim().length > 0
-          ? typed.preview
-          : null,
+      ...(preview === undefined ? {} : { preview }),
       ...(experimentalInspectability
         ? { experimentalInspectability: true as const }
         : {}),
     };
   });
+}
+
+function stringWithinUtf8Limit(
+  value: string,
+  field: string,
+  maxBytes: number,
+): void {
+  const bytes = Buffer.byteLength(value, "utf8");
+  if (bytes > maxBytes) {
+    throw new Error(`${field} exceeds the ${maxBytes}-byte limit`);
+  }
+}
+
+function hasSafeRasterSignature(mediaType: string, bytes: Buffer): boolean {
+  if (mediaType === "image/png") {
+    return (
+      bytes.length >= 8 &&
+      bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))
+    );
+  }
+  if (mediaType === "image/jpeg") {
+    return (
+      bytes.length >= 3 &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes[2] === 0xff
+    );
+  }
+  if (mediaType === "image/gif") {
+    const signature = bytes.subarray(0, 6).toString("ascii");
+    return signature === "GIF87a" || signature === "GIF89a";
+  }
+  if (mediaType === "image/webp") {
+    return (
+      bytes.length >= 12 &&
+      bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
+      bytes.subarray(8, 12).toString("ascii") === "WEBP"
+    );
+  }
+  return false;
+}
+
+function validateMentionInspectionImageDataUrl(dataUrl: string): void {
+  stringWithinUtf8Limit(
+    dataUrl,
+    "mention inspection preview.dataUrl",
+    PLUGIN_MENTION_CONTENT_LIMITS.inspectionImageDataUrlBytes,
+  );
+  const match =
+    /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/u.exec(
+      dataUrl,
+    );
+  if (match === null || match[2]!.length % 4 !== 0) {
+    throw new Error(
+      "mention inspection preview.dataUrl must be a strict base64 PNG, JPEG, GIF, or WebP data URL",
+    );
+  }
+  const mediaType = match[1]!;
+  const payload = match[2]!;
+  const bytes = Buffer.from(payload, "base64");
+  if (
+    bytes.length === 0 ||
+    bytes.toString("base64") !== payload ||
+    !hasSafeRasterSignature(mediaType, bytes)
+  ) {
+    throw new Error(
+      "mention inspection preview.dataUrl does not contain a valid matching raster image",
+    );
+  }
 }
 
 interface NormalizedPluginAgentConfiguration {
@@ -2101,9 +2190,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             id: record.id,
             label: record.label,
             triggers: record.triggers,
-            ...(record.experimentalInspect === undefined
-              ? {}
-              : { experimentalInspectability: true as const }),
           });
         }
       }
@@ -2322,11 +2408,36 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               `mention provider "${providerId}" experimental_inspect() returned invalid content`,
             );
           }
-          let preview: {
-            kind: "image";
-            dataUrl: string;
-            alt: string;
-          } | null = null;
+          const title = value.title.trim();
+          const description =
+            typeof value.description === "string" &&
+            value.description.trim().length > 0
+              ? value.description.trim()
+              : undefined;
+          stringWithinUtf8Limit(
+            title,
+            `mention provider "${providerId}" inspection.title`,
+            PLUGIN_MENTION_CONTENT_LIMITS.inspectionTitleBytes,
+          );
+          if (description !== undefined) {
+            stringWithinUtf8Limit(
+              description,
+              `mention provider "${providerId}" inspection.description`,
+              PLUGIN_MENTION_CONTENT_LIMITS.inspectionDescriptionBytes,
+            );
+          }
+          stringWithinUtf8Limit(
+            value.metadata,
+            `mention provider "${providerId}" inspection.metadata`,
+            PLUGIN_MENTION_CONTENT_LIMITS.inspectionMetadataBytes,
+          );
+          let preview:
+            | {
+                kind: "image";
+                dataUrl: string;
+                alt: string;
+              }
+            | undefined;
           if (value.preview !== undefined) {
             const candidate = value.preview as Record<string, unknown>;
             if (
@@ -2339,22 +2450,30 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                 `mention provider "${providerId}" experimental_inspect() returned an invalid preview`,
               );
             }
+            stringWithinUtf8Limit(
+              candidate.alt,
+              `mention provider "${providerId}" inspection.preview.alt`,
+              PLUGIN_MENTION_CONTENT_LIMITS.inspectionImageAltBytes,
+            );
+            validateMentionInspectionImageDataUrl(candidate.dataUrl);
             preview = {
               kind: "image",
               dataUrl: candidate.dataUrl,
               alt: candidate.alt,
             };
           }
-          return {
-            title: value.title.trim(),
-            description:
-              typeof value.description === "string" &&
-              value.description.trim().length > 0
-                ? value.description.trim()
-                : null,
-            preview,
+          const inspection = {
+            title,
+            ...(description === undefined ? {} : { description }),
+            ...(preview === undefined ? {} : { preview }),
             metadata: value.metadata,
           };
+          stringWithinUtf8Limit(
+            JSON.stringify(inspection),
+            `mention provider "${providerId}" inspection`,
+            PLUGIN_MENTION_CONTENT_LIMITS.inspectionTotalBytes,
+          );
+          return inspection;
         },
       );
       return outcome.ok

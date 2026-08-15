@@ -4,6 +4,7 @@ import {
   BB_DESKTOP_BROWSER_INSPECTION_MAX_DOM_LENGTH,
   bbDesktopBrowserAttachRequestSchema,
   bbDesktopBrowserInspectionPageResultSchema,
+  bbDesktopBrowserInspectionPageResultV2Schema,
   bbDesktopBrowserInspectionRequestSchema,
   bbDesktopBrowserInspectionResultSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
@@ -162,7 +163,7 @@ const elementPageResult = {
 } as const;
 
 const regionPageResult = {
-  version: 1,
+  version: 2,
   kind: "region",
   page: {
     url: "https://example.com/members",
@@ -218,6 +219,7 @@ const regionPageResult = {
     ],
     omittedTargetCount: 0,
     omittedGroupCount: 0,
+    scanTruncated: false,
   },
 } as const;
 
@@ -272,18 +274,45 @@ describe("experimental desktop browser inspection schemas", () => {
     ).toBe(false);
   });
 
-  it("accepts exact region locators and rejects the removed sampled-elements shape", () => {
+  it("keeps the V1 sampled-elements region wire stable", () => {
+    const v1Region = {
+      ...elementPageResult,
+      kind: "region" as const,
+      element: null,
+      region: {
+        elements: [
+          {
+            selector: "#members > button",
+            tag: "button",
+            id: null,
+            classNames: [],
+            text: "Invite member",
+            rect: { x: 20, y: 30, width: 100, height: 40 },
+          },
+        ],
+      },
+    };
+    expect(bbDesktopBrowserInspectionPageResultSchema.parse(v1Region)).toEqual(
+      v1Region,
+    );
     expect(
-      bbDesktopBrowserInspectionPageResultSchema.parse(regionPageResult),
+      bbDesktopBrowserInspectionPageResultSchema.safeParse(regionPageResult)
+        .success,
+    ).toBe(false);
+  });
+
+  it("accepts exact V2 region locators and rejects the V1 sampled-elements shape", () => {
+    expect(
+      bbDesktopBrowserInspectionPageResultV2Schema.parse(regionPageResult),
     ).toEqual(regionPageResult);
     expect(
-      bbDesktopBrowserInspectionPageResultSchema.safeParse({
+      bbDesktopBrowserInspectionPageResultV2Schema.safeParse({
         ...regionPageResult,
         region: { elements: [] },
       }).success,
     ).toBe(false);
     expect(
-      bbDesktopBrowserInspectionPageResultSchema.safeParse({
+      bbDesktopBrowserInspectionPageResultV2Schema.safeParse({
         ...regionPageResult,
         region: {
           ...regionPageResult.region,
@@ -297,7 +326,7 @@ describe("experimental desktop browser inspection schemas", () => {
       }).success,
     ).toBe(false);
     expect(
-      bbDesktopBrowserInspectionPageResultSchema.safeParse({
+      bbDesktopBrowserInspectionPageResultV2Schema.safeParse({
         ...regionPageResult,
         region: {
           ...regionPageResult.region,
@@ -306,7 +335,7 @@ describe("experimental desktop browser inspection schemas", () => {
       }).success,
     ).toBe(false);
     expect(
-      bbDesktopBrowserInspectionPageResultSchema.safeParse({
+      bbDesktopBrowserInspectionPageResultV2Schema.safeParse({
         ...regionPageResult,
         region: {
           ...regionPageResult.region,
@@ -315,7 +344,7 @@ describe("experimental desktop browser inspection schemas", () => {
       }).success,
     ).toBe(false);
     expect(
-      bbDesktopBrowserInspectionPageResultSchema.safeParse({
+      bbDesktopBrowserInspectionPageResultV2Schema.safeParse({
         ...regionPageResult,
         region: {
           ...regionPageResult.region,

@@ -229,6 +229,7 @@ describe("desktop preload browser API", () => {
       "detach",
       "experimental_cancelPageInspection",
       "experimental_inspectPage",
+      "experimental_inspectPageV2",
       "goBack",
       "goForward",
       "navigate",

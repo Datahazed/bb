@@ -25,5 +25,7 @@ export const BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL =
   "bb-desktop:browser:snapshot";
 export const BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_CHANNEL =
   "bb-desktop:browser:experimental-inspect";
+export const BB_DESKTOP_BROWSER_EXPERIMENTAL_INSPECT_V2_CHANNEL =
+  "bb-desktop:browser:experimental-inspect-v2";
 export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_INSPECTION_CHANNEL =
   "bb-desktop:browser:experimental-cancel-inspection";

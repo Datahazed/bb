@@ -144,6 +144,10 @@ function useBrowserActionRuntime({
 
   const experimental_setOverlayOpen = useCallback(
     (open: boolean) => {
+      // A plugin effect may release its overlay during the same unmount pass
+      // that disposes this runtime. Keep that cleanup idempotent, but never let
+      // a retained callback reacquire a lease after disposal.
+      if (!activeRef.current && !open) return;
       ensureRegistered(ownershipRegistry);
       if (overlayOpenRef.current === open) return;
       overlayOpenRef.current = open;
@@ -157,7 +161,7 @@ function useBrowserActionRuntime({
       request: ExperimentalBrowserInspectionRequest,
       options: { signal: AbortSignal },
     ): Promise<ExperimentalBrowserInspectionResult | null> => {
-      const inspect = desktopBrowser.experimental_inspectPage;
+      const inspect = desktopBrowser.experimental_inspectPageV2;
       if (inspect === undefined) throw createUnavailableInspectionError();
       ensureRegistered(ownershipRegistry);
       const { controller, unlink } = abortControllerFromSignal(options.signal);
@@ -192,7 +196,7 @@ function useBrowserActionRuntime({
     url,
     experimental_overlayRoot: overlayRoot,
     experimental_inspectionAvailable:
-      desktopBrowser.experimental_inspectPage !== undefined &&
+      desktopBrowser.experimental_inspectPageV2 !== undefined &&
       desktopBrowser.experimental_cancelPageInspection !== undefined,
     experimental_inspectPage,
     experimental_setOverlayOpen,
