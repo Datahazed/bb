@@ -326,6 +326,7 @@ describe("BrowserTabContent persistent navigation", () => {
     expect(() => retained.experimental_setOverlayOpen(true)).toThrow(
       /no longer active/u,
     );
+    expect(() => retained.experimental_setOverlayOpen(false)).not.toThrow();
     await expect(
       retained.experimental_inspectPage(
         { kind: "element" },

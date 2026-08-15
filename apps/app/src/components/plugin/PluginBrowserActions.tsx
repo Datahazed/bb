@@ -144,6 +144,10 @@ function useBrowserActionRuntime({
 
   const experimental_setOverlayOpen = useCallback(
     (open: boolean) => {
+      // A plugin effect may release its overlay during the same unmount pass
+      // that disposes this runtime. Keep that cleanup idempotent, but never let
+      // a retained callback reacquire a lease after disposal.
+      if (!activeRef.current && !open) return;
       ensureRegistered(ownershipRegistry);
       if (overlayOpenRef.current === open) return;
       overlayOpenRef.current = open;
