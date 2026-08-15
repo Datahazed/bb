@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useContext,
   useState,
   type KeyboardEvent,
@@ -11,11 +13,16 @@ import {
 } from "@/components/promptbox/mentions/prompt-mention-display";
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
 import { PromptMentionPreviewTooltip } from "@/components/promptbox/mentions/PromptMentionPreviewTooltip";
-import { PromptMentionInspector } from "@/components/promptbox/mentions/PromptMentionInspector";
 import { promptMentionClipboardDataAttributes } from "@/components/promptbox/mentions/prompt-mention-clipboard";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PromptMentionLinkContext } from "./prompt-mention-link";
 import { parsePromptEditorMentionAttrs } from "./prompt-editor-serialization";
+
+const PromptMentionInspector = lazy(async () => ({
+  default: (
+    await import("@/components/promptbox/mentions/PromptMentionInspector")
+  ).PromptMentionInspector,
+}));
 
 // The `selection:` utilities suppress the native `::selection` paint inside the
 // pill — it can't cover the SVG icon, so the pill paints its own selected
@@ -133,14 +140,16 @@ export function PromptMentionPillNodeView({
           </span>
         </NodeViewWrapper>
       </PromptMentionPreviewTooltip>
-      {inspectable ? (
-        <PromptMentionInspector
-          open={inspectorOpen}
-          onOpenChange={setInspectorOpen}
-          pluginId={resource.pluginId}
-          itemId={resource.itemId}
-          label={resource.label}
-        />
+      {inspectable && inspectorOpen ? (
+        <Suspense fallback={null}>
+          <PromptMentionInspector
+            open
+            onOpenChange={setInspectorOpen}
+            pluginId={resource.pluginId}
+            itemId={resource.itemId}
+            label={resource.label}
+          />
+        </Suspense>
       ) : null}
     </>
   );

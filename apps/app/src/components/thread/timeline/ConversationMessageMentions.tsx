@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useState,
   type KeyboardEvent,
   type MouseEvent,
@@ -21,7 +23,12 @@ import { promptMentionClipboardDataAttributes } from "@/components/promptbox/men
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { PromptMentionPreviewTooltip } from "@/components/promptbox/mentions/PromptMentionPreviewTooltip";
 import type { PromptMentionPreviewTooltipProps } from "@/components/promptbox/mentions/PromptMentionPreviewTooltip";
-import { PromptMentionInspector } from "@/components/promptbox/mentions/PromptMentionInspector";
+
+const PromptMentionInspector = lazy(async () => ({
+  default: (
+    await import("@/components/promptbox/mentions/PromptMentionInspector")
+  ).PromptMentionInspector,
+}));
 
 interface PromptMentionPillProps {
   /** Render visual mention styling without allowing navigation or activation. */
@@ -224,13 +231,17 @@ export function PromptMentionPill({
           </button>,
           preview ?? title,
         )}
-        <PromptMentionInspector
-          open={inspectorOpen}
-          onOpenChange={setInspectorOpen}
-          pluginId={resource.pluginId}
-          itemId={resource.itemId}
-          label={resource.label}
-        />
+        {inspectorOpen ? (
+          <Suspense fallback={null}>
+            <PromptMentionInspector
+              open
+              onOpenChange={setInspectorOpen}
+              pluginId={resource.pluginId}
+              itemId={resource.itemId}
+              label={resource.label}
+            />
+          </Suspense>
+        ) : null}
       </>
     );
   }
