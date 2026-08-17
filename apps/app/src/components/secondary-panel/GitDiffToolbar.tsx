@@ -30,7 +30,6 @@ import type { GitDiffStats } from "../git-diff/git-diff-parsing";
 const GIT_DIFF_SELECTOR_MENU_MIN_WIDTH = "20rem";
 
 export type GitDiffDisplayMode = "unified" | "split";
-export type GitDiffSummaryState = "loading" | "available" | "unavailable";
 export type GitDiffDisplayModeChangeHandler = (
   mode: GitDiffDisplayMode,
 ) => void;
@@ -148,8 +147,6 @@ export interface GitDiffToolbarProps {
   stats: GitDiffStats;
   /** True when stats cover only the bounded leading file slice. */
   isTruncated: boolean;
-  /** Whether the stats describe a loaded diff or are only an empty fallback. */
-  summaryState: GitDiffSummaryState;
 
   /** Whether the collapse-all action would expand or collapse next. */
   areAllFilesCollapsed: boolean;
@@ -171,7 +168,6 @@ export function GitDiffToolbar({
   isSelectorDisabled,
   stats,
   isTruncated,
-  summaryState,
   areAllFilesCollapsed,
   isCollapseAllDisabled,
   onToggleAllCollapsed,
@@ -189,14 +185,6 @@ export function GitDiffToolbar({
   const completeSummary = formatChangeSummary(changeTally);
   const truncatedFilesLabel = `${stats.filesCount}+ file${stats.filesCount === 1 ? "" : "s"}`;
   const hasShownLineChanges = stats.insertions > 0 || stats.deletions > 0;
-  const summaryTitle =
-    summaryState === "loading"
-      ? "Loading changes…"
-      : summaryState === "unavailable"
-        ? "Diff unavailable"
-        : isTruncated
-          ? `Showing the first ${stats.filesCount} changed file${stats.filesCount === 1 ? "" : "s"}; shown slice: ${stats.insertions} insertion${stats.insertions === 1 ? "" : "s"}, ${stats.deletions} deletion${stats.deletions === 1 ? "" : "s"}`
-          : completeSummary;
 
   return (
     <div ref={rootRef} className="px-4 pb-3 pt-3">
@@ -215,13 +203,13 @@ export function GitDiffToolbar({
             "min-w-0 shrink truncate text-muted-foreground",
             COARSE_POINTER_TEXT_SM_CLASS,
           )}
-          title={summaryTitle}
+          title={
+            isTruncated
+              ? `Showing the first ${stats.filesCount} changed file${stats.filesCount === 1 ? "" : "s"}; shown slice: ${stats.insertions} insertion${stats.insertions === 1 ? "" : "s"}, ${stats.deletions} deletion${stats.deletions === 1 ? "" : "s"}`
+              : completeSummary
+          }
         >
-          {summaryState === "loading" ? (
-            "Loading changes…"
-          ) : summaryState === "unavailable" ? (
-            "Diff unavailable"
-          ) : isTruncated ? (
+          {isTruncated ? (
             <>
               {truncatedFilesLabel}
               {hasShownLineChanges ? (

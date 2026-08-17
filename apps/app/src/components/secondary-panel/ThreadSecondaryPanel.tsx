@@ -500,12 +500,6 @@ export function ThreadSecondaryPanel({
       : null;
   const isGitDiffTruncated =
     diffFilesResponse?.outcome === "available" && diffFilesResponse.truncated;
-  const gitDiffSummaryState =
-    gitDiffTarget === undefined || isDiffFilesLoading
-      ? "loading"
-      : diffFilesResponse?.outcome === "available"
-        ? "available"
-        : "unavailable";
   const diffIdentity = useMemo(
     () =>
       buildGitDiffIdentity({
@@ -791,7 +785,6 @@ export function ThreadSecondaryPanel({
             }
             stats={gitDiffStats}
             isTruncated={isGitDiffTruncated}
-            summaryState={gitDiffSummaryState}
             areAllFilesCollapsed={areAllCollapsed}
             isCollapseAllDisabled={!hasFiles || isDiffFilesLoading}
             onToggleAllCollapsed={toggleAllCollapsed}
