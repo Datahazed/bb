@@ -187,6 +187,10 @@ export interface RefreshEnvironmentWorkspaceArgs {
 
 export interface RuntimeManagerOptions {
   bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"];
+  /**
+   * Reads the daemon's cached provider-bridge policy at runtime creation.
+   * Per-runtime static: a policy flip applies to runtimes created after it.
+   */
   createRuntime?: (options: AgentRuntimeOptions) => AgentRuntime;
   dataDir?: string;
   dataDirSkillsRootPath?: string | null;

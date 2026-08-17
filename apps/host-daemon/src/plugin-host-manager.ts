@@ -1,17 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
 import { fork, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  readdir,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { rm } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import type { Readable } from "node:stream";
@@ -21,7 +11,13 @@ import type {
 } from "@bb/host-daemon-contract";
 import type { HostPathWatchChange, HostWatcher } from "@bb/host-watcher";
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
+import {
+  createPluginProcessTempDir,
+  ensurePluginProcessDataDir,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
+import { ensureCachedPluginHostArtifact } from "./plugin-host-artifact-cache.js";
 
 type PluginHostCallCommand = Extract<
   HostDaemonOnlineRpcCommand,
@@ -139,10 +135,6 @@ const MAX_WATCH_WAIT_MS = 30_000;
 const HOST_DIAGNOSTIC_LINE_MAX_BYTES = 16 * 1024;
 const HOST_DIAGNOSTIC_MAX_LINES = 1_000;
 
-function safePluginSegment(pluginId: string): string {
-  return encodeURIComponent(pluginId);
-}
-
 function elapsedMs(startedAtMs: number): number {
   return Math.max(0, Math.round(performance.now() - startedAtMs));
 }
@@ -232,19 +224,6 @@ function sendToWorker(child: ChildProcess, message: object): boolean {
   } catch {
     return false;
   }
-}
-
-/** Remove daemon-only BB variables while retaining the user's executable PATH. */
-export function pluginHostProcessEnv(
-  inherited: NodeJS.ProcessEnv,
-  shellEnv: NodeJS.ProcessEnv,
-): NodeJS.ProcessEnv {
-  const env = { ...inherited };
-  for (const key of Object.keys(env)) {
-    if (key.startsWith("BB_")) delete env[key];
-  }
-  if (shellEnv.PATH !== undefined) env.PATH = shellEnv.PATH;
-  return env;
 }
 
 export class PluginHostManager {
@@ -458,15 +437,16 @@ export class PluginHostManager {
     }
 
     const artifactPath = await this.materializeArtifact(command);
-    const pluginSegment = safePluginSegment(command.pluginId);
-    const dataDir = join(
-      this.options.dataDir,
-      "plugins",
-      pluginSegment,
-      "host-data",
-    );
-    await mkdir(dataDir, { recursive: true });
-    const tempDir = await mkdtemp(join(tmpdir(), `bb-host-${pluginSegment}-`));
+    const dataDir = await ensurePluginProcessDataDir({
+      daemonDataDir: this.options.dataDir,
+      pluginId: command.pluginId,
+      kind: "host-data",
+    });
+    const tempDir = await createPluginProcessTempDir({
+      pluginId: command.pluginId,
+      prefix: "bb-host",
+    });
+    const shellPath = this.options.shellEnv?.().PATH;
     const startedAtMs = performance.now();
     let child: ChildProcess;
     try {
@@ -474,10 +454,12 @@ export class PluginHostManager {
         this.options.workerEntryPath ?? defaultWorkerEntryPath(),
         [artifactPath, command.pluginId, command.generation, dataDir, tempDir],
         {
-          env: pluginHostProcessEnv(
-            process.env,
-            this.options.shellEnv?.() ?? {},
-          ),
+          // Same answer every daemon-spawned child gets, plus the user's
+          // login-shell PATH so a host plugin can find their executables.
+          env: sanitizeInheritedChildProcessEnv({
+            env: process.env,
+            ...(shellPath !== undefined ? { shellPath } : {}),
+          }),
           stdio: ["ignore", "ignore", "pipe", "ipc"],
         },
       );
@@ -972,105 +954,16 @@ export class PluginHostManager {
   private async materializeArtifact(
     command: PluginHostCallCommand,
   ): Promise<string> {
-    const directory = join(
-      this.options.dataDir,
-      "plugin-host-artifacts",
-      safePluginSegment(command.pluginId),
-      command.artifact.digest,
-    );
-    const artifactPath = join(directory, "host.js");
-    try {
-      const current = await readFile(artifactPath);
-      if (
-        current.byteLength === command.artifact.byteLength &&
-        createHash("sha256").update(current).digest("hex") ===
-          command.artifact.digest
-      ) {
-        this.options.logger.debug(
-          { pluginId: command.pluginId },
-          "Using cached host plugin artifact",
-        );
-        await this.prunePluginArtifactDigests(
-          command.pluginId,
-          command.artifact.digest,
-        );
-        return artifactPath;
-      }
-    } catch {
-      // Download below.
-    }
-    this.options.logger.debug(
-      { pluginId: command.pluginId },
-      "Downloading host plugin artifact",
-    );
-    const bytes = await this.options.fetchArtifact({
+    return ensureCachedPluginHostArtifact({
+      dataDir: this.options.dataDir,
       pluginId: command.pluginId,
       digest: command.artifact.digest,
-      expectedByteLength: command.artifact.byteLength,
+      byteLength: command.artifact.byteLength,
+      fetchArtifact: this.options.fetchArtifact,
+      logger: this.options.logger,
     });
-    if (bytes.byteLength !== command.artifact.byteLength) {
-      throw new Error(`host artifact length mismatch for ${command.pluginId}`);
-    }
-    const digest = createHash("sha256").update(bytes).digest("hex");
-    if (digest !== command.artifact.digest) {
-      throw new Error(`host artifact digest mismatch for ${command.pluginId}`);
-    }
-    await mkdir(directory, { recursive: true });
-    const staged = join(directory, `.host-${randomUUID()}.tmp`);
-    await writeFile(staged, bytes, { mode: 0o600 });
-    await rename(staged, artifactPath);
-    await this.prunePluginArtifactDigests(
-      command.pluginId,
-      command.artifact.digest,
-    );
-    return artifactPath;
   }
 
-  private async prunePluginArtifactDigests(
-    pluginId: string,
-    keepDigest: string,
-  ): Promise<void> {
-    const pluginDirectory = join(
-      this.options.dataDir,
-      "plugin-host-artifacts",
-      safePluginSegment(pluginId),
-    );
-    let entries;
-    try {
-      entries = await readdir(pluginDirectory, { withFileTypes: true });
-    } catch (error) {
-      this.options.logger.warn(
-        { pluginId, err: error },
-        "Failed to inspect host plugin artifact cache",
-      );
-      return;
-    }
-    const staleDigestDirectories = entries.filter(
-      (entry) =>
-        entry.isDirectory() &&
-        entry.name !== keepDigest &&
-        /^[a-f0-9]{64}$/u.test(entry.name),
-    );
-    const results = await Promise.allSettled(
-      staleDigestDirectories.map((entry) =>
-        rm(join(pluginDirectory, entry.name), {
-          recursive: true,
-          force: true,
-        }),
-      ),
-    );
-    results.forEach((result, index) => {
-      if (result.status === "fulfilled") return;
-      this.options.logger.warn(
-        {
-          pluginId,
-          digest: staleDigestDirectories[index]?.name,
-          err: result.reason,
-        },
-        "Failed to prune stale host plugin artifact",
-      );
-    });
-  }
 
   private async stopWorker(worker: WorkerState, reason: string): Promise<void> {
     if (worker.disposing) return worker.closed;

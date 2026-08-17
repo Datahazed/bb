@@ -28,6 +28,10 @@ const outDir = path.join(pkgRoot, "bundled-types");
 const outputs = {
   "bb-plugin-sdk.d.ts": path.join(pkgRoot, "src/index.ts"),
   "bb-plugin-sdk-app.d.ts": path.join(pkgRoot, "src/app.ts"),
+  "bb-plugin-sdk-provider-bridge.d.ts": path.join(
+    pkgRoot,
+    "src/provider-bridge.ts",
+  ),
   "bb-plugin-sdk-host.d.ts": path.join(pkgRoot, "src/host.ts"),
   "bb-plugin-sdk-internal-composer-customization-validation.d.ts": path.join(
     pkgRoot,
@@ -50,6 +54,7 @@ const outputs = {
 // from the scaffold's devDependencies rather than being inlined.
 const EXTERNAL = [
   /^@get-bb\/plugin-sdk$/,
+  /^node:/,
   /^@testing-library\/react($|\/)/,
   /^better-sqlite3/,
   /^hono($|\/)/,

@@ -96,12 +96,12 @@ describe("workflows plugin", () => {
               logoUrl: null,
               available: true,
               capabilities: {
-                supportsArchive: true,
-                supportsRename: true,
+                supportsThreadArchive: true,
+                supportsThreadRename: true,
                 supportsServiceTier: true,
-                supportsUserQuestion: false,
+                supportsNativeUserQuestion: false,
                 supportsFork: true,
-                supportedPermissionModes: ["full"],
+                permissionModes: ["full"],
               },
               composerActions: [],
             },
@@ -235,7 +235,11 @@ describe("workflows plugin", () => {
         branchName: null,
       },
       host: { id: "host-1", name: "host" },
-      provider: { id: "codex", model: "gpt-test" },
+      provider: {
+      id: "codex",
+      model: "gpt-test",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
       origin: { kind: null, pluginId: "workflows" },
     });
     expect(workerConfig.tools.map((tool) => tool.name)).toEqual([
@@ -275,7 +279,11 @@ describe("workflows plugin", () => {
         branchName: null,
       },
       host: { id: "host-1", name: "host" },
-      provider: { id: "codex", model: "gpt-test" },
+      provider: {
+      id: "codex",
+      model: "gpt-test",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
       origin: { kind: null, pluginId: null },
     });
     expect(authorConfig.tools.map((tool) => tool.name)).toEqual([
@@ -817,12 +825,12 @@ describe("workflow resume cache integration", () => {
               logoUrl: null,
               available: true,
               capabilities: {
-                supportsArchive: true,
-                supportsRename: true,
+                supportsThreadArchive: true,
+                supportsThreadRename: true,
                 supportsServiceTier: true,
-                supportsUserQuestion: false,
+                supportsNativeUserQuestion: false,
                 supportsFork: true,
-                supportedPermissionModes: ["accept-edits", "auto", "full"],
+                permissionModes: ["accept-edits", "auto", "full"],
               },
               composerActions: [],
             },

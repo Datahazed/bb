@@ -30,7 +30,6 @@ import {
   type Thread,
   type ThreadQueuedMessage,
 } from "@bb/domain";
-import { supportsManualCompaction } from "@bb/agent-providers";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
@@ -133,7 +132,7 @@ async function compactThreadContext(
   thread: Thread,
 ): Promise<void> {
   ensureThreadIsWritable(thread);
-  if (!supportsManualCompaction(thread.providerId)) {
+  if (!deps.providerRegistry.supportsManualCompaction(thread.providerId)) {
     throw new ApiError(
       409,
       "invalid_request",
@@ -589,6 +588,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         ...(preparedRuntimeCommand.acpLaunchSpec !== undefined
           ? { acpLaunchSpec: preparedRuntimeCommand.acpLaunchSpec }
           : {}),
+        bridgeLaunch: preparedRuntimeCommand.bridgeLaunch,
       },
       hostId: environment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,

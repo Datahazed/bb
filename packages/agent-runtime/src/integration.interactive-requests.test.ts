@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { promptTextInput } from "./test/prompt-input.js";
+import { resolveIntegrationBridgeLaunch } from "./test/integration-provider-bridges.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -17,7 +18,6 @@ import {
   type PendingInteractionApprovalSubject,
   type PendingInteractionCreate,
 } from "@bb/domain";
-import { listAvailableProviderInfos } from "./provider-registry.js";
 import {
   cleanup,
   createApprovalResolution,
@@ -739,8 +739,8 @@ describe("interactive request scenarios", () => {
         });
 
         expect(
-          ctx.interactiveRequests.some(
-            (request) => hasApprovalSubjectKind(request, "command"),
+          ctx.interactiveRequests.some((request) =>
+            hasApprovalSubjectKind(request, "command"),
           ),
         ).toBe(true);
         expect(hasDeniedCommandExecution(ctx.events)).toBe(true);
@@ -1104,22 +1104,18 @@ describe("interactive request scenarios", () => {
 
         const firstRequestCount = ctx.interactiveRequests.length;
         expect(
-          ctx.interactiveRequests.some(
-            (request) => {
-              if (
-                !isApprovalPendingInteractionPayload(request.payload) ||
-                request.payload.subject.kind !== "permission_grant"
-              ) {
-                return false;
-              }
-              return (
-                request.payload.subject.toolName === "WebFetch" &&
-                request.payload.availableDecisions.includes(
-                  "allow_for_session",
-                )
-              );
-            },
-          ),
+          ctx.interactiveRequests.some((request) => {
+            if (
+              !isApprovalPendingInteractionPayload(request.payload) ||
+              request.payload.subject.kind !== "permission_grant"
+            ) {
+              return false;
+            }
+            return (
+              request.payload.subject.toolName === "WebFetch" &&
+              request.payload.availableDecisions.includes("allow_for_session")
+            );
+          }),
           `Expected a session-capable WebFetch permission approval; got ${JSON.stringify(
             ctx.interactiveRequests.map((request) => request.payload),
           )}`,
@@ -1220,8 +1216,8 @@ describe("interactive request scenarios", () => {
         });
 
         expect(
-          ctx.interactiveRequests.some(
-            (request) => hasApprovalSubjectKind(request, "command"),
+          ctx.interactiveRequests.some((request) =>
+            hasApprovalSubjectKind(request, "command"),
           ),
         ).toBe(true);
         expect(existsSync(filePath)).toBe(false);
@@ -1288,11 +1284,12 @@ describe("interactive request scenarios", () => {
     75_000,
   );
 
+  // Pi's permission ladder now reaches the daemon on the wire, built in global
+  // setup from the plugin's own declaration — so this pins the declaration, not
+  // a second copy of it inside the runtime.
   it.concurrent("keeps Pi limited to full permission mode", () => {
-    const piProvider = listAvailableProviderInfos().find(
-      (provider) => provider.id === "pi",
-    );
-
-    expect(piProvider?.capabilities.supportedPermissionModes).toEqual(["full"]);
+    expect(
+      resolveIntegrationBridgeLaunch("pi").capabilities.permissionModes,
+    ).toEqual(["full"]);
   });
 });

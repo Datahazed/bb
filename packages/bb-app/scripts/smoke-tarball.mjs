@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -22,11 +23,25 @@ const PLUGIN_LOAD_INTERVAL_MS = 1_000;
 // every builtin unable to resolve @get-bb/plugin-sdk at import time).
 const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "automations",
+  // Providers whose bridge ships as a plugin artifact: if the plugin does not
+  // load, its provider disappears from the install entirely.
+  "provider-acp",
+  "provider-claude-code",
+  "provider-codex",
   "connect",
   "custom-instructions",
   "inline-vis",
   "secrets",
 ];
+// The smoke drives every bridge as a canonical Provider Bridge Protocol
+// client, which is the only dialect the bridges still speak. Mirrors
+// PROVIDER_BRIDGE_PROTOCOL_VERSION (packages/provider-bridge-protocol/src/
+// version.ts); this script imports nothing from the workspace so it can run
+// against a packed tarball.
+const PROVIDER_BRIDGE_PROTOCOL_VERSION = 1;
+// A canonical turn/start carries a client request id (`creq_` + ten
+// Crockford-ish characters, @bb/domain's clientTurnRequestIdSchema).
+const SMOKE_CLIENT_REQUEST_ID = "creq_smkptest23";
 const BRIDGE_WAIT_TIMEOUT_MS = 10_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
@@ -332,15 +347,39 @@ function waitForJsonRpcResponse({ childProcess, id, label, output }) {
   });
 }
 
+/**
+ * Bridges are never spawned directly: the runtime runs the packed bootstrap
+ * and hands it the bridge module plus the plugin scope. Driving it the same
+ * way here is what makes this a smoke of the real launch path.
+ */
+function spawnPackedBridge({ bridgePath, packageDir, pluginId }) {
+  const dataDir = join(tempRoot, "bridge-data", pluginId);
+  mkdirSync(dataDir, { recursive: true });
+  return spawn(
+    process.execPath,
+    [
+      join(
+        packageDir,
+        "host-daemon",
+        "dist",
+        "bb-provider-bridge-worker.mjs",
+      ),
+      bridgePath,
+      pluginId,
+      dataDir,
+    ],
+    { cwd: tempRoot, stdio: ["pipe", "pipe", "pipe"] },
+  );
+}
+
 async function smokeBridgeModelList({
   allowUnavailableProvider = false,
   bridgePath,
+  packageDir,
+  pluginId,
   label,
 }) {
-  const childProcess = spawn(process.execPath, [bridgePath], {
-    cwd: tempRoot,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  const childProcess = spawnPackedBridge({ bridgePath, packageDir, pluginId });
   const output = collectProcessOutput(childProcess);
   const modelListResponsePromise = waitForJsonRpcResponse({
     childProcess,
@@ -353,7 +392,10 @@ async function smokeBridgeModelList({
       jsonrpc: "2.0",
       id: 1,
       method: "initialize",
-      params: { clientInfo: { name: "bb-app-smoke", version: "0.0.0" } },
+      params: {
+        protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+        client: { name: "bb-app-smoke", version: "0.0.0" },
+      },
     })}\n`,
   );
   childProcess.stdin.write(
@@ -385,7 +427,7 @@ async function smokeBridgeModelList({
     "error" in modelListResponse &&
     isRecord(modelListResponse.error) &&
     typeof modelListResponse.error.message === "string" &&
-    /(?:Native CLI binary|Claude Code executable).*not found|could not find the Claude Code CLI/u.test(
+    /(?:Native CLI binary|Claude Code executable).*not found|could not find the (?:Claude Code|Codex) CLI/u.test(
       modelListResponse.error.message,
     );
   if (!allowUnavailableProvider || !unavailableProviderMessage) {
@@ -397,25 +439,69 @@ async function smokeBridgeModelList({
 
 async function smokeProviderBridgeBundles(packageDir) {
   await smokeBridgeModelList({
-    // The packaged bridge intentionally relies on the host's Claude CLI for
-    // account-scoped discovery. CI does not install that provider binary, so
-    // its explicit unavailable-provider response is a valid smoke outcome.
+    // Claude Code ships its bridge as a plugin artifact (graduation wave 5),
+    // so the packed bundle to smoke is the one `bb plugin build` produced for
+    // the builtin plugin, not a daemon-side file. The bridge intentionally
+    // relies on the host's Claude CLI for account-scoped discovery; CI does
+    // not install that binary, so its explicit unavailable-provider response
+    // is a valid smoke outcome.
     allowUnavailableProvider: true,
     bridgePath: join(
       packageDir,
-      "host-daemon",
+      "server",
       "dist",
-      "bb-claude-code-bridge.mjs",
+      "builtin-plugins",
+      "provider-claude-code",
+      "dist",
+      "host.js",
     ),
-    label: "Claude Code bridge model/list",
+    packageDir,
+    pluginId: "provider-claude-code",
+    label: "Claude Code host-artifact bridge model/list",
   });
   await smokeBridgeModelList({
     bridgePath: join(packageDir, "host-daemon", "dist", "bb-pi-bridge.mjs"),
+    packageDir,
+    pluginId: "provider-pi",
     label: "Pi bridge model/list",
   });
   await smokeBridgeModelList({
-    bridgePath: join(packageDir, "host-daemon", "dist", "bb-acp-bridge.mjs"),
-    label: "ACP bridge model/list",
+    // ACP ships its bridge as a plugin artifact (graduation wave 5). With no
+    // launch spec in the provider options it serves its synthetic "Agent
+    // default" model rather than spawning an agent, which is the whole point
+    // of the smoke: the packed artifact runs standalone.
+    bridgePath: join(
+      packageDir,
+      "server",
+      "dist",
+      "builtin-plugins",
+      "provider-acp",
+      "dist",
+      "host.js",
+    ),
+    packageDir,
+    pluginId: "provider-acp",
+    label: "ACP host-artifact bridge model/list",
+  });
+  await smokeBridgeModelList({
+    // Codex ships its bridge as a plugin artifact (graduation wave 5), so the
+    // packed bundle to smoke is the one `bb plugin build` produced for the
+    // builtin plugin, not a daemon-side file. The bridge spawns the host's
+    // `codex app-server` for model discovery; CI does not install the Codex
+    // CLI, so its explicit missing-CLI response is a valid smoke outcome.
+    allowUnavailableProvider: true,
+    bridgePath: join(
+      packageDir,
+      "server",
+      "dist",
+      "builtin-plugins",
+      "provider-codex",
+      "dist",
+      "host.js",
+    ),
+    packageDir,
+    pluginId: "provider-codex",
+    label: "Codex provider-bridge artifact model/list",
   });
 }
 
@@ -470,15 +556,30 @@ function sendBridgeRequest(childProcess, id, method, params) {
   );
 }
 
-function isSdkEvent(message, eventType) {
-  return (
-    isRecord(message) &&
-    message.method === "sdk/message" &&
-    isRecord(message.params) &&
-    isRecord(message.params.message) &&
-    message.params.message.type === eventType
-  );
+/** The canonical thread/event payload, or undefined for anything else. */
+function threadEvent(message) {
+  if (
+    !isRecord(message) ||
+    message.method !== "thread/event" ||
+    !isRecord(message.params) ||
+    !isRecord(message.params.event)
+  ) {
+    return undefined;
+  }
+  return message.params.event;
 }
+
+function isThreadEventOfType(message, eventType) {
+  return threadEvent(message)?.type === eventType;
+}
+
+/** The full permission policy a canonical request carries in `options`. */
+const SMOKE_EXECUTION_OPTIONS = {
+  permissionMode: "full",
+  permissionScope: "full",
+  approvalReviewer: null,
+  permissionEscalation: null,
+};
 
 async function smokePiUserConfiguration(packageDir) {
   const testRoot = join(tempRoot, "pi-user-config");
@@ -528,18 +629,32 @@ async function smokePiUserConfiguration(packageDir) {
     "dist",
     "bb-pi-bridge.mjs",
   );
-  const childProcess = spawn(process.execPath, [bridgePath], {
-    cwd: maintenanceDir,
-    env: {
-      ...process.env,
-      BB_PI_BRIDGE_SESSION_DIR: join(testRoot, "sessions"),
-      BB_PI_E2E_SESSION_MARKER: sessionMarkerPath,
-      BB_PI_E2E_TOOL_MARKER: toolMarkerPath,
-      PI_CODING_AGENT_DIR: agentDir,
-      PI_OFFLINE: "1",
+  const childProcess = spawn(
+    process.execPath,
+    [
+      join(
+        packageDir,
+        "host-daemon",
+        "dist",
+        "bb-provider-bridge-worker.mjs",
+      ),
+      bridgePath,
+      "provider-pi",
+      maintenanceDir,
+    ],
+    {
+      cwd: maintenanceDir,
+      env: {
+        ...process.env,
+        BB_PI_BRIDGE_SESSION_DIR: join(testRoot, "sessions"),
+        BB_PI_E2E_SESSION_MARKER: sessionMarkerPath,
+        BB_PI_E2E_TOOL_MARKER: toolMarkerPath,
+        PI_CODING_AGENT_DIR: agentDir,
+        PI_OFFLINE: "1",
+      },
+      stdio: ["pipe", "pipe", "pipe"],
     },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  );
   const output = collectProcessOutput(childProcess);
   const dynamicToolCalls = [];
   const messages = collectJsonRpcMessages({
@@ -564,7 +679,8 @@ async function smokePiUserConfiguration(packageDir) {
 
   try {
     sendBridgeRequest(childProcess, 101, "initialize", {
-      clientInfo: { name: "bb-app-smoke", version: "0.0.0" },
+      protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+      client: { name: "bb-app-smoke", version: "0.0.0" },
     });
     sendBridgeRequest(childProcess, 105, "model/list", { cwd: workspaceDir });
     const modelListResponse = await waitForBridgeMessage({
@@ -599,6 +715,8 @@ async function smokePiUserConfiguration(packageDir) {
           },
         },
       ],
+      instructionMode: "append",
+      options: SMOKE_EXECUTION_OPTIONS,
       threadId: "pi-config-e2e-thread",
     });
     await waitForBridgeMessage({
@@ -610,15 +728,23 @@ async function smokePiUserConfiguration(packageDir) {
     });
 
     sendBridgeRequest(childProcess, 103, "turn/start", {
+      clientRequestId: SMOKE_CLIENT_REQUEST_ID,
       input: [{ type: "text", text: "Run both configured tools." }],
+      options: SMOKE_EXECUTION_OPTIONS,
+      providerThreadId: "pi-config-e2e-thread",
       threadId: "pi-config-e2e-thread",
     });
+    // The turn must reach the canonical "completed" terminal state: an
+    // interrupted or failed settlement would otherwise satisfy a bare
+    // turn/completed wait and hide a broken configuration.
     await waitForBridgeMessage({
       childProcess,
       label,
       messages,
       output,
-      predicate: (message) => isSdkEvent(message, "agent_end"),
+      predicate: (message) =>
+        isThreadEventOfType(message, "turn/completed") &&
+        threadEvent(message).status === "completed",
     });
 
     const errors = messages.filter(
@@ -645,9 +771,13 @@ async function smokePiUserConfiguration(packageDir) {
       );
     }
 
+    // Neither tool is a pi command/file-change tool, so both settle as generic
+    // `toolCall` items whose name rides `item.tool`.
     const completedToolNames = messages
-      .filter((message) => isSdkEvent(message, "tool_execution_end"))
-      .map((message) => message.params.message.toolName);
+      .filter((message) => isThreadEventOfType(message, "item/completed"))
+      .map((message) => threadEvent(message).item)
+      .filter((item) => isRecord(item) && item.type === "toolCall")
+      .map((item) => item.tool);
     if (
       !completedToolNames.includes("configured_tool") ||
       !completedToolNames.includes("bb_dynamic_tool")
@@ -673,6 +803,9 @@ async function smokePiUserConfiguration(packageDir) {
     }
 
     sendBridgeRequest(childProcess, 104, "thread/stop", {
+      activeTurnId: null,
+      intent: "release",
+      providerThreadId: "pi-config-e2e-thread",
       threadId: "pi-config-e2e-thread",
     });
     await waitForBridgeMessage({

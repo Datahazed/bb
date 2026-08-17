@@ -4,7 +4,7 @@ import type { PendingInteractionCreate } from "@bb/domain";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
 import {
   createServerClient,
-  readPluginHostArtifactBytes,
+  readHostArtifactBytes,
   ServerResponseError,
   type FetchFn,
 } from "./server-client.js";
@@ -289,11 +289,7 @@ describe("createServerClient", () => {
     );
 
     await expect(
-      readPluginHostArtifactBytes(
-        response,
-        maxBytes + chunkBytes * 2,
-        maxBytes,
-      ),
+      readHostArtifactBytes(response, maxBytes + chunkBytes * 2, maxBytes),
     ).rejects.toThrow(/exceeds the .* byte limit/u);
     expect(emittedChunks).toBeLessThan(32);
     expect(cancel).toHaveBeenCalledOnce();

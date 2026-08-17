@@ -2,23 +2,31 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   createReadStream,
   existsSync,
+  readFileSync,
   realpathSync,
   type FSWatcher,
 } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire, registerHooks } from "node:module";
 import { performance } from "node:perf_hooks";
 import { createJiti } from "jiti";
 import semver from "semver";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
-import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION, type Thread } from "@bb/domain";
+import {
+  isPluginOwnedIconPath,
+  PLUGIN_SDK_MAJOR,
+  PLUGIN_SDK_VERSION,
+  type Thread,
+} from "@bb/domain";
 import {
   buildPluginApp,
   buildPluginHost,
   isIgnoredPluginDevPath,
 } from "@bb/plugin-build";
+import { DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS } from "@bb/host-daemon-contract";
+import { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import {
@@ -40,6 +48,8 @@ import {
 } from "./app-bundle.js";
 import { parsePluginSource } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
+import { buildPluginProviderRegistration } from "../providers/plugin-provider-registration.js";
+import { reservedProviderIdProblem } from "../providers/provider-registry.js";
 import {
   isPluginSdkRangeSatisfied,
   pluginSdkRangeProblem,
@@ -176,6 +186,44 @@ function registerMutableRootHooks(): void {
  * must be the real path — otherwise a symlinked install never matches and
  * reload silently serves cached code.
  */
+const PROVIDER_ICON_CONTENT_TYPES: Record<string, string> = {
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".webp": "image/webp",
+};
+
+/**
+ * Byte snapshot of a declared provider icon. Null when there is nothing to
+ * snapshot — a named host glyph (`"Zap"`) has no file at all — and on any
+ * failure for a plugin-owned path (missing file, unsupported extension, path
+ * escaping the plugin root): the provider registers without a servable icon
+ * rather than failing the plugin load.
+ */
+function readPluginProviderIcon(
+  rootDir: string,
+  icon: string | undefined,
+): { bytes: Uint8Array; contentType: string } | null {
+  if (icon === undefined || !isPluginOwnedIconPath(icon)) {
+    return null;
+  }
+  const asset = icon;
+  const contentType = PROVIDER_ICON_CONTENT_TYPES[extname(asset).toLowerCase()];
+  if (contentType === undefined) {
+    return null;
+  }
+  const resolved = resolve(rootDir, asset);
+  // host-policy already rejects traversal in declarations; this containment
+  // check is defense in depth for identity-backed roots.
+  if (!resolved.startsWith(resolve(rootDir) + sep)) {
+    return null;
+  }
+  try {
+    return { bytes: new Uint8Array(readFileSync(resolved)), contentType };
+  } catch {
+    return null;
+  }
+}
+
 function mutableRootDir(rootDir: string): string {
   try {
     return realpathSync(rootDir);
@@ -364,7 +412,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   // state for list() plus the on-disk asset paths + content hash the asset
   // routes serve. Refreshed on every load (install/boot/reload).
   const appBundles = new Map<string, PluginAppBundleSnapshot>();
-  const hostArtifacts = new Map<string, PluginHostArtifactSnapshot>();
+  // Shared with the composition root: provider-bridge launch resolution reads
+  // the same artifacts the host RPC transport does.
+  const hostArtifacts =
+    deps.pluginHostArtifacts ?? new PluginHostArtifactRegistry();
   // Branding assets (compact icon + logo variants), refreshed alongside
   // appBundles on every load.
   const brandingAssets = new Map<string, PluginBrandingAssetSet>();
@@ -1278,6 +1329,64 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ...args,
           artifact: hostArtifactCandidate,
         });
+      },
+      registerProvider: (declaration) => {
+        if (!deps.providerRegistry) {
+          throw new Error("the provider registry is unavailable in this host");
+        }
+        return deps.providerRegistry.register({
+          ...buildPluginProviderRegistration({
+            pluginId: row.id,
+            declaration,
+          }),
+          ...(() => {
+            // Snapshot the declared icon bytes at registration so the
+            // provider-logo route can serve them without plugin-root
+            // plumbing; an unreadable or unsupported icon degrades to
+            // logoUrl-with-404 → the app's vendored fallback, never a load
+            // failure. The asset path was already traversal-validated by
+            // host-policy.
+            const icon = readPluginProviderIcon(row.rootDir, declaration.icon);
+            return icon === null ? {} : { icon };
+          })(),
+          pluginId: row.id,
+        });
+      },
+      assertProviderRegistrable: (providerId) => {
+        // Reserved first-party ids, checked at call time so a staged
+        // registration fails the factory (the registry enforces the same rule
+        // for live registrations).
+        const reserved = reservedProviderIdProblem({
+          pluginId: row.id,
+          providerId,
+        });
+        if (reserved !== null) {
+          throw new Error(reserved);
+        }
+        // A declaration is metadata; the implementation is the bridge this
+        // plugin exports from its own host artifact (or, for pi, the bridge
+        // the daemon bundles). With neither, registering would put a provider
+        // in the picker whose every turn dies on the host with "Unsupported
+        // provider" — so the load fails here instead, naming the reason.
+        if (
+          hostArtifactCandidate !== null ||
+          DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS.includes(providerId)
+        ) {
+          return;
+        }
+        throw new Error(
+          `provider "${providerId}" has no bridge to run on: this plugin declares no "bb.host" entry in its manifest`,
+        );
+      },
+      isProviderIdTaken: (providerId) => {
+        if (!deps.providerRegistry) {
+          throw new Error("the provider registry is unavailable in this host");
+        }
+        // This plugin's own previous-load registrations are ignored: on
+        // reload they are disposed before the staged replacements flush, so
+        // re-declaring the same id is not a collision.
+        const existing = deps.providerRegistry.get(providerId);
+        return existing !== null && existing.source.pluginId !== row.id;
       },
     });
     // Mutable trees are edited between loads, so invalidate the previous

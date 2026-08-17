@@ -1492,7 +1492,7 @@ export function registerPluginCommands(
   plugin
     .command("build [path]")
     .description(
-      "Compile the plugin into dist/: the bb.server backend bundle plus optional bb.app frontend and bb.host daemon bundles; each *.meta.json stamps SDK/identity metadata; no server required",
+      "Compile the plugin into dist/: the bb.server backend bundle (server.js, server.meta.json), plus, when declared, the bb.app frontend bundle (app.js, app.css, app.meta.json) and the self-contained bb.host daemon bundle (host.js, host.js.map, host.meta.json) — which carries the plugin's host RPC entry, its provider bridge, or both; each *.meta.json stamps SDK/identity metadata; no server required",
     )
     .action(
       action(async (path: string | undefined) => {
@@ -1531,7 +1531,7 @@ export function registerPluginCommands(
   plugin
     .command("dev [path]")
     .description(
-      "Watch a plugin's sources: rebuild its frontend and host bundles when declared, then reload it on every change (Ctrl+C to stop)",
+      "Watch a plugin's sources: rebuild its frontend, host, and provider-bridge bundles when declared, then reload it on every change (Ctrl+C to stop)",
     )
     .action(
       action(async (path: string | undefined) => {

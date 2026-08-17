@@ -370,7 +370,6 @@ export function createManagedPluginArtifacts(
       // template, or .wasm at runtime would break if the tree were pruned —
       // and the source fallback at `resolveServerEntry` needs it too.
     }
-
     async function validateArtifact(
       artifact: "server" | "app" | "host",
       required: boolean,

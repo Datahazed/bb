@@ -773,6 +773,11 @@ export async function createHostDaemonApp(
         source: "fetchSkillTree",
         request: () => serverClient.fetchSkillTree(treeHash),
       }),
+    fetchPluginHostArtifact: (args) =>
+      runSessionRequest({
+        source: "fetchPluginHostArtifact",
+        request: () => serverClient.fetchPluginHostArtifact(args),
+      }),
     runtimeManager,
     terminalManager,
     listModels: async (args) => {

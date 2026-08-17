@@ -1,8 +1,4 @@
 import path from "node:path";
-import {
-  getBuiltInAgentProviderInfo,
-  isAgentProviderId,
-} from "@bb/agent-providers";
 import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
 import {
   getAppSettings,
@@ -76,12 +72,13 @@ import {
   parseInteger,
   parseOptionalInteger,
 } from "../../services/lib/validation.js";
+import { resolveProviderPlanCommand } from "../../services/providers/provider-plan-command.js";
 import { parsePathKindInclusion } from "../path-list-inclusion.js";
 import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 
 function resolveThreadProviderDisplayName(
-  deps: Pick<AppDeps, "config">,
+  deps: Pick<AppDeps, "config" | "providerRegistry">,
   providerId: string,
 ): string | undefined {
   const customAcpAgent = deps.config.customAcpAgents.find(
@@ -94,9 +91,7 @@ function resolveThreadProviderDisplayName(
   if (knownAcpAgent) {
     return knownAcpAgent.displayName;
   }
-  return isAgentProviderId(providerId)
-    ? getBuiltInAgentProviderInfo(providerId).displayName
-    : undefined;
+  return deps.providerRegistry.get(providerId)?.info.displayName;
 }
 
 function validateFilePath(filePath: string): void {
@@ -360,6 +355,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
             maxSeq,
             page,
             providerDisplayName,
+            planCommand: resolveProviderPlanCommand(
+              deps.providerRegistry,
+              thread.providerId,
+            ),
             summaryOnly,
           },
         );

@@ -838,8 +838,12 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     rather than reporting success; `bb plugin build [path]` —
     compile the plugin into `dist/`: the backend bundle (`server.js` +
     `server.meta.json` stamped with SDK/identity metadata; preferred by
-    git/npm installs over source) and, when `bb.app` is declared, `app.js` +
-    `app.css` + `app.meta.json`. Neither needs the server.
+    git/npm installs over source), when `bb.app` is declared, `app.js` +
+    `app.css` + `app.meta.json`, and, when `bb.host` is declared, the
+    self-contained host artifact `host.js` + `host.js.map` +
+    `host.meta.json` (its digest; host daemons download and verify the bundle
+    by that digest, and run it as a host RPC worker, a provider bridge, or
+    both). None of it needs the server.
   - `bb plugin types [path]` — sync the plugin's `@get-bb/plugin-sdk` surface
     to the running bb (default: cwd). For a plugin that depends on the npm
     package it rewrites the exact `devDependencies` pin to this bb's SDK

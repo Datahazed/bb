@@ -689,7 +689,11 @@ describe("agent tools", () => {
       branchName: null,
     },
     host: { id: "host-test", name: "Test host" },
-    provider: { id: "codex", model: "gpt-5" },
+    provider: {
+      id: "codex",
+      model: "gpt-5",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
     origin: { kind: null, pluginId: null },
   } satisfies PluginAgentConfigurationContext;
 
@@ -775,7 +779,11 @@ describe("agent tools", () => {
       ...configurationContext,
       thread: { ...configurationContext.thread, id: "thread-beta" },
       host: { id: "host-beta", name: "Beta host" },
-      provider: { id: "claude-code", model: "claude-opus" },
+      provider: {
+      id: "claude-code",
+      model: "claude-opus",
+      capabilities: { supportsNativeUserQuestion: false },
+    },
     };
     const beta = await harness.resolveAgentConfiguration(betaContext);
 
@@ -925,5 +933,137 @@ describe("realtime and status", () => {
       "needs configuration",
       "set a token",
     ]);
+  });
+});
+
+describe("agents.experimental_registerProvider", () => {
+  function agentDeclaration(
+    overrides: Record<string, unknown> = {},
+  ): Parameters<BbPluginApi["agents"]["experimental_registerProvider"]>[0] {
+    return {
+      id: "my-agent",
+      displayName: "My Agent",
+      icon: "./icons/agent.svg",
+      capabilities: {
+        supportsServiceTier: false,
+        supportsNativeUserQuestion: true,
+        fork: "tip",
+        supportsManualCompaction: true,
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
+        supportsWorkflows: false,
+        permissionModes: ["accept-edits", "full"],
+        reasoningLevels: ["low", "medium", "high"],
+      },
+      composerActions: ["plan"],
+      ...overrides,
+    } as Parameters<
+      BbPluginApi["agents"]["experimental_registerProvider"]
+    >[0];
+  }
+
+  it("rejects malformed declarations with the shared host policy", () => {
+    const { bb } = createFakePluginHost();
+    const register = bb.agents.experimental_registerProvider;
+
+    expect(() => register(agentDeclaration({ id: "Bad_Id!" }))).toThrow(
+      /invalid provider id/,
+    );
+    expect(() => register(agentDeclaration({ id: "x" }))).toThrow(
+      /invalid provider id/,
+    );
+    expect(() => register(agentDeclaration({ displayName: "   " }))).toThrow(
+      /displayName must be 1-80 non-blank characters/,
+    );
+    expect(() =>
+      register(
+        agentDeclaration({
+          capabilities: {
+            ...agentDeclaration().capabilities,
+            permissionModes: [],
+          },
+        }),
+      ),
+    ).toThrow(/permissionModes must include at least one entry/);
+    expect(() =>
+      register(
+        agentDeclaration({
+          capabilities: {
+            ...agentDeclaration().capabilities,
+            reasoningLevels: ["low", "low"],
+          },
+        }),
+      ),
+    ).toThrow(/reasoningLevels entry "low" is duplicated/);
+    expect(() =>
+      register(
+        agentDeclaration({
+          capabilities: { ...agentDeclaration().capabilities, fork: true },
+        }),
+      ),
+    ).toThrow(/capabilities.fork must be one of none, tip, checkpoint/);
+    expect(() =>
+      register(agentDeclaration({ icon: "./../outside.svg" })),
+    ).toThrow(/icon must not escape the plugin directory/);
+    // The `bb.branding.icon` grammar: "./" means a plugin file, anything else
+    // is a host glyph name. A path without the prefix is neither.
+    expect(() =>
+      register(agentDeclaration({ icon: "/abs/icon.svg" })),
+    ).toThrow(/icon looks like a path but does not start with "\.\/"/);
+    expect(() =>
+      register(agentDeclaration({ composerActions: ["plan", "plan"] })),
+    ).toThrow(/composerActions entry "plan" is duplicated/);
+    // A bare glyph name is the other half of the grammar and is accepted; this
+    // one commits, so it goes last.
+    expect(() => register(agentDeclaration({ icon: "Zap" }))).not.toThrow();
+  });
+
+  it("round-trips a registration through the harness and dispose", () => {
+    const { bb, harness } = createFakePluginHost();
+    const handle = bb.agents.experimental_registerProvider(
+      agentDeclaration({ displayName: "  My Agent  " }),
+    );
+
+    expect(harness.registrations.providerRegistrations).toHaveLength(1);
+    const registered = harness.registrations.providerRegistrations[0]!;
+    // Normalized frozen copy: trimmed display name, contract fields only.
+    expect(registered.displayName).toBe("My Agent");
+    expect(Object.isFrozen(registered)).toBe(true);
+    expect(Object.isFrozen(registered.capabilities)).toBe(true);
+
+    // Live ids are collision-rejected until disposed.
+    expect(() =>
+      bb.agents.experimental_registerProvider(agentDeclaration()),
+    ).toThrow(/already registered/);
+
+    handle.dispose();
+    handle.dispose(); // idempotent
+    expect(harness.registrations.providerRegistrations).toEqual([]);
+
+    // A disposed id can be re-registered (settings-driven re-declaration).
+    bb.agents.experimental_registerProvider(
+      agentDeclaration({ displayName: "Second Declaration" }),
+    );
+    expect(
+      harness.registrations.providerRegistrations.map(
+        (declaration) => declaration.displayName,
+      ),
+    ).toEqual(["Second Declaration"]);
+  });
+
+  it("clears registrations on dispose", async () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.agents.experimental_registerProvider(
+      agentDeclaration({ id: "my-second-agent" }),
+    );
+    expect(
+      harness.registrations.providerRegistrations.map((entry) => entry.id),
+    ).toEqual(["my-second-agent"]);
+
+    await harness.dispose();
+    expect(harness.registrations.providerRegistrations).toEqual([]);
+    expect(() =>
+      bb.agents.experimental_registerProvider(agentDeclaration()),
+    ).toThrow("used a stale API handle");
   });
 });

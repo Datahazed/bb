@@ -7,8 +7,10 @@ import {
   dynamicToolSchema,
   instructionModeSchema,
   pendingInteractionResolutionSchema,
+  permissionModeSchema,
   promptInputSchema,
   projectSourceCheckoutSchema,
+  providerForkSchema,
   threadGitDiffResponseSchema,
   workspaceProvisionTypeSchema,
   runtimeThreadExecutionOptionsSchema,
@@ -40,6 +42,7 @@ import { workspaceResolutionFailureSchema } from "./workspace.js";
 import { HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
 
 export {
+  DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS,
   HOST_ARTIFACT_MAX_BYTES,
   HOST_DAEMON_PROTOCOL_VERSION,
 } from "./protocol.js";
@@ -209,12 +212,73 @@ export function normalizeHostDaemonAcpLaunchSpec(
   };
 }
 
+/**
+ * How the daemon obtains the provider bridge for a provider. Every provider is
+ * plugin-declared, so every command that reaches a bridge carries one of these
+ * — the source says which of the two delivery paths to take rather than
+ * leaving the daemon to infer it from an absent field:
+ *
+ * - `"artifact"`: download the plugin's content-addressed host artifact from
+ *   the server by digest, verify the bytes, cache it under the daemon data dir,
+ *   and run it with the daemon's node through the bridge bootstrap.
+ * - `"daemon-bundled"`: run the named bridge from the daemon's own bundle. Pi
+ *   is the only one, because its agent tree cannot be inlined into a
+ *   relocatable artifact ({@link DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS}).
+ */
+export const hostDaemonBridgeLaunchSchema = z
+  .object({
+    // The plugin that ships this bridge. It names the artifact to fetch, and
+    // it scopes the bridge process's own directories on the host — a bridge is
+    // a `bb.host` artifact like any other, so it gets the same plugin-scoped
+    // data directory a host worker does.
+    pluginId: z.string().min(1),
+    source: z.discriminatedUnion("kind", [
+      z
+        .object({
+          kind: z.literal("artifact"),
+          digest: z.string().regex(/^[a-f0-9]{64}$/u),
+          byteLength: z
+            .number()
+            .int()
+            .positive()
+            .max(HOST_ARTIFACT_MAX_BYTES),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("daemon-bundled"),
+          id: z.string().min(1),
+        })
+        .strict(),
+    ]),
+    // The provider's server-validated capabilities, exactly the facts the
+    // runtime enforces before a command reaches the bridge: which execution
+    // options it accepts (permission modes, service tier) and which thread
+    // operations it offers (archive, rename, fork). The daemon has no
+    // registry, so without these it would have to guess a baseline and reject
+    // work the server already accepted.
+    capabilities: z
+      .object({
+        supportsServiceTier: z.boolean(),
+        permissionModes: z.array(permissionModeSchema).min(1),
+        supportsThreadArchive: z.boolean(),
+        supportsThreadRename: z.boolean(),
+        fork: providerForkSchema,
+      })
+      .strict(),
+  })
+  .strict();
+export type HostDaemonBridgeLaunch = z.infer<
+  typeof hostDaemonBridgeLaunchSchema
+>;
+
 const hostDaemonThreadRuntimeContextSchema = z
   .object({
     workspaceContext: workspaceContextSchema,
     projectId: z.string().min(1),
     providerId: z.string().min(1),
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
     options: runtimeThreadExecutionOptionsSchema,
     instructions: z.string().min(1),
     dynamicTools: z.array(dynamicToolSchema),
@@ -359,6 +423,7 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
     inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
     options: runtimeThreadExecutionOptionsSchema,
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
     resumeContext: turnResumeContextSchema,
     target: turnSubmitTargetSchema,
   })
@@ -387,6 +452,7 @@ const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
     type: z.literal("thread.goal.clear"),
     options: runtimeThreadExecutionOptionsSchema,
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
     resumeContext: turnResumeContextSchema,
   })
   .strict();
@@ -410,6 +476,7 @@ const threadArchiveCommandSchema = hostDaemonThreadWorkspaceTargetSchema
     type: z.literal("thread.archive"),
     providerId: z.string().min(1),
     providerThreadId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
   })
   .strict();
 
@@ -422,6 +489,7 @@ const threadUnarchiveCommandSchema = hostDaemonThreadTargetSchema
     type: z.literal("thread.unarchive"),
     providerId: z.string().min(1),
     providerThreadId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
   })
   .strict();
 
@@ -804,12 +872,11 @@ const hostListSkillsCommandSchema = z
 export const deletableSkillScopeSchema = z.enum([
   "bb-user",
   "bb-project",
-  "claude-user",
-  "claude-project",
-  "codex-user",
-  "codex-project",
-  "cursor-user",
-  "cursor-project",
+  // The daemon only distinguishes bb roots (derived locally) from provider
+  // roots (an explicit `rootPath` from server-side discovery), so naming the
+  // provider here bought nothing and closed the vocabulary to plugins.
+  "provider-user",
+  "provider-project",
 ]);
 export type DeletableSkillScope = z.infer<typeof deletableSkillScopeSchema>;
 
@@ -940,6 +1007,7 @@ const providerListModelsCommandSchema = z.object({
   type: z.literal("provider.list_models"),
   providerId: z.string().min(1),
   acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+  bridgeLaunch: hostDaemonBridgeLaunchSchema,
   cwd: z.string().min(1).optional(),
 });
 

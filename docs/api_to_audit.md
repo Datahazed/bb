@@ -151,6 +151,171 @@ Each label is capped at 80 characters and rendered as a truncating segment.
    only for non-MCP native plugin tools. Confirm that distinction stays sound
    as provider adapters and dynamic-tool provenance evolve.
 
+## `bb.agents.experimental_registerProvider`
+
+**What it does.** Lets a plugin declare an agent provider into the server's
+`ProviderRegistryService`. The declaration is metadata only — the
+implementation is the bridge the plugin exports from its `bb.host` artifact,
+and registering without one (and without being a daemon-bundled first-party id)
+fails the plugin load. The declaration is
+validated at call time by the shared host policy
+(`validatePluginProviderDeclaration`); registrations stage during the factory
+and commit when the plugin load commits, are replaced wholesale on reload, and
+are removed by the returned disposer or on unload/disable. Declarations are
+now the ONLY source of providers — the core catalog seed is deleted, so
+disabling a provider plugin removes its provider. A registered provider is
+mapped onto `ProviderInfo` + `ProviderServerCapabilities` and appears in the
+composed provider listing
+(`GET /system/providers` / execution options). The full declaration rides the
+registration record so fields without a registry consumer yet
+(`supportsManualCompaction`) are not dropped.
+
+**Audit before stabilizing.**
+
+1. **Listing order is a server-side table.** `PRODUCT_PROVIDER_ORDER` in
+   `provider-registry.ts` names the ids that lead the picker (and its head is
+   the product default provider); everything else follows by registration
+   order. Decide whether third-party providers ever need to influence their
+   own position — self-declared ranking is hostile, so any answer other than
+   "no" needs a design — before the ordering behavior freezes into clients.
+2. **Icon URL shape.** `icon` uses the `bb.branding.icon` grammar (a named host
+   glyph, or a `./`-prefixed plugin-relative SVG). A path is snapshotted at
+   registration and served from `/api/v1/system/providers/<id>/logo`; a glyph
+   name yields a null `logoUrl` and no server-side resolution at all. Decide
+   whether the host should resolve declared glyph names for providers the way
+   it does for plugin branding, and decide the logo route's cache policy,
+   before either freezes into clients.
+3. **Collision semantics.** Ids are first-come collision-rejected: a staged
+   collision fails the whole plugin load; a post-activation registration
+   throws to the plugin. First-party ids (`codex`, `claude-code`, `pi`, and
+   the whole `acp-` prefix) are additionally reserved to their official
+   plugin whether or not it is currently loaded. Confirm first-wins (vs.
+   deterministic priority) is right across plugin load order, that a plugin
+   re-declaring its own id on reload/settings change never races another
+   plugin's claim, and decide whether the reserved set should be a namespace
+   rule (e.g. plugin-scoped id prefixes) before third-party ids proliferate.
+4. **Bridge delivery.** A provider bridge is a second consumer of the
+   plugin's `bb.host` artifact: it is exported by name
+   (`experimental_providerBridge`), built into `dist/host.js`, recorded in the
+   one live-host-artifact registry, served by the one host artifact route, and
+   cached once per plugin on the daemon. Thread commands carry `bridgeLaunch
+   {pluginId, source: {kind: "artifact", digest, byteLength}}`. Pi is the one
+   provider whose bridge stays daemon-bundled
+   (`DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS`); every other provider, first-party or
+   not, arrives as an artifact. Before stabilizing: confirm one artifact per
+   plugin survives (a plugin declaring several providers today ships one bridge
+   for all of them, and there is no way to name a second), confirm the
+   single-bundle shape survives per-platform needs, and decide whether a
+   router-kind declaration — a picker entry resolving to another provider at
+   submit time, removed from the contract because nothing ever resolved one —
+   returns as its own surface.
+5. **What a capability may be.** `supportsHostAiServices` was removed after
+   shipping: it declared that bb's voice-transcription and structured-inference
+   features could route through the provider, which is a fact about the daemon
+   bundle (it ships a codex ChatGPT client and answers
+   `codex.inference.complete` / `codex.voice.transcribe`) rather than about the
+   provider. A plugin declaring it true could not make the daemon grow a
+   client, so the flag could only ever be wrong. The routing now lives in the
+   AI-services module that consumes it; the future home for the real
+   capability is a bounded host RPC a plugin can offer (`bb.host`), once the
+   host-plugin foundation exists. Apply the same test to every remaining
+   capability before stabilizing: a declaration may assert what the provider
+   itself implements, never what bb or its daemon can do with it.
+
+## `@get-bb/plugin-sdk/provider-bridge` (the provider-bridge authoring surface)
+
+**What it does.** The published module a provider bridge compiles against. A
+bridge ships inside its plugin's `bb.host` artifact, and a host artifact may
+not import private `@bb/*` workspace packages, so everything a bridge needs is
+named here: `experimental_defineProviderBridge` (the export shape the
+daemon-side bootstrap looks for), the Provider Bridge Protocol's method
+vocabulary and param schemas, the bridge kit's authoring helpers (JSON-RPC
+framing, tool-call and interaction codecs, id scoping, visibility, translation
+helpers), and the `@bb/domain` event vocabulary those payloads are made of.
+Curated by hand — named exports only, never `export *`. Unlike
+`@get-bb/plugin-sdk` and `@get-bb/plugin-sdk/host`, it is NOT a build-time
+runtime stub: it is pure schema and helper code with no daemon-pinned
+behavior, so a provider plugin depends on the SDK for real and the artifact
+build inlines the SDK's published, self-contained bundle.
+
+**Audit before stabilizing.**
+
+1. **The event vocabulary's home.** The names in group (4) of
+   `src/provider-bridge.ts`
+   (`ThreadEvent`, `PromptInput`, `PendingInteractionPayload`, `turnScope`, …)
+   are `@bb/domain`'s — bb's persisted-thread vocabulary, shared by the server,
+   the app and the runtime. The SDK names them because a published surface
+   cannot reference a private package, not because it owns them; moving them
+   here would invert the dependency and hand the plugin SDK the product's core
+   domain. Decide, before third parties depend on the shapes, whether the
+   protocol should own a narrower event vocabulary of its own that `@bb/domain`
+   then derives from, or whether this facade is the permanent answer.
+2. **Surface size.** ~190 names is a large promise. Several are there for one
+   first-party bridge only (the Claude mock-CLI traffic config, the ACP
+   reasoning/permission CLI schemas, the workflow snapshot types). Each is a
+   candidate to move into its own plugin instead of being promised to everyone.
+   The root cause is upstream of the SDK: the wave-5 move relocated
+   `agent-runtime/src/shared/` byte-identically, and `bridge-kit/adapter-utils.ts`
+   is a self-described grab-bag of "functions and constants duplicated across
+   the claude-code, pi, and codex adapters" whose single-consumer passengers
+   moved with it — `claudeCodeMockCliTrafficConfigSchema`,
+   `claudeTaskToolNameSchema`, `claudeTaskToolOutputSchema` (claude-code plugin
+   only) and `acpNativeReasoningSchema` (acp plugin only). Repatriate those to
+   their owning plugins and shrink `adapter-utils` to what two-plus bridges
+   actually share; the kit barrel is `export *`, so trimming the kit trims the
+   published surface (and this audit) with it.
+3. **The ACP launch spec.** `hostDaemonAcpLaunchSpecSchema` is a
+   server↔daemon wire shape a bridge parses out of its provider-scoped static
+   options. It is the one core contract leaking into the published surface;
+   decide whether provider-scoped static options should be opaque to bb with
+   the schema owned by the ACP plugin, before the shape is a public promise.
+4. **`experimental_apiVersion` 1.** The bootstrap accepts version 1 only and
+   refuses anything else by name. Decide the deprecation window for a version
+   bump (a plugin's artifact and the daemon update independently) before the
+   first third-party bridge ships.
+
+## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Lets a plugin frontend supply the React component bb draws
+as one agent provider's icon: `{ providerId, icon }`, where `icon` receives
+only the host's `className` (sizing plus the provider color class). The
+component wins over the app's vendored brand map and over the provider's
+`logoUrl`; a file logo (manifest `branding.icon`, a path-shaped provider
+`icon`) stays
+the right home for static color logos, because it is fetched through `<img>`,
+a separate document where `currentColor` resolves to black — invisible on dark
+themes. Registrations are replaced wholesale with the rest of the plugin's
+slot set, so disable/uninstall/failed reload falls back to the vendored map,
+then `logoUrl`, then the generic glyph. The four first-party provider plugins
+register their own marks through this slot.
+
+**Audit before stabilizing.**
+
+1. **Id squatting and scoping.** `providerId` names a provider in a shared
+   namespace, not a per-plugin slot id, and nothing checks that the plugin
+   registering it also declared that provider. Today the host keeps the first
+   claim by sorted plugin id and warns. Before stabilizing, decide whether the
+   host should reject an icon for a provider the plugin does not own (the
+   frontend does not currently know the registry's provider→plugin mapping),
+   and whether the picker should surface a rejected claim to the user.
+2. **Bundle size and boot ordering.** An icon now costs a frontend bundle: a
+   provider plugin that previously shipped only a server entry pays esbuild +
+   Tailwind on install and an extra module fetch at boot, and the vendored map
+   covers the window before the bundle loads. Confirm the cost is acceptable
+   for icon-only plugins, or add a lighter delivery path (e.g. a declared
+   inline SVG string sanitized by the host) before freezing the shape.
+3. **Disposal and identity.** The icon component is resolved through a cached
+   host wrapper keyed by provider id and `logoUrl`; the wrapper subscribes to
+   the slot store so a disposed registration falls back mid-render. Audit that
+   a crashing plugin icon is contained the way other slot components are (it
+   renders inside host chrome, sometimes outside a slot error boundary), and
+   that no host surface caches the resolved component across a reload.
+4. **Rendering contract.** The host promises only `className` and expects
+   inline markup. Decide whether to enforce that (no fetches, no portals, no
+   interactive content) before plugins rely on richer components, and confirm
+   the accessible label story: the host derives `ariaLabel` from its own
+   provider data, falling back to the provider id, and the slot supplies none.
+
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** The host-owned new-thread compose surface, the create-side

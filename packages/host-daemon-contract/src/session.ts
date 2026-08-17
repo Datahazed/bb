@@ -841,6 +841,12 @@ export type HostDaemonInternalSchema = {
     /** Pull the active immutable host bundle for one plugin generation. */
     $get: Endpoint<Record<never, never>, Uint8Array, 200, "binary">;
   };
+  "/provider-bridges/:sha256": {
+    /** Used by the daemon to pull a plugin provider's bridge bundle by content
+     *  hash. The daemon verifies the sha256 over the received bytes before
+     *  caching or executing them. Additive route: old daemons never call it. */
+    $get: Endpoint<Record<never, never>, Uint8Array, 200, "binary">;
+  };
   "/hosts/enroll-key": {
     /** Used by the local launcher to request one-time bootstrap material for the primary host daemon. */
     $post: Endpoint<

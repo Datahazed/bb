@@ -73,6 +73,7 @@ import {
   createPluginCatalogService,
   type PluginCatalogService,
 } from "./services/plugin-catalog/plugin-catalog-service.js";
+import type { ProviderRegistryService } from "./services/providers/provider-registry.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
 import { browserRequestProblem } from "./browser-request-guard.js";
 import {
@@ -97,6 +98,7 @@ export interface ServerApp {
   injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
   pluginService: PluginService;
   pluginCatalogService: PluginCatalogService;
+  providerRegistry: ProviderRegistryService;
 }
 
 interface CloseWebSocketServerArgs {
@@ -413,6 +415,8 @@ export function createApp(
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
     sharedPorts: deps.sharedPorts,
+    providerRegistry: deps.providerRegistry,
+    pluginHostArtifacts: deps.pluginHostArtifacts,
     ensureSharedPortTunnel: (hostId) =>
       deps.sharedPorts.ensureTunnelIdentity(hostId, () =>
         callHostRetryableOnlineRpc(deps, {
@@ -487,7 +491,7 @@ export function createApp(
   registerInternalHostRoutes(internalApi, deps);
   registerInternalSessionRoutes(internalApi, deps, pluginService);
   registerInternalSkillRoutes(internalApi, deps);
-  registerInternalPluginHostArtifactRoutes(internalApi, pluginService);
+  registerInternalPluginHostArtifactRoutes(internalApi, deps);
   registerInternalEventRoutes(internalApi, deps);
   registerInternalToolCallRoutes(internalApi, deps);
   registerInternalInteractiveRequestRoutes(internalApi, deps);
@@ -678,5 +682,6 @@ export function createApp(
     injectWebSocket,
     pluginService,
     pluginCatalogService,
+    providerRegistry: deps.providerRegistry,
   };
 }

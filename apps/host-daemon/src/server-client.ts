@@ -301,30 +301,61 @@ async function readProjectAttachmentBytes(
   return bytes;
 }
 
-function validatePluginHostArtifactPartialByteLength(
+function validateHostArtifactPartialByteLength(
   expectedByteLength: number,
   byteLength: number,
   maxBytes: number,
 ): void {
   if (byteLength > maxBytes) {
-    throw new Error(`Plugin host artifact exceeds the ${maxBytes} byte limit`);
+    throw new Error(`Host artifact exceeds the ${maxBytes} byte limit`);
   }
   if (byteLength > expectedByteLength) {
     throw new Error(
-      `Plugin host artifact length mismatch: expected ${expectedByteLength}, received more than ${expectedByteLength}`,
+      `Host artifact length mismatch: expected ${expectedByteLength}, received more than ${expectedByteLength}`,
     );
   }
 }
 
-/** Internal export for exercising streaming limits without allocating the production cap. */
-export async function readPluginHostArtifactBytes(
+/** A declared content-length that disagrees is refused before a byte is read. */
+function assertHostArtifactContentLength(
+  response: Response,
+  expectedByteLength: number,
+): void {
+  const contentLength = parseContentLength(
+    response.headers.get("content-length"),
+  );
+  if (contentLength === null) {
+    return;
+  }
+  if (contentLength > HOST_ARTIFACT_MAX_BYTES) {
+    throw new Error(
+      `Host artifact exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
+    );
+  }
+  if (contentLength !== expectedByteLength) {
+    throw new Error(
+      `Host artifact length mismatch: expected ${expectedByteLength}, received ${contentLength}`,
+    );
+  }
+}
+
+/**
+ * Read an executable artifact response — a plugin host bundle or a provider
+ * bridge bundle — enforcing the declared length and the absolute ceiling as
+ * the stream arrives, so a server that lies about either is cut off mid-body
+ * instead of after the daemon has allocated it.
+ *
+ * `maxBytes` is an internal seam for exercising the limit without allocating
+ * the production cap.
+ */
+export async function readHostArtifactBytes(
   response: Response,
   expectedByteLength: number,
   maxBytes = HOST_ARTIFACT_MAX_BYTES,
 ): Promise<Uint8Array> {
   if (!response.body) {
     throw new Error(
-      `Plugin host artifact length mismatch: expected ${expectedByteLength}, received 0`,
+      `Host artifact length mismatch: expected ${expectedByteLength}, received 0`,
     );
   }
 
@@ -336,7 +367,7 @@ export async function readPluginHostArtifactBytes(
       const result = await reader.read();
       if (result.done) break;
       totalBytes += result.value.byteLength;
-      validatePluginHostArtifactPartialByteLength(
+      validateHostArtifactPartialByteLength(
         expectedByteLength,
         totalBytes,
         maxBytes,
@@ -350,7 +381,7 @@ export async function readPluginHostArtifactBytes(
 
   if (totalBytes !== expectedByteLength) {
     throw new Error(
-      `Plugin host artifact length mismatch: expected ${expectedByteLength}, received ${totalBytes}`,
+      `Host artifact length mismatch: expected ${expectedByteLength}, received ${totalBytes}`,
     );
   }
   const bytes = new Uint8Array(totalBytes);
@@ -519,7 +550,7 @@ export function createServerClient(
     async fetchPluginHostArtifact(args): Promise<Uint8Array> {
       if (args.expectedByteLength > HOST_ARTIFACT_MAX_BYTES) {
         throw new Error(
-          `Plugin host artifact exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
+          `Host artifact exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
         );
       }
       const response = await fetchFn(
@@ -531,21 +562,10 @@ export function createServerClient(
       if (!response.ok) {
         throw await createResponseError("fetch plugin host artifact", response);
       }
-      const contentLength = parseContentLength(
-        response.headers.get("content-length"),
-      );
-      if (contentLength !== null && contentLength > HOST_ARTIFACT_MAX_BYTES) {
-        throw new Error(
-          `Plugin host artifact exceeds the ${HOST_ARTIFACT_MAX_BYTES} byte limit`,
-        );
-      }
-      if (contentLength !== null && contentLength !== args.expectedByteLength) {
-        throw new Error(
-          `Plugin host artifact length mismatch: expected ${args.expectedByteLength}, received ${contentLength}`,
-        );
-      }
-      return readPluginHostArtifactBytes(response, args.expectedByteLength);
+      assertHostArtifactContentLength(response, args.expectedByteLength);
+      return readHostArtifactBytes(response, args.expectedByteLength);
     },
+
 
     async postEvents(
       events: HostDaemonEventEnvelope[],

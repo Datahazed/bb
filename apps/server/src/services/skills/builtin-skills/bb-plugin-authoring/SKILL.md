@@ -1047,6 +1047,114 @@ safety policy such as permission escalation is unchanged. The legacy
 `contributeInstructions` provider remains excluded from side chats, so use
 `configure` for side-chat-aware dynamic instructions.
 
+### bb.agents.experimental_registerProvider — agent providers
+
+A plugin can contribute a full agent provider: a picker entry whose threads
+run on a **provider bridge** the plugin ships. The working reference is
+`examples/plugins/echo-provider` — declaration, bridge, and conformance test
+in one small package.
+
+```ts
+bb.agents.experimental_registerProvider({
+  id: "echo-agent",              // stable public id; thread rows persist it
+  displayName: "Echo Agent",     // 1-80 chars, shown in the picker
+  icon: "./icons/echo.svg",      // optional; same grammar as bb.branding.icon
+  kind: "agent",                 // "agent" REQUIRES bridge; "router" forbids it
+  bridge: { entry: "provider-bridge" }, // names the built bundle
+  capabilities: {
+    // Pre-session facts only — the bridge reports the same facts at
+    // initialize and may only narrow what is declared here, never widen it.
+    supportsServiceTier: false,
+    supportsNativeUserQuestion: false,
+    fork: "none",                    // "none" | "tip" | "checkpoint"
+    supportsManualCompaction: false,
+    supportsThreadArchive: false,    // bb mirrors archive/unarchive onto it
+    supportsThreadRename: false,     // bb forwards renames to it
+    supportsWorkflows: false,        // the provider can run bb Workflow tools
+    permissionModes: ["full"],       // non-empty, no duplicates
+    reasoningLevels: ["medium"],     // coarse fallback ladder
+  },
+  composerActions: [],           // skills typeahead is implicit
+});
+```
+
+**The icon.** `icon` takes the same two shapes as `bb.branding.icon`: a named
+host glyph (`"Zap"`) or a plugin-relative SVG path (`"./icons/echo.svg"`). A
+path is served to clients as a `logoUrl` and drawn through `<img>`, so its
+`currentColor` cannot follow the bb theme; a glyph name carries no bytes, so
+there is no `logoUrl` at all. For a monochrome mark, ship an `app.tsx` too and
+register the same artwork with
+`app.slots.experimental_providerIcon({ providerId, icon })` — it renders
+inline and inherits the theme. The four first-party provider plugins do
+exactly this (`plugins/provider-codex/app.tsx`).
+
+Ids are collision-rejected against core providers and other plugins'
+registrations; registrations replace wholesale on reload like every other
+surface. Disabling the plugin removes the provider (open threads show a
+provider-unavailable state instead of erroring).
+
+**The bridge.** A provider bridge ships inside the plugin's `bb.host`
+artifact — the same artifact a host RPC entry ships in, and a plugin may have
+both. Export it by name:
+
+```ts
+// host.ts (bb.host)
+import { experimental_defineProviderBridge } from "@get-bb/plugin-sdk/provider-bridge";
+
+export const experimental_providerBridge = experimental_defineProviderBridge({
+  handleLine(line) {
+    /* one JSON-RPC line from the runtime */
+  },
+  // Optional; called once before the first line, with this plugin's
+  // persistent dataDir and this process's own tempDir.
+  start({ pluginId, dataDir, tempDir }) {},
+  onClose() {}, // stdin closed: the runtime is gone
+  onSigterm() {},
+});
+```
+
+Do NOT start the bridge yourself: the daemon owns the process boundary (argv,
+plugin-scoped directories, bounded stdin framing, signals) and imports this
+export out of the artifact. Importing the module must start nothing, which is
+also what lets your conformance test drive `handleLine` in-process.
+
+Everything a bridge compiles against is published at
+`@get-bb/plugin-sdk/provider-bridge` — protocol schemas, the bridge kit, and the event
+vocabulary — so add `@get-bb/plugin-sdk` to `dependencies` (not just
+`devDependencies`). A `bb.host` artifact cannot import bb's private `@bb/*`
+workspace packages; an installed plugin could not resolve them.
+
+The bridge speaks the canonical Provider Bridge Protocol — line-delimited
+JSON-RPC 2.0 over stdio, documented in `docs/provider-bridge-protocol.md`.
+Minimum correct surface: the `initialize`
+handshake (`{protocolVersion, capabilities}`), `thread/start` /
+`thread/resume` answering `{providerThreadId}` after a `thread/identity`
+notification, `turn/start` driving the event grammar (`turn/input/accepted`
+→ `turn/started` → `item/started` → deltas → `item/completed` →
+`turn/completed` as `thread/event` notifications carrying bb
+`ThreadEvent`s), `thread/stop` honoring both intents (`release` must
+fabricate nothing), and reply hygiene: unknown method → `-32601`, invalid
+params → `-32602` with the issues, never a silent drop. The bridge — never
+the provider — mints every turn and item id, with per-instance entropy so
+ids survive restarts and resumes.
+
+**Conformance.** Ship a test that drives
+`@bb/provider-bridge-protocol/conformance` against your bridge in-process:
+export the bridge surface, wire `runBridgeConformance` with a
+transport whose `send` calls it and whose `takeMessages` drains captured
+stdout, and assert all eleven scenarios pass (see
+`examples/plugins/echo-provider/provider-bridge.conformance.test.ts`).
+
+**Delivery.** On install/reload the server builds `dist/host.js` and records
+its digest. Thread commands for the provider carry `{pluginId, digest}` to the
+host daemon, which downloads the bytes from the server, verifies the digest
+before caching them, and runs the artifact with its own node — it never
+executes unverified bytes. It is one cache and one route with the host RPC
+worker, because it is one artifact.
+Trust model: installation trust, exactly like every other plugin surface. A
+bridge runs only for an installed, enabled plugin, and only on hosts whose
+server instructs it.
+
 ### bb.ui — host-rendered UI (no frontend bundle needed)
 
 ```ts
@@ -1531,6 +1639,19 @@ openWorkspaceFile }` — register a leaf
   `useBbNavigate().openThreadPanel`. Errors from `run` (sync or
   async) are contained and
   logged, never breaking the timeline.
+- `experimental_providerIcon` → the React component bb draws as one agent
+  provider's icon. Registration: `{ providerId, icon }`, where `providerId` is
+  the provider's id (`"codex"`, `"acp-cursor"`) — not the plugin id — and
+  `icon` is a component receiving only `className` (host sizing plus the
+  provider color class). Use it for a theme-aware mark: a file logo
+  (`bb.branding.icon`, or a path-shaped provider declaration `icon`) is drawn
+  through `<img>`, a separate document where `currentColor` resolves to black
+  and is invisible on dark themes, so keep files for intentionally colored
+  logos and register a component for anything that should follow the theme.
+  A component beats the file logo for that provider; disabling the plugin
+  falls back to it. One registration per provider id per plugin; if two
+  plugins claim one provider id the host keeps the first by plugin id and
+  warns. Reference: `plugins/provider-codex/app.tsx`.
 
 Host components:
 
@@ -1956,9 +2077,9 @@ multi-plugin arbitration. Use a live loop for those host boundaries.
 ### Live loop against a running bb
 
 - `bb plugin dev` is the loop: save → rebuild declared `bb.app` and `bb.host`
-  artifacts → reload; open app pages pick new UI up live and host workers move
-  to the new generation on their next call. Build/reload failures print and
-  keep watching.
+  artifacts → reload; open app pages pick new UI up live and
+  host workers move to the new generation on their next call. Build/reload
+  failures print and keep watching.
 - `bb plugin list` shows status, services, schedules (with last_error),
   handler stats, and the CLI command; `bb plugin logs <id> -f` follows
   `bb.log` output. Add `--json` to any plugin command for machine output.

@@ -29,9 +29,7 @@ import type { HostDaemonLogger } from "./logger.js";
 import { RuntimeManager } from "./runtime-manager.js";
 import type { PluginHostManager } from "./plugin-host-manager.js";
 
-interface CommandRouterLogger extends Pick<HostDaemonLogger, "warn"> {
-  debug?: HostDaemonLogger["debug"];
-}
+type CommandRouterLogger = Pick<HostDaemonLogger, "debug" | "warn">;
 
 type EnvironmentLaneMode = HostDaemonCommandEnvironmentLane;
 type ThreadStartCommand = Extract<HostDaemonCommand, { type: "thread.start" }>;
@@ -106,6 +104,7 @@ export interface CommandRouterOptions {
   dataDir: CommandDispatchOptions["dataDir"];
   fetchProjectAttachment: CommandDispatchOptions["fetchProjectAttachment"];
   fetchSkillTree?: CommandDispatchOptions["fetchSkillTree"];
+  fetchPluginHostArtifact?: CommandDispatchOptions["fetchPluginHostArtifact"];
   runtimeManager: RuntimeManager;
   terminalManager?: CommandDispatchOptions["terminalManager"];
   eventSink: CommandDispatchOptions["eventSink"];
@@ -337,6 +336,7 @@ export class CommandRouter {
     return {
       fetchProjectAttachment: this.options.fetchProjectAttachment,
       fetchSkillTree: this.options.fetchSkillTree,
+      fetchPluginHostArtifact: this.options.fetchPluginHostArtifact,
       runtimeManager: this.options.runtimeManager,
       terminalManager: this.options.terminalManager,
       dataDir: this.options.dataDir,
@@ -345,6 +345,7 @@ export class CommandRouter {
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
       ensureConnectTunnelIdentity: this.options.ensureConnectTunnelIdentity,
       threadStorageRootPath: this.options.threadStorageRootPath,
+      logger: this.options.logger,
     };
   }
 
