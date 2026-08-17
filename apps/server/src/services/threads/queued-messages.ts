@@ -5,6 +5,7 @@ import {
   getQueuedThreadMessage,
   getEnvironment,
   getThread,
+  hasQueuedThreadMessages,
   listIdleThreadsWithQueuedMessages,
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
@@ -509,6 +510,11 @@ export async function sendNextQueuedMessageIfPresent(
   if (!isQueuedMessageAutoSendCandidate(getThread(deps.db, args.threadId))) {
     return false;
   }
+  // A blocked thread (pending question or approval) cannot take a prompt; the
+  // settle listener requests another auto-send once the interaction resolves.
+  if (deps.pendingInteractions.hasPendingThreadInteraction(args.threadId)) {
+    return false;
+  }
 
   const nextQueuedMessages = claimNextQueuedThreadMessageGroup(
     deps.db,
@@ -595,6 +601,32 @@ export function requestQueuedMessageAutoSendForThread(
       runQueuedMessageAutoSendForThread(deps, {
         threadId: args.threadId,
       }),
+  });
+}
+
+/**
+ * After a pending interaction settles on an idle thread, drain its queue: the
+ * queue may hold messages that arrived while the interaction blocked the thread.
+ * Active threads drain on their next turn completion as usual.
+ */
+export function requestQueuedMessageAutoSendForIdleThread(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  threadId: string,
+): void {
+  const thread = getThread(deps.db, threadId);
+  if (
+    !thread ||
+    thread.status !== "idle" ||
+    !hasQueuedThreadMessages(deps.db, threadId)
+  ) {
+    return;
+  }
+  deferAfterResponse({
+    config: deps.config,
+    context: { threadId },
+    logger: deps.logger,
+    name: "Queued message auto-send after interaction settled",
+    work: () => runQueuedMessageAutoSendForThread(deps, { threadId }),
   });
 }
 

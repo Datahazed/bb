@@ -54,6 +54,10 @@ export function createQueuedThreadMessageId(): string {
   return createId("qmsg");
 }
 
+export function createDeferredParentSystemMessageId(): string {
+  return createId("dpsm");
+}
+
 export function createQueuedThreadMessageClaimToken(): string {
   return createId("qclaim");
 }

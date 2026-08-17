@@ -523,6 +523,17 @@ export {
   setQueuedThreadMessageGroupBoundary,
   updateQueuedThreadMessage,
 } from "./queued-thread-messages.js";
+export {
+  countDeferredParentSystemMessages,
+  createDeferredParentSystemMessage,
+  deleteDeferredParentSystemMessages,
+  listDeferredParentSystemMessages,
+  listThreadIdsWithDeferredParentSystemMessages,
+} from "./deferred-parent-system-messages.js";
+export type {
+  CreateDeferredParentSystemMessageInput,
+  DeferredParentSystemMessageRow,
+} from "./deferred-parent-system-messages.js";
 export type {
   ClaimedQueuedThreadMessageRow,
   ClaimedQueuedThreadMessageMutationArgs,

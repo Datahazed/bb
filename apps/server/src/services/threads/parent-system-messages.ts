@@ -1,19 +1,29 @@
 import {
+  countDeferredParentSystemMessages,
+  createDeferredParentSystemMessage,
+  deleteDeferredParentSystemMessages,
   getEnvironment,
   getThread,
+  listDeferredParentSystemMessages,
+  listThreadIdsWithDeferredParentSystemMessages,
   requireThreadLifecycleEventApplied,
   type DbTransaction,
+  type DeferredParentSystemMessageRow,
 } from "@bb/db";
-import type {
-  PromptInput,
-  PromptMentionResource,
-  PromptTextMention,
-  ResolvedThreadExecutionOptions,
-  SystemMessageKind,
-  SystemMessageSubject,
-  Thread,
+import {
+  promptInputSchema,
+  systemMessageKindSchema,
+  systemMessageSubjectSchema,
+  type PromptInput,
+  type PromptMentionResource,
+  type PromptTextMention,
+  type ResolvedThreadExecutionOptions,
+  type SystemMessageKind,
+  type SystemMessageSubject,
+  type Thread,
 } from "@bb/domain";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
+import { z } from "zod";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { requireThreadEnvironment } from "../lib/entity-lookup.js";
 import { deferAfterResponse } from "../lib/response-deferral.js";
@@ -64,66 +74,86 @@ interface QueueParentSystemMessageArgs extends ParentSystemMessageTaxonomy {
 }
 
 // Parent system messages (child turn notifications, ownership hand-offs) that
-// arrived while the parent awaited user interaction. A prompt cannot reach a
-// thread that is blocked on an `AskUserQuestion` or approval, and dropping the
-// message left orchestrators believing a child had gone silent (#1650). The
-// messages wait here and flush when the parent's interactions settle. Server
-// memory only: a restart interrupts every pending interaction and the parent
-// runtime is gone, so there is no later unblock to flush into.
-const deferredParentSystemMessages = new Map<
-  string,
-  QueueParentSystemMessageArgs[]
->();
-
+// arrive while the parent awaits user interaction cannot be delivered as a
+// prompt, and dropping them left orchestrators believing a child had gone
+// silent (#1650). They wait in `deferred_parent_system_messages` and flush when
+// the parent's interactions settle; the periodic sweep re-drives any rows a
+// restart or a lost settle event left behind.
 function deferParentSystemMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueueParentSystemMessageArgs,
 ): void {
-  const pending = deferredParentSystemMessages.get(args.parentThreadId) ?? [];
-  pending.push(args);
-  deferredParentSystemMessages.set(args.parentThreadId, pending);
+  createDeferredParentSystemMessage(deps.db, {
+    input: args.input,
+    parentThreadId: args.parentThreadId,
+    systemMessageKind: args.systemMessageKind,
+    systemMessageSubject: args.systemMessageSubject,
+  });
   deps.logger.info(
     {
       parentThreadId: args.parentThreadId,
       systemMessageKind: args.systemMessageKind,
-      deferredCount: pending.length,
+      deferredCount: countDeferredParentSystemMessages(
+        deps.db,
+        args.parentThreadId,
+      ),
     },
     "Parent thread awaits user interaction; deferred parent system message",
   );
 }
 
-export function countDeferredParentSystemMessages(
-  parentThreadId: string,
-): number {
-  return deferredParentSystemMessages.get(parentThreadId)?.length ?? 0;
+function parseDeferredParentSystemMessage(
+  row: DeferredParentSystemMessageRow,
+): QueueParentSystemMessageArgs {
+  return {
+    input: z.array(promptInputSchema).parse(JSON.parse(row.input)),
+    parentThreadId: row.parentThreadId,
+    systemMessageKind: systemMessageKindSchema.parse(row.systemMessageKind),
+    systemMessageSubject:
+      row.systemMessageSubject === null
+        ? null
+        : systemMessageSubjectSchema.parse(
+            JSON.parse(row.systemMessageSubject),
+          ),
+  };
 }
 
 /**
  * Delivers parent system messages deferred while `parentThreadId` awaited user
- * interaction. Runs after the interaction settles; a no-op when the thread
- * still has a pending interaction or nothing waits.
+ * interaction. A no-op when the thread still has a pending interaction or
+ * nothing waits. Each row is deleted before its send so a concurrent flush
+ * cannot deliver it twice; a send failure logs and drops that row.
  */
 export async function flushDeferredParentSystemMessages(
   deps: LoggedPendingInteractionWorkSessionDeps,
   parentThreadId: string,
 ): Promise<void> {
-  const pending = deferredParentSystemMessages.get(parentThreadId);
-  if (!pending || pending.length === 0) {
-    return;
-  }
   if (deps.pendingInteractions.hasPendingThreadInteraction(parentThreadId)) {
     return;
   }
-  deferredParentSystemMessages.delete(parentThreadId);
-  for (const args of pending) {
+  for (const row of listDeferredParentSystemMessages(deps.db, parentThreadId)) {
+    const claimed = deleteDeferredParentSystemMessages(deps.db, {
+      ids: [row.id],
+      parentThreadId,
+    });
+    if (claimed === 0) {
+      continue;
+    }
+    let args: QueueParentSystemMessageArgs;
+    try {
+      args = parseDeferredParentSystemMessage(row);
+    } catch (error) {
+      deps.logger.error(
+        { err: error, parentThreadId, deferredMessageId: row.id },
+        "Dropped malformed deferred parent system message",
+      );
+      continue;
+    }
     try {
       const delivered = await queueParentSystemMessage(deps, args);
       if (!delivered) {
         deps.logger.warn(
-          {
-            parentThreadId,
-            systemMessageKind: args.systemMessageKind,
-          },
+          { parentThreadId, systemMessageKind: args.systemMessageKind },
           "Deferred parent system message was not delivered",
         );
       }
@@ -144,7 +174,7 @@ export function requestDeferredParentSystemMessageFlush(
   deps: LoggedPendingInteractionWorkSessionDeps,
   parentThreadId: string,
 ): void {
-  if (countDeferredParentSystemMessages(parentThreadId) === 0) {
+  if (countDeferredParentSystemMessages(deps.db, parentThreadId) === 0) {
     return;
   }
   deferAfterResponse({
@@ -154,6 +184,17 @@ export function requestDeferredParentSystemMessageFlush(
     name: "Deferred parent system message flush",
     work: () => flushDeferredParentSystemMessages(deps, parentThreadId),
   });
+}
+
+/** Sweep entry: re-drive deferred rows whose parent no longer awaits input. */
+export async function runDeferredParentSystemMessageSweep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+): Promise<void> {
+  for (const parentThreadId of listThreadIdsWithDeferredParentSystemMessages(
+    deps.db,
+  )) {
+    await flushDeferredParentSystemMessages(deps, parentThreadId);
+  }
 }
 
 export interface ParentSystemRenderedMention {

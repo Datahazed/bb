@@ -832,6 +832,13 @@ describe("public thread interaction routes", () => {
         environmentId: environment.id,
         status: "idle",
       });
+      seedThreadRuntimeState(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-blocked",
+        inputText: "Wait",
+        model: "gpt-5",
+      });
       const queuedMessage = createQueuedThreadMessage(harness.db, harness.hub, {
         threadId: thread.id,
         content: textInput("Queued message"),
@@ -863,6 +870,8 @@ describe("public thread interaction routes", () => {
         );
       }
 
+      // A blocked idle thread queues too; the queued row must not auto-send
+      // while the interaction still blocks the thread.
       const sendResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/send`,
         {
@@ -876,12 +885,14 @@ describe("public thread interaction routes", () => {
           }),
         },
       );
-      expect(sendResponse.status).toBe(409);
+      expect(sendResponse.status).toBe(200);
       await expect(readJson(sendResponse)).resolves.toEqual({
-        code: "awaiting_user_interaction",
-        message:
-          "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
+        ok: true,
+        delivery: "queued",
+        queuedReason: "awaiting_user_interaction",
       });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(2);
 
       const queuedMessageSendResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}/send`,
@@ -996,6 +1007,80 @@ describe("public thread interaction routes", () => {
       expect(
         listQueuedThreadMessages(harness.db, activeThread.id),
       ).toHaveLength(1);
+    });
+  });
+
+  it("queues sends to an idle thread blocked by a plugin input request", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-public-thread-idle-plugin-blocked",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/idle-plugin-blocked-project",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-idle-plugin-blocked",
+        inputText: "Wait for secrets",
+        model: "gpt-5",
+      });
+      // A plugin can request user input from an idle thread; the request
+      // blocks the thread just like a provider question does.
+      const pluginRequest =
+        harness.deps.pendingInteractions.requestPluginInteraction({
+          pluginId: "secrets",
+          threadId: thread.id,
+          rendererId: "secret-request",
+          title: "Add secrets",
+          payload: { fields: [{ name: "API_KEY" }] },
+          timeoutMs: 10_000,
+        });
+      const [interaction] =
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+      expect(interaction?.payload.kind).toBe("plugin");
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            mode: "steer-if-active",
+            input: [{ type: "text", text: "Report while idle and blocked" }],
+          }),
+        },
+      );
+      expect(sendResponse.status).toBe(200);
+      await expect(readJson(sendResponse)).resolves.toEqual({
+        ok: true,
+        delivery: "queued",
+        queuedReason: "awaiting_user_interaction",
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
+
+      harness.deps.pendingInteractions.cancelPluginInteraction({
+        threadId: thread.id,
+        interactionId: interaction!.id,
+        reason: "user",
+      });
+      await expect(pluginRequest).resolves.toMatchObject({
+        outcome: "cancelled",
+      });
     });
   });
 

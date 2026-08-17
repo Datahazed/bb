@@ -302,7 +302,8 @@ async function createQueuedMessageForThread(
   }
   if (
     thread.status === "idle" &&
-    getLastProviderThreadId(deps, thread.id) !== null
+    getLastProviderThreadId(deps, thread.id) !== null &&
+    !deps.pendingInteractions.hasPendingThreadInteraction(thread.id)
   ) {
     requestQueuedMessageAutoSendForThread(deps, {
       queuedMessageId: queuedMessage.id,
@@ -330,11 +331,16 @@ function resolveSendQueuedReason(
   args: { payload: SendMessageRequest; thread: Thread },
 ): SendQueuedReason | null {
   const { payload, thread } = args;
-  if (thread.status !== "active" || payload.mode === "start") {
+  if (payload.mode === "start") {
     return null;
   }
+  // Checked before the status guard: a plugin input request can block an idle
+  // thread too, and that message must wait in the queue as well.
   if (deps.pendingInteractions.hasPendingThreadInteraction(thread.id)) {
     return "awaiting_user_interaction";
+  }
+  if (thread.status !== "active") {
+    return null;
   }
   if (payload.mode === "queue-if-active") {
     return "requested";

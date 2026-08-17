@@ -832,6 +832,32 @@ export const promptHistoryEntries = sqliteTable(
   ],
 );
 
+// Parent system messages (child turn outcomes, needs-attention, ownership
+// hand-offs) that arrived while the parent thread awaited user interaction.
+// A prompt cannot reach a blocked thread, so the message waits here and the
+// server flushes it once the parent's interactions settle. Rows outlive a
+// server restart, unlike an in-memory queue.
+export const deferredParentSystemMessages = sqliteTable(
+  "deferred_parent_system_messages",
+  {
+    id: text("id").primaryKey(),
+    parentThreadId: text("parent_thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    input: text("input").notNull(),
+    systemMessageKind: text("system_message_kind").notNull(),
+    systemMessageSubject: text("system_message_subject"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("deferred_parent_system_messages_parent_created_idx").on(
+      table.parentThreadId,
+      table.createdAt,
+      table.id,
+    ),
+  ],
+);
+
 export const queuedThreadMessages = sqliteTable(
   "queued_thread_messages",
   {

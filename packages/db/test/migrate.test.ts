@@ -630,11 +630,17 @@ function resetMigrationsAfterThreadSearch(db: DbConnection): void {
 
 /**
  * Migration 0094 adds the marketplace catalog tables and the plugins
- * marketplace-name column, and 0095 adds the git tag-range columns. Rewind
+ * marketplace-name column, 0095 adds the git tag-range columns, and 0099 adds
+ * the deferred parent system message table. Rewind
  * scenarios that clear those journal rows must remove all of them, or
  * migrate() replays the CREATE/ADD against a DB that has them.
  */
 function dropMarketplaceCatalogSchema(db: DbConnection): void {
+  // 0099 adds deferred_parent_system_messages; every rewind that clears the
+  // marketplace journal rows also clears that one, so drop it here too.
+  db.$client
+    .prepare("DROP TABLE IF EXISTS deferred_parent_system_messages")
+    .run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplace_icons").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplaces").run();
   const columns = new Set(
@@ -4642,16 +4648,18 @@ describe("migrate", () => {
       // installs still name the old key would list every entry twice.
       expect(
         db.$client
-          .prepare<[], { name: string }>(
-            "SELECT name FROM plugin_marketplaces ORDER BY name",
-          )
+          .prepare<
+            [],
+            { name: string }
+          >("SELECT name FROM plugin_marketplaces ORDER BY name")
           .all(),
       ).toEqual([{ name: "acme" }, { name: "bb-community" }]);
       expect(
         db.$client
-          .prepare<[], { marketplaceName: string }>(
-            "SELECT marketplace_name AS marketplaceName FROM plugin_marketplace_icons ORDER BY marketplace_name",
-          )
+          .prepare<
+            [],
+            { marketplaceName: string }
+          >("SELECT marketplace_name AS marketplaceName FROM plugin_marketplace_icons ORDER BY marketplace_name")
           .all(),
       ).toEqual([
         { marketplaceName: "acme" },
@@ -4659,9 +4667,10 @@ describe("migrate", () => {
       ]);
       expect(
         db.$client
-          .prepare<[], { id: string; catalogMarketplaceName: string | null }>(
-            "SELECT id, catalog_marketplace_name AS catalogMarketplaceName FROM plugins ORDER BY id",
-          )
+          .prepare<
+            [],
+            { id: string; catalogMarketplaceName: string | null }
+          >("SELECT id, catalog_marketplace_name AS catalogMarketplaceName FROM plugins ORDER BY id")
           .all(),
       ).toEqual([
         { id: "local", catalogMarketplaceName: null },
@@ -4675,9 +4684,10 @@ describe("migrate", () => {
       // 304. Other marketplaces keep theirs.
       expect(
         db.$client
-          .prepare<[], { name: string; etag: string | null; lastModified: string | null }>(
-            "SELECT name, etag, last_modified AS lastModified FROM plugin_marketplaces ORDER BY name",
-          )
+          .prepare<
+            [],
+            { name: string; etag: string | null; lastModified: string | null }
+          >("SELECT name, etag, last_modified AS lastModified FROM plugin_marketplaces ORDER BY name")
           .all(),
       ).toEqual([
         {
