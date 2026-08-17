@@ -25,7 +25,7 @@ describe("RootComposeRightPanelToggle", () => {
     ).toEqual({ inlinePanelToggle: "button", showPinnedToggle: false });
   });
 
-  it("uses a disclosure state without painting the whole click target as selected", () => {
+  it("matches shared panel chrome without painting the click target as selected", () => {
     const onToggle = vi.fn();
 
     render(<RootComposeRightPanelToggle isOpen onToggle={onToggle} />);
@@ -35,6 +35,9 @@ describe("RootComposeRightPanelToggle", () => {
     expect(button.getAttribute("aria-pressed")).toBeNull();
     expect(button.className).toContain("h-[28px]");
     expect(button.className).toContain("w-[28px]");
+    expect(button.className).toContain("text-subtle-foreground/75");
+    expect(button.className).toContain("hover:text-muted-foreground");
+    expect(button.getAttribute("data-state")).toBeNull();
 
     fireEvent.click(button);
     expect(onToggle).toHaveBeenCalledOnce();
