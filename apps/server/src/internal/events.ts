@@ -23,6 +23,7 @@ import {
   type HostDaemonRejectedEvent,
 } from "@bb/host-daemon-contract";
 import {
+  getThreadEventScopeTurnId,
   requireThreadEventScopeTurnId,
   type ThreadEventType,
   type ThreadEventTurnStatus,
@@ -154,6 +155,11 @@ interface HasThreadCommandFailureSystemErrorForTurnDeps {
 interface HasThreadCommandFailureSystemErrorForTurnArgs {
   threadId: string;
   turnId: string;
+}
+
+interface ResolveReopenedTurnIdArgs {
+  event: Extract<HostDaemonEventEnvelope["event"], { type: "item/started" }>;
+  threadId: string;
 }
 
 interface HasThreadStopBeforeTurnStartedArgs {
@@ -404,6 +410,24 @@ async function applyEventEffects(
         continue;
       }
 
+      if (event.type === "item/started") {
+        // A provider can keep working on a turn after it reported that turn as
+        // completed (Codex hook/compaction continuations, issue #1646). The
+        // work is real, so the thread must show as active again until the
+        // provider closes the turn a second time.
+        const turnId = resolveReopenedTurnId(deps, {
+          event,
+          threadId: entry.threadId,
+        });
+        if (turnId !== null) {
+          applyLoggedThreadLifecycleEvent(deps, {
+            event: { type: "run.started" },
+            threadId: entry.threadId,
+          });
+        }
+        continue;
+      }
+
       if (event.type === "turn/completed") {
         const turnId = requireThreadEventScopeTurnId({
           type: event.type,
@@ -642,6 +666,64 @@ function hasThreadStopBeforeTurnStarted(
       .limit(1)
       .get() !== undefined
   );
+}
+
+/**
+ * Returns the turn id when `event` is root provider work on a turn the thread
+ * already completed, the thread sits idle, and no stop arrived after that
+ * completion. Such work must reactivate the thread.
+ */
+function resolveReopenedTurnId(
+  deps: Pick<AppDeps, "db">,
+  args: ResolveReopenedTurnIdArgs,
+): string | null {
+  const { event } = args;
+  if (event.item.type === "userMessage" || event.item.parentToolCallId) {
+    return null;
+  }
+  const turnId = getThreadEventScopeTurnId(event.scope);
+  if (turnId === undefined) {
+    return null;
+  }
+  const thread = getThread(deps.db, args.threadId);
+  if (
+    !thread ||
+    thread.status !== "idle" ||
+    thread.archivedAt !== null ||
+    thread.deletedAt !== null
+  ) {
+    return null;
+  }
+  const turnCompleted = deps.db
+    .select({ sequence: storedEvents.sequence })
+    .from(storedEvents)
+    .where(
+      and(
+        eq(storedEvents.threadId, args.threadId),
+        eq(storedEvents.turnId, turnId),
+        eq(storedEvents.type, "turn/completed"),
+      ),
+    )
+    .orderBy(desc(storedEvents.sequence))
+    .limit(1)
+    .get();
+  if (!turnCompleted) {
+    return null;
+  }
+  const stoppedAfterCompletion =
+    deps.db
+      .select({ id: storedEvents.id })
+      .from(storedEvents)
+      .where(
+        and(
+          eq(storedEvents.threadId, args.threadId),
+          eq(storedEvents.type, "system/thread/interrupted"),
+          gt(storedEvents.sequence, turnCompleted.sequence),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined;
+  return stoppedAfterCompletion ? null : turnId;
 }
 
 function hasThreadAlreadyStartedRun(

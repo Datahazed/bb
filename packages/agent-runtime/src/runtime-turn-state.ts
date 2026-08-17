@@ -1,5 +1,8 @@
 import type { ThreadEvent } from "@bb/domain";
-import { requireThreadEventScopeTurnId } from "@bb/domain";
+import {
+  getThreadEventScopeTurnId,
+  requireThreadEventScopeTurnId,
+} from "@bb/domain";
 
 interface PendingActiveTurnWaiter {
   resolve: (turnId: string | null) => void;
@@ -92,6 +95,24 @@ export class RuntimeTurnState {
       if (this.activeTurnIdByThreadId.get(event.threadId) === turnId) {
         this.activeTurnIdByThreadId.delete(event.threadId);
       }
+      return;
+    }
+
+    // A provider can resume root work on a turn it already reported as
+    // completed (Codex hook/compaction continuations). Reopen the turn from
+    // that work so stop/steer can still target it.
+    if (
+      event.type === "item/started" &&
+      event.item.type !== "userMessage" &&
+      !event.item.parentToolCallId &&
+      !this.activeTurnIdByThreadId.has(event.threadId)
+    ) {
+      const turnId = getThreadEventScopeTurnId(event.scope);
+      if (turnId === undefined) {
+        return;
+      }
+      this.activeTurnIdByThreadId.set(event.threadId, turnId);
+      this.resolveWaiters(event.threadId, turnId);
     }
   }
 

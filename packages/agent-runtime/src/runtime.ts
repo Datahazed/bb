@@ -707,6 +707,16 @@ function createAgentRuntimeInternal(
     if (event.type === "provider/error" && event.willRetry !== true) {
       pendingTurnStartThreadIds.delete(event.threadId);
       markHostedProviderSessionIdle(event.threadId);
+      return;
+    }
+
+    // Root work that reopens a completed turn (see RuntimeTurnState) means the
+    // provider session is busy again; it must not be reaped as idle.
+    if (
+      event.type === "item/started" &&
+      turnState.getActiveTurnId(event.threadId) !== null
+    ) {
+      markProviderSessionNotIdle(event.threadId);
     }
   }
 

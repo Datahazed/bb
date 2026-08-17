@@ -169,6 +169,54 @@ describe("RuntimeTurnState", () => {
   });
 });
 
+describe("RuntimeTurnState reopened turns", () => {
+  function commandStarted(
+    turnId: string,
+    options: { parentToolCallId?: string } = {},
+  ): ThreadEvent {
+    return {
+      type: "item/started",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: turnScope(turnId),
+      item: {
+        type: "commandExecution",
+        id: `${turnId}-cmd`,
+        command: "npm test",
+        cwd: "/repo",
+        status: "pending",
+        approvalStatus: null,
+        ...(options.parentToolCallId
+          ? { parentToolCallId: options.parentToolCallId }
+          : {}),
+      },
+    };
+  }
+
+  it("reopens the active turn when root work resumes on a completed turn", () => {
+    const state = new RuntimeTurnState();
+    state.observe(turnStarted("turn-1"));
+    state.observe(turnCompleted("turn-1"));
+    expect(state.getActiveTurnId("t1")).toBeNull();
+
+    state.observe(commandStarted("turn-1"));
+    expect(state.getActiveTurnId("t1")).toBe("turn-1");
+
+    state.observe(turnCompleted("turn-1"));
+    expect(state.getActiveTurnId("t1")).toBeNull();
+  });
+
+  it("does not reopen from delegated child work or while a turn is active", () => {
+    const state = new RuntimeTurnState();
+    state.observe(commandStarted("child-turn", { parentToolCallId: "tool-1" }));
+    expect(state.getActiveTurnId("t1")).toBeNull();
+
+    state.observe(turnStarted("turn-2"));
+    state.observe(commandStarted("turn-1"));
+    expect(state.getActiveTurnId("t1")).toBe("turn-2");
+  });
+});
+
 describe("RuntimeTurnReplayFilter", () => {
   it("marks replayed turn starts as drops", () => {
     const filter = new RuntimeTurnReplayFilter();
