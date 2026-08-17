@@ -127,6 +127,13 @@ export interface PluginThreadListProps {
    * shipping a second search box.
    */
   searchQuery: string;
+  /**
+   * BB's thread list, bound to this sidebar instance. Render it to delegate
+   * conditionally without re-entering plugin replacement resolution.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_Original: ComponentType;
 }
 
 /**
@@ -167,6 +174,13 @@ export interface PluginFileOpenerSource {
 export interface PluginFileOpenerProps {
   path: string;
   source: PluginFileOpenerSource;
+  /**
+   * BB's file preview, bound to this file. Render it to delegate conditionally
+   * without re-entering plugin replacement resolution.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_Original: ComponentType;
 }
 
 /**
@@ -630,10 +644,13 @@ export interface PluginSidebarThreadSplit {
  * Replace the sidebar's thread list with a plugin component.
  *
  * Unlike every other slot, this one is EXCLUSIVE: two lists cannot share one
- * scroll area. The built-in list stays the default; the user picks a provider
- * in Settings → Appearance, stored per client. A provider that is uninstalled,
- * disabled, or crashing falls back to the built-in list rather than leaving
- * the user with no sidebar.
+ * scroll area. Registering activates the replacement while the plugin is
+ * enabled. If multiple plugins register one, the first in deterministic slot
+ * order is active by default; removing it reveals the next. The user can pin
+ * BB's list or a specific provider under Settings → Appearance. A plugin can
+ * also use its own setting and render `experimental_Original` conditionally.
+ * An absent or crashing replacement falls back to BB's list rather than
+ * leaving the user with no sidebar.
  *
  * The plugin gets the scrolling list and nothing else. The New-thread button,
  * the search field, the plugin nav rows, and the footer stay host-rendered in
@@ -643,21 +660,22 @@ export interface PluginSidebarThreadSplit {
 export interface PluginThreadListRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
-  /** Label in the Settings → Appearance → Sidebar picker. */
+  /** Label shown in Settings → Appearance and capability details. */
   title: string;
-  /** Optional one-line description under the title in that picker. */
+  /** Optional one-line description shown with the provider choice. */
   description?: string;
   component: ComponentType<PluginThreadListProps>;
 }
 
 /**
- * Register this plugin as a viewer/editor for file extensions. The user
- * picks (and can set as default) an opener per extension via the file tab's
- * "Open with" menu; matching files opened in the panel then render
- * `component` in a plugin tab instead of the built-in preview. Applies to
- * working-tree, host, and thread-storage files — never to git-ref snapshots
- * (diff views always use the built-in preview). The built-in preview stays
- * one menu click away, and a missing/disabled opener falls back to it.
+ * Register this plugin as a viewer/editor for file extensions. By default,
+ * matching files render the first applicable opener in deterministic slot
+ * order. The user can pin BB's preview or a specific opener per extension
+ * under Settings → Files. The file tab's "Open with" menu can override that
+ * choice for one open. A plugin can also use its own setting and render
+ * `experimental_Original` conditionally. Applies to working-tree, host, and
+ * thread-storage files — never to git-ref snapshots (diff views always use
+ * BB's preview).
  */
 export interface PluginFileOpenerRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */

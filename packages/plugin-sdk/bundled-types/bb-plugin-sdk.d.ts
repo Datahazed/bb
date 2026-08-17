@@ -318,8 +318,8 @@ declare const providerPendingInteractionSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     threadId: z$1.ZodString;
     status: z$1.ZodEnum<{
-        interrupted: "interrupted";
         pending: "pending";
+        interrupted: "interrupted";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -461,8 +461,8 @@ declare const pluginPendingInteractionSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     threadId: z$1.ZodString;
     status: z$1.ZodEnum<{
-        interrupted: "interrupted";
         pending: "pending";
+        interrupted: "interrupted";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -714,8 +714,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     providerThreadId: z$1.ZodString;
     objective: z$1.ZodString;
     status: z$1.ZodEnum<{
-        active: "active";
         paused: "paused";
+        active: "active";
         budgetLimited: "budgetLimited";
         complete: "complete";
     }>;
@@ -759,10 +759,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         command: z$1.ZodString;
         cwd: z$1.ZodString;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -806,10 +806,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             diff: z$1.ZodOptional<z$1.ZodString>;
         }, z$1.core.$strip>>;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -846,10 +846,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             completed: z$1.ZodString;
         }, z$1.core.$strip>>;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         result: z$1.ZodOptional<z$1.ZodUnknown>;
         error: z$1.ZodOptional<z$1.ZodString>;
@@ -896,17 +896,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         taskType: z$1.ZodString;
         description: z$1.ZodString;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z$1.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -922,8 +922,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 index: z$1.ZodNumber;
                 label: z$1.ZodString;
                 state: z$1.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -991,10 +991,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         command: z$1.ZodString;
         cwd: z$1.ZodString;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -1038,10 +1038,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             diff: z$1.ZodOptional<z$1.ZodString>;
         }, z$1.core.$strip>>;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -1078,10 +1078,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             completed: z$1.ZodString;
         }, z$1.core.$strip>>;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         result: z$1.ZodOptional<z$1.ZodUnknown>;
         error: z$1.ZodOptional<z$1.ZodString>;
@@ -1128,17 +1128,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         taskType: z$1.ZodString;
         description: z$1.ZodString;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z$1.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -1154,8 +1154,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 index: z$1.ZodNumber;
                 label: z$1.ZodString;
                 state: z$1.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -1257,17 +1257,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         taskType: z$1.ZodString;
         description: z$1.ZodString;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z$1.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -1283,8 +1283,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 index: z$1.ZodNumber;
                 label: z$1.ZodString;
                 state: z$1.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -1329,17 +1329,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         taskType: z$1.ZodString;
         description: z$1.ZodString;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z$1.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -1355,8 +1355,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 index: z$1.ZodNumber;
                 label: z$1.ZodString;
                 state: z$1.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -1428,10 +1428,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     plan: z$1.ZodArray<z$1.ZodObject<{
         step: z$1.ZodString;
         status: z$1.ZodOptional<z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             active: "active";
-            pending: "pending";
         }>>;
     }, z$1.core.$strip>>;
     explanation: z$1.ZodOptional<z$1.ZodString>;
@@ -1879,8 +1879,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     providerId: z$1.ZodString;
     providerRequestId: z$1.ZodString;
     status: z$1.ZodEnum<{
-        interrupted: "interrupted";
         pending: "pending";
+        interrupted: "interrupted";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -1931,8 +1931,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     providerId: z$1.ZodString;
     providerRequestId: z$1.ZodString;
     status: z$1.ZodEnum<{
-        interrupted: "interrupted";
         pending: "pending";
+        interrupted: "interrupted";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -2121,8 +2121,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            completed: "completed";
             pending: "pending";
+            completed: "completed";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -2940,8 +2940,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        utf8: "utf8";
         base64: "base64";
+        utf8: "utf8";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -11034,6 +11034,13 @@ interface PluginThreadListProps {
      * shipping a second search box.
      */
     searchQuery: string;
+    /**
+     * BB's thread list, bound to this sidebar instance. Render it to delegate
+     * conditionally without re-entering plugin replacement resolution.
+     *
+     * @experimental Audit before relying on this as a stable contract.
+     */
+    experimental_Original: ComponentType;
 }
 /**
  * Props passed to an `experimental_threadHeaderAction` component, rendered in
@@ -11071,6 +11078,13 @@ interface PluginFileOpenerSource {
 interface PluginFileOpenerProps {
     path: string;
     source: PluginFileOpenerSource;
+    /**
+     * BB's file preview, bound to this file. Render it to delegate conditionally
+     * without re-entering plugin replacement resolution.
+     *
+     * @experimental Audit before relying on this as a stable contract.
+     */
+    experimental_Original: ComponentType;
 }
 /**
  * Message context passed to a `messageDirective` component — the assistant
@@ -11491,10 +11505,13 @@ interface PluginSidebarThreadSplit {
  * Replace the sidebar's thread list with a plugin component.
  *
  * Unlike every other slot, this one is EXCLUSIVE: two lists cannot share one
- * scroll area. The built-in list stays the default; the user picks a provider
- * in Settings → Appearance, stored per client. A provider that is uninstalled,
- * disabled, or crashing falls back to the built-in list rather than leaving
- * the user with no sidebar.
+ * scroll area. Registering activates the replacement while the plugin is
+ * enabled. If multiple plugins register one, the first in deterministic slot
+ * order is active by default; removing it reveals the next. The user can pin
+ * BB's list or a specific provider under Settings → Appearance. A plugin can
+ * also use its own setting and render `experimental_Original` conditionally.
+ * An absent or crashing replacement falls back to BB's list rather than
+ * leaving the user with no sidebar.
  *
  * The plugin gets the scrolling list and nothing else. The New-thread button,
  * the search field, the plugin nav rows, and the footer stay host-rendered in
@@ -11504,20 +11521,21 @@ interface PluginSidebarThreadSplit {
 interface PluginThreadListRegistration {
     /** Unique within the plugin; letters, digits, `-`, `_`. */
     id: string;
-    /** Label in the Settings → Appearance → Sidebar picker. */
+    /** Label shown in Settings → Appearance and capability details. */
     title: string;
-    /** Optional one-line description under the title in that picker. */
+    /** Optional one-line description shown with the provider choice. */
     description?: string;
     component: ComponentType<PluginThreadListProps>;
 }
 /**
- * Register this plugin as a viewer/editor for file extensions. The user
- * picks (and can set as default) an opener per extension via the file tab's
- * "Open with" menu; matching files opened in the panel then render
- * `component` in a plugin tab instead of the built-in preview. Applies to
- * working-tree, host, and thread-storage files — never to git-ref snapshots
- * (diff views always use the built-in preview). The built-in preview stays
- * one menu click away, and a missing/disabled opener falls back to it.
+ * Register this plugin as a viewer/editor for file extensions. By default,
+ * matching files render the first applicable opener in deterministic slot
+ * order. The user can pin BB's preview or a specific opener per extension
+ * under Settings → Files. The file tab's "Open with" menu can override that
+ * choice for one open. A plugin can also use its own setting and render
+ * `experimental_Original` conditionally. Applies to working-tree, host, and
+ * thread-storage files — never to git-ref snapshots (diff views always use
+ * BB's preview).
  */
 interface PluginFileOpenerRegistration {
     /** Unique within the plugin; letters, digits, `-`, `_`. */
