@@ -64,6 +64,15 @@ export interface LoadedPlugin {
   builtinName: string | null;
 }
 
+export interface PluginHostArtifactSnapshot {
+  /** Absolute path to the validated bundle; bytes are read only when served. */
+  path: string;
+  byteLength: number;
+  digest: string;
+  /** Changes on every successful activation, even if source bytes are equal. */
+  generation: string;
+}
+
 export interface PluginServiceDeps {
   db: DbConnection;
   /** Omitted only by isolated plugin-runtime tests without a daemon plane. */
@@ -130,6 +139,21 @@ export interface PluginServiceDeps {
   }) => Promise<void>;
   /** Test observation seam; called immediately before a managed download. */
   onArtifactMaterialize?: (args: { path: string }) => void;
+  /** Generic typed host-RPC transport supplied by the server composition root. */
+  callPluginHost?: (args: {
+    pluginId: string;
+    contract: import("@get-bb/plugin-sdk").PluginRpcContract;
+    method: string;
+    input: unknown;
+    hostId: string;
+    signal?: AbortSignal;
+    artifact: PluginHostArtifactSnapshot;
+  }) => Promise<unknown>;
+  /** Stops this plugin's workers on connected hosts during reload/disable. */
+  disposePluginHost?: (args: {
+    pluginId: string;
+    generation: string;
+  }) => Promise<void>;
 }
 
 /** One native tool contributed by a running plugin (design §4.4). */

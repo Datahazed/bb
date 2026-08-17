@@ -50,6 +50,7 @@ import type {
   PluginThreadEventName,
   PluginUi,
   StandardSchemaV1,
+  PluginRpcContract,
 } from "@get-bb/plugin-sdk";
 import {
   AGENT_TOOL_NAME_PATTERN,
@@ -67,6 +68,7 @@ import {
   RESERVED_AGENT_TOOL_NAMES,
   RESERVED_BB_CLI_COMMANDS,
   RPC_METHOD_PATTERN,
+  isStandardSchema,
   summarizeParseIssues,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
@@ -277,6 +279,10 @@ export interface PluginApiHandle {
   httpRoutes: PluginHttpRouteRecord[];
   /** RPC handlers recorded by `bb.rpc.register`; dropped with the handle. */
   rpcHandlers: Map<string, PluginRpcHandler>;
+  /** Unexpected host-worker exit handlers registered by this generation. */
+  hostWorkerExitHandlers: PluginHostWorkerExitHandler[];
+  /** Typed host signals registered by this generation. */
+  hostSignalHandlers: PluginHostSignalHandler[];
   /** Background services recorded by `bb.background.service`. */
   backgroundServices: PluginBackgroundServiceRecord[];
   /** Schedules recorded by `bb.background.schedule`. */
@@ -298,6 +304,19 @@ export interface PluginApiHandle {
   activate(): void;
   /** Poison every method on the handle. */
   invalidate(): void;
+}
+
+export type PluginHostWorkerExitHandler = (event: {
+  hostId: string;
+}) => void | Promise<void>;
+
+export interface PluginHostSignalHandler {
+  signal: string;
+  payloadSchema: StandardSchemaV1;
+  handler: (event: {
+    hostId: string;
+    payload: unknown;
+  }) => void | Promise<void>;
 }
 
 /** Provider registered by `bb.agents.contributeInstructions`. */
@@ -384,6 +403,13 @@ export function createPluginApi(options: {
       ports: readonly number[];
     }[],
   ) => void;
+  callPluginHost?: (args: {
+    contract: PluginRpcContract;
+    method: string;
+    input: unknown;
+    hostId: string;
+    signal?: AbortSignal;
+  }) => Promise<unknown>;
 }): PluginApiHandle {
   const {
     pluginId,
@@ -401,6 +427,7 @@ export function createPluginApi(options: {
     validateSharedPortDeclaration,
     declareSharedPorts,
     replaceDeclaredSharedPorts,
+    callPluginHost,
   } = options;
   let invalidated = false;
   let activated = false;
@@ -424,6 +451,8 @@ export function createPluginApi(options: {
   };
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
+  const hostWorkerExitHandlers: PluginHostWorkerExitHandler[] = [];
+  const hostSignalHandlers: PluginHostSignalHandler[] = [];
   const backgroundServices: PluginBackgroundServiceRecord[] = [];
   const schedules: PluginScheduleRecord[] = [];
 
@@ -1087,6 +1116,86 @@ export function createPluginApi(options: {
   };
 
   const hosts: PluginHosts = {
+    experimental_client({ contract, experimental_signals }) {
+      assertLive();
+      if (callPluginHost === undefined) {
+        throw new Error("host plugin transport is unavailable");
+      }
+      const invokeHost = callPluginHost;
+      return {
+        async call(method, input, callOptions) {
+          assertLive();
+          if (!activated) {
+            throw new Error(
+              "host plugin calls are unavailable during factory registration; call from a handler, service, or timer",
+            );
+          }
+          if (typeof method !== "string" || contract[method] === undefined) {
+            throw new Error(`unknown host rpc method "${String(method)}"`);
+          }
+          if (
+            typeof callOptions !== "object" ||
+            callOptions === null ||
+            typeof callOptions.hostId !== "string" ||
+            callOptions.hostId.length === 0
+          ) {
+            throw new Error(`host rpc method "${method}" requires a host id`);
+          }
+          return invokeHost({
+            contract,
+            method,
+            input,
+            hostId: callOptions.hostId,
+            ...(callOptions.signal === undefined
+              ? {}
+              : { signal: callOptions.signal }),
+          });
+        },
+        experimental_onWorkerExit(handler) {
+          assertLive();
+          if (typeof handler !== "function") {
+            throw new Error("host worker exit subscription requires a handler");
+          }
+          hostWorkerExitHandlers.push(handler);
+          let subscribed = true;
+          return () => {
+            if (!subscribed) return;
+            subscribed = false;
+            const index = hostWorkerExitHandlers.indexOf(handler);
+            if (index >= 0) hostWorkerExitHandlers.splice(index, 1);
+          };
+        },
+        experimental_onSignal(signal, handler) {
+          assertLive();
+          const descriptor = experimental_signals?.[signal];
+          if (
+            typeof signal !== "string" ||
+            signal.length === 0 ||
+            typeof descriptor !== "object" ||
+            descriptor === null ||
+            !isStandardSchema(descriptor.payload)
+          ) {
+            throw new Error(`unknown host signal "${String(signal)}"`);
+          }
+          if (typeof handler !== "function") {
+            throw new Error("host signal subscription requires a handler");
+          }
+          const record: PluginHostSignalHandler = {
+            signal,
+            payloadSchema: descriptor.payload,
+            handler,
+          };
+          hostSignalHandlers.push(record);
+          let subscribed = true;
+          return () => {
+            if (!subscribed) return;
+            subscribed = false;
+            const index = hostSignalHandlers.indexOf(record);
+            if (index >= 0) hostSignalHandlers.splice(index, 1);
+          };
+        },
+      };
+    },
     ensureSharedPortTunnel(hostId) {
       assertLive();
       return ensureSharedPortTunnel(hostId);
@@ -1161,6 +1270,8 @@ export function createPluginApi(options: {
     threadEventHandlers,
     httpRoutes,
     rpcHandlers,
+    hostWorkerExitHandlers,
+    hostSignalHandlers,
     backgroundServices,
     schedules,
     cli: cliRecord,

@@ -7,8 +7,9 @@ description: Write, build, and install bb plugins. Use whenever the task is to c
 
 A bb plugin is a TypeScript package running in-process inside the bb server.
 Its backend entry default-exports a factory that receives the full plugin API
-(`bb`); an optional frontend entry registers React UI inside the bb app.
-Plugins are full-trust code: they can read all local bb data.
+(`bb`); an optional frontend entry registers React UI inside the bb app; an
+optional host entry is bundled and runs as a supervised Node worker on targeted
+enrolled hosts. Plugins are full-trust code in every runtime.
 
 Plugins are on by default. Builtin plugins ship with bb; a few sit behind
 their own product gates. `bb plugin list` shows each plugin's status.
@@ -19,7 +20,7 @@ their own product gates. `bb plugin list` shows each plugin's status.
 bb plugin new hello            # scaffolds ./bb-plugin-hello (add --app for a frontend entry)
 cd bb-plugin-hello
 bb plugin install .            # registers the directory in place (--yes to skip the prompt)
-bb plugin dev                  # watch loop: rebuild frontend (if any) + reload on every save
+bb plugin dev                  # rebuild app/host bundles + reload on every save
 ```
 
 The manifest is `package.json`:
@@ -36,6 +37,7 @@ The manifest is `package.json`:
     "branding": { "icon": "Zap" },
     "server": "./server.ts",
     "app": "./app.tsx",
+    "host": "./host.ts",
     "skills": ["skills"]
   }
 }
@@ -56,6 +58,12 @@ The manifest is `package.json`:
   after any install that omits dev deps — including the packaged CLI's own,
   which runs npm under `NODE_ENV=production`. `devDependencies` is for types
   and tooling only.
+- `bb.host` (optional, singular) — full-trust Node 22 ESM entry bundled into
+  `dist/host.js` + source map + `host.meta.json`. Its owning server entry calls
+  it through typed host RPC. The daemon downloads it lazily, verifies its
+  digest, and reuses one worker per plugin generation. Pure JavaScript
+  dependencies are bundled; host code may use Node APIs such as
+  `child_process`, `fs`, and `fetch`.
   Installing or updating a git plugin needs `npm` on PATH; checking for
   updates does not, because a check reads the manifest and never builds. Path
   installs build from dependencies you have already installed.
@@ -116,8 +124,8 @@ The manifest is `package.json`:
   the previous state snapshot and records the failure for the user. Keep
   `engines.*` honest and ship load-safe factories so an update never strands
   users.
-- `bb plugin build` stamps authoritative metadata into both
-  `dist/server.meta.json` and `dist/app.meta.json`: `sdkMajor`, `sdkVersion`,
+- `bb plugin build` stamps authoritative metadata into every declared
+  artifact's `dist/*.meta.json`: `sdkMajor`, `sdkVersion`,
   `artifactFormatVersion` (currently `1`), `pluginId`, `pluginVersion`, and
   `builtWith: { bbVersion, pluginSdkVersion }`. Managed installs reject
   artifacts whose `pluginId`/`pluginVersion` disagree with the package
@@ -160,12 +168,15 @@ does not cover:
    - plugins scaffolded by a current bb depend on the npm package, so after
      `npm install` read
      `node_modules/@get-bb/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts`
-     (`bb-plugin-sdk-app.d.ts` for frontend symbols);
-   - plugins scaffolded before that still carry the same declarations in
-     `types/bb-plugin-sdk.d.ts` (`types/bb-plugin-sdk-app.d.ts`), which the
-     plugin's `tsconfig.json` maps `@get-bb/plugin-sdk` onto. Read whichever
-     the plugin in front of you has. That layout still works; `bb plugin
-     migrate` converts such a plugin to the npm package (it prints the plan
+     (`bb-plugin-sdk-app.d.ts` for frontend symbols and
+     `bb-plugin-sdk-host.d.ts` for the host entry);
+   - plugins scaffolded before that still carry the root declaration in
+     `types/bb-plugin-sdk.d.ts` (plus `types/bb-plugin-sdk-app.d.ts` for an
+     app), which the plugin's `tsconfig.json` maps
+     `@get-bb/plugin-sdk` onto. Read whichever the plugin in front of you has.
+     That layout still works for existing entries, but migrate before adding
+     `bb.host` so the `/host` and `/testing/host` subpaths are present; `bb
+plugin migrate` converts such a plugin to the npm package (it prints the plan
      and asks first, and needs `--yes` when stdin is not a terminal). Never
      migrate a plugin the user did not ask you to migrate.
 3. **`git clone --depth 1 https://github.com/get-bb/bb`** for host behavior or
@@ -391,6 +402,143 @@ listening throws, so prefer reading it from handlers, services, and timers.
 
 ### bb.hosts
 
+For a plugin with a singular `bb.host` entry, define one runtime contract
+shared by the server and host modules:
+
+```ts
+// contract.ts
+import {
+  defineRpcContract,
+  type ExperimentalHostSignals,
+} from "@get-bb/plugin-sdk";
+import { z } from "zod";
+
+export const hostContract = defineRpcContract({
+  setEnabled: {
+    input: z.object({ enabled: z.boolean() }).strict(),
+    output: z.object({ enabled: z.boolean() }).strict(),
+  },
+});
+
+export const hostSignals = {
+  changed: {
+    payload: z.object({ reason: z.string() }).strict(),
+  },
+} satisfies ExperimentalHostSignals;
+```
+
+The host entry default-exports its implementation:
+
+```ts
+// host.ts
+import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
+import { hostContract, hostSignals } from "./contract.js";
+
+export default experimental_defineHostEntry({
+  contract: hostContract,
+  experimental_signals: hostSignals,
+  handlers: {
+    setEnabled: async ({ enabled }, context) => {
+      await setEnabled(enabled, context.signal);
+      await context.experimental_emitSignal("changed", {
+        reason: "setting-applied",
+      });
+      return { enabled };
+    },
+  },
+  dispose: async () => closeChildren(),
+});
+```
+
+The server factory calls only its own host entry:
+
+```ts
+const host = bb.hosts.experimental_client({
+  contract: hostContract,
+  experimental_signals: hostSignals,
+});
+const result = await host.call(
+  "setEnabled",
+  { enabled: true },
+  { hostId, signal },
+);
+const unsubscribeWorkerExit = host.experimental_onWorkerExit(({ hostId }) => {
+  // Reassert durable desired state; the next call starts a fresh worker.
+});
+const unsubscribeChanged = host.experimental_onSignal(
+  "changed",
+  ({ hostId, payload }) => {
+    // Invalidate or reread server state for this host.
+  },
+);
+```
+
+Create the client and register signal handlers in the factory, but call host
+methods only after registration completes — from an RPC/event handler,
+background service, or timer. Candidate-time calls are rejected because that
+generation is not active or fetchable yet.
+
+`context.signal` aborts one call. `context.lifecycle.signal` aborts the whole
+worker process on idle eviction, reload, disable, uninstall, or daemon
+shutdown. Close timers, sockets, and child processes from the lifecycle signal
+and `dispose`.
+`context.experimental_paths.dataDir` is persistent and scoped to this plugin on
+the targeted daemon; `tempDir` is deleted with the worker process.
+`context.experimental_watch(options, listener)` uses the daemon's native file
+watcher. Deliveries are coalesced and serialized while the listener is busy;
+on `rescan-required`, reread current state instead of trusting prior events.
+Subscriptions are disposed with the worker and can also be disposed directly.
+Active calls and native watches automatically keep the worker running. For
+independent background work, acquire a lease during a handler with
+`context.experimental_retainWorker()` and dispose it when that work stops.
+Lease disposal is idempotent.
+
+Host signals are schema-validated, private to the plugin that owns the host
+entry, and ephemeral. Use them as invalidations or progress notifications, not
+as durable state; the server callback receives the authenticated `hostId`.
+V1 calls still target only an explicit enrolled host. If a method operates on
+an environment or directory, resolve it with `bb.sdk` and put the needed id or
+absolute path in that method's typed input. Core does not infer an environment,
+cwd, or lock for host RPC.
+
+The worker is lazy and reusable; there is no short-/long-lived manifest flag.
+After five minutes with no active call, native watch, or retained lease, the
+daemon gracefully stops it. A later call starts it again. This idle stop does
+not emit `experimental_onWorkerExit`. A crash fails in-flight calls, emits
+`experimental_onWorkerExit` to the active server generation, and a later call
+starts a fresh worker. Graceful reload, disable, uninstall, and daemon shutdown
+do not emit it. The event is ephemeral, so long-lived plugins must also
+reconcile when their target host reconnects. On reconnect, the daemon keeps
+workers whose generation is still active and disposes generations disabled or
+replaced while it was offline. There is no global worker-count limit. Host code
+receives the normalized user `PATH` without daemon-owned `BB_*` variables.
+
+These single-worker, idle-eviction, retention, and call-timeout rules describe
+the host RPC consumer only. Another daemon subsystem may attach the same
+`bb.host` artifact through a different bootstrap and own a separate process
+lifecycle.
+
+Host production code may import public `@get-bb/plugin-sdk` entrypoints, Node
+APIs, and ordinary third-party dependencies. It must not import private
+monorepo packages such as `@bb/domain`, `@bb/host-workspace`, or any other
+`@bb/*` package; the host artifact build rejects those imports anywhere in its
+dependency graph, including type-only imports and relative paths that resolve
+into a private package. Keep shared contract types plugin-local and validate
+them at the RPC boundary.
+
+Keep `@get-bb/plugin-sdk` in exact `devDependencies`, not production
+dependencies. The host builder supplies its small runtime helpers and bundles
+them into the self-contained artifact, including for managed Git installs that
+omit dev dependencies. The daemon never resolves the SDK or private BB
+packages from the plugin at runtime.
+
+Pure JavaScript dependencies are bundled. For external tools, use
+`child_process` to probe or invoke tools on `PATH`. bb V1 provides no
+privileged package installer; a plugin that invokes a system installer owns
+user consent, elevation, platform-specific behavior, and recovery.
+
+The rest of `bb.hosts` controls shared loopback port exposure.
+
 Control-plane declarations for host-local daemon behavior. Use
 `bb.hosts.declareSharedPorts(hostId, ports)` to replace this plugin's
 desired loopback port set for one host. `ports` contains integers from 1–65535;
@@ -404,8 +552,9 @@ daemon derives both from its trusted gate; plugins cannot choose a domain or
 send tunnel identity toward a credential-bearing daemon connection.
 
 Declarations are load-scoped: reload, disable, or shutdown clears them after
-the plugin's own dispose hooks run. This is a control-plane API only; plugins
-do not receive daemon streaming or socket primitives.
+the plugin's own dispose hooks run. Plugins do not receive daemon streaming or
+socket primitives. Add streaming only for a use case that cannot use bounded
+calls, pagination, and lossy invalidation signals.
 
 ```ts
 const tunnel = await bb.hosts.ensureSharedPortTunnel(hostId);
@@ -1653,7 +1802,7 @@ hardcoded colors break custom palettes.
 
 `@get-bb/plugin-sdk/testing` is the official vitest harness for workspace and
 standalone plugins. The packed package ships runtime JavaScript and portable
-declarations for both testing subpaths. A current scaffold already declares
+declarations for all three testing entrypoints. A current scaffold already declares
 `@get-bb/plugin-sdk` as an exact devDependency, so the harness is on disk after
 `npm install`; an older plugin that still vendors `types/` must add that
 devDependency (or run `bb plugin migrate`) before tests can import the harness.
@@ -1664,7 +1813,8 @@ The fake plugin host's `bb` satisfies `BbPluginApi` with host-faithful
 semantics: real better-sqlite3 temporary storage (never mock the db), the kv
 256KB cap, schema-RPC validation/error/strict-JSON behavior, additive events,
 keyed registration failures, atomic reload, conditional agent configuration,
-request input, and `threads.spawn` plugin attribution.
+request input, typed host-call validation/signal delivery, and `threads.spawn`
+plugin attribution.
 
 Backend (`server.ts`) — `createFakePluginHost()`:
 
@@ -1679,6 +1829,9 @@ const { bb, harness } = createFakePluginHost({
   pluginId: "my-plugin",
   settings: { apiToken: "tok" }, // pre-seeded stored values (secrets included)
   sdk: { threads: { spawn: async () => ({ id: "th_1" }) } },
+  experimental_callHostRpc: async ({ method, input, target, signal }) => {
+    return { ok: true }; // validated against the method's output schema
+  },
 });
 await plugin(bb);
 
@@ -1693,6 +1846,12 @@ await harness.behavior.emitThreadEvent("thread.idle", {
   lastAssistantText: "done",
 });
 await harness.behavior.callAgentTool("lookup_doc", { query: "x" }); // parse (zod) + execute
+await harness.behavior.experimental_emitHostSignal(
+  "changed",
+  { reason: "test" },
+  { kind: "host", hostId: "host-test" },
+);
+await harness.behavior.experimental_emitHostWorkerExit("host-test");
 await harness.behavior.resolveAgentConfiguration(context); // validated tools/skills/instructions
 await harness.lifecycle.dispose(); // abort services, hooks LIFO, close database; stale bb throws
 ```
@@ -1707,11 +1866,30 @@ Inspect: `harness.inspection.sdk.calls` /
 `harness.inspection.sdk.callsTo("threads.spawn")` (every
 `bb.sdk` call is recorded; unstubbed methods throw naming the path to stub —
 `harness.sdk.stub("projects.list", fn)` adds one late), `harness.logEntries`,
-`harness.realtimeSignals`, `harness.needsConfigurationMessages`, and
+`harness.realtimeSignals`, `harness.experimental_hostRpcCalls`,
+`harness.needsConfigurationMessages`, and
 `harness.registrations` (http routes, rpc methods, services, schedules, cli,
 agent tools/configure provider, mention providers). Pass
 `agentSkillIds` to `createFakePluginHost` to declare the manifest skill names
 available to the configure driver.
+
+Host entry (`host.ts`) — `@get-bb/plugin-sdk/testing/host`:
+
+```ts
+import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
+import hostEntry from "./host.js";
+
+const harness = experimental_createHostEntryHarness(hostEntry);
+
+const result = await harness.experimental_call("setEnabled", { enabled: true });
+await harness.experimental_dispose();
+```
+
+This harness applies the real contract schemas, request/lifecycle
+cancellation, JSON round-tripping, and the host result-size limit. Use injected
+child-process adapters for feature tests. Worker startup, crashes, artifact
+verification, and reconnect behavior belong in daemon integration tests, not
+this in-process harness.
 
 Frontend (`app.tsx`) — `@get-bb/plugin-sdk/testing/app` (vitest + jsdom):
 
@@ -1777,9 +1955,10 @@ multi-plugin arbitration. Use a live loop for those host boundaries.
 
 ### Live loop against a running bb
 
-- `bb plugin dev` is the loop: save → rebuild (if `bb.app`) → reload; open
-  app pages pick new UI up live. Build/reload failures print and keep
-  watching.
+- `bb plugin dev` is the loop: save → rebuild declared `bb.app` and `bb.host`
+  artifacts → reload; open app pages pick new UI up live and host workers move
+  to the new generation on their next call. Build/reload failures print and
+  keep watching.
 - `bb plugin list` shows status, services, schedules (with last_error),
   handler stats, and the CLI command; `bb plugin logs <id> -f` follows
   `bb.log` output. Add `--json` to any plugin command for machine output.

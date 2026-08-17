@@ -137,6 +137,12 @@ interface FakeRealtimeSignal {
     /** JSON-round-tripped, like the WS broadcast; `undefined` → `null`. */
     payload: unknown;
 }
+interface ExperimentalFakeHostRpcCall {
+    method: string;
+    input: unknown;
+    hostId: string;
+    signal?: AbortSignal;
+}
 /** Everything the plugin registered, exposed raw for assertions. */
 interface FakePluginRegistrations {
     settingsDescriptors: PluginSettingDescriptors;
@@ -172,12 +178,18 @@ interface FakePluginInspectionState {
         hostId: string;
         ports: number[];
     }>;
+    /** Calls made through bb.hosts.experimental_client, after input validation. */
+    readonly experimental_hostRpcCalls: readonly ExperimentalFakeHostRpcCall[];
     readonly pendingInteractions: readonly (PluginInteractionRequest & {
         id: string;
     })[];
 }
 /** Deterministic inputs that stand in for behavior normally driven by BB. */
 interface FakePluginBehaviorDrivers {
+    /** Deliver an unexpected host-worker exit to every registered client. */
+    experimental_emitHostWorkerExit(hostId: string): Promise<void>;
+    /** Deliver a host signal through its registered payload schema. */
+    experimental_emitHostSignal(hostId: string, signal: string, payload: unknown): Promise<void>;
     submitInteraction(id: string, value: JsonValue): void;
     cancelInteraction(id: string): void;
     /**
@@ -289,6 +301,8 @@ interface CreateFakePluginHostOptions {
     agentSkillIds?: readonly string[];
     /** Read-only identities returned by bb.hosts.ensureSharedPortTunnel. */
     sharedPortTunnelIdentities?: Record<string, PluginSharedPortTunnelIdentity>;
+    /** Deterministic stand-in for the targeted daemon host entry. */
+    experimental_callHostRpc?: (call: ExperimentalFakeHostRpcCall) => unknown | Promise<unknown>;
 }
 interface FakePluginHost {
     bb: BbPluginApi;

@@ -5,6 +5,77 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
+
+**What it does.** Lets one plugin package declare a singular `bb.host` Node
+entry, share a Standard Schema contract between its server and host entries,
+and call methods on an explicit enrolled host. A client may observe unexpected
+worker exits and typed, ephemeral host signals. The host context supplies
+request and generation abort signals, persistent plugin-scoped data and
+worker-scoped temporary directories, daemon-owned native file watches, and
+explicit worker-retention leases for independent background work. Calls and
+watches retain automatically; otherwise, the daemon gracefully evicts a worker
+after five idle minutes and starts it again on the next call. There is no global
+worker-count limit.
+
+The single-worker, idle-eviction, retention, and call-timeout rules above are
+specific to the host RPC consumer. Other daemon subsystems may attach the same
+`bb.host` artifact through a different bootstrap and own their own process
+lifecycle.
+
+The initial builtin proof is Keep Awake: it owns a host target, a worker-owned
+child process, desired-state reconciliation, and
+unexpected-exit recovery without feature-specific core hooks.
+
+**Audit before stabilizing.**
+
+1. **Contract shape.** Confirm Standard Schema values remain the right runtime
+   boundary and decide whether method-specific typed errors are necessary.
+2. **Targeting.** Confirm explicit host ids are enough for V1 and add an
+   environment-aware primitive only alongside a plugin that proves its
+   locking and workspace semantics.
+3. **Process lifetime.** Measure whether five idle minutes is the right timeout,
+   whether watches should continue retaining automatically, and whether leases
+   acquired only during active handlers are expressive enough. Confirm there is
+   no need for manifest lifetime flags, plugin-selected timeouts, a global
+   worker limit, or plugin-specific restart policy. Confirm unexpected-exit
+   notification is the right generic repair trigger, remains suppressed for
+   graceful and idle disposal, and does not create crash loops.
+   Verify reconnect generation reconciliation covers disable/uninstall during
+   an outage without stopping a still-current worker on every transient drop.
+4. **Signals and watches.** Confirm host signals should remain private,
+   ephemeral invalidations rather than a durable event log. Audit native-watch
+   coalescing, backpressure, rescan/error events, per-worker limits, and cleanup
+   against a plugin that watches real workspace state.
+5. **Paths.** Confirm the stable host data path layout and generation-temporary
+   cleanup behavior across crashes and daemon restarts.
+6. **Limits.** Audit the common call duration, startup/cancellation grace, 8
+   MiB JSON payload cap, 256 MiB artifact cap, and per-plugin admission limits
+   (256 active calls / 32 MiB of active inputs) against real plugins. Confirm
+   retaining only the most recently materialized artifact digest per plugin is
+   sufficient.
+7. **Environment.** Confirm executable discovery through normalized `PATH`
+   and stripping all daemon-owned `BB_*` variables.
+8. **Trust and dependencies.** V1 host plugins are trusted Node programs that
+   may use `child_process`, filesystem, and network APIs. Decide whether later
+   permissions, native artifacts, or an explicit dependency installer can be
+   layered on without changing the RPC contract. Confirm rejecting all private
+   `@bb/*` imports from host bundles is the correct permanent boundary, and
+   audit the builder-supplied public SDK runtime against future host exports.
+9. **Composition boundary.** Confirm host RPC methods and signals should remain
+   private to the owning plugin while allowing another daemon subsystem to
+   consume the same `bb.host` artifact through its own bootstrap and lifecycle.
+10. **Test harness.** Audit both layers: the server harness's
+    `experimental_callHostRpc` option, `experimental_hostRpcCalls` inspection
+    list, `experimental_emitHostWorkerExit`, and `experimental_emitHostSignal`
+    behavior drivers; and the host-entry harness's `experimental_call`,
+    `experimental_getSignals`, `experimental_getRetainedWorkerLeaseCount`,
+    `experimental_lifecycleSignal`, path/watch options, and
+    `experimental_dispose`. Confirm the host harness should
+    continue simulating validation, cancellation, lifecycle, JSON, and size
+    limits without pretending to model process startup, crashes, native watcher
+    recovery, or reconnect behavior.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React

@@ -20,6 +20,7 @@ import {
   clientTurnRequestIdSchema,
   gitBranchNameSchema,
   jsonObjectSchema,
+  jsonValueSchema,
   providerNativeSkillRootsSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
@@ -35,8 +36,19 @@ import {
   providerCliInstallRequestSchema,
   providerCliStatusResponseSchema,
 } from "./local.js";
+import { workspaceResolutionFailureSchema } from "./workspace.js";
+import { HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 123 as const;
+export {
+  HOST_ARTIFACT_MAX_BYTES,
+  HOST_DAEMON_PROTOCOL_VERSION,
+} from "./protocol.js";
+export {
+  workspaceResolutionFailureCodeSchema,
+  workspaceResolutionFailureSchema,
+  type WorkspaceResolutionFailure,
+  type WorkspaceResolutionFailureCode,
+} from "./workspace.js";
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -83,29 +95,6 @@ export const hostDaemonConnectTunnelIdentitySchema = z
   .strict();
 export type HostDaemonConnectTunnelIdentity = z.infer<
   typeof hostDaemonConnectTunnelIdentitySchema
->;
-
-export const workspaceResolutionFailureCodeSchema = z.enum([
-  "path_not_found",
-  "not_git_repo",
-  "not_worktree",
-  "workspace_type_mismatch",
-  "permission_denied",
-  "unknown_environment",
-  "unknown",
-]);
-export const workspaceResolutionFailureSchema = z
-  .object({
-    code: workspaceResolutionFailureCodeSchema,
-    workspacePath: z.string().min(1),
-    message: z.string().min(1),
-  })
-  .strict();
-export type WorkspaceResolutionFailureCode = z.infer<
-  typeof workspaceResolutionFailureCodeSchema
->;
-export type WorkspaceResolutionFailure = z.infer<
-  typeof workspaceResolutionFailureSchema
 >;
 
 const hostDaemonThreadTargetSchema = z
@@ -662,10 +651,42 @@ const hostPickFolderCommandSchema = z
   })
   .strict();
 
-const hostCaffeinateCommandSchema = z
+const pluginHostArtifactSchema = z
   .object({
-    type: z.literal("host.caffeinate"),
-    enabled: z.boolean(),
+    digest: z.string().regex(/^[a-f0-9]{64}$/u),
+    byteLength: z.number().int().positive().max(HOST_ARTIFACT_MAX_BYTES),
+  })
+  .strict();
+
+const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647;
+
+const pluginHostCallCommandSchema = z
+  .object({
+    type: z.literal("plugin.host.call"),
+    pluginId: z.string().min(1),
+    generation: z.string().min(1),
+    artifact: pluginHostArtifactSchema,
+    callId: z.string().min(1),
+    method: z.string().min(1),
+    input: jsonValueSchema,
+    timeoutMs: z.number().int().positive().max(MAX_NODE_TIMER_DELAY_MS),
+  })
+  .strict();
+
+const pluginHostCancelCommandSchema = z
+  .object({
+    type: z.literal("plugin.host.cancel"),
+    pluginId: z.string().min(1),
+    generation: z.string().min(1),
+    callId: z.string().min(1),
+  })
+  .strict();
+
+const pluginHostDisposeCommandSchema = z
+  .object({
+    type: z.literal("plugin.host.dispose"),
+    pluginId: z.string().min(1),
+    generation: z.string().min(1),
   })
   .strict();
 
@@ -1283,11 +1304,16 @@ const pathListResultSchema = z.object({
 
 const hostPathMutationResultSchema = z.object({ ok: z.literal(true) }).strict();
 
-const hostCaffeinateResultSchema = z
-  .object({
-    enabled: z.boolean(),
-    supported: z.boolean(),
-  })
+const pluginHostCallResultSchema = z
+  .object({ output: jsonValueSchema })
+  .strict();
+
+const pluginHostCancelResultSchema = z
+  .object({ cancelled: z.boolean() })
+  .strict();
+
+const pluginHostDisposeResultSchema = z
+  .object({ disposed: z.boolean() })
   .strict();
 
 // No `truncated` here, unlike `pathListResultSchema`: the daemon returns the
@@ -1866,12 +1892,30 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
-  "host.caffeinate": defineHostDaemonCommandDescriptor({
-    type: "host.caffeinate",
-    schema: hostCaffeinateCommandSchema,
-    resultSchema: hostCaffeinateResultSchema,
+  "plugin.host.call": defineHostDaemonCommandDescriptor({
+    type: "plugin.host.call",
+    schema: pluginHostCallCommandSchema,
+    resultSchema: pluginHostCallResultSchema,
     transport: "onlineRpc",
     retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "plugin.host.cancel": defineHostDaemonCommandDescriptor({
+    type: "plugin.host.cancel",
+    schema: pluginHostCancelCommandSchema,
+    resultSchema: pluginHostCancelResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "plugin.host.dispose": defineHostDaemonCommandDescriptor({
+    type: "plugin.host.dispose",
+    schema: pluginHostDisposeCommandSchema,
+    resultSchema: pluginHostDisposeResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

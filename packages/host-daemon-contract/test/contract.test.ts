@@ -3,6 +3,7 @@ import { threadScope, turnScope, type JsonObject } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
 import {
+  HOST_ARTIFACT_MAX_BYTES,
   HOST_DAEMON_PROTOCOL_VERSION,
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
   HOST_DAEMON_SETTLED_COMMAND_TYPES,
@@ -174,6 +175,9 @@ const WORKSPACE_DIFF_AVAILABLE_RESULT: JsonObject = {
 };
 
 const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
+  "plugin.host.call": { output: { ok: true } },
+  "plugin.host.cancel": { cancelled: true },
+  "plugin.host.dispose": { disposed: true },
   "connect-tunnel.ensure-identity": {
     label: "sawyer-air",
     baseDomain: "getbb.app",
@@ -270,10 +274,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     installations: [
       { name: "bb-cli", path: "/home/user/.agents/skills/bb-cli" },
     ],
-  },
-  "host.caffeinate": {
-    enabled: true,
-    supported: true,
   },
   "host.list_branches": {
     branches: ["main"],
@@ -1060,6 +1060,18 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 129 raises the single executable host-artifact ceiling to 256 MiB.
+  // Older daemons reject artifact declarations above the previous 16 MiB cap.
+  // Version 128 replaces cross-machine host-plugin deadline timestamps with a
+  // relative duration and caps declared host-plugin artifact sizes. Older
+  // daemons cannot interpret the new call envelope.
+  // Version 127 carries typed host-plugin signals from daemon workers to the
+  // server. Older daemons cannot publish plugin-owned host invalidations.
+  // Version 125 adds the authoritative active-plugin generation snapshot on
+  // session open and artifact retrieval. Without it a reconnect cannot retire
+  // workers disabled or replaced while offline.
+  // Version 124 adds generic host-plugin call, cancellation, and disposal
+  // envelopes. Older daemons cannot load or supervise plugin host artifacts.
   // Version 123 adds required status-enrichment budgets and a required
   // diff-files truncation marker. Older daemons cannot safely enforce or
   // interpret the new bounded workspace response contract.
@@ -1073,6 +1085,9 @@ describe("host-daemon command schemas", () => {
   // field, and they wait for an active turn that a release never has.
   // Version 120 makes thread.stop idempotent and releases idle runtimes. Older
   // daemons reject a stop when no environment runtime is loaded.
+  // Version 126 reports unexpected host-plugin worker exits so server plugins
+  // can restore long-lived host state without polling. Older daemons silently
+  // lose that state until another reconciliation trigger.
   // Version 119 carries required workspace diff limits and line-stat
   // completeness over the host wire. Older daemons cannot safely enforce or
   // interpret those fields, so enrolled machines must update before serving
@@ -1093,7 +1108,43 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(123);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(129);
+    expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
+  });
+
+  it("uses relative host-plugin timeouts and bounds artifact declarations", () => {
+    const command = {
+      type: "plugin.host.call" as const,
+      pluginId: "fixture",
+      generation: "generation-1",
+      artifact: {
+        digest: "a".repeat(64),
+        byteLength: 1,
+      },
+      callId: "call-1",
+      method: "echo",
+      input: null,
+      timeoutMs: 10_000,
+    };
+    expect(hostDaemonOnlineRpcCommandSchema.safeParse(command).success).toBe(
+      true,
+    );
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        ...command,
+        timeoutMs: undefined,
+        deadlineUnixMs: Date.now() + 10_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      hostDaemonOnlineRpcCommandSchema.safeParse({
+        ...command,
+        artifact: {
+          ...command.artifact,
+          byteLength: HOST_ARTIFACT_MAX_BYTES + 1,
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("requires an explicit intent on a thread stop command", () => {
@@ -3506,6 +3557,34 @@ describe("host-daemon session schemas", () => {
     ).toEqual({
       type: "connect-tunnel.identity",
       identity: { label: "sawyer-air", baseDomain: "getbb.app" },
+    });
+
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "plugin-host.worker-exited",
+        pluginId: "keep-awake",
+        generation: "generation-1",
+      }),
+    ).toEqual({
+      type: "plugin-host.worker-exited",
+      pluginId: "keep-awake",
+      generation: "generation-1",
+    });
+
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "plugin-host.signal",
+        pluginId: "fixture",
+        generation: "generation-1",
+        signal: "changed",
+        payload: { sequence: 2 },
+      }),
+    ).toEqual({
+      type: "plugin-host.signal",
+      pluginId: "fixture",
+      generation: "generation-1",
+      signal: "changed",
+      payload: { sequence: 2 },
     });
 
     expect(
