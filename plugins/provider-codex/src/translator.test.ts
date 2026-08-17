@@ -255,6 +255,193 @@ describe("codex workspace-write git-root staging", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Retry error classification
+// ---------------------------------------------------------------------------
+
+const STREAM_DISCONNECT_MESSAGE =
+  "stream disconnected before completion: error sending request for url (https://chatgpt.com/backend-api/codex/responses)";
+
+describe("codex retry error classification", () => {
+  it("carries the structured retry classification into a degraded terminal error", () => {
+    const translator = createTranslator();
+    translator.translateEvent(
+      codexEvent("error", {
+        threadId: "t1",
+        turnId: "turn-1",
+        error: {
+          message: "Reconnecting... 5/5",
+          codexErrorInfo: {
+            responseStreamDisconnected: { httpStatusCode: 502 },
+          },
+          additionalDetails: STREAM_DISCONNECT_MESSAGE,
+        },
+        willRetry: true,
+      }),
+    );
+
+    const terminalEvent = codexEvent("error", {
+      threadId: "t1",
+      turnId: "turn-1",
+      error: {
+        message: STREAM_DISCONNECT_MESSAGE,
+        codexErrorInfo: "other",
+        additionalDetails: null,
+      },
+      willRetry: false,
+    });
+    expect(translator.translateEvent(terminalEvent)).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        willRetry: false,
+        errorInfo: {
+          category: "stream-disconnected",
+          providerCode: "responseStreamDisconnected",
+          httpStatusCode: 502,
+        },
+      }),
+    );
+
+    expect(translator.translateEvent(terminalEvent)).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: {
+          category: "unknown",
+          providerCode: "other",
+          httpStatusCode: null,
+        },
+      }),
+    );
+  });
+
+  it("does not borrow retry context for an unrelated terminal error", () => {
+    const translator = createTranslator();
+    translator.translateEvent(
+      codexEvent("error", {
+        threadId: "t1",
+        turnId: "turn-1",
+        error: {
+          message: "Reconnecting... 5/5",
+          codexErrorInfo: {
+            responseStreamDisconnected: { httpStatusCode: 502 },
+          },
+          additionalDetails: STREAM_DISCONNECT_MESSAGE,
+        },
+        willRetry: true,
+      }),
+    );
+
+    expect(
+      translator.translateEvent(
+        codexEvent("error", {
+          threadId: "t1",
+          turnId: "turn-1",
+          error: {
+            message: "request failed",
+            codexErrorInfo: "other",
+            additionalDetails: null,
+          },
+          willRetry: false,
+        }),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: {
+          category: "unknown",
+          providerCode: "other",
+          httpStatusCode: null,
+        },
+      }),
+    );
+  });
+
+  it("does not carry retry context across turns", () => {
+    const translator = createTranslator();
+    translator.translateEvent(
+      codexEvent("error", {
+        threadId: "t1",
+        turnId: "turn-1",
+        error: {
+          message: "Reconnecting... 5/5",
+          codexErrorInfo: {
+            responseStreamDisconnected: { httpStatusCode: 502 },
+          },
+          additionalDetails: STREAM_DISCONNECT_MESSAGE,
+        },
+        willRetry: true,
+      }),
+    );
+
+    expect(
+      translator.translateEvent(
+        codexEvent("error", {
+          threadId: "t1",
+          turnId: "turn-2",
+          error: {
+            message: STREAM_DISCONNECT_MESSAGE,
+            codexErrorInfo: "other",
+            additionalDetails: null,
+          },
+          willRetry: false,
+        }),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: {
+          category: "unknown",
+          providerCode: "other",
+          httpStatusCode: null,
+        },
+      }),
+    );
+  });
+
+  it("drops retry context when Codex closes the thread", () => {
+    const translator = createTranslator();
+    translator.translateEvent(
+      codexEvent("error", {
+        threadId: "t1",
+        turnId: "turn-1",
+        error: {
+          message: "Reconnecting... 5/5",
+          codexErrorInfo: {
+            responseStreamDisconnected: { httpStatusCode: 502 },
+          },
+          additionalDetails: STREAM_DISCONNECT_MESSAGE,
+        },
+        willRetry: true,
+      }),
+    );
+    translator.translateEvent(codexEvent("thread/closed", { threadId: "t1" }));
+
+    expect(
+      translator.translateEvent(
+        codexEvent("error", {
+          threadId: "t1",
+          turnId: "turn-1",
+          error: {
+            message: STREAM_DISCONNECT_MESSAGE,
+            codexErrorInfo: "other",
+            additionalDetails: null,
+          },
+          willRetry: false,
+        }),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: {
+          category: "unknown",
+          providerCode: "other",
+          httpStatusCode: null,
+        },
+      }),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Raw shell command-output recovery (8e7cc5d2e, #1400)
 // ---------------------------------------------------------------------------
 

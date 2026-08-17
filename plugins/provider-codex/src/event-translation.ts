@@ -48,10 +48,14 @@ interface CodexLastTokenUsage {
 
 interface CodexEventTranslationState {
   rateLimits: CodexRateLimitSnapshot | null;
+  retryErrorsByThreadId: Map<
+    string,
+    Map<string | null, CodexRetryErrorContext>
+  >;
 }
 
 export function createCodexEventTranslationState(): CodexEventTranslationState {
-  return { rateLimits: null };
+  return { rateLimits: null, retryErrorsByThreadId: new Map() };
 }
 
 function clampRateLimitPercent(value: number): number {
@@ -204,7 +208,12 @@ type CodexNormalizedWebItem =
   | ThreadEventWebFetchItem;
 
 type CodexErrorEvent = Extract<CodexHandledEvent, { method: "error" }>;
-type CodexErrorPayload = CodexErrorEvent["params"]["error"];
+type CodexErrorParams = CodexErrorEvent["params"];
+
+interface CodexRetryErrorContext {
+  errorInfo: CodexErrorInfo;
+  failureText: string;
+}
 
 type CodexItemTranslationResult =
   | { kind: "translated"; item: ThreadEventItem }
@@ -312,9 +321,8 @@ function getProviderErrorCategory(
 }
 
 function toProviderErrorInfo(
-  error: CodexErrorPayload,
+  errorInfo: CodexErrorInfo | null | undefined,
 ): ProviderErrorInfo | null {
-  const errorInfo = error.codexErrorInfo;
   if (!errorInfo) {
     return null;
   }
@@ -323,6 +331,70 @@ function toProviderErrorInfo(
     providerCode: getCodexErrorProviderCode(errorInfo),
     httpStatusCode: getCodexErrorHttpStatusCode(errorInfo),
   };
+}
+
+function rememberCodexRetryError(
+  state: CodexEventTranslationState,
+  params: CodexErrorParams,
+  errorInfo: CodexErrorInfo,
+): void {
+  const turnId = params.turnId ?? null;
+  const retryErrorsByTurnId =
+    state.retryErrorsByThreadId.get(params.threadId) ?? new Map();
+  retryErrorsByTurnId.set(turnId, {
+    errorInfo,
+    failureText: params.error.additionalDetails ?? params.error.message,
+  });
+  state.retryErrorsByThreadId.set(params.threadId, retryErrorsByTurnId);
+}
+
+function takeCodexRetryError(
+  state: CodexEventTranslationState,
+  scope: { threadId: string; turnId?: string },
+): CodexRetryErrorContext | undefined {
+  const retryErrorsByTurnId = state.retryErrorsByThreadId.get(scope.threadId);
+  if (!retryErrorsByTurnId) {
+    return undefined;
+  }
+  const turnId = scope.turnId ?? null;
+  const retryError = retryErrorsByTurnId.get(turnId);
+  retryErrorsByTurnId.delete(turnId);
+  if (retryErrorsByTurnId.size === 0) {
+    state.retryErrorsByThreadId.delete(scope.threadId);
+  }
+  return retryError;
+}
+
+export function clearCodexEventTranslationThreadState(
+  state: CodexEventTranslationState,
+  threadId: string,
+): void {
+  state.retryErrorsByThreadId.delete(threadId);
+}
+
+function resolveCodexErrorInfo(
+  state: CodexEventTranslationState,
+  params: CodexErrorParams,
+): CodexErrorInfo | null | undefined {
+  const errorInfo = params.error.codexErrorInfo;
+  if (params.willRetry === true) {
+    if (errorInfo && errorInfo !== "other") {
+      rememberCodexRetryError(state, params, errorInfo);
+    }
+    return errorInfo;
+  }
+  if (params.willRetry !== false) {
+    return errorInfo;
+  }
+
+  // Codex puts the underlying failure in additionalDetails while retrying,
+  // then moves the same text to message and downgrades the terminal error to
+  // `other`. Correlate that lifecycle without interpreting provider prose.
+  const retryError = takeCodexRetryError(state, params);
+  const failureText = params.error.additionalDetails ?? params.error.message;
+  return errorInfo === "other" && retryError?.failureText === failureText
+    ? retryError.errorInfo
+    : errorInfo;
 }
 
 interface CodexUnhandledEventArgs {
@@ -772,6 +844,10 @@ export function translateCodexEvent(
       ];
     }
     case "turn/started":
+      takeCodexRetryError(state, {
+        threadId: handledEvent.params.threadId,
+        turnId: handledEvent.params.turn.id,
+      });
       return [
         {
           type: "turn/started",
@@ -781,6 +857,10 @@ export function translateCodexEvent(
         },
       ];
     case "turn/completed":
+      takeCodexRetryError(state, {
+        threadId: handledEvent.params.threadId,
+        turnId: handledEvent.params.turn.id,
+      });
       return [
         {
           type: "turn/completed",
@@ -1040,7 +1120,9 @@ export function translateCodexEvent(
         },
       ];
     case "error": {
-      const errorInfo = toProviderErrorInfo(handledEvent.params.error);
+      const errorInfo = toProviderErrorInfo(
+        resolveCodexErrorInfo(state, handledEvent.params),
+      );
       return [
         {
           type: "provider/error",
