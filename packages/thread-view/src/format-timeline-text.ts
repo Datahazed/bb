@@ -338,6 +338,17 @@ function formatWorkBody(
   }
 }
 
+function formatResolveHint(
+  verb: string,
+  row: { interactionId: string; threadId: string },
+  context: TimelineTextFormatContext,
+): string {
+  return dim(
+    `  ${verb} with: bb thread interactions ${verb.toLowerCase()} ${row.interactionId} ${row.threadId}`,
+    context.color,
+  );
+}
+
 /**
  * A pending question blocks the thread until someone answers, and CLI readers
  * cannot click the card. Print the options and the exact answer command.
@@ -349,26 +360,20 @@ function formatPendingQuestionHint(
   if (row.lifecycle !== "pending") {
     return [];
   }
-  const lines: string[] = [];
   const multiple = row.questions.length > 1;
-  for (const question of row.questions) {
+  const lines = row.questions.flatMap((question) => {
     const options = (question.options ?? []).map((option) => option.value);
     const parts = [
       ...(options.length > 0 ? [`Options: ${options.join(", ")}`] : []),
       ...(question.allowFreeText ? ["free text allowed"] : []),
     ];
     if (parts.length === 0) {
-      continue;
+      return [];
     }
     const prefix = multiple ? `${question.id}: ` : "";
-    lines.push(dim(`  ${prefix}${parts.join("; ")}`, context.color));
-  }
-  lines.push(
-    dim(
-      `  Answer with: bb thread interactions answer ${row.interactionId} ${row.threadId}`,
-      context.color,
-    ),
-  );
+    return [dim(`  ${prefix}${parts.join("; ")}`, context.color)];
+  });
+  lines.push(formatResolveHint("Answer", row, context));
   return lines;
 }
 
@@ -376,30 +381,14 @@ function formatPendingApprovalHint(
   row: Extract<TimelineViewWorkRow, { workKind: "approval" }>,
   context: TimelineTextFormatContext,
 ): string[] {
-  switch (row.approvalKind) {
-    case "permission-grant":
-      if (row.lifecycle !== "pending") {
-        return [];
-      }
-      return [
-        dim(
-          `  Grant with: bb thread interactions grant ${row.interactionId} ${row.threadId}`,
-          context.color,
-        ),
-      ];
-    case "file-edit":
-      if (row.lifecycle !== "waiting") {
-        return [];
-      }
-      return [
-        dim(
-          `  Approve with: bb thread interactions approve ${row.interactionId} ${row.threadId}`,
-          context.color,
-        ),
-      ];
-    default:
-      return assertNever(row);
+  if (row.approvalKind === "permission-grant") {
+    return row.lifecycle === "pending"
+      ? [formatResolveHint("Grant", row, context)]
+      : [];
   }
+  return row.lifecycle === "waiting"
+    ? [formatResolveHint("Approve", row, context)]
+    : [];
 }
 
 function formatWorkRow(
