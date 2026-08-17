@@ -11,9 +11,11 @@ import {
 import {
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
+  isPluginPendingInteraction,
   isUserQuestionPendingInteractionPayload,
   isUserQuestionPendingInteractionResolution,
   PendingInteraction,
+  type PluginPendingInteraction,
   type ProviderPendingInteraction,
   type PendingInteractionUserAnswer,
   type ApprovalPendingInteractionPayload,
@@ -167,8 +169,16 @@ export function formatInteractionResolveHint(
   if (verb === null) {
     return `Inspect it with 'bb thread interactions show ${interaction.id} ${interaction.threadId}'; plugin interactions can only be answered in the app.`;
   }
-  const action = verb === "answer" ? "Answer" : verb === "grant" ? "Grant" : "Approve or deny";
-  return `${action} it with 'bb thread interactions ${verb} ${interaction.id} ${interaction.threadId}'.`;
+  const action =
+    verb === "answer"
+      ? "Answer"
+      : verb === "grant"
+        ? "Grant"
+        : "Approve or deny";
+  // A grant defaults to session scope; the copied command must not widen
+  // access beyond the current turn.
+  const scope = verb === "grant" ? " --scope turn" : "";
+  return `${action} it with 'bb thread interactions ${verb} ${interaction.id} ${interaction.threadId}${scope}'.`;
 }
 
 function isApprovalInteraction(
@@ -342,8 +352,23 @@ function printInteraction(interaction: PendingInteraction): void {
     printUserQuestionInteraction(interaction);
     return;
   }
+  if (isPluginPendingInteraction(interaction)) {
+    printPluginInteraction(interaction);
+    return;
+  }
 
   printApprovalInteraction(requireApprovalInteraction(interaction));
+}
+
+function printPluginInteraction(interaction: PluginPendingInteraction): void {
+  console.log(`  Plugin: ${interaction.origin.pluginId}`);
+  console.log(`  Title: ${interaction.payload.title}`);
+  console.log(`  Data: ${JSON.stringify(interaction.payload.data)}`);
+  if (interaction.resolution) {
+    console.log("  Resolution: submitted");
+    return;
+  }
+  console.log("  Answer this plugin interaction in the app.");
 }
 
 async function fetchInteraction(

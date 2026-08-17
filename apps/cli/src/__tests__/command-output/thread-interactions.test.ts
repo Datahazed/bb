@@ -45,6 +45,45 @@ describe("bb thread interactions command output", () => {
     expect(lines[2]).toBe("");
   });
 
+  it("bb thread interactions show prints plugin interaction details", async () => {
+    const getInteraction = vi.fn(async () => ({
+      id: "int-plugin",
+      threadId: "thread-1",
+      turnId: null,
+      status: "pending",
+      statusReason: null,
+      createdAt: Date.now(),
+      resolvedAt: null,
+      origin: {
+        kind: "plugin",
+        pluginId: "ask-user-question",
+        rendererId: "question",
+      },
+      payload: {
+        kind: "plugin",
+        title: "Pick a color",
+        data: { options: ["red", "blue"] },
+      },
+      resolution: null,
+    }));
+    stubServerApi({
+      "v1.threads.:id.interactions.:interactionId.$get": getInteraction,
+    });
+
+    await runCommand(
+      ["thread", "interactions", "show", "int-plugin", "thread-1"],
+      register,
+    );
+
+    expect(collectLogLines(vi.mocked(console.error))).toEqual([]);
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines).toContain("  Kind: plugin");
+    expect(lines).toContain("  Plugin: ask-user-question");
+    expect(lines).toContain("  Title: Pick a color");
+    expect(lines).toContain('  Data: {"options":["red","blue"]}');
+    expect(lines).toContain("  Answer this plugin interaction in the app.");
+  });
+
   it("bb thread interactions show prints interaction details", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-show-interaction");
     const getInteraction = vi.fn(async () =>

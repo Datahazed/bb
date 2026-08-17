@@ -2535,7 +2535,7 @@ describe("timeline CLI rendering snapshots", () => {
     ]);
     expect(timeline.text).toMatchInlineSnapshot(`
       "── Waiting for permission to use Bash ──────────────────────
-        Grant with: bb thread interactions grant pi_123 thread-1
+        Grant with: bb thread interactions grant pi_123 thread-1 --scope turn
 
       ── Permission denied: git push ─────────────────────────────
         $ git push"
@@ -2556,7 +2556,7 @@ describe("timeline CLI rendering snapshots", () => {
         Answer with: bb thread interactions answer pi_question thread-1
 
       ── Waiting for permission to use Bash ──────────────────────
-        Grant with: bb thread interactions grant pi_grant thread-1"
+        Grant with: bb thread interactions grant pi_grant thread-1 --scope turn"
     `);
   });
 

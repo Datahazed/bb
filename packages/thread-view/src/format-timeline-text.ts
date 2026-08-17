@@ -343,8 +343,10 @@ function formatResolveHint(
   row: { interactionId: string; threadId: string },
   context: TimelineTextFormatContext,
 ): string {
+  // A grant defaults to session scope; the copied command must stay narrow.
+  const scope = verb === "Grant" ? " --scope turn" : "";
   return dim(
-    `  ${verb} with: bb thread interactions ${verb.toLowerCase()} ${row.interactionId} ${row.threadId}`,
+    `  ${verb} with: bb thread interactions ${verb.toLowerCase()} ${row.interactionId} ${row.threadId}${scope}`,
     context.color,
   );
 }
@@ -386,8 +388,15 @@ function formatPendingApprovalHint(
       ? [formatResolveHint("Grant", row, context)]
       : [];
   }
+  // File-edit rows carry the tool call id, not the pending-interaction id, so
+  // point at the list command that prints the resolvable id.
   return row.lifecycle === "waiting"
-    ? [formatResolveHint("Approve", row, context)]
+    ? [
+        dim(
+          `  Approve or deny with: bb thread interactions list ${row.threadId}`,
+          context.color,
+        ),
+      ]
     : [];
 }
 

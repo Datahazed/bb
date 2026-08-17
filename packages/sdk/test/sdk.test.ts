@@ -1595,7 +1595,6 @@ describe("@bb/sdk", () => {
       status: "pending",
     };
     const queue = createFetchQueue([
-      { body: { id: "thr_wait", status: "active" } },
       { body: [] },
       { body: { id: "thr_wait", status: "active" } },
       { body: [pendingInteraction] },
@@ -1622,8 +1621,8 @@ describe("@bb/sdk", () => {
       threadId: "thr_wait",
     });
 
+    // The status probe runs only every few cycles; the second cycle skips it.
     expect(queue.requests.map((request) => request.url)).toEqual([
-      "http://bb.test/api/v1/threads/thr_wait",
       "http://bb.test/api/v1/threads/thr_wait/interactions",
       "http://bb.test/api/v1/threads/thr_wait",
       "http://bb.test/api/v1/threads/thr_wait/interactions",
@@ -1632,8 +1631,8 @@ describe("@bb/sdk", () => {
 
   it("stops waiting for input once the thread is no longer active", async () => {
     const queue = createFetchQueue([
-      { body: { id: "thr_wait", status: "idle" } },
       { body: [] },
+      { body: { id: "thr_wait", status: "idle" } },
     ]);
     const sdk = createBbSdk({
       transport: createHttpTransport({

@@ -31,6 +31,15 @@ export async function fetchThreadPendingInteractions(
   }
 }
 
+// Provider and plugin text is untrusted. Remove C0/C1 controls and ESC/CSI/OSC
+// sequences so a question cannot rewrite the terminal or its clipboard.
+const TERMINAL_CONTROL_PATTERN =
+  /\u001b(?:\[[0-?]*[ -\/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])|[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
+
+function sanitizeText(text: string): string {
+  return text.replace(TERMINAL_CONTROL_PATTERN, "");
+}
+
 function formatQuestionOptionsLine(interaction: PendingInteraction): string[] {
   if (!isUserQuestionPendingInteractionPayload(interaction.payload)) {
     return [];
@@ -41,14 +50,14 @@ function formatQuestionOptionsLine(interaction: PendingInteraction): string[] {
       interaction.payload.questions.length > 1
         ? `${question.id}: `
         : "";
-    const options = (question.options ?? []).map(
-      (option) => `${option.value} (${option.label})`,
+    const options = (question.options ?? []).map((option) =>
+      sanitizeText(`${option.value} (${option.label})`),
     );
     const parts = [
       ...(options.length > 0 ? [`Options: ${options.join(", ")}`] : []),
       ...(question.allowFreeText ? ["free text allowed"] : []),
     ];
-    return `    ${prefix}${parts.join("; ")}`;
+    return sanitizeText(`    ${prefix}${parts.join("; ")}`);
   });
 }
 
@@ -65,12 +74,14 @@ export function printPendingInteractions(
   console.log("");
   console.log(`Pending interactions (${interactions.length}):`);
   for (const interaction of interactions) {
-    const summary = formatPendingInteractionSummary({
-      interaction,
-      surface: "cli",
-    });
+    const summary = sanitizeText(
+      formatPendingInteractionSummary({
+        interaction,
+        surface: "cli",
+      }),
+    );
     console.log(
-      `  ${interaction.id}  ${formatInteractionKind(interaction)}  ${interaction.status}  ${summary}`,
+      `  ${sanitizeText(interaction.id)}  ${formatInteractionKind(interaction)}  ${interaction.status}  ${summary}`,
     );
     for (const line of formatQuestionOptionsLine(interaction)) {
       console.log(line);

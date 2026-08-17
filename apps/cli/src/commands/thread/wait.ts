@@ -124,10 +124,7 @@ function parseThreadWaitTarget(
   const hasStatus = Boolean(opts.status);
   const hasEvent = Boolean(opts.event);
   const hasUntilInput = opts.untilInput === true;
-  if (
-    (hasStatus && hasEvent) ||
-    (hasUntilInput && (hasStatus || hasEvent))
-  ) {
+  if ((hasStatus && hasEvent) || (hasUntilInput && (hasStatus || hasEvent))) {
     throw new CliExitError(
       "Provide only one of --status, --event, or --until-input.",
       THREAD_WAIT_EXIT_CODE_INVALID_REQUEST,

@@ -166,6 +166,57 @@ describe("bb thread show command output", () => {
     ]);
   });
 
+  it("bb thread show strips terminal control sequences from interaction text and scopes grant hints to the turn", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-show-hostile",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    const question = fixtures.makePendingInteraction({
+      id: "int-hostile",
+      providerId: "codex",
+      threadId: "thread-show-hostile",
+      payload: {
+        kind: "user_question",
+        questions: [
+          {
+            id: "q",
+            prompt: "Deploy\u001b]52;c;ZXZpbA==\u0007 now?\u001b[2J",
+            multiSelect: false,
+            options: [{ value: "yes", label: "Yes\u0007" }],
+            allowFreeText: false,
+          },
+        ],
+      },
+    });
+    const grant = fixtures.makePendingInteraction({
+      id: "int-grant",
+      providerId: "codex",
+      threadId: "thread-show-hostile",
+      payload: fixtures.makePermissionGrantApprovalPayload("item-grant"),
+    });
+    stubServerApi({
+      "v1.threads.:id.$get": vi.fn(async () => thread),
+      "v1.threads.:id.timeline.$get": fixtures.makeEmptyTimelineGetMock(),
+      "v1.threads.:id.interactions.$get": vi.fn(async () => [question, grant]),
+    });
+
+    await runCommand(["thread", "show", "thread-show-hostile"], register);
+
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines).toContain(
+      "  int-hostile  question  pending  Deploy now?",
+    );
+    expect(lines).toContain("    Options: yes (Yes)");
+    expect(lines.join("\n")).not.toContain("\u001b");
+    expect(lines).toContain(
+      "    Grant it with 'bb thread interactions grant int-grant thread-show-hostile --scope turn'.",
+    );
+  });
+
   it("bb thread show --json includes pending interactions", async () => {
     const thread: domain.Thread = fixtures.makeThread({
       id: "thread-show-blocked-json",

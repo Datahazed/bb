@@ -178,13 +178,11 @@ function threadShowEnvironmentJson(
   }
   return {
     ...environment,
-    pullRequest:
-      pullRequest ??
-      {
-        status: "unavailable",
-        pullRequest: null,
-        message: "Pull request lookup was not run.",
-      },
+    pullRequest: pullRequest ?? {
+      status: "unavailable",
+      pullRequest: null,
+      message: "Pull request lookup was not run.",
+    },
   };
 }
 
@@ -500,17 +498,19 @@ export function registerShowCommand(
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (id: string | undefined, opts: ThreadOutputCommandOptions) => {
-        const threadId = requireThreadIdOrSelf(id, opts);
-        const sdk = createCliBbSdk(getUrl());
-        const result = await sdk.threads.output({ threadId });
-        if (outputJson(opts, result)) return;
-        if (result.output) {
-          console.log(result.output);
-        } else {
-          console.log("(no output)");
-        }
-      }),
+      action(
+        async (id: string | undefined, opts: ThreadOutputCommandOptions) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sdk = createCliBbSdk(getUrl());
+          const result = await sdk.threads.output({ threadId });
+          if (outputJson(opts, result)) return;
+          if (result.output) {
+            console.log(result.output);
+          } else {
+            console.log("(no output)");
+          }
+        },
+      ),
     );
 }
 

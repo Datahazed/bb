@@ -1243,12 +1243,13 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       const { pollIntervalMs, target, timeoutMs } =
         validateThreadWaitArgs(input);
       const deadline = Date.now() + timeoutMs;
+      // Interaction waits poll the interaction list every cycle but check the
+      // thread status only every eighth cycle (2s at the default interval):
+      // the status check exists to stop waiting on a thread that went idle,
+      // which needs no 250ms resolution.
+      let cycle = 0;
       while (true) {
         if (target.kind !== "event") {
-          const thread = await getThread({
-            signal: input.signal,
-            threadId: input.threadId,
-          });
           if (target.kind === "interaction") {
             const interaction = (
               await interactions.list({
@@ -1264,7 +1265,19 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
                 threadId: input.threadId,
               };
             }
-          } else if (thread.status === target.status) {
+          }
+          const thread =
+            target.kind === "status" || cycle++ % 8 === 0
+              ? await getThread({
+                  signal: input.signal,
+                  threadId: input.threadId,
+                })
+              : null;
+          if (
+            thread &&
+            target.kind === "status" &&
+            thread.status === target.status
+          ) {
             return {
               matched: true,
               target,
@@ -1272,7 +1285,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
               threadId: input.threadId,
             };
           }
-          if (isThreadWaitTargetUnreachable(thread.status, target)) {
+          if (thread && isThreadWaitTargetUnreachable(thread.status, target)) {
             throw new ThreadWaitUnreachableError({
               currentStatus: thread.status,
               target,
