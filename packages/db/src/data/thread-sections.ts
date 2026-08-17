@@ -26,6 +26,11 @@ export interface DeleteThreadSectionInput {
   id: string;
 }
 
+export type DeleteEmptyThreadSectionResult =
+  | { status: "deleted"; result: ThreadSectionMutationResult }
+  | { status: "not_empty"; threadCount: number }
+  | { status: "not_found" };
+
 export interface ThreadSectionMutationResult {
   id: string;
   name: string;
@@ -216,6 +221,39 @@ export function deleteThreadSection(
         id: section.id,
         name: section.name,
         updatedThreadCount: matchingThreads.length,
+      };
+    },
+    { behavior: "immediate" },
+  );
+}
+
+/** Atomically delete a section only when no thread still references it. */
+export function deleteEmptyThreadSection(
+  db: DbConnection,
+  notifier: DbNotifier,
+  input: DeleteThreadSectionInput,
+): DeleteEmptyThreadSectionResult {
+  return db.transaction(
+    (tx) => {
+      const section = getThreadSectionById(tx, input.id);
+      if (!section) return { status: "not_found" };
+      const matchingThreads = tx
+        .select({ id: threads.id })
+        .from(threads)
+        .where(eq(threads.sectionId, input.id))
+        .all();
+      if (matchingThreads.length > 0) {
+        return { status: "not_empty", threadCount: matchingThreads.length };
+      }
+      tx.delete(threadSections).where(eq(threadSections.id, input.id)).run();
+      notifyThreadSectionListChanged(notifier);
+      return {
+        status: "deleted",
+        result: {
+          id: section.id,
+          name: section.name,
+          updatedThreadCount: 0,
+        },
       };
     },
     { behavior: "immediate" },

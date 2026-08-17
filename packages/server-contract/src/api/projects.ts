@@ -97,6 +97,7 @@ export type UpdateThreadSectionRequest = z.infer<
 export const deleteThreadSectionRequestSchema = z
   .object({
     id: z.string().min(1),
+    onlyIfEmpty: z.boolean().optional(),
   })
   .strict();
 export type DeleteThreadSectionRequest = z.infer<

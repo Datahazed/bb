@@ -26,6 +26,7 @@ export type {
 export {
   createThreadSection,
   deleteThreadSection,
+  deleteEmptyThreadSection,
   getThreadSectionById,
   getThreadSectionByName,
   listThreadSections,
@@ -36,6 +37,7 @@ export type {
   CreateThreadSectionResult,
   CreateThreadSectionInput,
   DeleteThreadSectionInput,
+  DeleteEmptyThreadSectionResult,
   RenameThreadSectionResult,
   RenameThreadSectionInput,
   ThreadSectionMutationResult,

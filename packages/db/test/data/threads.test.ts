@@ -35,6 +35,7 @@ import {
 import { createPendingInteraction } from "../../src/data/pending-interactions.js";
 import {
   createThreadSection,
+  deleteEmptyThreadSection,
   deleteThreadSection,
   listThreadSections,
   renameThreadSection,
@@ -998,6 +999,28 @@ describe("threads", () => {
     expect(listThreadSections(db).map((entry) => entry.name)).toEqual([
       "Work / Q3",
     ]);
+  });
+
+  it("deletes an empty section atomically and preserves a non-empty section", () => {
+    const { db, project } = setup();
+    const empty = mustCreateThreadSection(db, "Empty");
+    const occupied = mustCreateThreadSection(db, "Occupied");
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      sectionId: occupied.id,
+    });
+
+    expect(deleteEmptyThreadSection(db, noopNotifier, { id: empty.id })).toEqual({
+      status: "deleted",
+      result: { id: empty.id, name: "Empty", updatedThreadCount: 0 },
+    });
+    expect(deleteEmptyThreadSection(db, noopNotifier, { id: occupied.id })).toEqual({
+      status: "not_empty",
+      threadCount: 1,
+    });
+    expect(getThread(db, thread.id)?.sectionId).toBe(occupied.id);
+    expect(listThreadSections(db).map((section) => section.name)).toEqual(["Occupied"]);
   });
 
   it("includes hidden members in section lists and deletion counts", () => {

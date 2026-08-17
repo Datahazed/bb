@@ -160,6 +160,20 @@ describe("public thread data routes", () => {
         expect.objectContaining({ id: section.id, name: "Ship room" }),
       );
 
+      const protectedDeleteResponse = await harness.app.request(
+        "/api/v1/thread-sections",
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: section.id, onlyIfEmpty: true }),
+        },
+      );
+      expect(protectedDeleteResponse.status).toBe(409);
+      await expect(readJson(protectedDeleteResponse)).resolves.toMatchObject({
+        code: "section_not_empty",
+      });
+      expect(getThread(harness.db, thread.id)?.sectionId).toBe(section.id);
+
       const deleteResponse = await harness.app.request(
         "/api/v1/thread-sections",
         {

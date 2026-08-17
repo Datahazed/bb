@@ -1257,6 +1257,28 @@ describe("@bb/sdk", () => {
     });
   });
 
+  it("requests atomic empty-only section deletion", async () => {
+    const queue = createFetchQueue([
+      { body: { id: "sec_123", name: "Review", updatedThreadCount: 0 } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threadSections.delete({ id: "sec_123", onlyIfEmpty: true }),
+    ).resolves.toMatchObject({ id: "sec_123" });
+    expect(queue.requests[0]).toEqual({
+      bodyText: JSON.stringify({ id: "sec_123", onlyIfEmpty: true }),
+      method: "DELETE",
+      url: "http://bb.test/api/v1/thread-sections",
+    });
+  });
+
   it("validates typed plugin RPC results", async () => {
     const queue = createFetchQueue([
       {

@@ -1,5 +1,6 @@
 import {
   createThreadSection,
+  deleteEmptyThreadSection,
   deleteThreadSection,
   normalizeThreadSectionName,
   renameThreadSection,
@@ -60,6 +61,22 @@ export function registerThreadSectionRoutes(app: Hono, deps: AppDeps): void {
   });
 
   del(routes.delete, (context, payload) => {
+    if (payload.onlyIfEmpty) {
+      const conditional = deleteEmptyThreadSection(deps.db, deps.hub, {
+        id: payload.id,
+      });
+      if (conditional.status === "not_found") {
+        throw new ApiError(404, "section_not_found", "Section not found");
+      }
+      if (conditional.status === "not_empty") {
+        throw new ApiError(
+          409,
+          "section_not_empty",
+          "Section still contains threads",
+        );
+      }
+      return context.json(conditional.result);
+    }
     const result = deleteThreadSection(deps.db, deps.hub, { id: payload.id });
     if (!result) {
       throw new ApiError(404, "section_not_found", "Section not found");

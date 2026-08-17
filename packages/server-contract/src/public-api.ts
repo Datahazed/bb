@@ -901,6 +901,7 @@ export const publicApiRoutes = {
       response: [
         jsonResponse<ThreadSectionMutationResponse>(),
         jsonResponse<ApiError>({ status: 404 }),
+        jsonResponse<ApiError>({ status: 409 }),
       ],
     }),
   },
