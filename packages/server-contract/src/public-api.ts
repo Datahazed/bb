@@ -141,6 +141,7 @@ import type {
   ResolveThreadMentionsResponse,
   RespondPluginInteractionRequest,
   SendMessageRequest,
+  SendMessageResponse,
   SetQueuedMessageGroupBoundaryRequest,
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
@@ -989,7 +990,7 @@ export const publicApiRoutes = {
       request: jsonRequest<PathId, SendMessageRequest>(
         sendMessageRequestSchema,
       ),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<SendMessageResponse>(),
     }),
     rateLimitRecovery: defineRoute({
       path: "/threads/:id/rate-limit-recovery",

@@ -74,6 +74,7 @@ import {
 } from "./services/plugin-catalog/plugin-catalog-service.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
 import { browserRequestProblem } from "./browser-request-guard.js";
+import { requestDeferredParentSystemMessageFlush } from "./services/threads/parent-system-messages.js";
 
 /**
  * `/api/v1/plugins/<id>/http/...` — the plugin-owned wire, whose auth mode is
@@ -418,6 +419,11 @@ export function createApp(
       ),
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
+  });
+  // Parent system messages held back while a parent awaited user interaction
+  // flush once that interaction settles (#1650).
+  deps.pendingInteractions.setThreadInteractionSettledListener((threadId) => {
+    requestDeferredParentSystemMessageFlush(deps, threadId);
   });
   // Bridge the thread lifecycle seams to this service's plugins (§4.5).
   setPluginThreadEventEmitter(pluginService.events);

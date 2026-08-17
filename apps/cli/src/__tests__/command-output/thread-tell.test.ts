@@ -14,7 +14,7 @@ describe("bb thread tell command output", () => {
     registerThreadCommands(program, () => "http://server");
 
   it("bb thread tell --json prints the raw response plus thread id", async () => {
-    const post = vi.fn(async () => ({ ok: true }));
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
     stubServerApi({ "v1.threads.:id.send.$post": post });
 
     await runCommand(
@@ -27,12 +27,55 @@ describe("bb thread tell command output", () => {
     ).toEqual({
       threadId: "thread-json-tell",
       ok: true,
+      delivery: "sent",
+      mode: "steer",
+    });
+  });
+
+  it("bb thread tell reports a queued delivery when the thread awaits user interaction", async () => {
+    const post = vi.fn(async () => ({
+      ok: true,
+      delivery: "queued",
+      queuedReason: "awaiting_user_interaction",
+    }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(
+      ["thread", "tell", "thread-blocked-tell", "hello"],
+      register,
+    );
+
+    expect(vi.mocked(console.log).mock.calls[0]?.[0]).toBe(
+      "Thread thread-blocked-tell is awaiting user interaction; message queued and delivers when the thread is next idle",
+    );
+  });
+
+  it("bb thread tell --json includes the queued delivery outcome", async () => {
+    const post = vi.fn(async () => ({
+      ok: true,
+      delivery: "queued",
+      queuedReason: "awaiting_user_interaction",
+    }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(
+      ["thread", "tell", "thread-blocked-json", "hello", "--json"],
+      register,
+    );
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual({
+      threadId: "thread-blocked-json",
+      ok: true,
+      delivery: "queued",
+      queuedReason: "awaiting_user_interaction",
       mode: "steer",
     });
   });
 
   it("bb thread tell --mode queue preserves non-urgent queued delivery", async () => {
-    const post = vi.fn(async () => ({ ok: true }));
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
     stubServerApi({ "v1.threads.:id.send.$post": post });
 
     await runCommand(
@@ -50,7 +93,7 @@ describe("bb thread tell command output", () => {
   });
 
   it("bb thread tell --mode auto preserves explicit legacy auto delivery", async () => {
-    const post = vi.fn(async () => ({ ok: true }));
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
     stubServerApi({ "v1.threads.:id.send.$post": post });
 
     await runCommand(
@@ -68,7 +111,7 @@ describe("bb thread tell command output", () => {
   });
 
   it("bb thread tell forwards execution options", async () => {
-    const post = vi.fn(async () => ({ ok: true }));
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
     stubServerApi({ "v1.threads.:id.send.$post": post });
 
     await runCommand(
@@ -103,7 +146,7 @@ describe("bb thread tell command output", () => {
   });
 
   it("bb thread tell forwards automatic review mode", async () => {
-    const post = vi.fn(async () => ({ ok: true }));
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
     stubServerApi({ "v1.threads.:id.send.$post": post });
 
     await runCommand(
@@ -129,7 +172,7 @@ describe("bb thread tell command output", () => {
   });
 
   it("bb thread tell forwards host-readable paths without reading them on the CLI machine", async () => {
-    const post = vi.fn(async () => ({ ok: true }));
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
     stubServerApi({ "v1.threads.:id.send.$post": post });
 
     await runCommand(
@@ -161,7 +204,7 @@ describe("bb thread tell command output", () => {
 
   it("bb thread tell includes sender thread metadata when run inside another thread", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-sender");
-    const post = vi.fn(async () => ({ ok: true }));
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
     stubServerApi({ "v1.threads.:id.send.$post": post });
 
     await runCommand(
@@ -181,7 +224,7 @@ describe("bb thread tell command output", () => {
 
   it("bb thread tell omits sender metadata when targeting the current thread", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-self");
-    const post = vi.fn(async () => ({ ok: true }));
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
     stubServerApi({ "v1.threads.:id.send.$post": post });
 
     await runCommand(["thread", "tell", "thread-self", "self note"], register);

@@ -212,6 +212,23 @@ export const sendMessageRequestSchema = z.object({
 });
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 
+/**
+ * How the server handled a `send` request. `sent` means the message started
+ * or steered a turn now. `queued` means the message waits in the thread queue
+ * and auto-sends when the thread is next able to accept it; `queuedReason`
+ * says why the server queued instead of sending.
+ */
+export type SendMessageResponse =
+  | { ok: true; delivery: "sent" }
+  | {
+      ok: true;
+      delivery: "queued";
+      queuedReason:
+        | "requested"
+        | "awaiting_user_interaction"
+        | "manual_compaction";
+    };
+
 export const providerRateLimitRecoveryReasonSchema = z.enum([
   "eligible",
   "thread-not-failed",

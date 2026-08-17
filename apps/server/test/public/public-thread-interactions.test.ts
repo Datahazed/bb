@@ -814,7 +814,7 @@ describe("public thread interaction routes", () => {
     },
   );
 
-  it("rejects send and queued-message send while a thread awaits user interaction", async () => {
+  it("queues sends to a blocked active thread and rejects sends that cannot queue", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-public-thread-blocked-send",
@@ -905,6 +905,13 @@ describe("public thread interaction routes", () => {
         environmentId: environment.id,
         status: "active",
       });
+      seedThreadRuntimeState(harness.deps, {
+        threadId: activeThread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-active-blocked",
+        inputText: "Orchestrate",
+        model: "gpt-5",
+      });
       const activeThreadPending = registerPendingInteraction(
         harness.deps,
         harness.deps.pendingInteractions,
@@ -928,6 +935,13 @@ describe("public thread interaction routes", () => {
         );
       }
 
+      // A blocked active thread cannot take a prompt now, but the message must
+      // not vanish (#1650): the server queues it and tells the sender so.
+      const senderThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
       const activeSendResponse = await harness.app.request(
         `/api/v1/threads/${activeThread.id}/send`,
         {
@@ -936,20 +950,52 @@ describe("public thread interaction routes", () => {
             "content-type": "application/json",
           },
           body: JSON.stringify({
-            mode: "queue-if-active",
-            input: [{ type: "text", text: "Try to queue while blocked" }],
+            mode: "steer-if-active",
+            input: [{ type: "text", text: "Worker report while blocked" }],
+            senderThreadId: senderThread.id,
           }),
         },
       );
-      expect(activeSendResponse.status).toBe(409);
+      expect(activeSendResponse.status).toBe(200);
       await expect(readJson(activeSendResponse)).resolves.toEqual({
-        code: "awaiting_user_interaction",
-        message:
-          "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
+        ok: true,
+        delivery: "queued",
+        queuedReason: "awaiting_user_interaction",
       });
-      expect(listQueuedThreadMessages(harness.db, activeThread.id)).toHaveLength(
-        0,
+      const queuedWhileBlocked = listQueuedThreadMessages(
+        harness.db,
+        activeThread.id,
       );
+      expect(queuedWhileBlocked).toHaveLength(1);
+      expect(queuedWhileBlocked[0]).toMatchObject({
+        senderThreadId: senderThread.id,
+      });
+      expect(JSON.parse(queuedWhileBlocked[0]!.content)[0]).toMatchObject({
+        type: "text",
+        text: "Worker report while blocked",
+      });
+
+      // `start` never queues; the blocked thread still refuses it.
+      const startResponse = await harness.app.request(
+        `/api/v1/threads/${activeThread.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            mode: "start",
+            input: [{ type: "text", text: "Try to start while blocked" }],
+          }),
+        },
+      );
+      expect(startResponse.status).toBe(409);
+      await expect(readJson(startResponse)).resolves.toMatchObject({
+        code: "awaiting_user_interaction",
+      });
+      expect(
+        listQueuedThreadMessages(harness.db, activeThread.id),
+      ).toHaveLength(1);
     });
   });
 

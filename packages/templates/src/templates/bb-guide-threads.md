@@ -173,7 +173,11 @@ Messaging:
 
   Tell steers by default, delivering the message immediately into the active
   turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
-  is free.
+  is free. If the target thread is awaiting user interaction (for example an
+  open question or approval), tell queues the message instead of steering and
+  reports "message queued"; the message delivers when the thread is next idle.
+  --json includes `delivery` ("sent" or "queued") and, when queued,
+  `queuedReason`.
 
   bb thread stop [id]                      Stop work and release the agent runtime
   bb thread retry [id]                     Continue a subscription-limited turn

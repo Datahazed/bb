@@ -16,6 +16,7 @@ import type {
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { requireThreadEnvironment } from "../lib/entity-lookup.js";
+import { deferAfterResponse } from "../lib/response-deferral.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
   buildExecutionOptions,
@@ -60,6 +61,99 @@ export interface ParentSystemMessageTaxonomy {
 interface QueueParentSystemMessageArgs extends ParentSystemMessageTaxonomy {
   input: PromptInput[];
   parentThreadId: string;
+}
+
+// Parent system messages (child turn notifications, ownership hand-offs) that
+// arrived while the parent awaited user interaction. A prompt cannot reach a
+// thread that is blocked on an `AskUserQuestion` or approval, and dropping the
+// message left orchestrators believing a child had gone silent (#1650). The
+// messages wait here and flush when the parent's interactions settle. Server
+// memory only: a restart interrupts every pending interaction and the parent
+// runtime is gone, so there is no later unblock to flush into.
+const deferredParentSystemMessages = new Map<
+  string,
+  QueueParentSystemMessageArgs[]
+>();
+
+function deferParentSystemMessage(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: QueueParentSystemMessageArgs,
+): void {
+  const pending = deferredParentSystemMessages.get(args.parentThreadId) ?? [];
+  pending.push(args);
+  deferredParentSystemMessages.set(args.parentThreadId, pending);
+  deps.logger.info(
+    {
+      parentThreadId: args.parentThreadId,
+      systemMessageKind: args.systemMessageKind,
+      deferredCount: pending.length,
+    },
+    "Parent thread awaits user interaction; deferred parent system message",
+  );
+}
+
+export function countDeferredParentSystemMessages(
+  parentThreadId: string,
+): number {
+  return deferredParentSystemMessages.get(parentThreadId)?.length ?? 0;
+}
+
+/**
+ * Delivers parent system messages deferred while `parentThreadId` awaited user
+ * interaction. Runs after the interaction settles; a no-op when the thread
+ * still has a pending interaction or nothing waits.
+ */
+export async function flushDeferredParentSystemMessages(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  parentThreadId: string,
+): Promise<void> {
+  const pending = deferredParentSystemMessages.get(parentThreadId);
+  if (!pending || pending.length === 0) {
+    return;
+  }
+  if (deps.pendingInteractions.hasPendingThreadInteraction(parentThreadId)) {
+    return;
+  }
+  deferredParentSystemMessages.delete(parentThreadId);
+  for (const args of pending) {
+    try {
+      const delivered = await queueParentSystemMessage(deps, args);
+      if (!delivered) {
+        deps.logger.warn(
+          {
+            parentThreadId,
+            systemMessageKind: args.systemMessageKind,
+          },
+          "Deferred parent system message was not delivered",
+        );
+      }
+    } catch (error) {
+      deps.logger.error(
+        {
+          err: error,
+          parentThreadId,
+          systemMessageKind: args.systemMessageKind,
+        },
+        "Failed to deliver deferred parent system message",
+      );
+    }
+  }
+}
+
+export function requestDeferredParentSystemMessageFlush(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  parentThreadId: string,
+): void {
+  if (countDeferredParentSystemMessages(parentThreadId) === 0) {
+    return;
+  }
+  deferAfterResponse({
+    config: deps.config,
+    context: { parentThreadId },
+    logger: deps.logger,
+    name: "Deferred parent system message flush",
+    work: () => flushDeferredParentSystemMessages(deps, parentThreadId),
+  });
 }
 
 export interface ParentSystemRenderedMention {
@@ -420,7 +514,8 @@ export async function queueParentSystemMessage(
     return false;
   }
   if (deps.pendingInteractions.hasPendingThreadInteraction(parentThread.id)) {
-    return false;
+    deferParentSystemMessage(deps, args);
+    return true;
   }
 
   const { environment } = requireThreadEnvironment(

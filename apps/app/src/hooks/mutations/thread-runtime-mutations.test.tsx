@@ -124,7 +124,7 @@ beforeEach(() => {
     operationId: "edit-op-1",
     requestSequence: 42,
   });
-  vi.mocked(sdk.threads.send).mockResolvedValue({ ok: true });
+  vi.mocked(sdk.threads.send).mockResolvedValue({ ok: true, delivery: "sent" });
   vi.mocked(sdk.threads.queuedMessages.create).mockResolvedValue(
     makeQueuedMessage(),
   );

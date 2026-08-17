@@ -301,7 +301,7 @@ environment pull-request show <id>`. Diff commands require an explicit target
   approval protections. Plan mode remains separate. The product default is
   `auto` when no inherited or project default applies.
 - Subagents inherit the parent's permission mode by default; `--permission-mode
-  full` only takes effect when the parent itself runs full.
+full` only takes effect when the parent itself runs full.
 - Use `--parent-self` inside a thread to parent the new thread to the current
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
@@ -373,6 +373,11 @@ or artifacts, validation performed, and blockers.
   agent can finish its current work first. Steer is especially important for a
   wrong direction, hard stop, or critical clarification.
   Example: `bb thread tell <thread-id> "Stop and use approach B" --mode steer`.
+- If the target thread is awaiting user interaction (an open question or
+  approval), `bb thread tell` queues the message instead of steering and prints
+  "message queued". The message delivers when the thread is next idle, so a
+  queued outcome is not a failure; do not resend. `--json` reports `delivery`
+  (`sent` or `queued`) and `queuedReason`.
 
 ## Inspecting Results
 

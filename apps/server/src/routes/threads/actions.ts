@@ -23,6 +23,7 @@ import {
   type ThreadListResponse,
   type PublicApiSchema,
   type SendMessageRequest,
+  type SendMessageResponse,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import {
@@ -311,6 +312,39 @@ async function createQueuedMessageForThread(
   return toThreadQueuedMessage(queuedMessage);
 }
 
+type SendQueuedReason = Extract<
+  SendMessageResponse,
+  { delivery: "queued" }
+>["queuedReason"];
+
+/**
+ * Decides whether a `send` request must wait in the thread queue instead of
+ * dispatching now. A thread that awaits user interaction (for example an
+ * `AskUserQuestion`) cannot take a new prompt, but a queued message is not
+ * lost: it auto-sends when the thread is next idle, and it stays visible in
+ * the queue meanwhile (#1650). `start` never queues; `sendThreadMessage`
+ * rejects it with the usual conflict errors.
+ */
+function resolveSendQueuedReason(
+  deps: AppDeps,
+  args: { payload: SendMessageRequest; thread: Thread },
+): SendQueuedReason | null {
+  const { payload, thread } = args;
+  if (thread.status !== "active" || payload.mode === "start") {
+    return null;
+  }
+  if (deps.pendingInteractions.hasPendingThreadInteraction(thread.id)) {
+    return "awaiting_user_interaction";
+  }
+  if (payload.mode === "queue-if-active") {
+    return "requested";
+  }
+  if (isManualCompactionActive(deps, thread)) {
+    return "manual_compaction";
+  }
+  return null;
+}
+
 export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -319,17 +353,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.send, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const shouldQueue =
-      thread.status === "active" &&
-      (payload.mode === "queue-if-active" ||
-        (payload.mode !== "start" && isManualCompactionActive(deps, thread)));
-    if (shouldQueue) {
-      ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
+    const queuedReason = resolveSendQueuedReason(deps, { payload, thread });
+    if (queuedReason !== null) {
       await createQueuedMessageForThread(deps, {
         payload: queuedMessagePayloadFromSendRequest(payload),
         thread,
       });
-      return context.json({ ok: true });
+      return context.json({ ok: true, delivery: "queued", queuedReason });
     }
     const environment = await requireThreadCommandEnvironment(deps, {
       thread,
@@ -340,7 +370,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       thread,
       trigger: "user",
     });
-    return context.json({ ok: true });
+    return context.json({ ok: true, delivery: "sent" });
   });
 
   get(routes.rateLimitRecovery, async (context) => {

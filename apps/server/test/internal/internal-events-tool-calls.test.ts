@@ -597,7 +597,11 @@ describe("internal event and tool-call routes", () => {
       );
 
       expect(sendResponse.status).toBe(200);
-      await expect(readJson(sendResponse)).resolves.toEqual({ ok: true });
+      await expect(readJson(sendResponse)).resolves.toEqual({
+        ok: true,
+        delivery: "queued",
+        queuedReason: "requested",
+      });
       const queuedRows = listQueuedThreadMessages(harness.db, thread.id);
       expect(queuedRows).toHaveLength(1);
       expect(JSON.parse(queuedRows[0]?.content ?? "null")).toEqual([

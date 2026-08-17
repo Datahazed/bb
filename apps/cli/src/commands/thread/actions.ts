@@ -9,6 +9,7 @@ import {
 } from "@bb/domain";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
+import type { ThreadSendResult } from "@bb/sdk";
 import {
   confirmDestructiveAction,
   outputJson,
@@ -105,10 +106,9 @@ interface PostThreadMessageArgs {
   images?: readonly string[];
 }
 
-interface PostThreadMessageResult {
-  ok: true;
+type PostThreadMessageResult = ThreadSendResult & {
   mode: ThreadTellDeliveryMode;
-}
+};
 
 interface ThreadUpdateBody {
   title?: string;
@@ -456,11 +456,7 @@ export function registerActionsCommands(
             images: opts.image,
           });
           if (outputJson(opts, { threadId: id, ...response })) return;
-          console.log(
-            response.mode === "steer"
-              ? `Thread ${id} steered`
-              : `Thread ${id} updated`,
-          );
+          console.log(describeThreadTellOutcome(id, response));
         },
       ),
     );
@@ -566,7 +562,7 @@ async function postThreadMessage(
   args: PostThreadMessageArgs,
 ): Promise<PostThreadMessageResult> {
   const sdk = createCliBbSdk(args.getUrl());
-  await sdk.threads.send({
+  const response = await sdk.threads.send({
     threadId: args.threadId,
     input: buildPromptInputs({
       message: args.message,
@@ -586,9 +582,28 @@ async function postThreadMessage(
     ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
   });
   return {
-    ok: true,
+    ...response,
     mode: args.mode,
   };
+}
+
+function describeThreadTellOutcome(
+  threadId: string,
+  response: PostThreadMessageResult,
+): string {
+  if (response.delivery === "queued") {
+    switch (response.queuedReason) {
+      case "awaiting_user_interaction":
+        return `Thread ${threadId} is awaiting user interaction; message queued and delivers when the thread is next idle`;
+      case "manual_compaction":
+        return `Thread ${threadId} is compacting; message queued and delivers when the thread is next idle`;
+      case "requested":
+        return `Thread ${threadId} message queued`;
+    }
+  }
+  return response.mode === "steer"
+    ? `Thread ${threadId} steered`
+    : `Thread ${threadId} updated`;
 }
 
 function resolveSenderThreadId(targetThreadId: string): string | undefined {

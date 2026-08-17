@@ -47,6 +47,7 @@ import type {
   ResolveThreadMentionsRequest,
   ResolveThreadMentionsResponse,
   SendMessageRequest,
+  SendMessageResponse,
   SendQueuedMessageRequest,
   SetQueuedMessageGroupBoundaryRequest,
   ThreadEventsQuery,
@@ -119,7 +120,7 @@ export type ThreadArchiveResult = ThreadArchiveAllResponse;
 export type ThreadOpenResult = ThreadOpenResponse;
 export type ThreadPaneActionResult = ThreadPaneActionResponse;
 export type ThreadDeleteResult = { ok: true };
-export type ThreadSendResult = { ok: true };
+export type ThreadSendResult = SendMessageResponse;
 export type ThreadRateLimitRecoveryResult = ProviderRateLimitRecoveryStatus;
 export type ThreadContinueAfterRateLimitResult =
   ContinueAfterProviderRateLimitResponse;
@@ -1077,13 +1078,12 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async send(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].send.$post({
           param: { id: input.threadId },
           json: sendJson(input),
         }),
       );
-      return { ok: true };
     },
     async spawn(input) {
       return transport.readJson(
