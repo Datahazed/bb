@@ -206,6 +206,29 @@ describe("RuntimeTurnState reopened turns", () => {
     expect(state.getActiveTurnId("t1")).toBeNull();
   });
 
+  it("does not reopen from an unparented background task", () => {
+    const state = new RuntimeTurnState();
+    state.observe(turnStarted("turn-1"));
+    state.observe(turnCompleted("turn-1"));
+
+    state.observe({
+      type: "item/started",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: turnScope("turn-1"),
+      item: {
+        type: "backgroundTask",
+        id: "task-1",
+        taskType: "local_bash",
+        description: "long build",
+        status: "pending",
+        taskStatus: "running",
+        skipTranscript: false,
+      },
+    });
+    expect(state.getActiveTurnId("t1")).toBeNull();
+  });
+
   it("does not reopen from delegated child work or while a turn is active", () => {
     const state = new RuntimeTurnState();
     state.observe(commandStarted("child-turn", { parentToolCallId: "tool-1" }));

@@ -846,6 +846,43 @@ describe("provider work after turn/completed", () => {
     }
   });
 
+  it("keeps a thread idle when a stop precedes a later completion of the same turn", async () => {
+    const { harness, session, thread } = await setupEventRoute();
+    const turn = buildTurnEvents(thread.id, "turn-stop-then-complete");
+    try {
+      const first = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          turn.started,
+          turn.completed,
+          {
+            threadId: thread.id,
+            event: {
+              type: "system/thread/interrupted",
+              threadId: thread.id,
+              scope: threadScope(),
+              reason: "manual-stop",
+            },
+          },
+          turn.completed,
+        ],
+      });
+      expect(first.status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+
+      const second = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [turn.command],
+      });
+      expect(second.status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.status).toBe("idle");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("keeps a stopped thread idle when late provider work arrives", async () => {
     const { harness, session, thread } = await setupEventRoute();
     const turn = buildTurnEvents(thread.id, "turn-stopped");

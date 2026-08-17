@@ -24,6 +24,7 @@ import {
 } from "@bb/host-daemon-contract";
 import {
   getThreadEventScopeTurnId,
+  isTurnReopeningWorkItem,
   requireThreadEventScopeTurnId,
   type ThreadEventType,
   type ThreadEventTurnStatus,
@@ -678,7 +679,7 @@ function resolveReopenedTurnId(
   args: ResolveReopenedTurnIdArgs,
 ): string | null {
   const { event } = args;
-  if (event.item.type === "userMessage" || event.item.parentToolCallId) {
+  if (!isTurnReopeningWorkItem(event.item)) {
     return null;
   }
   const turnId = getThreadEventScopeTurnId(event.scope);
@@ -695,7 +696,7 @@ function resolveReopenedTurnId(
     return null;
   }
   const turnCompleted = deps.db
-    .select({ sequence: storedEvents.sequence })
+    .select({ id: storedEvents.id })
     .from(storedEvents)
     .where(
       and(
@@ -704,13 +705,58 @@ function resolveReopenedTurnId(
         eq(storedEvents.type, "turn/completed"),
       ),
     )
-    .orderBy(desc(storedEvents.sequence))
     .limit(1)
     .get();
   if (!turnCompleted) {
     return null;
   }
-  const stoppedAfterCompletion =
+  return hasThreadStopSinceTurnRequested(deps, {
+    threadId: args.threadId,
+    turnId,
+  })
+    ? null
+    : turnId;
+}
+
+/**
+ * True when a stop was recorded at any point after the turn request that
+ * produced `turnId`. Only a newer turn request clears the user's stop intent,
+ * so late provider work must not reactivate a stopped thread.
+ */
+function hasThreadStopSinceTurnRequested(
+  deps: Pick<AppDeps, "db">,
+  args: HasThreadStopBeforeTurnStartedArgs,
+): boolean {
+  const turnStarted = deps.db
+    .select({ sequence: storedEvents.sequence })
+    .from(storedEvents)
+    .where(
+      and(
+        eq(storedEvents.threadId, args.threadId),
+        eq(storedEvents.turnId, args.turnId),
+        eq(storedEvents.type, "turn/started"),
+      ),
+    )
+    .limit(1)
+    .get();
+  if (!turnStarted) {
+    return true;
+  }
+  const latestTurnRequest = deps.db
+    .select({ sequence: storedEvents.sequence })
+    .from(storedEvents)
+    .where(
+      and(
+        eq(storedEvents.threadId, args.threadId),
+        eq(storedEvents.type, "client/turn/requested"),
+        lt(storedEvents.sequence, turnStarted.sequence),
+      ),
+    )
+    .orderBy(desc(storedEvents.sequence))
+    .limit(1)
+    .get();
+  const lowerSequence = latestTurnRequest?.sequence ?? 0;
+  return (
     deps.db
       .select({ id: storedEvents.id })
       .from(storedEvents)
@@ -718,12 +764,12 @@ function resolveReopenedTurnId(
         and(
           eq(storedEvents.threadId, args.threadId),
           eq(storedEvents.type, "system/thread/interrupted"),
-          gt(storedEvents.sequence, turnCompleted.sequence),
+          gt(storedEvents.sequence, lowerSequence),
         ),
       )
       .limit(1)
-      .get() !== undefined;
-  return stoppedAfterCompletion ? null : turnId;
+      .get() !== undefined
+  );
 }
 
 function hasThreadAlreadyStartedRun(

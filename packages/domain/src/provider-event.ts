@@ -380,6 +380,21 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
   threadEventBackgroundTaskItemSchema,
 ]);
 export type ThreadEventItem = z.infer<typeof threadEventItemSchema>;
+
+/**
+ * True when a started item is root foreground work: something the agent does
+ * inside a turn, as opposed to user input, delegated child work, or a
+ * background task that may outlive the turn. Both the server and the daemon
+ * runtime use this to decide that provider work on a completed turn reopens
+ * that turn.
+ */
+export function isTurnReopeningWorkItem(item: ThreadEventItem): boolean {
+  return (
+    item.type !== "userMessage" &&
+    item.type !== "backgroundTask" &&
+    !item.parentToolCallId
+  );
+}
 export type ThreadEventItemType = ThreadEventItem["type"];
 
 /**

@@ -1,6 +1,7 @@
 import type { ThreadEvent } from "@bb/domain";
 import {
   getThreadEventScopeTurnId,
+  isTurnReopeningWorkItem,
   requireThreadEventScopeTurnId,
 } from "@bb/domain";
 
@@ -103,8 +104,7 @@ export class RuntimeTurnState {
     // that work so stop/steer can still target it.
     if (
       event.type === "item/started" &&
-      event.item.type !== "userMessage" &&
-      !event.item.parentToolCallId &&
+      isTurnReopeningWorkItem(event.item) &&
       !this.activeTurnIdByThreadId.has(event.threadId)
     ) {
       const turnId = getThreadEventScopeTurnId(event.scope);
