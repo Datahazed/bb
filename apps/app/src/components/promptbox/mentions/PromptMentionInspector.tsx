@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
+import { OverflowFade } from "@/components/ui/overflow-fade";
 
 interface MentionInspection {
   title: string;
@@ -24,6 +25,11 @@ interface PromptMentionInspectorProps {
   pluginId: string;
 }
 
+interface InspectorOverflowState {
+  above: boolean;
+  below: boolean;
+}
+
 export function PromptMentionInspector({
   itemId,
   label,
@@ -33,6 +39,23 @@ export function PromptMentionInspector({
 }: PromptMentionInspectorProps) {
   const [inspection, setInspection] = useState<MentionInspection | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState<InspectorOverflowState>({
+    above: false,
+    below: false,
+  });
+  const measureOverflow = useCallback((scroll: HTMLDivElement) => {
+    const next = {
+      above: scroll.scrollTop > 1,
+      below: scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 1,
+    };
+    setOverflow((previous) =>
+      previous.above === next.above && previous.below === next.below
+        ? previous
+        : next,
+    );
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -68,12 +91,26 @@ export function PromptMentionInspector({
     return () => controller.abort();
   }, [itemId, open, pluginId]);
 
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!open || inspection === null || scroll === null) return;
+    measureOverflow(scroll);
+
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => measureOverflow(scroll));
+    observer.observe(scroll);
+    if (contentRef.current !== null) observer.observe(contentRef.current);
+    return () => observer.disconnect();
+  }, [inspection, measureOverflow, open]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(46rem,calc(100vh-2rem))] max-w-2xl overflow-hidden p-0">
-        <DialogHeader className="border-b border-border-hairline px-5 py-4 pr-12">
-          <DialogTitle>{inspection?.title ?? label}</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="max-h-[min(42rem,calc(100dvh-2rem))] max-w-xl gap-0 overflow-hidden p-0">
+        <DialogHeader className="gap-1 border-b border-border-hairline px-5 py-4 pr-12">
+          <DialogTitle className="text-base leading-snug">
+            {inspection?.title ?? label}
+          </DialogTitle>
+          <DialogDescription className="text-xs leading-relaxed">
             {inspection?.description ??
               (inspection !== null
                 ? "Captured mention details."
@@ -81,25 +118,57 @@ export function PromptMentionInspector({
           </DialogDescription>
         </DialogHeader>
         {inspection ? (
-          <div className="grid min-h-0 gap-4 overflow-y-auto p-5">
-            {inspection.preview ? (
-              <img
-                src={inspection.preview.dataUrl}
-                alt={inspection.preview.alt}
-                className="max-h-72 w-full rounded-md border border-border-hairline bg-surface-raised object-contain"
+          <div className="relative isolate min-h-0 overflow-hidden">
+            <div
+              ref={scrollRef}
+              data-mention-inspector-scroll="true"
+              className="max-h-[min(34rem,calc(100dvh-8rem))] overflow-x-hidden overflow-y-auto overscroll-contain"
+              onScroll={(event) => measureOverflow(event.currentTarget)}
+            >
+              <div ref={contentRef} className="grid gap-4 px-5 py-4">
+                {inspection.preview ? (
+                  <div className="overflow-hidden rounded-md border border-border-hairline bg-surface-raised/40 p-2">
+                    <img
+                      src={inspection.preview.dataUrl}
+                      alt={inspection.preview.alt}
+                      className="max-h-60 w-full object-contain"
+                      onLoad={() => {
+                        if (scrollRef.current !== null) {
+                          measureOverflow(scrollRef.current);
+                        }
+                      }}
+                    />
+                  </div>
+                ) : null}
+                <section aria-labelledby="mention-inspector-metadata-heading">
+                  <h3
+                    id="mention-inspector-metadata-heading"
+                    className="mb-2 text-xs font-medium text-muted-foreground"
+                  >
+                    Captured metadata
+                  </h3>
+                  <pre className="rounded-md border border-border-hairline bg-surface-raised/40 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
+                    {inspection.metadata}
+                  </pre>
+                </section>
+              </div>
+            </div>
+            {overflow.above ? (
+              <OverflowFade
+                placement="above"
+                tone="background"
+                inset
+                className="z-10"
               />
             ) : null}
-            <section aria-labelledby="mention-inspector-metadata-heading">
-              <h3
-                id="mention-inspector-metadata-heading"
-                className="mb-2 text-xs font-medium text-muted-foreground"
-              >
-                Captured metadata
-              </h3>
-              <pre className="max-h-80 overflow-auto rounded-md border border-border-hairline bg-surface-raised/40 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
-                {inspection.metadata}
-              </pre>
-            </section>
+            {overflow.below ? (
+              <OverflowFade
+                placement="below"
+                tone="background"
+                inset
+                className="z-10"
+              />
+            ) : null}
           </div>
         ) : null}
       </DialogContent>

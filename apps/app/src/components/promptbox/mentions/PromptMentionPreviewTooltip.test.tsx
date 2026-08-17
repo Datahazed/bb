@@ -53,8 +53,8 @@ describe("PromptMentionPreviewTooltip", () => {
     const visibleTooltip = document.querySelector<HTMLElement>(
       '[data-mention-preview-tooltip="true"]',
     );
-    expect(visibleTooltip?.className).toContain("bg-popover");
-    expect(visibleTooltip?.className).toContain("text-popover-foreground");
+    expect(visibleTooltip?.className).toContain("bg-primary");
+    expect(visibleTooltip?.className).toContain("text-primary-foreground");
     expect(
       document.querySelector('[data-mention-preview-fade="above"]'),
     ).toBeNull();
@@ -108,7 +108,7 @@ describe("PromptMentionPreviewTooltip", () => {
     );
     expect(
       document.querySelector('[data-mention-preview-fade="below"]')?.className,
-    ).toContain("from-popover");
+    ).toContain("from-primary");
     expect(
       document.querySelector('[data-mention-preview-fade="above"]'),
     ).toBeNull();

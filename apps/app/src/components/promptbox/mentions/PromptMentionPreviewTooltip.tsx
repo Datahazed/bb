@@ -132,7 +132,7 @@ export function PromptMentionPreviewTooltip({
           data-mention-preview-tooltip="true"
           side="top"
           align="start"
-          className="w-max max-w-[min(32rem,var(--radix-tooltip-content-available-width))] overflow-hidden border border-border bg-popover p-0 text-popover-foreground shadow-md"
+          className="w-max max-w-[min(32rem,var(--radix-tooltip-content-available-width))] p-0"
         >
           <div className="relative isolate min-w-0">
             <div
@@ -149,14 +149,14 @@ export function PromptMentionPreviewTooltip({
               <div
                 aria-hidden
                 data-mention-preview-fade="above"
-                className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-popover to-transparent"
+                className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-primary to-transparent"
               />
             ) : null}
             {overflow.below ? (
               <div
                 aria-hidden
                 data-mention-preview-fade="below"
-                className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-popover to-transparent"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-primary to-transparent"
               />
             ) : null}
           </div>
