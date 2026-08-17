@@ -269,6 +269,28 @@ export interface PluginHostBuildResult {
   artifactDigest: string;
 }
 
+function hostStageOwnerIsAlive(entryName: string): boolean {
+  const ownerMatch = /^(\d+)-/u.exec(
+    entryName.slice(HOST_STAGE_DIRECTORY_PREFIX.length),
+  );
+  if (ownerMatch === null) return false;
+  const ownerPid = Number(ownerMatch[1]);
+  if (!Number.isSafeInteger(ownerPid) || ownerPid <= 0) return false;
+  if (ownerPid === process.pid) return true;
+  try {
+    process.kill(ownerPid, 0);
+    return true;
+  } catch (error) {
+    // EPERM also means the process exists. Unknown errors are treated
+    // conservatively so cleanup never removes a possibly active build.
+    return !(
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "ESRCH"
+    );
+  }
+}
+
 async function removeStaleHostStageDirectories(
   distDir: string,
 ): Promise<void> {
@@ -278,7 +300,8 @@ async function removeStaleHostStageDirectories(
       .filter(
         (entry) =>
           entry.isDirectory() &&
-          entry.name.startsWith(HOST_STAGE_DIRECTORY_PREFIX),
+          entry.name.startsWith(HOST_STAGE_DIRECTORY_PREFIX) &&
+          !hostStageOwnerIsAlive(entry.name),
       )
       .map((entry) =>
         rm(join(distDir, entry.name), { recursive: true, force: true }),
@@ -300,7 +323,9 @@ export async function buildPluginHost(
   const mapPath = join(distDir, "host.js.map");
   const metaPath = join(distDir, "host.meta.json");
   await removeStaleHostStageDirectories(distDir);
-  const stageDir = await mkdtemp(join(distDir, HOST_STAGE_DIRECTORY_PREFIX));
+  const stageDir = await mkdtemp(
+    join(distDir, `${HOST_STAGE_DIRECTORY_PREFIX}${process.pid}-`),
+  );
   try {
     const stagedJsPath = join(stageDir, "host.js");
     const stagedMetaPath = join(stageDir, "host.meta.json");

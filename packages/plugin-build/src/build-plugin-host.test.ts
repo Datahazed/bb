@@ -123,15 +123,17 @@ describe("plugin host build", () => {
     );
   });
 
-  it("removes host staging directories left by interrupted builds", async () => {
+  it("removes abandoned host stages without touching a live process", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bb-host-stage-cleanup-test-"));
     tempDirs.push(dir);
     const distDir = join(dir, "dist");
+    const activeStageName = `.host-stage-${process.ppid}-active`;
     await mkdir(join(distDir, ".host-stage-abandoned"), { recursive: true });
     await writeFile(
       join(distDir, ".host-stage-abandoned", "partial-host.js"),
       "partial artifact\n",
     );
+    await mkdir(join(distDir, activeStageName));
     await mkdir(join(distDir, ".stage-app-build"));
     await writeFile(
       join(dir, "package.json"),
@@ -158,10 +160,11 @@ describe("plugin host build", () => {
 
     const distEntries = await readdir(distDir);
     expect(distEntries).not.toContain(".host-stage-abandoned");
+    expect(distEntries).toContain(activeStageName);
     expect(distEntries).toContain(".stage-app-build");
     expect(
       distEntries.filter((entry) => entry.startsWith(".host-stage-")),
-    ).toEqual([]);
+    ).toEqual([activeStageName]);
   });
 
   it("rejects a host entry outside the plugin directory", async () => {
