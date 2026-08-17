@@ -357,6 +357,23 @@ or artifacts, validation performed, and blockers.
   thread finishes. It defaults to waiting for `idle` for up to 20 minutes;
   pass `--status` or `--event` for a different target, and `--timeout
 <seconds>` when you need a shorter or longer budget.
+- A worker thread can pause its turn to ask a question or request an approval
+  or permission grant. The thread stays `active` but makes no progress until
+  someone answers, and `bb thread tell` or `bb thread queue send` return HTTP
+  409 `awaiting_user_interaction`. Detect this stall with
+  `bb thread wait <thread-id> --until-input` (exit code 0 with the interaction
+  id when a request appears; exit code 4 when the thread went idle or errored
+  first), with `bb thread show <thread-id>` (`Status: active (waiting for
+  input)` plus a `Pending interactions` section), or with `bb thread list
+  --json` (`hasPendingInteraction: true`).
+- Resolve the request from the CLI: `bb thread interactions list <thread-id>`,
+  then `bb thread interactions answer <interaction-id> <thread-id> --choice
+  <value>` or `--text "<answer>"` for a question, `approve`/`deny` for a
+  command, file-change, or plan, or `grant [--scope turn|session]`/`deny` for
+  a permission request. Multi-question interactions take
+  `--choice <questionId>=<value>`. Plugin interactions can only be answered in
+  the app. Run `bb thread stop <thread-id>` to discard the turn instead; the
+  thread then accepts new prompts.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
 - Use `bb thread edit-message <thread-id> --message "..."` to replace and rerun
@@ -382,7 +399,7 @@ or artifacts, validation performed, and blockers.
   updates use the listed message version to prevent overwriting a concurrent
   edit and accept repeatable `--file` and `--image` attachment options.
 - Use `bb thread show <thread-id>` for status, parent, environment, pull request
-  status, and result.
+  status, pending interactions, and result.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.
 - Use `bb thread log <thread-id>` to inspect the conversation.
 - Use `bb thread output <thread-id>` to read the latest final output, or

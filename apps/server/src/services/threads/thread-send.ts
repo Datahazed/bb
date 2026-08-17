@@ -155,7 +155,9 @@ export function ensureThreadIsNotAwaitingUserInteraction(
   throw new ApiError(
     409,
     "awaiting_user_interaction",
-    "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
+    `Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt: ` +
+      `run 'bb thread interactions list ${threadId}' and then answer, approve, grant, or deny it, ` +
+      `or run 'bb thread stop ${threadId}' to discard the turn.`,
   );
 }
 

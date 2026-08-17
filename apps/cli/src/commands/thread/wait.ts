@@ -5,6 +5,10 @@ import { action, CliExitError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { outputJson, requireThreadId } from "../helpers.js";
 import {
+  formatInteractionKind,
+  formatInteractionResolveHint,
+} from "./interactions.js";
+import {
   DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
   DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
   parseThreadWaitPollIntervalMs,
@@ -18,6 +22,7 @@ import {
 interface ThreadWaitCommandOptions {
   status?: string;
   event?: string;
+  untilInput?: boolean;
   timeout?: string;
   pollInterval?: string;
   json?: boolean;
@@ -30,12 +35,16 @@ export function registerWaitCommand(
   parent
     .command("wait <id>")
     .description(
-      "Wait for a thread status or event (defaults to --status idle)",
+      "Wait for a thread status, event, or input request (defaults to --status idle)",
     )
     .option("--status <status>", "Wait until the thread reaches this status")
     .option(
       "--event <type>",
       "Wait until the thread log includes this event type",
+    )
+    .option(
+      "--until-input",
+      "Wait until the thread has a pending interaction that needs an answer",
     )
     .option(
       "--timeout <seconds>",
@@ -59,7 +68,9 @@ export function registerWaitCommand(
           pollIntervalMs,
           ...(target.kind === "status"
             ? { status: target.status }
-            : { event: target.eventType }),
+            : target.kind === "event"
+              ? { event: target.eventType }
+              : { untilInput: true }),
         };
         let result: Awaited<ReturnType<typeof sdk.threads.wait>>;
         try {
@@ -80,6 +91,19 @@ export function registerWaitCommand(
           throw error;
         }
 
+        if ("interaction" in result) {
+          const interaction = result.interaction;
+          if (
+            outputJson(opts, { threadId, matched: true, target, interaction })
+          ) {
+            return;
+          }
+          console.log(
+            `Thread ${threadId} is waiting for input on interaction ${interaction.id} (${formatInteractionKind(interaction)}). ` +
+              formatInteractionResolveHint(interaction),
+          );
+          return;
+        }
         if (outputJson(opts, { threadId, matched: true, target })) return;
         if (!("event" in result)) {
           console.log(
@@ -99,11 +123,18 @@ function parseThreadWaitTarget(
 ): ThreadWaitTarget {
   const hasStatus = Boolean(opts.status);
   const hasEvent = Boolean(opts.event);
-  if (hasStatus && hasEvent) {
+  const hasUntilInput = opts.untilInput === true;
+  if (
+    (hasStatus && hasEvent) ||
+    (hasUntilInput && (hasStatus || hasEvent))
+  ) {
     throw new CliExitError(
-      "Provide only one of --status or --event.",
+      "Provide only one of --status, --event, or --until-input.",
       THREAD_WAIT_EXIT_CODE_INVALID_REQUEST,
     );
+  }
+  if (hasUntilInput) {
+    return { kind: "interaction" };
   }
 
   if (!hasEvent) {

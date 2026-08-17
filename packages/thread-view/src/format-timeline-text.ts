@@ -316,7 +316,11 @@ function formatWorkBody(
     case "image-view":
       return lines;
     case "approval":
+      lines.push(...formatPendingApprovalHint(row, context));
+      return lines;
     case "question":
+      lines.push(...formatPendingQuestionHint(row, context));
+      return lines;
     case "workflow":
       return lines;
     case "delegation":
@@ -329,6 +333,70 @@ function formatWorkBody(
         );
       }
       return lines;
+    default:
+      return assertNever(row);
+  }
+}
+
+/**
+ * A pending question blocks the thread until someone answers, and CLI readers
+ * cannot click the card. Print the options and the exact answer command.
+ */
+function formatPendingQuestionHint(
+  row: Extract<TimelineViewWorkRow, { workKind: "question" }>,
+  context: TimelineTextFormatContext,
+): string[] {
+  if (row.lifecycle !== "pending") {
+    return [];
+  }
+  const lines: string[] = [];
+  const multiple = row.questions.length > 1;
+  for (const question of row.questions) {
+    const options = (question.options ?? []).map((option) => option.value);
+    const parts = [
+      ...(options.length > 0 ? [`Options: ${options.join(", ")}`] : []),
+      ...(question.allowFreeText ? ["free text allowed"] : []),
+    ];
+    if (parts.length === 0) {
+      continue;
+    }
+    const prefix = multiple ? `${question.id}: ` : "";
+    lines.push(dim(`  ${prefix}${parts.join("; ")}`, context.color));
+  }
+  lines.push(
+    dim(
+      `  Answer with: bb thread interactions answer ${row.interactionId} ${row.threadId}`,
+      context.color,
+    ),
+  );
+  return lines;
+}
+
+function formatPendingApprovalHint(
+  row: Extract<TimelineViewWorkRow, { workKind: "approval" }>,
+  context: TimelineTextFormatContext,
+): string[] {
+  switch (row.approvalKind) {
+    case "permission-grant":
+      if (row.lifecycle !== "pending") {
+        return [];
+      }
+      return [
+        dim(
+          `  Grant with: bb thread interactions grant ${row.interactionId} ${row.threadId}`,
+          context.color,
+        ),
+      ];
+    case "file-edit":
+      if (row.lifecycle !== "waiting") {
+        return [];
+      }
+      return [
+        dim(
+          `  Approve with: bb thread interactions approve ${row.interactionId} ${row.threadId}`,
+          context.color,
+        ),
+      ];
     default:
       return assertNever(row);
   }

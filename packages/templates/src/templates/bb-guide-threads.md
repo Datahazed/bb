@@ -124,6 +124,10 @@ Inspecting:
     --merge-base-branches                  List available merge-base branches
 
   Shows pull request status for the attached environment branch when available.
+  When the thread waits for input, the status line reads `active (waiting for
+  input)` and a `Pending interactions` section lists each pending question,
+  approval, or permission request with the command that resolves it. The
+  `--json` payload includes `pendingInteractions`.
 
   bb thread log [id]                       Show thread event log
     --self                                 Target current thread
@@ -134,11 +138,48 @@ Inspecting:
   bb thread output [id]                    Get the final output of a thread
     --self                                 Target current thread
 
-  bb thread wait <id>                      Wait for a thread status or event (defaults to --status idle)
+  bb thread wait <id>                      Wait for a thread status, event, or input request (defaults to --status idle)
     --status <status>                      Wait for this status
     --event <type>                         Wait for this event type
+    --until-input                          Wait until the thread has a pending interaction
     --timeout <seconds>                    Timeout in seconds (default: 1200 / 20 min)
     --poll-interval <ms>                   Polling interval in milliseconds
+
+  `--until-input` exits with code 0 and prints the pending interaction id as
+  soon as the thread asks a question or requests an approval. It exits with
+  code 4 when the thread is no longer active, because an idle or errored
+  thread cannot ask for input.
+
+Interactions:
+
+  A provider can pause a turn to ask a question, request approval for a
+  command, file change, or plan, or request a permission grant. The thread
+  stays `active`, but it makes no progress until someone answers, and
+  `bb thread tell` or `bb thread queue send` return HTTP 409
+  `awaiting_user_interaction`. `bb thread list --json` marks such threads
+  with `hasPendingInteraction: true`; the table shows `waiting for input`.
+
+  bb thread interactions list [id]         List pending and resolving interactions
+    --self                                 Target current thread
+  bb thread interactions show <interaction-id> [id]
+                                           Show one interaction, including question options
+  bb thread interactions answer <interaction-id> [id]
+                                           Answer a question interaction
+    --choice <questionId=value>            Select an option value; repeat for multi-select
+    --text <questionId=text>               Provide a free-text answer
+  bb thread interactions approve <interaction-id> [id]
+                                           Approve a command, file-change, or plan for this turn
+  bb thread interactions grant <interaction-id> [id]
+                                           Grant a permission request
+    --scope <scope>                        Grant scope: turn or session (default: session)
+  bb thread interactions deny <interaction-id> [id]
+                                           Deny a command, file-change, plan, or permission request
+
+  For a single-question interaction, `--choice <value>` and `--text <text>`
+  work without a question id. Plugin interactions (kind `plugin`) can only be
+  answered in the app. To discard the turn instead of answering, run
+  `bb thread stop <id>`; the interaction is interrupted and the thread accepts
+  new prompts.
 
 Opening threads and files in the app:
 

@@ -6,6 +6,7 @@ import {
 import {
   resolveEnvironmentMergeBaseBranch,
   type Environment,
+  type PendingInteraction,
   type Thread,
   type ThreadGitDiffResponse,
   type ThreadPullRequest,
@@ -30,6 +31,10 @@ import {
   printEnvironmentInfo,
 } from "../environment-helpers.js";
 import { fetchThreadPendingTodos, printPendingTodos } from "./pending-todos.js";
+import {
+  fetchThreadPendingInteractions,
+  printPendingInteractions,
+} from "./pending-interactions.js";
 
 interface ThreadShowCommandOptions {
   self?: boolean;
@@ -65,6 +70,7 @@ type ThreadShowEnvironmentJsonPayload = Environment & {
 
 interface ThreadShowJsonPayload extends ThreadStatusPayload {
   environment: ThreadShowEnvironmentJsonPayload | null;
+  pendingInteractions: PendingInteraction[] | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
   workStatus?: WorkspaceStatus | null;
   gitDiff?: ThreadGitDiffResponse | null;
@@ -324,6 +330,10 @@ export function registerShowCommand(
           sdk,
           threadId,
         });
+        const pendingInteractions = await fetchThreadPendingInteractions({
+          sdk,
+          threadId,
+        });
 
         if (opts.json) {
           const environment = await getEnvironment();
@@ -333,6 +343,7 @@ export function registerShowCommand(
               environment,
               fetchedPullRequest,
             ),
+            pendingInteractions,
             pendingTodos,
           };
           if (fetchedWorkStatus !== undefined) {
@@ -356,8 +367,10 @@ export function registerShowCommand(
           statusPayload,
           environmentInfo,
           fetchedPullRequest,
+          pendingInteractions,
         );
 
+        printPendingInteractions(pendingInteractions);
         printPendingTodos(pendingTodos);
 
         if (fetchedWorkStatus !== undefined) {
@@ -505,10 +518,17 @@ function printThreadStatus(
   payload: ThreadStatusPayload,
   environmentInfo: ThreadEnvironmentInfo | null,
   pullRequest: FetchedPullRequest | null,
+  pendingInteractions: readonly PendingInteraction[] | null,
 ): void {
   const { thread } = payload;
+  const waitingForInput =
+    pendingInteractions?.some(
+      (interaction) => interaction.status === "pending",
+    ) === true;
   console.log(`Thread: ${thread.id}`);
-  console.log(`  Status: ${thread.status}`);
+  console.log(
+    `  Status: ${thread.status}${waitingForInput ? " (waiting for input)" : ""}`,
+  );
   if (thread.title) {
     console.log(`  Title: ${thread.title}`);
   }

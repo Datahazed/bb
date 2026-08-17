@@ -325,7 +325,8 @@ export interface ThreadInteractionRespondArgs extends ThreadInteractionTargetArg
 
 export type ThreadWaitTarget =
   | { kind: "status"; status: ThreadStatus }
-  | { kind: "event"; eventType: string };
+  | { kind: "event"; eventType: string }
+  | { kind: "interaction" };
 
 export interface ThreadWaitArgs {
   event?: string;
@@ -334,6 +335,11 @@ export interface ThreadWaitArgs {
   status?: ThreadStatus;
   threadId: string;
   timeoutMs?: number;
+  /**
+   * Wait until the thread has a pending interaction (a question, approval,
+   * or permission request) that needs an answer.
+   */
+  untilInput?: boolean;
 }
 
 export type ThreadWaitResult =
@@ -347,6 +353,12 @@ export type ThreadWaitResult =
       matched: true;
       target: Extract<ThreadWaitTarget, { kind: "status" }>;
       thread: ThreadGetResult;
+      threadId: string;
+    }
+  | {
+      interaction: PendingInteraction;
+      matched: true;
+      target: Extract<ThreadWaitTarget, { kind: "interaction" }>;
       threadId: string;
     };
 
@@ -362,20 +374,39 @@ export class ThreadWaitTimeoutError extends Error {
   }
 }
 
+type ThreadWaitUnreachableTarget = Extract<
+  ThreadWaitTarget,
+  { kind: "status" | "interaction" }
+>;
+
+function formatThreadWaitUnreachableMessage(args: {
+  currentStatus: ThreadStatus;
+  target: ThreadWaitUnreachableTarget;
+  threadId: string;
+}): string {
+  if (args.target.kind === "interaction") {
+    return (
+      `Thread ${args.threadId} is in status ${args.currentStatus} and will not ask for input by waiting alone. ` +
+      `Inspect it with 'bb thread show ${args.threadId}'.`
+    );
+  }
+  return (
+    `Thread ${args.threadId} is in status ${args.currentStatus} and will not reach idle by waiting alone. ` +
+    `Inspect it with 'bb thread show ${args.threadId}' and recover by sending a follow-up.`
+  );
+}
+
 export class ThreadWaitUnreachableError extends Error {
   readonly currentStatus: ThreadStatus;
-  readonly target: Extract<ThreadWaitTarget, { kind: "status" }>;
+  readonly target: ThreadWaitUnreachableTarget;
   readonly threadId: string;
 
   constructor(args: {
     currentStatus: ThreadStatus;
-    target: Extract<ThreadWaitTarget, { kind: "status" }>;
+    target: ThreadWaitUnreachableTarget;
     threadId: string;
   }) {
-    super(
-      `Thread ${args.threadId} is in status ${args.currentStatus} and will not reach idle by waiting alone. ` +
-        `Inspect it with 'bb thread show ${args.threadId}' and recover by sending a follow-up.`,
-    );
+    super(formatThreadWaitUnreachableMessage(args));
     this.name = "ThreadWaitUnreachableError";
     this.currentStatus = args.currentStatus;
     this.target = args.target;
@@ -628,8 +659,15 @@ function sleep(ms: number): Promise<void> {
 function resolveThreadWaitTarget(args: ThreadWaitArgs): ThreadWaitTarget {
   const hasStatus = args.status !== undefined;
   const hasEvent = args.event !== undefined;
-  if (hasStatus && hasEvent) {
-    throw new Error("Provide only one of status or event.");
+  const hasUntilInput = args.untilInput === true;
+  if (
+    (hasStatus && hasEvent) ||
+    (hasUntilInput && (hasStatus || hasEvent))
+  ) {
+    throw new Error("Provide only one of status, event, or untilInput.");
+  }
+  if (hasUntilInput) {
+    return { kind: "interaction" };
   }
   if (hasEvent) {
     return { kind: "event", eventType: args.event ?? "" };
@@ -668,6 +706,9 @@ function formatThreadWaitTimeoutMessage(args: {
 }): string {
   if (args.target.kind === "status") {
     return `Timed out waiting for thread ${args.threadId} to reach status ${args.target.status}.`;
+  }
+  if (args.target.kind === "interaction") {
+    return `Timed out waiting for thread ${args.threadId} to ask for input.`;
   }
   return `Timed out waiting for thread ${args.threadId} event ${args.target.eventType}.`;
 }
@@ -1206,6 +1247,43 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         validateThreadWaitArgs(input);
       const deadline = Date.now() + timeoutMs;
       while (true) {
+        if (target.kind === "interaction") {
+          const thread = await getThread({
+            signal: input.signal,
+            threadId: input.threadId,
+          });
+          const pending = (
+            await interactions.list({
+              signal: input.signal,
+              threadId: input.threadId,
+            })
+          ).find((interaction) => interaction.status === "pending");
+          if (pending !== undefined) {
+            return {
+              interaction: pending,
+              matched: true,
+              target,
+              threadId: input.threadId,
+            };
+          }
+          // Only an active turn can raise a new interaction; an idle,
+          // errored, or stopping thread never will.
+          if (thread.status !== "active" && thread.status !== "starting") {
+            throw new ThreadWaitUnreachableError({
+              currentStatus: thread.status,
+              target,
+              threadId: input.threadId,
+            });
+          }
+          if (Date.now() >= deadline) {
+            throw new ThreadWaitTimeoutError({
+              target,
+              threadId: input.threadId,
+            });
+          }
+          await sleep(pollIntervalMs);
+          continue;
+        }
         if (target.kind === "status") {
           const thread = await getThread({
             signal: input.signal,

@@ -114,6 +114,96 @@ describe("bb thread wait command output", () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
+  it("bb thread wait --until-input returns the pending interaction", async () => {
+    const get = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thread-wait-input",
+        projectId: "proj-1",
+        providerId: "codex",
+        status: "active",
+        createdAt: 1,
+        updatedAt: 2,
+      }),
+    );
+    const interaction = fixtures.makePendingInteraction({
+      id: "int-wait",
+      providerId: "codex",
+      threadId: "thread-wait-input",
+      payload: fixtures.makeUserQuestionPayload(),
+    });
+    const listInteractions = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([interaction]);
+    stubServerApi({
+      "v1.threads.:id.$get": get,
+      "v1.threads.:id.interactions.$get": listInteractions,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "wait",
+        "thread-wait-input",
+        "--until-input",
+        "--poll-interval",
+        "1",
+      ],
+      register,
+    );
+
+    expect(listInteractions).toHaveBeenCalledTimes(2);
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Thread thread-wait-input is waiting for input on interaction int-wait (question). Answer it with 'bb thread interactions answer int-wait thread-wait-input'.",
+    );
+  });
+
+  it("bb thread wait --until-input --json prints the interaction", async () => {
+    const get = vi.fn(async () =>
+      fixtures.makeThread({
+        id: "thread-wait-input-json",
+        projectId: "proj-1",
+        providerId: "codex",
+        status: "active",
+        createdAt: 1,
+        updatedAt: 2,
+      }),
+    );
+    const interaction = fixtures.makePendingInteraction({
+      id: "int-wait-json",
+      providerId: "codex",
+      threadId: "thread-wait-input-json",
+    });
+    stubServerApi({
+      "v1.threads.:id.$get": get,
+      "v1.threads.:id.interactions.$get": vi.fn(async () => [interaction]),
+    });
+
+    await runCommand(
+      ["thread", "wait", "thread-wait-input-json", "--until-input", "--json"],
+      register,
+    );
+
+    const payload = JSON.parse(collectLogLines(vi.mocked(console.log))[0]);
+    expect(payload).toMatchObject({
+      threadId: "thread-wait-input-json",
+      matched: true,
+      target: { kind: "interaction" },
+      interaction: { id: "int-wait-json", status: "pending" },
+    });
+  });
+
+  it("bb thread wait --until-input rejects --status", async () => {
+    stubServerApi({});
+
+    await expect(
+      runCommand(
+        ["thread", "wait", "thread-wait", "--until-input", "--status", "idle"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:3");
+  });
+
   it("bb thread wait --event reports server errors instead of schema errors", async () => {
     const waitGet = vi.fn(
       async () =>

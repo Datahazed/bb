@@ -251,6 +251,12 @@ interface PermissionGrantLifecycleArgs extends DefaultTurnEventOptions {
   toolName?: string;
 }
 
+interface UserQuestionLifecycleArgs extends DefaultTurnEventOptions {
+  interactionId?: string;
+  prompt?: string;
+  status?: "pending" | "resolving" | "resolved" | "interrupted";
+}
+
 interface LegacyUserMessageArgs extends EventFactoryRowOptions {
   text: string;
   turnId?: string;
@@ -317,6 +323,9 @@ export interface TimelineEventFactory {
   permissionGrantLifecycle(
     args?: PermissionGrantLifecycleArgs,
   ): ThreadEventRowOfType<"system/permissionGrant/lifecycle">;
+  userQuestionLifecycle(
+    args?: UserQuestionLifecycleArgs,
+  ): ThreadEventRowOfType<"system/userQuestion/lifecycle">;
   providerError(
     args: ProviderErrorArgs,
   ): ThreadEventRowOfType<"provider/error">;
@@ -767,6 +776,40 @@ export function createTimelineEventFactory(
         data: {
           text: args.text,
           turnId: args.turnId ?? defaultTurnId(),
+        },
+      };
+    },
+    userQuestionLifecycle(args = {}) {
+      const base = nextDefaultTurnScopedRowBase(
+        "user-question-lifecycle",
+        args,
+      );
+      return {
+        ...base,
+        type: "system/userQuestion/lifecycle",
+        data: {
+          interactionId: args.interactionId ?? "pi_question",
+          providerId: "claude-code",
+          providerRequestId: "request-question",
+          status: args.status ?? "pending",
+          resolution: null,
+          statusReason: null,
+          payload: {
+            kind: "user_question",
+            questions: [
+              {
+                id: "question-1",
+                prompt: args.prompt ?? "Which branch should I update?",
+                shortLabel: "Branch",
+                multiSelect: false,
+                options: [
+                  { value: "main", label: "main" },
+                  { value: "release", label: "release" },
+                ],
+                allowFreeText: true,
+              },
+            ],
+          },
         },
       };
     },

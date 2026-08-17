@@ -2535,9 +2535,28 @@ describe("timeline CLI rendering snapshots", () => {
     ]);
     expect(timeline.text).toMatchInlineSnapshot(`
       "── Waiting for permission to use Bash ──────────────────────
+        Grant with: bb thread interactions grant pi_123 thread-1
 
       ── Permission denied: git push ─────────────────────────────
         $ git push"
+    `);
+  });
+
+  it("tells the reader how to answer a pending question or permission request", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderActiveTimeline([
+      event.turnStarted(),
+      event.userQuestionLifecycle({ interactionId: "pi_question" }),
+      event.permissionGrantLifecycle({ interactionId: "pi_grant" }),
+    ]);
+
+    expect(timeline.text).toMatchInlineSnapshot(`
+      "── Waiting for answer Which branch should I update? ────────
+        Options: main, release; free text allowed
+        Answer with: bb thread interactions answer pi_question thread-1
+
+      ── Waiting for permission to use Bash ──────────────────────
+        Grant with: bb thread interactions grant pi_grant thread-1"
     `);
   });
 

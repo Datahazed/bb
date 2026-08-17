@@ -122,6 +122,29 @@ describe("bb thread list command output", () => {
     );
   });
 
+  it("bb thread list flags threads that wait for input", async () => {
+    const list = vi.fn(async () => [
+      {
+        ...fixtures.makeThread({
+          id: "thread-blocked-1",
+          projectId: "proj-1",
+          providerId: "codex",
+          status: "active",
+          createdAt: 1,
+          updatedAt: 1,
+        }),
+        hasPendingInteraction: true,
+      },
+    ]);
+    stubServerApi({ "v1.threads.$get": list });
+
+    await runCommand(["thread", "list"], register);
+
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "active (waiting for input)",
+    );
+  });
+
   it("bb thread list hides the personal project label", async () => {
     const list = vi.fn(async () => [
       fixtures.makeThread({

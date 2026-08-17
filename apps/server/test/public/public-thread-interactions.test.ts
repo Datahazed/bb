@@ -880,7 +880,7 @@ describe("public thread interaction routes", () => {
       await expect(readJson(sendResponse)).resolves.toEqual({
         code: "awaiting_user_interaction",
         message:
-          "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
+          `Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt: run 'bb thread interactions list ${thread.id}' and then answer, approve, grant, or deny it, or run 'bb thread stop ${thread.id}' to discard the turn.`,
       });
 
       const queuedMessageSendResponse = await harness.app.request(
@@ -897,7 +897,7 @@ describe("public thread interaction routes", () => {
       await expect(readJson(queuedMessageSendResponse)).resolves.toEqual({
         code: "awaiting_user_interaction",
         message:
-          "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
+          `Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt: run 'bb thread interactions list ${thread.id}' and then answer, approve, grant, or deny it, or run 'bb thread stop ${thread.id}' to discard the turn.`,
       });
 
       const activeThread = seedThread(harness.deps, {
@@ -945,7 +945,7 @@ describe("public thread interaction routes", () => {
       await expect(readJson(activeSendResponse)).resolves.toEqual({
         code: "awaiting_user_interaction",
         message:
-          "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
+          `Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt: run 'bb thread interactions list ${activeThread.id}' and then answer, approve, grant, or deny it, or run 'bb thread stop ${activeThread.id}' to discard the turn.`,
       });
       expect(listQueuedThreadMessages(harness.db, activeThread.id)).toHaveLength(
         0,

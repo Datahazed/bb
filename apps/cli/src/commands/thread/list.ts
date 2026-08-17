@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { PERSONAL_PROJECT_ID, type Thread } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { resolveExplicitIdFlag } from "../../context-env.js";
@@ -66,7 +66,7 @@ export function registerListCommand(
     );
 }
 
-function printThreadTable(threads: Thread[]): void {
+function printThreadTable(threads: ThreadListEntry[]): void {
   const rows = threads.map((thread) => [
     thread.id,
     thread.projectId === PERSONAL_PROJECT_ID ? "-" : thread.projectId,
@@ -88,8 +88,11 @@ function printThreadTable(threads: Thread[]): void {
   console.log("");
 }
 
-function formatThreadListStatus(thread: Thread): string {
+function formatThreadListStatus(thread: ThreadListEntry): string {
   const flags: string[] = [];
+  if (thread.hasPendingInteraction) {
+    flags.push("waiting for input");
+  }
   if (thread.archivedAt !== null) {
     flags.push("archived");
   }

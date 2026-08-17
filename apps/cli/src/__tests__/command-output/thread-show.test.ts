@@ -128,6 +128,75 @@ describe("bb thread show command output", () => {
     expect(collectLogLines(vi.mocked(console.error))).toEqual([]);
   });
 
+  it("bb thread show surfaces a pending interaction and how to answer it", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-show-blocked",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    const interaction = fixtures.makePendingInteraction({
+      id: "int-blocked",
+      providerId: "codex",
+      threadId: "thread-show-blocked",
+      payload: fixtures.makeUserQuestionPayload(),
+    });
+    const listInteractions = vi.fn(async () => [interaction]);
+    stubServerApi({
+      "v1.threads.:id.$get": vi.fn(async () => thread),
+      "v1.threads.:id.timeline.$get": fixtures.makeEmptyTimelineGetMock(),
+      "v1.threads.:id.interactions.$get": listInteractions,
+    });
+
+    await runCommand(["thread", "show", "thread-show-blocked"], register);
+
+    expect(listInteractions).toHaveBeenCalledWith({
+      param: { id: "thread-show-blocked" },
+    });
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines).toContain("  Status: active (waiting for input)");
+    const headingIndex = lines.indexOf("Pending interactions (1):");
+    expect(headingIndex).toBeGreaterThan(0);
+    expect(lines.slice(headingIndex + 1, headingIndex + 4)).toEqual([
+      "  int-blocked  question  pending  Which deployment path?",
+      "    Options: staging (Staging), production (Production); free text allowed",
+      "    Answer it with 'bb thread interactions answer int-blocked thread-show-blocked'.",
+    ]);
+  });
+
+  it("bb thread show --json includes pending interactions", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-show-blocked-json",
+      projectId: "proj-1",
+      providerId: "codex",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    const interaction = fixtures.makePendingInteraction({
+      id: "int-blocked-json",
+      providerId: "codex",
+      threadId: "thread-show-blocked-json",
+    });
+    stubServerApi({
+      "v1.threads.:id.$get": vi.fn(async () => thread),
+      "v1.threads.:id.timeline.$get": fixtures.makeEmptyTimelineGetMock(),
+      "v1.threads.:id.interactions.$get": vi.fn(async () => [interaction]),
+    });
+
+    await runCommand(
+      ["thread", "show", "thread-show-blocked-json", "--json"],
+      register,
+    );
+
+    const payload = JSON.parse(collectLogLines(vi.mocked(console.log))[0]);
+    expect(payload.pendingInteractions).toEqual([
+      expect.objectContaining({ id: "int-blocked-json", status: "pending" }),
+    ]);
+  });
+
   it("bb thread show --work-status prints non-git environment message", async () => {
     const thread: domain.Thread = fixtures.makeThread({
       id: "thread-show-work-status",
@@ -452,6 +521,7 @@ describe("bb thread show command output", () => {
           pullRequest,
         },
       },
+      pendingInteractions: null,
       pendingTodos: null,
     });
   });
@@ -482,6 +552,7 @@ describe("bb thread show command output", () => {
     ).toEqual({
       thread,
       environment: null,
+      pendingInteractions: null,
       pendingTodos: null,
     });
   });

@@ -3,7 +3,10 @@ import { z } from "zod";
 import type { Environment, JsonValue } from "@bb/domain";
 import { createBbSdk } from "../src/core.js";
 import { createHttpTransport } from "../src/transport-http.js";
-import { ThreadWaitTimeoutError } from "../src/areas/threads.js";
+import {
+  ThreadWaitTimeoutError,
+  ThreadWaitUnreachableError,
+} from "../src/areas/threads.js";
 import type { FetchImplementation } from "../src/response.js";
 
 interface CapturedRequest {
@@ -1583,6 +1586,71 @@ describe("@bb/sdk", () => {
       "http://bb.test/api/v1/threads/thr_wait",
       "http://bb.test/api/v1/threads/thr_wait",
     ]);
+  });
+
+  it("waits for a pending interaction with untilInput", async () => {
+    const pendingInteraction = {
+      id: "int_wait",
+      threadId: "thr_wait",
+      status: "pending",
+    };
+    const queue = createFetchQueue([
+      { body: { id: "thr_wait", status: "active" } },
+      { body: [] },
+      { body: { id: "thr_wait", status: "active" } },
+      { body: [pendingInteraction] },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.wait({
+        threadId: "thr_wait",
+        untilInput: true,
+        timeoutMs: 1_000,
+        pollIntervalMs: 1,
+      }),
+    ).resolves.toMatchObject({
+      matched: true,
+      target: { kind: "interaction" },
+      interaction: pendingInteraction,
+      threadId: "thr_wait",
+    });
+
+    expect(queue.requests.map((request) => request.url)).toEqual([
+      "http://bb.test/api/v1/threads/thr_wait",
+      "http://bb.test/api/v1/threads/thr_wait/interactions",
+      "http://bb.test/api/v1/threads/thr_wait",
+      "http://bb.test/api/v1/threads/thr_wait/interactions",
+    ]);
+  });
+
+  it("stops waiting for input once the thread is no longer active", async () => {
+    const queue = createFetchQueue([
+      { body: { id: "thr_wait", status: "idle" } },
+      { body: [] },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.wait({
+        threadId: "thr_wait",
+        untilInput: true,
+        timeoutMs: 1_000,
+        pollIntervalMs: 1,
+      }),
+    ).rejects.toBeInstanceOf(ThreadWaitUnreachableError);
   });
 
   it("throws a typed timeout error from thread wait", async () => {

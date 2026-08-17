@@ -116,7 +116,7 @@ function parsePermissionGrantScope(
   throw new Error("Invalid --scope. Expected 'turn' or 'session'.");
 }
 
-function formatInteractionKind(interaction: PendingInteraction): string {
+export function formatInteractionKind(interaction: PendingInteraction): string {
   if (isUserQuestionPendingInteractionPayload(interaction.payload)) {
     return "question";
   }
@@ -137,6 +137,38 @@ function formatInteractionKind(interaction: PendingInteraction): string {
     default:
       return assertNever(interaction.payload.subject);
   }
+}
+
+/**
+ * The `bb thread interactions` verb that resolves this interaction, or null
+ * when the CLI cannot resolve it (plugin interactions are UI-only).
+ */
+export function resolveInteractionVerb(
+  interaction: PendingInteraction,
+): "answer" | "approve" | "grant" | null {
+  if (isUserQuestionPendingInteractionPayload(interaction.payload)) {
+    return "answer";
+  }
+  if (!isApprovalPendingInteractionPayload(interaction.payload)) {
+    return null;
+  }
+  return interaction.payload.subject.kind === "permission_grant"
+    ? "grant"
+    : "approve";
+}
+
+/**
+ * A copy-pasteable command that resolves the interaction, for CLI hints.
+ */
+export function formatInteractionResolveHint(
+  interaction: PendingInteraction,
+): string {
+  const verb = resolveInteractionVerb(interaction);
+  if (verb === null) {
+    return `Inspect it with 'bb thread interactions show ${interaction.id} ${interaction.threadId}'; plugin interactions can only be answered in the app.`;
+  }
+  const action = verb === "answer" ? "Answer" : verb === "grant" ? "Grant" : "Approve or deny";
+  return `${action} it with 'bb thread interactions ${verb} ${interaction.id} ${interaction.threadId}'.`;
 }
 
 function isApprovalInteraction(
