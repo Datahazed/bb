@@ -14,8 +14,15 @@ import {
   type PendingInteractionResolution,
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
-  toOptionalString,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  type AcpToolCallOperation,
+  type AcpToolCallOperationInput,
+  classifyAcpToolCall,
+  extractAcpCommand,
+  extractAcpToolCallPaths,
+  resolveAcpFileChangeWriteScope,
+} from "./tool-call-operation.js";
 import type { AcpPermissionOptionKind } from "./wire.js";
 
 /**
@@ -26,11 +33,29 @@ export interface AcpPermissionResponse {
   decision: "allow_once" | "allow_for_session" | "deny";
 }
 
-export interface AcpPermissionToolCall {
+export interface AcpPermissionToolCall extends AcpToolCallOperationInput {
   toolCallId: string;
-  title?: string | undefined;
-  kind?: string | undefined;
-  command?: string | undefined;
+  /**
+   * The in-flight `tool_call` with the same id, when the agent started one
+   * before it asked. opencode's `external_directory` permission (a write
+   * outside the project) arrives as the generic kind `other` with a bare
+   * directory title; the running `edit` tool call is the write signal.
+   */
+  startedToolCall?: AcpToolCallOperationInput | undefined;
+}
+
+/**
+ * The operation an ACP permission asks about: the permission's own tool call
+ * when it classifies, else the in-flight tool call it belongs to.
+ */
+function classifyAcpPermission(
+  toolCall: AcpPermissionToolCall,
+): AcpToolCallOperation {
+  const own = classifyAcpToolCall(toolCall);
+  if (own.kind !== "generic" || !toolCall.startedToolCall) {
+    return own;
+  }
+  return classifyAcpToolCall(toolCall.startedToolCall);
 }
 
 export function buildAcpApprovalDecisions(
@@ -52,16 +77,11 @@ export function buildAcpApprovalDecisions(
   return decisions.length > 0 ? decisions : ["deny"];
 }
 
-function buildOpaqueAcpPermissionCommand(toolCall: {
-  command?: string | undefined;
-  title?: string | undefined;
-  kind?: string | undefined;
-}): string {
+function buildOpaqueAcpPermissionCommand(
+  toolCall: AcpPermissionToolCall,
+): string {
   return (
-    toOptionalString(toolCall.command) ??
-    toOptionalString(toolCall.title) ??
-    toolCall.kind ??
-    "ACP permission request"
+    extractAcpCommand(toolCall) ?? toolCall.kind ?? "ACP permission request"
   );
 }
 
@@ -71,9 +91,36 @@ export function buildAcpPermissionInteractionPayload(args: {
   options: readonly { kind: AcpPermissionOptionKind }[];
 }): PendingInteractionPayload {
   const toolCall = args.toolCall;
-  const command = toolCall
-    ? buildOpaqueAcpPermissionCommand(toolCall)
-    : "ACP permission request";
+  const availableDecisions = buildAcpApprovalDecisions(args.options);
+  const operation = toolCall ? classifyAcpPermission(toolCall) : undefined;
+  if (toolCall && operation?.kind === "file_change") {
+    const ownPaths = extractAcpToolCallPaths(toolCall);
+    return {
+      kind: "approval",
+      subject: {
+        kind: "file_change",
+        itemId: toolCall.toolCallId,
+        // The permission's own locations bound the write (opencode's
+        // external_directory names [file, parentDir]); the in-flight tool
+        // call's paths are the fallback.
+        writeScope: resolveAcpFileChangeWriteScope(
+          ownPaths.length > 0 ? ownPaths : operation.paths,
+        ),
+        sessionGrant: null,
+      },
+      reason: null,
+      availableDecisions,
+    };
+  }
+  // Commands and generic tools both take the command subject: it is the one
+  // canonical subject that carries free text, and the fallback chain
+  // command → title → kind → fixed text always yields a grantable subject.
+  const command =
+    operation?.kind === "command"
+      ? operation.command
+      : toolCall
+        ? buildOpaqueAcpPermissionCommand(toolCall)
+        : "ACP permission request";
   return {
     kind: "approval",
     subject: {
@@ -85,7 +132,7 @@ export function buildAcpPermissionInteractionPayload(args: {
       sessionGrant: null,
     },
     reason: null,
-    availableDecisions: buildAcpApprovalDecisions(args.options),
+    availableDecisions,
   };
 }
 
