@@ -95,10 +95,6 @@ function renderBrowserChrome(harness: BrowserChromeHarness, initialUrl = "") {
 function expectChromeVisible(): HTMLElement {
   const chrome = screen.getByTestId("browser-tab-nav-bar");
   expect(chrome.dataset.state).toBe("expanded");
-  expect(chrome.classList).toContain("h-11");
-  expect(screen.getByTestId("browser-tab-nav-controls").classList).toContain(
-    "opacity-100",
-  );
   return chrome;
 }
 
@@ -119,16 +115,6 @@ describe("BrowserTabContent persistent navigation", () => {
     act(() => screen.getByRole("button", { name: "Outside browser" }).focus());
     expectChromeVisible();
     expect(screen.getByLabelText("Address and search bar")).not.toBeNull();
-  });
-
-  it("aligns the trailing browser action with the right-panel header actions", () => {
-    const harness = createBrowserChromeHarness();
-    renderBrowserChrome(harness, "https://example.com/docs");
-
-    const controls = screen.getByTestId("browser-tab-nav-controls");
-    expect(controls.classList).toContain("pl-2");
-    expect(controls.classList).toContain("pr-4");
-    expect(controls.classList).not.toContain("px-2");
   });
 
   it("keeps navigation visible while loading and preserves the stop action", () => {

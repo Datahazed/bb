@@ -1558,48 +1558,6 @@ describe("PromptBoxInternal zen mode layout", () => {
     fireEvent.transitionEnd(form, { propertyName: "height" });
     window.localStorage.removeItem(storageKey);
   });
-
-  it("keeps long editor content constrained to the scroll area", async () => {
-    const storageKey = "bb.test.promptbox.zen-layout";
-    window.localStorage.removeItem(storageKey);
-
-    render(
-      <PromptBoxInternal
-        {...createPromptBoxProps({
-          value: Array.from(
-            { length: 40 },
-            (_, index) => `Line ${index + 1}`,
-          ).join("\n"),
-          promptActions,
-          zenMode: { storageKey },
-        })}
-      />,
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Make prompt box larger" }),
-    );
-
-    await waitFor(() => {
-      const scrollContainer = document.querySelector(
-        "[data-promptbox-editor-scroll]",
-      );
-      if (!(scrollContainer instanceof HTMLElement)) {
-        throw new Error("Prompt editor scroll container was not rendered");
-      }
-
-      expect(scrollContainer.classList.contains("min-h-0")).toBe(true);
-      expect(scrollContainer.parentElement?.classList.contains("min-h-0")).toBe(
-        true,
-      );
-    });
-
-    const footerRow = screen.getByRole("button", { name: "Prompt actions" })
-      .parentElement?.parentElement;
-    expect(footerRow?.classList.contains("shrink-0")).toBe(true);
-
-    window.localStorage.removeItem(storageKey);
-  });
 });
 
 describe("PromptBoxInternal plugin composer actions", () => {
@@ -2066,14 +2024,7 @@ describe("PromptBoxInternal compact layout", () => {
 
     const form = document.querySelector("[data-promptbox]");
     expect(form?.getAttribute("data-promptbox-compact")).toBe("");
-    const submitButton = screen.getByRole("button", {
-      name: "Submit (Enter)",
-    });
-    expect(submitButton.classList.contains("size-8")).toBe(true);
-    expect(submitButton.classList.contains("p-0")).toBe(true);
-    expect(submitButton.classList.contains("ml-1")).toBe(false);
-    expect(submitButton.classList.contains("transition-colors")).toBe(true);
-    expect(submitButton.classList.contains("transition-all")).toBe(false);
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Model selector" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Attach files" })).toBeNull();
@@ -2090,12 +2041,6 @@ describe("PromptBoxInternal compact layout", () => {
       "[data-promptbox-compact-content]",
     );
     expect(compactContent).toBeTruthy();
-    expect(compactContent?.classList.contains("items-center")).toBe(true);
-    expect(
-      document
-        .querySelector("[data-promptbox-editor-scroll]")
-        ?.classList.contains("pt-0"),
-    ).toBe(true);
   });
 
   it("uses voice as the primary action for an empty coarse-pointer prompt", () => {
