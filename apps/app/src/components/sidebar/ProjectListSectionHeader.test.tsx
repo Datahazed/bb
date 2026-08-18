@@ -171,7 +171,7 @@ describe("TopLevelSidebarSection", () => {
     expect(header?.className).not.toContain("pr-1");
   });
 
-  it("pins collapsed child activity to the sidebar edge independently of row actions", () => {
+  it("aligns collapsed child activity with the trailing thread status slot", () => {
     render(
       <TopLevelSidebarSection
         label="Build"
@@ -196,7 +196,11 @@ describe("TopLevelSidebarSection", () => {
 
     expect(edgeSlot).toBeInstanceOf(HTMLElement);
     expect((edgeSlot as HTMLElement).className).toContain("absolute");
-    expect((edgeSlot as HTMLElement).className).toContain("right-1");
+    expect((edgeSlot as HTMLElement).className).toContain("right-0");
+    expect((edgeSlot as HTMLElement).className).toContain("h-7");
+    expect((edgeSlot as HTMLElement).className).toContain("w-7");
+    expect((edgeSlot as HTMLElement).className).toContain("justify-center");
+    expect((edgeSlot as HTMLElement).className).not.toContain("right-1");
   });
 
   it("rolls a hidden split thread up to a collapsed top-level section", () => {
