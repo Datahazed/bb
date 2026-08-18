@@ -27,7 +27,11 @@ import {
   usePaneSecondaryPanelRegistration,
   type PaneSecondaryPanelViewModel,
 } from "@/views/thread-detail/PaneContext";
-import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
+import {
+  getPanelCollapseTransitionStyle,
+  PANEL_COLLAPSE_TRANSITION_CLASS,
+  usePanelCollapseTransitionsReady,
+} from "./panelTransitionTokens";
 import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
 
 const FULL_PANEL_SIZE_PERCENT = 100;
@@ -89,6 +93,10 @@ export function SecondaryPanelLayout({
   const paneContext = useOptionalPaneContext();
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
   const renderAsDrawer = useIsCompactViewport();
+  const transitionsReady = usePanelCollapseTransitionsReady(
+    resetKey,
+    !renderAsDrawer,
+  );
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
   );
@@ -107,6 +115,12 @@ export function SecondaryPanelLayout({
   useLayoutEffect(() => {
     const group = horizontalPanelGroupRef.current;
     if (group === null || renderAsDrawer) {
+      return;
+    }
+    // A page may not render its secondary panel until it has content. The
+    // panel group validates layouts against its currently registered panels,
+    // so a two-entry layout would throw while only the main panel exists.
+    if (group.getLayout().length !== 2) {
       return;
     }
 
@@ -264,6 +278,7 @@ export function SecondaryPanelLayout({
       isOpen: open,
       panel: renderHostedPanel?.(inlinePanel) ?? inlinePanel,
       onToggle,
+      transitionsReady,
     }),
     [
       composerHost,
@@ -273,6 +288,7 @@ export function SecondaryPanelLayout({
       onToggle,
       open,
       renderHostedPanel,
+      transitionsReady,
     ],
   );
   usePaneSecondaryPanelRegistration(secondaryPanelHost, hostedPanelModel);
@@ -312,7 +328,10 @@ export function SecondaryPanelLayout({
           className="@container h-full min-w-0 flex-1"
           // A clipped group cannot be programmatically scrolled by an iframe's
           // scrollIntoView call, which would otherwise move the entire page.
-          style={{ overflow: "clip" }}
+          style={{
+            overflow: "clip",
+            ...getPanelCollapseTransitionStyle(transitionsReady),
+          }}
         >
           <Panel
             id={mainPanelId}

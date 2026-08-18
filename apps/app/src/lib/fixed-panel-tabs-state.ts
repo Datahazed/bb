@@ -184,11 +184,30 @@ const newTabFixedPanelTabSchema = z
     kind: z.literal("new-tab"),
   })
   .strict();
+const terminalFixedPanelTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("thread"), threadId: z.string().min(1) }).strict(),
+  z
+    .object({
+      kind: z.literal("environment"),
+      environmentId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("host_path"),
+      hostId: z.string().min(1),
+      cwd: z.string().min(1).nullable(),
+    })
+    .strict(),
+]);
 const terminalFixedPanelTabSchema = z
   .object({
     id: z.string().min(1),
     kind: z.literal("terminal"),
     terminalId: z.string().min(1),
+    // Nav-panel right panels can host terminals from an explicit target. The
+    // field is absent on thread/root-compose tabs, whose surface owns it.
+    target: terminalFixedPanelTargetSchema.optional(),
   })
   .strict();
 const pluginPanelFixedPanelTabSchema = z
@@ -332,7 +351,13 @@ export interface TerminalFixedPanelTab {
   id: string;
   kind: "terminal";
   terminalId: string;
+  target?: TerminalFixedPanelTarget;
 }
+
+export type TerminalFixedPanelTarget =
+  | { kind: "thread"; threadId: string }
+  | { kind: "environment"; environmentId: string }
+  | { kind: "host_path"; hostId: string; cwd: string | null };
 
 export type SecondaryFixedPanelTab =
   | ThreadInfoFixedPanelTab
@@ -447,6 +472,7 @@ interface CreateWorkspaceFilePreviewFixedPanelTabArgs {
 
 interface CreateTerminalFixedPanelTabArgs {
   terminalId: string;
+  target?: TerminalFixedPanelTarget;
 }
 
 interface CreatePluginPanelFixedPanelTabArgs {
@@ -686,8 +712,50 @@ export function createNewTabFixedPanelTab(): NewTabFixedPanelTab {
   };
 }
 
+/**
+ * Runtime invariant shared by every fixed secondary-panel host: an open panel
+ * always has an active tab. Keep a persisted active tab when it still exists,
+ * fall back to the first surviving tab when it does not, and close the panel
+ * when hydration leaves no tabs to show.
+ */
+export function ensureOpenFixedPanelHasActiveTab(
+  state: FixedPanelTabsState,
+): FixedPanelTabsState {
+  if (!state.secondary.isOpen) {
+    return state;
+  }
+
+  const activeTab = state.secondary.tabs.find(
+    (tab) => tab.id === state.secondary.activeTabId,
+  );
+  if (activeTab !== undefined) {
+    return state;
+  }
+
+  const fallbackTab = state.secondary.tabs[0];
+  if (fallbackTab === undefined) {
+    return {
+      ...state,
+      secondary: {
+        ...state.secondary,
+        activeTabId: null,
+        isOpen: false,
+      },
+    };
+  }
+
+  return {
+    ...state,
+    secondary: {
+      ...state.secondary,
+      activeTabId: fallbackTab.id,
+    },
+  };
+}
+
 export function createTerminalFixedPanelTab({
   terminalId,
+  target,
 }: CreateTerminalFixedPanelTabArgs): TerminalFixedPanelTab {
   return {
     id: buildFixedPanelTabId({
@@ -697,6 +765,7 @@ export function createTerminalFixedPanelTab({
     }),
     kind: "terminal",
     terminalId,
+    ...(target !== undefined ? { target } : {}),
   };
 }
 
@@ -985,7 +1054,7 @@ function parseFixedPanelTabsStateForStorage({
 
   return {
     shouldPrune: false,
-    state: normalizedState,
+    state: ensureOpenFixedPanelHasActiveTab(normalizedState),
   };
 }
 
@@ -1092,7 +1161,11 @@ export function areFixedPanelTabsEquivalent(
         a.threadId === b.threadId
       );
     case "terminal":
-      return b.kind === "terminal" && a.terminalId === b.terminalId;
+      return (
+        b.kind === "terminal" &&
+        a.terminalId === b.terminalId &&
+        JSON.stringify(a.target) === JSON.stringify(b.target)
+      );
   }
 }
 

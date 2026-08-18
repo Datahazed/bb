@@ -292,10 +292,33 @@ export function closeSecondaryPanelTabInState(
   state: FixedPanelTabsState,
   tabId: string,
 ): FixedPanelTabsState {
+  const tab = findSecondaryPanelTab(state.secondary.tabs, tabId);
+  if (tab === null) {
+    return state;
+  }
+  const isClosingActiveTab = state.secondary.activeTabId === tabId;
+
   const tabs = removeSecondaryPanelTab(state.secondary.tabs, tabId);
   if (tabs === state.secondary.tabs) {
     return state;
   }
+
+  // Closing the last active content tab falls back to a remaining fixed tab.
+  // Only a genuinely empty panel closes; closing content never creates New tab.
+  if (
+    isClosingActiveTab &&
+    isSecondaryFileTab(tab) &&
+    !tabs.some(isSecondaryFileTab)
+  ) {
+    const fallbackTab = tabs[0] ?? null;
+    return setSecondaryPanelTabsInState({
+      activeTabId: fallbackTab?.id ?? null,
+      isOpen: fallbackTab !== null,
+      state,
+      tabs,
+    });
+  }
+
   return setSecondaryPanelTabsInState({
     activeTabId: getActiveTabIdAfterClose({
       activeTabId: state.secondary.activeTabId,

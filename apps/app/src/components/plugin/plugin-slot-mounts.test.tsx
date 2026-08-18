@@ -1476,6 +1476,19 @@ describe("plugin panel shared title bar and full-bleed body", () => {
     ).toBeDefined();
   });
 
+  it("keys the right-panel toggle target to its owning pane", () => {
+    const panel = panelSlot({});
+    render(
+      <PluginPanelHeaderActions panel={panel} paneId="pane-docs" subPath="" />,
+    );
+
+    expect(
+      document
+        .querySelector("[data-plugin-right-panel-toggle-portal]")
+        ?.getAttribute("data-plugin-right-panel-toggle-portal"),
+    ).toBe("plugin-panel:demo:board:pane-docs");
+  });
+
   it("gives the component a zero-padding full-bleed body", () => {
     setPluginSlotRegistrations(
       "demo",

@@ -15,7 +15,11 @@ import { Icon } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@bb/shared-ui/button";
-import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
+import {
+  APP_PAGE_HEADER_SURFACE_CLASS,
+  HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+  HEADER_SEAM_CLASS,
+} from "@/components/layout/AppPageHeader";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
@@ -137,11 +141,14 @@ export function getReservedInlinePanelToggleClassName(
  */
 export function getSecondaryPanelChromeStackClassName(
   hasGitDiffToolbar: boolean,
+  surface: "panel" | "page" = "panel",
 ): string {
   return cn(
     "shrink-0",
     hasGitDiffToolbar && "flex flex-col",
-    SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
+    surface === "page"
+      ? cn(APP_PAGE_HEADER_SURFACE_CLASS, HEADER_SEAM_CLASS)
+      : SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
   );
 }
 
@@ -242,6 +249,12 @@ export interface ThreadSecondaryPanelProps {
   showInfoTab?: boolean;
   showNewTabButton?: boolean;
   /**
+   * Use the app page-header surface when this panel's top row is a direct
+   * sibling of a page header. The default keeps thread panels on sidebar
+   * chrome.
+   */
+  topChromeSurface?: "panel" | "page";
+  /**
    * How the panel's own inline hide control (top chrome, trailing edge) renders
    * on the wide layout:
    * - "button": render it (the default).
@@ -339,6 +352,7 @@ export function ThreadSecondaryPanel({
   showGitDiffTab = true,
   showInfoTab = true,
   showNewTabButton = true,
+  topChromeSurface = "panel",
   inlinePanelToggle = "button",
   resizablePanelId = "thread-detail-secondary-panel",
   onPanelFocus,
@@ -627,7 +641,10 @@ export function ThreadSecondaryPanel({
     >
       <IframeDragGuardOverlay active={isSecondaryPanelResizing} />
       <div
-        className={getSecondaryPanelChromeStackClassName(showsGitDiffToolbar)}
+        className={getSecondaryPanelChromeStackClassName(
+          showsGitDiffToolbar,
+          topChromeSurface,
+        )}
       >
         <div
           data-testid="thread-secondary-panel-top-chrome"
