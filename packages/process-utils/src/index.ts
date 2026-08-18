@@ -178,10 +178,20 @@ export function resolveContainedPath(
 }
 
 /**
+ * Volta's re-entrancy guard. A Volta package shim sets it on the process it
+ * launches (bb-app), and Volta's own `node`/`npm`/`npx` shims treat its
+ * presence as "do not re-evaluate the platform" and pass through to a system
+ * Node instead. bb children are new contexts, exactly like `volta run`, which
+ * removes the same variable before it spawns a command.
+ */
+const VOLTA_RECURSION_GUARD_ENV = "_VOLTA_TOOL_RECURSION";
+
+/**
  * The one answer to "what does a bb-spawned child process inherit": the
- * parent's env minus bb runtime-owned variables (`BB_*`) and `NODE_ENV`,
- * optionally with the user's login-shell PATH substituted. Callers overlay
- * only the child-specific bb env they intentionally expose afterward.
+ * parent's env minus bb runtime-owned variables (`BB_*`), `NODE_ENV`, and
+ * Volta's `_VOLTA_TOOL_RECURSION` guard, optionally with the user's
+ * login-shell PATH substituted. Callers overlay only the child-specific bb
+ * env they intentionally expose afterward.
  */
 export function sanitizeInheritedChildProcessEnv(
   args: SanitizeInheritedChildProcessEnvArgs,
@@ -191,7 +201,11 @@ export function sanitizeInheritedChildProcessEnv(
     if (value === undefined) {
       continue;
     }
-    if (key === "NODE_ENV" || key.startsWith("BB_")) {
+    if (
+      key === "NODE_ENV" ||
+      key === VOLTA_RECURSION_GUARD_ENV ||
+      key.startsWith("BB_")
+    ) {
       continue;
     }
     sanitizedEnv[key] = value;

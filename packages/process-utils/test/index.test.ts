@@ -300,6 +300,30 @@ describe("process utils", () => {
     expect("SKIP_ME" in sanitizedEnv).toBe(false);
   });
 
+  it("drops Volta's _VOLTA_TOOL_RECURSION guard so child shims re-resolve the platform (#1545)", () => {
+    // Exactly what a Volta package shim injects into bb-app's process env.
+    const env: NodeJS.ProcessEnv = {
+      HOME: "/Users/example",
+      PATH: "/Users/example/.volta/tools/image/node/25.0.0/bin:/Users/example/.volta/bin:/usr/bin:/bin",
+      VOLTA_HOME: "/Users/example/.volta",
+      _VOLTA_TOOL_RECURSION: "1",
+    };
+
+    const sanitizedEnv = sanitizeInheritedChildProcessEnv({
+      env,
+      // The daemon substitutes the login-shell PATH, which puts Volta's shim
+      // directory (not the image bin dir) in front.
+      shellPath: "/Users/example/.volta/bin:/usr/bin:/bin",
+    });
+
+    // VOLTA_HOME must survive: the shims need it to find the Volta layout.
+    expect(sanitizedEnv.VOLTA_HOME).toBe("/Users/example/.volta");
+    expect(sanitizedEnv.PATH).toBe("/Users/example/.volta/bin:/usr/bin:/bin");
+    // With the guard present, Volta's `node`/`npm`/`npx` shims skip platform
+    // resolution and fail with "Volta error: Node is not available."
+    expect("_VOLTA_TOOL_RECURSION" in sanitizedEnv).toBe(false);
+  });
+
   it("does not mutate the inherited env", () => {
     const env: NodeJS.ProcessEnv = {
       BB_DATA_DIR: "/tmp/bb-data",
