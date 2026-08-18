@@ -59,8 +59,8 @@ describe("HeightTransition", () => {
         <span data-testid="restored-child">Restored content</span>
       </HeightTransition>,
     );
-    const wrapper = view.getByTestId("restored-child").parentElement
-      ?.parentElement;
+    const wrapper =
+      view.getByTestId("restored-child").parentElement?.parentElement;
 
     expect(wrapper?.style.height).toBe("40px");
     offsetHeight.mockReturnValue(80);
@@ -71,6 +71,30 @@ describe("HeightTransition", () => {
 
     expect(wrapper?.style.height).toBe("80px");
     expect(wrapper?.style.transitionDuration).toBe("0s");
+  });
+
+  it("can snap an entrance that should land with adjacent content", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    const offsetHeight = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockReturnValue(40);
+    const view = render(
+      <HeightTransition visible={false} snapOnEnter>
+        <span data-testid="entering-child">Working...</span>
+      </HeightTransition>,
+    );
+    const wrapper =
+      view.getByTestId("entering-child").parentElement?.parentElement;
+
+    view.rerender(
+      <HeightTransition visible snapOnEnter>
+        <span data-testid="entering-child">Working...</span>
+      </HeightTransition>,
+    );
+
+    expect(wrapper?.style.height).toBe("40px");
+    expect(wrapper?.style.transitionDuration).toBe("0s");
+    offsetHeight.mockRestore();
   });
 });
 

@@ -260,7 +260,7 @@ export function ThreadTimelineSurface({
           }
         />
       ) : null}
-      <HeightTransition visible={showOngoingIndicator}>
+      <HeightTransition visible={showOngoingIndicator} snapOnEnter>
         <TimelineWorkingIndicator
           key={ongoingIndicatorKey}
           details={activeThinkingDetails}

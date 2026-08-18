@@ -25,7 +25,10 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
-import { ThreadTimelineRows } from "./ThreadTimelineRows";
+import {
+  ThreadTimelineRows,
+  timelineHeightSnapRevision,
+} from "./ThreadTimelineRows";
 
 function messageActionRegistrationSet(
   messageActions: readonly PluginMessageActionRegistration[],
@@ -264,6 +267,53 @@ afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
+});
+
+describe("timelineHeightSnapRevision", () => {
+  it("snaps a newly submitted user row without snapping assistant streaming", () => {
+    const firstUserRow = conversationRow({
+      id: "user-1",
+      role: "user",
+      sourceSeqStart: 1,
+      sourceSeqEnd: 1,
+      text: "First request",
+    });
+    const streamingAssistantRow = conversationRow({
+      id: "assistant-1",
+      role: "assistant",
+      sourceSeqStart: 2,
+      sourceSeqEnd: 2,
+      text: "Working",
+    });
+    const updatedAssistantRow = conversationRow({
+      id: "assistant-1",
+      role: "assistant",
+      sourceSeqStart: 2,
+      sourceSeqEnd: 3,
+      text: "Working on it",
+    });
+    const firstRevision = timelineHeightSnapRevision([
+      firstUserRow,
+      streamingAssistantRow,
+    ]);
+
+    expect(
+      timelineHeightSnapRevision([firstUserRow, updatedAssistantRow]),
+    ).toBe(firstRevision);
+    expect(
+      timelineHeightSnapRevision([
+        firstUserRow,
+        updatedAssistantRow,
+        conversationRow({
+          id: "user-2",
+          role: "user",
+          sourceSeqStart: 4,
+          sourceSeqEnd: 4,
+          text: "Follow-up",
+        }),
+      ]),
+    ).not.toBe(firstRevision);
+  });
 });
 
 describe("ThreadTimelineRows actions", () => {

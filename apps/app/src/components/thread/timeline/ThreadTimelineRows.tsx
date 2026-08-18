@@ -631,14 +631,21 @@ function timelineRowsOwnerKey({
   return ownerThreadId;
 }
 
-function timelineHeightSnapRevision(rows: readonly TimelineRow[]): string {
-  // Active turns render their work rows directly. Completion replaces those
-  // rows with one or more turn summaries plus the terminal message. Key the
-  // height container by the newest completed summary so that authoritative
-  // topology replacement snaps instead of looking like a second stream.
+export function timelineHeightSnapRevision(
+  rows: readonly TimelineRow[],
+): string {
+  // User messages are discrete submissions rather than streamed content. Snap
+  // their height into the timeline so a bottom-pinned reader does not watch the
+  // entire row-list boundary chase the new prompt for 180ms. Active turns still
+  // animate subsequent work and assistant content. Completion replaces those
+  // rows with one or more turn summaries plus the terminal message, which also
+  // snaps instead of looking like a second stream.
   for (let index = rows.length - 1; index >= 0; index -= 1) {
     const row = rows[index];
     if (row?.kind === "turn") {
+      return `${row.id}:${row.sourceSeqStart}:${row.sourceSeqEnd}`;
+    }
+    if (row && isUserAuthoredConversationRow(row)) {
       return `${row.id}:${row.sourceSeqStart}:${row.sourceSeqEnd}`;
     }
   }

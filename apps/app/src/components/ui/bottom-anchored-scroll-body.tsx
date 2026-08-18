@@ -307,6 +307,10 @@ export function BottomAnchoredScrollBody({
     pendingScrollRestoreRef.current = null;
   }, []);
 
+  const cancelPendingPrependAnchor = useCallback(() => {
+    pendingPrependAnchorRef.current = null;
+  }, []);
+
   const cancelQueuedRestore = useCallback(() => {
     if (restoreFrameRef.current === null) return;
     window.cancelAnimationFrame(restoreFrameRef.current);
@@ -367,6 +371,11 @@ export function BottomAnchoredScrollBody({
   const scrollToBottom = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
     cancelPendingScrollRestore();
+    // An explicit bottom request supersedes a position captured for an older
+    // page that was still settling. Leaving that prepend anchor armed lets the
+    // next unrelated height change (commonly an optimistic follow-up row)
+    // restore the stale reading position before sticky-bottom corrects it.
+    cancelPendingPrependAnchor();
     userScrollIntentUntilRef.current = 0;
     pointerScrollIntentRef.current = false;
     userDetachedFromBottomRef.current = false;
@@ -376,7 +385,11 @@ export function BottomAnchoredScrollBody({
       scrollElementToBottom(scrollArea);
     }
     queueBottomRestore();
-  }, [cancelPendingScrollRestore, queueBottomRestore]);
+  }, [
+    cancelPendingPrependAnchor,
+    cancelPendingScrollRestore,
+    queueBottomRestore,
+  ]);
 
   const scrollElementIntoView = useCallback(
     ({ element, options }: ScrollElementIntoViewArgs) => {
@@ -613,6 +626,10 @@ export function BottomAnchoredScrollBody({
     }
 
     if (isScrolledNearBottom(scrollArea)) {
+      // Reaching the bottom after the native-anchor guard above is an
+      // authoritative bottom position. A pending prepend restore must not
+      // survive and reinterpret a later follow-up as older-page growth.
+      cancelPendingPrependAnchor();
       userDetachedFromBottomRef.current = false;
       shouldStickToBottomRef.current = true;
       userScrollIntentUntilRef.current = 0;
@@ -631,7 +648,11 @@ export function BottomAnchoredScrollBody({
     cancelQueuedRestore();
     // The user is scrolling on their own; don't yank them back to the anchor.
     pendingScrollRestoreRef.current = null;
-  }, [cancelQueuedRestore, hasRecentUserScrollIntent]);
+  }, [
+    cancelPendingPrependAnchor,
+    cancelQueuedRestore,
+    hasRecentUserScrollIntent,
+  ]);
 
   const handleScroll = useCallback(() => {
     syncBottomStateFromScroll();

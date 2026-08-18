@@ -117,13 +117,13 @@ function ScrollToBottomControl() {
   );
 }
 
-function renderTimeline({
+function timelineElement({
   threadId,
   rowIds,
   showCapturePrependAnchorControl = false,
   showScrollToBottomControl = false,
 }: RenderArgs) {
-  const view = render(
+  return (
     <BottomAnchoredScrollBody
       footer={<div>Footer</div>}
       maxWidthClassName="max-w-none"
@@ -137,8 +137,13 @@ function renderTimeline({
           {rowId}
         </div>
       ))}
-    </BottomAnchoredScrollBody>,
+    </BottomAnchoredScrollBody>
   );
+}
+
+function renderTimeline(args: RenderArgs) {
+  const { rowIds } = args;
+  const view = render(timelineElement(args));
 
   const scrollArea = requireHTMLElement(
     view.container.querySelector(`.${SCROLL_AREA_CLASS}`),
@@ -155,6 +160,8 @@ function renderTimeline({
 
   return {
     getByRole: view.getByRole,
+    rerender: (nextArgs: RenderArgs) =>
+      view.rerender(timelineElement(nextArgs)),
     scrollArea,
     rowElements,
     unmount: view.unmount,
@@ -457,6 +464,78 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     getLatestResizeObserver().trigger();
 
     expect(scrollArea.scrollTop).toBe(300);
+  });
+
+  it("does not let a pending prepend restore undo an explicit bottom scroll", () => {
+    const renderArgs: RenderArgs = {
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+      showCapturePrependAnchorControl: true,
+      showScrollToBottomControl: true,
+    };
+    const { getByRole, rerender, scrollArea } = renderTimeline(renderArgs);
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 0,
+    });
+
+    fireEvent.click(getByRole("button", { name: "Capture prepend anchor" }));
+    fireEvent.click(getByRole("button", { name: "Bottom" }));
+    expect(scrollArea.scrollTop).toBe(300);
+
+    // The older page's animated wrapper finishes growing only after the
+    // explicit bottom request. A stale prepend anchor would misclassify this
+    // 100px as older-page growth and jump back to scrollTop 100 on this render.
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 500,
+      clientHeight: 100,
+      scrollTop: scrollArea.scrollTop,
+    });
+    rerender({
+      ...renderArgs,
+      rowIds: [...renderArgs.rowIds, "row-d"],
+    });
+
+    expect(scrollArea.scrollTop).toBe(300);
+    getLatestResizeObserver().trigger();
+    expect(scrollArea.scrollTop).toBe(400);
+  });
+
+  it("discards a pending prepend anchor after settling at the bottom", () => {
+    const renderArgs: RenderArgs = {
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+      showCapturePrependAnchorControl: true,
+    };
+    const { getByRole, rerender, scrollArea } = renderTimeline(renderArgs);
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 0,
+    });
+    fireEvent.click(getByRole("button", { name: "Capture prepend anchor" }));
+
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    fireEvent.scroll(scrollArea);
+
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 500,
+      clientHeight: 100,
+      scrollTop: scrollArea.scrollTop,
+    });
+    rerender({
+      ...renderArgs,
+      rowIds: [...renderArgs.rowIds, "row-d"],
+    });
+
+    expect(scrollArea.scrollTop).toBe(300);
+    getLatestResizeObserver().trigger();
+    expect(scrollArea.scrollTop).toBe(400);
   });
 
   it("keeps sticking after manual scroll reaches bottom before more growth", () => {

@@ -143,6 +143,7 @@ export interface HeightTransitionProps {
   children: ReactNode;
   durationMs?: number;
   className?: string;
+  snapOnEnter?: boolean;
 }
 
 /**
@@ -159,19 +160,30 @@ export function HeightTransition({
   children,
   durationMs = HEIGHT_TRANSITION_DURATION_MS,
   className,
+  snapOnEnter = false,
 }: HeightTransitionProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  const previousVisibleRef = useRef(visible);
   const store = useStore();
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
     const inner = innerRef.current;
     if (!wrapper || !inner) return;
-    wrapper.style.height = visible ? `${inner.offsetHeight}px` : "0px";
-    if (typeof ResizeObserver === "undefined") return;
+    const isEntering = visible && !previousVisibleRef.current;
+    previousVisibleRef.current = visible;
     let lastWidth: number | null = null;
     let pendingVisibilitySnap = false;
     const snapState: SnapState = { savedDuration: null, restoreFrame: null };
+    applyHeight(
+      wrapper,
+      visible ? `${inner.offsetHeight}px` : "0px",
+      snapOnEnter && isEntering,
+      snapState,
+    );
+    if (typeof ResizeObserver === "undefined") {
+      return () => cleanupSnapState(wrapper, snapState);
+    }
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
@@ -183,7 +195,8 @@ export function HeightTransition({
       // scrollHeight, which the bottom-anchor sentinel then chases.
       const layoutAnimationActive =
         store.get(layoutAnimationInFlightCountAtom) > 0;
-      const snap = widthChanged || pendingVisibilitySnap || layoutAnimationActive;
+      const snap =
+        widthChanged || pendingVisibilitySnap || layoutAnimationActive;
       pendingVisibilitySnap = false;
       lastWidth = width;
       const nextHeight = visible ? `${height}px` : "0px";
@@ -210,7 +223,7 @@ export function HeightTransition({
       unsubscribeFromDocumentVisibility();
       cleanupSnapState(wrapper, snapState);
     };
-  }, [visible, store]);
+  }, [snapOnEnter, visible, store]);
   return (
     <div
       ref={wrapperRef}
