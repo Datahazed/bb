@@ -50,6 +50,8 @@ export const ThreadChat = runtime.ThreadChat;
 export const Markdown = runtime.Markdown;
 export const experimental_NewThreadComposer =
   runtime.experimental_NewThreadComposer;
+export const experimental_CompactComposer =
+  runtime.experimental_CompactComposer;
 export const useRpc = runtime.useRpc;
 export const useRealtime = runtime.useRealtime;
 export const useRealtimeConnectionState = runtime.useRealtimeConnectionState;

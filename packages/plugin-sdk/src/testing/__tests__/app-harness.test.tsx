@@ -4,6 +4,7 @@ import { cleanup, fireEvent, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
+  CompactComposerValue,
   PluginComposerApi,
   PluginComposerScope,
   PluginMessageDirectiveProps,
@@ -23,12 +24,36 @@ installTestPluginRuntime();
 const {
   definePluginApp,
   ThreadChat,
+  experimental_CompactComposer,
   useComposer,
   useComposerView,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
 } = await import("../../app.js");
+const CompactComposer = experimental_CompactComposer;
+
+function CompactComposerProbe() {
+  const [value, setValue] = useState<CompactComposerValue>({
+    text: "Draft",
+    mentions: [],
+  });
+  const [submitted, setSubmitted] = useState("");
+  return (
+    <div>
+      <CompactComposer
+        threadId="thr_compact"
+        value={value}
+        onChange={setValue}
+        onSubmit={(next) => setSubmitted(next.text)}
+        onCancel={() => setValue({ text: "", mentions: [] })}
+        accessibleLabel="Comment body"
+        submitLabel="Post comment"
+      />
+      <span data-testid="compact-submitted">{submitted}</span>
+    </div>
+  );
+}
 
 const typedRpcContract = defineRpcContract({
   getItem: {
@@ -197,6 +222,13 @@ const app = await loadPluginApp(
       icon: "MessageSquarePlus",
       path: "chat",
       component: ThreadChatPage,
+    });
+    builder.slots.navPanel({
+      id: "compact-composer",
+      title: "Compact composer",
+      icon: "MessageSquarePlus",
+      path: "compact-composer",
+      component: CompactComposerProbe,
     });
     builder.slots.messageAction({
       id: "summarize",
@@ -915,6 +947,27 @@ describe("loadPluginApp", () => {
         sourceSeqEnd: 1,
       },
     ]);
+  });
+
+  it("drives the controlled CompactComposer stub without touching a BB draft", () => {
+    const panel = app.navPanels.find(
+      (candidate) => candidate.id === "compact-composer",
+    )!;
+    const slot = renderSlot(panel, { subPath: "" });
+    const input = slot.getByTestId("bb-compact-composer-input");
+    expect(input.getAttribute("aria-label")).toBe("Comment body");
+    expect((input as HTMLTextAreaElement).value).toBe("Draft");
+
+    fireEvent.change(input, { target: { value: "Updated comment" } });
+    expect((input as HTMLTextAreaElement).value).toBe("Updated comment");
+    fireEvent.click(slot.getByText("Post comment"));
+    expect(slot.getByTestId("compact-submitted").textContent).toBe(
+      "Updated comment",
+    );
+    expect(slot.composer.text).toBe("");
+
+    fireEvent.click(slot.getByText("Cancel"));
+    expect((input as HTMLTextAreaElement).value).toBe("");
   });
 });
 

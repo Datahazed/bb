@@ -434,6 +434,46 @@ Implementation: the shared workflow is
    stabilizing, confirm unconditional project switching is right for embedded
    plugin workflows, rather than adding an explicit project-locking policy.
 
+## `experimental_CompactComposer` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Renders bb's real rich prompt editor and @-mention menu in a
+small controlled surface for plugin-owned records. The plugin supplies and
+persists a `CompactComposerValue`, performs its own mutation in `onSubmit`, and
+clears the value only after that mutation succeeds. `threadId` scopes mention
+search; it does not bind the component to that thread's BB draft or send a BB
+message. Attachments, commands, execution controls, voice, and `+` chrome are
+deliberately absent in V1.
+
+Implementation: the public adapter is
+`apps/app/src/components/plugin/PluginCompactComposer.tsx`; it wraps
+`PromptBoxInternal` and `usePromptMentions` without exposing either internal
+contract. The public mention record is append-only, JSON-serializable, and uses
+an opaque host provider token so plugins can round-trip resources without
+depending on `@bb/domain`.
+
+**Audit before stabilizing.**
+
+1. **Controlled-value ownership.** Confirm the host continues to avoid its
+   thread/new-thread draft stores and never clears after submit on its own.
+   Failed and optimistic-conflict mutations must leave the plugin value intact.
+2. **Mention token lifetime.** Confirm provider tokens remain opaque and
+   reversible across persisted plugin records, including built-in path sources
+   and third-party mention providers. Decide whether a formal token version is
+   needed before removing the experimental prefix.
+3. **Context breadth.** V1 derives mention project/environment from one existing
+   `threadId`. Audit whether future non-thread records need an explicit context
+   union rather than growing unrelated optional ids.
+4. **Keyboard and cancellation.** The host keeps its normal Enter/Shift+Enter,
+   typeahead, IME, focus, and rich-text behavior. Escape dismisses an open menu
+   first and then calls `onCancel` when supplied. Confirm those semantics fit
+   every adopter before stabilizing.
+5. **Feature boundary.** Attachments, commands, voice, and execution controls
+   stay absent until both the plugin record and callback contract can represent
+   them. Do not expose the internal prompt-box prop bag to add them piecemeal.
+6. **Compact geometry.** Confirm the 44px editor minimum, bounded growth, action
+   placement, menu direction, and accessible labels at narrow panel and wide
+   page widths in the real app.
+
 ## `app.slots.experimental_newThreadPanelAction` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Adds a plugin row to the root New thread screen's

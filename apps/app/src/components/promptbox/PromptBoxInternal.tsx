@@ -351,9 +351,13 @@ export interface PromptBoxInternalProps {
   mentionRanges: readonly PromptTextMention[];
   onChange: (value: string, mentionRanges: PromptTextMention[]) => void;
   onSubmit: () => void;
+  /** Escape calls this after dismissing any active typeahead menu. */
+  onCancel?: () => void;
   /** Blur the editor after a pointer-activated primary submission. */
   blurOnPointerSubmit?: boolean;
   placeholder?: string;
+  /** Accessible editor label when it should differ from the placeholder. */
+  accessibleLabel?: string;
   /**
    * Whether the editor should take passive focus when it mounts or its history
    * scope changes. Explicit clicks and focus commands remain available.
@@ -1108,8 +1112,10 @@ export function PromptBoxInternal({
   mentionRanges,
   onChange,
   onSubmit,
+  onCancel,
   blurOnPointerSubmit = false,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
+  accessibleLabel,
   autoFocus = true,
   className,
   textEffects,
@@ -1870,11 +1876,14 @@ export function PromptBoxInternal({
     placeholderRef.current = effectivePlaceholder;
     if (!editor) return;
 
-    editor.view.dom.setAttribute("aria-label", effectivePlaceholder);
+    editor.view.dom.setAttribute(
+      "aria-label",
+      accessibleLabel ?? effectivePlaceholder,
+    );
     editor.view.dom.setAttribute("data-placeholder", effectivePlaceholder);
     editor.view.dom.setAttribute("enterkeyhint", editorEnterKeyHint);
     editor.view.dispatch(editor.state.tr);
-  }, [editor, editorEnterKeyHint, effectivePlaceholder]);
+  }, [accessibleLabel, editor, editorEnterKeyHint, effectivePlaceholder]);
 
   useEffect(() => {
     if (!editor) return;
@@ -2899,6 +2908,7 @@ export function PromptBoxInternal({
       // locked editor never reaches here — see the editor container below.
       if (event.key === "Escape") {
         blurPromptEditor(currentEditor);
+        onCancel?.();
         return true;
       }
 
@@ -3029,6 +3039,7 @@ export function PromptBoxInternal({
       isZenMode,
       loadMoreCommands,
       onCommandQueryChange,
+      onCancel,
       onMentionQueryChange,
       onModifierSubmit,
       postCompositionKeyDownEvents,

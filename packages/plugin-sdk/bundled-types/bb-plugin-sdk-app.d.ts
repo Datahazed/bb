@@ -1458,6 +1458,58 @@ interface NewThreadComposerProps {
     onSubmit: (request: NewThreadRequest) => void | Promise<void>;
 }
 /**
+ * A controlled value for {@link CompactComposerProps}. Mention providers are
+ * opaque host-owned identifiers: plugins should persist and round-trip them,
+ * not parse them. The range is expressed in UTF-16 offsets into `text`,
+ * matching browser selection APIs.
+ *
+ * This deliberately does not reuse the internal `PromptTextMention` contract.
+ * The host keeps resource-specific metadata private while giving plugin-owned
+ * records a stable, JSON-serializable value.
+ */
+interface CompactComposerValue {
+    text: string;
+    mentions: readonly {
+        from: number;
+        to: number;
+        provider: string;
+        id: string;
+        label: string;
+    }[];
+}
+/**
+ * Props of the host-owned `experimental_CompactComposer`: BB's real prompt
+ * editor, mention UI, focus behavior, and keyboard handling in a small surface
+ * whose value and submission belong to the plugin.
+ *
+ * The component never reads or writes a BB thread draft and never sends a BB
+ * message. `threadId` supplies mention context only. Plugins own domain copy
+ * (for example new/reply/edit), validation, optimistic versions, persistence,
+ * and clearing the controlled value after a successful mutation.
+ */
+interface CompactComposerProps {
+    /** Existing BB thread used only to scope workspace and thread mentions. */
+    threadId: string;
+    value: CompactComposerValue;
+    onChange(value: CompactComposerValue): void;
+    onSubmit(value: CompactComposerValue): void | Promise<void>;
+    /** Escape calls this after first dismissing any open mention menu. */
+    onCancel?: () => void;
+    isSubmitting?: boolean;
+    /** Disables submission without changing or discarding the controlled value. */
+    disabled?: boolean;
+    validationMessage?: string | null;
+    placeholder?: string;
+    autoFocus?: boolean;
+    /** Bump this nonce to focus the editor caret at the end. */
+    focusRequest?: number;
+    /** Editor label when the visible placeholder is not sufficiently descriptive. */
+    accessibleLabel?: string;
+    /** Accessible label and tooltip for the primary submit action. */
+    submitLabel?: string;
+    className?: string;
+}
+/**
  * Props of the host-owned `Markdown` component — bb's chat message renderer
  * (the same typography, spacing, and code styling as timeline messages).
  * Use it wherever plugin UI quotes or previews message content so it reads
@@ -1560,9 +1612,9 @@ interface PluginSdkApp {
      */
     experimental_useSidebarThreadSplit(threadId: string): PluginSidebarThreadSplit;
     /**
-     * The host-owned chat component (see {@link ThreadChatProps}). Together
-     * with `Markdown`, the only components the SDK ships — everything else
-     * stays vendored per §5.5.
+     * The host-owned chat component (see {@link ThreadChatProps}). Host-owned
+     * components are narrow product capabilities; general UI stays vendored per
+     * §5.5.
      */
     ThreadChat: ComponentType<ThreadChatProps>;
     /**
@@ -1576,6 +1628,11 @@ interface PluginSdkApp {
      * docs/api_to_audit.md for what to audit before the prefix drops.
      */
     experimental_NewThreadComposer: ComponentType<NewThreadComposerProps>;
+    /**
+     * A controlled host composer for plugin-owned submissions (see
+     * {@link CompactComposerProps}). Experimental: see docs/api_to_audit.md.
+     */
+    experimental_CompactComposer: ComponentType<CompactComposerProps>;
     useComposerView(): ComposerView;
 }
 
@@ -1583,6 +1640,7 @@ declare const definePluginApp: (setup: PluginAppSetup) => PluginAppDefinition;
 declare const ThreadChat: react.ComponentType<ThreadChatProps>;
 declare const Markdown: react.ComponentType<MarkdownProps>;
 declare const experimental_NewThreadComposer: react.ComponentType<NewThreadComposerProps>;
+declare const experimental_CompactComposer: react.ComponentType<CompactComposerProps>;
 declare const useRpc: <Contract extends PluginRpcContract = Readonly<Record<string, PluginRpcMethodContract<StandardSchemaV1<unknown, unknown>, StandardSchemaV1<unknown, unknown>>>>>() => PluginRpcClient<Contract>;
 declare const useRealtime: (channel: string, handler: (payload: unknown) => void) => void;
 declare const useRealtimeConnectionState: () => PluginRealtimeConnectionState;
@@ -1596,5 +1654,5 @@ declare const experimental_useSidebarThreadActions: () => PluginSidebarThreadAct
 declare const experimental_useSidebarThreadPullRequest: (threadId: string) => PluginSidebarThreadPullRequestState;
 declare const experimental_useSidebarThreadSplit: (threadId: string) => PluginSidebarThreadSplit;
 
-export { Markdown, ThreadChat, definePluginApp, experimental_NewThreadComposer, experimental_useSidebarThreadActions, experimental_useSidebarThreadPullRequest, experimental_useSidebarThreadSplit, experimental_useSidebarThreads, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
-export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderIconRegistration, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export { Markdown, ThreadChat, definePluginApp, experimental_CompactComposer, experimental_NewThreadComposer, experimental_useSidebarThreadActions, experimental_useSidebarThreadPullRequest, experimental_useSidebarThreadSplit, experimental_useSidebarThreads, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
+export type { BbContext, BbNavigate, CompactComposerProps, CompactComposerValue, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderIconRegistration, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

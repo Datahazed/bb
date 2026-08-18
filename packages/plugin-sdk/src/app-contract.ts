@@ -1352,6 +1352,60 @@ export interface NewThreadComposerProps {
 }
 
 /**
+ * A controlled value for {@link CompactComposerProps}. Mention providers are
+ * opaque host-owned identifiers: plugins should persist and round-trip them,
+ * not parse them. The range is expressed in UTF-16 offsets into `text`,
+ * matching browser selection APIs.
+ *
+ * This deliberately does not reuse the internal `PromptTextMention` contract.
+ * The host keeps resource-specific metadata private while giving plugin-owned
+ * records a stable, JSON-serializable value.
+ */
+export interface CompactComposerValue {
+  text: string;
+  mentions: readonly {
+    from: number;
+    to: number;
+    provider: string;
+    id: string;
+    label: string;
+  }[];
+}
+
+/**
+ * Props of the host-owned `experimental_CompactComposer`: BB's real prompt
+ * editor, mention UI, focus behavior, and keyboard handling in a small surface
+ * whose value and submission belong to the plugin.
+ *
+ * The component never reads or writes a BB thread draft and never sends a BB
+ * message. `threadId` supplies mention context only. Plugins own domain copy
+ * (for example new/reply/edit), validation, optimistic versions, persistence,
+ * and clearing the controlled value after a successful mutation.
+ */
+export interface CompactComposerProps {
+  /** Existing BB thread used only to scope workspace and thread mentions. */
+  threadId: string;
+  value: CompactComposerValue;
+  onChange(value: CompactComposerValue): void;
+  onSubmit(value: CompactComposerValue): void | Promise<void>;
+  /** Escape calls this after first dismissing any open mention menu. */
+  onCancel?: () => void;
+  isSubmitting?: boolean;
+  /** Disables submission without changing or discarding the controlled value. */
+  disabled?: boolean;
+  validationMessage?: string | null;
+  placeholder?: string;
+  autoFocus?: boolean;
+  /** Bump this nonce to focus the editor caret at the end. */
+  focusRequest?: number;
+  /** Editor label when the visible placeholder is not sufficiently descriptive. */
+  accessibleLabel?: string;
+  /** Accessible label and tooltip for the primary submit action. */
+  submitLabel?: string;
+  className?: string;
+}
+
+/**
  * Props of the host-owned `Markdown` component — bb's chat message renderer
  * (the same typography, spacing, and code styling as timeline messages).
  * Use it wherever plugin UI quotes or previews message content so it reads
@@ -1472,9 +1526,9 @@ export interface PluginSdkApp {
     threadId: string,
   ): PluginSidebarThreadSplit;
   /**
-   * The host-owned chat component (see {@link ThreadChatProps}). Together
-   * with `Markdown`, the only components the SDK ships — everything else
-   * stays vendored per §5.5.
+   * The host-owned chat component (see {@link ThreadChatProps}). Host-owned
+   * components are narrow product capabilities; general UI stays vendored per
+   * §5.5.
    */
   ThreadChat: ComponentType<ThreadChatProps>;
   /**
@@ -1488,5 +1542,10 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md for what to audit before the prefix drops.
    */
   experimental_NewThreadComposer: ComponentType<NewThreadComposerProps>;
+  /**
+   * A controlled host composer for plugin-owned submissions (see
+   * {@link CompactComposerProps}). Experimental: see docs/api_to_audit.md.
+   */
+  experimental_CompactComposer: ComponentType<CompactComposerProps>;
   useComposerView(): ComposerView;
 }

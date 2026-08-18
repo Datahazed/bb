@@ -957,6 +957,41 @@ describe("PromptBoxInternal controlled value sync", () => {
     }
   });
 
+  it("uses an explicit accessible label without replacing the placeholder", async () => {
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          placeholder: "Write a comment",
+          accessibleLabel: "Comment body",
+        })}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(getPromptEditorElement().getAttribute("aria-label")).toBe(
+        "Comment body",
+      ),
+    );
+    expect(getPromptEditorElement().getAttribute("data-placeholder")).toBe(
+      "Write a comment",
+    );
+  });
+
+  it("calls the controlled cancel action on Escape", async () => {
+    const onCancel = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({ value: "Keep this draft", onCancel })}
+      />,
+    );
+
+    await waitForPromptFocus();
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(document.activeElement).not.toBe(getPromptEditorElement());
+  });
+
   it("does not honor focus-end requests on coarse pointers", async () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     try {

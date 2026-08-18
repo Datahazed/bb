@@ -15,6 +15,7 @@ import {
   type BbContext,
   type BbNavigate,
   type ComposerCustomization,
+  type CompactComposerProps,
   type ComposerView,
   type PluginAppDefinition,
   type PluginAppSetup,
@@ -360,6 +361,63 @@ function TestNewThreadComposer({
   );
 }
 
+/**
+ * Controlled stand-in for the host compact composer. It deliberately keeps
+ * submission plugin-owned, just like the real adapter; the textarea is only a
+ * lightweight testing surface and is not an alternate production editor.
+ */
+function TestCompactComposer({
+  threadId,
+  value,
+  onChange,
+  onSubmit,
+  onCancel,
+  isSubmitting = false,
+  disabled = false,
+  validationMessage,
+  placeholder,
+  autoFocus,
+  focusRequest,
+  accessibleLabel,
+  submitLabel = "Submit",
+  className,
+}: CompactComposerProps) {
+  return (
+    <div
+      data-testid="bb-compact-composer"
+      data-thread-id={threadId}
+      data-focus-request={focusRequest ?? 0}
+      data-submitting={isSubmitting || undefined}
+      className={className}
+    >
+      <textarea
+        data-testid="bb-compact-composer-input"
+        aria-label={accessibleLabel}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        value={value.text}
+        onChange={(event) =>
+          onChange({ text: event.target.value, mentions: [] })
+        }
+      />
+      <button
+        type="button"
+        data-testid="bb-compact-composer-submit"
+        disabled={disabled || isSubmitting}
+        onClick={() => void onSubmit(value)}
+      >
+        {submitLabel}
+      </button>
+      {onCancel ? (
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+      ) : null}
+      {validationMessage ? <div role="alert">{validationMessage}</div> : null}
+    </div>
+  );
+}
+
 const testPluginSdkApp = {
   definePluginApp,
   useRpc<
@@ -425,6 +483,7 @@ const testPluginSdkApp = {
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
   experimental_NewThreadComposer: TestNewThreadComposer,
+  experimental_CompactComposer: TestCompactComposer,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
     return useSlotEnv("experimental_useSidebarThreads").sidebarThreads;
   },
