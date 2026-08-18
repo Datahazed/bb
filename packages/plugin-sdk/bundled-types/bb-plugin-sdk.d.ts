@@ -6634,7 +6634,7 @@ declare const installedPluginSchema: z$1.ZodObject<{
     isOrphanedBuiltin: z$1.ZodBoolean;
     catalogEntryId: z$1.ZodOptional<z$1.ZodString>;
     catalogMarketplaceName: z$1.ZodOptional<z$1.ZodString>;
-    publisherLabel: z$1.ZodNullable<z$1.ZodString>;
+    publisherLabel: z$1.ZodDefault<z$1.ZodNullable<z$1.ZodString>>;
     sourceDisplay: z$1.ZodString;
     updateState: z$1.ZodObject<{
         outcome: z$1.ZodOptional<z$1.ZodEnum<{
@@ -6741,7 +6741,7 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
         isOrphanedBuiltin: z$1.ZodBoolean;
         catalogEntryId: z$1.ZodOptional<z$1.ZodString>;
         catalogMarketplaceName: z$1.ZodOptional<z$1.ZodString>;
-        publisherLabel: z$1.ZodNullable<z$1.ZodString>;
+        publisherLabel: z$1.ZodDefault<z$1.ZodNullable<z$1.ZodString>>;
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
@@ -6850,7 +6850,7 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
         isOrphanedBuiltin: z$1.ZodBoolean;
         catalogEntryId: z$1.ZodOptional<z$1.ZodString>;
         catalogMarketplaceName: z$1.ZodOptional<z$1.ZodString>;
-        publisherLabel: z$1.ZodNullable<z$1.ZodString>;
+        publisherLabel: z$1.ZodDefault<z$1.ZodNullable<z$1.ZodString>>;
         sourceDisplay: z$1.ZodString;
         updateState: z$1.ZodObject<{
             outcome: z$1.ZodOptional<z$1.ZodEnum<{
