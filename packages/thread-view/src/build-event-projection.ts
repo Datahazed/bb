@@ -1,5 +1,6 @@
 import type { ThreadEvent } from "@bb/domain";
 import {
+  isBackgroundAgentTaskType,
   isBackgroundCommandTaskType,
   LOCAL_WORKFLOW_TASK_TYPE,
   requireThreadEventScopeTurnId,
@@ -223,6 +224,63 @@ function isDirectBackgroundTaskForCurrentAgent(
   return spawningCall ? spawningCall.parentToolCallId === undefined : true;
 }
 
+function getBackgroundAgentModel(
+  message: EventProjectionWorkflowMessage,
+  callMessageById: ReadonlyMap<string, EventProjectionCallMessage>,
+): string | null {
+  if (
+    !isBackgroundAgentTaskType(message.taskType) ||
+    !message.parentToolCallId
+  ) {
+    return null;
+  }
+  const spawningCall = callMessageById.get(message.parentToolCallId);
+  return spawningCall?.kind === "delegation"
+    ? (spawningCall.model ?? null)
+    : null;
+}
+
+function getBackgroundTaskFamilyId(itemId: string): string {
+  // Claude keeps the provider task id when a settled task restarts and makes
+  // each persisted item unique with a `#N` generation suffix. The restarted
+  // task may omit its original spawning call, so use the stable family id to
+  // carry forward metadata already correlated from an earlier generation.
+  const generationMatch = /#(\d+)$/.exec(itemId);
+  if (!generationMatch) {
+    return itemId;
+  }
+  const generation = Number(generationMatch[1]);
+  return Number.isSafeInteger(generation) && generation > 1
+    ? itemId.slice(0, -generationMatch[0].length)
+    : itemId;
+}
+
+function enrichBackgroundAgentModels(
+  messages: readonly EventProjectionMessage[],
+  callMessageById: ReadonlyMap<string, EventProjectionCallMessage>,
+): void {
+  const modelByTaskFamilyId = new Map<string, string>();
+  for (const message of messages) {
+    if (
+      message.kind !== "workflow" ||
+      !isBackgroundAgentTaskType(message.taskType)
+    ) {
+      continue;
+    }
+
+    const taskFamilyId = getBackgroundTaskFamilyId(message.itemId);
+    const model =
+      getBackgroundAgentModel(message, callMessageById) ??
+      message.model ??
+      modelByTaskFamilyId.get(taskFamilyId) ??
+      null;
+    message.model = model;
+    if (model !== null) {
+      modelByTaskFamilyId.set(taskFamilyId, model);
+    }
+  }
+}
+
 function getRootSpawningCallId(
   message: EventProjectionWorkflowMessage,
   callMessageById: ReadonlyMap<string, EventProjectionCallMessage>,
@@ -242,11 +300,11 @@ function getRootSpawningCallId(
 
 function selectActiveBackgroundCommandMessages(
   messages: readonly EventProjectionMessage[],
+  callMessageById: ReadonlyMap<string, EventProjectionCallMessage>,
 ): EventProjectionWorkflowMessage[] {
   // Running non-workflow background tasks, most recently started first. Feeds
   // the background-activity prompt-box card, independent of the workflow-only
   // banner driven by selectActiveWorkflowMessage.
-  const callMessageById = buildCallMessageById(messages);
   const representedRootCallIds = new Set<string>();
   for (const message of messages) {
     if (
@@ -1012,12 +1070,17 @@ function buildFlatProjectionData(
 
   finalizeProjectionState({ state, options: args.options });
   const messages = sortEventProjectionMessagesBySource(state.messages);
+  const callMessageById = buildCallMessageById(messages);
+  enrichBackgroundAgentModels(messages, callMessageById);
   return {
     activeThinking: args.includeActiveThinking
       ? buildProjectionActiveThinking(state, args.options?.threadStatus)
       : null,
     activeWorkflows: selectActiveWorkflowMessages(messages),
-    activeBackgroundCommands: selectActiveBackgroundCommandMessages(messages),
+    activeBackgroundCommands: selectActiveBackgroundCommandMessages(
+      messages,
+      callMessageById,
+    ),
     messages,
   };
 }
