@@ -32,13 +32,14 @@ import {
   turnScope,
   UNSTAMPED_THREAD_ID,
   bashArgsSchema,
+  buildFileChangeItem,
+  buildGenericToolCallItem,
   buildToolResultItem,
-  buildToolUseItem,
   buildUnhandledProviderEvents,
+  completeStartedToolItem,
   createProviderTurnStateRegistry,
   createScopedItemIdFactory,
   createUnhandledProviderEvent,
-  drainAcceptedUserMessages,
   errorEnvelopeSchema,
   extractResultText,
   jsonRpcEnvelopeSchema,
@@ -52,7 +53,6 @@ import {
   type EnsureProviderTurnStartedArgs,
   type JsonRpcMessage,
   type ProviderTurnStateRegistry,
-  type ToolUseTranslationInput,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   claudeApiRetryMessageSchema,
@@ -166,35 +166,57 @@ function normalizeClaudeWebFetchArgs(
 function translateClaudeToolUseItem(
   input: ClaudeToolUseTranslationInput,
 ): ThreadEventItem {
-  return buildToolUseItem(input, {
-    commandToolNames: CLAUDE_COMMAND_TOOL_NAMES,
-    fileChangeToolNames: CLAUDE_FILE_CHANGE_TOOL_NAMES,
-    parseCommand(args) {
-      const command = parseClaudeBashCommand(args);
-      return command
-        ? { command: command.command, cwd: command.cwd ?? "" }
-        : null;
-    },
-    parseFileChange(args) {
-      const parsed = claudeFileEditArgsSchema.safeParse(args);
-      return parsed.success
-        ? {
-            arguments: parsed.data,
-            path: getClaudeFileEditPath(parsed.data) ?? undefined,
-            oldText: parsed.data.old_string,
-            newText: parsed.data.new_string ?? parsed.data.content,
-          }
-        : null;
-    },
-    translateSpecialToolUse: translateClaudeWebToolUse,
-  });
+  const withParent = (item: ThreadEventItem): ThreadEventItem =>
+    withParentToolCallId(item, input.parentToolCallId);
+  const genericToolCall = (): ThreadEventItem =>
+    withParent(buildGenericToolCallItem(input));
+
+  if (CLAUDE_COMMAND_TOOL_NAMES.has(input.toolName)) {
+    const command = parseClaudeBashCommand(input.args);
+    return command
+      ? withParent({
+          type: "commandExecution",
+          id: input.callId,
+          command: command.command,
+          cwd: command.cwd ?? "",
+          status: "pending",
+          approvalStatus: null,
+        })
+      : genericToolCall();
+  }
+
+  if (CLAUDE_FILE_CHANGE_TOOL_NAMES.has(input.toolName)) {
+    const parsed = claudeFileEditArgsSchema.safeParse(input.args);
+    if (!parsed.success) {
+      return genericToolCall();
+    }
+    const path = getClaudeFileEditPath(parsed.data);
+    if (!path) {
+      return withParent({
+        ...buildGenericToolCallItem(input),
+        arguments: parsed.data,
+      });
+    }
+    return withParent(
+      buildFileChangeItem({
+        callId: input.callId,
+        path,
+        oldText: parsed.data.old_string,
+        newText: parsed.data.new_string ?? parsed.data.content,
+      }),
+    );
+  }
+
+  return withParent(
+    translateClaudeWebToolUse(input) ?? buildGenericToolCallItem(input),
+  );
 }
 
 const CLAUDE_COMMAND_TOOL_NAMES = new Set(["Bash"]);
 const CLAUDE_FILE_CHANGE_TOOL_NAMES = new Set(["Edit", "Write"]);
 
 function translateClaudeWebToolUse(
-  input: ToolUseTranslationInput,
+  input: ClaudeToolUseTranslationInput,
 ): ThreadEventItem | null {
   if (input.toolName === "WebSearch") {
     const parsed = claudeWebSearchArgsSchema.safeParse(input.args);
@@ -276,11 +298,27 @@ function translateClaudeToolResultItem(
           toolUseResult: input.toolUseResult,
         })
       : null;
+  // Claude web items resolve on their tool result, so a started
+  // webSearch/webFetch item is completed here rather than left open.
+  if (
+    input.startedItem?.type === "webSearch" ||
+    input.startedItem?.type === "webFetch"
+  ) {
+    const completed = completeStartedToolItem({
+      callId: input.callId,
+      outputText,
+      parentToolCallId: input.parentToolCallId,
+      startedItem: input.startedItem,
+      status: input.isError ? "failed" : "completed",
+    });
+    if (completed) {
+      return completed;
+    }
+  }
   return buildToolResultItem({
     ...input,
     commandOutputText: outputText,
     commandToolNames: CLAUDE_COMMAND_TOOL_NAMES,
-    completeWebItems: true,
     fileChangeToolNames: CLAUDE_FILE_CHANGE_TOOL_NAMES,
     outputText,
     toolCallResult: taskToolResult ?? outputText,
@@ -317,7 +355,7 @@ export interface ClaudeTurnState {
       }
     | undefined;
   openAssistantMessageIdsByScope: Map<string, string>;
-  openReasoningItemIdsByScope: Map<string, string>;
+  openScopedItemIdsByScope: Map<string, string>;
   /** Live monitor and future task types that do not create timeline rows. */
   opaqueTaskIds: Set<string>;
   pendingAcceptedUserMessages: AcceptedUserMessageState["pendingAcceptedUserMessages"];
@@ -327,7 +365,7 @@ export interface ClaudeTurnState {
         turnId: string;
       }
     | undefined;
-  reasoningItemCounter: number;
+  scopedItemCounter: number;
   selectedModelContextWindow: number | null;
   /**
    * Open context-compaction item for the turn it started in; status: null
@@ -743,11 +781,11 @@ export function createClaudeEventTranslator(
       lastModelFallback: undefined,
       openAssistantMessageIdsByScope: new Map(),
       openCompaction: undefined,
-      openReasoningItemIdsByScope: new Map(),
+      openScopedItemIdsByScope: new Map(),
       opaqueTaskIds: new Set(),
       pendingAcceptedUserMessages: [],
       pendingHardRateLimitRejection: undefined,
-      reasoningItemCounter: 0,
+      scopedItemCounter: 0,
       selectedModelContextWindow: null,
       tasksById: new Map(),
       toolItemsByCallId: new Map(),
@@ -757,17 +795,10 @@ export function createClaudeEventTranslator(
     isEvictable: (state) =>
       !hasOpenClaudeBackgroundTasks(state.tasksById) &&
       state.opaqueTaskIds.size === 0,
-    onTurnStart: ({ events, state, threadId, turnId }) => {
+    onTurnStart: ({ state }) => {
       state.latestRequestContextTokens = undefined;
       state.latestProviderCheckpointId = undefined;
       state.pendingHardRateLimitRejection = undefined;
-      drainAcceptedUserMessages({
-        events,
-        providerThreadId: "",
-        state,
-        threadId,
-        turnId,
-      });
     },
     onTurnFinish: ({ state }) => {
       state.pendingHardRateLimitRejection = undefined;
@@ -1237,7 +1268,7 @@ export function createClaudeEventTranslator(
             state,
             threadId,
           });
-          const opensItem = !state.openReasoningItemIdsByScope.has(
+          const opensItem = !state.openScopedItemIdsByScope.has(
             `${parentToolCallId ?? "root"}:${reasoningDelta.contentIndex}`,
           );
           const itemId = claudeReasoningItemIds.getOrCreate({
