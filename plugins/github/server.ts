@@ -832,6 +832,9 @@ export default async function plugin(bb: BbPluginApi) {
             }`,
           );
         }
+        // The abort may have arrived while syncAll() ran; the listener below
+        // would never fire for an already-aborted signal.
+        if (signal.aborted) break;
         await new Promise<void>((resolve) => {
           const timer = setTimeout(resolve, delayMs);
           signal.addEventListener(

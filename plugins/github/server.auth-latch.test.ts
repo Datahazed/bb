@@ -107,9 +107,10 @@ async function loadWithSyncServiceOnce(
   await plugin(bb);
   // Run the sync service the way the host does at activation. Before the fix
   // its first syncAll() threw NeedsConfigurationError and it stopped for
-  // good; the fixed plugin keeps looping, so abort it after its first pass.
+  // good; the fixed plugin keeps looping. Abort right away: the loop already
+  // entered its first pass, finishes it, and exits before the retry wait
+  // (no timing assumptions about how fast the fake gh spawns).
   const { controller, done } = harness.runService("sync");
-  await new Promise((resolve) => setTimeout(resolve, 150));
   controller.abort();
   await done;
   return { bb, harness };
