@@ -10724,6 +10724,50 @@ declare const threadTabsResponseSchema: z$1.ZodObject<{
         kind: z$1.ZodLiteral<"git-diff">;
     }, z$1.core.$strict>, z$1.ZodObject<{
         actionId: z$1.ZodString;
+        fileOpenerOwner: z$1.ZodOptional<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"workspace-file-preview">;
+            environmentId: z$1.ZodNullable<z$1.ZodString>;
+            projectId: z$1.ZodNullable<z$1.ZodString>;
+            tab: z$1.ZodObject<{
+                lineRange: z$1.ZodNullable<z$1.ZodObject<{
+                    endLineNumber: z$1.ZodNumber;
+                    startLineNumber: z$1.ZodNumber;
+                }, z$1.core.$strict>>;
+                path: z$1.ZodString;
+                source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"working-tree">;
+                }, z$1.core.$strict>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"head">;
+                }, z$1.core.$strict>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"merge-base">;
+                    ref: z$1.ZodString;
+                }, z$1.core.$strict>], "kind">;
+                statusLabel: z$1.ZodNullable<z$1.ZodLiteral<"deleted">>;
+            }, z$1.core.$strict>;
+            threadId: z$1.ZodNullable<z$1.ZodString>;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"host-file-preview">;
+            environmentId: z$1.ZodString;
+            tab: z$1.ZodObject<{
+                lineRange: z$1.ZodNullable<z$1.ZodObject<{
+                    endLineNumber: z$1.ZodNumber;
+                    startLineNumber: z$1.ZodNumber;
+                }, z$1.core.$strict>>;
+                path: z$1.ZodString;
+            }, z$1.core.$strict>;
+            threadId: z$1.ZodString;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"thread-storage-file-preview">;
+            environmentId: z$1.ZodNullable<z$1.ZodString>;
+            tab: z$1.ZodObject<{
+                lineRange: z$1.ZodNullable<z$1.ZodObject<{
+                    endLineNumber: z$1.ZodNumber;
+                    startLineNumber: z$1.ZodNumber;
+                }, z$1.core.$strict>>;
+                path: z$1.ZodString;
+            }, z$1.core.$strict>;
+            threadId: z$1.ZodString;
+        }, z$1.core.$strict>], "kind">>;
         id: z$1.ZodString;
         kind: z$1.ZodLiteral<"plugin-panel">;
         paramsJson: z$1.ZodNullable<z$1.ZodString>;
@@ -10802,6 +10846,50 @@ declare const updateThreadTabsRequestSchema: z$1.ZodObject<{
         kind: z$1.ZodLiteral<"git-diff">;
     }, z$1.core.$strict>, z$1.ZodObject<{
         actionId: z$1.ZodString;
+        fileOpenerOwner: z$1.ZodOptional<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"workspace-file-preview">;
+            environmentId: z$1.ZodNullable<z$1.ZodString>;
+            projectId: z$1.ZodNullable<z$1.ZodString>;
+            tab: z$1.ZodObject<{
+                lineRange: z$1.ZodNullable<z$1.ZodObject<{
+                    endLineNumber: z$1.ZodNumber;
+                    startLineNumber: z$1.ZodNumber;
+                }, z$1.core.$strict>>;
+                path: z$1.ZodString;
+                source: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"working-tree">;
+                }, z$1.core.$strict>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"head">;
+                }, z$1.core.$strict>, z$1.ZodObject<{
+                    kind: z$1.ZodLiteral<"merge-base">;
+                    ref: z$1.ZodString;
+                }, z$1.core.$strict>], "kind">;
+                statusLabel: z$1.ZodNullable<z$1.ZodLiteral<"deleted">>;
+            }, z$1.core.$strict>;
+            threadId: z$1.ZodNullable<z$1.ZodString>;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"host-file-preview">;
+            environmentId: z$1.ZodString;
+            tab: z$1.ZodObject<{
+                lineRange: z$1.ZodNullable<z$1.ZodObject<{
+                    endLineNumber: z$1.ZodNumber;
+                    startLineNumber: z$1.ZodNumber;
+                }, z$1.core.$strict>>;
+                path: z$1.ZodString;
+            }, z$1.core.$strict>;
+            threadId: z$1.ZodString;
+        }, z$1.core.$strict>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"thread-storage-file-preview">;
+            environmentId: z$1.ZodNullable<z$1.ZodString>;
+            tab: z$1.ZodObject<{
+                lineRange: z$1.ZodNullable<z$1.ZodObject<{
+                    endLineNumber: z$1.ZodNumber;
+                    startLineNumber: z$1.ZodNumber;
+                }, z$1.core.$strict>>;
+                path: z$1.ZodString;
+            }, z$1.core.$strict>;
+            threadId: z$1.ZodString;
+        }, z$1.core.$strict>], "kind">>;
         id: z$1.ZodString;
         kind: z$1.ZodLiteral<"plugin-panel">;
         paramsJson: z$1.ZodNullable<z$1.ZodString>;
