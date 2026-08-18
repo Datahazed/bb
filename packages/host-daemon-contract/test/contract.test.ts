@@ -1122,7 +1122,10 @@ describe("host-daemon command schemas", () => {
   // Version 118 rejects successful provider update results when the daemon
   // cannot verify a version change. Older daemons can report a no-op Claude
   // update as successful, so enrolled machines must update for honest results.
-  // Version 117 adds thread/context/cleared to the provider event wire model.
+  // Version 132 deduplicates exact Codex terminal-item retries before they
+  // cross the daemon boundary. Version 131 preserves Pi provider identity on
+  // bridge resume. Version 117 adds thread/context/cleared to the provider
+  // event wire model.
   // Version 116 reports provider exits that happen while a turn start is
   // pending. Older daemons can leave the server thread active until the live
   // command timeout, so enrolled machines must update before handling turns.
@@ -1135,7 +1138,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(130);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(132);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

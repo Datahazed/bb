@@ -701,9 +701,15 @@ DAEMON_PID=$(cat "$DAEMON_RESTART_PID_PATH")
 THREAD_STATE=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$SMOKE_THREAD_ID" | jq -r '.status')
 
 if [ "$THREAD_STATE" = "active" ]; then
-  bb thread wait "$SMOKE_THREAD_ID" --status idle --timeout 180
-else
-  bb thread tell "$SMOKE_THREAD_ID" "Say exactly: recovery ok"
+  # The disconnect settlement can race this snapshot: `wait` may observe that
+  # the thread already became `error` and correctly return non-zero. Re-read
+  # state instead of treating that expected terminal transition as a QA failure.
+  bb thread wait "$SMOKE_THREAD_ID" --status idle --timeout 180 || true
+fi
+
+THREAD_STATE=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$SMOKE_THREAD_ID" | jq -r '.status')
+if [ "$THREAD_STATE" != "idle" ]; then
+  bb thread tell "$SMOKE_THREAD_ID" "Say exactly: recovery ok" --mode auto
   bb thread wait "$SMOKE_THREAD_ID" --status idle --timeout 120
 fi
 

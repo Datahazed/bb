@@ -508,6 +508,8 @@ describe("plugin update service and routes", () => {
     expect(listPluginArtifacts(db, "updater")).toHaveLength(2);
   });
 
+  // A real git update is built, promoted, crashed, and rolled back here.
+  // Under full-workspace load it can exceed the suite's 30s default.
   it("rolls back when a background service crashes during stabilization", async () => {
     const installedCommit = getInstalledPluginRegistration(
       db,
@@ -578,7 +580,7 @@ describe("plugin update service and routes", () => {
     expect(
       service.list().find((entry) => entry.id === "updater"),
     ).toMatchObject({ id: "updater", version: "1.0.0", status: "running" });
-  });
+  }, 60_000);
 
   it("finishes an interrupted rollback before loading plugins after restart", async () => {
     const pluginDir = join(workDir, "data", "plugins", "updater");

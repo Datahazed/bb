@@ -1093,6 +1093,8 @@ describe("plugin install flows", () => {
       },
     );
 
+    // This performs an initial git install and a second startup recovery build;
+    // loaded runners need more headroom than the suite's 30s default.
     it("restores a target moved aside by an interrupted promotion", async () => {
       const repoDir = join(workDir, "repo-interrupted-promotion");
       await writePluginFixture(repoDir, {
@@ -1141,7 +1143,7 @@ describe("plugin install flows", () => {
       expect(
         service.list().find((plugin) => plugin.id === "interrupted-promotion"),
       ).toMatchObject({ id: "interrupted-promotion", status: "running" });
-    });
+    }, 60_000);
 
     it("ignores a repository .npmrc when installing dependencies", async () => {
       const repoDir = join(workDir, "repo-npmrc");

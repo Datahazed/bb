@@ -371,6 +371,270 @@ describe("events", () => {
     ]);
   });
 
+  it("deduplicates a settled item until item/started reopens it", () => {
+    const { db, thread } = setup();
+    const turnId = "turn-denied-approval";
+    const itemId = "command-denied-approval";
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope(turnId),
+        itemId: null,
+        itemKind: null,
+        providerThreadId: "provider-thread-denied-approval",
+        data: JSON.stringify({
+          providerThreadId: "provider-thread-denied-approval",
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/started",
+        scope: turnScope(turnId),
+        itemId,
+        itemKind: "commandExecution",
+        providerThreadId: "provider-thread-denied-approval",
+        data: JSON.stringify({
+          providerThreadId: "provider-thread-denied-approval",
+          item: {
+            type: "commandExecution",
+            id: itemId,
+            command: "false",
+            cwd: "/tmp/project",
+            status: "pending",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "item/completed",
+        scope: turnScope(turnId),
+        itemId,
+        itemKind: "commandExecution",
+        providerThreadId: "provider-thread-denied-approval",
+        data: JSON.stringify({
+          providerThreadId: "provider-thread-denied-approval",
+          item: {
+            type: "commandExecution",
+            id: itemId,
+            command: "false",
+            cwd: "/tmp/project",
+            status: "interrupted",
+            approvalStatus: "denied",
+          },
+        }),
+      },
+    ]);
+
+    const result = db.transaction(
+      (tx) =>
+        appendDaemonEventsInTransaction(tx, [
+          {
+            threadId: thread.id,
+            environmentId: null,
+            type: "item/completed",
+            scope: turnScope(turnId),
+            itemId,
+            itemKind: "commandExecution",
+            providerThreadId: "provider-thread-denied-approval",
+            data: JSON.stringify({
+              providerThreadId: "provider-thread-denied-approval",
+              item: {
+                type: "commandExecution",
+                id: itemId,
+                command: "false",
+                cwd: "/tmp/project",
+                status: "interrupted",
+                approvalStatus: "denied",
+              },
+            }),
+          },
+          {
+            threadId: thread.id,
+            environmentId: null,
+            type: "item/started",
+            scope: turnScope(turnId),
+            itemId,
+            itemKind: "commandExecution",
+            providerThreadId: "provider-thread-after-restart",
+            data: JSON.stringify({
+              providerThreadId: "provider-thread-after-restart",
+              item: {
+                type: "commandExecution",
+                id: itemId,
+                command: "false",
+                cwd: "/tmp/project",
+                status: "pending",
+              },
+            }),
+          },
+          {
+            threadId: thread.id,
+            environmentId: null,
+            type: "item/completed",
+            scope: turnScope(turnId),
+            itemId,
+            itemKind: "commandExecution",
+            providerThreadId: "provider-thread-after-restart",
+            data: JSON.stringify({
+              providerThreadId: "provider-thread-after-restart",
+              item: {
+                type: "commandExecution",
+                id: itemId,
+                command: "false",
+                cwd: "/tmp/project",
+                status: "interrupted",
+                approvalStatus: "denied",
+              },
+            }),
+          },
+          {
+            threadId: thread.id,
+            type: "system/error",
+            ...daemonThreadEventFields,
+            data: JSON.stringify({ message: "neighbor persisted" }),
+          },
+        ]),
+      { behavior: "immediate" },
+    );
+
+    expect(result).toEqual({
+      acceptedEvents: [
+        { threadId: thread.id, sequence: 4 },
+        { threadId: thread.id, sequence: 5 },
+        { threadId: thread.id, sequence: 6 },
+      ],
+      insertedInputIndexes: [1, 2, 3],
+      skippedTurnUnstartedInputIndexes: [],
+    });
+    expect(listEvents(db, { threadId: thread.id })).toMatchObject([
+      { sequence: 1, type: "turn/started" },
+      { sequence: 2, type: "item/started", itemId },
+      { sequence: 3, type: "item/completed", itemId },
+      { sequence: 4, type: "item/started", itemId, turnId },
+      {
+        sequence: 5,
+        type: "item/completed",
+        itemId,
+        turnId,
+      },
+      { sequence: 6, type: "system/error" },
+    ]);
+  });
+
+  it("uses item/started to reopen a thread-scoped background completion", () => {
+    const { db, thread } = setup();
+    const turnId = "turn-background-reuse";
+    const itemId = "background-reused";
+    const providerThreadId = "provider-background-reuse";
+    const backgroundItem = {
+      type: "backgroundTask" as const,
+      id: itemId,
+      taskType: LOCAL_BASH_TASK_TYPE,
+      status: "pending" as const,
+      taskStatus: "running" as const,
+      description: "Background command",
+      skipTranscript: false,
+    };
+    const completedBackgroundItem = {
+      ...backgroundItem,
+      status: "completed" as const,
+      taskStatus: "completed" as const,
+    };
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope(turnId),
+        itemId: null,
+        itemKind: null,
+        providerThreadId,
+        data: JSON.stringify({ providerThreadId }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/started",
+        scope: turnScope(turnId),
+        itemId,
+        itemKind: "backgroundTask",
+        providerThreadId,
+        data: JSON.stringify({ providerThreadId, item: backgroundItem }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "item/backgroundTask/completed",
+        scope: threadScope(),
+        itemId,
+        itemKind: "backgroundTask",
+        providerThreadId,
+        data: JSON.stringify({
+          providerThreadId,
+          item: completedBackgroundItem,
+        }),
+      },
+    ]);
+
+    const result = db.transaction(
+      (tx) =>
+        appendDaemonEventsInTransaction(tx, [
+          {
+            threadId: thread.id,
+            environmentId: null,
+            type: "item/backgroundTask/completed",
+            scope: threadScope(),
+            itemId,
+            itemKind: "backgroundTask",
+            providerThreadId,
+            data: JSON.stringify({
+              providerThreadId,
+              item: completedBackgroundItem,
+            }),
+          },
+          {
+            threadId: thread.id,
+            environmentId: null,
+            type: "item/started",
+            scope: turnScope(turnId),
+            itemId,
+            itemKind: "backgroundTask",
+            providerThreadId,
+            data: JSON.stringify({ providerThreadId, item: backgroundItem }),
+          },
+          {
+            threadId: thread.id,
+            environmentId: null,
+            type: "item/backgroundTask/completed",
+            scope: threadScope(),
+            itemId,
+            itemKind: "backgroundTask",
+            providerThreadId,
+            data: JSON.stringify({
+              providerThreadId,
+              item: completedBackgroundItem,
+            }),
+          },
+        ]),
+      { behavior: "immediate" },
+    );
+
+    expect(result).toEqual({
+      acceptedEvents: [
+        { threadId: thread.id, sequence: 4 },
+        { threadId: thread.id, sequence: 5 },
+      ],
+      insertedInputIndexes: [1, 2],
+      skippedTurnUnstartedInputIndexes: [],
+    });
+  });
+
   it("rejects daemon turn-scoped events before turn/started is stored", () => {
     const { db, thread } = setup();
 
