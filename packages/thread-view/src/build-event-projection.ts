@@ -597,6 +597,18 @@ function getCompactionTurnFinalization(
       detail: decoded.detail ?? decoded.message,
     };
   }
+  // The provider declined a requested compaction (for example pi's "Nothing
+  // to compact"): the row settles as a skipped compaction instead of staying
+  // pending forever. Other warnings inside the turn leave the row alone.
+  if (
+    decoded.type === "provider/warning" &&
+    decoded.category === "compaction-skipped"
+  ) {
+    return {
+      status: "completed",
+      detail: decoded.details ?? decoded.summary,
+    };
+  }
   if (decoded.type === "turn/completed" && decoded.status === "failed") {
     return {
       status: "error",
@@ -703,7 +715,7 @@ function buildFlatProjectionData(
 
     const compactionTurnFinalization = getCompactionTurnFinalization(decoded);
     if (compactionTurnFinalization) {
-      finalizeOpenCompactionsForTurn({
+      const settledPendingCompaction = finalizeOpenCompactionsForTurn({
         state,
         meta,
         threadId: decoded.threadId,
@@ -711,6 +723,11 @@ function buildFlatProjectionData(
         status: compactionTurnFinalization.status,
         detail: compactionTurnFinalization.detail,
       });
+      // The skipped-compaction row already carries the warning text; do not
+      // render the same notice a second time as a standalone warning row.
+      if (settledPendingCompaction && decoded.type === "provider/warning") {
+        continue;
+      }
     }
 
     if (isTerminalBufferedTextFlushEvent(eventType)) {
