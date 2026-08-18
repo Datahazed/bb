@@ -436,10 +436,13 @@ if [ -n "$bb_app_npm_prefix" ]; then
   # Fail loudly if npm skipped the native add-on install scripts (npm >= 12
   # allowScripts policy, or ignore-scripts=true in an npmrc). Without this
   # check the join only fails later, in the daemon, with a raw stack trace.
+  # better-sqlite3 loads its binding only when a database opens; node-pty
+  # loads pty.node when the module loads.
   bb_app_root="$bb_app_npm_prefix/lib/node_modules/bb-app"
   if ! node -e '
     const root = process.argv[1];
-    require(root + "/node_modules/better-sqlite3");
+    const Database = require(root + "/node_modules/better-sqlite3");
+    new Database(":memory:").close();
     require(root + "/node_modules/node-pty");
   ' "$bb_app_root" >/dev/null 2>&1; then
     fail_step "npm installed bb-app, but its native add-ons (better-sqlite3, node-pty) did not load."

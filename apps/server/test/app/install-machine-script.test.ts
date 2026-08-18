@@ -162,10 +162,14 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
 // Mocks curl to serve the redeem endpoint and answer the bb-app tarball
 // download with the given status; npm records invocations and fabricates a
 // bb-app that enrolls into whatever BB_DATA_DIR the script hands it. Like a
-// real install, the fake npm lays out bb-app's native add-ons as loadable
-// modules under lib/node_modules/bb-app/node_modules; when
-// FAKE_NPM_SKIP_NATIVE_MODULES is set it leaves them empty, which mimics npm
-// >= 12 blocking their install scripts (or ignore-scripts=true).
+// real install, the fake npm lays out bb-app's native add-ons under
+// lib/node_modules/bb-app/node_modules: the package JavaScript is always
+// present, and the fake modules load their build/Release/*.node output the
+// way the real ones do (better-sqlite3 when a database opens, node-pty at
+// module load). FAKE_NPM_SKIP_NATIVE_MODULES names the modules (comma
+// separated) whose native output the fake npm leaves out while it keeps their
+// JavaScript, which mimics npm >= 12 blocking those install scripts (or
+// ignore-scripts=true).
 function writeServerInstallTools(
   fixture: ReturnType<typeof createFixture>,
   artifactStatus: 200 | 404,
@@ -206,12 +210,35 @@ done
 mkdir -p "$prefix/bin"
 cp "${bbAppTemplatePath}" "$prefix/bin/bb-app"
 chmod +x "$prefix/bin/bb-app"
-for module in better-sqlite3 node-pty; do
-  mkdir -p "$prefix/lib/node_modules/bb-app/node_modules/$module"
-  if [ -z "$FAKE_NPM_SKIP_NATIVE_MODULES" ]; then
-    printf '%s\n' 'module.exports = {};' >"$prefix/lib/node_modules/bb-app/node_modules/$module/index.js"
-  fi
-done
+sqlite_dir="$prefix/lib/node_modules/bb-app/node_modules/better-sqlite3"
+pty_dir="$prefix/lib/node_modules/bb-app/node_modules/node-pty"
+mkdir -p "$sqlite_dir/build/Release" "$pty_dir/build/Release"
+cat >"$sqlite_dir/index.js" <<'JS'
+const fs = require("node:fs");
+const path = require("node:path");
+module.exports = class Database {
+  constructor() {
+    const binding = path.join(__dirname, "build/Release/better_sqlite3.node");
+    if (!fs.existsSync(binding)) throw new Error("Could not locate the bindings file. Tried: " + binding);
+  }
+  close() {}
+};
+JS
+cat >"$pty_dir/index.js" <<'JS'
+const fs = require("node:fs");
+const path = require("node:path");
+const binding = path.join(__dirname, "build/Release/pty.node");
+if (!fs.existsSync(binding)) throw new Error("Failed to load native module: pty.node, checked: " + binding);
+module.exports = {};
+JS
+case ",$FAKE_NPM_SKIP_NATIVE_MODULES," in
+  *,better-sqlite3,*) ;;
+  *) : >"$sqlite_dir/build/Release/better_sqlite3.node" ;;
+esac
+case ",$FAKE_NPM_SKIP_NATIVE_MODULES," in
+  *,node-pty,*) ;;
+  *) : >"$pty_dir/build/Release/pty.node" ;;
+esac
 `,
   );
 }
@@ -451,24 +478,36 @@ describe("machine install script", () => {
     process.kill(daemonPid, "SIGTERM");
   });
 
-  it("fails loudly when npm skipped the native add-on install scripts", () => {
-    const fixture = createFixture();
-    writeServerInstallTools(fixture, 200);
-    const result = runScript(JOIN_ARGS, fixture, {
-      BB_INSTALL_SKIP_SERVICE: "1",
-      FAKE_NPM_SKIP_NATIVE_MODULES: "1",
-    });
+  // npm exits 0 when it blocks install scripts. better-sqlite3 loads its
+  // binding only when a database opens, so a plain require passes; node-pty
+  // loads pty.node at module load.
+  it.each([
+    ["better-sqlite3,node-pty", "both native add-ons"],
+    ["better-sqlite3", "only better-sqlite3's native output"],
+    ["node-pty", "only node-pty's native output"],
+  ])(
+    "fails loudly when npm skipped the install scripts for %s (%s)",
+    (skipped) => {
+      const fixture = createFixture();
+      writeServerInstallTools(fixture, 200);
+      const result = runScript(JOIN_ARGS, fixture, {
+        BB_INSTALL_SKIP_SERVICE: "1",
+        FAKE_NPM_SKIP_NATIVE_MODULES: skipped,
+      });
 
-    expect(result.status, result.stderr).toBe(1);
-    expect(result.stderr).toContain(
-      "npm installed bb-app, but its native add-ons (better-sqlite3, node-pty) did not load.",
-    );
-    expect(result.stderr).toContain(
-      "npm_config_allow_scripts=better-sqlite3,node-pty,@parcel/watcher",
-    );
-    // The installer must stop before it starts the temporary host daemon.
-    expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
-  });
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain(
+        "npm installed bb-app, but its native add-ons (better-sqlite3, node-pty) did not load.",
+      );
+      expect(result.stderr).toContain(
+        "npm_config_allow_scripts=better-sqlite3,node-pty,@parcel/watcher npm_config_ignore_scripts=false",
+      );
+      // The installer must stop before it starts the temporary host daemon.
+      expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(
+        false,
+      );
+    },
+  );
 
   it("defaults the data dir to a per-server directory under ~/.bb-machines", () => {
     const fixture = createFixture();

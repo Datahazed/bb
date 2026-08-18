@@ -26,6 +26,7 @@ async function createFixture(
     enabled?: boolean;
     protocolVersion?: number;
     installFailure?: Error;
+    nativeProbeFailure?: Error;
     now?: () => number;
     serverUrl?: string;
     useDefaultInstaller?: boolean;
@@ -36,7 +37,18 @@ async function createFixture(
   const installTarball = vi.fn(async () => {
     if (args.installFailure) throw args.installFailure;
   });
-  const runProcess = vi.fn(async () => undefined);
+  const runProcess = vi.fn(async (command: string, cliArgs: string[]) => {
+    if (command === "npm" && cliArgs[0] === "root") {
+      const prefixIndex = cliArgs.indexOf("--prefix");
+      const prefix =
+        prefixIndex === -1 ? "/usr/local" : cliArgs[prefixIndex + 1];
+      return { stdout: `${prefix}/lib/node_modules\n` };
+    }
+    if (command === process.execPath && args.nativeProbeFailure) {
+      throw args.nativeProbeFailure;
+    }
+    return { stdout: "" };
+  });
   const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith("/install/version")) {
@@ -89,8 +101,9 @@ describe("protocol self-update", () => {
       "updated",
     );
 
-    expect(test.runProcess).toHaveBeenCalledOnce();
-    expect(test.runProcess).toHaveBeenCalledWith(
+    expect(test.runProcess).toHaveBeenCalledTimes(3);
+    expect(test.runProcess).toHaveBeenNthCalledWith(
+      1,
       "npm",
       [
         "install",
@@ -125,6 +138,53 @@ describe("protocol self-update", () => {
         expect.stringContaining("bb-app-update-"),
       ],
       expect.any(Object),
+    );
+  });
+
+  it("verifies the installed native add-ons before it reports an update", async () => {
+    vi.stubEnv("BB_APP_NPM_PREFIX", "/machine-data/npm");
+    const test = await createFixture({ useDefaultInstaller: true });
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+
+    expect(test.runProcess).toHaveBeenNthCalledWith(
+      2,
+      "npm",
+      ["root", "-g", "--prefix", "/machine-data/npm"],
+      expect.any(Object),
+    );
+    expect(test.runProcess).toHaveBeenNthCalledWith(
+      3,
+      process.execPath,
+      [
+        "-e",
+        expect.stringMatching(/better-sqlite3[\s\S]*:memory:[\s\S]*node-pty/u),
+        "/machine-data/npm/lib/node_modules/bb-app",
+      ],
+      expect.any(Object),
+    );
+  });
+
+  it("keeps the current daemon when the installed native add-ons do not load", async () => {
+    vi.stubEnv("BB_APP_NPM_PREFIX", "/machine-data/npm");
+    const test = await createFixture({
+      useDefaultInstaller: true,
+      nativeProbeFailure: new Error("Could not locate the bindings file"),
+    });
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe("failed");
+
+    expect(test.logger.error).toHaveBeenCalledWith(
+      {
+        err: expect.objectContaining({
+          message: expect.stringContaining(
+            "native add-ons (better-sqlite3, node-pty) did not load",
+          ),
+        }),
+      },
+      expect.stringContaining("keeping the current daemon running"),
     );
   });
 

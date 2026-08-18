@@ -236,18 +236,19 @@ To allow them for all global installs on this machine, run
 `npm config set allow-scripts=better-sqlite3,node-pty,@parcel/watcher --location=user`.
 npm 10 and 11 accept or ignore the flag, so it is safe on every supported Node.
 
-The second cause is `ignore-scripts=true` in your `~/.npmrc`. Set the
-`npm_config_ignore_scripts` environment variable to let this one command run its
-install scripts:
+The second cause is `ignore-scripts=true` in your `~/.npmrc`. That setting
+overrides `--allow-scripts`. Set the `npm_config_ignore_scripts` environment
+variable and pass `--allow-scripts` to let this one command run its install
+scripts on every npm version:
 
 ```bash
-npm_config_ignore_scripts=false npx bb-app@latest
+npm_config_ignore_scripts=false npx --allow-scripts=better-sqlite3,node-pty,@parcel/watcher bb-app@latest
 ```
 
 For a permanent install with the same setting, use:
 
 ```bash
-npm_config_ignore_scripts=false npm install -g bb-app
+npm_config_ignore_scripts=false npm install -g --allow-scripts=better-sqlite3,node-pty,@parcel/watcher bb-app
 bb-app
 ```
 

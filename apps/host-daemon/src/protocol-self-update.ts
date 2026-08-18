@@ -40,7 +40,7 @@ interface SelfUpdateProcessRunner {
     command: string,
     args: string[],
     options: { env: NodeJS.ProcessEnv },
-  ): Promise<void>;
+  ): Promise<{ stdout: string }>;
 }
 
 interface CreateProtocolSelfUpdaterOptions {
@@ -124,7 +124,8 @@ const defaultRunProcess: SelfUpdateProcessRunner = async (
   args,
   options,
 ) => {
-  await execFileAsync(command, args, options);
+  const { stdout } = await execFileAsync(command, args, options);
+  return { stdout };
 };
 
 // bb-app depends on native add-ons whose binaries are fetched or built by npm
@@ -132,8 +133,47 @@ const defaultRunProcess: SelfUpdateProcessRunner = async (
 // installs unless they are named in --allow-scripts; the installed package's
 // own package.json#allowScripts is not consulted for `npm install -g`.
 // npm 10 ignores the unknown flag; npm 11 accepts it.
-const BB_APP_ALLOW_SCRIPTS_ARG =
-  "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher";
+const BB_APP_NATIVE_MODULES = "better-sqlite3,node-pty,@parcel/watcher";
+const BB_APP_ALLOW_SCRIPTS_ARG = `--allow-scripts=${BB_APP_NATIVE_MODULES}`;
+
+// npm exits 0 even when it skips the native add-on install scripts (npm >= 12
+// allowScripts policy, or ignore-scripts=true in an npmrc, which overrides the
+// allow-list). This probe loads the installed add-ons the way bb does at
+// startup: better-sqlite3 loads its binding when a database opens; node-pty
+// loads pty.node when the module loads. It runs in a child process so a
+// broken package cannot take the running daemon down.
+// Keep in sync with the check in apps/server/src/assets/install-machine.sh.
+const NATIVE_MODULE_PROBE = `
+const root = process.argv[1];
+const Database = require(root + "/node_modules/better-sqlite3");
+new Database(":memory:").close();
+require(root + "/node_modules/node-pty");
+`;
+
+async function verifyInstalledNativeModules(
+  prefixArgs: string[],
+  runProcess: SelfUpdateProcessRunner,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  const { stdout } = await runProcess("npm", ["root", "-g", ...prefixArgs], {
+    env,
+  });
+  const globalRoot = stdout.trim();
+  if (globalRoot === "") {
+    throw new Error("npm root -g returned no path for the installed bb-app");
+  }
+  const bbAppRoot = join(globalRoot, "bb-app");
+  try {
+    await runProcess(process.execPath, ["-e", NATIVE_MODULE_PROBE, bbAppRoot], {
+      env,
+    });
+  } catch (error) {
+    throw new Error(
+      `npm installed bb-app at ${bbAppRoot}, but its native add-ons (better-sqlite3, node-pty) did not load. npm did not run their install scripts; check for an npm allowScripts or ignore-scripts policy and rerun with npm_config_allow_scripts=${BB_APP_NATIVE_MODULES} npm_config_ignore_scripts=false.`,
+      { cause: error },
+    );
+  }
+}
 
 async function defaultInstallTarball(
   tarballPath: string,
@@ -154,13 +194,13 @@ async function defaultInstallTarball(
   }
   const prefixArgs =
     configuredPrefix === undefined ? [] : ["--prefix", configuredPrefix];
+  const env = { ...process.env, PATH: path };
   await runProcess(
     "npm",
     ["install", "-g", BB_APP_ALLOW_SCRIPTS_ARG, ...prefixArgs, tarballPath],
-    {
-      env: { ...process.env, PATH: path },
-    },
+    { env },
   );
+  await verifyInstalledNativeModules(prefixArgs, runProcess, env);
 }
 
 export function createProtocolSelfUpdater(
