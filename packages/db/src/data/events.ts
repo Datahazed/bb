@@ -954,8 +954,11 @@ function storedEventRowFieldsWithInlineOutputLimit(
 
 export interface ListStoredEventRowsArgs {
   afterSequence?: number;
+  beforeSequence?: number;
   limit?: number;
+  order?: "asc" | "desc";
   threadId: string;
+  types?: readonly ThreadEventType[];
 }
 
 export interface FindStoredEventRowArgs {
@@ -1209,20 +1212,67 @@ export function listStoredEventRows(
   db: DbConnection,
   args: ListStoredEventRowsArgs,
 ): StoredEventRow[] {
-  return db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      args.afterSequence === undefined
-        ? eq(events.threadId, args.threadId)
-        : and(
-            eq(events.threadId, args.threadId),
-            gt(events.sequence, args.afterSequence),
-          ),
-    )
-    .orderBy(events.sequence)
-    .limit(args.limit ?? Number.MAX_SAFE_INTEGER)
-    .all();
+  if (args.types?.length === 0) {
+    return [];
+  }
+
+  const limit = args.limit ?? Number.MAX_SAFE_INTEGER;
+  const order = args.order ?? "asc";
+  const listTypePage = (
+    type: ThreadEventType | undefined,
+  ): StoredEventRow[] => {
+    return db
+      .select(storedEventRowFields)
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          args.afterSequence === undefined
+            ? undefined
+            : gt(events.sequence, args.afterSequence),
+          args.beforeSequence === undefined
+            ? undefined
+            : lt(events.sequence, args.beforeSequence),
+          type === undefined ? undefined : eq(events.type, type),
+        ),
+      )
+      .orderBy(order === "desc" ? desc(events.sequence) : events.sequence)
+      .limit(limit)
+      .all();
+  };
+
+  if (args.types === undefined) {
+    return listTypePage(undefined);
+  }
+
+  // SQLite otherwise prefers (thread_id, sequence) to satisfy the global
+  // ORDER BY and can walk an entire delta-heavy thread to find a few matching
+  // types. One bounded read per type keeps every lookup on
+  // (thread_id, type, sequence); merge the already-sorted heads in memory.
+  const rowsByType = [...new Set(args.types)].map((type) => listTypePage(type));
+  const offsets = rowsByType.map(() => 0);
+  const merged: StoredEventRow[] = [];
+  while (merged.length < limit) {
+    let selectedTypeIndex = -1;
+    let selectedRow: StoredEventRow | undefined;
+    for (let typeIndex = 0; typeIndex < rowsByType.length; typeIndex += 1) {
+      const row = rowsByType[typeIndex]?.[offsets[typeIndex] ?? 0];
+      if (
+        row !== undefined &&
+        (selectedRow === undefined ||
+          (order === "desc"
+            ? row.sequence > selectedRow.sequence
+            : row.sequence < selectedRow.sequence))
+      ) {
+        selectedTypeIndex = typeIndex;
+        selectedRow = row;
+      }
+    }
+    if (selectedRow === undefined || selectedTypeIndex === -1) break;
+    merged.push(selectedRow);
+    offsets[selectedTypeIndex] = (offsets[selectedTypeIndex] ?? 0) + 1;
+  }
+  return merged;
 }
 
 export function listStoredEventRowsByThreadIdsAndTypes(

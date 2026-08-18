@@ -93,7 +93,6 @@ describe("plugin bb.sdk bind gate", () => {
     ) => ({ pong: true }),
   );
   const disposePluginHost = vi.fn(async () => undefined);
-
   beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);

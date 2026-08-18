@@ -1227,9 +1227,7 @@ function createFakePluginHostInternal(
       // declarations exactly like production.
       const normalized = validatePluginProviderDeclaration(declaration);
       if (
-        providerRegistrations.some(
-          (existing) => existing.id === normalized.id,
-        )
+        providerRegistrations.some((existing) => existing.id === normalized.id)
       ) {
         throw new Error(
           `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
