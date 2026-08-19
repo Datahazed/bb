@@ -4,6 +4,8 @@ import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   clampBbDesktopBrowserViewBounds,
   type BbDesktopBrowserAttachRequest,
+  type BbDesktopBrowserFindInPageRequest,
+  type BbDesktopBrowserFindResult,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserOpenTabRequest,
   type BbDesktopBrowserScopedOpenTabRequest,
@@ -11,11 +13,13 @@ import {
   type BbDesktopBrowserSetVisibleRequest,
   type BbDesktopBrowserSnapshot,
   type BbDesktopBrowserState,
+  type BbDesktopBrowserStopFindInPageRequest,
   type BbDesktopBrowserViewportBounds,
   type BbDesktopBrowserViewBounds,
 } from "@bb/desktop-contract";
 import type { AppCommandId, AppShortcutInput } from "@bb/domain";
 import {
+  BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
@@ -76,13 +80,21 @@ interface BrowserViewEntry {
   rendererRecoveryState: "healthy" | "pending" | "blocked";
   rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
   visible: boolean;
+  /**
+   * Request id of the latest `findInPage` call, or null when no find session
+   * is active. `found-in-page` results for any other id are stale (an older
+   * query, or a session the renderer already stopped) and are dropped so they
+   * can never overwrite the count of a newer query or revive a cleared one.
+   */
+  activeFindRequestId: number | null;
 }
 
 export type DesktopBrowserHostWebContentsPayload =
   | BbDesktopBrowserState
   | BbDesktopBrowserOpenTabRequest
   | BbDesktopBrowserScopedOpenTabRequest
-  | BbDesktopBrowserSnapshot;
+  | BbDesktopBrowserSnapshot
+  | BbDesktopBrowserFindResult;
 
 export interface DesktopBrowserHostContentBounds {
   height: number;
@@ -158,6 +170,18 @@ export interface DesktopBrowserViewManager {
   ): void;
   setVisible(
     args: HostScopedRequestArgs<BbDesktopBrowserSetVisibleRequest>,
+  ): void;
+  /**
+   * Find text in a tab's page. Results arrive asynchronously as
+   * `found-in-page` events, relayed to the renderer over
+   * `BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL`.
+   */
+  findInPage(
+    args: HostScopedRequestArgs<BbDesktopBrowserFindInPageRequest>,
+  ): void;
+  /** End a tab's find session and clear (or keep/activate) its highlights. */
+  stopFindInPage(
+    args: HostScopedRequestArgs<BbDesktopBrowserStopFindInPageRequest>,
   ): void;
   /**
    * Hide every visible view owned by the window for the duration of a native
@@ -460,7 +484,9 @@ export function createDesktopBrowserViewManager(
       // Prevent both the untrusted page and Electron's application menu from
       // also handling a chord that bb resolved as a browser command.
       event.preventDefault();
-      if (command === "browser.focusLocation") {
+      // These commands move typing into a renderer input (address bar, find
+      // bar), so the host window must take keyboard focus away from the view.
+      if (command === "browser.focusLocation" || command === "browser.find") {
         args.focusHostWebContents(hostWindow.webContents.id);
       }
       args.dispatchAppCommand({
@@ -544,6 +570,19 @@ export function createDesktopBrowserViewManager(
         },
       ]);
       menu.popup();
+    });
+
+    webContents.on("found-in-page", (_event, result) => {
+      if (result.requestId !== entry.activeFindRequestId) {
+        return;
+      }
+      send(hostWindow, BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL, {
+        tabId,
+        requestId: result.requestId,
+        activeMatchOrdinal: result.activeMatchOrdinal,
+        matches: result.matches,
+        finalUpdate: result.finalUpdate,
+      });
     });
 
     webContents.on("render-process-gone", (_event, details) => {
@@ -631,6 +670,7 @@ export function createDesktopBrowserViewManager(
       rendererRecoveryState: "healthy",
       rendererRecoveryTimer: null,
       visible: false,
+      activeFindRequestId: null,
     };
     wireWebContents(args.hostWindow, args.tabId, entry);
     args.hostWindow.contentView.addChildView(view);
@@ -757,6 +797,25 @@ export function createDesktopBrowserViewManager(
     setBounds({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
         setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
+      });
+    },
+    findInPage({ hostWindow, request }) {
+      withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        // Electron's `findNext` means "start a new find session" (true for the
+        // first request of a query, false to step through its matches).
+        entry.activeFindRequestId = entry.view.webContents.findInPage(
+          request.text,
+          {
+            forward: request.forward,
+            findNext: request.newSession,
+          },
+        );
+      });
+    },
+    stopFindInPage({ hostWindow, request }) {
+      withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        entry.activeFindRequestId = null;
+        entry.view.webContents.stopFindInPage(request.action);
       });
     },
     setVisible({ hostWindow, request }) {
