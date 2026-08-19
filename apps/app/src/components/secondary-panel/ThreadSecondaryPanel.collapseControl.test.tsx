@@ -17,7 +17,10 @@ import {
   sidebarSplitStorageKey,
 } from "./sidebarSplitLayout";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
+import {
+  isGitDiffDataActive,
+  ThreadSecondaryPanel,
+} from "./ThreadSecondaryPanel";
 
 afterEach(() => {
   cleanup();
@@ -197,12 +200,34 @@ describe("ThreadSecondaryPanel compact file content", () => {
     expect(restoredTabGroups).toHaveLength(2);
     expect(restoredTabGroups[0]?.textContent).toContain("Info");
     expect(restoredTabGroups[1]?.textContent).toContain("index.ts");
-    expect(renderSplitTabContent).toHaveBeenCalledWith(activeTab);
+    expect(renderSplitTabContent).toHaveBeenCalledWith(
+      activeTab,
+      expect.objectContaining({
+        visibleActiveTabIds: expect.arrayContaining([activeTab.id]),
+      }),
+    );
     expect(window.localStorage.getItem(storageKey)).toBe(storedSplit);
   });
 });
 
 describe("ThreadSecondaryPanel Diff eligibility", () => {
+  it("keeps Diff data active while a visible split Diff pane is unfocused", () => {
+    expect(
+      isGitDiffDataActive({
+        isDiffPanelActive: false,
+        sidebarSplitsEnabled: true,
+        visibleSplitActiveTabIds: [createGitDiffFixedPanelTab().id, "file-a"],
+      }),
+    ).toBe(true);
+    expect(
+      isGitDiffDataActive({
+        isDiffPanelActive: false,
+        sidebarSplitsEnabled: true,
+        visibleSplitActiveTabIds: ["file-a"],
+      }),
+    ).toBe(false);
+  });
+
   it("falls back from an ineligible active Diff tab to Info", () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     render(
@@ -322,7 +347,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
     expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
   });
 
-  it("offers every existing split position from the right-panel control and moves the active tab", () => {
+  it("offers only horizontal split positions from the right-panel control and moves the active tab", () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     const onOpenNewTab = vi.fn();
     const fileTab = createWorkspaceFilePreviewFixedPanelTab({
@@ -376,16 +401,26 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       </Wrapper>,
     );
 
+    const unsplitActiveSurface = screen.getByRole("button", {
+      name: "index.ts",
+    }).parentElement;
+    expect(unsplitActiveSurface?.className).toContain("bg-state-active");
+    expect(unsplitActiveSurface?.className).not.toContain(
+      "before:bg-state-active",
+    );
+
     const control = screen.getByRole("button", { name: "Full Screen" });
     fireEvent.focus(control);
     expect(
       screen.getByRole("menu", { name: "Pane arrangement" }),
     ).not.toBeNull();
-    for (const side of ["left", "right", "top", "bottom"] as const) {
+    for (const side of ["left", "right"] as const) {
       expect(
         screen.getByRole("menuitem", { name: `Move ${side}` }),
       ).not.toBeNull();
     }
+    expect(screen.queryByRole("menuitem", { name: "Move top" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Move bottom" })).toBeNull();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Move right" }));
     const panes = Array.from(
@@ -396,6 +431,12 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       document.querySelectorAll<HTMLElement>("[data-sidebar-split-tab-group]"),
     );
     expect(tabGroups).toHaveLength(2);
+    expect(tabGroups.every((group) => group.classList.contains("w-full"))).toBe(
+      true,
+    );
+    expect(
+      tabGroups.every((group) => !group.classList.contains("flex-1")),
+    ).toBe(true);
     expect(tabGroups[0]?.textContent).toContain("Info");
     expect(tabGroups[1]?.textContent).toContain("index.ts");
     expect(
@@ -403,6 +444,31 @@ describe("ThreadSecondaryPanel full-screen control", () => {
         '[data-testid="thread-secondary-panel-top-chrome"]',
       ),
     ).toHaveLength(1);
+    const infoTab = screen.getByRole("button", {
+      name: "Show thread info panel",
+    });
+    const fileTabButton = screen.getByRole("button", { name: "index.ts" });
+    expect(infoTab.parentElement?.className).not.toContain(
+      "before:bg-state-active",
+    );
+    expect(infoTab.parentElement?.className).toContain(
+      "text-muted-foreground/60",
+    );
+    expect(fileTabButton.parentElement?.className).toContain("bg-state-active");
+    expect(fileTabButton.parentElement?.className).not.toContain(
+      "before:bg-state-active",
+    );
+    fireEvent.pointerDown(infoTab);
+    expect(infoTab.parentElement?.className).toContain("bg-state-active");
+    expect(infoTab.parentElement?.className).not.toContain(
+      "before:bg-state-active",
+    );
+    expect(fileTabButton.parentElement?.className).not.toContain(
+      "bg-state-active",
+    );
+    expect(fileTabButton.parentElement?.className).toContain(
+      "text-muted-foreground/60",
+    );
     expect(
       panes.some((pane) =>
         pane.querySelector('[data-testid="thread-secondary-panel-top-chrome"]'),
@@ -413,6 +479,21 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       name: "Open new tab",
     });
     expect(newTabControls).toHaveLength(1);
+    const fullScreenControl = screen.getByRole("button", {
+      name: "Full Screen",
+    });
+    const hideControl = screen.getByRole("button", {
+      name: "Hide right panel",
+    });
+    expect(
+      (newTabControls[0] as HTMLElement).compareDocumentPosition(
+        fullScreenControl,
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      fullScreenControl.compareDocumentPosition(hideControl) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
     fireEvent.click(newTabControls[0] as HTMLElement);
     expect(onOpenNewTab).toHaveBeenCalledTimes(1);
   });

@@ -48,20 +48,6 @@ function createTwoPaneState(): SidebarSplitState {
   );
 }
 
-function createStackedPaneState(): SidebarSplitState {
-  const initial = createSidebarSplitState(
-    TABS.map((tab) => tab.id),
-    "tab-a",
-  );
-  return moveSidebarTab(
-    initial,
-    initial.layout.focusedPaneId,
-    "tab-b",
-    { paneId: initial.layout.focusedPaneId, zone: "bottom" },
-    { groupId: "group-b" },
-  );
-}
-
 function persistState(state: SidebarSplitState): void {
   window.localStorage.setItem(
     sidebarSplitStorageKey(PANEL_STATE_ID),
@@ -225,8 +211,6 @@ describe("SidebarSplitContainer", () => {
   it.each([
     ["left", "flex-row", "tab-a,tab-b"],
     ["right", "flex-row", "tab-b,tab-a"],
-    ["top", "flex-col", "tab-a,tab-b"],
-    ["bottom", "flex-col", "tab-b,tab-a"],
   ] as const)(
     "moves the active tab to the supported %s position without dragging",
     (side, directionClass, expectedOrder) => {
@@ -262,6 +246,96 @@ describe("SidebarSplitContainer", () => {
     },
   );
 
+  it("rejects top and bottom tab tear-out zones while retaining side splits", () => {
+    Object.defineProperty(document, "elementsFromPoint", {
+      configurable: true,
+      value: vi.fn(() => []),
+    });
+    renderContainer({
+      renderPane: ({ onBeginTabDrag }) => (
+        <aside
+          data-testid="sidebar-panel"
+          ref={(element) => {
+            if (element === null) return;
+            vi.spyOn(element, "getBoundingClientRect").mockReturnValue({
+              bottom: 600,
+              height: 600,
+              left: 0,
+              right: 400,
+              top: 0,
+              width: 400,
+              x: 0,
+              y: 0,
+              toJSON: () => ({}),
+            });
+          }}
+        >
+          <button
+            type="button"
+            onPointerDown={(event) => onBeginTabDrag("tab-b", event)}
+          >
+            Drag B
+          </button>
+        </aside>
+      ),
+    });
+
+    const tab = screen.getByRole("button", { name: "Drag B" });
+    fireEvent.pointerDown(tab, {
+      button: 0,
+      clientX: 200,
+      clientY: 20,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(window, {
+      clientX: 200,
+      clientY: 40,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(window, {
+      clientX: 200,
+      clientY: 40,
+      pointerId: 1,
+    });
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(0);
+
+    fireEvent.pointerDown(tab, {
+      button: 0,
+      clientX: 200,
+      clientY: 300,
+      pointerId: 2,
+    });
+    fireEvent.pointerMove(window, {
+      clientX: 200,
+      clientY: 560,
+      pointerId: 2,
+    });
+    fireEvent.pointerUp(window, {
+      clientX: 200,
+      clientY: 560,
+      pointerId: 2,
+    });
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(0);
+
+    fireEvent.pointerDown(tab, {
+      button: 0,
+      clientX: 200,
+      clientY: 300,
+      pointerId: 3,
+    });
+    fireEvent.pointerMove(window, {
+      clientX: 20,
+      clientY: 300,
+      pointerId: 3,
+    });
+    fireEvent.pointerUp(window, {
+      clientX: 20,
+      clientY: 300,
+      pointerId: 3,
+    });
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
+  });
+
   it("positions the focused active tab even when the control is in the outer pane", () => {
     const split = createTwoPaneState();
     const firstPane =
@@ -280,24 +354,22 @@ describe("SidebarSplitContainer", () => {
           {showOuterControls ? (
             <button
               type="button"
-              onClick={() => onMoveActiveTabToSide?.("bottom")}
+              onClick={() => onMoveActiveTabToSide?.("left")}
             >
-              Move focused bottom
+              Move focused left
             </button>
           ) : null}
         </div>
       ),
     });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Move focused bottom" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Move focused left" }));
     expect(
       screen
         .getAllByTestId("active-pane-tab")
         .map((tab) => tab.textContent)
         .join(","),
-    ).toBe("tab-b,tab-a");
+    ).toBe("tab-a,tab-b");
   });
 
   it("keeps stateful pane content attached to pane identity after a move", () => {
@@ -371,14 +443,21 @@ describe("SidebarSplitContainer", () => {
     );
     expect(headerSeparator).toBeInstanceOf(HTMLElement);
     expect(bodySeparator).toBeInstanceOf(HTMLElement);
+    const headerBodyDivider = document.querySelector<HTMLElement>(
+      "[data-sidebar-split-header-divider]",
+    );
+    expect(headerBodyDivider).toBeInstanceOf(HTMLElement);
+    expect(headerBodyDivider?.className).toContain("h-px");
+    expect(headerBodyDivider?.className).toContain(
+      "bg-border-seam-vertical/40",
+    );
     if (
       !(headerSeparator instanceof HTMLElement) ||
       !(bodySeparator instanceof HTMLElement)
     ) {
       return;
     }
-    expect(headerSeparator.className).toContain("bg-border-seam-vertical/60");
-    expect(bodySeparator.className).toContain("bg-transparent");
+    expect(bodySeparator.className).not.toContain("bg-transparent");
 
     const headerPrevious = headerSeparator.previousElementSibling;
     const headerNext = headerSeparator.nextElementSibling;
@@ -422,6 +501,21 @@ describe("SidebarSplitContainer", () => {
     });
 
     fireEvent.pointerDown(bodyHitTarget, { clientX: 400, pointerId: 1 });
+    expect(bodySeparator.dataset.dragging).toBe("true");
+    expect(headerSeparator.dataset.dragging).toBe("true");
+    expect(headerSeparator.className).not.toContain("bg-transparent");
+    expect(headerSeparator.className).toContain("bg-border-seam-vertical/40");
+    expect(headerSeparator.className).toContain(
+      "hover:bg-border-seam-vertical/50",
+    );
+    expect(headerSeparator.className).toContain("data-[dragging]:bg-ring/40");
+    expect(bodySeparator.className).toContain("bg-border-seam-vertical/40");
+    expect(bodySeparator.className).toContain(
+      "hover:bg-border-seam-vertical/50",
+    );
+    expect(headerSeparator.className).toBe(bodySeparator.className);
+    expect(headerSeparator.className).not.toContain("hover:bg-ring/40");
+    expect(bodySeparator.className).not.toContain("hover:bg-ring/40");
     fireEvent.pointerMove(bodyHitTarget, { clientX: 600, pointerId: 1 });
 
     expect(headerPrevious.style.flex).toBe(bodyPrevious.style.flex);
@@ -445,6 +539,8 @@ describe("SidebarSplitContainer", () => {
     fireEvent.pointerUp(bodyHitTarget, { clientX: 600, pointerId: 1 });
     expect(headerPrevious.style.flex).toBe(bodyPrevious.style.flex);
     expect(headerNext.style.flex).toBe(bodyNext.style.flex);
+    expect(bodySeparator.dataset.dragging).toBeUndefined();
+    expect(headerSeparator.dataset.dragging).toBeUndefined();
   });
 
   it("resizes the adjacent panes from the shared-header separator", () => {
@@ -622,101 +718,15 @@ describe("SidebarSplitContainer", () => {
     expect(headerSeparator.dataset.dragging).toBeUndefined();
   });
 
-  it("resizes stacked panes from their shared-header separator and restores cancellation", () => {
-    persistState(createStackedPaneState());
-    renderContainer({
-      renderPane: ({ paneId }) => <div>{paneId}</div>,
-      renderSplitHeader: ({ renderTabGroups }) => (
-        <div>{renderTabGroups(({ paneId }) => <div>{paneId}</div>)}</div>
-      ),
-    });
-
-    const headerSeparator = screen
-      .getAllByRole("separator")
-      .find(
-        (separator) =>
-          separator.parentElement?.dataset.sidebarSplitSurface === "header",
-      );
-    expect(headerSeparator).toBeInstanceOf(HTMLElement);
-    expect(headerSeparator?.className).toContain(
-      "bg-border-seam-vertical/60",
-    );
-    const bodySeparator = screen.getByRole("separator", {
-      name: "Resize stacked right panel panes",
-    });
-    const hitTarget = headerSeparator?.firstElementChild;
-    const headerPrevious = headerSeparator?.previousElementSibling;
-    const headerNext = headerSeparator?.nextElementSibling;
-    const bodyPrevious = bodySeparator.previousElementSibling;
-    const bodyNext = bodySeparator.nextElementSibling;
-    if (
-      !(headerSeparator instanceof HTMLElement) ||
-      !(hitTarget instanceof HTMLElement) ||
-      !(headerPrevious instanceof HTMLElement) ||
-      !(headerNext instanceof HTMLElement) ||
-      !(bodyPrevious instanceof HTMLElement) ||
-      !(bodyNext instanceof HTMLElement)
-    ) {
-      throw new Error("Expected stacked header and body resize elements");
-    }
-    Object.defineProperty(hitTarget, "setPointerCapture", {
-      configurable: true,
-      value: vi.fn(),
-    });
-    vi.spyOn(headerPrevious, "getBoundingClientRect").mockReturnValue({
-      bottom: 48,
-      height: 48,
-      left: 0,
-      right: 400,
-      top: 0,
-      width: 400,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    });
-    vi.spyOn(headerNext, "getBoundingClientRect").mockReturnValue({
-      bottom: 48,
-      height: 48,
-      left: 401,
-      right: 801,
-      top: 0,
-      width: 400,
-      x: 401,
-      y: 0,
-      toJSON: () => ({}),
-    });
-
-    fireEvent.pointerDown(hitTarget, { clientX: 400, pointerId: 3 });
-    fireEvent.pointerMove(hitTarget, { clientX: 520, pointerId: 3 });
-    expect(headerPrevious.style.flex).toBe(bodyPrevious.style.flex);
-    expect(headerNext.style.flex).toBe(bodyNext.style.flex);
-    expect(Number.parseFloat(headerPrevious.style.flex)).toBeCloseTo(0.649, 3);
-
-    fireEvent.pointerUp(hitTarget, { clientX: 600, pointerId: 3 });
-    expect(headerPrevious.style.flex).toBe(bodyPrevious.style.flex);
-    expect(headerNext.style.flex).toBe(bodyNext.style.flex);
-    expect(Number.parseFloat(bodyPrevious.style.flex)).toBeCloseTo(0.749, 3);
-    expect(Number.parseFloat(bodyNext.style.flex)).toBeCloseTo(0.251, 3);
-
-    const committedPreviousFlex = headerPrevious.style.flex;
-    const committedNextFlex = headerNext.style.flex;
-    fireEvent.pointerDown(hitTarget, { clientX: 600, pointerId: 4 });
-    fireEvent.pointerMove(hitTarget, { clientX: 320, pointerId: 4 });
-    expect(headerPrevious.style.flex).not.toBe(committedPreviousFlex);
-    expect(bodyPrevious.style.flex).toBe(headerPrevious.style.flex);
-    fireEvent.pointerCancel(hitTarget, { clientX: 320, pointerId: 4 });
-    expect(headerPrevious.style.flex).toBe(committedPreviousFlex);
-    expect(headerNext.style.flex).toBe(committedNextFlex);
-    expect(bodyPrevious.style.flex).toBe(committedPreviousFlex);
-    expect(bodyNext.style.flex).toBe(committedNextFlex);
-  });
-
   it("restores both adjacent flex values after pointer cancellation", () => {
     persistState(createTwoPaneState());
     renderContainer({
       renderPane: ({ paneId }) => <div>{paneId}</div>,
     });
 
+    expect(
+      document.querySelector("[data-sidebar-split-header-divider]"),
+    ).toBeNull();
     const separator = screen.getByRole("separator");
     expect(separator.className).toContain("bg-transparent");
     expect(separator.className).not.toContain("bg-border-seam");
@@ -752,6 +762,78 @@ describe("SidebarSplitContainer", () => {
     expect(previous.style.flex).toBe(previousFlex);
     expect(next.style.flex).toBe(nextFlex);
     expect(document.body.style.userSelect).toBe("");
+
+    fireEvent.pointerDown(hitTarget, { clientX: 400, pointerId: 2 });
+    fireEvent.pointerMove(hitTarget, { clientX: 520, pointerId: 2 });
+    fireEvent.blur(window);
+    expect(previous.style.flex).toBe(previousFlex);
+    expect(next.style.flex).toBe(nextFlex);
+    expect(document.body.style.userSelect).toBe("");
+
+    fireEvent.pointerDown(hitTarget, { clientX: 400, pointerId: 3 });
+    fireEvent.pointerMove(hitTarget, { clientX: 520, pointerId: 3 });
+    fireEvent.lostPointerCapture(hitTarget, { pointerId: 3 });
+    expect(previous.style.flex).toBe(previousFlex);
+    expect(next.style.flex).toBe(nextFlex);
+    expect(document.body.style.userSelect).toBe("");
+  });
+
+  it("cancels an active resize when the split container unmounts", () => {
+    persistState(createTwoPaneState());
+    const storageKey = sidebarSplitStorageKey(PANEL_STATE_ID);
+    const initialStorage = window.localStorage.getItem(storageKey);
+    const view = renderContainer({
+      renderPane: ({ paneId }) => <div>{paneId}</div>,
+    });
+    const separator = screen.getByRole("separator");
+    const hitTarget = separator.firstElementChild;
+    const previous = separator.previousElementSibling;
+    const next = separator.nextElementSibling;
+    if (
+      !(hitTarget instanceof HTMLElement) ||
+      !(previous instanceof HTMLElement) ||
+      !(next instanceof HTMLElement)
+    ) {
+      throw new Error("Expected resize elements");
+    }
+    Object.defineProperty(hitTarget, "setPointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(previous, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 0,
+      right: 400,
+      top: 0,
+      width: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(next, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 401,
+      right: 801,
+      top: 0,
+      width: 400,
+      x: 401,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    const initialFlex = [previous.style.flex, next.style.flex];
+
+    fireEvent.pointerDown(hitTarget, { clientX: 400, pointerId: 41 });
+    fireEvent.pointerMove(hitTarget, { clientX: 560, pointerId: 41 });
+    expect(document.body.style.userSelect).toBe("none");
+    expect(previous.style.flex).not.toBe(initialFlex[0]);
+
+    view.unmount();
+
+    expect(document.body.style.userSelect).toBe("");
+    expect([previous.style.flex, next.style.flex]).toEqual(initialFlex);
+    expect(window.localStorage.getItem(storageKey)).toBe(initialStorage);
   });
 
   it("does not write a canonical layout or rewrite a focused-pane no-op", () => {

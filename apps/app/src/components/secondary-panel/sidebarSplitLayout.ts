@@ -594,7 +594,7 @@ const layoutNodeSchema: z.ZodType<LayoutNode> = z.lazy(() =>
     z
       .object({
         type: z.literal("split"),
-        dir: z.enum(["row", "col"]),
+        dir: z.literal("row"),
         sizes: z.array(z.number().positive()).min(2),
         children: z.array(layoutNodeSchema).min(2),
       })

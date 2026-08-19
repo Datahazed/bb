@@ -34,7 +34,7 @@ import {
   OverflowFade,
   type OverflowFadeTone,
 } from "@/components/ui/overflow-fade";
-import { TabPill } from "@/components/ui/tab-pill";
+import { TabPill, type TabPillActiveTreatment } from "@/components/ui/tab-pill";
 import { useDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -57,7 +57,8 @@ const TAB_STRIP_SCROLL_BUTTON_CLASS =
 // Slack so sub-pixel scroll offsets don't leave an overflow cue at a hard edge.
 const EDGE_EPSILON_PX = 1;
 
-export const SECONDARY_PANEL_TAB_STRIP_FADE_TONE: OverflowFadeTone = "sidebar";
+export const SECONDARY_PANEL_TAB_STRIP_FADE_TONE: OverflowFadeTone =
+  "surface-raised";
 
 /**
  * Stand-in for dnd-kit's TouchSensor while the panel is closed or has nothing
@@ -86,6 +87,7 @@ const INITIAL_OVERFLOW_STATE: TabStripOverflowState = {
 };
 
 export interface SecondaryPanelTabStripProps {
+  activeClassName?: string;
   fileTabs: SecondaryPanelFileTab[];
   onBeginTabDrag?: (
     tabId: string,
@@ -100,11 +102,12 @@ export interface SecondaryPanelTabStripProps {
    * every page.
    */
   isPanelOpen: boolean;
-  activeTreatment?: "fill" | "underline";
+  activeTreatment?: TabPillActiveTreatment;
 }
 
 interface SortableFileTabProps {
-  activeTreatment: "fill" | "underline";
+  activeClassName?: string;
+  activeTreatment: TabPillActiveTreatment;
   activeTabRef: RefObject<HTMLDivElement | null>;
   dragDisabled: boolean;
   noDragClass: string | null;
@@ -125,6 +128,7 @@ interface SortableFileTabProps {
  * (covering pointer, keyboard, and programmatic selection).
  */
 export function SecondaryPanelTabStrip({
+  activeClassName,
   fileTabs,
   onBeginTabDrag,
   onReorderTab,
@@ -436,6 +440,7 @@ export function SecondaryPanelTabStrip({
           {fileTabs.map((tab) => (
             <SortableFileTab
               key={tab.id}
+              activeClassName={activeClassName}
               activeTreatment={activeTreatment}
               activeTabRef={activeTabRef}
               dragDisabled={dragDisabled}
@@ -452,7 +457,11 @@ export function SecondaryPanelTabStrip({
         {createPortal(
           <DragOverlay className="cursor-grabbing">
             {draggingTab === null ? null : (
-              <FileTab tab={draggingTab} activeTreatment={activeTreatment} />
+              <FileTab
+                tab={draggingTab}
+                activeClassName={activeClassName}
+                activeTreatment={activeTreatment}
+              />
             )}
           </DragOverlay>,
           document.body,
@@ -471,6 +480,7 @@ export function SecondaryPanelTabStrip({
       onBeginTabDrag,
       draggingTab,
       activeTreatment,
+      activeClassName,
     ],
   );
 
@@ -482,7 +492,12 @@ export function SecondaryPanelTabStrip({
     <div
       ref={stripRef}
       data-testid="secondary-panel-tab-strip"
-      className="group relative flex min-w-0 items-center"
+      data-overflowing={overflow.hasOverflow ? "" : undefined}
+      className={cn(
+        "group relative flex min-w-0 items-center",
+        overflow.hasOverflow &&
+          "rounded-md border border-border-hairline bg-surface-raised-solid",
+      )}
     >
       <TabStripScrollButton
         buttonRef={leftScrollButtonRef}
@@ -543,6 +558,7 @@ export function SecondaryPanelTabStrip({
 }
 
 function SortableFileTab({
+  activeClassName,
   activeTreatment,
   activeTabRef,
   dragDisabled,
@@ -592,7 +608,11 @@ function SortableFileTab({
       }}
       {...sortableListeners}
     >
-      <FileTab tab={tab} activeTreatment={activeTreatment} />
+      <FileTab
+        tab={tab}
+        activeClassName={activeClassName}
+        activeTreatment={activeTreatment}
+      />
     </div>
   );
 }
@@ -626,9 +646,12 @@ function TabStripScrollButton({
       aria-label={label}
       onClick={onClick}
       className={cn(
-        "z-20 shrink-0 bg-sidebar text-muted-foreground shadow-none hover:bg-surface-raised-solid hover:text-foreground focus-visible:bg-sidebar",
+        "z-20 shrink-0 text-muted-foreground shadow-none",
         hasOverflow
-          ? TAB_STRIP_SCROLL_BUTTON_CLASS
+          ? [
+              TAB_STRIP_SCROLL_BUTTON_CLASS,
+              "bg-transparent hover:bg-state-hover hover:text-foreground focus-visible:bg-state-hover",
+            ]
           : "h-7 w-0 overflow-hidden p-0 max-md:pointer-coarse:h-9",
         "transition-opacity",
         canScroll
@@ -644,10 +667,12 @@ function TabStripScrollButton({
 
 function FileTab({
   tab,
+  activeClassName,
   activeTreatment,
 }: {
   tab: SecondaryPanelFileTab;
-  activeTreatment: "fill" | "underline";
+  activeClassName?: string;
+  activeTreatment: TabPillActiveTreatment;
 }) {
   const title =
     tab.statusLabel === null
@@ -660,6 +685,7 @@ function FileTab({
       secondaryLabel={tab.statusLabel === null ? null : `(${tab.statusLabel})`}
       title={title}
       isActive={tab.isActive}
+      activeClassName={activeClassName}
       activeTreatment={activeTreatment}
       onSelect={tab.onSelect}
       labelMaxWidthClass="max-w-[160px]"

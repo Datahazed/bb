@@ -16,7 +16,7 @@ afterEach(() => {
 
 describe("secondary panel tab-strip edge fades", () => {
   it("uses the themed edge fade", () => {
-    expect(SECONDARY_PANEL_TAB_STRIP_FADE_TONE).toBe("sidebar");
+    expect(SECONDARY_PANEL_TAB_STRIP_FADE_TONE).toBe("surface-raised");
   });
 
   it("observes the intrinsic tab row so async title changes refresh overflow", () => {
@@ -87,6 +87,8 @@ describe("secondary panel tab-strip edge fades", () => {
     );
     expect(leftButton?.classList.contains("w-0")).toBe(true);
     expect(rightButton?.classList.contains("w-0")).toBe(true);
+    expect(strip?.hasAttribute("data-overflowing")).toBe(false);
+    expect(strip?.classList.contains("border-border-hairline")).toBe(false);
 
     const rightFade = container.querySelector("[data-overflow-fade='right']");
     expect(rightFade?.classList.contains("opacity-0")).toBe(true);
@@ -122,11 +124,12 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(leftButton?.tabIndex).toBe(-1);
     expect(rightButton?.classList.contains("opacity-100")).toBe(true);
     expect(rightButton?.tabIndex).toBe(0);
-    expect(rightButton?.classList.contains("bg-sidebar")).toBe(true);
-    expect(
-      rightButton?.classList.contains("hover:bg-surface-raised-solid"),
-    ).toBe(true);
-    expect(rightButton?.classList.contains("hover:bg-state-hover")).toBe(false);
+    expect(strip?.hasAttribute("data-overflowing")).toBe(true);
+    expect(strip?.classList.contains("rounded-md")).toBe(true);
+    expect(strip?.classList.contains("border-border-hairline")).toBe(true);
+    expect(strip?.classList.contains("bg-surface-raised-solid")).toBe(true);
+    expect(rightButton?.classList.contains("bg-transparent")).toBe(true);
+    expect(rightButton?.classList.contains("hover:bg-state-hover")).toBe(true);
 
     const scrollBy = vi.fn();
     Object.defineProperty(viewport!, "scrollBy", {
@@ -154,6 +157,8 @@ describe("secondary panel tab-strip edge fades", () => {
     });
     expect(leftButton?.classList.contains("w-0")).toBe(true);
     expect(rightButton?.classList.contains("w-0")).toBe(true);
+    expect(strip?.hasAttribute("data-overflowing")).toBe(false);
+    expect(strip?.classList.contains("border-border-hairline")).toBe(false);
     expect(document.activeElement).toBe(
       container.querySelector('button[aria-pressed="true"]'),
     );

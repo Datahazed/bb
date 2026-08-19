@@ -95,10 +95,11 @@ import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thre
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
-import { TabPill } from "@/components/ui/tab-pill";
+import { TabPill, type TabPillActiveTreatment } from "@/components/ui/tab-pill";
+import { CONTEXT_INACTIVE_TEXT_CLASS } from "@/components/ui/context-selection";
+import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
-import type { SplitSide } from "@/lib/split-layout";
 import { PaneArrangementButton } from "@/views/thread-detail/PaneMaximizeButton";
 import {
   SidebarSplitContainer,
@@ -117,6 +118,7 @@ export type {
 } from "./GitDiffToolbar";
 export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 
+const SIDEBAR_TAB_SPLIT_SIDES = ["left", "right"] as const;
 export function isSecondaryPanelLayoutTransition(
   propertyName: string,
 ): boolean {
@@ -230,6 +232,22 @@ export function resolveSecondaryPanelHideControl() {
   };
 }
 
+export function isGitDiffDataActive({
+  isDiffPanelActive,
+  sidebarSplitsEnabled,
+  visibleSplitActiveTabIds,
+}: {
+  isDiffPanelActive: boolean;
+  sidebarSplitsEnabled: boolean;
+  visibleSplitActiveTabIds: readonly string[];
+}): boolean {
+  return (
+    isDiffPanelActive ||
+    (sidebarSplitsEnabled &&
+      visibleSplitActiveTabIds.includes(SIDEBAR_FIXED_DIFF_TAB_ID))
+  );
+}
+
 export interface SecondaryPanelFixedTab {
   ariaLabel: string;
   label: string;
@@ -284,7 +302,11 @@ export interface ThreadSecondaryPanelProps {
   splitPanelStateId?: string;
   /** Rich tab models used to render pane-local content after a split. */
   splitTabModels?: readonly SecondaryFileFixedPanelTab[];
-  renderSplitTabContent?: (tab: SecondaryFileFixedPanelTab) => ReactNode;
+  renderSplitTabContent?: (
+    tab: SecondaryFileFixedPanelTab,
+    context: { visibleActiveTabIds?: readonly string[] },
+  ) => ReactNode;
+  onVisibleSplitActiveTabIdsChange?: (tabIds: readonly string[]) => void;
   splitTabContentFillsRegion?: (tab: SecondaryFileFixedPanelTab) => boolean;
   isOpen: boolean;
   showConversationCollapseControl?: boolean;
@@ -376,6 +398,7 @@ export function ThreadSecondaryPanel({
   splitPanelStateId,
   splitTabModels,
   renderSplitTabContent,
+  onVisibleSplitActiveTabIdsChange,
   splitTabContentFillsRegion,
   isOpen,
   showConversationCollapseControl = true,
@@ -403,6 +426,21 @@ export function ThreadSecondaryPanel({
   onToggleConversationCollapse,
   renderAsDrawer,
 }: ThreadSecondaryPanelProps) {
+  const shouldEnableSidebarSplits =
+    !renderAsDrawer &&
+    splitPanelStateId !== undefined &&
+    splitTabModels !== undefined &&
+    renderSplitTabContent !== undefined;
+  const [visibleSplitActiveTabIds, setVisibleSplitActiveTabIds] = useState<
+    readonly string[]
+  >([]);
+  const handleVisibleSplitActiveTabIdsChange = useCallback(
+    (tabIds: readonly string[]) => {
+      setVisibleSplitActiveTabIds(tabIds);
+      onVisibleSplitActiveTabIdsChange?.(tabIds);
+    },
+    [onVisibleSplitActiveTabIdsChange],
+  );
   const resolvedGitDiffTabStatus =
     gitDiffTabStatus ?? (canUseGitUi ? "eligible" : "ineligible");
   const newTabShortcut = useAppCommandShortcut("panel.newTab");
@@ -544,7 +582,13 @@ export function ThreadSecondaryPanel({
   const isDiffPanelActive =
     resolvedGitDiffTabStatus === "eligible" &&
     activeFixedTab?.tab.kind === "git-diff";
-  const isDiffPanelLive = isDiffPanelActive && isLayoutOpen;
+  const isAnyDiffPanelVisible =
+    isLayoutOpen &&
+    isGitDiffDataActive({
+      isDiffPanelActive,
+      sidebarSplitsEnabled: shouldEnableSidebarSplits,
+      visibleSplitActiveTabIds,
+    });
   const isDiffEligibilityPending =
     activeFixedTab?.tab.kind === "git-diff" &&
     (resolvedGitDiffTabStatus === "loading" ||
@@ -564,7 +608,7 @@ export function ThreadSecondaryPanel({
     onGitDiffSelectionChange,
   } = useGitDiffPanelState({
     environmentId,
-    isDiffPanelActive: isDiffPanelLive,
+    isDiffPanelActive: isAnyDiffPanelVisible,
     requestedMergeBaseBranch,
     onClearPendingGitDiffIntent,
     pendingGitDiffCommitSha,
@@ -578,7 +622,7 @@ export function ThreadSecondaryPanel({
   const { data: diffFilesResponse, isLoading: isDiffFilesLoading } =
     useEnvironmentDiffFiles(environmentId ?? "", {
       enabled:
-        isDiffPanelLive &&
+        isAnyDiffPanelVisible &&
         Boolean(environmentId) &&
         gitDiffTarget !== undefined,
       target: gitDiffTarget,
@@ -614,6 +658,7 @@ export function ThreadSecondaryPanel({
   const isSecondaryPanelResizing = useAtomValue(
     threadSecondaryPanelResizingAtom,
   );
+  const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [gitDiffLineOverflowMode, setGitDiffLineOverflowMode] =
     useState<CodeOverflowMode>(DEFAULT_CODE_OVERFLOW_MODE);
@@ -667,7 +712,7 @@ export function ThreadSecondaryPanel({
       event: ReactPointerEvent<HTMLElement>,
     ) => void;
     onSelectSurfaceTab?: (tabId: string) => void;
-    onMoveActiveTabToSide?: (side: SplitSide) => void;
+    onMoveActiveTabToSide?: SidebarSplitPaneRenderArgs["onMoveActiveTabToSide"];
     onSurfaceFileTabReorder: SecondaryPanelTabReorderHandler;
     showDiffSurfaceTab: boolean;
     showInfoSurfaceTab: boolean;
@@ -676,6 +721,8 @@ export function ThreadSecondaryPanel({
   }
 
   interface PanelTabGroupArgs {
+    activeClassName?: string;
+    activeTreatment?: TabPillActiveTreatment;
     activeSurfaceTab: SecondaryFixedPanelTab | null;
     fileSurfaceTabs: SecondaryPanelFileTab[] | undefined;
     onBeginTabDrag?: (
@@ -716,21 +763,32 @@ export function ThreadSecondaryPanel({
   );
 
   const renderConversationCollapseButton = (
-    onMoveActiveTabToSide?: (side: SplitSide) => void,
+    onMoveActiveTabToSide?: SidebarSplitPaneRenderArgs["onMoveActiveTabToSide"],
   ) =>
     conversationCollapseControl ? (
       <PaneArrangementButton
+        arrangementSides={SIDEBAR_TAB_SPLIT_SIDES}
         className={cn(
           "shrink-0",
           usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
         )}
         isFullScreen={conversationCollapseControl.isFullScreen}
-        onMoveToSide={onMoveActiveTabToSide}
+        onMoveToSide={
+          onMoveActiveTabToSide
+            ? (side) => {
+                if (side === "left" || side === "right") {
+                  onMoveActiveTabToSide(side);
+                }
+              }
+            : undefined
+        }
         onToggleFullScreen={conversationCollapseControl.onClick}
       />
     ) : null;
 
   const renderPanelTabGroup = ({
+    activeClassName,
+    activeTreatment = "fill",
     activeSurfaceTab,
     fileSurfaceTabs,
     onBeginTabDrag,
@@ -774,7 +832,8 @@ export function ThreadSecondaryPanel({
             }
             title="Thread info"
             usesDesktopChrome={usesDesktopChrome}
-            activeTreatment="fill"
+            activeClassName={activeClassName}
+            activeTreatment={activeTreatment}
           />
         ) : null}
         {showDiffSurfaceTab ? (
@@ -802,17 +861,19 @@ export function ThreadSecondaryPanel({
             }
             title="Diff"
             usesDesktopChrome={usesDesktopChrome}
-            activeTreatment="fill"
+            activeClassName={activeClassName}
+            activeTreatment={activeTreatment}
           />
         ) : null}
         {visibleSurfaceFileTabs && visibleSurfaceFileTabs.length > 0 ? (
           <SecondaryPanelTabStrip
+            activeClassName={activeClassName}
             fileTabs={visibleSurfaceFileTabs}
             onBeginTabDrag={onBeginTabDrag}
             onReorderTab={onSurfaceFileTabReorder}
             usesDesktopChrome={usesDesktopChrome}
             isPanelOpen={isOpen}
-            activeTreatment="fill"
+            activeTreatment={activeTreatment}
           />
         ) : null}
         {showGroupNewTabButton ? (
@@ -848,7 +909,9 @@ export function ThreadSecondaryPanel({
       activeSurfaceTab?.kind === "git-diff" ? "git-diff" : "thread-info";
     const isSurfaceDiffActive = activeSurfaceFixedPanel === "git-diff";
     const showsSurfaceDiffToolbar =
-      isSurfaceDiffActive && !hasActiveSurfaceFileTab;
+      isSurfaceDiffActive &&
+      resolvedGitDiffTabStatus === "eligible" &&
+      !hasActiveSurfaceFileTab;
     const isSurfaceTerminalActive =
       activeSurfaceTab?.kind === "terminal" && hasActiveSurfaceFileTab;
 
@@ -951,6 +1014,30 @@ export function ThreadSecondaryPanel({
                 </EmptyStatePanel>
               )}
             </div>
+          ) : isSurfaceDiffActive &&
+            (resolvedGitDiffTabStatus === "loading" ||
+              resolvedGitDiffTabStatus === "error") ? (
+            <EmptyStatePanel className="m-4 rounded-lg" role="status">
+              {resolvedGitDiffTabStatus === "error" ? (
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <span>
+                    Could not determine whether this workspace uses Git.
+                  </span>
+                  {onRetryGitDiffEligibility ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={onRetryGitDiffEligibility}
+                    >
+                      Retry
+                    </Button>
+                  ) : null}
+                </div>
+              ) : (
+                "Checking Git support…"
+              )}
+            </EmptyStatePanel>
           ) : isSurfaceDiffActive ? (
             <GitDiffTabContent
               environmentId={environmentId}
@@ -973,11 +1060,6 @@ export function ThreadSecondaryPanel({
     );
   };
 
-  const shouldEnableSidebarSplits =
-    !renderAsDrawer &&
-    splitPanelStateId !== undefined &&
-    splitTabModels !== undefined &&
-    renderSplitTabContent !== undefined;
   const splitTabs = shouldEnableSidebarSplits
     ? ([
         ...(showInfoTab
@@ -1039,6 +1121,7 @@ export function ThreadSecondaryPanel({
         }
       }}
       onGlobalTabReorder={onFileTabReorder}
+      onVisibleActiveTabIdsChange={handleVisibleSplitActiveTabIdsChange}
       panelStateId={splitPanelStateId}
       tabs={splitTabs}
       renderSplitHeader={({
@@ -1046,8 +1129,14 @@ export function ThreadSecondaryPanel({
         renderTabGroups,
       }: SidebarSplitHeaderRenderArgs) => {
         const focusedPane = panes.find((pane) => pane.isFocused) ?? panes[0];
+        const hasTabSplits = panes.length > 1;
         return (
-          <div className={getSecondaryPanelChromeStackClassName(false)}>
+          <div
+            className={getSecondaryPanelChromeStackClassName(
+              false,
+              topChromeSurface,
+            )}
+          >
             <div
               data-testid="thread-secondary-panel-top-chrome"
               className={cn(
@@ -1070,35 +1159,50 @@ export function ThreadSecondaryPanel({
                   return (
                     <div
                       key={pane.paneId}
-                      className={cn(
-                        "flex h-full min-w-0 flex-1 items-center gap-1 overflow-hidden px-2",
-                        `transition-[padding] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
-                        index === 0 && [
-                          "pl-4",
-                          collapsedPanelTrafficLightReserveClassName,
-                        ],
-                        index === panes.length - 1 &&
-                          (showNewTabButton ? "pr-28" : "pr-20"),
-                      )}
+                      className="flex h-full w-full min-w-0 overflow-hidden"
                       data-sidebar-split-tab-group={pane.paneId}
                       role="group"
                       aria-label={`Pane ${index + 1} tabs`}
                       onPointerDown={pane.onFocusPane}
                     >
-                      {renderPanelTabGroup({
-                        activeSurfaceTab: paneModel,
-                        fileSurfaceTabs: resolveSplitPaneFileTabs(pane),
-                        onBeginTabDrag: pane.onBeginTabDrag,
-                        onSelectSurfaceTab: pane.onSelectTab,
-                        onSurfaceFileTabReorder: pane.onReorderTab,
-                        showDiffSurfaceTab: pane.group.tabIds.includes(
-                          SIDEBAR_FIXED_DIFF_TAB_ID,
-                        ),
-                        showInfoSurfaceTab: pane.group.tabIds.includes(
-                          SIDEBAR_FIXED_INFO_TAB_ID,
-                        ),
-                        showNewTabButton: false,
-                      })}
+                      <div
+                        className={cn(
+                          "flex h-full min-w-0 flex-1 items-center gap-1 overflow-hidden px-2",
+                          `transition-[padding] ${PANEL_COLLAPSE_TRANSITION_CLASS}`,
+                          index === 0 && [
+                            "pl-4",
+                            collapsedPanelTrafficLightReserveClassName,
+                          ],
+                          index === panes.length - 1 &&
+                            (showNewTabButton ? "pr-28" : "pr-20"),
+                        )}
+                      >
+                        {renderPanelTabGroup({
+                          activeClassName:
+                            hasTabSplits &&
+                            !pane.isFocused &&
+                            dimsInactiveSplits
+                              ? CONTEXT_INACTIVE_TEXT_CLASS
+                              : undefined,
+                          activeTreatment: hasTabSplits
+                            ? pane.isFocused
+                              ? "fill"
+                              : "plain"
+                            : "fill",
+                          activeSurfaceTab: paneModel,
+                          fileSurfaceTabs: resolveSplitPaneFileTabs(pane),
+                          onBeginTabDrag: pane.onBeginTabDrag,
+                          onSelectSurfaceTab: pane.onSelectTab,
+                          onSurfaceFileTabReorder: pane.onReorderTab,
+                          showDiffSurfaceTab: pane.group.tabIds.includes(
+                            SIDEBAR_FIXED_DIFF_TAB_ID,
+                          ),
+                          showInfoSurfaceTab: pane.group.tabIds.includes(
+                            SIDEBAR_FIXED_INFO_TAB_ID,
+                          ),
+                          showNewTabButton: false,
+                        })}
+                      </div>
                     </div>
                   );
                 })}
@@ -1142,7 +1246,9 @@ export function ThreadSecondaryPanel({
           paneModel.kind !== "thread-info" &&
           paneModel.kind !== "git-diff" &&
           paneModel.kind !== "browser"
-            ? renderSplitTabContent(paneModel)
+            ? renderSplitTabContent(paneModel, {
+                visibleActiveTabIds: pane.visibleActiveTabIds,
+              })
             : undefined;
         return renderPanelSurface({
           activeSurfaceTab: paneModel,
@@ -1583,7 +1689,8 @@ interface NewTabButtonProps {
 }
 
 interface PinnedIconTabProps {
-  activeTreatment: "fill" | "underline";
+  activeClassName?: string;
+  activeTreatment: TabPillActiveTreatment;
   ariaLabel: string;
   ariaKeyshortcuts?: string;
   isActive: boolean;
@@ -1596,6 +1703,7 @@ interface PinnedIconTabProps {
 }
 
 function PinnedIconTab({
+  activeClassName,
   activeTreatment,
   ariaLabel,
   ariaKeyshortcuts,
@@ -1626,6 +1734,7 @@ function PinnedIconTab({
             leadingVisual={leadingVisual}
             title={title}
             isActive={isActive}
+            activeClassName={activeClassName}
             activeTreatment={activeTreatment}
             onSelect={onClick}
             closeAction={null}

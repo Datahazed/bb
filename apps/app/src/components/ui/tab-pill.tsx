@@ -26,6 +26,8 @@ export interface TabPillCloseAction {
   isClosing?: boolean;
 }
 
+export type TabPillActiveTreatment = "fill" | "underline" | "plain";
+
 export interface TabPillProps {
   label: string;
   ariaLabel?: string;
@@ -39,9 +41,11 @@ export interface TabPillProps {
   isActive: boolean;
   /**
    * Full-width panels use a quiet underline because the view already owns the
-   * whole canvas; the filled selection surface is reserved for sibling panes.
+   * whole canvas. Split panes reuse the standard fill treatment so their focus
+   * state matches page splits.
    */
-  activeTreatment?: "fill" | "underline";
+  activeTreatment?: TabPillActiveTreatment;
+  activeClassName?: string;
   onSelect: () => void;
   labelMaxWidthClass?: string;
   closeAction: TabPillCloseAction | null;
@@ -58,6 +62,7 @@ export function TabPill({
   title,
   isActive,
   activeTreatment = "fill",
+  activeClassName,
   onSelect,
   labelMaxWidthClass = TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS,
   closeAction,
@@ -70,8 +75,11 @@ export function TabPill({
         isActive
           ? activeTreatment === "fill"
             ? cn(CONTEXT_SELECTION_SURFACE_CLASS, "text-foreground")
-            : "text-foreground after:absolute after:inset-x-1.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-foreground/60"
+            : activeTreatment === "underline"
+              ? "text-foreground after:absolute after:inset-x-1.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-foreground/60"
+              : "text-foreground"
           : "text-muted-foreground hover:bg-state-hover",
+        isActive && activeClassName,
       )}
     >
       <button

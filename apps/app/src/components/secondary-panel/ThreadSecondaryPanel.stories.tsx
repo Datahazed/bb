@@ -73,15 +73,19 @@ function createStoryFileTab(filename: string): HostFilePreviewFixedPanelTab {
 function PanelStage({
   children,
   height = "compact",
+  width = "standard",
 }: {
   children: ReactNode;
   height?: "compact" | "info";
+  width?: "standard" | "wide";
 }) {
   return (
     <div
-      className={`flex w-full max-w-[640px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-background ${
-        height === "info" ? "h-[520px]" : "h-[160px]"
-      }`}
+      className={`flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-border bg-background ${
+        width === "wide"
+          ? "max-w-[900px] [--secondary-swipe-width:100%] [&_aside]:!w-full"
+          : "max-w-[640px]"
+      } ${height === "info" ? "h-[520px]" : "h-[160px]"}`}
     >
       <PanelGroup direction="horizontal">{children}</PanelGroup>
     </div>
@@ -485,6 +489,8 @@ function TerminalTabsShellRow(props: TerminalTabsShellRowProps) {
 }
 
 const SPLIT_STORY_PANEL_STATE_ID = "ladle-production-split-panes";
+const MINIMAL_CHROME_PROPOSAL_PANEL_STATE_ID =
+  "ladle-minimal-chrome-split-tabs";
 const SPLIT_STORY_FILE = createStoryFileTab("ThreadSecondaryPanel.tsx");
 const SPLIT_STORY_TERMINAL = createTerminalFixedPanelTab({
   terminalId: "term_story_running",
@@ -510,6 +516,20 @@ function createSplitStoryState() {
     SPLIT_STORY_FILE.id,
     { paneId: "pane-primary", zone: "bottom" },
     { groupId: "group-file" },
+  );
+  return moveSidebarTab(
+    state,
+    "pane-primary",
+    SPLIT_STORY_TERMINAL.id,
+    { paneId: "pane-primary", zone: "right" },
+    { groupId: "group-terminal" },
+  );
+}
+
+function createMinimalChromeProposalState() {
+  const state = createSidebarSplitState(
+    SPLIT_STORY_TABS.map((tab) => tab.id),
+    SPLIT_STORY_FILE.id,
   );
   return moveSidebarTab(
     state,
@@ -600,6 +620,88 @@ function ProductionSplitPanesStory() {
   );
 }
 
+function MinimalChromeProposalStory() {
+  const [activeTab, setActiveTab] = useState<SecondaryFixedPanelTab>(() => {
+    window.localStorage.setItem(
+      sidebarSplitStorageKey(MINIMAL_CHROME_PROPOSAL_PANEL_STATE_ID),
+      serializeSidebarSplitState(createMinimalChromeProposalState()),
+    );
+    return SPLIT_STORY_TERMINAL;
+  });
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  const fileTabs = useMemo<SecondaryPanelFileTab[]>(
+    () =>
+      [SPLIT_STORY_FILE, SPLIT_STORY_TERMINAL].map((tab) => ({
+        id: tab.id,
+        filename:
+          tab.kind === "terminal" ? "pnpm dev" : "ThreadSecondaryPanel.tsx",
+        isActive: tab.id === activeTab.id,
+        leadingVisual: (
+          <Icon
+            name={tab.kind === "terminal" ? "Terminal" : "Code"}
+            className="size-3.5"
+            aria-hidden
+          />
+        ),
+        statusLabel: null,
+        onSelect: () => setActiveTab(tab),
+        onClose: noop,
+      })),
+    [activeTab.id],
+  );
+
+  return (
+    <TooltipProvider>
+      <SidebarProvider>
+        <PanelStage height="info" width="wide">
+          <ThreadSecondaryPanel
+            activeTab={activeTab}
+            canUseGitUi
+            requestedMergeBaseBranch="main"
+            environmentId={undefined}
+            isOpen
+            metadataContent={<RepresentativeInfoContent />}
+            fileTabs={fileTabs}
+            fileTabContent={
+              activeTab.kind === "terminal" ? (
+                <RepresentativeTerminalContent title="pnpm dev" />
+              ) : (
+                representativeFileContent
+              )
+            }
+            splitPanelStateId={MINIMAL_CHROME_PROPOSAL_PANEL_STATE_ID}
+            splitTabModels={SPLIT_STORY_FILE_TABS}
+            renderSplitTabContent={(tab) =>
+              tab.kind === "terminal" ? (
+                <RepresentativeTerminalContent title="pnpm dev" />
+              ) : (
+                representativeFileContent
+              )
+            }
+            splitTabContentFillsRegion={(tab) => tab.kind === "terminal"}
+            showGitDiffTab
+            onPanelFocus={noop}
+            onPanelChange={(panel) =>
+              setActiveTab(createStoryFixedPanelTab(panel))
+            }
+            onCollapse={noop}
+            onClose={noop}
+            onFileTabReorder={noop}
+            onOpenNewTab={noop}
+            isConversationCollapsed={isFullScreen}
+            onToggleConversationCollapse={() =>
+              setIsFullScreen((value) => !value)
+            }
+            renderAsDrawer={false}
+            inlinePanelToggle="button"
+          />
+        </PanelStage>
+      </SidebarProvider>
+    </TooltipProvider>
+  );
+}
+
 export function SplitPanes() {
   return (
     <StoryCard>
@@ -608,6 +710,19 @@ export function SplitPanes() {
         hint="real right-panel tabs, pane focus, arrangement, maximize, close, and inner divider behavior"
       >
         <ProductionSplitPanesStory />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function MinimalChromeProposal() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="minimal chrome proposal"
+        hint="existing tabs share one header; arrangement targets the focused tab; panel collapse remains the far-right global action"
+      >
+        <MinimalChromeProposalStory />
       </StoryRow>
     </StoryCard>
   );

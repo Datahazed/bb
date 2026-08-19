@@ -108,6 +108,25 @@ describe("sidebar split layout", () => {
     ).toEqual(TABS);
   });
 
+  it("discards restored vertical tab splits now that the header is horizontal-only", () => {
+    const vertical = persistedStateWithPaneCount(2);
+    if (vertical.layout.root.type !== "split") {
+      throw new Error("expected split");
+    }
+    vertical.layout.root.dir = "col";
+    const availableTabIds = ["tab-0", "tab-1"];
+
+    const parsed = parseSidebarSplitState(
+      JSON.stringify(vertical),
+      availableTabIds,
+      "tab-0",
+    );
+
+    expect(isCanonicalSidebarSplitState(parsed, availableTabIds, "tab-0")).toBe(
+      true,
+    );
+  });
+
   it("continues to parse the current raw v1 state without an envelope", () => {
     const split = splitOff(
       createSidebarSplitState(TABS, SIDEBAR_FIXED_INFO_TAB_ID),

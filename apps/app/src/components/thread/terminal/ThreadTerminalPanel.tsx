@@ -17,6 +17,7 @@ interface ThreadTerminalPanelProps {
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
   panelStateId?: string;
+  retainedTerminalIds?: readonly string[];
   syncThreadId: string | null;
   terminalId?: string;
   target: ThreadTerminalTarget;
@@ -33,6 +34,7 @@ export function ThreadTerminalPanel({
   onOpenLink,
   onSelectionAddToChat,
   panelStateId,
+  retainedTerminalIds,
   syncThreadId,
   terminalId,
   target,
@@ -45,6 +47,7 @@ export function ThreadTerminalPanel({
     fixedTerminalId,
     panelStateId,
     preferredTerminalId: terminalId,
+    retainedTerminalIds,
     syncThreadId,
     target,
   });

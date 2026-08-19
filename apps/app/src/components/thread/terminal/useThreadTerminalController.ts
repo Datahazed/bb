@@ -49,6 +49,8 @@ export interface ThreadTerminalControllerArgs {
   panelStateId?: string;
   /** Pins this controller to one pane-owned terminal without changing global tab selection. */
   preferredTerminalId?: string;
+  /** Terminal views retained by every visible pane in the shared panel. */
+  retainedTerminalIds?: readonly string[];
   /** Thread whose tabs are server-synced; null for local-only panel state. */
   syncThreadId: string | null;
   fixedPanelTarget?: TerminalCreateTarget;
@@ -113,11 +115,16 @@ export function isVisibleTerminalSession({
 
 export function shouldCloseDisconnectedTerminalSession({
   retainedTerminalViewId,
+  retainedTerminalViewIds,
   session,
 }: {
   retainedTerminalViewId: string | null;
+  retainedTerminalViewIds?: ReadonlySet<string>;
   session: TerminalSession;
 }): boolean {
+  if (retainedTerminalViewIds?.has(session.id)) {
+    return false;
+  }
   return shouldCloseUnretainedDisconnectedTerminalSession({
     retainedTerminalId: retainedTerminalViewId,
     session,
@@ -208,6 +215,7 @@ export function useThreadTerminalController({
   isPanelPersistedOpen,
   panelStateId,
   preferredTerminalId,
+  retainedTerminalIds,
   syncThreadId,
   fixedPanelTarget,
   fixedTerminalId,
@@ -253,6 +261,11 @@ export function useThreadTerminalController({
   const [retainedTerminalViewId, setRetainedTerminalViewId] = useState<
     string | null
   >(null);
+  const sharedRetainedTerminalIds = useMemo(
+    () =>
+      retainedTerminalIds === undefined ? null : new Set(retainedTerminalIds),
+    [retainedTerminalIds],
+  );
   // Whether this client has shown the panel since it was last persisted-open.
   // Derived during render (not in an effect) so the mount decision below never
   // lags a commit behind `isPanelOpen`.
@@ -509,6 +522,7 @@ export function useThreadTerminalController({
       if (
         !shouldCloseDisconnectedTerminalSession({
           retainedTerminalViewId,
+          retainedTerminalViewIds: sharedRetainedTerminalIds ?? undefined,
           session,
         }) ||
         closingDisconnectedTerminalIdsRef.current.has(session.id)
@@ -538,6 +552,7 @@ export function useThreadTerminalController({
     isPanelOpen,
     removeFixedTerminalTab,
     retainedTerminalViewId,
+    sharedRetainedTerminalIds,
     sessions,
     terminalsQuery.error,
     terminalsQuery.isLoading,

@@ -1158,6 +1158,8 @@ describe("SplitThreadArea", () => {
     });
     const separator = screen.getByRole("separator");
     expect(separator.getAttribute("aria-orientation")).toBe("horizontal");
+    expect(separator.classList).toContain("bg-border-seam-vertical/60");
+    expect(separator.classList).not.toContain("bg-border-seam");
 
     const hitTarget = separator.querySelector<HTMLElement>(
       "[data-split-divider-hit-target]",
@@ -1218,6 +1220,18 @@ describe("SplitThreadArea", () => {
     }
     expect(resizedRoot.sizes[0]).toBeCloseTo(0.7, 5);
     expect(resizedRoot.sizes[1]).toBeCloseTo(0.3, 5);
+  });
+
+  it("keeps the existing stronger seam on side-by-side split dividers", () => {
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1", "row"),
+    });
+
+    const separator = screen.getByRole("separator");
+    expect(separator.getAttribute("aria-orientation")).toBe("vertical");
+    expect(separator.classList).toContain("bg-border-seam");
+    expect(separator.classList).not.toContain("bg-border-seam-vertical/60");
   });
 
   it("hosts one panel whose visibility survives focus changes between panes", async () => {

@@ -91,6 +91,28 @@ describe("terminal visibility", () => {
     ).toBe(false);
   });
 
+  it("keeps disconnected sessions retained by a sibling split pane", () => {
+    const disconnected = terminalSession({
+      id: "term_sibling",
+      status: "disconnected",
+    });
+
+    expect(
+      shouldCloseDisconnectedTerminalSession({
+        retainedTerminalViewId: null,
+        retainedTerminalViewIds: new Set(["term_sibling"]),
+        session: disconnected,
+      }),
+    ).toBe(false);
+    expect(
+      shouldCloseDisconnectedTerminalSession({
+        retainedTerminalViewId: null,
+        retainedTerminalViewIds: new Set(),
+        session: disconnected,
+      }),
+    ).toBe(true);
+  });
+
   it("auto-closes only clean UI-created terminal sessions", () => {
     const cleanUiCreated = terminalSession({ id: "term_ui" });
     const external = terminalSession({ id: "term_external" });

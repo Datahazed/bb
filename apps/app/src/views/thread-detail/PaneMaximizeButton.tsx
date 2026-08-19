@@ -75,6 +75,7 @@ export function PaneMaximizeButton({
 }
 
 export function PaneArrangementButton({
+  arrangementSides,
   className,
   defaultMenuOpen = false,
   defaultTooltipOpen = false,
@@ -83,6 +84,7 @@ export function PaneArrangementButton({
   onToggleFullScreen,
   shortcut,
 }: {
+  arrangementSides?: readonly SplitSide[];
   className?: string;
   defaultMenuOpen?: boolean;
   defaultTooltipOpen?: boolean;
@@ -101,6 +103,11 @@ export function PaneArrangementButton({
   } = useHoverPopover({ openDelayMs: 400, closeDelayMs: 100 });
 
   const label = isFullScreen ? "Exit Full Screen" : "Full Screen";
+  const arrangementActions = arrangementSides
+    ? ARRANGEMENT_ACTIONS.filter((action) =>
+        arrangementSides.includes(action.side),
+      )
+    : ARRANGEMENT_ACTIONS;
   const accessibleLabel = shortcut ? `${label} (${shortcut.label})` : label;
   const menuOpen = !isFullScreen && (defaultMenuOpen || hoverOpen);
   const button = (
@@ -168,13 +175,19 @@ export function PaneArrangementButton({
             <span className="text-subtle-foreground">{shortcut.label}</span>
           ) : null}
         </button>
-        {onMoveToSide ? (
+        {onMoveToSide && arrangementActions.length > 0 ? (
           <div className="border-t border-border-hairline pt-1.5">
             <div className="px-2 pb-0.5 text-2xs font-medium text-subtle-foreground">
               Move
             </div>
-            <div className="grid grid-cols-4 gap-1" aria-label="Move pane">
-              {ARRANGEMENT_ACTIONS.map((action) => (
+            <div
+              className={cn(
+                "grid gap-1",
+                arrangementActions.length === 2 ? "grid-cols-2" : "grid-cols-4",
+              )}
+              aria-label="Move pane"
+            >
+              {arrangementActions.map((action) => (
                 <Tooltip key={action.side}>
                   <TooltipTrigger asChild>
                     <button

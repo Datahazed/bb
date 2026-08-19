@@ -19,9 +19,7 @@ interface TabIdentity {
   id: string;
 }
 
-function terminalSession(
-  overrides: TerminalSessionOverrides,
-): TerminalSession {
+function terminalSession(overrides: TerminalSessionOverrides): TerminalSession {
   return {
     id: "term_1",
     threadId: "thr_1",
@@ -216,6 +214,47 @@ describe("terminalPanelTabs", () => {
     ]);
   });
 
+  it("retains every disconnected terminal that remains visible in split panes", () => {
+    const first = createTerminalFixedPanelTab({ terminalId: "term_first" });
+    const second = createTerminalFixedPanelTab({ terminalId: "term_second" });
+    const hidden = createTerminalFixedPanelTab({ terminalId: "term_hidden" });
+    const sessions = [
+      terminalSession({ id: "term_first", status: "disconnected" }),
+      terminalSession({ id: "term_second", status: "disconnected" }),
+      terminalSession({ id: "term_hidden", status: "disconnected" }),
+    ];
+    const retainedTerminalIds = ["term_first", "term_second"];
+
+    expect(
+      tabIds(
+        buildTerminalSyncedSecondaryFileTabs({
+          orderedTabs: [first, second, hidden],
+          retainedTerminalId: null,
+          retainedTerminalIds,
+          terminalSessions: sessions,
+        }),
+      ),
+    ).toEqual([first.id, second.id]);
+
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: first.id,
+        isOpen: true,
+        tabs: [first, second, hidden],
+      },
+    });
+    expect(
+      tabIds(
+        syncTerminalTabsInFixedPanelState({
+          retainedTerminalId: null,
+          retainedTerminalIds,
+          state,
+          terminalSessions: sessions,
+        }).secondary.tabs,
+      ),
+    ).toEqual([first.id, second.id]);
+  });
+
   it("finds the active terminal id only for displayed terminal tabs", () => {
     const terminalTab = createTerminalFixedPanelTab({ terminalId: "term_1" });
     const fileTab = createHostFilePreviewFixedPanelTab({
@@ -300,9 +339,7 @@ describe("terminalPanelTabs", () => {
       terminalSessions: [terminalSession({ id: "term_1" })],
     });
 
-    expect(tabIds(nextState.secondary.tabs)).toEqual([
-      "terminal:term_1:none",
-    ]);
+    expect(tabIds(nextState.secondary.tabs)).toEqual(["terminal:term_1:none"]);
     expect(nextState.secondary.activeTabId).toBeNull();
   });
 

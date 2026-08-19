@@ -1466,7 +1466,7 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
         // In a column split, the lower pane's header touches the seam, so a
         // lower divider layer loses the grab target to that header.
         "group relative z-[25] flex-shrink-0 transition-colors",
-        "bg-border-seam",
+        horizontal ? "bg-border-seam" : "bg-border-seam-vertical/60",
         "hover:bg-ring/40 data-[dragging]:bg-ring/40",
         hidden && "invisible pointer-events-none",
         horizontal ? "w-px cursor-col-resize" : "h-px cursor-row-resize",
