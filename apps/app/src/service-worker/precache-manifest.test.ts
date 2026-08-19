@@ -128,6 +128,15 @@ describe("buildServiceWorkerPrecacheManifest", () => {
     ).not.toBe(base.buildId);
   });
 
+  it("fails the build when index.html lost the app-shell marker the worker installs by", () => {
+    expect(() =>
+      buildServiceWorkerPrecacheManifest(fixtureBundle(), {
+        ...options,
+        indexHtml: '<!doctype html><body class="dark bb-app-shell"></body>',
+      }),
+    ).toThrow(/does not contain class="bb-app-shell"/u);
+  });
+
   it("fails the build when a configured route module has no chunk", () => {
     expect(() =>
       buildServiceWorkerPrecacheManifest(fixtureBundle(), {

@@ -99,6 +99,9 @@
       })();
     </script>
   </head>
+  <!-- The service worker identifies the real app shell by this exact body
+       class attribute (src/service-worker/sw-manifest.ts APP_SHELL_MARKER);
+       the build fails if it changes. -->
   <body class="bb-app-shell">
     <div id="root"></div>
     <script>

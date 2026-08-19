@@ -10,3 +10,12 @@ export interface ServiceWorkerPrecacheManifest {
   /** Root-relative URLs of the immutable assets to precache (`/assets/...`). */
   assetUrls: string[];
 }
+
+/**
+ * Text that only the real app shell contains (the `<body>` class in
+ * apps/app/index.html). The build refuses to emit a worker whose shell lacks
+ * it, and the worker refuses to precache a shell response without it, so a
+ * connect sign-in or offline page proxied at the app URL is never installed
+ * as the offline fallback.
+ */
+export const APP_SHELL_MARKER = 'class="bb-app-shell"';

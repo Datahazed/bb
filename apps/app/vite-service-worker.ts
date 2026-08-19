@@ -3,7 +3,10 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, type Plugin } from "vite";
-import type { ServiceWorkerPrecacheManifest } from "./src/service-worker/sw-manifest.js";
+import {
+  APP_SHELL_MARKER,
+  type ServiceWorkerPrecacheManifest,
+} from "./src/service-worker/sw-manifest.js";
 
 const appDir = dirname(fileURLToPath(import.meta.url));
 
@@ -59,6 +62,14 @@ export function buildServiceWorkerPrecacheManifest(
   bundle: ManifestBundle,
   options: BuildPrecacheManifestOptions,
 ): ServiceWorkerPrecacheManifest {
+  if (!options.indexHtml.includes(APP_SHELL_MARKER)) {
+    // The worker only installs a shell that carries this marker; a build
+    // whose index.html lost it would ship a worker that silently never
+    // installs. Fail loudly here instead.
+    throw new Error(
+      `service worker precache: index.html does not contain ${APP_SHELL_MARKER}`,
+    );
+  }
   const chunks = Object.values(bundle).filter(
     (output): output is ManifestBundleChunk => output.type === "chunk",
   );

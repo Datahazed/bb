@@ -19,15 +19,16 @@
  *    build, so `bb update` (which rotates every asset hash) cannot leave the
  *    worker serving a mixed build.
  */
-import type { ServiceWorkerPrecacheManifest } from "./sw-manifest.js";
+import {
+  APP_SHELL_MARKER,
+  type ServiceWorkerPrecacheManifest,
+} from "./sw-manifest.js";
 import {
   APP_SHELL_URL_PATH,
   classifyServiceWorkerRequest,
 } from "./sw-routing.js";
 
-/** Text that only the real app shell contains; a sign-in or offline page
- * proxied by connect never does, so a shell precache that lacks it is refused. */
-export const APP_SHELL_MARKER = 'class="bb-app-shell"';
+export { APP_SHELL_MARKER };
 
 const CACHE_NAME_PREFIX = "bb-app-";
 
