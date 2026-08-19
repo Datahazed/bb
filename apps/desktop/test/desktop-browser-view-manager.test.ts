@@ -854,6 +854,61 @@ describe("DesktopBrowserViewManager", () => {
     ).rejects.toThrow("URL is not allowed");
   });
 
+  it("invalidates the current page revision before normal navigation starts", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 51,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/original",
+    });
+    const view = requireFakeView(0);
+
+    manager.navigate({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        url: "https://example.com/next",
+      },
+    });
+
+    await expect(
+      manager.runPageScript({
+        hostWindow,
+        request: {
+          tabId: "browser:a",
+          requestId: "request:during-navigation",
+          expectedNavigationEpoch: 0,
+          source: "() => null",
+          input: null,
+          timeoutMs: 1_000,
+        },
+      }),
+    ).rejects.toThrow("changed before the script ran");
+
+    view.webContents.emitDidStartNavigation();
+    view.webContents.emitDidFinishLoad();
+    const capture = manager.capturePage({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        format: "png",
+        quality: 85,
+        expectedNavigationEpoch: 1,
+      },
+    });
+    view.webContents.pendingCaptureResolvers.shift()?.(
+      electronMock.fakeCapturedImage,
+    );
+    await expect(capture).resolves.toMatchObject({ navigationEpoch: 1 });
+  });
+
   it("forwards resolved browser shortcuts and suppresses the untrusted page", () => {
     const dispatchAppCommand = vi.fn();
     const focusHostWebContents = vi.fn();
