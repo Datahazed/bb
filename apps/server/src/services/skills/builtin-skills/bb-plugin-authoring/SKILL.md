@@ -48,8 +48,9 @@ The manifest is `package.json`:
   self-contained `dist/server.js` + `server.meta.json` that git/npm installs
   prefer when its SDK major matches, so consumers never need npm or
   node_modules. `bb.app` (optional) — frontend entry compiled by
-  `bb plugin build` into `dist/app.js` + `app.css` + `app.meta.json`; path
-  and git installs build it automatically at install time. Git installs also
+  `bb plugin build` into minified `dist/app.js` + `app.css` + `app.meta.json`
+  (`bb plugin dev` keeps them readable); path and git installs build it
+  automatically at install time. Git installs also
   run `npm install --omit=dev` first (so a git plugin may use third-party
   packages) and keep node_modules, since bundling cannot inline data files read
   at runtime. So every package your source imports that bb does not shim
@@ -1089,8 +1090,27 @@ path is served to clients as a `logoUrl` and drawn through `<img>`, so its
 there is no `logoUrl` at all. For a monochrome mark, ship an `app.tsx` too and
 register the same artwork with
 `app.slots.experimental_providerIcon({ providerId, icon })` — it renders
-inline and inherits the theme. The four first-party provider plugins do
-exactly this (`plugins/provider-codex/app.tsx`).
+inline and inherits the theme. Example:
+
+```tsx
+// app.tsx
+import { definePluginApp } from "@get-bb/plugin-sdk/app";
+
+function EchoIcon({ className }: { className?: string }) {
+  return (
+    <svg fill="currentColor" viewBox="0 0 24 24" className={className}>
+      <path d="…" />
+    </svg>
+  );
+}
+
+export default definePluginApp((app) => {
+  app.slots.experimental_providerIcon({ providerId: "echo", icon: EchoIcon });
+});
+```
+
+(The four first-party provider plugins ship no `app.tsx`: bb vendors their
+marks itself, so an icon-only bundle would only add fetches at boot.)
 
 Ids are collision-rejected against core providers and other plugins'
 registrations; registrations replace wholesale on reload like every other
@@ -1715,7 +1735,7 @@ openWorkspaceFile }` — register a leaf
   A component beats the file logo for that provider; disabling the plugin
   falls back to it. One registration per provider id per plugin; if two
   plugins claim one provider id the host keeps the first by plugin id and
-  warns. Reference: `plugins/provider-codex/app.tsx`.
+  warns. See the `app.tsx` example under "The icon" above.
 
 Host components:
 
@@ -2150,7 +2170,8 @@ multi-plugin arbitration. Use a live loop for those host boundaries.
 - `bb plugin dev` is the loop: save → rebuild declared `bb.app` and `bb.host`
   artifacts → reload; open app pages pick new UI up live and
   host workers move to the new generation on their next call. Build/reload
-  failures print and keep watching.
+  failures print and keep watching. The dev loop writes readable (unminified)
+  `dist/app.js` + `app.css`; `bb plugin build` and installs minify them.
 - `bb plugin list` shows status, services, schedules (with last_error),
   handler stats, and the CLI command; `bb plugin logs <id> -f` follows
   `bb.log` output. Add `--json` to any plugin command for machine output.
