@@ -53,6 +53,27 @@ describe("AppErrorBoundary", () => {
     dispose();
   });
 
+  it("reports the caught error to onError so boot can drop a bad persisted cache", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { container, render, dispose } = mountRoot();
+    const onError = vi.fn();
+
+    function Boom(): never {
+      throw new Error("hydrated shape mismatch");
+    }
+    render(
+      <AppErrorBoundary onError={onError}>
+        <Boom />
+      </AppErrorBoundary>,
+    );
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(Error);
+    expect(onError.mock.calls[0]?.[0].message).toBe("hydrated shape mismatch");
+    expect(container.textContent).toContain("bb hit an error and stopped");
+    dispose();
+  });
+
   it("catches the commit-phase removeChild failure instead of blanking the root", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { container, render, dispose } = mountRoot();

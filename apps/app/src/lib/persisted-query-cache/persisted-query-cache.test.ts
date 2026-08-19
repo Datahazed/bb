@@ -1,10 +1,14 @@
 import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  environmentQueryKey,
+  hostQueryKey,
+  hostsQueryKey,
   sidebarNavigationQueryKey,
   systemConfigQueryKey,
   threadDetailBootstrapQueryKey,
   threadHostFilePreviewQueryKey,
+  threadQueryKey,
   threadsQueryKey,
   threadTimelineQueryKey,
 } from "@/hooks/queries/query-keys";
@@ -213,6 +217,78 @@ describe("restorePersistedQueryCache", () => {
     expect(state?.dataUpdatedAt).toBe(NOW - 60_000);
   });
 
+  it("seeds the thread, environment and host caches from a hydrated bootstrap with its fetch time", async () => {
+    const queryClient = new QueryClient();
+    const fetchedAt = NOW - 90_000;
+    const bootstrap = entry(threadDetailBootstrapQueryKey("thr_1"), fetchedAt, {
+      id: "thr_1",
+      title: "Cached",
+      environment: { id: "env_1" },
+      host: { id: "host_1" },
+    });
+    const store = createMemoryPersistedQueryCacheStore(
+      serializePersistedQueryCache([bootstrap], fetchedAt),
+    );
+
+    await restorePersistedQueryCache({ queryClient, store, now: NOW });
+
+    // The route reads the thread from `thread`, not from the bootstrap query;
+    // without this seed a hydrated bootstrap still paints "Loading…".
+    expect(queryClient.getQueryData(threadQueryKey("thr_1"))).toEqual({
+      id: "thr_1",
+      title: "Cached",
+    });
+    expect(queryClient.getQueryData(environmentQueryKey("env_1"))).toEqual({
+      id: "env_1",
+    });
+    expect(queryClient.getQueryData(hostQueryKey("host_1"))).toEqual({
+      id: "host_1",
+    });
+    expect(queryClient.getQueryData(hostsQueryKey())).toEqual([
+      { id: "host_1" },
+    ]);
+    // Same age as the bootstrap, so staleTime and reconnect invalidation
+    // treat the derived entries as stale too.
+    for (const key of [
+      threadQueryKey("thr_1"),
+      environmentQueryKey("env_1"),
+      hostQueryKey("host_1"),
+      hostsQueryKey(),
+    ]) {
+      expect(queryClient.getQueryState(key)?.dataUpdatedAt).toBe(fetchedAt);
+    }
+  });
+
+  it("leaves the derived caches alone when the live bootstrap is fresher", async () => {
+    const queryClient = new QueryClient();
+    seedQuery(
+      queryClient,
+      threadDetailBootstrapQueryKey("thr_1"),
+      { id: "thr_1", title: "Live", environment: null, host: null },
+      NOW,
+    );
+    const store = createMemoryPersistedQueryCacheStore(
+      serializePersistedQueryCache(
+        [
+          entry(threadDetailBootstrapQueryKey("thr_1"), NOW - 1, {
+            id: "thr_1",
+            title: "Stale",
+            environment: { id: "env_stale" },
+            host: null,
+          }),
+        ],
+        NOW - 1,
+      ),
+    );
+
+    await restorePersistedQueryCache({ queryClient, store, now: NOW });
+
+    expect(queryClient.getQueryData(threadQueryKey("thr_1"))).toBeUndefined();
+    expect(
+      queryClient.getQueryData(environmentQueryKey("env_stale")),
+    ).toBeUndefined();
+  });
+
   it("does not overwrite fresher data already in the client", async () => {
     const queryClient = new QueryClient();
     seedQuery(queryClient, systemConfigQueryKey(), { v: "live" }, NOW);
@@ -345,9 +421,13 @@ describe("startPersistedQueryCachePersister", () => {
       collectLivePersistedQueryCacheEntries(queryClient).map((e) => e.queryKey),
     ).toEqual([sidebarNavigationQueryKey()]);
 
-    // A later successful update is picked up on the next flush.
+    // A later successful update is picked up on the next flush, the previous
+    // snapshot still survives, and the store is not re-read for it: a
+    // streaming turn must not parse the whole blob on every debounce tick.
+    const read = vi.spyOn(store, "read");
     seedQuery(queryClient, threadTimelineQueryKey("gcd"), { rows: [] }, NOW);
     await persister.flush();
+    expect(read).not.toHaveBeenCalled();
     expect(
       parsePersistedQueryCache(store.value, NOW)?.map((e) => e.queryKey),
     ).toEqual([
@@ -356,6 +436,32 @@ describe("startPersistedQueryCachePersister", () => {
       threadTimelineQueryKey("gcd"),
     ]);
     persister.stop();
+  });
+
+  it("does not write after stop() lands during the initial store read", async () => {
+    const queryClient = new QueryClient();
+    seedQuery(queryClient, sidebarNavigationQueryKey(), { s: 1 }, NOW);
+    let resolveRead: (value: string | null) => void = () => {};
+    const store = createMemoryPersistedQueryCacheStore();
+    vi.spyOn(store, "read").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRead = resolve;
+        }),
+    );
+    const write = vi.spyOn(store, "write");
+    const persister = startPersistedQueryCachePersister({
+      queryClient,
+      store,
+      now: () => NOW,
+    });
+    const flushed = persister.flush();
+    // The experiment turned off (or the app tore down) mid-read; the store
+    // is about to be cleared and must not be repopulated by this write.
+    persister.stop();
+    resolveRead(null);
+    await flushed;
+    expect(write).not.toHaveBeenCalled();
   });
 
   it("debounces cache updates into one write and stops after stop()", async () => {

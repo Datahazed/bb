@@ -26,6 +26,8 @@ import {
   type QueryState,
 } from "@tanstack/react-query";
 import { z } from "zod";
+import type { ThreadWithIncludesResponse } from "@bb/server-contract";
+import { ingestThreadDetailBootstrap } from "@/hooks/cache-owners/thread-detail-cache-owner";
 import {
   SIDEBAR_NAVIGATION_QUERY_KEY,
   SYSTEM_CONFIG_QUERY_KEY,
@@ -342,7 +344,45 @@ export async function restorePersistedQueryCache({
       state: hydratedQueryState(entry),
     })),
   });
+  ingestHydratedThreadDetailBootstraps(queryClient, entries);
   return { status: "hydrated", entryCount: entries.length };
+}
+
+/**
+ * The live bootstrap query seeds the `thread`, `environment` and `host` caches
+ * from inside its queryFn, and the thread route reads the thread from those —
+ * a hydrated bootstrap alone would still leave the page on "Loading…" until
+ * `useThread` round-trips. Re-run that ingestion for every bootstrap the
+ * hydrate call actually landed (fresher live data is left alone), stamped with
+ * the bootstrap's own fetch time so the derived entries stay exactly as stale.
+ */
+function ingestHydratedThreadDetailBootstraps(
+  queryClient: QueryClient,
+  entries: ReadonlyArray<PersistedQueryCacheEntry>,
+): void {
+  for (const entry of entries) {
+    if (
+      classifyPersistedQueryKey(entry.queryKey)?.kind !==
+      "threadDetailBootstrap"
+    ) {
+      continue;
+    }
+    const state = queryClient.getQueryState<ThreadWithIncludesResponse>(
+      entry.queryKey,
+    );
+    if (
+      state === undefined ||
+      state.data === undefined ||
+      state.dataUpdatedAt !== entry.dataUpdatedAt
+    ) {
+      continue;
+    }
+    ingestThreadDetailBootstrap({
+      queryClient,
+      thread: state.data,
+      updatedAt: state.dataUpdatedAt,
+    });
+  }
 }
 
 export interface RestorePersistedQueryCacheIfEnabledArgs {
@@ -431,6 +471,12 @@ export function startPersistedQueryCachePersister({
   let dirty = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let writeChain: Promise<void> = Promise.resolve();
+  // What the store held the last time we looked. Read from IndexedDB once
+  // (entries hydrated on a previous launch may since have been garbage-
+  // collected from memory and must survive), then carried forward from our
+  // own writes so a streaming turn does not re-read and re-parse the whole
+  // blob on every debounce tick.
+  let previousEntries: PersistedQueryCacheEntry[] | null = null;
 
   const cancelTimer = () => {
     if (timer !== null) {
@@ -451,14 +497,23 @@ export function startPersistedQueryCachePersister({
     dirty = false;
     const timestamp = now();
     try {
-      const previous =
-        parsePersistedQueryCache(await store.read(), timestamp) ?? [];
+      if (previousEntries === null) {
+        previousEntries =
+          parsePersistedQueryCache(await store.read(), timestamp) ?? [];
+        // stop() may have landed during the read; the caller is gone.
+        if (disabled || stopped) return;
+      }
       const selected = selectPersistedQueryCacheEntries(
-        [...collectLivePersistedQueryCacheEntries(queryClient), ...previous],
+        [
+          ...collectLivePersistedQueryCacheEntries(queryClient),
+          ...previousEntries,
+        ],
         { now: timestamp },
       );
       await store.write(serializePersistedQueryCache(selected, timestamp));
+      previousEntries = selected;
     } catch (error) {
+      previousEntries = null;
       if (isQuotaExceededError(error)) {
         await store.clear();
       }

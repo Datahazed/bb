@@ -27,6 +27,13 @@ interface UpsertHostListArgs {
 export interface ThreadDetailBootstrapIngestionArgs {
   queryClient: QueryClient;
   thread: ThreadWithIncludesResponse;
+  /**
+   * When the bootstrap did not just arrive from the network (a slice hydrated
+   * from the persisted query cache), stamp the derived entries with the
+   * bootstrap's own fetch time so their staleTime and the reconnect
+   * invalidation treat them as exactly that old. Omit for a live response.
+   */
+  updatedAt?: number;
 }
 
 function stripThreadIncludes(
@@ -65,24 +72,30 @@ function upsertHostList({ host, hosts }: UpsertHostListArgs): HostList {
 export function ingestThreadDetailBootstrap({
   queryClient,
   thread,
+  updatedAt,
 }: ThreadDetailBootstrapIngestionArgs): void {
+  const setOptions = updatedAt === undefined ? undefined : { updatedAt };
   queryClient.setQueryData(
     threadQueryKey(thread.id),
     stripThreadIncludes(thread),
+    setOptions,
   );
 
   if (thread.environment) {
     queryClient.setQueryData(
       environmentQueryKey(thread.environment.id),
       thread.environment,
+      setOptions,
     );
   }
 
   if (thread.host) {
     const host = thread.host;
-    queryClient.setQueryData(hostQueryKey(host.id), host);
-    queryClient.setQueryData<HostList>(hostsQueryKey(), (hosts) =>
-      upsertHostList({ host, hosts }),
+    queryClient.setQueryData(hostQueryKey(host.id), host, setOptions);
+    queryClient.setQueryData<HostList>(
+      hostsQueryKey(),
+      (hosts) => upsertHostList({ host, hosts }),
+      setOptions,
     );
   }
 

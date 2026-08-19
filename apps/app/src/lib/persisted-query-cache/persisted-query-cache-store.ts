@@ -94,7 +94,11 @@ export function createIndexedDbPersistedQueryCacheStore(): PersistedQueryCacheSt
     },
     async write(value) {
       await withDatabase("readwrite", async (store, transaction) => {
-        store.put(value, IDB_SNAPSHOT_KEY);
+        // Await the request itself, not just the transaction: a failed put
+        // aborts the transaction, but the abort event's `error` can still be
+        // null while the request's is the real `QuotaExceededError`, which the
+        // persister needs to see to clear the store.
+        await requestToPromise(store.put(value, IDB_SNAPSHOT_KEY));
         await transactionDone(transaction);
       });
     },

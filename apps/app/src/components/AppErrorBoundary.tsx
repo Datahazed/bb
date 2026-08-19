@@ -17,6 +17,13 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
+  /**
+   * Runs once per caught error, after the console report. Must not throw and
+   * must not depend on anything the crashed tree owned; main.tsx uses it to
+   * drop the persisted query cache so a bad hydration cannot crash every
+   * reload in a row.
+   */
+  onError?: (error: Error) => void;
 }
 
 interface AppErrorBoundaryState {
@@ -37,6 +44,7 @@ export class AppErrorBoundary extends Component<
     // The component stack is the part a screenshot of the console never has,
     // and the part that names the subtree at fault.
     console.error("[bb] the app crashed", error, info.componentStack);
+    this.props.onError?.(error);
   }
 
   override render(): ReactNode {

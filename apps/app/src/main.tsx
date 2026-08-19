@@ -54,16 +54,33 @@ takeOverPanelResizeCursor();
  * and recent threads paint from cache. Bounded by a short timeout; every
  * failure path falls through to a normal cold render.
  */
-function hydrateQueryClientFromPersistedCache(): Promise<unknown> {
+function hydrateQueryClientFromPersistedCache(): Promise<boolean> {
   return restorePersistedQueryCacheIfEnabled({
     queryClient,
     isEnabled: readPersistedQueryCacheFlag,
     createStore: () =>
       isIndexedDbAvailable() ? createIndexedDbPersistedQueryCacheStore() : null,
-  });
+  }).then(
+    (result) => result.status === "hydrated",
+    () => false,
+  );
 }
 
-function renderApp(): void {
+/**
+ * The persisted slice is opaque data from an earlier app version. If the tree
+ * crashes on a launch that hydrated it, drop it so the next reload is a plain
+ * cold start instead of the same crash again; the persister rebuilds it from
+ * fresh responses once the app is up.
+ */
+function discardPersistedQueryCacheAfterCrash(): void {
+  if (!isIndexedDbAvailable()) return;
+  void createIndexedDbPersistedQueryCacheStore().clear();
+}
+
+function renderApp(hydratedFromPersistedCache: boolean): void {
+  const onCrash = hydratedFromPersistedCache
+    ? discardPersistedQueryCacheAfterCrash
+    : undefined;
   createRoot(document.getElementById("root")!, {
     // An uncaught render/commit error unmounts the whole root. React's default
     // handler reports only the error, so the report never says which subtree
@@ -74,12 +91,13 @@ function renderApp(): void {
         error,
         errorInfo.componentStack,
       );
+      onCrash?.();
     },
   }).render(
     <StrictMode>
       {/* Outside the providers: a crash in the query client or the router has to
         land here too, or it still takes the window white. */}
-      <AppErrorBoundary>
+      <AppErrorBoundary onError={onCrash}>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
             <App />
@@ -91,4 +109,6 @@ function renderApp(): void {
   );
 }
 
-void hydrateQueryClientFromPersistedCache().then(renderApp, renderApp);
+void hydrateQueryClientFromPersistedCache().then(renderApp, () =>
+  renderApp(false),
+);

@@ -636,9 +636,11 @@ time, so the usual staleness rules apply: staleTime-bounded queries refetch on
 mount, the WebSocket connect pass refetches everything fetched before it, and a
 hydrated timeline window is refreshed as a delta. The cache is one blob capped
 at 4 MB and 24 hours; entries older than that are dropped. A quota or storage
-failure disables persistence for the session and clears the blob. Turning the
-experiment off clears the blob on the next load. The setting is server-side and
-applies to every browser; each browser mirrors it locally
+failure disables persistence for the session and clears the blob, and so does
+an app crash on a launch that hydrated from it, so a bad blob can never crash
+two launches in a row. Turning the experiment off clears the blob (immediately
+in the browser that changed it, on the next load elsewhere). The setting is
+server-side and applies to every browser; each browser mirrors it locally
 (`localStorage["bb.persistedQueryCache"]`) so the boot path knows whether to
 read IndexedDB before `/system/config` has loaded. Nothing outside the allowlist
 (plugin data, file previews, credentials) is ever written. Change it with
