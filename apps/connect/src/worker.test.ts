@@ -163,7 +163,11 @@ import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
 import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
-import { TUNNEL_OFFLINE_HEADER, TunnelDO } from "./tunnel-do.js";
+import {
+  TUNNEL_OFFLINE_HEADER,
+  TUNNEL_STALE_MS,
+  TunnelDO,
+} from "./tunnel-do.js";
 
 const mockParseCookie = vi.mocked(parseCookie);
 const mockResolveLabel = vi.mocked(resolveLabel);
@@ -1334,6 +1338,8 @@ vi.stubGlobal("WebSocketRequestResponsePair", FakeWebSocketRequestResponsePair);
 
 type MockState = {
   addSocket: (ws: WebSocket, tags: string[]) => void;
+  /** Stamp the runtime's last auto-response (client heartbeat) time for `ws`. */
+  setHeartbeat: (ws: WebSocket, at: Date) => void;
   storage: Map<string, unknown>;
   restore: Promise<void>;
   api: DurableObjectState;
@@ -1342,6 +1348,7 @@ type MockState = {
 function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
   const storage = new Map<string, unknown>(Object.entries(initialStorage));
   const entries: Array<{ ws: WebSocket; tags: string[] }> = [];
+  const heartbeats = new Map<WebSocket, Date>();
   let restore = Promise.resolve();
   const api = {
     getWebSockets: (tag?: string) =>
@@ -1354,6 +1361,8 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
       entries.push({ ws, tags });
     },
     setWebSocketAutoResponse: vi.fn(),
+    getWebSocketAutoResponseTimestamp: (ws: WebSocket) =>
+      heartbeats.get(ws) ?? null,
     blockConcurrencyWhile: (fn: () => Promise<void>) => {
       restore = fn();
       return restore;
@@ -1372,6 +1381,9 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
   return {
     addSocket: (ws: WebSocket, tags: string[]) => {
       entries.push({ ws, tags });
+    },
+    setHeartbeat: (ws: WebSocket, at: Date) => {
+      heartbeats.set(ws, at);
     },
     storage,
     get restore() {
@@ -1393,11 +1405,16 @@ function makeDoEnv() {
 function fakeTunnelSocket(
   send?: (data: ArrayBuffer | ArrayBufferView | string) => void,
   readyState = 1, // READY_STATE_OPEN
+  attachment: unknown = null,
 ) {
+  let stored = attachment;
   return {
     send: send ?? vi.fn(),
     close: vi.fn(),
-    deserializeAttachment: () => null,
+    deserializeAttachment: () => stored,
+    serializeAttachment: (value: unknown) => {
+      stored = value;
+    },
     readyState,
   } as unknown as WebSocket;
 }
@@ -1832,5 +1849,190 @@ describe("TunnelDO dead tunnel sockets", () => {
     const res = await dob.fetch(new Request("https://do.internal/"));
     expect(res.status).toBe(503);
     expect(res.headers.get("x-bb-tunnel-offline")).toBe("1");
+  });
+});
+
+// ── TunnelDO zombie tunnel sockets ──────────────────────────────────────────
+//
+// A tunnel whose client vanished without a close frame (laptop lid, cellular
+// handoff, NAT timeout) keeps readyState OPEN and accepts send() for as long
+// as the TCP zombie lingers. Every visitor request proxied into it hung for
+// the full response-head timeout before a 504. Liveness now also requires a
+// recent accept or heartbeat auto-response.
+
+describe("TunnelDO zombie tunnel sockets", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-19T12:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function acceptedAgo(ms: number): { acceptedAt: number } {
+    return { acceptedAt: Date.now() - ms };
+  }
+
+  it("answers 503 offline and closes a socket that has not pinged within the window", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const zombie = fakeTunnelSocket(
+      captureSent(sent),
+      1,
+      acceptedAgo(TUNNEL_STALE_MS + 1_000),
+    );
+    state.addSocket(zombie, ["tunnel"]);
+    state.setHeartbeat(zombie, new Date(Date.now() - TUNNEL_STALE_MS - 500));
+
+    const res = await dob.fetch(new Request("https://do.internal/"));
+    expect(res.status).toBe(503);
+    expect(res.headers.get(TUNNEL_OFFLINE_HEADER)).toBe("1");
+    expect(sent).toHaveLength(0);
+    expect(vi.mocked(zombie.close)).toHaveBeenCalledWith(
+      1001,
+      "tunnel heartbeat stale",
+    );
+  });
+
+  it("treats a long-lived socket as live while heartbeats keep arriving", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket(
+      captureSent(sent),
+      1,
+      acceptedAgo(6 * 60 * 60_000),
+    );
+    state.addSocket(tunnel, ["tunnel"]);
+    state.setHeartbeat(tunnel, new Date(Date.now() - 15_000));
+
+    void dob.fetch(new Request("https://do.internal/app.js"));
+    expect(sent).toHaveLength(1);
+    expect(decodeFrame(sent[0]).type).toBe("open-http");
+    expect(vi.mocked(tunnel.close)).not.toHaveBeenCalled();
+  });
+
+  it("treats a just-accepted socket as live before its first heartbeat", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket(captureSent(sent), 1, acceptedAgo(5_000));
+    state.addSocket(tunnel, ["tunnel"]);
+
+    void dob.fetch(new Request("https://do.internal/app.js"));
+    expect(sent).toHaveLength(1);
+    expect(decodeFrame(sent[0]).type).toBe("open-http");
+  });
+
+  it("gives a socket accepted before freshness tracking one grace window", async () => {
+    // No acceptedAt and no heartbeat: stamp now, proxy, and require a ping
+    // within the window from here on.
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const legacy = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(legacy, ["tunnel"]);
+
+    void dob.fetch(new Request("https://do.internal/a"));
+    expect(sent).toHaveLength(1);
+    expect(legacy.deserializeAttachment()).toEqual({ acceptedAt: Date.now() });
+
+    vi.advanceTimersByTime(TUNNEL_STALE_MS + 1);
+    const res = await dob.fetch(new Request("https://do.internal/b"));
+    expect(res.status).toBe(503);
+    expect(vi.mocked(legacy.close)).toHaveBeenCalledWith(
+      1001,
+      "tunnel heartbeat stale",
+    );
+  });
+
+  it("fails requests already in flight on the zombie instead of waiting out the timeout", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    // Accepted 45s ago, never pinged: still inside the window, so a request
+    // arriving now is proxied — but the client is already gone.
+    const tunnel = fakeTunnelSocket(captureSent(sent), 1, acceptedAgo(45_000));
+    state.addSocket(tunnel, ["tunnel"]);
+    const visitor = fakeTunnelSocket();
+    state.addSocket(visitor, ["visitor:7"]);
+
+    const stranded = dob.fetch(new Request("https://do.internal/api/threads"));
+    expect(sent).toHaveLength(1);
+
+    // Six seconds later the window closes; the next request must both get the
+    // offline answer and take the stranded one down with it (well before its
+    // own 30s response-head timeout).
+    vi.advanceTimersByTime(TUNNEL_STALE_MS - 45_000 + 1);
+    const next = await dob.fetch(new Request("https://do.internal/api/next"));
+    expect(next.status).toBe(503);
+
+    const strandedResponse = await stranded;
+    expect(strandedResponse.status).toBe(502);
+    expect(await strandedResponse.text()).toContain(
+      "tunnel disconnected mid-request",
+    );
+    expect(vi.mocked(visitor.close)).toHaveBeenCalledWith(
+      1001,
+      "tunnel disconnected",
+    );
+  });
+
+  it("routes around a zombie to a fresh replacement without abandoning its streams", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const zombie = fakeTunnelSocket(
+      captureSent([]),
+      1,
+      acceptedAgo(TUNNEL_STALE_MS + 60_000),
+    );
+    state.addSocket(zombie, ["tunnel"]);
+    const fresh = fakeTunnelSocket(captureSent(sent), 1, acceptedAgo(1_000));
+    state.addSocket(fresh, ["tunnel"]);
+    const visitor = fakeTunnelSocket();
+    state.addSocket(visitor, ["visitor:9"]);
+
+    const pending = dob.fetch(new Request("https://do.internal/app.js"));
+    expect(sent).toHaveLength(1);
+    expect(vi.mocked(zombie.close)).toHaveBeenCalledWith(
+      1001,
+      "tunnel heartbeat stale",
+    );
+    expect(vi.mocked(visitor.close)).not.toHaveBeenCalled();
+
+    const streamId = openHttpStreamId(sent, 0);
+    dob.webSocketMessage(
+      fresh,
+      frameBuffer({ type: "resp-head", streamId, status: 204, headers: [] }),
+    );
+    expect((await pending).status).toBe(204);
+  });
+
+  it("stops advertising presence for a zombie on the alarm", async () => {
+    const run = vi.fn(async () => {});
+    const where = vi.fn(() => ({ run }));
+    const set = vi.fn(() => ({ where }));
+    const update = vi.fn(() => ({ set }));
+    vi.mocked(drizzle).mockReturnValue({ update } as never);
+    const state = mockDoState({ serverId: "srv1", protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(
+      fakeTunnelSocket(undefined, 1, acceptedAgo(TUNNEL_STALE_MS + 1)),
+      ["tunnel"],
+    );
+
+    await dob.alarm();
+
+    expect(run).not.toHaveBeenCalled();
+    expect(state.storage.has("serverId")).toBe(false);
   });
 });

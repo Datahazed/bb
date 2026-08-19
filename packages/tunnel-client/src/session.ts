@@ -22,7 +22,13 @@ import { headersForLoopbackRequest } from "./headers.js";
 import type { TunnelClientLogger } from "./logger.js";
 
 const HEARTBEAT_INTERVAL_MS = 20_000;
-const HEARTBEAT_DEADLINE_MS = 60_000;
+// Two missed acks plus slack, evaluated on each 20s tick: a dead link is
+// declared at the third tick after the last ack (60s; it used to be the
+// fourth, 80s). The relay stops treating the socket as live 50s after the
+// last heartbeat it answered (TUNNEL_STALE_MS in apps/connect), so the
+// client redials within one tick of the relay showing its visitors the
+// offline page instead of ~30s later.
+const HEARTBEAT_DEADLINE_MS = 45_000;
 
 const UNREGISTERED_PORT_BODY = "this port is not shared";
 const textEncoder = new TextEncoder();

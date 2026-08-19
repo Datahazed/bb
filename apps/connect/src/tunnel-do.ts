@@ -28,6 +28,19 @@ const RESP_HEAD_TIMEOUT_MS = 30_000;
 // dashboard shows accurate presence. Alarm-driven (auto-response pings don't
 // run JS), kept under the 90s offline window.
 const PRESENCE_INTERVAL_MS = 50_000;
+// A tunnel socket counts as live only while its client keeps proving it: the
+// client pings every 20s (@bb/tunnel-client HEARTBEAT_INTERVAL_MS) and the
+// runtime auto-responds, stamping the socket's auto-response timestamp
+// without waking this object. A socket that has neither been accepted nor
+// pinged within this window is a zombie — the client's network died without a
+// close frame ever reaching Cloudflare (laptop lid, cellular handoff, NAT
+// timeout). Its readyState still reads OPEN and send() still succeeds, so
+// without this check every visitor request was proxied into the void and
+// hung for RESP_HEAD_TIMEOUT_MS before a 504, for as long as the TCP zombie
+// lingered (~80s). Two missed pings plus slack; the client's own deadline
+// (45s, checked per 20s tick) makes it redial at its next tick after this
+// window closes, so the offline page shows only briefly on a real drop.
+export const TUNNEL_STALE_MS = 50_000;
 
 // Standard WebSocket readyState numbering (workerd's READY_STATE_OPEN; the
 // constant itself is Cloudflare-only, so tests in Node use the number).
@@ -187,13 +200,60 @@ export class TunnelDO {
     // (abrupt network drop), leaving it tagged but unusable — send() on it
     // throws. And after a reconnect the runtime can briefly list both the
     // stale socket and the replacement. Pick the most recently accepted OPEN
-    // socket; a dead-but-lingering socket must read as "offline", never be
-    // proxied to (that turns every visitor request into an uncaught 1101).
+    // socket that is still heartbeat-fresh; a dead-but-lingering socket must
+    // read as "offline", never be proxied to (that turns every visitor request
+    // into an uncaught 1101, or a 30s hang when the zombie still accepts
+    // writes). Stale sockets are closed here so they stop being listed and
+    // the presence alarm stops advertising a tunnel nobody is behind.
+    const now = Date.now();
     const sockets = this.state.getWebSockets(TUNNEL_TAG);
+    let live: WebSocket | null = null;
+    let closedStale = false;
     for (let i = sockets.length - 1; i >= 0; i--) {
-      if (sockets[i].readyState === WS_READY_STATE_OPEN) return sockets[i];
+      const socket = sockets[i];
+      if (socket.readyState !== WS_READY_STATE_OPEN) continue;
+      if (this.isTunnelFresh(socket, now)) {
+        live ??= socket;
+        continue;
+      }
+      closedStale = true;
+      try {
+        socket.close(1001, "tunnel heartbeat stale");
+      } catch {
+        // Already gone — nothing to close.
+      }
     }
-    return null;
+    // Every candidate was a zombie: its in-flight streams can never complete
+    // (the client behind it is gone), so fail them now rather than letting
+    // each visitor wait out the response-head timeout. With a live
+    // replacement the streams belong to it (acceptTunnel already abandoned
+    // the old socket's), so they stay.
+    if (live === null && closedStale) {
+      this.abandonStreams(
+        "tunnel disconnected mid-request",
+        "tunnel disconnected",
+      );
+    }
+    return live;
+  }
+
+  /**
+   * Freshness = the later of when the socket was accepted and when the runtime
+   * last auto-answered a client heartbeat on it, within TUNNEL_STALE_MS. A
+   * socket with neither timestamp was accepted by a build before this check
+   * existed; stamp it now so it earns one grace window and must then ping.
+   */
+  private isTunnelFresh(socket: WebSocket, now: number): boolean {
+    const acceptedAt = readAcceptedAt(socket.deserializeAttachment());
+    const lastHeartbeat =
+      this.state.getWebSocketAutoResponseTimestamp(socket)?.getTime() ?? null;
+    if (acceptedAt === null && lastHeartbeat === null) {
+      socket.serializeAttachment({ acceptedAt: now });
+      return true;
+    }
+    return (
+      now - Math.max(acceptedAt ?? 0, lastHeartbeat ?? 0) <= TUNNEL_STALE_MS
+    );
   }
 
   /**
@@ -300,6 +360,9 @@ export class TunnelDO {
       void this.state.storage.setAlarm(Date.now() + PRESENCE_INTERVAL_MS);
     }
     const pair = new WebSocketPair();
+    // acceptedAt seeds the freshness check until the first heartbeat lands;
+    // it lives in the attachment so it survives hibernation.
+    pair[1].serializeAttachment({ acceptedAt: Date.now() });
     this.state.acceptWebSocket(pair[1], [TUNNEL_TAG]);
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
@@ -687,6 +750,16 @@ export class TunnelDO {
   webSocketError(ws: WebSocket): void {
     this.webSocketClose(ws, 1011, "socket error");
   }
+}
+
+/** Narrow a tunnel socket's attachment to its accept timestamp, if present. */
+function readAcceptedAt(attachment: unknown): number | null {
+  if (typeof attachment !== "object" || attachment === null) return null;
+  if (!("acceptedAt" in attachment)) return null;
+  const { acceptedAt } = attachment;
+  return typeof acceptedAt === "number" && Number.isFinite(acceptedAt)
+    ? acceptedAt
+    : null;
 }
 
 /** Clamp arbitrary close codes to ones close() is allowed to send. */
