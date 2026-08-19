@@ -18,6 +18,8 @@ import {
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -119,10 +121,26 @@ const electronMock = vi.hoisted(() => {
       },
     },
     ipcRenderer: {
-      invoke(channel: string): Promise<BbDesktopInfo | BbDesktopWindowState> {
+      invoke(channel: string): Promise<unknown> {
         invokeCalls.push(channel);
         if (channel === "bb-desktop:get-window-state") {
           return Promise.resolve(desktopWindowState);
+        }
+        if (
+          channel === BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL
+        ) {
+          return Promise.resolve({
+            requestId: "request:a",
+            navigationEpoch: 1,
+            value: { ok: true },
+          });
+        }
+        if (channel === BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL) {
+          return Promise.resolve({
+            navigationEpoch: 1,
+            dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+            pixelSize: { width: 1, height: 1 },
+          });
         }
         return Promise.resolve(desktopInfo);
       },
@@ -227,6 +245,9 @@ describe("desktop preload browser API", () => {
     expect(Object.keys(api.browser).sort()).toEqual([
       "attach",
       "detach",
+      "experimental_browserPageRuntimeVersion",
+      "experimental_captureBrowserPage",
+      "experimental_runBrowserPageScript",
       "goBack",
       "goForward",
       "navigate",
@@ -251,6 +272,31 @@ describe("desktop preload browser API", () => {
     api.browser.stop("browser:a");
     api.browser.setBounds(boundsRequest);
     api.browser.setVisible(visibleRequest);
+    expect(api.browser.experimental_browserPageRuntimeVersion).toBe(1);
+    await expect(
+      api.browser.experimental_runBrowserPageScript?.({
+        tabId: "browser:a",
+        requestId: "request:a",
+        source: "({ input }) => input",
+        input: { ok: true },
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toEqual({
+      requestId: "request:a",
+      navigationEpoch: 1,
+      value: { ok: true },
+    });
+    await expect(
+      api.browser.experimental_captureBrowserPage?.({
+        tabId: "browser:a",
+        format: "png",
+        quality: 100,
+      }),
+    ).resolves.toEqual({
+      navigationEpoch: 1,
+      dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      pixelSize: { width: 1, height: 1 },
+    });
     api.setTheme("dark");
     await api.checkForUpdates();
     await expect(api.getWindowState?.()).resolves.toEqual({
@@ -303,6 +349,12 @@ describe("desktop preload browser API", () => {
     );
     expect(electronMock.invokeCalls).toContain(
       BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
+    );
+    expect(electronMock.invokeCalls).toContain(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
+    );
+    expect(electronMock.invokeCalls).toContain(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
     );
   }, 10_000);
 
