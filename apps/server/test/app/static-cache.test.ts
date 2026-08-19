@@ -34,6 +34,10 @@ describe("production static cache headers", () => {
       join(staticDir, "favicon-32x32.png"),
       Buffer.from([0x89, 0x50, 0x4e, 0x47]),
     );
+    await writeFile(
+      join(staticDir, "sw.js"),
+      "self.addEventListener('fetch', () => {});",
+    );
 
     const harness = await createTestAppHarness();
     const serverApp = createApp(harness.deps, { staticDir });
@@ -114,6 +118,18 @@ describe("production static cache headers", () => {
       expect(iconResponse.headers.get("content-type")).toBe("image/png");
       expect(iconResponse.headers.get("cache-control")).toBe(
         "public, max-age=86400",
+      );
+
+      // The service worker script must be revalidated on every update check
+      // (never immutable, never pinned by the connect edge) but is allowed a
+      // conditional request, unlike the no-store shell.
+      const serviceWorkerResponse = await serverApp.app.request("/sw.js");
+      expect(serviceWorkerResponse.status).toBe(200);
+      expect(serviceWorkerResponse.headers.get("content-type")).toBe(
+        "application/javascript",
+      );
+      expect(serviceWorkerResponse.headers.get("cache-control")).toBe(
+        "no-cache",
       );
 
       const apiMissResponse = await serverApp.app.request(

@@ -148,6 +148,13 @@ const STATIC_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 // with a release; a day of caching keeps favicon/badge flips and PWA
 // relaunches from refetching them.
 const STATIC_PUBLIC_FILE_CACHE_CONTROL = "public, max-age=86400";
+// The app-shell service worker script. Browsers re-fetch it on their own
+// update schedule; `no-cache` lets a conditional request answer that cheaply
+// while guaranteeing a `bb update` is seen at the next check, and it keeps the
+// connect edge (which caches only long max-age responses) from pinning an old
+// worker.
+const SERVICE_WORKER_URL_PATH = "/sw.js";
+const SERVICE_WORKER_CACHE_CONTROL = "no-cache";
 const WEB_SOCKET_SHUTDOWN_CODE = 1001;
 const WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS = 1_000;
 const WEB_SOCKET_SHUTDOWN_REASON = "server-shutdown";
@@ -180,6 +187,9 @@ function shouldLogSlowApiRequest(args: ShouldLogSlowApiRequestArgs): boolean {
 function staticCacheControlForPath(urlPath: string): string {
   if (urlPath.startsWith("/assets/")) {
     return STATIC_ASSET_CACHE_CONTROL;
+  }
+  if (urlPath === SERVICE_WORKER_URL_PATH) {
+    return SERVICE_WORKER_CACHE_CONTROL;
   }
   if (urlPath.endsWith(".html")) {
     return STATIC_INDEX_CACHE_CONTROL;
