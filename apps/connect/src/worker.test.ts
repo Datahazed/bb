@@ -1156,6 +1156,40 @@ describe("gate lookup overlap", () => {
     expect(mockVerifySession).not.toHaveBeenCalled();
   });
 
+  it("keeps the overlapped verification alive past an early return", async () => {
+    // A machine's bare label answers from the label cache before the session
+    // read lands. Without waitUntil the request context would close on that
+    // pending D1 read, and session.ts shares the pending lookup with the next
+    // request for the same cookie — which would then wait on it forever.
+    let resolveSession!: (value: string) => void;
+    mockVerifySession.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSession = resolve;
+      }),
+    );
+    mockResolveLabel.mockResolvedValue(resolvedMachine());
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const res = await worker.fetch(
+      visitorRequest("mac.getbb.app", "/"),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(captured).toHaveLength(0);
+    expect(mockVerifySession).toHaveBeenCalledTimes(1);
+    const waited = vi.mocked(ctx.waitUntil).mock.calls;
+    expect(waited).toHaveLength(1);
+    let settled = false;
+    void (waited[0][0] as Promise<unknown>).then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    resolveSession(OWNER);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(true);
+  });
+
   it("returns the 404 for an unknown label even when the session check fails", async () => {
     // The early return must not leave the overlapped verification as an
     // unhandled rejection.

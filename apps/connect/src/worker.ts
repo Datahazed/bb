@@ -273,15 +273,20 @@ interface VisitorAuth {
  * Start visitor cookie verification without awaiting it, so it overlaps the
  * label lookup. Returns null when the request carries no visitor cookie
  * (nothing to verify). A caller that returns early (404 label, machine page)
- * leaves the promise to settle in the background, so a D1 failure is observed
- * here rather than surfacing as an unhandled rejection; the visitor path
- * awaits the same promise and still sees the failure.
+ * leaves the promise to settle in the background: it is registered with
+ * `ctx.waitUntil` so the request context outlives it (a D1 read whose request
+ * context ends never settles, and the session module shares the pending
+ * lookup with later requests for the same cookie, which would then wait on
+ * it forever), and a D1 failure is observed here rather than surfacing as an
+ * unhandled rejection; the visitor path awaits the same promise and still
+ * sees the failure.
  */
 function startVisitorAuth(
   cookie: string | null,
   desktopCookie: string | null,
   secret: string,
   db: ConnectDb,
+  ctx: ExecutionContext,
 ): Promise<VisitorAuth> | null {
   if (!cookie && !desktopCookie) return null;
   const auth = Promise.all([
@@ -291,7 +296,7 @@ function startVisitorAuth(
     sessionUserId,
     desktopUserId,
   }));
-  auth.catch(() => {});
+  ctx.waitUntil(auth.catch(() => undefined));
   return auth;
 }
 
@@ -364,7 +369,13 @@ export default {
     );
     const visitorAuth = isTunnelDial
       ? null
-      : startVisitorAuth(cookie, desktopCookie, env.BETTER_AUTH_SECRET, db);
+      : startVisitorAuth(
+          cookie,
+          desktopCookie,
+          env.BETTER_AUTH_SECRET,
+          db,
+          ctx,
+        );
     const resolved = await resolveLabel(
       label,
       db,
