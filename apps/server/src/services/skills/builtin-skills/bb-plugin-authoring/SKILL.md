@@ -1754,6 +1754,23 @@ className?, leadingContent?, messageActions? }` —
   message content (e.g. a reply header) so it reads like the rest of the
   chat instead of a differently-styled bundled renderer. Renderer options
   beyond content/className stay host-internal.
+- `experimental_CompactComposer` — bb's controlled, compact prompt editor for
+  PLUGIN-OWNED submissions such as a comment, reply, or edit. It reuses bb's
+  real editor, @-mention menu, focus behavior, keyboard handling, and rich-text
+  model without writing a bb draft or sending a thread message. Props:
+  `{ threadId, value, onChange, onSubmit, onCancel?, isSubmitting?, disabled?,
+validationMessage?, placeholder?, autoFocus?, focusRequest?, accessibleLabel?,
+submitLabel?, className? }`. `threadId` supplies mention context only. `value`
+  is `{ text, mentions }`; each mention is
+  `{ from, to, provider, id, label }`, with UTF-16 text offsets and an opaque
+  host-owned `provider` id. Persist and round-trip that structure rather than
+  parsing it. Your plugin still owns domain copy, validation, optimistic
+  versions, persistence, and when a successful submission clears the
+  controlled value. Escape calls `onCancel` only when provided, after an open
+  mention menu has had the first chance to dismiss. V1 intentionally has no
+  attachment, execution, voice, or `+` chrome. Alias the lowercase export on
+  import: `import { experimental_CompactComposer as CompactComposer } from
+  "@get-bb/plugin-sdk/app"`.
 - `experimental_NewThreadComposer` — bb's complete compose surface for
   CREATING a thread (the create-side counterpart to `ThreadChat`): prompt
   editor with @-mentions and expand, `+` attachments,
