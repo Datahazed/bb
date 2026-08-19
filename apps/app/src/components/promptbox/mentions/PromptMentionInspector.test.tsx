@@ -73,8 +73,10 @@ describe("PromptMentionInspector", () => {
     );
     expect(screen.queryByText(/capture\.element\.selector/u)).toBeNull();
     expect(screen.queryByText("Captured metadata")).toBeNull();
-    expect(screen.getByRole("dialog").className).toContain("max-w-lg");
-    expect(screen.getByRole("dialog").className).toContain("gap-0");
+    const inspectorDialog = screen.getByRole("dialog");
+    expect(inspectorDialog.className).toContain("max-w-lg");
+    expect(inspectorDialog.className).toContain("gap-0");
+    expect(inspectorDialog.className).toContain("[&>button]:focus:ring-0");
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/plugins/mentions/inspect", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -103,10 +105,12 @@ describe("PromptMentionInspector", () => {
     );
     expect(imageFrame).not.toBeNull();
     expect(imageFrame?.className).toContain("relative");
-    expect(imageFrame?.className).toContain("max-w-[90vw]");
-    expect(imageFrame?.querySelector("img")?.getAttribute("alt")).toBe(
-      "Invite member capture",
-    );
+    expect(imageFrame?.className).toContain("gap-2");
+    expect(closePreview.className).not.toContain("absolute");
+    expect(closePreview.nextElementSibling?.tagName).toBe("IMG");
+    const expandedImage = imageFrame?.querySelector("img");
+    expect(expandedImage?.getAttribute("alt")).toBe("Invite member capture");
+    expect(expandedImage?.className).toContain("max-w-[calc(100vw-4.75rem)]");
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() =>
       expect(

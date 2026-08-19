@@ -167,25 +167,25 @@ export function ImageLightbox({
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <div
           data-image-lightbox-frame="true"
-          className="relative inline-flex max-h-[82vh] max-w-[90vw]"
+          className="relative inline-flex max-h-[82vh] max-w-[calc(100vw-2rem)] items-start gap-2"
         >
-          <img
-            src={imageSrc}
-            alt={imageAlt}
-            style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
-            className="max-h-[82vh] max-w-[90vw] rounded object-contain"
-          />
           <DialogClose asChild>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute right-2 top-2 size-9 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
+              className="size-9 shrink-0 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
               aria-label="Close image preview"
             >
               <Icon name="X" className="size-5" />
             </Button>
           </DialogClose>
+          <img
+            src={imageSrc}
+            alt={imageAlt}
+            style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
+            className="min-w-0 max-h-[82vh] max-w-[calc(100vw-4.75rem)] rounded object-contain sm:max-w-[90vw]"
+          />
         </div>
 
         {hasNavigation ? (

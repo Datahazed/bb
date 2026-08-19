@@ -124,7 +124,7 @@ export function PromptMentionInspector({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-h-[min(42rem,calc(100dvh-2rem))] max-w-lg gap-0 overflow-hidden p-0">
+        <DialogContent className="max-h-[min(42rem,calc(100dvh-2rem))] max-w-lg gap-0 overflow-hidden p-0 [&>button]:focus:ring-0 [&>button]:focus:ring-offset-0">
           <DialogHeader className="min-w-0 gap-1 border-b border-border-hairline px-5 py-4 pr-12">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <DialogTitle className="min-w-0 text-base leading-snug break-words [overflow-wrap:anywhere]">
