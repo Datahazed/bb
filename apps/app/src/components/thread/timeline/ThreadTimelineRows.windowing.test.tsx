@@ -614,6 +614,60 @@ describe("ThreadTimelineRows windowing", () => {
     expect(mounted).not.toContain(`turn_${ROW_COUNT - 1}`);
   });
 
+  it("keeps the rows the user is reading mounted when the live turn grows below a stale bottom anchor", () => {
+    const rows = buildRows({ withLiveTurn: true });
+    const view = renderTimeline({ rows, status: "active" });
+    // Read at the bottom, then scroll up a little: inside the slack, so the
+    // window is not re-sampled and its anchor still says "bottom".
+    scrollTo(listHeight());
+    const readingScrollTop = listHeight() - VIEWPORT_HEIGHT_PX - 700;
+    scrollTo(readingScrollTop);
+    const visibleBefore = mountedRowIds().filter((id) => {
+      const wrapper = document.querySelector<HTMLElement>(
+        `[data-timeline-row-id="${id}"]`,
+      );
+      const rowRect = wrapper?.getBoundingClientRect();
+      return (
+        rowRect !== undefined &&
+        rowRect.bottom > 0 &&
+        rowRect.top < VIEWPORT_HEIGHT_PX
+      );
+    });
+    expect(visibleBefore.length).toBeGreaterThan(3);
+    // The streaming assistant row grows by 3000px (measured), then a rows
+    // commit lands: another top-level row of the live turn.
+    rowHeights.set("live_assistant", 3000);
+    reportMeasuredHeights();
+    view.rerender(
+      [
+        ...rows,
+        conversationRow({
+          id: "live_assistant_2",
+          role: "assistant",
+          text: "Still running.",
+          turnId: "turn_live",
+          seq: ROW_COUNT * 10 + 15,
+          threadId: THREAD_ID,
+        }),
+      ],
+      "active",
+    );
+    // The rows in the viewport must not be evicted into a spacer because the
+    // resolved "bottom" moved 3000px below the user; the window re-samples
+    // from the DOM instead and keeps them, plus the live tail.
+    const after = mountedRowIds();
+    for (const id of visibleBefore) {
+      expect(after).toContain(id);
+    }
+    expect(after.slice(-4)).toEqual([
+      "live_user",
+      "live_turn",
+      "live_assistant",
+      "live_assistant_2",
+    ]);
+    expect(scrollArea.scrollTop).toBe(readingScrollTop);
+  });
+
   it("keeps the search target's top-level row mounted so the reveal can find it", () => {
     // Search target is turn_10's command (seq 111), which the initial bottom
     // window would otherwise leave in the spacer.

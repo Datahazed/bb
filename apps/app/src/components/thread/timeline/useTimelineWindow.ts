@@ -115,6 +115,8 @@ interface LayoutCache {
  */
 class TimelineWindowController {
   committedRangeIds: TimelineWindowRangeIds | null = null;
+  /** `sampleSerial` of the state the last committed plan was built from. */
+  committedSampleSerial = -1;
   committedSignature: string | null = null;
   readonly elementsById = new Map<string, HTMLElement>();
   entries: readonly TimelineWindowEntry[] = [];
@@ -303,11 +305,15 @@ function contentOffsetOf(
 
 interface WindowPlan {
   /**
-   * The state's anchor entry left the list (rows replaced under it), so the
-   * viewport position had to be guessed; a fresh sample after commit re-reads
-   * it from the DOM.
+   * The committed range was kept although the state's view of the viewport
+   * says it should change, because that view cannot be trusted: the anchor
+   * entry left the list (rows replaced under it), or the commit is rows-driven
+   * and the anchor is only as fresh as the last sample that changed the window
+   * (a scroll inside the slack updates nothing, and content growing below a
+   * bottom anchor moves the resolved viewport away from the real one). A
+   * forced sample after commit re-reads the DOM and re-ranges from that.
    */
-  anchorLost: boolean;
+  needsResample: boolean;
   range: TimelineWindowRange;
   segments: TimelineWindowSegment[];
 }
@@ -395,19 +401,27 @@ export function useTimelineWindow({
       ids: controller.committedRangeIds,
     });
     // Reuse the committed range while the viewport keeps its slack inside it,
-    // so unrelated re-renders (streaming) do not churn the edges. With the
-    // anchor gone the resolved position is a guess, so keep what is mounted
-    // rather than jump; the post-commit sample re-anchors from the DOM.
+    // so unrelated re-renders (streaming) do not churn the edges. Only a render
+    // driven by a fresh sample may move the range from the state's anchor; a
+    // rows-driven commit that finds the range no longer covering (or the
+    // anchor gone) keeps what is mounted rather than jump, and asks for a
+    // forced sample after commit, which re-anchors from the DOM and lands the
+    // new range with its scrollTop correction.
+    const isSampleRender =
+      state.sampleSerial !== controller.committedSampleSerial;
+    const committedRangeCovers =
+      committedRange !== null &&
+      !anchorLost &&
+      timelineWindowRangeCoversViewport({
+        layout,
+        marginPx: overscanPx * TIMELINE_WINDOW_SLACK_FRACTION,
+        range: committedRange,
+        viewportHeightPx,
+        viewportTopPx,
+      });
     const range =
       committedRange !== null &&
-      (anchorLost ||
-        timelineWindowRangeCoversViewport({
-          layout,
-          marginPx: overscanPx * TIMELINE_WINDOW_SLACK_FRACTION,
-          range: committedRange,
-          viewportHeightPx,
-          viewportTopPx,
-        }))
+      (committedRangeCovers || anchorLost || !isSampleRender)
         ? committedRange
         : computeTimelineWindowRange({
             layout,
@@ -415,6 +429,13 @@ export function useTimelineWindow({
             viewportHeightPx,
             viewportTopPx,
           });
+    // A committed range whose edge rows left the list (turn summarised) cannot
+    // be kept, so it is recomputed from the state's anchor; that guess is
+    // checked against the DOM the same way.
+    const needsResample =
+      !committedRangeCovers &&
+      (anchorLost ||
+        (!isSampleRender && controller.committedRangeIds !== null));
     const focusedEntryId = state.focusedEntryId;
     const segments = buildTimelineWindowSegments({
       layout,
@@ -429,7 +450,7 @@ export function useTimelineWindow({
         );
       },
     });
-    plan = { anchorLost, range, segments };
+    plan = { needsResample, range, segments };
   }
 
   const sample = useCallback(
@@ -536,6 +557,7 @@ export function useTimelineWindow({
     controller.entryIndexById = entryIndexById;
     if (plan === null) {
       controller.committedRangeIds = null;
+      controller.committedSampleSerial = -1;
       controller.committedSignature = null;
       controller.pendingCompensation = null;
       return;
@@ -544,6 +566,7 @@ export function useTimelineWindow({
       entries,
       plan.range,
     );
+    controller.committedSampleSerial = state.sampleSerial;
     const signature = segmentsSignature(plan.segments, entries);
     // A correction belongs to the commit that renders the sample's window; a
     // rows-driven commit that lands in between leaves it pending, and a
@@ -554,7 +577,7 @@ export function useTimelineWindow({
     } else {
       controller.pendingCompensation = null;
     }
-    if (plan.anchorLost) {
+    if (plan.needsResample) {
       sample(true);
     }
     if (signature === controller.committedSignature) {
