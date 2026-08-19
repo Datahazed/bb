@@ -109,6 +109,7 @@ import {
 } from "./ThreadDetailFollowUpComposer";
 import {
   ThreadDetailPromptStack,
+  useThreadDetailPromptStackExpansion,
   type ThreadDetailPromptStackQueue,
 } from "./ThreadDetailPromptStack";
 import {
@@ -596,6 +597,7 @@ export function ThreadDetailPromptArea({
   // pending-interaction branch, so their expansion lives here, not in the stack.
   const [isGoalExpanded, setIsGoalExpanded] = useState(false);
   const [isPromptModeExpanded, setIsPromptModeExpanded] = useState(false);
+  const promptStackExpansion = useThreadDetailPromptStackExpansion();
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
     useState(false);
   const promptHistoryDrafts = useMemo(
@@ -1490,6 +1492,7 @@ export function ThreadDetailPromptArea({
       childThreadsSection={childThreadsSection}
       contextBannerMergeBase={contextBannerMergeBase}
       environmentGoneStatus={environmentGoneStatus}
+      expansion={promptStackExpansion}
       isEnvironmentActionPending={isEnvironmentActionPending}
       modelFallback={modelFallback}
       onChangedFileClick={onChangedFileClick}

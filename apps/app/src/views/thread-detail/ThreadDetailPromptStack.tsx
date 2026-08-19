@@ -52,6 +52,8 @@ export interface ThreadDetailPromptStackProps {
     EnvironmentStatus,
     "destroying" | "destroyed"
   > | null;
+  /** Expand/collapse state, owned by the area (see `useThreadDetailPromptStackExpansion`). */
+  expansion: ThreadDetailPromptStackExpansion;
   isEnvironmentActionPending: boolean;
   modelFallback: ThreadTimelineModelFallback | null;
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
@@ -75,11 +77,90 @@ export type ThreadDetailPromptStackQueue = Omit<
   "resolveMentionLink"
 >;
 
+export interface ThreadDetailPromptStackExpansion {
+  expandedBannerSection: ThreadPromptContextBannerExpandedSection | null;
+  onToggleBannerSection: (
+    section: ThreadPromptContextBannerExpandedSection | null,
+  ) => void;
+  isTodoExpanded: boolean;
+  onToggleTodo: () => void;
+  expandedWorkflowIds: ReadonlySet<string>;
+  onToggleWorkflow: (workflowId: string) => void;
+  isBackgroundCommandsExpanded: boolean;
+  onToggleBackgroundCommands: () => void;
+}
+
+/**
+ * Expand/collapse state for the stack's cards. Lives in the area, not in
+ * `ThreadDetailPromptStack`, because the stack unmounts whenever the composer
+ * slot swaps (a pending permission/question, the composer hiding, a plugin
+ * composer taking over) and an expanded todo list or banner section must
+ * survive that round trip. The returned object is memoized so the stack only
+ * re-renders on a toggle.
+ */
+export function useThreadDetailPromptStackExpansion(): ThreadDetailPromptStackExpansion {
+  const [expandedBannerSection, setExpandedBannerSection] =
+    useState<ThreadPromptContextBannerExpandedSection | null>(null);
+  const onToggleBannerSection = useCallback(
+    (section: ThreadPromptContextBannerExpandedSection | null) => {
+      setExpandedBannerSection((previous) =>
+        previous === section ? null : section,
+      );
+    },
+    [],
+  );
+  const [isTodoExpanded, setIsTodoExpanded] = useState(false);
+  const onToggleTodo = useCallback(() => {
+    setIsTodoExpanded((value) => !value);
+  }, []);
+  // Expansion is tracked per workflow id so concurrent workflows expand and
+  // collapse independently.
+  const [expandedWorkflowIds, setExpandedWorkflowIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const onToggleWorkflow = useCallback((workflowId: string) => {
+    setExpandedWorkflowIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(workflowId)) {
+        next.add(workflowId);
+      }
+      return next;
+    });
+  }, []);
+  const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
+    useState(false);
+  const onToggleBackgroundCommands = useCallback(() => {
+    setIsBackgroundCommandsExpanded((value) => !value);
+  }, []);
+  return useMemo(
+    () => ({
+      expandedBannerSection,
+      onToggleBannerSection,
+      isTodoExpanded,
+      onToggleTodo,
+      expandedWorkflowIds,
+      onToggleWorkflow,
+      isBackgroundCommandsExpanded,
+      onToggleBackgroundCommands,
+    }),
+    [
+      expandedBannerSection,
+      expandedWorkflowIds,
+      isBackgroundCommandsExpanded,
+      isTodoExpanded,
+      onToggleBackgroundCommands,
+      onToggleBannerSection,
+      onToggleTodo,
+      onToggleWorkflow,
+    ],
+  );
+}
+
 /**
  * The context cards, banner and queued-message list stacked above the thread
- * composer, with their expand/collapse state. Memoized so a keystroke (which
- * never reaches here) or an unrelated prompt-area render does not rebuild the
- * cards, and so toggling a card re-renders this subtree only.
+ * composer. Memoized so a keystroke (which never reaches here) or an unrelated
+ * prompt-area render does not rebuild the cards. Expand/collapse state comes in
+ * through `expansion` (see `useThreadDetailPromptStackExpansion`).
  */
 export const ThreadDetailPromptStack = memo(function ThreadDetailPromptStack({
   activeBackgroundCommands,
@@ -92,6 +173,7 @@ export const ThreadDetailPromptStack = memo(function ThreadDetailPromptStack({
   childThreadsSection,
   contextBannerMergeBase,
   environmentGoneStatus,
+  expansion,
   isEnvironmentActionPending,
   modelFallback,
   onChangedFileClick,
@@ -108,33 +190,16 @@ export const ThreadDetailPromptStack = memo(function ThreadDetailPromptStack({
   workspaceChangedFilesSection,
   workspaceStatusPending,
 }: ThreadDetailPromptStackProps) {
-  const [expandedBannerSection, setExpandedBannerSection] =
-    useState<ThreadPromptContextBannerExpandedSection | null>(null);
-  const handleToggleBannerSection = useCallback(
-    (section: ThreadPromptContextBannerExpandedSection | null) => {
-      setExpandedBannerSection((previous) =>
-        previous === section ? null : section,
-      );
-    },
-    [],
-  );
-  const [isTodoExpanded, setIsTodoExpanded] = useState(false);
-  // Expansion is tracked per workflow id so concurrent workflows expand and
-  // collapse independently.
-  const [expandedWorkflowIds, setExpandedWorkflowIds] = useState<
-    ReadonlySet<string>
-  >(() => new Set());
-  const toggleWorkflowExpanded = useCallback((workflowId: string) => {
-    setExpandedWorkflowIds((current) => {
-      const next = new Set(current);
-      if (!next.delete(workflowId)) {
-        next.add(workflowId);
-      }
-      return next;
-    });
-  }, []);
-  const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
-    useState(false);
+  const {
+    expandedBannerSection,
+    expandedWorkflowIds,
+    isBackgroundCommandsExpanded,
+    isTodoExpanded,
+    onToggleBackgroundCommands,
+    onToggleBannerSection,
+    onToggleTodo,
+    onToggleWorkflow,
+  } = expansion;
   const unarchiveThread = useUnarchiveThread();
   const isUnarchiveCurrentThreadPending =
     unarchiveThread.isPending && unarchiveThread.variables?.id === threadId;
@@ -183,13 +248,13 @@ export const ThreadDetailPromptStack = memo(function ThreadDetailPromptStack({
           key={workflow.id}
           workflow={workflow}
           isExpanded={expandedWorkflowIds.has(workflow.id)}
-          onToggle={() => toggleWorkflowExpanded(workflow.id)}
+          onToggle={() => onToggleWorkflow(workflow.id)}
         />
       ))}
       <ThreadBackgroundCommandsCard
         commands={activeBackgroundCommands}
         isExpanded={isBackgroundCommandsExpanded}
-        onToggle={() => setIsBackgroundCommandsExpanded((value) => !value)}
+        onToggle={onToggleBackgroundCommands}
       />
       {activePromptModeCard}
       {activeGoalCard}
@@ -200,7 +265,7 @@ export const ThreadDetailPromptStack = memo(function ThreadDetailPromptStack({
             : null
         }
         isExpanded={isTodoExpanded}
-        onToggle={() => setIsTodoExpanded((value) => !value)}
+        onToggle={onToggleTodo}
       />
       <ThreadPromptContextBanner
         archivedSection={
@@ -233,7 +298,7 @@ export const ThreadDetailPromptStack = memo(function ThreadDetailPromptStack({
         }
         gitSectionPending={workspaceStatusPending}
         expandedSection={expandedBannerSection}
-        onToggleSection={handleToggleBannerSection}
+        onToggleSection={onToggleBannerSection}
       />
       {modelFallback ? (
         <ThreadModelFallbackCard

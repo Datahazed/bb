@@ -109,9 +109,19 @@ vi.mock("@/components/promptbox/banner/ThreadPromptModeCard", () => ({
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadTodoCard", () => ({
-  ThreadTodoCard: () => {
+  ThreadTodoCard: ({
+    isExpanded,
+    onToggle,
+  }: {
+    isExpanded: boolean;
+    onToggle: () => void;
+  }) => {
     mocks.todoCardRenders();
-    return null;
+    return (
+      <button type="button" data-testid="todo-card" onClick={onToggle}>
+        {isExpanded ? "expanded" : "collapsed"}
+      </button>
+    );
   },
 }));
 
@@ -306,14 +316,16 @@ function PublishedHostDraft() {
   return <div data-testid="published-host-draft">{host?.draft.text ?? ""}</div>;
 }
 
-function renderPromptArea({
-  thread,
-  pendingInteractions = [],
-}: {
+interface RenderPromptAreaArgs {
   thread: ThreadWithRuntime;
   pendingInteractions?: readonly PendingInteraction[];
-}) {
-  return render(
+}
+
+function buildPromptArea({
+  thread,
+  pendingInteractions = [],
+}: RenderPromptAreaArgs) {
+  return (
     <PluginComposerHostScopeProvider>
       <PublishedHostDraft />
       <ThreadDetailPromptArea
@@ -349,8 +361,12 @@ function renderPromptArea({
         workspaceChangedFilesSection={null}
         workspaceStatusPending={false}
       />
-    </PluginComposerHostScopeProvider>,
+    </PluginComposerHostScopeProvider>
   );
+}
+
+function renderPromptArea(args: RenderPromptAreaArgs) {
+  return render(buildPromptArea(args));
 }
 
 function typeIntoComposer(text: string) {
@@ -437,6 +453,28 @@ describe("ThreadDetailPromptArea keystrokes", () => {
         threadId,
       }).getCurrent().text,
     ).toBe("");
+  });
+
+  it("keeps stack cards expanded across a pending interaction hiding the composer", () => {
+    const thread = makeThread(threadId);
+    const { rerender } = renderPromptArea({ thread });
+    fireEvent.click(screen.getByTestId("todo-card"));
+    expect(screen.getByTestId("todo-card").textContent).toBe("expanded");
+
+    // While a pending interaction is shown the full stack is swapped for the
+    // reduced pending-interaction stack, so the stack subtree unmounts and
+    // remounts around it.
+    rerender(
+      buildPromptArea({
+        thread,
+        pendingInteractions: [makePendingInteraction(threadId)],
+      }),
+    );
+    expect(screen.queryByTestId("todo-card")).toBe(null);
+    expect(screen.getByTestId("pending-interaction")).toBeTruthy();
+
+    rerender(buildPromptArea({ thread }));
+    expect(screen.getByTestId("todo-card").textContent).toBe("expanded");
   });
 
   it("keeps publishing the live bottom draft to plugin hooks while a pending interaction hides the composer", () => {
