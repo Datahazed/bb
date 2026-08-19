@@ -144,6 +144,7 @@ function renderBrowser(harness: FindHarness, initialUrl: string) {
         canShowNativeBrowserView={true}
         visibilityCoordinator={null}
         environmentId={null}
+        projectId={null}
         threadId="thread-1"
         onUpdate={() => {}}
       />
