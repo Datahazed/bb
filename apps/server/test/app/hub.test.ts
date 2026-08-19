@@ -62,6 +62,35 @@ describe("NotificationHub", () => {
     });
   });
 
+  it("runs the thread metadata enricher only when a client can receive the message", () => {
+    const hub = new NotificationHub();
+    const enricher = vi.fn(({ metadata }) => ({
+      ...(metadata ?? {}),
+      hasPendingInteraction: true,
+    }));
+    hub.setThreadChangeMetadataEnricher(enricher);
+
+    // No sockets subscribed to the list or this thread: skip the DB work.
+    hub.notifyThread("thread-1", ["status-changed"], {
+      projectId: "project-1",
+    });
+    expect(enricher).not.toHaveBeenCalled();
+
+    const socket = createMockHubSocket();
+    hub.subscribe(socket, { kind: "thread-list" });
+    hub.notifyThread("thread-1", ["status-changed"], {
+      projectId: "project-1",
+    });
+    expect(enricher).toHaveBeenCalledWith({
+      changes: ["status-changed"],
+      metadata: { projectId: "project-1" },
+      threadId: "thread-1",
+    });
+    expect(JSON.parse(socket.messages[0])).toMatchObject({
+      metadata: { hasPendingInteraction: true, projectId: "project-1" },
+    });
+  });
+
   it("subscribes clients and delivers environment notifications", () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();

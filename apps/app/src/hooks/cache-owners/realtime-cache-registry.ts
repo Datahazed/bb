@@ -41,6 +41,7 @@ import type {
   SystemChangeKind,
   ThreadChangeKind,
   ThreadEventType,
+  ThreadListEntry,
   ThreadWithRuntime,
 } from "@bb/domain";
 import {
@@ -56,6 +57,7 @@ import {
   getEnvironmentWorkspaceStateInvalidationQueryKeys,
   isArchivedThreadListQueryKey,
   removeEnvironmentDiffPatchQueries,
+  updateCachedThreadListEntry,
   updateCachedThreadListPendingInteractionState,
 } from "./query-cache";
 import {
@@ -396,7 +398,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "events-appended": {
     flush: "debounced",
     dirty: [
-      dirtyThreadListQueriesForBackgroundActivity, // Sidebar rows render active workflow/background task state.
+      patchThreadListRowsForBackgroundActivity, // Sidebar rows render active workflow/background task state; patched from metadata when the server attached the row.
       dirtyThreadDetailQueriesForBackgroundActivity, // Detail indicator reads activeBackgroundAgentCount.
       dirtyThreadSearchQueriesForCompletedTurn, // Indexed conversation content may match a search query once the turn settles.
       dirtyThreadTimelineQueries, // Timeline rows are built from appended events.
@@ -427,14 +429,14 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "status-changed": {
     flush: "immediate",
     dirty: [
-      dirtyActiveThreadListQueries, // List rows render status/runtime badges; archived pages only go stale.
+      patchThreadListRowsFromListEntry, // List rows render status/runtime badges; patched in place from metadata, refetched only without it.
       dirtyThreadDetailQueries, // Detail controls and banners depend on status.
     ],
   },
   "title-changed": {
     flush: "debounced",
     dirty: [
-      dirtyActiveThreadListQueries, // List rows render display title; archived pages only go stale.
+      patchThreadListRowsFromListEntry, // List rows render display title/section; patched in place from metadata.
       dirtyThreadDetailQueries, // Detail headers and breadcrumbs render display title.
     ],
   },
@@ -455,7 +457,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "pin-state-changed": {
     flush: "debounced",
     dirty: [
-      dirtyThreadListQueries, // Pinned state and pin order change sidebar/list ordering.
+      patchThreadListRowsFromListEntry, // Pinned state and pin sort key are row fields; the client sorts pinned roots itself.
       dirtyThreadDetailQueries, // Detail consumers render the thread metadata contract.
     ],
   },
@@ -469,7 +471,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "environment-changed": {
     flush: "immediate",
     dirty: [
-      dirtyActiveThreadListQueries, // Thread rows render environment/worktree metadata; archived pages only go stale.
+      patchThreadListRowsFromListEntry, // Thread rows render environment/worktree metadata carried on the row.
       dirtyThreadDetailQueries, // Detail views use the attached environment for workspace UI.
       dirtyThreadDefaultExecutionOptionsQueries, // Environment changes can change inherited thread defaults.
       dirtyThreadStorageQueriesForThread, // Thread storage is resolved through the attached environment.
@@ -645,6 +647,8 @@ export interface ThreadRealtimeDirtyContext extends RealtimeDirtyContext {
    */
   flushOnce: (key: string) => boolean;
   hasPendingInteraction: boolean | undefined;
+  /** Server-attached current list row for row-only changes. */
+  listEntry: ThreadListEntry | undefined;
   projectId: string | undefined;
   threadId: string | undefined;
 }
@@ -812,13 +816,66 @@ function dirtyActiveThreadListQueries({
   return [sidebarNavigationQueryKey(), threadSearchQueryKeyPrefix()];
 }
 
-function dirtyThreadListQueriesForBackgroundActivity(
+function patchThreadListRowsForBackgroundActivity(
   context: ThreadRealtimeDirtyContext,
 ): QueryKey[] {
   if (context.backgroundActivityChanged !== true) {
     return [];
   }
-  return dirtyActiveThreadListQueries(context);
+  return patchThreadListRowsFromListEntry(context);
+}
+
+/**
+ * A row can only be patched in place while it still belongs to the lists it
+ * is cached in. Rows that left the sidebar's membership (hidden, archived,
+ * deleted) need a refetch so the list drops them.
+ */
+function isSidebarMemberListEntry(listEntry: ThreadListEntry): boolean {
+  return (
+    listEntry.visibility === "visible" &&
+    listEntry.archivedAt === null &&
+    listEntry.deletedAt === null
+  );
+}
+
+/**
+ * Row-only thread changes (status, title/section, pin, environment,
+ * background activity) arrive with the server's current list row in the
+ * notification metadata. Patch that row into every cached list and the
+ * sidebar navigation instead of refetching the unbounded sidebar bootstrap.
+ *
+ * Falls back to {@link dirtyActiveThreadListQueries} (active pages refetch,
+ * archived pages only go stale) when the row is absent (older server), when
+ * the sidebar cache does not hold the thread (it may be joining the sidebar,
+ * or the cache is not loaded), when a bootstrap fetch is in flight (its
+ * response may predate this change and would overwrite the patch), or when
+ * the row no longer belongs in the sidebar. Search result rows also render
+ * status/title, so the search prefix is still invalidated (a no-op unless the
+ * search panel is open).
+ */
+function patchThreadListRowsFromListEntry(
+  context: ThreadRealtimeDirtyContext,
+): QueryKey[] {
+  const { listEntry, queryClient, threadId } = context;
+  if (
+    !threadId ||
+    listEntry === undefined ||
+    listEntry.id !== threadId ||
+    !isSidebarMemberListEntry(listEntry)
+  ) {
+    return dirtyActiveThreadListQueries(context);
+  }
+  const { patchedSidebarNavigation } = updateCachedThreadListEntry(
+    queryClient,
+    listEntry,
+  );
+  if (
+    !patchedSidebarNavigation ||
+    hasActiveFetchingQueries(queryClient, sidebarNavigationQueryKey())
+  ) {
+    return dirtyActiveThreadListQueries(context);
+  }
+  return [threadSearchQueryKeyPrefix()];
 }
 
 function dirtyThreadDetailQueriesForBackgroundActivity(

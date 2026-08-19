@@ -6,6 +6,7 @@ import {
   PROJECT_CHANGE_KINDS,
   SYSTEM_CHANGE_KINDS,
   THREAD_CHANGE_KINDS,
+  type ThreadListEntry,
 } from "@bb/domain";
 import { createAppQueryClient } from "@/lib/query-client";
 import {
@@ -98,6 +99,78 @@ function createFakeVisibility(): FakeVisibility {
       }
     },
   };
+}
+
+function createListEntryFixture(
+  overrides: Partial<ThreadListEntry> = {},
+): ThreadListEntry {
+  return {
+    id: "thr_1",
+    projectId: "project-1",
+    environmentId: null,
+    providerId: "codex",
+    title: "Thread",
+    titleFallback: null,
+    sectionId: null,
+    status: "idle",
+    parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
+    originPluginId: null,
+    visibility: "visible",
+    archivedAt: null,
+    pinnedAt: null,
+    deletedAt: null,
+    lastReadAt: null,
+    latestAttentionAt: 0,
+    createdAt: 1,
+    updatedAt: 1,
+    runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
+    },
+    pinSortKey: null,
+    hasPendingInteraction: false,
+    environmentHostId: null,
+    environmentName: null,
+    environmentBranchName: null,
+    environmentWorkspaceDisplayKind: "other",
+    ...overrides,
+  };
+}
+
+interface CachedSidebarNavigationRowsFixture {
+  personalProject: { threads: ThreadListEntry[] };
+  projects: Array<{ threads: ThreadListEntry[] }>;
+}
+
+function seedSidebarRows(
+  queryClient: ReturnType<typeof createAppQueryClient>,
+  rows: ThreadListEntry[],
+): void {
+  queryClient.setQueryData<CachedSidebarNavigationRowsFixture>(
+    sidebarNavigationQueryKey(),
+    {
+      projects: [{ threads: rows }],
+      personalProject: { threads: [] },
+    },
+  );
+}
+
+function readSidebarRow(
+  queryClient: ReturnType<typeof createAppQueryClient>,
+  threadId: string,
+): ThreadListEntry | undefined {
+  return queryClient
+    .getQueryData<CachedSidebarNavigationRowsFixture>(
+      sidebarNavigationQueryKey(),
+    )
+    ?.projects.at(0)
+    ?.threads.find((thread) => thread.id === threadId);
 }
 
 function createRealtimeEffectsTestContext(
@@ -2084,6 +2157,237 @@ describe("createRealtimeCacheEffects", () => {
       );
       expect(queryClient.getQueryState(projectsKey)?.isInvalidated).toBe(true);
       expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true);
+      effects.dispose();
+    });
+  });
+
+  describe("row patches from listEntry metadata", () => {
+    it("patches sidebar and thread-list rows in place for a status change and skips the sidebar refetch", () => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const sidebarNavigationKey = sidebarNavigationQueryKey();
+      const threadListKey = threadListQueryKey({
+        archived: false,
+        projectId: "project-1",
+      });
+      const otherRow = createListEntryFixture({ id: "thr_2" });
+      const initialRow = createListEntryFixture({ status: "starting" });
+      seedSidebarRows(queryClient, [initialRow, otherRow]);
+      queryClient.setQueryData<ThreadListEntry[]>(threadListKey, [
+        initialRow,
+        otherRow,
+      ]);
+      const previousOtherSidebarRow = readSidebarRow(queryClient, "thr_2");
+
+      const listEntry = createListEntryFixture({
+        status: "active",
+        runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+        updatedAt: 2,
+      });
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: { listEntry, projectId: "project-1" },
+        changes: ["status-changed"],
+      });
+
+      expect(readSidebarRow(queryClient, "thr_1")).toEqual(listEntry);
+      // Untouched rows keep identity so windowed sidebar rows do not re-render.
+      expect(readSidebarRow(queryClient, "thr_2")).toBe(previousOtherSidebarRow);
+      expect(
+        queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.at(0),
+      ).toEqual(listEntry);
+      expect(
+        queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
+      ).not.toBe(true);
+      expect(queryClient.getQueryState(threadListKey)?.isInvalidated).not.toBe(
+        true,
+      );
+
+      effects.dispose();
+    });
+
+    it("keeps the newest attached row when debounced changes for one thread coalesce", () => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      seedSidebarRows(queryClient, [createListEntryFixture()]);
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: {
+          listEntry: createListEntryFixture({ title: "First", updatedAt: 2 }),
+          projectId: "project-1",
+        },
+        changes: ["title-changed"],
+      });
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: {
+          listEntry: createListEntryFixture({ title: "Second", updatedAt: 3 }),
+          projectId: "project-1",
+        },
+        changes: ["title-changed"],
+      });
+      vi.advanceTimersByTime(50);
+
+      expect(readSidebarRow(queryClient, "thr_1")?.title).toBe("Second");
+      expect(
+        queryClient.getQueryState(sidebarNavigationQueryKey())?.isInvalidated,
+      ).not.toBe(true);
+
+      effects.dispose();
+    });
+
+    it("patches background activity counts from events-appended metadata without a refetch", () => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      seedSidebarRows(queryClient, [createListEntryFixture()]);
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: {
+          backgroundActivityChanged: true,
+          eventTypes: ["item/backgroundTask/progress"],
+          listEntry: createListEntryFixture({
+            activity: {
+              activeWorkflowCount: 0,
+              activeBackgroundAgentCount: 1,
+              activeBackgroundCommandCount: 0,
+              activePlanModeCount: 0,
+              activeGoalCount: 0,
+            },
+          }),
+        },
+        changes: ["events-appended"],
+      });
+      vi.advanceTimersByTime(50);
+
+      expect(
+        readSidebarRow(queryClient, "thr_1")?.activity.activeBackgroundAgentCount,
+      ).toBe(1);
+      expect(
+        queryClient.getQueryState(sidebarNavigationQueryKey())?.isInvalidated,
+      ).not.toBe(true);
+
+      effects.dispose();
+    });
+
+    it("falls back to a sidebar refetch when the change carries no row (older server)", () => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      seedSidebarRows(queryClient, [createListEntryFixture()]);
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: { projectId: "project-1" },
+        changes: ["status-changed"],
+      });
+
+      expect(
+        queryClient.getQueryState(sidebarNavigationQueryKey())?.isInvalidated,
+      ).toBe(true);
+
+      effects.dispose();
+    });
+
+    it("falls back to a sidebar refetch when the thread is not in the cached sidebar", () => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      seedSidebarRows(queryClient, [createListEntryFixture({ id: "thr_2" })]);
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: {
+          listEntry: createListEntryFixture({ status: "active" }),
+          projectId: "project-1",
+        },
+        changes: ["status-changed"],
+      });
+
+      expect(readSidebarRow(queryClient, "thr_1")).toBeUndefined();
+      expect(
+        queryClient.getQueryState(sidebarNavigationQueryKey())?.isInvalidated,
+      ).toBe(true);
+
+      effects.dispose();
+    });
+
+    it("falls back to a sidebar refetch when the row left the sidebar membership", () => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      seedSidebarRows(queryClient, [createListEntryFixture()]);
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: {
+          listEntry: createListEntryFixture({ visibility: "hidden" }),
+          projectId: "project-1",
+        },
+        changes: ["title-changed"],
+      });
+      vi.advanceTimersByTime(50);
+
+      expect(readSidebarRow(queryClient, "thr_1")?.visibility).toBe("visible");
+      expect(
+        queryClient.getQueryState(sidebarNavigationQueryKey())?.isInvalidated,
+      ).toBe(true);
+
+      effects.dispose();
+    });
+
+    it("still refetches when a sidebar fetch is in flight so a stale response cannot overwrite the patch", async () => {
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const sidebarNavigationKey = sidebarNavigationQueryKey();
+      seedSidebarRows(queryClient, [createListEntryFixture()]);
+      let resolveFetch: (() => void) | undefined;
+      const queryFn = vi.fn(
+        () =>
+          new Promise<CachedSidebarNavigationRowsFixture>((resolve) => {
+            resolveFetch = () =>
+              resolve({
+                projects: [{ threads: [createListEntryFixture()] }],
+                personalProject: { threads: [] },
+              });
+          }),
+      );
+      const observer = new QueryObserver(queryClient, {
+        queryKey: sidebarNavigationKey,
+        queryFn,
+        staleTime: 0,
+      });
+      const unsubscribe = observer.subscribe(() => {});
+      await Promise.resolve();
+      expect(queryFn).toHaveBeenCalledTimes(1);
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: {
+          listEntry: createListEntryFixture({ status: "active" }),
+          projectId: "project-1",
+        },
+        changes: ["status-changed"],
+      });
+
+      expect(
+        queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
+      ).toBe(true);
+      resolveFetch?.();
+      unsubscribe();
       effects.dispose();
     });
   });

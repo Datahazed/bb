@@ -1254,6 +1254,21 @@ export function hasActiveThreadAttention(db: DbConnection): boolean {
   return row !== undefined;
 }
 
+/**
+ * One list-row projection for a single non-deleted thread. Used by the
+ * realtime notify path to attach the current row to a change so clients can
+ * patch cached lists instead of refetching them.
+ */
+export function getThreadWithPendingInteractionState(
+  db: DbConnection,
+  threadId: string,
+): ThreadWithPendingInteractionState | null {
+  const row = threadWithPendingInteractionBaseQuery(db)
+    .where(nonDeletedThreads(eq(threads.id, threadId)))
+    .get();
+  return row ? toThreadWithPendingInteractionState(row) : null;
+}
+
 export function listThreadsWithPendingInteractionStateForProjects(
   db: DbConnection,
   options: ListThreadsForProjectsOptions,

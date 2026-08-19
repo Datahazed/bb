@@ -173,6 +173,69 @@ declare const changedMessageSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         backgroundActivityChanged: z$1.ZodOptional<z$1.ZodBoolean>;
         eventTypes: z$1.ZodOptional<z$1.ZodReadonly<z$1.ZodArray<z$1.ZodString & z$1.ZodType<"client/thread/start" | "client/turn/rejected" | "client/turn/requested" | "client/turn/start" | "item/agentMessage/delta" | "item/backgroundTask/completed" | "item/backgroundTask/progress" | "item/commandExecution/outputDelta" | "item/completed" | "item/fileChange/outputDelta" | "item/mcpToolCall/progress" | "item/plan/delta" | "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" | "item/started" | "item/toolCall/progress" | "provider/error" | "provider/modelFallback" | "provider/rateLimits/updated" | "provider/unhandled" | "provider/warning" | "system/error" | "system/manager/user_message" | "system/operation" | "system/permissionGrant/lifecycle" | "system/provider-turn-watchdog" | "system/thread-provisioning" | "system/thread/interrupted" | "system/userQuestion/lifecycle" | "thread/compacted" | "thread/context/cleared" | "thread/contextWindowUsage/updated" | "thread/goal/cleared" | "thread/goal/updated" | "thread/identity" | "thread/name/updated" | "thread/started" | "thread/tokenUsage/updated" | "turn/completed" | "turn/diff/updated" | "turn/input/accepted" | "turn/plan/updated" | "turn/started", string, z$1.core.$ZodTypeInternals<"client/thread/start" | "client/turn/rejected" | "client/turn/requested" | "client/turn/start" | "item/agentMessage/delta" | "item/backgroundTask/completed" | "item/backgroundTask/progress" | "item/commandExecution/outputDelta" | "item/completed" | "item/fileChange/outputDelta" | "item/mcpToolCall/progress" | "item/plan/delta" | "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" | "item/started" | "item/toolCall/progress" | "provider/error" | "provider/modelFallback" | "provider/rateLimits/updated" | "provider/unhandled" | "provider/warning" | "system/error" | "system/manager/user_message" | "system/operation" | "system/permissionGrant/lifecycle" | "system/provider-turn-watchdog" | "system/thread-provisioning" | "system/thread/interrupted" | "system/userQuestion/lifecycle" | "thread/compacted" | "thread/context/cleared" | "thread/contextWindowUsage/updated" | "thread/goal/cleared" | "thread/goal/updated" | "thread/identity" | "thread/name/updated" | "thread/started" | "thread/tokenUsage/updated" | "turn/completed" | "turn/diff/updated" | "turn/input/accepted" | "turn/plan/updated" | "turn/started", string>>>>>;
         hasPendingInteraction: z$1.ZodOptional<z$1.ZodBoolean>;
+        listEntry: z$1.ZodOptional<z$1.ZodObject<{
+            activity: z$1.ZodObject<{
+                activeBackgroundAgentCount: z$1.ZodNumber;
+                activeBackgroundCommandCount: z$1.ZodNumber;
+                activeGoalCount: z$1.ZodNumber;
+                activePlanModeCount: z$1.ZodNumber;
+                activeWorkflowCount: z$1.ZodNumber;
+            }, z$1.core.$strip>;
+            archivedAt: z$1.ZodNullable<z$1.ZodNumber>;
+            createdAt: z$1.ZodNumber;
+            deletedAt: z$1.ZodNullable<z$1.ZodNumber>;
+            environmentBranchName: z$1.ZodNullable<z$1.ZodString>;
+            environmentHostId: z$1.ZodNullable<z$1.ZodString>;
+            environmentId: z$1.ZodNullable<z$1.ZodString>;
+            environmentName: z$1.ZodNullable<z$1.ZodString>;
+            environmentWorkspaceDisplayKind: z$1.ZodEnum<{
+                "managed-worktree": "managed-worktree";
+                "unmanaged-worktree": "unmanaged-worktree";
+                other: "other";
+            }>;
+            hasPendingInteraction: z$1.ZodBoolean;
+            id: z$1.ZodString;
+            lastReadAt: z$1.ZodNullable<z$1.ZodNumber>;
+            latestAttentionAt: z$1.ZodNumber;
+            originKind: z$1.ZodNullable<z$1.ZodEnum<{
+                fork: "fork";
+            }>>;
+            originPluginId: z$1.ZodNullable<z$1.ZodString>;
+            parentThreadId: z$1.ZodNullable<z$1.ZodString>;
+            pinSortKey: z$1.ZodNullable<z$1.ZodString>;
+            pinnedAt: z$1.ZodNullable<z$1.ZodNumber>;
+            projectId: z$1.ZodString;
+            providerId: z$1.ZodString;
+            runtime: z$1.ZodObject<{
+                displayStatus: z$1.ZodEnum<{
+                    "host-reconnecting": "host-reconnecting";
+                    "waiting-for-host": "waiting-for-host";
+                    active: "active";
+                    error: "error";
+                    idle: "idle";
+                    provisioning: "provisioning";
+                    starting: "starting";
+                    stopping: "stopping";
+                }>;
+                hostReconnectGraceExpiresAt: z$1.ZodNullable<z$1.ZodNumber>;
+            }, z$1.core.$strip>;
+            sectionId: z$1.ZodNullable<z$1.ZodString>;
+            sourceThreadId: z$1.ZodNullable<z$1.ZodString>;
+            status: z$1.ZodEnum<{
+                active: "active";
+                error: "error";
+                idle: "idle";
+                starting: "starting";
+                stopping: "stopping";
+            }>;
+            title: z$1.ZodNullable<z$1.ZodString>;
+            titleFallback: z$1.ZodNullable<z$1.ZodString>;
+            updatedAt: z$1.ZodNumber;
+            visibility: z$1.ZodEnum<{
+                hidden: "hidden";
+                visible: "visible";
+            }>;
+        }, z$1.core.$strip>>;
         projectId: z$1.ZodOptional<z$1.ZodString>;
     }, z$1.core.$strict>>;
     type: z$1.ZodLiteral<"changed">;

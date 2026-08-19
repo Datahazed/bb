@@ -704,3 +704,39 @@ export function updateCachedThreadListPendingInteractionState(
     );
   });
 }
+
+export interface UpdateCachedThreadListEntryResult {
+  /** True when the sidebar-navigation cache held a row for this thread. */
+  patchedSidebarNavigation: boolean;
+}
+
+/**
+ * Replace a thread's row in every cached thread list and in the sidebar
+ * navigation with the server's current projection (from realtime change
+ * metadata). Lists that do not contain the thread are left untouched — the
+ * caller decides whether a missing row means the list must be refetched.
+ */
+export function updateCachedThreadListEntry(
+  queryClient: QueryClient,
+  listEntry: ThreadListEntry,
+): UpdateCachedThreadListEntryResult {
+  const replaceRow = (list: ThreadListEntry[]) => {
+    if (!list.some((thread) => thread.id === listEntry.id)) {
+      return list;
+    }
+    return list.map((thread) =>
+      thread.id === listEntry.id ? listEntry : thread,
+    );
+  };
+  applyToCachedThreadLists(queryClient, {
+    queryKey: threadsQueryKey(),
+    mapper: replaceRow,
+  });
+  const patchedSidebarNavigation = getCachedSidebarNavigationThreads(
+    queryClient,
+  ).some((thread) => thread.id === listEntry.id);
+  if (patchedSidebarNavigation) {
+    applyToCachedSidebarNavigationThreads({ queryClient, mapper: replaceRow });
+  }
+  return { patchedSidebarNavigation };
+}

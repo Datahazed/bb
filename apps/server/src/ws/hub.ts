@@ -100,6 +100,22 @@ function isThreadListRelevantChange(
   );
 }
 
+export interface ThreadChangeMetadataEnricherArgs {
+  changes: readonly ThreadChangeKind[];
+  metadata: ThreadChangeMetadata | undefined;
+  threadId: string;
+}
+
+/**
+ * Runs synchronously inside `notifyThread` before the broadcast. Returns the
+ * metadata to send (the input, or a copy with more fields). Installed once by
+ * the server so every notify site — there are dozens — gets the same
+ * enrichment without each caller assembling it.
+ */
+export type ThreadChangeMetadataEnricher = (
+  args: ThreadChangeMetadataEnricherArgs,
+) => ThreadChangeMetadata | undefined;
+
 function subscriptionKeysForMessage(message: ChangedMessage): string[] {
   switch (message.entity) {
     case "thread":
@@ -213,6 +229,8 @@ export class NotificationHub implements DbNotifier {
   >();
   private readonly hostProtocolUpdateRetryRequests = new Set<string>();
   private readonly changedMessageListeners = new Set<ChangedMessageListener>();
+  private threadChangeMetadataEnricher: ThreadChangeMetadataEnricher | null =
+    null;
   private readonly pendingDaemonDisconnects = new Map<
     string,
     ReturnType<typeof setTimeout>
@@ -268,6 +286,12 @@ export class NotificationHub implements DbNotifier {
     }
 
     this.clientKeysBySocket.delete(socket);
+  }
+
+  setThreadChangeMetadataEnricher(
+    enricher: ThreadChangeMetadataEnricher | null,
+  ): void {
+    this.threadChangeMetadataEnricher = enricher;
   }
 
   onChangedMessage(listener: ChangedMessageListener): () => void {
@@ -770,11 +794,18 @@ export class NotificationHub implements DbNotifier {
     changes: ThreadChangeKind[],
     metadata?: ThreadChangeMetadata,
   ): void {
+    // Enrichment reads the database, so skip it when no client socket is
+    // subscribed to this thread's list or detail targets.
+    const enrichedMetadata =
+      this.threadChangeMetadataEnricher &&
+      this.hasClientSubscribersForThread(threadId)
+        ? this.threadChangeMetadataEnricher({ changes, metadata, threadId })
+        : metadata;
     const message: ThreadChangedMessage = {
       type: "changed",
       entity: "thread",
       id: threadId,
-      ...(metadata ? { metadata } : {}),
+      ...(enrichedMetadata ? { metadata: enrichedMetadata } : {}),
       changes,
     };
     if (isThreadListRelevantChange(message)) {
@@ -1087,6 +1118,15 @@ export class NotificationHub implements DbNotifier {
       }
       socket.send(payload);
     }
+  }
+
+  private hasClientSubscribersForThread(threadId: string): boolean {
+    return (
+      this.clientSocketsByKey.has(subscriptionKey({ kind: "thread-list" })) ||
+      this.clientSocketsByKey.has(
+        subscriptionKey({ kind: "thread-detail", threadId }),
+      )
+    );
   }
 
   private notifyClients(message: ChangedMessage): void {

@@ -12,6 +12,7 @@ import {
   type ThreadChangeMetadata,
 } from "../src/change-kinds.js";
 import { threadEventTypeValues } from "../src/provider-event.js";
+import type { ThreadListEntry } from "../src/thread.js";
 
 type StrictChangedOption = (typeof changedMessageSchema.options)[number];
 type LenientChangedOption =
@@ -33,10 +34,48 @@ function lenientOptionsByEntity(): Map<string, LenientChangedOption> {
   return options;
 }
 
+const listEntryFixture: ThreadListEntry = {
+  id: "thr_1",
+  projectId: "proj_1",
+  environmentId: "env_1",
+  providerId: "codex",
+  title: "Title",
+  titleFallback: null,
+  sectionId: null,
+  status: "active",
+  parentThreadId: null,
+  sourceThreadId: null,
+  originKind: null,
+  originPluginId: null,
+  visibility: "visible",
+  archivedAt: null,
+  pinnedAt: 10,
+  deletedAt: null,
+  lastReadAt: null,
+  latestAttentionAt: 20,
+  createdAt: 1,
+  updatedAt: 30,
+  runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+  activity: {
+    activeWorkflowCount: 0,
+    activeBackgroundAgentCount: 1,
+    activeBackgroundCommandCount: 0,
+    activePlanModeCount: 0,
+    activeGoalCount: 0,
+  },
+  pinSortKey: "a0",
+  hasPendingInteraction: false,
+  environmentHostId: "host_1",
+  environmentName: "env",
+  environmentBranchName: "main",
+  environmentWorkspaceDisplayKind: "managed-worktree",
+};
+
 const maximalThreadMetadata: ThreadChangeMetadata = {
   backgroundActivityChanged: true,
   eventTypes: [...threadEventTypeValues],
   hasPendingInteraction: true,
+  listEntry: listEntryFixture,
   projectId: "proj_1",
 };
 
@@ -113,6 +152,26 @@ describe("lenient changed-message schema parity", () => {
       expect(changedMessageLenientSchema.parse(message)).toEqual(message);
     },
   );
+
+  it("drops an unparseable listEntry patch but keeps the rest of the message", () => {
+    const parsed = changedMessageLenientSchema.parse({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        projectId: "proj_1",
+        listEntry: { ...listEntryFixture, status: "status-from-the-future" },
+      },
+      changes: ["status-changed"],
+    });
+    expect(parsed).toEqual({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { projectId: "proj_1", listEntry: undefined },
+      changes: ["status-changed"],
+    });
+  });
 
   it("keeps the maximal fixtures covering every declared strict field", () => {
     const strictOptions = strictOptionsByEntity();

@@ -75,6 +75,7 @@ import {
 } from "./services/plugin-catalog/plugin-catalog-service.js";
 import type { ProviderRegistryService } from "./services/providers/provider-registry.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
+import { createThreadChangeMetadataEnricher } from "./services/threads/thread-change-metadata.js";
 import { browserRequestProblem } from "./browser-request-guard.js";
 import {
   callPluginHostRpc,
@@ -426,6 +427,16 @@ export function createApp(
     }
     return next();
   });
+  // Row-only thread changes carry the current list row so browsers patch the
+  // sidebar in place instead of refetching the whole bootstrap payload.
+  deps.hub.setThreadChangeMetadataEnricher(
+    createThreadChangeMetadataEnricher({
+      db: deps.db,
+      hub: deps.hub,
+      logger: deps.logger,
+      providerRegistry: deps.providerRegistry,
+    }),
+  );
   const pluginService = createPluginService({
     db: deps.db,
     hub: deps.hub,

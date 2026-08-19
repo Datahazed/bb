@@ -120,6 +120,9 @@ function mergeThreadChangeMetadata(
     next.backgroundActivityChanged ?? current?.backgroundActivityChanged;
   const hasPendingInteraction =
     next.hasPendingInteraction ?? current?.hasPendingInteraction;
+  // Notifications arrive in server order over one socket, so the newest
+  // attached row is the current one.
+  const listEntry = next.listEntry ?? current?.listEntry;
   const projectId = next.projectId ?? current?.projectId;
   const metadata: ThreadChangeMetadata = {};
   if (eventTypes) {
@@ -130,6 +133,9 @@ function mergeThreadChangeMetadata(
   }
   if (hasPendingInteraction !== undefined) {
     metadata.hasPendingInteraction = hasPendingInteraction;
+  }
+  if (listEntry !== undefined) {
+    metadata.listEntry = listEntry;
   }
   if (projectId !== undefined) {
     metadata.projectId = projectId;
@@ -178,6 +184,7 @@ function flushThreadInvalidations(
         eventTypes: undefined,
         flushOnce,
         hasPendingInteraction: undefined,
+        listEntry: undefined,
         projectId: undefined,
         queryClient,
         threadId: undefined,
@@ -195,6 +202,7 @@ function flushThreadInvalidations(
           eventTypes: metadata?.eventTypes,
           flushOnce,
           hasPendingInteraction: metadata?.hasPendingInteraction,
+          listEntry: metadata?.listEntry,
           projectId: metadata?.projectId,
           queryClient,
           threadId,

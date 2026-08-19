@@ -29,9 +29,14 @@ import {
   type ProjectResponse,
   type ProjectWithThreadsResponse,
   type PublicApiSchema,
+  type SidebarBootstrapResponse,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import type { AppDeps } from "../types.js";
+import {
+  ifNoneMatchMatches,
+  weakEtagForBody,
+} from "../services/lib/weak-etag.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
 import {
@@ -252,7 +257,9 @@ function buildProjectsWithThreadsResponseFromRows(
   }));
 }
 
-function buildSidebarBootstrapResponse(deps: AppDeps) {
+function buildSidebarBootstrapResponse(
+  deps: AppDeps,
+): SidebarBootstrapResponse {
   const personalProject = getPersonalProject(deps.db);
   if (!personalProject) {
     throw new ApiError(
@@ -355,9 +362,24 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(routes.sidebarBootstrap, (context) =>
-    context.json(buildSidebarBootstrapResponse(deps)),
-  );
+  // The bootstrap is the largest recurring GET a browser makes (every
+  // non-archived thread across all projects) and most refetches return the
+  // same rows. A weak validator lets the browser HTTP cache revalidate with
+  // If-None-Match and receive a bodyless 304 when nothing changed;
+  // `no-cache` keeps every request going to the server so realtime
+  // invalidations still observe fresh data.
+  get(routes.sidebarBootstrap, (context) => {
+    const body = JSON.stringify(buildSidebarBootstrapResponse(deps));
+    const etag = weakEtagForBody(body);
+    context.header("cache-control", "private, no-cache");
+    context.header("etag", etag);
+    if (ifNoneMatchMatches(context.req.header("if-none-match"), etag)) {
+      return context.body(null, 304);
+    }
+    return context.body(body, 200, {
+      "content-type": "application/json; charset=utf-8",
+    });
+  });
 
   post(routes.create, async (context, payload) => {
     const { source } = payload;

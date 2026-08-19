@@ -4,6 +4,7 @@ import {
   threadEventTypeValues,
   type ThreadEventType,
 } from "./provider-event.js";
+import { threadListEntrySchema } from "./thread.js";
 
 export const THREAD_CHANGE_KINDS = [
   "thread-created",
@@ -199,6 +200,14 @@ export const threadChangeMetadataSchema = z
     backgroundActivityChanged: z.boolean().optional(),
     eventTypes: z.array(threadEventTypeSchema).readonly().optional(),
     hasPendingInteraction: z.boolean().optional(),
+    /**
+     * The thread's current list-row projection, attached by the server when
+     * a change only mutates row fields (status, runtime, activity, title, pin
+     * state, environment). Clients patch cached list rows from it instead of
+     * refetching whole lists. Absent for membership changes and from older
+     * servers, in which case clients fall back to a full refetch.
+     */
+    listEntry: threadListEntrySchema.optional(),
     projectId: z.string().optional(),
   })
   .strict();
@@ -307,6 +316,10 @@ const threadChangeMetadataLenientSchema = z.object({
     )
     .optional(),
   hasPendingInteraction: z.boolean().optional(),
+  // A newer server may project a row shape this client cannot parse (for
+  // example a new status value). Drop the patch instead of the whole message
+  // so the client falls back to a full list refetch.
+  listEntry: threadListEntrySchema.optional().catch(undefined),
   projectId: z.string().optional(),
 });
 

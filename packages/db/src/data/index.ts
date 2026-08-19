@@ -104,6 +104,7 @@ export {
   listUnarchivedAssignedChildThreads,
   listUnarchivedHiddenSourceThreads,
   listThreads,
+  getThreadWithPendingInteractionState,
   listThreadsWithPendingInteractionState,
   listThreadsWithPendingInteractionStateForProjects,
   pinThread,
