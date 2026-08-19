@@ -105,12 +105,14 @@ describe("PromptMentionInspector", () => {
     );
     expect(imageFrame).not.toBeNull();
     expect(imageFrame?.className).toContain("relative");
-    expect(imageFrame?.className).toContain("gap-2");
-    expect(closePreview.className).not.toContain("absolute");
-    expect(closePreview.nextElementSibling?.tagName).toBe("IMG");
+    expect(imageFrame?.className).not.toContain("gap-2");
+    expect(closePreview.className).toContain("absolute");
+    expect(closePreview.className).toContain("right-2");
+    expect(closePreview.className).toContain("top-2");
     const expandedImage = imageFrame?.querySelector("img");
     expect(expandedImage?.getAttribute("alt")).toBe("Invite member capture");
-    expect(expandedImage?.className).toContain("max-w-[calc(100vw-4.75rem)]");
+    expect(closePreview.previousElementSibling).toBe(expandedImage);
+    expect(expandedImage?.className).toContain("max-w-[90vw]");
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() =>
       expect(
