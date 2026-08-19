@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import type { PromptTextMention } from "@bb/domain";
 import {
   usePromptDraftStorage,
+  type PromptDraftAccessor,
   type PromptDraftScope,
 } from "@/hooks/usePromptDraftStorage";
 import { promptDraftToInput } from "@/lib/prompt-draft";
@@ -31,41 +32,38 @@ export interface UseActiveComposerDraftResult {
   removeActiveComposerAttachment: (path: string) => void;
 }
 
+interface UseActiveComposerDraftWritersArgs {
+  inlineEditingQueuedMessageRef: React.RefObject<InlineQueuedMessageEditState | null>;
+  commitInlineQueuedMessage: (
+    next: InlineQueuedMessageEditState | null,
+  ) => void;
+  storedDraft: Pick<
+    PromptDraftAccessor,
+    "setDraft" | "setTextAndMentions" | "removeAttachment"
+  >;
+}
+
+export interface ActiveComposerDraftWriters {
+  setActiveComposerDraft: (draft: PromptDraftState) => void;
+  handleChangeMessage: (text: string, mentions: PromptTextMention[]) => void;
+  removeActiveComposerAttachment: (path: string) => void;
+}
+
 /**
- * Exposes the persisted bottom draft plus an active draft view for the inline
- * queued-message editor and the currently published plugin host. Active writes
- * route through the inline-edit ref so back-to-back plugin composer actions in
- * one event observe each other's updates.
+ * Writers for "whichever draft is active": the inline queued-message edit
+ * while one is open, otherwise the stored bottom draft. Reads the inline edit
+ * through its ref so back-to-back plugin composer actions in one event observe
+ * each other's updates. Needs no draft subscription, so a caller that must not
+ * re-render per keystroke can use it with `usePromptDraftAccessor`.
  */
-export function useActiveComposerDraft({
-  draftScope,
-  inlineEditingQueuedMessage,
+export function useActiveComposerDraftWriters({
   inlineEditingQueuedMessageRef,
   commitInlineQueuedMessage,
-}: UseActiveComposerDraftArgs): UseActiveComposerDraftResult {
-  const promptDraft = usePromptDraftStorage(draftScope);
-  const setStoredPromptDraft = promptDraft.setDraft;
-  const setStoredPromptTextAndMentions = promptDraft.setTextAndMentions;
-  const removeStoredPromptAttachment = promptDraft.removeAttachment;
-
-  const currentPromptDraft = useMemo(
-    () => ({
-      text: promptDraft.text,
-      mentions: promptDraft.mentions,
-      attachments: promptDraft.attachments,
-    }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
-  );
-  const currentPromptDraftInput = useMemo(
-    () => promptDraftToInput(currentPromptDraft),
-    [currentPromptDraft],
-  );
-  const activeComposerDraft =
-    inlineEditingQueuedMessage?.draft ?? currentPromptDraft;
-  const activeComposerDraftInput = useMemo(
-    () => promptDraftToInput(activeComposerDraft),
-    [activeComposerDraft],
-  );
+  storedDraft,
+}: UseActiveComposerDraftWritersArgs): ActiveComposerDraftWriters {
+  const setStoredPromptDraft = storedDraft.setDraft;
+  const setStoredPromptTextAndMentions = storedDraft.setTextAndMentions;
+  const removeStoredPromptAttachment = storedDraft.removeAttachment;
 
   const setActiveComposerDraft = useCallback(
     (draft: PromptDraftState) => {
@@ -123,6 +121,55 @@ export function useActiveComposerDraft({
       removeStoredPromptAttachment,
     ],
   );
+
+  return {
+    setActiveComposerDraft,
+    handleChangeMessage,
+    removeActiveComposerAttachment,
+  };
+}
+
+/**
+ * Exposes the persisted bottom draft plus an active draft view for the inline
+ * queued-message editor and the currently published plugin host. Active writes
+ * route through the inline-edit ref so back-to-back plugin composer actions in
+ * one event observe each other's updates.
+ */
+export function useActiveComposerDraft({
+  draftScope,
+  inlineEditingQueuedMessage,
+  inlineEditingQueuedMessageRef,
+  commitInlineQueuedMessage,
+}: UseActiveComposerDraftArgs): UseActiveComposerDraftResult {
+  const promptDraft = usePromptDraftStorage(draftScope);
+
+  const currentPromptDraft = useMemo(
+    () => ({
+      text: promptDraft.text,
+      mentions: promptDraft.mentions,
+      attachments: promptDraft.attachments,
+    }),
+    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
+  );
+  const currentPromptDraftInput = useMemo(
+    () => promptDraftToInput(currentPromptDraft),
+    [currentPromptDraft],
+  );
+  const activeComposerDraft =
+    inlineEditingQueuedMessage?.draft ?? currentPromptDraft;
+  const activeComposerDraftInput = useMemo(
+    () => promptDraftToInput(activeComposerDraft),
+    [activeComposerDraft],
+  );
+  const {
+    setActiveComposerDraft,
+    handleChangeMessage,
+    removeActiveComposerAttachment,
+  } = useActiveComposerDraftWriters({
+    inlineEditingQueuedMessageRef,
+    commitInlineQueuedMessage,
+    storedDraft: promptDraft,
+  });
 
   return {
     promptDraft,

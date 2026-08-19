@@ -135,6 +135,16 @@ export function isPromptDraftEmpty(draft: PromptDraftState): boolean {
   );
 }
 
+/**
+ * Whether `promptDraftToInput(draft)` would produce at least one input chunk:
+ * trimmed text or an attachment. Whitespace-only text is not submittable.
+ */
+export function hasPromptDraftSubmittableInput(
+  draft: PromptDraftState,
+): boolean {
+  return draft.text.trim().length > 0 || draft.attachments.length > 0;
+}
+
 export function parsePromptDraftStorage(
   rawValue: string | null,
 ): PromptDraftState {
