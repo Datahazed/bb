@@ -8,11 +8,11 @@
 // resolution of app source or style-only npm exports (tw-animate-css exports
 // only a `style` condition — require.resolve cannot reach it).
 //
-//   node packages/plugin-build/scripts/generate-plugin-theme.mjs [--check]
+// The output is not committed: turbo runs this as `@bb/plugin-build#generate`
+// (see turbo.json) before every task that resolves this package's sources.
 //
-// `--check` exits 1 when the checked-in file is stale (wired into this
-// package's typecheck, same pattern as @bb/templates).
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+//   node packages/plugin-build/scripts/generate-plugin-theme.mjs
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -93,7 +93,10 @@ function extractThemeBlocks(css) {
 }
 
 function escapeTemplateLiteral(value) {
-  return value.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
+    .replace(/\$\{/g, "\\${");
 }
 
 const [themeCss, twAnimateCss, twAnimatePackageJson] = await Promise.all([
@@ -123,24 +126,23 @@ export const PLUGIN_THEME_CSS = \`${escapeTemplateLiteral(themeBlocks)}\`;
 export const TW_ANIMATE_CSS = \`${escapeTemplateLiteral(twAnimateCss.trimEnd())}\`;
 `;
 
-const check = process.argv.includes("--check");
 let existing = null;
 try {
   existing = await readFile(outPath, "utf8");
 } catch {
-  // missing → stale
+  // missing → write
 }
 
-if (check) {
-  if (existing !== generated) {
-    console.error(
-      "plugin-theme.generated.ts is stale. Run: node packages/plugin-build/scripts/generate-plugin-theme.mjs",
-    );
-    process.exit(1);
-  }
-} else if (existing !== generated) {
+if (existing !== generated) {
   await mkdir(path.dirname(outPath), { recursive: true });
-  await writeFile(outPath, generated);
+  // Temp sibling + rename so a concurrent reader never sees a partial module.
+  const tempPath = `${outPath}.${process.pid}.tmp`;
+  try {
+    await writeFile(tempPath, generated);
+    await rename(tempPath, outPath);
+  } finally {
+    await rm(tempPath, { force: true });
+  }
   console.log(`wrote ${path.relative(repoRoot, outPath)}`);
 } else {
   console.log("plugin-theme.generated.ts up to date");
