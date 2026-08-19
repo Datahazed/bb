@@ -6,6 +6,8 @@ import {
 } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { useDebounceValue } from "usehooks-ts";
+import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
 import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
   PromptHistoryResponse,
@@ -36,6 +38,7 @@ import {
   getCachedSidebarNavigationThreads,
   getCachedThreadListPlaceholder,
 } from "../cache-owners/query-cache";
+import { useSidebarNavigationThreadSelection } from "./sidebar-navigation-query";
 import {
   getCachedThreadLists,
   iterateThreadListCacheEntries,
@@ -264,6 +267,27 @@ function addThreadMentionCandidate(
   }
 }
 
+function buildThreadMentionCandidates(
+  threads: readonly ThreadListItem[],
+  { limit }: { limit: number },
+): ThreadListResponse {
+  const candidatesById = new Map<string, ThreadListItem>();
+  for (const thread of threads) {
+    addThreadMentionCandidate(candidatesById, thread);
+  }
+  return Array.from(candidatesById.values()).slice(0, limit);
+}
+
+const EMPTY_THREAD_LIST: ThreadListResponse = [];
+
+function selectThreadMentionCandidates(
+  threads: ThreadListEntry[],
+): ThreadListResponse {
+  return buildThreadMentionCandidates(threads, {
+    limit: THREAD_MENTION_CANDIDATE_LIMIT,
+  });
+}
+
 function getThreadMentionCandidatePlaceholder({
   limit,
   queryClient,
@@ -368,20 +392,45 @@ interface UseChildThreadsArgs {
   parentThreadId: string | undefined;
 }
 
+export interface UseChildThreadsResult {
+  data: ThreadListResponse | undefined;
+  isError: boolean;
+  isFetching: boolean;
+  isLoading: boolean;
+}
+
 /**
  * Live children of one parent across every project. A child may live in a
  * different project than its parent, so this list is keyed by parent only and
  * never derived from a project-scoped thread list.
+ *
+ * The sidebar bootstrap already carries every visible unarchived thread across
+ * every project, so while that cache is populated the children are derived
+ * from it (no per-thread-open `GET /threads?parentThreadId=`). The targeted
+ * list request is the fallback for surfaces mounted without the sidebar cache.
  */
 export function useChildThreads({
   enabled: enabledOption,
   parentThreadId,
-}: UseChildThreadsArgs) {
+}: UseChildThreadsArgs): UseChildThreadsResult {
   const enabled = enabledOption && Boolean(parentThreadId);
   useThreadListRealtimeSubscription({ enabled });
-  return useQuery<ThreadListResponse>({
+  const selectChildren = useCallback(
+    (threads: ThreadListEntry[]) =>
+      parentThreadId === undefined
+        ? EMPTY_THREAD_LIST
+        : filterProjectThreadSubset(threads, { parentThreadId }),
+    [parentThreadId],
+  );
+  const { data: sidebarChildren, isBootstrapPending } =
+    useSidebarNavigationThreadSelection(selectChildren);
+  // A cold open (deep link) mounts the thread while the app shell's bootstrap
+  // is still in flight; wait for it instead of racing it with a list request.
+  const shouldFetch =
+    enabled && sidebarChildren === undefined && !isBootstrapPending;
+  const fallbackQuery = useQuery<ThreadListResponse>({
     queryKey:
-      enabled && parentThreadId
+      shouldFetch && parentThreadId
         ? threadListQueryKey({ archived: false, parentThreadId })
         : disabledThreadListQueryKey({ archived: false }),
     queryFn: ({ signal }) =>
@@ -393,9 +442,25 @@ export function useChildThreads({
         ),
         signal,
       }),
-    enabled,
+    enabled: shouldFetch,
     staleTime: THREAD_LIST_STALE_TIME_MS,
   });
+  const derivedChildren = enabled ? sidebarChildren : undefined;
+  if (derivedChildren !== undefined) {
+    return {
+      data: derivedChildren,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    };
+  }
+  const waitingForBootstrap = enabled && isBootstrapPending;
+  return {
+    data: fallbackQuery.data,
+    isError: fallbackQuery.isError,
+    isFetching: fallbackQuery.isFetching || waitingForBootstrap,
+    isLoading: fallbackQuery.isLoading || waitingForBootstrap,
+  };
 }
 
 export function useProjectThreadSubset({
@@ -477,20 +542,30 @@ export function useProjectThreadSubset({
   };
 }
 
+/**
+ * Threads offered by the `@` mention picker. The sidebar-navigation cache
+ * already holds every visible unarchived thread, so while it is populated the
+ * candidates are derived from it and no `GET /threads?limit=200` is issued.
+ * The list request is the fallback for surfaces mounted without that cache.
+ */
 export function useThreadMentionCandidates({
   enabled: enabledOption,
 }: UseThreadMentionCandidatesArgs): UseThreadMentionCandidatesResult {
   const queryClient = useQueryClient();
   const enabled = enabledOption ?? true;
   useThreadListRealtimeSubscription({ enabled });
-  const queryKey = enabled
+  const { data: sidebarCandidates, isBootstrapPending } =
+    useSidebarNavigationThreadSelection(selectThreadMentionCandidates);
+  const shouldFetch =
+    enabled && sidebarCandidates === undefined && !isBootstrapPending;
+  const queryKey = shouldFetch
     ? threadListQueryKey(THREAD_MENTION_CANDIDATE_FILTERS)
     : disabledThreadListQueryKey(THREAD_MENTION_CANDIDATE_FILTERS);
   const threadsQuery = useQuery<ThreadListResponse>({
     queryKey,
     queryFn: ({ signal }) =>
       sdk.threads.list({ ...THREAD_MENTION_CANDIDATE_FILTERS, signal }),
-    enabled,
+    enabled: shouldFetch,
     placeholderData: (previousData) =>
       previousData ??
       getThreadMentionCandidatePlaceholder({
@@ -499,12 +574,22 @@ export function useThreadMentionCandidates({
       }),
     staleTime: THREAD_LIST_STALE_TIME_MS,
   });
+  const derivedCandidates = enabled ? sidebarCandidates : undefined;
 
+  if (derivedCandidates !== undefined) {
+    return {
+      data: derivedCandidates,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    };
+  }
+  const waitingForBootstrap = enabled && isBootstrapPending;
   return {
     data: threadsQuery.data,
     isError: threadsQuery.isError,
-    isFetching: threadsQuery.isFetching,
-    isLoading: threadsQuery.isLoading,
+    isFetching: threadsQuery.isFetching || waitingForBootstrap,
+    isLoading: threadsQuery.isLoading || waitingForBootstrap,
   };
 }
 
@@ -829,6 +914,21 @@ interface FetchThreadTimelineArgs {
   threadId: string;
 }
 
+/**
+ * First-window size requested on compact viewports. Phones show a handful of
+ * segments above the fold, so the 20-segment server default mostly ships rows
+ * the user scrolls to later (older pages still load on demand). The server
+ * keys its delta cache on the page request, so a stable per-client limit keeps
+ * `afterSequence` deltas working.
+ */
+export const COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT = 8;
+
+export function resolveThreadTimelineSegmentLimit(): number | undefined {
+  return getMediaQuerySnapshot(COMPACT_VIEWPORT_QUERY)
+    ? COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT
+    : undefined;
+}
+
 async function fetchThreadTimeline({
   queryClient,
   signal,
@@ -839,15 +939,19 @@ async function fetchThreadTimeline({
   // it returns the full window.
   const queryKey = threadTimelineQueryKey(threadId);
   const previous = queryClient.getQueryData<ThreadTimelineResponse>(queryKey);
+  const segmentLimit = resolveThreadTimelineSegmentLimit();
+  const pageArgs =
+    segmentLimit === undefined ? {} : { segmentLimit: String(segmentLimit) };
   const response = await sdk.threads.timeline({
     threadId,
     signal,
+    ...pageArgs,
     ...(previous?.maxSeq !== undefined
       ? { afterSequence: String(previous.maxSeq) }
       : {}),
   });
   return mergeThreadTimelineDelta(previous, response, () =>
-    sdk.threads.timeline({ threadId, signal }),
+    sdk.threads.timeline({ threadId, signal, ...pageArgs }),
   );
 }
 
