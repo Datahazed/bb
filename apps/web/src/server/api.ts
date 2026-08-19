@@ -237,7 +237,8 @@ export async function getAccountState(
         id: row.id,
         name: row.name,
         subdomain: row.subdomain,
-        online: lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
+        online:
+          lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
         lastSeenAt: lastSeenMs,
         createdAt: row.createdAt.getTime(),
       };

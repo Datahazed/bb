@@ -87,7 +87,9 @@ function ByMachineSidebar() {
             </li>
             <li>
               <div className="trow">
-                <span className="trow-title">Desloppify High-Priority Worker</span>
+                <span className="trow-title">
+                  Desloppify High-Priority Worker
+                </span>
               </div>
               <ul className="threads thread-kids">
                 <li>

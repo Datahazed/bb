@@ -42,7 +42,11 @@ export const Route = createRootRoute({
         href: "/favicon-16x16-dark.png",
         media: "(prefers-color-scheme: dark)",
       },
-      { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
+      {
+        rel: "apple-touch-icon",
+        sizes: "180x180",
+        href: "/apple-touch-icon.png",
+      },
     ],
   }),
   shellComponent: RootDocument,
