@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type KeyboardEventHandler,
@@ -23,6 +24,24 @@ interface UseSidebarThreadSearchOptions {
   onOpenThread: (item: SidebarThreadSearchNavigationItem) => void;
   /** Runs after any sidebar thread opens; closes the mobile sidebar drawer. */
   onThreadOpened: () => void;
+}
+
+/**
+ * Runs `callback` after the browser has painted the current commit: one
+ * animation frame to reach the paint, then a macrotask so the frame is
+ * presented before the callback's work starts. Returns a canceller.
+ */
+function scheduleAfterPaint(callback: () => void): () => void {
+  let timeoutId: number | null = null;
+  const frameId = window.requestAnimationFrame(() => {
+    timeoutId = window.setTimeout(callback, 0);
+  });
+  return () => {
+    window.cancelAnimationFrame(frameId);
+    if (timeoutId !== null) {
+      window.clearTimeout(timeoutId);
+    }
+  };
 }
 
 export interface SidebarThreadSearchController {
@@ -66,7 +85,14 @@ export function useSidebarThreadSearch({
     readonly SidebarThreadSearchNavigationItem[]
   >([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const cancelDeferredCloseRef = useRef<(() => void) | null>(null);
   const activeDescendantId = navigationItems[activeIndex]?.optionId;
+
+  const cancelDeferredClose = useCallback(() => {
+    cancelDeferredCloseRef.current?.();
+    cancelDeferredCloseRef.current = null;
+  }, []);
+  useEffect(() => cancelDeferredClose, [cancelDeferredClose]);
 
   const focusInput = useCallback(() => {
     if (isPointerCoarse) return;
@@ -77,17 +103,19 @@ export function useSidebarThreadSearch({
   }, [isPointerCoarse]);
 
   const handleActivate = useCallback(() => {
+    cancelDeferredClose();
     setIsActive(true);
     onOpenSidebar();
     focusInput();
-  }, [focusInput, onOpenSidebar]);
+  }, [cancelDeferredClose, focusInput, onOpenSidebar]);
 
   const handleClose = useCallback(() => {
+    cancelDeferredClose();
     setIsActive(false);
     setQuery("");
     setActiveIndex(0);
     setNavigationItems([]);
-  }, []);
+  }, [cancelDeferredClose]);
 
   const handleNavigationItemsChange = useCallback(
     (items: readonly SidebarThreadSearchNavigationItem[]) => {
@@ -110,10 +138,19 @@ export function useSidebarThreadSearch({
   // query has done its work, so drop it and show the list again. Every sidebar
   // thread selection ends here: a result row, and a plugin list that filters by
   // the host query.
+  //
+  // Leaving search swaps the search panel for the whole thread list (rows,
+  // drag contexts, windowing observers). Do not pay that in the same commit as
+  // the thread navigation and the mobile drawer slide-out: let that commit
+  // paint first, then flip search off after the frame.
   const handleThreadOpened = useCallback(() => {
     onThreadOpened();
-    handleClose();
-  }, [handleClose, onThreadOpened]);
+    cancelDeferredClose();
+    cancelDeferredCloseRef.current = scheduleAfterPaint(() => {
+      cancelDeferredCloseRef.current = null;
+      handleClose();
+    });
+  }, [cancelDeferredClose, handleClose, onThreadOpened]);
 
   const handleSelectItem = useCallback(
     (item: SidebarThreadSearchNavigationItem) => {

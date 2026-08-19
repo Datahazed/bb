@@ -107,13 +107,22 @@ function expectSearchIsReset(controller: SidebarThreadSearchController): void {
   expect(controller.activeDescendantId).toBeUndefined();
 }
 
+/** Lets the deferred search-mode flip run (one frame, then a macrotask). */
+function flushDeferredClose(): void {
+  act(() => {
+    vi.runAllTimers();
+  });
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe("useSidebarThreadSearch", () => {
   it("clears the search state after the keyboard opens a thread", () => {
+    vi.useFakeTimers();
     const { getController, onOpenThread } = renderSearch();
     openSearchWithResults(getController);
     const input = screen.getByLabelText("Search threads");
@@ -124,10 +133,14 @@ describe("useSidebarThreadSearch", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(onOpenThread).toHaveBeenCalledWith(SECOND_ITEM);
+    flushDeferredClose();
     expectSearchIsReset(getController());
   });
 
-  it("clears the search state after a pointer click opens a thread", () => {
+  // Leaving search remounts the whole thread list. That must not share a
+  // commit with the navigation and the drawer close that the tap triggers.
+  it("opens the thread and closes the drawer first, then leaves search after the paint", () => {
+    vi.useFakeTimers();
     const { getController, onOpenThread, onThreadOpened } = renderSearch();
     openSearchWithResults(getController);
 
@@ -137,12 +150,39 @@ describe("useSidebarThreadSearch", () => {
 
     expect(onOpenThread).toHaveBeenCalledWith(FIRST_ITEM);
     expect(onThreadOpened).toHaveBeenCalledTimes(1);
+    // The search-mode flip is deferred past the tap commit...
+    expect(getController().isActive).toBe(true);
+    expect(getController().query).toBe("needle");
+
+    // ...and lands once the frame has been presented.
+    flushDeferredClose();
     expectSearchIsReset(getController());
+  });
+
+  it("does not let a deferred close wipe a search that was reopened meanwhile", () => {
+    vi.useFakeTimers();
+    const { getController } = renderSearch();
+    openSearchWithResults(getController);
+
+    act(() => {
+      getController().onSelectItem(FIRST_ITEM);
+    });
+    act(() => {
+      getController().onActivate();
+    });
+    act(() => {
+      getController().onQueryChange("fresh");
+    });
+    flushDeferredClose();
+
+    expect(getController().isActive).toBe(true);
+    expect(getController().query).toBe("fresh");
   });
 
   // A plugin thread list filters by the host query and opens threads itself, so
   // its `onNavigate` must end search on every viewport, not only on mobile.
   it("clears the search state when a plugin thread list opens a thread", () => {
+    vi.useFakeTimers();
     const { getController, onOpenThread, onThreadOpened } = renderSearch();
     openSearchWithResults(getController);
 
@@ -152,6 +192,7 @@ describe("useSidebarThreadSearch", () => {
 
     expect(onThreadOpened).toHaveBeenCalledTimes(1);
     expect(onOpenThread).not.toHaveBeenCalled();
+    flushDeferredClose();
     expectSearchIsReset(getController());
   });
 
