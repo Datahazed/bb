@@ -2084,6 +2084,10 @@ export function PromptBoxInternal({
     if (fromHeight === null || !formElement) return;
     heightAnimationFromRef.current = null;
     if (getMediaQuerySnapshot(REDUCED_MOTION_QUERY)) return;
+    // Phones keep this tween on purpose. Snapping the expansion (measured
+    // on iPhone) left WebKit's native caret at the position computed at
+    // focus time, one line above the editor; the per-frame layouts of the
+    // tween are what make iOS refresh the caret rect.
 
     const previousTransition = formElement.style.transition;
     const previousWillChange = formElement.style.willChange;
