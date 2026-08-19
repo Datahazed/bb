@@ -48,6 +48,7 @@ import {
 } from "../helpers/commands.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
+import { createCommandApprovalPayload } from "../helpers/pending-interactions.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedQueuedMessage,
@@ -59,6 +60,7 @@ import {
   seedThread,
   seedThreadFixture,
   seedThreadRuntimeState,
+  seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -387,6 +389,113 @@ describe("public thread data routes", () => {
       );
       expect(missingHostThread).not.toHaveProperty("environment");
       expect(missingHostThread.host).toBeNull();
+    });
+  });
+
+  it("bundles per-thread reads through include= and matches the stand-alone routes", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness, {
+        session: {
+          id: "host-thread-bundled-include",
+        },
+      });
+      seedTurnStarted(harness.deps, {
+        threadId: thread.id,
+        turnId: "turn-bundled-include",
+        providerThreadId: "provider-thread-bundled-include",
+      });
+      const registered =
+        harness.deps.pendingInteractions.registerPendingInteraction({
+          interaction: {
+            threadId: thread.id,
+            turnId: "turn-bundled-include",
+            providerId: "codex",
+            providerThreadId: "provider-thread-bundled-include",
+            providerRequestId: "request-bundled-include",
+            payload: createCommandApprovalPayload({
+              itemId: "item-bundled-include",
+              reason: "Approve command",
+              command: "git push",
+              cwd: "/tmp/project",
+            }),
+          },
+        });
+      if (registered.outcome === "rejected") {
+        throw new Error(
+          `Expected interaction registration to succeed: ${registered.reason}`,
+        );
+      }
+      const queuedMessage = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("Queued follow-up"),
+      });
+      const tabs = [
+        { id: "thread-info", kind: "thread-info" },
+        { id: "git-diff", kind: "git-diff" },
+      ] as const;
+      const putTabsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/tabs`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ expectedRevision: 0, tabs }),
+        },
+      );
+      expect(putTabsResponse.status).toBe(200);
+
+      const leanResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}?include=environment`,
+      );
+      expect(leanResponse.status).toBe(200);
+      const leanThread = await readJson(leanResponse);
+      for (const field of [
+        "pendingInteractions",
+        "queuedMessages",
+        "promptHistory",
+        "defaultExecutionOptions",
+        "tabs",
+      ]) {
+        expect(leanThread).not.toHaveProperty(field);
+      }
+
+      const includeResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}?include=pendingInteractions,queuedMessages,promptHistory,defaultExecutionOptions,tabs`,
+      );
+      expect(includeResponse.status).toBe(200);
+      const includedThread = threadWithIncludesResponseSchema.parse(
+        await readJson(includeResponse),
+      );
+      expect(includedThread).not.toHaveProperty("environment");
+      expect(includedThread).not.toHaveProperty("host");
+
+      const readStandalone = async (suffix: string) => {
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/${suffix}`,
+        );
+        expect(response.status).toBe(200);
+        return readJson(response);
+      };
+      expect(includedThread.pendingInteractions).toEqual(
+        await readStandalone("interactions"),
+      );
+      expect(includedThread.pendingInteractions).toMatchObject([
+        { id: registered.interaction.id, status: "pending" },
+      ]);
+      expect(includedThread.queuedMessages).toEqual(
+        await readStandalone("queued-messages"),
+      );
+      expect(includedThread.queuedMessages).toMatchObject([
+        { id: queuedMessage.id },
+      ]);
+      expect(includedThread.promptHistory).toEqual(
+        await readStandalone("prompt-history"),
+      );
+      expect(includedThread.promptHistory).toHaveLength(1);
+      expect(includedThread.defaultExecutionOptions).toEqual(
+        await readStandalone("default-execution-options"),
+      );
+      expect(includedThread.tabs).toEqual(await readStandalone("tabs"));
+      expect(includedThread.tabs).toEqual({ revision: 1, tabs });
     });
   });
 

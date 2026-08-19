@@ -12,7 +12,12 @@ import {
   type ThreadSearchResultGroup as DbThreadSearchResultGroup,
   type UpdateThreadInput,
 } from "@bb/db";
-import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
+import {
+  PROMPT_HISTORY_ENTRY_LIMIT,
+  type Environment,
+  type Thread,
+  type ThreadListEntry,
+} from "@bb/domain";
 import {
   threadIncludeOptionSchema,
   publicApiRoutes,
@@ -55,6 +60,12 @@ import { assertValidParentThread } from "../../services/threads/thread-parent.js
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
 import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
+import { listThreadPromptHistory } from "../../services/prompt-history.js";
+import {
+  readThreadDefaultExecutionOptions,
+  readThreadQueuedMessages,
+  readThreadTabs,
+} from "../../services/threads/thread-detail-reads.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
   const includes = new Set<ThreadIncludeOption>();
@@ -93,16 +104,17 @@ function resolveIncludedThreadEnvironment(
   return getEnvironment(deps.db, thread.environmentId);
 }
 
-function buildThreadResponse(
+async function buildThreadResponse(
   deps: AppDeps,
   args: BuildThreadResponseArgs,
-): ThreadWithIncludesResponse {
+): Promise<ThreadWithIncludesResponse> {
   const response: ThreadWithIncludesResponse = toThreadResponseFromThread(
     deps,
     {
       thread: args.thread,
     },
   );
+  const threadId = args.thread.id;
   const shouldResolveEnvironment =
     args.includes.has("environment") || args.includes.has("host");
   const environment = shouldResolveEnvironment
@@ -116,6 +128,30 @@ function buildThreadResponse(
     response.host = environment
       ? getNonDestroyedHostWithStatus(deps, environment.hostId)
       : null;
+  }
+  // Each bundled read below reuses the exact reader behind its stand-alone
+  // route so the bundled field and that route always agree.
+  if (args.includes.has("pendingInteractions")) {
+    response.pendingInteractions =
+      deps.pendingInteractions.listPendingThreadInteractions(threadId);
+  }
+  if (args.includes.has("queuedMessages")) {
+    response.queuedMessages = readThreadQueuedMessages(deps, threadId);
+  }
+  if (args.includes.has("promptHistory")) {
+    response.promptHistory = listThreadPromptHistory(deps, {
+      threadId,
+      limit: PROMPT_HISTORY_ENTRY_LIMIT,
+    });
+  }
+  if (args.includes.has("defaultExecutionOptions")) {
+    response.defaultExecutionOptions = await readThreadDefaultExecutionOptions(
+      deps,
+      threadId,
+    );
+  }
+  if (args.includes.has("tabs")) {
+    response.tabs = readThreadTabs(deps, threadId);
   }
   return response;
 }
@@ -314,10 +350,10 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });
 
-  get(routes.get, (context, query) => {
+  get(routes.get, async (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
-      buildThreadResponse(deps, {
+      await buildThreadResponse(deps, {
         includes: parseThreadIncludes(query),
         thread,
       }),

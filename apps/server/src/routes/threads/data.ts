@@ -1,10 +1,6 @@
 import path from "node:path";
 import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
-import {
-  getAppSettings,
-  getLatestThreadSequence,
-  listQueuedThreadMessages,
-} from "@bb/db";
+import { getAppSettings, getLatestThreadSequence } from "@bb/db";
 import type { Hono } from "hono";
 import {
   PROMPT_HISTORY_ENTRY_LIMIT,
@@ -41,7 +37,10 @@ import {
   remapDaemonFileRouteError,
 } from "../../services/hosts/daemon-file-response.js";
 import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
-import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
+import {
+  readThreadDefaultExecutionOptions,
+  readThreadQueuedMessages,
+} from "../../services/threads/thread-detail-reads.js";
 import {
   buildThreadConversationOutline,
   buildThreadTimelineWithProfile,
@@ -71,7 +70,6 @@ import {
 } from "../../services/threads/thread-data.js";
 import { findKnownAcpAgentForProviderId } from "../../services/system/known-acp-agents.js";
 import { listThreadPromptHistory } from "../../services/prompt-history.js";
-import { tryResolveExistingThreadExecutionPlan } from "../../services/threads/thread-execution-plan.js";
 import {
   parseBoundedPositiveOptionalInteger,
   parseInteger,
@@ -479,9 +477,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   get(routes.queuedMessages, (context) => {
     const threadId = context.req.param("id");
     requirePublicThread(deps.db, threadId);
-    return context.json(
-      listQueuedThreadMessages(deps.db, threadId).map(toThreadQueuedMessage),
-    );
+    return context.json(readThreadQueuedMessages(deps, threadId));
   });
 
   get(routes.promptHistory, (context, query) => {
@@ -560,13 +556,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const threadId = context.req.param("id");
     requirePublicThread(deps.db, threadId);
     return context.json(
-      (
-        await tryResolveExistingThreadExecutionPlan(deps, {
-          executionSource: "client/turn/requested",
-          input: {},
-          threadId,
-        })
-      )?.defaultView ?? null,
+      await readThreadDefaultExecutionOptions(deps, threadId),
     );
   });
 

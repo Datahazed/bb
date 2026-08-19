@@ -1,28 +1,14 @@
-import { getStoredThreadTabs, replaceStoredThreadTabs } from "@bb/db";
+import { replaceStoredThreadTabs } from "@bb/db";
 import {
   publicApiRoutes,
-  threadTabsSchema,
   typedRoutes,
   type PublicApiSchema,
-  type ThreadTabsResponse,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import { ApiError } from "../../errors.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
+import { readThreadTabs } from "../../services/threads/thread-detail-reads.js";
 import type { AppDeps } from "../../types.js";
-
-function readThreadTabs(deps: AppDeps, threadId: string): ThreadTabsResponse {
-  const stored = getStoredThreadTabs(deps.db, threadId);
-  if (!stored) {
-    return { revision: 0, tabs: [] };
-  }
-
-  const parsedJson: unknown = JSON.parse(stored.tabsJson);
-  return {
-    revision: stored.revision,
-    tabs: threadTabsSchema.parse(parsedJson),
-  };
-}
 
 export function registerThreadTabRoutes(app: Hono, deps: AppDeps): void {
   const { get, put } = typedRoutes<PublicApiSchema>(app, {

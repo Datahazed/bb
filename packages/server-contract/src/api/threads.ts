@@ -11,6 +11,7 @@ import {
   promptInputSchema,
   reasoningLevelSchema,
   rawThreadIdSchema,
+  resolvedThreadExecutionOptionsSchema,
   serviceTierSchema,
   threadOriginKindSchema,
   threadListEntrySchema,
@@ -30,6 +31,8 @@ import {
   timelineRowSchema,
   timelineWorkflowWorkRowSchema,
 } from "../thread-timeline.js";
+import { promptHistoryResponseSchema } from "./projects.js";
+import { threadTabsResponseSchema } from "./thread-tabs.js";
 import {
   createThreadEnvironmentArgsSchema,
   FILE_LIST_QUERY_MAX_LENGTH,
@@ -382,7 +385,34 @@ export const threadResponseSchema = threadWithRuntimeSchema.extend({
 });
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;
 
-export const threadIncludeOptionSchema = z.enum(["environment", "host"]);
+export const threadPendingInteractionsResponseSchema = z.array(
+  pendingInteractionSchema,
+);
+export type ThreadPendingInteractionsResponse = z.infer<
+  typeof threadPendingInteractionsResponseSchema
+>;
+
+export const threadQueuedMessageListResponseSchema = z.array(
+  threadQueuedMessageSchema,
+);
+export type ThreadQueuedMessageListResponse = z.infer<
+  typeof threadQueuedMessageListResponseSchema
+>;
+
+// `GET /threads/:id?include=` bundles the per-thread reads a client needs to
+// open a thread into one round-trip. Each value mirrors the matching
+// stand-alone route (`/threads/:id/interactions`, `/queued-messages`,
+// `/prompt-history` at the default limit, `/default-execution-options`,
+// `/tabs`), so a bundled field and the stand-alone response never diverge.
+export const threadIncludeOptionSchema = z.enum([
+  "environment",
+  "host",
+  "pendingInteractions",
+  "queuedMessages",
+  "promptHistory",
+  "defaultExecutionOptions",
+  "tabs",
+]);
 export type ThreadIncludeOption = z.infer<typeof threadIncludeOptionSchema>;
 
 export const threadGetQuerySchema = z.object({
@@ -401,19 +431,20 @@ export const threadGetQuerySchema = z.object({
 });
 export type ThreadGetQuery = z.infer<typeof threadGetQuerySchema>;
 
+// A field is present exactly when its include value was requested.
 export const threadWithIncludesResponseSchema = threadResponseSchema.extend({
   environment: environmentSchema.nullable().optional(),
   host: hostSchema.nullable().optional(),
+  pendingInteractions: threadPendingInteractionsResponseSchema.optional(),
+  queuedMessages: threadQueuedMessageListResponseSchema.optional(),
+  promptHistory: promptHistoryResponseSchema.optional(),
+  defaultExecutionOptions: resolvedThreadExecutionOptionsSchema
+    .nullable()
+    .optional(),
+  tabs: threadTabsResponseSchema.optional(),
 });
 export type ThreadWithIncludesResponse = z.infer<
   typeof threadWithIncludesResponseSchema
->;
-
-export const threadPendingInteractionsResponseSchema = z.array(
-  pendingInteractionSchema,
-);
-export type ThreadPendingInteractionsResponse = z.infer<
-  typeof threadPendingInteractionsResponseSchema
 >;
 
 export const resolvePendingInteractionRequestSchema =
@@ -427,13 +458,6 @@ export const respondPluginInteractionRequestSchema = z.object({
 });
 export type RespondPluginInteractionRequest = z.infer<
   typeof respondPluginInteractionRequestSchema
->;
-
-export const threadQueuedMessageListResponseSchema = z.array(
-  threadQueuedMessageSchema,
-);
-export type ThreadQueuedMessageListResponse = z.infer<
-  typeof threadQueuedMessageListResponseSchema
 >;
 
 export const threadChildSummaryResponseSchema = z.object({
