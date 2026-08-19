@@ -1,0 +1,35 @@
+{
+  "issue": 1841,
+  "fixture": {
+    "projectId": "proj_5naz7y4x7c",
+    "threadId": "thr_z8tewvgxsg",
+    "title": "Right sidebar split QA",
+    "windowCapture": {
+      "width": 1224,
+      "height": 768,
+      "unit": "device_px"
+    }
+  },
+  "captures": [
+    {
+      "file": "foundation-before-main-0f6759a74.jpeg",
+      "revision": "0f6759a741558f8ff9320bdbafe05783c04791ec",
+      "state": "light, unsplit right sidebar"
+    },
+    {
+      "file": "foundation-after-a714738ea.jpeg",
+      "revision": "a714738ea4f539c8a2d2a58ad50f48465b752732",
+      "state": "light, Info and Diff split side by side"
+    },
+    {
+      "file": "polish-after-light-dbd3bffbd.jpeg",
+      "revision": "dbd3bffbd11fadfb61e0f8f213aa70f71bb848ee",
+      "state": "light, Info and Diff split side by side"
+    },
+    {
+      "file": "polish-after-dark-dbd3bffbd.jpeg",
+      "revision": "dbd3bffbd11fadfb61e0f8f213aa70f71bb848ee",
+      "state": "dark, Info and Diff split side by side"
+    }
+  ]
+}
