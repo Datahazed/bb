@@ -15,7 +15,10 @@ import {
 } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
-import { spawnPortableOutputProcess } from "@bb/process-utils";
+import {
+  omitNpmScriptPolicyEnv,
+  spawnPortableOutputProcess,
+} from "@bb/process-utils";
 
 /**
  * What a `git:` spec asks for.
@@ -694,7 +697,11 @@ export async function runInstallCommand(
   },
 ): Promise<string> {
   const timeoutMs = options?.timeoutMs ?? INSTALL_COMMAND_TIMEOUT_MS;
-  const child = spawnPortableOutputProcess({ command, args });
+  const child = spawnPortableOutputProcess({
+    command,
+    args,
+    env: omitNpmScriptPolicyEnv(process.env),
+  });
   let stderr = "";
   let stdout = "";
   let stdoutBytes = 0;
