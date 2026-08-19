@@ -40,6 +40,7 @@ function candidate(
     bundle: {
       jsUrl: `/api/v1/plugins/${pluginId}/assets/app.js?h=${hash}`,
       cssUrl: `/api/v1/plugins/${pluginId}/assets/app.css?h=${hash}`,
+      jsBytes: 1_000,
       hash,
       sdkMajor: 0,
       sdkVersion: "0.1.0",
@@ -85,7 +86,9 @@ function makeDeps(initial: PluginFrontendCandidate[] = []) {
     resetCrashedSlots: vi.fn(),
     setRegistrations: vi.fn(),
     removeRegistrations: vi.fn(),
+    beginSlotBatch: () => () => {},
     warn: vi.fn(),
+    routePluginId: () => null,
     mountTimeoutMs: undefined as number | undefined,
   } satisfies PluginFrontendReconcileDeps;
 }
@@ -152,7 +155,9 @@ describe("reconcilePluginFrontends", () => {
       resetCrashedSlots: vi.fn(),
       setRegistrations: setPluginSlotRegistrations,
       removeRegistrations: removePluginSlotRegistrations,
+      beginSlotBatch: () => () => {},
       warn: vi.fn(),
+      routePluginId: () => null,
     };
 
     await reconcilePluginFrontends(state, deps); // boot

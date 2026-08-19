@@ -33,6 +33,11 @@ import {
   PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "./panelTransitionTokens";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
+import {
+  CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT,
+  THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
+  THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
+} from "./secondaryPanelSizing";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
@@ -100,11 +105,6 @@ export type {
 } from "./GitDiffToolbar";
 export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 
-// Shared with the split-workspace host's empty-state panel, which must resize
-// within the same bounds as the real panel it stands in for.
-export const THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT = 24;
-export const THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT = 70;
-
 export function isSecondaryPanelLayoutTransition(
   propertyName: string,
 ): boolean {
@@ -112,7 +112,6 @@ export function isSecondaryPanelLayoutTransition(
 }
 // While the conversation is collapsed the panel fills the content area, so its
 // size/max are lifted to the full width of the horizontal group.
-const CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT = 100;
 const PANEL_SCROLL_SLOT_CLASS =
   "min-h-0 flex-1 overflow-x-auto overflow-y-auto";
 const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
@@ -513,6 +512,12 @@ export function ThreadSecondaryPanel({
   const isDiffPanelActive =
     resolvedGitDiffTabStatus === "eligible" &&
     activeFixedTab?.tab.kind === "git-diff";
+  // The diff body stays mounted while the panel is closed (see the retained
+  // content note below), but its live queries must not: every workspace write
+  // invalidates the diff TOC, evicts patches, and would otherwise refetch and
+  // re-render pierre into an off-screen panel. Gate the diff-tab data on the
+  // panel actually being open; the DOM stays, the network and diff work stop.
+  const isDiffPanelLive = isDiffPanelActive && isLayoutOpen;
   const isDiffEligibilityPending =
     activeFixedTab?.tab.kind === "git-diff" &&
     (resolvedGitDiffTabStatus === "loading" ||
@@ -529,7 +534,7 @@ export function ThreadSecondaryPanel({
     onGitDiffSelectionChange,
   } = useGitDiffPanelState({
     environmentId,
-    isDiffPanelActive,
+    isDiffPanelActive: isDiffPanelLive,
     requestedMergeBaseBranch,
     onClearPendingGitDiffIntent,
     pendingGitDiffCommitSha,
@@ -543,7 +548,7 @@ export function ThreadSecondaryPanel({
   const { data: diffFilesResponse, isLoading: isDiffFilesLoading } =
     useEnvironmentDiffFiles(environmentId ?? "", {
       enabled:
-        isDiffPanelActive &&
+        isDiffPanelLive &&
         Boolean(environmentId) &&
         gitDiffTarget !== undefined,
       target: gitDiffTarget,
@@ -756,6 +761,7 @@ export function ThreadSecondaryPanel({
                 fileTabs={visibleFileTabs}
                 onReorderTab={onFileTabReorder}
                 usesDesktopChrome={usesDesktopChrome}
+                isPanelOpen={isOpen}
                 activeTreatment="fill"
               />
             ) : null}
@@ -914,6 +920,7 @@ export function ThreadSecondaryPanel({
             environmentId={environmentId}
             target={gitDiffTarget}
             isDiffPanelActive={isDiffPanelActive}
+            isPanelOpen={isLayoutOpen}
             gitDiffViewOptions={gitDiffViewOptions}
             onClearPendingGitDiffIntent={onClearPendingGitDiffIntent}
             onOpenFileInEditor={onOpenFileInEditor}

@@ -132,8 +132,10 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
       `/api/v1/plugins/appy/assets/app.css?h=${bundle.hash}`,
     );
     // The install-time build materialized the dist outputs.
-    await stat(join(rootDir, "dist", "app.js"));
+    const jsStat = await stat(join(rootDir, "dist", "app.js"));
     await stat(join(rootDir, "dist", "app.meta.json"));
+    // Frontend load ordering reads this; it must be the served file's size.
+    expect(bundle.jsBytes).toBe(jsStat.size);
 
     // Matching content hash → served immutable, correct content type.
     const js = await harness.app.request(`${BASE}${bundle.jsUrl}`);
@@ -200,12 +202,14 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     // plugins (a later sheet's `.grid` beating an earlier sheet's
     // `@md:flex`). The second arm keeps portals styled on hosts whose
     // portal-scope predates the per-plugin id attribute.
+    // (Minified selector text: no quotes around an identifier attribute
+    // value, no space after the list comma.)
     const scope =
-      ':where([data-bb-plugin="appy"], [data-bb-plugin-root]:not([data-bb-plugin]))';
+      ":where([data-bb-plugin=appy],[data-bb-plugin-root]:not([data-bb-plugin]))";
     expect(cssText).toContain(`${scope} .line-clamp-2`);
     expect(cssText).toContain(`${scope}.line-clamp-2`);
     // And no utility rule sits in the utilities layer outside that scope.
-    expect(cssText).not.toMatch(/@layer utilities \{\s*\./);
+    expect(cssText).not.toMatch(/@layer utilities\{\./);
 
     const gzipCss = await harness.app.request(`${BASE}${bundle.cssUrl}`, {
       headers: { "accept-encoding": "br;q=0, gzip;q=1" },
