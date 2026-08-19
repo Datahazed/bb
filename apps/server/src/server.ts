@@ -699,7 +699,14 @@ export function createApp(
       // single-page-app fallback would answer it with index.html at status
       // 200, and the browser would report a confusing MIME type error for a
       // script instead of a plain 404. Mirrors the /api/v1/* guard above.
-      if (urlPath.startsWith("/assets/")) {
+      // The service worker script gets the same treatment: a build without
+      // one must answer its update check with a 404 (which retires the
+      // registration) rather than a 200 HTML page the browser rejects and
+      // keeps the stale worker for.
+      if (
+        urlPath.startsWith("/assets/") ||
+        urlPath === SERVICE_WORKER_URL_PATH
+      ) {
         return context.notFound();
       }
       const indexHtml = await readFile(join(root, "index.html"), "utf8");

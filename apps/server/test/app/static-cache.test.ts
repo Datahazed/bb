@@ -154,6 +154,17 @@ describe("production static cache headers", () => {
       );
       expect(assetMissResponse.status).toBe(404);
       expect(await assetMissResponse.text()).not.toContain("index-test.js");
+
+      // A build without a worker script must answer the browser's update
+      // check with a 404 (which retires the registration), never with the
+      // shell at status 200 that the browser rejects while keeping the old
+      // worker alive.
+      await rm(join(staticDir, "sw.js"));
+      const serviceWorkerMissResponse = await serverApp.app.request("/sw.js");
+      expect(serviceWorkerMissResponse.status).toBe(404);
+      expect(await serviceWorkerMissResponse.text()).not.toContain(
+        "index-test.js",
+      );
     } finally {
       await serverApp.closeWebSockets();
       await harness.cleanup();
