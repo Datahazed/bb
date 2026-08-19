@@ -37,6 +37,7 @@ const desktopInfo = {
 
 interface BrowserChromeHarness {
   api: BbDesktopBrowserApi;
+  cancelPageScript: ReturnType<typeof vi.fn>;
   emitState: (state: BbDesktopBrowserState) => void;
   goBack: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
@@ -48,6 +49,7 @@ function createBrowserChromeHarness(
 ): BrowserChromeHarness {
   const stateListeners = new Set<(state: BbDesktopBrowserState) => void>();
   const goBack = vi.fn();
+  const cancelPageScript = vi.fn();
   const stop = vi.fn();
   const setVisible = vi.fn();
   const api: BbDesktopBrowserApi = {
@@ -58,6 +60,7 @@ function createBrowserChromeHarness(
     ...(runPageScript
       ? {
           experimental_browserPageRuntimeVersion: 1 as const,
+          experimental_cancelBrowserPageScript: cancelPageScript,
           experimental_runBrowserPageScript: runPageScript,
         }
       : {}),
@@ -68,6 +71,7 @@ function createBrowserChromeHarness(
   };
   return {
     api,
+    cancelPageScript,
     emitState(state) {
       for (const listener of stateListeners) listener(state);
     },
@@ -221,18 +225,55 @@ describe("BrowserTabContent persistent navigation", () => {
       navigationEpoch: 2,
       value: { title: "Docs" },
     });
-    expect(runPageScript).toHaveBeenCalledWith(
-      {
-        tabId: "browser:test",
-        requestId: expect.any(String),
-        expectedNavigationEpoch: 0,
-        source: "() => ({ title: document.title })",
-        input: { intent: "inspect" },
-        timeoutMs: 30_000,
-      },
-      { signal: expect.any(AbortSignal) },
-    );
+    expect(runPageScript).toHaveBeenCalledWith({
+      tabId: "browser:test",
+      requestId: expect.any(String),
+      expectedNavigationEpoch: 0,
+      source: "() => ({ title: document.title })",
+      input: { intent: "inspect" },
+      timeoutMs: 30_000,
+    });
     expect(capturedProps!.experimental_pageContentScriptsAvailable).toBe(true);
+  });
+
+  it("keeps AbortSignal renderer-local and sends a serializable cancel request", async () => {
+    let slotProps: PluginBrowserActionProps | null = null;
+    let rejectRun!: (error: Error) => void;
+    const runPageScript = vi.fn(
+      () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectRun = reject;
+        }),
+    );
+    setPluginSlotRegistrations(
+      "context",
+      registrationSet([
+        {
+          id: "inspect",
+          title: "Inspect page",
+          component: (props) => {
+            slotProps = props;
+            return <button type="button">Inspect page</button>;
+          },
+        },
+      ]),
+    );
+    const harness = createBrowserChromeHarness(runPageScript);
+    renderBrowserChrome(harness, "https://example.com/docs");
+    const controller = new AbortController();
+    const pending = slotProps!.experimental_runPageContentScript(
+      { source: "() => null" },
+      { signal: controller.signal },
+    );
+    await vi.waitFor(() => expect(runPageScript).toHaveBeenCalledOnce());
+    controller.abort();
+    expect(harness.cancelPageScript).toHaveBeenCalledWith({
+      tabId: "browser:test",
+      requestId: expect.any(String),
+    });
+    rejectRun(new DOMException("cancelled", "AbortError"));
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(runPageScript.mock.calls[0]).toHaveLength(1);
   });
 
   it("rejects clearly when the desktop page-runtime capability is missing", async () => {

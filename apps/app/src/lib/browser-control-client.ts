@@ -116,6 +116,12 @@ function targetChangedError(): Error {
   return error;
 }
 
+function browserControlAbortError(): Error {
+  const error = new Error("Browser page action was cancelled");
+  error.name = "AbortError";
+  return error;
+}
+
 const resolveLocatorSource = `
   const resolveLocator = (locator) => {
     let root = document;
@@ -330,22 +336,29 @@ async function executeAction(
   }
   const script = scriptForAction(action);
   const run = tab.desktopBrowser.experimental_runBrowserPageScript;
-  if (script === null || run === undefined) {
+  const cancel = tab.desktopBrowser.experimental_cancelBrowserPageScript;
+  if (script === null || run === undefined || cancel === undefined) {
     throw new Error("Browser page actions require a newer BB desktop app");
   }
-  const result = await run(
-    {
+  const requestId = randomId();
+  const cancelRequest = () =>
+    cancel({ tabId: tab.descriptor.tabId, requestId });
+  if (signal.aborted) throw browserControlAbortError();
+  signal.addEventListener("abort", cancelRequest, { once: true });
+  try {
+    const result = await run({
       tabId: tab.descriptor.tabId,
-      requestId: randomId(),
+      requestId,
       expectedNavigationEpoch: tab.descriptor.navigationEpoch,
       ...script,
-    },
-    { signal },
-  );
-  if (result.navigationEpoch !== tab.descriptor.navigationEpoch) {
-    throw new Error("Browser tab changed while the action was running");
+    });
+    if (result.navigationEpoch !== tab.descriptor.navigationEpoch) {
+      throw new Error("Browser tab changed while the action was running");
+    }
+    return result.value;
+  } finally {
+    signal.removeEventListener("abort", cancelRequest);
   }
-  return result.value;
 }
 
 async function handleRequest(

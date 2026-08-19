@@ -410,8 +410,11 @@ export interface BbDesktopBrowserApi {
    */
   experimental_runBrowserPageScript?(
     request: BbDesktopBrowserPageScriptRequest,
-    options?: { signal?: AbortSignal },
   ): Promise<BbDesktopBrowserPageScriptResult>;
+  /** Cancel one page-script request through serializable IPC. */
+  experimental_cancelBrowserPageScript?(
+    request: BbDesktopBrowserPageScriptCancelRequest,
+  ): void;
   /** Navigate an exact Browser-page revision after main-process validation. */
   experimental_navigateBrowserPage?(
     request: BbDesktopBrowserPageNavigateRequest,

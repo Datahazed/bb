@@ -159,29 +159,43 @@ function useBrowserActionRuntime({
         throw new Error("Browser action is no longer active");
       }
       const run = desktopBrowser.experimental_runBrowserPageScript;
-      if (run === undefined) throw createUnavailablePageScriptsError();
+      const cancel = desktopBrowser.experimental_cancelBrowserPageScript;
+      if (run === undefined || cancel === undefined) {
+        throw createUnavailablePageScriptsError();
+      }
       ensureRegistered(ownershipRegistry);
       const { controller, unlink } = abortControllerFromSignal(options.signal);
       controllersRef.current.add(controller);
-      try {
-        const result = await run(
-          {
-            tabId,
-            requestId: crypto.randomUUID(),
-            expectedNavigationEpoch: navigationEpoch,
-            ...(request.world === undefined ? {} : { world: request.world }),
-            source: request.source,
-            input: request.input ?? null,
-            timeoutMs:
-              request.timeoutMs ?? DEFAULT_BROWSER_PAGE_SCRIPT_TIMEOUT_MS,
-          },
-          { signal: controller.signal },
+      const requestId = crypto.randomUUID();
+      const cancelRequest = () => cancel({ tabId, requestId });
+      if (controller.signal.aborted) {
+        controllersRef.current.delete(controller);
+        unlink();
+        throw new DOMException(
+          "Browser page script was cancelled",
+          "AbortError",
         );
+      }
+      controller.signal.addEventListener("abort", cancelRequest, {
+        once: true,
+      });
+      try {
+        const result = await run({
+          tabId,
+          requestId,
+          expectedNavigationEpoch: navigationEpoch,
+          ...(request.world === undefined ? {} : { world: request.world }),
+          source: request.source,
+          input: request.input ?? null,
+          timeoutMs:
+            request.timeoutMs ?? DEFAULT_BROWSER_PAGE_SCRIPT_TIMEOUT_MS,
+        });
         return {
           navigationEpoch: result.navigationEpoch,
           value: result.value,
         };
       } finally {
+        controller.signal.removeEventListener("abort", cancelRequest);
         unlink();
         controllersRef.current.delete(controller);
       }
@@ -228,7 +242,8 @@ function useBrowserActionRuntime({
     experimental_overlayRoot: overlayRoot,
     experimental_pageContentScriptsAvailable:
       desktopBrowser.experimental_browserPageRuntimeVersion === 1 &&
-      desktopBrowser.experimental_runBrowserPageScript !== undefined,
+      desktopBrowser.experimental_runBrowserPageScript !== undefined &&
+      desktopBrowser.experimental_cancelBrowserPageScript !== undefined,
     experimental_runPageContentScript,
     experimental_capturePage,
     experimental_setOverlayOpen,
