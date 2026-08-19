@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -71,7 +72,7 @@ export function PluginRowSignalView({
           style={UPDATE_ICON_STYLE}
           aria-hidden
         >
-          <Icon name="ArrowUp" className="size-3.5" />
+          <Icon name={UPDATE_ACTION_ICON} className="size-3.5" />
         </span>
         {readableVersion === null ? "Update" : `Update to ${readableVersion}`}
       </button>
