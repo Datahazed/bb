@@ -1962,6 +1962,13 @@ only `definePluginApp` + the hooks):
   `/react`). Your vendored overlays therefore share the host's
   dismissable-layer/focus/scroll-lock world — stacking against host
   overlays behaves correctly.
+- Also never bundled, for size rather than singleton reasons: `clsx`,
+  `tailwind-merge`, and `class-variance-authority`. Your app bundle uses the
+  host's installed copies (tailwind-merge ^3, clsx ^2, cva ^0.7), so keep
+  your declared ranges inside those majors. `zod` is NOT shimmed (exposing
+  its namespace would bloat the host's boot payload) — it bundles from your
+  `node_modules` in both `app.tsx` and `server.ts`, so keep it in
+  `dependencies`.
 - Syntax-highlighted diffs: `parsePatchFiles` from `@pierre/diffs` +
   `FileDiff` from `@pierre/diffs/react` render patches exactly like the
   app's own diff panel (the host provides the highlighting worker pool via
@@ -1973,7 +1980,7 @@ light: document.documentElement.dataset.bbCodeThemeLight }` so a custom
   header when your patch source (e.g. the GitHub REST API) omits it — see
   `plugins/github/app.tsx`.
 - Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
-  cva/clsx/tailwind-merge, form/calendar/chart libs): run `npm install`
+  non-portal radix, zod, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Consumers never need npm — ship your
   built `dist/`.
