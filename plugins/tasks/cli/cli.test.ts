@@ -18,6 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createStore } from "../api";
 import plugin from "../server";
+import { registerTasksCli } from "./index";
 
 // Passthrough mock with one injectable failure: files named boom.bin fail at
 // blob-write time, simulating a post-preflight persistence error so the
@@ -772,6 +773,154 @@ describe("bb tasks CLI", () => {
         parentFolderId: null,
       }),
     ]);
+
+    await harness.dispose();
+  });
+
+  it("deletes a folder by name or id and unfiles its projects and subfolders", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+    const parent = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "folder",
+          "create",
+          "--name",
+          "Parent",
+          "--json",
+        ]),
+      ),
+    ).folder;
+    const child = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "folder",
+          "create",
+          "--name",
+          "Child",
+          "--parent",
+          "Parent",
+          "--json",
+        ]),
+      ),
+    ).folder;
+    const project = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "project",
+          "create",
+          "--name",
+          "Filed project",
+          "--prefix",
+          "FILED",
+          "--folder",
+          "Parent",
+          "--json",
+        ]),
+      ),
+    ).project;
+    const task = JSON.parse(
+      stdout(
+        await harness.runCli([
+          "create",
+          "--project",
+          "FILED",
+          "--title",
+          "Survives folder delete",
+          "--json",
+        ]),
+      ),
+    ).task;
+
+    await expect(
+      harness.runCli(["folder", "delete", "Missing"]),
+    ).resolves.toEqual({
+      exitCode: 1,
+      stdout: "",
+      stderr: "folder not found: Missing",
+    });
+    await expect(harness.runCli(["folder", "delete"])).resolves.toMatchObject({
+      exitCode: 1,
+      stdout: "",
+    });
+
+    const deleted = JSON.parse(
+      stdout(await harness.runCli(["folder", "delete", "parent", "--json"])),
+    );
+    expect(deleted).toMatchObject({
+      deleted: true,
+      folder: { id: parent.id, name: "Parent" },
+      movedProjectIds: [project.id],
+      movedFolderIds: [child.id],
+    });
+
+    // Nothing is destroyed: the project and subfolder move to the top level
+    // and the task is untouched.
+    expect(
+      JSON.parse(stdout(await harness.runCli(["folder", "list", "--json"])))
+        .folders,
+    ).toEqual([
+      expect.objectContaining({ id: child.id, parentFolderId: null }),
+    ]);
+    expect(
+      JSON.parse(
+        stdout(await harness.runCli(["project", "show", "FILED", "--json"])),
+      ).project,
+    ).toMatchObject({ id: project.id, folderId: null });
+    expect(
+      JSON.parse(stdout(await harness.runCli(["show", task.key, "--json"])))
+        .task,
+    ).toMatchObject({ id: task.id });
+
+    // A second delete by id of the now-empty child folder reports no moves.
+    expect(stdout(await harness.runCli(["folder", "delete", child.id]))).toBe(
+      "Deleted folder Child",
+    );
+    await expect(
+      harness.runCli(["folder", "delete", child.id]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: `folder not found: ${child.id}`,
+    });
+
+    await harness.dispose();
+  });
+
+  it("fails folder delete when another client removed the folder first", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    // Same real store and SQLite database; only the delete is wrapped so a
+    // competing client's delete lands between the CLI's lookup and its own
+    // delete. The store then reports `deleted: false`, which must not read
+    // as success.
+    const racingStore = {
+      ...store,
+      tasks: {
+        ...store.tasks,
+        deleteFolder(id: string) {
+          store.tasks.deleteFolder(id);
+          return store.tasks.deleteFolder(id);
+        },
+      },
+    };
+    registerTasksCli(bb, racingStore, { name: "tasks", version: "test" });
+    const folder = store.tasks.createFolder({ name: "Racing" });
+
+    const plain = await harness.runCli(["folder", "delete", "Racing"]);
+    expect(plain.exitCode).toBe(1);
+    expect(plain.stdout).toBe("");
+    expect(plain.stderr).toContain("folder not found: Racing");
+
+    store.tasks.createFolder({ name: "Racing" });
+    const asJson = await harness.runCli([
+      "folder",
+      "delete",
+      "Racing",
+      "--json",
+    ]);
+    expect(asJson.exitCode).toBe(1);
+    expect(asJson.stdout).toBe("");
+    expect(store.tasks.getFolder(folder.id)).toBeUndefined();
 
     await harness.dispose();
   });

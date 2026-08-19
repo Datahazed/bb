@@ -61,7 +61,7 @@ const ROOT_HELP = `Usage: bb tasks <command> [options]
 Commands:
   status                         Show plugin status
   project create|list|show|update
-  folder create|list|update
+  folder create|list|update|delete
   create                         Create a task
   list                           List tasks
   show                           Show full task details
@@ -86,7 +86,11 @@ const PROJECT_HELP = `Usage:
 const FOLDER_HELP = `Usage:
   bb tasks folder create --name <name> [--parent <id-or-name>] [--json]
   bb tasks folder list [--json]
-  bb tasks folder update <id-or-name> [--name <name>] [--parent <id-or-name> | --no-parent] [--json]`;
+  bb tasks folder update <id-or-name> [--name <name>] [--parent <id-or-name> | --no-parent] [--json]
+  bb tasks folder delete <id-or-name> [--json]
+
+Deleting a folder moves its projects and subfolders to the top level. No
+tasks are deleted.`;
 
 const CREATE_HELP =
   "Usage: bb tasks create [--project <prefix-or-id>] --title <title> [--description <markdown> | --description-file <path>] [--priority <priority>] [--label <name>]... [--due YYYY-MM-DD] [--parent <key-or-id>] [--attach <path>]... [--machine <id-or-name>] [--json]";
@@ -805,6 +809,46 @@ async function runFolder(
     return args.flags.has("json")
       ? json({ folder: updated })
       : `Updated folder ${updated.name}  ${updated.id}`;
+  }
+
+  if (action === "delete") {
+    assertAllowed(args, []);
+    const [address] = requirePositionals(
+      args,
+      1,
+      "bb tasks folder delete <id-or-name> [--json]",
+    );
+    const folder = await resolveFolder(domain, address!);
+    // Deleting a folder only unfiles what it held (ON DELETE SET NULL moves
+    // its projects and subfolders to the top level). The delete reports what
+    // it moved from its own transaction, so the summary matches what happened
+    // even if another client changed the folder after the lookup above.
+    const result = tasksRpcContract.deleteFolder.output.parse(
+      await domain.deleteFolder(
+        tasksRpcContract.deleteFolder.input.parse({ folderId: folder.id }),
+      ),
+    );
+    if (!result.deleted) {
+      throw new CliError(
+        `folder not found: ${address} (it was deleted by another client)`,
+      );
+    }
+    if (args.flags.has("json")) {
+      return json({ ...result, folder });
+    }
+    const projectCount = result.movedProjectIds.length;
+    const folderCount = result.movedFolderIds.length;
+    const moved = [
+      projectCount > 0
+        ? `${projectCount} project${projectCount > 1 ? "s" : ""}`
+        : null,
+      folderCount > 0
+        ? `${folderCount} subfolder${folderCount > 1 ? "s" : ""}`
+        : null,
+    ].filter((part) => part !== null);
+    return moved.length === 0
+      ? `Deleted folder ${folder.name}`
+      : `Deleted folder ${folder.name}; ${moved.join(" and ")} moved to the top level. No tasks were deleted.`;
   }
 
   throw new CliError(`unknown folder subcommand: ${action}`);
@@ -1890,7 +1934,7 @@ export function registerTasksCli(
       },
       {
         name: "folder",
-        summary: "Create, list, or update project folders",
+        summary: "Create, list, update, or delete project folders",
         usage: FOLDER_HELP,
       },
       {
