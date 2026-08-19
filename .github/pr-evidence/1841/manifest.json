@@ -30,6 +30,16 @@
       "file": "polish-after-dark-dbd3bffbd.jpeg",
       "revision": "dbd3bffbd11fadfb61e0f8f213aa70f71bb848ee",
       "state": "dark, Info and Diff split side by side"
+    },
+    {
+      "file": "polish-after-light-7dbaaf7f6.png",
+      "revision": "7dbaaf7f69ee4b512fded6f866da24b6fcdc66ff",
+      "state": "final-head light, Diff and Info split side by side with loaded content"
+    },
+    {
+      "file": "polish-after-dark-7dbaaf7f6.png",
+      "revision": "7dbaaf7f69ee4b512fded6f866da24b6fcdc66ff",
+      "state": "final-head dark, Diff and Info split side by side with loaded content"
     }
   ]
 }
