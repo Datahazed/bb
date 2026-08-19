@@ -1,0 +1,29 @@
+{
+  "capturedAt": "2026-08-19",
+  "viewport": {
+    "width": 1280,
+    "height": 900,
+    "deviceScaleFactor": 2
+  },
+  "pr1869": {
+    "beforeRevision": "fa9a15bafe81f524084508d416e627a0aac13b18",
+    "afterRevision": "dd66e0893c6f6428b3f205813aeec65f7ee5f8ed",
+    "fixture": "Browser Core Test Lab in the Browser runtime visual QA thread",
+    "files": [
+      "pr1869-before-runtime-final-fa9a15ba.png",
+      "pr1869-after-runtime-final-dd66e0893.png",
+      "pr1869-before-toolbar-final-fa9a15ba.png",
+      "pr1869-after-toolbar-final-dd66e0893.png",
+      "pr1869-after-toolbar-menu-final-dd66e0893.png"
+    ]
+  },
+  "pr1870": {
+    "beforeRevision": "dd66e0893c6f6428b3f205813aeec65f7ee5f8ed",
+    "afterRevision": "c3fe8ee68c5ddfe80b58e4b60bcf4da49bc1e43b",
+    "fixture": "Browser Core Test Lab in the Inspectable mention visual QA thread",
+    "files": [
+      "pr1870-before-mention-final-dd66e0893.png"
+    ],
+    "note": "The exact-head after captures remain on immutable evidence commit 8233ff67677b39176b5575f62667cd9e0b91637a."
+  }
+}
