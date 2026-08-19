@@ -338,6 +338,14 @@ export interface PromptVoiceConfig {
 export interface PromptBoxHandle {
   /** Focus the editor and move the caret to the end. */
   focusEnd: () => void;
+  /**
+   * Focus the editor at the end in response to a user tap on a surface that
+   * stood in for the editor (the deferred compact follow-up row). Unlike
+   * `focusEnd`, which is a deliberate no-op on coarse pointers so an action
+   * never summons the soft keyboard uninvited, the tap asked for the keyboard.
+   * Returns false when the editor is not available yet.
+   */
+  focusEndForTap: () => boolean;
   /** Capture the current card height before a controlled layout change. */
   captureHeightForLayoutChange: () => void;
   /** Insert text at the editor's current cursor position, with smart spacing. */
@@ -2436,6 +2444,16 @@ export function PromptBoxInternal({
     [applyCommandSuggestion, applyMentionSuggestion],
   );
 
+  const focusEndForTap = useCallback((): boolean => {
+    const currentEditor = editorRef.current;
+    if (!currentEditor || currentEditor.isDestroyed) {
+      return false;
+    }
+    focusEditorAtEnd(currentEditor);
+    scheduleRevealEditorSelection();
+    return true;
+  }, [scheduleRevealEditorSelection]);
+
   const focusEnd = useCallback(() => {
     if (isPointerCoarse) {
       pendingFocusEndRef.current = false;
@@ -2637,6 +2655,7 @@ export function PromptBoxInternal({
     () => ({
       captureHeightForLayoutChange: capturePromptBoxHeight,
       focusEnd,
+      focusEndForTap,
       insertTextAtCursor,
       getTextBeforeCursor,
       playVoiceCompletionTransition,
@@ -2644,6 +2663,7 @@ export function PromptBoxInternal({
     [
       capturePromptBoxHeight,
       focusEnd,
+      focusEndForTap,
       getTextBeforeCursor,
       insertTextAtCursor,
       playVoiceCompletionTransition,

@@ -51,6 +51,7 @@ describe("usePromptVoice", () => {
       current: {
         captureHeightForLayoutChange: vi.fn(),
         focusEnd: vi.fn(),
+        focusEndForTap: vi.fn(() => true),
         getTextBeforeCursor: vi.fn(),
         insertTextAtCursor,
         playVoiceCompletionTransition,

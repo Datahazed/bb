@@ -259,6 +259,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       focusEnd: () => {
         promptBoxRef.current?.focusEnd();
       },
+      focusEndForTap: () => promptBoxRef.current?.focusEndForTap() ?? false,
       insertTextAtCursor: (text) => {
         promptBoxRef.current?.insertTextAtCursor(text);
       },

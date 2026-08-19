@@ -1,5 +1,6 @@
 import {
   memo,
+  startTransition,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -8,9 +9,16 @@ import {
   useState,
   type ComponentProps,
   type FocusEvent as ReactFocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
 } from "react";
+import { flushSync } from "react-dom";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
+import { COARSE_POINTER_TEXT_BASE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { cn } from "@bb/shared-ui/lib/utils";
 import type {
   PromptTextMention,
   ThreadRuntimeDisplayStatus,
@@ -121,6 +129,191 @@ const OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR =
 const MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX = 80;
 const MOBILE_FOCUS_EXPANSION_FALLBACK_MS = 350;
 const MOBILE_KEYBOARD_DISMISSAL_FALLBACK_MS = 750;
+// Deferred compact editor: realize the TipTap composer this long after the
+// first paint of the static row (or at the first tap, whichever comes first).
+// Long enough to let the thread's first paint and its immediate follow-up
+// work land, short enough that a real tap rarely has to wait for the mount.
+const COMPACT_EDITOR_REALIZE_DELAY_MS = 300;
+const COMPACT_EDITOR_REALIZE_IDLE_TIMEOUT_MS = 1500;
+// If a tap warmed the editor but no click followed (a scroll, a cancelled
+// touch), drop the placeholder overlay after this window.
+const COMPACT_EDITOR_WARMING_FALLBACK_MS = 600;
+// Mirrors PromptBoxInternal's compact action button geometry.
+const COMPACT_PROMPT_ACTION_BUTTON_CLASS =
+  "size-8 p-0 transition-all [&_svg]:size-4";
+
+/**
+ * Lifecycle of the compact follow-up editor on coarse-pointer phones.
+ *
+ * - "deferred": a static 48 px row stands in; PromptBoxInternal (TipTap plus
+ *   its pickers, roughly the heaviest subtree of a thread mount) is not
+ *   mounted yet. It realizes shortly after paint, or synchronously at the
+ *   first tap.
+ * - "warming": the tap's pointerdown mounted the editor under a placeholder
+ *   overlay; the click that follows focuses the editor and drops the overlay.
+ *   Keeping the tapped element in the DOM until click matters: iOS drops the
+ *   click when the touchstart target is removed mid-gesture, and focus() from
+ *   the click handler is what may open the keyboard.
+ * - "ready": PromptBoxInternal only (the previous behaviour).
+ */
+type CompactEditorPhase = "deferred" | "warming" | "ready";
+
+function scheduleAfterPaint(callback: () => void): () => void {
+  let cancelled = false;
+  let timeout: number | null = null;
+  let idle: number | null = null;
+  const run = () => {
+    if (!cancelled) callback();
+  };
+  const frame = window.requestAnimationFrame(() => {
+    if (cancelled) return;
+    if (typeof window.requestIdleCallback === "function") {
+      idle = window.requestIdleCallback(run, {
+        timeout: COMPACT_EDITOR_REALIZE_IDLE_TIMEOUT_MS,
+      });
+      return;
+    }
+    timeout = window.setTimeout(run, COMPACT_EDITOR_REALIZE_DELAY_MS);
+  });
+  return () => {
+    cancelled = true;
+    window.cancelAnimationFrame(frame);
+    if (timeout !== null) window.clearTimeout(timeout);
+    if (idle !== null && typeof window.cancelIdleCallback === "function") {
+      window.cancelIdleCallback(idle);
+    }
+  };
+}
+
+interface CompactComposerPlaceholderRowProps {
+  /** Rendered as an overlay above the just-mounted editor while warming. */
+  overlay: boolean;
+  placeholder: string;
+  message: string;
+  action:
+    | { kind: "stop"; onStop: () => void }
+    | { kind: "voice"; onStart: () => void }
+    | {
+        kind: "submit";
+        enabled: boolean;
+        isSubmitting: boolean;
+        title: string;
+      };
+  onSubmit: () => void;
+  /** Pointer down on the text area (not the action button): warm the editor. */
+  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onActivate: () => void;
+}
+
+/**
+ * The static stand-in for the compact follow-up row: same card, height,
+ * placeholder and primary action as PromptBoxInternal's compact layout, but
+ * plain DOM. Tapping the text area realizes and focuses the real editor; the
+ * Stop / voice / submit action works without the editor.
+ */
+function CompactComposerPlaceholderRow({
+  overlay,
+  placeholder,
+  message,
+  action,
+  onSubmit,
+  onPointerDown,
+  onActivate,
+}: CompactComposerPlaceholderRowProps) {
+  const trimmedMessage = message.trim();
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onActivate();
+  };
+  return (
+    <div
+      data-follow-up-composer-placeholder=""
+      data-follow-up-composer-placeholder-overlay={overlay ? "" : undefined}
+      className={cn(
+        "relative w-full rounded-xl border border-border bg-background shadow-lift",
+        overlay && "absolute inset-0 z-10",
+      )}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={placeholder}
+        className={cn(
+          "flex h-12 min-w-0 items-center overflow-hidden pl-4 pr-14 outline-none",
+          COARSE_POINTER_TEXT_BASE_CLASS,
+          "leading-relaxed",
+        )}
+        onPointerDown={onPointerDown}
+        onClick={onActivate}
+        onKeyDown={handleKeyDown}
+      >
+        {trimmedMessage.length > 0 ? (
+          <span className="truncate">{trimmedMessage}</span>
+        ) : (
+          <span className="truncate font-light text-subtle-foreground opacity-70">
+            {placeholder}
+          </span>
+        )}
+      </div>
+      <div className="absolute inset-y-0 right-2 flex items-center">
+        {action.kind === "stop" ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="secondary"
+            aria-label="Stop run"
+            onClick={action.onStop}
+            className={COMPACT_PROMPT_ACTION_BUTTON_CLASS}
+          >
+            <Icon
+              name="Square"
+              className="size-3.5 fill-current [&_*]:stroke-0"
+            />
+          </Button>
+        ) : action.kind === "voice" ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="default"
+            aria-label="Start voice input"
+            onPointerDown={(event) => {
+              // Keep voice activation from focusing the button (and so
+              // expanding the composer) before click can start recording.
+              if (event.button === 0) event.preventDefault();
+            }}
+            onClick={action.onStart}
+            className={cn(
+              COMPACT_PROMPT_ACTION_BUTTON_CLASS,
+              "transition-colors",
+            )}
+          >
+            <Icon name="Mic" className="size-4" />
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="icon"
+            variant="default"
+            aria-label={action.title}
+            disabled={!action.enabled}
+            onClick={onSubmit}
+            className={cn(
+              COMPACT_PROMPT_ACTION_BUTTON_CLASS,
+              "transition-colors",
+            )}
+          >
+            {action.isSubmitting ? (
+              <Icon name="Spinner" className="size-4 animate-spin" />
+            ) : (
+              <Icon name="CornerDownLeft" className="size-4" />
+            )}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 const DEFAULT_FOLLOW_UP_COMPOSER_SCOPE = {
   kind: "new-thread",
   projectId: null,
@@ -397,6 +590,80 @@ function FollowUpPromptBoxWithComposer({
   const pendingFocusLossCleanupRef = useRef<(() => void) | null>(null);
   const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
   const isMobilePromptBoxCompact = isCompactViewport && !isInteractionExpanded;
+  const bottomAnchor = useBottomAnchoredScroll();
+  const [compactEditorPhase, setCompactEditorPhase] =
+    useState<CompactEditorPhase>(() =>
+      isCompactViewport && isPointerCoarse ? "deferred" : "ready",
+    );
+  // The static row only ever stands in for the COMPACT coarse-pointer row.
+  // Anything that needs the real editor (expansion, a wide viewport, an
+  // active voice session) forces it mounted regardless of the phase.
+  const canDeferCompactEditor =
+    isMobilePromptBoxCompact && isPointerCoarse && voice.state === "idle";
+  const isEditorMounted =
+    compactEditorPhase !== "deferred" || !canDeferCompactEditor;
+  const showsCompactPlaceholder =
+    compactEditorPhase !== "ready" && canDeferCompactEditor;
+  const warmingFallbackRef = useRef<number | null>(null);
+  const clearWarmingFallback = useCallback(() => {
+    if (warmingFallbackRef.current !== null) {
+      window.clearTimeout(warmingFallbackRef.current);
+      warmingFallbackRef.current = null;
+    }
+  }, []);
+  const settleCompactEditor = useCallback(() => {
+    clearWarmingFallback();
+    setCompactEditorPhase("ready");
+  }, [clearWarmingFallback]);
+  // Realize the deferred editor after paint so the thread's first frame does
+  // not wait on TipTap; a transition keeps the mount interruptible by taps.
+  useEffect(() => {
+    if (compactEditorPhase !== "deferred") return;
+    return scheduleAfterPaint(() => {
+      startTransition(() => {
+        setCompactEditorPhase((phase) =>
+          phase === "deferred" ? "ready" : phase,
+        );
+      });
+    });
+  }, [compactEditorPhase]);
+  useEffect(() => clearWarmingFallback, [clearWarmingFallback]);
+  const handlePlaceholderPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0 || compactEditorPhase !== "deferred") return;
+      // Mount the editor NOW, under the placeholder, so it exists (with its
+      // passive effects flushed) by the time the click lands. The placeholder
+      // stays in the DOM until then: iOS drops the click when the touchstart
+      // target is removed mid-gesture.
+      flushSync(() => {
+        setCompactEditorPhase("warming");
+      });
+      clearWarmingFallback();
+      warmingFallbackRef.current = window.setTimeout(() => {
+        warmingFallbackRef.current = null;
+        setCompactEditorPhase((phase) =>
+          phase === "warming" ? "ready" : phase,
+        );
+      }, COMPACT_EDITOR_WARMING_FALLBACK_MS);
+    },
+    [clearWarmingFallback, compactEditorPhase],
+  );
+  const handlePlaceholderActivate = useCallback(() => {
+    // Inside the click: mount synchronously if pointerdown did not (keyboard,
+    // assistive tech), then focus from the user gesture so iOS shows the
+    // keyboard. The composer's focus-capture then runs the usual expansion.
+    flushSync(() => {
+      settleCompactEditor();
+    });
+    promptBoxRef.current?.focusEndForTap();
+  }, [settleCompactEditor]);
+  const handlePlaceholderVoiceStart = useCallback(() => {
+    // The transcript lands in the editor, so it has to exist first.
+    flushSync(() => {
+      settleCompactEditor();
+    });
+    void voice.start();
+  }, [settleCompactEditor, voice]);
   const compactConfig = useMemo(
     () =>
       isCompactViewport
@@ -609,6 +876,60 @@ function FollowUpPromptBoxWithComposer({
   // While the interaction owns the surface the pickers are hidden with the
   // editor; keep them disabled too so their keyboard chords (model picker
   // toggle/cycle) cannot open a popover anchored to a hidden trigger.
+  const canSubmitPlaceholderDraft =
+    canSubmit &&
+    !composer.isFollowUpSubmitting &&
+    (composer.message.trim().length > 0 || attachmentCount > 0) &&
+    !(steerOnPrimarySubmit && !composer.canModifierSubmit);
+  const handlePlaceholderSubmit = useCallback(() => {
+    // Mirrors PromptBoxWithScrollAnchor's submit path.
+    onPrimarySubmit();
+    if (submitMode.kind !== "queue" || steerOnPrimarySubmit) {
+      bottomAnchor?.scrollToBottom();
+    }
+  }, [bottomAnchor, onPrimarySubmit, steerOnPrimarySubmit, submitMode.kind]);
+  const placeholderAction = useMemo<
+    CompactComposerPlaceholderRowProps["action"]
+  >(() => {
+    if (onStopRuntime && !canSubmitPlaceholderDraft) {
+      return { kind: "stop", onStop: onStopRuntime };
+    }
+    if (
+      voice.isSupported &&
+      !composer.isFollowUpSubmitting &&
+      composer.message.trim().length === 0 &&
+      attachmentCount === 0
+    ) {
+      return { kind: "voice", onStart: handlePlaceholderVoiceStart };
+    }
+    return {
+      kind: "submit",
+      enabled: canSubmitPlaceholderDraft,
+      isSubmitting: composer.isFollowUpSubmitting || isStopping,
+      title: composer.isFollowUpSubmitting
+        ? "Submitting..."
+        : canSubmit && composer.submitTitle !== undefined
+          ? composer.submitTitle
+          : canQueueFollowUp
+            ? steerOnPrimarySubmit
+              ? "Steer current run (Enter)"
+              : "Queue follow-up (Enter)"
+            : "Submit (Enter)",
+    };
+  }, [
+    attachmentCount,
+    canQueueFollowUp,
+    canSubmit,
+    canSubmitPlaceholderDraft,
+    composer.isFollowUpSubmitting,
+    composer.message,
+    composer.submitTitle,
+    handlePlaceholderVoiceStart,
+    isStopping,
+    onStopRuntime,
+    steerOnPrimarySubmit,
+    voice.isSupported,
+  ]);
   const executionControlsDisabled =
     (executionReadOnly ?? readOnly ?? false) || hasPendingInteraction;
   const footerStart = useMemo(
@@ -721,74 +1042,87 @@ function FollowUpPromptBoxWithComposer({
       onBlurCapture={scheduleCollapseAfterFocusLoss}
       onFocusCapture={handleComposerFocus}
     >
-      <PromptBoxWithScrollAnchor
-        id={id}
-        promptBoxRef={promptBoxRef}
-        voice={voice}
-        minHeight={elasticTextareaMinHeight}
-        value={composer.message}
-        mentionRanges={composer.mentionRanges}
-        onChange={composer.onChangeMessage}
-        onSubmit={onPrimarySubmit}
-        blurOnPointerSubmit={isCompactViewport && isPointerCoarse}
-        textEffects={textEffects}
-        onComposerLayoutChange={setComposerLayout}
-        scrollToBottomOnSubmit={
-          submitMode.kind !== "queue" || steerOnPrimarySubmit
-        }
-        scrollToBottomOnModifierSubmit={!steerOnPrimarySubmit}
-        history={composer.history}
-        focusEndKey={focusEndKey}
-        placeholder={composer.promptPlaceholder}
-        containerCompactPlaceholder={composer.compactPromptPlaceholder}
-        heightAnimationKey={isInteractionExpanded ? "expanded" : "compact"}
-        mentionMenuPlacement="top"
-        submission={{
-          onStop: onStopRuntime,
-          isSubmitting: composer.isFollowUpSubmitting || isStopping,
-          disabled:
-            !canSubmit ||
-            composer.isFollowUpSubmitting ||
-            (steerOnPrimarySubmit && !composer.canModifierSubmit),
-          onModifierSubmit,
-          title: composer.isFollowUpSubmitting
-            ? "Submitting..."
-            : canSubmit && composer.submitTitle !== undefined
-              ? composer.submitTitle
-              : canQueueFollowUp
-                ? steerOnPrimarySubmit
-                  ? "Steer current run (Enter)"
-                  : "Queue follow-up (Enter)"
-                : isStopping
-                  ? "Stopping run..."
-                  : isLoadingExecutionOptions
-                    ? "Loading models..."
-                    : isLoadingPendingInteractions
-                      ? "Checking pending interactions..."
-                      : isProvisioning
-                        ? "Provisioning..."
-                        : isUnavailable
-                          ? "Unavailable"
-                          : "Submit (Enter)",
-          isRunning: canStopRuntime,
-        }}
-        typeahead={typeahead}
-        attachments={attachments}
-        promptActions={promptActions}
-        suppressPluginComposerCustomizations={
-          suppressPluginComposerCustomizations
-        }
-        compact={compactConfig}
-        zenMode={{
-          layout: "thread",
-          storageKey: null,
-          resetKey: `${zenModeResetKey}:${
-            isCompactViewport ? "mobile" : "desktop"
-          }`,
-          resetOnSubmit: true,
-        }}
-        footerStart={footerStart}
-      />
+      {isEditorMounted ? (
+        <PromptBoxWithScrollAnchor
+          id={id}
+          promptBoxRef={promptBoxRef}
+          voice={voice}
+          minHeight={elasticTextareaMinHeight}
+          value={composer.message}
+          mentionRanges={composer.mentionRanges}
+          onChange={composer.onChangeMessage}
+          onSubmit={onPrimarySubmit}
+          blurOnPointerSubmit={isCompactViewport && isPointerCoarse}
+          textEffects={textEffects}
+          onComposerLayoutChange={setComposerLayout}
+          scrollToBottomOnSubmit={
+            submitMode.kind !== "queue" || steerOnPrimarySubmit
+          }
+          scrollToBottomOnModifierSubmit={!steerOnPrimarySubmit}
+          history={composer.history}
+          focusEndKey={focusEndKey}
+          placeholder={composer.promptPlaceholder}
+          containerCompactPlaceholder={composer.compactPromptPlaceholder}
+          heightAnimationKey={isInteractionExpanded ? "expanded" : "compact"}
+          mentionMenuPlacement="top"
+          submission={{
+            onStop: onStopRuntime,
+            isSubmitting: composer.isFollowUpSubmitting || isStopping,
+            disabled:
+              !canSubmit ||
+              composer.isFollowUpSubmitting ||
+              (steerOnPrimarySubmit && !composer.canModifierSubmit),
+            onModifierSubmit,
+            title: composer.isFollowUpSubmitting
+              ? "Submitting..."
+              : canSubmit && composer.submitTitle !== undefined
+                ? composer.submitTitle
+                : canQueueFollowUp
+                  ? steerOnPrimarySubmit
+                    ? "Steer current run (Enter)"
+                    : "Queue follow-up (Enter)"
+                  : isStopping
+                    ? "Stopping run..."
+                    : isLoadingExecutionOptions
+                      ? "Loading models..."
+                      : isLoadingPendingInteractions
+                        ? "Checking pending interactions..."
+                        : isProvisioning
+                          ? "Provisioning..."
+                          : isUnavailable
+                            ? "Unavailable"
+                            : "Submit (Enter)",
+            isRunning: canStopRuntime,
+          }}
+          typeahead={typeahead}
+          attachments={attachments}
+          promptActions={promptActions}
+          suppressPluginComposerCustomizations={
+            suppressPluginComposerCustomizations
+          }
+          compact={compactConfig}
+          zenMode={{
+            layout: "thread",
+            storageKey: null,
+            resetKey: `${zenModeResetKey}:${
+              isCompactViewport ? "mobile" : "desktop"
+            }`,
+            resetOnSubmit: true,
+          }}
+          footerStart={footerStart}
+        />
+      ) : null}
+      {showsCompactPlaceholder ? (
+        <CompactComposerPlaceholderRow
+          overlay={isEditorMounted}
+          placeholder={composer.compactPromptPlaceholder}
+          message={composer.message}
+          action={placeholderAction}
+          onSubmit={handlePlaceholderSubmit}
+          onPointerDown={handlePlaceholderPointerDown}
+          onActivate={handlePlaceholderActivate}
+        />
+      ) : null}
       {!isMobilePromptBoxCompact ? (
         <div
           data-follow-up-composer-footer=""

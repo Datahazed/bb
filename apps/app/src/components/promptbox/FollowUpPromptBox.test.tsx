@@ -76,6 +76,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       current: {
         captureHeightForLayoutChange: () => void;
         focusEnd: () => void;
+        focusEndForTap: () => boolean;
       } | null;
     };
     submission?: { onModifierSubmit?: () => void };
@@ -107,6 +108,11 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
                 focusEnd: () => {
                   node.focus();
                   node.setSelectionRange(node.value.length, node.value.length);
+                },
+                focusEndForTap: () => {
+                  node.focus();
+                  node.setSelectionRange(node.value.length, node.value.length);
+                  return true;
                 },
               }
             : null;
@@ -251,6 +257,15 @@ function createFollowUpPromptBoxProps(
     },
     zenModeResetKey: "thr_test",
   };
+}
+
+/**
+ * On compact coarse-pointer surfaces the TipTap editor is deferred behind a
+ * static row until after paint or the first tap. Tests that need the editor
+ * right away tap the row, which is what a user does.
+ */
+function tapCompactComposerRow(placeholder = "Ask a follow-up") {
+  fireEvent.click(screen.getByRole("button", { name: placeholder }));
 }
 
 afterEach(() => {
@@ -772,6 +787,7 @@ describe("FollowUpPromptBox", () => {
 
     try {
       render(<FollowUpPromptBox {...props} />);
+      tapCompactComposerRow();
       const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
       act(() => input.focus());
       act(() => {
@@ -882,6 +898,7 @@ describe("FollowUpPromptBox", () => {
           {...createFollowUpPromptBoxProps({ kind: "ready" })}
         />,
       );
+      tapCompactComposerRow();
       const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
 
       fireEvent.focus(input);
@@ -1022,6 +1039,7 @@ describe("FollowUpPromptBox", () => {
           {...createFollowUpPromptBoxProps({ kind: "ready" })}
         />,
       );
+      tapCompactComposerRow();
       const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
       act(() => input.focus());
       act(() => {
@@ -1058,6 +1076,158 @@ describe("FollowUpPromptBox", () => {
         Reflect.deleteProperty(window, "visualViewport");
       }
     }
+  });
+
+  describe("deferred compact editor on coarse pointers", () => {
+    beforeEach(() => {
+      mocks.isCompactViewport = true;
+      mocks.isPointerCoarse = true;
+    });
+
+    it("paints a static row first and realizes the editor after paint", () => {
+      vi.useFakeTimers();
+      try {
+        const props = createFollowUpPromptBoxProps({ kind: "ready" });
+        props.composer = { ...props.composer!, message: "" };
+        render(<FollowUpPromptBox {...props} />);
+
+        // First paint: no PromptBoxInternal (TipTap) yet, just the row.
+        expect(screen.queryByTestId("prompt-box")).toBeNull();
+        const row = screen.getByRole("button", { name: "Ask a follow-up" });
+        expect(row.textContent).toBe("Ask a follow-up");
+        expect(
+          document.querySelector("[data-follow-up-composer-placeholder]"),
+        ).toBeTruthy();
+
+        // After a frame plus the idle/timeout window the real editor mounts
+        // in the same compact state and the row goes away.
+        act(() => {
+          vi.advanceTimersByTime(1000);
+        });
+        expect(screen.getByTestId("prompt-box").dataset.compact).toBe("true");
+        expect(
+          document.querySelector("[data-follow-up-composer-placeholder]"),
+        ).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("mounts the editor at pointerdown under the row and hands focus over at click", () => {
+      vi.useFakeTimers();
+      try {
+        render(
+          <FollowUpPromptBox
+            {...createFollowUpPromptBoxProps({ kind: "ready" })}
+          />,
+        );
+        const placeholder = document.querySelector<HTMLElement>(
+          "[data-follow-up-composer-placeholder]",
+        );
+        expect(placeholder).not.toBeNull();
+
+        fireEvent.pointerDown(
+          screen.getByRole("button", { name: "Ask a follow-up" }),
+          { button: 0, pointerType: "touch" },
+        );
+
+        // The editor exists before the click lands, while the tapped element
+        // stays in the DOM (iOS drops the click for a removed target).
+        expect(screen.getByTestId("prompt-box")).toBeTruthy();
+        expect(document.contains(placeholder)).toBe(true);
+        expect(
+          placeholder?.hasAttribute(
+            "data-follow-up-composer-placeholder-overlay",
+          ),
+        ).toBe(true);
+
+        fireEvent.click(
+          screen.getByRole("button", { name: "Ask a follow-up" }),
+        );
+
+        const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+        expect(document.activeElement).toBe(input);
+        expect(document.contains(placeholder)).toBe(false);
+        // The usual first-focus expansion still runs from the composer's
+        // focus capture.
+        fireEvent.focus(input);
+        expect(screen.getByTestId("prompt-box").dataset.compact).toBe("false");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("drops the warming overlay if no click follows the pointerdown", () => {
+      vi.useFakeTimers();
+      try {
+        render(
+          <FollowUpPromptBox
+            {...createFollowUpPromptBoxProps({ kind: "ready" })}
+          />,
+        );
+        const placeholder = document.querySelector<HTMLElement>(
+          "[data-follow-up-composer-placeholder]",
+        );
+        fireEvent.pointerDown(
+          screen.getByRole("button", { name: "Ask a follow-up" }),
+          { button: 0, pointerType: "touch" },
+        );
+        expect(document.contains(placeholder)).toBe(true);
+
+        act(() => {
+          vi.advanceTimersByTime(1000);
+        });
+        expect(document.contains(placeholder)).toBe(false);
+        expect(screen.getByTestId("prompt-box")).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps Stop and a drafted submit usable from the static row", () => {
+      vi.useFakeTimers();
+      try {
+        const onStop = vi.fn();
+        const queued = createFollowUpPromptBoxProps({ kind: "queue", onStop });
+        queued.composer = { ...queued.composer!, message: "" };
+        const { unmount } = render(<FollowUpPromptBox {...queued} />);
+        fireEvent.click(screen.getByRole("button", { name: "Stop run" }));
+        expect(onStop).toHaveBeenCalledOnce();
+        // Stop needs no editor: still deferred.
+        expect(screen.queryByTestId("prompt-box")).toBeNull();
+        unmount();
+
+        const drafted = createFollowUpPromptBoxProps({ kind: "ready" });
+        drafted.composer = { ...drafted.composer!, message: "Ship it" };
+        render(<FollowUpPromptBox {...drafted} />);
+        expect(screen.getByText("Ship it")).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Submit (Enter)" }));
+        expect(drafted.composer.onSubmit).toHaveBeenCalledOnce();
+        expect(screen.queryByTestId("prompt-box")).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not defer on fine pointers or wide viewports", () => {
+      mocks.isPointerCoarse = false;
+      const { unmount } = render(
+        <FollowUpPromptBox
+          {...createFollowUpPromptBoxProps({ kind: "ready" })}
+        />,
+      );
+      expect(screen.getByTestId("prompt-box")).toBeTruthy();
+      unmount();
+
+      mocks.isPointerCoarse = true;
+      mocks.isCompactViewport = false;
+      render(
+        <FollowUpPromptBox
+          {...createFollowUpPromptBoxProps({ kind: "ready" })}
+        />,
+      );
+      expect(screen.getByTestId("prompt-box")).toBeTruthy();
+    });
   });
 
   it("keeps the full composer visible on desktop", () => {
