@@ -1,0 +1,19 @@
+{
+  "$comment": "Shared UI-anatomy contract between the plugin API docs and the real app. The docs skeletons (wireframes.tsx) render these regions in this order, and apps/app/src/components/plugin/docs-anatomy-manifest.test.tsx renders the real components and asserts the same DOM order. Reordering the app fails that test until this file, and therefore the docs, is updated.",
+  "appSidebar": [
+    "top-reserve",
+    "primary-actions",
+    "plugin-nav",
+    "thread-list",
+    "footer"
+  ],
+  "sidebarFooter": ["settings", "plugin-footer-actions", "bug-report"],
+  "messageActionBar": [
+    "copy",
+    "edit",
+    "add-to-chat",
+    "send-to-main-thread",
+    "fork",
+    "plugin-actions"
+  ]
+}

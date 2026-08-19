@@ -21,6 +21,7 @@ pnpm-lock.yaml
 plugins/provider-codex/src/generated/
 packages/templates/src/generated/
 packages/db/drizzle/meta/
+apps/web/src/docs-plugin-api/api-model.generated.ts
 
 # These templates intentionally use aligned plain-text command columns.
 packages/templates/src/templates/

@@ -1,0 +1,31 @@
+/*
+ * Plugin API docs additions, loaded after styles.css (the Tailwind + theme
+ * token document the dashboard also uses).
+ *
+ * The --sh-* palette mirrors apps/app/src/components/ui/markdown-code-highlight.css
+ * so fenced code here reads exactly like code in bb's own chat renderer:
+ * identifiers ride the neutral foreground, punctuation/comments ride the
+ * muted/subtle tiers, and only keywords, strings, types, and entities carry a
+ * low-chroma hue, lifted in dark mode like the app's neutral ramp.
+ */
+.bb-code-highlight {
+  --sh-space: inherit;
+  --sh-identifier: var(--foreground);
+  --sh-sign: var(--muted-foreground);
+  --sh-comment: var(--subtle-foreground);
+  --sh-keyword: oklch(0.5 0.16 18);
+  --sh-string: oklch(0.46 0.1 150);
+  --sh-class: oklch(0.5 0.12 250);
+  --sh-property: oklch(0.46 0.1 264);
+  --sh-entity: oklch(0.47 0.13 292);
+  --sh-jsxliterals: oklch(0.47 0.13 292);
+}
+
+.dark .bb-code-highlight {
+  --sh-keyword: oklch(0.74 0.14 18);
+  --sh-string: oklch(0.78 0.12 150);
+  --sh-class: oklch(0.76 0.11 250);
+  --sh-property: oklch(0.78 0.1 264);
+  --sh-entity: oklch(0.78 0.12 292);
+  --sh-jsxliterals: oklch(0.78 0.12 292);
+}

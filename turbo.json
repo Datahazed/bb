@@ -26,6 +26,33 @@
     // bb:bundle-stats Vite plugin writes beside dist for the boot-payload
     // budget check. Without it a cache hit would leave CI checking a stale
     // file, or none at all.
+    // The docs' UI-anatomy manifest is the contract this test checks the real
+    // app components against, so a manifest edit must re-run it.
+    "@bb/app#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-api-map/src/anatomy-manifest.json",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
+    // The generated plugin-API model is checked against the SDK's committed
+    // declarations, so those files are inputs to this test.
+    "@bb/web#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-sdk/bundled-types/**",
+        "$TURBO_ROOT$/packages/plugin-sdk/package.json",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
     "@bb/app#build": {
       "dependsOn": [
         "topo"
