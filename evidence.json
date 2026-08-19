@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "stack": "get-bb/bb#1869 -> get-bb/bb#1870",
+  "fixtures": [
+    {
+      "checkpoint": "browser-action-runtime-and-overflow",
+      "base": "fa9a15bafe81f524084508d416e627a0aac13b18",
+      "candidate": "dd66e0893c6f6428b3f205813aeec65f7ee5f8ed",
+      "app": "BB desktop dev app",
+      "route": "Browser runtime visual QA",
+      "fixture": "Browser Core Test Lab / Team members",
+      "viewportWidth": 1280,
+      "viewportHeight": 900,
+      "deviceScaleFactor": 2,
+      "states": [
+        "base page with no plugin browser action",
+        "candidate page after Inspect this Browser page completes",
+        "candidate constrained toolbar with overflow trigger",
+        "candidate overflow menu opened with Enter"
+      ],
+      "cycles": 5,
+      "proof": "The base and candidate runtime screenshots use the same page, URL, panel width, and 1280x900 window. The candidate shows a non-modal result over the complete localhost page. The external-link action remains rightmost. Enter opens four hidden actions and Escape closes them in five consecutive cycles.",
+      "result": "PASS"
+    },
+    {
+      "checkpoint": "inspectable-mention-and-image-lightbox",
+      "base": "dd66e0893c6f6428b3f205813aeec65f7ee5f8ed",
+      "candidate": "f740d15e75b490739ab1e8fe263ff6e73df8e608",
+      "app": "BB desktop dev app",
+      "route": "Inspectable mention visual QA",
+      "fixture": "16 Team members Browser Core Test Lab mentions",
+      "viewports": [
+        {
+          "viewportClass": "desktop",
+          "viewportWidth": 1280,
+          "viewportHeight": 900,
+          "deviceScaleFactor": 2,
+          "imageBounds": {
+            "x": 165.5703125,
+            "y": 81,
+            "width": 948.8515625,
+            "height": 737.9921875
+          },
+          "closeBounds": {
+            "x": 1078.421875,
+            "y": 81,
+            "width": 36,
+            "height": 36
+          }
+        },
+        {
+          "viewportClass": "narrow",
+          "viewportWidth": 768,
+          "viewportHeight": 900,
+          "deviceScaleFactor": 2,
+          "imageBounds": {
+            "x": 38.3984375,
+            "y": 181.203125,
+            "width": 691.1953125,
+            "height": 537.59375
+          },
+          "closeBounds": {
+            "x": 693.59375,
+            "y": 181.203125,
+            "width": 36,
+            "height": 36
+          }
+        }
+      ],
+      "states": [
+        "base dense composer mentions",
+        "candidate keyboard-focus preview",
+        "candidate settled inspector with decoded 1800x1400 image",
+        "candidate expanded image at desktop",
+        "candidate expanded image at narrow width"
+      ],
+      "cycles": 5,
+      "proof": "At both widths the image and frame bounds match, the close button top equals the image top, and the close button right equals the image right. Five open/expand/Escape cycles kept the same geometry and complete decoded image.",
+      "result": "PASS"
+    }
+  ],
+  "result": "PASS"
+}
