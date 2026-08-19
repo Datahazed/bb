@@ -113,6 +113,28 @@ const isNotNestedTurnUsageEvent = sql`NOT EXISTS (
     AND COALESCE(json_extract(nested_turn_started.data, '$.parentToolCallId'), '') <> ''
 )`;
 
+/**
+ * A background-task progress row that a later progress or completed row for
+ * the same item supersedes. Each snapshot carries the full task state (a
+ * workflow snapshot with hundreds of agents is hundreds of KB), consumers
+ * replace rather than merge, and `pruneBackgroundTaskProgressEvents` deletes
+ * superseded rows on its own cadence. Timeline reads skip them so a burst of
+ * snapshots between prunes cannot spend the page byte budget on rows that
+ * project to nothing.
+ */
+const isNotSupersededBackgroundTaskProgress = sql`NOT (
+  ${events.type} = 'item/backgroundTask/progress'
+  AND EXISTS (
+    SELECT 1
+    FROM events AS newer_task_state
+    WHERE newer_task_state.thread_id = ${events.threadId}
+      AND newer_task_state.item_kind = 'backgroundTask'
+      AND newer_task_state.item_id = ${events.itemId}
+      AND newer_task_state.type IN ('item/backgroundTask/progress', 'item/backgroundTask/completed')
+      AND newer_task_state.sequence > ${events.sequence}
+  )
+)`;
+
 export interface InsertEventInput {
   threadId: string;
   environmentId?: string | null;
@@ -1514,8 +1536,13 @@ function storedEventRowsByParentToolCallIdsConditions(
 
   const eventParentToolCallId = sql<string>`json_extract(${events.data}, '$.parentToolCallId')`;
   const itemParentToolCallId = sql<string>`json_extract(${events.data}, '$.item.parentToolCallId')`;
+  // The snapshot check goes before the JSON parent tests: it is a type
+  // comparison for most rows and an indexed probe for progress rows, while
+  // each `json_extract` parses the whole payload — hundreds of KB for a
+  // workflow snapshot. SQLite evaluates these terms in order.
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
+    isNotSupersededBackgroundTaskProgress,
     or(
       inArray(eventParentToolCallId, parentToolCallIds),
       inArray(itemParentToolCallId, parentToolCallIds),
@@ -2467,18 +2494,18 @@ export function listRecentStoredEventRows(
   db: DbConnection,
   args: ListRecentStoredEventRowsArgs,
 ): StoredEventRow[] {
-  const condition =
-    args.excludedTypes && args.excludedTypes.length > 0
-      ? and(
-          eq(events.threadId, args.threadId),
-          notInArray(events.type, [...args.excludedTypes]),
-        )
-      : eq(events.threadId, args.threadId);
+  const conditions: SQL[] = [
+    eq(events.threadId, args.threadId),
+    isNotSupersededBackgroundTaskProgress,
+  ];
+  if (args.excludedTypes && args.excludedTypes.length > 0) {
+    conditions.push(notInArray(events.type, [...args.excludedTypes]));
+  }
 
   return db
     .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
     .from(events)
-    .where(condition)
+    .where(and(...conditions))
     .orderBy(events.sequence)
     .all();
 }
@@ -2547,6 +2574,7 @@ export function listStoredConversationOutlineEventRows(
         eq(events.threadId, args.threadId),
         inArray(events.type, structuralItemLifecycleTypes),
         inArray(events.itemKind, structuralItemKinds),
+        isNotSupersededBackgroundTaskProgress,
       ),
     );
 
@@ -2635,7 +2663,10 @@ export function findTimelineWindowBudgetFloorSequence(
   db: DbConnection,
   args: FindTimelineWindowBudgetFloorSequenceArgs,
 ): number | undefined {
-  const conditions: SQL[] = [eq(events.threadId, args.threadId)];
+  const conditions: SQL[] = [
+    eq(events.threadId, args.threadId),
+    isNotSupersededBackgroundTaskProgress,
+  ];
   if (args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
   }
@@ -2831,6 +2862,7 @@ function storedTimelineWindowConditions(
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
     gte(events.sequence, args.sequenceStart),
+    isNotSupersededBackgroundTaskProgress,
   ];
   if (args.beforeSequence !== undefined) {
     conditions.push(lt(events.sequence, args.beforeSequence));

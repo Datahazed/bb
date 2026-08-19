@@ -144,6 +144,28 @@ describe("desktop Browser-page runtime", () => {
     expect(webContents.calls[0]?.worldId).toBe(0);
   });
 
+  it("serializes page scripts within one Browser tab", async () => {
+    const webContents = new FakePageWebContents();
+    const first = startDesktopBrowserPageScript({
+      navigationEpoch: 4,
+      request: request(),
+      webContents,
+    });
+    const second = startDesktopBrowserPageScript({
+      navigationEpoch: 4,
+      request: { ...request(), requestId: "req_2" },
+      webContents,
+    });
+
+    await vi.waitFor(() => expect(webContents.calls).toHaveLength(1));
+    webContents.resolve?.(JSON.stringify({ ok: true, value: "first" }));
+    await expect(first.promise).resolves.toMatchObject({ value: "first" });
+
+    await vi.waitFor(() => expect(webContents.calls).toHaveLength(2));
+    webContents.resolve?.(JSON.stringify({ ok: true, value: "second" }));
+    await expect(second.promise).resolves.toMatchObject({ value: "second" });
+  });
+
   it("cancels exactly one request and rejects immediately", async () => {
     const webContents = new FakePageWebContents();
     const session = startDesktopBrowserPageScript({

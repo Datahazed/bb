@@ -376,6 +376,25 @@ export function createDesktopBrowserViewManager(
     entry.pageScriptSessions.clear();
   }
 
+  function beginEntryMainFrameNavigation(entry: BrowserViewEntry): number {
+    const acceptedEpoch = entry.navigationEpoch;
+    cancelEntryPageScripts(entry, "navigation");
+    if (!entry.mainFrameNavigationPending) {
+      entry.mainFrameNavigationPending = true;
+      entry.navigationEpoch += 1;
+    }
+    return acceptedEpoch;
+  }
+
+  function clearFailedEntryNavigation(
+    entry: BrowserViewEntry,
+    navigationEpoch: number,
+  ): void {
+    if (entry.navigationEpoch === navigationEpoch) {
+      entry.mainFrameNavigationPending = false;
+    }
+  }
+
   function resetEntryRendererRecovery(entry: BrowserViewEntry): void {
     clearEntryRendererRecoveryTimer(entry);
     entry.rendererRecoveryAttempts = 0;
@@ -667,9 +686,7 @@ export function createDesktopBrowserViewManager(
       "did-start-navigation",
       (_event, _url, _isInPlace, isMainFrame) => {
         if (isMainFrame) {
-          entry.mainFrameNavigationPending = true;
-          entry.navigationEpoch += 1;
-          cancelEntryPageScripts(entry, "navigation");
+          beginEntryMainFrameNavigation(entry);
         }
         entry.lastErrorText = null;
         refresh();
@@ -730,7 +747,13 @@ export function createDesktopBrowserViewManager(
     return entry;
   }
 
-  function loadIfNeeded(entry: BrowserViewEntry, url: string): void {
+  function loadIfNeeded(
+    entry: BrowserViewEntry,
+    hostWindow: DesktopBrowserHostWindow,
+    markNavigationPending: boolean,
+    tabId: string,
+    url: string,
+  ): void {
     if (url.length === 0) {
       return;
     }
@@ -740,8 +763,14 @@ export function createDesktopBrowserViewManager(
     if (!isAllowedBrowserUrl(url)) {
       return;
     }
+    if (markNavigationPending) beginEntryMainFrameNavigation(entry);
+    const navigationEpoch = entry.navigationEpoch;
     entry.lastErrorText = null;
     entry.view.webContents.loadURL(url).catch(() => {
+      if (markNavigationPending) {
+        clearFailedEntryNavigation(entry, navigationEpoch);
+      }
+      pushState(hostWindow, tabId);
       // Usually surfaced through `did-fail-load`; swallow the rejection.
     });
   }
@@ -803,7 +832,7 @@ export function createDesktopBrowserViewManager(
       ) {
         entry.view.webContents.focus();
       }
-      loadIfNeeded(entry, request.url);
+      loadIfNeeded(entry, hostWindow, false, request.tabId, request.url);
       pushState(hostWindow, request.tabId);
     },
     detach({ hostWindow, tabId }) {
@@ -811,38 +840,58 @@ export function createDesktopBrowserViewManager(
     },
     navigate({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
-        cancelEntryPageScripts(entry, "navigation");
         resetEntryRendererRecovery(entry);
         applyEntryVisibility(entry, hostWindow);
-        loadIfNeeded(entry, request.url);
+        loadIfNeeded(entry, hostWindow, true, request.tabId, request.url);
       });
     },
     goBack({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoBack()) {
-          cancelEntryPageScripts(entry, "navigation");
+          beginEntryMainFrameNavigation(entry);
           resetEntryRendererRecovery(entry);
           applyEntryVisibility(entry, hostWindow);
-          entry.view.webContents.navigationHistory.goBack();
+          try {
+            entry.view.webContents.navigationHistory.goBack();
+          } catch (error) {
+            clearFailedEntryNavigation(entry, entry.navigationEpoch);
+            throw error;
+          } finally {
+            pushState(hostWindow, tabId);
+          }
         }
       });
     },
     goForward({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoForward()) {
-          cancelEntryPageScripts(entry, "navigation");
+          beginEntryMainFrameNavigation(entry);
           resetEntryRendererRecovery(entry);
           applyEntryVisibility(entry, hostWindow);
-          entry.view.webContents.navigationHistory.goForward();
+          try {
+            entry.view.webContents.navigationHistory.goForward();
+          } catch (error) {
+            clearFailedEntryNavigation(entry, entry.navigationEpoch);
+            throw error;
+          } finally {
+            pushState(hostWindow, tabId);
+          }
         }
       });
     },
     reload({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
-        cancelEntryPageScripts(entry, "navigation");
+        beginEntryMainFrameNavigation(entry);
         resetEntryRendererRecovery(entry);
-        entry.view.webContents.reload();
-        applyEntryVisibility(entry, hostWindow);
+        try {
+          entry.view.webContents.reload();
+          applyEntryVisibility(entry, hostWindow);
+        } catch (error) {
+          clearFailedEntryNavigation(entry, entry.navigationEpoch);
+          throw error;
+        } finally {
+          pushState(hostWindow, tabId);
+        }
       });
     },
     stop({ hostWindow, tabId }) {
@@ -941,22 +990,21 @@ export function createDesktopBrowserViewManager(
       if (!isAllowedBrowserUrl(request.url)) {
         throw new Error("The Browser navigation URL is not allowed");
       }
-      cancelEntryPageScripts(entry, "navigation");
+      const acceptedEpoch = entry.navigationEpoch;
       resetEntryRendererRecovery(entry);
       applyEntryVisibility(entry, hostWindow);
       if (entry.view.webContents.getURL() !== request.url) {
-        const acceptedEpoch = entry.navigationEpoch;
-        entry.mainFrameNavigationPending = true;
+        beginEntryMainFrameNavigation(entry);
+        const navigationEpoch = entry.navigationEpoch;
         entry.lastErrorText = null;
         void entry.view.webContents.loadURL(request.url).catch(() => {
-          if (entry.navigationEpoch === acceptedEpoch) {
-            entry.mainFrameNavigationPending = false;
-            pushState(hostWindow, request.tabId);
-          }
+          clearFailedEntryNavigation(entry, navigationEpoch);
+          pushState(hostWindow, request.tabId);
         });
       }
+      pushState(hostWindow, request.tabId);
       return {
-        navigationEpoch: entry.navigationEpoch,
+        navigationEpoch: acceptedEpoch,
         url: request.url,
       };
     },

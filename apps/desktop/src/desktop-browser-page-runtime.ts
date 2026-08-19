@@ -9,6 +9,7 @@ import {
 /** Electron reserves 0 for the page and 999 for extensions. */
 export const BB_BROWSER_PAGE_ISOLATED_WORLD_ID = 1_004;
 const PAGE_RUNTIME_REGISTRY_KEY = "__bbBrowserPageRuntimeV1";
+const pageExecutionTails = new WeakMap<PageRuntimeWebContents, Promise<void>>();
 
 interface PageRuntimeWebContents {
   debugger: {
@@ -157,8 +158,20 @@ export function startDesktopBrowserPageScript(
   args: StartDesktopBrowserPageScriptArgs,
 ): DesktopBrowserPageScriptSession {
   const { request, webContents } = args;
+  const previousExecution = pageExecutionTails.get(webContents);
+  let releaseExecution!: () => void;
+  const executionReleased = new Promise<void>((resolve) => {
+    releaseExecution = resolve;
+  });
+  const executionTail =
+    previousExecution === undefined
+      ? executionReleased
+      : previousExecution.catch(() => undefined).then(() => executionReleased);
+  pageExecutionTails.set(webContents, executionTail);
   let promiseSettled = false;
   let executionFinished = false;
+  let executionStarted = false;
+  let cancelledBeforeStart = false;
   let rejectPromise: ((error: Error) => void) | null = null;
   let timeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -174,24 +187,32 @@ export function startDesktopBrowserPageScript(
   const promise = new Promise<BbDesktopBrowserPageScriptResult>(
     (resolve, reject) => {
       rejectPromise = reject;
-      timeout = setTimeout(() => {
-        if (executionFinished) return;
-        cancelInPage("timeout");
-        void terminateUnresponsiveExecution(webContents);
-        if (!promiseSettled) {
-          promiseSettled = true;
-          reject(new Error("Browser page script timed out"));
-        }
-      }, request.timeoutMs);
-
-      void executeInRequestedWorld(
-        webContents,
-        request.world,
-        runtimeInvocationCode(request),
-        `bb-browser-page-runtime://${encodeURIComponent(request.requestId)}`,
-      )
+      const startExecution = () => {
+        if (cancelledBeforeStart) return undefined;
+        executionStarted = true;
+        timeout = setTimeout(() => {
+          if (executionFinished) return;
+          cancelInPage("timeout");
+          void terminateUnresponsiveExecution(webContents);
+          if (!promiseSettled) {
+            promiseSettled = true;
+            reject(new Error("Browser page script timed out"));
+          }
+        }, request.timeoutMs);
+        return executeInRequestedWorld(
+          webContents,
+          request.world,
+          runtimeInvocationCode(request),
+          `bb-browser-page-runtime://${encodeURIComponent(request.requestId)}`,
+        );
+      };
+      const execution =
+        previousExecution === undefined
+          ? startExecution()
+          : previousExecution.catch(() => undefined).then(startExecution);
+      void Promise.resolve(execution)
         .then((rawEnvelope) => {
-          if (promiseSettled) return;
+          if (promiseSettled || cancelledBeforeStart) return;
           const envelope = parseEnvelope(rawEnvelope);
           if (!envelope.ok) {
             const error = new Error(safeErrorMessage(envelope.error?.message));
@@ -219,6 +240,10 @@ export function startDesktopBrowserPageScript(
         .finally(() => {
           executionFinished = true;
           if (timeout !== null) clearTimeout(timeout);
+          releaseExecution();
+          if (pageExecutionTails.get(webContents) === executionTail) {
+            pageExecutionTails.delete(webContents);
+          }
         });
     },
   );
@@ -230,7 +255,8 @@ export function startDesktopBrowserPageScript(
     cancel(reason = "cancelled") {
       if (promiseSettled) return;
       promiseSettled = true;
-      cancelInPage(reason);
+      if (executionStarted) cancelInPage(reason);
+      else cancelledBeforeStart = true;
       const error = new Error(
         reason === "navigation"
           ? "Browser page changed while the script was running"
