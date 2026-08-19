@@ -4,13 +4,14 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   labelClaim,
   machine,
   profile,
   schema,
   server,
+  session,
   user,
 } from "@bb/connect-db";
 
@@ -19,6 +20,7 @@ import {
   markMachineSeen,
   resolveLabel,
   verifyMachineCredentialDetails,
+  verifySessionCookie,
 } from "./session.js";
 import { assignMachineLabel } from "./machine-label.js";
 
@@ -406,5 +408,99 @@ describe("machine credential presence", () => {
         10_000 + MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
       ),
     ).toBe(true);
+  });
+});
+
+// A page load fans out dozens of gate requests within milliseconds, all
+// before the first D1 answer lands. Value-only caches let every one of them
+// miss; the pending lookup itself must be shared so a burst costs one query.
+describe("in-flight lookup sharing", () => {
+  it("collapses concurrent resolves of one label into a single query", async () => {
+    seedUser("acct-burst");
+    seedServer({
+      id: "srv-burst",
+      userId: "acct-burst",
+      name: "default",
+      subdomain: "burst-label",
+    });
+    const select = vi.spyOn(db, "select");
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => resolveLabel("burst-label", db)),
+    );
+    expect(select).toHaveBeenCalledTimes(1);
+    for (const result of results) {
+      expect(result).toMatchObject({ kind: "server", userId: "acct-burst" });
+    }
+    // Settled: later callers hit the value cache, not a retained promise.
+    await expect(resolveLabel("burst-label", db)).resolves.toMatchObject({
+      kind: "server",
+    });
+    expect(select).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not share a fresh (cache-bypassing) resolve with the pending one", async () => {
+    seedUser("acct-fresh");
+    seedServer({
+      id: "srv-fresh",
+      userId: "acct-fresh",
+      name: "default",
+      subdomain: "fresh-label",
+    });
+    const select = vi.spyOn(db, "select");
+    await Promise.all([
+      resolveLabel("fresh-label", db),
+      resolveLabel("fresh-label", db, { fresh: true }),
+    ]);
+    expect(select).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops a rejected lookup so the next request retries", async () => {
+    const failing = vi.spyOn(db, "select").mockImplementationOnce(() => {
+      throw new Error("D1 unavailable");
+    });
+    await expect(resolveLabel("flaky-label", db)).rejects.toThrow(
+      "D1 unavailable",
+    );
+    failing.mockRestore();
+    await expect(resolveLabel("flaky-label", db)).resolves.toBeNull();
+  });
+
+  it("collapses concurrent verifications of one session cookie into a single query", async () => {
+    seedUser("acct-session");
+    const token = "sess_token_burst";
+    const secret = "test-better-auth-secret";
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const sigBuf = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(token),
+    );
+    const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+    const cookieValue = `${token}.${sig}`;
+    db.insert(session)
+      .values({
+        id: "sess-burst",
+        token,
+        expiresAt: new Date(Date.now() + 60_000),
+        userId: "acct-session",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+
+    const select = vi.spyOn(db, "select");
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        verifySessionCookie(cookieValue, secret, db),
+      ),
+    );
+    expect(results).toEqual(Array(5).fill("acct-session"));
+    expect(select).toHaveBeenCalledTimes(1);
   });
 });

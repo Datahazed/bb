@@ -1095,6 +1095,86 @@ function offlineDoResponse(): Response {
   });
 }
 
+// ── gate lookup overlap ─────────────────────────────────────────────────────
+//
+// Label resolution and session verification are independent D1 round trips.
+// Awaiting them back to back put two single-region D1 RTTs on every uncached
+// visitor request; the gate must issue the session check before the label
+// answer arrives.
+
+describe("gate lookup overlap", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockParseCookie.mockReturnValue("session-token");
+  });
+
+  it("verifies the visitor session while the label lookup is still pending", async () => {
+    let resolveLabel!: (value: ReturnType<typeof resolvedServer>) => void;
+    mockResolveLabel.mockReturnValue(
+      new Promise((resolve) => {
+        resolveLabel = resolve;
+      }),
+    );
+    let resolveSession!: (value: string) => void;
+    mockVerifySession.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSession = resolve;
+      }),
+    );
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const pending = worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/app.js"),
+      env as never,
+      ctx,
+    );
+    // Let the handler run up to its first await.
+    await Promise.resolve();
+    expect(mockVerifySession).toHaveBeenCalledTimes(1);
+    expect(mockResolveLabel).toHaveBeenCalledTimes(1);
+
+    resolveSession(OWNER);
+    resolveLabel(resolvedServer());
+    const res = await pending;
+    expect(res.status).toBe(200);
+    expect(captured).toHaveLength(1);
+  });
+
+  it("does not verify a session on a tunnel dial", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    const { env, ctx } = makeEnv(() => new Response("upgraded"));
+    await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/__tunnel?v=1", {
+        headers: { authorization: "Bearer nope" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(mockVerifySession).not.toHaveBeenCalled();
+  });
+
+  it("returns the 404 for an unknown label even when the session check fails", async () => {
+    // The early return must not leave the overlapped verification as an
+    // unhandled rejection.
+    mockResolveLabel.mockResolvedValue(null);
+    mockVerifySession.mockRejectedValue(new Error("D1 unavailable"));
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const { env, ctx } = makeEnv(() => new Response("origin"));
+      const res = await worker.fetch(
+        visitorRequest("ghost.getbb.app", "/"),
+        env as never,
+        ctx,
+      );
+      expect(res.status).toBe(404);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+});
+
 describe("gate offline page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1228,6 +1308,16 @@ describe("gate page helpers", () => {
     expect(res.status).toBe(503);
     expect(res.headers.get("content-type")).toContain("text/html");
     expect(await res.text()).toContain("Retry now");
+  });
+
+  it("gate pages load no third-party stylesheet or font before first paint", async () => {
+    // A cross-origin font stylesheet is render-blocking; on a phone on
+    // cellular it delayed the offline/sign-in card by a full RTT or more.
+    const html = await offlinePage(null, "server").text();
+    expect(html).not.toContain("fonts.googleapis.com");
+    expect(html).not.toContain("fonts.gstatic.com");
+    expect(html).not.toMatch(/<link\b/u);
+    expect(html).toContain("-apple-system,system-ui");
   });
 });
 

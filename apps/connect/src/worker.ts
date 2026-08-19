@@ -1,5 +1,10 @@
 import { drizzle } from "drizzle-orm/d1";
-import { RESERVED_HANDLES, parseVisitorHost, schema } from "@bb/connect-db";
+import {
+  RESERVED_HANDLES,
+  parseVisitorHost,
+  schema,
+  type ConnectDb,
+} from "@bb/connect-db";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
 import {
   parseCookie,
@@ -50,8 +55,8 @@ function text(body: string, status: number): Response {
   });
 }
 
-// Matches the bb dashboard's visual language (Inter, --canvas/--ink tokens,
-// dark primary button, bb logo) since this plain worker can't bundle React.
+// Matches the bb dashboard's visual language (--canvas/--ink tokens, dark
+// primary button, bb logo) since this plain worker can't bundle React.
 export function dashboardSignInUrl(appUrl: string, returnTo: string): string {
   const url = new URL("/dashboard", appUrl);
   url.searchParams.set("returnTo", returnTo);
@@ -60,9 +65,12 @@ export function dashboardSignInUrl(appUrl: string, returnTo: string): string {
 
 // Shared gate-page shell. The 401 sign-in and 503 offline pages render through
 // one template so they can never drift apart the way the dashboard and gate
-// once did. Matches the bb dashboard's visual language (Inter, --canvas/--ink
-// tokens derived from two anchors, dark-mode media query, inlined bb icon,
-// centered card) since this plain worker can't bundle React.
+// once did. Matches the bb dashboard's visual language (--canvas/--ink tokens
+// derived from two anchors, dark-mode media query, inlined bb icon, centered
+// card) since this plain worker can't bundle React. The pages use the system
+// font stack on purpose: a third-party font stylesheet is a render-blocking
+// cross-origin fetch on the phone's first paint, and the gate is what a
+// visitor sees on a cold, often cellular, connection.
 const GATE_STYLE = `
   :root{--canvas:oklch(1 0 0);--ink:oklch(0.3211 0 0);
     --muted:color-mix(in oklch,var(--ink) 55%,var(--canvas));
@@ -76,7 +84,7 @@ const GATE_STYLE = `
   *{box-sizing:border-box}
   body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;
     background:var(--canvas);color:var(--ink);
-    font:15px/1.6 "Inter",-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    font:15px/1.6 -apple-system,system-ui,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
   .wrap{width:100%;max-width:420px;padding:24px}
   .brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
   .brand img{width:28px;height:28px}
@@ -89,7 +97,7 @@ const GATE_STYLE = `
   code{font-family:"Fira Code",ui-monospace,monospace;font-size:.92em}
   .btn{display:flex;align-items:center;justify-content:center;width:100%;padding:11px 16px;
     border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--ink);
-    font:500 14px/1 "Inter",-apple-system,system-ui,sans-serif;text-decoration:none;cursor:pointer}
+    font:500 14px/1 -apple-system,system-ui,"Segoe UI",sans-serif;text-decoration:none;cursor:pointer}
   .btn.primary{background:var(--ink);border-color:var(--ink);color:var(--canvas)}
   .glyph{width:34px;height:34px;border-radius:999px;background:var(--warn-bg);
     border:1px solid var(--warn-border);color:var(--warn);
@@ -111,9 +119,6 @@ function gatePage(
     `<!doctype html><html lang="en"><head><meta charset="utf-8">
      <meta name="viewport" content="width=device-width, initial-scale=1">
      ${refresh}<title>bb connect</title>
-     <link rel="preconnect" href="https://fonts.googleapis.com">
-     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
      <style>${GATE_STYLE}</style></head>
      <body><div class="wrap">
        <div class="brand"><img src="${BB_ICON_DATA_URI}" alt="bb"><div><b>bb connect</b><br><span>Your bb, reachable anywhere</span></div></div>
@@ -259,6 +264,37 @@ function isHostManagementMutation(request: Request, pathname: string): boolean {
   );
 }
 
+interface VisitorAuth {
+  sessionUserId: string | null;
+  desktopUserId: string | null;
+}
+
+/**
+ * Start visitor cookie verification without awaiting it, so it overlaps the
+ * label lookup. Returns null when the request carries no visitor cookie
+ * (nothing to verify). A caller that returns early (404 label, machine page)
+ * leaves the promise to settle in the background, so a D1 failure is observed
+ * here rather than surfacing as an unhandled rejection; the visitor path
+ * awaits the same promise and still sees the failure.
+ */
+function startVisitorAuth(
+  cookie: string | null,
+  desktopCookie: string | null,
+  secret: string,
+  db: ConnectDb,
+): Promise<VisitorAuth> | null {
+  if (!cookie && !desktopCookie) return null;
+  const auth = Promise.all([
+    cookie ? verifySessionCookie(cookie, secret, db) : null,
+    desktopCookie ? verifyDesktopSessionCookie(desktopCookie, secret) : null,
+  ]).then(([sessionUserId, desktopUserId]) => ({
+    sessionUserId,
+    desktopUserId,
+  }));
+  auth.catch(() => {});
+  return auth;
+}
+
 /** Cache namespace for a resolved routing key plus optional share target. */
 export function cacheNamespace(
   routingKey: string,
@@ -315,6 +351,20 @@ export default {
     // avoids both stale credentials and a cached negative immediately after a
     // machine label is assigned.
     const isTunnelDial = url.pathname === "/__tunnel";
+    // Visitor cookies do not depend on the label, so their verification starts
+    // now and overlaps the label lookup: on a cold isolate both are D1 round
+    // trips (single-region, ~100+ ms each from a phone far from the DB), and
+    // running them back to back doubled the gate's cost on every uncached
+    // request. Tunnel dials never carry a session, so they skip the read.
+    const cookieHeader = request.headers.get("cookie");
+    const cookie = parseCookie(cookieHeader, runtime.sessionCookieName);
+    const desktopCookie = parseCookie(
+      cookieHeader,
+      runtime.desktopSessionCookieName,
+    );
+    const visitorAuth = isTunnelDial
+      ? null
+      : startVisitorAuth(cookie, desktopCookie, env.BETTER_AUTH_SECRET, db);
     const resolved = await resolveLabel(
       label,
       db,
@@ -430,21 +480,9 @@ export default {
     // Visitor request — require a session owned by this label's account.
     // Identical auth for bare-label and share hosts. Because this check passed,
     // only the owner ever reaches the DO below (and thus its offline 503).
-    const cookieHeader = request.headers.get("cookie");
-    const cookie = parseCookie(cookieHeader, runtime.sessionCookieName);
-    const desktopCookie = parseCookie(
-      cookieHeader,
-      runtime.desktopSessionCookieName,
-    );
     const appUrl = runtime.accountAppUrl;
-    if (!cookie && !desktopCookie)
-      return signInPage(label, appUrl, url.toString());
-    const sessionUserId = cookie
-      ? await verifySessionCookie(cookie, env.BETTER_AUTH_SECRET, db)
-      : null;
-    const desktopUserId = desktopCookie
-      ? await verifyDesktopSessionCookie(desktopCookie, env.BETTER_AUTH_SECRET)
-      : null;
+    if (visitorAuth === null) return signInPage(label, appUrl, url.toString());
+    const { sessionUserId, desktopUserId } = await visitorAuth;
     if (!sessionUserId && !desktopUserId) {
       return signInPage(label, appUrl, url.toString());
     }

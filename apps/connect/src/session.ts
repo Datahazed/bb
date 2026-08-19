@@ -16,6 +16,13 @@ import {
 // D1. TTLs are short so sign-out / disconnect take effect quickly (and the DO
 // already severs a live tunnel on revoke, so a stale-cached label still can't
 // reach a disconnected server).
+//
+// The caches also hold the in-flight lookup, not only the settled value: a
+// page load fans out ~40 asset requests within a few milliseconds, all before
+// the first D1 answer lands. Value-only caching let every one of them miss and
+// issue its own round trip; sharing the pending promise collapses the burst
+// into one query per key. A rejected lookup is dropped so the next request
+// retries instead of replaying a transient D1 error for the whole TTL.
 const LABEL_TTL_MS = 15_000;
 const SESSION_TTL_MS = 20_000;
 
@@ -25,6 +32,8 @@ interface CacheEntry<T> {
 }
 const labelCache = new Map<string, CacheEntry<ResolvedLabel | null>>();
 const sessionCache = new Map<string, CacheEntry<string | null>>();
+const labelInflight = new Map<string, Promise<ResolvedLabel | null>>();
+const sessionInflight = new Map<string, Promise<string | null>>();
 
 function cacheGet<T>(
   map: Map<string, CacheEntry<T>>,
@@ -35,6 +44,26 @@ function cacheGet<T>(
   if (hit && hit.expires > now) return hit.value;
   if (hit) map.delete(key);
   return undefined;
+}
+
+/**
+ * Return the pending lookup for `key` when one exists, else start `lookup`
+ * and share it until it settles. The value cache is written by `lookup`
+ * itself, so a settled promise is dropped here and later callers hit that
+ * cache instead.
+ */
+function shareInflight<T>(
+  map: Map<string, Promise<T>>,
+  key: string,
+  lookup: () => Promise<T>,
+): Promise<T> {
+  const pending = map.get(key);
+  if (pending !== undefined) return pending;
+  const started = lookup().finally(() => {
+    if (map.get(key) === started) map.delete(key);
+  });
+  map.set(key, started);
+  return started;
 }
 
 export interface ResolvedServer {
@@ -87,12 +116,17 @@ export async function resolveLabel(
   db: ConnectDb,
   options?: { fresh?: boolean },
 ): Promise<ResolvedLabel | null> {
-  const now = Date.now();
-  if (!options?.fresh) {
-    const cached = cacheGet(labelCache, label, now);
-    if (cached !== undefined) return cached;
-  }
+  if (options?.fresh) return queryLabel(label, db);
+  const cached = cacheGet(labelCache, label, Date.now());
+  if (cached !== undefined) return cached;
+  return shareInflight(labelInflight, label, () => queryLabel(label, db));
+}
 
+async function queryLabel(
+  label: string,
+  db: ConnectDb,
+): Promise<ResolvedLabel | null> {
+  const now = Date.now();
   const serverRow = await db
     .select({
       userId: server.userId,
@@ -185,15 +219,26 @@ export async function verifySessionCookie(
   const token = decoded.slice(0, dot);
   const providedSig = decoded.slice(dot + 1);
 
-  const now = Date.now();
   // Cache on the full `token.sig` value, not the token alone: keying on the
   // token would return a cached userId before the signature is checked, so a
   // valid `token` with a forged signature would authenticate (and a forged
   // one would negative-poison the real token). The full-cookie key makes the
   // cache reflect exactly what passed verification.
-  const cached = cacheGet(sessionCache, decoded, now);
+  const cached = cacheGet(sessionCache, decoded, Date.now());
   if (cached !== undefined) return cached;
+  return shareInflight(sessionInflight, decoded, () =>
+    querySession(token, providedSig, decoded, secret, db),
+  );
+}
 
+async function querySession(
+  token: string,
+  providedSig: string,
+  cacheKey: string,
+  secret: string,
+  db: ConnectDb,
+): Promise<string | null> {
+  const now = Date.now();
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -208,7 +253,7 @@ export async function verifySessionCookie(
   );
   const expectedSig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
   if (!constantTimeEqual(providedSig, expectedSig)) {
-    sessionCache.set(decoded, { value: null, expires: now + SESSION_TTL_MS });
+    sessionCache.set(cacheKey, { value: null, expires: now + SESSION_TTL_MS });
     return null;
   }
 
@@ -218,7 +263,7 @@ export async function verifySessionCookie(
     .where(and(eq(session.token, token), gt(session.expiresAt, new Date())))
     .get();
   const userId = row?.userId ?? null;
-  sessionCache.set(decoded, { value: userId, expires: now + SESSION_TTL_MS });
+  sessionCache.set(cacheKey, { value: userId, expires: now + SESSION_TTL_MS });
   return userId;
 }
 
