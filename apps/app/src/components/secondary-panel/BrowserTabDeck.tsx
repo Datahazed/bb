@@ -24,6 +24,7 @@ export interface BrowserTabDeckProps {
    */
   canShowNativeBrowserView: boolean;
   threadId: string;
+  projectId?: string | null;
   onUpdate: (args: UpdateBrowserTabArgs) => void;
 }
 
@@ -81,6 +82,7 @@ export function BrowserTabDeck({
   environmentId,
   canShowNativeBrowserView,
   threadId,
+  projectId = null,
   onUpdate,
 }: BrowserTabDeckProps) {
   const desktopBrowser = useMemo(() => getDesktopBrowserApi(), []);
@@ -134,6 +136,7 @@ export function BrowserTabDeck({
         visibilityCoordinator={visibilityCoordinator}
         environmentId={environmentId}
         threadId={threadId}
+        projectId={projectId}
         onUpdate={onUpdate}
       />
     </div>

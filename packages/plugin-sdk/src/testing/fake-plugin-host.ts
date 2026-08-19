@@ -42,6 +42,7 @@ import type {
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
+  PluginBrowser,
   PluginCli,
   PluginCliCommandInfo,
   PluginCliContext,
@@ -1716,6 +1717,12 @@ function createFakePluginHostInternal(
     },
   };
 
+  const browser: PluginBrowser = {
+    listTabs: () => [],
+    run: () =>
+      Promise.reject(new Error("Browser control is unavailable in tests")),
+  };
+
   const bb: BbPluginApi = {
     pluginId,
     log,
@@ -1725,6 +1732,7 @@ function createFakePluginHostInternal(
     rpc,
     realtime,
     background,
+    experimental_browser: browser,
     cli,
     agents,
     ui,

@@ -148,6 +148,93 @@ declare const appThemeSelectionSchema: z$1.ZodObject<{
 }, z$1.core.$strip>;
 type AppThemeSelection = z$1.infer<typeof appThemeSelectionSchema>;
 
+declare const browserTabDescriptorSchema: z$1.ZodObject<{
+    active: z$1.ZodBoolean;
+    clientId: z$1.ZodString;
+    navigationEpoch: z$1.ZodNumber;
+    projectId: z$1.ZodNullable<z$1.ZodString>;
+    tabId: z$1.ZodString;
+    threadId: z$1.ZodNullable<z$1.ZodString>;
+    title: z$1.ZodNullable<z$1.ZodString>;
+    url: z$1.ZodString;
+    windowId: z$1.ZodString;
+}, z$1.core.$strict>;
+type BrowserTabDescriptor = z$1.infer<typeof browserTabDescriptorSchema>;
+declare const browserTabTargetSchema: z$1.ZodObject<{
+    clientId: z$1.ZodString;
+    navigationEpoch: z$1.ZodNumber;
+    tabId: z$1.ZodString;
+    windowId: z$1.ZodString;
+}, z$1.core.$strict>;
+type BrowserTabTarget = z$1.infer<typeof browserTabTargetSchema>;
+declare const browserControlActionSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+    kind: z$1.ZodLiteral<"snapshot">;
+    maxNodes: z$1.ZodOptional<z$1.ZodNumber>;
+    mode: z$1.ZodEnum<{
+        dom: "dom";
+        interactive: "interactive";
+    }>;
+}, z$1.core.$strict>, z$1.ZodObject<{
+    kind: z$1.ZodLiteral<"click">;
+    target: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
+        locator: z$1.ZodObject<{
+            selectors: z$1.ZodArray<z$1.ZodString>;
+        }, z$1.core.$strict>;
+        target: z$1.ZodLiteral<"locator">;
+    }, z$1.core.$strict>, z$1.ZodObject<{
+        target: z$1.ZodLiteral<"point">;
+        x: z$1.ZodNumber;
+        y: z$1.ZodNumber;
+    }, z$1.core.$strict>], "target">;
+}, z$1.core.$strict>, z$1.ZodObject<{
+    clear: z$1.ZodOptional<z$1.ZodBoolean>;
+    kind: z$1.ZodLiteral<"type">;
+    locator: z$1.ZodObject<{
+        selectors: z$1.ZodArray<z$1.ZodString>;
+    }, z$1.core.$strict>;
+    text: z$1.ZodString;
+}, z$1.core.$strict>, z$1.ZodObject<{
+    code: z$1.ZodOptional<z$1.ZodString>;
+    key: z$1.ZodString;
+    kind: z$1.ZodLiteral<"key">;
+    modifiers: z$1.ZodOptional<z$1.ZodArray<z$1.ZodEnum<{
+        Alt: "Alt";
+        Control: "Control";
+        Meta: "Meta";
+        Shift: "Shift";
+    }>>>;
+}, z$1.core.$strict>, z$1.ZodObject<{
+    behavior: z$1.ZodOptional<z$1.ZodEnum<{
+        auto: "auto";
+        smooth: "smooth";
+    }>>;
+    deltaX: z$1.ZodOptional<z$1.ZodNumber>;
+    deltaY: z$1.ZodOptional<z$1.ZodNumber>;
+    kind: z$1.ZodLiteral<"scroll">;
+    x: z$1.ZodOptional<z$1.ZodNumber>;
+    y: z$1.ZodOptional<z$1.ZodNumber>;
+}, z$1.core.$strict>, z$1.ZodObject<{
+    kind: z$1.ZodLiteral<"navigate">;
+    url: z$1.ZodString;
+}, z$1.core.$strict>, z$1.ZodObject<{
+    format: z$1.ZodOptional<z$1.ZodEnum<{
+        jpeg: "jpeg";
+        png: "png";
+    }>>;
+    kind: z$1.ZodLiteral<"screenshot">;
+    quality: z$1.ZodOptional<z$1.ZodNumber>;
+}, z$1.core.$strict>, z$1.ZodObject<{
+    input: z$1.ZodType<JsonValue$1, unknown, z$1.core.$ZodTypeInternals<JsonValue$1, unknown>>;
+    kind: z$1.ZodLiteral<"script">;
+    source: z$1.ZodString;
+    timeoutMs: z$1.ZodNumber;
+    world: z$1.ZodOptional<z$1.ZodEnum<{
+        isolated: "isolated";
+        main: "main";
+    }>>;
+}, z$1.core.$strict>], "kind">;
+type BrowserControlAction = z$1.infer<typeof browserControlActionSchema>;
+
 declare const changedMessageSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
     changes: z$1.ZodReadonly<z$1.ZodArray<z$1.ZodEnum<{
         "archived-changed": "archived-changed";
@@ -11075,6 +11162,76 @@ interface PluginThreadHeaderActionProps {
      */
     isCompactViewport: boolean;
 }
+/** One bounded function executed inside the selected Browser page. */
+interface ExperimentalBrowserPageContentScriptRequest {
+    /** Defaults to `isolated`; use `main` only to inspect page-owned JS state. */
+    world?: "isolated" | "main";
+    /**
+     * A function expression receiving a frozen `{ input, signal }` object. It
+     * defaults to an isolated JavaScript world with page DOM access. The
+     * explicit main world reaches page-owned JavaScript state. Neither world
+     * has Electron, Node, or BB app-shell capabilities.
+     */
+    source: string;
+    /** JSON-only input copied into the page. Defaults to `null`. */
+    input?: JsonValue;
+    /** Requested timeout in milliseconds. The host enforces its own hard cap. */
+    timeoutMs?: number;
+}
+interface ExperimentalBrowserPageCapture {
+    navigationEpoch: number;
+    dataUrl: string;
+    pixelSize: {
+        width: number;
+        height: number;
+    };
+}
+interface ExperimentalBrowserPageContentScriptResult {
+    navigationEpoch: number;
+    value: JsonValue;
+}
+/** Props passed to an `experimental_browserAction` component. */
+interface PluginBrowserActionProps {
+    tabId: string;
+    threadId: string | null;
+    projectId: string | null;
+    url: string;
+    /**
+     * False when the running desktop shell predates Browser-page scripts. Plugins
+     * should keep their action visible but disabled and explain the upgrade.
+     */
+    experimental_pageContentScriptsAvailable: boolean;
+    /**
+     * Execute a bounded content script against this exact Browser tab. Results
+     * are JSON-only. Cancellation, navigation, timeout, and lifecycle failures
+     * reject without retargeting another tab.
+     */
+    experimental_runPageContentScript(request: ExperimentalBrowserPageContentScriptRequest, options: {
+        signal: AbortSignal;
+    }): Promise<ExperimentalBrowserPageContentScriptResult>;
+    /**
+     * Capture this exact Browser tab for plugin-owned preview UI. Bind the
+     * capture to a prior script with `expectedNavigationEpoch` when they must
+     * describe the same immutable page revision.
+     */
+    experimental_capturePage(options?: {
+        format?: "jpeg" | "png";
+        quality?: number;
+        expectedNavigationEpoch?: number;
+    }): Promise<ExperimentalBrowserPageCapture>;
+    /**
+     * Tab-local host for plugin overlays. Portal modal or selection chrome here
+     * so it stays clipped to the Browser panel and the host can hide the native
+     * page view beneath it.
+     */
+    experimental_overlayRoot?: HTMLElement | null;
+    /**
+     * Hide the native Browser view while a portalled menu or dialog is open.
+     * Calls are idempotent; the host also releases the lease on every slot
+     * lifecycle edge.
+     */
+    experimental_setOverlayOpen(open: boolean): void;
+}
 /**
  * Where a file being opened by a `fileOpener` lives. `path` semantics follow
  * the source: workspace paths are relative to the environment's worktree,
@@ -11296,6 +11453,15 @@ interface PluginNewThreadPanelActionRegistration {
      * panel tab with defaults. Errors are contained and logged.
      */
     run?(context: PluginNewThreadPanelActionContext): void | Promise<void>;
+}
+/** A compact plugin-owned control in the Browser tab's navigation chrome. */
+interface PluginBrowserActionRegistration {
+    /** Unique within this slot for the plugin; letters, digits, `-`, `_`. */
+    id: string;
+    /** Host label for the contribution and its overflow row. */
+    title: string;
+    /** Render exactly one accessible 28px control; portal larger UI. */
+    component: ComponentType<PluginBrowserActionProps>;
 }
 interface PluginPendingInteractionRegistration {
     /** Matches `rendererId` passed to `bb.ui.requestInput`. */
@@ -11727,6 +11893,11 @@ interface PluginAppSlots {
      * docs/api_to_audit.md.
      */
     experimental_threadHeaderAction(registration: PluginThreadHeaderActionRegistration): void;
+    /**
+     * Render one compact component in the Browser tab chrome. Experimental: see
+     * docs/api_to_audit.md.
+     */
+    experimental_browserAction(registration: PluginBrowserActionRegistration): void;
     fileOpener(registration: PluginFileOpenerRegistration): void;
     messageDirective(registration: PluginMessageDirectiveRegistration): void;
     messageAction(registration: PluginMessageActionRegistration): void;
@@ -14368,6 +14539,30 @@ interface PluginServerApi {
      */
     readonly loopbackBaseUrl: string;
 }
+interface PluginBrowserTabFilter {
+    threadId?: string;
+    projectId?: string;
+    active?: boolean;
+}
+interface PluginBrowser {
+    /** List connected Browser tabs during an audited native agent tool call. */
+    listTabs(context: PluginAgentToolContext, filter?: PluginBrowserTabFilter): readonly BrowserTabDescriptor[];
+    /**
+     * Run one bounded operation against an exact tab revision. BB never silently
+     * retargets a different client, window, tab, or post-navigation page.
+     *
+     * The `script` action executes full-trust code against the user's current
+     * browser session. It defaults to an isolated world; `world: "main"` is only
+     * for page-owned JavaScript state such as React hints. `context` must be the
+     * live context passed to a native agent tool; calls outside that audited
+     * lifetime reject, and unfinished Browser work is cancelled when the tool
+     * returns.
+     */
+    run(target: BrowserTabTarget, action: BrowserControlAction, options: {
+        context: PluginAgentToolContext;
+        timeoutMs?: number;
+    }): Promise<JsonValue>;
+}
 interface PluginSharedPortTunnelIdentity {
     /** Gate routing label assigned to this machine. */
     label: string;
@@ -14438,6 +14633,8 @@ interface BbPluginApi {
     readonly status: PluginStatusApi;
     /** Read-only facts about the running server (loopback base URL). */
     readonly server: PluginServerApi;
+    /** Connected BB Browser discovery and exact-tab control. */
+    readonly experimental_browser: PluginBrowser;
     /** Server-to-daemon host control-plane declarations. */
     readonly hosts: PluginHosts;
     /**
@@ -14458,4 +14655,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract, experimental_defineHostEntry };
-export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalHostCallOptions, ExperimentalHostClient, ExperimentalHostEntry, ExperimentalHostPaths, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, ExperimentalHostSignalContract, ExperimentalHostSignalEvent, ExperimentalHostSignals, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription, ExperimentalHostWorkerLease, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPanelActionOpenOptions, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderCapabilities, PluginProviderComposerAction, PluginProviderDeclaration, PluginProviderIconRegistration, PluginProviderPermissionMode, PluginProviderReasoningLevel, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginTargetedPanelActionOpenOptions, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, BbPluginApi, BrowserControlAction, BrowserTabDescriptor, BrowserTabTarget, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalBrowserPageCapture, ExperimentalBrowserPageContentScriptRequest, ExperimentalBrowserPageContentScriptResult, ExperimentalHostCallOptions, ExperimentalHostClient, ExperimentalHostEntry, ExperimentalHostPaths, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, ExperimentalHostSignalContract, ExperimentalHostSignalEvent, ExperimentalHostSignals, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription, ExperimentalHostWorkerLease, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginBrowser, PluginBrowserActionProps, PluginBrowserActionRegistration, PluginBrowserTabFilter, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPanelActionOpenOptions, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderCapabilities, PluginProviderComposerAction, PluginProviderDeclaration, PluginProviderIconRegistration, PluginProviderPermissionMode, PluginProviderReasoningLevel, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginTargetedPanelActionOpenOptions, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

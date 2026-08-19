@@ -5,6 +5,42 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## Browser-page runtime (`app.slots.experimental_browserAction` and `bb.experimental_browser`)
+
+**What it does.** Lets a plugin contribute one compact Browser-tab action and
+run bounded JSON content scripts against that exact tab. Scripts default to an
+isolated world; an explicit main world exists for page-owned JavaScript state.
+Both worlds expose page DOM/session authority but no Node, Electron, or BB
+app-shell APIs. Script and screenshot results carry a navigation epoch so a
+consumer can reject mixed-revision captures. The server-side
+`bb.experimental_browser` bridge lists connected client/window/tab revisions
+and runs the same snapshot, click, type, keyboard, scroll, navigation,
+screenshot, and bounded script substrate for approved agent tools. Requests
+are concurrent, cancellable, size/time limited, disconnect-aware, and never
+silently retargeted. Discovery and control require the live native-tool context;
+control cannot outlive its audited timeline row.
+
+**Audit before stabilizing.**
+
+1. Confirm isolated-world execution plus explicit main-world opt-in is the
+   right boundary for page-owned framework state, and audit hostile-page
+   tampering of main-world results.
+2. Confirm the source/input/result, screenshot, traversal, and timeout limits
+   against real control and selection consumers. Revisit the hard-timeout
+   fallback, which terminates page execution only after cooperative abort has
+   failed.
+3. Exercise navigation, tab/window/client disconnect, concurrent request,
+   cancellation, and desktop/SPA version-skew behavior before freezing the
+   epoch and targeting contracts.
+4. Confirm Browser-tab discovery stays scoped to exact connected tabs and that
+   plugins should continue resolving ambiguity rather than core choosing a
+   user's page.
+5. Audit the normal agent-tool approval and timeline treatment for full-trust
+   custom scripts. Decide whether particular operations need finer permissions
+   without making the runtime Browser Context-specific.
+6. Validate browser-action overlay leases, stale callback rejection, compact
+   chrome, multiple plugins, split panes, and tab disposal.
+
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
 **What it does.** Lets one plugin package declare a singular `bb.host` Node

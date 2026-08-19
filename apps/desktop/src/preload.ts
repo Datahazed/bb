@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer, webFrame } from "electron";
 import { appCommandIdSchema } from "@bb/domain";
 import {
   bbDesktopBrowserOpenTabRequestSchema,
+  bbDesktopBrowserPageCaptureResultSchema,
+  bbDesktopBrowserPageScriptResultSchema,
   bbDesktopBrowserScopedOpenTabRequestSchema,
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
@@ -36,6 +38,9 @@ import {
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -243,6 +248,36 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   },
   setVisible(request): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL, request);
+  },
+  experimental_browserPageRuntimeVersion: 1,
+  async experimental_runBrowserPageScript(request, options) {
+    const signal = options?.signal;
+    if (signal?.aborted === true) {
+      throw new DOMException("Browser page script was cancelled", "AbortError");
+    }
+    const cancel = (): void => {
+      ipcRenderer.send(
+        BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
+        { tabId: request.tabId, requestId: request.requestId },
+      );
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      const payload: unknown = await ipcRenderer.invoke(
+        BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
+        request,
+      );
+      return bbDesktopBrowserPageScriptResultSchema.parse(payload);
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
+  },
+  async experimental_captureBrowserPage(request) {
+    const payload: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+      request,
+    );
+    return bbDesktopBrowserPageCaptureResultSchema.parse(payload);
   },
   onState(listener): BbDesktopBrowserUnsubscribe {
     browserStateListeners.add(listener);

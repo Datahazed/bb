@@ -162,6 +162,8 @@ export const bbDesktopBrowserStateSchema = z
     canGoBack: z.boolean(),
     canGoForward: z.boolean(),
     errorText: z.string().max(BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH).nullable(),
+    /** Present when the desktop shell supports exact page-runtime targeting. */
+    navigationEpoch: z.number().int().nonnegative().optional(),
   })
   .strict();
 export type BbDesktopBrowserState = z.infer<typeof bbDesktopBrowserStateSchema>;
@@ -200,6 +202,133 @@ export type BbDesktopBrowserScopedOpenTabRequest = z.infer<
  * never balloon renderer memory.
  */
 export const BB_DESKTOP_BROWSER_MAX_SNAPSHOT_DATA_URL_LENGTH = 8_388_608;
+
+/** Hard limits for the Browser-page isolated-world runtime. */
+export const BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_SOURCE_BYTES = 64 * 1024;
+export const BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_INPUT_BYTES = 64 * 1024;
+export const BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_RESULT_BYTES = 512 * 1024;
+export const BB_DESKTOP_BROWSER_PAGE_SCRIPT_MIN_TIMEOUT_MS = 100;
+export const BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_TIMEOUT_MS = 120_000;
+export const BB_DESKTOP_BROWSER_PAGE_RUNTIME_VERSION = 1 as const;
+
+export type BbDesktopBrowserJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | BbDesktopBrowserJsonValue[]
+  | { [key: string]: BbDesktopBrowserJsonValue };
+
+export const bbDesktopBrowserJsonValueSchema: z.ZodType<BbDesktopBrowserJsonValue> =
+  z.lazy(() =>
+    z.union([
+      z.null(),
+      z.boolean(),
+      z.number().finite(),
+      z.string(),
+      z.array(bbDesktopBrowserJsonValueSchema),
+      z.record(z.string(), bbDesktopBrowserJsonValueSchema),
+    ]),
+  );
+
+function jsonByteLength(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+}
+
+/** A new invoke channel carries this shape; the frozen attach wire is unchanged. */
+export const bbDesktopBrowserPageScriptRequestSchema = z
+  .object({
+    tabId: z.string().min(1).max(256),
+    requestId: z.string().min(1).max(128),
+    world: z.enum(["isolated", "main"]).optional(),
+    /** Function expression receiving `{ input, signal }` in the requested world. */
+    source: z
+      .string()
+      .min(1)
+      .refine(
+        (value) =>
+          new TextEncoder().encode(value).byteLength <=
+          BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_SOURCE_BYTES,
+        "Browser page script source exceeds the byte limit",
+      ),
+    input: bbDesktopBrowserJsonValueSchema.refine(
+      (value) =>
+        jsonByteLength(value) <= BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_INPUT_BYTES,
+      "Browser page script input exceeds the byte limit",
+    ),
+    timeoutMs: z
+      .number()
+      .int()
+      .min(BB_DESKTOP_BROWSER_PAGE_SCRIPT_MIN_TIMEOUT_MS)
+      .max(BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_TIMEOUT_MS),
+  })
+  .strict();
+export type BbDesktopBrowserPageScriptRequest = z.infer<
+  typeof bbDesktopBrowserPageScriptRequestSchema
+>;
+
+export const bbDesktopBrowserPageScriptCancelRequestSchema = z
+  .object({
+    tabId: z.string().min(1).max(256),
+    requestId: z.string().min(1).max(128),
+  })
+  .strict();
+export type BbDesktopBrowserPageScriptCancelRequest = z.infer<
+  typeof bbDesktopBrowserPageScriptCancelRequestSchema
+>;
+
+export const bbDesktopBrowserPageScriptResultSchema = z
+  .object({
+    requestId: z.string().min(1).max(128),
+    navigationEpoch: z.number().int().nonnegative(),
+    value: bbDesktopBrowserJsonValueSchema,
+  })
+  .strict()
+  .refine(
+    (value) =>
+      jsonByteLength(value.value) <=
+      BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_RESULT_BYTES,
+    "Browser page script result exceeds the byte limit",
+  );
+export type BbDesktopBrowserPageScriptResult = z.infer<
+  typeof bbDesktopBrowserPageScriptResultSchema
+>;
+
+export const bbDesktopBrowserPageCaptureRequestSchema = z
+  .object({
+    tabId: z.string().min(1).max(256),
+    format: z.enum(["png", "jpeg"]),
+    quality: z.number().int().min(1).max(100),
+    expectedNavigationEpoch: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+export type BbDesktopBrowserPageCaptureRequest = z.infer<
+  typeof bbDesktopBrowserPageCaptureRequestSchema
+>;
+
+export const bbDesktopBrowserPageCaptureResultSchema = z
+  .object({
+    navigationEpoch: z.number().int().nonnegative(),
+    dataUrl: z
+      .string()
+      .max(BB_DESKTOP_BROWSER_MAX_SNAPSHOT_DATA_URL_LENGTH)
+      .refine(
+        (value) =>
+          value.startsWith("data:image/png;base64,") ||
+          value.startsWith("data:image/jpeg;base64,"),
+        "Browser capture must be a PNG or JPEG data URL",
+      ),
+    pixelSize: z
+      .object({
+        width: z.number().int().positive(),
+        height: z.number().int().positive(),
+      })
+      .strict(),
+  })
+  .strict();
+export type BbDesktopBrowserPageCaptureResult = z.infer<
+  typeof bbDesktopBrowserPageCaptureResultSchema
+>;
 
 /**
  * A transient bitmap of a browser view, pushed main → renderer at the start
@@ -248,6 +377,23 @@ export interface BbDesktopBrowserApi {
   stop(tabId: string): void;
   setBounds(request: BbDesktopBrowserSetBoundsRequest): void;
   setVisible(request: BbDesktopBrowserSetVisibleRequest): void;
+  /** Optional capability marker for desktop/SPA version skew. */
+  experimental_browserPageRuntimeVersion?: 1;
+  /**
+   * Execute one bounded function in the selected Browser page. The default
+   * isolated world and the explicit main world both exclude Node, Electron,
+   * and BB shell APIs. The signal stays renderer-local; preload sends only
+   * serializable cancellation IPC. Navigation, detach, timeout, or
+   * cancellation rejects.
+   */
+  experimental_runBrowserPageScript?(
+    request: BbDesktopBrowserPageScriptRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<BbDesktopBrowserPageScriptResult>;
+  /** Capture the exact selected Browser tab without exposing its WebContents. */
+  experimental_captureBrowserPage?(
+    request: BbDesktopBrowserPageCaptureRequest,
+  ): Promise<BbDesktopBrowserPageCaptureResult>;
   /** Subscribe to navigation-state pushes for every view in this window. */
   onState(listener: BbDesktopBrowserStateHandler): BbDesktopBrowserUnsubscribe;
   /** Subscribe to popup requests that should open as a new in-panel browser tab. */

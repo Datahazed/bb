@@ -18,6 +18,7 @@ import {
   type ComposerView,
   type PluginAppDefinition,
   type PluginAppSetup,
+  type PluginBrowserActionRegistration,
   type PluginContentScriptDisposer,
   type PluginContentScriptRegistration,
   type PluginComposerApi,
@@ -514,6 +515,7 @@ export interface CapturedPluginApp {
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  browserActions: PluginBrowserActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];

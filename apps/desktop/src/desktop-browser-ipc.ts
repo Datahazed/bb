@@ -23,3 +23,9 @@ export const BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL =
   "bb-desktop:browser:scoped-open-tab";
 export const BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL =
   "bb-desktop:browser:snapshot";
+export const BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL =
+  "bb-desktop:browser:experimental-run-page-script";
+export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL =
+  "bb-desktop:browser:experimental-cancel-page-script";
+export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL =
+  "bb-desktop:browser:experimental-capture-page";

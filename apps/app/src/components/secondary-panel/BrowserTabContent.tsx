@@ -5,7 +5,9 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type FormEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
 import type {
@@ -46,6 +48,12 @@ import {
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
 import { isLocalOnlyUrl } from "@/lib/loopback-hostname";
+import { PluginBrowserActions } from "@/components/plugin/PluginBrowserActions";
+import {
+  browserControlActivitySnapshot,
+  registerBrowserControlTab,
+  subscribeBrowserControlActivity,
+} from "@/lib/browser-control-client";
 
 export interface BrowserTabContentProps {
   tabId: string;
@@ -67,6 +75,7 @@ export interface BrowserTabContentProps {
   visibilityCoordinator: BrowserViewVisibilityCoordinator | null;
   environmentId: string | null;
   threadId: string;
+  projectId: string | null;
   onUpdate: (args: UpdateBrowserTabArgs) => void;
 }
 
@@ -91,6 +100,8 @@ interface BrowserChromeProps {
   onOpenExternal: () => void;
   locationShortcut: AppShortcutPresentation | null;
   reloadShortcut: AppShortcutPresentation | null;
+  navigationControlsRef: RefObject<HTMLDivElement | null>;
+  pluginActions: ReactNode;
 }
 
 interface NavButtonProps {
@@ -235,6 +246,8 @@ function BrowserChrome({
   onOpenExternal,
   locationShortcut,
   reloadShortcut,
+  navigationControlsRef,
+  pluginActions,
 }: BrowserChromeProps) {
   const isLoading = state?.isLoading ?? false;
   const security = getBrowserUrlSecurity(currentUrl);
@@ -252,9 +265,10 @@ function BrowserChrome({
       )}
     >
       <div
+        ref={navigationControlsRef}
         data-testid="browser-tab-nav-controls"
         className={cn(
-          "absolute inset-x-0 top-0 flex h-11 translate-y-0 items-center gap-1 py-1.5 pl-2 pr-4 opacity-100 max-md:pointer-coarse:h-[52px]",
+          "absolute inset-x-0 top-0 flex h-11 translate-y-0 items-center gap-1 px-2 py-1.5 opacity-100 max-md:pointer-coarse:h-[52px]",
         )}
       >
         <NavButton
@@ -334,6 +348,7 @@ function BrowserChrome({
           disabled={currentUrl.length === 0}
           onClick={onOpenExternal}
         />
+        {pluginActions}
         {isLoading ? (
           <span className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden">
             <span className="block h-full w-1/3 animate-pulse bg-ring/70 motion-reduce:animate-none" />
@@ -430,6 +445,7 @@ export function BrowserTabContent({
   visibilityCoordinator,
   environmentId,
   threadId,
+  projectId,
   onUpdate,
 }: BrowserTabContentProps) {
   const locationShortcut = useAppCommandShortcut("browser.focusLocation");
@@ -439,6 +455,7 @@ export function BrowserTabContent({
     [],
   );
   const contentRef = useRef<HTMLDivElement>(null);
+  const navigationControlsRef = useRef<HTMLDivElement>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
   const isPointerCoarse = usePointerCoarse();
   const {
@@ -448,9 +465,22 @@ export function BrowserTabContent({
   } = useBrowserHistory(threadId);
 
   const [state, setState] = useState<BbDesktopBrowserState | null>(null);
+  const activeAgentRequestCount = useSyncExternalStore(
+    subscribeBrowserControlActivity,
+    () => browserControlActivitySnapshot(tabId),
+    () => 0,
+  );
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
   const [addressDraft, setAddressDraft] = useState(initialUrl);
   const [isEditing, setIsEditing] = useState(false);
+  const [browserChromeWidth, setBrowserChromeWidth] = useState<number | null>(
+    null,
+  );
+  const [pluginOverlayLeases, setPluginOverlayLeases] = useState<
+    ReadonlySet<symbol>
+  >(() => new Set());
+  const [pluginOverlayRoot, setPluginOverlayRoot] =
+    useState<HTMLDivElement | null>(null);
   // Bitmap stand-in pushed by the desktop main process while the native view
   // is hidden during a native window resize; null outside resize bursts.
   const [resizeSnapshotUrl, setResizeSnapshotUrl] = useState<string | null>(
@@ -474,8 +504,60 @@ export function BrowserTabContent({
     attachedBrowserViewIdentity.environmentId === environmentId &&
     attachedBrowserViewIdentity.tabId === tabId &&
     attachedBrowserViewIdentity.threadId === threadId;
-
   const hasPage = currentUrl.length > 0;
+  const browserControlRegistrationRef = useRef<ReturnType<
+    typeof registerBrowserControlTab
+  > | null>(null);
+  const browserControlSnapshotRef = useRef({
+    active: canShowNativeBrowserView,
+    state,
+    url: currentUrl,
+  });
+
+  useLayoutEffect(() => {
+    browserControlSnapshotRef.current = {
+      active: canShowNativeBrowserView,
+      state,
+      url: currentUrl,
+    };
+  }, [canShowNativeBrowserView, currentUrl, state]);
+
+  useEffect(() => {
+    if (desktopBrowser === null || !isBrowserViewAttached || !hasPage) return;
+    const snapshot = browserControlSnapshotRef.current;
+    const registration = registerBrowserControlTab({
+      active: snapshot.active,
+      desktopBrowser,
+      tabId,
+      threadId,
+      projectId,
+      state: snapshot.state,
+      url: snapshot.url,
+    });
+    browserControlRegistrationRef.current = registration;
+    return () => {
+      if (browserControlRegistrationRef.current === registration) {
+        browserControlRegistrationRef.current = null;
+      }
+      registration.dispose();
+    };
+  }, [
+    desktopBrowser,
+    hasPage,
+    isBrowserViewAttached,
+    projectId,
+    tabId,
+    threadId,
+  ]);
+
+  useEffect(() => {
+    browserControlRegistrationRef.current?.update({
+      active: canShowNativeBrowserView,
+      state,
+      url: currentUrl,
+    });
+  }, [canShowNativeBrowserView, currentUrl, state]);
+
   const pageLoadErrorText = state?.errorText ?? null;
   const hasPageLoadError = pageLoadErrorText !== null && hasPage;
   // A blocking modal (e.g. the git-action dialog) dims the panel with a DOM
@@ -484,6 +566,32 @@ export function BrowserTabContent({
   // the whole panel.
   const isBrowserDimmingModalOpen = useIsBrowserDimmingModalOpen();
   const lastSentBoundsRef = useRef<BbDesktopBrowserViewBounds | null>(null);
+  const handlePluginOverlayLeaseChange = useCallback(
+    (owner: symbol, open: boolean) => {
+      setPluginOverlayLeases((current) => {
+        if (current.has(owner) === open) return current;
+        const next = new Set(current);
+        if (open) next.add(owner);
+        else next.delete(owner);
+        return next;
+      });
+    },
+    [],
+  );
+
+  useLayoutEffect(() => {
+    const element = navigationControlsRef.current;
+    if (element === null) return;
+    const measure = () => {
+      const width = Math.round(element.getBoundingClientRect().width);
+      setBrowserChromeWidth(width > 0 ? width : null);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   const readBounds = useCallback(() => {
     const element = contentRef.current;
@@ -668,7 +776,8 @@ export function BrowserTabContent({
     hasPage &&
     !hasPageLoadError &&
     isBrowserViewAttached &&
-    !isBrowserDimmingModalOpen;
+    !isBrowserDimmingModalOpen &&
+    pluginOverlayLeases.size === 0;
   // A layout effect (pre-paint) declares visibility so showing/hiding lands in
   // the same frame as the DOM tab swap — no flash. Ordering across tabs (hide
   // the previously-visible view BEFORE showing this one) and bounds-before-show
@@ -804,8 +913,39 @@ export function BrowserTabContent({
         onOpenExternal={handleOpenExternal}
         locationShortcut={locationShortcut}
         reloadShortcut={reloadShortcut}
+        navigationControlsRef={navigationControlsRef}
+        pluginActions={
+          <>
+            {activeAgentRequestCount > 0 ? (
+              <span
+                role="status"
+                aria-live="polite"
+                className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-state-hover px-2 text-xs text-muted-foreground"
+              >
+                <span className="size-1.5 animate-pulse rounded-full bg-info motion-reduce:animate-none" />
+                Agent using tab
+              </span>
+            ) : null}
+            <PluginBrowserActions
+              key={`${tabId}:${threadId}:${projectId ?? ""}:${currentUrl}`}
+              chromeWidth={browserChromeWidth}
+              desktopBrowser={desktopBrowser}
+              tabId={tabId}
+              threadId={threadId}
+              projectId={projectId}
+              url={currentUrl}
+              overlayRoot={pluginOverlayRoot}
+              onOverlayLeaseChange={handlePluginOverlayLeaseChange}
+            />
+          </>
+        }
       />
       <div ref={contentRef} className="relative min-h-0 flex-1">
+        <div
+          ref={setPluginOverlayRoot}
+          data-browser-plugin-overlay-root=""
+          className="pointer-events-none absolute inset-0 z-20 overflow-hidden"
+        />
         {hasPageLoadError ? (
           <BrowserPageLoadError
             errorText={pageLoadErrorText}

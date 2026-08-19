@@ -1360,6 +1360,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       publishSignal: (channel, payload) => {
         deps.hub.notifyPluginSignal(row.id, channel, payload);
       },
+      listBrowserTabs: () => deps.hub.listBrowserTabs?.() ?? [],
+      runBrowserControl: (target, action, options) =>
+        deps.hub.runBrowserControl?.({ target, action, ...options }) ??
+        Promise.reject(new Error("Browser control is unavailable")),
       reportNeedsConfiguration: (message) => {
         reportNeedsConfiguration(row.id, message);
       },

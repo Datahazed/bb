@@ -6,6 +6,10 @@ import {
   type BbDesktopBrowserAttachRequest,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserOpenTabRequest,
+  type BbDesktopBrowserPageCaptureRequest,
+  type BbDesktopBrowserPageCaptureResult,
+  type BbDesktopBrowserPageScriptRequest,
+  type BbDesktopBrowserPageScriptResult,
   type BbDesktopBrowserScopedOpenTabRequest,
   type BbDesktopBrowserSetBoundsRequest,
   type BbDesktopBrowserSetVisibleRequest,
@@ -21,6 +25,10 @@ import {
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
 } from "./desktop-browser-ipc.js";
+import {
+  startDesktopBrowserPageScript,
+  type DesktopBrowserPageScriptSession,
+} from "./desktop-browser-page-runtime.js";
 import {
   evaluatePopupRate,
   isAllowedBrowserUrl,
@@ -76,6 +84,8 @@ interface BrowserViewEntry {
   rendererRecoveryState: "healthy" | "pending" | "blocked";
   rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
   visible: boolean;
+  navigationEpoch: number;
+  pageScriptSessions: Map<string, DesktopBrowserPageScriptSession>;
 }
 
 export type DesktopBrowserHostWebContentsPayload =
@@ -159,6 +169,13 @@ export interface DesktopBrowserViewManager {
   setVisible(
     args: HostScopedRequestArgs<BbDesktopBrowserSetVisibleRequest>,
   ): void;
+  runPageScript(
+    args: HostScopedRequestArgs<BbDesktopBrowserPageScriptRequest>,
+  ): Promise<BbDesktopBrowserPageScriptResult>;
+  cancelPageScript(args: HostScopedTabArgs & { requestId: string }): void;
+  capturePage(
+    args: HostScopedRequestArgs<BbDesktopBrowserPageCaptureRequest>,
+  ): Promise<BbDesktopBrowserPageCaptureResult>;
   /**
    * Hide every visible view owned by the window for the duration of a native
    * resize burst. During an interactive window resize the host chrome
@@ -268,6 +285,7 @@ function buildBrowserState(
       entry.lastErrorText === null
         ? null
         : truncate(entry.lastErrorText, BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH),
+    navigationEpoch: entry.navigationEpoch,
   };
 }
 
@@ -316,6 +334,16 @@ export function createDesktopBrowserViewManager(
       clearTimeout(entry.rendererRecoveryTimer);
       entry.rendererRecoveryTimer = null;
     }
+  }
+
+  function cancelEntryPageScripts(
+    entry: BrowserViewEntry,
+    reason = "cancelled",
+  ): void {
+    for (const session of entry.pageScriptSessions.values()) {
+      session.cancel(reason);
+    }
+    entry.pageScriptSessions.clear();
   }
 
   function resetEntryRendererRecovery(entry: BrowserViewEntry): void {
@@ -547,6 +575,7 @@ export function createDesktopBrowserViewManager(
     });
 
     webContents.on("render-process-gone", (_event, details) => {
+      cancelEntryPageScripts(entry, "renderer-gone");
       if (webContents.isDestroyed() || webContents.getURL().length === 0) {
         return;
       }
@@ -585,10 +614,17 @@ export function createDesktopBrowserViewManager(
     webContents.on("did-navigate-in-page", () => {
       refresh();
     });
-    webContents.on("did-start-navigation", () => {
-      entry.lastErrorText = null;
-      refresh();
-    });
+    webContents.on(
+      "did-start-navigation",
+      (_event, _url, _isInPlace, isMainFrame) => {
+        if (isMainFrame) {
+          entry.navigationEpoch += 1;
+          cancelEntryPageScripts(entry, "navigation");
+        }
+        entry.lastErrorText = null;
+        refresh();
+      },
+    );
     webContents.on("page-title-updated", refresh);
     // Favicons are intentionally NOT forwarded: a remote, attacker-controlled
     // favicon URL must never be rendered (or fetched) by the trusted bb app
@@ -631,6 +667,8 @@ export function createDesktopBrowserViewManager(
       rendererRecoveryState: "healthy",
       rendererRecoveryTimer: null,
       visible: false,
+      navigationEpoch: 0,
+      pageScriptSessions: new Map(),
     };
     wireWebContents(args.hostWindow, args.tabId, entry);
     args.hostWindow.contentView.addChildView(view);
@@ -666,6 +704,7 @@ export function createDesktopBrowserViewManager(
     entries.delete(key);
     entriesByWebContentsId.delete(entry.view.webContents.id);
     clearEntryRendererRecoveryTimer(entry);
+    cancelEntryPageScripts(entry, "detached");
     if (!hostWindow.isDestroyed()) {
       hostWindow.contentView.removeChildView(entry.view);
     }
@@ -719,6 +758,7 @@ export function createDesktopBrowserViewManager(
     },
     navigate({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        cancelEntryPageScripts(entry, "navigation");
         resetEntryRendererRecovery(entry);
         applyEntryVisibility(entry, hostWindow);
         loadIfNeeded(entry, request.url);
@@ -727,6 +767,7 @@ export function createDesktopBrowserViewManager(
     goBack({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoBack()) {
+          cancelEntryPageScripts(entry, "navigation");
           resetEntryRendererRecovery(entry);
           applyEntryVisibility(entry, hostWindow);
           entry.view.webContents.navigationHistory.goBack();
@@ -736,6 +777,7 @@ export function createDesktopBrowserViewManager(
     goForward({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         if (entry.view.webContents.navigationHistory.canGoForward()) {
+          cancelEntryPageScripts(entry, "navigation");
           resetEntryRendererRecovery(entry);
           applyEntryVisibility(entry, hostWindow);
           entry.view.webContents.navigationHistory.goForward();
@@ -744,6 +786,7 @@ export function createDesktopBrowserViewManager(
     },
     reload({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
+        cancelEntryPageScripts(entry, "navigation");
         resetEntryRendererRecovery(entry);
         entry.view.webContents.reload();
         applyEntryVisibility(entry, hostWindow);
@@ -777,6 +820,69 @@ export function createDesktopBrowserViewManager(
           entry.view.webContents.focus();
         }
       });
+    },
+    async runPageScript({ hostWindow, request }) {
+      const entry = entries.get(browserViewKey(hostWindow, request.tabId));
+      if (
+        entry === undefined ||
+        entry.view.webContents.isDestroyed() ||
+        entry.view.webContents.getURL().length === 0
+      ) {
+        throw new Error("The Browser tab is not available for page scripts");
+      }
+      entry.pageScriptSessions.get(request.requestId)?.cancel("replaced");
+      const session = startDesktopBrowserPageScript({
+        navigationEpoch: entry.navigationEpoch,
+        request,
+        webContents: entry.view.webContents,
+      });
+      entry.pageScriptSessions.set(request.requestId, session);
+      try {
+        return await session.promise;
+      } finally {
+        if (entry.pageScriptSessions.get(request.requestId) === session) {
+          entry.pageScriptSessions.delete(request.requestId);
+        }
+      }
+    },
+    cancelPageScript({ hostWindow, tabId, requestId }) {
+      withEntry({ hostWindow, tabId }, (entry) => {
+        const session = entry.pageScriptSessions.get(requestId);
+        if (session === undefined) return;
+        entry.pageScriptSessions.delete(requestId);
+        session.cancel();
+      });
+    },
+    async capturePage({ hostWindow, request }) {
+      const entry = entries.get(browserViewKey(hostWindow, request.tabId));
+      if (
+        entry === undefined ||
+        entry.view.webContents.isDestroyed() ||
+        entry.view.webContents.getURL().length === 0
+      ) {
+        throw new Error("The Browser tab is not available for capture");
+      }
+      const navigationEpoch = entry.navigationEpoch;
+      if (
+        request.expectedNavigationEpoch !== undefined &&
+        request.expectedNavigationEpoch !== navigationEpoch
+      ) {
+        throw new Error("The Browser page changed before capture");
+      }
+      const image = await entry.view.webContents.capturePage();
+      if (entry.navigationEpoch !== navigationEpoch) {
+        throw new Error("The Browser page changed during capture");
+      }
+      if (image.isEmpty()) throw new Error("Browser page capture was empty");
+      const bytes =
+        request.format === "png"
+          ? image.toPNG()
+          : image.toJPEG(request.quality);
+      return {
+        navigationEpoch,
+        dataUrl: `data:image/${request.format};base64,${bytes.toString("base64")}`,
+        pixelSize: image.getSize(),
+      };
     },
     beginWindowResize(hostWindow) {
       if (isHostResizing(hostWindow)) {
@@ -823,6 +929,7 @@ export function createDesktopBrowserViewManager(
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);
         clearEntryRendererRecoveryTimer(entry);
+        cancelEntryPageScripts(entry, "window-closed");
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }
@@ -834,6 +941,7 @@ export function createDesktopBrowserViewManager(
         entries.delete(key);
         entriesByWebContentsId.delete(entry.view.webContents.id);
         clearEntryRendererRecoveryTimer(entry);
+        cancelEntryPageScripts(entry, "shutdown");
         if (!entry.view.webContents.isDestroyed()) {
           entry.view.webContents.close();
         }

@@ -89,6 +89,42 @@ describe("collectPluginAppRegistrations — experimental_threadHeaderAction", ()
   });
 });
 
+describe("collectPluginAppRegistrations — experimental_browserAction", () => {
+  it("collects and validates Browser actions independently", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_browserAction({
+        id: "inspect",
+        title: "Inspect page",
+        component: Component,
+      });
+    });
+
+    expect(collectPluginAppRegistrations(definition).browserActions).toEqual([
+      {
+        id: "inspect",
+        title: "Inspect page",
+        component: Component,
+      },
+    ]);
+  });
+
+  it("rejects duplicate ids within the Browser action slot", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_browserAction({
+        id: "inspect",
+        title: "One",
+        component: Component,
+      });
+      app.slots.experimental_browserAction({
+        id: "inspect",
+        title: "Two",
+        component: Component,
+      });
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(/inspect/);
+  });
+});
+
 describe("collectPluginAppRegistrations — experimental_threadList", () => {
   it("collects a thread list with its optional fields", () => {
     const definition = definePluginApp((app) => {

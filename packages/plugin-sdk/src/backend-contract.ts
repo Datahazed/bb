@@ -3,7 +3,13 @@ import type { Context } from "hono";
 import type * as z from "zod";
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
-import type { ThreadResponse } from "@bb/server-contract";
+import type {
+  BrowserControlAction,
+  BrowserTabDescriptor,
+  BrowserTabTarget,
+  ThreadResponse,
+} from "@bb/server-contract";
+export type { BrowserControlAction, BrowserTabDescriptor, BrowserTabTarget };
 import type { JsonValue } from "./json-value.js";
 import type { PluginRpcContract, PluginRpcHandlers } from "./rpc-contract.js";
 import type {
@@ -768,6 +774,40 @@ export interface PluginServerApi {
 }
 
 // ---------------------------------------------------------------------------
+// Connected BB Browser control plane.
+// ---------------------------------------------------------------------------
+
+export interface PluginBrowserTabFilter {
+  threadId?: string;
+  projectId?: string;
+  active?: boolean;
+}
+
+export interface PluginBrowser {
+  /** List connected Browser tabs during an audited native agent tool call. */
+  listTabs(
+    context: PluginAgentToolContext,
+    filter?: PluginBrowserTabFilter,
+  ): readonly BrowserTabDescriptor[];
+  /**
+   * Run one bounded operation against an exact tab revision. BB never silently
+   * retargets a different client, window, tab, or post-navigation page.
+   *
+   * The `script` action executes full-trust code against the user's current
+   * browser session. It defaults to an isolated world; `world: "main"` is only
+   * for page-owned JavaScript state such as React hints. `context` must be the
+   * live context passed to a native agent tool; calls outside that audited
+   * lifetime reject, and unfinished Browser work is cancelled when the tool
+   * returns.
+   */
+  run(
+    target: BrowserTabTarget,
+    action: BrowserControlAction,
+    options: { context: PluginAgentToolContext; timeoutMs?: number },
+  ): Promise<JsonValue>;
+}
+
+// ---------------------------------------------------------------------------
 // Host control plane.
 // ---------------------------------------------------------------------------
 
@@ -855,6 +895,8 @@ export interface BbPluginApi {
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */
   readonly server: PluginServerApi;
+  /** Connected BB Browser discovery and exact-tab control. */
+  readonly experimental_browser: PluginBrowser;
   /** Server-to-daemon host control-plane declarations. */
   readonly hosts: PluginHosts;
   /**

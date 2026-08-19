@@ -400,6 +400,26 @@ the server itself (the builtin connect plugin's tunnel is the canonical
 user). **Bind-gated** like `bb.sdk`: reading it before the server is
 listening throws, so prefer reading it from handlers, services, and timers.
 
+### bb.experimental_browser
+
+`bb.experimental_browser` is the server-side bridge to Browser tabs in
+connected BB app windows. Inside a native tool,
+`listTabs(ctx, { threadId?, projectId?, active? })` returns deterministic,
+exact targets containing `clientId`, `windowId`, `tabId`, and
+`navigationEpoch`. Pass one unchanged to
+`run(target, action, { context: ctx, timeoutMs? })`. Calls outside that audited
+tool lifetime reject, unfinished Browser work is cancelled when the tool
+returns, and BB rejects if the client disconnects or the tab navigates rather
+than silently retargeting another page.
+
+Actions cover `snapshot`, `click`, `type`, `key`, `scroll`, `navigate`,
+`screenshot`, and bounded JSON-only `script`. Scripts default to an isolated
+Browser-page world; `world: "main"` exists only for page-owned JavaScript state.
+Neither world exposes Node, Electron, or BB app-shell APIs. Custom scripts have
+full access to the user's current browser session, so expose them only through
+an agent tool whose normal permission prompt and timeline make the action
+visible. Cancellation is carried by `ctx.signal`.
+
 ### bb.hosts
 
 For a plugin with a singular `bb.host` entry, define one runtime contract
@@ -1349,6 +1369,19 @@ names the host's wrapper region — your icon-only button still needs its own
 accessible name. A split layout renders one header
 per pane, so your component mounts once per visible thread — keep per-thread
 state in the component, never in a module-level singleton.
+
+### A control in Browser chrome
+
+`app.slots.experimental_browserAction` renders one compact, accessible control
+in each Browser tab's navigation row. It receives `tabId`, `threadId`,
+`projectId`, `url`, `experimental_pageContentScriptsAvailable`,
+`experimental_runPageContentScript`, `experimental_capturePage`, a tab-local
+`experimental_overlayRoot`, and the `experimental_setOverlayOpen` visibility
+lease. Page scripts use the same isolated-world, JSON-only, bounded runtime.
+Results include a `navigationEpoch`; pass it as `expectedNavigationEpoch` when
+a later preview capture must describe the same page revision. Portal larger UI
+into the overlay root, hold the visibility lease while it is open, and release
+it on cleanup. Retained callbacks reject after disposal.
 
 A common pairing with a replaced sidebar: hide child threads from the list and
 surface them here instead, filtering `experimental_useSidebarThreads()` by

@@ -166,8 +166,10 @@ type FakeWindowOpenHandler = (
 
 const electronMock = vi.hoisted(() => {
   interface FakeNativeImage {
+    getSize(): { height: number; width: number };
     isEmpty(): boolean;
     toJPEG(quality: number): Buffer;
+    toPNG(): Buffer;
   }
 
   interface FakeDidFailLoadArgs {
@@ -219,8 +221,10 @@ const electronMock = vi.hoisted(() => {
   const fakeWebContentsEvent: FakeWebContentsEvent = {};
 
   const fakeCapturedImage: FakeNativeImage = {
+    getSize: () => ({ width: 1_200, height: 800 }),
     isEmpty: () => false,
     toJPEG: () => Buffer.from("jpeg-bytes"),
+    toPNG: () => Buffer.from("png-bytes"),
   };
 
   class FakeWebContents {
@@ -377,6 +381,17 @@ const electronMock = vi.hoisted(() => {
       this.url = url;
       for (const listener of this.listeners["did-navigate"]) {
         listener(fakeWebContentsEvent, url);
+      }
+    }
+
+    emitDidStartNavigation(isMainFrame = true): void {
+      for (const listener of this.listeners["did-start-navigation"]) {
+        (listener as (...args: unknown[]) => void)(
+          fakeWebContentsEvent,
+          this.url,
+          false,
+          isMainFrame,
+        );
       }
     }
 
@@ -655,6 +670,69 @@ function scopedOpenTabPushesOf(
 }
 
 describe("DesktopBrowserViewManager", () => {
+  it("binds page captures to the exact navigation epoch", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 49,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    const view = requireFakeView(0);
+
+    const capture = manager.capturePage({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        format: "png",
+        quality: 85,
+        expectedNavigationEpoch: 0,
+      },
+    });
+    view.webContents.pendingCaptureResolvers.shift()?.(
+      electronMock.fakeCapturedImage,
+    );
+    await expect(capture).resolves.toEqual({
+      navigationEpoch: 0,
+      dataUrl: `data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`,
+      pixelSize: { width: 1_200, height: 800 },
+    });
+
+    const invalidatedCapture = manager.capturePage({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        format: "jpeg",
+        quality: 75,
+        expectedNavigationEpoch: 0,
+      },
+    });
+    view.webContents.emitDidStartNavigation();
+    view.webContents.pendingCaptureResolvers.shift()?.(
+      electronMock.fakeCapturedImage,
+    );
+    await expect(invalidatedCapture).rejects.toThrow(
+      "Browser page changed during capture",
+    );
+    await expect(
+      manager.capturePage({
+        hostWindow,
+        request: {
+          tabId: "browser:a",
+          format: "png",
+          quality: 85,
+          expectedNavigationEpoch: 0,
+        },
+      }),
+    ).rejects.toThrow("Browser page changed before capture");
+  });
+
   it("forwards resolved browser shortcuts and suppresses the untrusted page", () => {
     const dispatchAppCommand = vi.fn();
     const focusHostWebContents = vi.fn();

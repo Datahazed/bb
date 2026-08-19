@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
+  BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_INPUT_BYTES,
+  BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_RESULT_BYTES,
+  BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_SOURCE_BYTES,
   bbDesktopBrowserAttachRequestSchema,
+  bbDesktopBrowserPageCaptureRequestSchema,
+  bbDesktopBrowserPageCaptureResultSchema,
+  bbDesktopBrowserPageScriptCancelRequestSchema,
+  bbDesktopBrowserPageScriptRequestSchema,
+  bbDesktopBrowserPageScriptResultSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserStateSchema,
   clampBbDesktopBrowserViewBounds,
@@ -121,6 +129,115 @@ describe("desktop browser IPC schemas", () => {
         url: longUrl,
         bounds: { x: 0, y: 0, width: 800, height: 600 },
         visible: true,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("experimental desktop Browser-page runtime schemas", () => {
+  it("binds page captures to an explicit navigation epoch", () => {
+    expect(
+      bbDesktopBrowserPageCaptureRequestSchema.parse({
+        tabId: "browser:a",
+        format: "png",
+        quality: 85,
+        expectedNavigationEpoch: 3,
+      }),
+    ).toEqual({
+      tabId: "browser:a",
+      format: "png",
+      quality: 85,
+      expectedNavigationEpoch: 3,
+    });
+    expect(
+      bbDesktopBrowserPageCaptureResultSchema.parse({
+        navigationEpoch: 3,
+        dataUrl: "data:image/png;base64,aQ==",
+        pixelSize: { width: 800, height: 600 },
+      }),
+    ).toMatchObject({ navigationEpoch: 3 });
+  });
+
+  it("accepts a strict JSON-only page-script request", () => {
+    const request = {
+      tabId: "browser:a",
+      requestId: "req_1",
+      source: "({ input }) => ({ title: document.title, input })",
+      input: { intent: "inspect" },
+      timeoutMs: 10_000,
+    };
+    expect(bbDesktopBrowserPageScriptRequestSchema.parse(request)).toEqual(
+      request,
+    );
+    expect(
+      bbDesktopBrowserPageScriptRequestSchema.safeParse({
+        ...request,
+        identity: { threadId: "thr_1" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("enforces source and JSON input byte limits before IPC", () => {
+    expect(
+      bbDesktopBrowserPageScriptRequestSchema.safeParse({
+        tabId: "browser:a",
+        requestId: "req_1",
+        source: "x".repeat(BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_SOURCE_BYTES + 1),
+        input: null,
+        timeoutMs: 1_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopBrowserPageScriptRequestSchema.safeParse({
+        tabId: "browser:a",
+        requestId: "req_1",
+        source: "() => null",
+        input: "x".repeat(BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_INPUT_BYTES + 1),
+        timeoutMs: 1_000,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("bounds JSON results and scopes cancellation to one request", () => {
+    const result = {
+      requestId: "req_1",
+      navigationEpoch: 3,
+      value: { title: "Example" },
+    };
+    expect(bbDesktopBrowserPageScriptResultSchema.parse(result)).toEqual(
+      result,
+    );
+    expect(
+      bbDesktopBrowserPageScriptCancelRequestSchema.parse({
+        tabId: "browser:a",
+        requestId: "req_1",
+      }),
+    ).toEqual({ tabId: "browser:a", requestId: "req_1" });
+    expect(
+      bbDesktopBrowserPageScriptResultSchema.safeParse({
+        ...result,
+        value: "x".repeat(BB_DESKTOP_BROWSER_PAGE_SCRIPT_MAX_RESULT_BYTES + 1),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects non-JSON inputs and non-finite numbers", () => {
+    expect(
+      bbDesktopBrowserPageScriptRequestSchema.safeParse({
+        tabId: "browser:a",
+        requestId: "req_1",
+        source: "() => null",
+        input: { invalid: undefined },
+        timeoutMs: 1_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopBrowserPageScriptRequestSchema.safeParse({
+        tabId: "browser:a",
+        requestId: "req_1",
+        source: "() => null",
+        input: Number.POSITIVE_INFINITY,
+        timeoutMs: 1_000,
       }).success,
     ).toBe(false);
   });

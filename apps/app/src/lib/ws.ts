@@ -1,6 +1,8 @@
 import ReconnectingWebSocket from "partysocket/ws";
 import {
   changedMessageLenientSchema,
+  browserControlCancelMessageSchema,
+  browserControlRequestMessageSchema,
   pluginSignalLenientSchema,
   realtimeSubscriptionTargetKey,
   threadOpenSignalLenientSchema,
@@ -9,6 +11,9 @@ import {
 import type {
   ClientMessage,
   ChangedMessage,
+  BrowserClientStateMessage,
+  BrowserControlRequestMessage,
+  BrowserControlResponseMessage,
   PluginSignal,
   RealtimeSubscriptionTarget,
   ThreadOpenFile,
@@ -23,6 +28,13 @@ type ThreadPaneActionCallback = (signal: ThreadPaneActionSignal) => void;
 type PluginSignalCallback = (signal: PluginSignal) => void;
 type ConnectedCallback = (event: { reconnected: boolean }) => void;
 type ConnectionStateCallback = () => void;
+type BrowserControlRequestCallback = (
+  message: BrowserControlRequestMessage,
+) => void;
+type BrowserControlCancelCallback = (message: {
+  requestId: string;
+  reason: "cancelled" | "timeout" | "client-disconnected";
+}) => void;
 export type WebSocketConnectionState =
   | "connecting"
   | "connected"
@@ -40,6 +52,10 @@ export class WebSocketManager {
   private threadOpenCallbacks = new Set<ThreadOpenCallback>();
   private threadPaneActionCallbacks = new Set<ThreadPaneActionCallback>();
   private pluginSignalCallbacks = new Set<PluginSignalCallback>();
+  private browserControlRequestCallbacks =
+    new Set<BrowserControlRequestCallback>();
+  private browserControlCancelCallbacks =
+    new Set<BrowserControlCancelCallback>();
   // Ephemeral "open this file in the secondary panel" intents, keyed by thread.
   // Held in memory only (cleared on reload) so a thread that is not currently
   // viewed opens the file when it is next viewed. Last write wins per thread.
@@ -118,6 +134,24 @@ export class WebSocketManager {
       }
       for (const cb of this.threadOpenCallbacks) {
         cb(threadOpen.data);
+      }
+      return;
+    }
+
+    const browserControlRequest =
+      browserControlRequestMessageSchema.safeParse(parsed);
+    if (browserControlRequest.success) {
+      for (const callback of this.browserControlRequestCallbacks) {
+        callback(browserControlRequest.data);
+      }
+      return;
+    }
+
+    const browserControlCancel =
+      browserControlCancelMessageSchema.safeParse(parsed);
+    if (browserControlCancel.success) {
+      for (const callback of this.browserControlCancelCallbacks) {
+        callback(browserControlCancel.data);
       }
       return;
     }
@@ -219,6 +253,24 @@ export class WebSocketManager {
     return () => {
       this.pluginSignalCallbacks.delete(callback);
     };
+  }
+
+  onBrowserControlRequest(callback: BrowserControlRequestCallback): () => void {
+    this.browserControlRequestCallbacks.add(callback);
+    return () => this.browserControlRequestCallbacks.delete(callback);
+  }
+
+  onBrowserControlCancel(callback: BrowserControlCancelCallback): () => void {
+    this.browserControlCancelCallbacks.add(callback);
+    return () => this.browserControlCancelCallbacks.delete(callback);
+  }
+
+  sendBrowserClientState(message: BrowserClientStateMessage): void {
+    this.sendMessage(message);
+  }
+
+  sendBrowserControlResponse(message: BrowserControlResponseMessage): void {
+    this.sendMessage(message);
   }
 
   /**

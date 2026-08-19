@@ -157,6 +157,78 @@ export interface PluginThreadHeaderActionProps {
   isCompactViewport: boolean;
 }
 
+/** One bounded function executed inside the selected Browser page. */
+export interface ExperimentalBrowserPageContentScriptRequest {
+  /** Defaults to `isolated`; use `main` only to inspect page-owned JS state. */
+  world?: "isolated" | "main";
+  /**
+   * A function expression receiving a frozen `{ input, signal }` object. It
+   * defaults to an isolated JavaScript world with page DOM access. The
+   * explicit main world reaches page-owned JavaScript state. Neither world
+   * has Electron, Node, or BB app-shell capabilities.
+   */
+  source: string;
+  /** JSON-only input copied into the page. Defaults to `null`. */
+  input?: JsonValue;
+  /** Requested timeout in milliseconds. The host enforces its own hard cap. */
+  timeoutMs?: number;
+}
+
+export interface ExperimentalBrowserPageCapture {
+  navigationEpoch: number;
+  dataUrl: string;
+  pixelSize: { width: number; height: number };
+}
+
+export interface ExperimentalBrowserPageContentScriptResult {
+  navigationEpoch: number;
+  value: JsonValue;
+}
+
+/** Props passed to an `experimental_browserAction` component. */
+export interface PluginBrowserActionProps {
+  tabId: string;
+  threadId: string | null;
+  projectId: string | null;
+  url: string;
+  /**
+   * False when the running desktop shell predates Browser-page scripts. Plugins
+   * should keep their action visible but disabled and explain the upgrade.
+   */
+  experimental_pageContentScriptsAvailable: boolean;
+  /**
+   * Execute a bounded content script against this exact Browser tab. Results
+   * are JSON-only. Cancellation, navigation, timeout, and lifecycle failures
+   * reject without retargeting another tab.
+   */
+  experimental_runPageContentScript(
+    request: ExperimentalBrowserPageContentScriptRequest,
+    options: { signal: AbortSignal },
+  ): Promise<ExperimentalBrowserPageContentScriptResult>;
+  /**
+   * Capture this exact Browser tab for plugin-owned preview UI. Bind the
+   * capture to a prior script with `expectedNavigationEpoch` when they must
+   * describe the same immutable page revision.
+   */
+  experimental_capturePage(options?: {
+    format?: "png" | "jpeg";
+    quality?: number;
+    expectedNavigationEpoch?: number;
+  }): Promise<ExperimentalBrowserPageCapture>;
+  /**
+   * Tab-local host for plugin overlays. Portal modal or selection chrome here
+   * so it stays clipped to the Browser panel and the host can hide the native
+   * page view beneath it.
+   */
+  experimental_overlayRoot?: HTMLElement | null;
+  /**
+   * Hide the native Browser view while a portalled menu or dialog is open.
+   * Calls are idempotent; the host also releases the lease on every slot
+   * lifecycle edge.
+   */
+  experimental_setOverlayOpen(open: boolean): void;
+}
+
 /**
  * Where a file being opened by a `fileOpener` lives. `path` semantics follow
  * the source: workspace paths are relative to the environment's worktree,
@@ -394,6 +466,16 @@ export interface PluginNewThreadPanelActionRegistration {
    * panel tab with defaults. Errors are contained and logged.
    */
   run?(context: PluginNewThreadPanelActionContext): void | Promise<void>;
+}
+
+/** A compact plugin-owned control in the Browser tab's navigation chrome. */
+export interface PluginBrowserActionRegistration {
+  /** Unique within this slot for the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Host label for the contribution and its overflow row. */
+  title: string;
+  /** Render exactly one accessible 28px control; portal larger UI. */
+  component: ComponentType<PluginBrowserActionProps>;
 }
 
 export interface PluginPendingInteractionRegistration {
@@ -763,8 +845,7 @@ export interface ThreadChatMessageReference {
  * action opening its own tab is already the target, so it passes the bare
  * {@link PluginPanelActionOpenOptions} instead.
  */
-export interface PluginTargetedPanelActionOpenOptions
-  extends PluginPanelActionOpenOptions {
+export interface PluginTargetedPanelActionOpenOptions extends PluginPanelActionOpenOptions {
   /** A `threadPanelAction` id registered by this same plugin. */
   actionId: string;
 }
@@ -876,6 +957,13 @@ export interface PluginAppSlots {
    */
   experimental_threadHeaderAction(
     registration: PluginThreadHeaderActionRegistration,
+  ): void;
+  /**
+   * Render one compact component in the Browser tab chrome. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_browserAction(
+    registration: PluginBrowserActionRegistration,
   ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;

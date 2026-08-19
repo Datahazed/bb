@@ -4,6 +4,10 @@ import {
   threadEventTypeValues,
   type ThreadEventType,
 } from "./provider-event.js";
+import {
+  browserClientStateMessageSchema,
+  browserControlResponseMessageSchema,
+} from "./browser-control.js";
 
 export const THREAD_CHANGE_KINDS = [
   "thread-created",
@@ -135,6 +139,8 @@ export type UnsubscribeMessage = z.infer<typeof unsubscribeMessageSchema>;
 export const clientMessageSchema = z.discriminatedUnion("type", [
   subscribeMessageSchema,
   unsubscribeMessageSchema,
+  browserClientStateMessageSchema,
+  browserControlResponseMessageSchema,
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 

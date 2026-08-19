@@ -1,4 +1,8 @@
-import { clientMessageSchema } from "@bb/domain";
+import { Buffer } from "node:buffer";
+import {
+  BROWSER_CONTROL_MAX_RESULT_BYTES,
+  clientMessageSchema,
+} from "@bb/domain";
 import { decodeSocketPayload } from "./decode-payload.js";
 import type { NotificationHub } from "./hub.js";
 import type { WatchInterestCoordinator } from "./watch-interests.js";
@@ -28,7 +32,12 @@ export function onClientSocketMessage(
 ): void {
   let decoded: unknown;
   try {
-    decoded = JSON.parse(decodeSocketPayload(raw));
+    const payload = decodeSocketPayload(raw);
+    if (Buffer.byteLength(payload, "utf8") > BROWSER_CONTROL_MAX_RESULT_BYTES) {
+      socket.close(1009, "message-too-large");
+      return;
+    }
+    decoded = JSON.parse(payload);
   } catch {
     socket.close(1008, "invalid-message");
     return;
@@ -49,6 +58,12 @@ export function onClientSocketMessage(
     case "unsubscribe":
       deps.hub.unsubscribe(socket, parsed.target);
       deps.watchInterests.unsubscribe(socket, parsed.target);
+      break;
+    case "browser-client-state":
+      deps.hub.updateBrowserClient(socket, parsed);
+      break;
+    case "browser-control-response":
+      deps.hub.recordBrowserControlResponse(socket, parsed);
       break;
     default: {
       const _exhaustive: never = parsed;

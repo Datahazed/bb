@@ -1435,6 +1435,7 @@ function RootComposeSurface({
           environmentId={rootPanelEnvironmentId}
           canShowNativeBrowserView={canShowNativeBrowserView}
           threadId={rootPanelThreadId}
+          projectId={projectId}
           onUpdate={updateBrowserTab}
         />
       );
@@ -1446,6 +1447,7 @@ function RootComposeSurface({
       handleBrowserAddressFocusRequestConsumed,
       rootPanelEnvironmentId,
       rootPanelThreadId,
+      projectId,
       updateBrowserTab,
     ],
   );

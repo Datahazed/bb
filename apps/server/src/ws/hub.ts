@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
 import {
   realtimeSubscriptionTargetKey as subscriptionKey,
   type RealtimeSubscriptionTarget,
@@ -9,6 +10,7 @@ import {
   type SystemChangeKind,
   type ThreadChangeKind,
   type ThreadChangeMetadata,
+  type JsonValue,
 } from "@bb/domain";
 import type { DbNotifier } from "@bb/db";
 import type {
@@ -20,6 +22,12 @@ import type {
 } from "@bb/host-daemon-contract";
 import {
   pluginSignalSchema,
+  browserControlRequestMessageSchema,
+  type BrowserClientStateMessage,
+  type BrowserControlAction,
+  type BrowserControlResponseMessage,
+  type BrowserTabDescriptor,
+  type BrowserTabTarget,
   serverMessageSchema,
   terminalServerMessageSchema,
   threadOpenSignalSchema,
@@ -112,6 +120,38 @@ interface HostOnlineRpcWaiter {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+interface BrowserClientRegistration {
+  clientId: string;
+  windowId: string;
+  socket: HubSocket;
+  tabs: Map<string, BrowserTabDescriptor>;
+}
+
+interface BrowserControlWaiter {
+  target: BrowserTabTarget;
+  socket: HubSocket;
+  resolve(value: JsonValue): void;
+  reject(error: Error): void;
+  timeout: ReturnType<typeof setTimeout>;
+  unlinkAbort: () => void;
+}
+
+export class BrowserControlUnavailableError extends Error {
+  constructor(message = "The target Browser tab is not connected") {
+    super(message);
+    this.name = "BrowserControlUnavailableError";
+  }
+}
+
+export class BrowserControlTargetChangedError extends Error {
+  constructor() {
+    super(
+      "The target Browser tab navigated or changed before the action completed",
+    );
+    this.name = "BrowserControlTargetChangedError";
+  }
+}
+
 export interface RecordHostOnlineRpcResponseArgs {
   message: HostDaemonOnlineRpcResponseMessage;
   sessionId: string;
@@ -143,6 +183,18 @@ export class HostOnlineRpcUnavailableError extends Error {
 export class NotificationHub implements DbNotifier {
   private readonly clientKeysBySocket = new Map<HubSocket, Set<string>>();
   private readonly clientSocketsByKey = new Map<string, Set<HubSocket>>();
+  private readonly browserClientsBySocket = new Map<
+    HubSocket,
+    BrowserClientRegistration
+  >();
+  private readonly browserClientsById = new Map<
+    string,
+    BrowserClientRegistration
+  >();
+  private readonly browserControlWaiters = new Map<
+    string,
+    BrowserControlWaiter
+  >();
   private readonly daemonSessions = new Map<
     string,
     { hostId: string; platform: HostPlatform; socket: HubSocket }
@@ -197,6 +249,7 @@ export class NotificationHub implements DbNotifier {
 
   unregisterClient(socket: HubSocket): void {
     this.unregisterTerminalClientSocket(socket);
+    this.unregisterBrowserClient(socket);
     const keys = this.clientKeysBySocket.get(socket);
     if (!keys) {
       return;
@@ -214,6 +267,214 @@ export class NotificationHub implements DbNotifier {
     }
 
     this.clientKeysBySocket.delete(socket);
+  }
+
+  updateBrowserClient(
+    socket: HubSocket,
+    message: BrowserClientStateMessage,
+  ): void {
+    this.registerClient(socket);
+    const existingForId = this.browserClientsById.get(message.clientId);
+    if (existingForId !== undefined && existingForId.socket !== socket) {
+      this.unregisterBrowserClient(existingForId.socket);
+    }
+    const previous = this.browserClientsBySocket.get(socket);
+    if (previous !== undefined && previous.clientId !== message.clientId) {
+      this.unregisterBrowserClient(socket);
+    }
+    const tabs = new Map(
+      message.tabs.map((tab) => [
+        tab.tabId,
+        {
+          ...tab,
+          clientId: message.clientId,
+          windowId: message.windowId,
+        },
+      ]),
+    );
+    const registration: BrowserClientRegistration = {
+      clientId: message.clientId,
+      windowId: message.windowId,
+      socket,
+      tabs,
+    };
+    this.browserClientsBySocket.set(socket, registration);
+    this.browserClientsById.set(message.clientId, registration);
+
+    for (const [requestId, waiter] of this.browserControlWaiters) {
+      if (waiter.socket !== socket) continue;
+      const tab = tabs.get(waiter.target.tabId);
+      if (
+        tab === undefined ||
+        tab.windowId !== waiter.target.windowId ||
+        tab.navigationEpoch !== waiter.target.navigationEpoch
+      ) {
+        this.rejectBrowserControlWaiter(
+          requestId,
+          waiter,
+          new BrowserControlTargetChangedError(),
+        );
+      }
+    }
+  }
+
+  listBrowserTabs(): BrowserTabDescriptor[] {
+    return [...this.browserClientsById.values()]
+      .flatMap((registration) => [...registration.tabs.values()])
+      .sort((a, b) =>
+        [a.clientId, a.windowId, a.tabId]
+          .join("\u0000")
+          .localeCompare([b.clientId, b.windowId, b.tabId].join("\u0000")),
+      );
+  }
+
+  runBrowserControl(args: {
+    target: BrowserTabTarget;
+    action: BrowserControlAction;
+    timeoutMs: number;
+    signal?: AbortSignal;
+  }): Promise<JsonValue> {
+    const registration = this.browserClientsById.get(args.target.clientId);
+    const tab = registration?.tabs.get(args.target.tabId);
+    if (
+      registration === undefined ||
+      tab === undefined ||
+      registration.windowId !== args.target.windowId ||
+      tab.navigationEpoch !== args.target.navigationEpoch
+    ) {
+      return Promise.reject(new BrowserControlUnavailableError());
+    }
+    if (args.signal?.aborted === true) {
+      return Promise.reject(
+        new DOMException("Browser action was cancelled", "AbortError"),
+      );
+    }
+    const requestId = randomUUID();
+    return new Promise((resolve, reject) => {
+      const abort = () => {
+        const waiter = this.browserControlWaiters.get(requestId);
+        if (waiter === undefined) return;
+        this.sendBrowserControlCancel(waiter.socket, requestId, "cancelled");
+        this.rejectBrowserControlWaiter(
+          requestId,
+          waiter,
+          new DOMException("Browser action was cancelled", "AbortError"),
+        );
+      };
+      args.signal?.addEventListener("abort", abort, { once: true });
+      const waiter: BrowserControlWaiter = {
+        target: args.target,
+        socket: registration.socket,
+        resolve,
+        reject,
+        timeout: setTimeout(() => {
+          const current = this.browserControlWaiters.get(requestId);
+          if (current === undefined) return;
+          this.sendBrowserControlCancel(current.socket, requestId, "timeout");
+          this.rejectBrowserControlWaiter(
+            requestId,
+            current,
+            new Error("Timed out waiting for Browser action"),
+          );
+        }, args.timeoutMs),
+        unlinkAbort: () => args.signal?.removeEventListener("abort", abort),
+      };
+      this.browserControlWaiters.set(requestId, waiter);
+      try {
+        registration.socket.send(
+          JSON.stringify(
+            browserControlRequestMessageSchema.parse({
+              type: "browser-control-request",
+              requestId,
+              target: args.target,
+              action: args.action,
+            }),
+          ),
+        );
+      } catch {
+        this.rejectBrowserControlWaiter(
+          requestId,
+          waiter,
+          new BrowserControlUnavailableError(),
+        );
+      }
+    });
+  }
+
+  recordBrowserControlResponse(
+    socket: HubSocket,
+    message: BrowserControlResponseMessage,
+  ): boolean {
+    const waiter = this.browserControlWaiters.get(message.requestId);
+    if (waiter === undefined || waiter.socket !== socket) return false;
+    if (
+      message.target.clientId !== waiter.target.clientId ||
+      message.target.windowId !== waiter.target.windowId ||
+      message.target.tabId !== waiter.target.tabId ||
+      message.target.navigationEpoch !== waiter.target.navigationEpoch
+    ) {
+      return false;
+    }
+    this.deleteBrowserControlWaiter(message.requestId, waiter);
+    if (message.ok) waiter.resolve(message.value ?? null);
+    else {
+      const error = new Error(
+        message.error?.message ?? "Browser action failed",
+      );
+      error.name = message.error?.code ?? "BrowserControlError";
+      waiter.reject(error);
+    }
+    return true;
+  }
+
+  private unregisterBrowserClient(socket: HubSocket): void {
+    const registration = this.browserClientsBySocket.get(socket);
+    if (registration === undefined) return;
+    this.browserClientsBySocket.delete(socket);
+    if (this.browserClientsById.get(registration.clientId) === registration) {
+      this.browserClientsById.delete(registration.clientId);
+    }
+    for (const [requestId, waiter] of this.browserControlWaiters) {
+      if (waiter.socket !== socket) continue;
+      this.rejectBrowserControlWaiter(
+        requestId,
+        waiter,
+        new BrowserControlUnavailableError("The Browser client disconnected"),
+      );
+    }
+  }
+
+  private sendBrowserControlCancel(
+    socket: HubSocket,
+    requestId: string,
+    reason: "cancelled" | "timeout" | "client-disconnected",
+  ): void {
+    try {
+      socket.send(
+        JSON.stringify({ type: "browser-control-cancel", requestId, reason }),
+      );
+    } catch {
+      // The waiter is rejected locally below; a disconnected client needs no message.
+    }
+  }
+
+  private rejectBrowserControlWaiter(
+    requestId: string,
+    waiter: BrowserControlWaiter,
+    error: Error,
+  ): void {
+    this.deleteBrowserControlWaiter(requestId, waiter);
+    waiter.reject(error);
+  }
+
+  private deleteBrowserControlWaiter(
+    requestId: string,
+    waiter: BrowserControlWaiter,
+  ): void {
+    if (this.browserControlWaiters.get(requestId) !== waiter) return;
+    this.browserControlWaiters.delete(requestId);
+    clearTimeout(waiter.timeout);
+    waiter.unlinkAbort();
   }
 
   onChangedMessage(listener: ChangedMessageListener): () => void {

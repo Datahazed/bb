@@ -1,13 +1,24 @@
-import { BrowserWindow, ipcMain, type IpcMainEvent } from "electron";
+import {
+  BrowserWindow,
+  ipcMain,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+} from "electron";
 import {
   bbDesktopBrowserAttachRequestSchema,
   bbDesktopBrowserNavigateRequestSchema,
+  bbDesktopBrowserPageCaptureRequestSchema,
+  bbDesktopBrowserPageScriptCancelRequestSchema,
+  bbDesktopBrowserPageScriptRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserSetVisibleRequestSchema,
   bbDesktopBrowserTabRefSchema,
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
@@ -32,7 +43,7 @@ interface RegisterDesktopBrowserTabCommandArgs {
 }
 
 function hostWindowFromBrowserIpcEvent(
-  event: IpcMainEvent,
+  event: IpcMainEvent | IpcMainInvokeEvent,
 ): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
 }
@@ -69,6 +80,46 @@ export function registerDesktopBrowserIpc(
     }
     manager.attach({ hostWindow, request: parsed.data });
   });
+
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
+    async (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        throw new Error("The Browser host window is unavailable");
+      }
+      const request = bbDesktopBrowserPageScriptRequestSchema.parse(payload);
+      return manager.runPageScript({ hostWindow, request });
+    },
+  );
+
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+    async (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        throw new Error("The Browser host window is unavailable");
+      }
+      const request = bbDesktopBrowserPageCaptureRequestSchema.parse(payload);
+      return manager.capturePage({ hostWindow, request });
+    },
+  );
+
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) return;
+      const request =
+        bbDesktopBrowserPageScriptCancelRequestSchema.safeParse(payload);
+      if (!request.success) return;
+      manager.cancelPageScript({
+        hostWindow,
+        tabId: request.data.tabId,
+        requestId: request.data.requestId,
+      });
+    },
+  );
 
   ipcMain.on(BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL, (event, payload: unknown) => {
     const hostWindow = hostWindowFromBrowserIpcEvent(event);

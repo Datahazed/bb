@@ -9,6 +9,8 @@ import {
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -34,12 +36,18 @@ const electronMock = vi.hoisted(() => {
   }
 
   type FakeIpcListener = (event: FakeIpcEvent, payload: unknown) => void;
+  type FakeIpcHandler = (
+    event: FakeIpcEvent,
+    payload: unknown,
+  ) => Promise<unknown>;
 
   const listeners = new Map<string, FakeIpcListener>();
+  const handlers = new Map<string, FakeIpcHandler>();
   const windowsBySender = new Map<FakeWebContents, FakeBrowserWindow>();
 
   return {
     listeners,
+    handlers,
     windowsBySender,
     BrowserWindow: {
       fromWebContents(sender: FakeWebContents): FakeBrowserWindow | null {
@@ -47,6 +55,9 @@ const electronMock = vi.hoisted(() => {
       },
     },
     ipcMain: {
+      handle(channel: string, handler: FakeIpcHandler): void {
+        handlers.set(channel, handler);
+      },
       on(channel: string, listener: FakeIpcListener): void {
         listeners.set(channel, listener);
       },
@@ -68,6 +79,11 @@ type TabCommandCall = Parameters<DesktopBrowserViewManager["reload"]>[0];
 type WindowResizeCall = Parameters<
   DesktopBrowserViewManager["beginWindowResize"]
 >[0];
+type PageScriptCall = Parameters<DesktopBrowserViewManager["runPageScript"]>[0];
+type CancelPageScriptCall = Parameters<
+  DesktopBrowserViewManager["cancelPageScript"]
+>[0];
+type CapturePageCall = Parameters<DesktopBrowserViewManager["capturePage"]>[0];
 
 interface FakeWebContents {
   id: number;
@@ -102,6 +118,9 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   public readonly setBoundsCalls: SetBoundsCall[] = [];
   public readonly setVisibleCalls: SetVisibleCall[] = [];
   public readonly stopCalls: TabCommandCall[] = [];
+  public readonly pageScriptCalls: PageScriptCall[] = [];
+  public readonly cancelPageScriptCalls: CancelPageScriptCall[] = [];
+  public readonly capturePageCalls: CapturePageCall[] = [];
 
   attach(args: AttachCall): void {
     this.attachCalls.push(args);
@@ -154,12 +173,35 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   stop(args: TabCommandCall): void {
     this.stopCalls.push(args);
   }
+
+  runPageScript(args: PageScriptCall) {
+    this.pageScriptCalls.push(args);
+    return Promise.resolve({
+      requestId: args.request.requestId,
+      navigationEpoch: 0,
+      value: { ok: true },
+    });
+  }
+
+  cancelPageScript(args: CancelPageScriptCall): void {
+    this.cancelPageScriptCalls.push(args);
+  }
+
+  capturePage(args: CapturePageCall) {
+    this.capturePageCalls.push(args);
+    return Promise.resolve({
+      navigationEpoch: 0,
+      dataUrl: "data:image/png;base64,cG5n",
+      pixelSize: { width: 800, height: 600 },
+    });
+  }
 }
 
 let nextWebContentsId = 1;
 
 beforeEach(() => {
   electronMock.listeners.clear();
+  electronMock.handlers.clear();
   electronMock.windowsBySender.clear();
   nextWebContentsId = 1;
 });
@@ -185,6 +227,15 @@ function sendBrowserIpc(args: SendBrowserIpcArgs): void {
     throw new Error(`Expected listener for ${args.channel}.`);
   }
   listener({ sender: args.sender }, args.payload);
+}
+
+async function invokeBrowserIpc(args: SendBrowserIpcArgs): Promise<unknown> {
+  const handler = electronMock.handlers.get(args.channel);
+  expect(handler).toBeDefined();
+  if (handler === undefined) {
+    throw new Error(`Expected handler for ${args.channel}.`);
+  }
+  return handler({ sender: args.sender }, args.payload);
 }
 
 function oversizedBrowserUrl(): string {
@@ -369,6 +420,47 @@ describe("registerDesktopBrowserIpc", () => {
     ]);
     expect(manager.stopCalls).toEqual([
       { hostWindow: renderer.hostWindow, tabId: "browser:a" },
+    ]);
+  });
+
+  it("binds page-script run and cancellation to the IPC sender's window", async () => {
+    const manager = new RecordingDesktopBrowserViewManager();
+    registerDesktopBrowserIpc(manager);
+    const renderer = createTrustedRenderer("main-window");
+    const request = {
+      tabId: "browser:a",
+      requestId: "req_1",
+      source: "({ input }) => input",
+      input: { intent: "inspect" },
+      timeoutMs: 1_000,
+    };
+
+    await expect(
+      invokeBrowserIpc({
+        channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
+        payload: request,
+        sender: renderer.sender,
+      }),
+    ).resolves.toEqual({
+      requestId: "req_1",
+      navigationEpoch: 0,
+      value: { ok: true },
+    });
+    sendBrowserIpc({
+      channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
+      payload: { tabId: "browser:a", requestId: "req_1" },
+      sender: renderer.sender,
+    });
+
+    expect(manager.pageScriptCalls).toEqual([
+      { hostWindow: renderer.hostWindow, request },
+    ]);
+    expect(manager.cancelPageScriptCalls).toEqual([
+      {
+        hostWindow: renderer.hostWindow,
+        tabId: "browser:a",
+        requestId: "req_1",
+      },
     ]);
   });
 });

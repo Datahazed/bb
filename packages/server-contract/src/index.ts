@@ -19,6 +19,14 @@ export {
 
 export {
   changedMessageLenientSchema,
+  browserClientStateMessageSchema,
+  browserControlActionSchema,
+  browserControlCancelMessageSchema,
+  browserControlRequestMessageSchema,
+  browserControlResponseMessageSchema,
+  browserPageLocatorSchema,
+  browserTabDescriptorSchema,
+  browserTabTargetSchema,
   changedMessageSchema,
   ENVIRONMENT_CHANGE_KINDS,
   environmentChangedMessageSchema,
@@ -41,6 +49,14 @@ export {
 } from "@bb/domain";
 
 export type {
+  BrowserClientStateMessage,
+  BrowserControlAction,
+  BrowserControlCancelMessage,
+  BrowserControlRequestMessage,
+  BrowserControlResponseMessage,
+  BrowserPageLocator,
+  BrowserTabDescriptor,
+  BrowserTabTarget,
   ChangedMessage,
   ClientMessage,
   EnvironmentChangeKind,
