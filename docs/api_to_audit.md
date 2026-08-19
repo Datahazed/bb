@@ -50,6 +50,10 @@ ordinary mention resolution remains the hidden agent-context path. The same
 hook supports Browser captures, files, comments, design nodes, and database
 records without giving any provider custom modal markup.
 
+The optional search and inspection payload members remain explicitly unstable
+as `experimental_preview`, and their shared limit policy is exported as
+`EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS` until this audit is complete.
+
 **Audit before stabilizing.**
 
 1. Confirm one host-owned title/description/preview/metadata shape covers real

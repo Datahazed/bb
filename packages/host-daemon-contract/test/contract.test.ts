@@ -1142,7 +1142,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(135);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(136);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1957,7 +1957,7 @@ describe("host-daemon command schemas", () => {
     ).toThrow();
   });
 
-  it("parses section mentions in thread.start", () => {
+  it("parses section and inspectable plugin mentions in thread.start", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "thread.start",
@@ -1983,6 +1983,18 @@ describe("host-daemon command schemas", () => {
                   kind: "section",
                   sectionId: "sec_release",
                   label: "Release QA",
+                },
+              },
+              {
+                start: 0,
+                end: 8,
+                resource: {
+                  kind: "plugin",
+                  pluginId: "browser-context",
+                  itemId: "captures:invite",
+                  label: "Invite member",
+                  experimental_preview: "Selected invite button",
+                  experimentalInspectability: true,
                 },
               },
             ],
@@ -2020,6 +2032,15 @@ describe("host-daemon command schemas", () => {
                 kind: "section",
                 sectionId: "sec_release",
                 label: "Release QA",
+              },
+            },
+            {
+              resource: {
+                kind: "plugin",
+                pluginId: "browser-context",
+                itemId: "captures:invite",
+                experimental_preview: "Selected invite button",
+                experimentalInspectability: true,
               },
             },
           ],
@@ -2087,7 +2108,7 @@ describe("host-daemon command schemas", () => {
     },
   );
 
-  it("parses section mentions in turn.submit follow-ups", () => {
+  it("parses section and inspectable plugin mentions in turn.submit follow-ups", () => {
     expect(
       hostDaemonCommandSchema.parse({
         type: "turn.submit",
@@ -2107,6 +2128,18 @@ describe("host-daemon command schemas", () => {
                   kind: "section",
                   sectionId: "sec_release",
                   label: "Release QA",
+                },
+              },
+              {
+                start: 7,
+                end: 15,
+                resource: {
+                  kind: "plugin",
+                  pluginId: "browser-context",
+                  itemId: "captures:invite",
+                  label: "Invite member",
+                  experimental_preview: "Selected invite button",
+                  experimentalInspectability: true,
                 },
               },
             ],
@@ -2149,6 +2182,15 @@ describe("host-daemon command schemas", () => {
                 kind: "section",
                 sectionId: "sec_release",
                 label: "Release QA",
+              },
+            },
+            {
+              resource: {
+                kind: "plugin",
+                pluginId: "browser-context",
+                itemId: "captures:invite",
+                experimental_preview: "Selected invite button",
+                experimentalInspectability: true,
               },
             },
           ],

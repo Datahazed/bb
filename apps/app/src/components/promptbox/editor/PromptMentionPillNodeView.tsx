@@ -82,7 +82,8 @@ export function PromptMentionPillNodeView({
     : (resolveLink?.(resource) ?? null);
   const title = promptMentionTooltipLabel(resource);
   const activationLabel = activate ? `Open ${title}` : undefined;
-  const preview = resource.kind === "plugin" ? resource.preview : undefined;
+  const preview =
+    resource.kind === "plugin" ? resource.experimental_preview : undefined;
   const handleClick = activate
     ? (event: MouseEvent<HTMLElement>) => {
         // Plain primary click only — leave modifier clicks and drag-selection

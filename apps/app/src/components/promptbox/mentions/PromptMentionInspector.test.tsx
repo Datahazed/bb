@@ -15,7 +15,7 @@ describe("PromptMentionInspector", () => {
           inspection: {
             title: "Invite member",
             description: "2 comments",
-            preview: {
+            experimental_preview: {
               kind: "image",
               dataUrl: "data:image/png;base64,aQ==",
               alt: "Invite member capture",
@@ -149,7 +149,7 @@ describe("PromptMentionInspector", () => {
           ok: true,
           inspection: {
             title: "Members table",
-            preview: {
+            experimental_preview: {
               kind: "image",
               dataUrl: "data:image/png;base64,aQ==",
               alt: "Members table capture",
@@ -287,7 +287,7 @@ describe("PromptMentionInspector", () => {
           ok: true,
           inspection: {
             title: `Members table ${"with a very long nested settings heading ".repeat(6)}`,
-            preview: {
+            experimental_preview: {
               kind: "image",
               dataUrl: "data:image/png;base64,aQ==",
               alt: "Members table capture",

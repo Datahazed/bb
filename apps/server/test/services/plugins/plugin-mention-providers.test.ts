@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import { type PromptInput } from "@bb/domain";
 import type { Logger } from "@bb/logger";
-import { PLUGIN_MENTION_CONTENT_LIMITS } from "@get-bb/plugin-sdk";
+import { EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS } from "@get-bb/plugin-sdk";
 import {
   createPluginService,
   type PluginService,
@@ -59,7 +59,8 @@ const MENTION_SOURCE = `
             id: "ISS-42",
             title: "Fix login bug",
             subtitle: "ctx:" + ctx.trigger + ":" + ctx.query + ":" + ctx.projectId + ":" + ctx.threadId,
-            preview: "Issue ISS-42\\nOwner: Web platform\\nStatus: In progress",
+            experimental_preview:
+              "Issue ISS-42\\nOwner: Web platform\\nStatus: In progress",
           },
           { id: "ISS-43", title: "Ship mention providers" },
         ];
@@ -80,7 +81,7 @@ const MENTION_SOURCE = `
         return {
           title: "Inspect " + itemId,
           description: "Provider-owned details",
-          preview: {
+          experimental_preview: {
             kind: "image",
             dataUrl: "${PNG_DATA_URL}",
             alt: "Issue preview",
@@ -261,7 +262,8 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
             // The provider saw the forwarded query + project/thread context.
             subtitle: "ctx:@:fix:proj_1:thr_1",
             icon: null,
-            preview: "Issue ISS-42\nOwner: Web platform\nStatus: In progress",
+            experimental_preview:
+              "Issue ISS-42\nOwner: Web platform\nStatus: In progress",
             experimentalInspectability: true,
           },
           {
@@ -312,7 +314,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       inspection: {
         title: "Inspect ISS-42",
         description: "Provider-owned details",
-        preview: {
+        experimental_preview: {
           kind: "image",
           dataUrl: PNG_DATA_URL,
           alt: "Issue preview",
@@ -400,7 +402,8 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
             title: "Fix login bug",
             subtitle: "ctx:#:fix:proj_1:thr_1",
             icon: null,
-            preview: "Issue ISS-42\nOwner: Web platform\nStatus: In progress",
+            experimental_preview:
+              "Issue ISS-42\nOwner: Web platform\nStatus: In progress",
             experimentalInspectability: true,
           },
           {
@@ -481,14 +484,14 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
                   return [{
                     id: "one",
                     title: "One",
-                    preview: "x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes + 1}),
+                    experimental_preview: "x".repeat(${EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes + 1}),
                   }];
                 }
                 if (ctx.query === "preview-total") {
                   return Array.from({ length: 9 }, (_, index) => ({
                     id: String(index),
                     title: String(index),
-                    preview: "x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes}),
+                    experimental_preview: "x".repeat(${EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes}),
                   }));
                 }
                 return [];
@@ -499,7 +502,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
                   return {
                     title: "Unsafe",
                     metadata: "metadata",
-                    preview: {
+                    experimental_preview: {
                       kind: "image",
                       dataUrl: "data:image/svg+xml;base64,PHN2Zy8+",
                       alt: "Unsafe image",
@@ -510,7 +513,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
                   return {
                     title: "Bad image",
                     metadata: "metadata",
-                    preview: {
+                    experimental_preview: {
                       kind: "image",
                       dataUrl: itemId === "bad-base64"
                         ? "data:image/png;base64,%%%%"
@@ -522,14 +525,14 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
                 if (itemId === "metadata-field") {
                   return {
                     title: "Large metadata",
-                    metadata: "x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.inspectionMetadataBytes + 1}),
+                    metadata: "x".repeat(${EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionMetadataBytes + 1}),
                   };
                 }
                 if (itemId === "comments-field") {
                   return {
                     title: "Large comment",
                     metadata: "metadata",
-                    comments: ["x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentBytes + 1})],
+                    comments: ["x".repeat(${EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentBytes + 1})],
                   };
                 }
                 if (itemId === "comments-total") {
@@ -537,7 +540,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
                     title: "Large comments",
                     metadata: "metadata",
                     comments: Array.from({ length: 5 }, () =>
-                      "x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentBytes}),
+                      "x".repeat(${EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentBytes}),
                     ),
                   };
                 }
@@ -546,7 +549,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
                     title: "Too many comments",
                     metadata: "metadata",
                     comments: Array.from(
-                      { length: ${PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentsCount + 1} },
+                      { length: ${EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentsCount + 1} },
                       () => "comment",
                     ),
                   };
@@ -555,8 +558,8 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
                 Buffer.from("89504e470d0a1a0a", "hex").copy(image);
                 return {
                   title: "Large total",
-                  metadata: "x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.inspectionMetadataBytes}),
-                  preview: {
+                  metadata: "x".repeat(${EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionMetadataBytes}),
+                  experimental_preview: {
                     kind: "image",
                     dataUrl: "data:image/png;base64," + image.toString("base64"),
                     alt: "Large image",

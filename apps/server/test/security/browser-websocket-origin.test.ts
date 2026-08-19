@@ -16,12 +16,16 @@ function websocketUrl(baseUrl: string, path: string): string {
   return url.href;
 }
 
-function openWebSocket(url: string, origin?: string): Promise<WebSocket> {
+function openWebSocket(
+  url: string,
+  origin?: string,
+  headers?: Record<string, string>,
+): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const socket =
       origin === undefined
         ? new WebSocket(url)
-        : new WebSocket(url, { origin });
+        : new WebSocket(url, { origin, headers });
     sockets.add(socket);
     socket.once("open", () => resolve(socket));
     socket.once("error", reject);
@@ -107,6 +111,7 @@ describe("browser WebSocket origin boundary", () => {
     const configuredApp = await openWebSocket(
       realtimeUrl,
       "https://bb.example.test",
+      { "sec-fetch-site": "cross-site" },
     );
     await closeSocket(configuredApp);
 

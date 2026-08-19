@@ -14,7 +14,7 @@ import {
   type ToolCallResponse,
 } from "@bb/domain";
 import {
-  PLUGIN_MENTION_CONTENT_LIMITS,
+  EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS,
   type PluginCliExecutionResult,
   type PluginRpcError,
   type PluginRpcValidationIssue,
@@ -712,7 +712,7 @@ function normalizeMentionSearchItems(
       title?: unknown;
       subtitle?: unknown;
       icon?: unknown;
-      preview?: unknown;
+      experimental_preview?: unknown;
     } | null;
     if (
       typeof typed?.id !== "string" ||
@@ -721,30 +721,35 @@ function normalizeMentionSearchItems(
       typed.title.trim().length === 0 ||
       (typed.subtitle !== undefined && typeof typed.subtitle !== "string") ||
       (typed.icon !== undefined && typeof typed.icon !== "string") ||
-      (typed.preview !== undefined && typeof typed.preview !== "string")
+      (typed.experimental_preview !== undefined &&
+        typeof typed.experimental_preview !== "string")
     ) {
       throw new Error(
-        `mention provider "${providerId}" items[${index}] must be { id: string, title: string, subtitle?, icon?, preview? }`,
+        `mention provider "${providerId}" items[${index}] must be { id: string, title: string, subtitle?, icon?, experimental_preview? }`,
       );
     }
-    const preview =
-      typeof typed.preview === "string" && typed.preview.trim().length > 0
-        ? typed.preview
+    const experimentalPreview =
+      typeof typed.experimental_preview === "string" &&
+      typed.experimental_preview.trim().length > 0
+        ? typed.experimental_preview
         : undefined;
-    if (preview !== undefined) {
-      const previewBytes = Buffer.byteLength(preview, "utf8");
-      if (previewBytes > PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes) {
+    if (experimentalPreview !== undefined) {
+      const previewBytes = Buffer.byteLength(experimentalPreview, "utf8");
+      if (
+        previewBytes >
+        EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes
+      ) {
         throw new Error(
-          `mention provider "${providerId}" items[${index}].preview exceeds the ${PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes}-byte limit`,
+          `mention provider "${providerId}" items[${index}].experimental_preview exceeds the ${EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes}-byte limit`,
         );
       }
       totalPreviewBytes += previewBytes;
       if (
         totalPreviewBytes >
-        PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewsTotalBytes
+        EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewsTotalBytes
       ) {
         throw new Error(
-          `mention provider "${providerId}" previews exceed the ${PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewsTotalBytes}-byte total limit`,
+          `mention provider "${providerId}" previews exceed the ${EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewsTotalBytes}-byte total limit`,
         );
       }
     }
@@ -759,7 +764,9 @@ function normalizeMentionSearchItems(
         typeof typed.icon === "string" && typed.icon.trim().length > 0
           ? typed.icon
           : null,
-      ...(preview === undefined ? {} : { preview }),
+      ...(experimentalPreview === undefined
+        ? {}
+        : { experimental_preview: experimentalPreview }),
       ...(experimentalInspectability
         ? { experimentalInspectability: true as const }
         : {}),
@@ -811,7 +818,7 @@ function validateMentionInspectionImageDataUrl(dataUrl: string): void {
   stringWithinUtf8Limit(
     dataUrl,
     "mention inspection preview.dataUrl",
-    PLUGIN_MENTION_CONTENT_LIMITS.inspectionImageDataUrlBytes,
+    EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionImageDataUrlBytes,
   );
   const match =
     /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/u.exec(
@@ -2520,7 +2527,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           const value = rawValue as {
             title?: unknown;
             description?: unknown;
-            preview?: unknown;
+            experimental_preview?: unknown;
             comments?: unknown;
             metadata?: unknown;
           };
@@ -2534,7 +2541,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             (value.comments !== undefined &&
               (!Array.isArray(value.comments) ||
                 value.comments.length >
-                  PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentsCount ||
+                  EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentsCount ||
                 !value.comments.every(
                   (comment) =>
                     typeof comment === "string" && comment.trim().length > 0,
@@ -2556,13 +2563,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           stringWithinUtf8Limit(
             title,
             `mention provider "${providerId}" inspection.title`,
-            PLUGIN_MENTION_CONTENT_LIMITS.inspectionTitleBytes,
+            EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionTitleBytes,
           );
           if (description !== undefined) {
             stringWithinUtf8Limit(
               description,
               `mention provider "${providerId}" inspection.description`,
-              PLUGIN_MENTION_CONTENT_LIMITS.inspectionDescriptionBytes,
+              EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionDescriptionBytes,
             );
           }
           if (comments !== undefined) {
@@ -2570,29 +2577,32 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               stringWithinUtf8Limit(
                 comment,
                 `mention provider "${providerId}" inspection.comments[${index}]`,
-                PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentBytes,
+                EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentBytes,
               );
             }
             stringWithinUtf8Limit(
               JSON.stringify(comments),
               `mention provider "${providerId}" inspection.comments`,
-              PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentsTotalBytes,
+              EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentsTotalBytes,
             );
           }
           stringWithinUtf8Limit(
             value.metadata,
             `mention provider "${providerId}" inspection.metadata`,
-            PLUGIN_MENTION_CONTENT_LIMITS.inspectionMetadataBytes,
+            EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionMetadataBytes,
           );
-          let preview:
+          let experimentalPreview:
             | {
                 kind: "image";
                 dataUrl: string;
                 alt: string;
               }
             | undefined;
-          if (value.preview !== undefined) {
-            const candidate = value.preview as Record<string, unknown>;
+          if (value.experimental_preview !== undefined) {
+            const candidate = value.experimental_preview as Record<
+              string,
+              unknown
+            >;
             if (
               candidate.kind !== "image" ||
               typeof candidate.dataUrl !== "string" ||
@@ -2606,10 +2616,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             stringWithinUtf8Limit(
               candidate.alt,
               `mention provider "${providerId}" inspection.preview.alt`,
-              PLUGIN_MENTION_CONTENT_LIMITS.inspectionImageAltBytes,
+              EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionImageAltBytes,
             );
             validateMentionInspectionImageDataUrl(candidate.dataUrl);
-            preview = {
+            experimentalPreview = {
               kind: "image",
               dataUrl: candidate.dataUrl,
               alt: candidate.alt,
@@ -2618,14 +2628,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           const inspection = {
             title,
             ...(description === undefined ? {} : { description }),
-            ...(preview === undefined ? {} : { preview }),
+            ...(experimentalPreview === undefined
+              ? {}
+              : { experimental_preview: experimentalPreview }),
             ...(comments === undefined ? {} : { comments }),
             metadata: value.metadata,
           };
           stringWithinUtf8Limit(
             JSON.stringify(inspection),
             `mention provider "${providerId}" inspection`,
-            PLUGIN_MENTION_CONTENT_LIMITS.inspectionTotalBytes,
+            EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS.inspectionTotalBytes,
           );
           return inspection;
         },

@@ -2859,7 +2859,8 @@ describe("PromptBoxInternal mention triggers", () => {
   it("keeps a plugin mention preview in the inserted pill tooltip", async () => {
     const suggestion = {
       ...githubIssueSuggestion,
-      preview: "Issue context\nOwner: Web platform\nStatus: In progress",
+      experimental_preview:
+        "Issue context\nOwner: Web platform\nStatus: In progress",
     };
     const { promptBoxRef } = renderPromptBox("@fix", {
       mentionSuggestions: [suggestion],

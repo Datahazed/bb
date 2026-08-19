@@ -13,7 +13,7 @@ const GROUPS: PluginMentionSearchGroup[] = [
         title: "Fix login bug",
         subtitle: "In progress",
         icon: "FileText",
-        preview: "Issue context\nStatus: In progress",
+        experimental_preview: "Issue context\nStatus: In progress",
       },
       {
         itemId: "issues:ISS-43",
@@ -50,7 +50,7 @@ describe("buildPluginMentionSuggestions", () => {
         title: "Fix login bug",
         subtitle: "In progress",
         icon: "FileText",
-        preview: "Issue context\nStatus: In progress",
+        experimental_preview: "Issue context\nStatus: In progress",
         replacement: "Fix login bug",
       },
       {

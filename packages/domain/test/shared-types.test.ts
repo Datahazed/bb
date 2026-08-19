@@ -131,7 +131,7 @@ describe("prompt mention command triggers", () => {
       pluginId: "browser-context",
       itemId: "capture:invite-member",
       label: "Invite member",
-      preview: "Target: button.invite\nComment: Keep prominent",
+      experimental_preview: "Target: button.invite\nComment: Keep prominent",
       experimentalInspectability: true as const,
     };
 

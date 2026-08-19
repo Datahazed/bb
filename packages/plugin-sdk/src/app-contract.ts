@@ -1175,7 +1175,7 @@ export interface ComposerStructuredDraft {
     id: string;
     label: string;
     /** Human-readable preview carried by a plugin mention, when provided. */
-    preview?: string;
+    experimental_preview?: string;
     /** Whether the provider exposes optional host-rendered inspection detail. */
     experimental_inspectable?: boolean;
   }[];
@@ -1209,7 +1209,7 @@ export interface PluginComposerMention {
   /** Pill text shown in the composer. */
   label: string;
   /** Optional human-readable content shown when the pill is hovered or focused. */
-  preview?: string;
+  experimental_preview?: string;
   /** Activate this mention's optional provider inspector. Experimental. */
   experimental_inspectable?: boolean;
 }

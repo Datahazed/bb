@@ -91,7 +91,7 @@ export interface PluginMentionSearchItem {
   icon: string | null;
   /** Absent when talking to a server from before mention previews shipped. */
   /** `null` remains accepted from an older server and normalizes to absent. */
-  preview?: string | null;
+  experimental_preview?: string | null;
   /** `false` remains accepted from an older server and normalizes to absent. */
   experimentalInspectability?: boolean;
 }
@@ -112,9 +112,9 @@ function isMentionSearchItem(value: unknown): value is PluginMentionSearchItem {
     typeof item.title === "string" &&
     (item.subtitle === null || typeof item.subtitle === "string") &&
     (item.icon === null || typeof item.icon === "string") &&
-    (item.preview === undefined ||
-      item.preview === null ||
-      typeof item.preview === "string") &&
+    (item.experimental_preview === undefined ||
+      item.experimental_preview === null ||
+      typeof item.experimental_preview === "string") &&
     (item.experimentalInspectability === undefined ||
       typeof item.experimentalInspectability === "boolean")
   );

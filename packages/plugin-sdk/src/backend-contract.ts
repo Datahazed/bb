@@ -302,7 +302,7 @@ export interface PluginCliResult {
 export const PLUGIN_CLI_OUTPUT_MAX_BYTES = 1024 * 1024;
 
 /** Shared UTF-8 limits for mention previews and provider inspections. */
-export const PLUGIN_MENTION_CONTENT_LIMITS = {
+export const EXPERIMENTAL_PLUGIN_MENTION_CONTENT_LIMITS = {
   searchPreviewBytes: 16 * 1024,
   searchPreviewsTotalBytes: 128 * 1024,
   inspectionTitleBytes: 4 * 1024,
@@ -717,7 +717,7 @@ export interface PluginMentionItem {
   subtitle?: string;
   icon?: string;
   /** Optional human-readable content shown when the inserted pill is previewed. */
-  preview?: string;
+  experimental_preview?: string;
 }
 
 /** Provider-owned detail shown when an inspectable mention is activated. */
@@ -725,7 +725,7 @@ export interface ExperimentalPluginMentionInspection {
   title: string;
   description?: string;
   /** Presentation-only image; never included in send-time agent context. */
-  preview?: { kind: "image"; dataUrl: string; alt: string };
+  experimental_preview?: { kind: "image"; dataUrl: string; alt: string };
   /** Optional human-authored comments displayed with the inspected item. */
   comments?: readonly string[];
   /** Exact, human-readable metadata represented by this mention. */

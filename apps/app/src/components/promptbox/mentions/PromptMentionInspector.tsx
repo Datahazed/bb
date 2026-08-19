@@ -14,7 +14,11 @@ interface MentionInspection {
   /** `null` remains accepted from an older server build. */
   description?: string | null;
   /** `null` remains accepted from an older server build. */
-  preview?: { kind: "image"; dataUrl: string; alt: string } | null;
+  experimental_preview?: {
+    kind: "image";
+    dataUrl: string;
+    alt: string;
+  } | null;
   comments?: readonly string[] | null;
   metadata: string;
 }
@@ -130,7 +134,8 @@ export function PromptMentionInspector({
               <DialogTitle className="min-w-0 text-base leading-snug break-words [overflow-wrap:anywhere]">
                 {inspection?.title ?? label}
               </DialogTitle>
-              {inspection?.preview && inspection.comments !== undefined ? (
+              {inspection?.experimental_preview &&
+              inspection.comments !== undefined ? (
                 <span
                   data-mention-inspector-comment-count="true"
                   className="inline-flex w-fit items-center rounded-full bg-muted/70 px-2 py-0.5 text-[11px] leading-4 font-medium text-muted-foreground"
@@ -141,12 +146,14 @@ export function PromptMentionInspector({
             </div>
             <DialogDescription
               className={
-                inspection?.preview && inspection.comments !== undefined
+                inspection?.experimental_preview &&
+                inspection.comments !== undefined
                   ? "sr-only"
                   : "text-xs leading-relaxed"
               }
             >
-              {inspection?.preview && inspection.comments !== undefined
+              {inspection?.experimental_preview &&
+              inspection.comments !== undefined
                 ? `${comments.length} comment${comments.length === 1 ? "" : "s"} attached to this captured selection.`
                 : (inspection?.description ??
                   (inspection !== null
@@ -166,16 +173,16 @@ export function PromptMentionInspector({
                 onScroll={(event) => measureOverflow(event.currentTarget)}
               >
                 <div ref={contentRef} className="grid min-w-0 gap-4 px-5 py-4">
-                  {inspection.preview ? (
+                  {inspection.experimental_preview ? (
                     <button
                       type="button"
                       className="min-w-0 overflow-hidden rounded-md border border-border-hairline bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label={`Open full-size screenshot: ${inspection.preview.alt}`}
+                      aria-label={`Open full-size screenshot: ${inspection.experimental_preview.alt}`}
                       onClick={() => setImageExpanded(true)}
                     >
                       <img
-                        src={inspection.preview.dataUrl}
-                        alt={inspection.preview.alt}
+                        src={inspection.experimental_preview.dataUrl}
+                        alt={inspection.experimental_preview.alt}
                         className="max-h-72 w-full cursor-zoom-in object-contain"
                         onLoad={() => {
                           if (scrollRef.current !== null) {
@@ -185,7 +192,7 @@ export function PromptMentionInspector({
                       />
                     </button>
                   ) : null}
-                  {inspection.preview && comments.length > 0 ? (
+                  {inspection.experimental_preview && comments.length > 0 ? (
                     <ol aria-label="Comments" className="grid min-w-0 gap-1">
                       {comments.map((comment, index) => (
                         <li
@@ -206,7 +213,7 @@ export function PromptMentionInspector({
                       ))}
                     </ol>
                   ) : null}
-                  {!inspection.preview ? (
+                  {!inspection.experimental_preview ? (
                     <section aria-labelledby="mention-inspector-metadata-heading">
                       <h3
                         id="mention-inspector-metadata-heading"
@@ -241,10 +248,12 @@ export function PromptMentionInspector({
           ) : null}
         </DialogContent>
       </Dialog>
-      {inspection?.preview ? (
+      {inspection?.experimental_preview ? (
         <ImageLightbox
-          imageAlt={inspection.preview.alt}
-          imageSrc={imageExpanded ? inspection.preview.dataUrl : null}
+          imageAlt={inspection.experimental_preview.alt}
+          imageSrc={
+            imageExpanded ? inspection.experimental_preview.dataUrl : null
+          }
           onClose={() => setImageExpanded(false)}
           title={`Screenshot preview: ${inspection.title}`}
         />

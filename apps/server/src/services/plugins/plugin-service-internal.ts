@@ -211,7 +211,7 @@ export interface PluginMentionSearchItem {
   title: string;
   subtitle: string | null;
   icon: string | null;
-  preview?: string;
+  experimental_preview?: string;
   experimentalInspectability?: true;
 }
 
@@ -221,7 +221,11 @@ export type PluginMentionInspectionResult =
       inspection: {
         title: string;
         description?: string;
-        preview?: { kind: "image"; dataUrl: string; alt: string };
+        experimental_preview?: {
+          kind: "image";
+          dataUrl: string;
+          alt: string;
+        };
         metadata: string;
       };
     }

@@ -152,7 +152,8 @@ export function PromptMentionPill({
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const inspectorTriggerRef = useRef<HTMLButtonElement | null>(null);
   const title = promptMentionTooltipLabel(resource);
-  const preview = resource.kind === "plugin" ? resource.preview : undefined;
+  const preview =
+    resource.kind === "plugin" ? resource.experimental_preview : undefined;
   const inspectable =
     interactive &&
     resource.kind === "plugin" &&

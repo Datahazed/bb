@@ -719,9 +719,9 @@ export function useComposer(): PluginComposerApi {
               icon: null,
               itemId: `${provider}:${mention.id}`,
               label,
-              ...(mention.preview === undefined
+              ...(mention.experimental_preview === undefined
                 ? {}
-                : { preview: mention.preview }),
+                : { experimental_preview: mention.experimental_preview }),
               ...(mention.experimental_inspectable === true
                 ? { experimentalInspectability: true as const }
                 : {}),

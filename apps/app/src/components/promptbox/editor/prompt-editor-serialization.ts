@@ -1231,7 +1231,9 @@ export function promptMentionResourceFromSuggestion(
       icon: suggestion.icon,
       itemId: suggestion.itemId,
       label: suggestion.title.trim() || suggestion.itemId,
-      ...(suggestion.preview == null ? {} : { preview: suggestion.preview }),
+      ...(suggestion.experimental_preview == null
+        ? {}
+        : { experimental_preview: suggestion.experimental_preview }),
       ...(suggestion.experimentalInspectability === true
         ? { experimentalInspectability: true as const }
         : {}),

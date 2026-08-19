@@ -70,7 +70,7 @@ export type PromptMentionSuggestion =
       /** Named shared-UI icon hint supplied by the plugin item. */
       icon: string | null;
       /** Optional human-readable content shown from the inserted pill. */
-      preview?: string | null;
+      experimental_preview?: string | null;
       experimentalInspectability?: boolean;
       replacement: string;
     };

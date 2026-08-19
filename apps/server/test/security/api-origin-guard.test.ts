@@ -227,7 +227,10 @@ describe("/api/v1 browser origin guard", () => {
 
     expect(
       await statusFor(server.baseUrl, {
-        headers: { origin: "https://app.example.com" },
+        headers: {
+          origin: "https://app.example.com",
+          "sec-fetch-site": "cross-site",
+        },
       }),
     ).toBe(200);
   });

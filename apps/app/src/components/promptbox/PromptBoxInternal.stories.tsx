@@ -539,7 +539,7 @@ const mentionPreviewFixture = buildPromptPillsFixture(
         pluginId: "browser-context",
         itemId: "capture:invite-member",
         label: "Invite member",
-        preview: [
+        experimental_preview: [
           'Page: "Acme Team Settings"',
           'Target: button.invite — "Invite member"',
           'Accessibility: role="button"; name="Invite a team member"',
@@ -560,7 +560,7 @@ const overflowingMentionPreviewFixture = buildPromptPillsFixture(
         pluginId: "browser-context",
         itemId: "capture:members-region",
         label: "Members region",
-        preview: [
+        experimental_preview: [
           'Page: "Acme Team Settings"',
           "Region: section#members — 646×366 at 20,298",
           "Common ancestor: main > section#members",
