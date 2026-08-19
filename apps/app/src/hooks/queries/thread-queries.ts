@@ -1,4 +1,5 @@
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useQuery,
   useQueryClient,
@@ -172,6 +173,8 @@ export interface UseThreadSearchResult {
   isError: boolean;
   isFetching: boolean;
   isLoading: boolean;
+  /** `data` belongs to the previous query while the current one is fetching. */
+  isPlaceholderData: boolean;
 }
 
 interface BuildThreadSubsetListFiltersArgs {
@@ -619,6 +622,10 @@ export function useThreadSearch({
         signal,
       }),
     enabled,
+    // Each keystroke changes the query key. Keep the previous results mounted
+    // while the next fetch runs so the list updates in place instead of
+    // collapsing to a spinner and remounting every row.
+    placeholderData: keepPreviousData,
     staleTime: THREAD_SEARCH_STALE_TIME_MS,
   });
 
@@ -630,6 +637,7 @@ export function useThreadSearch({
     isError: threadSearchQuery.isError,
     isFetching: threadSearchQuery.isFetching,
     isLoading: threadSearchQuery.isLoading,
+    isPlaceholderData: threadSearchQuery.isPlaceholderData,
   };
 }
 

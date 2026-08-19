@@ -106,6 +106,7 @@ function ThreadSearchMessage({
 
 function renderSectionRows({
   activeIndex,
+  isUpdating,
   sectionNamesById,
   onActiveIndexChange,
   onSelect,
@@ -115,6 +116,7 @@ function renderSectionRows({
   startIndex,
 }: {
   activeIndex: number;
+  isUpdating: boolean;
   sectionNamesById: ReadonlyMap<string, string>;
   onActiveIndexChange: (index: number) => void;
   onSelect: (item: SidebarThreadSearchNavigationItem) => void;
@@ -145,6 +147,13 @@ function renderSectionRows({
           <span className="ml-auto shrink-0 text-xs text-muted-foreground">
             {section.rows.length}/{section.total}
           </span>
+        ) : null}
+        {isUpdating ? (
+          <Icon
+            name="Spinner"
+            aria-label="Updating results"
+            className="ml-1 inline-block size-3 animate-spin align-[-2px] text-muted-foreground"
+          />
         ) : null}
       </div>
       <div className="space-y-0.5">
@@ -189,8 +198,15 @@ export function SidebarThreadSearchPanel({
   const trimmedQuery = query.trim();
   const liveQueryIsSearchable = hasThreadSearchableQuery(trimmedQuery);
   const threadSearch = useThreadSearch({ active: true, query });
-  const searchResultsAreCurrent =
-    !liveQueryIsSearchable || threadSearch.debouncedQuery === trimmedQuery;
+  // Previous results stay on screen while the debounce and the next fetch
+  // run (`keepPreviousData` in useThreadSearch); rows update in place and keep
+  // their keys instead of collapsing to a spinner and remounting.
+  const isUpdating =
+    liveQueryIsSearchable &&
+    (threadSearch.isDebouncing ||
+      threadSearch.debouncedQuery !== trimmedQuery ||
+      threadSearch.isPlaceholderData ||
+      threadSearch.isFetching);
   const sections = useMemo<ThreadSearchSection[]>(() => {
     if (!liveQueryIsSearchable) {
       const rows = recentThreads
@@ -206,23 +222,6 @@ export function SidebarThreadSearchPanel({
           label: "Recent",
           rows,
           total: rows.length,
-        },
-      ];
-    }
-
-    if (!searchResultsAreCurrent) {
-      return [
-        {
-          id: "active",
-          label: "Threads",
-          rows: [],
-          total: 0,
-        },
-        {
-          id: "archived",
-          label: "Archived",
-          rows: [],
-          total: 0,
         },
       ];
     }
@@ -253,12 +252,7 @@ export function SidebarThreadSearchPanel({
         total: threadSearch.data?.archived.total ?? 0,
       },
     ];
-  }, [
-    liveQueryIsSearchable,
-    recentThreads,
-    searchResultsAreCurrent,
-    threadSearch.data,
-  ]);
+  }, [liveQueryIsSearchable, recentThreads, threadSearch.data]);
   const rows = useMemo(
     () => sections.flatMap((section) => section.rows),
     [sections],
@@ -269,17 +263,16 @@ export function SidebarThreadSearchPanel({
     onNavigationItemsChange(navigationItems);
   }, [navigationItems, onNavigationItemsChange]);
 
-  const isLoading =
-    liveQueryIsSearchable &&
-    (!searchResultsAreCurrent ||
-      threadSearch.isDebouncing ||
-      (threadSearch.isLoading && threadSearch.data === undefined));
   const hasRows = rows.length > 0;
+  // The full-width searching message is only for the empty state; with rows on
+  // screen the section header carries a small updating spinner instead so the
+  // list does not shift.
+  const isLoading = isUpdating && !hasRows;
   const showRecentLoading = !liveQueryIsSearchable && isRecentsLoading;
   const showError =
-    liveQueryIsSearchable && threadSearch.isError && !isLoading && !hasRows;
+    liveQueryIsSearchable && threadSearch.isError && !isUpdating && !hasRows;
   const showNoSearchResults =
-    liveQueryIsSearchable && !isLoading && !showError && !hasRows;
+    liveQueryIsSearchable && !isUpdating && !showError && !hasRows;
   const showTypeToSearch =
     !liveQueryIsSearchable && !showRecentLoading && recentThreads.length === 0;
   let startIndex = 0;
@@ -294,6 +287,7 @@ export function SidebarThreadSearchPanel({
       // would stack on top of that and squeeze the results narrower than every
       // other sidebar row.
       className="space-y-3 pb-3 group-data-[collapsible=icon]:hidden"
+      aria-busy={isUpdating || undefined}
     >
       {showRecentLoading ? (
         <ThreadSearchMessage
@@ -324,6 +318,7 @@ export function SidebarThreadSearchPanel({
       {sections.map((section) => {
         const renderedSection = renderSectionRows({
           activeIndex,
+          isUpdating: isUpdating && startIndex === 0,
           sectionNamesById,
           onActiveIndexChange,
           onSelect,

@@ -114,23 +114,51 @@ afterEach(() => {
 });
 
 describe("SidebarThreadSearchPanel", () => {
-  it("clears stale search rows while the visible query is debouncing", () => {
+  it("keeps previous rows mounted with an updating indicator while the query is debouncing", () => {
+    const previous = createSearchResponse(
+      createThreadListEntry({
+        id: "thr_previous",
+        title: "Previous needle",
+      }),
+    );
     mockThreadSearch({
-      data: createSearchResponse(
-        createThreadListEntry({
-          id: "thr_previous",
-          title: "Previous needle",
-        }),
-      ),
+      data: previous,
+      debouncedQuery: "needle",
+      hasSearchableQuery: true,
+      isDebouncing: false,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+      isPlaceholderData: false,
+    });
+    const view = render(
+      <SidebarThreadSearchPanel
+        activeIndex={0}
+        isRecentsLoading={false}
+        onActiveIndexChange={vi.fn()}
+        onNavigationItemsChange={vi.fn()}
+        onSelect={vi.fn()}
+        projectNamesById={new Map()}
+        query="needle"
+        recentThreads={[]}
+      />,
+    );
+    const settledRow = screen.getByRole("option");
+    expect(screen.queryByLabelText("Updating results")).toBeNull();
+
+    // The user keeps typing: the debounced query lags and the previous
+    // response is served as placeholder data for the next key.
+    mockThreadSearch({
+      data: previous,
       debouncedQuery: "needle",
       hasSearchableQuery: true,
       isDebouncing: true,
       isError: false,
       isFetching: false,
       isLoading: false,
+      isPlaceholderData: false,
     });
-
-    render(
+    view.rerender(
       <SidebarThreadSearchPanel
         activeIndex={0}
         isRecentsLoading={false}
@@ -143,7 +171,68 @@ describe("SidebarThreadSearchPanel", () => {
       />,
     );
 
+    // Same DOM node: the row was updated in place, not remounted.
+    expect(screen.getByRole("option")).toBe(settledRow);
+    expect(screen.queryByText("Searching threads...")).toBeNull();
+    expect(screen.queryByText("No matching threads")).toBeNull();
+    expect(screen.getByLabelText("Updating results")).not.toBeNull();
+    expect(
+      screen.getByRole("listbox").getAttribute("aria-busy"),
+    ).toBe("true");
+
+    mockThreadSearch({
+      data: previous,
+      debouncedQuery: "needle updated",
+      hasSearchableQuery: true,
+      isDebouncing: false,
+      isError: false,
+      isFetching: true,
+      isLoading: false,
+      isPlaceholderData: true,
+    });
+    view.rerender(
+      <SidebarThreadSearchPanel
+        activeIndex={0}
+        isRecentsLoading={false}
+        onActiveIndexChange={vi.fn()}
+        onNavigationItemsChange={vi.fn()}
+        onSelect={vi.fn()}
+        projectNamesById={new Map()}
+        query="needle updated"
+        recentThreads={[]}
+      />,
+    );
+    expect(screen.getByRole("option")).toBe(settledRow);
+    expect(screen.getByLabelText("Updating results")).not.toBeNull();
+  });
+
+  it("shows the searching message only when there are no rows to keep", () => {
+    mockThreadSearch({
+      data: undefined,
+      debouncedQuery: "",
+      hasSearchableQuery: false,
+      isDebouncing: true,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+      isPlaceholderData: false,
+    });
+
+    render(
+      <SidebarThreadSearchPanel
+        activeIndex={0}
+        isRecentsLoading={false}
+        onActiveIndexChange={vi.fn()}
+        onNavigationItemsChange={vi.fn()}
+        onSelect={vi.fn()}
+        projectNamesById={new Map()}
+        query="needle"
+        recentThreads={[]}
+      />,
+    );
+
     expect(screen.getByText("Searching threads...")).not.toBeNull();
+    expect(screen.queryByText("No matching threads")).toBeNull();
     expect(screen.queryByRole("option")).toBeNull();
   });
 
@@ -162,6 +251,7 @@ describe("SidebarThreadSearchPanel", () => {
       isError: false,
       isFetching: false,
       isLoading: false,
+      isPlaceholderData: false,
     });
 
     render(
@@ -204,6 +294,7 @@ describe("SidebarThreadSearchPanel", () => {
       isError: false,
       isFetching: false,
       isLoading: false,
+      isPlaceholderData: false,
     });
 
     render(
@@ -242,6 +333,7 @@ describe("SidebarThreadSearchPanel", () => {
       isError: false,
       isFetching: false,
       isLoading: false,
+      isPlaceholderData: false,
     });
 
     render(
@@ -280,6 +372,7 @@ describe("SidebarThreadSearchPanel", () => {
       isError: false,
       isFetching: false,
       isLoading: false,
+      isPlaceholderData: false,
     });
 
     render(
@@ -319,6 +412,7 @@ describe("SidebarThreadSearchPanel", () => {
       isError: false,
       isFetching: false,
       isLoading: false,
+      isPlaceholderData: false,
     });
 
     render(
@@ -368,6 +462,7 @@ describe("SidebarThreadSearchPanel", () => {
       isError: false,
       isFetching: false,
       isLoading: false,
+      isPlaceholderData: false,
     });
 
     render(
