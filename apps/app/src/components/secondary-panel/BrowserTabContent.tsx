@@ -342,13 +342,13 @@ function BrowserChrome({
             />
           </div>
         </form>
+        {pluginActions}
         <NavButton
           icon="ExternalLink"
           label="Open in external browser"
           disabled={currentUrl.length === 0}
           onClick={onOpenExternal}
         />
-        {pluginActions}
         {isLoading ? (
           <span className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden">
             <span className="block h-full w-1/3 animate-pulse bg-ring/70 motion-reduce:animate-none" />

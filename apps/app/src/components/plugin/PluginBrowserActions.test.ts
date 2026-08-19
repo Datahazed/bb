@@ -4,6 +4,7 @@ import { browserActionInlineCount } from "./PluginBrowserActions";
 describe("browserActionInlineCount", () => {
   it("keeps ordinary Browser chrome actions inline", () => {
     expect(browserActionInlineCount(3, 760)).toBe(3);
+    expect(browserActionInlineCount(8, 760)).toBe(8);
   });
 
   it("reserves one compact slot for host-owned overflow", () => {

@@ -15,6 +15,7 @@ import type {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
@@ -262,8 +263,12 @@ function BrowserActionSlotRuntime({
 function BrowserActionMount({
   slot,
   mountIdentity,
+  controlRef,
   ...runtimeProps
-}: BrowserActionSlotRuntimeProps & { mountIdentity: string }) {
+}: BrowserActionSlotRuntimeProps & {
+  mountIdentity: string;
+  controlRef?: (node: HTMLSpanElement | null) => void;
+}) {
   return (
     <PluginSlotMount
       key={`${slot.pluginId}/${slot.id}/${slot.generation}/${mountIdentity}`}
@@ -274,6 +279,7 @@ function BrowserActionMount({
       crashFallback={null}
     >
       <span
+        ref={controlRef}
         role="group"
         aria-label={slot.title}
         className="flex size-7 shrink-0 items-center justify-center overflow-hidden [&>*]:max-h-7 [&>*]:max-w-7"
@@ -282,6 +288,17 @@ function BrowserActionMount({
       </span>
     </PluginSlotMount>
   );
+}
+
+function browserActionKey(slot: PluginBrowserActionSlot): string {
+  return `${slot.pluginId}/${slot.id}/${slot.generation}`;
+}
+
+function activateBrowserAction(root: HTMLElement | undefined): void {
+  const control = root?.querySelector<HTMLElement>(
+    'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [role="button"]:not([aria-disabled="true"]), [tabindex]:not([tabindex="-1"])',
+  );
+  control?.click();
 }
 
 export function browserActionInlineCount(
@@ -313,6 +330,7 @@ export function PluginBrowserActions({
   const { browserActions } = usePluginSlots();
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowOwner = useMemo(() => Symbol("browser-action-overflow"), []);
+  const overflowActionRoots = useRef(new Map<string, HTMLSpanElement>());
   const inlineCount = browserActionInlineCount(
     browserActions.length,
     chromeWidth,
@@ -365,45 +383,64 @@ export function PluginBrowserActions({
         />
       ))}
       {overflow.length > 0 ? (
-        <DropdownMenu
-          open={overflowOpen}
-          onOpenChange={handleOverflowOpenChange}
-        >
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={`More Browser actions (${overflow.length})`}
-              className={cn(
-                "flex shrink-0 items-center justify-center transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
-                CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
-              )}
+        <>
+          <div className="hidden" aria-hidden="true">
+            {overflow.map((slot) => {
+              const key = browserActionKey(slot);
+              return (
+                <BrowserActionMount
+                  key={`${key}/${mountIdentity}`}
+                  slot={slot}
+                  mountIdentity={mountIdentity}
+                  controlRef={(node) => {
+                    if (node === null) overflowActionRoots.current.delete(key);
+                    else overflowActionRoots.current.set(key, node);
+                  }}
+                  {...runtimeProps}
+                />
+              );
+            })}
+          </div>
+          <DropdownMenu
+            open={overflowOpen}
+            onOpenChange={handleOverflowOpenChange}
+          >
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={`More Browser actions (${overflow.length})`}
+                className={cn(
+                  "flex shrink-0 items-center justify-center transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                  COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+                  CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+                )}
+              >
+                <Icon name="MoreHorizontal" aria-hidden />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="min-w-48"
+              mobileTitle="More Browser actions"
             >
-              <Icon name="MoreHorizontal" aria-hidden />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-48 p-1.5">
-            <div
-              className="space-y-0.5"
-              role="group"
-              aria-label="Browser actions"
-            >
-              {overflow.map((slot) => (
-                <div
-                  key={`${slot.pluginId}/${slot.id}/${slot.generation}/${mountIdentity}`}
-                  className="flex h-9 items-center gap-3 rounded-md px-2 text-sm text-foreground"
-                >
-                  <span className="min-w-0 flex-1 truncate">{slot.title}</span>
-                  <BrowserActionMount
-                    slot={slot}
-                    mountIdentity={mountIdentity}
-                    {...runtimeProps}
-                  />
-                </div>
-              ))}
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {overflow.map((slot) => {
+                const key = browserActionKey(slot);
+                return (
+                  <DropdownMenuItem
+                    key={`${key}/${mountIdentity}`}
+                    onSelect={() =>
+                      activateBrowserAction(
+                        overflowActionRoots.current.get(key),
+                      )
+                    }
+                  >
+                    <span className="min-w-0 truncate">{slot.title}</span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
       ) : null}
     </div>
   );
