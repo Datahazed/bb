@@ -1,0 +1,46 @@
+{
+  "coreHead": "c3fe8ee68c5ddfe80b58e4b60bcf4da49bc1e43b",
+  "consumerHead": "e5628940b",
+  "threadId": "thr_5tj5nr9qww",
+  "fixture": {
+    "name": "Browser Context exact-target QA",
+    "mentionCount": 16,
+    "source": "persisted Browser Context captures"
+  },
+  "captures": [
+    {
+      "file": "final-dense-pills-tooltip.png",
+      "state": "dense composer with one hovered mention tooltip",
+      "viewport": { "width": 1280, "height": 900, "deviceScaleFactor": 2 },
+      "image": { "width": 2560, "height": 1800 },
+      "proof": { "mentionCount": 16, "tooltipCount": 1 }
+    },
+    {
+      "file": "final-dense-pill-modal.png",
+      "state": "mention inspector with keyboard-focused close control",
+      "viewport": { "width": 1280, "height": 900, "deviceScaleFactor": 2 },
+      "image": { "width": 2560, "height": 1800 },
+      "proof": { "outlineStyle": "none", "outlineWidth": "0px", "paintedFocusRing": false }
+    },
+    {
+      "file": "final-lightbox-close-left-desktop.png",
+      "state": "expanded preview at desktop width",
+      "viewport": { "width": 1280, "height": 900, "deviceScaleFactor": 2 },
+      "image": { "width": 2560, "height": 1800 },
+      "proof": { "closeToImageGapPx": 7.6, "overlap": false }
+    },
+    {
+      "file": "final-lightbox-close-left-narrow.png",
+      "state": "expanded preview at narrow width",
+      "viewport": { "width": 768, "height": 900, "deviceScaleFactor": 2 },
+      "image": { "width": 1536, "height": 1800 },
+      "proof": { "closeToImageGapPx": 8, "overlap": false }
+    }
+  ],
+  "sustainedInteraction": {
+    "action": "close and reopen expanded preview",
+    "cycles": 5,
+    "gapsPx": [7.6, 7.6, 7.6, 7.6, 7.6],
+    "overlaps": [false, false, false, false, false]
+  }
+}
