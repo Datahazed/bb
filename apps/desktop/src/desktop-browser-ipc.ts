@@ -31,3 +31,9 @@ export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL =
   "bb-desktop:browser:experimental-capture-page";
 export const BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL =
   "bb-desktop:browser:experimental-navigate-page";
+export const BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL =
+  "bb-desktop:browser:find-in-page";
+export const BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL =
+  "bb-desktop:browser:stop-find-in-page";
+export const BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL =
+  "bb-desktop:browser:find-result";

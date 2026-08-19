@@ -58,6 +58,17 @@ const EDGE_EPSILON_PX = 1;
 
 export const SECONDARY_PANEL_TAB_STRIP_FADE_TONE: OverflowFadeTone = "sidebar";
 
+/**
+ * Stand-in for dnd-kit's TouchSensor while the panel is closed or has nothing
+ * to reorder: same activators (so the sensor slot keeps its shape) but no
+ * window `touchmove` listener from `setup`.
+ */
+class InertTouchSensor extends TouchSensor {
+  static override setup(): () => void {
+    return () => {};
+  }
+}
+
 interface TabStripOverflowState {
   /** The intrinsic tab row is wider than the whole strip. */
   hasOverflow: boolean;
@@ -77,6 +88,13 @@ export interface SecondaryPanelTabStripProps {
   fileTabs: SecondaryPanelFileTab[];
   onReorderTab: SecondaryPanelTabReorderHandler;
   usesDesktopChrome: boolean;
+  /**
+   * Whether the hosting panel is open. The strip stays mounted inside a closed
+   * (retained) panel; touch reorder is only wired while it is open so the
+   * dnd-kit touch sensor's scroll-blocking window listener does not exist on
+   * every page.
+   */
+  isPanelOpen: boolean;
   activeTreatment?: "fill" | "underline";
 }
 
@@ -101,6 +119,7 @@ export function SecondaryPanelTabStrip({
   fileTabs,
   onReorderTab,
   usesDesktopChrome,
+  isPanelOpen,
   activeTreatment = "fill",
 }: SecondaryPanelTabStripProps) {
   const stripRef = useRef<HTMLDivElement>(null);
@@ -126,14 +145,25 @@ export function SecondaryPanelTabStrip({
     clearDragClickSuppressionSoon,
     consumeDragClickSuppression,
   } = useDragClickSuppression();
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
-  );
-  const tabIds = useMemo(() => fileTabs.map((tab) => tab.id), [fileTabs]);
   const dragDisabled = fileTabs.length < 2;
+  const mouseSensor = useSensor(MouseSensor, {
+    activationConstraint: { distance: 4 },
+  });
+  // dnd-kit's TouchSensor keeps a NON-passive window `touchmove` listener
+  // installed while any DndContext using it is mounted, which makes every
+  // scroll start on phones wait for the main thread. Only wire the real
+  // sensor while there is something to reorder in an open panel. The sensor
+  // list must keep a constant length: DndContext's setup effect uses the
+  // sensor classes as its dependency array, and React skips an effect whose
+  // dependency array merely changed size, so swapping the CLASS (rather than
+  // dropping the entry) is what makes the listener install on open and go
+  // away on close.
+  const touchSensor = useSensor(
+    isPanelOpen && !dragDisabled ? TouchSensor : InertTouchSensor,
+    { activationConstraint: { delay: 200, tolerance: 6 } },
+  );
+  const sensors = useSensors(mouseSensor, touchSensor);
+  const tabIds = useMemo(() => fileTabs.map((tab) => tab.id), [fileTabs]);
   const draggingTab =
     draggingTabId === null
       ? null

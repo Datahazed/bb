@@ -46,19 +46,21 @@ import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import { FilePreview } from "@/components/secondary-panel/FilePreview";
 import {
-  HostFilePreviewTabContent,
-  ProjectFilePreviewTabContent,
-  ThreadStorageFilePreviewTabContent,
-  WorkspaceFilePreviewTabContent,
-} from "@/components/secondary-panel/ThreadSecondaryPanelTabContent";
-import { BrowserTabDeck } from "@/components/secondary-panel/BrowserTabDeck";
+  LazyBrowserTabDeck,
+  LazyFilePreview,
+  LazyHostFilePreviewTabContent,
+  LazyNewTabPage,
+  LazyProjectFilePreviewTabContent,
+  LazyThreadStorageFilePreviewTabContent,
+  LazyThreadTerminalPanel,
+  LazyWorkspaceFilePreviewTabContent,
+} from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
-import { NewTabPage } from "@/components/secondary-panel/NewTabPage";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { PageShell } from "@/components/ui/page-shell.js";
+import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
 import { Button } from "@bb/shared-ui/button";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -145,14 +147,16 @@ import {
 import { resolveComposeHostId } from "./root-compose-environment-selection";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 import { RootComposeEmptyWelcome } from "./RootComposeEmptyWelcome";
-import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
+import {
+  shouldLoadThreadStorageFileList,
+  useThreadStorageViewer,
+} from "@/components/secondary-panel/useThreadStorageViewer";
 import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
 import { isSecondaryFileTab } from "@/components/secondary-panel/secondaryPanelTabState";
 import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
-import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
 import {
   DEFAULT_TERMINAL_COLS,
   DEFAULT_TERMINAL_ROWS,
@@ -602,13 +606,7 @@ export function LegacyProjectComposeRedirect({
     });
   }, [location.state, navigate, projectId, setRootComposeProjectId]);
 
-  return (
-    <PageShell contentClassName="min-h-full items-center justify-center">
-      <p className="py-12 text-center text-sm text-muted-foreground">
-        Loading…
-      </p>
-    </PageShell>
-  );
+  return <RouteLoadingSkeleton />;
 }
 
 export function RootComposeView() {
@@ -768,7 +766,6 @@ function RootComposeSurface({
     isProjectless,
     projects,
     sidebarNavigation,
-    sidebarNavigationSettled,
     sidebarNavigationError,
     currentProject,
     projectSources,
@@ -974,7 +971,7 @@ function RootComposeSurface({
     startInstall({ hostId: composeHostId, issue: codexCliIssue });
   }, [codexCliIssue, composeHostId, startInstall]);
 
-  useFixedPanelTabsStorageMaintenance(ROOT_COMPOSE_FIXED_PANEL_STATE_ID);
+  useFixedPanelTabsStorageMaintenance();
   const fixedPanelTabsState = useFixedPanelTabsState(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,
@@ -1091,7 +1088,11 @@ function RootComposeSurface({
     threadStorageRootPath: rootThreadStorageRootPath,
   } = useThreadStorageViewer({
     activePath: null,
-    fileListEnabled: rootPanelThreadId !== null,
+    fileListEnabled: shouldLoadThreadStorageFileList({
+      hasThread: rootPanelThreadId !== null,
+      isSecondaryPanelOpen,
+      secondaryTabs: fixedPanelTabsState.secondary.tabs,
+    }),
     filePreviewEnabled: false,
     threadId: rootPanelThreadId ?? undefined,
   });
@@ -1425,7 +1426,7 @@ function RootComposeSurface({
         return null;
       }
       return (
-        <BrowserTabDeck
+        <LazyBrowserTabDeck
           browserTabs={browserTabs}
           activeBrowserTabId={activeBrowserTab?.id ?? null}
           addressFocusRequest={browserAddressFocusRequest}
@@ -1996,7 +1997,7 @@ function RootComposeSurface({
     );
   const fileTabContent: ReactNode =
     activeTerminalId && rootPanelTerminalTarget ? (
-      <ThreadTerminalPanel
+      <LazyThreadTerminalPanel
         autoFocus={shouldAutoFocusTerminal}
         canCreateTerminal={canCreateRootTerminal}
         isPanelOpen={isSecondaryPanelOpen}
@@ -2009,7 +2010,7 @@ function RootComposeSurface({
         target={rootPanelTerminalTarget}
       />
     ) : isNewTabActive ? (
-      <NewTabPage
+      <LazyNewTabPage
         autoFocus={shouldAutoFocusNewTab}
         projectId={isProjectless ? undefined : projectId}
         environmentId={rootPanelEnvironmentId}
@@ -2028,10 +2029,11 @@ function RootComposeSurface({
     ) : activeWorkspaceFilePath !== null &&
       activeWorkspaceFileEnvironmentId !== null ? (
       renderFileOpenerReplacement(
-        <WorkspaceFilePreviewTabContent
+        <LazyWorkspaceFilePreviewTabContent
           activePath={activeWorkspaceFilePath}
           copyPath={workspaceFileCopyPath}
           environmentId={activeWorkspaceFileEnvironmentId}
+          isPanelOpen={isSecondaryPanelOpen}
           lineRange={activeWorkspaceFileLineRange}
           onOpenInEditor={handleOpenWorkspaceFileInEditor}
           onSelectionAddToChat={handleRootPanelSelectionAddToChat}
@@ -2043,11 +2045,12 @@ function RootComposeSurface({
     ) : activeWorkspaceFilePath !== null &&
       activeWorkspaceFileProjectPreviewId !== null ? (
       renderFileOpenerReplacement(
-        <ProjectFilePreviewTabContent
+        <LazyProjectFilePreviewTabContent
           activePath={activeWorkspaceFilePath}
           copyPath={projectFileCopyPath}
           environmentId={rootPanelEnvironmentId}
           hostId={rootProjectHostId}
+          isPanelOpen={isSecondaryPanelOpen}
           lineRange={activeWorkspaceFileLineRange}
           onOpenInEditor={handleOpenProjectFileInEditor}
           onSelectionAddToChat={handleRootPanelSelectionAddToChat}
@@ -2057,17 +2060,18 @@ function RootComposeSurface({
     ) : activeHostFilePath !== null ? (
       renderFileOpenerReplacement(
         activeRootHostFileThreadId && activeRootHostFileEnvironmentId ? (
-          <HostFilePreviewTabContent
+          <LazyHostFilePreviewTabContent
             activePath={activeHostFilePath}
             copyPath={activeHostFilePath}
             environmentId={activeRootHostFileEnvironmentId}
+            isPanelOpen={isSecondaryPanelOpen}
             lineRange={activeHostFileLineRange}
             onOpenInEditor={handleOpenHostFileInEditor}
             onSelectionAddToChat={handleRootPanelSelectionAddToChat}
             threadId={activeRootHostFileThreadId}
           />
         ) : (
-          <FilePreview
+          <LazyFilePreview
             path={activeHostFilePath}
             copyPath={activeHostFilePath}
             onOpenInEditor={handleOpenHostFileInEditor}
@@ -2078,16 +2082,17 @@ function RootComposeSurface({
     ) : activeStorageFilePath !== null ? (
       renderFileOpenerReplacement(
         activeRootStorageFileThreadId ? (
-          <ThreadStorageFilePreviewTabContent
+          <LazyThreadStorageFilePreviewTabContent
             activePath={activeStorageFilePath}
             copyPath={storageFileCopyPath}
+            isPanelOpen={isSecondaryPanelOpen}
             lineRange={activeStorageFileLineRange}
             onOpenInEditor={handleOpenStorageFileInEditor}
             onSelectionAddToChat={handleRootPanelSelectionAddToChat}
             threadId={activeRootStorageFileThreadId}
           />
         ) : (
-          <FilePreview
+          <LazyFilePreview
             path={activeStorageFilePath}
             copyPath={storageFileCopyPath}
             onOpenInEditor={handleOpenStorageFileInEditor}
@@ -2267,15 +2272,10 @@ function RootComposeSurface({
     runningJobKey,
   ]);
 
-  if (!sidebarNavigationSettled) {
-    return (
-      <PageShell contentClassName="min-h-full items-center justify-center">
-        <p className="py-12 text-center text-sm text-muted-foreground">
-          Loading…
-        </p>
-      </PageShell>
-    );
-  }
+  // The composer renders immediately with loading pickers; only a failed
+  // bootstrap with no projects at all replaces it (see B28). While the
+  // bootstrap is in flight the project picker shows a loading label and the
+  // projectId-dependent queries inside NewThreadComposer stay disabled.
   if (!projects && sidebarNavigationError) {
     return (
       <PageShell contentClassName="min-h-full items-center justify-center">

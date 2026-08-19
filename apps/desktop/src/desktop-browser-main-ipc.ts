@@ -6,6 +6,7 @@ import {
 } from "electron";
 import {
   bbDesktopBrowserAttachRequestSchema,
+  bbDesktopBrowserFindInPageRequestSchema,
   bbDesktopBrowserNavigateRequestSchema,
   bbDesktopBrowserPageNavigateRequestSchema,
   bbDesktopBrowserPageCaptureRequestSchema,
@@ -13,6 +14,7 @@ import {
   bbDesktopBrowserPageScriptRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserSetVisibleRequestSchema,
+  bbDesktopBrowserStopFindInPageRequestSchema,
   bbDesktopBrowserTabRefSchema,
 } from "@bb/desktop-contract";
 import {
@@ -22,6 +24,7 @@ import {
   BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -29,6 +32,7 @@ import {
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
+  BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import type { DesktopBrowserViewManager } from "./desktop-browser-view.js";
 
@@ -174,6 +178,37 @@ export function registerDesktopBrowserIpc(
         return;
       }
       manager.setVisible({ hostWindow, request: parsed.data });
+    },
+  );
+
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        return;
+      }
+      const parsed = bbDesktopBrowserFindInPageRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      manager.findInPage({ hostWindow, request: parsed.data });
+    },
+  );
+
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        return;
+      }
+      const parsed =
+        bbDesktopBrowserStopFindInPageRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      manager.stopFindInPage({ hostWindow, request: parsed.data });
     },
   );
 

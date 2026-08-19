@@ -28,7 +28,8 @@ import {
 } from "./query-helpers";
 import {
   EXPENSIVE_MANUAL_QUERY_POLICY,
-  FAST_FOCUS_OWNED_LIVE_QUERY_POLICY,
+  HEAVY_PAYLOAD_QUERY_POLICY,
+  REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
 } from "./query-policies";
 
@@ -52,7 +53,7 @@ interface UseProjectPathSuggestionsArgs {
   includeDirectories: boolean;
 }
 
-interface UseProjectCommandsArgs {
+export interface UseProjectCommandsArgs {
   projectId: string | undefined;
   providerId: string | undefined;
   environmentId: string | null;
@@ -60,6 +61,13 @@ interface UseProjectCommandsArgs {
 }
 
 const PROJECT_SOURCE_BRANCHES_LIMIT = 50;
+/**
+ * The branch list is a daemon git RPC (throttled fetch + several git
+ * commands). Realtime `project-sources-changed` refreshes it and the branch
+ * picker refetches on open, so a foreground/focus refetch only re-runs that
+ * RPC without new information.
+ */
+const PROJECT_SOURCE_BRANCHES_STALE_MS = 30_000;
 
 function decodeBase64Bytes(content: string): Uint8Array {
   const binaryContent = atob(content);
@@ -130,7 +138,8 @@ export function useProjectSourceBranches(
         signal,
       }),
     enabled,
-    ...FAST_FOCUS_OWNED_LIVE_QUERY_POLICY,
+    ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
+    staleTime: PROJECT_SOURCE_BRANCHES_STALE_MS,
     placeholderData: (previousData, previousQuery) =>
       projectId && hostId
         ? resolveProjectSourceBranchesPlaceholder({
@@ -263,6 +272,7 @@ export function useProjectFilePreview(
     },
     enabled,
     ...EXPENSIVE_MANUAL_QUERY_POLICY,
+    ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }
 
@@ -274,6 +284,28 @@ export function useProjectFilePreview(
  * mentions, the command list is enabled even with an empty query (commands show
  * the full list on `/`); the caller gates fetching via `options.enabled`.
  */
+export function projectCommandsQueryOptions(args: UseProjectCommandsArgs) {
+  return {
+    queryKey: projectCommandsQueryKey(
+      args.projectId,
+      args.providerId,
+      args.environmentId,
+      args.hostId,
+    ),
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      sdk.projects.commands({
+        projectId: requireProjectId(args.projectId, "useProjectCommands"),
+        provider: requireProviderId(args.providerId, "useProjectCommands"),
+        signal,
+        ...(args.environmentId !== null
+          ? { environmentId: args.environmentId }
+          : args.hostId !== null
+            ? { hostId: args.hostId }
+            : {}),
+      }),
+  };
+}
+
 export function useProjectCommands(
   args: UseProjectCommandsArgs,
   options?: QueryOptions,
@@ -285,23 +317,7 @@ export function useProjectCommands(
   useProjectDetailRealtimeSubscription(args.projectId, { enabled });
 
   return useQuery<CommandListResponse>({
-    queryKey: projectCommandsQueryKey(
-      args.projectId,
-      args.providerId,
-      args.environmentId,
-      args.hostId,
-    ),
-    queryFn: ({ signal }) =>
-      sdk.projects.commands({
-        projectId: requireProjectId(args.projectId, "useProjectCommands"),
-        provider: requireProviderId(args.providerId, "useProjectCommands"),
-        signal,
-        ...(args.environmentId !== null
-          ? { environmentId: args.environmentId }
-          : args.hostId !== null
-            ? { hostId: args.hostId }
-            : {}),
-      }),
+    ...projectCommandsQueryOptions(args),
     enabled,
     ...TYPEAHEAD_QUERY_POLICY,
     // Reopening the slash menu refreshes provider-native files that may have

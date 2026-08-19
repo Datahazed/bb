@@ -31,6 +31,7 @@ type AppSettings = z$1.infer<typeof appSettingsSchema>;
 
 declare const appKeybindingOverridesSchema: z$1.ZodArray<z$1.ZodObject<{
     command: z$1.ZodEnum<{
+        "browser.find": "browser.find";
         "browser.focusLocation": "browser.focusLocation";
         "browser.reload": "browser.reload";
         "composer.focus": "composer.focus";
@@ -6715,6 +6716,7 @@ declare const installedPluginSchema: z$1.ZodObject<{
             compatible: z$1.ZodBoolean;
             cssUrl: z$1.ZodNullable<z$1.ZodString>;
             hash: z$1.ZodString;
+            jsBytes: z$1.ZodNumber;
             jsUrl: z$1.ZodString;
             sdkMajor: z$1.ZodNumber;
             sdkVersion: z$1.ZodString;
@@ -6822,6 +6824,7 @@ declare const pluginListResponseSchema: z$1.ZodObject<{
                 compatible: z$1.ZodBoolean;
                 cssUrl: z$1.ZodNullable<z$1.ZodString>;
                 hash: z$1.ZodString;
+                jsBytes: z$1.ZodNumber;
                 jsUrl: z$1.ZodString;
                 sdkMajor: z$1.ZodNumber;
                 sdkVersion: z$1.ZodString;
@@ -6931,6 +6934,7 @@ declare const pluginReloadResponseSchema: z$1.ZodObject<{
                 compatible: z$1.ZodBoolean;
                 cssUrl: z$1.ZodNullable<z$1.ZodString>;
                 hash: z$1.ZodString;
+                jsBytes: z$1.ZodNumber;
                 jsUrl: z$1.ZodString;
                 sdkMajor: z$1.ZodNumber;
                 sdkVersion: z$1.ZodString;
@@ -7453,6 +7457,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
     dataDir: z$1.ZodString;
     defaultKeybindings: z$1.ZodArray<z$1.ZodObject<{
         command: z$1.ZodEnum<{
+            "browser.find": "browser.find";
             "browser.focusLocation": "browser.focusLocation";
             "browser.reload": "browser.reload";
             "composer.focus": "composer.focus";
@@ -7573,6 +7578,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
     hostDaemonPort: z$1.ZodNullable<z$1.ZodNumber>;
     keybindingOverrides: z$1.ZodArray<z$1.ZodObject<{
         command: z$1.ZodEnum<{
+            "browser.find": "browser.find";
             "browser.focusLocation": "browser.focusLocation";
             "browser.reload": "browser.reload";
             "composer.focus": "composer.focus";
@@ -7642,6 +7648,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
     }, z$1.core.$strict>>;
     keybindings: z$1.ZodArray<z$1.ZodObject<{
         command: z$1.ZodEnum<{
+            "browser.find": "browser.find";
             "browser.focusLocation": "browser.focusLocation";
             "browser.reload": "browser.reload";
             "composer.focus": "composer.focus";
@@ -8229,6 +8236,9 @@ declare const timelineCommandWorkRowSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodLiteral<"work">;
     output: z$1.ZodString;
+    outputPreview: z$1.ZodOptional<z$1.ZodObject<{
+        totalChars: z$1.ZodNumber;
+    }, z$1.core.$strip>>;
     source: z$1.ZodNullable<z$1.ZodString>;
     sourceSeqEnd: z$1.ZodNumber;
     sourceSeqStart: z$1.ZodNumber;
@@ -8273,6 +8283,9 @@ declare const timelineToolWorkRowSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodLiteral<"work">;
     output: z$1.ZodString;
+    outputPreview: z$1.ZodOptional<z$1.ZodObject<{
+        totalChars: z$1.ZodNumber;
+    }, z$1.core.$strip>>;
     sourceSeqEnd: z$1.ZodNumber;
     sourceSeqStart: z$1.ZodNumber;
     startedAt: z$1.ZodNumber;
@@ -12440,6 +12453,13 @@ interface PluginSdkApp {
      * The sidebar's live thread view (see {@link PluginSidebarThreadsState}).
      * Reads the host's own cache and realtime subscriptions, so it costs no
      * extra request and updates exactly when the built-in sidebar does.
+     *
+     * `threads` is one array of every visible thread and is not capped. Thread
+     * objects keep their identity across updates while the underlying entry is
+     * unchanged, so a memoized row re-renders only when its own thread changed;
+     * the array itself is new on every update. Window your rows (render only
+     * what is on screen) as the built-in sidebar does — a list that mounts one
+     * row per thread is slow on phones with many threads.
      * Experimental: see docs/api_to_audit.md.
      */
     experimental_useSidebarThreads(): PluginSidebarThreadsState;
@@ -13791,10 +13811,14 @@ interface ThreadSectionsArea {
     update(args: UpdateThreadSectionRequest): Promise<ThreadSectionUpdateResult>;
 }
 
-interface BbSdk extends BbRealtime {
+/**
+ * Every server-backed SDK area. The Node SDK adds the local `guide` area on
+ * top of this; the browser SDK omits it so the generated guide templates
+ * (~112 KB of markdown) stay out of the web app's boot chunk.
+ */
+interface BbSdkAreas extends BbRealtime {
     environments: EnvironmentsArea;
     files: FilesArea;
-    guide: GuideArea;
     hosts: HostsArea;
     projects: ProjectsArea;
     plugins: PluginsArea;
@@ -13806,6 +13830,9 @@ interface BbSdk extends BbRealtime {
     theme: ThemeArea;
     threadSections: ThreadSectionsArea;
     threads: ThreadsArea;
+}
+interface BbSdk extends BbSdkAreas {
+    guide: GuideArea;
 }
 
 interface ExperimentalHostSignalContract<PayloadSchema extends StandardSchemaV1 = StandardSchemaV1> {
@@ -13987,9 +14014,11 @@ interface PluginStorage {
     /** Namespaced JSON key-value rows in bb.db; values ≤256KB each. */
     kv: PluginKvStorage;
     /**
-     * Open (or reuse the path of) the plugin's own SQLite database at
-     * <dataDir>/plugins/<id>/data.db — the server's better-sqlite3, WAL mode,
-     * busy_timeout 5000. Handles are host-tracked and closed on
+     * The plugin's own SQLite database at <dataDir>/plugins/<id>/data.db — the
+     * server's better-sqlite3, WAL mode, busy_timeout 5000. Returns the same
+     * open handle for the whole plugin load, so calling it per request is
+     * cheap; a new handle is opened only on the first call or after the
+     * plugin closed the previous one. The host closes handles on
      * dispose/reload; a closed handle throws on use.
      */
     database(): Database.Database;

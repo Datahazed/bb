@@ -241,8 +241,8 @@ added/updated/unchanged counts.
                                  nothing migrates unless you ask
   bb plugin build [path]         Compile the plugin into dist/ — the backend
                                  bundle (server.js, server.meta.json); when
-                                 bb.app is declared, the frontend bundle
-                                 (app.js, app.css, app.meta.json); when
+                                 bb.app is declared, the minified frontend
+                                 bundle (app.js, app.css, app.meta.json); when
                                  bb.host is declared, the self-contained Node
                                  host bundle (host.js, host.js.map,
                                  host.meta.json recording its digest — host
@@ -254,7 +254,8 @@ added/updated/unchanged counts.
                                  pluginId, pluginVersion, and builtWith (bb +
                                  plugin SDK versions); no server required
   bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
-                                 on every change rebuild its declared frontend,
+                                 on every change rebuild its declared frontend
+                                 (unminified, for readable stack traces),
                                  host, and provider-bridge bundles, then
                                  reload the plugin; Ctrl+C to stop
 
@@ -532,9 +533,10 @@ components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the
 running BB via the pinned ref in components.json). `import { toast } from
 "sonner"` reaches the host toaster; react, the portaling radix families,
-sonner, vaul, and @pierre/diffs (the app's syntax-highlighted diff
-renderer) are runtime-shimmed (never bundled), everything else
-bundles from the plugin's node_modules (`npm install` for authors; BB installs
+sonner, vaul, @pierre/diffs (the app's syntax-highlighted diff
+renderer), and the host-resident clsx, tailwind-merge, and
+class-variance-authority libraries are runtime-shimmed (never bundled),
+everything else (zod included) bundles from the plugin's node_modules (`npm install` for authors; BB installs
 release packages with their declared production dependencies). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings

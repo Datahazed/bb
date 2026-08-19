@@ -2,15 +2,16 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rename,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { derivePluginId } from "@bb/domain";
-import type { Plugin } from "esbuild";
+import type { Metafile, Plugin } from "esbuild";
 import {
   PLUGIN_THEME_CSS,
   TW_ANIMATE_CSS,
@@ -28,31 +29,53 @@ import {
  * `bb plugin build` — compile a plugin's `bb.app` entry (app.tsx) into a
  * runtime-loadable frontend bundle:
  *
- * - `dist/app.js` — single ESM file, production jsx-runtime forced. The
+ * - `dist/app.js` — single ESM file, production jsx-runtime forced, minified
+ *   unless the caller asks for readable output (`bb plugin dev`). The
  *   shared-runtime modules (react ×5, @get-bb/plugin-sdk/app, the portaling
  *   radix families, sonner, vaul — see RUNTIME_SLOT_BY_SPECIFIER) are never
  *   bundled; an esbuild plugin swaps them for shims that read
  *   `globalThis.__bbPluginRuntime` — the host app provides one React, so a
  *   second copy (and its "Invalid hook call" crashes) is impossible.
  * - `dist/app.css` — a plugin-scoped Tailwind v4 pass over the plugin's own
- *   sources plus its imported CSS. Imported CSS stays unscoped so selectors
- *   can target editor decorations rendered outside the plugin mount.
+ *   sources (plus the bundled files of dependencies that opt in) followed by
+ *   its imported CSS, run through Tailwind's lightningcss optimizer. Imported
+ *   CSS stays unscoped so selectors can target editor decorations rendered
+ *   outside the plugin mount.
  * - `dist/app.meta.json` — SDK compatibility plus authoritative plugin,
  *   artifact-format, and build-version metadata.
  */
 
 /**
  * Runtime slot on `globalThis.__bbPluginRuntime` per shimmed specifier.
- * Shim policy (plugin design §5.5): ONLY packages with singleton/global
- * behavior — one React, the portaling radix families (shared
- * dismissable-layer/focus/scroll-lock/aria-hidden world), sonner (`toast()`
- * must reach the host toaster), vaul (mutates document.body styles),
- * @pierre/diffs (its react FileDiff reads the host's
- * WorkerPoolContextProvider — context identity requires one module copy —
- * and sharing keeps shiki's grammars out of every plugin bundle) — plus
- * the SDK surface itself. Everything else (non-portal radix, cva/clsx/
- * tailwind-merge, lucide-react, form/calendar/chart libs) bundles from the
- * plugin's own node_modules.
+ * Shim policy (plugin design §5.5), two admission rules:
+ *
+ * 1. Singleton/global behavior — one React, the portaling radix families
+ *    (shared dismissable-layer/focus/scroll-lock/aria-hidden world), sonner
+ *    (`toast()` must reach the host toaster), vaul (mutates document.body
+ *    styles), @pierre/diffs (its react FileDiff reads the host's
+ *    WorkerPoolContextProvider — context identity requires one module copy —
+ *    and sharing keeps shiki's grammars out of every plugin bundle) — plus
+ *    the SDK surface itself.
+ * 2. Host-resident libraries every plugin app would otherwise duplicate —
+ *    tailwind-merge + clsx (the `cn()` pair every vendored component pulls
+ *    in), class-variance-authority, and the shared-ui `Icon` (its hugeicons
+ *    map is ~110 KB raw per copy). These have no singleton semantics; they
+ *    are shimmed so a phone does not parse a dozen copies of the same code.
+ *    A plugin gets the host's installed version, so its declared range must
+ *    stay within the host's major (tailwind-merge ^3, clsx ^2, cva ^0.7).
+ *    Rule 2 has a cost on the host side: exposing a namespace on the
+ *    runtime object stops the app's bundler from tree-shaking that library
+ *    out of the boot chunk, so it only admits libraries whose slot leaves
+ *    the boot budget (apps/app/bundle-budget.json) intact. zod does not —
+ *    the app uses a fraction of its exports and slotting the namespace
+ *    added +193 KB raw / +33 KB brotli to the payload every phone downloads
+ *    before first paint — so zod stays bundled per plugin.
+ *
+ * Everything else (non-portal radix, lucide-react, zod, form/calendar/chart
+ * libs, hugeicons imported directly) bundles from the plugin's own
+ * node_modules. Adding a slot here requires the matching host slot in
+ * apps/app/src/lib/plugin-frontend.ts (installPluginRuntime) and an
+ * export-manifest entry (scripts/generate-runtime-export-manifest.mjs).
  */
 /** The SDK app subpath plugin sources import. */
 const PLUGIN_SDK_APP_SPECIFIER = "@get-bb/plugin-sdk/app";
@@ -63,6 +86,14 @@ const PLUGIN_SDK_APP_SPECIFIER = "@get-bb/plugin-sdk/app";
  * export list; a later change removes it.
  */
 const LEGACY_PLUGIN_SDK_APP_SPECIFIER = "@bb/plugin-sdk/app";
+
+/**
+ * The shared-ui icon module. Builtin plugins import it by package specifier;
+ * shared-ui's own components import it relatively (`./icon`), and
+ * {@link runtimeShimPlugin} routes both to the same host slot so no plugin
+ * bundle carries a second hugeicons map.
+ */
+const SHARED_UI_ICON_SPECIFIER = "@bb/shared-ui/icon";
 
 export const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
   react: "react",
@@ -86,7 +117,37 @@ export const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
   "@radix-ui/react-tooltip": "radixTooltip",
   sonner: "sonner",
   vaul: "vaul",
+  clsx: "clsx",
+  "tailwind-merge": "tailwindMerge",
+  "class-variance-authority": "classVarianceAuthority",
+  [SHARED_UI_ICON_SPECIFIER]: "sharedUiIcon",
 };
+
+/**
+ * Real-path suffix of shared-ui's icon module (extension stripped). esbuild
+ * resolves workspace symlinks, so an importer under
+ * `node_modules/@bb/shared-ui/...` reports its `packages/shared-ui/src/...`
+ * path; a plugin's own vendored `icon.tsx` (a registry copy, possibly
+ * extended with the plugin's icons) never matches and bundles as before.
+ */
+const SHARED_UI_ICON_MODULE_SUFFIX = "/shared-ui/src/components/ui/icon";
+const SHARED_UI_SOURCE_IMPORTER = /[\\/]shared-ui[\\/]src[\\/]/;
+
+/**
+ * Whether a relative import from inside shared-ui's source tree names the
+ * icon module. Extension-agnostic: shared-ui imports `./icon`, and a `.js`
+ * or `.tsx` suffix must resolve the same way.
+ */
+export function isSharedUiIconRelativeImport(
+  importPath: string,
+  importer: string,
+): boolean {
+  if (!SHARED_UI_SOURCE_IMPORTER.test(importer)) return false;
+  const resolved = resolve(dirname(importer), importPath)
+    .replace(/\\/g, "/")
+    .replace(/\.(?:tsx?|jsx?)$/, "");
+  return resolved.endsWith(SHARED_UI_ICON_MODULE_SUFFIX);
+}
 
 /**
  * Named exports of `@get-bb/plugin-sdk/app` are read from a fresh facade module on
@@ -148,7 +209,14 @@ async function shimExportsOf(
   return names;
 }
 
-/** ESM shim re-exporting a `globalThis.__bbPluginRuntime` slot. */
+/**
+ * ESM shim re-exporting a `globalThis.__bbPluginRuntime` slot. Each slot
+ * holds the host's `import * as` namespace, so a module with a real default
+ * export (clsx's function, React's CJS `module.exports`) carries
+ * it under `default`; the shim forwards that so `import clsx from "clsx"`
+ * receives the callable, not the namespace. Modules without one (radix,
+ * sonner, vaul, tailwind-merge) fall back to the namespace as before.
+ */
 async function shimModuleSource(
   specifier: string,
   slot: string,
@@ -163,7 +231,7 @@ async function shimModuleSource(
     )});`,
     `}`,
     `const mod = runtime.${slot};`,
-    `export default mod;`,
+    `export default ("default" in mod ? mod.default : mod);`,
     `export const {`,
     ...names.map((name) => `  ${name},`),
     `} = mod;`,
@@ -189,6 +257,19 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
         path: args.path,
         namespace: SHIM_NAMESPACE,
       }));
+      // shared-ui components reach the icon module relatively; without this
+      // arm a bundled `empty-state`/`resource-pagination` would drag the
+      // whole hugeicons map in beside the shimmed package specifier.
+      build.onResolve({ filter: /(^|\/)icon(\.[jt]sx?)?$/ }, (args) => {
+        if (
+          args.namespace !== "file" ||
+          !args.path.startsWith(".") ||
+          !isSharedUiIconRelativeImport(args.path, args.importer)
+        ) {
+          return undefined;
+        }
+        return { path: SHARED_UI_ICON_SPECIFIER, namespace: SHIM_NAMESPACE };
+      });
       build.onLoad(
         { filter: /.*/, namespace: SHIM_NAMESPACE },
         async (args) => ({
@@ -307,17 +388,16 @@ async function readDependencyTailwindSources(
     if (packageJsonPath === null) continue;
 
     const packageJson = await readPackageJson(packageJsonPath);
-    for (const rawPattern of readTailwindContentPatterns(
-      packageJson,
-      packageJsonPath,
-    )) {
+    const patterns = readTailwindContentPatterns(packageJson, packageJsonPath);
+    if (patterns.length === 0) continue;
+    // esbuild reports bundled files by real path (workspace links resolve to
+    // the package's checkout), so the scan base must be the real directory
+    // too or the two never intersect.
+    const base = await realpath(dirname(packageJsonPath));
+    for (const rawPattern of patterns) {
       const negated = rawPattern.startsWith("!");
       const pattern = negated ? rawPattern.slice(1) : rawPattern;
-      sources.push({
-        base: dirname(packageJsonPath),
-        pattern,
-        negated,
-      });
+      sources.push({ base, pattern, negated });
     }
   }
 
@@ -364,11 +444,14 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
  * runtime. Tailwind itself comes from the CLI's own installation (plugins do
  * not need tailwindcss installed), via `customCssResolver`.
  *
- * Direct dependencies can contribute additional scan roots with
- * `bb.pluginTailwindContent` in their package.json. Builtin plugins use this
- * for workspace UI packages that ship raw TS/TSX source: esbuild bundles the
- * package fine, but Tailwind must also see its class strings or it will purge
- * their utilities from app.css.
+ * Direct dependencies can opt their sources into the scan with
+ * `bb.pluginTailwindContent` globs in their package.json. Builtin plugins use
+ * this for workspace UI packages that ship raw TS/TSX source: esbuild bundles
+ * the package fine, but Tailwind must also see its class strings or it will
+ * purge their utilities from app.css. Only the matching files esbuild actually
+ * bundled (`bundledInputs`, from its metafile) are scanned: scanning the whole
+ * glob made every plugin carry the utilities of every shared component,
+ * imported or not — ~110 KB / ~1200 rules per plugin sheet.
  *
  * The input embeds two generated constants (plugin-theme.generated.ts) so
  * plugin utilities compile against the same tokens the host uses:
@@ -398,13 +481,18 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
  * layer. See scope-plugin-utilities.ts for the measurements and the exact
  * rewrite. Cascade order WITHIN the plugin's sheet is unchanged either way.
  * Theme variables and `@property` registrations stay top-level and unscoped:
- * `:root` vars must land on the document root (status quo — the host defines
- * the same tokens) and `@property` is invalid when nested.
+ * `:root` vars must land on the document root and `@property` is invalid when
+ * nested. The `:root` block carries only the non-inline tokens (Tailwind
+ * defaults such as `--container-3xl`, the host's typography scale) that the
+ * plugin's utilities reference by `var()` and the host emits only for the
+ * ones it uses itself; the semantic bridge is `inline reference`
+ * (plugin-theme.generated.ts) and emits nothing.
  */
 async function buildTailwindCss(
   rootDir: string,
   pluginId: string,
   toolchain: PluginBuildToolchain,
+  bundledInputs: ReadonlySet<string>,
 ): Promise<string> {
   // A dynamic specifier is opaque to TS, so restate the module types here.
   // The packages stay devDependencies: they are resolved at runtime from the
@@ -445,25 +533,70 @@ async function buildTailwindCss(
       return existsSync(candidate) ? candidate : undefined;
     },
   });
-  const scannerSources: ScannerSource[] = [
-    { base: rootDir, pattern: "**/*", negated: false },
-    { base: join(rootDir, "dist"), pattern: "**/*", negated: true },
-    { base: join(rootDir, "node_modules"), pattern: "**/*", negated: true },
-    ...(await readDependencyTailwindSources(rootDir)),
-  ];
-  const scanner = new Scanner({
-    sources: scannerSources,
+  const ownScanner = new Scanner({
+    sources: [
+      { base: rootDir, pattern: "**/*", negated: false },
+      { base: join(rootDir, "dist"), pattern: "**/*", negated: true },
+      { base: join(rootDir, "node_modules"), pattern: "**/*", negated: true },
+    ],
   });
+  const candidates = new Set(ownScanner.scan());
+
+  const dependencySources = await readDependencyTailwindSources(rootDir);
+  if (dependencySources.length > 0) {
+    // `files` resolves the globs without reading anything; only the bundled
+    // subset is read and scanned.
+    const bundledDependencyFiles = new Scanner({
+      sources: dependencySources,
+    }).files.filter((file) => bundledInputs.has(file));
+    const contents = await Promise.all(
+      bundledDependencyFiles.map(async (file) => ({
+        content: await readFile(file, "utf8"),
+        extension: extname(file).slice(1),
+      })),
+    );
+    for (const candidate of new Scanner({ sources: [] }).scanFiles(contents)) {
+      candidates.add(candidate);
+    }
+  }
   return scopePluginUtilities(
-    compiler.build(scanner.scan()),
+    compiler.build([...candidates]),
     pluginScopeRoots(pluginId),
   );
+}
+
+/**
+ * Absolute paths of every file esbuild bundled into app.js, from its
+ * metafile. Runtime shims and disabled modules are virtual and skipped.
+ */
+function bundledInputPaths(
+  metafile: Metafile,
+  absWorkingDir: string,
+): Set<string> {
+  const paths = new Set<string>();
+  for (const input of Object.keys(metafile.inputs)) {
+    if (input.startsWith(`${SHIM_NAMESPACE}:`) || input.startsWith("(")) {
+      continue;
+    }
+    paths.add(resolve(absWorkingDir, input));
+  }
+  return paths;
 }
 
 export interface PluginAppBuildResult {
   jsPath: string;
   cssPath: string;
   metaPath: string;
+}
+
+export interface PluginAppBuildOptions {
+  /**
+   * Minify app.js and app.css. On by default: the artifacts are what every
+   * browser downloads and parses, so bytes are the product. `bb plugin dev`
+   * turns it off so stack traces and the emitted CSS stay readable while
+   * iterating; the plugin behaves the same either way.
+   */
+  minify: boolean;
 }
 
 /**
@@ -474,6 +607,7 @@ export async function buildPluginApp(
   rootDir: string,
   bbVersion: string,
   toolchain: PluginBuildToolchain,
+  options: PluginAppBuildOptions = { minify: true },
 ): Promise<PluginAppBuildResult> {
   const { appEntry, packageName, pluginVersion } =
     await readPluginAppConfig(rootDir);
@@ -499,13 +633,17 @@ export async function buildPluginApp(
     const esbuild = (await import(
       toolchain.esbuild
     )) as typeof import("esbuild");
-    await esbuild.build({
+    const bundle = await esbuild.build({
       entryPoints: [appEntry],
       outfile: stagedJsPath,
+      absWorkingDir: rootDir,
       bundle: true,
+      metafile: true,
       format: "esm",
       platform: "browser",
       target: "es2022",
+      minify: options.minify,
+      legalComments: "none",
       // Production jsx-runtime, always — the host only guarantees the dev
       // runtime for `bb plugin dev`, and dev-transformed output in a
       // production page is how subtle double-React bugs start. Deliberately
@@ -537,9 +675,24 @@ export async function buildPluginApp(
       if (!isRecord(error) || error.code !== "ENOENT") throw error;
     }
     const tailwindCss = (
-      await buildTailwindCss(rootDir, pluginId, toolchain)
+      await buildTailwindCss(
+        rootDir,
+        pluginId,
+        toolchain,
+        bundledInputPaths(bundle.metafile, rootDir),
+      )
     ).trimEnd();
-    await writeFile(stagedCssPath, `${tailwindCss}\n${authoredCss}`);
+    // Tailwind's own optimizer (lightningcss, the same pass the host's Vite
+    // build runs): merges and minifies rules, and lowers syntax for the same
+    // browser targets in both modes so dev and production sheets differ only
+    // in whitespace.
+    const { optimize } = (await import(
+      toolchain.tailwindNode
+    )) as typeof import("@tailwindcss/node");
+    const css = optimize(`${tailwindCss}\n${authoredCss}`, {
+      minify: options.minify,
+    }).code;
+    await writeFile(stagedCssPath, css);
     await writeFile(
       stagedMetaPath,
       JSON.stringify(

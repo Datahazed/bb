@@ -7,14 +7,19 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { act } from "react";
+import { act, type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  FILE_PREVIEW_CODE_MAX_LINES,
   FilePreview,
   buildCsvPreviewData,
   getCsvTruncationNote,
 } from "./FilePreview";
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
+import {
+  PierreWorkerPoolGateContext,
+  type PierreWorkerPoolGate,
+} from "@/lib/pierre-worker-pool-gate";
 
 interface MockPierreFileProps {
   file: {
@@ -102,7 +107,8 @@ vi.mock("@pierre/diffs/react", async () => {
       React.useLayoutEffect(() => {
         const host = hostRef.current;
         if (host === null) return;
-        const shadowRoot = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+        const shadowRoot =
+          host.shadowRoot ?? host.attachShadow({ mode: "open" });
         const code = document.createElement("code");
         code.dataset.code = "";
         code.scrollLeft = 240;
@@ -143,19 +149,38 @@ vi.mock("@pierre/diffs/react", async () => {
         shadowRoot.replaceChildren(code);
       }, [file.contents, selectedLines]);
 
-      return React.createElement(
-        "diffs-container",
-        {
-          ref: hostRef,
-          "data-instance-id": String(instanceId),
-          "data-render-count": String(pierreMock.state.renderCount),
-          "data-testid": "pierre-file",
-        },
-      );
+      return React.createElement("diffs-container", {
+        ref: hostRef,
+        "data-instance-id": String(instanceId),
+        "data-render-count": String(pierreMock.state.renderCount),
+        "data-testid": "pierre-file",
+      });
     },
+    WorkerPoolContext: React.createContext(undefined),
     useWorkerPool: () => pierreMock.workerPool,
+    VirtualizerContext: React.createContext(undefined),
   };
 });
+
+/**
+ * The code view reads the workspace pool from the worker-pool gate (see
+ * ThreadDetailWorkerPoolProvider); tests that exercise pool-driven behavior
+ * render inside a ready gate that publishes the mock pool.
+ */
+function renderWithWorkerPool(ui: ReactElement) {
+  const gate: PierreWorkerPoolGate = {
+    ready: true,
+    pool: pierreMock.workerPool as unknown as NonNullable<
+      PierreWorkerPoolGate["pool"]
+    >,
+    request: () => undefined,
+  };
+  return render(
+    <PierreWorkerPoolGateContext.Provider value={gate}>
+      {ui}
+    </PierreWorkerPoolGateContext.Provider>,
+  );
+}
 
 describe("FilePreview", () => {
   beforeEach(() => {
@@ -216,7 +241,7 @@ describe("FilePreview", () => {
   });
 
   it("rerenders the code view when the Pierre worker pool advances", async () => {
-    render(
+    renderWithWorkerPool(
       <FilePreview
         headerMode="none"
         path="apps/app/src/lib/thread-read-state.ts"
@@ -264,7 +289,7 @@ describe("FilePreview", () => {
       managerState: "initializing",
     });
 
-    render(
+    renderWithWorkerPool(
       <FilePreview
         headerMode="none"
         path="apps/app/src/lib/thread-read-state.ts"
@@ -326,9 +351,16 @@ describe("FilePreview", () => {
     );
 
     const pierreFile = await screen.findByTestId("pierre-file");
+    // The code view scrolls its own virtualized viewport (which sits at the
+    // origin in jsdom), not the surrounding panel scroller.
+    const codeViewport = scrollViewport.querySelector<HTMLElement>(
+      "[data-file-preview-code-viewport]",
+    );
+    expect(codeViewport).not.toBeNull();
     await waitFor(() => {
-      expect(scrollViewport.scrollTop).toBe(577);
+      expect(codeViewport?.scrollTop).toBe(727);
     });
+    expect(scrollViewport.scrollTop).toBe(100);
     expect(
       pierreFile.shadowRoot?.querySelector<HTMLElement>("[data-code]")
         ?.scrollLeft,
@@ -340,11 +372,11 @@ describe("FilePreview", () => {
     ).toBe(true);
   });
 
-  it("remounts the code view when the highlighted file cache resolves", async () => {
+  it("keeps a single code view mount when the highlighted file cache resolves", async () => {
     const cacheKey =
       "file-preview:/api/v1/projects/proj/files/content:thread-read-state.ts";
 
-    render(
+    renderWithWorkerPool(
       <FilePreview
         headerMode="none"
         path="apps/app/src/lib/thread-read-state.ts"
@@ -361,9 +393,9 @@ describe("FilePreview", () => {
       />,
     );
 
-    const firstInstanceId = Number(
-      (await screen.findByTestId("pierre-file")).dataset.instanceId,
-    );
+    const pierreFile = await screen.findByTestId("pierre-file");
+    const firstInstanceId = Number(pierreFile.dataset.instanceId);
+    const renderCountBeforeHighlight = Number(pierreFile.dataset.renderCount);
 
     act(() => {
       pierreMock.state.cachedFileKeys.add(cacheKey);
@@ -372,11 +404,115 @@ describe("FilePreview", () => {
       );
     });
 
+    // Pierre repaints the highlighted AST in place; a React remount would
+    // throw away its DOM (and the user's scroll position) for nothing.
     await waitFor(() => {
-      expect(Number(screen.getByTestId("pierre-file").dataset.instanceId)).toBe(
-        firstInstanceId + 1,
-      );
+      expect(
+        Number(screen.getByTestId("pierre-file").dataset.renderCount),
+      ).toBeGreaterThan(renderCountBeforeHighlight);
     });
+    expect(Number(screen.getByTestId("pierre-file").dataset.instanceId)).toBe(
+      firstInstanceId,
+    );
+  });
+
+  it("caps oversized code previews to a leading prefix until the full file is requested", async () => {
+    const totalLineCount = FILE_PREVIEW_CODE_MAX_LINES + 1_500;
+    const contents = Array.from(
+      { length: totalLineCount },
+      (_, index) => `line ${index + 1}`,
+    ).join("\n");
+
+    render(
+      <FilePreview
+        headerMode="none"
+        path="src/generated.ts"
+        state={{
+          kind: "ready",
+          file: {
+            cacheKey: "file-preview:generated",
+            name: "generated.ts",
+            contents,
+          },
+          lineRange: null,
+          textPreviewKind: null,
+        }}
+      />,
+    );
+
+    await screen.findByTestId("pierre-file");
+    expect(pierreMock.state.lastFile?.contents.split("\n")).toHaveLength(
+      FILE_PREVIEW_CODE_MAX_LINES,
+    );
+    // The capped prefix must not share the full file's highlight cache slot.
+    expect(pierreMock.state.lastFile?.cacheKey).toBe(
+      "file-preview:generated:head",
+    );
+    expect(
+      screen.getByText(
+        `Showing the first ${FILE_PREVIEW_CODE_MAX_LINES.toLocaleString()} of ${totalLineCount.toLocaleString()} lines.`,
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Load full file" }));
+
+    await waitFor(() => {
+      expect(pierreMock.state.lastFile?.contents).toBe(contents);
+    });
+    expect(pierreMock.state.lastFile?.cacheKey).toBe("file-preview:generated");
+    expect(screen.queryByRole("button", { name: "Load full file" })).toBeNull();
+  });
+
+  it("caps code previews by size even when they have few lines", () => {
+    const longLine = "x".repeat(200_000);
+    const contents = [longLine, longLine, longLine, "tail"].join("\n");
+
+    render(
+      <FilePreview
+        headerMode="none"
+        path="assets/blob.txt"
+        state={{
+          kind: "ready",
+          file: { name: "blob.txt", contents },
+          lineRange: null,
+          textPreviewKind: null,
+        }}
+      />,
+    );
+
+    // 512 KB budget: two 200k-char lines fit, the third would exceed it.
+    expect(pierreMock.state.lastFile?.contents).toBe(
+      [longLine, longLine].join("\n"),
+    );
+    expect(screen.getByRole("button", { name: "Load full file" })).toBeTruthy();
+  });
+
+  it("shows the whole file when a line link points past the capped prefix", async () => {
+    const totalLineCount = FILE_PREVIEW_CODE_MAX_LINES + 20;
+    const contents = Array.from(
+      { length: totalLineCount },
+      (_, index) => `line ${index + 1}`,
+    ).join("\n");
+
+    render(
+      <FilePreview
+        headerMode="none"
+        path="src/generated.ts"
+        state={{
+          kind: "ready",
+          file: { name: "generated.ts", contents },
+          lineRange: {
+            startLineNumber: FILE_PREVIEW_CODE_MAX_LINES + 10,
+            endLineNumber: FILE_PREVIEW_CODE_MAX_LINES + 10,
+          },
+          textPreviewKind: null,
+        }}
+      />,
+    );
+
+    await screen.findByTestId("pierre-file");
+    expect(pierreMock.state.lastFile?.contents).toBe(contents);
+    expect(screen.queryByRole("button", { name: "Load full file" })).toBeNull();
   });
 
   it("toggles source line wrap from the header button", async () => {
@@ -606,7 +742,8 @@ describe("FilePreview", () => {
 
   it("reloads an HTML iframe only when the fetched source changes", () => {
     const path = "reports/preview.html";
-    const htmlPreviewUrl = "/api/v1/threads/thread-1/worktree/files/preview.html";
+    const htmlPreviewUrl =
+      "/api/v1/threads/thread-1/worktree/files/preview.html";
     const firstPreview = {
       kind: "text" as const,
       content: "<!doctype html><h1>First</h1>",

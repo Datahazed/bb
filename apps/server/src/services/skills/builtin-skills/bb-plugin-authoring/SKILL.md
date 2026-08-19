@@ -48,8 +48,9 @@ The manifest is `package.json`:
   self-contained `dist/server.js` + `server.meta.json` that git/npm installs
   prefer when its SDK major matches, so consumers never need npm or
   node_modules. `bb.app` (optional) — frontend entry compiled by
-  `bb plugin build` into `dist/app.js` + `app.css` + `app.meta.json`; path
-  and git installs build it automatically at install time. Git installs also
+  `bb plugin build` into minified `dist/app.js` + `app.css` + `app.meta.json`
+  (`bb plugin dev` keeps them readable); path and git installs build it
+  automatically at install time. Git installs also
   run `npm install --omit=dev` first (so a git plugin may use third-party
   packages) and keep node_modules, since bundling cannot inline data files read
   at runtime. So every package your source imports that bb does not shim
@@ -1109,8 +1110,27 @@ path is served to clients as a `logoUrl` and drawn through `<img>`, so its
 there is no `logoUrl` at all. For a monochrome mark, ship an `app.tsx` too and
 register the same artwork with
 `app.slots.experimental_providerIcon({ providerId, icon })` — it renders
-inline and inherits the theme. The four first-party provider plugins do
-exactly this (`plugins/provider-codex/app.tsx`).
+inline and inherits the theme. Example:
+
+```tsx
+// app.tsx
+import { definePluginApp } from "@get-bb/plugin-sdk/app";
+
+function EchoIcon({ className }: { className?: string }) {
+  return (
+    <svg fill="currentColor" viewBox="0 0 24 24" className={className}>
+      <path d="…" />
+    </svg>
+  );
+}
+
+export default definePluginApp((app) => {
+  app.slots.experimental_providerIcon({ providerId: "echo", icon: EchoIcon });
+});
+```
+
+(The four first-party provider plugins ship no `app.tsx`: bb vendors their
+marks itself, so an icon-only bundle would only add fetches at boot.)
 
 Ids are collision-rejected against core providers and other plugins'
 registrations; registrations replace wholesale on reload like every other
@@ -1752,7 +1772,7 @@ openWorkspaceFile }` — register a leaf
   A component beats the file logo for that provider; disabling the plugin
   falls back to it. One registration per provider id per plugin; if two
   plugins claim one provider id the host keeps the first by plugin id and
-  warns. Reference: `plugins/provider-codex/app.tsx`.
+  warns. See the `app.tsx` example under "The icon" above.
 
 Host components:
 
@@ -1979,6 +1999,13 @@ only `definePluginApp` + the hooks):
   `/react`). Your vendored overlays therefore share the host's
   dismissable-layer/focus/scroll-lock world — stacking against host
   overlays behaves correctly.
+- Also never bundled, for size rather than singleton reasons: `clsx`,
+  `tailwind-merge`, and `class-variance-authority`. Your app bundle uses the
+  host's installed copies (tailwind-merge ^3, clsx ^2, cva ^0.7), so keep
+  your declared ranges inside those majors. `zod` is NOT shimmed (exposing
+  its namespace would bloat the host's boot payload) — it bundles from your
+  `node_modules` in both `app.tsx` and `server.ts`, so keep it in
+  `dependencies`.
 - Syntax-highlighted diffs: `parsePatchFiles` from `@pierre/diffs` +
   `FileDiff` from `@pierre/diffs/react` render patches exactly like the
   app's own diff panel (the host provides the highlighting worker pool via
@@ -1990,7 +2017,7 @@ light: document.documentElement.dataset.bbCodeThemeLight }` so a custom
   header when your patch source (e.g. the GitHub REST API) omits it — see
   `plugins/github/app.tsx`.
 - Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
-  cva/clsx/tailwind-merge, form/calendar/chart libs): run `npm install`
+  non-portal radix, zod, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Consumers never need npm — ship your
   built `dist/`.
@@ -2187,7 +2214,8 @@ multi-plugin arbitration. Use a live loop for those host boundaries.
 - `bb plugin dev` is the loop: save → rebuild declared `bb.app` and `bb.host`
   artifacts → reload; open app pages pick new UI up live and
   host workers move to the new generation on their next call. Build/reload
-  failures print and keep watching.
+  failures print and keep watching. The dev loop writes readable (unminified)
+  `dist/app.js` + `app.css`; `bb plugin build` and installs minify them.
 - `bb plugin list` shows status, services, schedules (with last_error),
   handler stats, and the CLI command; `bb plugin logs <id> -f` follows
   `bb.log` output. Add `--json` to any plugin command for machine output.

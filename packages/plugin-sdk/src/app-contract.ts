@@ -1533,9 +1533,12 @@ export interface BbNavigate {
 // Components are deliberately NOT part of this surface (removed 2026-07-03,
 // plugin design §5.5): plugins vendor shadcn-style component source from the
 // BB registry (`npx shadcn add @bb/<name>`) and own it. `bb plugin build`
-// shims react + the shared-singleton packages (portal radix families,
-// sonner, vaul); everything else bundles per plugin. Freezing 65 component
-// prop types here made every host component change a plugin-breaking change.
+// shims react, the shared-singleton packages (portal radix families,
+// sonner, vaul, @pierre/diffs) and the host-resident libraries every plugin
+// would otherwise duplicate (clsx, tailwind-merge, class-variance-authority,
+// the shared-ui icon); everything else bundles per plugin. Freezing 65
+// component prop types here made every host component change a
+// plugin-breaking change.
 // ---------------------------------------------------------------------------
 
 /**
@@ -1564,6 +1567,13 @@ export interface PluginSdkApp {
    * The sidebar's live thread view (see {@link PluginSidebarThreadsState}).
    * Reads the host's own cache and realtime subscriptions, so it costs no
    * extra request and updates exactly when the built-in sidebar does.
+   *
+   * `threads` is one array of every visible thread and is not capped. Thread
+   * objects keep their identity across updates while the underlying entry is
+   * unchanged, so a memoized row re-renders only when its own thread changed;
+   * the array itself is new on every update. Window your rows (render only
+   * what is on screen) as the built-in sidebar does — a list that mounts one
+   * row per thread is slow on phones with many threads.
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_useSidebarThreads(): PluginSidebarThreadsState;

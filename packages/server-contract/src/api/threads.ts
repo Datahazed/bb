@@ -334,6 +334,9 @@ export type ThreadSearchHighlightRange = z.infer<
 export const threadSearchMatchSchema = z
   .object({
     sourceKind: threadSearchSourceKindSchema,
+    // Title matches carry the whole title. Message matches carry a bounded
+    // snippet around the first hit (an ellipsis marks each cut side), and the
+    // highlight ranges are offsets into that snippet.
     text: z.string(),
     highlightRanges: z.array(threadSearchHighlightRangeSchema),
     // Event sequence of the message this match came from, so the UI can deep-link
@@ -663,6 +666,13 @@ export const timelinePageMetadataSchema = z
 
 export const threadTimelineQuerySchema = z
   .object({
+    /**
+     * When `"true"`, completed turns carry their child rows inline and every
+     * command/tool row carries its full inline output (bounded by the 32 K
+     * inline cap). The default window collapses completed turns and replaces
+     * the running turn's large outputs with a head+tail preview marked by
+     * `outputPreview`; read those whole via `timelineTurnSummaryDetails`.
+     */
     includeNestedRows: z.enum(["true", "false"]),
     segmentLimit: z.string().regex(/^\d+$/),
     beforeAnchorSeq: z.string().regex(/^[1-9]\d*$/),
