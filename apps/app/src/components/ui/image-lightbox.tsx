@@ -180,7 +180,7 @@ export function ImageLightbox({
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute top-2 right-2 size-9 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
+              className="absolute top-0 right-0 size-9 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
               aria-label="Close image preview"
             >
               <Icon name="X" className="size-5" />

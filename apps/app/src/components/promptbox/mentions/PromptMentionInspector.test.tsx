@@ -107,8 +107,8 @@ describe("PromptMentionInspector", () => {
     expect(imageFrame?.className).toContain("relative");
     expect(imageFrame?.className).not.toContain("gap-2");
     expect(closePreview.className).toContain("absolute");
-    expect(closePreview.className).toContain("right-2");
-    expect(closePreview.className).toContain("top-2");
+    expect(closePreview.className).toContain("right-0");
+    expect(closePreview.className).toContain("top-0");
     const expandedImage = imageFrame?.querySelector("img");
     expect(expandedImage?.getAttribute("alt")).toBe("Invite member capture");
     expect(closePreview.previousElementSibling).toBe(expandedImage);
