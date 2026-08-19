@@ -261,6 +261,11 @@ export interface TypeaheadCommandConfig {
   loadMore: () => void;
   /** Called whenever the active command query changes; null when no command trigger is active. */
   onQueryChange: (query: string | null) => void;
+  /**
+   * Called when the editor gains focus. Hosts use it to warm the command
+   * catalog before the first trigger char (see `useCommandSuggestions`).
+   */
+  onEditorFocus?: () => void;
 }
 
 /**
@@ -1190,7 +1195,12 @@ export function PromptBoxInternal({
     isLoading: commandLoading,
     isError: commandError,
     onQueryChange: onCommandQueryChange,
+    onEditorFocus: onCommandEditorFocus,
   } = typeahead.command;
+  const onCommandEditorFocusRef = useRef(onCommandEditorFocus);
+  useEffect(() => {
+    onCommandEditorFocusRef.current = onCommandEditorFocus;
+  }, [onCommandEditorFocus]);
   const {
     items: attachments = [],
     isAttaching = false,
@@ -1698,6 +1708,10 @@ export function PromptBoxInternal({
         handleDOMEvents: {
           auxclick: (_view, event) => {
             return suppressPromptEditorAnchorActivation(event);
+          },
+          focus: () => {
+            onCommandEditorFocusRef.current?.();
+            return false;
           },
           blur: () => {
             triggerKeyRef.current = "";
