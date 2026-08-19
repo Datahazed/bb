@@ -74,6 +74,132 @@ describe("MarkdownPreview", () => {
     expect(breakout?.style.getPropertyValue("--md-content-w")).toBe("320px");
   });
 
+  it("caps the table breakout at the nearest horizontally clipped ancestor", () => {
+    class ResizeObserverMock {
+      constructor(_callback: ResizeObserverCallback) {}
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    // Every element is 300px wide at x=100 unless it sets data-left/data-width.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        const left = Number(this.dataset.left ?? 100);
+        const width = Number(this.dataset.width ?? 300);
+        return {
+          bottom: 10,
+          height: 10,
+          left,
+          right: left + width,
+          top: 0,
+          width,
+          x: left,
+          y: 0,
+          toJSON: () => ({}),
+        };
+      },
+    );
+    vi.spyOn(Element.prototype, "clientWidth", "get").mockImplementation(
+      function (this: Element) {
+        return Number((this as HTMLElement).dataset.width ?? 300);
+      },
+    );
+
+    const renderClipped = (clipWidth: number) =>
+      render(
+        <div
+          data-left="0"
+          data-width={String(clipWidth)}
+          style={{ overflowX: "hidden" }}
+        >
+          <MarkdownPreview content={"| A |\n| - |\n| B |"} />
+        </div>,
+      );
+
+    // The clip ends where the content ends: no room on the right, no breakout.
+    const flush = renderClipped(400);
+    const flushBreakout =
+      flush.container.querySelector("table")?.parentElement?.parentElement;
+    expect(
+      flushBreakout?.style.getPropertyValue("--md-table-breakout-max"),
+    ).toBe("300px");
+    flush.unmount();
+
+    // 100px free on the left and 200px on the right: grow by the smaller side.
+    const roomy = renderClipped(600);
+    const roomyBreakout =
+      roomy.container.querySelector("table")?.parentElement?.parentElement;
+    expect(
+      roomyBreakout?.style.getPropertyValue("--md-table-breakout-max"),
+    ).toBe("500px");
+    roomy.unmount();
+
+    // The preview root itself clips: the table must not leave the preview.
+    const sheet = document.createElement("style");
+    sheet.textContent = ".overflow-x-hidden { overflow-x: hidden; }";
+    document.head.appendChild(sheet);
+    const rooted = render(
+      <div data-left="0" data-width="600">
+        <MarkdownPreview
+          className="overflow-x-hidden"
+          content={"| A |\n| - |\n| B |"}
+        />
+      </div>,
+    );
+    const rootedBreakout =
+      rooted.container.querySelector("table")?.parentElement?.parentElement;
+    expect(
+      rootedBreakout?.style.getPropertyValue("--md-table-breakout-max"),
+    ).toBe("300px");
+    sheet.remove();
+  });
+
+  it("skips height-only resize events for tables", () => {
+    let callback: ResizeObserverCallback | null = null;
+    class ResizeObserverMock {
+      constructor(cb: ResizeObserverCallback) {
+        callback = cb;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    let width = 320;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      () => ({
+        bottom: 0,
+        height: 0,
+        left: 0,
+        right: width,
+        top: 0,
+        width,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
+    );
+
+    const { container } = render(
+      <MarkdownPreview content={"| A |\n| - |\n| B |"} />,
+    );
+    const breakout = container.querySelector("table")?.parentElement
+      ?.parentElement as HTMLElement;
+    expect(breakout.style.getPropertyValue("--md-content-w")).toBe("320px");
+    expect(callback).not.toBeNull();
+
+    // Same width, different height: no style write.
+    breakout.style.setProperty("--md-content-w", "sentinel");
+    callback!([], {} as ResizeObserver);
+    expect(breakout.style.getPropertyValue("--md-content-w")).toBe("sentinel");
+
+    // A width change re-measures.
+    width = 480;
+    callback!([], {} as ResizeObserver);
+    expect(breakout.style.getPropertyValue("--md-content-w")).toBe("480px");
+  });
+
   it("keeps the starting number of an ordered list", () => {
     const { container } = render(
       <MarkdownPreview content={"> 2. What happens if debt is unpaid?"} />,
