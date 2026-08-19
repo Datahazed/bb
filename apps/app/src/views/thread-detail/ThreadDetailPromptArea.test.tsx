@@ -429,6 +429,10 @@ vi.mock("@/hooks/useEscapeToHide", () => ({
 }));
 
 vi.mock("@/hooks/usePromptDraftStorage", () => ({
+  usePromptDraftAccessor: () => mocks.promptDraft,
+  usePromptDraftHasSubmittableInput: () =>
+    mocks.promptDraft.text.trim().length > 0 ||
+    mocks.promptDraft.attachments.length > 0,
   usePromptDraftStorage: () => mocks.promptDraft,
 }));
 
