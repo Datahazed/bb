@@ -1,3 +1,4 @@
+import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 import {
   BB_BROWSER_PAGE_ISOLATED_WORLD_ID,
@@ -72,6 +73,40 @@ function request(
 }
 
 describe("desktop Browser-page runtime", () => {
+  it("returns the generated runtime envelope to Electron", async () => {
+    class EvaluatingPageWebContents extends FakePageWebContents {
+      override executeJavaScriptInIsolatedWorld(
+        worldId: number,
+        scripts: Array<{ code: string }>,
+        userGesture?: boolean,
+      ): Promise<unknown> {
+        this.calls.push({
+          worldId,
+          code: scripts[0]?.code ?? "",
+          userGesture,
+        });
+        return Promise.resolve(
+          runInNewContext(scripts[0]?.code ?? "", {
+            AbortController,
+            Map,
+            TextEncoder,
+          }),
+        );
+      }
+    }
+
+    const webContents = new EvaluatingPageWebContents();
+    const session = startDesktopBrowserPageScript({
+      navigationEpoch: 4,
+      request: request({ source: "() => ({ accepted: true })", input: null }),
+      webContents,
+    });
+
+    await expect(session.promise).resolves.toMatchObject({
+      value: { accepted: true },
+    });
+  });
+
   it("runs a function in the reserved isolated world and returns bounded JSON", async () => {
     const webContents = new FakePageWebContents();
     const session = startDesktopBrowserPageScript({
