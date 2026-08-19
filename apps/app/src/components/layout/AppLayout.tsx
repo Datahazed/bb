@@ -708,7 +708,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   // mirroring how the in-view unread signal covers every thread kind.
   const currentThreadPendingInteractionsQuery = useThreadPendingInteractions(
     threadId ?? "",
-    { enabled: isThreadView && Boolean(threadId) },
+    {
+      // The bootstrap seeds this cache; fetching before it settles would
+      // issue a parallel `/interactions` request the bundle already covers.
+      enabled:
+        isThreadView && Boolean(threadId) && hasThreadDetailBootstrapSettled,
+    },
   );
   const currentThreadHasPendingInteraction =
     getLatestPendingInteraction(currentThreadPendingInteractionsQuery.data) !==

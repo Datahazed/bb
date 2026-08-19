@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@bb/domain";
 import type {
   SidebarBootstrapResponse,
+  ThreadTabsResponse,
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
@@ -48,7 +49,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/sdk", () => ({
+vi.mock("@/lib/sdk", async (importOriginal) => ({
+  BbHttpError: (await importOriginal<typeof import("@/lib/sdk")>()).BbHttpError,
   sdk: {
     threads: {
       defaultExecutionOptions: vi.fn(),
@@ -367,6 +369,59 @@ describe("useThreadDetailBootstrap", () => {
     expect(result.current.queuedMessages.isFetching).toBe(false);
     expect(result.current.defaultExecutionOptions.isFetching).toBe(false);
     expect(result.current.tabs.isFetching).toBe(false);
+  });
+
+  it("makes thread tabs wait for a bootstrap that mounts in the same commit", async () => {
+    // Real mount order: `useThreadTabs` (via the fixed-panel tabs state) mounts
+    // alongside the bootstrap, not after it succeeds. Without the gate the
+    // tabs query decides to fetch before the bundle can seed it.
+    const tabs = {
+      revision: 3,
+      tabs: [{ id: "thread-info", kind: "thread-info" }],
+    } satisfies ThreadTabsResponse;
+    vi.mocked(sdk.threads.get).mockResolvedValue({
+      ...THREAD_WITH_INCLUDES,
+      tabs,
+    });
+    vi.mocked(sdk.threads.tabs.get).mockResolvedValue(tabs);
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () => ({
+        bootstrap: useThreadDetailBootstrap("thread-1"),
+        tabs: useThreadTabs("thread-1"),
+      }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.bootstrap.isSuccess).toBe(true);
+      expect(result.current.tabs.data).toEqual(tabs);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(sdk.threads.tabs.get).not.toHaveBeenCalled();
+    expect(result.current.tabs.isFetching).toBe(false);
+  });
+
+  it("lets thread tabs fetch on their own once the bootstrap fails", async () => {
+    vi.mocked(sdk.threads.get).mockRejectedValue(new Error("offline"));
+    const tabs = { revision: 1, tabs: [] } satisfies ThreadTabsResponse;
+    vi.mocked(sdk.threads.tabs.get).mockResolvedValue(tabs);
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () => ({
+        bootstrap: useThreadDetailBootstrap("thread-1"),
+        tabs: useThreadTabs("thread-1"),
+      }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.bootstrap.isError).toBe(true);
+    });
+    await waitFor(() => {
+      expect(result.current.tabs.data).toEqual(tabs);
+    });
+    expect(sdk.threads.tabs.get).toHaveBeenCalledTimes(1);
   });
 
   it("only suppresses a thread refetch for a bootstrap fetched after mount", () => {
