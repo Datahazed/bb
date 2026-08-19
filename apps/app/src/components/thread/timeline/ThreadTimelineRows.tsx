@@ -9,7 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefCallback } from "react";
 import { useLocation } from "react-router-dom";
 import {
   isBackgroundAgentTaskType,
@@ -98,9 +98,13 @@ import {
 } from "./timelineRowSignatures.js";
 import {
   TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME,
+  estimateSkippedTimelineRowBlockSizePx,
   timelineRowContainmentStyle,
   useArmTopLevelTimelineRowContainment,
 } from "./timeline-row-containment.js";
+import { useTimelineWindow } from "./useTimelineWindow.js";
+import type { TimelineWindowEntry } from "./timeline-windowing.js";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
@@ -396,6 +400,7 @@ type GetTimelineViewRows = (
   rows: TimelineRawRows,
   options?: BuildTimelineViewRowsOptions,
 ) => ThreadTimelineViewRow[];
+const UNREAD_DIVIDER_ID = "thread-unread-divider";
 type TimelineRowsListItem =
   | {
       kind: "row";
@@ -403,7 +408,7 @@ type TimelineRowsListItem =
     }
   | {
       kind: "unread-divider";
-      id: "thread-unread-divider";
+      id: typeof UNREAD_DIVIDER_ID;
     };
 
 interface ConversationRowProps {
@@ -447,6 +452,13 @@ const StreamingAssistantMessageIdContext = createContext<string | null>(null);
 const EMPTY_ROW_ID_SET: ReadonlySet<string> = new Set<string>();
 const TimelineSearchExpansionContext =
   createContext<ReadonlySet<string>>(EMPTY_ROW_ID_SET);
+// The user's manual expand/collapse choices, by row id, for the lifetime of the
+// timeline instance. The windowed top-level list unmounts far-away rows; a turn
+// the user opened must not come back collapsed when it re-mounts.
+const TimelineManualExpansionMemoryContext = createContext<Map<
+  string,
+  boolean
+> | null>(null);
 const SKILL_FILE_NAME = "SKILL.md";
 
 function useTimelineRendererStaticContext(): TimelineRendererStaticContextValue {
@@ -1858,6 +1870,16 @@ function TimelineExpandableRowView({
     terminalAutoExpandedRowIds,
   } = useTimelineTurnStateContext();
   const searchExpandedRowIds = useContext(TimelineSearchExpansionContext);
+  const manualExpansionMemory = useContext(
+    TimelineManualExpansionMemoryContext,
+  );
+  const rowId = row.id;
+  const handleManualExpansionOverrideChange = useCallback(
+    (override: boolean) => {
+      manualExpansionMemory?.set(rowId, override);
+    },
+    [manualExpansionMemory, rowId],
+  );
   const renderBody = useCallback(
     () => (
       <TimelineExpandableBody
@@ -1896,6 +1918,8 @@ function TimelineExpandableRowView({
       }
       forceExpanded={searchExpandedRowIds.has(row.id)}
       terminalAutoExpanded={terminalAutoExpandedRowIds.has(row.id)}
+      initialManualExpansionOverride={manualExpansionMemory?.get(rowId) ?? null}
+      onManualExpansionOverrideChange={handleManualExpansionOverrideChange}
       onTitleAction={onTitleAction}
       resolveSegmentLinkHref={resolveSegmentLinkHref}
       renderBody={renderBody}
@@ -1962,7 +1986,7 @@ function buildTimelineRowsListItems({
 
   for (const [index, row] of rows.entries()) {
     if (index === dividerIndex) {
-      items.push({ kind: "unread-divider", id: "thread-unread-divider" });
+      items.push({ kind: "unread-divider", id: UNREAD_DIVIDER_ID });
     }
     items.push({ kind: "row", row });
   }
@@ -1973,28 +1997,110 @@ function buildTimelineRowsListItems({
 /**
  * Wrapper for a top-level row: carries the compact-viewport containment
  * (armed after the row's first layout, see
- * `useArmTopLevelTimelineRowContainment`) and the per-row intrinsic size
- * estimate.
+ * `useArmTopLevelTimelineRowContainment`), the per-row intrinsic size
+ * estimate, and the timeline window's entry registration (`entryRef` measures
+ * the wrapper and keys it by `data-timeline-window-entry`).
  */
 function TopLevelTimelineRowWrapper({
   children,
+  entryRef,
   row,
 }: {
   children: ReactNode;
+  entryRef: RefCallback<HTMLElement>;
   row: ThreadTimelineViewRow;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   useArmTopLevelTimelineRowContainment(wrapperRef);
+  const ref = useCallback(
+    (node: HTMLDivElement | null) => {
+      wrapperRef.current = node;
+      return entryRef(node);
+    },
+    [entryRef],
+  );
   return (
     <div
-      ref={wrapperRef}
+      ref={ref}
       data-timeline-row-id={row.id}
+      data-timeline-window-entry={row.id}
       className={TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME}
       style={timelineRowContainmentStyle(row)}
     >
       {children}
     </div>
   );
+}
+
+// `py-1` around a 10px label: the divider is never measured before it mounts,
+// and it is always mounted, so the estimate only sizes the initial layout.
+const UNREAD_DIVIDER_ESTIMATED_BLOCK_SIZE_PX = 22;
+/**
+ * The live tail is bounded so a turn with many top-level rows cannot pin an
+ * unbounded number of them; nested rows of the pending turn live inside its
+ * turn row and are not windowed individually.
+ */
+const MAX_LIVE_TAIL_ITEMS = 32;
+
+function timelineRowsListItemId(item: TimelineRowsListItem): string {
+  return item.kind === "row" ? item.row.id : item.id;
+}
+
+function buildTimelineWindowEntries(
+  items: readonly TimelineRowsListItem[],
+): TimelineWindowEntry[] {
+  return items.map((item) =>
+    item.kind === "row"
+      ? {
+          id: item.row.id,
+          estimatedHeightPx: estimateSkippedTimelineRowBlockSizePx(item.row),
+        }
+      : {
+          id: item.id,
+          estimatedHeightPx: UNREAD_DIVIDER_ESTIMATED_BLOCK_SIZE_PX,
+        },
+  );
+}
+
+/**
+ * Index of the first item that must stay mounted regardless of scroll
+ * position: the last item always (the bottom sentinel geometry and the
+ * streaming assistant row hang off it) and, while the thread runs, every
+ * top-level row of the turn in progress, so streaming rows keep their state
+ * (settled markdown prefix, expansion latches, live timers) when the user
+ * scrolls far up.
+ */
+function findLiveTailStartIndex({
+  items,
+  scopeActive,
+}: {
+  items: readonly TimelineRowsListItem[];
+  scopeActive: boolean;
+}): number {
+  if (items.length === 0) {
+    return 0;
+  }
+  let start = items.length - 1;
+  const last = items[start];
+  if (!scopeActive || last === undefined || last.kind !== "row") {
+    return start;
+  }
+  const liveTurnId = last.row.turnId;
+  if (liveTurnId === null) {
+    return start;
+  }
+  while (start > 0 && items.length - start < MAX_LIVE_TAIL_ITEMS) {
+    const previous = items[start - 1];
+    if (
+      previous === undefined ||
+      previous.kind !== "row" ||
+      previous.row.turnId !== liveTurnId
+    ) {
+      break;
+    }
+    start -= 1;
+  }
+  return start;
 }
 
 function TimelineRowsList({
@@ -2026,9 +2132,91 @@ function TimelineRowsList({
     () => buildTimelineRowsListItems({ rows, unreadDividerPlacement }),
     [rows, unreadDividerPlacement],
   );
+  // Only the top-level list is windowed, and only on compact viewports inside
+  // a bottom-anchored scroll body (the same gate as row containment: phones
+  // are where every loaded page staying mounted hurts, and the scroll body is
+  // what the window samples and corrects). Nested lists live inside an
+  // expandable body that animates its own height.
+  const isCompactViewport = useIsCompactViewport();
+  const bottomAnchor = useBottomAnchoredScroll();
+  const isTopLevel = spacing === "top-level";
+  const windowEntries = useMemo(
+    () =>
+      isTopLevel ? buildTimelineWindowEntries(items) : EMPTY_WINDOW_ENTRIES,
+    [isTopLevel, items],
+  );
+  const liveTailStartIndex = useMemo(
+    () => (isTopLevel ? findLiveTailStartIndex({ items, scopeActive }) : 0),
+    [isTopLevel, items, scopeActive],
+  );
+  // The unread divider scrolls itself into view once on mount, and the search
+  // target's ancestors must be in the DOM for the reveal to find them.
+  const pinnedWindowEntryIds = useMemo(() => {
+    const ids = new Set(stableSearchExpandedRowIds);
+    ids.add(UNREAD_DIVIDER_ID);
+    return ids;
+  }, [stableSearchExpandedRowIds]);
+  const timelineWindow = useTimelineWindow({
+    enabled: isTopLevel && isCompactViewport && bottomAnchor !== null,
+    entries: windowEntries,
+    pinnedEntryIds: pinnedWindowEntryIds,
+    pinnedTailStartIndex: liveTailStartIndex,
+    scrollAnchorThreadId: isTopLevel ? threadId : undefined,
+  });
+  const renderItem = (item: TimelineRowsListItem): ReactNode => {
+    if (item.kind === "unread-divider") {
+      const divider = (
+        <TimelineUnreadDivider
+          key={item.id}
+          autoScroll={unreadDividerAutoScroll}
+        />
+      );
+      if (!isTopLevel) {
+        return divider;
+      }
+      return (
+        <div
+          key={item.id}
+          data-timeline-window-entry={item.id}
+          ref={timelineWindow.entryRef}
+        >
+          {divider}
+        </div>
+      );
+    }
+
+    const rowView = (
+      <MemoizedTimelineRowView
+        activeLatestBundleId={activeLatestBundleId}
+        row={item.row}
+        scopeActive={scopeActive}
+        showAssistantMessageActions={showAssistantMessageActions}
+        spacing={spacing}
+        compactActivityIntents={compactActivityIntents}
+      />
+    );
+    if (isTopLevel) {
+      return (
+        <TopLevelTimelineRowWrapper
+          key={item.row.id}
+          entryRef={timelineWindow.entryRef}
+          row={item.row}
+        >
+          {rowView}
+        </TopLevelTimelineRowWrapper>
+      );
+    }
+    return (
+      <div key={item.row.id} data-timeline-row-id={item.row.id}>
+        {rowView}
+      </div>
+    );
+  };
+  const segments = timelineWindow.segments;
   return (
     <TimelineSearchExpansionContext.Provider value={stableSearchExpandedRowIds}>
       <div
+        ref={isTopLevel ? timelineWindow.listRef : undefined}
         className={cn(
           "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
           timelineRowsListGapClassName(spacing),
@@ -2036,43 +2224,42 @@ function TimelineRowsList({
         )}
         data-timeline-row-list={spacing}
       >
-        {items.map((item) => {
-          if (item.kind === "unread-divider") {
-            return (
-              <TimelineUnreadDivider
-                key={item.id}
-                autoScroll={unreadDividerAutoScroll}
-              />
-            );
-          }
-
-          const rowView = (
-            <MemoizedTimelineRowView
-              activeLatestBundleId={activeLatestBundleId}
-              row={item.row}
-              scopeActive={scopeActive}
-              showAssistantMessageActions={showAssistantMessageActions}
-              spacing={spacing}
-              compactActivityIntents={compactActivityIntents}
-            />
-          );
-          if (spacing === "top-level") {
-            return (
-              <TopLevelTimelineRowWrapper key={item.row.id} row={item.row}>
-                {rowView}
-              </TopLevelTimelineRowWrapper>
-            );
-          }
-          return (
-            <div key={item.row.id} data-timeline-row-id={item.row.id}>
-              {rowView}
-            </div>
-          );
-        })}
+        {segments === null
+          ? items.map(renderItem)
+          : segments.map((segment) => {
+              if (segment.kind === "entry") {
+                const item = items[segment.index];
+                return item === undefined ? null : renderItem(item);
+              }
+              const firstItem = items[segment.startIndex];
+              const spacerKey =
+                firstItem === undefined
+                  ? `spacer:${segment.startIndex}`
+                  : `spacer:${timelineRowsListItemId(firstItem)}`;
+              // Never a scroll-anchor candidate: a spacer's own height is what
+              // changes on a swap, so anchoring to it would let the rows below
+              // shift. Excluded, the browser anchors to the first mounted row,
+              // which is also what the hook's own correction preserves.
+              return (
+                <div
+                  key={spacerKey}
+                  aria-hidden
+                  data-timeline-row-spacer={
+                    segment.endIndex - segment.startIndex
+                  }
+                  style={{
+                    height: `${segment.heightPx}px`,
+                    overflowAnchor: "none",
+                  }}
+                />
+              );
+            })}
       </div>
     </TimelineSearchExpansionContext.Provider>
   );
 }
+
+const EMPTY_WINDOW_ENTRIES: readonly TimelineWindowEntry[] = [];
 
 function ThreadTimelineRowsComponent(props: ThreadTimelineRowsProps) {
   const ownerKey = timelineRowsOwnerKey({
@@ -2165,6 +2352,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     selection: MessageProseSelection;
     message: ThreadChatMessageReference;
   } | null>(null);
+  const [manualExpansionMemory] = useState(() => new Map<string, boolean>());
   // Only hand a reporter to the messages when an action exists; otherwise the
   // wrapper stays inert and the floating menu never mounts.
   const reportProseSelection = useMemo<
@@ -2333,24 +2521,28 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                   value={turnStateContextValue}
                 >
                   <AutoHeightContainer snapRevision={heightSnapRevision}>
-                    <TimelineRowsList
-                      hasOlderTimelineRows={props.hasOlderTimelineRows}
-                      isLoadingOlderTimelineRows={
-                        props.isLoadingOlderTimelineRows
-                      }
-                      onLoadOlderRows={props.onLoadOlderRows}
-                      rows={rows}
-                      scopeActive={scopeActive}
-                      showAssistantMessageActions={true}
-                      compactActivityIntents={false}
-                      spacing="top-level"
-                      unreadDividerAutoScroll={
-                        props.unreadDividerAutoScroll ?? true
-                      }
-                      unreadDividerPlacement={
-                        props.unreadDividerPlacement ?? null
-                      }
-                    />
+                    <TimelineManualExpansionMemoryContext.Provider
+                      value={manualExpansionMemory}
+                    >
+                      <TimelineRowsList
+                        hasOlderTimelineRows={props.hasOlderTimelineRows}
+                        isLoadingOlderTimelineRows={
+                          props.isLoadingOlderTimelineRows
+                        }
+                        onLoadOlderRows={props.onLoadOlderRows}
+                        rows={rows}
+                        scopeActive={scopeActive}
+                        showAssistantMessageActions={true}
+                        compactActivityIntents={false}
+                        spacing="top-level"
+                        unreadDividerAutoScroll={
+                          props.unreadDividerAutoScroll ?? true
+                        }
+                        unreadDividerPlacement={
+                          props.unreadDividerPlacement ?? null
+                        }
+                      />
+                    </TimelineManualExpansionMemoryContext.Provider>
                   </AutoHeightContainer>
                   {hasSelectionActions ? (
                     <TimelineSelectionMenu

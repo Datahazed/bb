@@ -36,6 +36,14 @@ export interface ExpandableTimelineRowProps {
    * state until the user toggles the row or the row unmounts.
    */
   terminalAutoExpanded?: boolean;
+  /**
+   * Seed for the user's manual expand/collapse choice, and where to report
+   * changes to it. Lets a host that unmounts far-away rows (the windowed
+   * timeline) restore the choice when the row mounts again; the state itself
+   * stays local to the row.
+   */
+  initialManualExpansionOverride?: boolean | null;
+  onManualExpansionOverrideChange?: (override: boolean) => void;
   onBeforeExpand?: () => void;
   renderBody: () => ReactNode;
   title: TimelineTitle;
@@ -86,8 +94,10 @@ function ExpandableTimelineRowComponent({
   expandable = true,
   forceExpanded = false,
   horizontalPadding = "default",
+  initialManualExpansionOverride = null,
   leadingIcon,
   onBeforeExpand,
+  onManualExpansionOverrideChange,
   onTitleAction,
   renderBody,
   resolveSegmentLinkHref,
@@ -97,7 +107,7 @@ function ExpandableTimelineRowComponent({
   titleContent,
 }: ExpandableTimelineRowProps) {
   const [manualExpansionOverride, setManualExpansionOverride] =
-    useState<ManualExpansionOverride>(null);
+    useState<ManualExpansionOverride>(initialManualExpansionOverride);
   const [terminalAutoExpandedLatch, setTerminalAutoExpandedLatch] =
     useState(terminalAutoExpanded);
   const [collapsedPreviewActive, setCollapsedPreviewActive] = useState(false);
@@ -123,7 +133,8 @@ function ExpandableTimelineRowComponent({
       onBeforeExpand?.();
     }
     setManualExpansionOverride(!isExpanded);
-  }, [isExpanded, onBeforeExpand]);
+    onManualExpansionOverrideChange?.(!isExpanded);
+  }, [isExpanded, onBeforeExpand, onManualExpansionOverrideChange]);
   const handleCollapsedPreviewClick = useCallback(
     (event: CollapsedPreviewClickEvent): void => {
       if (

@@ -110,3 +110,22 @@ export function timelineRowContainmentStyle(
   }
   return { containIntrinsicBlockSize: `auto ${estimate}px` };
 }
+
+/**
+ * Height a top-level row wrapper occupies while it is skipped by
+ * `content-visibility: auto` and has never rendered: the class default above
+ * (`1.25rem`) for work / turn / system rows, the per-row estimate for
+ * conversation rows. The timeline window uses the same number for rows it has
+ * never measured, so a spacer and the skipped rows it stands in for take the
+ * same space and swapping one for the other does not move the content below.
+ */
+const SKIPPED_ROW_DEFAULT_BLOCK_SIZE_PX = 20;
+
+export function estimateSkippedTimelineRowBlockSizePx(
+  row: ThreadTimelineViewRow,
+): number {
+  return (
+    estimateTimelineRowIntrinsicBlockSizePx(row) ??
+    SKIPPED_ROW_DEFAULT_BLOCK_SIZE_PX
+  );
+}

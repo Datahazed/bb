@@ -1,5 +1,12 @@
 import { useStore } from "jotai";
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -249,6 +256,19 @@ export function HeightTransition({
   );
 }
 
+/**
+ * Lets content inside an `AutoHeightContainer` snap the wrapper to its current
+ * height without a transition. The timeline window uses it when it swaps rows
+ * for spacers (or back) in one commit: that replacement is a layout swap, not
+ * growth, and easing through it would leave the scroll range short of the new
+ * content for the transition's duration. Null outside a container.
+ */
+const AutoHeightSnapContext = createContext<(() => void) | null>(null);
+
+export function useAutoHeightSnap(): (() => void) | null {
+  return useContext(AutoHeightSnapContext);
+}
+
 export interface AutoHeightContainerProps {
   children: ReactNode;
   className?: string;
@@ -314,6 +334,9 @@ export function AutoHeightContainer({
   const snapToCurrentHeightRef = useRef<(() => void) | null>(null);
   const previousSnapRevisionRef = useRef(snapRevision);
   const store = useStore();
+  const snapToCurrentHeight = useCallback(() => {
+    snapToCurrentHeightRef.current?.();
+  }, []);
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
     const inner = innerRef.current;
@@ -422,7 +445,9 @@ export function AutoHeightContainer({
       }}
     >
       <div ref={innerRef} style={{ display: "flow-root" }}>
-        {children}
+        <AutoHeightSnapContext.Provider value={snapToCurrentHeight}>
+          {children}
+        </AutoHeightSnapContext.Provider>
       </div>
     </div>
   );
