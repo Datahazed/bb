@@ -6,6 +6,8 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
+  within,
 } from "@testing-library/react";
 import type {
   BbDesktopBrowserApi,
@@ -145,6 +147,44 @@ function expectChromeVisible(): HTMLElement {
   return chrome;
 }
 
+function setBrowserChromeWidth(width: number): void {
+  const getBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      if (this.dataset.testid === "browser-tab-nav-controls") {
+        return {
+          bottom: 44,
+          height: 44,
+          left: 0,
+          right: width,
+          top: 0,
+          width,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        };
+      }
+      return getBoundingClientRect.call(this);
+    },
+  );
+}
+
+function browserActionRegistration(
+  id: string,
+  title: string,
+  onClick: () => void = () => {},
+): NonNullable<PluginRegistrationSet["browserActions"]>[number] {
+  return {
+    id,
+    title,
+    component: () => (
+      <button type="button" aria-label={title} onClick={onClick}>
+        {title}
+      </button>
+    ),
+  };
+}
+
 describe("BrowserTabContent persistent navigation", () => {
   afterEach(() => {
     cleanup();
@@ -185,6 +225,82 @@ describe("BrowserTabContent persistent navigation", () => {
     act(() => harness.emitState(browserState({ canGoBack: true })));
     fireEvent.click(screen.getByRole("button", { name: "Go back" }));
     expect(harness.goBack).toHaveBeenCalledWith("browser:test");
+  });
+
+  it("keeps plugin actions ordered before the rightmost external-link control", () => {
+    setBrowserChromeWidth(760);
+    setPluginSlotRegistrations(
+      "toolbar",
+      registrationSet([
+        browserActionRegistration("first", "First action"),
+        browserActionRegistration("second", "Second action"),
+      ]),
+    );
+    renderBrowserChrome(
+      createBrowserChromeHarness(),
+      "https://example.com/docs",
+    );
+
+    const controls = within(
+      screen.getByTestId("browser-tab-nav-controls"),
+    ).getAllByRole("button");
+    expect(
+      controls.slice(-3).map((control) => control.getAttribute("aria-label")),
+    ).toEqual(["First action", "Second action", "Open in external browser"]);
+    expect(screen.queryByLabelText(/More Browser actions/)).toBeNull();
+  });
+
+  it("moves excess actions into an ordered keyboard-accessible menu before external-link", async () => {
+    setBrowserChromeWidth(360);
+    const activations: string[] = [];
+    setPluginSlotRegistrations(
+      "toolbar",
+      registrationSet([
+        browserActionRegistration("first", "First action", () => {
+          activations.push("first");
+        }),
+        browserActionRegistration("second", "Second action", () => {
+          activations.push("second");
+        }),
+        browserActionRegistration("third", "Third action", () => {
+          activations.push("third");
+        }),
+      ]),
+    );
+    renderBrowserChrome(
+      createBrowserChromeHarness(),
+      "https://example.com/docs",
+    );
+
+    const controls = within(
+      screen.getByTestId("browser-tab-nav-controls"),
+    ).getAllByRole("button");
+    expect(
+      controls.slice(-2).map((control) => control.getAttribute("aria-label")),
+    ).toEqual(["More Browser actions (3)", "Open in external browser"]);
+
+    const trigger = screen.getByRole("button", {
+      name: "More Browser actions (3)",
+    });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+
+    const menu = await screen.findByRole("menu");
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "First action",
+      "Second action",
+      "Third action",
+    ]);
+    await waitFor(() => expect(document.activeElement).toBe(items[0]));
+
+    fireEvent.keyDown(items[0]!, { key: "ArrowDown" });
+    await waitFor(() => expect(document.activeElement).toBe(items[1]));
+    fireEvent.keyDown(items[1]!, { key: "Enter" });
+
+    expect(activations).toEqual(["second"]);
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("binds generic page scripts to the exact Browser tab", async () => {
