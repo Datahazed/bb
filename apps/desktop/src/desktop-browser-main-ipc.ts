@@ -7,6 +7,7 @@ import {
 import {
   bbDesktopBrowserAttachRequestSchema,
   bbDesktopBrowserNavigateRequestSchema,
+  bbDesktopBrowserPageNavigateRequestSchema,
   bbDesktopBrowserPageCaptureRequestSchema,
   bbDesktopBrowserPageScriptCancelRequestSchema,
   bbDesktopBrowserPageScriptRequestSchema,
@@ -18,6 +19,7 @@ import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
@@ -102,6 +104,18 @@ export function registerDesktopBrowserIpc(
       }
       const request = bbDesktopBrowserPageCaptureRequestSchema.parse(payload);
       return manager.capturePage({ hostWindow, request });
+    },
+  );
+
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL,
+    async (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        throw new Error("The Browser host window is unavailable");
+      }
+      const request = bbDesktopBrowserPageNavigateRequestSchema.parse(payload);
+      return manager.navigatePage({ hostWindow, request });
     },
   );
 

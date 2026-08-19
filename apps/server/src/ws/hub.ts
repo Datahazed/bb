@@ -334,13 +334,19 @@ export class NotificationHub implements DbNotifier {
     timeoutMs: number;
     signal?: AbortSignal;
   }): Promise<JsonValue> {
-    const registration = this.browserClientsById.get(args.target.clientId);
-    const tab = registration?.tabs.get(args.target.tabId);
+    const target: BrowserTabTarget = {
+      clientId: args.target.clientId,
+      windowId: args.target.windowId,
+      tabId: args.target.tabId,
+      navigationEpoch: args.target.navigationEpoch,
+    };
+    const registration = this.browserClientsById.get(target.clientId);
+    const tab = registration?.tabs.get(target.tabId);
     if (
       registration === undefined ||
       tab === undefined ||
-      registration.windowId !== args.target.windowId ||
-      tab.navigationEpoch !== args.target.navigationEpoch
+      registration.windowId !== target.windowId ||
+      tab.navigationEpoch !== target.navigationEpoch
     ) {
       return Promise.reject(new BrowserControlUnavailableError());
     }
@@ -363,7 +369,7 @@ export class NotificationHub implements DbNotifier {
       };
       args.signal?.addEventListener("abort", abort, { once: true });
       const waiter: BrowserControlWaiter = {
-        target: args.target,
+        target,
         socket: registration.socket,
         resolve,
         reject,
@@ -386,7 +392,7 @@ export class NotificationHub implements DbNotifier {
             browserControlRequestMessageSchema.parse({
               type: "browser-control-request",
               requestId,
-              target: args.target,
+              target,
               action: args.action,
             }),
           ),

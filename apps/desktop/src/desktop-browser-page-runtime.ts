@@ -157,7 +157,8 @@ export function startDesktopBrowserPageScript(
   args: StartDesktopBrowserPageScriptArgs,
 ): DesktopBrowserPageScriptSession {
   const { request, webContents } = args;
-  let settled = false;
+  let promiseSettled = false;
+  let executionFinished = false;
   let rejectPromise: ((error: Error) => void) | null = null;
   let timeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -174,11 +175,13 @@ export function startDesktopBrowserPageScript(
     (resolve, reject) => {
       rejectPromise = reject;
       timeout = setTimeout(() => {
-        if (settled) return;
-        settled = true;
+        if (executionFinished) return;
         cancelInPage("timeout");
         void terminateUnresponsiveExecution(webContents);
-        reject(new Error("Browser page script timed out"));
+        if (!promiseSettled) {
+          promiseSettled = true;
+          reject(new Error("Browser page script timed out"));
+        }
       }, request.timeoutMs);
 
       void executeInRequestedWorld(
@@ -188,7 +191,7 @@ export function startDesktopBrowserPageScript(
         `bb-browser-page-runtime://${encodeURIComponent(request.requestId)}`,
       )
         .then((rawEnvelope) => {
-          if (settled) return;
+          if (promiseSettled) return;
           const envelope = parseEnvelope(rawEnvelope);
           if (!envelope.ok) {
             const error = new Error(safeErrorMessage(envelope.error?.message));
@@ -201,7 +204,7 @@ export function startDesktopBrowserPageScript(
           const value = bbDesktopBrowserJsonValueSchema.parse(
             envelope.value ?? null,
           ) as BbDesktopBrowserJsonValue;
-          settled = true;
+          promiseSettled = true;
           resolve({
             requestId: request.requestId,
             navigationEpoch: args.navigationEpoch,
@@ -209,11 +212,12 @@ export function startDesktopBrowserPageScript(
           });
         })
         .catch((error: unknown) => {
-          if (settled) return;
-          settled = true;
+          if (promiseSettled) return;
+          promiseSettled = true;
           reject(error instanceof Error ? error : new Error(String(error)));
         })
         .finally(() => {
+          executionFinished = true;
           if (timeout !== null) clearTimeout(timeout);
         });
     },
@@ -224,9 +228,8 @@ export function startDesktopBrowserPageScript(
     requestId: request.requestId,
     promise,
     cancel(reason = "cancelled") {
-      if (settled) return;
-      settled = true;
-      if (timeout !== null) clearTimeout(timeout);
+      if (promiseSettled) return;
+      promiseSettled = true;
       cancelInPage(reason);
       const error = new Error(
         reason === "navigation"

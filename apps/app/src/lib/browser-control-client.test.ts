@@ -118,6 +118,7 @@ describe("Browser control client", () => {
     await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
     expect(run.mock.calls[0]?.[0]).toMatchObject({
       tabId: "tab-a",
+      expectedNavigationEpoch: 7,
       input: { kind: "snapshot", mode: "interactive" },
     });
     await vi.waitFor(() =>
@@ -387,5 +388,159 @@ describe("Browser control client", () => {
     );
     expect(run).not.toHaveBeenCalled();
     registration.dispose();
+  });
+
+  it("uses acknowledged epoch-bound navigation", async () => {
+    const navigate = vi.fn(async () => ({
+      navigationEpoch: 7,
+      url: "https://example.test/next",
+    }));
+    const registration = registerBrowserControlTab({
+      active: true,
+      desktopBrowser: {
+        navigate: vi.fn(),
+        experimental_navigateBrowserPage: navigate,
+      } as never,
+      projectId: null,
+      state: {
+        tabId: "tab-a",
+        url: "https://example.test/",
+        title: "Example",
+        navigationEpoch: 7,
+      } as never,
+      tabId: "tab-a",
+      threadId: null,
+      url: "https://example.test/",
+    });
+
+    socket.request?.(
+      request({
+        action: { kind: "navigate", url: "https://example.test/next" },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith({
+        tabId: "tab-a",
+        url: "https://example.test/next",
+        expectedNavigationEpoch: 7,
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(socket.sendBrowserControlResponse).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "request-a",
+          ok: true,
+          value: {
+            navigating: true,
+            url: "https://example.test/next",
+          },
+        }),
+      ),
+    );
+    registration.dispose();
+  });
+
+  it("cancels active work when its tab registration is disposed", async () => {
+    let observedSignal: AbortSignal | undefined;
+    const run = vi.fn(
+      async (_request: unknown, options: { signal?: AbortSignal }) => {
+        observedSignal = options.signal;
+        await new Promise((_resolve, reject) =>
+          options.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("disposed", "AbortError")),
+            { once: true },
+          ),
+        );
+        return null as never;
+      },
+    );
+    const registration = registerBrowserControlTab({
+      active: true,
+      desktopBrowser: {
+        navigate: vi.fn(),
+        experimental_runBrowserPageScript: run,
+      } as never,
+      projectId: null,
+      state: {
+        tabId: "tab-a",
+        url: "https://example.test/",
+        title: "Example",
+        navigationEpoch: 7,
+      } as never,
+      tabId: "tab-a",
+      threadId: null,
+      url: "https://example.test/",
+    });
+
+    socket.request?.(request());
+    await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+    registration.dispose();
+    await vi.waitFor(() => expect(observedSignal?.aborted).toBe(true));
+    await vi.waitFor(() =>
+      expect(socket.sendBrowserControlResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: "request-a", ok: false }),
+      ),
+    );
+  });
+
+  it("cancels active work when another registration replaces its tab", async () => {
+    let observedSignal: AbortSignal | undefined;
+    const run = vi.fn(
+      async (_request: unknown, options: { signal?: AbortSignal }) => {
+        observedSignal = options.signal;
+        await new Promise((_resolve, reject) =>
+          options.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("replaced", "AbortError")),
+            { once: true },
+          ),
+        );
+        return null as never;
+      },
+    );
+    const first = registerBrowserControlTab({
+      active: true,
+      desktopBrowser: {
+        navigate: vi.fn(),
+        experimental_runBrowserPageScript: run,
+      } as never,
+      projectId: null,
+      state: {
+        tabId: "tab-a",
+        url: "https://example.test/",
+        title: "Example",
+        navigationEpoch: 7,
+      } as never,
+      tabId: "tab-a",
+      threadId: null,
+      url: "https://example.test/",
+    });
+    socket.request?.(request());
+    await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+
+    const replacement = registerBrowserControlTab({
+      active: true,
+      desktopBrowser: { navigate: vi.fn() } as never,
+      projectId: null,
+      state: {
+        tabId: "tab-a",
+        url: "https://replacement.test/",
+        title: "Replacement",
+        navigationEpoch: 8,
+      } as never,
+      tabId: "tab-a",
+      threadId: null,
+      url: "https://replacement.test/",
+    });
+
+    await vi.waitFor(() => expect(observedSignal?.aborted).toBe(true));
+    await vi.waitFor(() =>
+      expect(socket.sendBrowserControlResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: "request-a", ok: false }),
+      ),
+    );
+    first.dispose();
+    replacement.dispose();
   });
 });

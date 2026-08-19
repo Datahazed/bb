@@ -3,6 +3,7 @@ import { appCommandIdSchema } from "@bb/domain";
 import {
   bbDesktopBrowserOpenTabRequestSchema,
   bbDesktopBrowserPageCaptureResultSchema,
+  bbDesktopBrowserPageNavigateResultSchema,
   bbDesktopBrowserPageScriptResultSchema,
   bbDesktopBrowserScopedOpenTabRequestSchema,
   bbDesktopBrowserSnapshotSchema,
@@ -40,6 +41,7 @@ import {
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
@@ -278,6 +280,13 @@ const bbBrowserApi: BbDesktopBrowserApi = {
       request,
     );
     return bbDesktopBrowserPageCaptureResultSchema.parse(payload);
+  },
+  async experimental_navigateBrowserPage(request) {
+    const payload: unknown = await ipcRenderer.invoke(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL,
+      request,
+    );
+    return bbDesktopBrowserPageNavigateResultSchema.parse(payload);
   },
   onState(listener): BbDesktopBrowserUnsubscribe {
     browserStateListeners.add(listener);

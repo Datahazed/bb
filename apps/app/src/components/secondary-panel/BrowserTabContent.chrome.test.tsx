@@ -225,6 +225,7 @@ describe("BrowserTabContent persistent navigation", () => {
       {
         tabId: "browser:test",
         requestId: expect.any(String),
+        expectedNavigationEpoch: 0,
         source: "() => ({ title: document.title })",
         input: { intent: "inspect" },
         timeoutMs: 30_000,

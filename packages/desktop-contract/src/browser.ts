@@ -240,6 +240,7 @@ export const bbDesktopBrowserPageScriptRequestSchema = z
   .object({
     tabId: z.string().min(1).max(256),
     requestId: z.string().min(1).max(128),
+    expectedNavigationEpoch: z.number().int().nonnegative(),
     world: z.enum(["isolated", "main"]).optional(),
     /** Function expression receiving `{ input, signal }` in the requested world. */
     source: z
@@ -265,6 +266,27 @@ export const bbDesktopBrowserPageScriptRequestSchema = z
   .strict();
 export type BbDesktopBrowserPageScriptRequest = z.infer<
   typeof bbDesktopBrowserPageScriptRequestSchema
+>;
+
+export const bbDesktopBrowserPageNavigateRequestSchema = z
+  .object({
+    tabId: z.string().min(1).max(256),
+    url: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
+    expectedNavigationEpoch: z.number().int().nonnegative(),
+  })
+  .strict();
+export type BbDesktopBrowserPageNavigateRequest = z.infer<
+  typeof bbDesktopBrowserPageNavigateRequestSchema
+>;
+
+export const bbDesktopBrowserPageNavigateResultSchema = z
+  .object({
+    navigationEpoch: z.number().int().nonnegative(),
+    url: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_URL_LENGTH),
+  })
+  .strict();
+export type BbDesktopBrowserPageNavigateResult = z.infer<
+  typeof bbDesktopBrowserPageNavigateResultSchema
 >;
 
 export const bbDesktopBrowserPageScriptCancelRequestSchema = z
@@ -390,6 +412,10 @@ export interface BbDesktopBrowserApi {
     request: BbDesktopBrowserPageScriptRequest,
     options?: { signal?: AbortSignal },
   ): Promise<BbDesktopBrowserPageScriptResult>;
+  /** Navigate an exact Browser-page revision after main-process validation. */
+  experimental_navigateBrowserPage?(
+    request: BbDesktopBrowserPageNavigateRequest,
+  ): Promise<BbDesktopBrowserPageNavigateResult>;
   /** Capture the exact selected Browser tab without exposing its WebContents. */
   experimental_captureBrowserPage?(
     request: BbDesktopBrowserPageCaptureRequest,

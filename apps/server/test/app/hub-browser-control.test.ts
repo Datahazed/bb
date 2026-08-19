@@ -47,12 +47,13 @@ describe("NotificationHub Browser control broker", () => {
     const hub = new NotificationHub();
     const socket = registerTab(hub);
 
-    expect(hub.listBrowserTabs()).toEqual([
+    const listedTabs = hub.listBrowserTabs();
+    expect(listedTabs).toEqual([
       expect.objectContaining({ ...target, title: "Example" }),
     ]);
 
     const result = hub.runBrowserControl({
-      target,
+      target: listedTabs[0]!,
       action: { kind: "snapshot", mode: "interactive" },
       timeoutMs: 1_000,
     });
@@ -62,6 +63,7 @@ describe("NotificationHub Browser control broker", () => {
       target,
       action: { kind: "snapshot", mode: "interactive" },
     });
+    expect(request.target).toEqual(target);
     expect(
       hub.recordBrowserControlResponse(socket, {
         type: "browser-control-response",

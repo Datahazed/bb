@@ -8,6 +8,8 @@ import {
   type BbDesktopBrowserOpenTabRequest,
   type BbDesktopBrowserPageCaptureRequest,
   type BbDesktopBrowserPageCaptureResult,
+  type BbDesktopBrowserPageNavigateRequest,
+  type BbDesktopBrowserPageNavigateResult,
   type BbDesktopBrowserPageScriptRequest,
   type BbDesktopBrowserPageScriptResult,
   type BbDesktopBrowserScopedOpenTabRequest,
@@ -85,6 +87,7 @@ interface BrowserViewEntry {
   rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
   visible: boolean;
   navigationEpoch: number;
+  mainFrameNavigationPending: boolean;
   pageScriptSessions: Map<string, DesktopBrowserPageScriptSession>;
 }
 
@@ -172,6 +175,9 @@ export interface DesktopBrowserViewManager {
   runPageScript(
     args: HostScopedRequestArgs<BbDesktopBrowserPageScriptRequest>,
   ): Promise<BbDesktopBrowserPageScriptResult>;
+  navigatePage(
+    args: HostScopedRequestArgs<BbDesktopBrowserPageNavigateRequest>,
+  ): Promise<BbDesktopBrowserPageNavigateResult>;
   cancelPageScript(args: HostScopedTabArgs & { requestId: string }): void;
   capturePage(
     args: HostScopedRequestArgs<BbDesktopBrowserPageCaptureRequest>,
@@ -601,12 +607,16 @@ export function createDesktopBrowserViewManager(
 
     const refresh = () => pushState(hostWindow, tabId);
     webContents.on("did-finish-load", () => {
+      entry.mainFrameNavigationPending = false;
       resetEntryRendererRecovery(entry);
       applyEntryVisibility(entry, hostWindow);
       refresh();
     });
     webContents.on("did-start-loading", refresh);
-    webContents.on("did-stop-loading", refresh);
+    webContents.on("did-stop-loading", () => {
+      entry.mainFrameNavigationPending = false;
+      refresh();
+    });
     webContents.on("did-navigate", () => {
       entry.lastErrorText = null;
       refresh();
@@ -618,6 +628,7 @@ export function createDesktopBrowserViewManager(
       "did-start-navigation",
       (_event, _url, _isInPlace, isMainFrame) => {
         if (isMainFrame) {
+          entry.mainFrameNavigationPending = true;
           entry.navigationEpoch += 1;
           cancelEntryPageScripts(entry, "navigation");
         }
@@ -635,6 +646,7 @@ export function createDesktopBrowserViewManager(
         if (!isMainFrame || errorCode === ERR_ABORTED) {
           return;
         }
+        entry.mainFrameNavigationPending = false;
         entry.lastErrorText =
           errorDescription.length > 0
             ? errorDescription
@@ -668,6 +680,7 @@ export function createDesktopBrowserViewManager(
       rendererRecoveryTimer: null,
       visible: false,
       navigationEpoch: 0,
+      mainFrameNavigationPending: false,
       pageScriptSessions: new Map(),
     };
     wireWebContents(args.hostWindow, args.tabId, entry);
@@ -830,6 +843,12 @@ export function createDesktopBrowserViewManager(
       ) {
         throw new Error("The Browser tab is not available for page scripts");
       }
+      if (
+        entry.mainFrameNavigationPending ||
+        entry.navigationEpoch !== request.expectedNavigationEpoch
+      ) {
+        throw new Error("The Browser page changed before the script ran");
+      }
       entry.pageScriptSessions.get(request.requestId)?.cancel("replaced");
       const session = startDesktopBrowserPageScript({
         navigationEpoch: entry.navigationEpoch,
@@ -844,6 +863,43 @@ export function createDesktopBrowserViewManager(
           entry.pageScriptSessions.delete(request.requestId);
         }
       }
+    },
+    async navigatePage({ hostWindow, request }) {
+      const entry = entries.get(browserViewKey(hostWindow, request.tabId));
+      if (
+        entry === undefined ||
+        entry.view.webContents.isDestroyed() ||
+        entry.view.webContents.getURL().length === 0
+      ) {
+        throw new Error("The Browser tab is not available for navigation");
+      }
+      if (
+        entry.mainFrameNavigationPending ||
+        entry.navigationEpoch !== request.expectedNavigationEpoch
+      ) {
+        throw new Error("The Browser page changed before navigation");
+      }
+      if (!isAllowedBrowserUrl(request.url)) {
+        throw new Error("The Browser navigation URL is not allowed");
+      }
+      cancelEntryPageScripts(entry, "navigation");
+      resetEntryRendererRecovery(entry);
+      applyEntryVisibility(entry, hostWindow);
+      if (entry.view.webContents.getURL() !== request.url) {
+        const acceptedEpoch = entry.navigationEpoch;
+        entry.mainFrameNavigationPending = true;
+        entry.lastErrorText = null;
+        void entry.view.webContents.loadURL(request.url).catch(() => {
+          if (entry.navigationEpoch === acceptedEpoch) {
+            entry.mainFrameNavigationPending = false;
+            pushState(hostWindow, request.tabId);
+          }
+        });
+      }
+      return {
+        navigationEpoch: entry.navigationEpoch,
+        url: request.url,
+      };
     },
     cancelPageScript({ hostWindow, tabId, requestId }) {
       withEntry({ hostWindow, tabId }, (entry) => {

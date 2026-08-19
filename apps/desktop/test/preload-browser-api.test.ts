@@ -19,6 +19,7 @@ import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
@@ -142,6 +143,12 @@ const electronMock = vi.hoisted(() => {
             pixelSize: { width: 1, height: 1 },
           });
         }
+        if (channel === BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL) {
+          return Promise.resolve({
+            navigationEpoch: 1,
+            url: "https://example.com/next",
+          });
+        }
         return Promise.resolve(desktopInfo);
       },
       on(channel: string, listener: IpcRendererListener): void {
@@ -247,6 +254,7 @@ describe("desktop preload browser API", () => {
       "detach",
       "experimental_browserPageRuntimeVersion",
       "experimental_captureBrowserPage",
+      "experimental_navigateBrowserPage",
       "experimental_runBrowserPageScript",
       "goBack",
       "goForward",
@@ -277,6 +285,7 @@ describe("desktop preload browser API", () => {
       api.browser.experimental_runBrowserPageScript?.({
         tabId: "browser:a",
         requestId: "request:a",
+        expectedNavigationEpoch: 1,
         source: "({ input }) => input",
         input: { ok: true },
         timeoutMs: 1_000,
@@ -296,6 +305,16 @@ describe("desktop preload browser API", () => {
       navigationEpoch: 1,
       dataUrl: "data:image/png;base64,iVBORw0KGgo=",
       pixelSize: { width: 1, height: 1 },
+    });
+    await expect(
+      api.browser.experimental_navigateBrowserPage?.({
+        tabId: "browser:a",
+        url: "https://example.com/next",
+        expectedNavigationEpoch: 1,
+      }),
+    ).resolves.toEqual({
+      navigationEpoch: 1,
+      url: "https://example.com/next",
     });
     api.setTheme("dark");
     await api.checkForUpdates();
@@ -355,6 +374,9 @@ describe("desktop preload browser API", () => {
     );
     expect(electronMock.invokeCalls).toContain(
       BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
+    );
+    expect(electronMock.invokeCalls).toContain(
+      BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL,
     );
   }, 10_000);
 

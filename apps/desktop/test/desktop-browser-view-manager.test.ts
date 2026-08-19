@@ -733,6 +733,75 @@ describe("DesktopBrowserViewManager", () => {
     ).rejects.toThrow("Browser page changed before capture");
   });
 
+  it("checks page-script and navigation epochs before mutating the view", async () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 50,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/original",
+    });
+    const view = requireFakeView(0);
+
+    await expect(
+      manager.navigatePage({
+        hostWindow,
+        request: {
+          tabId: "browser:a",
+          url: "https://example.com/next",
+          expectedNavigationEpoch: 0,
+        },
+      }),
+    ).resolves.toEqual({
+      navigationEpoch: 0,
+      url: "https://example.com/next",
+    });
+    expect(view.webContents.loadURLCalls).toContain("https://example.com/next");
+
+    view.webContents.emitDidStartNavigation();
+    await expect(
+      manager.navigatePage({
+        hostWindow,
+        request: {
+          tabId: "browser:a",
+          url: "https://example.com/during-navigation",
+          expectedNavigationEpoch: 1,
+        },
+      }),
+    ).rejects.toThrow("changed before navigation");
+    view.webContents.emitDidFinishLoad();
+
+    await expect(
+      manager.runPageScript({
+        hostWindow,
+        request: {
+          tabId: "browser:a",
+          requestId: "request:stale",
+          expectedNavigationEpoch: 0,
+          source: "() => null",
+          input: null,
+          timeoutMs: 1_000,
+        },
+      }),
+    ).rejects.toThrow("changed before the script ran");
+    await expect(
+      manager.navigatePage({
+        hostWindow,
+        request: {
+          tabId: "browser:a",
+          url: "file:///tmp/private",
+          expectedNavigationEpoch: 1,
+        },
+      }),
+    ).rejects.toThrow("URL is not allowed");
+  });
+
   it("forwards resolved browser shortcuts and suppresses the untrusted page", () => {
     const dispatchAppCommand = vi.fn();
     const focusHostWebContents = vi.fn();

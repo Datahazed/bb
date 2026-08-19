@@ -63,6 +63,7 @@ function request(
   return {
     tabId: "browser:a",
     requestId: "req_1",
+    expectedNavigationEpoch: 1,
     source: "({ input }) => ({ title: document.title, input })",
     input: { intent: "inspect" },
     timeoutMs: 1_000,
@@ -120,6 +121,31 @@ describe("desktop Browser-page runtime", () => {
 
     await expect(session.promise).rejects.toMatchObject({ name: "AbortError" });
     expect(webContents.calls[1]?.code).toContain('get("req_1")');
+  });
+
+  it("retains the hard termination deadline after cooperative cancellation", async () => {
+    vi.useFakeTimers();
+    try {
+      const webContents = new FakePageWebContents();
+      const session = startDesktopBrowserPageScript({
+        navigationEpoch: 1,
+        request: request({ timeoutMs: 100 }),
+        webContents,
+      });
+
+      session.cancel();
+      await expect(session.promise).rejects.toMatchObject({
+        name: "AbortError",
+      });
+      expect(webContents.debuggerCommands).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(webContents.debuggerCommands).toEqual([
+        "Runtime.terminateExecution",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("distinguishes navigation invalidation from ordinary cancellation", async () => {

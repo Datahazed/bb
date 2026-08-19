@@ -7,6 +7,8 @@ import {
   bbDesktopBrowserAttachRequestSchema,
   bbDesktopBrowserPageCaptureRequestSchema,
   bbDesktopBrowserPageCaptureResultSchema,
+  bbDesktopBrowserPageNavigateRequestSchema,
+  bbDesktopBrowserPageNavigateResultSchema,
   bbDesktopBrowserPageScriptCancelRequestSchema,
   bbDesktopBrowserPageScriptRequestSchema,
   bbDesktopBrowserPageScriptResultSchema,
@@ -162,6 +164,7 @@ describe("experimental desktop Browser-page runtime schemas", () => {
     const request = {
       tabId: "browser:a",
       requestId: "req_1",
+      expectedNavigationEpoch: 3,
       source: "({ input }) => ({ title: document.title, input })",
       input: { intent: "inspect" },
       timeoutMs: 10_000,
@@ -175,6 +178,29 @@ describe("experimental desktop Browser-page runtime schemas", () => {
         identity: { threadId: "thr_1" },
       }).success,
     ).toBe(false);
+  });
+
+  it("binds page navigation to an explicit navigation epoch", () => {
+    expect(
+      bbDesktopBrowserPageNavigateRequestSchema.parse({
+        tabId: "browser:a",
+        url: "https://example.com/next",
+        expectedNavigationEpoch: 3,
+      }),
+    ).toEqual({
+      tabId: "browser:a",
+      url: "https://example.com/next",
+      expectedNavigationEpoch: 3,
+    });
+    expect(
+      bbDesktopBrowserPageNavigateResultSchema.parse({
+        navigationEpoch: 3,
+        url: "https://example.com/next",
+      }),
+    ).toEqual({
+      navigationEpoch: 3,
+      url: "https://example.com/next",
+    });
   });
 
   it("enforces source and JSON input byte limits before IPC", () => {

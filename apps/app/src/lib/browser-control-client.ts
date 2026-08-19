@@ -17,6 +17,11 @@ interface RegisteredBrowserTab {
   desktopBrowser: BbDesktopBrowserApi;
 }
 
+interface ActiveBrowserControlRequest {
+  controller: AbortController;
+  registration: RegisteredBrowserTab;
+}
+
 interface RegisterBrowserControlTabArgs {
   active: boolean;
   desktopBrowser: BbDesktopBrowserApi;
@@ -37,7 +42,7 @@ export interface BrowserControlTabRegistration {
 const registeredTabs = new Map<string, RegisteredBrowserTab>();
 const activeRequestCounts = new Map<string, number>();
 const activityListeners = new Set<() => void>();
-const requestControllers = new Map<string, AbortController>();
+const requestControllers = new Map<string, ActiveBrowserControlRequest>();
 
 function randomId(): string {
   return (
@@ -90,6 +95,25 @@ function setRequestActive(tabId: string, active: boolean): void {
   if (next === 0) activeRequestCounts.delete(tabId);
   else activeRequestCounts.set(tabId, next);
   for (const listener of activityListeners) listener();
+}
+
+function abortRequestsForRegistration(
+  registration: RegisteredBrowserTab,
+  reason: string,
+): void {
+  for (const request of requestControllers.values()) {
+    if (request.registration === registration) {
+      request.controller.abort(reason);
+    }
+  }
+}
+
+function targetChangedError(): Error {
+  const error = new Error(
+    "The target Browser tab is no longer at that page revision",
+  );
+  error.name = "BrowserControlTargetChangedError";
+  return error;
 }
 
 const resolveLocatorSource = `
@@ -275,11 +299,19 @@ async function executeAction(
   signal: AbortSignal,
 ): Promise<JsonValue> {
   if (action.kind === "navigate") {
-    tab.desktopBrowser.navigate({
+    const navigate = tab.desktopBrowser.experimental_navigateBrowserPage;
+    if (navigate === undefined) {
+      throw new Error("Browser navigation requires a newer BB desktop app");
+    }
+    const result = await navigate({
       tabId: tab.descriptor.tabId,
       url: action.url,
+      expectedNavigationEpoch: tab.descriptor.navigationEpoch,
     });
-    return { navigating: true, url: action.url };
+    if (result.navigationEpoch !== tab.descriptor.navigationEpoch) {
+      throw targetChangedError();
+    }
+    return { navigating: true, url: result.url };
   }
   if (action.kind === "screenshot") {
     const capture = tab.desktopBrowser.experimental_captureBrowserPage;
@@ -305,6 +337,7 @@ async function executeAction(
     {
       tabId: tab.descriptor.tabId,
       requestId: randomId(),
+      expectedNavigationEpoch: tab.descriptor.navigationEpoch,
       ...script,
     },
     { signal },
@@ -333,11 +366,21 @@ async function handleRequest(
     return;
   }
   const controller = new AbortController();
-  requestControllers.set(message.requestId, controller);
+  requestControllers.set(message.requestId, {
+    controller,
+    registration: tab,
+  });
   setRequestActive(message.target.tabId, true);
   let response: BrowserControlResponseMessage;
   try {
     const value = await executeAction(tab, message.action, controller.signal);
+    if (
+      registeredTabs.get(message.target.tabId) !== tab ||
+      !targetEquals(message.target, targetFor(tab)) ||
+      controller.signal.aborted
+    ) {
+      throw targetChangedError();
+    }
     response = {
       type: "browser-control-response",
       requestId: message.requestId,
@@ -368,12 +411,12 @@ async function handleRequest(
 
 wsManager.onBrowserControlRequest((message) => void handleRequest(message));
 wsManager.onBrowserControlCancel((message) => {
-  requestControllers.get(message.requestId)?.abort(message.reason);
+  requestControllers.get(message.requestId)?.controller.abort(message.reason);
 });
 wsManager.onConnectionStateChange(() => {
   if (wsManager.getConnectionState() === "connected") return;
-  for (const controller of requestControllers.values()) {
-    controller.abort("client-disconnected");
+  for (const request of requestControllers.values()) {
+    request.controller.abort("client-disconnected");
   }
 });
 wsManager.onConnected(() => sendClientState());
@@ -398,6 +441,10 @@ export function registerBrowserControlTab(
     descriptor: descriptorFor(args),
     desktopBrowser: args.desktopBrowser,
   };
+  const replacedRegistration = registeredTabs.get(args.tabId);
+  if (replacedRegistration !== undefined) {
+    abortRequestsForRegistration(replacedRegistration, "tab-replaced");
+  }
   registeredTabs.set(args.tabId, registration);
   sendClientState();
   return {
@@ -409,11 +456,17 @@ export function registerBrowserControlTab(
       ) {
         return;
       }
+      if (
+        descriptor.navigationEpoch !== registration.descriptor.navigationEpoch
+      ) {
+        abortRequestsForRegistration(registration, "navigation");
+      }
       registration.descriptor = descriptor;
       sendClientState();
     },
     dispose() {
       if (registeredTabs.get(args.tabId) !== registration) return;
+      abortRequestsForRegistration(registration, "tab-disposed");
       registeredTabs.delete(args.tabId);
       sendClientState();
     },

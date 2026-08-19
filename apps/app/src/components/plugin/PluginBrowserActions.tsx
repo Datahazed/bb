@@ -42,6 +42,7 @@ const DEFAULT_BROWSER_PAGE_SCRIPT_TIMEOUT_MS = 30_000;
 interface PluginBrowserActionsProps {
   chromeWidth: number | null;
   desktopBrowser: BbDesktopBrowserApi;
+  navigationEpoch: number;
   tabId: string;
   threadId: string | null;
   projectId: string | null;
@@ -52,6 +53,7 @@ interface PluginBrowserActionsProps {
 
 interface BrowserActionSlotRuntimeProps {
   desktopBrowser: BbDesktopBrowserApi;
+  navigationEpoch: number;
   slot: PluginBrowserActionSlot;
   tabId: string;
   threadId: string | null;
@@ -87,6 +89,7 @@ function abortControllerFromSignal(signal: AbortSignal): {
 
 function useBrowserActionRuntime({
   desktopBrowser,
+  navigationEpoch,
   tabId,
   threadId,
   projectId,
@@ -165,6 +168,7 @@ function useBrowserActionRuntime({
           {
             tabId,
             requestId: crypto.randomUUID(),
+            expectedNavigationEpoch: navigationEpoch,
             ...(request.world === undefined ? {} : { world: request.world }),
             source: request.source,
             input: request.input ?? null,
@@ -182,7 +186,13 @@ function useBrowserActionRuntime({
         controllersRef.current.delete(controller);
       }
     },
-    [desktopBrowser, ensureRegistered, ownershipRegistry, tabId],
+    [
+      desktopBrowser,
+      ensureRegistered,
+      navigationEpoch,
+      ownershipRegistry,
+      tabId,
+    ],
   );
 
   const experimental_capturePage = useCallback(
@@ -277,6 +287,7 @@ export function browserActionInlineCount(
 export function PluginBrowserActions({
   chromeWidth,
   desktopBrowser,
+  navigationEpoch,
   tabId,
   threadId,
   projectId,
@@ -296,6 +307,7 @@ export function PluginBrowserActions({
   const mountIdentity = `${tabId}:${threadId ?? ""}:${projectId ?? ""}:${url}`;
   const runtimeProps = {
     desktopBrowser,
+    navigationEpoch,
     tabId,
     threadId,
     projectId,

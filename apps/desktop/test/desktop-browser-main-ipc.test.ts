@@ -10,6 +10,7 @@ import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
@@ -80,6 +81,9 @@ type WindowResizeCall = Parameters<
   DesktopBrowserViewManager["beginWindowResize"]
 >[0];
 type PageScriptCall = Parameters<DesktopBrowserViewManager["runPageScript"]>[0];
+type NavigatePageCall = Parameters<
+  DesktopBrowserViewManager["navigatePage"]
+>[0];
 type CancelPageScriptCall = Parameters<
   DesktopBrowserViewManager["cancelPageScript"]
 >[0];
@@ -119,6 +123,7 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   public readonly setVisibleCalls: SetVisibleCall[] = [];
   public readonly stopCalls: TabCommandCall[] = [];
   public readonly pageScriptCalls: PageScriptCall[] = [];
+  public readonly navigatePageCalls: NavigatePageCall[] = [];
   public readonly cancelPageScriptCalls: CancelPageScriptCall[] = [];
   public readonly capturePageCalls: CapturePageCall[] = [];
 
@@ -180,6 +185,14 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
       requestId: args.request.requestId,
       navigationEpoch: 0,
       value: { ok: true },
+    });
+  }
+
+  navigatePage(args: NavigatePageCall) {
+    this.navigatePageCalls.push(args);
+    return Promise.resolve({
+      navigationEpoch: args.request.expectedNavigationEpoch,
+      url: args.request.url,
     });
   }
 
@@ -430,6 +443,7 @@ describe("registerDesktopBrowserIpc", () => {
     const request = {
       tabId: "browser:a",
       requestId: "req_1",
+      expectedNavigationEpoch: 4,
       source: "({ input }) => input",
       input: { intent: "inspect" },
       timeoutMs: 1_000,
@@ -461,6 +475,31 @@ describe("registerDesktopBrowserIpc", () => {
         tabId: "browser:a",
         requestId: "req_1",
       },
+    ]);
+  });
+
+  it("validates and acknowledges epoch-bound page navigation", async () => {
+    const manager = new RecordingDesktopBrowserViewManager();
+    registerDesktopBrowserIpc(manager);
+    const renderer = createTrustedRenderer("main-window");
+    const request = {
+      tabId: "browser:a",
+      url: "https://example.com/next",
+      expectedNavigationEpoch: 4,
+    };
+
+    await expect(
+      invokeBrowserIpc({
+        channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL,
+        payload: request,
+        sender: renderer.sender,
+      }),
+    ).resolves.toEqual({
+      navigationEpoch: 4,
+      url: "https://example.com/next",
+    });
+    expect(manager.navigatePageCalls).toEqual([
+      { hostWindow: renderer.hostWindow, request },
     ]);
   });
 });

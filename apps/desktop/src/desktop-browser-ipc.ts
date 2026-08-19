@@ -29,3 +29,5 @@ export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL =
   "bb-desktop:browser:experimental-cancel-page-script";
 export const BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL =
   "bb-desktop:browser:experimental-capture-page";
+export const BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL =
+  "bb-desktop:browser:experimental-navigate-page";

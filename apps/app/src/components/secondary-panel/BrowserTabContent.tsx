@@ -930,6 +930,7 @@ export function BrowserTabContent({
               key={`${tabId}:${threadId}:${projectId ?? ""}:${currentUrl}`}
               chromeWidth={browserChromeWidth}
               desktopBrowser={desktopBrowser}
+              navigationEpoch={state?.navigationEpoch ?? 0}
               tabId={tabId}
               threadId={threadId}
               projectId={projectId}
