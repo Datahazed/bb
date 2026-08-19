@@ -122,6 +122,25 @@ describe("plugin service", () => {
     });
   });
 
+  function createTelemetryTrackedService(
+    captured: TelemetryEvent[],
+  ): PluginService {
+    return createPluginService({
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      telemetry: { capture: (event) => captured.push(event) },
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      bundledPlugins: [],
+      loadTimeoutMs: 2000,
+    });
+  }
+
   afterEach(async () => {
     await service.stop();
     await rm(workDir, { recursive: true, force: true });
@@ -631,24 +650,14 @@ describe("plugin service", () => {
 
   it("reports one anonymous plugin_installed event per user install", async () => {
     const captured: TelemetryEvent[] = [];
-    const tracked = createPluginService({
-      db,
-      hub: {
-        getDaemonSessionIdForHost: () => null,
-        notifyPluginSignal: () => 0,
-        notifySystem: () => {},
-      },
-      logger,
-      telemetry: { capture: (event) => captured.push(event) },
-      dataDir: join(workDir, "data"),
-      appVersion: "0.9.0",
-      loadTimeoutMs: 2000,
-    });
+    const tracked = createTelemetryTrackedService(captured);
+    // Keep unrelated bundled plugins out of this telemetry-focused lifecycle.
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-tracked",
-      serverSource: `export default function plugin() {}`,
+      serverSource: "export default function plugin() {}",
     });
-    await tracked.installPath(rootDir);
+    const installed = await tracked.installPath(rootDir);
+    expect(installed.status).toBe("running");
     // A direct install may point at private code, so it reports no id.
     expect(captured).toEqual([
       {
@@ -661,13 +670,36 @@ describe("plugin service", () => {
         },
       },
     ]);
-    // Reload, enable, and boot-time reconcile are not installs.
+    // Reload and enablement are not installs.
     await tracked.reload("tracked");
-    await tracked.setEnabled("tracked", false);
-    await tracked.setEnabled("tracked", true);
-    await tracked.stop();
-    await tracked.start();
+    expect(tracked.list().find((entry) => entry.id === "tracked")?.status).toBe(
+      "running",
+    );
+    expect((await tracked.setEnabled("tracked", false))?.status).toBe(
+      "disabled",
+    );
+    expect((await tracked.setEnabled("tracked", true))?.status).toBe("running");
     expect(captured).toHaveLength(1);
+    await tracked.stop();
+  });
+
+  it("does not report plugin_installed during boot-time reconcile", async () => {
+    const captured: TelemetryEvent[] = [];
+    const tracked = createTelemetryTrackedService(captured);
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-reconciled",
+      serverSource: "export default function plugin() {}",
+    });
+    await tracked.installPath(rootDir);
+    await tracked.stop();
+    captured.length = 0;
+
+    await tracked.start();
+
+    expect(captured).toEqual([]);
+    expect(
+      tracked.list().find((entry) => entry.id === "reconciled")?.status,
+    ).toBe("running");
     await tracked.stop();
   });
 
