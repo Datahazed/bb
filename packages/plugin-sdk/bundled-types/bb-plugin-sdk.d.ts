@@ -11235,6 +11235,12 @@ interface PluginBrowserActionProps {
     projectId: string | null;
     url: string;
     /**
+     * Exact identity of this Browser page revision in the agent-control broker.
+     * All four fields must match when coordinating a user action with an agent
+     * tool call. Navigation replaces this target with a new navigation epoch.
+     */
+    experimental_browserTarget: BrowserTabTarget;
+    /**
      * False when the running desktop shell predates Browser-page scripts. Plugins
      * should keep their action visible but disabled and explain the upgrade.
      */

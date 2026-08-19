@@ -54,6 +54,13 @@ function randomId(): string {
 const clientId = randomId();
 const windowId = randomId();
 
+export function browserControlTarget(
+  tabId: string,
+  navigationEpoch: number,
+): BrowserTabTarget {
+  return { clientId, windowId, tabId, navigationEpoch };
+}
+
 function sendClientState(): void {
   wsManager.sendBrowserClientState({
     type: "browser-client-state",
@@ -81,12 +88,10 @@ function targetEquals(a: BrowserTabTarget, b: BrowserTabTarget): boolean {
 }
 
 function targetFor(tab: RegisteredBrowserTab): BrowserTabTarget {
-  return {
-    clientId,
-    windowId,
-    tabId: tab.descriptor.tabId,
-    navigationEpoch: tab.descriptor.navigationEpoch,
-  };
+  return browserControlTarget(
+    tab.descriptor.tabId,
+    tab.descriptor.navigationEpoch,
+  );
 }
 
 function setRequestActive(tabId: string, active: boolean): void {

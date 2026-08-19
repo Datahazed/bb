@@ -329,6 +329,13 @@ describe("BrowserTabContent persistent navigation", () => {
     const controller = new AbortController();
     const capturedProps = slotProps as PluginBrowserActionProps | null;
     expect(capturedProps).not.toBeNull();
+    const initialTarget = capturedProps!.experimental_browserTarget;
+    expect(initialTarget).toMatchObject({
+      clientId: expect.any(String),
+      windowId: expect.any(String),
+      tabId: "browser:test",
+      navigationEpoch: 0,
+    });
     await expect(
       capturedProps!.experimental_runPageContentScript(
         {
@@ -350,6 +357,16 @@ describe("BrowserTabContent persistent navigation", () => {
       timeoutMs: 30_000,
     });
     expect(capturedProps!.experimental_pageContentScriptsAvailable).toBe(true);
+
+    act(() => {
+      harness.emitState(browserState({ navigationEpoch: 3 }));
+    });
+    await waitFor(() =>
+      expect(slotProps!.experimental_browserTarget).toEqual({
+        ...initialTarget,
+        navigationEpoch: 3,
+      }),
+    );
   });
 
   it("keeps AbortSignal renderer-local and sends a serializable cancel request", async () => {

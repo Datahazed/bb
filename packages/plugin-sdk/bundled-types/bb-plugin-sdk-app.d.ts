@@ -66,6 +66,14 @@ type PluginRpcCallInput<Method extends PluginRpcMethodContract> = StandardSchema
 type PluginRpcCallArgs<Method extends PluginRpcMethodContract> = null extends PluginRpcCallInput<Method> ? [input?: PluginRpcCallInput<Method>] : [input: PluginRpcCallInput<Method>];
 type PluginRpcResult<Method extends PluginRpcMethodContract> = StandardSchemaV1InferOutput<Method["output"]>;
 
+declare const browserTabTargetSchema: z.ZodObject<{
+    clientId: z.ZodString;
+    navigationEpoch: z.ZodNumber;
+    tabId: z.ZodString;
+    windowId: z.ZodString;
+}, z.core.$strict>;
+type BrowserTabTarget = z.infer<typeof browserTabTargetSchema>;
+
 declare const reasoningLevelSchema: z.ZodEnum<{
     high: "high";
     low: "low";
@@ -401,6 +409,12 @@ interface PluginBrowserActionProps {
     threadId: string | null;
     projectId: string | null;
     url: string;
+    /**
+     * Exact identity of this Browser page revision in the agent-control broker.
+     * All four fields must match when coordinating a user action with an agent
+     * tool call. Navigation replaces this target with a new navigation epoch.
+     */
+    experimental_browserTarget: BrowserTabTarget;
     /**
      * False when the running desktop shell predates Browser-page scripts. Plugins
      * should keep their action visible but disabled and explain the upgrade.

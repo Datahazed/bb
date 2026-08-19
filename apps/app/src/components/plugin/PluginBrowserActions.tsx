@@ -31,6 +31,7 @@ import {
   usePluginSlots,
   type PluginBrowserActionSlot,
 } from "@/lib/plugin-slots";
+import { browserControlTarget } from "@/lib/browser-control-client";
 
 const BROWSER_CORE_CHROME_RESERVE_PX = 300;
 const BROWSER_ACTION_FOOTPRINT_PX = 32;
@@ -240,6 +241,7 @@ function useBrowserActionRuntime({
     threadId,
     projectId,
     url,
+    experimental_browserTarget: browserControlTarget(tabId, navigationEpoch),
     experimental_overlayRoot: overlayRoot,
     experimental_pageContentScriptsAvailable:
       desktopBrowser.experimental_browserPageRuntimeVersion === 1 &&

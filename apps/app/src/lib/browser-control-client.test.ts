@@ -46,6 +46,7 @@ vi.mock("./ws", () => ({
 
 import {
   browserControlActivitySnapshot,
+  browserControlTarget,
   registerBrowserControlTab,
   subscribeBrowserControlActivity,
 } from "./browser-control-client";
@@ -114,6 +115,13 @@ describe("Browser control client", () => {
         ],
       }),
     );
+    const published = socket.sendBrowserClientState.mock.calls.at(-1)?.[0];
+    expect(browserControlTarget("tab-a", 7)).toEqual({
+      clientId: published.clientId,
+      windowId: published.windowId,
+      tabId: "tab-a",
+      navigationEpoch: 7,
+    });
 
     socket.request?.(request());
     await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
