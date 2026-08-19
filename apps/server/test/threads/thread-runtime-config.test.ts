@@ -864,6 +864,7 @@ describe("thread runtime config", () => {
         claudeCodeMockCliTraffic: true,
         editMessages: false,
         newOnboarding: false,
+        persistedQueryCache: false,
         providerSessionReaping: false,
       });
 

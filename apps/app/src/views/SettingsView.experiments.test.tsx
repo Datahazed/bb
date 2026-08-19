@@ -7,6 +7,7 @@ afterEach(cleanup);
 
 function renderSection(overrides?: {
   onNewOnboardingEnabledChange?: (enabled: boolean) => void;
+  onPersistedQueryCacheEnabledChange?: (enabled: boolean) => void;
   onProviderSessionReapingEnabledChange?: (enabled: boolean) => void;
 }) {
   return render(
@@ -15,11 +16,15 @@ function renderSection(overrides?: {
       disabled={false}
       editMessagesEnabled={false}
       newOnboardingEnabled={false}
+      persistedQueryCacheEnabled={false}
       providerSessionReapingEnabled={false}
       onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
       onEditMessagesEnabledChange={vi.fn()}
       onNewOnboardingEnabledChange={
         overrides?.onNewOnboardingEnabledChange ?? vi.fn()
+      }
+      onPersistedQueryCacheEnabledChange={
+        overrides?.onPersistedQueryCacheEnabledChange ?? vi.fn()
       }
       onProviderSessionReapingEnabledChange={
         overrides?.onProviderSessionReapingEnabledChange ?? vi.fn()
@@ -33,6 +38,13 @@ describe("ExperimentsSettingsSection", () => {
     const onChange = vi.fn();
     renderSection({ onNewOnboardingEnabledChange: onChange });
     fireEvent.click(screen.getByLabelText("New onboarding"));
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("reports persisted app cache changes", () => {
+    const onChange = vi.fn();
+    renderSection({ onPersistedQueryCacheEnabledChange: onChange });
+    fireEvent.click(screen.getByLabelText("Persisted app cache"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 

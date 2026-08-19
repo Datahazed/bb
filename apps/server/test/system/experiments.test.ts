@@ -17,6 +17,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: false,
         editMessages: true,
         newOnboarding: false,
+        persistedQueryCache: false,
         providerSessionReaping: false,
       });
     });
@@ -31,6 +32,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: true,
           editMessages: true,
           newOnboarding: true,
+          persistedQueryCache: false,
             providerSessionReaping: true,
         }),
       });
@@ -39,12 +41,14 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         newOnboarding: true,
+        persistedQueryCache: false,
         providerSessionReaping: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         newOnboarding: true,
+        persistedQueryCache: false,
         providerSessionReaping: true,
       });
 
@@ -55,6 +59,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         editMessages: true,
         newOnboarding: true,
+        persistedQueryCache: false,
         providerSessionReaping: true,
       });
     });
@@ -81,6 +86,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: false,
           editMessages: true,
           newOnboarding: false,
+          persistedQueryCache: false,
             providerSessionReaping: true,
         }),
       });
@@ -105,6 +111,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: false,
           editMessages: false,
           newOnboarding: false,
+          persistedQueryCache: false,
           providerSessionReaping: false,
         }),
       });

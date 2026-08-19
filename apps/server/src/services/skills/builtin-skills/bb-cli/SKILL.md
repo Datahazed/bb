@@ -114,6 +114,12 @@ message agents, or inspect projects, providers, and environments.
   failed or incomplete turns. Submitting an edit to a running thread stops and
   settles the current turn first. Change it with:
   `bb settings experiment editMessages <true|false>`.
+- The default-off `persistedQueryCache` experiment keeps the sidebar, system
+  config, and the five most recent threads in the browser's IndexedDB and
+  hydrates them before the first render on the next cold launch, so the app
+  paints from the last visit while fresh data loads. Change it with
+  `bb settings experiment persistedQueryCache <true|false>`; it takes effect on
+  the next launch.
 - Thread timeline windows are capped by event count as well as by user-message
   count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), because a thread
   with few user messages but many events would otherwise reproject its whole

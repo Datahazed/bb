@@ -30,7 +30,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
         claudeCodeMockCliTraffic: false,
         editMessages: false,
         newOnboarding: false,
-        providerSessionReaping: false,
+        persistedQueryCache: false,        providerSessionReaping: false,
       },
     },
   }),

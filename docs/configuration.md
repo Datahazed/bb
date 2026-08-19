@@ -626,6 +626,25 @@ turns, commands, agents, workflows, and monitors keep their sessions loaded.
 The experiment does not gate release: BB releases idle Codex sessions with the
 experiment off, which is the behavior it had before this setting.
 
+The `persistedQueryCache` experiment (default off) keeps an allowlisted slice of
+the app's data cache in the browser's IndexedDB: the sidebar bootstrap,
+`/system/config`, and the bootstrap plus latest timeline window of the five most
+recently updated threads. On the next cold launch the app hydrates that slice
+before its first render, so the sidebar, palette, and recent threads paint from
+the last visit while fresh data loads. Hydrated data keeps its original fetch
+time, so the usual staleness rules apply: staleTime-bounded queries refetch on
+mount, the WebSocket connect pass refetches everything fetched before it, and a
+hydrated timeline window is refreshed as a delta. The cache is one blob capped
+at 4 MB and 24 hours; entries older than that are dropped. A quota or storage
+failure disables persistence for the session and clears the blob. Turning the
+experiment off clears the blob on the next load. The setting is server-side and
+applies to every browser; each browser mirrors it locally
+(`localStorage["bb.persistedQueryCache"]`) so the boot path knows whether to
+read IndexedDB before `/system/config` has loaded. Nothing outside the allowlist
+(plugin data, file previews, credentials) is ever written. Change it with
+`bb settings experiment persistedQueryCache <true|false>`; it takes effect on the
+next launch.
+
 ## Thread Timeline Window
 
 A thread-timeline window is bounded by segment (user-message) count _and_ by

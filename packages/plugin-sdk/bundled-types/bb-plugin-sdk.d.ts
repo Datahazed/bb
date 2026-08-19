@@ -318,6 +318,7 @@ declare const experimentsSchema: z$1.ZodRecord<z$1.ZodEnum<{
     claudeCodeMockCliTraffic: "claudeCodeMockCliTraffic";
     editMessages: "editMessages";
     newOnboarding: "newOnboarding";
+    persistedQueryCache: "persistedQueryCache";
     providerSessionReaping: "providerSessionReaping";
 }>, z$1.ZodBoolean>;
 type Experiments = z$1.infer<typeof experimentsSchema>;
@@ -7532,6 +7533,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
         claudeCodeMockCliTraffic: "claudeCodeMockCliTraffic";
         editMessages: "editMessages";
         newOnboarding: "newOnboarding";
+        persistedQueryCache: "persistedQueryCache";
         providerSessionReaping: "providerSessionReaping";
     }>, z$1.ZodBoolean>;
     featureFlags: z$1.ZodObject<{

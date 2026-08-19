@@ -213,10 +213,12 @@ export interface ExperimentsSettingsSectionProps {
   claudeCodeMockCliTrafficEnabled: boolean;
   editMessagesEnabled: boolean;
   newOnboardingEnabled: boolean;
+  persistedQueryCacheEnabled: boolean;
   providerSessionReapingEnabled: boolean;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
   onEditMessagesEnabledChange: (enabled: boolean) => void;
   onNewOnboardingEnabledChange: (enabled: boolean) => void;
+  onPersistedQueryCacheEnabledChange: (enabled: boolean) => void;
   onProviderSessionReapingEnabledChange: (enabled: boolean) => void;
 }
 
@@ -997,6 +999,7 @@ export function ProviderSettingsSection({
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
 const NEW_ONBOARDING_EXPERIMENT_LABEL = "New onboarding";
+const PERSISTED_QUERY_CACHE_EXPERIMENT_LABEL = "Persisted app cache";
 const PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL =
   "Idle provider session release";
 export function ExperimentsSettingsSection({
@@ -1004,10 +1007,12 @@ export function ExperimentsSettingsSection({
   disabled,
   editMessagesEnabled,
   newOnboardingEnabled,
+  persistedQueryCacheEnabled,
   providerSessionReapingEnabled,
   onClaudeCodeMockCliTrafficEnabledChange,
   onEditMessagesEnabledChange,
   onNewOnboardingEnabledChange,
+  onPersistedQueryCacheEnabledChange,
   onProviderSessionReapingEnabledChange,
 }: ExperimentsSettingsSectionProps) {
   return (
@@ -1050,6 +1055,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onNewOnboardingEnabledChange}
             aria-label={NEW_ONBOARDING_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={PERSISTED_QUERY_CACHE_EXPERIMENT_LABEL}
+          description="Keep the sidebar, settings, and recent threads in this browser so a cold launch paints from the last visit while fresh data loads. Takes effect on the next launch."
+        >
+          <Switch
+            checked={persistedQueryCacheEnabled}
+            disabled={disabled}
+            onCheckedChange={onPersistedQueryCacheEnabledChange}
+            aria-label={PERSISTED_QUERY_CACHE_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1237,6 +1254,13 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             newOnboarding: enabled,
+          })
+        }
+        persistedQueryCacheEnabled={experiments.persistedQueryCache}
+        onPersistedQueryCacheEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            persistedQueryCache: enabled,
           })
         }
         providerSessionReapingEnabled={experiments.providerSessionReaping}

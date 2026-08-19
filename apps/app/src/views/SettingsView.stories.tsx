@@ -336,6 +336,7 @@ function ExperimentsStory() {
       disabled={false}
       editMessagesEnabled={state.experiments.editMessages}
       newOnboardingEnabled={state.experiments.newOnboarding}
+      persistedQueryCacheEnabled={state.experiments.persistedQueryCache}
       providerSessionReapingEnabled={state.experiments.providerSessionReaping}
       onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
@@ -353,6 +354,12 @@ function ExperimentsStory() {
         state.setExperiments((current) => ({
           ...current,
           newOnboarding: enabled,
+        }))
+      }
+      onPersistedQueryCacheEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          persistedQueryCache: enabled,
         }))
       }
       onProviderSessionReapingEnabledChange={(enabled) =>
