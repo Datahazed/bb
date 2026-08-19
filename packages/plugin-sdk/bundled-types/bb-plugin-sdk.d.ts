@@ -656,11 +656,13 @@ declare const promptInputSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
                 "/": "/";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
+            experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
             itemId: z$1.ZodString;
             kind: z$1.ZodLiteral<"plugin">;
             label: z$1.ZodString;
             pluginId: z$1.ZodString;
+            preview: z$1.ZodOptional<z$1.ZodString>;
         }, z$1.core.$strip>], "kind">>;
         start: z$1.ZodNumber;
     }, z$1.core.$strip>>>;
@@ -1745,11 +1747,13 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                     "/": "/";
                 }>;
             }, z$1.core.$strip>, z$1.ZodObject<{
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 kind: z$1.ZodLiteral<"plugin">;
                 label: z$1.ZodString;
                 pluginId: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>], "kind">>;
             start: z$1.ZodNumber;
         }, z$1.core.$strip>>>;
@@ -1826,11 +1830,13 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                     "/": "/";
                 }>;
             }, z$1.core.$strip>, z$1.ZodObject<{
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 kind: z$1.ZodLiteral<"plugin">;
                 label: z$1.ZodString;
                 pluginId: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>], "kind">>;
             start: z$1.ZodNumber;
         }, z$1.core.$strip>>>;
@@ -2265,11 +2271,13 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
                     "/": "/";
                 }>;
             }, z$1.core.$strip>, z$1.ZodObject<{
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 kind: z$1.ZodLiteral<"plugin">;
                 label: z$1.ZodString;
                 pluginId: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>], "kind">>;
             start: z$1.ZodNumber;
         }, z$1.core.$strip>>>;
@@ -2587,11 +2595,13 @@ declare const promptHistoryResponseSchema: z$1.ZodArray<z$1.ZodObject<{
                     "/": "/";
                 }>;
             }, z$1.core.$strip>, z$1.ZodObject<{
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 kind: z$1.ZodLiteral<"plugin">;
                 label: z$1.ZodString;
                 pluginId: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>], "kind">>;
             start: z$1.ZodNumber;
         }, z$1.core.$strip>>>;
@@ -3968,11 +3978,13 @@ declare const hostDaemonCommandRegistry: {
                         "/": "/";
                     }>;
                 }, z$1.core.$strip>, z$1.ZodObject<{
+                    experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     kind: z$1.ZodLiteral<"plugin">;
                     label: z$1.ZodString;
                     pluginId: z$1.ZodString;
+                    preview: z$1.ZodOptional<z$1.ZodString>;
                 }, z$1.core.$strip>], "kind">>;
                 start: z$1.ZodNumber;
             }, z$1.core.$strip>>>;
@@ -4049,11 +4061,13 @@ declare const hostDaemonCommandRegistry: {
                         "/": "/";
                     }>;
                 }, z$1.core.$strip>, z$1.ZodObject<{
+                    experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     kind: z$1.ZodLiteral<"plugin">;
                     label: z$1.ZodString;
                     pluginId: z$1.ZodString;
+                    preview: z$1.ZodOptional<z$1.ZodString>;
                 }, z$1.core.$strip>], "kind">>;
                 start: z$1.ZodNumber;
             }, z$1.core.$strip>>>;
@@ -4322,11 +4336,13 @@ declare const hostDaemonCommandRegistry: {
                         "/": "/";
                     }>;
                 }, z$1.core.$strip>, z$1.ZodObject<{
+                    experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     kind: z$1.ZodLiteral<"plugin">;
                     label: z$1.ZodString;
                     pluginId: z$1.ZodString;
+                    preview: z$1.ZodOptional<z$1.ZodString>;
                 }, z$1.core.$strip>], "kind">>;
                 start: z$1.ZodNumber;
             }, z$1.core.$strip>>>;
@@ -4403,11 +4419,13 @@ declare const hostDaemonCommandRegistry: {
                         "/": "/";
                     }>;
                 }, z$1.core.$strip>, z$1.ZodObject<{
+                    experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     kind: z$1.ZodLiteral<"plugin">;
                     label: z$1.ZodString;
                     pluginId: z$1.ZodString;
+                    preview: z$1.ZodOptional<z$1.ZodString>;
                 }, z$1.core.$strip>], "kind">>;
                 start: z$1.ZodNumber;
             }, z$1.core.$strip>>>;
@@ -8041,11 +8059,13 @@ declare const timelineConversationRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
                 "/": "/";
             }>;
         }, z$1.core.$strip>, z$1.ZodObject<{
+            experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
             icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
             itemId: z$1.ZodString;
             kind: z$1.ZodLiteral<"plugin">;
             label: z$1.ZodString;
             pluginId: z$1.ZodString;
+            preview: z$1.ZodOptional<z$1.ZodString>;
         }, z$1.core.$strip>], "kind">>;
         start: z$1.ZodNumber;
     }, z$1.core.$strip>>;
@@ -8728,11 +8748,13 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
                     "/": "/";
                 }>;
             }, z$1.core.$strip>, z$1.ZodObject<{
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 kind: z$1.ZodLiteral<"plugin">;
                 label: z$1.ZodString;
                 pluginId: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>], "kind">>;
             start: z$1.ZodNumber;
         }, z$1.core.$strip>>>;
@@ -8860,11 +8882,13 @@ declare const forkThreadRequestSchema: z$1.ZodObject<{
                     "/": "/";
                 }>;
             }, z$1.core.$strip>, z$1.ZodObject<{
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 kind: z$1.ZodLiteral<"plugin">;
                 label: z$1.ZodString;
                 pluginId: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>], "kind">>;
             start: z$1.ZodNumber;
         }, z$1.core.$strip>>>;
@@ -8943,11 +8967,13 @@ declare const forkThreadRequestSchema: z$1.ZodObject<{
                     "/": "/";
                 }>;
             }, z$1.core.$strip>, z$1.ZodObject<{
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 kind: z$1.ZodLiteral<"plugin">;
                 label: z$1.ZodString;
                 pluginId: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>], "kind">>;
             start: z$1.ZodNumber;
         }, z$1.core.$strip>>>;
@@ -9068,11 +9094,13 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
                     "/": "/";
                 }>;
             }, z$1.core.$strip>, z$1.ZodObject<{
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 kind: z$1.ZodLiteral<"plugin">;
                 label: z$1.ZodString;
                 pluginId: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>], "kind">>;
             start: z$1.ZodNumber;
         }, z$1.core.$strip>>>;
@@ -9199,11 +9227,13 @@ declare const editMessageRequestSchema: z$1.ZodObject<{
                     "/": "/";
                 }>;
             }, z$1.core.$strip>, z$1.ZodObject<{
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 kind: z$1.ZodLiteral<"plugin">;
                 label: z$1.ZodString;
                 pluginId: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>], "kind">>;
             start: z$1.ZodNumber;
         }, z$1.core.$strip>>>;
@@ -9329,11 +9359,13 @@ declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
                     "/": "/";
                 }>;
             }, z$1.core.$strip>, z$1.ZodObject<{
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 kind: z$1.ZodLiteral<"plugin">;
                 label: z$1.ZodString;
                 pluginId: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>], "kind">>;
             start: z$1.ZodNumber;
         }, z$1.core.$strip>>>;
@@ -9435,11 +9467,13 @@ declare const updateQueuedMessageRequestSchema: z$1.ZodObject<{
                     "/": "/";
                 }>;
             }, z$1.core.$strip>, z$1.ZodObject<{
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 kind: z$1.ZodLiteral<"plugin">;
                 label: z$1.ZodString;
                 pluginId: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>], "kind">>;
             start: z$1.ZodNumber;
         }, z$1.core.$strip>>>;
@@ -9539,11 +9573,13 @@ declare const sendQueuedMessageResponseSchema: z$1.ZodObject<{
                         "/": "/";
                     }>;
                 }, z$1.core.$strip>, z$1.ZodObject<{
+                    experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                     icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                     itemId: z$1.ZodString;
                     kind: z$1.ZodLiteral<"plugin">;
                     label: z$1.ZodString;
                     pluginId: z$1.ZodString;
+                    preview: z$1.ZodOptional<z$1.ZodString>;
                 }, z$1.core.$strip>], "kind">>;
                 start: z$1.ZodNumber;
             }, z$1.core.$strip>>>;
@@ -10212,11 +10248,13 @@ declare const threadQueuedMessageListResponseSchema: z$1.ZodArray<z$1.ZodObject<
                     "/": "/";
                 }>;
             }, z$1.core.$strip>, z$1.ZodObject<{
+                experimentalInspectability: z$1.ZodOptional<z$1.ZodLiteral<true>>;
                 icon: z$1.ZodOptional<z$1.ZodNullable<z$1.ZodString>>;
                 itemId: z$1.ZodString;
                 kind: z$1.ZodLiteral<"plugin">;
                 label: z$1.ZodString;
                 pluginId: z$1.ZodString;
+                preview: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>], "kind">>;
             start: z$1.ZodNumber;
         }, z$1.core.$strip>>>;
@@ -12075,6 +12113,10 @@ interface ComposerStructuredDraft {
         provider: string;
         id: string;
         label: string;
+        /** Human-readable preview carried by a plugin mention, when provided. */
+        preview?: string;
+        /** Whether the provider exposes optional host-rendered inspection detail. */
+        experimental_inspectable?: boolean;
     }[];
 }
 /** Host-rendered paint applied to the editable composer text. */
@@ -12102,6 +12144,10 @@ interface PluginComposerMention {
     id: string;
     /** Pill text shown in the composer. */
     label: string;
+    /** Optional human-readable content shown when the pill is hovered or focused. */
+    preview?: string;
+    /** Activate this mention's optional provider inspector. Experimental. */
+    experimental_inspectable?: boolean;
 }
 /**
  * Programmatic access to the chat composer draft — the same shared draft the
@@ -14126,6 +14172,17 @@ interface PluginCliResult {
  * This is the shared source of truth for production and the testing harness.
  */
 declare const PLUGIN_CLI_OUTPUT_MAX_BYTES: number;
+/** Shared UTF-8 limits for mention previews and provider inspections. */
+declare const PLUGIN_MENTION_CONTENT_LIMITS: {
+    readonly searchPreviewBytes: number;
+    readonly searchPreviewsTotalBytes: number;
+    readonly inspectionTitleBytes: number;
+    readonly inspectionDescriptionBytes: number;
+    readonly inspectionMetadataBytes: number;
+    readonly inspectionImageAltBytes: number;
+    readonly inspectionImageDataUrlBytes: number;
+    readonly inspectionTotalBytes: number;
+};
 interface PluginCliOutputLimitError {
     code: "plugin_cli_output_too_large";
     message: string;
@@ -14476,6 +14533,21 @@ interface PluginMentionItem {
     title: string;
     subtitle?: string;
     icon?: string;
+    /** Optional human-readable content shown when the inserted pill is previewed. */
+    preview?: string;
+}
+/** Provider-owned detail shown when an inspectable mention is activated. */
+interface ExperimentalPluginMentionInspection {
+    title: string;
+    description?: string;
+    /** Presentation-only image; never included in send-time agent context. */
+    preview?: {
+        kind: "image";
+        dataUrl: string;
+        alt: string;
+    };
+    /** Exact, human-readable metadata represented by this mention. */
+    metadata: string;
 }
 interface PluginMentionProviderRegistration {
     /** Unique within this plugin: [a-zA-Z0-9_-]+ (no ":" — the host composes
@@ -14506,6 +14578,8 @@ interface PluginMentionProviderRegistration {
     } | Promise<{
         context: string;
     }>;
+    /** Optional host-rendered detail; independent from send-time `resolve`. */
+    experimental_inspect?(itemId: string): ExperimentalPluginMentionInspection | Promise<ExperimentalPluginMentionInspection>;
 }
 interface PluginUi {
     /** Block until the app submits or cancels a plugin-owned composer form. */
@@ -14654,5 +14728,5 @@ interface BbPluginApi {
     onDispose(hook: () => void | Promise<void>): void;
 }
 
-export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract, experimental_defineHostEntry };
-export type { BbContext, BbNavigate, BbPluginApi, BrowserControlAction, BrowserTabDescriptor, BrowserTabTarget, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalBrowserPageCapture, ExperimentalBrowserPageContentScriptRequest, ExperimentalBrowserPageContentScriptResult, ExperimentalHostCallOptions, ExperimentalHostClient, ExperimentalHostEntry, ExperimentalHostPaths, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, ExperimentalHostSignalContract, ExperimentalHostSignalEvent, ExperimentalHostSignals, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription, ExperimentalHostWorkerLease, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginBrowser, PluginBrowserActionProps, PluginBrowserActionRegistration, PluginBrowserTabFilter, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPanelActionOpenOptions, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderCapabilities, PluginProviderComposerAction, PluginProviderDeclaration, PluginProviderIconRegistration, PluginProviderPermissionMode, PluginProviderReasoningLevel, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginTargetedPanelActionOpenOptions, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export { PLUGIN_CLI_OUTPUT_MAX_BYTES, PLUGIN_MENTION_CONTENT_LIMITS, defineRpcContract, experimental_defineHostEntry };
+export type { BbContext, BbNavigate, BbPluginApi, BrowserControlAction, BrowserTabDescriptor, BrowserTabTarget, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalBrowserPageCapture, ExperimentalBrowserPageContentScriptRequest, ExperimentalBrowserPageContentScriptResult, ExperimentalHostCallOptions, ExperimentalHostClient, ExperimentalHostEntry, ExperimentalHostPaths, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, ExperimentalHostSignalContract, ExperimentalHostSignalEvent, ExperimentalHostSignals, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription, ExperimentalHostWorkerLease, ExperimentalPluginMentionInspection, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginBrowser, PluginBrowserActionProps, PluginBrowserActionRegistration, PluginBrowserTabFilter, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPanelActionOpenOptions, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderCapabilities, PluginProviderComposerAction, PluginProviderDeclaration, PluginProviderIconRegistration, PluginProviderPermissionMode, PluginProviderReasoningLevel, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginTargetedPanelActionOpenOptions, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

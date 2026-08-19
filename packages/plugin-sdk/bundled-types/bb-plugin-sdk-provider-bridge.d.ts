@@ -796,11 +796,13 @@ declare const promptInputSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
                 "/": "/";
             }>;
         }, z.core.$strip>, z.ZodObject<{
+            experimentalInspectability: z.ZodOptional<z.ZodLiteral<true>>;
             icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
             itemId: z.ZodString;
             kind: z.ZodLiteral<"plugin">;
             label: z.ZodString;
             pluginId: z.ZodString;
+            preview: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>], "kind">>;
         start: z.ZodNumber;
     }, z.core.$strip>>>;
@@ -3274,11 +3276,13 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
                     "/": "/";
                 }>;
             }, z.core.$strip>, z.ZodObject<{
+                experimentalInspectability: z.ZodOptional<z.ZodLiteral<true>>;
                 icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 itemId: z.ZodString;
                 kind: z.ZodLiteral<"plugin">;
                 label: z.ZodString;
                 pluginId: z.ZodString;
+                preview: z.ZodOptional<z.ZodString>;
             }, z.core.$strip>], "kind">>;
             start: z.ZodNumber;
         }, z.core.$strip>>>;
@@ -3355,11 +3359,13 @@ declare const threadEventSchema: z.ZodPipe<z.ZodUnknown, z.ZodUnion<readonly [z.
                     "/": "/";
                 }>;
             }, z.core.$strip>, z.ZodObject<{
+                experimentalInspectability: z.ZodOptional<z.ZodLiteral<true>>;
                 icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 itemId: z.ZodString;
                 kind: z.ZodLiteral<"plugin">;
                 label: z.ZodString;
                 pluginId: z.ZodString;
+                preview: z.ZodOptional<z.ZodString>;
             }, z.core.$strip>], "kind">>;
             start: z.ZodNumber;
         }, z.core.$strip>>>;
@@ -4456,11 +4462,13 @@ declare const threadStartParamsSchema: z.ZodObject<{
                     "/": "/";
                 }>;
             }, z.core.$strip>, z.ZodObject<{
+                experimentalInspectability: z.ZodOptional<z.ZodLiteral<true>>;
                 icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 itemId: z.ZodString;
                 kind: z.ZodLiteral<"plugin">;
                 label: z.ZodString;
                 pluginId: z.ZodString;
+                preview: z.ZodOptional<z.ZodString>;
             }, z.core.$strip>], "kind">>;
             start: z.ZodNumber;
         }, z.core.$strip>>>;
@@ -4729,11 +4737,13 @@ declare const turnStartParamsSchema: z.ZodObject<{
                     "/": "/";
                 }>;
             }, z.core.$strip>, z.ZodObject<{
+                experimentalInspectability: z.ZodOptional<z.ZodLiteral<true>>;
                 icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 itemId: z.ZodString;
                 kind: z.ZodLiteral<"plugin">;
                 label: z.ZodString;
                 pluginId: z.ZodString;
+                preview: z.ZodOptional<z.ZodString>;
             }, z.core.$strip>], "kind">>;
             start: z.ZodNumber;
         }, z.core.$strip>>>;
@@ -4857,11 +4867,13 @@ declare const turnSteerParamsSchema: z.ZodObject<{
                     "/": "/";
                 }>;
             }, z.core.$strip>, z.ZodObject<{
+                experimentalInspectability: z.ZodOptional<z.ZodLiteral<true>>;
                 icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 itemId: z.ZodString;
                 kind: z.ZodLiteral<"plugin">;
                 label: z.ZodString;
                 pluginId: z.ZodString;
+                preview: z.ZodOptional<z.ZodString>;
             }, z.core.$strip>], "kind">>;
             start: z.ZodNumber;
         }, z.core.$strip>>>;
@@ -5968,11 +5980,13 @@ declare const threadEventNotificationSchema: z.ZodObject<{
                         "/": "/";
                     }>;
                 }, z.core.$strip>, z.ZodObject<{
+                    experimentalInspectability: z.ZodOptional<z.ZodLiteral<true>>;
                     icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                     itemId: z.ZodString;
                     kind: z.ZodLiteral<"plugin">;
                     label: z.ZodString;
                     pluginId: z.ZodString;
+                    preview: z.ZodOptional<z.ZodString>;
                 }, z.core.$strip>], "kind">>;
                 start: z.ZodNumber;
             }, z.core.$strip>>>;
@@ -6049,11 +6063,13 @@ declare const threadEventNotificationSchema: z.ZodObject<{
                         "/": "/";
                     }>;
                 }, z.core.$strip>, z.ZodObject<{
+                    experimentalInspectability: z.ZodOptional<z.ZodLiteral<true>>;
                     icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                     itemId: z.ZodString;
                     kind: z.ZodLiteral<"plugin">;
                     label: z.ZodString;
                     pluginId: z.ZodString;
+                    preview: z.ZodOptional<z.ZodString>;
                 }, z.core.$strip>], "kind">>;
                 start: z.ZodNumber;
             }, z.core.$strip>>>;

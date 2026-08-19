@@ -24,7 +24,6 @@ export interface PluginContributions {
   mentionProviders: PluginMentionProviderContribution[];
 }
 
-
 const EMPTY_CONTRIBUTIONS: PluginContributions = {
   mentionProviders: [],
 };
@@ -90,6 +89,11 @@ export interface PluginMentionSearchItem {
   title: string;
   subtitle: string | null;
   icon: string | null;
+  /** Absent when talking to a server from before mention previews shipped. */
+  /** `null` remains accepted from an older server and normalizes to absent. */
+  preview?: string | null;
+  /** `false` remains accepted from an older server and normalizes to absent. */
+  experimentalInspectability?: boolean;
 }
 
 /** One provider's mention search results, grouped under its label. */
@@ -107,7 +111,12 @@ function isMentionSearchItem(value: unknown): value is PluginMentionSearchItem {
     typeof item.itemId === "string" &&
     typeof item.title === "string" &&
     (item.subtitle === null || typeof item.subtitle === "string") &&
-    (item.icon === null || typeof item.icon === "string")
+    (item.icon === null || typeof item.icon === "string") &&
+    (item.preview === undefined ||
+      item.preview === null ||
+      typeof item.preview === "string") &&
+    (item.experimentalInspectability === undefined ||
+      typeof item.experimentalInspectability === "boolean")
   );
 }
 

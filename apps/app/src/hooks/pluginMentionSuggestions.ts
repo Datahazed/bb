@@ -25,6 +25,10 @@ export function buildPluginMentionSuggestions(
         title,
         subtitle: item.subtitle,
         icon: item.icon,
+        ...(typeof item.preview === "string" ? { preview: item.preview } : {}),
+        ...(item.experimentalInspectability === true
+          ? { experimentalInspectability: true as const }
+          : {}),
         replacement: title,
       });
     }

@@ -261,6 +261,14 @@ const canonicalPromptMentionResourceSchema = z.discriminatedUnion("kind", [
      */
     itemId: z.string(),
     label: z.string(),
+    /**
+     * Optional human-readable context preview shown by mention pills. This is
+     * presentation-only; the provider still resolves authoritative agent
+     * context at send time.
+     */
+    preview: z.string().optional(),
+    /** Optional experimental host inspector activation marker. */
+    experimentalInspectability: z.literal(true).optional(),
   }),
 ]);
 

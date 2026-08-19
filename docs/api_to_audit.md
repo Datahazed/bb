@@ -41,6 +41,27 @@ control cannot outlive its audited timeline row.
 6. Validate browser-action overlay leases, stale callback rejection, compact
    chrome, multiple plugins, split panes, and tab disposal.
 
+## Inspectable plugin mentions (`PluginMentionProviderRegistration.experimental_inspect`)
+
+**What it does.** Lets a generic mention provider reopen one immutable provider
+item in a host-owned inspector with bounded title, description, metadata, and
+optional raster preview. The mention pill retains only provider/item identity;
+ordinary mention resolution remains the hidden agent-context path. The same
+hook supports Browser captures, files, comments, design nodes, and database
+records without giving any provider custom modal markup.
+
+**Audit before stabilizing.**
+
+1. Confirm one host-owned title/description/preview/metadata shape covers real
+   providers without turning the inspector into an arbitrary plugin surface.
+2. Revisit per-field, total, image media/signature/base64, and decoded-byte
+   limits against representative inspectors and long metadata.
+3. Verify pointer and keyboard reopening in both composer and sent timeline
+   pills, independent mention removal, provider disable/reload, and missing
+   items.
+4. Confirm previews stay optional and presentation-only while send-time
+   resolution remains the sole agent-context authority.
+
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
 **What it does.** Lets one plugin package declare a singular `bb.host` Node

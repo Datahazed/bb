@@ -211,7 +211,21 @@ export interface PluginMentionSearchItem {
   title: string;
   subtitle: string | null;
   icon: string | null;
+  preview?: string;
+  experimentalInspectability?: true;
 }
+
+export type PluginMentionInspectionResult =
+  | {
+      ok: true;
+      inspection: {
+        title: string;
+        description?: string;
+        preview?: { kind: "image"; dataUrl: string; alt: string };
+        metadata: string;
+      };
+    }
+  | { ok: false; error: string };
 
 /** One provider's results for GET /plugins/mentions/search, grouped so the
  * composer renders them under the provider's label. */

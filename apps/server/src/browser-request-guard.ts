@@ -149,6 +149,12 @@ export function browserRequestProblem(
   deps: BrowserRequestGuardDeps,
   options: BrowserRequestGuardOptions = {},
 ): BrowserRequestProblem | null {
+  if (context.req.header("sec-fetch-site")?.toLowerCase() === "cross-site") {
+    return {
+      status: 403,
+      error: "cross-site browser requests are not allowed",
+    };
+  }
   const origin = context.req.header("origin");
   if (origin !== undefined && !isTrustedOrigin(context, deps, origin)) {
     return {

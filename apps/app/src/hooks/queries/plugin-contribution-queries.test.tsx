@@ -63,7 +63,12 @@ describe("usePluginContributions", () => {
     const fetchMock = mockFetchJsonOnce({
       cliCommands: [],
       mentionProviders: [
-        { pluginId: "linear", id: "issues", label: "Linear issues" },
+        {
+          pluginId: "linear",
+          id: "issues",
+          label: "Linear issues",
+          experimentalInspectability: true,
+        },
         {
           pluginId: "github",
           id: "pulls",

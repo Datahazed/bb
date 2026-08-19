@@ -14,6 +14,7 @@ import {
   type ToolCallResponse,
 } from "@bb/domain";
 import {
+  PLUGIN_MENTION_CONTENT_LIMITS,
   type PluginCliExecutionResult,
   type PluginRpcError,
   type PluginRpcValidationIssue,
@@ -122,6 +123,7 @@ import type {
   PluginInstructionContribution,
   PluginListEntry,
   PluginMentionProviderContribution,
+  PluginMentionInspectionResult,
   PluginMentionResolveResult,
   PluginMentionSearchGroup,
   PluginMentionSearchItem,
@@ -434,6 +436,11 @@ export interface PluginService {
     pluginId: string;
     itemId: string;
   }): Promise<PluginMentionResolveResult>;
+  /** Resolve optional user-visible detail for an inserted mention. */
+  inspectMention(args: {
+    pluginId: string;
+    itemId: string;
+  }): Promise<PluginMentionInspectionResult>;
   /**
    * Last `tail` lines of the plugin's JSONL log file (bb.log output).
    * Undefined when the plugin is not installed.
@@ -691,18 +698,21 @@ function normalizeAgentToolResult(
 function normalizeMentionSearchItems(
   providerId: string,
   result: unknown,
+  experimentalInspectability: boolean,
 ): PluginMentionSearchItem[] {
   if (!Array.isArray(result)) {
     throw new Error(
       `mention provider "${providerId}" search() must return an array of items`,
     );
   }
+  let totalPreviewBytes = 0;
   return result.map((item, index) => {
     const typed = item as {
       id?: unknown;
       title?: unknown;
       subtitle?: unknown;
       icon?: unknown;
+      preview?: unknown;
     } | null;
     if (
       typeof typed?.id !== "string" ||
@@ -710,11 +720,33 @@ function normalizeMentionSearchItems(
       typeof typed.title !== "string" ||
       typed.title.trim().length === 0 ||
       (typed.subtitle !== undefined && typeof typed.subtitle !== "string") ||
-      (typed.icon !== undefined && typeof typed.icon !== "string")
+      (typed.icon !== undefined && typeof typed.icon !== "string") ||
+      (typed.preview !== undefined && typeof typed.preview !== "string")
     ) {
       throw new Error(
-        `mention provider "${providerId}" items[${index}] must be { id: string, title: string, subtitle?, icon? }`,
+        `mention provider "${providerId}" items[${index}] must be { id: string, title: string, subtitle?, icon?, preview? }`,
       );
+    }
+    const preview =
+      typeof typed.preview === "string" && typed.preview.trim().length > 0
+        ? typed.preview
+        : undefined;
+    if (preview !== undefined) {
+      const previewBytes = Buffer.byteLength(preview, "utf8");
+      if (previewBytes > PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes) {
+        throw new Error(
+          `mention provider "${providerId}" items[${index}].preview exceeds the ${PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewBytes}-byte limit`,
+        );
+      }
+      totalPreviewBytes += previewBytes;
+      if (
+        totalPreviewBytes >
+        PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewsTotalBytes
+      ) {
+        throw new Error(
+          `mention provider "${providerId}" previews exceed the ${PLUGIN_MENTION_CONTENT_LIMITS.searchPreviewsTotalBytes}-byte total limit`,
+        );
+      }
     }
     return {
       itemId: `${providerId}:${typed.id}`,
@@ -727,8 +759,81 @@ function normalizeMentionSearchItems(
         typeof typed.icon === "string" && typed.icon.trim().length > 0
           ? typed.icon
           : null,
+      ...(preview === undefined ? {} : { preview }),
+      ...(experimentalInspectability
+        ? { experimentalInspectability: true as const }
+        : {}),
     };
   });
+}
+
+function stringWithinUtf8Limit(
+  value: string,
+  field: string,
+  maxBytes: number,
+): void {
+  const bytes = Buffer.byteLength(value, "utf8");
+  if (bytes > maxBytes) {
+    throw new Error(`${field} exceeds the ${maxBytes}-byte limit`);
+  }
+}
+
+function hasSafeRasterSignature(mediaType: string, bytes: Buffer): boolean {
+  if (mediaType === "image/png") {
+    return (
+      bytes.length >= 8 &&
+      bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))
+    );
+  }
+  if (mediaType === "image/jpeg") {
+    return (
+      bytes.length >= 3 &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes[2] === 0xff
+    );
+  }
+  if (mediaType === "image/gif") {
+    const signature = bytes.subarray(0, 6).toString("ascii");
+    return signature === "GIF87a" || signature === "GIF89a";
+  }
+  if (mediaType === "image/webp") {
+    return (
+      bytes.length >= 12 &&
+      bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
+      bytes.subarray(8, 12).toString("ascii") === "WEBP"
+    );
+  }
+  return false;
+}
+
+function validateMentionInspectionImageDataUrl(dataUrl: string): void {
+  stringWithinUtf8Limit(
+    dataUrl,
+    "mention inspection preview.dataUrl",
+    PLUGIN_MENTION_CONTENT_LIMITS.inspectionImageDataUrlBytes,
+  );
+  const match =
+    /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/u.exec(
+      dataUrl,
+    );
+  if (match === null || match[2]!.length % 4 !== 0) {
+    throw new Error(
+      "mention inspection preview.dataUrl must be a strict base64 PNG, JPEG, GIF, or WebP data URL",
+    );
+  }
+  const mediaType = match[1]!;
+  const payload = match[2]!;
+  const bytes = Buffer.from(payload, "base64");
+  if (
+    bytes.length === 0 ||
+    bytes.toString("base64") !== payload ||
+    !hasSafeRasterSignature(mediaType, bytes)
+  ) {
+    throw new Error(
+      "mention inspection preview.dataUrl does not contain a valid matching raster image",
+    );
+  }
 }
 
 interface NormalizedPluginAgentConfiguration {
@@ -2261,7 +2366,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                         timer.unref?.();
                       }),
                     ]);
-                    return normalizeMentionSearchItems(record.id, result);
+                    return normalizeMentionSearchItems(
+                      record.id,
+                      result,
+                      record.experimentalInspect !== undefined,
+                    );
                   } finally {
                     if (timer !== undefined) clearTimeout(timer);
                   }
@@ -2357,6 +2466,146 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
       if (outcome.ok) return { ok: true, context: outcome.value };
       return { ok: false, error: outcome.error };
+    },
+
+    async inspectMention({ pluginId, itemId }) {
+      const separatorIndex = itemId.indexOf(":");
+      const providerId =
+        separatorIndex > 0 ? itemId.slice(0, separatorIndex) : "";
+      const providerItemId =
+        separatorIndex > 0 ? itemId.slice(separatorIndex + 1) : "";
+      if (providerId.length === 0 || providerItemId.length === 0) {
+        return { ok: false, error: "Malformed mention reference" };
+      }
+      const lookup = wireLookup(pluginId, (plugin) =>
+        plugin.handle.mentionProviders.find(
+          (record) => record.id === providerId,
+        ),
+      );
+      if (lookup.outcome !== "found") {
+        return { ok: false, error: "Mention provider is unavailable" };
+      }
+      const inspect = lookup.value.experimentalInspect;
+      if (inspect === undefined) {
+        return { ok: false, error: "This mention is not inspectable" };
+      }
+      const outcome = await invokeWrapped(
+        pluginId,
+        `mention inspect ${providerId}`,
+        async () => {
+          const inspectPromise = (async () => inspect(providerItemId))();
+          // A timed-out provider keeps running outside our control. Observe a
+          // late rejection so abandoning the promise cannot surface an
+          // unhandled rejection after the request has completed.
+          inspectPromise.catch(() => {});
+          let timer: NodeJS.Timeout | undefined;
+          let rawValue: unknown;
+          try {
+            rawValue = await Promise.race([
+              inspectPromise,
+              new Promise<never>((_, reject) => {
+                timer = setTimeout(
+                  () =>
+                    reject(
+                      new Error(`timed out after ${mentionResolveTimeoutMs}ms`),
+                    ),
+                  mentionResolveTimeoutMs,
+                );
+                timer.unref?.();
+              }),
+            ]);
+          } finally {
+            if (timer !== undefined) clearTimeout(timer);
+          }
+          const value = rawValue as {
+            title?: unknown;
+            description?: unknown;
+            preview?: unknown;
+            metadata?: unknown;
+          };
+          if (
+            typeof value?.title !== "string" ||
+            value.title.trim().length === 0 ||
+            typeof value.metadata !== "string" ||
+            value.metadata.trim().length === 0 ||
+            (value.description !== undefined &&
+              typeof value.description !== "string")
+          ) {
+            throw new Error(
+              `mention provider "${providerId}" experimental_inspect() returned invalid content`,
+            );
+          }
+          const title = value.title.trim();
+          const description =
+            typeof value.description === "string" &&
+            value.description.trim().length > 0
+              ? value.description.trim()
+              : undefined;
+          stringWithinUtf8Limit(
+            title,
+            `mention provider "${providerId}" inspection.title`,
+            PLUGIN_MENTION_CONTENT_LIMITS.inspectionTitleBytes,
+          );
+          if (description !== undefined) {
+            stringWithinUtf8Limit(
+              description,
+              `mention provider "${providerId}" inspection.description`,
+              PLUGIN_MENTION_CONTENT_LIMITS.inspectionDescriptionBytes,
+            );
+          }
+          stringWithinUtf8Limit(
+            value.metadata,
+            `mention provider "${providerId}" inspection.metadata`,
+            PLUGIN_MENTION_CONTENT_LIMITS.inspectionMetadataBytes,
+          );
+          let preview:
+            | {
+                kind: "image";
+                dataUrl: string;
+                alt: string;
+              }
+            | undefined;
+          if (value.preview !== undefined) {
+            const candidate = value.preview as Record<string, unknown>;
+            if (
+              candidate.kind !== "image" ||
+              typeof candidate.dataUrl !== "string" ||
+              !candidate.dataUrl.startsWith("data:image/") ||
+              typeof candidate.alt !== "string"
+            ) {
+              throw new Error(
+                `mention provider "${providerId}" experimental_inspect() returned an invalid preview`,
+              );
+            }
+            stringWithinUtf8Limit(
+              candidate.alt,
+              `mention provider "${providerId}" inspection.preview.alt`,
+              PLUGIN_MENTION_CONTENT_LIMITS.inspectionImageAltBytes,
+            );
+            validateMentionInspectionImageDataUrl(candidate.dataUrl);
+            preview = {
+              kind: "image",
+              dataUrl: candidate.dataUrl,
+              alt: candidate.alt,
+            };
+          }
+          const inspection = {
+            title,
+            ...(description === undefined ? {} : { description }),
+            ...(preview === undefined ? {} : { preview }),
+            metadata: value.metadata,
+          };
+          stringWithinUtf8Limit(
+            JSON.stringify(inspection),
+            `mention provider "${providerId}" inspection`,
+            PLUGIN_MENTION_CONTENT_LIMITS.inspectionTotalBytes,
+          );
+          return inspection;
+        },
+      );
+      return outcome.ok
+        ? { ok: true, inspection: outcome.value }
+        : { ok: false, error: outcome.error };
     },
 
     async readLogTail(id, tail) {

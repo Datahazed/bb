@@ -125,6 +125,19 @@ describe("prompt mention command triggers", () => {
     ).toBe(false);
   });
 
+  it("preserves optional plugin mention preview and inspectability", () => {
+    const resource = {
+      kind: "plugin" as const,
+      pluginId: "browser-context",
+      itemId: "capture:invite-member",
+      label: "Invite member",
+      preview: "Target: button.invite\nComment: Keep prominent",
+      experimentalInspectability: true as const,
+    };
+
+    expect(promptMentionResourceSchema.parse(resource)).toEqual(resource);
+  });
+
   it("normalizes persisted pre-section mention resources", () => {
     expect(
       promptMentionResourceSchema.parse({

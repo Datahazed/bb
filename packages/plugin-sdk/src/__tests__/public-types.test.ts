@@ -24,6 +24,7 @@ type ExpectedBbPluginApiKey =
 
 const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "BbPluginApi",
+  "ExperimentalPluginMentionInspection",
   "PluginAgents",
   "PluginAgentConfiguration",
   "PluginAgentConfigurationContext",
@@ -82,6 +83,7 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
 
 const EXPECTED_BACKEND_ROOT_VALUE_EXPORTS = [
   "PLUGIN_CLI_OUTPUT_MAX_BYTES",
+  "PLUGIN_MENTION_CONTENT_LIMITS",
 ] as const;
 
 const EXPECTED_RPC_ROOT_TYPE_EXPORTS = [
