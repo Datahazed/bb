@@ -273,6 +273,8 @@ interface TimelineTurnStateContextValue {
 
 interface TimelineRowsListProps {
   compactActivityIntents: boolean;
+  /** Snap completed-turn topology changes in the non-windowed height wrapper. */
+  heightSnapRevision?: string;
   hasOlderTimelineRows?: boolean;
   isLoadingOlderTimelineRows?: boolean;
   onLoadOlderRows?: () => Promise<void> | void;
@@ -450,7 +452,11 @@ type TimelineRowsListItem =
       id: "thread-unread-divider";
     };
 
-const TIMELINE_WINDOWING_MIN_ITEM_COUNT = 40;
+const TIMELINE_WINDOWING_COMPACT_MIN_ITEM_COUNT = 40;
+// Wide pages fetch more segments and have more room to realize rows. Keep the
+// crossover higher there: profiling shows windowing is a win for 60+ rows,
+// while its observers cost more than they save on roughly 50-row pages.
+const TIMELINE_WINDOWING_WIDE_MIN_ITEM_COUNT = 60;
 const TIMELINE_WINDOW_MARGIN_PX = 1_000;
 const TIMELINE_WINDOW_FALLBACK_VIEWPORT_HEIGHT_PX = 800;
 // Interaction pins keep rows mounted so their local state (expansion,
@@ -2319,6 +2325,7 @@ function restoreTimelineVisibleAnchor({
 
 function TimelineRowsList({
   compactActivityIntents,
+  heightSnapRevision,
   hasOlderTimelineRows,
   isLoadingOlderTimelineRows,
   onLoadOlderRows,
@@ -2348,10 +2355,12 @@ function TimelineRowsList({
   const itemKeys = useMemo(() => items.map(timelineListItemKey), [items]);
   const shouldWindow =
     spacing === "top-level" &&
-    isCompactViewport &&
     bottomAnchor !== null &&
     typeof IntersectionObserver !== "undefined" &&
-    items.length >= TIMELINE_WINDOWING_MIN_ITEM_COUNT;
+    items.length >=
+      (isCompactViewport
+        ? TIMELINE_WINDOWING_COMPACT_MIN_ITEM_COUNT
+        : TIMELINE_WINDOWING_WIDE_MIN_ITEM_COUNT);
   const searchTarget = useMemo(
     () => readSearchMessageTarget(location.state),
     [location.state],
@@ -2757,10 +2766,11 @@ function TimelineRowsList({
     const observer = new IntersectionObserver(
       (entries) => {
         // A programmatic scrollTop write stops WebKit's native momentum
-        // scrolling, and WebKit — the only engine this compact-viewport list
-        // runs on for mobile — has no scroll anchoring to absorb layout
-        // shifts. While a scroll is active (the scroll owner keeps this
-        // marker present through the inertial tail), apply derealizations
+        // scrolling, and WebKit has no scroll anchoring to absorb layout
+        // shifts. The wide timeline uses the same invariant so every engine
+        // avoids unnecessary geometry writes. While a scroll is active (the
+        // scroll owner keeps this marker present through the inertial tail),
+        // apply derealizations
         // and at-or-below-viewport realizations directly: derealizations
         // swap in their just-measured height, and an item whose top edge is
         // at or below the viewport top only pushes layout below that edge
@@ -3028,7 +3038,9 @@ function TimelineRowsList({
     </TimelineSearchExpansionContext.Provider>
   );
   return spacing === "top-level" ? (
-    <AutoHeightContainer>{list}</AutoHeightContainer>
+    <AutoHeightContainer snapRevision={heightSnapRevision}>
+      {list}
+    </AutoHeightContainer>
   ) : (
     list
   );
@@ -3306,26 +3318,25 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                 <TimelineTurnStateContext.Provider
                   value={turnStateContextValue}
                 >
-                  <AutoHeightContainer snapRevision={heightSnapRevision}>
-                    <TimelineRowsList
-                      hasOlderTimelineRows={props.hasOlderTimelineRows}
-                      isLoadingOlderTimelineRows={
-                        props.isLoadingOlderTimelineRows
-                      }
-                      onLoadOlderRows={props.onLoadOlderRows}
-                      rows={rows}
-                      scopeActive={scopeActive}
-                      showAssistantMessageActions={true}
-                      compactActivityIntents={false}
-                      spacing="top-level"
-                      unreadDividerAutoScroll={
-                        props.unreadDividerAutoScroll ?? true
-                      }
-                      unreadDividerPlacement={
-                        props.unreadDividerPlacement ?? null
-                      }
-                    />
-                  </AutoHeightContainer>
+                  <TimelineRowsList
+                    heightSnapRevision={heightSnapRevision}
+                    hasOlderTimelineRows={props.hasOlderTimelineRows}
+                    isLoadingOlderTimelineRows={
+                      props.isLoadingOlderTimelineRows
+                    }
+                    onLoadOlderRows={props.onLoadOlderRows}
+                    rows={rows}
+                    scopeActive={scopeActive}
+                    showAssistantMessageActions={true}
+                    compactActivityIntents={false}
+                    spacing="top-level"
+                    unreadDividerAutoScroll={
+                      props.unreadDividerAutoScroll ?? true
+                    }
+                    unreadDividerPlacement={
+                      props.unreadDividerPlacement ?? null
+                    }
+                  />
                   {hasSelectionActions ? (
                     <TimelineSelectionMenu
                       selection={activeSelection?.selection ?? null}

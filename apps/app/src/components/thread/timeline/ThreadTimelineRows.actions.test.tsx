@@ -279,6 +279,65 @@ afterEach(() => {
 });
 
 describe("ThreadTimelineRows actions", () => {
+  it("windows wide timelines only after the measured crossover", () => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IntersectionObserverMock {
+        constructor(_callback: IntersectionObserverCallback) {}
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const scrollElement = document.createElement("div");
+    const bottomAnchor: BottomAnchorContextValue = {
+      captureScrollAnchor: vi.fn(),
+      getScrollElement: () => scrollElement,
+      isAtBottom: true,
+      scrollElementIntoView: vi.fn(),
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+    const rows = Array.from({ length: 60 }, (_, index) =>
+      conversationRow({
+        id: `wide_message_${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        text: `Wide timeline message ${index}`,
+        sourceSeqStart: index + 1,
+        sourceSeqEnd: index + 1,
+        threadId: "thr_wide",
+      }),
+    );
+    const renderRows = (timelineRows: typeof rows) =>
+      renderWithRouter(
+        <BottomAnchorContext.Provider value={bottomAnchor}>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadTimelineRows
+              threadId="thr_wide"
+              timelineRows={timelineRows}
+              threadRuntimeDisplayStatus="idle"
+              workspaceRootPath={undefined}
+            />
+          </CompactViewportOverrideProvider>
+        </BottomAnchorContext.Provider>,
+      );
+
+    const belowCrossover = renderRows(rows.slice(0, 59));
+    expect(
+      belowCrossover.container.querySelector(
+        '[data-timeline-windowed="true"]',
+      ),
+    ).toBeNull();
+    belowCrossover.unmount();
+
+    const atCrossover = renderRows(rows);
+    expect(
+      atCrossover.container.querySelector(
+        '[data-timeline-windowed="true"]',
+      ),
+    ).not.toBeNull();
+  });
+
   it("keeps measured placeholders and preserves the visible row", async () => {
     let intersectionCallback: IntersectionObserverCallback | null = null;
     vi.stubGlobal(
