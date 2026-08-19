@@ -13,6 +13,7 @@ import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
+import { usePersistedQueryCacheSync } from "./hooks/usePersistedQueryCacheSync";
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { markRouteContentPainted } from "./lib/route-content-paint";
 import { useWebSocket } from "./hooks/useWebSocket";
@@ -378,6 +379,9 @@ export function App() {
   useFaviconColorSync();
   // Load plugin frontend bundles once system config resolves.
   usePluginFrontendBoot();
+  // Mirror the persisted-cache experiment locally and keep IndexedDB current
+  // while it is on, so the next cold launch paints from the last visit.
+  usePersistedQueryCacheSync();
 
   return (
     <QuickCreateProjectProvider>

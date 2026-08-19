@@ -9,6 +9,12 @@ import { registerProviderCliInstallQueryClient } from "./components/provider-cli
 import { initializePreferredTheme } from "./hooks/useTheme";
 import { initializeFavicon } from "./lib/favicon-color-preference";
 import { installForeignDomMutationGuard } from "./lib/foreign-dom-mutation-guard";
+import { restorePersistedQueryCacheIfEnabled } from "./lib/persisted-query-cache/persisted-query-cache";
+import { readPersistedQueryCacheFlag } from "./lib/persisted-query-cache/persisted-query-cache-flag";
+import {
+  createIndexedDbPersistedQueryCacheStore,
+  isIndexedDbAvailable,
+} from "./lib/persisted-query-cache/persisted-query-cache-store";
 import {
   createAppQueryClient,
   installAppQueryClientBrowserEvents,
@@ -42,28 +48,47 @@ applyCachedAppThemeCss();
 initializeFavicon();
 takeOverPanelResizeCursor();
 
-createRoot(document.getElementById("root")!, {
-  // An uncaught render/commit error unmounts the whole root. React's default
-  // handler reports only the error, so the report never says which subtree
-  // died; the component stack is the one piece that makes it actionable.
-  onUncaughtError: (error, errorInfo) => {
-    console.error(
-      "[bb] uncaught render error — the app root was torn down",
-      error,
-      errorInfo.componentStack,
-    );
-  },
-}).render(
-  <StrictMode>
-    {/* Outside the providers: a crash in the query client or the router has to
+/**
+ * When the persisted-cache experiment was on at the last visit, hydrate the
+ * query client from IndexedDB before the first render so the sidebar, config
+ * and recent threads paint from cache. Bounded by a short timeout; every
+ * failure path falls through to a normal cold render.
+ */
+function hydrateQueryClientFromPersistedCache(): Promise<unknown> {
+  return restorePersistedQueryCacheIfEnabled({
+    queryClient,
+    isEnabled: readPersistedQueryCacheFlag,
+    createStore: () =>
+      isIndexedDbAvailable() ? createIndexedDbPersistedQueryCacheStore() : null,
+  });
+}
+
+function renderApp(): void {
+  createRoot(document.getElementById("root")!, {
+    // An uncaught render/commit error unmounts the whole root. React's default
+    // handler reports only the error, so the report never says which subtree
+    // died; the component stack is the one piece that makes it actionable.
+    onUncaughtError: (error, errorInfo) => {
+      console.error(
+        "[bb] uncaught render error — the app root was torn down",
+        error,
+        errorInfo.componentStack,
+      );
+    },
+  }).render(
+    <StrictMode>
+      {/* Outside the providers: a crash in the query client or the router has to
         land here too, or it still takes the window white. */}
-    <AppErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <App />
-          <AppToaster position="bottom-right" />
-        </BrowserRouter>
-      </QueryClientProvider>
-    </AppErrorBoundary>
-  </StrictMode>,
-);
+      <AppErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <App />
+            <AppToaster position="bottom-right" />
+          </BrowserRouter>
+        </QueryClientProvider>
+      </AppErrorBoundary>
+    </StrictMode>,
+  );
+}
+
+void hydrateQueryClientFromPersistedCache().then(renderApp, renderApp);
