@@ -7,6 +7,7 @@ import {
   render,
   waitFor,
 } from "@testing-library/react";
+import { useLayoutEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { Active, DroppableContainer } from "@dnd-kit/core";
@@ -19,6 +20,10 @@ import {
   resolveQueuedMessageDrag,
   snapGroupBoundaryDragTransform,
 } from "./QueuedMessagesList";
+import {
+  useQueuedEditorTypeaheadLayoutReporter,
+  type QueuedEditorTypeaheadLayout,
+} from "@/components/promptbox/queued-editor-typeahead-layout";
 
 const bottomAnchorMocks = vi.hoisted(() => ({
   scrollElement: null as HTMLElement | null,
@@ -34,6 +39,18 @@ vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
 }));
 
 const noop = () => {};
+
+function TypeaheadLayoutFixture({
+  layout,
+}: {
+  layout: QueuedEditorTypeaheadLayout;
+}) {
+  const reportLayout = useQueuedEditorTypeaheadLayoutReporter();
+  useLayoutEffect(() => {
+    reportLayout?.(layout);
+  }, [layout, reportLayout]);
+  return <div>Inline editor</div>;
+}
 
 function makeQueuedMessage(id: string, text: string): ThreadQueuedMessage {
   return {
@@ -758,15 +775,17 @@ describe("QueuedMessagesList", () => {
   it.each([
     {
       label: "first",
+      expectedScrollTop: 0,
       messages: [
         makeQueuedMessage("q_editing", "Edited queued message"),
         makeQueuedMessage("q_neighbor", "Following queued message"),
       ],
       editorTop: 32,
-      neighborTop: 182,
+      neighborTop: 310,
     },
     {
       label: "last",
+      expectedScrollTop: 80,
       messages: [
         makeQueuedMessage("q_neighbor", "Previous queued message"),
         makeQueuedMessage("q_editing", "Edited queued message"),
@@ -775,8 +794,8 @@ describe("QueuedMessagesList", () => {
       neighborTop: 32,
     },
   ])(
-    "sizes a $label-item edit from only the neighbor that exists",
-    async ({ editorTop, messages, neighborTop }) => {
+    "reserves and scroll-aligns a $label queued editor in a constrained drawer",
+    async ({ editorTop, expectedScrollTop, messages, neighborTop }) => {
       const viewport = document.createElement("div");
       Object.defineProperty(viewport, "clientHeight", { value: 500 });
       bottomAnchorMocks.scrollElement = viewport;
@@ -797,10 +816,16 @@ describe("QueuedMessagesList", () => {
           return new DOMRect(0, 32, 600, 180);
         }
         if (this.hasAttribute("data-queued-message-inline-editor")) {
-          return new DOMRect(0, editorTop, 600, 150);
+          const scrollTop =
+            this.closest<HTMLElement>("[data-queued-messages-scroll]")
+              ?.scrollTop ?? 0;
+          return new DOMRect(0, editorTop - scrollTop, 600, 278);
         }
         if (this.getAttribute("data-queued-message-id") === "q_neighbor") {
-          return new DOMRect(0, neighborTop, 600, 80);
+          const scrollTop =
+            this.closest<HTMLElement>("[data-queued-messages-scroll]")
+              ?.scrollTop ?? 0;
+          return new DOMRect(0, neighborTop - scrollTop, 600, 80);
         }
         return nativeGetBoundingClientRect.call(this);
       });
@@ -815,7 +840,11 @@ describe("QueuedMessagesList", () => {
                 queuedMessageIndex: messages.findIndex(
                   (message) => message.id === "q_editing",
                 ),
-                content: <div>Inline editor</div>,
+                content: (
+                  <TypeaheadLayoutFixture
+                    layout={{ height: 120, isOpen: true }}
+                  />
+                ),
                 onDismiss: noop,
               }}
               sendDisabled={false}
@@ -835,8 +864,23 @@ describe("QueuedMessagesList", () => {
       const surface = container.querySelector<HTMLElement>(
         'section[aria-label="Queued messages"]',
       );
+      const scroll = container.querySelector<HTMLElement>(
+        "[data-queued-messages-scroll]",
+      );
 
-      await waitFor(() => expect(surface?.style.height).toBe("290px"));
+      await waitFor(() => expect(surface?.style.height).toBe("400px"));
+      const reservation = container.querySelector<HTMLElement>(
+        "[data-queued-editor-typeahead-reservation]",
+      );
+      if (!reservation) throw new Error("Expected typeahead reservation");
+      expect(reservation?.style.paddingTop).toBe("128px");
+      const editorFrame = reservation.closest(
+        '[data-inline-message-editor-frame="embedded"]',
+      );
+      expect(editorFrame?.firstElementChild?.textContent).toContain(
+        "Editing queued message",
+      );
+      expect(scroll?.scrollTop).toBe(expectedScrollTop);
     },
   );
 
