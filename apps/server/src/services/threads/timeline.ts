@@ -404,33 +404,11 @@ function mergeStoredEventRowsById(
   );
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function parseStoredEventData(row: StoredEventRow): Record<string, unknown> {
-  return asRecord(JSON.parse(row.data)) ?? {};
-}
-
 function getStoredEventParentToolCallId(
   row: StoredEventRow,
 ): string | undefined {
-  const data = parseStoredEventData(row);
-  const item = asRecord(data.item);
-  const itemParentToolCallId = item?.parentToolCallId;
-  if (
-    typeof itemParentToolCallId === "string" &&
-    itemParentToolCallId.length > 0
-  ) {
-    return itemParentToolCallId;
-  }
-
-  const eventParentToolCallId = data.parentToolCallId;
-  return typeof eventParentToolCallId === "string" &&
-    eventParentToolCallId.length > 0
-    ? eventParentToolCallId
+  return row.parentToolCallId !== null && row.parentToolCallId.length > 0
+    ? row.parentToolCallId
     : undefined;
 }
 
