@@ -86,6 +86,7 @@ describe("Browser control client", () => {
       active: true,
       desktopBrowser: {
         navigate: vi.fn(),
+        experimental_cancelBrowserPageScript: vi.fn(),
         experimental_runBrowserPageScript: run,
       } as never,
       projectId: "project-a",
@@ -168,24 +169,21 @@ describe("Browser control client", () => {
   });
 
   it("cancels one concurrent request and exposes visible per-tab activity", async () => {
-    let observedSignal: AbortSignal | undefined;
+    let rejectRun!: (error: Error) => void;
     const run = vi.fn(
-      async (_request: unknown, options: { signal?: AbortSignal }) => {
-        observedSignal = options.signal;
-        await new Promise((_resolve, reject) =>
-          options.signal?.addEventListener(
-            "abort",
-            () => reject(new DOMException("cancelled", "AbortError")),
-            { once: true },
-          ),
-        );
-        return null as never;
-      },
+      () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectRun = reject;
+        }),
+    );
+    const cancelPageScript = vi.fn(() =>
+      rejectRun(new DOMException("cancelled", "AbortError")),
     );
     const registration = registerBrowserControlTab({
       active: true,
       desktopBrowser: {
         navigate: vi.fn(),
+        experimental_cancelBrowserPageScript: cancelPageScript,
         experimental_runBrowserPageScript: run,
       } as never,
       projectId: null,
@@ -210,7 +208,7 @@ describe("Browser control client", () => {
       requestId: "request-a",
       reason: "cancelled",
     });
-    await vi.waitFor(() => expect(observedSignal?.aborted).toBe(true));
+    await vi.waitFor(() => expect(cancelPageScript).toHaveBeenCalledOnce());
     await vi.waitFor(() =>
       expect(browserControlActivitySnapshot("tab-a")).toBe(0),
     );
@@ -228,24 +226,21 @@ describe("Browser control client", () => {
   });
 
   it("cancels active work when the Browser client disconnects", async () => {
-    let observedSignal: AbortSignal | undefined;
+    let rejectRun!: (error: Error) => void;
     const run = vi.fn(
-      async (_request: unknown, options: { signal?: AbortSignal }) => {
-        observedSignal = options.signal;
-        await new Promise((_resolve, reject) =>
-          options.signal?.addEventListener(
-            "abort",
-            () => reject(new DOMException("disconnected", "AbortError")),
-            { once: true },
-          ),
-        );
-        return null as never;
-      },
+      () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectRun = reject;
+        }),
+    );
+    const cancelPageScript = vi.fn(() =>
+      rejectRun(new DOMException("disconnected", "AbortError")),
     );
     const registration = registerBrowserControlTab({
       active: true,
       desktopBrowser: {
         navigate: vi.fn(),
+        experimental_cancelBrowserPageScript: cancelPageScript,
         experimental_runBrowserPageScript: run,
       } as never,
       projectId: null,
@@ -264,7 +259,7 @@ describe("Browser control client", () => {
     await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
     socket.connectionState = "reconnecting";
     socket.connectionStateChanged?.();
-    await vi.waitFor(() => expect(observedSignal?.aborted).toBe(true));
+    await vi.waitFor(() => expect(cancelPageScript).toHaveBeenCalledOnce());
     await vi.waitFor(() =>
       expect(browserControlActivitySnapshot("tab-a")).toBe(0),
     );
@@ -287,6 +282,7 @@ describe("Browser control client", () => {
       active: true,
       desktopBrowser: {
         navigate: vi.fn(),
+        experimental_cancelBrowserPageScript: vi.fn(),
         experimental_runBrowserPageScript: run,
         experimental_captureBrowserPage: capture,
       } as never,
@@ -321,7 +317,6 @@ describe("Browser control client", () => {
           world: "main",
           source: "() => ({ component: 'InviteButton' })",
         }),
-        { signal: expect.any(AbortSignal) },
       ),
     );
 
@@ -358,6 +353,7 @@ describe("Browser control client", () => {
       active: true,
       desktopBrowser: {
         navigate: vi.fn(),
+        experimental_cancelBrowserPageScript: vi.fn(),
         experimental_runBrowserPageScript: run,
       } as never,
       projectId: null,
@@ -441,24 +437,21 @@ describe("Browser control client", () => {
   });
 
   it("cancels active work when its tab registration is disposed", async () => {
-    let observedSignal: AbortSignal | undefined;
+    let rejectRun!: (error: Error) => void;
     const run = vi.fn(
-      async (_request: unknown, options: { signal?: AbortSignal }) => {
-        observedSignal = options.signal;
-        await new Promise((_resolve, reject) =>
-          options.signal?.addEventListener(
-            "abort",
-            () => reject(new DOMException("disposed", "AbortError")),
-            { once: true },
-          ),
-        );
-        return null as never;
-      },
+      () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectRun = reject;
+        }),
+    );
+    const cancelPageScript = vi.fn(() =>
+      rejectRun(new DOMException("disposed", "AbortError")),
     );
     const registration = registerBrowserControlTab({
       active: true,
       desktopBrowser: {
         navigate: vi.fn(),
+        experimental_cancelBrowserPageScript: cancelPageScript,
         experimental_runBrowserPageScript: run,
       } as never,
       projectId: null,
@@ -476,7 +469,7 @@ describe("Browser control client", () => {
     socket.request?.(request());
     await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
     registration.dispose();
-    await vi.waitFor(() => expect(observedSignal?.aborted).toBe(true));
+    await vi.waitFor(() => expect(cancelPageScript).toHaveBeenCalledOnce());
     await vi.waitFor(() =>
       expect(socket.sendBrowserControlResponse).toHaveBeenCalledWith(
         expect.objectContaining({ requestId: "request-a", ok: false }),
@@ -485,24 +478,21 @@ describe("Browser control client", () => {
   });
 
   it("cancels active work when another registration replaces its tab", async () => {
-    let observedSignal: AbortSignal | undefined;
+    let rejectRun!: (error: Error) => void;
     const run = vi.fn(
-      async (_request: unknown, options: { signal?: AbortSignal }) => {
-        observedSignal = options.signal;
-        await new Promise((_resolve, reject) =>
-          options.signal?.addEventListener(
-            "abort",
-            () => reject(new DOMException("replaced", "AbortError")),
-            { once: true },
-          ),
-        );
-        return null as never;
-      },
+      () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectRun = reject;
+        }),
+    );
+    const cancelPageScript = vi.fn(() =>
+      rejectRun(new DOMException("replaced", "AbortError")),
     );
     const first = registerBrowserControlTab({
       active: true,
       desktopBrowser: {
         navigate: vi.fn(),
+        experimental_cancelBrowserPageScript: cancelPageScript,
         experimental_runBrowserPageScript: run,
       } as never,
       projectId: null,
@@ -534,7 +524,7 @@ describe("Browser control client", () => {
       url: "https://replacement.test/",
     });
 
-    await vi.waitFor(() => expect(observedSignal?.aborted).toBe(true));
+    await vi.waitFor(() => expect(cancelPageScript).toHaveBeenCalledOnce());
     await vi.waitFor(() =>
       expect(socket.sendBrowserControlResponse).toHaveBeenCalledWith(
         expect.objectContaining({ requestId: "request-a", ok: false }),

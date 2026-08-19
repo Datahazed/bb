@@ -18,6 +18,7 @@ import {
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_CAPTURE_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_NAVIGATE_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_EXPERIMENTAL_RUN_PAGE_SCRIPT_CHANNEL,
@@ -253,6 +254,7 @@ describe("desktop preload browser API", () => {
       "attach",
       "detach",
       "experimental_browserPageRuntimeVersion",
+      "experimental_cancelBrowserPageScript",
       "experimental_captureBrowserPage",
       "experimental_navigateBrowserPage",
       "experimental_runBrowserPageScript",
@@ -294,6 +296,10 @@ describe("desktop preload browser API", () => {
       requestId: "request:a",
       navigationEpoch: 1,
       value: { ok: true },
+    });
+    api.browser.experimental_cancelBrowserPageScript?.({
+      tabId: "browser:a",
+      requestId: "request:a",
     });
     await expect(
       api.browser.experimental_captureBrowserPage?.({
@@ -356,6 +362,10 @@ describe("desktop preload browser API", () => {
       {
         channel: BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
         payload: visibleRequest,
+      },
+      {
+        channel: BB_DESKTOP_BROWSER_EXPERIMENTAL_CANCEL_PAGE_SCRIPT_CHANNEL,
+        payload: { tabId: "browser:a", requestId: "request:a" },
       },
       { channel: BB_DESKTOP_SET_THEME_CHANNEL, payload: "dark" },
     ]);
