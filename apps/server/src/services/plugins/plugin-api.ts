@@ -594,15 +594,27 @@ export function createPluginApi(options: {
     },
   };
 
+  // One reused handle per plugin load: the SDK contract and the fake host
+  // both promise reuse, and a handle per call leaks fds until dispose (#1919).
+  // A plugin that closes the handle itself gets a fresh one on the next call.
+  let databaseHandle: Database.Database | undefined;
   const storage: PluginStorage = {
     kv,
     database() {
       assertLive();
+      if (databaseHandle?.open) return databaseHandle;
+      if (databaseHandle) {
+        // The plugin closed it; drop the dead wrapper so repeated
+        // close-and-reopen calls do not grow the list until dispose.
+        const index = databaseHandles.indexOf(databaseHandle);
+        if (index !== -1) databaseHandles.splice(index, 1);
+      }
       const dir = join(dataDir, "plugins", pluginId);
       mkdirSync(dir, { recursive: true });
       const database = new Database(join(dir, "data.db"));
       database.pragma("journal_mode = WAL");
       database.pragma("busy_timeout = 5000");
+      databaseHandle = database;
       databaseHandles.push(database);
       return database;
     },
