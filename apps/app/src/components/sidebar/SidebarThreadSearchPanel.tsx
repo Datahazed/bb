@@ -200,13 +200,16 @@ export function SidebarThreadSearchPanel({
   const threadSearch = useThreadSearch({ active: true, query });
   // Previous results stay on screen while the debounce and the next fetch
   // run (`keepPreviousData` in useThreadSearch); rows update in place and keep
-  // their keys instead of collapsing to a spinner and remounting.
+  // their keys instead of collapsing to a spinner and remounting. Only a
+  // query change counts as updating: realtime invalidations refetch the same
+  // key in the background (`isFetching` without placeholder data) on every
+  // event batch of any streaming thread and must not spin the indicator.
   const isUpdating =
     liveQueryIsSearchable &&
     (threadSearch.isDebouncing ||
       threadSearch.debouncedQuery !== trimmedQuery ||
       threadSearch.isPlaceholderData ||
-      threadSearch.isFetching);
+      (threadSearch.isLoading && threadSearch.data === undefined));
   const sections = useMemo<ThreadSearchSection[]>(() => {
     if (!liveQueryIsSearchable) {
       const rows = recentThreads

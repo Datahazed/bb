@@ -182,6 +182,10 @@ export function ArchivedThreadsSettingsSection() {
     "All projects";
   const isInitialLoading = searchIsActive
     ? threadSearch.isDebouncing ||
+      // `keepPreviousData` serves the prior query's rows while the next
+      // fetch runs; this list has no in-place updating cue, so keep showing
+      // the loading state until the current query's rows arrive.
+      threadSearch.isPlaceholderData ||
       (threadSearch.isLoading && threadSearch.data === undefined)
     : archivedThreadsQuery.isPending;
 

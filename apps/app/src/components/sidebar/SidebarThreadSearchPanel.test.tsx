@@ -206,6 +206,41 @@ describe("SidebarThreadSearchPanel", () => {
     expect(screen.getByLabelText("Updating results")).not.toBeNull();
   });
 
+  // Realtime invalidations refetch the open search on every event batch of
+  // any streaming thread. That is a same-key background refetch, not a query
+  // change, and must not spin the indicator or mark the list busy.
+  it("does not show the updating indicator for a same-query background refetch", () => {
+    mockThreadSearch({
+      data: createSearchResponse(
+        createThreadListEntry({ id: "thr_settled", title: "Needle" }),
+      ),
+      debouncedQuery: "needle",
+      hasSearchableQuery: true,
+      isDebouncing: false,
+      isError: false,
+      isFetching: true,
+      isLoading: false,
+      isPlaceholderData: false,
+    });
+
+    render(
+      <SidebarThreadSearchPanel
+        activeIndex={0}
+        isRecentsLoading={false}
+        onActiveIndexChange={vi.fn()}
+        onNavigationItemsChange={vi.fn()}
+        onSelect={vi.fn()}
+        projectNamesById={new Map()}
+        query="needle"
+        recentThreads={[]}
+      />,
+    );
+
+    expect(screen.getByRole("option")).not.toBeNull();
+    expect(screen.queryByLabelText("Updating results")).toBeNull();
+    expect(screen.getByRole("listbox").getAttribute("aria-busy")).toBeNull();
+  });
+
   it("shows the searching message only when there are no rows to keep", () => {
     mockThreadSearch({
       data: undefined,
