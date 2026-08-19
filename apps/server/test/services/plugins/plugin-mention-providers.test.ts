@@ -85,6 +85,7 @@ const MENTION_SOURCE = `
             dataUrl: "${PNG_DATA_URL}",
             alt: "Issue preview",
           },
+          comments: ["Keep the action prominent."],
           metadata: "issue.id = \\\"" + itemId + "\\\"",
         };
       },
@@ -316,6 +317,7 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
           dataUrl: PNG_DATA_URL,
           alt: "Issue preview",
         },
+        comments: ["Keep the action prominent."],
         metadata: 'issue.id = "ISS-42"',
       },
     });
@@ -523,6 +525,32 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
                     metadata: "x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.inspectionMetadataBytes + 1}),
                   };
                 }
+                if (itemId === "comments-field") {
+                  return {
+                    title: "Large comment",
+                    metadata: "metadata",
+                    comments: ["x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentBytes + 1})],
+                  };
+                }
+                if (itemId === "comments-total") {
+                  return {
+                    title: "Large comments",
+                    metadata: "metadata",
+                    comments: Array.from({ length: 5 }, () =>
+                      "x".repeat(${PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentBytes}),
+                    ),
+                  };
+                }
+                if (itemId === "comments-count") {
+                  return {
+                    title: "Too many comments",
+                    metadata: "metadata",
+                    comments: Array.from(
+                      { length: ${PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentsCount + 1} },
+                      () => "comment",
+                    ),
+                  };
+                }
                 const image = Buffer.alloc(6_150_000);
                 Buffer.from("89504e470d0a1a0a", "hex").copy(image);
                 return {
@@ -560,6 +588,9 @@ describe("plugin mention providers (bb.ui.registerMentionProvider)", () => {
       "bad-base64",
       "wrong-signature",
       "metadata-field",
+      "comments-field",
+      "comments-total",
+      "comments-count",
       "total",
     ]) {
       const result = await harness.pluginService.inspectMention({

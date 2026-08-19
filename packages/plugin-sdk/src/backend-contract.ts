@@ -305,6 +305,9 @@ export const PLUGIN_MENTION_CONTENT_LIMITS = {
   searchPreviewsTotalBytes: 128 * 1024,
   inspectionTitleBytes: 4 * 1024,
   inspectionDescriptionBytes: 16 * 1024,
+  inspectionCommentBytes: 16 * 1024,
+  inspectionCommentsTotalBytes: 64 * 1024,
+  inspectionCommentsCount: 64,
   inspectionMetadataBytes: 256 * 1024,
   inspectionImageAltBytes: 4 * 1024,
   inspectionImageDataUrlBytes: 8 * 1024 * 1024,
@@ -721,6 +724,8 @@ export interface ExperimentalPluginMentionInspection {
   description?: string;
   /** Presentation-only image; never included in send-time agent context. */
   preview?: { kind: "image"; dataUrl: string; alt: string };
+  /** Optional human-authored comments displayed with the inspected item. */
+  comments?: readonly string[];
   /** Exact, human-readable metadata represented by this mention. */
   metadata: string;
 }

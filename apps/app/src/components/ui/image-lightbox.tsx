@@ -1,6 +1,11 @@
 import { useEffect, type CSSProperties } from "react";
 import { Button } from "@bb/shared-ui/button";
-import { Dialog, DialogClose, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 
 export const imageLightboxKeyActionValues = [
@@ -160,15 +165,31 @@ export function ImageLightbox({
         }}
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
-        <img
-          src={imageSrc}
-          alt={imageAlt}
-          style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
-          className="max-h-[82vh] max-w-[90vw] rounded object-contain"
-        />
+        <div
+          data-image-lightbox-frame="true"
+          className="relative inline-flex max-h-[82vh] max-w-[90vw]"
+        >
+          <img
+            src={imageSrc}
+            alt={imageAlt}
+            style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
+            className="max-h-[82vh] max-w-[90vw] rounded object-contain"
+          />
+          <DialogClose asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-2 top-2 size-9 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
+              aria-label="Close image preview"
+            >
+              <Icon name="X" className="size-5" />
+            </Button>
+          </DialogClose>
+        </div>
 
         {hasNavigation ? (
-          <>
+          <div className="contents">
             <Button
               type="button"
               variant="ghost"
@@ -189,20 +210,8 @@ export function ImageLightbox({
             >
               <Icon name="ChevronRight" className="size-5" />
             </Button>
-          </>
+          </div>
         ) : null}
-
-        <DialogClose asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="absolute right-2 top-2 size-9 rounded-full bg-black/45 text-white hover:bg-black/60 hover:text-white"
-            aria-label="Close image preview"
-          >
-            <Icon name="X" className="size-5" />
-          </Button>
-        </DialogClose>
       </DialogContent>
     </Dialog>
   );

@@ -14184,6 +14184,9 @@ declare const PLUGIN_MENTION_CONTENT_LIMITS: {
     readonly searchPreviewsTotalBytes: number;
     readonly inspectionTitleBytes: number;
     readonly inspectionDescriptionBytes: number;
+    readonly inspectionCommentBytes: number;
+    readonly inspectionCommentsTotalBytes: number;
+    readonly inspectionCommentsCount: 64;
     readonly inspectionMetadataBytes: number;
     readonly inspectionImageAltBytes: number;
     readonly inspectionImageDataUrlBytes: number;
@@ -14552,6 +14555,8 @@ interface ExperimentalPluginMentionInspection {
         dataUrl: string;
         alt: string;
     };
+    /** Optional human-authored comments displayed with the inspected item. */
+    comments?: readonly string[];
     /** Exact, human-readable metadata represented by this mention. */
     metadata: string;
 }

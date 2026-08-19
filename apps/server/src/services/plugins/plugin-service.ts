@@ -2521,6 +2521,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             title?: unknown;
             description?: unknown;
             preview?: unknown;
+            comments?: unknown;
             metadata?: unknown;
           };
           if (
@@ -2529,7 +2530,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             typeof value.metadata !== "string" ||
             value.metadata.trim().length === 0 ||
             (value.description !== undefined &&
-              typeof value.description !== "string")
+              typeof value.description !== "string") ||
+            (value.comments !== undefined &&
+              (!Array.isArray(value.comments) ||
+                value.comments.length >
+                  PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentsCount ||
+                !value.comments.every(
+                  (comment) =>
+                    typeof comment === "string" && comment.trim().length > 0,
+                )))
           ) {
             throw new Error(
               `mention provider "${providerId}" experimental_inspect() returned invalid content`,
@@ -2541,6 +2550,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             value.description.trim().length > 0
               ? value.description.trim()
               : undefined;
+          const comments = Array.isArray(value.comments)
+            ? value.comments.map((comment) => (comment as string).trim())
+            : undefined;
           stringWithinUtf8Limit(
             title,
             `mention provider "${providerId}" inspection.title`,
@@ -2551,6 +2563,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               description,
               `mention provider "${providerId}" inspection.description`,
               PLUGIN_MENTION_CONTENT_LIMITS.inspectionDescriptionBytes,
+            );
+          }
+          if (comments !== undefined) {
+            for (const [index, comment] of comments.entries()) {
+              stringWithinUtf8Limit(
+                comment,
+                `mention provider "${providerId}" inspection.comments[${index}]`,
+                PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentBytes,
+              );
+            }
+            stringWithinUtf8Limit(
+              JSON.stringify(comments),
+              `mention provider "${providerId}" inspection.comments`,
+              PLUGIN_MENTION_CONTENT_LIMITS.inspectionCommentsTotalBytes,
             );
           }
           stringWithinUtf8Limit(
@@ -2593,6 +2619,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             title,
             ...(description === undefined ? {} : { description }),
             ...(preview === undefined ? {} : { preview }),
+            ...(comments === undefined ? {} : { comments }),
             metadata: value.metadata,
           };
           stringWithinUtf8Limit(
