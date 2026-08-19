@@ -95,6 +95,20 @@ function isInitialThreadLoad(path: string): boolean {
   return !new URL(path, "http://bb.local").searchParams.has("afterSequence");
 }
 
+/** True when the origin already encoded the body (anything but identity). */
+export function isPrecompressedResponse(
+  contentEncoding: string | string[] | undefined,
+): boolean {
+  if (contentEncoding === undefined) return false;
+  const value = Array.isArray(contentEncoding)
+    ? contentEncoding.join(",")
+    : contentEncoding;
+  return value
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .some((token) => token !== "" && token !== "identity");
+}
+
 function roundDurationMs(durationMs: number): number {
   return Math.round(durationMs * 10) / 10;
 }
@@ -216,9 +230,18 @@ export class TunnelSession {
     this.setRemoteClients(Math.max(0, this.remoteClientCount + delta));
   }
 
-  private send(frame: Frame): void {
+  /**
+   * `compress: false` opts a frame out of permessage-deflate when the dial
+   * negotiated it. Body chunks whose origin response is already encoded
+   * (brotli/gzip static assets, gzip API JSON) gain nothing from a second
+   * deflate pass and pay per-chunk CPU plus a few bytes of expansion; identity
+   * bodies and control frames keep the default.
+   */
+  private send(frame: Frame, options: { compress?: boolean } = {}): void {
     if (this.options.tunnel.readyState === NodeWebSocket.OPEN) {
-      this.options.tunnel.send(encodeFrame(frame));
+      this.options.tunnel.send(encodeFrame(frame), {
+        compress: options.compress ?? true,
+      });
     }
   }
 
@@ -326,6 +349,9 @@ export class TunnelSession {
       });
       const originTtfbMs = performance.now() - startedAt;
       const respHeaders = responseHeaderPairs(res);
+      const compress = !isPrecompressedResponse(
+        res.headers["content-encoding"],
+      );
       const initialThreadLoad = isInitialThreadLoad(meta.path);
       if (initialThreadLoad) {
         respHeaders.push([
@@ -344,7 +370,9 @@ export class TunnelSession {
         const value =
           chunk instanceof Uint8Array ? chunk : Buffer.from(String(chunk));
         responseBytes += value.byteLength;
-        for (const frame of chunkBody(streamId, value)) this.send(frame);
+        for (const frame of chunkBody(streamId, value)) {
+          this.send(frame, { compress });
+        }
       }
       this.send({ type: "body-end", streamId });
       if (initialThreadLoad) {

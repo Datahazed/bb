@@ -19,7 +19,10 @@ declare module "ws" {
     static readonly OPEN: number;
     readonly readyState: number;
     readonly protocol: string;
-    send(data: string | Buffer | Uint8Array): void;
+    send(
+      data: string | Buffer | Uint8Array,
+      options?: { compress?: boolean },
+    ): void;
     close(code?: number, reason?: string): void;
     terminate(): void;
     on(event: "open", listener: () => void): this;
