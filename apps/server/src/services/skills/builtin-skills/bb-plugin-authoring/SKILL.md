@@ -1374,10 +1374,14 @@ state in the component, never in a module-level singleton.
 
 `app.slots.experimental_browserAction` renders one compact, accessible control
 in each Browser tab's navigation row. It receives `tabId`, `threadId`,
-`projectId`, `url`, `experimental_pageContentScriptsAvailable`,
+`projectId`, `url`, the exact broker identity `experimental_browserTarget`,
+`experimental_pageContentScriptsAvailable`,
 `experimental_runPageContentScript`, `experimental_capturePage`, a tab-local
 `experimental_overlayRoot`, and the `experimental_setOverlayOpen` visibility
 lease. Page scripts use the same isolated-world, JSON-only, bounded runtime.
+Use all four `experimental_browserTarget` fields when coordinating this UI
+action with agent Browser tools; navigation replaces it with a new
+`navigationEpoch`, so never identify a target by logical `tabId` alone.
 Results include a `navigationEpoch`; pass it as `expectedNavigationEpoch` when
 a later preview capture must describe the same page revision. Portal larger UI
 into the overlay root, hold the visibility lease while it is open, and release

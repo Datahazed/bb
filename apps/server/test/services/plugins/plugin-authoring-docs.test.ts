@@ -247,6 +247,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "threadId",
     "projectId",
     "url",
+    "experimental_browserTarget",
     "experimental_pageContentScriptsAvailable",
     "experimental_runPageContentScript",
     "experimental_capturePage",
