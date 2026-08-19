@@ -76,6 +76,10 @@ import {
   substitutePromptMentions,
 } from "@/components/ui/markdown-prompt-mentions";
 import { normalizePromptBlockquoteBoundaries } from "@/components/ui/markdown-prompt-blockquote-boundaries";
+import {
+  QueuedEditorTypeaheadLayoutContext,
+  type QueuedEditorTypeaheadLayout,
+} from "@/components/promptbox/queued-editor-typeahead-layout";
 
 /** Which in-flight action the processing message is running, for its label. */
 export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
@@ -141,6 +145,7 @@ const WORKSPACE_MIN_HEIGHT = 240;
 const WORKSPACE_MAX_HEIGHT = 360;
 const WORKSPACE_CHROME_HEIGHT = 56;
 const WORKSPACE_ROW_HEIGHT = 40;
+const TYPEAHEAD_MENU_GAP = 8;
 const SURFACE_DRAG_THRESHOLD = 72;
 const QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS =
   "relative bg-surface-raised-solid before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-gradient-to-r before:from-transparent before:to-surface-raised-solid before:content-['']";
@@ -931,6 +936,11 @@ function QueuedMessageInlineEditorSlot({
 }: {
   editor: QueuedMessageInlineEditor;
 }) {
+  const [typeaheadLayout, setTypeaheadLayout] =
+    useState<QueuedEditorTypeaheadLayout>({ height: 0, isOpen: false });
+  const typeaheadReservation = typeaheadLayout.isOpen
+    ? Math.ceil(typeaheadLayout.height) + TYPEAHEAD_MENU_GAP
+    : 0;
   return (
     <li
       data-queued-message-inline-editor=""
@@ -942,7 +952,14 @@ function QueuedMessageInlineEditorSlot({
         label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
         onCancel={editor.onDismiss}
       >
-        {editor.content}
+        <QueuedEditorTypeaheadLayoutContext.Provider value={setTypeaheadLayout}>
+          <div
+            data-queued-editor-typeahead-reservation=""
+            style={{ paddingTop: typeaheadReservation }}
+          >
+            {editor.content}
+          </div>
+        </QueuedEditorTypeaheadLayoutContext.Provider>
       </InlineMessageEditorFrame>
       <OverflowFade placement="below" tone="surface-raised" className="z-10" />
     </li>

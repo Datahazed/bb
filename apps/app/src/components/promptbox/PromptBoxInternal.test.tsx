@@ -45,6 +45,7 @@ import {
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
+import { QueuedEditorTypeaheadLayoutContext } from "@/components/promptbox/queued-editor-typeahead-layout";
 import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
@@ -56,6 +57,7 @@ import {
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
+  arePromptEditorValuesEqual,
   suppressPromptEditorAnchorActivation,
   type PromptBoxAction,
   type PromptBoxHandle,
@@ -555,6 +557,40 @@ describe("suppressPromptEditorAnchorActivation", () => {
 });
 
 describe("PromptBoxInternal controlled value sync", () => {
+  it("compares cloned mention values without serializing the prompt text", () => {
+    const resource = {
+      kind: "path" as const,
+      source: "workspace" as const,
+      entryKind: "file" as const,
+      path: "src/a.ts",
+      label: "a.ts",
+    };
+    const mention: PromptTextMention = {
+      start: 4,
+      end: 10,
+      resource,
+    };
+    const left = { text: "see @a.ts", mentions: [mention] };
+
+    expect(
+      arePromptEditorValuesEqual(left, {
+        text: left.text,
+        mentions: [{ ...mention, resource: { ...resource } }],
+      }),
+    ).toBe(true);
+    expect(
+      arePromptEditorValuesEqual(left, {
+        text: left.text,
+        mentions: [
+          {
+            ...mention,
+            resource: { ...resource, path: "src/b.ts" },
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
   it("suppresses and restores plugin customizations without remounting the editor", () => {
     setPluginSlotRegistrations(
       "pending-test",
@@ -2746,6 +2782,48 @@ describe("PromptBoxInternal mention triggers", () => {
     icon: null,
     replacement: "#42 Fix login bug",
   };
+
+  it("reports the queued editor typeahead's open state and measured height", async () => {
+    const layouts: Array<{ height: number; isOpen: boolean }> = [];
+    const nativeGetBoundingClientRect =
+      HTMLElement.prototype.getBoundingClientRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.hasAttribute("data-promptbox-typeahead-menu")) {
+          return new DOMRect(0, 0, 600, 144);
+        }
+        return nativeGetBoundingClientRect.call(this);
+      });
+    const promptBoxRef = createRef<PromptBoxHandle>();
+
+    render(
+      <QueuedEditorTypeaheadLayoutContext.Provider
+        value={(layout) => layouts.push(layout)}
+      >
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "@fix",
+            typeahead: buildTypeaheadConfig({
+              mentionSuggestions: [githubIssueSuggestion],
+            }),
+          })}
+          promptBoxRef={promptBoxRef}
+        />
+      </QueuedEditorTypeaheadLayoutContext.Provider>,
+    );
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(layouts).toContainEqual({ height: 144, isOpen: true }),
+    );
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+    await waitFor(() =>
+      expect(layouts.at(-1)).toEqual({ height: 0, isOpen: false }),
+    );
+    rectSpy.mockRestore();
+  });
 
   it("renders a plugin mention's named icon hint", async () => {
     const suggestion = { ...githubIssueSuggestion, icon: "FileText" };
