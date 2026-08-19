@@ -1,6 +1,7 @@
 import {
   lazy,
   Suspense,
+  useRef,
   useState,
   type KeyboardEvent,
   type MouseEvent,
@@ -149,6 +150,7 @@ export function PromptMentionPill({
   onActivate,
 }: PromptMentionPillProps) {
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const inspectorTriggerRef = useRef<HTMLButtonElement | null>(null);
   const title = promptMentionTooltipLabel(resource);
   const preview = resource.kind === "plugin" ? resource.preview : undefined;
   const inspectable =
@@ -218,6 +220,7 @@ export function PromptMentionPill({
       <>
         {withPreview(
           <button
+            ref={inspectorTriggerRef}
             type="button"
             className={mentionPillClassName(true)}
             {...clipboardAttributes}
@@ -239,6 +242,11 @@ export function PromptMentionPill({
               pluginId={resource.pluginId}
               itemId={resource.itemId}
               label={resource.label}
+              restoreFocus={() => {
+                if (inspectorTriggerRef.current?.isConnected) {
+                  inspectorTriggerRef.current.focus();
+                }
+              }}
             />
           </Suspense>
         ) : null}

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   messageBodyHasQuote,
@@ -41,9 +47,11 @@ describe("PromptMentionPill", () => {
       />,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /Inspect.*Invite member/u }),
-    );
+    const pill = screen.getByRole("button", {
+      name: /Inspect.*Invite member/u,
+    });
+    pill.focus();
+    fireEvent.click(pill);
     expect(
       await screen.findByRole(
         "heading",
@@ -63,6 +71,8 @@ describe("PromptMentionPill", () => {
         }),
       }),
     );
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(pill));
   }, 15_000);
 });
 

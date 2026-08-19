@@ -1,6 +1,7 @@
 import {
   cloneElement,
   useCallback,
+  useEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -44,6 +45,7 @@ export function PromptMentionPreviewTooltip({
 }: PromptMentionPreviewTooltipProps) {
   const [open, setOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [overflow, setOverflow] = useState<OverflowState>({
     above: false,
     below: false,
@@ -64,16 +66,34 @@ export function PromptMentionPreviewTooltip({
   // duplicate does not replace them with zero-sized nodes.
   const setVisibleScrollRef = useCallback(
     (node: HTMLDivElement | null) => {
-      if (node === null || node.closest('[role="tooltip"]') === null) {
-        scrollRef.current = node;
-        if (node !== null) {
-          window.requestAnimationFrame(() => measureOverflow(node));
-        }
+      if (node === null || node.closest('[role="tooltip"]') !== null) return;
+      resizeObserverRef.current?.disconnect();
+      scrollRef.current = node;
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserverRef.current = new ResizeObserver(() =>
+          measureOverflow(node),
+        );
+        resizeObserverRef.current.observe(node);
       }
+      window.requestAnimationFrame(() => measureOverflow(node));
     },
     [measureOverflow],
   );
   const hasPreview = typeof content === "string" && content.trim().length > 0;
+
+  useEffect(() => {
+    return () => {
+      resizeObserverRef.current?.disconnect();
+    };
+  }, []);
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
+      scrollRef.current = null;
+    }
+    setOpen(nextOpen);
+  }, []);
 
   const scrollPreviewWithKeyboard = useCallback(
     (event: KeyboardEvent<HTMLElement>) => {
@@ -126,7 +146,7 @@ export function PromptMentionPreviewTooltip({
 
   return (
     <TooltipProvider delayDuration={250} skipDelayDuration={100}>
-      <Tooltip open={open} onOpenChange={setOpen}>
+      <Tooltip open={open} onOpenChange={handleOpenChange}>
         <TooltipTrigger asChild>{trigger}</TooltipTrigger>
         <TooltipContent
           data-mention-preview-tooltip="true"
@@ -138,7 +158,11 @@ export function PromptMentionPreviewTooltip({
             <div
               ref={setVisibleScrollRef}
               data-mention-preview-scroll="true"
-              className="max-h-64 min-w-48 overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-2 text-left font-normal leading-relaxed whitespace-pre-wrap break-words"
+              className="min-w-48 overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-2 text-left font-normal leading-relaxed whitespace-pre-wrap break-words"
+              style={{
+                maxHeight:
+                  "min(16rem, var(--radix-tooltip-content-available-height, 16rem))",
+              }}
               onScroll={(event) => measureOverflow(event.currentTarget)}
               onWheel={stopScrollPropagation}
               onTouchMove={stopScrollPropagation}

@@ -23,6 +23,7 @@ interface PromptMentionInspectorProps {
   onOpenChange(open: boolean): void;
   open: boolean;
   pluginId: string;
+  restoreFocus?: () => void;
 }
 
 interface InspectorOverflowState {
@@ -36,6 +37,7 @@ export function PromptMentionInspector({
   onOpenChange,
   open,
   pluginId,
+  restoreFocus,
 }: PromptMentionInspectorProps) {
   const [inspection, setInspection] = useState<MentionInspection | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +58,15 @@ export function PromptMentionInspector({
         : next,
     );
   }, []);
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      onOpenChange(nextOpen);
+      if (!nextOpen && restoreFocus !== undefined) {
+        window.setTimeout(restoreFocus, 0);
+      }
+    },
+    [onOpenChange, restoreFocus],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -104,7 +115,7 @@ export function PromptMentionInspector({
   }, [inspection, measureOverflow, open]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[min(42rem,calc(100dvh-2rem))] max-w-xl gap-0 overflow-hidden p-0">
         <DialogHeader className="gap-1 border-b border-border-hairline px-5 py-4 pr-12">
           <DialogTitle className="text-base leading-snug">

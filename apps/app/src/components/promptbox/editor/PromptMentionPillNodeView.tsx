@@ -2,6 +2,7 @@ import {
   lazy,
   Suspense,
   useContext,
+  useRef,
   useState,
   type KeyboardEvent,
   type MouseEvent,
@@ -50,6 +51,7 @@ export function PromptMentionPillNodeView({
 }: NodeViewProps) {
   const resolveLink = useContext(PromptMentionLinkContext);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const inspectorTriggerRef = useRef<HTMLElement | null>(null);
   const attrs = parsePromptEditorMentionAttrs(node.attrs);
   const fallbackSerializedText =
     typeof node.attrs.serializedText === "string"
@@ -100,6 +102,7 @@ export function PromptMentionPillNodeView({
         }
         event.preventDefault();
         event.stopPropagation();
+        if (inspectable) inspectorTriggerRef.current = event.currentTarget;
         activate();
       }
     : undefined;
@@ -110,6 +113,7 @@ export function PromptMentionPillNodeView({
         }
         event.preventDefault();
         event.stopPropagation();
+        if (inspectable) inspectorTriggerRef.current = event.currentTarget;
         activate();
       }
     : undefined;
@@ -148,6 +152,11 @@ export function PromptMentionPillNodeView({
             pluginId={resource.pluginId}
             itemId={resource.itemId}
             label={resource.label}
+            restoreFocus={() => {
+              if (inspectorTriggerRef.current?.isConnected) {
+                inspectorTriggerRef.current.focus();
+              }
+            }}
           />
         </Suspense>
       ) : null}

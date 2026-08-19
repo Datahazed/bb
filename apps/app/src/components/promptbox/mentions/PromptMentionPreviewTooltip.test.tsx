@@ -13,6 +13,7 @@ import { PromptMentionPreviewTooltip } from "./PromptMentionPreviewTooltip";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function renderPreview(
@@ -74,6 +75,15 @@ describe("PromptMentionPreviewTooltip", () => {
   });
 
   it("constrains overflowing content, updates boundary fades, and contains scrolling", async () => {
+    const observeResize = vi.fn();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(_callback: ResizeObserverCallback) {}
+        observe = observeResize;
+        disconnect() {}
+      },
+    );
     const animationFrame = vi
       .spyOn(window, "requestAnimationFrame")
       .mockImplementation((callback) => {
@@ -94,6 +104,10 @@ describe("PromptMentionPreviewTooltip", () => {
       '[data-mention-preview-scroll="true"]',
     );
     expect(scroll).not.toBeNull();
+    expect(observeResize).toHaveBeenCalledWith(scroll);
+    expect(scroll!.style.maxHeight).toBe(
+      "min(16rem, var(--radix-tooltip-content-available-height, 16rem))",
+    );
     Object.defineProperties(scroll!, {
       clientHeight: { configurable: true, value: 160 },
       scrollHeight: { configurable: true, value: 520 },
@@ -130,6 +144,16 @@ describe("PromptMentionPreviewTooltip", () => {
       expect(
         document.querySelector('[data-mention-preview-fade="below"]'),
       ).toBeNull(),
+    );
+    Object.defineProperty(scroll!, "clientHeight", {
+      configurable: true,
+      value: 80,
+    });
+    fireEvent.scroll(scroll!);
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-mention-preview-fade="below"]'),
+      ).not.toBeNull(),
     );
     animationFrame.mockRestore();
   });

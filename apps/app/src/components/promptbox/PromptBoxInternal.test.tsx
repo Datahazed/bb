@@ -2841,14 +2841,16 @@ describe("PromptBoxInternal mention triggers", () => {
       expect(element).not.toBeNull();
       return element!;
     });
-    fireEvent.click(pill);
+    pill.focus();
+    fireEvent.keyDown(pill, { key: "Enter" });
     expect(
       await screen.findByRole("heading", {
         name: "Invite member · Acme Team Settings",
       }),
     ).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(pill));
     fireEvent.click(pill);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(latestValue(changes)).toBe("@Invite member · Acme Team Settings ");
