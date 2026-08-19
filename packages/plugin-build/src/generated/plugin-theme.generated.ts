@@ -29,6 +29,7 @@ export const PLUGIN_THEME_CSS = `@theme inline reference {
    * settled/closed-turn machinery, and a text-only destructive that clears AA in
    * dark mode (the --destructive fill is below the 4.5:1 text floor there). */
   --color-readback-foreground: var(--readback-foreground);
+  --color-version-upgrade: var(--version-upgrade);
   --color-timeline-accent: var(--timeline-accent);
   --color-file-accent: var(--file-accent);
   --color-accent: var(--accent);
