@@ -25,6 +25,7 @@ import {
   type PluginComposerScope,
   type PluginComposerTextEffect,
   type PluginComposerThreadRowStatus,
+  type PromptInput,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageActionRegistration,
@@ -134,6 +135,20 @@ interface TestComposerStore {
   getText(): string;
   getVersionSnapshot(): number;
   subscribe(listener: () => void): () => void;
+}
+
+function clonePromptInput(input: readonly PromptInput[]): PromptInput[] {
+  return input.map((chunk) =>
+    chunk.type === "text"
+      ? {
+          ...chunk,
+          mentions: chunk.mentions.map((mention) => ({
+            ...mention,
+            resource: { ...mention.resource },
+          })),
+        }
+      : { ...chunk },
+  );
 }
 
 interface SlotEnv {
@@ -716,11 +731,21 @@ export interface RenderSlotOptions<
   /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
   realtimeConnectionState?: PluginRealtimeConnectionState;
   /** Initial state for this render's isolated composer scope and view. */
-  composer?: {
-    text?: string;
-    scope?: PluginComposerScope;
-    attachmentCount?: number;
-  };
+  composer?:
+    | {
+        /** Exact structured composer input, including image/file attachments. */
+        input: PromptInput[];
+        scope?: PluginComposerScope;
+        text?: never;
+        attachmentCount?: never;
+      }
+    | {
+        /** Legacy shorthand for tests that only need text/count view state. */
+        input?: never;
+        text?: string;
+        scope?: PluginComposerScope;
+        attachmentCount?: number;
+      };
   /**
    * Threads and projects `experimental_useSidebarThreads()` reports. Omitted →
    * a ready, empty list. Pass `{ status: "loading" }` to test that branch.
@@ -957,8 +982,19 @@ export function renderSlot<
       ? { kind: "thread", threadId }
       : { kind: "new-thread", projectId });
 
-  let composerText = options.composer?.text ?? "";
-  const composerAttachmentCount = options.composer?.attachmentCount ?? 0;
+  const initialComposerInput = options.composer?.input;
+  let composerInput: PromptInput[] =
+    initialComposerInput !== undefined
+      ? clonePromptInput(initialComposerInput)
+      : options.composer?.text
+        ? [{ type: "text", text: options.composer.text, mentions: [] }]
+        : [];
+  let composerText =
+    composerInput.find((chunk) => chunk.type === "text")?.text ?? "";
+  const composerAttachmentCount =
+    initialComposerInput !== undefined
+      ? composerInput.filter((chunk) => chunk.type !== "text").length
+      : (options.composer?.attachmentCount ?? 0);
   let composerVersion = 0;
   const composerListeners = new Set<() => void>();
   const notifyComposerListeners = () => {
@@ -968,6 +1004,11 @@ export function renderSlot<
   const commitComposerText = (next: string) => {
     if (next === composerText) return;
     composerText = next;
+    const attachments = composerInput.filter((chunk) => chunk.type !== "text");
+    composerInput =
+      next.length === 0
+        ? attachments
+        : [{ type: "text", text: next, mentions: [] }, ...attachments];
     notifyComposerListeners();
   };
   const composerLog: ComposerLog = {
@@ -999,6 +1040,9 @@ export function renderSlot<
       return () => composerListeners.delete(listener);
     },
     api: {
+      experimental_getInput() {
+        return clonePromptInput(composerInput);
+      },
       setText(next) {
         commitComposerText(next);
       },

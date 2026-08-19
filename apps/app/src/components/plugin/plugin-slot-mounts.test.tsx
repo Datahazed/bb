@@ -16,6 +16,7 @@ import type {
   PluginComposerApi,
   PluginFileOpenerProps,
   PluginNewThreadPanelProps,
+  PromptInput,
   PluginThreadPanelProps,
 } from "@get-bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
@@ -222,6 +223,45 @@ function NewThreadDraftSeeder() {
   );
 }
 
+const EXPECTED_COMPOSER_INPUT = [
+  {
+    type: "text",
+    text: "Describe this screenshot",
+    mentions: [],
+  },
+  { type: "localImage", path: "uploads/screenshot.png" },
+] satisfies PromptInput[];
+
+function ThreadInputSnapshotSeeder({ threadId }: { threadId: string }) {
+  const draft = usePromptDraftStorage({
+    kind: "thread",
+    projectId: PERSONAL_PROJECT_ID,
+    threadId,
+  });
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        draft.setDraft({
+          text: "  Describe this screenshot  ",
+          mentions: [],
+          attachments: [
+            {
+              type: "localImage",
+              path: "uploads/screenshot.png",
+              name: "screenshot.png",
+              sizeBytes: 2_048,
+              mimeType: "image/png",
+            },
+          ],
+        })
+      }
+    >
+      seed-input-snapshot
+    </button>
+  );
+}
+
 describe("useComposer", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -235,12 +275,15 @@ describe("useComposer", () => {
       const composer = useComposer();
       onRender?.(composer);
       const initialMethods = useRef({
+        experimental_getInput: composer.experimental_getInput,
         setText: composer.setText,
         updateText: composer.updateText,
         clear: composer.clear,
         setTextEffect: composer.setTextEffect,
       });
       const methodsAreStable =
+        initialMethods.current.experimental_getInput ===
+          composer.experimental_getInput &&
         initialMethods.current.setText === composer.setText &&
         initialMethods.current.updateText === composer.updateText &&
         initialMethods.current.clear === composer.clear &&
@@ -489,6 +532,39 @@ describe("useComposer", () => {
     expect(
       JSON.parse(screen.getByTestId("draft-attachments").textContent ?? "[]"),
     ).toHaveLength(1);
+  });
+
+  it("snapshots the exact text and attachments the composer would submit", () => {
+    let composerApi: PluginComposerApi | null = null;
+    registerComposerProbe("snapshot", (composer) => {
+      composerApi = composer;
+    });
+    render(
+      <MemoryRouter initialEntries={["/threads/thr_snapshot"]}>
+        <ComposerCustomizationMount />
+        <ThreadInputSnapshotSeeder threadId="thr_snapshot" />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByText("seed-input-snapshot"));
+
+    const currentComposer = composerApi as PluginComposerApi | null;
+    if (currentComposer === null) throw new Error("composer did not render");
+    expect(currentComposer.experimental_getInput()).toEqual(
+      EXPECTED_COMPOSER_INPUT,
+    );
+    const detached = currentComposer.experimental_getInput();
+    const detachedText = detached[0];
+    const detachedImage = detached[1];
+    if (detachedText?.type !== "text" || detachedImage?.type !== "localImage") {
+      throw new Error("unexpected composer input fixture");
+    }
+    detachedText.text = "mutated snapshot";
+    detachedImage.path = "uploads/mutated.png";
+
+    expect(currentComposer.experimental_getInput()).toEqual(
+      EXPECTED_COMPOSER_INPUT,
+    );
   });
 
   it("binds composer writes to the active queued-message editor", () => {

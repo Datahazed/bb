@@ -5,6 +5,7 @@ import type {
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
+export type { PromptInput } from "@bb/domain";
 import type {
   CreateExecutionInputSources,
   CreateThreadEnvironmentArgs,
@@ -1123,6 +1124,15 @@ export interface PluginComposerApi {
   scope: PluginComposerScope;
   /** Current plain text for this composer scope. */
   readonly text: string;
+  /**
+   * Snapshot the exact structured input this composer would submit now,
+   * including text mentions and independently attached images/files. The
+   * returned array is detached from the live draft; reading or changing it
+   * never mutates the composer.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_getInput(): PromptInput[];
   /**
    * Replace the draft's plain text. Attachments are preserved. Inline mentions
    * outside the changed range are preserved and rebased; mentions overlapped

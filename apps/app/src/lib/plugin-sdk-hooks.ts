@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
-import type { PromptTextMention } from "@bb/domain";
+import type { PromptInput, PromptTextMention } from "@bb/domain";
 import type {
   BbContext,
   BbNavigate,
@@ -39,6 +39,7 @@ import {
 import {
   appendQuoteAndAttachmentsToDraft,
   isPromptDraftEmpty,
+  promptDraftToInput,
 } from "@/lib/prompt-draft";
 import {
   AUTOMATIONS_PLUGIN_ID,
@@ -72,6 +73,20 @@ type FetchLike = (
  * those bundles are outside the supported upgrade window.
  */
 const legacySetThreadRowStatus = (_status: unknown): void => {};
+
+function clonePromptInput(input: readonly PromptInput[]): PromptInput[] {
+  return input.map((chunk) =>
+    chunk.type === "text"
+      ? {
+          ...chunk,
+          mentions: chunk.mentions.map((mention) => ({
+            ...mention,
+            resource: { ...mention.resource },
+          })),
+        }
+      : { ...chunk },
+  );
+}
 export function isAutomationEditRoutePath(pathname: string): boolean {
   return (
     matchPath({ path: AUTOMATION_EDIT_ROUTE_PATH, end: true }, pathname) !==
@@ -589,6 +604,11 @@ export function useComposer(): PluginComposerApi {
     setText("");
   }, [setText]);
 
+  const experimentalGetInput = useCallback(
+    () => clonePromptInput(promptDraftToInput(getCurrent())),
+    [getCurrent],
+  );
+
   const composerScope = composerHost?.scope;
   const composerOwnershipScopeKey =
     composerScope?.kind === "queued-message"
@@ -739,6 +759,7 @@ export function useComposer(): PluginComposerApi {
           ? { kind: "thread", threadId }
           : { kind: "new-thread", projectId: projectId ?? null }),
       text: composerText,
+      experimental_getInput: experimentalGetInput,
       setText,
       updateText,
       clear,
@@ -754,6 +775,7 @@ export function useComposer(): PluginComposerApi {
       clear,
       composerScope,
       composerText,
+      experimentalGetInput,
       focus,
       insertMention,
       projectId,

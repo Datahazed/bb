@@ -359,6 +359,34 @@ fetches and four icon remounts at every boot.
    the accessible label story: the host derives `ariaLabel` from its own
    provider data, falling back to the provider id, and the slot supplies none.
 
+## `PluginComposerApi.experimental_getInput` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Returns a detached `PromptInput[]` snapshot of the exact
+draft the active composer would submit at call time. The snapshot includes
+trimmed text, structured mention ranges, and independently attached local
+images/files. It is bound to the same thread, queued-message, side-chat, or
+new-thread composer scope as the rest of `useComposer()` and does not mutate,
+clear, focus, or submit that composer. A plugin can forward the snapshot to its
+server and then to `bb.sdk.threads.spawn({ input })` without flattening image
+context into text.
+
+**Audit before stabilizing.**
+
+1. Confirm real consumers need the complete `PromptInput[]`, rather than a
+   narrower attachment-reader or one host-owned "spawn from composer" action.
+2. Confirm local attachment paths remain the correct portable reference when
+   the receiving thread uses the same project, and document or enforce the
+   cross-project boundary if a consumer needs one.
+3. Audit snapshot timing against concurrent attachment uploads and composer
+   submission. The call is synchronous and reports the last committed draft;
+   an upload that has not entered the draft is intentionally absent.
+4. Confirm returning a detached mutable array is preferable to a readonly
+   contract. Mutating the snapshot cannot mutate the composer, but readonly
+   types could make that intent clearer before stabilization.
+5. Exercise text, plugin/command mentions, local images, local files, queued
+   messages, side chats, root compose, and split-pane thread composers before
+   removing the prefix.
+
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** The host-owned new-thread compose surface, the create-side

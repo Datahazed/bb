@@ -8,6 +8,7 @@ import type {
   PluginComposerScope,
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
+  PromptInput,
 } from "../../app-contract.js";
 import {
   installTestPluginRuntime,
@@ -88,6 +89,9 @@ let capturedComposerVisualSetters: Pick<
   PluginComposerApi,
   "setTextEffect" | "setInputLock"
 > | null = null;
+let capturedComposerGetInput:
+  | PluginComposerApi["experimental_getInput"]
+  | null = null;
 
 function InlineVis({
   attributes,
@@ -106,6 +110,7 @@ function InlineVis({
 function ComposerProbe() {
   const composer = useComposer();
   const view = useComposerView();
+  capturedComposerGetInput = composer.experimental_getInput;
   capturedComposerVisualSetters = {
     setTextEffect: composer.setTextEffect,
     setInputLock: composer.setInputLock,
@@ -1107,6 +1112,33 @@ describe("renderSlot", () => {
       ),
     ).toEqual(nextScope);
     expect(slot.composer.scope).toEqual(nextScope);
+  });
+
+  it("exposes structured composer text and screenshot attachments", () => {
+    const input = [
+      { type: "text", text: "Inspect the screenshot", mentions: [] },
+      { type: "localImage", path: "uploads/screenshot.png" },
+    ] satisfies PromptInput[];
+    renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      { composer: { input } },
+    );
+
+    if (capturedComposerGetInput === null) {
+      throw new Error("composer did not render");
+    }
+    expect(capturedComposerGetInput()).toEqual(input);
+
+    const originalText = input[0];
+    if (originalText?.type !== "text") {
+      throw new Error("unexpected composer input fixture");
+    }
+    originalText.text = "mutated fixture";
+    expect(capturedComposerGetInput()).toEqual([
+      { type: "text", text: "Inspect the screenshot", mentions: [] },
+      { type: "localImage", path: "uploads/screenshot.png" },
+    ]);
   });
 
   it.each([

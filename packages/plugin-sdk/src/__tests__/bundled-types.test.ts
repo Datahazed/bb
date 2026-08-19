@@ -37,6 +37,9 @@ describe("bundled plugin SDK declarations", () => {
     );
     expect(appDeclarations).not.toContain("PluginCatalogArea");
     expect(appDeclarations).not.toContain("applyUpdate(args: PluginIdArgs)");
+    expect(appDeclarations).toContain(
+      "experimental_getInput(): PromptInput[];",
+    );
     expect(declarations).toContain(
       "list(args?: ProviderListArgs): Promise<ProviderListResult>;",
     );
