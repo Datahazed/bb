@@ -111,6 +111,16 @@ const iconUrlSchema = z
     if (problem !== null) ctx.addIssue({ code: "custom", message: problem });
   });
 
+/**
+ * An SVG icon is single-color artwork: BB masks it with the surrounding text
+ * color, the same way it renders a plugin's own compact `branding.icon`, so a
+ * black-on-transparent glyph stays visible on a dark theme. Raster icons
+ * (PNG, WebP) keep their own colors: a mask reads alpha only and would
+ * flatten an opaque image into a solid block, and a raster is the form for
+ * multi-color artwork. The object stays strict: an older desktop rejects the
+ * whole manifest on an unknown field, so a per-entry opt-out needs a new
+ * schemaVersion.
+ */
 const iconSchema = z.union([
   z.string().regex(ICON_NAME_PATTERN, "must be a host icon name"),
   z.object({ url: iconUrlSchema }).strict(),
@@ -351,6 +361,15 @@ export function parseMarketplaceManifestJson(
 /** The entry's declared host icon name, or null when it ships an image. */
 export function entryIconName(entry: MarketplaceEntry): string | null {
   return typeof entry.icon === "string" ? entry.icon : null;
+}
+
+/**
+ * Whether BB masks a cached image icon with the surrounding text color. Only
+ * an SVG is tinted; see {@link iconSchema}. `contentType` is the validated
+ * type BB serves the cached bytes as.
+ */
+export function entryIconTinted(contentType: string): boolean {
+  return contentType === "image/svg+xml";
 }
 
 /**
