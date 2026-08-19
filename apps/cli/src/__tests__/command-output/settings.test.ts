@@ -34,6 +34,49 @@ describe("bb settings commands", () => {
     });
   });
 
+  // Keys and value shapes come from `appSettingsSchema`, so non-boolean and
+  // nullable preferences are settable without a per-key branch in the command.
+  it("sets a nullable setting and rejects an unknown key", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: {
+          ...defaultAppSettings,
+          onboardingCompletedAt: "2026-08-06T00:00:00.000Z",
+        },
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.general.$put": put,
+    });
+
+    await runCommand(
+      ["settings", "general", "onboardingCompletedAt", "null"],
+      register,
+    );
+
+    expect(put).toHaveBeenCalledWith({
+      json: { ...defaultAppSettings, onboardingCompletedAt: null },
+    });
+
+    // "2026" reads as JSON, but this setting takes a string, so the raw text
+    // has to win: the setting's own schema decides which reading applies.
+    await runCommand(
+      ["settings", "general", "onboardingCompletedAt", "2026"],
+      register,
+    );
+
+    expect(put).toHaveBeenLastCalledWith({
+      json: { ...defaultAppSettings, onboardingCompletedAt: "2026" },
+    });
+
+    await expect(
+      runCommand(["settings", "general", "notASetting", "true"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("Unknown general setting 'notASetting'"),
+    );
+  });
+
   it("updates keyboard hint visibility while preserving the full contract", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({
