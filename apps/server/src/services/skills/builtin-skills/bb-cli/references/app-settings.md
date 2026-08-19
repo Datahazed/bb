@@ -48,3 +48,9 @@ every window and client sees the same value.
 - Enable it with `bb settings experiment newOnboarding true`.
 - Use `bb settings replay-onboarding` to enable the experiment and show the
   agent and project setup guide again.
+
+## Changelog preview
+
+- The `changelogPreview` experiment defaults to false.
+- Enable it with `bb settings experiment changelogPreview true` to show the
+  latest release notes on Settings → Updates.

@@ -253,12 +253,31 @@ declare const environmentSchema: z$1.ZodObject<{
 type Environment = z$1.infer<typeof environmentSchema>;
 
 declare const experimentsSchema: z$1.ZodRecord<z$1.ZodEnum<{
+    changelogPreview: "changelogPreview";
     claudeCodeMockCliTraffic: "claudeCodeMockCliTraffic";
     editMessages: "editMessages";
     newOnboarding: "newOnboarding";
     providerSessionReaping: "providerSessionReaping";
 }>, z$1.ZodBoolean>;
 type Experiments = z$1.infer<typeof experimentsSchema>;
+/**
+ * Update payloads keep the newest key optional so a CLI or SDK released before
+ * that experiment existed can still write the experiment object it knows.
+ * The server preserves any omitted value.
+ */
+declare const experimentsUpdateSchema: z$1.ZodUnion<readonly [z$1.ZodRecord<z$1.ZodEnum<{
+    changelogPreview: "changelogPreview";
+    claudeCodeMockCliTraffic: "claudeCodeMockCliTraffic";
+    editMessages: "editMessages";
+    newOnboarding: "newOnboarding";
+    providerSessionReaping: "providerSessionReaping";
+}>, z$1.ZodBoolean>, z$1.ZodRecord<z$1.ZodEnum<{
+    claudeCodeMockCliTraffic: "claudeCodeMockCliTraffic";
+    editMessages: "editMessages";
+    newOnboarding: "newOnboarding";
+    providerSessionReaping: "providerSessionReaping";
+}>, z$1.ZodBoolean>]>;
+type ExperimentsUpdate = z$1.infer<typeof experimentsUpdateSchema>;
 
 declare const hostSchema: z$1.ZodObject<{
     createdAt: z$1.ZodNumber;
@@ -7468,6 +7487,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
         }, z$1.core.$strict>;
     }, z$1.core.$strict>>;
     experiments: z$1.ZodRecord<z$1.ZodEnum<{
+        changelogPreview: "changelogPreview";
         claudeCodeMockCliTraffic: "claudeCodeMockCliTraffic";
         editMessages: "editMessages";
         newOnboarding: "newOnboarding";
@@ -13191,7 +13211,7 @@ interface SystemArea {
     installCliSkills(args: SystemInstallCliSkillsArgs): Promise<SystemInstallCliSkillsResult>;
     reloadConfig(): Promise<SystemReloadConfigResult>;
     transcribeVoice(args: SystemVoiceTranscriptionArgs): Promise<SystemVoiceTranscriptionResult>;
-    updateExperiments(args: Experiments): Promise<SystemUpdateExperimentsResult>;
+    updateExperiments(args: ExperimentsUpdate): Promise<SystemUpdateExperimentsResult>;
     updateGeneralSettings(args: AppSettings): Promise<SystemUpdateGeneralSettingsResult>;
     updateKeyboardSettings(args: AppKeybindingOverrides): Promise<SystemUpdateKeyboardSettingsResult>;
     /** Report one onboarding funnel event to anonymous telemetry. */

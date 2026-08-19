@@ -6,16 +6,21 @@ import { ExperimentsSettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
+  onChangelogPreviewEnabledChange?: (enabled: boolean) => void;
   onNewOnboardingEnabledChange?: (enabled: boolean) => void;
   onProviderSessionReapingEnabledChange?: (enabled: boolean) => void;
 }) {
   return render(
     <ExperimentsSettingsSection
+      changelogPreviewEnabled={false}
       claudeCodeMockCliTrafficEnabled={false}
       disabled={false}
       editMessagesEnabled={false}
       newOnboardingEnabled={false}
       providerSessionReapingEnabled={false}
+      onChangelogPreviewEnabledChange={
+        overrides?.onChangelogPreviewEnabledChange ?? vi.fn()
+      }
       onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
       onEditMessagesEnabledChange={vi.fn()}
       onNewOnboardingEnabledChange={
@@ -29,6 +34,13 @@ function renderSection(overrides?: {
 }
 
 describe("ExperimentsSettingsSection", () => {
+  it("reports changelog preview changes", () => {
+    const onChange = vi.fn();
+    renderSection({ onChangelogPreviewEnabledChange: onChange });
+    fireEvent.click(screen.getByLabelText("Changelog preview"));
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
   it("reports new onboarding changes", () => {
     const onChange = vi.fn();
     renderSection({ onNewOnboardingEnabledChange: onChange });
