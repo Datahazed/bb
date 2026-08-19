@@ -84,7 +84,7 @@ export interface StartDesktopBrowserPageScriptArgs {
 function runtimeInvocationCode(
   request: BbDesktopBrowserPageScriptRequest,
 ): string {
-  return `void (async () => {
+  return `(async () => {
     const registryKey = ${JSON.stringify(PAGE_RUNTIME_REGISTRY_KEY)};
     const requestId = ${JSON.stringify(request.requestId)};
     const source = ${JSON.stringify(request.source)};
