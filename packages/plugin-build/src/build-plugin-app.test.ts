@@ -1,4 +1,11 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -120,7 +127,7 @@ describe("plugin app runtime shim", () => {
     const css = await readFile(result.cssPath, "utf8");
 
     expect(css).toContain(
-      '@scope ([data-bb-plugin="css-fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))',
+      "@scope([data-bb-plugin=css-fixture],[data-bb-plugin-root]:not([data-bb-plugin]))",
     );
     const utilityRuleIndex = css.indexOf(".flex-col");
     const utilityScope = precedingScopeBounds(css, utilityRuleIndex);
@@ -133,6 +140,158 @@ describe("plugin app runtime shim", () => {
     expect(authoredRuleIndex).toBeGreaterThan(authoredScope.start);
     expect(authoredScope.end).toBeGreaterThan(authoredScope.bodyStart);
     expect(authoredRuleIndex).toBeGreaterThan(authoredScope.end);
+  });
+
+  it("minifies app.js and app.css unless the caller asks for readable output", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-minify-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-minify-fixture",
+        version: "0.0.0",
+        bb: {
+          name: "Minify fixture",
+          description: "Verifies artifact minification.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+          app: "./app.ts",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(
+      join(dir, "app.ts"),
+      [
+        "/*! fixture-legal-comment */",
+        'import "./app.css";',
+        "function computeFixtureLabel(fixtureInputValue: string) {",
+        '  const fixtureLocalResult = [fixtureInputValue, "flex-col"].join(" ");',
+        "  return fixtureLocalResult;",
+        "}",
+        'export default computeFixtureLabel("bb-minify");',
+        "",
+      ].join("\n"),
+    );
+    await writeFile(
+      join(dir, "app.css"),
+      ".bb71-authored {\n  color: hotpink;\n  margin: 0px;\n}\n",
+    );
+    const toolchain = await testToolchain();
+
+    const minified = await buildPluginApp(dir, "0.9.0-test", toolchain);
+    const minifiedJs = await readFile(minified.jsPath, "utf8");
+    const minifiedCss = await readFile(minified.cssPath, "utf8");
+    // Local identifiers are mangled and license comments dropped; the
+    // program is intact (the string the entry exports survives).
+    expect(minifiedJs).not.toContain("fixtureLocalResult");
+    expect(minifiedJs).not.toContain("fixture-legal-comment");
+    expect(minifiedJs).toContain("bb-minify");
+    // Tailwind's optimizer minifies both the utilities and the authored CSS.
+    expect(minifiedCss).toContain(".flex-col{flex-direction:column}");
+    expect(minifiedCss).toContain(".bb71-authored{color:#ff69b4;margin:0}");
+    expect(minifiedCss).not.toContain("\n  ");
+
+    const readable = await buildPluginApp(dir, "0.9.0-test", toolchain, {
+      minify: false,
+    });
+    const readableJs = await readFile(readable.jsPath, "utf8");
+    const readableCss = await readFile(readable.cssPath, "utf8");
+    expect(readableJs).toContain("fixtureLocalResult");
+    expect(readableCss).toMatch(/\.flex-col \{\n\s+flex-direction: column;/);
+    expect(readableCss).toContain(".bb71-authored {");
+    expect(readableJs.length).toBeGreaterThan(minifiedJs.length);
+    expect(readableCss.length).toBeGreaterThan(minifiedCss.length);
+  });
+
+  it("scans only the bundled files of a dependency that opts into Tailwind content", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-scan-"));
+    tempDirs.push(dir);
+    // The dependency lives outside node_modules behind a symlink, the way a
+    // pnpm workspace links @bb/shared-ui into a builtin plugin: esbuild
+    // reports the real path, so the scan must match on real paths too.
+    const uiPackageDir = join(dir, "packages", "fixture-ui");
+    await mkdir(join(uiPackageDir, "src", "excluded"), { recursive: true });
+    await writeFile(
+      join(uiPackageDir, "package.json"),
+      JSON.stringify({
+        name: "fixture-ui",
+        version: "0.0.0",
+        type: "module",
+        bb: { pluginTailwindContent: ["src/**/*", "!src/excluded/**/*"] },
+      }),
+    );
+    await writeFile(
+      join(uiPackageDir, "src", "used.ts"),
+      'export const usedClass = "tracking-widest";\n',
+    );
+    await writeFile(
+      join(uiPackageDir, "src", "unused.ts"),
+      'export const unusedClass = "tracking-tighter";\n',
+    );
+    await writeFile(
+      join(uiPackageDir, "src", "excluded", "bundled-but-excluded.ts"),
+      'export const excludedClass = "tracking-normal";\n',
+    );
+    const pluginDir = join(dir, "plugin");
+    await mkdir(join(pluginDir, "node_modules"), { recursive: true });
+    await symlink(uiPackageDir, join(pluginDir, "node_modules", "fixture-ui"));
+    await writeFile(
+      join(pluginDir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-scan-fixture",
+        version: "0.0.0",
+        type: "module",
+        bb: {
+          name: "Scan fixture",
+          description: "Verifies dependency content scanning.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+          app: "./app.ts",
+        },
+        dependencies: { "fixture-ui": "0.0.0" },
+      }),
+    );
+    await writeFile(
+      join(pluginDir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(
+      join(pluginDir, "app.ts"),
+      [
+        'import { usedClass } from "fixture-ui/src/used.ts";',
+        'import { excludedClass } from "fixture-ui/src/excluded/bundled-but-excluded.ts";',
+        'export default [usedClass, excludedClass, "leading-loose"];',
+        "",
+      ].join("\n"),
+    );
+    // The plugin's own directory is still scanned whole, imported or not.
+    await writeFile(
+      join(pluginDir, "notes.ts"),
+      'export const ownUnimported = "leading-tight";\n',
+    );
+
+    const result = await buildPluginApp(
+      pluginDir,
+      "0.9.0-test",
+      await testToolchain(),
+    );
+    const css = await readFile(result.cssPath, "utf8");
+
+    expect(css).toContain(".tracking-widest{");
+    expect(css).toContain(".leading-loose{");
+    expect(css).toContain(".leading-tight{");
+    // Matched by the glob but never bundled: not scanned.
+    expect(css).not.toContain(".tracking-tighter{");
+    // Bundled but negated by the dependency's own pattern: not scanned.
+    expect(css).not.toContain(".tracking-normal{");
+    // The `:root` block carries the default token the utility reads and not
+    // the host's semantic bridge, which is `inline reference` for plugins.
+    expect(css).toMatch(/:root,:host\{[^}]*--tracking-widest:/);
+    expect(css).not.toContain("--color-background:");
   });
 
   it.each([

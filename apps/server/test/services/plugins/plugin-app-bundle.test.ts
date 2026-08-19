@@ -201,10 +201,10 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     // `@md:flex`). The second arm keeps portals styled on hosts whose
     // portal-scope predates the per-plugin id attribute.
     expect(cssText).toMatch(
-      /@layer utilities \{\s*@scope \(\[data-bb-plugin="appy"\], \[data-bb-plugin-root\]:not\(\[data-bb-plugin\]\)\) \{/,
+      /@layer utilities\{@scope\(\[data-bb-plugin=appy\],\[data-bb-plugin-root\]:not\(\[data-bb-plugin\]\)\)\{/,
     );
     // And no utility rule sits in the utilities layer outside that scope.
-    expect(cssText).not.toMatch(/@layer utilities \{\s*\./);
+    expect(cssText).not.toMatch(/@layer utilities\{\./);
 
     const gzipCss = await harness.app.request(`${BASE}${bundle.cssUrl}`, {
       headers: { "accept-encoding": "br;q=0, gzip;q=1" },
