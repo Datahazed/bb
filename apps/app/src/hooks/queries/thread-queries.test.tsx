@@ -22,8 +22,10 @@ import {
   threadQueryKey,
   threadTimelineQueryKey,
 } from "./query-keys";
+import { useThreadDefaultExecutionOptions } from "./thread-default-execution-options-query";
 import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
+  THREAD_DETAIL_BOOTSTRAP_INCLUDE,
   didThreadDetailBootstrapRefreshAfterMount,
   useArchivedThreads,
   useChildThreads,
@@ -31,9 +33,12 @@ import {
   useThreadDetailBootstrap,
   useThreadHostFilePreview,
   useThreadMentionCandidates,
+  useThreadPendingInteractions,
+  useThreadPromptHistory,
   useThreadQueuedMessages,
   useThreadTimeline,
 } from "./thread-queries";
+import { useThreadTabs } from "./thread-tabs-query";
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -46,9 +51,13 @@ vi.mock("@/lib/api", async (importOriginal) => {
 vi.mock("@/lib/sdk", () => ({
   sdk: {
     threads: {
+      defaultExecutionOptions: vi.fn(),
       get: vi.fn(),
+      interactions: { list: vi.fn() },
       list: vi.fn(),
+      promptHistory: vi.fn(),
       queuedMessages: { list: vi.fn() },
+      tabs: { get: vi.fn() },
       timeline: vi.fn(),
     },
   },
@@ -276,6 +285,88 @@ describe("useThreadDetailBootstrap", () => {
         maxSeq: 8,
       });
     });
+  });
+
+  it("seeds the bundled per-thread caches so their hooks mount without extra requests", async () => {
+    const bundledThread = {
+      ...THREAD_WITH_INCLUDES,
+      pendingInteractions: [],
+      queuedMessages: [
+        {
+          id: "qmsg-1",
+          content: [{ type: "text", text: "Queued follow-up", mentions: [] }],
+          model: "gpt-5",
+          reasoningLevel: "medium",
+          permissionMode: "full",
+          serviceTier: "default",
+          groupWithNext: false,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      promptHistory: [],
+      defaultExecutionOptions: null,
+      tabs: { revision: 3, tabs: [{ id: "thread-info", kind: "thread-info" }] },
+    } satisfies ThreadWithIncludesResponse;
+    vi.mocked(sdk.threads.get).mockResolvedValue(bundledThread);
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () => {
+        const bootstrap = useThreadDetailBootstrap("thread-1");
+        const enabled = bootstrap.isSuccess;
+        const pendingInteractions = useThreadPendingInteractions("thread-1", {
+          enabled,
+        });
+        const queuedMessages = useThreadQueuedMessages("thread-1", {
+          enabled,
+        });
+        const promptHistory = useThreadPromptHistory("thread-1", { enabled });
+        const defaultExecutionOptions = useThreadDefaultExecutionOptions(
+          "thread-1",
+          { enabled },
+        );
+        const tabs = useThreadTabs("thread-1", { enabled });
+        return {
+          bootstrap,
+          defaultExecutionOptions,
+          pendingInteractions,
+          promptHistory,
+          queuedMessages,
+          tabs,
+        };
+      },
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.bootstrap.isSuccess).toBe(true);
+      expect(result.current.tabs.data).toEqual(bundledThread.tabs);
+    });
+    expect(sdk.threads.get).toHaveBeenCalledWith({
+      include: THREAD_DETAIL_BOOTSTRAP_INCLUDE,
+      signal: expect.any(AbortSignal),
+      threadId: "thread-1",
+    });
+    expect(result.current.pendingInteractions.data).toEqual([]);
+    expect(result.current.queuedMessages.data).toEqual(
+      bundledThread.queuedMessages,
+    );
+    expect(result.current.promptHistory.data).toEqual([]);
+    expect(result.current.defaultExecutionOptions.isSuccess).toBe(true);
+    expect(result.current.defaultExecutionOptions.data).toBeNull();
+
+    // Let any mount-time refetch start before asserting none did.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(sdk.threads.interactions.list).not.toHaveBeenCalled();
+    expect(sdk.threads.queuedMessages.list).not.toHaveBeenCalled();
+    expect(sdk.threads.promptHistory).not.toHaveBeenCalled();
+    expect(sdk.threads.defaultExecutionOptions).not.toHaveBeenCalled();
+    expect(sdk.threads.tabs.get).not.toHaveBeenCalled();
+    expect(result.current.pendingInteractions.isFetching).toBe(false);
+    expect(result.current.queuedMessages.isFetching).toBe(false);
+    expect(result.current.defaultExecutionOptions.isFetching).toBe(false);
+    expect(result.current.tabs.isFetching).toBe(false);
   });
 
   it("only suppresses a thread refetch for a bootstrap fetched after mount", () => {

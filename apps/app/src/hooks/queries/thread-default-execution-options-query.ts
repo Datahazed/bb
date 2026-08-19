@@ -5,6 +5,7 @@ import { useThreadDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscrip
 import { requireEnabledQueryArg } from "./query-helpers";
 import { threadDefaultExecutionOptionsQueryKey } from "./query-keys";
 import { REALTIME_OWNED_NO_FOCUS_QUERY_POLICY } from "./query-policies";
+import { THREAD_DETAIL_SEEDED_STALE_TIME_MS } from "./query-helpers";
 
 export {
   allThreadDefaultExecutionOptionsQueryKeyPrefix,
@@ -49,6 +50,6 @@ export function useThreadDefaultExecutionOptions(
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
-    staleTime: options?.staleTime,
+    staleTime: options?.staleTime ?? THREAD_DETAIL_SEEDED_STALE_TIME_MS,
   });
 }

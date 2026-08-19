@@ -51,6 +51,7 @@ import {
 } from "./query-placeholders";
 import {
   PROMPT_HISTORY_STALE_TIME_MS,
+  THREAD_DETAIL_SEEDED_STALE_TIME_MS,
   requireEnabledQueryArg,
   shouldRetryTransientReadQuery,
   TRANSIENT_READ_RETRY_DELAY_MS,
@@ -93,6 +94,8 @@ interface QueryOptions {
 const THREAD_LIST_STALE_TIME_MS = 10_000;
 const THREAD_SEARCH_STALE_TIME_MS = 10_000;
 const THREAD_DETAIL_STALE_TIME_MS = 5_000;
+export const THREAD_DETAIL_BOOTSTRAP_INCLUDE =
+  "environment,host,pendingInteractions,queuedMessages,promptHistory,defaultExecutionOptions,tabs";
 export const THREAD_MENTION_CANDIDATE_LIMIT = 200;
 export const THREAD_SEARCH_DEBOUNCE_MS = 150;
 export const THREAD_SEARCH_LIMIT_PER_GROUP = 20;
@@ -714,7 +717,7 @@ export function useThreadDetailBootstrap(
       }
 
       const thread = await sdk.threads.get({
-        include: "environment,host",
+        include: THREAD_DETAIL_BOOTSTRAP_INCLUDE,
         threadId,
         signal,
       });
@@ -748,7 +751,7 @@ export function useThreadQueuedMessages(
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: true,
-    staleTime: options?.staleTime,
+    staleTime: options?.staleTime ?? THREAD_DETAIL_SEEDED_STALE_TIME_MS,
   });
 }
 
@@ -789,7 +792,7 @@ export function useThreadPendingInteractions(
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
-    staleTime: options?.staleTime,
+    staleTime: options?.staleTime ?? THREAD_DETAIL_SEEDED_STALE_TIME_MS,
   });
 }
 

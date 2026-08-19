@@ -223,7 +223,12 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "environmentQueryKey",
     "hostQueryKey",
     "hostsQueryKey",
+    "threadDefaultExecutionOptionsQueryKey",
+    "threadPendingInteractionsQueryKey",
+    "threadPromptHistoryQueryKey",
     "threadQueryKey",
+    "threadQueuedMessagesQueryKey",
+    "threadTabsQueryKey",
   ],
   "hooks/cache-owners/thread-tabs-cache-owner.ts": ["threadTabsQueryKey"],
   "hooks/cache-owners/thread-list-cache-owner.ts": [

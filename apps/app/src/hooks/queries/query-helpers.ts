@@ -7,6 +7,15 @@ import { BbHttpError } from "@/lib/sdk";
  * project-scoped variants so they age out their cached suggestions together.
  */
 export const PROMPT_HISTORY_STALE_TIME_MS = 10_000;
+/**
+ * Freshness window for the per-thread caches that
+ * `GET /threads/:id?include=` seeds on thread open (pending interactions,
+ * queued messages, default execution options, tabs). Their hooks mount right
+ * after the bootstrap settles; without a window every seeded hook refetches
+ * its own route on mount and the bundle saves nothing. Realtime invalidation
+ * still refetches inside the window.
+ */
+export const THREAD_DETAIL_SEEDED_STALE_TIME_MS = 5_000;
 export const TRANSIENT_READ_RETRY_COUNT = 2;
 export const TRANSIENT_READ_RETRY_DELAY_MS = 250;
 

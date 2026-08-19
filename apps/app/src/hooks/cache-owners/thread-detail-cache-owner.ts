@@ -8,7 +8,12 @@ import {
   environmentQueryKey,
   hostQueryKey,
   hostsQueryKey,
+  threadDefaultExecutionOptionsQueryKey,
+  threadPendingInteractionsQueryKey,
+  threadPromptHistoryQueryKey,
   threadQueryKey,
+  threadQueuedMessagesQueryKey,
+  threadTabsQueryKey,
 } from "../queries/query-keys";
 
 type HostList = Host[];
@@ -27,7 +32,16 @@ export interface ThreadDetailBootstrapIngestionArgs {
 function stripThreadIncludes(
   thread: ThreadWithIncludesResponse,
 ): ThreadResponse {
-  const { environment, host, ...threadResponse } = thread;
+  const {
+    environment,
+    host,
+    pendingInteractions,
+    queuedMessages,
+    promptHistory,
+    defaultExecutionOptions,
+    tabs,
+    ...threadResponse
+  } = thread;
   return threadResponse;
 }
 
@@ -70,5 +84,36 @@ export function ingestThreadDetailBootstrap({
     queryClient.setQueryData<HostList>(hostsQueryKey(), (hosts) =>
       upsertHostList({ host, hosts }),
     );
+  }
+
+  // Bundled per-thread reads. Each field is present only when the bootstrap
+  // requested it, and each seeds the cache its stand-alone hook reads so the
+  // hook mounts with data instead of issuing its own request.
+  if (thread.pendingInteractions !== undefined) {
+    queryClient.setQueryData(
+      threadPendingInteractionsQueryKey(thread.id),
+      thread.pendingInteractions,
+    );
+  }
+  if (thread.queuedMessages !== undefined) {
+    queryClient.setQueryData(
+      threadQueuedMessagesQueryKey(thread.id),
+      thread.queuedMessages,
+    );
+  }
+  if (thread.promptHistory !== undefined) {
+    queryClient.setQueryData(
+      threadPromptHistoryQueryKey(thread.id),
+      thread.promptHistory,
+    );
+  }
+  if (thread.defaultExecutionOptions !== undefined) {
+    queryClient.setQueryData(
+      threadDefaultExecutionOptionsQueryKey(thread.id),
+      thread.defaultExecutionOptions,
+    );
+  }
+  if (thread.tabs !== undefined) {
+    queryClient.setQueryData(threadTabsQueryKey(thread.id), thread.tabs);
   }
 }
