@@ -11,6 +11,8 @@ import {
   type ProviderCliIssue,
 } from "@/components/provider-cli/provider-cli-install";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
+import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
+import { pluginsNeedingAttention } from "@/hooks/usePluginAttention";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { hostProviderCliStatusQueryKey } from "@/hooks/queries/query-keys";
 import { SESSION_STATIC_QUERY_POLICY } from "@/hooks/queries/query-policies";
@@ -42,6 +44,8 @@ export interface UpdateInventory {
   /** Desktop shell downloaded an update; a relaunch applies it. */
   desktopUpdateReady: boolean;
   machines: UpdateInventoryMachine[];
+  /** Enabled plugins that are not running (incompatible, error, missing). */
+  pluginAttentionCount: number;
   /** Count of things a user can act on right now. */
   actionableCount: number;
   hasAttention: boolean;
@@ -73,6 +77,9 @@ export function useUpdateInventory(
   const systemConfigQuery = useSystemConfig({ enabled });
   const hostsQuery = useHosts({ enabled });
   const { desktopInfo, isDesktop } = useDesktopUpdateInfo();
+  const pluginAttentionCount = pluginsNeedingAttention(
+    usePluginList({ enabled }).data?.plugins ?? [],
+  ).length;
 
   const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
   const connectedHosts = useMemo(
@@ -140,7 +147,8 @@ export function useUpdateInventory(
       0,
     ) +
     (appUpdateAvailable ? 1 : 0) +
-    (desktopUpdateReady ? 1 : 0);
+    (desktopUpdateReady ? 1 : 0) +
+    pluginAttentionCount;
 
   const desktopLastCheckedAt =
     desktopInfo?.lastCheckedAt === null ||
@@ -165,6 +173,7 @@ export function useUpdateInventory(
     appUpdateAvailable,
     desktopUpdateReady,
     machines,
+    pluginAttentionCount,
     actionableCount,
     hasAttention: actionableCount > 0,
     lastCheckedAt,
