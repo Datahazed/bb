@@ -58,6 +58,22 @@ payloads. Use it to reproduce performance problems that only appear at scale.
   deletes the database file first. Without `--reset` the fixture appends.
 - Example: `pnpm seed:perf -- --reset --events 400000`.
 
+## App Shell Service Worker
+
+Production builds register `/sw.js` (built by `apps/app/vite-service-worker.ts`
+from `apps/app/src/service-worker/`) on secure origins outside the desktop
+shell. It precaches the boot closure, the thread route closure and the latin
+font, serves `/assets/*` cache-first, and answers app navigations network-first
+with the precached shell only when the network fails. `/api`, `/ws`,
+`/internal`, `/__*` and plugin assets are never intercepted. Dev never registers
+it.
+
+- Caches are named `bb-app-<buildId>`; a new build drops the old ones on
+  activate. When a QA session shows stale assets, check Application > Service
+  Workers (Chrome) or Develop > Service Workers (Safari) and unregister there.
+- The server serves `/sw.js` with `Cache-Control: no-cache` so an update is
+  seen at the browser's next check; the shell stays `no-store`.
+
 ## Local Cloud
 
 Run the Cloud dashboard and Connect worker against one local D1 database:

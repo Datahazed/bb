@@ -12,6 +12,8 @@
     "vite.dev.config.ts",
     "vite-bundle-stats.ts",
     "vite-font-preload.ts",
-    "vite-shared-ui-seam.ts"
+    "vite-shared-ui-seam.ts",
+    "vite-service-worker.ts",
+    "src/service-worker/sw-manifest.ts"
   ]
 }

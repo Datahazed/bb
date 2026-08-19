@@ -6,6 +6,7 @@ import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { bundleStats } from "./vite-bundle-stats.js";
 import { fontPreload } from "./vite-font-preload.js";
+import { serviceWorker } from "./vite-service-worker.js";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
 
 const appDir = dirname(fileURLToPath(import.meta.url));
@@ -20,6 +21,15 @@ export const sharedViteConfig = {
     bundleStats(),
     // Build-only: <link rel="preload"> for the Inter latin woff2.
     fontPreload(),
+    // Build-only: writes dist/sw.js, the app-shell service worker that
+    // precaches the boot closure, the thread route closure and the latin font
+    // so a cold PWA launch on a phone pays one HTML round trip, not ~40.
+    serviceWorker({
+      routeModuleIds: [resolve(appDir, "src/views/SplitWorkspaceRoute.tsx")],
+      assetFileNamePatterns: [
+        /^assets\/inter-latin-wght-normal-[^/]*\.woff2$/u,
+      ],
+    }),
   ],
   // Keep app and Ladle dep optimization metadata from clobbering each other.
   cacheDir: "node_modules/.vite/app",

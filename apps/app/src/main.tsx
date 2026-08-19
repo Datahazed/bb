@@ -7,6 +7,7 @@ import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { AppToaster } from "./components/AppToaster";
 import { registerProviderCliInstallQueryClient } from "./components/provider-cli/provider-cli-install-store";
 import { initializePreferredTheme } from "./hooks/useTheme";
+import { installChunkLoadFailureReload } from "./lib/chunk-load-failure-reload";
 import { initializeFavicon } from "./lib/favicon-color-preference";
 import { installForeignDomMutationGuard } from "./lib/foreign-dom-mutation-guard";
 import { restorePersistedQueryCacheIfEnabled } from "./lib/persisted-query-cache/persisted-query-cache";
@@ -20,6 +21,7 @@ import {
   installAppQueryClientBrowserEvents,
 } from "./lib/query-client";
 import { takeOverPanelResizeCursor } from "./lib/resizeCursor";
+import { registerAppServiceWorker } from "./lib/service-worker-registration";
 import { applyCachedAppThemeCss } from "./lib/themes";
 import "./app.css";
 
@@ -34,6 +36,10 @@ installForeignDomMutationGuard();
 // costs anything when an Error is actually constructed.
 Error.stackTraceLimit = 50;
 
+// `bb update` rotates every chunk hash under the feet of an open page; a lazy
+// import that 404s reloads once instead of leaving a blank route.
+installChunkLoadFailureReload();
+
 const queryClient = createAppQueryClient();
 installAppQueryClientBrowserEvents(queryClient);
 // The provider CLI install store outlives every component, so it takes the
@@ -47,6 +53,9 @@ initializePreferredTheme();
 applyCachedAppThemeCss();
 initializeFavicon();
 takeOverPanelResizeCursor();
+// Production + secure origin only. Precaches the app shell after `load` so a
+// cold PWA launch on a phone stops re-fetching ~40 assets through the tunnel.
+registerAppServiceWorker();
 
 /**
  * When the persisted-cache experiment was on at the last visit, hydrate the
