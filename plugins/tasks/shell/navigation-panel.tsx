@@ -12,6 +12,13 @@ import { TasksSidebar } from "./sidebar.js";
 import { NewProjectDialog } from "../views/manage/index.js";
 import { useState } from "react";
 
+function isAwaitingFirstResult(query: {
+  data: unknown;
+  error: string | null;
+}): boolean {
+  return query.data === undefined && query.error === null;
+}
+
 function TasksNavigationPanelContent({ subPath }: PluginNavPanelProps) {
   const route = parseTasksRoute(subPath);
   const navigation = useTasksNavigation();
@@ -31,7 +38,16 @@ function TasksNavigationPanelContent({ subPath }: PluginNavPanelProps) {
         summaries={summaries.data}
         presets={presets.data}
         activeTasks={activeTasks.data}
-        isLoading={projects.isLoading || summaries.isLoading}
+        // Skeleton only while there is nothing to draw and a first answer is
+        // still pending: a refetch (manual refresh, invalidation) keeps the
+        // last-known rows on screen, a snapshot-hydrated mount never shows
+        // the placeholder at all, and a failed companion request (folders,
+        // counts) settles the gate so loaded projects stay reachable.
+        isLoading={
+          isAwaitingFirstResult(folders) ||
+          isAwaitingFirstResult(projects) ||
+          isAwaitingFirstResult(summaries)
+        }
         onNavigate={navigation.go}
         onNewProject={() => setNewProjectOpen(true)}
       />

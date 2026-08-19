@@ -218,6 +218,28 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   useEffect(() => {
     if (!tasksQuery.isLoading) settledScope.current = scopeKey;
   }, [scopeKey, tasksQuery.isLoading, tasksQuery.data]);
+  // The route scope is the fetch identity across views: All, Active, or one
+  // project. Switching it reuses this ListView instance, whose query still
+  // holds the previous route's result, so the body below must read as loading
+  // until this route's own fetch settles: returning from an empty Active to
+  // All must not present Active's emptiness as "No tasks yet". Narrower than
+  // `scopeKey` on purpose, so filter and sort changes keep painting the rows
+  // they already have. State, not a ref: settling has to rerender the body.
+  const routeScope = `${projectId ?? "-"}/${activeOnly}`;
+  const [settledRouteScope, setSettledRouteScope] = useState(routeScope);
+  const routeScopeChanged = settledRouteScope !== routeScope;
+  const previousRouteScope = useRef(routeScope);
+  useEffect(() => {
+    // The query's own effect flips `isLoading` in this same commit, but this
+    // effect still reads the previous render's value, so the commit that
+    // changes the route scope must never settle it; a later resolved commit
+    // does.
+    const routeScopeJustChanged = previousRouteScope.current !== routeScope;
+    previousRouteScope.current = routeScope;
+    if (!routeScopeJustChanged && !tasksQuery.isLoading) {
+      setSettledRouteScope(routeScope);
+    }
+  }, [routeScope, tasksQuery.isLoading, tasksQuery.data]);
   useListScrollRestoration(scrollRef, scopeKey, {
     contentReady: tasksQuery.data !== undefined && tasksQuery.data.length > 0,
     loading: tasksQuery.isLoading || scopeChanged,
@@ -225,9 +247,16 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   });
 
   let body: React.ReactNode;
-  if (tasksQuery.data === undefined || displayTasks === undefined) {
+  if (
+    routeScopeChanged ||
+    tasksQuery.data === undefined ||
+    displayTasks === undefined
+  ) {
+    // While a changed route scope is in flight, any held data or error is the
+    // previous route's; only a settled result may claim this scope is empty
+    // or broken.
     body =
-      tasksQuery.error !== null ? (
+      !routeScopeChanged && tasksQuery.error !== null ? (
         <EmptyState
           icon="AlertCircle"
           title="Couldn't load tasks"

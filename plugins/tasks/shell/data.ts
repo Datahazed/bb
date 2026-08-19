@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
-import type { TasksRpcContract } from "../shared/contract.js";
+import type { z } from "zod";
+import { tasksRpcContract, type TasksRpcContract } from "../shared/contract.js";
 import type { Task, TaskPriority, TaskStatus } from "../shared/contract.js";
 import { TASKS_PAGE_MAX_LIMIT, type TaskSort } from "../shared/pagination.js";
 import type { MentionItem } from "../editor/extensions.js";
+import {
+  claimQuerySnapshotRevision,
+  readQuerySnapshot,
+  writeQuerySnapshot,
+} from "./query-snapshot.js";
 import { useTasksRefresh } from "./refresh.js";
 
 /** Typed RPC client bound to the tasks contract. */
@@ -88,35 +94,75 @@ export interface TasksQuery<T> {
  * refresh provider so the header control can single-flight without a timer.
  * Invalidation- and deps-driven refetches do not mark the shared in-flight bit.
  */
+export interface TasksQuerySnapshot<T> {
+  /** Storage name; the value is validated against `schema` on every read. */
+  name: string;
+  schema: z.ZodType<T>;
+}
+
 export function useTasksQuery<T>(
   fetcher: (rpc: TasksRpc) => Promise<T>,
   channels: readonly InvalidationChannel[],
   deps: readonly unknown[] = [],
+  options: {
+    /**
+     * Seed the first render with the last result this browser saw for the
+     * query and keep that record fresh after every successful fetch. Use for
+     * small, shape-stable results whose absence forces a wrong-shaped loading
+     * UI (the sidebar's project list, its counts). `isLoading` still reports
+     * the in-flight fetch; only `data` starts populated.
+     */
+    snapshot?: TasksQuerySnapshot<T>;
+  } = {},
 ): TasksQuery<T> {
   const rpc = useTasksRpc();
   const { generation, beginGenerationWork, endGenerationWork } =
     useTasksRefresh();
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
+  const snapshotRef = useRef(options.snapshot);
+  snapshotRef.current = options.snapshot;
   const [state, setState] = useState<{
     data: T | undefined;
     error: string | null;
     isLoading: boolean;
-  }>({ data: undefined, error: null, isLoading: true });
+  }>(() => ({
+    data:
+      options.snapshot === undefined
+        ? undefined
+        : readQuerySnapshot(options.snapshot.name, options.snapshot.schema),
+    error: null,
+    isLoading: true,
+  }));
   const seqRef = useRef(0);
   const previousGenerationRef = useRef(generation);
   const depsKey = JSON.stringify(deps);
+  // The deps key whose result `data` currently holds. A refetch of the same
+  // key that fails keeps the rows it had (they are still this key's truth);
+  // a failed fetch for a changed key drops them, because those rows belong to
+  // a different scope and the error must not be presented over them.
+  const dataDepsKeyRef = useRef(depsKey);
   const refresh = useCallback(() => {
     const seq = ++seqRef.current;
+    const snapshot = snapshotRef.current;
+    const snapshotRevision =
+      snapshot === undefined ? 0 : claimQuerySnapshotRevision(snapshot.name);
     return fetcherRef.current(rpc).then(
       (data) => {
+        if (snapshot !== undefined) {
+          // Persist even when this instance has moved on: the revision order
+          // is what keeps an older response from replacing a newer record.
+          writeQuerySnapshot(snapshot.name, data, snapshotRevision);
+        }
         if (seq !== seqRef.current) return;
+        dataDepsKeyRef.current = depsKey;
         setState({ data, error: null, isLoading: false });
       },
       (error: unknown) => {
         if (seq !== seqRef.current) return;
+        const keepsData = dataDepsKeyRef.current === depsKey;
         setState((current) => ({
-          data: current.data,
+          data: keepsData ? current.data : undefined,
           error: error instanceof Error ? error.message : String(error),
           isLoading: false,
         }));
@@ -143,17 +189,31 @@ export function useTasksQuery<T>(
   return { ...state, refresh };
 }
 
+const foldersSnapshot = {
+  name: "folders",
+  schema: tasksRpcContract.listFolders.output.shape.folders,
+};
+
 export function useFolders() {
   return useTasksQuery(
     async (rpc) => (await rpc.call("listFolders")).folders,
     ["projects:changed"],
+    [],
+    { snapshot: foldersSnapshot },
   );
 }
+
+const projectsSnapshot = {
+  name: "projects",
+  schema: tasksRpcContract.listProjects.output.shape.projects,
+};
 
 export function useProjects() {
   return useTasksQuery(
     async (rpc) => (await rpc.call("listProjects", {})).projects,
     ["projects:changed"],
+    [],
+    { snapshot: projectsSnapshot },
   );
 }
 
@@ -164,10 +224,17 @@ export function usePresets() {
   );
 }
 
+const sidebarSummarySnapshot = {
+  name: "sidebar-summary",
+  schema: tasksRpcContract.sidebarSummary.output.shape.projects,
+};
+
 export function useSidebarSummary() {
   return useTasksQuery(
     async (rpc) => (await rpc.call("sidebarSummary")).projects,
     ["tasks:changed", "projects:changed", "threads:changed"],
+    [],
+    { snapshot: sidebarSummarySnapshot },
   );
 }
 
