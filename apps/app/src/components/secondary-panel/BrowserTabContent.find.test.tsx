@@ -146,7 +146,6 @@ function renderBrowser(harness: FindHarness, initialUrl: string) {
         environmentId={null}
         projectId={null}
         threadId="thread-1"
-        projectId={null}
         onUpdate={() => {}}
       />
       <button type="button">Outside browser</button>
