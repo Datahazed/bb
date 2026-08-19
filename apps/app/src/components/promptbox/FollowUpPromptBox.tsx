@@ -319,6 +319,13 @@ const DEFAULT_FOLLOW_UP_COMPOSER_SCOPE = {
   projectId: null,
 } as const;
 
+function isCompactPlaceholderFocusTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    target.closest("[data-follow-up-composer-placeholder]") !== null
+  );
+}
+
 function isKeyboardFocusTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
@@ -630,7 +637,16 @@ function FollowUpPromptBoxWithComposer({
   useEffect(() => clearWarmingFallback, [clearWarmingFallback]);
   const handlePlaceholderPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0 || compactEditorPhase !== "deferred") return;
+      if (event.button !== 0) return;
+      // Keep the tap from focusing the placeholder itself. Focus on a
+      // non-editor target inside the composer expands it (see
+      // handleComposerFocus), which would unmount the placeholder before its
+      // click; iOS then drops that click and the editor comes up expanded but
+      // unfocused, with no keyboard. Cancelling pointerdown suppresses the
+      // focusing mousedown while the click still fires (the same handoff the
+      // submit and voice buttons rely on).
+      event.preventDefault();
+      if (compactEditorPhase !== "deferred") return;
       // Mount the editor NOW, under the placeholder, so it exists (with its
       // passive effects flushed) by the time the click lands. The placeholder
       // stays in the DOM until then: iOS drops the click when the touchstart
@@ -697,6 +713,12 @@ function FollowUpPromptBoxWithComposer({
     (event: ReactFocusEvent) => {
       cancelPendingFocusLoss();
       if (interactionExpandedRef.current) return;
+      // Focus landing on the deferred-editor placeholder (Tab, assistive
+      // tech) is not a request to expand: expanding would unmount the focused
+      // placeholder and drop focus to the document, and the blur would then
+      // collapse the composer again. Activation mounts and focuses the real
+      // editor, and that focus runs the usual expansion.
+      if (isCompactPlaceholderFocusTarget(event.target)) return;
       if (
         !isCompactViewport ||
         !isPointerCoarse ||

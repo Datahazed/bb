@@ -1157,6 +1157,47 @@ describe("FollowUpPromptBox", () => {
       }
     });
 
+    it("keeps the tapped row in the DOM when the browser focuses it before the click", () => {
+      vi.useFakeTimers();
+      try {
+        render(
+          <FollowUpPromptBox
+            {...createFollowUpPromptBoxProps({ kind: "ready" })}
+          />,
+        );
+        const row = screen.getByRole("button", { name: "Ask a follow-up" });
+        const placeholder = document.querySelector<HTMLElement>(
+          "[data-follow-up-composer-placeholder]",
+        );
+
+        // The tap must not move focus onto the row: cancelling pointerdown
+        // suppresses the focusing mousedown while the click still fires.
+        const pointerDown = new MouseEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+        });
+        Object.defineProperty(pointerDown, "pointerType", { value: "touch" });
+        fireEvent(row, pointerDown);
+        expect(pointerDown.defaultPrevented).toBe(true);
+
+        // Even if focus does land on the row (Tab, a browser that focuses it
+        // anyway), the composer must not expand and unmount the row before
+        // its click: iOS drops a click whose target was removed.
+        act(() => row.focus());
+        fireEvent.focus(row);
+        expect(document.contains(placeholder)).toBe(true);
+        expect(screen.getByTestId("prompt-box").dataset.compact).toBe("true");
+
+        fireEvent.click(row);
+        const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+        expect(document.activeElement).toBe(input);
+        expect(document.contains(placeholder)).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("drops the warming overlay if no click follows the pointerdown", () => {
       vi.useFakeTimers();
       try {
