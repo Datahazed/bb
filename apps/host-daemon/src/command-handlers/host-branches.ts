@@ -7,6 +7,7 @@ import {
   getGitCommonDir,
   getWorkspaceGitOperation,
   hasUncommittedChanges,
+  listBranchRefsWithDefaults,
   listBranches,
   listRemoteBranches,
   readDefaultBranchRefs,
@@ -34,6 +35,13 @@ interface PinBranchArgs {
 interface ClassifySelectedBranchArgs {
   branches: readonly string[];
   remoteBranches: readonly string[];
+  selectedBranch?: string;
+}
+
+interface ReadBranchOptionsArgs {
+  path: string;
+  limit: number;
+  query?: string;
   selectedBranch?: string;
 }
 
@@ -128,6 +136,73 @@ async function refreshRemoteBranches(cwd: string): Promise<void> {
   });
 
   await inFlight;
+}
+
+async function readBranchOptions({
+  path: cwd,
+  limit,
+  query,
+  selectedBranch: requestedBranch,
+}: ReadBranchOptionsArgs): Promise<
+  HostDaemonOnlineRpcResult<"host.list_branch_options">
+> {
+  const { branches, defaultBranch, originDefaultBranch, remoteBranches } =
+    await listBranchRefsWithDefaults(cwd);
+  const limitedBranches = limitBranchList({
+    branches: pinBranch({ branches, branch: defaultBranch }),
+    limit,
+    query,
+  });
+  const limitedRemoteBranches = limitBranchList({
+    branches: pinBranch({
+      branches: remoteBranches,
+      branch: originDefaultBranch,
+    }),
+    limit,
+    query,
+  });
+  return {
+    branches: limitedBranches.branches,
+    branchesTruncated: limitedBranches.truncated,
+    remoteBranches: limitedRemoteBranches.branches,
+    remoteBranchesTruncated: limitedRemoteBranches.truncated,
+    selectedBranch: classifySelectedBranch({
+      branches,
+      remoteBranches,
+      selectedBranch: requestedBranch,
+    }),
+  };
+}
+
+export async function listHostBranchOptions(
+  command: CommandOf<"host.list_branch_options">,
+): Promise<HostDaemonOnlineRpcResult<"host.list_branch_options">> {
+  if (!path.isAbsolute(command.path)) {
+    throw new CommandDispatchError("invalid_path", "Path must be absolute");
+  }
+
+  if (!(await detectGitRepo(command.path))) {
+    return {
+      branches: [],
+      branchesTruncated: false,
+      remoteBranches: [],
+      remoteBranchesTruncated: false,
+      selectedBranch: classifySelectedBranch({
+        branches: [],
+        remoteBranches: [],
+        selectedBranch: command.selectedBranch,
+      }),
+    };
+  }
+
+  if (command.remoteRefresh === "background") {
+    // Return cached refs immediately. A successful fetch updates shared Git
+    // refs, whose workspace watcher event invalidates the observed picker
+    // query so the refreshed options arrive without blocking this response.
+    void refreshRemoteBranches(command.path).catch(() => undefined);
+  }
+
+  return readBranchOptions(command);
 }
 
 export async function listHostBranches(
