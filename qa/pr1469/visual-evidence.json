@@ -1,0 +1,27 @@
+{
+  "pr": 1469,
+  "repository": "get-bb/bb",
+  "base": "5f4f3dec733612fcf23defd8ac17c22462715e9d",
+  "candidate": "51bc8cff331d0bec2978550eaf402f98e0d7cc3a",
+  "fixture": "provider-model-picker-qa@0.1.0",
+  "route": "/settings/plugins/provider-model-picker-qa",
+  "comparison": {
+    "viewport": { "width": 1440, "height": 900 },
+    "before": "before-picker-unavailable-1440x900.png",
+    "after": "after-desktop-1440x900.png",
+    "state": "plugin settings page; user attempts to open provider/model control"
+  },
+  "responsiveMatrix": [
+    { "width": 390, "height": 844, "result": "pass", "presentation": "compact bottom drawer" },
+    { "width": 768, "height": 900, "result": "pass", "presentation": "anchored menu" },
+    { "width": 1440, "height": 900, "result": "pass", "presentation": "anchored menu" },
+    { "width": 3440, "height": 1440, "result": "pass", "presentation": "anchored menu" }
+  ],
+  "interaction": {
+    "openCloseCycles": 5,
+    "allCyclesPassed": true,
+    "selection": "codex/gpt-5.5 -> codex/gpt-5.4 -> codex/gpt-5.5",
+    "controlledValueUpdated": true
+  },
+  "result": "pass"
+}
