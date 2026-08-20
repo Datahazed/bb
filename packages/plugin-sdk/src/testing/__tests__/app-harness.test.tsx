@@ -93,6 +93,25 @@ let capturedComposerGetInput:
   | PluginComposerApi["experimental_getInput"]
   | null = null;
 
+function makePluginMention(
+  label: string,
+  start: number,
+  end: number,
+  pluginId = "source-plugin",
+) {
+  return {
+    start,
+    end,
+    resource: {
+      kind: "plugin",
+      pluginId,
+      icon: null,
+      itemId: `notes:${label.toLowerCase()}`,
+      label,
+    },
+  } as const;
+}
+
 function InlineVis({
   attributes,
   source,
@@ -1137,6 +1156,47 @@ describe("renderSlot", () => {
     originalText.text = "mutated fixture";
     expect(capturedComposerGetInput()).toEqual([
       { type: "text", text: "Inspect the screenshot", mentions: [] },
+      { type: "localImage", path: "uploads/screenshot.png" },
+    ]);
+  });
+
+  it("keeps structured mentions aligned with composer edits and inserts", async () => {
+    const input = [
+      {
+        type: "text",
+        text: "Alpha Beta Gamma",
+        mentions: [
+          makePluginMention("Alpha", 0, 5),
+          makePluginMention("Beta", 6, 10),
+          makePluginMention("Gamma", 11, 16),
+        ],
+      },
+      { type: "localImage", path: "uploads/screenshot.png" },
+    ] satisfies PromptInput[];
+    const slot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      { composer: { input } },
+    );
+
+    if (capturedComposerGetInput === null) {
+      throw new Error("composer did not render");
+    }
+    expect(capturedComposerGetInput()).toEqual(input);
+
+    await slot.behavior.setComposerText("Alpha BETA!! Gamma");
+    fireEvent.click(slot.getByText("mention"));
+
+    expect(capturedComposerGetInput()).toEqual([
+      {
+        type: "text",
+        text: "Alpha BETA!! Gamma Ideas ",
+        mentions: [
+          makePluginMention("Alpha", 0, 5),
+          makePluginMention("Gamma", 13, 18),
+          makePluginMention("Ideas", 19, 24, "test-plugin"),
+        ],
+      },
       { type: "localImage", path: "uploads/screenshot.png" },
     ]);
   });

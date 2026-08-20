@@ -151,6 +151,54 @@ function clonePromptInput(input: readonly PromptInput[]): PromptInput[] {
   );
 }
 
+type PromptTextMention = Extract<
+  PromptInput,
+  { type: "text" }
+>["mentions"][number];
+
+function reconcileComposerMentions(
+  currentText: string,
+  nextText: string,
+  mentions: readonly PromptTextMention[],
+): PromptTextMention[] {
+  if (currentText === nextText) return [...mentions];
+
+  let unchangedPrefixLength = 0;
+  const maximumPrefixLength = Math.min(currentText.length, nextText.length);
+  while (
+    unchangedPrefixLength < maximumPrefixLength &&
+    currentText[unchangedPrefixLength] === nextText[unchangedPrefixLength]
+  ) {
+    unchangedPrefixLength += 1;
+  }
+
+  let unchangedSuffixLength = 0;
+  while (
+    unchangedSuffixLength < currentText.length - unchangedPrefixLength &&
+    unchangedSuffixLength < nextText.length - unchangedPrefixLength &&
+    currentText[currentText.length - unchangedSuffixLength - 1] ===
+      nextText[nextText.length - unchangedSuffixLength - 1]
+  ) {
+    unchangedSuffixLength += 1;
+  }
+
+  const replacedCurrentEnd = currentText.length - unchangedSuffixLength;
+  const replacementDelta = nextText.length - currentText.length;
+  return mentions.flatMap((mention) => {
+    if (mention.end <= unchangedPrefixLength) return [mention];
+    if (mention.start >= replacedCurrentEnd) {
+      return [
+        {
+          ...mention,
+          start: mention.start + replacementDelta,
+          end: mention.end + replacementDelta,
+        },
+      ];
+    }
+    return [];
+  });
+}
+
 interface SlotEnv {
   rpcClient: PluginRpcClient;
   rpcCalls: RpcCall[];
@@ -976,6 +1024,7 @@ export function renderSlot<
 
   const projectId = options.context?.projectId ?? null;
   const threadId = options.context?.threadId ?? null;
+  const pluginId = "test-plugin";
   let composerScope: PluginComposerScope =
     options.composer?.scope ??
     (threadId !== null
@@ -1001,14 +1050,23 @@ export function renderSlot<
     composerVersion += 1;
     for (const listener of composerListeners) listener();
   };
-  const commitComposerText = (next: string) => {
+  const commitComposerText = (
+    next: string,
+    appendedMentions: readonly PromptTextMention[] = [],
+  ) => {
     if (next === composerText) return;
+    const currentMentions =
+      composerInput.find((chunk) => chunk.type === "text")?.mentions ?? [];
+    const mentions = [
+      ...reconcileComposerMentions(composerText, next, currentMentions),
+      ...appendedMentions,
+    ];
     composerText = next;
     const attachments = composerInput.filter((chunk) => chunk.type !== "text");
     composerInput =
       next.length === 0
         ? attachments
-        : [{ type: "text", text: next, mentions: [] }, ...attachments];
+        : [{ type: "text", text: next, mentions }, ...attachments];
     notifyComposerListeners();
   };
   const composerLog: ComposerLog = {
@@ -1077,10 +1135,31 @@ export function renderSlot<
         composerLog.focusCount += 1;
       },
       insertMention(mention) {
+        const provider = mention.provider.trim();
         const label = mention.label.trim() || mention.id;
+        if (provider.length === 0 || provider.includes(":")) {
+          console.warn(
+            `[plugin:${pluginId}] useComposer().insertMention: invalid provider id "${mention.provider}"`,
+          );
+          return;
+        }
         const separator =
           composerText.length === 0 || /\s$/u.test(composerText) ? "" : " ";
-        commitComposerText(`${composerText}${separator}${label} `);
+        const start = composerText.length + separator.length;
+        const end = start + label.length;
+        commitComposerText(`${composerText}${separator}${label} `, [
+          {
+            start,
+            end,
+            resource: {
+              kind: "plugin",
+              pluginId,
+              icon: null,
+              itemId: `${provider}:${mention.id}`,
+              label,
+            },
+          },
+        ]);
         composerLog.mentions.push(mention);
         composerLog.focusCount += 1;
       },
