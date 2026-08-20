@@ -1084,7 +1084,10 @@ export interface PluginContentScriptRegistration {
   id: string;
   /**
    * Install behavior into the bb app shell. The host awaits a returned
-   * promise, contains failures, and calls the returned disposer exactly once.
+   * promise, retains the plugin's imported frontend stylesheet for this
+   * generation, contains failures, and calls the returned disposer exactly
+   * once. Styling or decorating existing app-shell DOM belongs here rather
+   * than in an always-on frontend stylesheet.
    */
   mount(
     context: PluginContentScriptContext,

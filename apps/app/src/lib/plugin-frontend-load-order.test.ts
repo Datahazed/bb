@@ -3,7 +3,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { definePluginApp } from "./plugin-app-definition";
 import {
-  createBatchedPluginCssApplier,
   createPluginFrontendReconcileState,
   orderPluginFrontendCandidates,
   PLUGIN_FRONTEND_LOAD_CONCURRENCY,
@@ -63,6 +62,7 @@ function makeDeps(
     fetchCandidates: async () => candidates,
     importModule: async () => pluginModule(),
     applyCss: vi.fn(),
+    retainCss: vi.fn(() => vi.fn()),
     resetCrashedSlots: vi.fn(),
     setRegistrations: vi.fn(),
     removeRegistrations: vi.fn(),
@@ -163,61 +163,5 @@ describe("reconcilePluginFrontends load scheduling", () => {
     expect(state.records.get("broken")?.status).toBe("failed");
     expect(state.records.get("fine")?.status).toBe("loaded");
     expect(state.records.get("also")?.status).toBe("loaded");
-  });
-});
-
-describe("createBatchedPluginCssApplier", () => {
-  it("coalesces insertions that land before the next frame into one flush", () => {
-    const apply = vi.fn();
-    const frames: Array<() => void> = [];
-    const applyCss = createBatchedPluginCssApplier({
-      apply,
-      requestFrame: (callback) => {
-        frames.push(callback);
-      },
-    });
-
-    applyCss("a", "/a.css");
-    applyCss("b", "/b.css");
-    applyCss("a", "/a2.css"); // newer URL for the same plugin replaces
-    expect(apply).not.toHaveBeenCalled();
-    expect(frames).toHaveLength(1);
-
-    frames[0]!();
-    expect(apply.mock.calls).toEqual([
-      ["a", "/a2.css"],
-      ["b", "/b.css"],
-    ]);
-
-    // A later insertion requests a fresh frame rather than being dropped.
-    applyCss("c", "/c.css");
-    expect(frames).toHaveLength(2);
-    frames[1]!();
-    expect(apply).toHaveBeenLastCalledWith("c", "/c.css");
-  });
-
-  it("removes synchronously and cancels a pending insertion for that plugin", () => {
-    const apply = vi.fn();
-    const frames: Array<() => void> = [];
-    const applyCss = createBatchedPluginCssApplier({
-      apply,
-      requestFrame: (callback) => {
-        frames.push(callback);
-      },
-    });
-
-    applyCss("a", "/a.css");
-    applyCss("b", "/b.css");
-    applyCss("a", null);
-    // Teardown/disposal must not leave a sheet behind, so removal does not
-    // wait for the frame.
-    expect(apply.mock.calls).toEqual([["a", null]]);
-
-    frames[0]!();
-    // The pending insertion for "a" was cancelled by the removal.
-    expect(apply.mock.calls).toEqual([
-      ["a", null],
-      ["b", "/b.css"],
-    ]);
   });
 });

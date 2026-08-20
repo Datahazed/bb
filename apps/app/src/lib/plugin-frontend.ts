@@ -42,6 +42,7 @@ import type {
 import { normalizePluginThreadRowStatus } from "@get-bb/plugin-sdk/internal/composer-customization-validation";
 import { resetCrashedPluginSlots } from "@/components/plugin/PluginSlotMount";
 import { runWithPluginDomIsolationAsync } from "./foreign-dom-mutation-guard";
+import { applyPluginCss, retainPluginCss } from "./plugin-css";
 import {
   collectPluginAppRegistrations,
   isPluginAppDefinition,
@@ -346,69 +347,7 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
   return candidates;
 }
 
-/**
- * Point a plugin's stylesheet `<link data-bb-plugin-css="<id>">` at `url`,
- * or remove it (`url: null`). A changed URL swaps in a fresh element (the
- * new sheet loads, then the old element is removed) rather than mutating
- * `href`, so a reload never flashes unstyled plugin UI. If the fresh sheet
- * fails to load, it is dropped and the old sheet stays in place.
- */
-export function applyPluginCss(pluginId: string, url: string | null): void {
-  const marker = "data-bb-plugin-css";
-  const existing = [
-    ...document.head.querySelectorAll(`link[${marker}="${pluginId}"]`),
-  ];
-  if (url === null) {
-    for (const link of existing) link.remove();
-    return;
-  }
-  if (existing.some((link) => link.getAttribute("href") === url)) return;
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = url;
-  link.setAttribute(marker, pluginId);
-  link.onload = () => {
-    for (const old of existing) old.remove();
-  };
-  link.onerror = () => {
-    link.remove();
-    console.warn(`bb plugin "${pluginId}": failed to load stylesheet ${url}`);
-  };
-  document.head.appendChild(link);
-}
-
-/**
- * Coalesce plugin stylesheet insertions into one animation frame. Each
- * `<link rel=stylesheet>` append invalidates document-wide style; bundles
- * finish importing at scattered moments, so without this every plugin costs
- * its own recalc. Removals (`url: null`) stay synchronous — teardown and
- * disposal must not leave a sheet behind — and cancel a pending insertion.
- * A newer URL for the same plugin replaces the pending one.
- */
-export function createBatchedPluginCssApplier(args: {
-  apply: (pluginId: string, url: string | null) => void;
-  requestFrame: (callback: () => void) => void;
-}): (pluginId: string, url: string | null) => void {
-  const pending = new Map<string, string>();
-  let frameRequested = false;
-  const flush = () => {
-    frameRequested = false;
-    const batch = [...pending];
-    pending.clear();
-    for (const [pluginId, url] of batch) args.apply(pluginId, url);
-  };
-  return (pluginId, url) => {
-    if (url === null) {
-      pending.delete(pluginId);
-      args.apply(pluginId, null);
-      return;
-    }
-    pending.set(pluginId, url);
-    if (frameRequested) return;
-    frameRequested = true;
-    args.requestFrame(flush);
-  };
-}
+export { applyPluginCss } from "./plugin-css";
 
 /** How many plugin bundles import at once during a reconcile pass. */
 export const PLUGIN_FRONTEND_LOAD_CONCURRENCY = 3;
@@ -485,8 +424,10 @@ export function createPluginFrontendReconcileState(): PluginFrontendReconcileSta
 export interface PluginFrontendReconcileDeps {
   fetchCandidates: () => Promise<PluginFrontendCandidate[]>;
   importModule: (url: string) => Promise<unknown>;
-  /** Replace (string) or remove (null) the plugin's CSS `<link>`. */
+  /** Synchronously publish (string) or remove (null) the generation's CSS URL. */
   applyCss: (pluginId: string, url: string | null) => void;
+  /** Retain the published CSS through one non-React consumer's lifetime. */
+  retainCss: (pluginId: string) => () => void;
   resetCrashedSlots: (pluginId: string) => void;
   setRegistrations: (
     pluginId: string,
@@ -521,6 +462,7 @@ interface ActivePluginFrontendGeneration {
   controller: AbortController;
   statusOwner: symbol;
   scripts: MountedContentScript[];
+  cssRelease: (() => void) | null;
   disposed: boolean;
 }
 
@@ -586,6 +528,8 @@ async function disposeGeneration(
     );
     if (failure !== null) failures.push(failure);
   }
+  activation.cssRelease?.();
+  activation.cssRelease = null;
   clearPluginThreadRowStatusesByOwner(activation.statusOwner);
   return failures;
 }
@@ -594,6 +538,7 @@ async function deactivateCommittedGeneration(
   pluginId: string,
   state: PluginFrontendReconcileState,
   deps: PluginFrontendReconcileDeps,
+  removePublishedUi = true,
 ): Promise<PluginFrontendFailure[]> {
   const active = state.activeGenerations.get(pluginId);
   if (active === undefined) {
@@ -604,8 +549,10 @@ async function deactivateCommittedGeneration(
   clearPluginThreadRowStatuses(pluginId);
   state.activeGenerations.delete(pluginId);
   state.appliedHashes.delete(pluginId);
-  deps.removeRegistrations(pluginId);
-  deps.applyCss(pluginId, null);
+  if (removePublishedUi) {
+    deps.removeRegistrations(pluginId);
+    deps.applyCss(pluginId, null);
+  }
   return failures;
 }
 
@@ -708,6 +655,7 @@ async function activateContentScripts(
   registrations: readonly PluginContentScriptRegistration[],
   controller: AbortController,
   statusOwner: symbol,
+  cssRelease: (() => void) | null,
   deps: PluginFrontendReconcileDeps,
 ): Promise<
   | { ok: true; activation: ActivePluginFrontendGeneration }
@@ -719,6 +667,7 @@ async function activateContentScripts(
     controller,
     statusOwner,
     scripts: [],
+    cssRelease,
     disposed: false,
   };
   try {
@@ -897,10 +846,20 @@ async function reconcileCandidates(
 
       const generation = (state.generationByPluginId.get(pluginId) ?? 0) + 1;
       state.generationByPluginId.set(pluginId, generation);
+      // Publish the URL before either non-React scripts mount or slot-store
+      // notifications can render plugin code. Inactive plugins only preload;
+      // an already-mounted generation starts a safe side-by-side replacement.
+      deps.applyCss(pluginId, candidate.bundle.cssUrl);
+      const cssRelease =
+        collected.contentScripts.length > 0 ? deps.retainCss(pluginId) : null;
       const disposeFailures = await deactivateCommittedGeneration(
         pluginId,
         state,
         deps,
+        // Keep the old registration mounted until candidate content scripts
+        // succeed. The final setRegistrations call replaces it atomically, so
+        // an old UI consumer holds the active sheet through the CSS handoff.
+        false,
       );
       const controller = new AbortController();
       const statusOwner = Symbol(
@@ -915,6 +874,7 @@ async function reconcileCandidates(
         collected.contentScripts,
         controller,
         statusOwner,
+        cssRelease,
         deps,
       );
       state.pendingControllers.delete(pluginId);
@@ -923,9 +883,13 @@ async function reconcileCandidates(
         if (activationResult.ok) {
           await disposeGeneration(pluginId, activationResult.activation, deps);
         }
+        deps.removeRegistrations(pluginId);
+        deps.applyCss(pluginId, null);
         return;
       }
       if (!activationResult.ok) {
+        deps.removeRegistrations(pluginId);
+        deps.applyCss(pluginId, null);
         const failed: PluginFrontendRecord = {
           pluginId,
           status: "failed",
@@ -943,7 +907,6 @@ async function reconcileCandidates(
 
       state.activeGenerations.set(pluginId, activationResult.activation);
       deps.setRegistrations(pluginId, collected);
-      deps.applyCss(pluginId, candidate.bundle.cssUrl);
       state.records.set(pluginId, record);
       state.appliedHashes.set(pluginId, candidate.bundle.hash);
       publishDiagnostic(state, deps, {
@@ -1060,12 +1023,8 @@ const PLUGIN_SLOT_BATCH_MAX_HOLD_MS = 150;
 const browserReconcileDeps: PluginFrontendReconcileDeps = {
   fetchCandidates: fetchFrontendCandidates,
   importModule: (url) => import(/* @vite-ignore */ url),
-  applyCss: createBatchedPluginCssApplier({
-    apply: applyPluginCss,
-    requestFrame: (callback) => {
-      window.requestAnimationFrame(callback);
-    },
-  }),
+  applyCss: applyPluginCss,
+  retainCss: retainPluginCss,
   routePluginId: () => getPluginPanelRoutePluginId(window.location.pathname),
   resetCrashedSlots: resetCrashedPluginSlots,
   setRegistrations: setPluginSlotRegistrations,

@@ -45,8 +45,13 @@ reload, disable, removal, failed replacement, and app-window teardown. The old
 generation is disposed before candidate mounts, so generations never overlap.
 Content scripts are trusted same-origin page code, not a sandbox.
 
-Static styles should stay in the normal imported `app.css`; scripts may own
-dynamic DOM/style nodes when their disposer removes them. See the
+Static styles should stay in the normal imported `app.css`. The host keeps
+that stylesheet active while the plugin has rendered slot, panel-header, or
+portal UI, and for the full lifetime of any active content-script generation;
+it is not an app-wide stylesheet hook. Use manifest `bb.themes` entries for
+app-wide selectable palette CSS. Styling or decorating existing app-shell DOM
+belongs in a content script, and scripts may own dynamic DOM/style nodes only
+when their disposer removes them. See the
 [`content-script` reference plugin](../../examples/plugins/content-script/README.md)
 for a cleanup-safe editor enhancement.
 

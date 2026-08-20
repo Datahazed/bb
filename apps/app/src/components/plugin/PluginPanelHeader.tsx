@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from "react";
 import type { PluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
+import { usePluginCss } from "@/lib/plugin-css";
 import { PluginIcon } from "./PluginIcon";
 import { PluginContext } from "./plugin-context";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
@@ -78,6 +79,7 @@ export function PluginPanelHeaderActions({
 }) {
   const paneContext = useOptionalPaneContext();
   const HeaderContent = panel.headerContent;
+  usePluginCss(HeaderContent === undefined ? null : panel.pluginId);
   const panelStateId = getPluginPagePanelStateId({
     panelPath: panel.path,
     paneId: paneId ?? paneContext?.paneId,

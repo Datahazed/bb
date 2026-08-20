@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Pill } from "@bb/shared-ui/pill";
+import { usePluginCss } from "@/lib/plugin-css";
 import {
   PluginContext,
   PluginSlotOwnershipContext,
@@ -223,6 +224,7 @@ export function PluginSlotMount({
   instanceId,
   onCrash,
 }: PluginSlotMountProps) {
+  usePluginCss(pluginId);
   return (
     <PluginContext.Provider value={pluginId}>
       <PluginSlotBoundary

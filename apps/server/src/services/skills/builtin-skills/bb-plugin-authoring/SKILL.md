@@ -1522,13 +1522,21 @@ window's last load/setup/mount/dispose failure appears on the plugin Settings
 detail page. The host cannot catch a detached promise that plugin code creates
 and never returns, so detached work must handle its own errors.
 
-Prefer the existing imported `app.css` pipeline for static styles. A content
-script may create DOM or `<style>` nodes when behavior genuinely requires it,
-but its abort handler/disposer must remove every node, observer, listener,
-timer, and class it owns. The context deliberately has no route/project/thread
-snapshot yet; use stable SDK hooks inside React slots rather than polling or
-installing global navigation observers. Complete cleanup-safe example:
-`examples/plugins/content-script`.
+Prefer the existing imported `app.css` pipeline for static styles. Its lifetime
+follows the plugin UI and content scripts that use it: the host keeps the
+stylesheet active while a slot, panel header/accessory, or plugin portal is
+rendered and throughout an active content-script generation, then releases it
+after the final consumer. Imported `app.css` is therefore not an app-wide CSS
+hook. Put app-wide selectable palette CSS in manifest `bb.themes` entries;
+theme CSS has an independent app-theme lifetime.
+
+Styling or decorating existing app-shell DOM belongs in a content script. A
+content script may create DOM or `<style>` nodes when behavior genuinely
+requires it, but its abort handler/disposer must remove every node, observer,
+listener, timer, class, and style it owns. The context deliberately has no
+route/project/thread snapshot yet; use stable SDK hooks inside React slots
+rather than polling or installing global navigation observers. Complete
+cleanup-safe example: `examples/plugins/content-script`.
 
 Slot props contracts (versioned, additive-only):
 

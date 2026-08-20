@@ -41,6 +41,7 @@ import {
   PluginPanelHeaderCenter,
 } from "./PluginPanelHeader";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
+import { applyPluginCss, resetPluginCssForTest } from "@/lib/plugin-css";
 import { ComposerActionsSlot } from "./PluginComposerActions";
 import { PluginContext } from "./plugin-context";
 import {
@@ -96,6 +97,7 @@ afterEach(() => {
   resetPluginFrontendBootStateForTest();
   window.localStorage.clear();
   resetAllCrashedPluginSlotsForTest();
+  resetPluginCssForTest();
   vi.restoreAllMocks();
 });
 
@@ -1311,6 +1313,58 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     expect(screen.getByText("board panel body")).toBeDefined();
   });
 
+  it("releases the plugin stylesheet when navigation unmounts the panel route", async () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        navPanels: [
+          {
+            id: "board",
+            title: "Demo board",
+            icon: "columns",
+            path: "board",
+            component: Board,
+          },
+        ],
+      }),
+    );
+    applyPluginCss("demo", "/demo.css?h=route");
+    function LeavePanel() {
+      const navigate = useNavigate();
+      return (
+        <button type="button" onClick={() => navigate("/")}>
+          Leave panel
+        </button>
+      );
+    }
+    render(
+      <MemoryRouter initialEntries={["/plugins/demo/board"]}>
+        <Routes>
+          <Route
+            path={PLUGIN_PANEL_ROUTE_PATH}
+            element={
+              <>
+                <LeavePanel />
+                <PluginPanelView />
+              </>
+            }
+          />
+          <Route path="/" element={<div>home</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(
+      document.head.querySelector('link[data-bb-plugin-css="demo"]'),
+    ).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Leave panel" }));
+    await act(async () => {});
+    expect(screen.getByText("home")).toBeDefined();
+    expect(
+      document.head.querySelector('link[data-bb-plugin-css="demo"]'),
+    ).toBeNull();
+  });
+
   it("shows a plugin panel's position when it is open in a split", () => {
     setPluginSlotRegistrations(
       "demo",
@@ -1534,12 +1588,13 @@ describe("plugin panel shared title bar and full-bleed body", () => {
     expect(screen.queryByText(/plugin demo crashed/)).toBeNull();
   });
 
-  it("always renders the shared title and headerContent", () => {
+  it("gives headerContent independent CSS ownership without a mounted panel body", async () => {
     function Accessory() {
       return <button type="button">Toggle sidebar</button>;
     }
     const panel = panelSlot({ headerContent: Accessory });
-    render(
+    applyPluginCss("demo", "/demo.css?h=header");
+    const view = render(
       <>
         <PluginPanelHeaderCenter chrome={panel} />
         <PluginPanelHeaderActions panel={panel} subPath="notes/today.md" />
@@ -1549,6 +1604,16 @@ describe("plugin panel shared title bar and full-bleed body", () => {
     expect(
       screen.getByRole("button", { name: "Toggle sidebar" }),
     ).toBeDefined();
+    expect(
+      document.head.querySelector('link[data-bb-plugin-css="demo"]'),
+    ).not.toBeNull();
+    expect(screen.queryByTestId("plugin-panel-body")).toBeNull();
+
+    view.unmount();
+    await act(async () => {});
+    expect(
+      document.head.querySelector('link[data-bb-plugin-css="demo"]'),
+    ).toBeNull();
   });
 
   it("keys the right-panel toggle target to its owning pane", () => {
