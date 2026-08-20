@@ -24,6 +24,46 @@ export function parseGitDiffFiles(
   }
 }
 
+/** A normalized single-file patch plus the file it parsed to. */
+export interface NormalizedFilePatch {
+  /** Complete patch text, including a `diff --git` header. */
+  patch: string;
+  file: ParsedGitDiffFile;
+}
+
+/**
+ * Normalize and parse patch text for exactly ONE file.
+ *
+ * Patch sources disagree about headers: `git diff` emits a `diff --git` line,
+ * GitHub's REST API and inline review hunks emit bare `@@` hunks. Only the
+ * `diff --git` line puts the parser in git-aware mode — without it the `a/`
+ * and `b/` prefixes survive into the file names and every file reads as a
+ * rename. Completing the header from `path` is what makes one host renderer
+ * able to accept both shapes.
+ *
+ * Returns null when nothing renderable parses out — including the case that
+ * matters most in practice, text that is not a patch at all: completing a
+ * header in front of it still parses, just to a file with no hunks, which
+ * would render as an empty diff instead of showing the caller their content.
+ */
+export function normalizeFilePatch({
+  patch,
+  path,
+}: {
+  patch: string;
+  path: string;
+}): NormalizedFilePatch | null {
+  const normalizedPatch = patch.replace(/\r\n/g, "\n").trimEnd();
+  if (normalizedPatch.length === 0) return null;
+  const normalizedPath = normalizeGitDiffPath(path) ?? path;
+  const patchText = normalizedPatch.startsWith("diff --git")
+    ? `${normalizedPatch}\n`
+    : `diff --git a/${normalizedPath} b/${normalizedPath}\n--- a/${normalizedPath}\n+++ b/${normalizedPath}\n${normalizedPatch}\n`;
+  const file = parseGitDiffFiles(patchText)[0];
+  if (file === undefined || file.hunks.length === 0) return null;
+  return { patch: patchText, file };
+}
+
 export interface GitDiffContextEnrichmentInput {
   fileDiff: ParsedGitDiffFile;
   oldFile: FileContents;
