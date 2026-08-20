@@ -11,8 +11,88 @@
 
 import { rebuiltResponse } from "./response-encoding.js";
 
-const CACHE_HOST = "https://bb-connect-asset-cache.internal";
+// Tightening cache admission must also change this host so entries admitted by
+// older code become unreachable without a global Cloudflare purge.
+const CACHE_HOST = "https://bb-connect-asset-cache-v2.internal";
 const MIN_CACHEABLE_MAX_AGE = 300;
+
+interface CacheControlDirective {
+  quoted: boolean;
+  value: string | null;
+}
+
+const CACHE_CONTROL_TOKEN_CHARACTER = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]$/u;
+
+function isTokenCharacter(character: string | undefined): boolean {
+  return (
+    character !== undefined && CACHE_CONTROL_TOKEN_CHARACTER.test(character)
+  );
+}
+
+function isQuotedTextCharacter(character: string): boolean {
+  const code = character.charCodeAt(0);
+  return code === 0x09 || (code >= 0x20 && code !== 0x7f);
+}
+
+/** Parse Cache-Control's comma list without treating quoted commas as syntax. */
+function parseCacheControl(
+  header: string,
+): Map<string, CacheControlDirective> | null {
+  const directives = new Map<string, CacheControlDirective>();
+  let offset = 0;
+
+  while (offset < header.length) {
+    while (header[offset] === " " || header[offset] === "\t") offset++;
+
+    const nameStart = offset;
+    while (isTokenCharacter(header[offset])) offset++;
+    if (offset === nameStart) return null;
+    const name = header.slice(nameStart, offset).toLowerCase();
+
+    let quoted = false;
+    let value: string | null = null;
+    if (header[offset] === "=") {
+      offset++;
+      if (header[offset] === '"') {
+        quoted = true;
+        offset++;
+        const valueStart = offset;
+        let closed = false;
+        while (offset < header.length) {
+          const character = header[offset];
+          if (character === '"') {
+            value = header.slice(valueStart, offset);
+            offset++;
+            closed = true;
+            break;
+          }
+          if (character === "\\") {
+            offset++;
+            if (offset === header.length) return null;
+          }
+          if (!isQuotedTextCharacter(header[offset])) return null;
+          offset++;
+        }
+        if (!closed) return null;
+      } else {
+        const valueStart = offset;
+        while (isTokenCharacter(header[offset])) offset++;
+        if (offset === valueStart) return null;
+        value = header.slice(valueStart, offset);
+      }
+    }
+
+    while (header[offset] === " " || header[offset] === "\t") offset++;
+    if (directives.has(name)) return null;
+    directives.set(name, { quoted, value });
+    if (offset === header.length) break;
+    if (header[offset] !== ",") return null;
+    offset++;
+    if (offset === header.length) return null;
+  }
+
+  return directives;
+}
 
 /** Build the edge-cache Request key for a namespace label + visitor URL. */
 export function cacheKey(namespace: string, url: URL): Request {
@@ -24,10 +104,27 @@ export function cacheKey(namespace: string, url: URL): Request {
 function isCacheable(resp: Response): boolean {
   if (!resp.ok) return false;
   if (resp.headers.has("set-cookie")) return false;
-  const cc = resp.headers.get("cache-control") ?? "";
-  if (/\b(no-store|no-cache|private)\b/i.test(cc)) return false;
-  const maxAge = cc.match(/max-age=(\d+)/i);
-  return maxAge ? Number(maxAge[1]) >= MIN_CACHEABLE_MAX_AGE : false;
+  const directives = parseCacheControl(resp.headers.get("cache-control") ?? "");
+  if (directives === null) return false;
+  if (
+    directives.has("no-store") ||
+    directives.has("no-cache") ||
+    directives.has("private")
+  ) {
+    return false;
+  }
+  const immutable = directives.get("immutable");
+  if (immutable === undefined || immutable.value !== null) return false;
+  const maxAge = directives.get("max-age");
+  if (
+    maxAge === undefined ||
+    maxAge.quoted ||
+    maxAge.value === null ||
+    !/^\d+$/u.test(maxAge.value)
+  ) {
+    return false;
+  }
+  return Number(maxAge.value) >= MIN_CACHEABLE_MAX_AGE;
 }
 
 /**

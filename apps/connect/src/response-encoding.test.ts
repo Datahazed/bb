@@ -20,6 +20,23 @@ const HTML = `<!doctype html><title>bb</title>${"<p>relayed body</p>".repeat(50)
 const GZIP = gzipSync(Buffer.from(HTML));
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
+function cacheControlForPolicy(policy: string | null): string {
+  switch (policy) {
+    case "1":
+      return IMMUTABLE;
+    case "mutable":
+      return "public, max-age=300";
+    case "quoted-immutable":
+      return 'public, extension="a,immutable,b", max-age=300';
+    case "quoted-max-age":
+      return 'public, immutable, extension="max-age=300"';
+    case "prefixed-max-age":
+      return "public, immutable, not-max-age=300";
+    default:
+      return "no-store";
+  }
+}
+
 type ClientWebSocket = NonNullable<
   Awaited<ReturnType<Miniflare["dispatchFetch"]>>["webSocket"]
 >;
@@ -55,10 +72,10 @@ function serveOriginOverTunnel(ws: ClientWebSocket): void {
     if (typeof event.data === "string") return;
     const frame = decodeFrame(event.data as ArrayBuffer);
     if (frame.type !== "open-http") return;
-    const cacheable =
-      new URL(frame.path, "http://origin.local").searchParams.get(
-        "cacheable",
-      ) === "1";
+    const cachePolicy = new URL(
+      frame.path,
+      "http://origin.local",
+    ).searchParams.get("cacheable");
     send({
       type: "resp-head",
       streamId: frame.streamId,
@@ -67,7 +84,7 @@ function serveOriginOverTunnel(ws: ClientWebSocket): void {
         ["content-type", "text/html; charset=utf-8"],
         ["content-encoding", "gzip"],
         ["content-length", String(GZIP.byteLength)],
-        ["cache-control", cacheable ? IMMUTABLE : "no-store"],
+        ["cache-control", cacheControlForPolicy(cachePolicy)],
       ],
     });
     send({
@@ -153,6 +170,45 @@ describe("relaying a gzip-encoded origin response", () => {
 });
 
 describe("edge cache", () => {
+  it("does not read mutable entries stored under the legacy cache key", async () => {
+    const target = "/legacy-personalized";
+    const seeded = await mf.dispatchFetch(
+      `https://relay.test/seed-legacy-cache?for=${encodeURIComponent(target)}`,
+    );
+    expect(seeded.status).toBe(204);
+
+    const response = await mf.dispatchFetch(`https://relay.test${target}`);
+    expect(response.headers.get("x-bb-cache")).toBeNull();
+    expect(await response.text()).toBe(HTML);
+  });
+
+  it.each([
+    ["a max-age response without immutable", "mutable"],
+    ["immutable text inside a quoted extension", "quoted-immutable"],
+    ["max-age text inside a quoted extension", "quoted-max-age"],
+    ["a prefixed max-age directive", "prefixed-max-age"],
+  ])("does not cache %s", async (_description, policy) => {
+    const url = `https://relay.test/rejected-${policy}?cacheable=${policy}`;
+
+    const first = await mf.dispatchFetch(url);
+    expect(first.headers.get("x-bb-cache")).toBeNull();
+
+    const second = await mf.dispatchFetch(url);
+    expect(second.headers.get("x-bb-cache")).toBeNull();
+  });
+
+  it("caches a valid immutable asset", async () => {
+    const url = "https://relay.test/valid-asset.js?cacheable=1";
+
+    const miss = await mf.dispatchFetch(url);
+    expect(miss.headers.get("x-bb-cache")).toBe("miss");
+    expect(await miss.text()).toBe(HTML);
+
+    const hit = await mf.dispatchFetch(url);
+    expect(hit.headers.get("x-bb-cache")).toBe("hit");
+    expect(hit.headers.get("cache-control")).toBe(IMMUTABLE);
+  });
+
   it("keeps the body decodable on both the miss and the hit", async () => {
     const miss = await get("/asset.js?cacheable=1");
     expect(miss.body.toString("utf8")).toBe(HTML);

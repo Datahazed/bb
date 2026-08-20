@@ -19,6 +19,7 @@ export interface FixtureEnv {
 }
 
 const NAMESPACE = "fixture-label";
+const LEGACY_CACHE_HOST = "https://bb-connect-asset-cache.internal";
 
 function gzipBytes(env: FixtureEnv): Uint8Array {
   const bin = atob(env.GZIP_BODY_B64);
@@ -76,6 +77,20 @@ export default {
       );
       if (!cached) return new Response("not cached", { status: 404 });
       return new Response(cached.body, cached);
+    }
+
+    // Seed the pre-policy-change key exactly as production did, so the test can
+    // prove a deployment cannot read mutable responses admitted by old code.
+    if (url.pathname === "/seed-legacy-cache") {
+      const target = url.searchParams.get("for") ?? "/";
+      const key = new Request(`${LEGACY_CACHE_HOST}/${NAMESPACE}${target}`);
+      await caches.default.put(
+        key,
+        new Response("legacy mutable response", {
+          headers: { "cache-control": "public, max-age=31536000" },
+        }),
+      );
+      return new Response(null, { status: 204 });
     }
 
     return serveWithCache(request, NAMESPACE, ctx, () => stub.fetch(request));
