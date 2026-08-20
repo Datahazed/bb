@@ -185,7 +185,7 @@ describe("codex turn lifecycle translation", () => {
     }
   });
 
-  it("translates turn/completed with status and error", () => {
+  it("translates a failed turn/completed without claiming a fork checkpoint", () => {
     const harness = createHarness();
     const events = harness.translate(
       codexEvent("turn/completed", {
@@ -209,7 +209,6 @@ describe("codex turn lifecycle translation", () => {
         error: { message: "rate limited" },
       }),
     );
-    // Only completed turns are fork points.
     expect(events[0]).not.toHaveProperty("providerCheckpointId");
   });
 
@@ -230,7 +229,7 @@ describe("codex turn lifecycle translation", () => {
     ]);
   });
 
-  it("maps interrupted turn status", () => {
+  it("maps interrupted turn status with its fork checkpoint", () => {
     const harness = createHarness();
     const events = harness.translate(
       codexEvent("turn/completed", {
@@ -242,6 +241,7 @@ describe("codex turn lifecycle translation", () => {
       expect.objectContaining({
         type: "turn/completed",
         status: "interrupted",
+        providerCheckpointId: "turn-1",
       }),
     );
   });
