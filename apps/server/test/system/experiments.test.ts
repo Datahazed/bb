@@ -14,6 +14,7 @@ describe("experiments settings", () => {
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
+        changelogPreview: false,
         editMessages: true,
         mobileApp: false,
         newOnboarding: false,
@@ -28,6 +29,7 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          changelogPreview: true,
           editMessages: true,
           mobileApp: true,
           newOnboarding: true,
@@ -36,12 +38,14 @@ describe("experiments settings", () => {
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
+        changelogPreview: true,
         editMessages: true,
         mobileApp: true,
         newOnboarding: true,
         providerSessionReaping: true,
       });
       expect(getExperiments(harness.db)).toEqual({
+        changelogPreview: true,
         editMessages: true,
         mobileApp: true,
         newOnboarding: true,
@@ -52,6 +56,7 @@ describe("experiments settings", () => {
       expect(
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
+        changelogPreview: true,
         editMessages: true,
         mobileApp: true,
         newOnboarding: true,
@@ -78,6 +83,7 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          changelogPreview: false,
           editMessages: true,
           mobileApp: false,
           newOnboarding: false,
@@ -102,6 +108,7 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          changelogPreview: false,
           editMessages: false,
           mobileApp: false,
           newOnboarding: false,

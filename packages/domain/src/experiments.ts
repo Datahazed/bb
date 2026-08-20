@@ -11,6 +11,7 @@ import { z } from "zod";
  * database schema; experiment values use key/value persistence.
  */
 export const experimentKeys = [
+  "changelogPreview",
   "editMessages",
   "mobileApp",
   "newOnboarding",
@@ -27,6 +28,7 @@ export type Experiments = z.infer<typeof experimentsSchema>;
  * persists every key, so one that has keeps its stored values instead.
  */
 export const defaultExperiments: Experiments = {
+  changelogPreview: false,
   editMessages: true,
   mobileApp: false,
   newOnboarding: false,

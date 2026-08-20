@@ -14,6 +14,11 @@ import {
   defaultExperiments,
 } from "@bb/domain";
 import type { SystemConfigResponse } from "@bb/server-contract";
+import type {
+  ProviderCliKey,
+  ProviderCliStatus,
+  ProviderCliStatusResponse,
+} from "@bb/host-daemon-contract";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
@@ -74,6 +79,39 @@ function systemConfig(): SystemConfigResponse {
   };
 }
 
+function providerCliStatus(
+  provider: ProviderCliKey,
+  currentVersion: string,
+): ProviderCliStatus {
+  const identity = {
+    codex: { displayName: "Codex", executableName: "codex" },
+    claudeCode: { displayName: "Claude Code", executableName: "claude" },
+    cursor: { displayName: "Cursor", executableName: "agent" },
+  }[provider];
+  return {
+    ...identity,
+    executablePath: `/usr/local/bin/${identity.executableName}`,
+    installed: true,
+    installSource: "npmGlobal",
+    currentVersion,
+    latestVersion: currentVersion,
+    minimumSupportedVersion: null,
+    npmPackageName: null,
+    npmGlobalPackageVersion: null,
+    installAction: null,
+    needsUpdate: false,
+    versionUnsupported: false,
+  };
+}
+
+function providerCliStatusResponse(): ProviderCliStatusResponse {
+  return {
+    codex: providerCliStatus("codex", "0.148.0"),
+    claudeCode: providerCliStatus("claudeCode", "2.1.235"),
+    cursor: providerCliStatus("cursor", "1.4.6"),
+  };
+}
+
 function renderView() {
   const { wrapper } = createQueryClientTestHarness();
   return render(
@@ -91,6 +129,9 @@ function renderView() {
 
 /** Everything except the hosts list; the view also reads projects and versions. */
 function stubSupportingFetches(): void {
+  vi.mocked(sdk.hosts.providerCliStatus).mockResolvedValue(
+    providerCliStatusResponse(),
+  );
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue(
@@ -119,7 +160,7 @@ describe("MachineSettingsView", () => {
     renderView();
 
     expect(
-      await screen.findByRole("heading", { name: "dev-vm" }),
+      await screen.findByRole("heading", { name: /dev-vm/u }),
     ).toBeDefined();
     const checkedByMode = Object.fromEntries(
       (await screen.findAllByRole("radio")).map((option) => [
@@ -136,8 +177,98 @@ describe("MachineSettingsView", () => {
       auto: "true",
       full: "false",
     });
+    expect(
+      screen
+        .getByRole("radio", { name: /Accept Edits/u })
+        .querySelector('[data-icon="FolderEdit"]'),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("radio", { name: /Approve for me/u })
+        .querySelector('[data-icon="SecurityCheck"]'),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("radio", { name: /Full Access/u })
+        .querySelector('[data-icon="SquareUnlock02"]'),
+    ).not.toBeNull();
+    expect(screen.getByRole("img", { name: "Online" })).toBeDefined();
+    expect(document.querySelector('[data-icon="FolderGit"]')).not.toBeNull();
+    expect(
+      document.querySelector('[data-provider-icon="codex"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('[data-provider-icon="claude-code"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('[data-provider-icon="acp-cursor"]'),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("heading", { name: "Provider CLIs" })
+        .querySelector("[data-icon]"),
+    ).toBeNull();
     // The page exists so the modes can explain themselves.
     expect(screen.getByText(/No sandbox and no approvals/u)).toBeDefined();
+  });
+
+  it("keeps Rename in the machine title menu", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
+    stubSupportingFetches();
+
+    renderView();
+
+    fireEvent.pointerDown(
+      await screen.findByRole("button", { name: "dev-vm actions" }),
+      { button: 0 },
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: "Rename" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+  });
+
+  it("names an offline machine's status icon", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      host({ status: "disconnected", lastSeenAt: Date.now() - 60_000 }),
+    ]);
+    stubSupportingFetches();
+
+    renderView();
+
+    expect(await screen.findByRole("img", { name: "Offline" })).toBeDefined();
+    expect(screen.queryByText(/^Offline ·/u)).toBeNull();
+  });
+
+  it("links update issues to Updates in a warning pill", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
+    stubSupportingFetches();
+    const statuses = providerCliStatusResponse();
+    vi.mocked(sdk.hosts.providerCliStatus).mockResolvedValue({
+      ...statuses,
+      codex: {
+        ...statuses.codex,
+        latestVersion: "0.149.0",
+        needsUpdate: true,
+        installAction: {
+          kind: "update",
+          label: "Update",
+          commandKind: "exec",
+          command: "codex update",
+        },
+      },
+    });
+
+    renderView();
+
+    const issueLink = await screen.findByRole("link", { name: "1 to fix" });
+    expect(issueLink.getAttribute("href")).toBe("/settings/updates");
+    const pill = issueLink.firstElementChild;
+    expect(pill?.className).toContain("bg-surface-attention");
+    expect(pill?.className).toContain("text-warning-text");
   });
 
   it("writes the selected limit to the owner-only route", async () => {
@@ -193,7 +324,9 @@ describe("MachineSettingsView", () => {
       name: "Remove machine",
     });
     expect(remove.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText("this machine")).toBeDefined();
+    expect(remove.className).toContain("bg-destructive");
+    expect(remove.parentElement?.className).not.toContain("justify-end");
+    expect(screen.getAllByText("This machine")).toHaveLength(1);
   });
 
   it("explains a machine that is no longer paired", async () => {
