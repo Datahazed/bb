@@ -799,8 +799,48 @@ push key); nobody needs a local Xcode signing setup to ship.
   check against `https://<handle>.getbb.app/threads/…`. Android signing
   (`eas credentials -p android`, FCM V1, `ASSETLINKS_SHA256_FINGERPRINTS`)
   is still open.
-- `eas update` (JS-only fixes over the air) is deferred: `expo-updates` is
-  not installed, so the profiles define no update channels.
+
+## Over-the-air updates (EAS Update)
+
+`expo-updates` ships in the app, so a JS-only fix can reach installed builds
+without a new binary. Each build profile in `eas.json` carries a channel of its
+own name (`production`, `preview`, `development`, `development-device`), and a
+channel points at the update branch of the same name.
+
+- **Publish**: Actions tab → "Mobile update (EAS Update)" → Run workflow, or
+  `gh workflow run mobile-update.yml -f branch=production`. It is manual on
+  purpose: an update reaches every tester in minutes with no review in
+  between. Locally the same publish is
+  `pnpm exec eas update --branch production --platform ios --message "…"`.
+- **What an update can carry**: anything under `src/` and `app/` — screens,
+  logic, styles, copy, assets. It cannot carry a new native module, an Expo SDK
+  bump, or a change to the native parts of `app.json` (permission strings,
+  `UIBackgroundModes`, associated domains, scheme, icon). Those need
+  `mobile-ios-eas.yml`.
+- **Which builds an update reaches**: `app.json` sets
+  `runtimeVersion.policy: "fingerprint"`. The fingerprint hashes the native
+  inputs, and an update installs only on a binary with the same hash, so a
+  native change cannot land on an incompatible build — it reaches nobody
+  instead. The publish workflow prints the fingerprint next to the recent
+  builds' fingerprints, because "reached nobody" otherwise looks like success.
+  `eas.json` is a fingerprint input too, so editing it also forks the
+  fingerprint and the next update needs a fresh build to land on.
+- **`fingerprint.config.js`** sets `sourceSkips: ["ExpoConfigVersions"]`. The
+  EAS build job rewrites `app.json` `version` with the npm version on every
+  nightly. Without this skip the version alone would fork the fingerprint each
+  night and no update would ever match a build. Verified by generating the
+  fingerprint at `0.0.1` and at `0.39.0`: identical with the skip, different
+  without it. A native change still forks it.
+- **Delivery**: the client checks on launch and downloads in the background,
+  then applies the update on the next cold start. A tester who never quits the
+  app stays on the old bundle.
+- **E2E builds carry no update client.** `mobile-e2e.yml` sets
+  `BB_DISABLE_UPDATES=1`, and `app.config.js` turns
+  `updates.enabled` off, so prebuild writes `EXUpdatesEnabled=false` into
+  `Expo.plist`. A Release binary with updates on would fetch the production
+  bundle at launch and swap the embedded E2E bundle mid-flow.
+- **Billing**: EAS Update bills on monthly active users. Check the `bb-team`
+  plan before opening the app to a large external group.
 
 ## Local state
 

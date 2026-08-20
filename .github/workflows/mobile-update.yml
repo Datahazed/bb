@@ -1,0 +1,126 @@
+# Publish a JS-only over-the-air update for the bb mobile app (EAS Update).
+#
+# An update carries the JS bundle and its assets. It cannot carry native
+# changes: a new native module, an Expo SDK bump, or an edit to app.json's
+# native config all need a full build through mobile-ios-eas.yml. The
+# `fingerprint` runtimeVersion policy in apps/mobile/app.json enforces this —
+# it hashes the native inputs, and an update installs only on a binary whose
+# hash matches, so a native change simply reaches no installed build.
+#
+# Manual only. An update reaches every tester on the channel within minutes
+# and there is no review between this job and their phones, so a bad update
+# is worse than a bad nightly. Publish deliberately.
+name: Mobile update (EAS Update)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: EAS Update branch. The `production` channel that TestFlight builds carry points at the branch of the same name.
+        required: true
+        type: choice
+        default: production
+        options:
+          - production
+          - preview
+      message:
+        description: Update message shown on expo.dev. Empty uses the commit subject.
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    name: Publish an update to ${{ inputs.branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Two concurrent publishes to one branch would race on which update ends
+    # up newest; the loser silently never ships.
+    concurrency:
+      group: mobile-update-${{ inputs.branch }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Require the EAS token
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${EXPO_TOKEN:-}" ]]; then
+            echo "::error::EAS Update needs the EXPO_TOKEN secret."
+            exit 1
+          fi
+
+      # The fingerprint decides which builds this update can reach, so print it
+      # next to the fingerprints of the recent builds. A mismatch means the
+      # update reaches nobody, and that is invisible in the publish output.
+      - name: Report the runtime fingerprint
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          fingerprint=$(pnpm exec expo-updates fingerprint:generate --platform ios | node -e '
+            let raw = "";
+            process.stdin.on("data", (chunk) => (raw += chunk));
+            process.stdin.on("end", () => {
+              console.log(JSON.parse(raw.slice(raw.indexOf("{"))).hash);
+            });
+          ')
+          {
+            echo "## Runtime fingerprint"
+            echo
+            echo "This update installs only on iOS builds with fingerprint \`${fingerprint}\`."
+            echo
+            echo "Recent builds:"
+            echo
+            echo '```'
+            pnpm exec eas build:list --platform ios --limit 5 --non-interactive \
+              | grep -E 'Build number|Fingerprint|Version' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the update
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          UPDATE_BRANCH: ${{ inputs.branch }}
+          UPDATE_MESSAGE: ${{ inputs.message }}
+        run: |
+          set -euo pipefail
+          message="${UPDATE_MESSAGE:-}"
+          if [[ -z "$message" ]]; then
+            message=$(git log -1 --pretty=%s)
+          fi
+          pnpm exec eas update \
+            --branch "$UPDATE_BRANCH" \
+            --platform ios \
+            --message "$message" \
+            --non-interactive | tee eas-update.log
+          {
+            echo
+            echo "## EAS Update"
+            echo
+            grep -Eo 'https://expo\.dev/[^ ]+' eas-update.log | sed 's/^/- /' || true
+          } >> "$GITHUB_STEP_SUMMARY"

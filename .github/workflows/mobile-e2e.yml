@@ -161,7 +161,7 @@ jobs:
       - name: Compute native cache key
         id: native-key
         run: |
-          echo "key=${{ runner.os }}-mobile-native-${{ hashFiles('pnpm-lock.yaml', 'apps/mobile/app.json', 'apps/mobile/package.json', 'patches/**') }}" >> "$GITHUB_OUTPUT"
+          echo "key=${{ runner.os }}-mobile-native-${{ hashFiles('pnpm-lock.yaml', 'apps/mobile/app.json', 'apps/mobile/app.config.js', 'apps/mobile/package.json', 'patches/**') }}" >> "$GITHUB_OUTPUT"
       - name: Restore CocoaPods
         id: pods-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -178,11 +178,17 @@ jobs:
           path: ~/Library/Developer/Xcode/DerivedData/bb-*/Build
           key: ${{ steps.native-key.outputs.key }}-deriveddata
 
+      # BB_DISABLE_UPDATES: apps/mobile/app.config.js then sets
+      # `updates.enabled: false`, so prebuild writes EXUpdatesEnabled=false
+      # into Expo.plist. Without it a Release binary asks the production
+      # channel for a new bundle at launch and can replace the embedded E2E
+      # bundle in the middle of a flow.
       - name: Prebuild and install pods
         working-directory: apps/mobile
         env:
           LANG: en_US.UTF-8
           CI: "1"
+          BB_DISABLE_UPDATES: "1"
         run: |
           set -x
           npx expo prebuild --platform ios --no-install
@@ -210,6 +216,8 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
           EXPO_PUBLIC_BB_E2E: "1"
           EXPO_PUBLIC_BB_SERVER_URL: http://127.0.0.1:${{ env.BB_MOBILE_E2E_PORT }}
+          # `expo run:ios` evaluates the app config again; keep it in step.
+          BB_DISABLE_UPDATES: "1"
         run: |
           set -x
           rm -rf build-output

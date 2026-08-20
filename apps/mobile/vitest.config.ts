@@ -13,7 +13,7 @@ export default defineWorkspaceTestConfig({
   test: {
     silent: "passed-only",
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "app.config.test.ts"],
     passWithNoTests: true,
     testTimeout: 15_000,
   },
