@@ -15,6 +15,10 @@ import {
   captureBridgeJsonRpcOutput,
   type CapturedBridgeJsonRpcOutput,
 } from "@bb/provider-bridge-protocol/testing";
+import {
+  createBridgeDeltaEventCollector,
+  toConformanceMessages,
+} from "@bb/agent-runtime/test/bridge-delta-assembly";
 
 /**
  * The claude-code bridge's conformance run: drives the bridge through the
@@ -227,12 +231,19 @@ afterEach(async () => {
 
 it("passes the canonical protocol suite against the scripted claude session", async () => {
   let drained = 0;
+  // The conformance kit's grammar checks run over canonical ThreadEvents;
+  // the claude bridge emits thread/delta. Run deltas through a real assembler
+  // (the runtime adapter's exact translation, held stateful across the whole
+  // run) and hand the kit its assembled-event notifications.
+  const collector = createBridgeDeltaEventCollector("claude-code");
   const transport: BridgeConformanceTransport = {
     send: (line) => handleLine(line),
     takeMessages: () => {
       const fresh = output.messages.slice(drained);
       drained = output.messages.length;
-      return fresh;
+      return fresh.flatMap((message) =>
+        toConformanceMessages(message, collector),
+      );
     },
   };
 

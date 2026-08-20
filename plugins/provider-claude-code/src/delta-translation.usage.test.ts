@@ -1,67 +1,33 @@
-import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { turnScope } from "@bb/domain";
-import { createClaudeEventTranslator } from "./event-translation.js";
+import {
+  TURN_1,
+  createClaudeDeltaHarness,
+  loadFixture,
+} from "./delta-test-harness.js";
 
 /**
  * Token usage, context-window usage, and fixture-driven translation on the
- * bridge-shared translator.
+ * delta path — the claude event-translation usage shard, ported through
+ * deltas and a real assembler. Cumulative token accumulation moved to the
+ * assembler; per-segment usage rides the `usage.turn` delta, so the running
+ * totals asserted here now come out of central accumulation.
  *
- * These invariants used to live only in claude-code/adapter.test.ts, which was
- * deleted when the legacy adapter graduated. The behaviour they pin belongs to
- * claude-code/event-translation.ts and claude-code/sdk-extraction.ts — modules
- * the canonical bridge shares with the legacy adapter — which is why the
- * invariants outlive the suite they were written in. They are exercised here
- * through the translator directly, the way the bridge constructs it.
- *
- * The fixture cases additionally keep src/__fixtures__/*.json
- * reachable; without them those fixtures would be orphaned.
+ * The fixture cases additionally keep src/__fixtures__/*.json reachable;
+ * without them those fixtures would be orphaned.
  */
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const FIXTURES = resolve(__dirname, "./__fixtures__");
-
-function isFixtureObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function loadFixture(name: string): Record<string, unknown> {
-  const parsed: unknown = JSON.parse(
-    readFileSync(resolve(FIXTURES, name), "utf8"),
-  );
-  if (!isFixtureObject(parsed)) {
-    throw new Error(`Fixture ${name} did not contain an object`);
-  }
-  return parsed;
-}
-
-function createTranslator() {
-  return createClaudeEventTranslator({
-    providerId: "claude-code",
-    // The canonical bridge injects per-session entropy here (#1224); these
-    // fixed prefixes reproduce the legacy id scheme so the moved assertions
-    // stay readable.
-    turnIdPrefix: "turn-",
-    itemIdPrefix: "claude-",
-    synthesizeItemStarted: true,
-  });
-}
-
-describe("claude usage and fixture translation (bridge-shared translator)", () => {
-  // -- translateClaudeEvent: real SDK fixtures ------------------------------
+describe("claude usage and fixture translation (delta path)", () => {
+  // -- translate: real SDK fixtures ------------------------------------------
 
   it("fixture: assistant-text produces turn/started + item/completed agentMessage", () => {
-    const translator = createTranslator();
-    const events = translator.translateClaudeEvent(
-      loadFixture("assistant-text.json"),
-    );
+    const harness = createClaudeDeltaHarness();
+    const events = harness.translate(loadFixture("assistant-text.json"));
 
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
       }),
     );
     expect(events).toContainEqual(
@@ -76,10 +42,8 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
   });
 
   it("fixture: assistant-tool-use produces agentMessage + commandExecution item", () => {
-    const translator = createTranslator();
-    const events = translator.translateClaudeEvent(
-      loadFixture("assistant-tool-use.json"),
-    );
+    const harness = createClaudeDeltaHarness();
+    const events = harness.translate(loadFixture("assistant-tool-use.json"));
 
     // Should have turn/started, item/completed (text), item/started (tool)
     expect(events).toContainEqual(
@@ -96,7 +60,7 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
         type: "item/started",
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "toolu_01AbCdEfGhIjKlMnOpQrStUv",
+          id: harness.itemId("toolu_01AbCdEfGhIjKlMnOpQrStUv"),
           command: "ls -la src/",
           status: "pending",
         }),
@@ -105,10 +69,8 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
   });
 
   it("fixture: assistant-file-edit produces fileChange item", () => {
-    const translator = createTranslator();
-    const events = translator.translateClaudeEvent(
-      loadFixture("assistant-file-edit.json"),
-    );
+    const harness = createClaudeDeltaHarness();
+    const events = harness.translate(loadFixture("assistant-file-edit.json"));
 
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -128,13 +90,11 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
   });
 
   it("fixture: stream-text-delta produces agentMessage delta", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
     // Start a turn first
-    translator.translateClaudeEvent(loadFixture("assistant-text.json"));
+    harness.translate(loadFixture("assistant-text.json"));
 
-    const events = translator.translateClaudeEvent(
-      loadFixture("stream-text-delta.json"),
-    );
+    const events = harness.translate(loadFixture("stream-text-delta.json"));
 
     // The canonical grammar opens a delta-first assistant item with a
     // synthetic item/started before its first delta.
@@ -153,13 +113,11 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
   });
 
   it("fixture: user-tool-result produces commandExecution completed", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
     // Start a turn first
-    translator.translateClaudeEvent(loadFixture("assistant-text.json"));
+    harness.translate(loadFixture("assistant-text.json"));
 
-    const events = translator.translateClaudeEvent(
-      loadFixture("user-tool-result.json"),
-    );
+    const events = harness.translate(loadFixture("user-tool-result.json"));
 
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -173,11 +131,11 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
   });
 
   it("fixture: user-tool-result-generic produces toolCall completed", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
     // Start a turn first
-    translator.translateClaudeEvent(loadFixture("assistant-text.json"));
+    harness.translate(loadFixture("assistant-text.json"));
 
-    const events = translator.translateClaudeEvent(
+    const events = harness.translate(
       loadFixture("user-tool-result-generic.json"),
     );
 
@@ -195,13 +153,11 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
   // -- usage and context window ---------------------------------------------
 
   it("fixture: result-success produces request context usage, token usage, and turn/completed", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
     // Start a turn first
-    translator.translateClaudeEvent(loadFixture("assistant-text.json"));
+    harness.translate(loadFixture("assistant-text.json"));
 
-    const events = translator.translateClaudeEvent(
-      loadFixture("result-success.json"),
-    );
+    const events = harness.translate(loadFixture("result-success.json"));
 
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -228,16 +184,16 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         status: "completed",
       }),
     );
   });
 
   it("uses the latest Claude request context for context-window usage while keeping aggregate token usage", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         type: "message",
@@ -251,7 +207,7 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
         },
       },
     });
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         type: "message",
@@ -266,7 +222,7 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
       },
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "result",
       subtype: "success",
       duration_ms: 1,
@@ -316,15 +272,15 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
   });
 
   it("clears the latest Claude request context when a non-assistant event starts the next turn", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent(loadFixture("assistant-text.json"), {
+    harness.translate(loadFixture("assistant-text.json"), {
       threadId: "bb-thread-1",
     });
-    translator.translateClaudeEvent(loadFixture("result-success.json"), {
+    harness.translate(loadFixture("result-success.json"), {
       threadId: "bb-thread-1",
     });
-    translator.translateClaudeEvent(
+    harness.translate(
       {
         type: "system",
         subtype: "status",
@@ -336,7 +292,7 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
       },
     );
 
-    const events = translator.translateClaudeEvent(
+    const events = harness.translate(
       {
         type: "result",
         subtype: "success",
@@ -373,15 +329,15 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
   });
 
   it("fixture: result-success accumulates Claude token usage across turns", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent(loadFixture("assistant-text.json"));
-    const firstTurnEvents = translator.translateClaudeEvent(
+    harness.translate(loadFixture("assistant-text.json"));
+    const firstTurnEvents = harness.translate(
       loadFixture("result-success.json"),
     );
 
-    translator.translateClaudeEvent(loadFixture("assistant-text.json"));
-    const secondTurnEvents = translator.translateClaudeEvent(
+    harness.translate(loadFixture("assistant-text.json"));
+    const secondTurnEvents = harness.translate(
       loadFixture("result-success.json"),
     );
 
@@ -420,25 +376,23 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
   });
 
   // The four cases below pin the translator's use of sdk-extraction.ts's
-  // resolveClaudeModelContextWindowHint. The legacy adapter seeded the hint as
-  // a side effect of buildCommandPlan; the canonical bridge calls
+  // resolveClaudeModelContextWindowHint. The canonical bridge calls
   // setClaudeModelContextWindowHint from session construction and from the
-  // live model change, which is what these use. That the bridge really calls
-  // it is pinned separately in bridge/__tests__/bridge.test.ts — nothing did
-  // when the adapter was deleted, and capacity read as unknown.
+  // live model change; that the bridge really calls it is pinned separately
+  // in bridge/__tests__/bridge.test.ts.
 
   it("falls back to a model-based context window when Claude omits modelUsage.contextWindow", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.setClaudeModelContextWindowHint(
+    harness.translator.setClaudeModelContextWindowHint(
       "bb-thread-1",
       "claude-opus-4-7[1m]",
     );
-    translator.translateClaudeEvent(loadFixture("assistant-text.json"), {
+    harness.translate(loadFixture("assistant-text.json"), {
       threadId: "bb-thread-1",
     });
 
-    const events = translator.translateClaudeEvent(
+    const events = harness.translate(
       {
         type: "result",
         subtype: "success",
@@ -475,13 +429,13 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
   });
 
   it("keeps Claude context-window capacity unknown when no model hint exists", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent(loadFixture("assistant-text.json"), {
+    harness.translate(loadFixture("assistant-text.json"), {
       threadId: "bb-thread-unknown",
     });
 
-    const events = translator.translateClaudeEvent(
+    const events = harness.translate(
       {
         type: "result",
         subtype: "success",
@@ -518,14 +472,17 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
   });
 
   it("keeps Claude context-window capacity unknown for the ambiguous default model alias", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.setClaudeModelContextWindowHint("bb-thread-default", "default");
-    translator.translateClaudeEvent(loadFixture("assistant-text.json"), {
+    harness.translator.setClaudeModelContextWindowHint(
+      "bb-thread-default",
+      "default",
+    );
+    harness.translate(loadFixture("assistant-text.json"), {
       threadId: "bb-thread-default",
     });
 
-    const events = translator.translateClaudeEvent(
+    const events = harness.translate(
       {
         type: "result",
         subtype: "success",
@@ -562,20 +519,20 @@ describe("claude usage and fixture translation (bridge-shared translator)", () =
   });
 
   it("reuses the last known Claude context window when a later result omits modelUsage.contextWindow", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent(loadFixture("assistant-text.json"), {
+    harness.translate(loadFixture("assistant-text.json"), {
       threadId: "bb-thread-1",
     });
-    translator.translateClaudeEvent(loadFixture("result-success.json"), {
-      threadId: "bb-thread-1",
-    });
-
-    translator.translateClaudeEvent(loadFixture("assistant-text.json"), {
+    harness.translate(loadFixture("result-success.json"), {
       threadId: "bb-thread-1",
     });
 
-    const events = translator.translateClaudeEvent(
+    harness.translate(loadFixture("assistant-text.json"), {
+      threadId: "bb-thread-1",
+    });
+
+    const events = harness.translate(
       {
         type: "result",
         subtype: "success",

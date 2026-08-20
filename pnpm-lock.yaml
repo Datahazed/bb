@@ -1073,6 +1073,9 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
     devDependencies:
+      '@bb/agent-runtime':
+        specifier: workspace:*
+        version: link:../../../packages/agent-runtime
       '@bb/domain':
         specifier: workspace:*
         version: link:../../../packages/domain
@@ -2941,6 +2944,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -2981,6 +2987,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -3009,6 +3018,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@bb/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain

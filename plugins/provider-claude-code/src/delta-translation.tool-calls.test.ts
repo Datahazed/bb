@@ -1,39 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { createClaudeEventTranslator } from "./event-translation.js";
+import { ITEM_ID_PATTERN, createClaudeDeltaHarness } from "./delta-test-harness.js";
 
 /**
- * Tool-use and tool-result translation on the bridge-shared translator.
+ * Tool-use and tool-result translation on the delta path — the claude
+ * event-translation tool-call shard, ported fixture-for-fixture through
+ * deltas and a real assembler. Item ids are assembler-minted: asserted via
+ * the provider↔bb map (`harness.itemId`) instead of the old raw call ids.
  *
- * These invariants were pinned only by claude-code/adapter.test.ts, which was
- * deleted when the legacy adapter graduated. They outlive that suite because
- * they belong to event-translation.ts, the module the canonical Provider
- * Bridge Protocol surface shares with the legacy adapter — so they are
- * exercised here through the canonical construction the bridge uses.
- *
- * They live in this shard rather than in event-translation.test.ts purely for
- * volume: tool-call and tool-result mapping is the largest single group moved
- * off the adapter suite, and keeping it separate stops the base file from
- * becoming a grab bag.
+ * This shard stays separate from delta-translation.test.ts purely for
+ * volume, exactly as before.
  */
 
-// Mirrors createCanonicalSessionTranslator in claude-code/bridge/bridge.ts.
-function createTranslator() {
-  return createClaudeEventTranslator({
-    providerId: "claude-code",
-    // The canonical bridge injects per-session entropy here (#1224); these
-    // fixed prefixes reproduce the legacy id scheme so the moved assertions
-    // stay readable.
-    turnIdPrefix: "turn-",
-    itemIdPrefix: "claude-",
-    synthesizeItemStarted: true,
-  });
-}
-
-describe("claude tool-use translation (bridge-shared translator)", () => {
+describe("claude tool-use translation (delta path)", () => {
   it("emits item/started for tool use blocks", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
     // First send an assistant message to start a turn
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -42,7 +24,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -63,16 +45,17 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/started",
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "tool-1",
+          id: harness.itemId("tool-1"),
           status: "pending",
         }),
       }),
     );
+    expect(harness.itemId("tool-1")).toMatch(ITEM_ID_PATTERN);
   });
 
   it("falls back to a generic tool call when Bash args are malformed", () => {
-    const translator = createTranslator();
-    translator.translateClaudeEvent({
+    const harness = createClaudeDeltaHarness();
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -81,7 +64,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -102,7 +85,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/started",
         item: expect.objectContaining({
           type: "toolCall",
-          id: "tool-1",
+          id: harness.itemId("tool-1"),
           tool: "Bash",
           status: "pending",
         }),
@@ -111,9 +94,9 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
   });
 
   it("maps WebSearch and WebFetch tool uses into web items", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -140,7 +123,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/started",
         item: expect.objectContaining({
           type: "webSearch",
-          id: "tool-search-1",
+          id: harness.itemId("tool-search-1"),
           queries: ["react suspense"],
           resultText: null,
         }),
@@ -151,7 +134,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/started",
         item: expect.objectContaining({
           type: "webFetch",
-          id: "tool-fetch-1",
+          id: harness.itemId("tool-fetch-1"),
           url: "https://example.com",
           prompt: null,
           pattern: null,
@@ -162,9 +145,9 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
   });
 
   it("preserves completed WebSearch result text", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -180,7 +163,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -201,7 +184,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "webSearch",
-          id: "tool-search-1",
+          id: harness.itemId("tool-search-1"),
           queries: ["react suspense"],
           resultText: "Found the Suspense docs",
         }),
@@ -210,9 +193,9 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
   });
 
   it("preserves completed WebFetch result text and prompt", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -231,7 +214,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -252,7 +235,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "webFetch",
-          id: "tool-fetch-1",
+          id: harness.itemId("tool-fetch-1"),
           url: "https://example.com",
           prompt: "page title",
           pattern: null,
@@ -263,9 +246,9 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
   });
 
   it("emits fileChange items with diffs for Edit tool uses", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -274,7 +257,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -299,7 +282,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/started",
         item: expect.objectContaining({
           type: "fileChange",
-          id: "tool-edit-1",
+          id: harness.itemId("tool-edit-1"),
           status: "pending",
           changes: [
             expect.objectContaining({
@@ -313,9 +296,9 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
   });
 
   it("marks content-only Write tool uses as add changes", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -342,7 +325,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
     );
     expect(started?.item).toMatchObject({
       type: "fileChange",
-      id: "tool-write-1",
+      id: harness.itemId("tool-write-1"),
       status: "pending",
       changes: [
         {
@@ -356,9 +339,9 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
   });
 
   it("preserves structured Agent arguments on tool calls", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -367,7 +350,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -392,7 +375,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/started",
         item: expect.objectContaining({
           type: "toolCall",
-          id: "tool-agent-1",
+          id: harness.itemId("tool-agent-1"),
           tool: "Agent",
           status: "pending",
           arguments: expect.objectContaining({
@@ -406,9 +389,9 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
   });
 
   it("preserves structured Read, Grep, and Glob arguments on tool calls", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -417,7 +400,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -450,7 +433,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/started",
         item: expect.objectContaining({
           type: "toolCall",
-          id: "tool-read-1",
+          id: harness.itemId("tool-read-1"),
           tool: "Read",
           arguments: expect.objectContaining({
             file_path: "src/index.ts",
@@ -463,7 +446,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/started",
         item: expect.objectContaining({
           type: "toolCall",
-          id: "tool-grep-1",
+          id: harness.itemId("tool-grep-1"),
           tool: "Grep",
           arguments: expect.objectContaining({
             pattern: "TODO",
@@ -477,7 +460,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/started",
         item: expect.objectContaining({
           type: "toolCall",
-          id: "tool-glob-1",
+          id: harness.itemId("tool-glob-1"),
           tool: "Glob",
           arguments: expect.objectContaining({
             pattern: "**/*.ts",
@@ -489,9 +472,9 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
   });
 
   it("falls back to generic tool calls for malformed structured args", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -500,7 +483,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -521,7 +504,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/started",
         item: expect.objectContaining({
           type: "toolCall",
-          id: "tool-read-bad-1",
+          id: harness.itemId("tool-read-bad-1"),
           tool: "Read",
           status: "pending",
         }),
@@ -531,7 +514,7 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
       expect.objectContaining({
         type: "item/started",
         item: expect.objectContaining({
-          id: "tool-read-bad-1",
+          id: harness.itemId("tool-read-bad-1"),
           arguments: expect.anything(),
         }),
       }),
@@ -539,9 +522,9 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
   });
 
   it("preserves parent_tool_use_id on nested sdk/message events", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -569,25 +552,28 @@ describe("claude tool-use translation (bridge-shared translator)", () => {
         type: "item/started",
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "tool-1",
-          parentToolCallId: "agent-parent-1",
+          id: harness.itemId("tool-1"),
+          // Child-first parent: the assembler mints the parent's bb id on
+          // first reference instead of leaking the raw provider id.
+          parentToolCallId: harness.itemId("agent-parent-1"),
         }),
       }),
     );
+    expect(harness.itemId("agent-parent-1")).not.toBe("agent-parent-1");
   });
 });
 
-describe("claude tool-result translation (bridge-shared translator)", () => {
+describe("claude tool-result translation (delta path)", () => {
   it("emits item/completed for user tool results", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
     // Start a turn
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: { role: "assistant", content: [{ type: "text", text: "x" }] },
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -608,7 +594,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "tool-1",
+          id: harness.itemId("tool-1"),
           status: "completed",
         }),
       }),
@@ -616,9 +602,9 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("preserves structured TaskCreate tool results", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -638,7 +624,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -664,7 +650,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "toolCall",
-          id: "task-create-1",
+          id: harness.itemId("task-create-1"),
           tool: "TaskCreate",
           result: {
             task: {
@@ -679,9 +665,9 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("preserves structured TaskUpdate tool results", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -700,7 +686,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -725,7 +711,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "toolCall",
-          id: "task-update-1",
+          id: harness.itemId("task-update-1"),
           tool: "TaskUpdate",
           result: {
             success: true,
@@ -739,9 +725,9 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("preserves structured TaskList tool results", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -757,7 +743,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -787,7 +773,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "toolCall",
-          id: "task-list-1",
+          id: harness.itemId("task-list-1"),
           tool: "TaskList",
           result: {
             tasks: [
@@ -806,9 +792,9 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("preserves structured TaskGet tool results", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -826,7 +812,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -856,7 +842,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "toolCall",
-          id: "task-get-1",
+          id: harness.itemId("task-get-1"),
           tool: "TaskGet",
           result: {
             task: {
@@ -875,15 +861,15 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("preserves structured Task results without a matching started item", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: { role: "assistant", content: [{ type: "text", text: "x" }] },
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -908,7 +894,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "toolCall",
-          id: "task-update-late",
+          id: harness.itemId("task-update-late"),
           tool: "TaskUpdate",
           result: {
             success: true,
@@ -922,9 +908,9 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("marks Bash tool results with is_error as failed", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -940,7 +926,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -962,7 +948,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "tool-1",
+          id: harness.itemId("tool-1"),
           command: "npm test",
           cwd: "/repo",
           aggregatedOutput: "command failed",
@@ -974,9 +960,9 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("prefers Claude stdout/stderr over placeholder Bash content", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -992,7 +978,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -1017,7 +1003,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "tool-1",
+          id: harness.itemId("tool-1"),
           command: "printf hi",
           cwd: "/repo",
           aggregatedOutput: "hi\n",
@@ -1028,9 +1014,9 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("strips Claude no-output placeholders when stdout/stderr are empty", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -1046,7 +1032,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -1077,7 +1063,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
 
     expect(completedEvent?.item).toMatchObject({
       type: "commandExecution",
-      id: "tool-1",
+      id: harness.itemId("tool-1"),
       command: "true",
       cwd: "/repo",
       status: "completed",
@@ -1090,9 +1076,9 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("inserts a newline between Claude stdout and stderr", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -1108,7 +1094,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -1133,7 +1119,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "tool-1",
+          id: harness.itemId("tool-1"),
           aggregatedOutput: "hi\nwarn\n",
           status: "completed",
         }),
@@ -1142,9 +1128,9 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("falls back to Claude content when tool_use_result streams are empty", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -1160,7 +1146,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -1182,7 +1168,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "tool-1",
+          id: harness.itemId("tool-1"),
           command: "cat output.txt",
           cwd: "/repo",
           aggregatedOutput: "file output\n",
@@ -1193,9 +1179,9 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("preserves string tool_use_result errors for Bash completions", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -1211,7 +1197,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -1235,7 +1221,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "tool-1",
+          id: harness.itemId("tool-1"),
           command: "grep '(' file.txt",
           cwd: "/repo",
           aggregatedOutput:
@@ -1248,9 +1234,9 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("recovers missing tool names from prior tool uses", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -1266,7 +1252,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       session_id: "sess-1",
     });
 
-    const events = translator.translateClaudeEvent({
+    const events = harness.translate({
       type: "user",
       message: {
         role: "user",
@@ -1286,7 +1272,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "fileChange",
-          id: "tool-1",
+          id: harness.itemId("tool-1"),
           status: "completed",
         }),
       }),
@@ -1294,9 +1280,9 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
   });
 
   it("surfaces late tool results without turn context as unhandled", () => {
-    const translator = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent(
+    harness.translate(
       {
         type: "assistant",
         message: {
@@ -1315,7 +1301,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       { threadId: "thread-1" },
     );
 
-    translator.translateClaudeEvent(
+    harness.translate(
       {
         type: "result",
         subtype: "end_turn",
@@ -1324,7 +1310,7 @@ describe("claude tool-result translation (bridge-shared translator)", () => {
       { threadId: "thread-1" },
     );
 
-    const events = translator.translateClaudeEvent(
+    const events = harness.translate(
       {
         type: "user",
         message: {

@@ -133,7 +133,9 @@ import {
 import {
   createStandaloneBuiltinCompactCommandInput,
   type JsonValue,
+  type ThreadEvent,
 } from "@bb/domain";
+import { assembleCapturedThreadEvents } from "../../../test/bridge-delta-assembly.js";
 
 const originalPiBridgeSessionDir = process.env[PI_BRIDGE_SESSION_DIR_ENV];
 
@@ -199,13 +201,15 @@ function turnSteerParams(
   return { ...turnStartParams(threadId, input), expectedTurnId };
 }
 
-/** The thread events a canonical session emitted, in order. */
+/**
+ * The thread events a canonical session emitted, in order. Pi emits
+ * `thread/delta` notifications; assembling the full capture through a fresh
+ * delta assembler reproduces exactly what the runtime adapter would emit.
+ */
 function threadEvents(
   messages: readonly BridgeJsonRpcOutputMessage[],
-): JsonValue[] {
-  return messages
-    .filter((message) => message.method === "thread/event")
-    .map((message) => (message.params as { event: JsonValue }).event);
+): ThreadEvent[] {
+  return assembleCapturedThreadEvents(messages);
 }
 
 interface ControlledPiAgentSession {
@@ -654,6 +658,17 @@ describe("pi bridge", () => {
           },
         }),
       );
+      // Resume is a session construction: the assembler must drop the
+      // thread's prior id space before any of the new session's deltas.
+      expect(bridge.messages).toContainEqual(
+        expect.objectContaining({
+          method: "thread/delta",
+          params: {
+            threadId: resumedThreadId,
+            deltas: [{ kind: "session.reset" }],
+          },
+        }),
+      );
 
       bridge.sendRequest(63, "thread/discard", {
         providerThreadId,
@@ -669,6 +684,45 @@ describe("pi bridge", () => {
     } finally {
       bridge.restore();
       rmSync(sessionDir, { recursive: true, force: true });
+    }
+  });
+
+  it("emits session.reset right after identity on thread/start", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    mockCreateAgentSession.mockResolvedValue({
+      session: createControlledPiAgentSession(),
+    });
+
+    try {
+      bridge.sendRequest(
+        66,
+        "thread/start",
+        sessionParams({ threadId: "thread-reset-start" }),
+      );
+      await bridge.waitForResponse(66);
+
+      const identityIndex = bridge.messages.findIndex(
+        (message) => message.method === "thread/identity",
+      );
+      const resetIndex = bridge.messages.findIndex(
+        (message) =>
+          message.method === "thread/delta" &&
+          JSON.stringify(message.params) ===
+            JSON.stringify({
+              threadId: "thread-reset-start",
+              deltas: [{ kind: "session.reset" }],
+            }),
+      );
+      // Identity precedes every thread/delta for the session, and the reset
+      // precedes any of the new session's other deltas (it is the first).
+      expect(identityIndex).toBeGreaterThanOrEqual(0);
+      expect(resetIndex).toBeGreaterThan(identityIndex);
+      const firstDeltaIndex = bridge.messages.findIndex(
+        (message) => message.method === "thread/delta",
+      );
+      expect(firstDeltaIndex).toBe(resetIndex);
+    } finally {
+      bridge.restore();
     }
   });
 
@@ -804,6 +858,17 @@ describe("pi bridge", () => {
             threadId: targetThreadId,
             providerThreadId: targetThreadId,
             sessionRestorable: true,
+          },
+        }),
+      );
+      // Fork is a session construction: the new session's id space must not
+      // inherit assembly state from any prior session on the thread.
+      expect(bridge.messages).toContainEqual(
+        expect.objectContaining({
+          method: "thread/delta",
+          params: {
+            threadId: targetThreadId,
+            deltas: [{ kind: "session.reset" }],
           },
         }),
       );

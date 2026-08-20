@@ -12,6 +12,10 @@ import {
   captureBridgeJsonRpcOutput,
   type CapturedBridgeJsonRpcOutput,
 } from "@bb/provider-bridge-protocol/testing";
+import {
+  createBridgeDeltaEventCollector,
+  toConformanceMessages,
+} from "@bb/agent-runtime/test/bridge-delta-assembly";
 import { handleLine } from "./bridge.js";
 
 /**
@@ -24,9 +28,9 @@ import { handleLine } from "./bridge.js";
  *
  * The scripted app-server answers every turn delta-first (an
  * `item/agentMessage/delta` before any `item/started` for that item), so the
- * bridge's item-opening synthesis, bridge-minted id stamping, and
- * cross-resume id uniqueness (fresh entropy-prefixed session serial per
- * construction) are what the kit verifies.
+ * assembler's item-opening synthesis, central id minting, and cross-resume id
+ * uniqueness (the bridge's `session.reset` starts a fresh provider id space
+ * per construction) are what the kit verifies.
  *
  * `turn/settles-without-activity` covers the shape codex's native lifecycle
  * does not settle on its own: a prompt the app-server accepts and finishes
@@ -85,12 +89,19 @@ afterEach(async () => {
 
 it("passes the canonical protocol suite against supervised fake app-server children", async () => {
   let drained = 0;
+  // The conformance kit's grammar checks run over canonical ThreadEvents;
+  // the codex bridge emits thread/delta. Run deltas through a real assembler
+  // (the runtime adapter's exact translation, held stateful across the whole
+  // run) and hand the kit its assembled-event notifications.
+  const collector = createBridgeDeltaEventCollector("codex");
   const transport: BridgeConformanceTransport = {
     send: (line) => handleLine(line),
     takeMessages: () => {
       const fresh = output.messages.slice(drained);
       drained = output.messages.length;
-      return fresh;
+      return fresh.flatMap((message) =>
+        toConformanceMessages(message, collector),
+      );
     },
   };
 

@@ -12,11 +12,13 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
+import { PROVIDER_BRIDGE_PROTOCOL_VERSION } from "@bb/provider-bridge-protocol";
 import {
   captureBridgeJsonRpcOutput,
   type BridgeJsonRpcOutputMessage,
   type CapturedBridgeJsonRpcOutput,
 } from "@bb/provider-bridge-protocol/testing";
+import { assembleCapturedThreadEvents } from "@bb/agent-runtime/test/bridge-delta-assembly";
 import { handleLine } from "./bridge.js";
 import { ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE } from "../bridge-protocol.js";
 import { ACP_BRIDGE_MCP_SERVER_NAME } from "./tool-proxy-mcp.js";
@@ -87,25 +89,15 @@ function notifications(method: string): BridgeJsonRpcOutputMessage[] {
 }
 
 /**
- * The canonical thread events the bridge emitted, oldest first. The `acp/*`
- * envelopes the bridge builds internally never reach the wire, so every
- * session-scoped assertion reads the translated events.
+ * The canonical thread events the bridge's output assembles to, oldest first.
+ * The bridge emits `thread/delta` notifications; every session-scoped
+ * assertion runs the full capture through a real runtime delta assembler
+ * (the exact translation the bridge-protocol adapter performs). A fresh
+ * assembler per call over the full ordered capture keeps ids deterministic.
  */
 function threadEvents(): Record<string, unknown>[] {
-  return notifications("thread/event").flatMap((message) => {
-    const params = message.params;
-    if (
-      typeof params !== "object" ||
-      params === null ||
-      Array.isArray(params)
-    ) {
-      return [];
-    }
-    const event = params.event;
-    return typeof event === "object" && event !== null && !Array.isArray(event)
-      ? [event as Record<string, unknown>]
-      : [];
-  });
+  return assembleCapturedThreadEvents(output.messages, "acp") as unknown as
+    Record<string, unknown>[];
 }
 
 function threadEventsOfType(type: string): Record<string, unknown>[] {
@@ -480,11 +472,11 @@ afterEach(async () => {
 describe("acp bridge", () => {
   it("answers initialize and lists grouped models without spawning an agent", async () => {
     const initializeId = sendRequest("initialize", {
-      protocolVersion: 1,
+      protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
       client: { name: "bb", version: "1.0.0" },
     });
     expect((await waitForResponse(initializeId)).result).toMatchObject({
-      protocolVersion: 1,
+      protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
       capabilities: { fork: "tip", approvalEnforcedBy: "runtime" },
     });
 
@@ -1536,12 +1528,14 @@ describe("acp bridge", () => {
         ),
       "forwarded permission request",
     );
-    // The canonical interaction carries the approval payload, scoped to the
-    // turn the permission interrupted.
+    // The canonical interaction carries the approval payload; the turn id is
+    // runtime-stamped under the narrow grammar, so the bridge sends the
+    // wire contract's unresolved marker (null) and the runtime attaches its
+    // active turn for the thread.
     expect(forwarded.params).toMatchObject({
       threadId: bbThreadId,
       providerThreadId,
-      turnId: expect.any(String),
+      turnId: null,
       payload: {
         kind: "approval",
         subject: expect.objectContaining({ command: "rm -rf /tmp/scratch" }),
@@ -2121,6 +2115,100 @@ describe("acp bridge", () => {
     });
     expect(threadEventsOfType("provider/warning")).toHaveLength(0);
     startedProviderThreadIds.push(first.providerThreadId);
+  });
+
+  it("emits session.reset after identity at every construction (start, resume, fork)", async () => {
+    // Without the reset, the shared assembler would keep settled item keys and
+    // usage totals across a session replacement on the same thread.
+    const resetIndexesFor = (threadId: string): number[] =>
+      output.messages.flatMap((message, index) => {
+        if (message.method !== "thread/delta") {
+          return [];
+        }
+        const params = message.params as {
+          threadId?: unknown;
+          deltas?: unknown;
+        };
+        return params.threadId === threadId &&
+          Array.isArray(params.deltas) &&
+          params.deltas.some(
+            (delta) =>
+              (delta as { kind?: unknown }).kind === "session.reset",
+          )
+          ? [index]
+          : [];
+      });
+    const identityIndexesFor = (threadId: string): number[] =>
+      output.messages.flatMap((message, index) =>
+        message.method === "thread/identity" &&
+        (message.params as { threadId?: unknown }).threadId === threadId
+          ? [index]
+          : [],
+      );
+
+    const first = await startThread({
+      envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+    });
+    expect(resetIndexesFor(first.bbThreadId)).toHaveLength(1);
+
+    await stopThread(first.providerThreadId);
+    startedProviderThreadIds.pop();
+    const resumeId = sendRequest("thread/resume", {
+      threadId: first.bbThreadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_LOAD_SESSION: "1" },
+          }),
+        },
+      }),
+      providerThreadId: first.providerThreadId,
+    });
+    const resumeResponse = await waitForResponse(resumeId);
+    expect(resumeResponse.error).toBeUndefined();
+    startedProviderThreadIds.push(first.providerThreadId);
+    // One reset per construction, each after its own identity announcement.
+    const resets = resetIndexesFor(first.bbThreadId);
+    const identities = identityIndexesFor(first.bbThreadId);
+    expect(resets).toHaveLength(2);
+    expect(identities).toHaveLength(2);
+    expect(resets[0]).toBeGreaterThan(identities[0] ?? Infinity);
+    expect(resets[1]).toBeGreaterThan(identities[1] ?? Infinity);
+
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-fork-reset",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: {
+          acpLaunchSpec: acpLaunchSpec({
+            envVars: { FAKE_ACP_FORK_SESSION: "1" },
+          }),
+        },
+      }),
+      sourceProviderThreadId: "source-session",
+    });
+    const forkResponse = await waitForResponse(forkId);
+    const forkResult = forkResponse.result;
+    if (
+      typeof forkResult !== "object" ||
+      forkResult === null ||
+      Array.isArray(forkResult) ||
+      typeof forkResult.providerThreadId !== "string"
+    ) {
+      throw new Error("thread/fork did not return a providerThreadId");
+    }
+    startedProviderThreadIds.push(forkResult.providerThreadId);
+    bbThreadIdByProviderThreadId.set(
+      forkResult.providerThreadId,
+      "thread-fork-reset",
+    );
+    const forkResets = resetIndexesFor("thread-fork-reset");
+    const forkIdentities = identityIndexesFor("thread-fork-reset");
+    expect(forkResets).toHaveLength(1);
+    expect(forkResets[0]).toBeGreaterThan(forkIdentities[0] ?? Infinity);
   });
 
   it("forwards context usage reported during session/load", async () => {

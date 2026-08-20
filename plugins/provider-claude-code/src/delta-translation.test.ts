@@ -1,65 +1,29 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
-import { queueAcceptedUserMessage } from "@bb/provider-bridge-protocol/bridge-kit";
-import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
-import { createClaudeEventTranslator } from "./event-translation.js";
+import {
+  ITEM_ID_PATTERN,
+  TURN_1,
+  TURN_2,
+  createClaudeDeltaHarness,
+  loadFixture,
+} from "./delta-test-harness.js";
 
 /**
- * Event-translation invariants for the Claude Code provider.
+ * Claude translation equivalence for the narrow-grammar path.
  *
- * Most of the cases below were pinned only by claude-code/adapter.test.ts,
- * which was deleted when the legacy adapter graduated. The adapter's
- * `translateEvent` was a pass-through to this module's
- * `translateClaudeEvent`, and this module is also the canonical bridge's
- * translation surface — that shared ownership is why these invariants outlive
- * the adapter suite and are re-homed here, exercised through the canonical
- * translator construction.
- *
- * Rate-limit classification (#1408, c934ec40a) uses the bridge's exact
- * construction (per-session id prefix); the moved cases use fixed readable
- * prefixes so their original ids ("turn-1", "claude-assistant-1") survive the
- * move. Both constructions set `synthesizeItemStarted`, the canonical grammar:
- * a delta-first assistant/reasoning item emits an `item/started` before its
- * first delta, which the legacy adapter shape omitted.
+ * These are the claude event-translation suite's cases, ported so the SAME
+ * claude SDK fixtures drive the new pipeline: claude dialect events → semantic
+ * deltas → the runtime delta assembler → canonical ThreadEvents. Event
+ * content, ordering, scoping, and statuses are asserted exactly as before;
+ * ids are asserted by shape and via the assembler's provider↔bb maps because
+ * minting moved from the bridge to the assembler (thread/provider thread ids
+ * are stamped downstream by the runtime, so events leave with empty ids).
  */
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const FIXTURES = resolve(__dirname, "./__fixtures__");
-
-function isFixtureObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function loadFixture(name: string): Record<string, unknown> {
-  const parsed: unknown = JSON.parse(
-    readFileSync(resolve(FIXTURES, name), "utf8"),
-  );
-  if (!isFixtureObject(parsed)) {
-    throw new Error(`Fixture ${name} did not contain an object`);
-  }
-  return parsed;
-}
 
 const THREAD_ID = "thr_claude_rate_limits";
 
-// Mirrors createCanonicalSessionTranslator in claude-code/bridge/bridge.ts.
-function createCanonicalTranslator() {
-  const idPrefix = "bt0f1e2d3c-1-";
-  return createClaudeEventTranslator({
-    providerId: "claude-code",
-    turnIdPrefix: idPrefix,
-    itemIdPrefix: idPrefix,
-    synthesizeItemStarted: true,
-  });
-}
-
-const FIRST_TURN_ID = "bt0f1e2d3c-1-1";
-
-function sdkMessage(message: Record<string, unknown>): ProviderRuntimeEvent {
+function sdkMessage(message: Record<string, unknown>): Record<string, unknown> {
   return {
     jsonrpc: "2.0",
     method: "sdk/message",
@@ -71,13 +35,13 @@ function providerErrors(events: readonly ThreadEvent[]) {
   return events.filter((event) => event.type === "provider/error");
 }
 
-describe("claude rate-limit classification (bridge-shared translator)", () => {
+describe("claude rate-limit classification (delta path)", () => {
   // An automatic SDK retry is a transient rejection: it must be classified
   // rate-limit AND marked retrying, or the UI reports a dead turn while the
   // SDK is still working, and provider-retry recovery treats it as terminal.
   it("classifies an SDK rate-limit retry as a retrying rate-limit error", () => {
-    const translator = createCanonicalTranslator();
-    translator.translateClaudeEvent(
+    const harness = createClaudeDeltaHarness();
+    harness.translate(
       sdkMessage({
         type: "assistant",
         message: { id: "assistant-1", content: [] },
@@ -85,7 +49,7 @@ describe("claude rate-limit classification (bridge-shared translator)", () => {
       { threadId: THREAD_ID },
     );
 
-    const events = translator.translateClaudeEvent(
+    const events = harness.translate(
       sdkMessage({
         type: "system",
         subtype: "api_retry",
@@ -101,7 +65,7 @@ describe("claude rate-limit classification (bridge-shared translator)", () => {
     expect(providerErrors(events)).toEqual([
       expect.objectContaining({
         type: "provider/error",
-        scope: turnScope(FIRST_TURN_ID),
+        scope: turnScope(TURN_1),
         message: "Provider error",
         detail: "Claude Code API retry 2/5 after 1500ms: HTTP 429 rate_limit",
         willRetry: true,
@@ -120,9 +84,9 @@ describe("claude rate-limit classification (bridge-shared translator)", () => {
   // recovery never saw the blocked window. The rejection is now deferred onto
   // the result: exactly one terminal error, inside the failed turn.
   it("defers a hard rejection into one terminal rate-limit error on the result", () => {
-    const translator = createCanonicalTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const rejection = translator.translateClaudeEvent(
+    const rejection = harness.translate(
       sdkMessage({
         type: "rate_limit_event",
         rate_limit_info: {
@@ -156,7 +120,7 @@ describe("claude rate-limit classification (bridge-shared translator)", () => {
     );
     expect(providerErrors(rejection)).toEqual([]);
 
-    const result = translator.translateClaudeEvent(
+    const result = harness.translate(
       sdkMessage({
         type: "result",
         subtype: "error_during_execution",
@@ -173,7 +137,7 @@ describe("claude rate-limit classification (bridge-shared translator)", () => {
     expect(providerErrors(result)).toEqual([
       expect.objectContaining({
         type: "provider/error",
-        scope: turnScope(FIRST_TURN_ID),
+        scope: turnScope(TURN_1),
         detail: expect.stringContaining("You've hit your session limit"),
         errorInfo: {
           category: "rate-limit",
@@ -185,7 +149,7 @@ describe("claude rate-limit classification (bridge-shared translator)", () => {
     expect(result).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope(FIRST_TURN_ID),
+        scope: turnScope(TURN_1),
         status: "failed",
       }),
     );
@@ -196,9 +160,9 @@ describe("claude rate-limit classification (bridge-shared translator)", () => {
   // run that later fails for another reason) as rate-limited and schedule a
   // retry against a window that is no longer blocked.
   it("drops a pending rejection once the provider reports allowed again", () => {
-    const translator = createCanonicalTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translator.translateClaudeEvent(
+    harness.translate(
       sdkMessage({
         type: "rate_limit_event",
         rate_limit_info: {
@@ -209,7 +173,7 @@ describe("claude rate-limit classification (bridge-shared translator)", () => {
       }),
       { threadId: THREAD_ID },
     );
-    translator.translateClaudeEvent(
+    harness.translate(
       sdkMessage({
         type: "rate_limit_event",
         rate_limit_info: { status: "allowed", rateLimitType: "five_hour" },
@@ -217,7 +181,7 @@ describe("claude rate-limit classification (bridge-shared translator)", () => {
       { threadId: THREAD_ID },
     );
 
-    const result = translator.translateClaudeEvent(
+    const result = harness.translate(
       sdkMessage({
         type: "result",
         subtype: "success",
@@ -232,30 +196,17 @@ describe("claude rate-limit classification (bridge-shared translator)", () => {
     expect(result).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope(FIRST_TURN_ID),
+        scope: turnScope(TURN_1),
         status: "completed",
       }),
     );
   });
 });
 
-// The canonical bridge injects per-session entropy into these prefixes
-// (#1224); the fixed prefixes below reproduce the legacy id scheme so the
-// invariants moved off the deleted adapter suite keep their original readable
-// ids ("turn-1", "claude-assistant-1", "claude-compaction-turn-1").
-function createTranslator() {
-  return createClaudeEventTranslator({
-    providerId: "claude-code",
-    turnIdPrefix: "turn-",
-    itemIdPrefix: "claude-",
-    synthesizeItemStarted: true,
-  });
-}
-
 describe("claude turn and checkpoint lifecycle", () => {
   it("emits turn/started + item/completed for assistant message", () => {
-    const { translateClaudeEvent } = createTranslator();
-    const events = translateClaudeEvent({
+    const harness = createClaudeDeltaHarness();
+    const events = harness.translate({
       type: "assistant",
       message: {
         id: "msg-1",
@@ -268,7 +219,7 @@ describe("claude turn and checkpoint lifecycle", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
       }),
     );
     expect(events).toContainEqual(
@@ -276,7 +227,7 @@ describe("claude turn and checkpoint lifecycle", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "agentMessage",
-          id: "msg-1",
+          id: expect.stringMatching(ITEM_ID_PATTERN),
           text: "Hello world",
         }),
       }),
@@ -284,8 +235,8 @@ describe("claude turn and checkpoint lifecycle", () => {
   });
 
   it("records the latest Claude assistant message as the turn checkpoint", () => {
-    const { translateClaudeEvent } = createTranslator();
-    translateClaudeEvent({
+    const harness = createClaudeDeltaHarness();
+    harness.translate({
       type: "assistant",
       uuid: "assistant-message-42",
       message: {
@@ -296,7 +247,7 @@ describe("claude turn and checkpoint lifecycle", () => {
       session_id: "sess-1",
     });
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       type: "result",
       subtype: "success",
       session_id: "sess-1",
@@ -312,8 +263,8 @@ describe("claude turn and checkpoint lifecycle", () => {
   });
 
   it("does not replace the root checkpoint with a sidechain assistant UUID", () => {
-    const { translateClaudeEvent } = createTranslator();
-    translateClaudeEvent(
+    const harness = createClaudeDeltaHarness();
+    harness.translate(
       {
         type: "assistant",
         uuid: "root-assistant-message",
@@ -326,7 +277,7 @@ describe("claude turn and checkpoint lifecycle", () => {
       },
       { threadId: "bb-thread-1" },
     );
-    translateClaudeEvent(
+    harness.translate(
       {
         type: "assistant",
         uuid: "sidechain-assistant-message",
@@ -340,7 +291,7 @@ describe("claude turn and checkpoint lifecycle", () => {
       { threadId: "bb-thread-1", parentToolCallId: "tool-subagent" },
     );
 
-    const events = translateClaudeEvent(
+    const events = harness.translate(
       {
         type: "result",
         subtype: "success",
@@ -358,9 +309,9 @@ describe("claude turn and checkpoint lifecycle", () => {
   });
 
   it("keeps assistant message ids distinct within one turn", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const firstEvents = translateClaudeEvent({
+    const firstEvents = harness.translate({
       type: "assistant",
       message: {
         id: "msg-1",
@@ -370,7 +321,7 @@ describe("claude turn and checkpoint lifecycle", () => {
       session_id: "sess-1",
     });
 
-    const secondEvents = translateClaudeEvent({
+    const secondEvents = harness.translate({
       type: "assistant",
       message: {
         id: "msg-2",
@@ -380,33 +331,28 @@ describe("claude turn and checkpoint lifecycle", () => {
       session_id: "sess-1",
     });
 
-    expect(firstEvents).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        item: expect.objectContaining({
-          type: "agentMessage",
-          id: "msg-1",
-          text: "Now let me read the main files:",
-        }),
-      }),
+    const firstCompleted = firstEvents.find(
+      (event) => event.type === "item/completed",
     );
-    expect(secondEvents).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        item: expect.objectContaining({
-          type: "agentMessage",
-          id: "msg-2",
-          text: "Now let me read the test file:",
-        }),
-      }),
+    const secondCompleted = secondEvents.find(
+      (event) => event.type === "item/completed",
     );
+    expect(firstCompleted?.item).toMatchObject({
+      type: "agentMessage",
+      text: "Now let me read the main files:",
+    });
+    expect(secondCompleted?.item).toMatchObject({
+      type: "agentMessage",
+      text: "Now let me read the test file:",
+    });
+    expect(firstCompleted?.item.id).not.toBe(secondCompleted?.item.id);
   });
 
   it("increments turn IDs across turns", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
     // Turn 1
-    translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -414,14 +360,14 @@ describe("claude turn and checkpoint lifecycle", () => {
       },
       session_id: "sess-1",
     });
-    translateClaudeEvent({
+    harness.translate({
       type: "result",
       subtype: "end_turn",
       session_id: "sess-1",
     });
 
     // Turn 2
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -433,21 +379,21 @@ describe("claude turn and checkpoint lifecycle", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("turn-2"),
+        scope: turnScope(TURN_2),
       }),
     );
   });
 
   it("emits turn/completed on result message", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
     // Start a turn
-    translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: { role: "assistant", content: [{ type: "text", text: "done" }] },
       session_id: "sess-1",
     });
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       type: "result",
       subtype: "end_turn",
       session_id: "sess-1",
@@ -456,22 +402,22 @@ describe("claude turn and checkpoint lifecycle", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         status: "completed",
       }),
     );
   });
 
   it("emits failed status for error result", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
     // Start a turn
-    translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: { role: "assistant", content: [{ type: "text", text: "x" }] },
       session_id: "sess-1",
     });
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       type: "result",
       subtype: "error",
       session_id: "sess-1",
@@ -486,15 +432,11 @@ describe("claude turn and checkpoint lifecycle", () => {
   });
 
   it("does not open a provider-only turn while a failed turn's subagent drains", () => {
-    const { translateClaudeEvent, turnState } = createTranslator();
+    const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-rate-limited" };
-    const state = turnState.getOrCreate({ threadId: context.threadId });
-    queueAcceptedUserMessage({
-      clientRequestId: "creq_23456789af",
-      state,
-    });
-    translateClaudeEvent(loadFixture("task-started-subagent.json"), context);
-    translateClaudeEvent(
+    harness.acceptInput("creq_23456789af", context.threadId);
+    harness.translate(loadFixture("task-started-subagent.json"), context);
+    harness.translate(
       {
         type: "rate_limit_event",
         rate_limit_info: {
@@ -507,7 +449,7 @@ describe("claude turn and checkpoint lifecycle", () => {
       context,
     );
 
-    const failed = translateClaudeEvent(
+    const failed = harness.translate(
       {
         type: "result",
         subtype: "error_during_execution",
@@ -523,12 +465,12 @@ describe("claude turn and checkpoint lifecycle", () => {
     expect(failed).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         status: "failed",
       }),
     );
 
-    const taskCompleted = translateClaudeEvent(
+    const taskCompleted = harness.translate(
       loadFixture("task-notification-subagent.json"),
       context,
     );
@@ -536,7 +478,7 @@ describe("claude turn and checkpoint lifecycle", () => {
       expect.objectContaining({ type: "item/backgroundTask/completed" }),
     );
     expect(
-      translateClaudeEvent(
+      harness.translate(
         {
           type: "assistant",
           message: {
@@ -553,48 +495,47 @@ describe("claude turn and checkpoint lifecycle", () => {
       ),
     ).toEqual([]);
 
-    state.suppressUnacceptedTurnStart = false;
-    queueAcceptedUserMessage({
-      clientRequestId: "creq_23456789ad",
-      state,
-    });
-    expect(
-      translateClaudeEvent(
-        {
-          type: "assistant",
-          message: {
-            id: "follow-up-message",
-            role: "assistant",
-            content: [{ type: "text", text: "Working again" }],
-          },
-          session_id: "claude-session-1",
+    // A real accepted input ends the drain window: the next assistant output
+    // opens the follow-up turn and correlates the acceptance.
+    harness.acceptInput("creq_23456789ad", context.threadId);
+    const followUp = harness.translate(
+      {
+        type: "assistant",
+        message: {
+          id: "follow-up-message",
+          role: "assistant",
+          content: [{ type: "text", text: "Working again" }],
         },
-        context,
-      ),
-    ).toEqual([
+        session_id: "claude-session-1",
+      },
+      context,
+    );
+    expect(followUp).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("turn-2"),
+        scope: turnScope(TURN_2),
       }),
+    );
+    expect(followUp).toContainEqual(
       expect.objectContaining({
         type: "turn/input/accepted",
         clientRequestId: "creq_23456789ad",
+        scope: turnScope(TURN_2),
       }),
+    );
+    expect(followUp).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        scope: turnScope("turn-2"),
+        scope: turnScope(TURN_2),
       }),
-    ]);
+    );
   });
 
   it("does not open a provider-only turn for a bridge error after terminal failure", () => {
-    const { translateClaudeEvent, turnState } = createTranslator();
+    const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-bridge-error-drain" };
-    queueAcceptedUserMessage({
-      clientRequestId: "creq_23456789bg",
-      state: turnState.getOrCreate({ threadId: context.threadId }),
-    });
-    translateClaudeEvent(
+    harness.acceptInput("creq_23456789bg", context.threadId);
+    harness.translate(
       {
         type: "assistant",
         message: {
@@ -607,7 +548,7 @@ describe("claude turn and checkpoint lifecycle", () => {
       context,
     );
     expect(
-      translateClaudeEvent(
+      harness.translate(
         {
           type: "result",
           subtype: "error_during_execution",
@@ -622,13 +563,13 @@ describe("claude turn and checkpoint lifecycle", () => {
     ).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         status: "failed",
       }),
     );
 
     expect(
-      translateClaudeEvent(
+      harness.translate(
         {
           jsonrpc: "2.0",
           method: "error",
@@ -642,15 +583,12 @@ describe("claude turn and checkpoint lifecycle", () => {
 
 describe("claude synthetic no-response handling", () => {
   it("completes a pending turn for Claude synthetic no-response messages", () => {
-    const { translateClaudeEvent, turnState } = createTranslator();
-    // The adapter queued this from an accepted turn/start command; the pending
-    // accepted message is translator state, so queue it directly.
-    queueAcceptedUserMessage({
-      clientRequestId: "creq_23456789af",
-      state: turnState.getOrCreate({ threadId: "bb-thread-1" }),
-    });
+    const harness = createClaudeDeltaHarness();
+    // The bridge queued this from an accepted turn/start command; the queue is
+    // assembler state fed by the translator's input.accepted delta.
+    expect(harness.acceptInput("creq_23456789af", "bb-thread-1")).toEqual([]);
 
-    const events = translateClaudeEvent(
+    const events = harness.translate(
       {
         type: "assistant",
         message: {
@@ -676,44 +614,32 @@ describe("claude synthetic no-response handling", () => {
         type: "turn/started",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
       },
       {
         type: "turn/input/accepted",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         clientRequestId: "creq_23456789af",
       },
       {
         type: "turn/completed",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         status: "completed",
       },
     ]);
-    expect(events).not.toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        item: expect.objectContaining({
-          type: "agentMessage",
-          text: "No response requested.",
-        }),
-      }),
-    );
   });
 
   it("maps a conversation reset and settles its zero-work turn", () => {
-    const { translateClaudeEvent, turnState } = createTranslator();
-    queueAcceptedUserMessage({
-      clientRequestId: "creq_23456789af",
-      state: turnState.getOrCreate({ threadId: "bb-thread-1" }),
-    });
+    const harness = createClaudeDeltaHarness();
+    harness.acceptInput("creq_23456789af", "bb-thread-1");
 
     // The CLI resolves /clear locally: conversation_reset is the successful
     // context-clear signal, followed by a result with no model call.
-    const resetEvents = translateClaudeEvent(
+    const resetEvents = harness.translate(
       {
         type: "conversation_reset",
         session_id: "claude-session-1",
@@ -730,10 +656,10 @@ describe("claude synthetic no-response handling", () => {
       type: "thread/context/cleared",
       threadId: "",
       providerThreadId: "",
-      scope: turnScope("turn-1"),
+      scope: turnScope(TURN_1),
     });
 
-    const resultEvents = translateClaudeEvent(
+    const resultEvents = harness.translate(
       {
         type: "result",
         subtype: "success",
@@ -749,19 +675,16 @@ describe("claude synthetic no-response handling", () => {
     expect(resultEvents).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         status: "completed",
       }),
     );
   });
 
   it("ignores a trailing result once the turn has closed", () => {
-    const { translateClaudeEvent, turnState } = createTranslator();
-    queueAcceptedUserMessage({
-      clientRequestId: "creq_23456789af",
-      state: turnState.getOrCreate({ threadId: "bb-thread-1" }),
-    });
-    translateClaudeEvent(
+    const harness = createClaudeDeltaHarness();
+    harness.acceptInput("creq_23456789af", "bb-thread-1");
+    harness.translate(
       {
         type: "assistant",
         message: {
@@ -776,13 +699,13 @@ describe("claude synthetic no-response handling", () => {
 
     // A stop finishes the open turn before the CLI's result lands, so a result
     // with no open turn is routine. It must not open a second, empty turn.
-    const state = turnState.getOrCreate({ threadId: "bb-thread-1" });
-    if (state.currentTurnId) {
-      turnState.finishTurn({ state, threadId: "bb-thread-1" });
-    }
+    harness.translate(
+      { type: "result", subtype: "success", session_id: "claude-session-1" },
+      { threadId: "bb-thread-1" },
+    );
 
     expect(
-      translateClaudeEvent(
+      harness.translate(
         { type: "result", subtype: "success", session_id: "claude-session-1" },
         { threadId: "bb-thread-1" },
       ),
@@ -790,13 +713,10 @@ describe("claude synthetic no-response handling", () => {
   });
 
   it("completes a pending turn for wrapped Claude synthetic no-response messages", () => {
-    const { translateClaudeEvent, turnState } = createTranslator();
-    queueAcceptedUserMessage({
-      clientRequestId: "creq_23456789af",
-      state: turnState.getOrCreate({ threadId: "bb-thread-1" }),
-    });
+    const harness = createClaudeDeltaHarness();
+    harness.acceptInput("creq_23456789af", "bb-thread-1");
 
-    const events = translateClaudeEvent(
+    const events = harness.translate(
       {
         jsonrpc: "2.0",
         method: "sdk/message",
@@ -829,29 +749,29 @@ describe("claude synthetic no-response handling", () => {
         type: "turn/started",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
       },
       {
         type: "turn/input/accepted",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         clientRequestId: "creq_23456789af",
       },
       {
         type: "turn/completed",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         status: "completed",
       },
     ]);
   });
 
   it("does not treat Claude synthetic assistant errors as no-response messages", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent(
+    const events = harness.translate(
       {
         type: "assistant",
         error: "rate_limit",
@@ -897,9 +817,9 @@ describe("claude synthetic no-response handling", () => {
   });
 
   it("completes an open turn for Claude synthetic no-response messages", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translateClaudeEvent(
+    harness.translate(
       {
         type: "stream_event",
         event: {
@@ -912,7 +832,7 @@ describe("claude synthetic no-response handling", () => {
       { threadId: "bb-thread-1" },
     );
 
-    const events = translateClaudeEvent(
+    const events = harness.translate(
       {
         type: "assistant",
         message: {
@@ -938,18 +858,18 @@ describe("claude synthetic no-response handling", () => {
         type: "turn/completed",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         status: "completed",
       },
     ]);
   });
 
   it("keeps an open turn for synthetic no-response messages while an agent is running", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-1" };
-    translateClaudeEvent(loadFixture("task-started-subagent.json"), context);
+    harness.translate(loadFixture("task-started-subagent.json"), context);
 
-    const events = translateClaudeEvent(
+    const events = harness.translate(
       {
         type: "assistant",
         message: {
@@ -971,11 +891,8 @@ describe("claude synthetic no-response handling", () => {
     );
 
     expect(events).toEqual([]);
-    translateClaudeEvent(
-      loadFixture("task-notification-subagent.json"),
-      context,
-    );
-    const finalEvents = translateClaudeEvent(
+    harness.translate(loadFixture("task-notification-subagent.json"), context);
+    const finalEvents = harness.translate(
       {
         type: "result",
         subtype: "end_turn",
@@ -986,7 +903,7 @@ describe("claude synthetic no-response handling", () => {
     expect(finalEvents).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         status: "completed",
       }),
     );
@@ -995,15 +912,15 @@ describe("claude synthetic no-response handling", () => {
 
 describe("claude streaming", () => {
   it("emits item/agentMessage/delta for stream text", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
     // Start a turn first
-    translateClaudeEvent({
+    harness.translate({
       type: "assistant",
       message: { role: "assistant", content: [{ type: "text", text: "x" }] },
       session_id: "sess-1",
     });
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       type: "stream_event",
       event: {
         type: "content_block_delta",
@@ -1016,16 +933,16 @@ describe("claude streaming", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/agentMessage/delta",
-        itemId: expect.stringMatching(/^claude-assistant-/),
+        itemId: expect.stringMatching(ITEM_ID_PATTERN),
         delta: "streaming...",
       }),
     );
   });
 
   it("reuses the streamed assistant item id when the final assistant arrives", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const deltaEvents = translateClaudeEvent({
+    const deltaEvents = harness.translate({
       type: "stream_event",
       event: {
         type: "content_block_delta",
@@ -1043,7 +960,7 @@ describe("claude streaming", () => {
       > => event.type === "item/agentMessage/delta",
     );
 
-    const assistantEvents = translateClaudeEvent({
+    const assistantEvents = harness.translate({
       type: "assistant",
       message: {
         id: "provider-msg-1",
@@ -1053,7 +970,7 @@ describe("claude streaming", () => {
       session_id: "sess-1",
     });
 
-    expect(deltaEvent?.itemId).toMatch(/^claude-assistant-/);
+    expect(deltaEvent?.itemId).toMatch(ITEM_ID_PATTERN);
     expect(assistantEvents).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
@@ -1067,9 +984,9 @@ describe("claude streaming", () => {
   });
 
   it("starts a turn when stream text arrives before the assistant envelope", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       type: "stream_event",
       event: {
         type: "content_block_delta",
@@ -1082,35 +999,77 @@ describe("claude streaming", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
       }),
     );
     // Canonical grammar: the delta-first item opens with a synthesized
-    // item/started, which the legacy adapter shape omitted.
+    // item/started.
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/started",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         item: expect.objectContaining({
           type: "agentMessage",
-          id: expect.stringMatching(/^claude-assistant-/),
+          id: expect.stringMatching(ITEM_ID_PATTERN),
         }),
       }),
     );
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/agentMessage/delta",
-        itemId: expect.stringMatching(/^claude-assistant-/),
-        scope: turnScope("turn-1"),
+        itemId: expect.stringMatching(ITEM_ID_PATTERN),
+        scope: turnScope(TURN_1),
         delta: "PONG",
       }),
     );
   });
 
-  it("streams thinking and finalizes it on the assistant message", () => {
-    const { translateClaudeEvent } = createTranslator();
+  it("settles a partially streamed assistant message when interrupted", () => {
+    const harness = createClaudeDeltaHarness();
 
-    const deltaEvents = translateClaudeEvent({
+    const deltaEvents = harness.translate({
+      type: "stream_event",
+      event: {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "partial answer" },
+      },
+      session_id: "sess-1",
+    });
+    const started = deltaEvents.find(
+      (event) =>
+        event.type === "item/started" && event.item.type === "agentMessage",
+    );
+
+    const settled = harness.settleSession();
+
+    expect(started).toMatchObject({
+      type: "item/started",
+      item: {
+        type: "agentMessage",
+        id: expect.stringMatching(ITEM_ID_PATTERN),
+      },
+    });
+    expect(settled).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          id: started?.type === "item/started" ? started.item.id : "",
+          text: "partial answer",
+        }),
+      }),
+      expect.objectContaining({
+        type: "turn/completed",
+        status: "interrupted",
+      }),
+    ]);
+  });
+
+  it("streams thinking and finalizes it on the assistant message", () => {
+    const harness = createClaudeDeltaHarness();
+
+    const deltaEvents = harness.translate({
       type: "stream_event",
       event: {
         type: "content_block_delta",
@@ -1131,7 +1090,7 @@ describe("claude streaming", () => {
       > => event.type === "item/reasoning/textDelta",
     );
 
-    const assistantEvents = translateClaudeEvent({
+    const assistantEvents = harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -1145,7 +1104,7 @@ describe("claude streaming", () => {
       session_id: "sess-1",
     });
 
-    expect(reasoningDelta?.itemId).toMatch(/^claude-reasoning-/);
+    expect(reasoningDelta?.itemId).toMatch(ITEM_ID_PATTERN);
     // Canonical grammar: the delta-first reasoning item opens with a
     // synthesized item/started ahead of its first delta.
     expect(deltaEvents).toContainEqual(
@@ -1172,9 +1131,9 @@ describe("claude streaming", () => {
 
 describe("claude unhandled and ignored events", () => {
   it("falls back to provider/unhandled for unknown sdk envelopes", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1188,8 +1147,6 @@ describe("claude unhandled and ignored events", () => {
     expect(events).toEqual([
       expect.objectContaining({
         type: "provider/unhandled",
-        threadId: "bb-thread-1",
-        providerThreadId: "bb-thread-1",
         providerId: "claude-code",
         rawType: "sdk/custom_event",
         scope: threadScope(),
@@ -1201,9 +1158,9 @@ describe("claude unhandled and ignored events", () => {
   });
 
   it("ignores sdk user text echoes", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1232,9 +1189,9 @@ describe("claude unhandled and ignored events", () => {
   });
 
   it("ignores sdk stream ping keepalives", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1255,9 +1212,9 @@ describe("claude unhandled and ignored events", () => {
   });
 
   it("preserves the active turn on unknown sdk envelopes", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translateClaudeEvent(
+    harness.translate(
       {
         type: "assistant",
         message: {
@@ -1269,7 +1226,7 @@ describe("claude unhandled and ignored events", () => {
       { threadId: "bb-thread-1" },
     );
 
-    const events = translateClaudeEvent(
+    const events = harness.translate(
       {
         jsonrpc: "2.0",
         method: "sdk/message",
@@ -1286,17 +1243,16 @@ describe("claude unhandled and ignored events", () => {
     expect(events).toEqual([
       expect.objectContaining({
         type: "provider/unhandled",
-        threadId: "bb-thread-1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         rawType: "sdk/custom_event",
       }),
     ]);
   });
 
   it("surfaces malformed handled sdk envelopes as provider/unhandled", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1321,9 +1277,9 @@ describe("claude unhandled and ignored events", () => {
   });
 
   it("ignores task-updated system events from the SDK envelope", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1343,9 +1299,9 @@ describe("claude unhandled and ignored events", () => {
   });
 
   it("ignores thinking-token system events from the SDK envelope", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1365,7 +1321,7 @@ describe("claude unhandled and ignored events", () => {
   });
 
   it("ignores async hook lifecycle system events from the SDK envelope", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
     for (const subtype of [
       "hook_started",
@@ -1373,7 +1329,7 @@ describe("claude unhandled and ignored events", () => {
       "hook_response",
       "commands_changed",
     ] as const) {
-      const events = translateClaudeEvent({
+      const events = harness.translate({
         jsonrpc: "2.0",
         method: "sdk/message",
         params: {
@@ -1394,8 +1350,8 @@ describe("claude unhandled and ignored events", () => {
   });
 
   it("returns empty for non-compaction system messages", () => {
-    const { translateClaudeEvent } = createTranslator();
-    const events = translateClaudeEvent({
+    const harness = createClaudeDeltaHarness();
+    const events = harness.translate({
       type: "system",
       subtype: "init",
       session_id: "sess-1",
@@ -1404,14 +1360,14 @@ describe("claude unhandled and ignored events", () => {
   });
 
   it("fixture: system-init produces no events", () => {
-    const { translateClaudeEvent } = createTranslator();
-    const events = translateClaudeEvent(loadFixture("system-init.json"));
+    const harness = createClaudeDeltaHarness();
+    const events = harness.translate(loadFixture("system-init.json"));
     expect(events).toMatchObject([]);
   });
 
   it("ignores Claude command lifecycle events", () => {
-    const { translateClaudeEvent } = createTranslator();
-    const events = translateClaudeEvent({
+    const harness = createClaudeDeltaHarness();
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1432,9 +1388,9 @@ describe("claude unhandled and ignored events", () => {
 
 describe("claude warnings and identity", () => {
   it("surfaces automatic permission denials as warnings", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1468,9 +1424,9 @@ describe("claude warnings and identity", () => {
   });
 
   it("maps thread identity envelopes", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "thread/identity",
       params: {
@@ -1482,18 +1438,37 @@ describe("claude warnings and identity", () => {
     expect(events).toEqual([
       {
         type: "thread/identity",
-        threadId: "bb-thread-1",
+        threadId: "",
         providerThreadId: "claude-thread-1",
         scope: threadScope(),
       },
     ]);
   });
+
+  it("tracks the open turn for the bridge's interaction gate", () => {
+    const harness = createClaudeDeltaHarness();
+    expect(harness.translator.hasOpenTurn("thr_1")).toBe(false);
+    harness.translate(
+      {
+        type: "assistant",
+        message: { role: "assistant", content: [{ type: "text", text: "x" }] },
+        session_id: "sess-1",
+      },
+      { threadId: "thr_1" },
+    );
+    expect(harness.translator.hasOpenTurn("thr_1")).toBe(true);
+    harness.translate(
+      { type: "result", subtype: "end_turn", session_id: "sess-1" },
+      { threadId: "thr_1" },
+    );
+    expect(harness.translator.hasOpenTurn("thr_1")).toBe(false);
+  });
 });
 
 describe("claude model refusals", () => {
   it("normalizes Claude model refusal fallbacks", () => {
-    const { translateClaudeEvent } = createTranslator();
-    const events = translateClaudeEvent({
+    const harness = createClaudeDeltaHarness();
+    const events = harness.translate({
       type: "system",
       subtype: "model_refusal_fallback",
       original_model: "claude-fable-5",
@@ -1515,8 +1490,8 @@ describe("claude model refusals", () => {
   });
 
   it("emits the early assistant fallback block and deduplicates the later system event", () => {
-    const { translateClaudeEvent } = createTranslator();
-    const earlyEvents = translateClaudeEvent({
+    const harness = createClaudeDeltaHarness();
+    const earlyEvents = harness.translate({
       type: "assistant",
       message: {
         role: "assistant",
@@ -1535,11 +1510,11 @@ describe("claude model refusals", () => {
     expect(earlyEvents).toEqual([
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
       }),
       expect.objectContaining({
         type: "provider/modelFallback",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         originalModel: "claude-fable-5",
         fallbackModel: "claude-opus-4-8",
         reason: "provider",
@@ -1547,7 +1522,7 @@ describe("claude model refusals", () => {
       }),
     ]);
 
-    const detailedEvents = translateClaudeEvent({
+    const detailedEvents = harness.translate({
       type: "system",
       subtype: "model_refusal_fallback",
       original_model: "claude-fable-5",
@@ -1560,8 +1535,8 @@ describe("claude model refusals", () => {
   });
 
   it("surfaces refusal without fallback as a warning", () => {
-    const { translateClaudeEvent } = createTranslator();
-    const events = translateClaudeEvent({
+    const harness = createClaudeDeltaHarness();
+    const events = harness.translate({
       type: "system",
       subtype: "model_refusal_no_fallback",
       content: "The model refused and no fallback was configured.",
@@ -1581,8 +1556,8 @@ describe("claude model refusals", () => {
 
 describe("claude compaction", () => {
   it("status compacting starts a turn and emits a compaction item", () => {
-    const { translateClaudeEvent } = createTranslator();
-    const events = translateClaudeEvent({
+    const harness = createClaudeDeltaHarness();
+    const events = harness.translate({
       type: "system",
       subtype: "status",
       status: "compacting",
@@ -1594,7 +1569,7 @@ describe("claude compaction", () => {
         type: "turn/started",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
       }),
     );
     expect(events).toContainEqual(
@@ -1602,25 +1577,26 @@ describe("claude compaction", () => {
         type: "item/started",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         item: {
           type: "contextCompaction",
-          id: "claude-compaction-turn-1",
+          id: expect.stringMatching(ITEM_ID_PATTERN),
         },
       }),
     );
   });
 
   it("status null completes the open compaction item", () => {
-    const { translateClaudeEvent } = createTranslator();
-    translateClaudeEvent({
+    const harness = createClaudeDeltaHarness();
+    const started = harness.translate({
       type: "system",
       subtype: "status",
       status: "compacting",
       session_id: "sess-1",
     });
+    const startedItem = started.find((event) => event.type === "item/started");
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       type: "system",
       subtype: "status",
       status: null,
@@ -1630,18 +1606,18 @@ describe("claude compaction", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         item: {
           type: "contextCompaction",
-          id: "claude-compaction-turn-1",
+          id: startedItem?.item.id,
         },
       }),
     );
   });
 
   it("status null after the compaction turn ended emits nothing", () => {
-    const { translateClaudeEvent } = createTranslator();
-    translateClaudeEvent({
+    const harness = createClaudeDeltaHarness();
+    harness.translate({
       type: "system",
       subtype: "status",
       status: "compacting",
@@ -1649,13 +1625,13 @@ describe("claude compaction", () => {
     });
     // The turn that owned the compaction completes before the status clears;
     // a stale entry must not complete under a later turn.
-    translateClaudeEvent({
+    harness.translate({
       type: "result",
       subtype: "end_turn",
       session_id: "sess-1",
     });
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       type: "system",
       subtype: "status",
       status: null,
@@ -1668,16 +1644,16 @@ describe("claude compaction", () => {
   });
 
   it("compact_boundary emits thread/compacted", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translateClaudeEvent({
+    harness.translate({
       type: "system",
       subtype: "status",
       status: "compacting",
       session_id: "sess-1",
     });
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       type: "system",
       subtype: "compact_boundary",
       session_id: "sess-1",
@@ -1692,15 +1668,15 @@ describe("claude compaction", () => {
         type: "thread/compacted",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
       }),
     );
   });
 
   it("compact_boundary without a known turn is unhandled", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       type: "system",
       subtype: "compact_boundary",
       session_id: "sess-1",
@@ -1716,9 +1692,9 @@ describe("claude compaction", () => {
 
 describe("claude error translation", () => {
   it("maps error envelopes", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "error",
       params: {
@@ -1739,9 +1715,9 @@ describe("claude error translation", () => {
   });
 
   it("completes a failed turn for thread-scoped bridge errors", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent(
+    const events = harness.translate(
       {
         jsonrpc: "2.0",
         method: "error",
@@ -1757,13 +1733,13 @@ describe("claude error translation", () => {
         type: "turn/started",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
       },
       {
         type: "provider/error",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         message: "Provider error",
         detail: "Claude auth expired",
       },
@@ -1771,16 +1747,16 @@ describe("claude error translation", () => {
         type: "turn/completed",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         status: "failed",
       },
     ]);
   });
 
   it("marks Claude result events with is_error as failed", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translateClaudeEvent({
+    harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1800,7 +1776,7 @@ describe("claude error translation", () => {
       },
     });
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1821,7 +1797,7 @@ describe("claude error translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         status: "failed",
       }),
     );
@@ -1841,9 +1817,9 @@ describe("claude error translation", () => {
   // The only coverage in the repo for claude-code/error-info.ts's
   // non-rate-limit classification.
   it("maps Claude result error subtypes to provider error info", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    translateClaudeEvent({
+    harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1858,7 +1834,7 @@ describe("claude error translation", () => {
       },
     });
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1877,7 +1853,7 @@ describe("claude error translation", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "provider/error",
-        scope: turnScope("turn-1"),
+        scope: turnScope(TURN_1),
         message: "Provider error",
         detail: "Budget limit reached",
         errorInfo: {
@@ -1890,9 +1866,9 @@ describe("claude error translation", () => {
   });
 
   it("preserves unknown Claude rate limit window keys", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1928,9 +1904,9 @@ describe("claude error translation", () => {
   });
 
   it("keeps overage-covered rejections nonterminal", () => {
-    const { translateClaudeEvent } = createTranslator();
+    const harness = createClaudeDeltaHarness();
 
-    const events = translateClaudeEvent({
+    const events = harness.translate({
       jsonrpc: "2.0",
       method: "sdk/message",
       params: {
@@ -1963,51 +1939,5 @@ describe("claude error translation", () => {
         }),
       }),
     ]);
-  });
-});
-
-describe("claude interactive-request turn id resolution", () => {
-  // The bridge forwards permission/user-question requests that omit a turn id;
-  // they must land inside the turn that is actually running.
-  it("fills a missing interactive-request turn id from the active turn", () => {
-    const { resolveClaudeInteractiveRequestTurnId, translateClaudeEvent } =
-      createTranslator();
-    translateClaudeEvent(
-      {
-        type: "assistant",
-        message: {
-          id: "msg-1",
-          role: "assistant",
-          content: [
-            {
-              type: "tool_use",
-              id: "toolu_1",
-              name: "Read",
-              input: { file_path: "/etc/hosts" },
-            },
-          ],
-        },
-        session_id: "sess-1",
-      },
-      { threadId: "thr_1" },
-    );
-
-    expect(
-      resolveClaudeInteractiveRequestTurnId({
-        threadId: "thr_1",
-        turnId: null,
-      }),
-    ).toBe("turn-1");
-  });
-
-  it("rejects a missing interactive-request turn id without an active turn", () => {
-    const { resolveClaudeInteractiveRequestTurnId } = createTranslator();
-
-    expect(
-      resolveClaudeInteractiveRequestTurnId({
-        threadId: "thr_1",
-        turnId: null,
-      }),
-    ).toBeNull();
   });
 });
