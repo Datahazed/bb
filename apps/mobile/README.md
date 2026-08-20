@@ -819,17 +819,27 @@ App Store Connect needs all of this:
   name, phone, and email. Apple uses these, testers never see them.
 - **A way for the reviewer to use the app.** This is the part that fails. bb
   opens on "Add server", and a reviewer has no bb server, so without help they
-  cannot get past the first screen and will reject the build. Give them a bb
-  server reachable over the internet through connect, and a pairing code that
-  is still valid, and step-by-step notes. Codes expire, so re-issue the code if
-  a review takes longer than expected.
+  cannot get past the first screen and will reject the build. Create a separate
+  Connect account used only for review, attach a sanitized server with
+  sanitized test data, and configure only a limited provider credential that
+  cannot reach production resources. Never pair the reviewer with a production
+  Connect account: the phone's credential can reach every server on its
+  account.
+
+The pairing code is one-time and expires after ten minutes, but redeeming it
+stores a durable credential on the phone. Code expiry prevents a later
+redemption; it does not revoke a credential that was already redeemed. After
+every review, the review-account owner must revoke the reviewer phone at
+<https://getbb.app/dashboard> under **Machines → Revoke**. `bb machine remove`
+manages a bb host-daemon machine, not the reviewer phone, so it is not a
+substitute for dashboard revocation. Mint a new code for the next review.
 
 Review notes template — keep it literal, and assume the reviewer knows nothing
 about coding agents:
 
 ```text
 bb is a client for a bb server that a developer runs on their own computer.
-The app has no accounts of its own, so we have prepared a server for you.
+We have prepared an isolated review account and server for you.
 
 1. Open the app. It shows "Add server".
 2. Select "Pair with a code".
@@ -838,8 +848,10 @@ The app has no accounts of its own, so we have prepared a server for you.
 5. Open any conversation to read it. Type a message and send it to see a
    reply from the coding agent.
 
-The code is valid until <DATE>. Write to <EMAIL> if it stops working and we
-will send a new one within a few hours.
+The one-time code is valid until <DATE>. Its expiry does not revoke a phone that
+already redeemed it; the account owner revokes that access after every review.
+Write to <EMAIL> if the code stops working and we will send a new one within a
+few hours.
 ```
 
 Rehearse it before submitting: hand a colleague a phone that has never run bb,
