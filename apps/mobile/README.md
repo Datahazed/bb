@@ -16,7 +16,7 @@ timeline with every row kind, markdown, inline diffs, terminal output, images +
 lightbox, sticky-bottom, older pages, unread divider, table of contents; the
 prompt area with pending-interaction banners, prompt-stack cards, the context
 banner, the queued-message list and the follow-up composer; header / message /
-git action sheets), deep links, and the workspace panel
+git action sheets), push notifications + deep links, and the workspace panel
 (a bottom sheet with Info · Diff · Files · Terminal + the thread's synced file
 tabs: thread metadata, the batched Diff tab with "Add to chat", file search /
 thread-storage browser / previews for text, markdown, CSV, HTML, images, the
@@ -26,7 +26,7 @@ and a host terminal), the settings buckets (General / Appearance /
 Experiments / Haptics, provider settings, usage limits, Machines with pairing /
 rename / permission ceiling / provider CLI installs, Updates, Plugins with
 detail / settings form / logs / catalog / marketplaces, Skills library +
-skills.sh registry, Discord / GitHub), "Share link" from the
+skills.sh registry, Notifications, Discord / GitHub), "Share link" from the
 thread menu, and the `Mobile E2E` GitHub workflow are in place. The Phase 0
 spikes and the renderer / composer / interactions showcases live under
 Settings → Developer.
@@ -86,9 +86,12 @@ src/
                          (switch profile → wait → push thread),
                          ThreadOpenSignalHandler (realtime `thread-open` →
                          navigate, like the web's wsManager.onThreadOpen)
-  notifications/         push notifications arrive in a later PR (RN glue:
-                         expo-notifications behind the data-layer contract,
-                         registration sync, taps → thread, badge, Settings rows)
+  notifications/         push (RN glue): expo-notifications behind the data
+                         layer's PushNotificationsModule, MMKV push store,
+                         app-wide registration controller, PushNotificationsHost
+                         (registration sync, taps → thread, foreground toast
+                         with Open, app-icon badge, first-run prompt),
+                         PushSettingsRows + usePushRegistration (Settings)
   screens/               screen components (home/, settings/, shell/, compose/,
                          connect/ — bb connect enrollment: ConnectEnrollScreen,
                          ConnectScanner (expo-camera QR), AccountServersList;
@@ -217,9 +220,12 @@ src/
                          pending interactions, question form state, plugin
                          payload parsing, child-thread attention —, thread-runtime
                          — send/edit/stop/cancel-plan/clear-goal + the queued
-                         message CRUD with optimistic transactions;
-                         notifications — push registration policy — arrives in
-                         a later PR); see src/data/README.md
+                         message CRUD with optimistic transactions,
+                         notifications — push registration policy
+                         (decidePushSync / syncPushRegistration / controller),
+                         push store, SDK push-subscriptions wrapper,
+                         notification payload → profile resolution, badge count);
+                         see src/data/README.md
   lib/                   pure TypeScript, vitest-tested (no react-native imports)
     profiles/            ServerProfile model, SecureStore-backed store, URL
                          validation, /health + /system/config probe
@@ -374,8 +380,7 @@ typeahead, pills, "+" menu and attachment chip. `phase5-links.yaml` takes
 backend's startup JSON and drives the deep links while the app is warm:
 `bb://threads/<id>` and the web alias `bb://projects/<p>/threads/<t>` open the
 seeded "Completed thread", `bb://settings/servers` shows the added server, and
-`bb://settings` opens Settings (the per-server push row is asserted once the
-push-notifications PR lands).
+`bb://settings` shows the per-server push row.
 `phase6-panel.yaml` opens a thread named "P6 panel thread" (create it first:
 a managed-worktree thread through the API with a file written into its
 worktree), presents the workspace panel from the header button, checks the
@@ -672,9 +677,33 @@ add-root-cert`). Env: `BB_MOBILE_E2E_GATE_PORT` (42998),
 
 ## Push notifications and deep links (Phase 5)
 
-- Push notifications (Expo push registration, tap routing, foreground toast,
-  app-icon badge, Settings → Notifications rows, and the server side) arrive
-  in a later PR; `expo-notifications` is already part of the native build.
+- Registration: `PushNotificationsHost` (mounted once in `app/_layout.tsx`)
+  registers the phone's Expo push token with every server whose Settings →
+  Notifications toggle is on, through the SDK area
+  `sdk.notifications.pushSubscriptions` (`POST/GET/DELETE
+/api/v1/notifications/push-subscriptions`). It syncs on connect, on
+  AppState active, when the OS rolls the token (re-register), and when the
+  toggle flips; profiles removed from the app get their server row deleted
+  by the stored server URL. The token needs an EAS project id
+  (`expo.extra.eas.projectId`, written by `eas init`); a dev client built
+  with plain `expo run:ios` has none, so Settings shows "Push unavailable
+  until the app is built with EAS" and nothing is registered. The OS
+  permission is requested from the toggle or from the one-time prompt after
+  the first successful connection — never on launch. Pure policy + tests:
+  `src/data/notifications`.
+- Handling: a foreground arrival becomes a toast with "Open" (no system
+  banner); a tap on a background / cold-start notification opens
+  `/threads/<threadId>` on the profile that owns it (the payload `data`
+  carries `{kind, threadId, projectId}` only — the phone probes its saved
+  servers for the thread when it has more than one). The app-icon badge is
+  the count of unread finished root threads + threads blocked on an
+  interaction on the active server (client-derived from the sidebar
+  bootstrap), written on background and cleared while the thread list is on
+  screen.
+- Simulator check without APNs: `xcrun simctl push <udid> app.getbb.mobile
+payload.apns` with `{"aps":{"alert":{…}},"body":{"kind":"turn-finished",
+"threadId":"…","projectId":"…"}}` (expo-notifications reads remote `data`
+  from the `body` key) after granting the permission from the toggle.
 - Deep links: `bb://<mobile path>` (`bb://threads/<id>`, `bb://settings/servers`,
   `bb://projects/<p>/threads/<t>`, …) and universal / app links
   `https://<handle>.getbb.app/{threads,projects,settings}/*` (iOS
@@ -757,7 +786,7 @@ devserver.yaml` drives the same screens against the checkout's dev server
 ## Release (EAS)
 
 Nothing is published yet: no Expo/EAS account exists, so `app.json` has no
-`extra.eas.projectId` (push registration, in a later PR, needs it). The
+`extra.eas.projectId` and push registration is disabled in every build. The
 steps, once the account is created (Apple team `9QCU24SXK5`, bundle id
 `app.getbb.mobile`):
 
@@ -792,8 +821,11 @@ steps, once the account is created (Apple team `9QCU24SXK5`, bundle id
 - Preferences (theme mode `bb.theme`, sidebar `bb.sidebar.*`, thread-creation
   picks `bb.promptbox.*` / `bb.root-compose.*`, composer drafts
   `bb.promptbox.contents-*` in the web's `PromptDraftState` JSON, all with the
-  web app's key names): MMKV store `bb.preferences` (the push state of the
-  later push-notifications PR shares it).
+  web app's key names): MMKV store `bb.preferences`. Push state shares it:
+  `bb.push.enabled.<profileId>` (+ `bb.push.enabledProfiles` index),
+  `bb.push.registration.<profileId>` (+ `bb.push.registrations` index: the
+  token / server row the phone registered, so a removed profile can still be
+  unregistered), `bb.push.prompted`.
 - Each profile owns one SDK client, one realtime socket, and one TanStack
   QueryClient (`src/lib/sdk/client-registry.ts`, instantiated once by
   `src/app-shell/client-registry.ts`); the active profile's socket/session

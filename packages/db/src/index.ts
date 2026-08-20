@@ -22,6 +22,7 @@ export {
   createProjectId,
   createPromptHistoryEntryId,
   createProjectSourceId,
+  createPushSubscriptionId,
   createTerminalSessionId,
   createThreadId,
   createThreadProvisioningId,

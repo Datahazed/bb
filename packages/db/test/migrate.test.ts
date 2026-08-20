@@ -298,7 +298,8 @@ function dropRewindAddedTables(db: DbConnection): void {
   // of that rewind so the forward re-migrate can re-create them: the automations
   // tables (added by 0039/0041), app_theme (added by 0042), the thread section
   // schema (thread section columns + thread_sections table), thread tabs, and
-  // normalized plugin persistence tables.
+  // normalized plugin persistence tables, and push subscriptions (0104).
+  dropPushSubscriptionsTable(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
@@ -680,6 +681,15 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
   }
 }
 
+/**
+ * Migration 0104 adds the push_subscriptions table. Every rewind that clears
+ * journal rows at or before it must drop the table too, or migrate() replays
+ * the CREATE against a DB that already has it.
+ */
+function dropPushSubscriptionsTable(db: DbConnection): void {
+  db.$client.prepare("DROP TABLE IF EXISTS push_subscriptions").run();
+}
+
 function dropEventParentToolCallIdColumn(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(events)")
@@ -787,6 +797,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
   dropEventParentToolCallIdColumn(db);
+  dropPushSubscriptionsTable(db);
   dropEnvironmentRetireRequestedAtColumn(db);
   dropPluginArtifactGitCheckoutRootColumn(db);
   dropProjectGitRemoteUrlColumn(db);
@@ -1696,6 +1707,7 @@ describe("migrate", () => {
     dropEnvironmentRetireRequestedAtColumn(db);
     dropPluginArtifactGitCheckoutRootColumn(db);
     dropMarketplaceCatalogSchema(db);
+    dropPushSubscriptionsTable(db);
     dropEventParentToolCallIdColumn(db);
     // Delete by the journal timestamp, not a hash substring: migration hashes
     // are hex and can contain "0085" by coincidence.
@@ -1991,6 +2003,7 @@ describe("migrate", () => {
       dropEnvironmentRetireRequestedAtColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
+      dropPushSubscriptionsTable(db);
       dropEventParentToolCallIdColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
@@ -2395,6 +2408,7 @@ describe("migrate", () => {
       dropEnvironmentRetireRequestedAtColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
+      dropPushSubscriptionsTable(db);
       dropEventParentToolCallIdColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
@@ -2496,6 +2510,7 @@ describe("migrate", () => {
       dropEnvironmentRetireRequestedAtColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
+      dropPushSubscriptionsTable(db);
       dropEventParentToolCallIdColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
@@ -5085,6 +5100,7 @@ describe("migrate", () => {
       });
 
       dropEventParentToolCallIdColumn(db);
+      dropPushSubscriptionsTable(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",

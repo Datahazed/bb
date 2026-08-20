@@ -21,6 +21,7 @@ import type {
   PermissionMode,
   PromptHistoryScope,
   ProjectSourceType,
+  PushSubscriptionPlatform,
   ReasoningLevel,
   ServiceTier,
   TerminalSessionCloseReason,
@@ -1035,6 +1036,27 @@ export const pendingInteractions = sqliteTable(
       table.pluginId,
       table.status,
       table.createdAt,
+    ),
+  ],
+);
+
+// Expo push tokens registered by bb mobile devices. One row per token: a
+// device that registers again refreshes its label and `last_seen_at` instead
+// of adding a row, so the push sender never double-delivers to one phone. The
+// server deletes a row when Expo reports the token as `DeviceNotRegistered`.
+export const pushSubscriptions = sqliteTable(
+  "push_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    expoPushToken: text("expo_push_token").notNull(),
+    platform: text("platform").$type<PushSubscriptionPlatform>().notNull(),
+    deviceLabel: text("device_label").notNull(),
+    createdAt: integer("created_at").notNull(),
+    lastSeenAt: integer("last_seen_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("push_subscriptions_expo_push_token_idx").on(
+      table.expoPushToken,
     ),
   ],
 );

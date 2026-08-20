@@ -6,6 +6,10 @@ import {
 import { createFilesArea, type FilesArea } from "./areas/files.js";
 import type { GuideArea } from "./areas/guide.js";
 import { createHostsArea, type HostsArea } from "./areas/hosts.js";
+import {
+  createNotificationsArea,
+  type NotificationsArea,
+} from "./areas/notifications.js";
 import { createProjectsArea, type ProjectsArea } from "./areas/projects.js";
 import { createProvidersArea, type ProvidersArea } from "./areas/providers.js";
 import { createPluginsArea, type PluginsArea } from "./areas/plugins.js";
@@ -42,6 +46,7 @@ export interface BbSdkAreas extends BbRealtime {
   environments: EnvironmentsArea;
   files: FilesArea;
   hosts: HostsArea;
+  notifications: NotificationsArea;
   projects: ProjectsArea;
   plugins: PluginsArea;
   providers: ProvidersArea;
@@ -72,6 +77,7 @@ export function createBbSdk(
     environments: createEnvironmentsArea(sdkContext),
     files: createFilesArea(sdkContext),
     hosts: createHostsArea(sdkContext),
+    notifications: createNotificationsArea(sdkContext),
     subscribe(args) {
       return realtime.subscribe(args);
     },

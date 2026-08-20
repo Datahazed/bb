@@ -2,6 +2,7 @@ import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { Linking } from "react-native";
 import { e2eModeEnabled, resetLocalState, useProfiles } from "@/app-shell";
+import { PushSettingsRows } from "@/notifications";
 import { useTheme } from "@/theme";
 import { ActionSheet, Icon, ListRow, toast, useSheet } from "@/ui";
 import {
@@ -178,6 +179,10 @@ export function SettingsScreen() {
           onPress={() => router.push(marketplacesHref())}
           testID="settings-marketplaces"
         />
+      </SettingsSection>
+
+      <SettingsSection title="Notifications">
+        <PushSettingsRows />
       </SettingsSection>
 
       <SettingsSection title="Threads">

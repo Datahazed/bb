@@ -308,10 +308,37 @@ describe("consumer-specific config", () => {
     expect(serverConfig.BB_INFERENCE_FALLBACK).toBe("codex/gpt-5.4-mini");
     expect(serverConfig.BB_TRANSCRIPTION).toBe("codex/gpt-transcribe");
     expect(serverConfig.OPENAI_API_KEY).toBe("test-openai-key");
+    expect(serverConfig.BB_PUSH_NOTIFICATIONS).toBe(true);
+    expect(serverConfig.BB_EXPO_PUSH_URL).toBe(
+      "https://exp.host/--/api/v2/push/send",
+    );
     expect(serverConfig.featureFlags).toEqual({
       placeholder: false,
       timelineWindowEventBudget: 1_500,
     });
+  });
+
+  it("reads push notification overrides", () => {
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
+        BB_PUSH_NOTIFICATIONS: "false",
+        BB_EXPO_PUSH_URL: "http://127.0.0.1:4999/push",
+      }),
+    });
+
+    expect(serverConfig.BB_PUSH_NOTIFICATIONS).toBe(false);
+    expect(serverConfig.BB_EXPO_PUSH_URL).toBe("http://127.0.0.1:4999/push");
+
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_EXPO_PUSH_URL: "not-a-url" }),
+      }),
+    ).toThrow(/BB_EXPO_PUSH_URL/u);
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_PUSH_NOTIFICATIONS: "maybe" }),
+      }),
+    ).toThrow(/BB_PUSH_NOTIFICATIONS/u);
   });
 
   it("defaults the server bind host to loopback", () => {

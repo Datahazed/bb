@@ -4,8 +4,8 @@
 # `GET /api/v1/threads`) → the web alias `bb://projects/<p>/threads/<t>`
 # (pass `-e PROJECT_ID=<id>`) lands on the same thread → `bb://settings/servers`
 # opens the Servers screen with the added server → `bb://settings` opens
-# Settings. (The Notifications section and its per-server push row arrive
-# with the push-notifications PR; this flow asserts them once they exist.)
+# Settings, whose Notifications section shows the per-server push row
+# (disabled with the "built with EAS" note in a dev-client build).
 #
 # Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
 #      maestro test -e THREAD_ID=thr_xxx -e PROJECT_ID=proj_xxx e2e/flows/phase5-links.yaml
@@ -54,10 +54,16 @@ env:
     visible: ".*E2E backend.*"
     timeout: 10000
 - takeScreenshot: phase5-link-servers
-# Settings root by link.
+# Settings root by link: the Notifications section has one row per server.
 - openLink: "bb://settings"
 - extendedWaitUntil:
     visible:
       id: "settings-screen"
     timeout: 30000
-- takeScreenshot: phase5-link-settings
+- scrollUntilVisible:
+    element:
+      text: "Notifications"
+    direction: DOWN
+    timeout: 20000
+- assertVisible: "(?s).*Push unavailable until the app is built with EAS.*"
+- takeScreenshot: phase5-link-settings-push

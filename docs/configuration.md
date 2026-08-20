@@ -87,8 +87,8 @@ set of startup-only server or launcher env entries is:
   `BB_INFERENCE_FALLBACK`, and `BB_INHERITED_SKILLS_ROOTS`
 - `BB_LOG_LEVEL`, `BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD`,
   `BB_MARKETPLACE_URL`, `BB_POSTHOG_API_KEY`, and `BB_TELEMETRY`
-- `BB_SERVER_BIND_HOST`, `BB_SERVER_PORT`, `BB_TRANSCRIPTION`, and all
-  `BB_FF_*` feature flags
+- `BB_PUSH_NOTIFICATIONS`, `BB_EXPO_PUSH_URL`, `BB_SERVER_BIND_HOST`,
+  `BB_SERVER_PORT`, `BB_TRANSCRIPTION`, and all `BB_FF_*` feature flags
 
 Setting or unsetting one still runs the reload for any other pending changes,
 but the running processes keep their current values. Apply it with a full
@@ -127,6 +127,8 @@ signal it, so a stale file left by a crash cannot stop an unrelated process.
 | `BB_INFERENCE`          | `bb-app config`                                    | Optional                | Primary server-side helper model in `provider/model` format. Defaults to `codex/gpt-5.6-luna`; the Codex helper route uses no reasoning.                                                                                                                                                                                                                                                              |
 | `BB_INFERENCE_FALLBACK` | `bb-app config`                                    | Optional                | Helper model used after a transient primary timeout, rate limit, or service-unavailable failure. Defaults to `codex/gpt-5.4-mini`.                                                                                                                                                                                                                                                                    |
 | `BB_TRANSCRIPTION`      | `bb-app config`                                    | Optional                | Voice transcription model in `provider/model` format. Defaults to `codex/gpt-transcribe`.                                                                                                                                                                                                                                                                                                             |
+| `BB_PUSH_NOTIFICATIONS` | `bb-app env`, or environment                       | Startup-only            | Send push notifications to bb mobile devices registered with `bb notifications push-subscriptions` through the Expo Push API. Defaults to `true`; set `false` to stop sending while keeping the registrations. A full launcher or desktop app restart is required.                                                                                                                                    |
+| `BB_EXPO_PUSH_URL`      | `bb-app env`, or environment                       | Startup-only testing    | Expo Push API endpoint the server posts push messages to. Defaults to `https://exp.host/--/api/v2/push/send`; point it at a local stub to exercise push delivery without Expo. A full launcher or desktop app restart is required.                                                                                                                                                                    |
 | `BB_MARKETPLACE_URL`    | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the reserved `bb-community` plugin marketplace, which lists as BB Community. Defaults to `https://getbb.app/marketplace/v1/marketplace.json`; point it at a local file server to test catalog refreshes. It sets only the reserved `bb-community` marketplace; other marketplaces are added at runtime with `bb marketplace add`. A full launcher or desktop app restart is required. |
 | `BB_SERVER_URL`         | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                                                                                                                                                                                        |
 | `BB_SERVER_BIND_HOST`   | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key.                                                                                                                                                               |
@@ -143,6 +145,26 @@ The microphone picker in Settings → Voice Input is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as
 `bb.voiceInput.audioInputDeviceId`; it does not change `bb-app config` or the
 server-side transcription model.
+
+The server pushes notifications to bb mobile devices through the Expo Push
+API when a thread gains a pending interaction (approval or question), when a
+root thread's turn finishes and waits for input, or when a run fails. Each
+push carries the thread title and a one-line preview and opens the thread when
+tapped. Pushes for one thread coalesce over a two-second window and are skipped
+when a client read the thread or answered the interaction in the meantime. The
+mobile app registers its Expo push token after it connects; inspect or repair
+the registry from an agent or terminal with:
+
+```sh
+bb notifications push-subscriptions list [--json]
+bb notifications push-subscriptions add --token <expo-push-token> --platform <ios|android> --label <device-name> [--json]
+bb notifications push-subscriptions remove <id> [--json]
+```
+
+`add` is an upsert by token. Tokens Expo reports as no longer registered are
+removed automatically after a failed delivery. `BB_PUSH_NOTIFICATIONS=false`
+stops sending while keeping the registrations, and `BB_EXPO_PUSH_URL` points
+the sender at a stub for testing; both are startup-only.
 
 The builtin Keep Awake plugin has one autosaving configuration page with an
 enable switch and an all-or-selected host picker. On selected macOS hosts it

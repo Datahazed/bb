@@ -12,23 +12,27 @@ import {
   BB_APP_URL_ENV,
   BB_APP_SURFACE_ENV,
   BB_APP_VERSION_ENV,
+  BB_EXPO_PUSH_URL_ENV,
   BB_EXTERNAL_URL_ENV,
   BB_INHERITED_SKILLS_ROOTS_ENV,
   BB_INFERENCE_FALLBACK_ENV,
   BB_INFERENCE_ENV,
   BB_MARKETPLACE_URL_ENV,
   BB_POSTHOG_API_KEY_ENV,
+  BB_PUSH_NOTIFICATIONS_ENV,
   BB_SERVER_BIND_HOST_ENV,
   BB_TELEMETRY_ENV,
   BB_TRANSCRIPTION_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_SURFACE,
   DEFAULT_BB_APP_VERSION,
+  DEFAULT_BB_EXPO_PUSH_URL,
   DEFAULT_BB_EXTERNAL_URL,
   DEFAULT_BB_INFERENCE_FALLBACK,
   DEFAULT_BB_INFERENCE,
   DEFAULT_BB_MARKETPLACE_URL,
   DEFAULT_BB_POSTHOG_API_KEY,
+  DEFAULT_BB_PUSH_NOTIFICATIONS,
   DEFAULT_BB_SERVER_BIND_HOST,
   DEFAULT_BB_TELEMETRY,
   DEFAULT_BB_TRANSCRIPTION,
@@ -48,12 +52,14 @@ export interface ServerConfig
   BB_APP_SURFACE: AppSurface;
   BB_APP_VERSION: string;
   BB_DEV_APP_PORT?: number;
+  BB_EXPO_PUSH_URL: string;
   BB_EXTERNAL_URL: string;
   BB_HOST_DAEMON_PORT: number;
   BB_INHERITED_SKILLS_ROOTS: string[];
   BB_INFERENCE: string;
   BB_INFERENCE_FALLBACK: string;
   BB_POSTHOG_API_KEY: string;
+  BB_PUSH_NOTIFICATIONS: boolean;
   BB_MARKETPLACE_URL: string;
   BB_SERVER_BIND_HOST: ServerBindHost;
   BB_TELEMETRY: boolean;
@@ -117,6 +123,12 @@ export function loadServerConfig(
       definition: BB_APP_VERSION_ENV,
       env: loader.env,
     }),
+    BB_EXPO_PUSH_URL: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_EXPO_PUSH_URL,
+      definition: BB_EXPO_PUSH_URL_ENV,
+      env: loader.env,
+    }),
     BB_EXTERNAL_URL: readEnvVarWithDefault({
       context: loader.context,
       defaultValue: DEFAULT_BB_EXTERNAL_URL,
@@ -157,6 +169,12 @@ export function loadServerConfig(
       context: loader.context,
       defaultValue: DEFAULT_BB_POSTHOG_API_KEY,
       definition: BB_POSTHOG_API_KEY_ENV,
+      env: loader.env,
+    }),
+    BB_PUSH_NOTIFICATIONS: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_PUSH_NOTIFICATIONS,
+      definition: BB_PUSH_NOTIFICATIONS_ENV,
       env: loader.env,
     }),
     BB_SERVER_BIND_HOST: readEnvVarWithDefault({

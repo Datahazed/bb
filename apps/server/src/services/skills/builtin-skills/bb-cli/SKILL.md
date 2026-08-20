@@ -126,6 +126,22 @@ message agents, or inspect projects, providers, and environments.
   rendered whole. Older activity loads automatically as you scroll toward the
   top; nothing becomes unreachable.
 
+## Mobile Push Notifications
+
+- The server pushes to registered bb mobile devices through the Expo Push API
+  when a thread gains a pending interaction (approval or question), when a
+  root thread's turn finishes and waits for input, or when a run fails. The
+  push carries the thread title and a one-line preview and opens the thread
+  when tapped; pushes for one thread coalesce over two seconds and are skipped
+  when a client already read the thread or answered the interaction.
+- The mobile app registers its own token after it connects. Inspect or repair
+  the registry with `bb notifications push-subscriptions list`,
+  `bb notifications push-subscriptions add --token <expo-push-token>
+--platform <ios|android> --label <device-name>` (an upsert by token), and
+  `bb notifications push-subscriptions remove <id>`. All accept `--json`.
+- `BB_PUSH_NOTIFICATIONS=false` (startup-only) stops sending while keeping
+  registrations; `BB_EXPO_PUSH_URL` points the sender at a stub for tests.
+
 ## Agent Instructions
 
 - Add `AGENTS.md` to the bb data dir (usually `~/.bb/AGENTS.md`) to inject
