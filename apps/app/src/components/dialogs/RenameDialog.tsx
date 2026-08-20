@@ -22,6 +22,8 @@ import { useRenameDialogAutoFocus } from "./useRenameDialogAutoFocus.js";
 interface RenameDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  accessibleLabel?: string;
+  accessibleDescription?: string;
   /** Extra classes for the modal shell, e.g. the compact thread variant. */
   shellClassName?: string;
   /** Render the entity's rename content, wiring in the autofocus ref. */
@@ -35,6 +37,8 @@ interface RenameDialogProps {
 export function RenameDialog({
   open,
   onOpenChange,
+  accessibleLabel,
+  accessibleDescription,
   shellClassName,
   children,
 }: RenameDialogProps) {
@@ -42,6 +46,8 @@ export function RenameDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        aria-label={accessibleLabel}
+        aria-description={accessibleDescription}
         className={shellClassName}
         onOpenAutoFocus={handleOpenAutoFocus}
       >

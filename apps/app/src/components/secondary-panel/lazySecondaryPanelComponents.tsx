@@ -1,4 +1,10 @@
-import { lazy, Suspense, type ComponentProps, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { useAtomValue } from "jotai";
 import { Panel } from "react-resizable-panels";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -28,6 +34,8 @@ import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
  * imports create no static edge for the bundler.
  */
 type ThreadSecondaryPanelModule = typeof import("./ThreadSecondaryPanel");
+type ThreadSecondaryPanelWithStorageModule =
+  typeof import("./ThreadSecondaryPanelWithStorage");
 type ThreadSecondaryPanelTabContentModule =
   typeof import("./ThreadSecondaryPanelTabContent");
 type ThreadTerminalPanelModule =
@@ -40,6 +48,13 @@ const ThreadSecondaryPanelChunk = lazy(() =>
   import("./ThreadSecondaryPanel").then(({ ThreadSecondaryPanel }) => ({
     default: ThreadSecondaryPanel,
   })),
+);
+const ThreadSecondaryPanelWithStorageChunk = lazy(() =>
+  import("./ThreadSecondaryPanelWithStorage").then(
+    ({ ThreadSecondaryPanelWithStorage }) => ({
+      default: ThreadSecondaryPanelWithStorage,
+    }),
+  ),
 );
 const ThreadTerminalPanelChunk = lazy(() =>
   import("@/components/thread/terminal/ThreadTerminalPanel").then(
@@ -191,6 +206,46 @@ export function LazyThreadSecondaryPanel({
   return (
     <Suspense fallback={fallback}>
       <ThreadSecondaryPanelChunk {...props} />
+    </Suspense>
+  );
+}
+
+export type LazyThreadSecondaryPanelWithStorageProps = ComponentProps<
+  ThreadSecondaryPanelWithStorageModule["ThreadSecondaryPanelWithStorage"]
+> & {
+  drawerFallback: ReactNode;
+};
+
+/**
+ * Realizes the storage-enabled panel on first open and then retains it. A
+ * closed, never-opened panel renders only the light layout placeholder, so it
+ * cannot request @pierre/trees. The retained owner survives tab covers and
+ * close/reopen transitions.
+ */
+export function LazyThreadSecondaryPanelWithStorage({
+  drawerFallback,
+  ...props
+}: LazyThreadSecondaryPanelWithStorageProps) {
+  const [hasRealizedPanel, setHasRealizedPanel] = useState(props.isOpen);
+  if (props.isOpen && !hasRealizedPanel) {
+    setHasRealizedPanel(true);
+  }
+  const isPanelRealized = hasRealizedPanel || props.isOpen;
+  const fallback = props.renderAsDrawer ? (
+    drawerFallback
+  ) : (
+    <ThreadSecondaryPanelInlinePlaceholder
+      isOpen={props.isOpen}
+      isConversationCollapsed={props.isConversationCollapsed}
+      resizablePanelId={props.resizablePanelId}
+    />
+  );
+
+  if (!isPanelRealized) return fallback;
+
+  return (
+    <Suspense fallback={fallback}>
+      <ThreadSecondaryPanelWithStorageChunk {...props} />
     </Suspense>
   );
 }

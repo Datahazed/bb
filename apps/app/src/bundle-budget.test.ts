@@ -39,7 +39,10 @@ const chunks: BundleStatsChunkInput[] = [
     imports: ["assets/boot-shared.js"],
   }),
   chunk("assets/boot-shared.js", {
-    moduleIds: ["/repo/node_modules/react/index.js"],
+    moduleIds: [
+      "/repo/node_modules/react/index.js",
+      "/repo/apps/app/src/components/dialogs/ProjectPathDialog.tsx",
+    ],
   }),
   chunk("assets/SplitWorkspaceRoute.js", {
     facadeModuleId: "/repo/apps/app/src/views/SplitWorkspaceRoute.tsx",
@@ -69,6 +72,9 @@ describe("computeBundleStats", () => {
     expect(stats.bootChunks.map((c) => c.fileName)).toEqual([
       "assets/boot-shared.js",
       "assets/index.js",
+    ]);
+    expect(stats.bootChunks[0]?.modules).toEqual([
+      "src/components/dialogs/ProjectPathDialog.tsx",
     ]);
     const route = stats.routeClosures.SplitWorkspaceRoute;
     if (route === undefined) throw new Error("expected the route closure");
@@ -171,6 +177,37 @@ describe("check-bundle-budget", () => {
     expect(result.code).toBe(1);
     expect(result.output).toContain(
       "@pierre/diffs is in the SplitWorkspaceRoute closure (assets/route-only.js)",
+    );
+  });
+
+  it("fails when a forbidden source module reaches the route closure", async () => {
+    const result = await runCheck(
+      await writeFixture({
+        ...passingBudget,
+        routeClosures: {
+          SplitWorkspaceRoute: {
+            ...passingBudget.routeClosures.SplitWorkspaceRoute,
+            forbiddenModules: ["src/lib/x.ts"],
+          },
+        },
+      }),
+    );
+    expect(result.code).toBe(1);
+    expect(result.output).toContain(
+      "src/lib/x.ts is in the SplitWorkspaceRoute closure (assets/route-only.js)",
+    );
+  });
+
+  it("fails when an on-demand source module reaches the boot closure", async () => {
+    const result = await runCheck(
+      await writeFixture({
+        ...passingBudget,
+        forbiddenBootModules: ["src/components/dialogs/ProjectPathDialog.tsx"],
+      }),
+    );
+    expect(result.code).toBe(1);
+    expect(result.output).toContain(
+      "src/components/dialogs/ProjectPathDialog.tsx is in the boot payload (assets/boot-shared.js)",
     );
   });
 

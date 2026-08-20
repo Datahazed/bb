@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { WorkspaceFile } from "@bb/server-contract";
 import { DetailCard } from "@/components/ui/detail-card.js";
-import { ThreadStorageRow } from "./ThreadMetadataContent";
+import { ThreadStorageMetadataRow } from "./ThreadStorageMetadataRow";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 
@@ -48,7 +48,7 @@ function InteractiveRow({
     selectedPath,
   });
   return (
-    <ThreadStorageRow
+    <ThreadStorageMetadataRow
       controller={controller}
       filesError={filesError ?? null}
       isFilesLoading={isFilesLoading}

@@ -65,6 +65,8 @@ export function ConfirmDeleteDialogContent({
 interface ConfirmDeleteDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  accessibleLabel?: string;
+  accessibleDescription?: string;
   children: ReactNode;
 }
 
@@ -75,11 +77,18 @@ interface ConfirmDeleteDialogProps {
 export function ConfirmDeleteDialog({
   open,
   onOpenChange,
+  accessibleLabel,
+  accessibleDescription,
   children,
 }: ConfirmDeleteDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>{open ? children : null}</DialogContent>
+      <DialogContent
+        aria-label={accessibleLabel}
+        aria-description={accessibleDescription}
+      >
+        {open ? children : null}
+      </DialogContent>
     </Dialog>
   );
 }

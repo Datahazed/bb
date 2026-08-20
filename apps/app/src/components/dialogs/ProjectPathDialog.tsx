@@ -15,8 +15,6 @@ import {
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
 import {
-  Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -50,7 +48,7 @@ export type ProjectPathDialogSubmitHandler = (
   hostId: string | null,
 ) => Promise<void> | void;
 
-interface ProjectPathDialogProps {
+export interface ProjectPathDialogProps {
   target: ProjectPathDialogTarget | null;
   pending?: boolean;
   platform: HostPlatform | null;
@@ -59,36 +57,6 @@ interface ProjectPathDialogProps {
   hosts?: readonly Host[];
   onOpenChange: (open: boolean) => void;
   onSubmit: ProjectPathDialogSubmitHandler;
-}
-
-export function ProjectPathDialog({
-  target,
-  pending = false,
-  platform,
-  hostId,
-  hostName,
-  hosts,
-  onOpenChange,
-  onSubmit,
-}: ProjectPathDialogProps) {
-  return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent>
-        {target ? (
-          <ProjectPathDialogContent
-            key={target.kind === "create" ? "create" : target.projectId}
-            target={target}
-            pending={pending}
-            platform={platform}
-            hostId={hostId}
-            hostName={hostName}
-            hosts={hosts}
-            onSubmit={onSubmit}
-          />
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 export interface ProjectPathDialogContentProps {

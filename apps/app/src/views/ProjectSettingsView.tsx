@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
+import { LazyProjectPathDialog } from "@/components/dialogs/lazyProjectDialogs";
 import {
   ProjectMachineSetupDialog,
   type ProjectMachineSetupDialogTarget,
@@ -288,7 +288,7 @@ export function ProjectSettingsView() {
         </SettingsSection>
       </div>
 
-      <ProjectPathDialog
+      <LazyProjectPathDialog
         target={localSourcePicker.projectPathDialog.target}
         pending={localSourcePickerPending}
         platform={localSourcePicker.platform}

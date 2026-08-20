@@ -1,6 +1,4 @@
 import { useCallback, useMemo, type ReactNode } from "react";
-import { ThreadStorageBrowser } from "./ThreadStorageBrowser";
-import type { ThreadStorageBrowserController } from "./useThreadStorageBrowser";
 import { Link } from "react-router-dom";
 import type {
   Environment,
@@ -22,7 +20,6 @@ import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspac
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { Button } from "@bb/shared-ui/button";
 import {
-  COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
@@ -821,61 +818,6 @@ export function ChangedFilesRow({
   );
 }
 
-export interface ThreadStorageRowProps {
-  controller: ThreadStorageBrowserController;
-  filesError?: Error | null;
-  isFilesLoading: boolean;
-}
-
-export function ThreadStorageRow({
-  controller,
-  filesError,
-  isFilesLoading,
-}: ThreadStorageRowProps) {
-  const { isSearchOpen, openSearch } = controller;
-  // Render nothing when there is no content to show. With no files there is
-  // nothing to browse, so the row would otherwise sit as an empty "No files yet."
-  // box competing for panel height. Stay visible on error so load failures still
-  // surface.
-  if (controller.loadedFiles.length === 0 && filesError == null) {
-    return null;
-  }
-  return (
-    <DetailRow
-      orientation="vertical"
-      className="mt-3 min-h-32 flex-1"
-      valueClassName="min-h-0 flex-1 overflow-hidden"
-      labelClassName="flex items-center justify-between gap-2"
-      label={
-        <>
-          <span>Thread storage</span>
-          {isSearchOpen ? null : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={cn(
-                COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
-                "shrink-0 text-muted-foreground",
-              )}
-              aria-label="Search files"
-              onClick={openSearch}
-            >
-              <Icon name="Search" />
-            </Button>
-          )}
-        </>
-      }
-    >
-      <ThreadStorageBrowser
-        controller={controller}
-        filesError={filesError}
-        isFilesLoading={isFilesLoading}
-      />
-    </DetailRow>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Composition + helper
 // ---------------------------------------------------------------------------
@@ -902,7 +844,7 @@ export interface ThreadMetadataContentProps {
   mergeBaseRemoteBranchOptions?: readonly string[];
   isLoadingMergeBaseBranchOptions: boolean;
   updateThreadPending: boolean;
-  storage?: ThreadStorageRowProps;
+  storage?: ReactNode;
   onAssignParent: (parentThreadId: string | null) => void;
   onParentSelectorOpenChange: (open: boolean) => void;
   onRetryParentThreads: () => void;
@@ -1086,7 +1028,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         workspaceStatus={workspaceStatus}
         onChangedFileClick={onChangedFileClick}
       />
-      {storage ? <ThreadStorageRow {...storage} /> : null}
+      {storage}
     </ThreadMetadataCard>
   );
 }

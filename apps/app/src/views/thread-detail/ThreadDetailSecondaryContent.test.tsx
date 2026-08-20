@@ -48,6 +48,19 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   useThreads: useThreadsMock,
 }));
 
+vi.mock("@/components/secondary-panel/useThreadStorageBrowser", () => ({
+  useThreadStorageBrowser: () => ({
+    closeSearch: () => {},
+    filteredFiles: [],
+    isSearchOpen: false,
+    loadedFiles: [],
+    model: {},
+    openSearch: () => {},
+    searchQuery: "",
+    setSearchQuery: () => {},
+  }),
+}));
+
 vi.mock("jotai", async (importOriginal) => ({
   ...(await importOriginal<typeof import("jotai")>()),
   useAtomValue: () => 50,
@@ -237,6 +250,13 @@ function createProps(
     onToggleConversationCollapse: noop,
     onToggleSecondaryPanel: noop,
     renderHostedPanel: (panel) => panel,
+    storageBrowser: {
+      files: undefined,
+      filesError: null,
+      isFilesLoading: false,
+      onSelectPath: noop,
+      selectedPath: null,
+    },
     secondaryPanel: {
       activeTab: null,
       canUseGitUi: false,

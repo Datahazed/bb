@@ -19,15 +19,13 @@ import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
 } from "@/hooks/useLocalPathPicker";
-import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import {
-  ProjectDeleteDialog,
-  type ProjectDeleteDialogTarget,
-} from "@/components/dialogs/ProjectDeleteDialog";
-import {
-  ProjectRenameDialog,
-  type ProjectRenameDialogTarget,
-} from "@/components/dialogs/ProjectRenameDialog";
+  LazyProjectDeleteDialog,
+  LazyProjectPathDialog,
+  LazyProjectRenameDialog,
+} from "@/components/dialogs/lazyProjectDialogs";
+import { type ProjectDeleteDialogTarget } from "@/components/dialogs/ProjectDeleteDialog";
+import { type ProjectRenameDialogTarget } from "@/components/dialogs/ProjectRenameDialog";
 import { collapsedProjectIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 
@@ -165,19 +163,19 @@ export function ProjectActionsProvider({
   return (
     <ProjectActionsContext.Provider value={value}>
       {children}
-      <ProjectRenameDialog
+      <LazyProjectRenameDialog
         target={renameDialog.target}
         pending={updateProject.isPending}
         onOpenChange={renameDialog.onOpenChange}
         onRename={submitRename}
       />
-      <ProjectDeleteDialog
+      <LazyProjectDeleteDialog
         target={deleteDialog.target}
         pending={deleteProject.isPending}
         onOpenChange={deleteDialog.onOpenChange}
         onDelete={confirmDelete}
       />
-      <ProjectPathDialog
+      <LazyProjectPathDialog
         target={addLocalSourcePicker.projectPathDialog.target}
         pending={addLocalSource.isPending}
         platform={addLocalSourcePicker.platform}

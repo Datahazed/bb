@@ -209,6 +209,8 @@ interface ResponsiveDrawerShellProps {
    * renders its own labeled heading inside children (e.g. DialogTitle).
    */
   srLabel?: string;
+  /** Sr-only description announced before deferred drawer content realizes. */
+  srDescription?: string;
   /** Existing visible title used to label a dialog body. */
   labelledBy?: string;
   /** Existing visible description for a dialog body. */
@@ -273,6 +275,7 @@ export function ResponsiveDrawerShell({
   open,
   onOpenChange,
   srLabel,
+  srDescription,
   labelledBy,
   describedBy,
   contentClassName,
@@ -289,7 +292,14 @@ export function ResponsiveDrawerShell({
     <PersistentResponsiveDrawerShell
       open={open}
       onOpenChange={onOpenChange}
-      srLabel={srLabel}
+      srLabel={
+        isContentRealized && labelledBy !== undefined ? undefined : srLabel
+      }
+      srDescription={
+        isContentRealized && describedBy !== undefined
+          ? undefined
+          : srDescription
+      }
       labelledBy={labelledBy}
       describedBy={describedBy}
       contentClassName={contentClassName}
@@ -320,6 +330,7 @@ interface PersistentResponsiveDrawerShellProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   srLabel?: string;
+  srDescription?: string;
   labelledBy?: string;
   describedBy?: string;
   contentClassName?: string;
@@ -474,6 +485,7 @@ export function PersistentResponsiveDrawerShell({
   open,
   onOpenChange,
   srLabel,
+  srDescription,
   labelledBy,
   describedBy,
   contentClassName,
@@ -487,6 +499,7 @@ export function PersistentResponsiveDrawerShell({
   const returnFocusRef = React.useRef<HTMLElement | null>(null);
   const settledStateRef = React.useRef<boolean | null>(null);
   const labelId = React.useId();
+  const descriptionId = React.useId();
   const portalScopeProps = usePortalScopeProps();
   const transition = `transform ${motionDurationMs}ms ${PERSISTENT_DRAWER_EASING}`;
   const backdropTransition = `opacity ${motionDurationMs}ms ${PERSISTENT_DRAWER_EASING}`;
@@ -671,10 +684,10 @@ export function PersistentResponsiveDrawerShell({
         ref={panelRef}
         {...portalScopeProps}
         aria-hidden={!open}
-        aria-labelledby={
-          labelledBy ?? (srLabel === undefined ? undefined : labelId)
+        aria-labelledby={srLabel === undefined ? labelledBy : labelId}
+        aria-describedby={
+          srDescription === undefined ? describedBy : descriptionId
         }
-        aria-describedby={describedBy}
         aria-modal={open || undefined}
         data-bb-portaled-overlay=""
         data-persistent-drawer-content=""
@@ -714,6 +727,11 @@ export function PersistentResponsiveDrawerShell({
           <h2 id={labelId} className="sr-only">
             {srLabel}
           </h2>
+        )}
+        {srDescription === undefined ? null : (
+          <p id={descriptionId} className="sr-only">
+            {srDescription}
+          </p>
         )}
         {children}
       </div>

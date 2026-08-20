@@ -54,9 +54,16 @@ const MIN_PRECOMPRESS_BYTES = 1024;
  * budget, so an unrun precompression step could hide real growth. Treat it as
  * an error rather than guessing a size.
  */
-function measureClosure(chunks, forbiddenPackages, brotliSizeOf) {
+function measureClosure(
+  chunks,
+  forbiddenPackages,
+  forbiddenModules,
+  brotliSizeOf,
+) {
   const forbidden = new Set(forbiddenPackages);
+  const forbiddenSourceModules = new Set(forbiddenModules);
   const offenders = new Map();
+  const moduleOffenders = new Map();
   const missingBrotli = [];
   let bytes = 0;
   let brotliBytes = 0;
@@ -77,8 +84,21 @@ function measureClosure(chunks, forbiddenPackages, brotliSizeOf) {
       if (!offenders.has(pkg)) offenders.set(pkg, []);
       offenders.get(pkg).push(chunk.fileName);
     }
+    for (const sourceModule of chunk.modules ?? []) {
+      if (!forbiddenSourceModules.has(sourceModule)) continue;
+      if (!moduleOffenders.has(sourceModule)) {
+        moduleOffenders.set(sourceModule, []);
+      }
+      moduleOffenders.get(sourceModule).push(chunk.fileName);
+    }
   }
-  return { bytes, brotliBytes, missingBrotli, offenders };
+  return {
+    bytes,
+    brotliBytes,
+    missingBrotli,
+    offenders,
+    moduleOffenders,
+  };
 }
 
 const brotliSizeOf = (fileName) => {
@@ -89,6 +109,7 @@ const brotliSizeOf = (fileName) => {
 const boot = measureClosure(
   stats.bootChunks,
   budget.forbiddenBootPackages,
+  budget.forbiddenBootModules ?? [],
   brotliSizeOf,
 );
 
@@ -173,6 +194,11 @@ for (const [pkg, chunks] of boot.offenders) {
     `${pkg} is in the boot payload (${chunks.join(", ")}). It must load on demand.`,
   );
 }
+for (const [sourceModule, chunks] of boot.moduleOffenders) {
+  failures.push(
+    `${sourceModule} is in the boot payload (${chunks.join(", ")}). It must load on demand.`,
+  );
+}
 failures.push(...onDemandFailures);
 
 const failingRouteChunkLists = [];
@@ -189,6 +215,7 @@ for (const [routeName, routeBudget] of Object.entries(
   const route = measureClosure(
     closure.chunks,
     routeBudget.forbiddenPackages,
+    routeBudget.forbiddenModules ?? [],
     brotliSizeOf,
   );
   console.log(
@@ -220,6 +247,11 @@ for (const [routeName, routeBudget] of Object.entries(
   for (const [pkg, chunks] of route.offenders) {
     routeFailures.push(
       `${pkg} is in the ${routeName} closure (${chunks.join(", ")}). It must load on demand (behind React.lazy or import()).`,
+    );
+  }
+  for (const [sourceModule, chunks] of route.moduleOffenders) {
+    routeFailures.push(
+      `${sourceModule} is in the ${routeName} closure (${chunks.join(", ")}). It must load on demand (behind React.lazy or import()).`,
     );
   }
   if (routeFailures.length > 0) {

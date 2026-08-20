@@ -10,6 +10,8 @@ export interface BundleBootChunk {
   bytes: number;
   /** npm package names whose code landed in this chunk. */
   packages: string[];
+  /** App-relative source modules whose code landed in this chunk. */
+  modules: string[];
 }
 
 export interface BundleChunk extends BundleBootChunk {
@@ -47,6 +49,7 @@ export interface BundleStats {
  * path suffix, matched against the output chunk's `facadeModuleId`.
  */
 export const MEASURED_ROUTE_CLOSURES: Record<string, string> = {
+  ProjectSettingsView: "/src/views/ProjectSettingsView.tsx",
   SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx",
 };
 
@@ -98,14 +101,18 @@ export function computeBundleStats(
 
   const describeChunk = (chunk: BundleStatsChunkInput): BundleBootChunk => {
     const packages = new Set<string>();
+    const modules = new Set<string>();
     for (const moduleId of chunk.moduleIds) {
       const name = packageNameOf(moduleId);
       if (name !== null) packages.add(name);
+      const sourceModule = appModulePathOf(moduleId);
+      if (sourceModule !== null) modules.add(sourceModule);
     }
     return {
       fileName: chunk.fileName,
       bytes: Buffer.byteLength(chunk.code),
       packages: [...packages].sort(),
+      modules: [...modules].sort(),
     };
   };
 
@@ -218,4 +225,25 @@ function packageNameOf(moduleId: string): string | null {
   if (first.startsWith("@"))
     return second === undefined ? null : `${first}/${second}`;
   return first;
+}
+
+/** Absolute app source id -> app-relative path; dependencies/virtual ids -> null. */
+function appModulePathOf(moduleId: string): string | null {
+  const cleanId = moduleId.split("?", 1)[0];
+  if (cleanId === undefined || cleanId.startsWith("\0")) return null;
+  const normalizedId = cleanId.split(sep).join("/");
+  const appMarker = "/apps/app/";
+  const appMarkerIndex = normalizedId.lastIndexOf(appMarker);
+  if (appMarkerIndex >= 0) {
+    return normalizedId.slice(appMarkerIndex + appMarker.length);
+  }
+  const sourcePath = relative(appDir, cleanId);
+  if (
+    sourcePath === "" ||
+    sourcePath === ".." ||
+    sourcePath.startsWith(`..${sep}`)
+  ) {
+    return null;
+  }
+  return sourcePath.split(sep).join("/");
 }

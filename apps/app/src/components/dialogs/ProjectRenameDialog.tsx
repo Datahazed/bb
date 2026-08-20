@@ -1,4 +1,5 @@
-import type { RefObject } from "react";
+import { useLayoutEffect, type RefObject } from "react";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { RenameDialog, RenameDialogContent } from "./RenameDialog";
 
 export interface ProjectRenameDialogTarget {
@@ -18,6 +19,8 @@ export interface ProjectRenameDialogContentProps {
   pending: boolean;
   onRename: (projectId: string, name: string) => void;
   inputRef: RefObject<HTMLInputElement | null>;
+  /** Restores autofocus when a lazy body mounts after the shell opened. */
+  focusOnMount?: boolean;
 }
 
 export function ProjectRenameDialog({
@@ -48,7 +51,15 @@ export function ProjectRenameDialogContent({
   pending,
   onRename,
   inputRef,
+  focusOnMount = false,
 }: ProjectRenameDialogContentProps) {
+  const isPointerCoarse = usePointerCoarse();
+  useLayoutEffect(() => {
+    if (!focusOnMount || isPointerCoarse) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [focusOnMount, inputRef, isPointerCoarse]);
+
   return (
     <RenameDialogContent
       entityLabel="project"

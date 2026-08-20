@@ -24,6 +24,8 @@
     "composer, render math). Each one reached the boot path through a barrel",
     "re-export rather than a direct import, which type checking cannot catch,",
     "so the check names them explicitly.",
+    "forbiddenBootModules applies the same exact-source gate to app modules",
+    "whose normally closed UI must never return to the boot closure.",
     "",
     "onDemandPackages goes one step further than the boot path: each package",
     "maps to its gate, the source module a dynamic import() resolves to. The",
@@ -36,17 +38,19 @@
     "",
     "routeClosures ratchets, per lazy route, the static-import closure of the",
     "route chunk minus the boot chunks: the JavaScript between 'app shell",
-    "painted' and 'route content painted'. SplitWorkspaceRoute is every thread,",
-    "compose and plugin-panel page, so its closure is the second number that",
-    "decides how slow bb feels on a phone. Same 10% ratchet; its forbiddenPackages",
-    "are the diff engine, math and terminal code that only a user action needs.",
+    "painted' and 'route content painted'. ProjectSettingsView forbids the path",
+    "dialog and remote browser needed only after opening a dialog.",
+    "SplitWorkspaceRoute is every thread, compose and plugin-panel page, so its",
+    "closure is the second number that decides how slow bb feels on a phone.",
+    "Same 10% ratchet; its forbiddenPackages are the diff engine, math and",
+    "terminal code that only a user action needs.",
     "The composer (tiptap/prosemirror) is visible on every thread page and is",
     "allowed until it moves behind a first-focus handoff. Run",
     "`node scripts/why-eager.mjs --from=views/SplitWorkspaceRoute.tsx <package>`",
     "to print the static chain that pulled a package into the closure."
   ],
-  "maxBootBytes": 1723617,
-  "maxBootBrotliBytes": 479067,
+  "maxBootBytes": 1718043,
+  "maxBootBrotliBytes": 482677,
   "forbiddenBootPackages": [
     "@pierre/diffs",
     "@pierre/theming",
@@ -66,20 +70,41 @@
     "prosemirror-model",
     "prosemirror-state",
     "prosemirror-view",
+    "preact",
+    "preact-render-to-string",
     "rehype-katex",
     "shiki"
   ],
+  "forbiddenBootModules": [
+    "src/components/dialogs/ProjectDeleteDialog.tsx",
+    "src/components/dialogs/ProjectPathDialog.tsx",
+    "src/components/dialogs/ProjectRenameDialog.tsx",
+    "src/components/dialogs/RemotePathBrowser.tsx"
+  ],
   "onDemandPackages": {
+    "@pierre/trees": "src/components/secondary-panel/ThreadSecondaryPanelWithStorage.tsx",
     "katex": "src/components/ui/markdown-katex.ts",
+    "preact": "src/components/secondary-panel/ThreadSecondaryPanelWithStorage.tsx",
+    "preact-render-to-string": "src/components/secondary-panel/ThreadSecondaryPanelWithStorage.tsx",
     "rehype-katex": "src/components/ui/markdown-katex.ts"
   },
   "routeClosures": {
+    "ProjectSettingsView": {
+      "maxBytes": 121009,
+      "maxBrotliBytes": 32864,
+      "forbiddenPackages": [],
+      "forbiddenModules": [
+        "src/components/dialogs/ProjectPathDialog.tsx",
+        "src/components/dialogs/RemotePathBrowser.tsx"
+      ]
+    },
     "SplitWorkspaceRoute": {
-      "maxBytes": 2533484,
-      "maxBrotliBytes": 671561,
+      "maxBytes": 2269199,
+      "maxBrotliBytes": 607310,
       "forbiddenPackages": [
         "@pierre/diffs",
         "@pierre/theming",
+        "@pierre/trees",
         "@shikijs/core",
         "@shikijs/engine-javascript",
         "@shikijs/engine-oniguruma",
@@ -89,6 +114,8 @@
         "katex",
         "mermaid",
         "oniguruma-to-es",
+        "preact",
+        "preact-render-to-string",
         "rehype-katex",
         "shiki"
       ]

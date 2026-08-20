@@ -1,4 +1,4 @@
-import { useMemo, type ComponentProps, type ReactNode } from "react";
+import { useCallback, type ComponentProps, type ReactNode } from "react";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -6,7 +6,7 @@ import {
   usePluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
-import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
+import { LazyThreadSecondaryPanelWithStorage } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import {
   ThreadMetadataCard,
   ThreadMetadataContent,
@@ -22,8 +22,10 @@ type ThreadTimelinePaneProps = Omit<
   "footer"
 >;
 type ThreadSecondaryPanelProps = Omit<
-  ComponentProps<typeof LazyThreadSecondaryPanel>,
+  ComponentProps<typeof LazyThreadSecondaryPanelWithStorage>,
   | "metadataContent"
+  | "renderMetadataContent"
+  | "storageBrowser"
   | "renderAsDrawer"
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
@@ -53,7 +55,10 @@ interface ThreadDetailSecondaryContentProps {
   onToggleSecondaryPanel: () => void;
   onToggleConversationCollapse: () => void;
   renderHostedPanel: (panel: ReactNode) => ReactNode;
-  metadata: ThreadMetadataContentProps;
+  metadata: Omit<ThreadMetadataContentProps, "storage">;
+  storageBrowser: ComponentProps<
+    typeof LazyThreadSecondaryPanelWithStorage
+  >["storageBrowser"];
   secondaryPanel: ThreadSecondaryPanelProps;
   timeline: ThreadTimelinePaneProps;
 }
@@ -79,6 +84,7 @@ function ThreadDetailSecondaryContentBody({
   onToggleConversationCollapse,
   renderHostedPanel,
   metadata,
+  storageBrowser,
   secondaryPanel,
   timeline,
 }: ThreadDetailSecondaryContentProps) {
@@ -98,11 +104,11 @@ function ThreadDetailSecondaryContentBody({
     { enabled: isSecondaryPanelOpen },
   );
   const hasForks = (forksQuery.data?.length ?? 0) > 0;
-  const metadataContent = useMemo(
-    () =>
+  const renderMetadataContent = useCallback(
+    (storage: ReactNode): ReactNode =>
       hasAnyThreadMetadata(metadata, hasForks) ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ThreadMetadataContent {...metadata} />
+          <ThreadMetadataContent {...metadata} storage={storage} />
         </div>
       ) : isMetadataLoading ? (
         <ThreadMetadataLoadingSkeleton />
@@ -145,9 +151,12 @@ function ThreadDetailSecondaryContentBody({
           onToggleMainCollapse,
           resizablePanelId,
         }) => (
-          <LazyThreadSecondaryPanel
+          <LazyThreadSecondaryPanelWithStorage
+            key={timeline.threadId}
             {...threadSecondaryPanelProps}
             drawerFallback={<ThreadMetadataLoadingSkeleton />}
+            renderMetadataContent={renderMetadataContent}
+            storageBrowser={storageBrowser}
             renderBrowserDeck={(activeBrowserTabId, pane) =>
               renderBrowserDeck?.({
                 activeBrowserTabId,
@@ -166,7 +175,6 @@ function ThreadDetailSecondaryContentBody({
               ? { inlinePanelToggle: "button" as const }
               : {})}
             resizablePanelId={resizablePanelId}
-            metadataContent={metadataContent}
           />
         )}
       />

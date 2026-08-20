@@ -41,7 +41,7 @@ import {
 import { useRouteState } from "@/hooks/useRouteState";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
+import { LazyProjectPathDialog } from "@/components/dialogs/lazyProjectDialogs";
 import { ProjectActionsMenu } from "@/components/project/ProjectActionsMenu";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
 import {
@@ -879,7 +879,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             active={isSidebarResizing}
             cursor="col-resize"
           />
-          <ProjectPathDialog
+          <LazyProjectPathDialog
             target={quickCreateProject.projectPathDialog.target}
             pending={quickCreateProject.isCreating}
             platform={quickCreateProject.platform}

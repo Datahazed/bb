@@ -218,10 +218,6 @@ import {
 import { getFilePreviewLineRangeStart } from "@/lib/file-preview";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import {
-  useThreadStorageBrowser,
-  type ThreadStoragePathSelectHandler,
-} from "@/components/secondary-panel/useThreadStorageBrowser";
-import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
@@ -1512,21 +1508,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       handleOpenUrlByPreference(url);
     });
   }, [browserTabIds, handleOpenUrlByPreference]);
-  const handleSelectStorageBrowserPath =
-    useCallback<ThreadStoragePathSelectHandler>(
-      (path) => {
-        openStorageFile({
-          lineRange: null,
-          path,
-        });
-      },
-      [openStorageFile],
-    );
-  const storageBrowserController = useThreadStorageBrowser({
-    files: threadStorageFiles?.files,
-    onSelectPath: handleSelectStorageBrowserPath,
-    selectedPath: activeStorageFilePath,
-  });
+  const handleSelectStorageBrowserPath = useCallback(
+    (path: string) => {
+      openStorageFile({
+        lineRange: null,
+        path,
+      });
+    },
+    [openStorageFile],
+  );
   const [storedConversationCollapsed, setStoredConversationCollapsed] = useAtom(
     getThreadConversationCollapsedAtom(threadId),
   );
@@ -2239,15 +2229,19 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [openSecondaryPanelDiffFile, handleOpenTimelinePluginPanel, threadId],
   );
-  const metadataStorage = useMemo(
+  const metadataStorageBrowser = useMemo(
     () => ({
-      controller: storageBrowserController,
+      files: threadStorageFiles?.files,
       filesError: threadStorageFilesError,
       isFilesLoading: isThreadStorageFilesLoading,
+      onSelectPath: handleSelectStorageBrowserPath,
+      selectedPath: activeStorageFilePath,
     }),
     [
+      activeStorageFilePath,
+      handleSelectStorageBrowserPath,
       isThreadStorageFilesLoading,
-      storageBrowserController,
+      threadStorageFiles?.files,
       threadStorageFilesError,
     ],
   );
@@ -2962,6 +2956,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
                 </UrlOpenRoutingProvider>
               </MarkdownLocalFileContextMenuContext.Provider>
             )}
+            storageBrowser={metadataStorageBrowser}
             metadata={{
               thread,
               projectId,
@@ -2985,7 +2980,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               isLoadingMergeBaseBranchOptions,
               updateThreadPending:
                 updateThread.isPending || updateEnvironment.isPending,
-              storage: metadataStorage,
               onAssignParent: handleAssignParent,
               onParentSelectorOpenChange: handleParentSelectorOpenChange,
               onRetryParentThreads: handleRetryParentThreads,

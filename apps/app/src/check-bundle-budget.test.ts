@@ -14,6 +14,7 @@ const scriptPath = resolve(
 const KATEX_GATE = "src/components/ui/markdown-katex.ts";
 
 interface ChunkSpec {
+  modules?: string[];
   packages?: string[];
   imports?: string[];
   facade?: string | null;
@@ -24,6 +25,7 @@ function chunk(fileName: string, spec: ChunkSpec = {}): BundleChunk {
   return {
     fileName,
     bytes: 512,
+    modules: spec.modules ?? [],
     packages: spec.packages ?? [],
     imports: spec.imports ?? [],
     facade: spec.facade ?? null,

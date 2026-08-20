@@ -233,7 +233,16 @@ type DialogContentProps = React.ComponentPropsWithoutRef<
 >;
 
 const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
-  ({ className, children, ...props }, ref) => {
+  (
+    {
+      className,
+      children,
+      "aria-label": accessibleLabel,
+      "aria-description": accessibleDescription,
+      ...props
+    },
+    ref,
+  ) => {
     const { isCompactViewport, open, onOpenChange, titleId, descriptionId } =
       useResponsiveDialog();
     useBrowserDimmingModal(open);
@@ -247,6 +256,8 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
         <ResponsiveDrawerShell
           open={open}
           onOpenChange={onOpenChange}
+          srLabel={accessibleLabel}
+          srDescription={accessibleDescription}
           labelledBy={titleId}
           describedBy={descriptionId}
         >
@@ -273,6 +284,8 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
         <DialogPrimitive.Content
           ref={ref}
           {...scopeProps}
+          aria-label={accessibleLabel}
+          aria-description={accessibleDescription}
           className={cn(
             "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg grid-cols-[minmax(0,1fr)] translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-sm duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-lg",
             className,

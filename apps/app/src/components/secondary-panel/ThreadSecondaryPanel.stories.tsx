@@ -42,6 +42,7 @@ import {
 } from "./ThreadMetadataContent.fixtures";
 import { resolveRightPanelFileVisual } from "./rightPanelFileVisuals";
 import { useThreadStorageBrowser } from "./useThreadStorageBrowser";
+import { ThreadStorageMetadataRow } from "./ThreadStorageMetadataRow";
 
 export default {
   title: "right-panel/Tabbed shell",
@@ -223,11 +224,13 @@ function RepresentativeInfoContent() {
     }),
     selectedMergeBaseBranch: "main",
     workspaceStatus: representativeWorkspaceStatus,
-    storage: {
-      controller: storageController,
-      filesError: null,
-      isFilesLoading: false,
-    },
+    storage: (
+      <ThreadStorageMetadataRow
+        controller={storageController}
+        filesError={null}
+        isFilesLoading={false}
+      />
+    ),
     onCommitClick: noop,
   };
 
