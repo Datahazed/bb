@@ -1,4 +1,3 @@
-import { useCallback, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryKey } from "@tanstack/react-query";
 import type { AvailableModel, PermissionMode, ProviderInfo } from "@bb/domain";
@@ -68,6 +67,17 @@ export interface UseOnboardingAgentsOptions extends QueryOptions {
 interface QueryOptions {
   enabled?: boolean;
 }
+
+type SystemProviderRoutingArgs =
+  | { environmentId: string; hostId?: never }
+  | { environmentId?: never; hostId: string }
+  | { environmentId?: never; hostId?: never };
+
+export type UseSystemProvidersArgs = QueryOptions & SystemProviderRoutingArgs;
+
+export type UseSystemProviderInfoArgs = UseSystemProvidersArgs & {
+  providerId?: string;
+};
 
 const SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS = 250;
 const SYSTEM_EXECUTION_OPTIONS_RETRY_COUNT = 1;
@@ -346,33 +356,6 @@ export function findCachedProviderInfo(
   return null;
 }
 
-/**
- * Reactive form of {@link findCachedProviderInfo}. The cache read alone is a
- * render-time snapshot, and a component that does not mount the
- * execution-options query itself never re-renders when that query lands — so a
- * capability-gated affordance would stay hidden until some unrelated query
- * happened to re-render the tree. Subscribing to the query cache makes it
- * appear as soon as the data arrives, without mounting a second request.
- */
-export function useCachedProviderInfo(
-  providerId: string | undefined,
-): ProviderInfo | null {
-  const queryClient = useQueryClient();
-  const subscribe = useCallback(
-    (onStoreChange: () => void) =>
-      queryClient.getQueryCache().subscribe(onStoreChange),
-    [queryClient],
-  );
-  const getSnapshot = useCallback(
-    () =>
-      providerId === undefined
-        ? null
-        : findCachedProviderInfo(queryClient, providerId),
-    [providerId, queryClient],
-  );
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
 function isAbortLikeError(error: unknown): boolean {
   return toRecord(error)?.name === "AbortError";
 }
@@ -399,17 +382,55 @@ function shouldRetrySystemExecutionOptions(
 /**
  * The provider roster with the server's display names. Cheaper than the full
  * execution-options query (no model probe), which is what surfaces that only
- * need to name a provider — the skills library's provider filter — should use.
+ * need provider metadata or capabilities should use.
  */
-export function useSystemProviders(args: { enabled?: boolean } = {}) {
+export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
+  const environmentId = args.environmentId ?? null;
+  const hostId = args.hostId ?? null;
   const enabled = args.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
   return useQuery<ProviderInfo[]>({
-    queryKey: systemProvidersQueryKey(),
-    queryFn: ({ signal }) => sdk.providers.list({ signal }),
+    queryKey: systemProvidersQueryKey({ environmentId, hostId }),
+    queryFn: ({ signal }) => {
+      if (args.environmentId !== undefined) {
+        return sdk.providers.list({
+          environmentId: args.environmentId,
+          signal,
+        });
+      }
+      if (args.hostId !== undefined) {
+        return sdk.providers.list({ hostId: args.hostId, signal });
+      }
+      return sdk.providers.list({ signal });
+    },
     enabled,
     staleTime: 60_000,
   });
+}
+
+/**
+ * Resolve one provider from the lightweight provider roster. Unlike the full
+ * execution-options request, this does not wait for model discovery, so
+ * capability-gated controls can render as soon as provider metadata arrives.
+ * A just-submitted composer has already loaded the same provider facts through
+ * execution options, so reuse that warm cache synchronously during navigation
+ * while the lightweight roster fills its own route-scoped cache.
+ */
+export function useSystemProviderInfo({
+  providerId,
+  ...args
+}: UseSystemProviderInfoArgs): ProviderInfo | null {
+  const queryClient = useQueryClient();
+  const providersQuery = useSystemProviders({
+    ...args,
+    enabled: (args.enabled ?? true) && providerId !== undefined,
+  });
+  return (
+    providersQuery.data?.find((provider) => provider.id === providerId) ??
+    (providerId === undefined
+      ? null
+      : findCachedProviderInfo(queryClient, providerId))
+  );
 }
 
 export function useSystemExecutionOptions(
