@@ -64,9 +64,11 @@ function PrivacyRoute() {
           <h1>Privacy</h1>
 
           <p className="lede">
-            bb runs on your own machines. Your prompts, your code, and your
-            files go to the bb server that you run, and from there to the AI
-            provider that you choose. They do not come to us.
+            bb runs on your own machines. When you connect to your bb server
+            directly, your prompts, your code, and your files go to that server
+            and from there to the AI provider that you choose. They do not come
+            to us. If you use bb connect, its relay handles that traffic while
+            it is in flight, as described below.
           </p>
 
           <p>
@@ -92,9 +94,11 @@ function PrivacyRoute() {
 
           <p>
             The apps talk to a bb server that you run. We do not operate that
-            server and we do not receive its data. This includes your prompts,
-            your agent conversations, your source code, your files, your
-            terminal output, and your provider API keys.
+            server or keep its data. When you connect directly, we do not
+            receive your prompts, your agent conversations, your source code,
+            your files, your terminal output, or your provider API keys. bb
+            connect is the exception: its relay handles traffic in flight if you
+            choose to use it.
           </p>
 
           <p>The iOS app keeps this on the device:</p>
@@ -118,8 +122,11 @@ function PrivacyRoute() {
 
           <p>
             The app asks for the camera, the microphone, and the photo library
-            only when you attach an image or dictate a prompt. That content goes
-            to your bb server. It does not go to us.
+            when you choose a feature that needs them, such as scanning a
+            pairing code, attaching an image, or recording a prompt. Pairing
+            through bb connect works as described below. Attachments and
+            recorded prompts go to your bb server; the bb connect relay handles
+            them in flight if you use it.
           </p>
 
           <h2>2. bb connect</h2>
@@ -129,6 +136,15 @@ function PrivacyRoute() {
             <code>yourhandle.getbb.app</code>, so the iOS app can reach it from
             a phone network. If you only use bb on your own network, you never
             touch it.
+          </p>
+
+          <p>
+            Pairing also goes through bb connect. When the iOS app scans or you
+            type a one-time pairing code, it sends that code to the connect
+            address named by the pairing flow, normally <code>getbb.app</code>.
+            The service consumes the code and returns a device credential and
+            the server routing details. This exchange reaches bb connect before
+            the app starts relaying traffic to your server.
           </p>
 
           <p>When you sign in to bb connect, we store:</p>
@@ -166,24 +182,29 @@ function PrivacyRoute() {
           </p>
 
           <p>
-            You can revoke any machine at any time from the connect dashboard.
-            Revoking it ends its address immediately.
+            You can revoke an enrolled machine or device at any time from the
+            connect dashboard, which prevents its credential from authenticating
+            again. Disconnecting a server stops its connect address.
           </p>
 
           <h2>3. This website</h2>
 
           <p>
             The marketing pages use PostHog to measure how people find bb.
-            Automatic event capture is off. The pages send page views, the
-            referrer and any campaign parameters in the URL, and a small set of
-            named events, such as a click on a download link or a copy of the
-            install command.
+            Automatic interaction capture is off. The pages send page-view and
+            page-leave events, the referrer and any campaign parameters in the
+            URL, and a small set of named events, such as a click on a download
+            link or a copy of the install command. The browser SDK does not
+            persist analytics data in cookies or browser storage. Remote
+            configuration, session recording, surveys, and external dependency
+            loading are disabled.
           </p>
 
           <p>
-            If you give us your email address to follow releases, we keep it to
-            send you those emails, and nothing else. Every email has an
-            unsubscribe link.
+            If you give us your email address to follow releases, the signup
+            form sends it to Resend, our email delivery provider. Resend stores
+            it in the bb mailing audience and processes it to send those emails.
+            Every email has an unsubscribe link.
           </p>
 
           <h2>What we do not do</h2>
@@ -206,8 +227,12 @@ function PrivacyRoute() {
           </p>
 
           <p>
-            Data held by the bb apps is yours. Deleting the iOS app removes its
-            profiles, preferences, and drafts from the device.
+            Removing a saved server from within the iOS app deletes that profile
+            and its credential copy from the iOS Keychain. Deleting the app
+            removes its ordinary app storage, including preferences and drafts,
+            but iOS can preserve Keychain items after an app is deleted.
+            Deleting the app alone is therefore not guaranteed to remove server
+            profiles or credentials.
           </p>
 
           <h2>Children</h2>

@@ -4,10 +4,12 @@ import type { CtaPlacement } from "./site";
 /**
  * PostHog wiring for the landing page.
  *
- * Autocapture is off; the page emits only the explicit events below. UTM
- * parameters and the referrer are captured automatically by posthog-js on
- * `$pageview` and persisted as initial person properties, which is what links
- * ad campaigns to the download/install funnel.
+ * Interaction autocapture is off; the SDK sends configured page-view and
+ * page-leave events plus the explicit events below. UTM parameters and the
+ * referrer are captured automatically by posthog-js on `$pageview`, which is
+ * what links ad campaigns to the download/install funnel. Browser persistence
+ * and remote configuration are disabled so this event list cannot silently
+ * expand through PostHog project settings.
  *
  * posthog-js is loaded lazily so it stays out of the critical-path bundle of
  * the ad landing page. Events fired before it finishes loading are queued and
@@ -61,11 +63,15 @@ export function initAnalytics(): void {
   // Lazy import keeps posthog-js out of the landing page's main bundle.
   void import("posthog-js").then(({ default: posthog }) => {
     posthog.init(key, {
-      api_host:
-        import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com",
+      api_host: import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com",
+      advanced_disable_flags: true,
       autocapture: false,
       capture_pageview: true,
       capture_pageleave: true,
+      disable_external_dependency_loading: true,
+      disable_persistence: true,
+      disable_session_recording: true,
+      disable_surveys: true,
     });
     client = posthog;
     for (const event of pendingEvents.splice(0)) {
