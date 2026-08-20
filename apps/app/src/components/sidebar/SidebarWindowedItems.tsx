@@ -69,8 +69,8 @@ const EMPTY_KEY_SET: ReadonlySet<string> = new Set();
  *
  * Promotion runs in two tiers: a pre-paint layout pass whenever the key list
  * changes (no placeholder flash on mount), then an IntersectionObserver with
- * a generous margin for scrolling. When no usable scrollport exists (jsdom,
- * detached previews), every item renders for real.
+ * a generous margin for scrolling. Environments without IntersectionObserver
+ * and known detached previews render every item for real.
  */
 export function SidebarWindowedItems({
   itemKeys,
@@ -147,8 +147,9 @@ export function SidebarWindowedItems({
   // Pre-paint promotion whenever the item set changes: mount everything that
   // sits inside the scrollport plus margin before the browser paints, so the
   // initial view never flashes placeholders. Also prunes state for keys that
-  // left the list. With no usable viewport (jsdom, previews) it promotes
-  // everything.
+  // left the list. With no IntersectionObserver (jsdom) or a known detached
+  // viewport it promotes everything. A null parent ref stays windowed until
+  // the passive observer effect runs after host refs have attached.
   useLayoutEffect(() => {
     if (!windowingEnabled) {
       if (realizedKeys.size > 0) {
@@ -171,9 +172,16 @@ export function SidebarWindowedItems({
     }
 
     const scrollElement = scrollElementRef?.current ?? null;
+    // A connected scrollport can report zero height for one commit while an
+    // orientation/breakpoint change reparents the sidebar. Rendering every
+    // item in that state makes WebKit lay out the entire offscreen thread
+    // tree before IntersectionObserver immediately prunes it again. Keep the
+    // placeholders and let the observer promote visible items once the new
+    // geometry settles. Detached previews still render everything.
     const promoteAll =
-      !scrollElement ||
-      scrollElement.clientHeight === 0 ||
+      (scrollElement !== null &&
+        scrollElement.clientHeight === 0 &&
+        !scrollElement.isConnected) ||
       typeof IntersectionObserver === "undefined";
 
     const next = new Set<string>();
@@ -187,17 +195,30 @@ export function SidebarWindowedItems({
       for (const key of itemKeys) {
         next.add(key);
       }
-    } else {
+    } else if (scrollElement) {
       const viewport = scrollElement.getBoundingClientRect();
+      const viewportIsHorizontallyVisible =
+        viewport.right > 0 && viewport.left < window.innerWidth;
+      const isInsideClosedSidebarPanel =
+        scrollElement.closest('[data-sidebar="panel"][data-state="closed"]') !==
+        null;
       const viewportTop = viewport.top - WINDOW_VIEWPORT_MARGIN_PX;
       const viewportBottom = viewport.bottom + WINDOW_VIEWPORT_MARGIN_PX;
-      for (const [key, element] of wrapperByKeyRef.current) {
-        if (next.has(key) || !keySet.has(key)) {
-          continue;
-        }
-        const rect = element.getBoundingClientRect();
-        if (rect.bottom >= viewportTop && rect.top <= viewportBottom) {
-          next.add(key);
+      // A closed compact sidebar is translated completely offscreen. Its
+      // vertical coordinates still overlap the viewport, so checking only Y
+      // eagerly realized every nested thread-list window during a breakpoint
+      // change. WebKit then laid out the whole hidden tree before the
+      // observer pruned it. Existing realized rows stay warm, but a newly
+      // mounted offscreen drawer waits until it is actually visible.
+      if (viewportIsHorizontallyVisible && !isInsideClosedSidebarPanel) {
+        for (const [key, element] of wrapperByKeyRef.current) {
+          if (next.has(key) || !keySet.has(key)) {
+            continue;
+          }
+          const rect = element.getBoundingClientRect();
+          if (rect.bottom >= viewportTop && rect.top <= viewportBottom) {
+            next.add(key);
+          }
         }
       }
     }
@@ -218,7 +239,7 @@ export function SidebarWindowedItems({
       return;
     }
     const scrollElement = scrollElementRef?.current ?? null;
-    if (!scrollElement || scrollElement.clientHeight === 0) {
+    if (!scrollElement) {
       return;
     }
 
