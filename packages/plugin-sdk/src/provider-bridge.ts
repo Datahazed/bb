@@ -112,6 +112,7 @@ export type {
 export {
   bashArgsSchema,
   bridgeRequestEnvelopeSchema,
+  buildBridgeToolCallContent as experimental_buildBridgeToolCallContent,
   buildShellEnvOverrides,
   createBridgeIo,
   createBridgeLineHandler,

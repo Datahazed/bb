@@ -44,6 +44,10 @@ import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+
+type DecodedToolCallResponse = ReturnType<typeof decodeToolCallResponsePayload>;
+type BridgeToolCallContent = DecodedToolCallResponse["contentBlocks"][number];
+type BridgeToolCallImage = DecodedToolCallResponse["images"][number];
 import {
   ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,
   ACP_COMPACTION_COMPLETED_METHOD,
@@ -359,7 +363,13 @@ async function forwardDynamicToolCall(args: {
   threadId: string;
   tool: string;
 }): Promise<
-  | { ok: true; content: string; isError?: boolean }
+  | {
+      ok: true;
+      content: string;
+      contentBlocks: BridgeToolCallContent[];
+      images: BridgeToolCallImage[];
+      isError?: boolean;
+    }
   | { ok: false; error: string }
 > {
   const session = sessionsByBbThreadId.get(args.threadId);

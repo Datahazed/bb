@@ -1,5 +1,6 @@
 import {
   dynamicToolSchema,
+  experimental_buildBridgeToolCallContent,
   type DynamicTool,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { createConnection } from "node:net";
@@ -59,18 +60,33 @@ type BridgeRequestPayload =
       tool: string;
     };
 
-type BridgeToolCallResponse =
-  | { ok: true; content: string; isError?: boolean }
-  | { ok: false; error: string };
-
 const bridgeToolCallResponseSchema = z.union([
   z.object({
     ok: z.literal(true),
     content: z.string(),
+    contentBlocks: z
+      .array(
+        z.discriminatedUnion("type", [
+          z.object({ type: z.literal("text"), text: z.string() }),
+          z.object({
+            type: z.literal("image"),
+            data: z.string(),
+            mimeType: z.string(),
+          }),
+        ]),
+      )
+      .optional(),
+    // The initialized response and older text-only responses omit images.
+    // Parsing them as an empty list keeps the re-executed packaged artifact
+    // compatible with that legacy socket shape.
+    images: z
+      .array(z.object({ data: z.string(), mimeType: z.string() }))
+      .default([]),
     isError: z.boolean().optional(),
   }),
   z.object({ ok: z.literal(false), error: z.string() }),
 ]);
+type BridgeToolCallResponse = z.infer<typeof bridgeToolCallResponseSchema>;
 
 interface JsonRpcMessage {
   id?: string | number;
@@ -315,7 +331,7 @@ async function handleRequest(
           return;
         }
         writeResult(message.id, {
-          content: [{ type: "text", text: result.content }],
+          content: experimental_buildBridgeToolCallContent(result),
           ...(result.isError ? { isError: true } : {}),
         });
       } catch (error) {
