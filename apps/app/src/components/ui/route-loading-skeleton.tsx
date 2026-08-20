@@ -2,6 +2,7 @@ import { HEADER_SEAM_CLASS } from "@/components/layout/AppPageHeader";
 import { CHROME_ROW_CLASS } from "@/lib/bb-desktop";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { DelayedLoadingFallback } from "./delayed-loading-fallback";
 
 /**
  * Bleed to the edges of the AppLayout <main> padding, the same way PageShell
@@ -17,31 +18,33 @@ const SHELL_BLEED_CLASS =
  * Lightweight stand-in for a thread or new-thread pane while its code or data
  * is still loading: a header row on the shared chrome axis plus the composer
  * footprint at the bottom. Reused as the route-level Suspense fallback and by
- * the views' own loading branches, so the page keeps one silhouette from the
- * first paint until the real content mounts.
+ * the views' own loading branches, so a sustained load keeps one silhouette
+ * from its delayed reveal until the real content mounts.
  */
 export function RouteLoadingSkeleton() {
   return (
-    <div
-      className={SHELL_BLEED_CLASS}
-      role="status"
-      aria-busy="true"
-      aria-label="Loading"
-      data-testid="route-loading-skeleton"
-    >
+    <DelayedLoadingFallback>
       <div
-        className={cn(
-          CHROME_ROW_CLASS,
-          HEADER_SEAM_CLASS,
-          "shrink-0 gap-2 px-3 pl-12",
-        )}
+        className={SHELL_BLEED_CLASS}
+        role="status"
+        aria-busy="true"
+        aria-label="Loading"
+        data-testid="route-loading-skeleton"
       >
-        <Skeleton className="h-4 w-40 max-w-[50%]" />
+        <div
+          className={cn(
+            CHROME_ROW_CLASS,
+            HEADER_SEAM_CLASS,
+            "shrink-0 gap-2 px-3 pl-12",
+          )}
+        >
+          <Skeleton className="h-4 w-40 max-w-[50%]" />
+        </div>
+        <div className="min-h-0 flex-1" />
+        <div className="mx-auto w-full max-w-[760px] shrink-0 px-4 pb-4">
+          <Skeleton className="h-24 w-full rounded-xl" />
+        </div>
       </div>
-      <div className="min-h-0 flex-1" />
-      <div className="mx-auto w-full max-w-[760px] shrink-0 px-4 pb-4">
-        <Skeleton className="h-24 w-full rounded-xl" />
-      </div>
-    </div>
+    </DelayedLoadingFallback>
   );
 }

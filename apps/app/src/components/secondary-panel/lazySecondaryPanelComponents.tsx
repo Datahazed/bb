@@ -3,6 +3,7 @@ import { useAtomValue } from "jotai";
 import { Panel } from "react-resizable-panels";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { DelayedLoadingFallback } from "@/components/ui/delayed-loading-fallback";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
 import {
   CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT,
@@ -91,15 +92,17 @@ const ThreadStorageFilePreviewTabContentChunk = lazy(() =>
 /** Generic "content is on its way" body for a panel tab. */
 export function SecondaryPanelContentSkeleton() {
   return (
-    <div
-      className="space-y-2 px-4 py-4"
-      data-testid="secondary-panel-content-skeleton"
-    >
-      <Skeleton className="h-3 w-3/4 rounded-sm" />
-      <Skeleton className="h-3 w-full rounded-sm" />
-      <Skeleton className="h-3 w-5/6 rounded-sm" />
-      <Skeleton className="h-3 w-2/3 rounded-sm" />
-    </div>
+    <DelayedLoadingFallback>
+      <div
+        className="space-y-2 px-4 py-4"
+        data-testid="secondary-panel-content-skeleton"
+      >
+        <Skeleton className="h-3 w-3/4 rounded-sm" />
+        <Skeleton className="h-3 w-full rounded-sm" />
+        <Skeleton className="h-3 w-5/6 rounded-sm" />
+        <Skeleton className="h-3 w-2/3 rounded-sm" />
+      </div>
+    </DelayedLoadingFallback>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import type {
   ActiveThinking,
   ThreadOriginKind,
@@ -9,6 +9,7 @@ import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/pr
 import { Button } from "@bb/shared-ui/button";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
+import { DelayedLoadingFallback } from "@/components/ui/delayed-loading-fallback";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { usePreferredTheme } from "@/hooks/useTheme";
@@ -319,24 +320,12 @@ function LoadOlderMessages({
   );
 }
 
-// Delay before revealing the loading indicator so fast loads don't flash.
-export const LOADING_INDICATOR_REVEAL_DELAY_MS = 200;
-
 function DelayedThreadLoadingIndicator() {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const id = window.setTimeout(
-      () => setVisible(true),
-      LOADING_INDICATOR_REVEAL_DELAY_MS,
-    );
-    return () => window.clearTimeout(id);
-  }, []);
-
-  if (!visible) {
-    return null;
-  }
-
-  return <ThreadTimelineLoadingSkeleton />;
+  return (
+    <DelayedLoadingFallback>
+      <ThreadTimelineLoadingSkeleton />
+    </DelayedLoadingFallback>
+  );
 }
 
 // A lightweight placeholder that mirrors the timeline's real building blocks
