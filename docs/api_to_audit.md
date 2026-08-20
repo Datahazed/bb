@@ -49,6 +49,61 @@ enum, and that ACP's shared bridge can continue distinguishing built-in and
 custom agents without exposing provider-specific launch or installation
 details to clients.
 
+## URL navigation (`experimental_UrlLink` and `BbNavigate.experimental_openUrl`)
+
+**What it does.** Gives plugin UI the same semantic HTTP(S) opening path as
+first-party UI. Ordinary activation respects the current client's in-app
+browser preference and capability; app routes remain SPA navigation, modifier
+clicks and explicit anchor targets remain native, and unsupported schemes are
+left to the browser. The imperative method returns whether the current app
+accepted the intent. The frontend harness records link and imperative calls
+through the same navigation inspection log.
+
+**Audit before stabilizing.**
+
+1. Confirm HTTP(S)-only ownership and external fallback across desktop, web,
+   remote clients, and windows whose current surface cannot host Browser.
+2. Audit internal absolute and relative routes, fragments, modifier clicks,
+   keyboard activation, explicit targets, copied hrefs, and accessible names.
+3. Confirm the component should retain ordinary anchor props rather than a
+   smaller styled-link contract, and that explicit `target` continues to mean
+   native browser behavior rather than BB preference routing.
+4. Measure use across plugin pages, Settings sections, panel tabs, Markdown,
+   and menus before stabilizing the boolean acceptance contract.
+5. Keep the host implementation in the shell and verify plugin bundles contain
+   only the runtime indirection, not BB browser or panel code.
+
+## Live-file navigation (`experimental_FileLink`, `BbNavigate.experimental_openFilePreview`, `BbNavigate.experimental_openFileExternally`, and `PluginFileOpenerSource.experimental_hostId`)
+
+**What it does.** Gives plugin UI explicit, source-safe references to live
+workspace, host, and thread-storage files. Ordinary `experimental_FileLink`
+activation and the preview method use the current surface's shared file-tab
+controller, including extension preferences and plugin file openers. The
+external method resolves the current client's preferred file target, absolute
+path, local/remote-SSH context, and line/column support. The boolean methods
+report host acceptance; later OS failures remain host-owned. The host id added
+to file-opener sources preserves explicit host identity when a plugin page
+opens a host file without ambient thread context.
+
+**Audit before stabilizing.**
+
+1. Verify strict target/path/location validation on POSIX, Windows drive, and
+   UNC paths, including stale environment, host, and thread identities.
+2. Confirm preview identity, persistence, opener preference, one-off Open with,
+   disabled opener fallback, and explicit-host migration on Thread, New-thread,
+   Settings, and plugin-page surfaces.
+3. Audit external opening across local and remote clients, disconnected hosts,
+   missing preferred apps, and targets with line but not column support.
+4. Confirm link anchor behavior, unavailable menu states, copy semantics, and
+   whether per-app external choices should remain host-owned menu affordances
+   rather than become plugin-selectable API.
+5. Measure the lazy boundary: mounting a file link must not start file reads,
+   preview imports, editor discovery, or panel-destination loading.
+6. Decide whether Git snapshots or deleted working-tree files merit separate
+   target variants; do not weaken live-file guarantees to accommodate them.
+7. Confirm `PluginFileOpenerSource.experimental_hostId` can become a stable
+   required `hostId` field without breaking older opener implementations.
+
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
 **What it does.** Lets one plugin package declare a singular `bb.host` Node
@@ -120,7 +175,7 @@ unexpected-exit recovery without feature-specific core hooks.
     limits without pretending to model process startup, crashes, native watcher
     recovery, or reconnect behavior.
 
-## `PluginNavPanelRegistration.experimental_fixedTabs`
+## Fixed-tab navigation (`PluginNavPanelRegistration.experimental_fixedTabs`, `experimental_target`, `experimental_useAppPanel`, and `experimental_useFixedTabTarget`)
 
 **What it does.** Lets a nav panel declare ordered, non-closable tabs in the
 host-owned right panel. The host owns tab selection, persistence, chrome,
@@ -128,7 +183,28 @@ Browser and Terminal tools, and only mounts the active plugin component while
 the panel is open. A fixed tab receives the nav page's current `subPath`; `layout: "padded"` uses
 host padding and scrolling, while `layout: "flush"` gives the component the
 whole content region. On the first visit the first declared fixed tab opens on
-wide layouts. A later user close remains closed.
+wide layouts. A later user close remains closed. Every fixed-tab registration
+must include a `panelId` matching its containing nav panel and is also its
+stable, plugin-owner-and-panel-scoped reference. `experimental_useAppPanel()`
+can select one of the calling plugin's eligible tabs on the current surface
+and optionally submit a JSON-safe target. The tab's `experimental_target`
+validator owns the target type and policy; `experimental_useFixedTabTarget()`
+returns the validated current-session value with a sequence and explicit
+`clear()`. Tab selection stays durable. Each tab's target remains memory-only,
+but survives inactive-tab, closed-panel, and route remounts until its owner
+clears it or the app refreshes. Core Changes targets and plugin targets resolve
+through the same feature-agnostic controller.
+
+**Public surface.** `ExperimentalFixedTabTargetContract`,
+`ExperimentalPluginFixedTabReference`,
+`ExperimentalPluginFixedTabRegistration`,
+`ExperimentalPluginFixedTabDeclaration`, `ExperimentalAppPanelSurface`,
+`ExperimentalFixedTabTargetState`, `ExperimentalOpenFixedTabOptions`,
+`ExperimentalAppPanel`, `experimental_useAppPanel`, and
+`experimental_useFixedTabTarget`. The frontend testing runtime mirrors this
+with `ExperimentalFixedTabOpenCall`, the
+`experimental_openFixedTab`/`experimental_fixedTabTarget` render options, and
+the `experimental_fixedTabOpenCalls` inspection list.
 
 **Audit before stabilizing.**
 
@@ -143,6 +219,18 @@ wide layouts. A later user close remains closed.
    and nested scrolling before freezing the presentation contract.
 5. Confirm named icon hints and the non-closable tab treatment remain the right
    amount of plugin-controlled chrome.
+6. Audit registration objects as references: identity is scoped to the mounted
+   plugin and current nav panel, with no cross-plugin addressing or global ids.
+7. Confirm sync type guards remain the right owner validation contract and
+   define error reporting if a validator throws or becomes stale after reload.
+8. Exercise repeated equal targets, explicit clearing, crashes, inactive-tab,
+   panel, and route remounts, refresh, and compact drawer animation. Targets
+   must survive remounts in the current app session, never survive refresh, and
+   never reappear after their owner clears them.
+9. Decide whether a future cross-thread surface should navigate before opening;
+   the initial public surface intentionally supports only `{ kind: "current" }`.
+10. Keep core and plugin destinations on the same resolver and verify the
+    controller never learns Changes, file, task, or document target shapes.
 
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 

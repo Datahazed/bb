@@ -7,9 +7,10 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { atom, useAtom } from "jotai";
+import { atom, useAtom, useAtomValue, useStore } from "jotai";
 import { atomFamily } from "jotai-family";
-import type { Host } from "@bb/domain";
+import type { Host, JsonValue } from "@bb/domain";
+import { jsonValueSchema } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -22,9 +23,12 @@ import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import {
   LazyBrowserTabDeck,
+  LazyHostScopedFilePreviewTabContent,
   LazyNewTabPage,
   LazyThreadSecondaryPanel,
+  LazyThreadStorageFilePreviewTabContent,
   LazyThreadTerminalPanel,
+  LazyWorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import type { SecondaryPanelFixedTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelFileTab } from "@/components/secondary-panel/secondaryPanelFileTab";
@@ -56,13 +60,31 @@ import {
 } from "@/lib/bb-desktop";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import { isRoutePath } from "@/lib/route-paths";
+import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import {
+  AppNavigationHostProvider,
+  type AppFilePreviewIntent,
+} from "@/lib/app-navigation-host";
+import {
+  AppFixedTabTargetProvider,
+  getPluginFixedTabOwnerId,
+  openAppFixedTabFromDestinations,
+  type AppFixedTabDestination,
+  type AppFixedTabTargetState,
+} from "@/lib/app-fixed-tab-navigation";
+import {
+  normalizeExperimentalFileOpenOptions,
+  toFilePreviewLineRange,
+} from "@/lib/live-file-navigation";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
   resolveTerminalHost,
   TerminalHostSelector,
 } from "@/components/secondary-panel/TerminalHostSelector";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
+import { PluginPanelTabContent } from "./PluginPanelActions";
+import { pluginPanelTabFillsRegion } from "./plugin-panel-tab-layout";
 
 const TERMINAL_COLS = 100;
 const TERMINAL_ROWS = 30;
@@ -71,6 +93,13 @@ const RIGHT_PANEL_TOGGLE_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} ${C
 
 const compactDrawerOpenAtomFamily = atomFamily((_panelStateId: string) =>
   atom(false),
+);
+interface FixedTabSessionTarget {
+  sequence: number;
+  target: JsonValue;
+}
+const fixedTabTargetAtomFamily = atomFamily((_targetId: string) =>
+  atom<FixedTabSessionTarget | null>(null),
 );
 
 function findPluginRightPanelTogglePortal(
@@ -180,6 +209,19 @@ export function PluginPanelRightPanelHost({
   const {
     activateTab,
     activeBrowserTab,
+    activeFileOpenerOwner,
+    activeHostFileHostId,
+    activeHostFileLineRange,
+    activeHostFilePath,
+    activePluginPanelTab,
+    activeStorageFileLineRange,
+    activeStorageFilePath,
+    activeStorageFileThreadId,
+    activeWorkspaceFileEnvironmentId,
+    activeWorkspaceFileLineRange,
+    activeWorkspaceFilePath,
+    activeWorkspaceFileSource,
+    activeWorkspaceFileStatusLabel,
     browserTabs,
     closeTab,
     isNewTabActive,
@@ -191,6 +233,8 @@ export function PluginPanelRightPanelHost({
     panelStateId,
     syncThreadId: null,
     environmentId: null,
+    fileOwnerThreadId: null,
+    preserveWorkspaceTabsAcrossContexts: true,
     storageFiles: undefined,
     terminalSessions: undefined,
   });
@@ -246,6 +290,122 @@ export function PluginPanelRightPanelHost({
       secondary: { ...state.secondary, isOpen: true },
     }));
   }, [isCompactViewport, setCompactDrawerOpen, updatePanelState]);
+  const targetStore = useStore();
+  const fixedTabOwnerId = getPluginFixedTabOwnerId(
+    pluginId,
+    panel?.id ?? panelPath,
+  );
+  const fixedTabDestinations = useMemo<readonly AppFixedTabDestination[]>(
+    () =>
+      (panel?.experimental_fixedTabs ?? []).flatMap((registration) => {
+        const tab = fixedViewTabs.find(
+          (candidate) => candidate.fixedTabId === registration.id,
+        );
+        if (tab === undefined) return [];
+        return [
+          {
+            tab: {
+              ownerId: fixedTabOwnerId,
+              tabId: registration.id,
+            },
+            open: (target) => {
+              if (target !== undefined) {
+                const result = jsonValueSchema.safeParse(target);
+                if (
+                  !result.success ||
+                  registration.experimental_target === undefined
+                ) {
+                  return false;
+                }
+                try {
+                  if (!registration.experimental_target.validate(result.data)) {
+                    return false;
+                  }
+                } catch {
+                  return false;
+                }
+                targetStore.set(
+                  fixedTabTargetAtomFamily(
+                    `${panelStateId}\0${registration.id}`,
+                  ),
+                  (current) => ({
+                    sequence: (current?.sequence ?? 0) + 1,
+                    target: result.data,
+                  }),
+                );
+              }
+              updatePanelState((state) =>
+                activateSecondaryPanelTabInState(state, tab.id),
+              );
+              revealPanel();
+              return true;
+            },
+          },
+        ];
+      }),
+    [
+      fixedViewTabs,
+      fixedTabOwnerId,
+      panelStateId,
+      panel?.experimental_fixedTabs,
+      revealPanel,
+      targetStore,
+      updatePanelState,
+    ],
+  );
+  const openFixedTab = useCallback(
+    (intent: Parameters<typeof openAppFixedTabFromDestinations>[1]) =>
+      openAppFixedTabFromDestinations(fixedTabDestinations, intent),
+    [fixedTabDestinations],
+  );
+  const openFilePreview = useCallback(
+    (intent: AppFilePreviewIntent) => {
+      const normalized = normalizeExperimentalFileOpenOptions(intent);
+      if (normalized === null || panel === null) return false;
+      const lineRange = toFilePreviewLineRange(normalized.location);
+      const { target } = normalized;
+      const tab =
+        target.kind === "workspace"
+          ? openTab(
+              {
+                kind: "workspace-file-preview",
+                environmentId: target.environmentId,
+                tab: {
+                  lineRange,
+                  path: target.path,
+                  source: { kind: "working-tree" },
+                  statusLabel: null,
+                },
+              },
+              { viewer: intent.viewer },
+            )
+          : target.kind === "host"
+            ? openTab(
+                {
+                  kind: "host-file-preview",
+                  hostId: target.hostId,
+                  tab: { lineRange, path: target.path },
+                },
+                { viewer: intent.viewer },
+              )
+            : openTab(
+                {
+                  kind: "thread-storage-file-preview",
+                  threadId: target.threadId,
+                  tab: { lineRange, path: target.path },
+                },
+                { viewer: intent.viewer },
+              );
+      if (tab === null) return false;
+      revealPanel();
+      return true;
+    },
+    [openTab, panel, revealPanel],
+  );
+  const navigationCapabilities = useMemo(
+    () => ({ openFilePreview, openFixedTab }),
+    [openFilePreview, openFixedTab],
+  );
   const hidePanel = useCallback(() => {
     if (isCompactViewport) {
       setCompactDrawerOpen(false);
@@ -394,12 +554,14 @@ export function PluginPanelRightPanelHost({
                 className="size-3.5"
               />
             ),
-            onSelect: () => {
-              updatePanelState((state) =>
-                activateSecondaryPanelTabInState(state, tab.id),
-              );
-              revealPanel();
-            },
+            onSelect: () =>
+              openFixedTab({
+                surface: { kind: "current" },
+                tab: {
+                  ownerId: fixedTabOwnerId,
+                  tabId: registration.id,
+                },
+              }),
             tab,
             title: registration.title,
           },
@@ -407,10 +569,10 @@ export function PluginPanelRightPanelHost({
       }),
     [
       fixedViewTabs,
+      fixedTabOwnerId,
+      openFixedTab,
       panel?.experimental_fixedTabs,
       pluginId,
-      revealPanel,
-      updatePanelState,
     ],
   );
   const activeFixedTabRegistration =
@@ -421,6 +583,37 @@ export function PluginPanelRightPanelHost({
           (registration) => registration.id === activeTab.fixedTabId,
         ) ?? null)
       : null;
+  const activeFixedTabTargetAtom = fixedTabTargetAtomFamily(
+    `${panelStateId}\0${activeFixedTabRegistration?.id ?? ""}`,
+  );
+  const activeFixedTabTargetSnapshot = useAtomValue(activeFixedTabTargetAtom);
+  const activeFixedTabTargetState =
+    useMemo<AppFixedTabTargetState | null>(() => {
+      if (
+        activeFixedTabRegistration === null ||
+        activeFixedTabTargetSnapshot === null
+      ) {
+        return null;
+      }
+      const tabId = activeFixedTabRegistration.id;
+      const { sequence } = activeFixedTabTargetSnapshot;
+      return {
+        ...activeFixedTabTargetSnapshot,
+        ownerId: fixedTabOwnerId,
+        tabId,
+        clear: () => {
+          targetStore.set(activeFixedTabTargetAtom, (current) =>
+            current?.sequence === sequence ? null : current,
+          );
+        },
+      };
+    }, [
+      activeFixedTabRegistration,
+      activeFixedTabTargetAtom,
+      activeFixedTabTargetSnapshot,
+      fixedTabOwnerId,
+      targetStore,
+    ]);
   const fixedTabContent = useMemo(() => {
     if (panel === null || activeFixedTabRegistration === null || !isOpen) {
       return null;
@@ -434,10 +627,19 @@ export function PluginPanelRightPanelHost({
         slotId={activeFixedTabRegistration.id}
         instanceId={panel.id}
       >
-        <FixedTabComponent subPath={subPath} />
+        <AppFixedTabTargetProvider state={activeFixedTabTargetState}>
+          <FixedTabComponent subPath={subPath} />
+        </AppFixedTabTargetProvider>
       </PluginSlotMount>
     );
-  }, [activeFixedTabRegistration, isOpen, panel, pluginId, subPath]);
+  }, [
+    activeFixedTabRegistration,
+    activeFixedTabTargetState,
+    isOpen,
+    panel,
+    pluginId,
+    subPath,
+  ]);
 
   const fileTabs = useMemo<SecondaryPanelFileTab[]>(
     () =>
@@ -498,6 +700,47 @@ export function PluginPanelRightPanelHost({
                 onClose: () => closeTab(tab.id),
               },
             ];
+          case "workspace-file-preview":
+          case "host-file-preview":
+          case "thread-storage-file-preview":
+            return [
+              {
+                id: tab.id,
+                filename: tab.path.split(/[\\/]/u).at(-1) ?? tab.path,
+                isActive: tab.id === activeTab?.id,
+                leadingVisual: <Icon name="File" className="size-3.5" />,
+                statusLabel:
+                  tab.kind === "workspace-file-preview"
+                    ? tab.statusLabel
+                    : null,
+                onSelect: () => {
+                  activateTab(tab.id);
+                  revealPanel();
+                },
+                onClose: () => closeTab(tab.id),
+              },
+            ];
+          case "plugin-panel":
+            return [
+              {
+                id: tab.id,
+                filename: tab.title,
+                isActive: tab.id === activeTab?.id,
+                leadingVisual: (
+                  <PluginIcon
+                    pluginId={tab.pluginId}
+                    icon={null}
+                    className="size-3.5"
+                  />
+                ),
+                statusLabel: null,
+                onSelect: () => {
+                  activateTab(tab.id);
+                  revealPanel();
+                },
+                onClose: () => closeTab(tab.id),
+              },
+            ];
           default:
             return [];
         }
@@ -513,62 +756,120 @@ export function PluginPanelRightPanelHost({
     ],
   );
 
-  const activeContent = useMemo(
-    () =>
-      activeTerminalTab ? (
-        <LazyThreadTerminalPanel
-          canCreateTerminal
-          fixedPanelTarget={activeTerminalTarget ?? undefined}
-          fixedTerminalId={activeTerminalTab.terminalId}
+  const activeContent = useMemo(() => {
+    const renderFileOpenerReplacement = (original: ReactNode): ReactNode =>
+      activeFileOpenerOwner !== null && activePluginPanelTab !== null ? (
+        <PluginPanelTabContent
+          tab={activePluginPanelTab}
+          context={{ kind: "new-thread", projectId: null }}
+          fileOpenerOriginal={original}
+        />
+      ) : (
+        original
+      );
+    return activeTerminalTab ? (
+      <LazyThreadTerminalPanel
+        canCreateTerminal
+        fixedPanelTarget={activeTerminalTarget ?? undefined}
+        fixedTerminalId={activeTerminalTab.terminalId}
+        isPanelOpen={isOpen}
+        isPanelPersistedOpen={panelState.secondary.isOpen}
+        panelStateId={panelStateId}
+        syncThreadId={null}
+        target={activeTerminalTarget!}
+      />
+    ) : activeWorkspaceFilePath !== null &&
+      activeWorkspaceFileEnvironmentId !== null ? (
+      renderFileOpenerReplacement(
+        <LazyWorkspaceFilePreviewTabContent
+          activePath={activeWorkspaceFilePath}
+          environmentId={activeWorkspaceFileEnvironmentId}
           isPanelOpen={isOpen}
-          isPanelPersistedOpen={panelState.secondary.isOpen}
-          panelStateId={panelStateId}
-          syncThreadId={null}
-          target={activeTerminalTarget!}
-        />
-      ) : isNewTabActive ? (
-        <LazyNewTabPage
-          autoFocus={false}
-          projectId={undefined}
-          environmentId={null}
-          currentThreadId=""
-          onAutoFocusHandled={() => undefined}
-          onSelect={() => undefined}
-          onOpenBrowser={
-            isDesktopBrowserAvailable() ? () => openBrowser() : undefined
-          }
-          onStartTerminal={startSelectedTerminal}
-          showFileSearch={false}
-          startTerminalDisabled={
-            createTerminal.isPending ||
-            selectedTerminalHost?.status !== "connected"
-          }
-          startTerminalTrailing={
-            <TerminalHostSelector
-              disabled={createTerminal.isPending}
-              hosts={terminalHosts}
-              isLoading={hostsQuery.isLoading}
-              onChange={setPreferredTerminalHostId}
-              selectedHostId={selectedTerminalHost?.id ?? null}
-            />
-          }
-        />
-      ) : null,
-    [
-      activeTerminalTab,
-      activeTerminalTarget,
-      createTerminal.isPending,
-      hostsQuery.isLoading,
-      isNewTabActive,
-      isOpen,
-      openBrowser,
-      panelState.secondary.isOpen,
-      panelStateId,
-      selectedTerminalHost,
-      startSelectedTerminal,
-      terminalHosts,
-    ],
-  );
+          lineRange={activeWorkspaceFileLineRange}
+          source={activeWorkspaceFileSource}
+          statusLabel={activeWorkspaceFileStatusLabel}
+        />,
+      )
+    ) : activeHostFilePath !== null && activeHostFileHostId !== null ? (
+      renderFileOpenerReplacement(
+        <LazyHostScopedFilePreviewTabContent
+          activePath={activeHostFilePath}
+          hostId={activeHostFileHostId}
+          lineRange={activeHostFileLineRange}
+        />,
+      )
+    ) : activeStorageFilePath !== null && activeStorageFileThreadId !== null ? (
+      renderFileOpenerReplacement(
+        <LazyThreadStorageFilePreviewTabContent
+          activePath={activeStorageFilePath}
+          isPanelOpen={isOpen}
+          lineRange={activeStorageFileLineRange}
+          threadId={activeStorageFileThreadId}
+        />,
+      )
+    ) : isNewTabActive ? (
+      <LazyNewTabPage
+        autoFocus={false}
+        projectId={undefined}
+        environmentId={null}
+        currentThreadId=""
+        onAutoFocusHandled={() => undefined}
+        onSelect={() => undefined}
+        onOpenBrowser={
+          isDesktopBrowserAvailable() ? () => openBrowser() : undefined
+        }
+        onStartTerminal={startSelectedTerminal}
+        showFileSearch={false}
+        startTerminalDisabled={
+          createTerminal.isPending ||
+          selectedTerminalHost?.status !== "connected"
+        }
+        startTerminalTrailing={
+          <TerminalHostSelector
+            disabled={createTerminal.isPending}
+            hosts={terminalHosts}
+            isLoading={hostsQuery.isLoading}
+            onChange={setPreferredTerminalHostId}
+            selectedHostId={selectedTerminalHost?.id ?? null}
+          />
+        }
+      />
+    ) : activePluginPanelTab !== null ? (
+      <PluginPanelTabContent
+        tab={activePluginPanelTab}
+        context={{ kind: "new-thread", projectId: null }}
+      />
+    ) : null;
+  }, [
+    activeFileOpenerOwner,
+    activeHostFileHostId,
+    activeHostFileLineRange,
+    activeHostFilePath,
+    activePluginPanelTab,
+    activeStorageFileLineRange,
+    activeStorageFilePath,
+    activeStorageFileThreadId,
+    activeTerminalTab,
+    activeTerminalTarget,
+    activeWorkspaceFileEnvironmentId,
+    activeWorkspaceFileLineRange,
+    activeWorkspaceFilePath,
+    activeWorkspaceFileSource,
+    activeWorkspaceFileStatusLabel,
+    createTerminal.isPending,
+    hostsQuery.isLoading,
+    isNewTabActive,
+    isOpen,
+    openBrowser,
+    panelState.secondary.isOpen,
+    panelStateId,
+    selectedTerminalHost,
+    startSelectedTerminal,
+    terminalHosts,
+  ]);
+  const fileTabContentFillsRegion =
+    activeTerminalTab !== null ||
+    pluginPanelTabFillsRegion(activePluginPanelTab);
 
   const renderPanel = useCallback(
     ({
@@ -601,7 +902,7 @@ export function PluginPanelRightPanelHost({
           metadataContent={null}
           fileTabs={fileTabs}
           fileTabContent={activeContent}
-          fileTabContentFillsRegion={activeTerminalTab !== null}
+          fileTabContentFillsRegion={fileTabContentFillsRegion}
           onFileTabReorder={reorderFileTab}
           browserDeck={deck}
           isBrowserTabActive={activeBrowserTab !== null}
@@ -629,8 +930,8 @@ export function PluginPanelRightPanelHost({
       activeContent,
       activeFixedTabRegistration?.layout,
       activeTab,
-      activeTerminalTab,
       browserTabs,
+      fileTabContentFillsRegion,
       fileTabs,
       fixedTabContent,
       fixedTabs,
@@ -670,32 +971,36 @@ export function PluginPanelRightPanelHost({
   );
 
   return (
-    <>
-      {panel !== null &&
-      togglePortalTarget !== null &&
-      !isOpen &&
-      !isHostedBySplitWorkspace
-        ? createPortal(
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={RIGHT_PANEL_TOGGLE_CLASS}
-                  aria-label={toggleLabel}
-                  aria-pressed={isOpen}
-                  onClick={togglePanel}
-                >
-                  <Icon name="PanelRight" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{toggleLabel}</TooltipContent>
-            </Tooltip>,
-            togglePortalTarget,
-          )
-        : null}
-      {page}
-    </>
+    <UrlOpenRoutingProvider
+      openInAppBrowser={isDesktopBrowserAvailable() ? openBrowser : null}
+    >
+      <AppNavigationHostProvider capabilities={navigationCapabilities}>
+        {panel !== null &&
+        togglePortalTarget !== null &&
+        !isOpen &&
+        !isHostedBySplitWorkspace
+          ? createPortal(
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={RIGHT_PANEL_TOGGLE_CLASS}
+                    aria-label={toggleLabel}
+                    aria-pressed={isOpen}
+                    onClick={togglePanel}
+                  >
+                    <Icon name="PanelRight" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{toggleLabel}</TooltipContent>
+              </Tooltip>,
+              togglePortalTarget,
+            )
+          : null}
+        {page}
+      </AppNavigationHostProvider>
+    </UrlOpenRoutingProvider>
   );
 }

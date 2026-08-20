@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
   type ComponentType,
   type ReactElement,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { act, render, type RenderResult } from "@testing-library/react";
@@ -53,6 +54,13 @@ import {
   type PluginRpcResult,
   type StandardSchemaV1InferInput,
   type MarkdownProps,
+  type ExperimentalUrlLinkProps,
+  type ExperimentalFileLinkProps,
+  type ExperimentalFileOpenOptions,
+  type ExperimentalAppPanel,
+  type ExperimentalFixedTabTargetState,
+  type ExperimentalOpenFixedTabOptions,
+  type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
   type ThreadChatProps,
   type DiffProps,
@@ -111,7 +119,23 @@ export type NavigateCall =
   | {
       method: "openThreadPanel";
       options: Parameters<BbNavigate["openThreadPanel"]>[0];
+    }
+  | { method: "experimental_openUrl"; url: string }
+  | {
+      method: "experimental_openFilePreview";
+      options: ExperimentalFileOpenOptions;
+    }
+  | {
+      method: "experimental_openFileExternally";
+      options: ExperimentalFileOpenOptions;
     };
+
+export interface ExperimentalFixedTabOpenCall {
+  surface: ExperimentalOpenFixedTabOptions<JsonValue>["surface"];
+  panelId: string;
+  tabId: string;
+  target?: JsonValue;
+}
 
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
@@ -149,12 +173,26 @@ interface SlotEnv {
   bbContext: BbContext;
   navigate: BbNavigate;
   navigateCalls: NavigateCall[];
+  appPanel: ExperimentalAppPanel;
+  experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[];
+  fixedTabTarget: TestFixedTabTargetStore;
   composer: TestComposerStore;
   composerLog: ComposerLog;
   sidebarThreads: PluginSidebarThreadsState;
   sidebarActions: PluginSidebarThreadActions;
   sidebarActionCalls: SidebarActionCall[];
   sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
+}
+
+interface TestFixedTabTargetStore {
+  clear(sequence: number): void;
+  getSnapshot(): {
+    panelId: string;
+    sequence: number;
+    tabId: string;
+    target: JsonValue;
+  } | null;
+  subscribe(listener: () => void): () => void;
 }
 
 /** One recorded `experimental_useSidebarThreadActions()` call. */
@@ -286,6 +324,73 @@ function TestMarkdown({ content, className }: MarkdownProps) {
     <div data-testid="bb-markdown" className={className}>
       {content}
     </div>
+  );
+}
+
+/** Anchor-faithful stand-in backed by the same navigation recorder as the hook. */
+function TestUrlLink({
+  href,
+  onClick,
+  rel,
+  target,
+  ...anchorProps
+}: ExperimentalUrlLinkProps) {
+  const navigate = useSlotEnv("experimental_UrlLink").navigate;
+  return (
+    <a
+      {...anchorProps}
+      href={href}
+      target={target}
+      rel={target === "_blank" ? (rel ?? "noopener noreferrer") : rel}
+      onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
+        onClick?.(event);
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.altKey ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.shiftKey ||
+          event.currentTarget.hasAttribute("download")
+        ) {
+          return;
+        }
+        if (navigate.experimental_openUrl(href)) event.preventDefault();
+      }}
+    />
+  );
+}
+
+/** Anchor-faithful file-link stand-in backed by the navigation recorder. */
+function TestFileLink({
+  target,
+  location = null,
+  onClick,
+  ...anchorProps
+}: ExperimentalFileLinkProps) {
+  const navigate = useSlotEnv("experimental_FileLink").navigate;
+  const options = { target, location };
+  return (
+    <a
+      {...anchorProps}
+      href={target.path}
+      onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
+        onClick?.(event);
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.altKey ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.shiftKey ||
+          event.currentTarget.hasAttribute("download")
+        ) {
+          return;
+        }
+        event.preventDefault();
+        navigate.experimental_openFilePreview(options);
+      }}
+    />
   );
 }
 
@@ -465,6 +570,37 @@ const testPluginSdkApp = {
   useBbNavigate(): BbNavigate {
     return useSlotEnv("useBbNavigate").navigate;
   },
+  experimental_useAppPanel(): ExperimentalAppPanel {
+    return useSlotEnv("experimental_useAppPanel").appPanel;
+  },
+  experimental_useFixedTabTarget<Target extends JsonValue>(
+    tab: ExperimentalPluginFixedTabReference<Target>,
+  ): ExperimentalFixedTabTargetState<Target> | null {
+    const store = useSlotEnv("experimental_useFixedTabTarget").fixedTabTarget;
+    const state = useSyncExternalStore(
+      store.subscribe,
+      store.getSnapshot,
+      store.getSnapshot,
+    );
+    if (
+      state === null ||
+      state.panelId !== tab.panelId ||
+      state.tabId !== tab.id ||
+      tab.experimental_target === undefined
+    ) {
+      return null;
+    }
+    try {
+      if (!tab.experimental_target.validate(state.target)) return null;
+    } catch {
+      return null;
+    }
+    return {
+      clear: () => store.clear(state.sequence),
+      sequence: state.sequence,
+      target: state.target,
+    };
+  },
   useComposer(): PluginComposerApi {
     const composer = useSlotEnv("useComposer").composer;
     const version = useSyncExternalStore(
@@ -483,6 +619,8 @@ const testPluginSdkApp = {
   },
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
+  experimental_FileLink: TestFileLink,
+  experimental_UrlLink: TestUrlLink,
   experimental_NewThreadComposer: TestNewThreadComposer,
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
@@ -798,6 +936,20 @@ export interface RenderSlotOptions<
   openThreadPanel?: (
     options: Parameters<BbNavigate["openThreadPanel"]>[0],
   ) => boolean;
+  /** Host acceptance for URL intents from the hook or `experimental_UrlLink`. */
+  openUrl?: (url: string) => boolean;
+  /** Host acceptance for preview intents from the hook or file link. */
+  openFilePreview?: (options: ExperimentalFileOpenOptions) => boolean;
+  /** Host acceptance for preferred-external file intents. */
+  openFileExternally?: (options: ExperimentalFileOpenOptions) => boolean;
+  /** Host acceptance for an owner-scoped fixed-tab selection. */
+  experimental_openFixedTab?: (call: ExperimentalFixedTabOpenCall) => boolean;
+  /** Initial session target visible to `experimental_useFixedTabTarget`. */
+  experimental_fixedTabTarget?: {
+    panelId: string;
+    tabId: string;
+    target: JsonValue;
+  };
 }
 
 /** Host-originated inputs a slot test can drive deterministically. */
@@ -823,6 +975,8 @@ export interface RenderedSlotInspectionState {
   readonly rpcCalls: RpcCall[];
   /** Every `useBbNavigate()` call, in order. */
   readonly navigateCalls: NavigateCall[];
+  /** Every validated `experimental_useAppPanel().openFixedTab` call. */
+  readonly experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[];
   /** Every `experimental_useSidebarThreadActions()` call, in order. */
   readonly sidebarActionCalls: SidebarActionCall[];
   /** Everything written through `useComposer()`. */
@@ -944,6 +1098,73 @@ export function renderSlot<
   };
 
   const navigateCalls: NavigateCall[] = [];
+  const experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[] = [];
+  let fixedTabTargetSnapshot =
+    options.experimental_fixedTabTarget === undefined
+      ? null
+      : {
+          panelId: options.experimental_fixedTabTarget.panelId,
+          sequence: 1,
+          tabId: options.experimental_fixedTabTarget.tabId,
+          target: strictJsonRoundTrip(
+            options.experimental_fixedTabTarget.target,
+            "fixed tab target",
+          ),
+        };
+  const fixedTabTargetListeners = new Set<() => void>();
+  const fixedTabTarget: TestFixedTabTargetStore = {
+    getSnapshot: () => fixedTabTargetSnapshot,
+    subscribe(listener) {
+      fixedTabTargetListeners.add(listener);
+      return () => fixedTabTargetListeners.delete(listener);
+    },
+    clear(sequence) {
+      if (fixedTabTargetSnapshot?.sequence !== sequence) return;
+      fixedTabTargetSnapshot = null;
+      for (const listener of fixedTabTargetListeners) listener();
+    },
+  };
+  const appPanel: ExperimentalAppPanel = {
+    openFixedTab(panelOptions) {
+      let target: JsonValue | undefined;
+      if (panelOptions.target !== undefined) {
+        try {
+          target = strictJsonRoundTrip(
+            panelOptions.target,
+            "fixed tab open target",
+          );
+        } catch {
+          return false;
+        }
+        if (panelOptions.tab.experimental_target === undefined) return false;
+        try {
+          if (!panelOptions.tab.experimental_target.validate(target)) {
+            return false;
+          }
+        } catch {
+          return false;
+        }
+      }
+      const call: ExperimentalFixedTabOpenCall = {
+        surface: panelOptions.surface,
+        panelId: panelOptions.tab.panelId,
+        tabId: panelOptions.tab.id,
+        ...(target === undefined ? {} : { target }),
+      };
+      experimental_fixedTabOpenCalls.push(call);
+      const accepted = options.experimental_openFixedTab?.(call) ?? false;
+      if (accepted && target !== undefined) {
+        fixedTabTargetSnapshot = {
+          panelId: panelOptions.tab.panelId,
+          sequence: (fixedTabTargetSnapshot?.sequence ?? 0) + 1,
+          tabId: panelOptions.tab.id,
+          target,
+        };
+        for (const listener of fixedTabTargetListeners) listener();
+      }
+      return accepted;
+    },
+  };
   const sidebarActionCalls: SidebarActionCall[] = [];
   const sidebarPullRequests = new Map(
     Object.entries(options.sidebarPullRequests ?? {}),
@@ -1009,6 +1230,24 @@ export function renderSlot<
         options: panelOptions,
       });
       return options.openThreadPanel?.(panelOptions) ?? false;
+    },
+    experimental_openUrl(url) {
+      navigateCalls.push({ method: "experimental_openUrl", url });
+      return options.openUrl?.(url) ?? false;
+    },
+    experimental_openFilePreview(fileOptions) {
+      navigateCalls.push({
+        method: "experimental_openFilePreview",
+        options: fileOptions,
+      });
+      return options.openFilePreview?.(fileOptions) ?? false;
+    },
+    experimental_openFileExternally(fileOptions) {
+      navigateCalls.push({
+        method: "experimental_openFileExternally",
+        options: fileOptions,
+      });
+      return options.openFileExternally?.(fileOptions) ?? false;
     },
   };
 
@@ -1118,6 +1357,9 @@ export function renderSlot<
     bbContext: { projectId, threadId },
     navigate,
     navigateCalls,
+    appPanel,
+    experimental_fixedTabOpenCalls,
+    fixedTabTarget,
     composer,
     composerLog,
     sidebarThreads,
@@ -1192,6 +1434,7 @@ export function renderSlot<
     setComposerText,
     setComposerScope,
     navigateCalls,
+    experimental_fixedTabOpenCalls,
     sidebarActionCalls,
     composer: composerLog,
     behavior: {
@@ -1203,6 +1446,7 @@ export function renderSlot<
     inspection: {
       rpcCalls,
       navigateCalls,
+      experimental_fixedTabOpenCalls,
       sidebarActionCalls,
       composer: composerLog,
     },

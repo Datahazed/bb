@@ -1,14 +1,17 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { MarkdownProps, PluginSdkApp } from "@get-bb/plugin-sdk";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
+import { ExperimentalUrlLink } from "@/components/plugin/ExperimentalUrlLink";
+import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import type {
   MarkdownLinkRouting,
   MarkdownLocalFileLinkRouting,
 } from "@/components/ui/markdown-link-routing";
+import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { definePluginApp } from "./plugin-app-definition";
 import {
@@ -20,6 +23,8 @@ import {
   useRealtimeConnectionState,
   useRpc,
   useSettings,
+  experimental_useAppPanel,
+  experimental_useFixedTabTarget,
 } from "./plugin-sdk-hooks";
 import {
   useSidebarThreadActions,
@@ -27,6 +32,7 @@ import {
   useSidebarThreads,
 } from "./plugin-sidebar-hooks";
 import { useSidebarThreadSplit } from "./plugin-sidebar-split";
+import { useAppNavigationHost } from "./app-navigation-host";
 
 /**
  * The real `@get-bb/plugin-sdk/app` surface (plugin design §5.2), assigned to
@@ -47,6 +53,8 @@ export const pluginSdkAppImplementation = {
   definePluginApp,
   useBbContext,
   useBbNavigate,
+  experimental_useAppPanel,
+  experimental_useFixedTabTarget,
   useComposer,
   useComposerView,
   useRealtime,
@@ -57,6 +65,8 @@ export const pluginSdkAppImplementation = {
   // exception to §5.5) — stable product capabilities, not a UI kit.
   ThreadChat: PluginThreadChat,
   Markdown: PluginMarkdown,
+  experimental_FileLink: ExperimentalFileLink,
+  experimental_UrlLink: ExperimentalUrlLink,
   // Experimental (see docs/api_to_audit.md): the create-side counterpart to
   // ThreadChat.
   experimental_NewThreadComposer: PluginNewThreadComposer,
@@ -80,12 +90,16 @@ export const pluginSdkAppImplementation = {
  */
 function PluginMarkdown({ content, className }: MarkdownProps) {
   const timelineNavigation = useThreadTimelineNavigation();
-  const onOpenLink = timelineNavigation?.onOpenLink;
   const onOpenLocalFileLink = timelineNavigation?.onOpenLocalFileLink;
   const workspaceRootPath = timelineNavigation?.workspaceRootPath;
-  const linkRouting = useMemo<MarkdownLinkRouting | undefined>(() => {
-    if (onOpenLink === undefined || onOpenLocalFileLink === undefined) {
-      return undefined;
+  const navigation = useAppNavigationHost();
+  const onOpenLink = useCallback<MarkdownPreviewLinkHandler>(
+    ({ href }) => navigation.openUrl({ url: href }),
+    [navigation],
+  );
+  const linkRouting = useMemo<MarkdownLinkRouting>(() => {
+    if (onOpenLocalFileLink === undefined) {
+      return { onOpenLink };
     }
     const localFile: MarkdownLocalFileLinkRouting = {
       absoluteLinks: { kind: "trusted-host" },

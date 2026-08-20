@@ -15,19 +15,50 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import {
   createEmptyFixedPanelTabsState,
+  createPluginPanelFixedPanelTab,
   createTerminalFixedPanelTab,
   getFixedPanelTabsStateStorageKey,
   serializeFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
 import { PluginPanelRightPanelHost } from "./PluginPanelRightPanelHost";
 import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import {
+  getPluginFixedTabOwnerId,
+  useAppFixedTabTarget,
+} from "@/lib/app-fixed-tab-navigation";
 
 interface TestFixedTabRegistration {
+  panelId: string;
   id: string;
   title: string;
   icon: string;
   component: (props: { subPath: string }) => ReactNode;
+  experimental_target?: {
+    validate(value: import("@get-bb/plugin-sdk").JsonValue): boolean;
+  };
   layout?: "padded" | "flush";
+}
+
+interface TestFileOpenerRegistration {
+  id: string;
+  title: string;
+  extensions: string[];
+  component: () => ReactNode;
+  pluginId: string;
+  generation: number;
+}
+
+interface TestNewThreadPanelActionRegistration {
+  id: string;
+  title: string;
+  component: (props: {
+    projectId: string | null;
+    params: import("@get-bb/plugin-sdk").JsonValue | null;
+  }) => ReactNode;
+  layout?: "padded" | "flush";
+  pluginId: string;
+  generation: number;
 }
 
 const browserState = vi.hoisted(() => ({ available: false }));
@@ -75,6 +106,8 @@ const terminalQueryState = vi.hoisted(() => ({
 const fixedTabState = vi.hoisted(() => ({
   panelRegistered: true,
   registrations: [] as TestFixedTabRegistration[],
+  fileOpeners: [] as TestFileOpenerRegistration[],
+  newThreadPanelActions: [] as TestNewThreadPanelActionRegistration[],
 }));
 const hostState = vi.hoisted(() => ({
   hosts: [
@@ -109,7 +142,8 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 
 vi.mock("@/lib/plugin-slots", () => ({
   usePluginSlots: () => ({
-    fileOpeners: [],
+    fileOpeners: fixedTabState.fileOpeners,
+    newThreadPanelActions: fixedTabState.newThreadPanelActions,
     navPanels: fixedTabState.panelRegistered
       ? [
           {
@@ -238,6 +272,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     browserDeck,
     fileTabs,
     fileTabContent,
+    fileTabContentFillsRegion,
     fixedTabs,
     fixedTabContent,
     onClose,
@@ -252,6 +287,7 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
       onSelect: () => void;
     }>;
     fileTabContent: ReactNode;
+    fileTabContentFillsRegion?: boolean;
     fixedTabs: Array<{
       tab: { id: string };
       title: string;
@@ -264,6 +300,9 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
   }) => (
     <aside
       data-testid="shared-thread-secondary-panel"
+      data-file-tab-content-fills-region={
+        fileTabContentFillsRegion === true ? "true" : "false"
+      }
       data-top-chrome-surface={topChromeSurface ?? "panel"}
     >
       {fileTabs.map((tab) => (
@@ -354,6 +393,125 @@ vi.mock("@/components/thread/terminal/ThreadTerminalPanel", async () => {
   };
 });
 
+vi.mock("@/components/secondary-panel/ThreadSecondaryPanelTabContent", () => ({
+  WorkspaceFilePreviewTabContent: ({
+    activePath,
+    environmentId,
+  }: {
+    activePath: string;
+    environmentId: string;
+  }) => (
+    <div>
+      workspace:{environmentId}:{activePath}
+    </div>
+  ),
+  HostScopedFilePreviewTabContent: ({
+    activePath,
+    hostId,
+  }: {
+    activePath: string;
+    hostId: string;
+  }) => (
+    <div>
+      host:{hostId}:{activePath}
+    </div>
+  ),
+  ThreadStorageFilePreviewTabContent: ({
+    activePath,
+    threadId,
+  }: {
+    activePath: string;
+    threadId: string;
+  }) => (
+    <div>
+      storage:{threadId}:{activePath}
+    </div>
+  ),
+}));
+
+function FileIntentButtons() {
+  const navigation = useAppNavigationHost();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          navigation.openFilePreview({
+            target: {
+              kind: "workspace",
+              environmentId: "env-explicit",
+              path: "src/example.ts",
+            },
+            location: { kind: "line", line: 7, column: null },
+          })
+        }
+      >
+        Open workspace file
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          navigation.openFilePreview({
+            target: {
+              kind: "host",
+              hostId: "host-explicit",
+              path: "/tmp/example.log",
+            },
+            location: null,
+          })
+        }
+      >
+        Open host file
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          navigation.openFilePreview({
+            target: {
+              kind: "thread-storage",
+              threadId: "thr-explicit",
+              path: "reports/result.md",
+            },
+            location: { kind: "range", startLine: 2, endLine: 4 },
+          })
+        }
+      >
+        Open storage file
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          navigation.openFixedTab({
+            surface: { kind: "current" },
+            tab: {
+              ownerId: getPluginFixedTabOwnerId("demo", "board"),
+              tabId: "details",
+            },
+            target: { kind: "record", recordId: "issue-42" },
+          })
+        }
+      >
+        Open targeted fixed tab
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          navigation.openFixedTab({
+            surface: { kind: "current" },
+            tab: {
+              ownerId: getPluginFixedTabOwnerId("demo", "board"),
+              tabId: "details",
+            },
+            target: { kind: "wrong" },
+          })
+        }
+      >
+        Open invalid fixed tab target
+      </button>
+    </>
+  );
+}
+
 function renderHost(panelPath = "board", subPath = "", store = createStore()) {
   const panelStateId = getPluginPagePanelStateId({
     panelPath,
@@ -373,6 +531,7 @@ function renderHost(panelPath = "board", subPath = "", store = createStore()) {
             subPath={subPath}
           >
             <div>Plugin page</div>
+            <FileIntentButtons />
           </PluginPanelRightPanelHost>
         </TooltipProvider>
       </JotaiProvider>
@@ -391,6 +550,8 @@ describe("PluginPanelRightPanelHost", () => {
     threadTabsApi.update.mockResolvedValue({ revision: 5, tabs: [] });
     fixedTabState.panelRegistered = true;
     fixedTabState.registrations = [];
+    fixedTabState.fileOpeners = [];
+    fixedTabState.newThreadPanelActions = [];
     localStorage.clear();
     // Clearing storage is not enough on its own: the per-thread atoms cache
     // whatever storage held when they were first created.
@@ -461,12 +622,14 @@ describe("PluginPanelRightPanelHost", () => {
     }
     fixedTabState.registrations = [
       {
+        panelId: "board",
         id: "navigation",
         title: "Navigation",
         icon: "PanelRight",
         component: Navigation,
       },
       {
+        panelId: "board",
         id: "details",
         title: "Details",
         icon: "Info",
@@ -505,9 +668,207 @@ describe("PluginPanelRightPanelHost", () => {
     ).toBe(false);
   });
 
+  it("retains a validated fixed-tab target across panel and route remounts for the app session", async () => {
+    function Details() {
+      const targetState = useAppFixedTabTarget(
+        getPluginFixedTabOwnerId("demo", "board"),
+        "details",
+      );
+      return (
+        <div data-testid="targeted-details-content">
+          Details
+          {targetState === null ? null : (
+            <>
+              <output>{JSON.stringify(targetState.target)}</output>
+              <button type="button" onClick={targetState.clear}>
+                Clear target
+              </button>
+            </>
+          )}
+        </div>
+      );
+    }
+    fixedTabState.registrations = [
+      {
+        panelId: "board",
+        id: "navigation",
+        title: "Navigation",
+        icon: "PanelRight",
+        component: () => <div data-testid="navigation-content">Navigation</div>,
+      },
+      {
+        panelId: "board",
+        id: "details",
+        title: "Details",
+        icon: "Info",
+        component: Details,
+        experimental_target: {
+          validate: (value) =>
+            typeof value === "object" &&
+            value !== null &&
+            !Array.isArray(value) &&
+            value.kind === "record" &&
+            typeof value.recordId === "string",
+        },
+      },
+    ];
+    browserState.available = true;
+
+    const store = createStore();
+    const initialRender = renderHost("board", "", store);
+    expect(await screen.findByTestId("navigation-content")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open invalid fixed tab target" }),
+    );
+    expect(screen.getByTestId("navigation-content")).toBeTruthy();
+    expect(screen.queryByTestId("targeted-details-content")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open targeted fixed tab" }),
+    );
+    expect(await screen.findByTestId("targeted-details-content")).toBeTruthy();
+    expect(
+      screen.getByText('{"kind":"record","recordId":"issue-42"}'),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Add tab"));
+    expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open browser" }));
+    expect(await screen.findByTestId("plugin-page-browser")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(
+      await screen.findByText('{"kind":"record","recordId":"issue-42"}'),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
+    expect(screen.queryByTestId("targeted-details-content")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
+    expect(
+      await screen.findByText('{"kind":"record","recordId":"issue-42"}'),
+    ).toBeTruthy();
+
+    initialRender.unmount();
+    const routeRemount = renderHost("board", "", store);
+    expect(
+      await screen.findByText('{"kind":"record","recordId":"issue-42"}'),
+    ).toBeTruthy();
+
+    routeRemount.unmount();
+    renderHost();
+    expect(await screen.findByTestId("navigation-content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(await screen.findByTestId("targeted-details-content")).toBeTruthy();
+    expect(screen.queryByText(/issue-42/)).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open targeted fixed tab" }),
+    );
+    expect(
+      await screen.findByText('{"kind":"record","recordId":"issue-42"}'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Clear target" }));
+    expect(screen.queryByRole("button", { name: "Clear target" })).toBeNull();
+    const persistedValues = Array.from(
+      { length: localStorage.length },
+      (_, index) => localStorage.getItem(localStorage.key(index) ?? "") ?? "",
+    ).join("\n");
+    expect(persistedValues).not.toContain("issue-42");
+  });
+
+  it("opens every explicit live-file identity through the shared panel host", async () => {
+    renderHost();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open workspace file" }),
+    );
+    expect(
+      await screen.findByText("workspace:env-explicit:src/example.ts"),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open host file" }));
+    expect(
+      await screen.findByText("host:host-explicit:/tmp/example.log"),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open storage file" }));
+    expect(
+      await screen.findByText("storage:thr-explicit:reports/result.md"),
+    ).toBeTruthy();
+  });
+
+  it("gives plugin-page file openers the full content region", async () => {
+    fixedTabState.fileOpeners = [
+      {
+        id: "editor",
+        title: "Demo editor",
+        extensions: ["ts"],
+        component: () => <div>Plugin file editor</div>,
+        pluginId: "demo",
+        generation: 1,
+      },
+    ];
+    renderHost();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open workspace file" }),
+    );
+
+    expect(await screen.findByText("Plugin file editor")).toBeTruthy();
+    expect(
+      screen.getByTestId("shared-thread-secondary-panel").dataset
+        .fileTabContentFillsRegion,
+    ).toBe("true");
+  });
+
+  it("lets a restored padded action own its single padded scroll frame", async () => {
+    fixedTabState.newThreadPanelActions = [
+      {
+        id: "canvas",
+        title: "Canvas",
+        component: () => <div>Plugin canvas</div>,
+        layout: "padded",
+        pluginId: "demo",
+        generation: 1,
+      },
+    ];
+    const panelStateId = getPluginPagePanelStateId({
+      panelPath: "board",
+      pluginId: "demo",
+    });
+    const actionTab = createPluginPanelFixedPanelTab({
+      actionId: "canvas",
+      paramsJson: null,
+      pluginId: "demo",
+      title: "Canvas",
+    });
+    localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId: panelStateId }),
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          lastUsedAt: Date.now(),
+          secondary: {
+            activeTabId: actionTab.id,
+            isOpen: true,
+            tabs: [actionTab],
+          },
+        }),
+      }),
+    );
+
+    renderHost();
+
+    expect(await screen.findByText("Plugin canvas")).toBeTruthy();
+    expect(
+      screen.getByTestId("shared-thread-secondary-panel").dataset
+        .fileTabContentFillsRegion,
+    ).toBe("true");
+  });
+
   it("does not reopen fixed tabs after navigating away and back", async () => {
     fixedTabState.registrations = [
       {
+        panelId: "board",
         id: "navigation",
         title: "Navigation",
         icon: "PanelRight",
@@ -555,6 +916,7 @@ describe("PluginPanelRightPanelHost", () => {
   it("preserves a closed fixed tab while its plugin registration is loading", async () => {
     fixedTabState.registrations = [
       {
+        panelId: "board",
         id: "navigation",
         title: "Navigation",
         icon: "PanelRight",

@@ -48,6 +48,8 @@ const runtime = ((globalThis as PluginRuntimeHost).__bbPluginRuntime
 export const definePluginApp = runtime.definePluginApp;
 export const ThreadChat = runtime.ThreadChat;
 export const Markdown = runtime.Markdown;
+export const experimental_FileLink = runtime.experimental_FileLink;
+export const experimental_UrlLink = runtime.experimental_UrlLink;
 export const experimental_NewThreadComposer =
   runtime.experimental_NewThreadComposer;
 // Host-owned code rendering (experimental — see docs/api_to_audit.md).
@@ -59,6 +61,9 @@ export const useRealtimeConnectionState = runtime.useRealtimeConnectionState;
 export const useSettings = runtime.useSettings;
 export const useBbContext = runtime.useBbContext;
 export const useBbNavigate = runtime.useBbNavigate;
+export const experimental_useAppPanel = runtime.experimental_useAppPanel;
+export const experimental_useFixedTabTarget =
+  runtime.experimental_useFixedTabTarget;
 export const useComposer = runtime.useComposer;
 export const useComposerView = runtime.useComposerView;
 // Sidebar surfaces for plugins that replace the thread list (experimental —

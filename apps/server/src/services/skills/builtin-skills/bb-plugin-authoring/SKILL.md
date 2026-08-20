@@ -1257,6 +1257,8 @@ import {
   useSettings,
   useBbContext,
   useBbNavigate,
+  experimental_FileLink as FileLink,
+  experimental_UrlLink as UrlLink,
   useComposer,
   useComposerView,
 } from "@get-bb/plugin-sdk/app";
@@ -1294,6 +1296,7 @@ export default definePluginApp((app) => {
     component: Board,
     experimental_fixedTabs: [
       {
+        panelId: "board",
         id: "navigation",
         title: "Navigation",
         icon: "PanelRight",
@@ -1600,7 +1603,9 @@ Slot props contracts (versioned, additive-only):
   tab survived.
 
   `experimental_fixedTabs` declares ordered, non-closable page views in that
-  same host tab strip: `{ id, title, icon, component, layout? }`. BB opens the
+  same host tab strip:
+  `{ id, panelId, title, icon, component, layout?, experimental_target? }`.
+  BB opens the
   first fixed tab on the page's first wide-layout visit, but remembers a later
   user close. Only the active fixed-tab component is mounted, and closing the
   panel unmounts it. It receives the same `{ subPath }` as the main page. `layout: "padded"` (the default) gives it
@@ -1608,6 +1613,22 @@ Slot props contracts (versioned, additive-only):
   region so it can own both. Fixed tabs add content to the shared panel; they
   do not replace its native chrome, Browser, Terminal, or keyboard commands.
   Experimental: see `docs/api_to_audit.md`.
+
+  Every registration's `panelId` must exactly match its containing nav panel's
+  `id`; the registration is also the stable reference for selecting that
+  plugin-owned tab. A targetable tab declares
+  `experimental_target: { validate(value): value is Target }`; BB checks JSON
+  safety before calling the owner validator. From any component of the same
+  plugin on that page, call
+  `experimental_useAppPanel().openFixedTab({ surface: { kind: "current" }, tab,
+target? })`. Inside the fixed-tab component,
+  `experimental_useFixedTabTarget(tab)` returns `{ sequence, target, clear }`
+  after validation. The per-tab target survives inactive-tab, closed-panel,
+  and route remounts for the current app session; call `clear()` when the tab
+  returns to its untargeted state. Selection persists through the host's
+  ordinary panel state, while targets remain memory-only and disappear on app
+  refresh. Invalid, unavailable, untargeted, or other-plugin references return
+  false without changing valid panel state.
 
   `experimental_sidebarAccessory` is a no-props, presentational component at
   the trailing edge of the sidebar row. It can own SDK hooks for a live count
@@ -1863,6 +1884,38 @@ className?, leadingContent?, messageActions? }` —
   message content (e.g. a reply header) so it reads like the rest of the
   chat instead of a differently-styled bundled renderer. Renderer options
   beyond content/className stay host-internal.
+- `experimental_UrlLink` — a real anchor whose ordinary HTTP(S) activation
+  follows the current client's in-app/external-browser preference. It keeps
+  internal BB routes in SPA history, preserves modifier clicks, copying,
+  accessibility, and explicit anchor props, and leaves unsupported schemes to
+  normal browser behavior. Use `useBbNavigate().experimental_openUrl(url)` for
+  buttons, menus, and effects; its boolean reports whether the current app
+  accepted the intent, not whether a later OS launch completed.
+- `experimental_FileLink` — a real anchor for an explicit live file target:
+  `{ kind: "workspace", environmentId, path }`,
+  `{ kind: "host", hostId, path }` (absolute), or
+  `{ kind: "thread-storage", threadId, path }`. Ordinary activation opens the
+  current surface's shared BB preview. Its lazy context menu offers the
+  built-in preview, matching plugin `fileOpener`s, the preferred external
+  target, available client apps, and copy actions. Optional `location` is a
+  one-based line/column or line range. For buttons and effects use
+  `useBbNavigate().experimental_openFilePreview({ target, location })` or
+  `.experimental_openFileExternally({ target, location })`; the boolean means
+  host acceptance, not completed I/O. Every identity is explicit—never invent
+  an environment id or turn a project id into a workspace target. The testing
+  harness records both calls in `navigateCalls` and gates them with the
+  `openFilePreview` / `openFileExternally` behavior options.
+- `experimental_useAppPanel` — returns the generic current-surface fixed-tab
+  controller. `openFixedTab({ surface: { kind: "current" }, tab, target? })`
+  accepts a plugin's own eligible fixed-tab registration, validates any target
+  through that registration's `experimental_target` contract, opens the shared
+  panel, and returns host acceptance. The controller does not interpret target
+  shapes. Targeted fixed tabs use `experimental_useFixedTabTarget(tab)` to read
+  current-session state and call `clear()` when returning to an untargeted
+  state. The frontend harness records accepted calls in
+  `experimental_fixedTabOpenCalls`, gates them with
+  `experimental_openFixedTab`, and seeds state with
+  `experimental_fixedTabTarget`.
 - `experimental_NewThreadComposer` — bb's complete compose surface for
   CREATING a thread (the create-side counterpart to `ThreadChat`): prompt
   editor with @-mentions and expand, `+` attachments,
@@ -1962,12 +2015,14 @@ Hooks:
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
-openThreadPanel({ actionId, title?, params? }) }`.
+openThreadPanel({ actionId, title?, params? }), experimental_openUrl(url) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
   composer draft and `focusPrompt: true` to focus it. The panel
   opener opens one of the current plugin's registered `threadPanelAction` tabs
   in the current thread surface and returns whether the host accepted it; it
   returns false on surfaces without a thread side panel.
+  `experimental_openUrl` owns HTTP(S) only and returns false for schemes BB
+  leaves to normal anchor behavior.
 - `useComposer()` → programmatic access to the chat composer draft (the
   same one the built-in "Add to chat" affordances write to):
   `text` is the current plain text; `setText(next)` replaces it;
@@ -2224,6 +2279,7 @@ const slot = renderSlot(
     settings: { greeting: "hi" }, // useSettings() values
     context: { projectId: "p1", threadId: null }, // useBbContext()
     realtimeConnectionState: "reconnecting", // useRealtimeConnectionState()
+    openUrl: (url) => url.startsWith("https://"),
   },
 );
 await slot.findByText("…"); // Testing Library queries

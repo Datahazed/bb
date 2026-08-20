@@ -21,6 +21,36 @@ Any mounted plugin component can use
 same plugin's registered thread-panel actions; it returns false when the
 current surface has no thread side panel.
 
+Use `experimental_UrlLink` for a real anchor that applies BB's current
+in-app/external-browser preference on ordinary HTTP(S) activation, or
+`useBbNavigate().experimental_openUrl(url)` for a button or menu. Internal app
+routes, modifier clicks, explicit anchor targets, and unsupported schemes stay
+native. The frontend harness records both forms in `navigateCalls` and accepts
+an `openUrl` behavior option.
+
+Use `experimental_FileLink` for an explicit live workspace, host, or
+thread-storage file. Ordinary activation opens the shared BB preview and its
+context menu exposes built-in/plugin viewers, preferred external opening, and
+copy actions. Buttons and menus can call
+`experimental_openFilePreview({ target, location })` or
+`experimental_openFileExternally({ target, location })`; both return whether
+the current host accepted the intent. Targets never infer an ambient workspace.
+The frontend harness records both methods and accepts `openFilePreview` and
+`openFileExternally` behavior options.
+
+A nav panel's `experimental_fixedTabs` entries must include the containing nav
+panel's `id` as `panelId`; each entry is also a stable reference to that
+plugin's own tab. Give a targeted tab an `experimental_target.validate` type guard, call
+`experimental_useAppPanel().openFixedTab({ surface: { kind:
+"current" }, tab, target })`, and read the in-memory state inside the tab with
+`experimental_useFixedTabTarget(tab)`. The target survives tab, panel, and
+route remounts for the current app session; call `clear()` when the tab returns
+to its untargeted state. The host validates JSON before the owner's type guard,
+persists only selection, and returns false for an unavailable tab or invalid
+target. The frontend harness records accepted requests in
+`experimental_fixedTabOpenCalls`, accepts an `experimental_openFixedTab`
+behavior, and can seed `experimental_fixedTabTarget` state.
+
 Every panel-open entry point reports the same way: `openThreadPanel` and the
 `openPanel` handed to `threadPanelAction`, `experimental_newThreadPanelAction`,
 and `messageAction` `run` callbacks all return `boolean` — true when the host
