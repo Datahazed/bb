@@ -73,6 +73,7 @@ import {
   PullRequestGithubCheckIcon,
   PullRequestStateIcon,
 } from "@/components/pull-request/PullRequestStatusPill";
+import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 
 // ---------------------------------------------------------------------------
@@ -499,7 +500,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
         {showGithubCheckIcon ? (
           <PullRequestGithubCheckIcon pullRequest={pullRequest} />
         ) : (
-          <Icon name="Github" className="size-4 shrink-0" aria-hidden="true" />
+          <GithubFaviconIcon />
         )}
         <span className="shrink-0 text-muted-foreground">
           #{pullRequest.number}

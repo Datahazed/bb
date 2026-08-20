@@ -1,22 +1,8 @@
 import type { PullRequestState, ThreadPullRequest } from "@bb/domain";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  getPullRequestGithubCheckStatus,
-  type GithubCheckStatus,
-} from "@/lib/pull-request-display";
-
-// The check glyph is the bundled GitHub mark with a small status dot in the
-// corner, drawn from theme tokens. It replaces the light + dark favicon PNGs
-// that were fetched from github.githubassets.com on every thread that has a
-// pull request: two cross-origin image requests per pill (and per row on the
-// sidebar/thread list), which on phones over a tunnel meant late-arriving,
-// layout-shifting icons and a third-party request on every cold start.
-const GITHUB_CHECK_STATUS_DOT_CLASS: Record<GithubCheckStatus, string> = {
-  success: "bg-success",
-  failure: "bg-destructive",
-  pending: "bg-attention",
-};
+import { getPullRequestGithubCheckStatus } from "@/lib/pull-request-display";
+import { GithubFaviconIcon } from "./GithubFaviconIcon";
 
 const PR_STATUS_COLOR: Record<PullRequestState, { textClassName: string }> = {
   open: {
@@ -90,21 +76,7 @@ export function PullRequestGithubCheckIcon({
   if (status === null) {
     return null;
   }
-  return (
-    <span
-      data-pull-request-check-status={status}
-      aria-hidden="true"
-      className={cn("relative inline-flex size-4 shrink-0", className)}
-    >
-      <Icon name="Github" className="size-4 shrink-0" aria-hidden="true" />
-      <span
-        className={cn(
-          "absolute -right-px -bottom-px size-2 rounded-full ring-2 ring-background",
-          GITHUB_CHECK_STATUS_DOT_CLASS[status],
-        )}
-      />
-    </span>
-  );
+  return <GithubFaviconIcon status={status} className={className} />;
 }
 
 export function PullRequestStatusPill({
