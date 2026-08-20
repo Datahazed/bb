@@ -2016,6 +2016,71 @@ describe("ThreadTimelineRows actions", () => {
     expect(parentRow?.classList.contains("bb-search-flash")).toBe(false);
   });
 
+  it("reveals a searched row again after window placeholder re-budgeting", async () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const scrollElementIntoView = vi.fn();
+    const bottomAnchor: BottomAnchorContextValue = {
+      captureScrollAnchor: vi.fn(),
+      getScrollElement: () => document.createElement("div"),
+      isAtBottom: false,
+      scrollElementIntoView,
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+    function SearchResultHarness() {
+      const [revision, setRevision] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setRevision((value) => value + 1)}>
+            Re-render rows
+          </button>
+          <ThreadTimelineRows
+            threadId="thr_main"
+            timelineRows={[
+              conversationRow({
+                id: "searched_row",
+                role: "assistant",
+                text: `Result that moves while window placeholders settle ${revision}.`,
+                sourceSeqStart: 12,
+                sourceSeqEnd: 12,
+                threadId: "thr_main",
+              }),
+            ]}
+            threadRuntimeDisplayStatus="idle"
+            workspaceRootPath={undefined}
+          />
+        </>
+      );
+    }
+
+    renderWithRouter(
+      <BottomAnchorContext.Provider value={bottomAnchor}>
+        <SearchResultHarness />
+      </BottomAnchorContext.Provider>,
+      [
+        {
+          pathname: "/thread",
+          state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+        },
+      ],
+    );
+
+    await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Re-render rows" }));
+    await waitFor(
+      () => expect(scrollElementIntoView).toHaveBeenCalledTimes(3),
+      { timeout: 1_200 },
+    );
+    expect(scrollElementIntoView).toHaveBeenLastCalledWith({
+      element: expect.objectContaining({ dataset: expect.any(DOMStringMap) }),
+      options: { block: "center" },
+    });
+  });
+
   it("loads older timeline rows before scrolling to an older sidebar search match", async () => {
     const onLoadOlderRows = vi.fn();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {

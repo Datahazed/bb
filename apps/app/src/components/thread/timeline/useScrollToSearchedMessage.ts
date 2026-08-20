@@ -32,6 +32,10 @@ interface SeqRange {
 
 const FLASH_CLASS_NAME = "bb-search-flash";
 const FLASH_DURATION_MS = 1700;
+// A windowed list re-budgets placeholder estimates 300ms after its last
+// scroll. The 320ms settle reveal can itself scroll and schedule one final
+// re-budget, so reveal once more after that second idle window has elapsed.
+const POST_WINDOW_SETTLE_REVEAL_MS = 800;
 
 function escapeTimelineRowId(rowId: string): string {
   if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
@@ -204,6 +208,8 @@ export function useScrollToSearchedMessage(
   const bottomAnchor = useBottomAnchoredScroll();
   const handledKeyRef = useRef<string | null>(null);
   const olderLoadAttemptKeyRef = useRef<string | null>(null);
+  const locationKeyRef = useRef(location.key);
+  locationKeyRef.current = location.key;
   const target = readSearchMessageTarget(location.state);
   const targetSeq = target?.seq ?? null;
   const targetThreadId = target?.threadId ?? null;
@@ -261,6 +267,11 @@ export function useScrollToSearchedMessage(
 
     let flashed = false;
     const revealTarget = () => {
+      // Window realization re-runs this effect, but its delayed reveals must
+      // survive that cleanup. A real navigation invalidates them by key.
+      if (locationKeyRef.current !== location.key) {
+        return;
+      }
       const element = document.querySelector<HTMLElement>(selector);
       if (element === null) {
         return;
@@ -284,13 +295,18 @@ export function useScrollToSearchedMessage(
       }
     };
 
-    // Reveal on the next frame, then once more after layout settles, so a late
-    // scroll-anchor restore can't leave the target off-screen.
+    // Reveal on the next frame, once after initial layout settles, and once
+    // after the window's post-scroll idle re-budget. The last pass matters on
+    // large searched threads: realizing rows around the first reveal can move
+    // the target after the 320ms pass has already run.
     const frame = requestAnimationFrame(revealTarget);
-    const settle = window.setTimeout(revealTarget, 320);
+    window.setTimeout(revealTarget, 320);
+    window.setTimeout(
+      revealTarget,
+      POST_WINDOW_SETTLE_REVEAL_MS,
+    );
     return () => {
       cancelAnimationFrame(frame);
-      window.clearTimeout(settle);
     };
   }, [
     bottomAnchor,
