@@ -5,7 +5,6 @@ import type {
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
-export type { PromptInput } from "@bb/domain";
 import type {
   CreateExecutionInputSources,
   CreateThreadEnvironmentArgs,

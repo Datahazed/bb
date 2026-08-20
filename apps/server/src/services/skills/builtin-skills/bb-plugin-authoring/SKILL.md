@@ -1881,7 +1881,14 @@ openThreadPanel({ actionId, title?, params? }) }`.
   returns false on surfaces without a thread side panel.
 - `useComposer()` → programmatic access to the chat composer draft (the
   same one the built-in "Add to chat" affordances write to):
-  `text` is the current plain text; `setText(next)` replaces it;
+  `text` is the current plain text;
+  `experimental_getInput()` returns a detached snapshot of the exact
+  structured input the composer would submit, including mention ranges and
+  attached images/files, without mutating the draft; relative attachment
+  paths are project-scoped, so pass the snapshot unchanged only to a thread in
+  the same project, or call
+  `bb.sdk.projects.attachments.copy({ sourceProjectId, projectId, paths })`
+  before spawning in a different project; `setText(next)` replaces it;
   `updateText(current => next)` receives the latest committed text; and
   `clear()` clears the text. These edits preserve attachments. Inline
   mentions outside the changed range are preserved and rebased, while a

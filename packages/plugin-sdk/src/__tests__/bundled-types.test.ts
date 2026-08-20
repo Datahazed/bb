@@ -40,6 +40,9 @@ describe("bundled plugin SDK declarations", () => {
     expect(appDeclarations).toContain(
       "experimental_getInput(): PromptInput[];",
     );
+    expect(appDeclarations).not.toMatch(
+      /export type \{[^}]*\bPromptInput\b[^}]*\};/u,
+    );
     expect(declarations).toContain(
       "list(args?: ProviderListArgs): Promise<ProviderListResult>;",
     );

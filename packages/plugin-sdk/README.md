@@ -19,7 +19,10 @@ and `useComposerView()` for the reactive scope, layout, draft, and run state.
 When a plugin needs to hand the current draft to another BB thread without
 losing screenshots, files, or structured mentions, call
 `useComposer().experimental_getInput()` at the user action boundary and pass
-that detached `PromptInput[]` through unchanged.
+that detached input through unchanged when the destination thread is in the
+same project. Relative attachment paths are project-scoped; before spawning in
+a different project, copy those paths with
+`bb.sdk.projects.attachments.copy({ sourceProjectId, projectId, paths })`.
 Any mounted plugin component can use
 `useBbNavigate().openThreadPanel(...)` to request one of the
 same plugin's registered thread-panel actions; it returns false when the

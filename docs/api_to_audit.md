@@ -369,6 +369,8 @@ new-thread composer scope as the rest of `useComposer()` and does not mutate,
 clear, focus, or submit that composer. A plugin can forward the snapshot to its
 server and then to `bb.sdk.threads.spawn({ input })` without flattening image
 context into text.
+Relative attachment paths are project-scoped, so forwarding to a different
+project requires copying those paths with `projects.attachments.copy` first.
 
 **Audit before stabilizing.**
 

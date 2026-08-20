@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { act, render, type RenderResult } from "@testing-library/react";
+import type { PromptInput } from "@bb/domain";
 import {
   type BbContext,
   type BbNavigate,
@@ -25,7 +26,6 @@ import {
   type PluginComposerScope,
   type PluginComposerTextEffect,
   type PluginComposerThreadRowStatus,
-  type PromptInput,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageActionRegistration,

@@ -3,12 +3,12 @@ import { useEffect, useState } from "react";
 import { cleanup, fireEvent, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import type { PromptInput } from "@bb/domain";
 import type {
   PluginComposerApi,
   PluginComposerScope,
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
-  PromptInput,
 } from "../../app-contract.js";
 import {
   installTestPluginRuntime,
