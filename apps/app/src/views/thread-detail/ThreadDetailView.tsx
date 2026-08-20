@@ -186,7 +186,7 @@ import {
   PluginPanelTabContent,
   usePluginPanelActions,
 } from "@/components/plugin/PluginPanelActions";
-import { pluginPanelTabFillsRegion } from "@/components/plugin/plugin-panel-tab-layout";
+import { createFileOpenerOriginalTab } from "@/components/plugin/file-opener-tabs";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -228,7 +228,10 @@ import {
 import { isSecondaryFileTab } from "@/components/secondary-panel/secondaryPanelTabState";
 import { useThreadOpenFileSignal } from "@/components/secondary-panel/useThreadOpenFileSignal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import type { SecondaryPanelFileTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import type {
+  SecondaryPanelFixedTab,
+  SecondaryPanelRenderableTab,
+} from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useEnvironmentMergeBase } from "@/components/secondary-panel/git-diff/useEnvironmentMergeBase";
 import { useThreadGitActions } from "./useThreadGitActions";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
@@ -718,7 +721,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     activeHostFilePath,
     activeStorageFilePath,
     activeWorkspaceFilePath,
-    activePluginPanelTab,
     browserTabs,
     clearActiveFileTabs,
     activateTab,
@@ -726,7 +728,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openTab,
     openPluginPanel,
     orderedSecondaryFileTabs,
-    reorderFileTab,
+    reorderTab,
     selectFileSearchResult,
     updateBrowserTab,
   } = useThreadFileTabs({
@@ -763,7 +765,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [],
   );
-  // Browser tabs are not rendered through the single `fileTabContent` slot:
+  // Browser tabs are not rendered through the ordinary tab-content callback:
   // each one keeps a live native view that must persist across tab switches, so
   // the deck stays mounted independently of which tab is active.
   const renderBrowserDeck = useCallback(
@@ -1551,6 +1553,29 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [clearActiveFileTabs, openSecondaryPanel],
   );
+  const secondaryPanelFixedTabs = useMemo<readonly SecondaryPanelFixedTab[]>(
+    () =>
+      threadFixedViewTabs.map((tab) =>
+        tab.kind === "thread-info"
+          ? {
+              ariaLabel: "Show thread info panel",
+              label: "Info",
+              leadingVisual: <Icon name="Info" />,
+              onSelect: () => handleSecondaryPanelChange("thread-info"),
+              tab,
+              title: "Thread info",
+            }
+          : {
+              ariaLabel: "Show diff panel",
+              label: "Diff",
+              leadingVisual: <Icon name="FileDiff" />,
+              onSelect: () => handleSecondaryPanelChange("git-diff"),
+              tab,
+              title: "Diff",
+            },
+      ),
+    [handleSecondaryPanelChange, threadFixedViewTabs],
+  );
   const handleSecondaryPanelFocus = useCallback(() => {
     touchFixedPanelTabsState();
   }, [touchFixedPanelTabsState]);
@@ -1779,136 +1804,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [openSecondaryPanelCommitDiff],
   );
-  const fileTabs = useMemo<SecondaryPanelFileTab[] | undefined>(() => {
-    const filenameOf = (path: string) => path.split("/").at(-1) ?? path;
-    const tabs = syncedOrderedSecondaryFileTabs.map(
-      (tab): SecondaryPanelFileTab => {
-        switch (tab.kind) {
-          case "browser": {
-            const browserLabel =
-              tab.title ??
-              (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
-            return {
-              id: tab.id,
-              filename: browserLabel.length > 0 ? browserLabel : "Browser",
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: (
-                <Icon
-                  name="Globe"
-                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                  aria-hidden
-                />
-              ),
-              statusLabel: null,
-              onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
-            };
-          }
-          case "terminal": {
-            const session = terminalsById.get(tab.terminalId);
-            return {
-              id: tab.id,
-              filename: session?.title ?? "Terminal",
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: (
-                <Icon
-                  name="Terminal"
-                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                  aria-hidden
-                />
-              ),
-              statusLabel:
-                session === undefined || session.status === "running"
-                  ? null
-                  : terminalStatusLabel(session),
-              onSelect: () => handleActivateTerminalTab(tab.terminalId),
-              onClose: () => handleCloseTerminalTab(tab.terminalId),
-            };
-          }
-          case "workspace-file-preview":
-            return {
-              id: tab.id,
-              filename: filenameOf(tab.path),
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-              statusLabel: tab.statusLabel,
-              onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
-            };
-          case "host-file-preview":
-            return {
-              id: tab.id,
-              filename: filenameOf(tab.path),
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-              statusLabel: null,
-              onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
-            };
-          case "thread-storage-file-preview":
-            return {
-              id: tab.id,
-              filename: filenameOf(tab.path),
-              isActive: tab.id === activeFixedSecondaryTabId,
-              isPinned: tab.isPinned,
-              leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
-              statusLabel: null,
-              onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
-            };
-          case "new-tab":
-            return {
-              id: tab.id,
-              filename: "New tab",
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: (
-                <Icon
-                  name="NewTab"
-                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                  aria-hidden
-                />
-              ),
-              statusLabel: null,
-              onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
-            };
-          case "plugin-panel": {
-            const actionIcon =
-              pluginThreadPanelActions.find(
-                (action) =>
-                  action.pluginId === tab.pluginId &&
-                  action.id === tab.actionId,
-              )?.icon ?? null;
-            return {
-              id: tab.id,
-              filename: tab.title,
-              isActive: tab.id === activeFixedSecondaryTabId,
-              leadingVisual: (
-                <PluginIcon
-                  pluginId={tab.pluginId}
-                  icon={actionIcon}
-                  className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-                />
-              ),
-              statusLabel: null,
-              onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
-            };
-          }
-        }
-      },
-    );
-    return tabs.length > 0 ? tabs : undefined;
-  }, [
-    activeFixedSecondaryTabId,
-    closeTab,
-    handleActivateFileTab,
-    handleActivateTerminalTab,
-    handleCloseTerminalTab,
-    pluginThreadPanelActions,
-    syncedOrderedSecondaryFileTabs,
-    terminalsById,
-  ]);
   const workStatusQuery = useEnvironmentWorkStatus(
     thread?.environmentId,
     requestedMergeBaseBranch,
@@ -2768,7 +2663,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       thread={thread}
     />
   );
-  const renderSplitTabContent = (
+  const renderSecondaryTabContent = (
     tab: SecondaryFileFixedPanelTab,
   ): ReactNode => {
     switch (tab.kind) {
@@ -2802,9 +2697,17 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             currentThreadId={thread.id}
             onAutoFocusHandled={handleNewTabAutoFocusHandled}
             onSelect={handleSelectFileSearchResult}
-            onOpenBrowser={handleOpenBrowser}
+            onOpenBrowser={() => {
+              activateTab(tab.id);
+              handleOpenBrowser();
+            }}
             onStartTerminal={
-              canCreateTerminal ? handleStartTerminal : undefined
+              canCreateTerminal
+                ? () => {
+                    activateTab(tab.id);
+                    handleStartTerminal();
+                  }
+                : undefined
             }
             pluginActions={pluginPanelActions}
           />
@@ -2887,37 +2790,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           />
         );
       }
-      case "plugin-panel":
+      case "plugin-panel": {
+        const originalTab = createFileOpenerOriginalTab(tab);
         const fileOpenerOriginal =
-          tab.fileOpenerOwner === undefined
+          originalTab === null
             ? undefined
-            : renderSplitTabContent(
-                tab.fileOpenerOwner.kind === "workspace-file-preview"
-                  ? {
-                      ...tab.fileOpenerOwner.tab,
-                      environmentId: tab.fileOpenerOwner.environmentId,
-                      id: `${tab.id}:file-opener-original`,
-                      kind: "workspace-file-preview",
-                      projectId: tab.fileOpenerOwner.projectId,
-                    }
-                  : tab.fileOpenerOwner.kind === "host-file-preview"
-                    ? {
-                        ...tab.fileOpenerOwner.tab,
-                        environmentId: tab.fileOpenerOwner.environmentId,
-                        hostId: tab.fileOpenerOwner.hostId,
-                        id: `${tab.id}:file-opener-original`,
-                        kind: "host-file-preview",
-                        threadId: tab.fileOpenerOwner.threadId,
-                      }
-                    : {
-                        ...tab.fileOpenerOwner.tab,
-                        environmentId: tab.fileOpenerOwner.environmentId,
-                        id: `${tab.id}:file-opener-original`,
-                        isPinned: false,
-                        kind: "thread-storage-file-preview",
-                        threadId: tab.fileOpenerOwner.threadId,
-                      },
-              );
+            : renderSecondaryTabContent(originalTab);
         return (
           <ThreadTimelineNavigationProvider
             environmentId={thread.environmentId}
@@ -2933,15 +2811,121 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             />
           </ThreadTimelineNavigationProvider>
         );
+      }
     }
   };
-  const activeFileTabModel = syncedOrderedSecondaryFileTabs.find(
-    (tab) => tab.id === activeFixedSecondaryTabId,
-  );
-  const fileTabContent = activeFileTabModel
-    ? renderSplitTabContent(activeFileTabModel)
-    : undefined;
-  const isBrowserTabActive = activeBrowserTab !== null;
+  const filenameOfPanelTab = (path: string) => path.split("/").at(-1) ?? path;
+  const panelTabs: readonly SecondaryPanelRenderableTab[] =
+    syncedOrderedSecondaryFileTabs.map((tab): SecondaryPanelRenderableTab => {
+      const pluginAction =
+        tab.kind === "plugin-panel"
+          ? pluginThreadPanelActions.find(
+              (action) =>
+                action.pluginId === tab.pluginId && action.id === tab.actionId,
+            )
+          : undefined;
+      const shared = {
+        contentFillsRegion:
+          tab.kind === "plugin-panel" &&
+          (tab.fileOpenerOwner !== undefined ||
+            pluginAction?.layout === "flush"),
+        onClose: () => closeTab(tab.id),
+        renderContent: () => renderSecondaryTabContent(tab),
+        tab,
+      };
+      switch (tab.kind) {
+        case "browser": {
+          const browserLabel =
+            tab.title ?? (tab.url.length > 0 ? getBrowserUrlHost(tab.url) : "");
+          return {
+            ...shared,
+            label: browserLabel.length > 0 ? browserLabel : "Browser",
+            leadingVisual: (
+              <Icon
+                name="Globe"
+                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                aria-hidden
+              />
+            ),
+            statusLabel: null,
+            onSelect: () => handleActivateFileTab(tab.id),
+          };
+        }
+        case "terminal": {
+          const session = terminalsById.get(tab.terminalId);
+          return {
+            ...shared,
+            label: session?.title ?? "Terminal",
+            leadingVisual: (
+              <Icon
+                name="Terminal"
+                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                aria-hidden
+              />
+            ),
+            statusLabel:
+              session === undefined || session.status === "running"
+                ? null
+                : terminalStatusLabel(session),
+            onSelect: () => handleActivateTerminalTab(tab.terminalId),
+            onClose: () => handleCloseTerminalTab(tab.terminalId),
+          };
+        }
+        case "workspace-file-preview":
+          return {
+            ...shared,
+            label: filenameOfPanelTab(tab.path),
+            leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+            statusLabel: tab.statusLabel,
+            onSelect: () => handleActivateFileTab(tab.id),
+          };
+        case "host-file-preview":
+          return {
+            ...shared,
+            label: filenameOfPanelTab(tab.path),
+            leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+            statusLabel: null,
+            onSelect: () => handleActivateFileTab(tab.id),
+          };
+        case "thread-storage-file-preview":
+          return {
+            ...shared,
+            label: filenameOfPanelTab(tab.path),
+            isPinned: tab.isPinned,
+            leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
+            statusLabel: null,
+            onSelect: () => handleActivateFileTab(tab.id),
+          };
+        case "new-tab":
+          return {
+            ...shared,
+            label: "New tab",
+            leadingVisual: (
+              <Icon
+                name="NewTab"
+                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+                aria-hidden
+              />
+            ),
+            statusLabel: null,
+            onSelect: () => handleActivateFileTab(tab.id),
+          };
+        case "plugin-panel":
+          return {
+            ...shared,
+            label: tab.title,
+            leadingVisual: (
+              <PluginIcon
+                pluginId={tab.pluginId}
+                icon={pluginAction?.icon ?? null}
+                className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+              />
+            ),
+            statusLabel: null,
+            onSelect: () => handleActivateFileTab(tab.id),
+          };
+      }
+    });
   const threadDetailContent = (
     <MarkdownLocalFileContextMenuContext.Provider
       value={getLocalFileContextMenuItems}
@@ -3019,24 +3003,16 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               gitDiffTabStatus,
               environmentId: thread.environmentId ?? undefined,
               workspaceRootPath: environment?.path,
-              fileTabs,
-              fileTabContent,
-              fileTabContentFillsRegion:
-                pluginPanelTabFillsRegion(activePluginPanelTab),
+              tabs: panelTabs,
+              fixedTabs: secondaryPanelFixedTabs,
               splitPanelStateId: thread.id,
-              splitTabModels: syncedOrderedSecondaryFileTabs,
-              renderSplitTabContent,
-              splitTabContentFillsRegion: (tab) =>
-                tab.kind === "plugin-panel" &&
-                pluginPanelTabFillsRegion(tab),
               renderBrowserDeck,
-              isBrowserTabActive,
               isOpen: isSecondaryPanelOpen,
               onClose: closeSecondaryPanel,
               onCollapse: closeSecondaryPanel,
               onClearPendingGitDiffIntent: clearPendingGitDiffIntent,
               onOpenFileInEditor: handleOpenFileInEditor,
-              onFileTabReorder: reorderFileTab,
+              onTabReorder: reorderTab,
               onOpenNewTab: handleOpenNewTab,
               onRetryGitDiffEligibility: () => {
                 void environmentQuery.refetch();
@@ -3047,7 +3023,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               pendingGitDiffScrollPath,
               requestedMergeBaseBranch,
               onPanelFocus: handleSecondaryPanelFocus,
-              onPanelChange: handleSecondaryPanelChange,
             }}
             timeline={{
               activeThinking,

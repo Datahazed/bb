@@ -7,8 +7,10 @@ import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
   createGitDiffFixedPanelTab,
+  createPluginPageFixedPanelTab,
   createThreadInfoFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
+  type SecondaryFileFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import {
   createSidebarSplitState,
@@ -17,7 +19,10 @@ import {
   sidebarSplitStorageKey,
 } from "./sidebarSplitLayout";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
+import {
+  ThreadSecondaryPanel,
+  type SecondaryPanelRenderableTab,
+} from "./ThreadSecondaryPanel";
 
 afterEach(() => {
   cleanup();
@@ -25,6 +30,44 @@ afterEach(() => {
 });
 
 const noop = () => {};
+const infoFixedTab = createThreadInfoFixedPanelTab();
+const diffFixedTab = createGitDiffFixedPanelTab();
+const infoFixedTabDescriptor = {
+  ariaLabel: "Show thread info panel",
+  label: "Info",
+  leadingVisual: null,
+  onSelect: noop,
+  tab: infoFixedTab,
+  title: "Thread info",
+};
+const diffFixedTabDescriptor = {
+  ariaLabel: "Show diff panel",
+  label: "Diff",
+  leadingVisual: null,
+  onSelect: noop,
+  tab: diffFixedTab,
+  title: "Diff",
+};
+const infoFixedTabs = [infoFixedTabDescriptor] as const;
+const infoAndDiffFixedTabs = [
+  infoFixedTabDescriptor,
+  diffFixedTabDescriptor,
+] as const;
+
+function createTestRenderableTab(
+  tab: SecondaryFileFixedPanelTab,
+  renderContent: SecondaryPanelRenderableTab["renderContent"] = () => null,
+): SecondaryPanelRenderableTab {
+  return {
+    label: "index.ts",
+    leadingVisual: null,
+    onClose: noop,
+    onSelect: noop,
+    renderContent,
+    statusLabel: null,
+    tab,
+  };
+}
 
 function renderPanel(args: {
   isConversationCollapsed: boolean;
@@ -38,13 +81,14 @@ function renderPanel(args: {
           <ThreadSecondaryPanel
             activeTab={createThreadInfoFixedPanelTab()}
             canUseGitUi={false}
+            fixedTabs={infoFixedTabs}
+            tabs={[]}
             isOpen
             metadataContent={null}
             onClose={noop}
             onCollapse={noop}
-            onFileTabReorder={noop}
+            onTabReorder={noop}
             onOpenNewTab={noop}
-            onPanelChange={noop}
             onPanelFocus={noop}
             renderAsDrawer={false}
             {...args}
@@ -56,6 +100,224 @@ function renderPanel(args: {
 }
 
 describe("ThreadSecondaryPanel compact file content", () => {
+  it("renders arbitrary fixed-tab content through the shared surface", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const fixedTab = createPluginPageFixedPanelTab({
+      fixedTabId: "docs",
+      pageId: "plugin-page",
+      pluginId: "plugin-test",
+    });
+
+    render(
+      <Wrapper>
+        <TooltipProvider>
+          <ThreadSecondaryPanel
+            activeTab={fixedTab}
+            canUseGitUi={false}
+            fixedTabs={[
+              {
+                ariaLabel: "Show plugin docs",
+                label: "Docs",
+                leadingVisual: null,
+                onSelect: noop,
+                contentFillsRegion: true,
+                renderContent: () => (
+                  <input aria-label="Plugin fixed content" />
+                ),
+                tab: fixedTab,
+                title: "Plugin docs",
+              },
+            ]}
+            tabs={[]}
+            isConversationCollapsed={false}
+            isOpen
+            metadataContent={null}
+            onClose={noop}
+            onCollapse={noop}
+            onTabReorder={noop}
+            onOpenNewTab={noop}
+            onPanelFocus={noop}
+            onToggleConversationCollapse={noop}
+            renderAsDrawer
+          />
+        </TooltipProvider>
+      </Wrapper>,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: "Show plugin docs" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.getByLabelText("Plugin fixed content")).toBeTruthy();
+  });
+
+  it("renders plugin fixed tabs concurrently when they are split", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const docsTab = createPluginPageFixedPanelTab({
+      fixedTabId: "docs",
+      pageId: "plugin-page",
+      pluginId: "plugin-test",
+    });
+    const activityTab = createPluginPageFixedPanelTab({
+      fixedTabId: "activity",
+      pageId: "plugin-page",
+      pluginId: "plugin-test",
+    });
+    const panelStateId = "plugin-fixed-tab-split";
+    const initial = createSidebarSplitState(
+      [docsTab.id, activityTab.id],
+      activityTab.id,
+    );
+    const split = moveSidebarTab(
+      initial,
+      initial.layout.focusedPaneId,
+      activityTab.id,
+      { paneId: initial.layout.focusedPaneId, zone: "right" },
+      { groupId: "group-activity" },
+    );
+    window.localStorage.setItem(
+      sidebarSplitStorageKey(panelStateId),
+      serializeSidebarSplitState(split),
+    );
+
+    render(
+      <Wrapper>
+        <SidebarProvider>
+          <TooltipProvider>
+            <PanelGroup direction="horizontal">
+              <ThreadSecondaryPanel
+                activeTab={activityTab}
+                canUseGitUi={false}
+                fixedTabs={[
+                  {
+                    ariaLabel: "Show plugin docs",
+                    label: "Docs",
+                    leadingVisual: null,
+                    onSelect: noop,
+                    renderContent: () => <div>Plugin docs body</div>,
+                    tab: docsTab,
+                    title: "Plugin docs",
+                  },
+                  {
+                    ariaLabel: "Show plugin activity",
+                    label: "Activity",
+                    leadingVisual: null,
+                    onSelect: noop,
+                    renderContent: () => <div>Plugin activity body</div>,
+                    tab: activityTab,
+                    title: "Plugin activity",
+                  },
+                ]}
+                isConversationCollapsed={false}
+                isOpen
+                metadataContent={null}
+                onClose={noop}
+                onCollapse={noop}
+                onTabReorder={noop}
+                onOpenNewTab={noop}
+                onPanelFocus={noop}
+                onToggleConversationCollapse={noop}
+                renderAsDrawer={false}
+                splitPanelStateId={panelStateId}
+                tabs={[]}
+              />
+            </PanelGroup>
+          </TooltipProvider>
+        </SidebarProvider>
+      </Wrapper>,
+    );
+
+    expect(screen.getByText("Plugin docs body")).toBeTruthy();
+    expect(screen.getByText("Plugin activity body")).toBeTruthy();
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
+  });
+
+  it("renders each split pane from the descriptor attached to its tab", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const firstTab = createWorkspaceFilePreviewFixedPanelTab({
+      environmentId: "env-test",
+      projectId: "project-test",
+      tab: {
+        lineRange: null,
+        path: "src/first.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+    const secondTab = createWorkspaceFilePreviewFixedPanelTab({
+      environmentId: "env-test",
+      projectId: "project-test",
+      tab: {
+        lineRange: null,
+        path: "src/second.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+    const panelStateId = "renderable-tab-split";
+    const initial = createSidebarSplitState(
+      [firstTab.id, secondTab.id],
+      secondTab.id,
+    );
+    const split = moveSidebarTab(
+      initial,
+      initial.layout.focusedPaneId,
+      secondTab.id,
+      { paneId: initial.layout.focusedPaneId, zone: "right" },
+      { groupId: "group-second" },
+    );
+    window.localStorage.setItem(
+      sidebarSplitStorageKey(panelStateId),
+      serializeSidebarSplitState(split),
+    );
+
+    render(
+      <Wrapper>
+        <SidebarProvider>
+          <TooltipProvider>
+            <PanelGroup direction="horizontal">
+              <ThreadSecondaryPanel
+                activeTab={secondTab}
+                canUseGitUi={false}
+                fixedTabs={[]}
+                isConversationCollapsed={false}
+                isOpen
+                metadataContent={null}
+                onClose={noop}
+                onCollapse={noop}
+                onOpenNewTab={noop}
+                onPanelFocus={noop}
+                onTabReorder={noop}
+                onToggleConversationCollapse={noop}
+                renderAsDrawer={false}
+                splitPanelStateId={panelStateId}
+                tabs={[
+                  {
+                    ...createTestRenderableTab(firstTab, () => (
+                      <div>First tab body</div>
+                    )),
+                    label: "first.ts",
+                  },
+                  {
+                    ...createTestRenderableTab(secondTab, () => (
+                      <div>Second tab body</div>
+                    )),
+                    label: "second.ts",
+                  },
+                ]}
+              />
+            </PanelGroup>
+          </TooltipProvider>
+        </SidebarProvider>
+      </Wrapper>,
+    );
+
+    expect(screen.getByText("First tab body")).toBeTruthy();
+    expect(screen.getByText("Second tab body")).toBeTruthy();
+    expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
+  });
+
   it("retains the active file body after the persistent drawer closes", () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     const activeTab = createWorkspaceFilePreviewFixedPanelTab({
@@ -74,26 +336,19 @@ describe("ThreadSecondaryPanel compact file content", () => {
           <ThreadSecondaryPanel
             activeTab={activeTab}
             canUseGitUi={false}
-            fileTabs={[
-              {
-                id: activeTab.id,
-                filename: "index.ts",
-                isActive: true,
-                leadingVisual: null,
-                statusLabel: null,
-                onSelect: noop,
-                onClose: noop,
-              },
+            fixedTabs={[]}
+            tabs={[
+              createTestRenderableTab(activeTab, () => (
+                <input aria-label="Retained file content" />
+              )),
             ]}
-            fileTabContent={<input aria-label="Retained file content" />}
             isConversationCollapsed={false}
             isOpen={isOpen}
             metadataContent={null}
             onClose={noop}
             onCollapse={noop}
-            onFileTabReorder={noop}
+            onTabReorder={noop}
             onOpenNewTab={noop}
-            onPanelChange={noop}
             onPanelFocus={noop}
             onToggleConversationCollapse={noop}
             renderAsDrawer
@@ -138,8 +393,8 @@ describe("ThreadSecondaryPanel compact file content", () => {
     const storedSplit = serializeSidebarSplitState(split);
     const storageKey = sidebarSplitStorageKey(panelStateId);
     window.localStorage.setItem(storageKey, storedSplit);
-    const renderSplitTabContent = vi.fn(() => (
-      <input aria-label="Unexpected split body" />
+    const renderContent = vi.fn(() => (
+      <input aria-label="Compact active body" />
     ));
 
     const renderPanel = (renderAsDrawer: boolean) => (
@@ -149,32 +404,19 @@ describe("ThreadSecondaryPanel compact file content", () => {
             <ThreadSecondaryPanel
               activeTab={activeTab}
               canUseGitUi={false}
-              fileTabs={[
-                {
-                  id: activeTab.id,
-                  filename: "index.ts",
-                  isActive: true,
-                  leadingVisual: null,
-                  statusLabel: null,
-                  onSelect: noop,
-                  onClose: noop,
-                },
-              ]}
-              fileTabContent={<input aria-label="Compact active body" />}
+              fixedTabs={infoFixedTabs}
+              tabs={[createTestRenderableTab(activeTab, renderContent)]}
               isConversationCollapsed={false}
               isOpen
               metadataContent={null}
               onClose={noop}
               onCollapse={noop}
-              onFileTabReorder={noop}
+              onTabReorder={noop}
               onOpenNewTab={noop}
-              onPanelChange={noop}
               onPanelFocus={noop}
               onToggleConversationCollapse={noop}
               renderAsDrawer={renderAsDrawer}
-              renderSplitTabContent={renderSplitTabContent}
               splitPanelStateId={panelStateId}
-              splitTabModels={[activeTab]}
             />
           </PanelGroup>
         </TooltipProvider>
@@ -183,8 +425,9 @@ describe("ThreadSecondaryPanel compact file content", () => {
     const view = render(renderPanel(true));
 
     expect(screen.getAllByLabelText("Compact active body")).toHaveLength(1);
-    expect(screen.queryByLabelText("Unexpected split body")).toBeNull();
-    expect(renderSplitTabContent).not.toHaveBeenCalled();
+    expect(renderContent).toHaveBeenCalledWith(
+      expect.objectContaining({ isFocused: true }),
+    );
     expect(window.localStorage.getItem(storageKey)).toBe(storedSplit);
 
     view.rerender(renderPanel(false));
@@ -197,7 +440,9 @@ describe("ThreadSecondaryPanel compact file content", () => {
     expect(restoredTabGroups).toHaveLength(2);
     expect(restoredTabGroups[0]?.textContent).toContain("Info");
     expect(restoredTabGroups[1]?.textContent).toContain("index.ts");
-    expect(renderSplitTabContent).toHaveBeenCalledWith(activeTab);
+    expect(renderContent).toHaveBeenCalledWith(
+      expect.objectContaining({ isFocused: expect.any(Boolean) }),
+    );
     expect(window.localStorage.getItem(storageKey)).toBe(storedSplit);
   });
 });
@@ -212,14 +457,15 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
             <ThreadSecondaryPanel
               activeTab={createGitDiffFixedPanelTab()}
               canUseGitUi={false}
+              fixedTabs={infoFixedTabs}
+              tabs={[]}
               isConversationCollapsed={false}
               isOpen
               metadataContent={<div>Thread metadata</div>}
               onClose={noop}
               onCollapse={noop}
-              onFileTabReorder={noop}
+              onTabReorder={noop}
               onOpenNewTab={noop}
-              onPanelChange={noop}
               onPanelFocus={noop}
               onToggleConversationCollapse={noop}
               renderAsDrawer={false}
@@ -246,15 +492,16 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
             <ThreadSecondaryPanel
               activeTab={createGitDiffFixedPanelTab()}
               canUseGitUi={false}
+              fixedTabs={infoAndDiffFixedTabs}
+              tabs={[]}
               gitDiffTabStatus="loading"
               isConversationCollapsed={false}
               isOpen
               metadataContent={null}
               onClose={noop}
               onCollapse={noop}
-              onFileTabReorder={noop}
+              onTabReorder={noop}
               onOpenNewTab={noop}
-              onPanelChange={noop}
               onPanelFocus={noop}
               onToggleConversationCollapse={noop}
               renderAsDrawer={false}
@@ -344,31 +591,19 @@ describe("ThreadSecondaryPanel full-screen control", () => {
               <ThreadSecondaryPanel
                 activeTab={fileTab}
                 canUseGitUi={false}
-                fileTabs={[
-                  {
-                    id: fileTab.id,
-                    filename: "index.ts",
-                    isActive: true,
-                    leadingVisual: null,
-                    statusLabel: null,
-                    onSelect: noop,
-                    onClose: noop,
-                  },
-                ]}
+                fixedTabs={infoFixedTabs}
+                tabs={[createTestRenderableTab(fileTab)]}
                 isConversationCollapsed={false}
                 isOpen
                 metadataContent={null}
                 onClose={noop}
                 onCollapse={noop}
-                onFileTabReorder={noop}
+                onTabReorder={noop}
                 onOpenNewTab={onOpenNewTab}
-                onPanelChange={noop}
                 onPanelFocus={noop}
                 onToggleConversationCollapse={noop}
                 renderAsDrawer={false}
-                renderSplitTabContent={() => null}
                 splitPanelStateId="thread-position-menu"
-                splitTabModels={[fileTab]}
               />
             </PanelGroup>
           </TooltipProvider>
@@ -402,12 +637,12 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       document.querySelectorAll(
         '[data-testid="thread-secondary-panel-top-chrome"]',
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     expect(
-      panes.some((pane) =>
+      panes.every((pane) =>
         pane.querySelector('[data-testid="thread-secondary-panel-top-chrome"]'),
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(document.querySelectorAll("header")).toHaveLength(0);
     const newTabControls = screen.getAllByRole("button", {
       name: "Open new tab",
@@ -417,7 +652,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
     expect(onOpenNewTab).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps one conversation restore control across split tab rows", () => {
+  it("keeps pane-local tab rows and one restore control in a stacked split", () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     const fileTab = createWorkspaceFilePreviewFixedPanelTab({
       environmentId: "env-test",
@@ -438,7 +673,7 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       initial,
       initial.layout.focusedPaneId,
       fileTab.id,
-      { paneId: initial.layout.focusedPaneId, zone: "right" },
+      { paneId: initial.layout.focusedPaneId, zone: "bottom" },
       { groupId: "group-file" },
     );
     window.localStorage.setItem(
@@ -455,31 +690,19 @@ describe("ThreadSecondaryPanel full-screen control", () => {
               <ThreadSecondaryPanel
                 activeTab={fileTab}
                 canUseGitUi={false}
-                fileTabs={[
-                  {
-                    id: fileTab.id,
-                    filename: "index.ts",
-                    isActive: true,
-                    leadingVisual: null,
-                    statusLabel: null,
-                    onSelect: noop,
-                    onClose: noop,
-                  },
-                ]}
+                fixedTabs={infoFixedTabs}
+                tabs={[createTestRenderableTab(fileTab)]}
                 isConversationCollapsed
                 isOpen
                 metadataContent={null}
                 onClose={noop}
                 onCollapse={noop}
-                onFileTabReorder={noop}
+                onTabReorder={noop}
                 onOpenNewTab={noop}
-                onPanelChange={noop}
                 onPanelFocus={noop}
                 onToggleConversationCollapse={onToggleConversationCollapse}
                 renderAsDrawer={false}
-                renderSplitTabContent={() => null}
                 splitPanelStateId={panelStateId}
-                splitTabModels={[fileTab]}
               />
             </PanelGroup>
           </TooltipProvider>
@@ -491,6 +714,40 @@ describe("ThreadSecondaryPanel full-screen control", () => {
       name: "Exit Full Screen",
     });
     expect(restoreControls).toHaveLength(1);
+    const panes = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-split-pane-id]"),
+    );
+    expect(panes).toHaveLength(2);
+    expect(
+      panes.map(
+        (pane) =>
+          pane.querySelector("[data-sidebar-split-tab-group]")?.textContent,
+      ),
+    ).toEqual([
+      expect.stringContaining("Info"),
+      expect.stringContaining("index.ts"),
+    ]);
+    expect(
+      panes.map(
+        (pane) =>
+          pane.querySelectorAll(
+            '[data-testid="thread-secondary-panel-top-chrome"]',
+          ).length,
+      ),
+    ).toEqual([1, 1]);
+    expect(
+      screen
+        .getByRole("separator", {
+          name: "Resize stacked right panel panes",
+        })
+        .getAttribute("aria-orientation"),
+    ).toBe("horizontal");
+    expect(
+      panes.map(
+        (pane) =>
+          pane.querySelectorAll('[aria-label="Exit Full Screen"]').length,
+      ),
+    ).toEqual([1, 0]);
     const restoreControl = restoreControls[0];
     if (restoreControl === undefined)
       throw new Error("Missing restore control");
