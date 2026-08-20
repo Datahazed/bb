@@ -11,12 +11,11 @@ import {
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { PERSONAL_PROJECT_ID, type PromptInput } from "@bb/domain";
 import type {
   PluginComposerApi,
   PluginFileOpenerProps,
   PluginNewThreadPanelProps,
-  PromptInput,
   PluginThreadPanelProps,
 } from "@get-bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
