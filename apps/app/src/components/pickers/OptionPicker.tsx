@@ -215,7 +215,7 @@ export function OptionPicker<T extends string>({
                 ) : null}
                 <span className="min-w-0 flex-1">
                   <span
-                    className="block whitespace-normal break-words"
+                    className="block whitespace-normal break-words font-medium"
                     title={option.label}
                   >
                     {option.label}
