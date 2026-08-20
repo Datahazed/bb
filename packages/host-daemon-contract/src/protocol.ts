@@ -1,3 +1,13 @@
+// Version 145 adds provider-owned static options and installation capability
+// metadata to bridge launches, forwards typed installation requirements, and
+// removes the core `known_acp_agents.status` RPC. Older daemons reject the new
+// launch fields and cannot safely interpret the provider-owned behavior.
+//
+// Version 144 moves provider installation status and execution plans into the
+// provider bridge contract. The server now sends provider-scoped
+// `provider.installation.*` commands with bridge launch metadata; older
+// daemons only understand the removed hard-coded `provider_cli.*` commands.
+//
 // Version 143 lets daemons from before session-open's `localApiPort` field
 // reach the protocol-version check by defaulting that field at the server
 // boundary. Without it, those daemons receive `invalid_request` instead of
@@ -32,6 +42,12 @@
 // for the first-run onboarding flow's project step, which is deleted; no server
 // sends it any more. A newer daemon no longer answers it, so an older server
 // paired with a new daemon would fail that command instead of returning repos.
+// It also adds generic provider.health, changes provider.usage from one
+// fixed three-provider result into a provider-targeted bridge query, and makes
+// provider registration authoritative for whether a bridge implements either
+// method. Older daemons cannot parse the new command shapes and would still
+// gate the requests on initialize results, silently suppressing calls to new
+// bridges that no longer advertise the methods there.
 //
 // Version 137 removes the `claudeCodeMockCliTraffic` runtime option and the
 // Claude Code mock CLI traffic experiment behind it. Current servers no longer
@@ -90,7 +106,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 143 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 145 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

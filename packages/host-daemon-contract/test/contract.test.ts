@@ -343,18 +343,23 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     selectedOnlyModels: [],
   },
-  "known_acp_agents.status": {
-    agents: [
-      {
-        id: "acp-opencode",
-        executableName: "opencode",
-        installed: true,
-        executablePath: "/opt/homebrew/bin/opencode",
-      },
-    ],
+  "provider.health": {
+    supported: true,
+    health: {
+      status: "ready",
+      statusMessage: null,
+      accountEmail: "agent@example.com",
+      planLabel: "Pro",
+      installedVersion: "1.2.3",
+      minimumSupportedVersion: "1.0.0",
+      canInstall: true,
+      canUpdate: true,
+      loginCommand: "agent login",
+    },
   },
   "provider.usage": {
-    codex: {
+    supported: true,
+    usage: {
       status: "ok",
       accountEmail: "codex@example.com",
       planLabel: "Pro",
@@ -366,67 +371,26 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         },
       ],
     },
-    claudeCode: { status: "unauthenticated" },
-    cursor: { status: "not_installed" },
   },
-  "provider_cli.status": {
-    codex: {
-      displayName: "Codex",
-      executableName: "codex",
-      executablePath: null,
-      installed: false,
-      installSource: "notInstalled",
-      currentVersion: null,
-      latestVersion: "0.136.0",
-      minimumSupportedVersion: "0.136.0",
-      npmPackageName: "@openai/codex",
-      npmGlobalPackageVersion: null,
-      installAction: {
-        kind: "install",
-        label: "Install",
-        commandKind: "exec",
-        command: "npm install -g @openai/codex@latest",
-      },
-      needsUpdate: false,
-      versionUnsupported: false,
+  "provider.installation.status": {
+    executableName: "codex",
+    executablePath: null,
+    installed: false,
+    installSource: "notInstalled",
+    currentVersion: null,
+    latestVersion: "0.136.0",
+    minimumSupportedVersion: "0.136.0",
+    npmPackageName: "@openai/codex",
+    npmGlobalPackageVersion: null,
+    installAction: {
+      kind: "install",
+      label: "Install",
+      command: "npm install -g @openai/codex@latest",
     },
-    claudeCode: {
-      displayName: "Claude Code",
-      executableName: "claude",
-      executablePath: "/opt/homebrew/bin/claude",
-      installed: true,
-      installSource: "external",
-      currentVersion: "1.0.0",
-      latestVersion: null,
-      minimumSupportedVersion: null,
-      npmPackageName: null,
-      npmGlobalPackageVersion: null,
-      installAction: null,
-      needsUpdate: false,
-      versionUnsupported: false,
-    },
-    cursor: {
-      displayName: "Cursor",
-      executableName: "cursor-agent",
-      executablePath: null,
-      installed: false,
-      installSource: "notInstalled",
-      currentVersion: null,
-      latestVersion: null,
-      minimumSupportedVersion: null,
-      npmPackageName: "@cursor/agent",
-      npmGlobalPackageVersion: null,
-      installAction: {
-        kind: "install",
-        label: "Install",
-        commandKind: "shell",
-        command: "curl https://cursor.com/install | bash",
-      },
-      needsUpdate: false,
-      versionUnsupported: false,
-    },
+    needsUpdate: false,
+    versionUnsupported: false,
   },
-  "provider_cli.install": {
+  "provider.installation.run": {
     events: [
       {
         type: "started",
@@ -674,7 +638,7 @@ function terminalDataBase64(byteLength: number): string {
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonCommandSchema.acpLaunchSpec":
-    "thread.start and turn.submit include an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
+    "thread.start and turn.submit include an ACP launch spec only for dynamic ACP providers; built-ins carry plugin-declared bridge options.",
   "hostDaemonCommandSchema.acpLaunchSpec.cwd":
     "dynamic ACP launch specs may omit cwd so the daemon uses the thread workspace cwd.",
   "hostDaemonCommandSchema.acpLaunchSpec.modelCli":
@@ -716,7 +680,7 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
-    "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
+    "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins carry plugin-declared bridge options.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
@@ -755,6 +719,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "host.browse_directory may omit path to list the host's home directory, which a remote caller cannot resolve.",
   "hostDaemonOnlineRpcCommandSchema.ref":
     "host.read_file may omit ref to read from disk; setting ref switches to git history at that ref.",
+  "hostDaemonOnlineRpcCommandSchema.requirement":
+    "provider installation status omits requirement for general compatibility and names one only when checking a specific operation.",
   "hostDaemonOnlineRpcCommandSchema.rootPath":
     "host.read_file and host.file_metadata may omit rootPath only for explicit absolute disk reads; ref-based reads still require it.",
   "hostDaemonOnlineRpcCommandSchema.selectedBranch":
@@ -1052,7 +1018,9 @@ describe("host-daemon local schemas", () => {
 const BRIDGE_LAUNCH = {
   pluginId: "provider-pi",
   source: { kind: "daemon-bundled", id: "pi" },
+  providerOptions: {},
   capabilities: {
+    experimental_providerInstallation: false,
     supportsServiceTier: false,
     permissionModes: ["full"],
     supportsThreadArchive: false,
@@ -1062,6 +1030,13 @@ const BRIDGE_LAUNCH = {
 } as const;
 
 describe("host-daemon command schemas", () => {
+  // Version 142 moves built-in ACP discovery into provider bridges and carries
+  // provider-owned static bridge options plus installation capability facts.
+  // Version 138 adds the provider-targeted provider.health command, changes
+  // provider.usage from one fixed aggregate into a provider bridge query, and
+  // moves maintenance capability authority from bridge initialization to
+  // provider registration. Older daemons cannot parse the new command shapes
+  // and would still apply the removed initialization gates.
   // Version 130 makes every provider plugin-declared on the wire: a REQUIRED
   // `bridgeLaunch` field beside every `acpLaunchSpec` site (thread.start, the
   // resume contexts, thread.goal.clear, thread.archive, thread.unarchive,
@@ -1138,7 +1113,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(143);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(145);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1604,16 +1579,6 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
-        type: "known_acp_agents.status",
-        agents: [{ id: "acp-opencode", executableName: "opencode" }],
-      }),
-    ).toMatchObject({
-      type: "known_acp_agents.status",
-      agents: [{ id: "acp-opencode", executableName: "opencode" }],
-    });
-
-    expect(
-      hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
         limit: 100,
@@ -1757,10 +1722,6 @@ describe("host-daemon command schemas", () => {
         type: "provider.list_models",
         providerId: "codex",
         bridgeLaunch: BRIDGE_LAUNCH,
-      },
-      {
-        type: "known_acp_agents.status",
-        agents: [{ id: "acp-opencode", executableName: "opencode" }],
       },
       {
         type: "workspace.status",
@@ -2359,12 +2320,14 @@ describe("host-daemon command schemas", () => {
         byteLength: 4096,
       },
       capabilities: {
+        experimental_providerInstallation: true,
         supportsServiceTier: true,
         permissionModes: ["accept-edits", "full"],
         supportsThreadArchive: false,
         supportsThreadRename: false,
         fork: "tip",
       },
+      providerOptions: { launch: { command: "echo-agent" } },
     };
 
     const providerListModelsCommand = {

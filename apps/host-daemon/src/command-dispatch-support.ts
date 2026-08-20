@@ -11,14 +11,19 @@ import type { EventSinkInput } from "./event-sink.js";
 import type {
   HostDaemonCommand,
   HostDaemonAcpLaunchSpec,
+  ProviderHealthResult,
+  ProviderUsageResult,
   HostDaemonBridgeLaunch,
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
   HostDaemonConnectTunnelIdentity,
-  ProviderCliInstallRequest,
-  ProviderCliStatus,
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
+import type {
+  ExperimentalProviderInstallationCommand,
+  ExperimentalProviderInstallationRunResult,
+  ExperimentalProviderInstallationStatus,
+} from "@bb/provider-bridge-protocol";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
 import { ensurePluginProcessDataDir } from "@bb/process-utils";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";
@@ -67,12 +72,37 @@ export interface CommandDispatchOptions {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
-  getProviderCliStatusForProvider?: (
-    providerId: string,
-  ) => Promise<ProviderCliStatus | null>;
-  streamProviderCliInstall?: (
-    args: ProviderCliInstallRequest & { env?: NodeJS.ProcessEnv },
-  ) => ReadableStream<Uint8Array>;
+  providerHealth?: (args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  }) => Promise<ProviderHealthResult>;
+  providerUsage?: (args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  }) => Promise<ProviderUsageResult>;
+  providerInstallationStatus?: (args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+    requirement?: "thread_rewind";
+  }) => Promise<ExperimentalProviderInstallationStatus>;
+  providerInstallationRun?: (args: {
+    providerId: string;
+    action: "install" | "update";
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  }) => Promise<ExperimentalProviderInstallationRunResult>;
+  streamProviderInstallation?: (args: {
+    providerId: string;
+    plan: ExperimentalProviderInstallationCommand;
+    env?: NodeJS.ProcessEnv;
+  }) => ReadableStream<Uint8Array>;
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;
@@ -140,6 +170,7 @@ export async function resolveRuntimeBridgeLaunch(
     ...bridgeLaunch.capabilities,
     permissionModes: [...bridgeLaunch.capabilities.permissionModes],
   };
+  const providerOptions = { ...bridgeLaunch.providerOptions };
   // Every bridge, artifact or bundled, is scoped to the plugin that ships it:
   // it gets that plugin's own persistent directory, the same one the plugin's
   // host worker would get, under its own `bridge-data` kind.
@@ -154,6 +185,7 @@ export async function resolveRuntimeBridgeLaunch(
       dataDir,
       source: { ...bridgeLaunch.source },
       capabilities,
+      providerOptions,
     };
   }
   if (options.fetchPluginHostArtifact === undefined) {
@@ -179,14 +211,15 @@ export async function resolveRuntimeBridgeLaunch(
       artifactPath,
     },
     capabilities,
+    providerOptions,
   };
 }
 
-const defaultModelListRuntimes = new Map<string, AgentRuntime>();
+const defaultProviderMaintenanceRuntimes = new Map<string, AgentRuntime>();
 
-export async function shutdownDefaultListModelsRuntimes(): Promise<void> {
-  const runtimes = [...defaultModelListRuntimes.values()];
-  defaultModelListRuntimes.clear();
+export async function shutdownDefaultProviderMaintenanceRuntimes(): Promise<void> {
+  const runtimes = [...defaultProviderMaintenanceRuntimes.values()];
+  defaultProviderMaintenanceRuntimes.clear();
   await Promise.all(runtimes.map((runtime) => runtime.shutdown()));
 }
 
@@ -201,25 +234,7 @@ export async function defaultListModels(
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }> {
-  const runtimeKey =
-    `${options.bridgeBundleDir ?? ""}` +
-    `#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}` +
-    (args.acpLaunchSpec !== undefined
-      ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
-      : "");
-  let runtime = defaultModelListRuntimes.get(runtimeKey);
-  if (!runtime) {
-    runtime = createAgentRuntime({
-      bridgeBundleDir: options.bridgeBundleDir,
-      workspacePath: process.cwd(),
-      onEvent: () => {},
-      onToolCall: async () => ({
-        contentItems: [],
-        success: true,
-      }),
-    });
-    defaultModelListRuntimes.set(runtimeKey, runtime);
-  }
+  const runtime = defaultProviderMaintenanceRuntime(args, options);
   try {
     return await runtime.listModels(args);
   } catch (error) {
@@ -231,6 +246,91 @@ export async function defaultListModels(
     }
     throw error;
   }
+}
+
+function defaultProviderMaintenanceRuntime(
+  args: {
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+  },
+  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] },
+): AgentRuntime {
+  const runtimeKey =
+    `${options.bridgeBundleDir ?? ""}` +
+    `#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}` +
+    (args.acpLaunchSpec !== undefined
+      ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
+      : "");
+  let runtime = defaultProviderMaintenanceRuntimes.get(runtimeKey);
+  if (!runtime) {
+    runtime = createAgentRuntime({
+      bridgeBundleDir: options.bridgeBundleDir,
+      workspacePath: process.cwd(),
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [],
+        success: true,
+      }),
+    });
+    defaultProviderMaintenanceRuntimes.set(runtimeKey, runtime);
+  }
+  return runtime;
+}
+
+export async function defaultProviderHealth(
+  args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  },
+  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
+): Promise<ProviderHealthResult> {
+  return await defaultProviderMaintenanceRuntime(args, options).providerHealth(
+    args,
+  );
+}
+
+export async function defaultProviderUsage(
+  args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  },
+  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
+): Promise<ProviderUsageResult> {
+  return await defaultProviderMaintenanceRuntime(args, options).providerUsage(
+    args,
+  );
+}
+
+export async function defaultProviderInstallationStatus(
+  args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+    requirement?: "thread_rewind";
+  },
+  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
+): Promise<ExperimentalProviderInstallationStatus> {
+  const runtime = defaultProviderMaintenanceRuntime(args, options);
+  return await runtime.providerInstallationStatus(args);
+}
+
+export async function defaultProviderInstallationRun(
+  args: {
+    providerId: string;
+    action: "install" | "update";
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  },
+  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
+): Promise<ExperimentalProviderInstallationRunResult> {
+  const runtime = defaultProviderMaintenanceRuntime(args, options);
+  return await runtime.providerInstallationRun(args);
 }
 
 export function getErrorCode(error: unknown): string {

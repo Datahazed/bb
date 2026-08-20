@@ -109,6 +109,47 @@ describe("handshake gating", () => {
     completeHandshake(adapter, { approvalEnforcedBy: "provider" });
     expect(adapter.approvalEnforcedBy).toBe("provider");
   });
+
+  it("routes declared sessionless maintenance methods with provider context", () => {
+    const adapter = makeAdapter();
+    expect(
+      adapter.buildCommandPlan({ type: "provider/health", cwd: "/workspace" }),
+    ).toEqual({
+      kind: "request",
+      method: "provider/health",
+      params: { providerId: "fake-bridge", cwd: "/workspace" },
+    });
+    expect(adapter.buildCommandPlan({ type: "provider/usage" })).toEqual({
+      kind: "request",
+      method: "provider/usage",
+      params: { providerId: "fake-bridge" },
+    });
+    expect(
+      adapter.buildCommandPlan({
+        type: "provider/installation/status",
+        cwd: "/workspace",
+        requirement: "thread_rewind",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "provider/installation/status",
+      params: {
+        providerId: "fake-bridge",
+        cwd: "/workspace",
+        requirement: "thread_rewind",
+      },
+    });
+    expect(
+      adapter.buildCommandPlan({
+        type: "provider/installation/run",
+        action: "update",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "provider/installation/run",
+      params: { providerId: "fake-bridge", action: "update" },
+    });
+  });
 });
 
 describe("fork narrowing", () => {

@@ -83,6 +83,12 @@ import {
   type AcpSkillRoot,
 } from "../session-params.js";
 import {
+  getAcpProviderHealth,
+  getAcpProviderInstallationRun,
+  getAcpProviderInstallationStatus,
+  getAcpProviderUsage,
+} from "./provider-maintenance.js";
+import {
   ACP_PROTOCOL_VERSION,
   type AcpConfigOption,
   acpConfigStateResultSchema,
@@ -759,7 +765,7 @@ function resolveAcpAuthMethodId(
   authMethods: readonly { id: string }[] | undefined,
   env: Record<string, string | undefined>,
 ): string | undefined {
-  // Grok is currently the only known ACP agent that advertises auth methods.
+  // Grok is currently the only built-in ACP provider that advertises auth methods.
   // Keep this preference local until another authenticated ACP provider needs
   // a data-driven policy; cached_token is an ACP-side local-login flow.
   const methodIds = new Set((authMethods ?? []).map((method) => method.id));
@@ -2105,9 +2111,8 @@ function runTurn(
  * Whether an agent has the command at all is a per-agent fact ACP does not
  * expose: opencode's `available_commands_update` lists only its custom
  * commands, never its built-in `/compact`. So the affordance is gated by the
- * server-side per-agent `supportsManualCompaction` declaration
- * (`KNOWN_ACP_AGENTS`, `customAcpAgents`), and the bridge reports whatever the
- * agent does with the request: only an `end_turn` prompt counts as compacted,
+ * provider declaration or custom-agent config, and the bridge reports whatever
+ * the agent does with the request: only an `end_turn` prompt counts as compacted,
  * every other stop reason or prompt rejection fails the turn with the agent's
  * own reason rather than being reported as a shrunk context.
  */
@@ -2405,6 +2410,55 @@ async function handleRequest(
         ),
       );
       return;
+
+    case "provider/health": {
+      const profile = decodeLaunchProfile(request.params.providerOptions);
+      sendResult(
+        request.id,
+        await getAcpProviderHealth({
+          providerId: request.params.providerId,
+          command: profile?.agentCommand.command ?? null,
+        }),
+      );
+      return;
+    }
+
+    case "provider/usage": {
+      const profile = decodeLaunchProfile(request.params.providerOptions);
+      sendResult(
+        request.id,
+        await getAcpProviderUsage({
+          providerId: request.params.providerId,
+          command: profile?.agentCommand.command ?? null,
+        }),
+      );
+      return;
+    }
+
+    case "provider/installation/status": {
+      const profile = decodeLaunchProfile(request.params.providerOptions);
+      sendResult(
+        request.id,
+        await getAcpProviderInstallationStatus({
+          providerId: request.params.providerId,
+          command: profile?.agentCommand.command ?? null,
+        }),
+      );
+      return;
+    }
+
+    case "provider/installation/run": {
+      const profile = decodeLaunchProfile(request.params.providerOptions);
+      sendResult(
+        request.id,
+        await getAcpProviderInstallationRun({
+          providerId: request.params.providerId,
+          command: profile?.agentCommand.command ?? null,
+          action: request.params.action,
+        }),
+      );
+      return;
+    }
 
     case "thread/start":
     case "thread/resume":

@@ -10,7 +10,12 @@ function declaration(
     id: "my-remote-agent",
     displayName: "My Remote Agent",
     icon: "./icons/agent.svg",
+    experimental_bridgeOptions: { launch: { command: "my-agent" } },
+    experimental_visibility: "installed",
     capabilities: {
+      experimental_providerHealth: true,
+      experimental_providerUsage: false,
+      experimental_providerInstallation: true,
       supportsServiceTier: true,
       supportsNativeUserQuestion: true,
       fork: "checkpoint",
@@ -40,6 +45,9 @@ describe("buildPluginProviderRegistration", () => {
       displayName: "My Remote Agent",
       available: true,
       logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
+      experimental_providerHealth: true,
+      experimental_providerUsage: false,
+      experimental_providerInstallation: true,
       capabilities: {
         supportsThreadArchive: true,
         supportsThreadRename: true,
@@ -70,6 +78,10 @@ describe("buildPluginProviderRegistration", () => {
       supportsManualCompaction:
         normalized.capabilities.supportsManualCompaction,
     });
+    expect(registration.bridgeOptions).toStrictEqual({
+      launch: { command: "my-agent" },
+    });
+    expect(registration.visibility).toBe("installed");
   });
 
   it("projects each fork ladder rung onto the two client booleans", () => {

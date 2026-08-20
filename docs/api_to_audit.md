@@ -17,6 +17,38 @@ content-block vocabulary; decide whether legacy aggregate fields still need to
 be accepted; and define any image MIME validation, decoding, or payload-size
 policy at the server boundary before making the helper stable.
 
+## Provider bridge maintenance (`PluginProviderCapabilities.experimental_providerHealth`, `PluginProviderCapabilities.experimental_providerUsage`, `PluginProviderCapabilities.experimental_providerInstallation`, `ProviderInfo.experimental_providerHealth`, `ProviderInfo.experimental_providerUsage`, `ProviderInfo.experimental_providerInstallation`, `BRIDGE_REQUEST_METHODS.experimentalProviderHealth`, `BRIDGE_REQUEST_METHODS.experimentalProviderUsage`, `BRIDGE_REQUEST_METHODS.experimentalProviderInstallationStatus`, `BRIDGE_REQUEST_METHODS.experimentalProviderInstallationRun`, `experimental_providerMaintenanceParamsSchema`, `experimental_providerHealthSchema`, `experimental_providerHealthResultSchema`, `experimental_providerUsageSchema`, `experimental_providerUsageWindowSchema`, `experimental_providerUsageResultSchema`, and the `experimental_providerInstallation*` schemas/types)
+
+**What it does.** Adds optional, sessionless `provider/health`,
+`provider/usage`, `provider/installation/status`, and
+`provider/installation/run` requests to provider bridges. Each provider
+declares support at registration so the server can skip unsupported host probes
+and clients can omit unsupported maintenance surfaces before starting a bridge.
+Health reports cheap host-local readiness; usage reports provider-normalized
+subscription windows. Installation status owns provider-specific discovery,
+version/source detection, and whether an install or update is currently
+available. Installation run resolves a fresh typed executable/argument plan
+and post-run verification rule. Only its display command reaches product
+clients; the daemon receives the executable plan and remains responsible for
+host environment, working directory, concurrency, process supervision,
+streaming, and verifying the resulting provider status. The maintenance
+runtime supplies the provider id, working directory when one exists, and the
+same provider-scoped launch options used by a real session. A status request
+may also name a typed operation requirement such as `thread_rewind`; the
+provider owns the minimum version for that requirement and reports the same
+normalized `versionUnsupported` result consumed by generic core gating.
+
+**Audit before stabilizing.** Confirm the readiness vocabulary covers API-only
+and router providers, that health remains free of network usage/update checks,
+that account metadata has appropriate privacy treatment, that installation
+plans cannot smuggle host policy or unsafe execution through the typed boundary,
+that verification rules cover native and package-manager update behavior, that
+omitted fields from plugins built against the older experimental API continue
+to mean false, whether the requirement vocabulary should remain one shared
+enum, and that ACP's shared bridge can continue distinguishing built-in and
+custom agents without exposing provider-specific launch or installation
+details to clients.
+
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
 **What it does.** Lets one plugin package declare a singular `bb.host` Node
@@ -190,10 +222,10 @@ Each label is capped at 80 characters and rendered as a truncating segment.
 ## `bb.agents.experimental_registerProvider`
 
 **What it does.** Lets a plugin declare an agent provider into the server's
-`ProviderRegistryService`. The declaration is metadata only — the
-implementation is the bridge the plugin exports from its `bb.host` artifact,
-and registering without one (and without being a daemon-bundled first-party id)
-fails the plugin load. The declaration is
+`ProviderRegistryService`. The declaration owns static metadata and opaque
+bridge options; executable behavior is the bridge the plugin exports from its
+`bb.host` artifact. Registering without one (and without being a
+daemon-bundled first-party id) fails the plugin load. The declaration is
 validated at call time by the shared host policy
 (`validatePluginProviderDeclaration`); registrations stage during the factory
 and commit when the plugin load commits, are replaced wholesale on reload, and
@@ -201,10 +233,12 @@ are removed by the returned disposer or on unload/disable. Declarations are
 now the ONLY source of providers — the core catalog seed is deleted, so
 disabling a provider plugin removes its provider. A registered provider is
 mapped onto `ProviderInfo` + `ProviderServerCapabilities` and appears in the
-composed provider listing
-(`GET /system/providers` / execution options). The full declaration rides the
-registration record so fields without a registry consumer yet
-(`supportsManualCompaction`) are not dropped.
+composed provider listing (`GET /system/providers` / execution options).
+`experimental_visibility: "installed"` withholds a provider from unscoped
+listings until its own `provider/health` result is not `not_installed`.
+`experimental_bridgeOptions` is validated as bounded JSON, rides every daemon
+bridge launch, participates in the runtime process key, and arrives at the
+bridge as provider-scoped static options. Core does not interpret its keys.
 
 **Audit before stabilizing.**
 
@@ -257,6 +291,13 @@ registration record so fields without a registry consumer yet
    host-plugin foundation exists. Apply the same test to every remaining
    capability before stabilizing: a declaration may assert what the provider
    itself implements, never what bb or its daemon can do with it.
+6. **Static bridge options and visibility.** Confirm 64 KiB remains a suitable
+   declaration-time limit, that opaque options should continue to be shared by
+   every host rather than resolved per host, and whether deep-frozen plain JSON
+   is the right stable value contract. Confirm `"always" | "installed"` is
+   enough listing policy, that health failure should continue to hide an
+   installed-only provider, and that targeted requests may continue resolving
+   a registered provider even while discovery says it is absent.
 
 ## `@get-bb/plugin-sdk/provider-bridge` (the provider-bridge authoring surface)
 

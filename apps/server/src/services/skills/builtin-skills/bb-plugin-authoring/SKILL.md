@@ -594,7 +594,7 @@ signatures (see "Looking up the exact API").
 | `plugins`        | `list` `install` `remove` `enable` `disable` `reload` `token` `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates` `listUpdateResults` `applyUpdate`; sub-area `catalog` (`search` `status` `install`)                                                                                                                                                                                                                                                                                                                                                                                        |
 | `theme`          | `get` `catalog` `set`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `status`         | `get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `system`         | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills` `onboardingAgents`                                                                                                                                                                                                                                                                                                                                                                                |
+| `system`         | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `providerStates` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills`                                                                                                                                                                                                                                                                                                                                                                                  |
 | `guide`          | `render` (the `bb guide` text; local, no request)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Prefer your own `bb.settings` and `bb.storage` over `sdk.system` and
@@ -1064,11 +1064,17 @@ bb.agents.experimental_registerProvider({
   id: "echo-agent", // stable public id; thread rows persist it
   displayName: "Echo Agent", // 1-80 chars, shown in the picker
   icon: "./icons/echo.svg", // optional; same grammar as bb.branding.icon
-  kind: "agent", // "agent" REQUIRES bridge; "router" forbids it
-  bridge: { entry: "provider-bridge" }, // names the built bundle
+  // Optional immutable JSON forwarded opaquely to this plugin's bridge.
+  experimental_bridgeOptions: { launch: { command: "echo-agent" } },
+  // "installed" hides the row until provider/health finds the executable.
+  experimental_visibility: "always", // default
   capabilities: {
-    // Pre-session facts only — the bridge reports the same facts at
-    // initialize and may only narrow what is declared here, never widen it.
+    // Sessionless support is declared here so bb can avoid unsupported host
+    // probes and hide providers that never expose usage. A shared bridge that
+    // declares usage may still return no windows or supported: false for one id.
+    experimental_providerHealth: false,
+    experimental_providerUsage: false,
+    experimental_providerInstallation: false,
     supportsServiceTier: false,
     supportsNativeUserQuestion: false,
     fork: "none", // "none" | "tip" | "checkpoint"
@@ -1116,6 +1122,16 @@ Ids are collision-rejected against core providers and other plugins'
 registrations; registrations replace wholesale on reload like every other
 surface. Disabling the plugin removes the provider (open threads show a
 provider-unavailable state instead of erroring).
+
+`experimental_bridgeOptions` must be a plain JSON object no larger than 64
+KiB. It is validated and frozen at registration, then carried on every bridge
+request as provider-scoped static options. Use it for immutable launch facts
+shared by all hosts, not user settings or machine-local state. It participates
+in bridge process identity, so changing it causes the next runtime to use a
+new bridge process. `experimental_visibility: "installed"` makes the provider
+host-dependent: BB asks that provider's bridge for `provider/health` and lists
+it only when the status is not `not_installed`. Such a declaration must support
+health; bridge failures hide only that provider.
 
 **The bridge.** A provider bridge ships inside the plugin's `bb.host`
 artifact — the same artifact a host RPC entry ships in, and a plugin may have
@@ -1714,11 +1730,16 @@ projectId }` (nullable fields) and `path` follows the source (workspace:
     id: "compact",
     title: "Compact diffs",
     component: ({ patch, path, experimental_Original: Original }) =>
-      patch.length > 20_000 ? <Original /> : <MyDiff patch={patch} path={path} />,
+      patch.length > 20_000 ? (
+        <Original />
+      ) : (
+        <MyDiff patch={patch} path={path} />
+      ),
   });
   ```
 
   Experimental: see `docs/api_to_audit.md`.
+
 - `messageDirective` → `{ attributes, source, message,
 openWorkspaceFile }` — register a leaf
   assistant-message directive. Registration:
@@ -1835,6 +1856,7 @@ className?, leadingContent?, messageActions? }` —
   panels and plugin nav panels have one; homepage and settings sections do
   not, so code there renders unhighlighted rather than broken.
   Experimental: see `docs/api_to_audit.md`.
+
 - `Markdown` — bb's chat-message markdown renderer (same typography,
   spacing, and code styling as timeline messages). Props:
   `{ content, className? }`. Use it wherever plugin UI quotes or previews

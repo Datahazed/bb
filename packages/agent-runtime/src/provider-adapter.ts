@@ -88,6 +88,18 @@ export type AdapterCommand =
       skillRoots: readonly AgentRuntimeSkillRoot[];
     }
   | { type: "model/list"; cwd?: string }
+  | { type: "provider/health"; cwd?: string }
+  | { type: "provider/usage"; cwd?: string }
+  | {
+      type: "provider/installation/status";
+      cwd?: string;
+      requirement?: "thread_rewind";
+    }
+  | {
+      type: "provider/installation/run";
+      action: "install" | "update";
+      cwd?: string;
+    }
   | {
       type: "thread/start";
       threadId: string;

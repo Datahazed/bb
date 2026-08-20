@@ -89,6 +89,12 @@ import {
   type TurnSteerParams,
 } from "./commands.js";
 import {
+  getClaudeProviderHealth,
+  getClaudeProviderInstallationRun,
+  getClaudeProviderInstallationStatus,
+  getClaudeProviderUsage,
+} from "./provider-maintenance.js";
+import {
   buildReadonlyDenialMessage,
   buildMutableFlagSettings,
   buildSessionOptions,
@@ -1874,6 +1880,21 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       break;
     case "model/list":
       sendResult(request.id, await listModelsMemoized());
+      break;
+    case "provider/health":
+      sendResult(request.id, await getClaudeProviderHealth());
+      break;
+    case "provider/usage":
+      sendResult(request.id, await getClaudeProviderUsage());
+      break;
+    case "provider/installation/status":
+      sendResult(request.id, await getClaudeProviderInstallationStatus());
+      break;
+    case "provider/installation/run":
+      sendResult(
+        request.id,
+        await getClaudeProviderInstallationRun(request.params.action),
+      );
       break;
     case "thread/start":
       await handleThreadStart(

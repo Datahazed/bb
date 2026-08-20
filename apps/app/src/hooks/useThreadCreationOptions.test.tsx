@@ -2,8 +2,8 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type {
-  OnboardingAgentOverview,
   SystemExecutionOptionsResponse,
+  SystemProviderStatesResponse,
 } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
@@ -20,21 +20,25 @@ vi.mock("@/lib/sdk", () => ({
   sdk: {
     system: {
       executionOptions: vi.fn(),
-      onboardingAgents: vi.fn(),
+      providerStates: vi.fn(),
     },
   },
 }));
 
-function connectedAgentOverview(providerId: string): OnboardingAgentOverview {
+function readyProviderStates(providerId: string): SystemProviderStatesResponse {
   return {
-    agents: [
+    providers: [
       {
         providerId,
         displayName: providerId,
-        status: "connected",
+        status: "ready",
+        statusMessage: null,
         planLabel: null,
         accountEmail: null,
+        installedVersion: null,
+        minimumSupportedVersion: null,
         canInstall: false,
+        canUpdate: false,
         loginCommand: null,
       },
     ],
@@ -49,6 +53,9 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         displayName: "Global Provider",
         logoUrl: null,
         available: true,
+        experimental_providerHealth: true,
+        experimental_providerUsage: true,
+        experimental_providerInstallation: false,
         composerActions: [
           { kind: "skills", trigger: "/" },
           {
@@ -71,6 +78,9 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         displayName: "Project Provider",
         logoUrl: null,
         available: true,
+        experimental_providerHealth: true,
+        experimental_providerUsage: true,
+        experimental_providerInstallation: false,
         composerActions: [{ kind: "skills", trigger: "/" }],
         capabilities: {
           supportsThreadArchive: true,
@@ -161,6 +171,9 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
         displayName: "Claude Code",
         logoUrl: null,
         available: true,
+        experimental_providerHealth: true,
+        experimental_providerUsage: true,
+        experimental_providerInstallation: false,
         composerActions: [],
         capabilities: {
           supportsThreadArchive: true,
@@ -227,7 +240,7 @@ beforeEach(() => {
   vi.mocked(sdk.system.executionOptions).mockResolvedValue(
     executionOptionsResponse(),
   );
-  vi.mocked(sdk.system.onboardingAgents).mockResolvedValue({ agents: [] });
+  vi.mocked(sdk.system.providerStates).mockResolvedValue({ providers: [] });
 });
 
 afterEach(() => {
@@ -1049,28 +1062,28 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
-  it("latches the initial connected provider instead of resolving it again after a machine switch", async () => {
+  it("latches the initial ready provider instead of resolving it again after a machine switch", async () => {
     window.localStorage.setItem(
       "bb.promptbox.environment",
       "host:remote-host:local",
     );
-    vi.mocked(sdk.system.onboardingAgents).mockImplementation(async (args) =>
+    vi.mocked(sdk.system.providerStates).mockImplementation(async (args) =>
       args?.hostId === "remote-host"
-        ? connectedAgentOverview(PROJECT_PROVIDER_ID)
-        : connectedAgentOverview(GLOBAL_PROVIDER_ID),
+        ? readyProviderStates(PROJECT_PROVIDER_ID)
+        : readyProviderStates(GLOBAL_PROVIDER_ID),
     );
     const { wrapper } = createQueryClientTestHarness();
     const { result } = renderHook(
       () =>
         useThreadCreationOptions({
           scope: "new-thread",
-          preferConnectedProviderWhenUnset: true,
+          preferReadyProviderWhenUnset: true,
         }),
       { wrapper },
     );
 
     await waitFor(() => {
-      expect(sdk.system.onboardingAgents).toHaveBeenCalledWith({
+      expect(sdk.system.providerStates).toHaveBeenCalledWith({
         environmentId: undefined,
         hostId: "remote-host",
         signal: expect.any(AbortSignal),
@@ -1081,8 +1094,8 @@ describe("useThreadCreationOptions", () => {
       });
       expect(result.current.executionInputSources.model).toBeUndefined();
     });
-    const initialDiscoveryCallCount = vi.mocked(sdk.system.onboardingAgents)
-      .mock.calls.length;
+    const initialDiscoveryCallCount = vi.mocked(sdk.system.providerStates).mock
+      .calls.length;
 
     act(() => {
       result.current.setEnvironmentSelectionValue("host:second-host:local");
@@ -1097,10 +1110,10 @@ describe("useThreadCreationOptions", () => {
       );
       expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
     });
-    expect(sdk.system.onboardingAgents).toHaveBeenCalledTimes(
+    expect(sdk.system.providerStates).toHaveBeenCalledTimes(
       initialDiscoveryCallCount,
     );
-    expect(sdk.system.onboardingAgents).not.toHaveBeenCalledWith(
+    expect(sdk.system.providerStates).not.toHaveBeenCalledWith(
       expect.objectContaining({ hostId: "second-host" }),
     );
   });

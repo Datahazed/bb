@@ -212,6 +212,21 @@ function buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {
           threadId: command.threadId,
         },
       };
+    case "provider/health":
+    case "provider/usage":
+      return { kind: "noop", reason: `${command.type} unsupported` };
+    case "provider/installation/status":
+      return {
+        kind: "request",
+        method: "provider/installation/status",
+        params: {},
+      };
+    case "provider/installation/run":
+      return {
+        kind: "request",
+        method: "provider/installation/run",
+        params: { action: command.action },
+      };
     default: {
       const _exhaustive: never = command;
       throw new Error(`Unhandled fake adapter command: ${String(_exhaustive)}`);

@@ -1,7 +1,8 @@
 import { useId, useState } from "react";
-import type { Host } from "@bb/domain";
+import type { Host, ProviderInfo } from "@bb/domain";
 import type {
   ProviderUsage,
+  ProviderUsageResponse,
   ProviderUsageWindow,
 } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
@@ -21,7 +22,9 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   useSystemConfig,
-  useSystemUsageLimits,
+  useSystemProviderUsageLimits,
+  useSystemProviders,
+  type ProviderUsageQueryState,
 } from "@/hooks/queries/system-queries";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import {
@@ -31,38 +34,50 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface ProviderConfig {
-  key: "codex" | "claudeCode" | "cursor";
   name: string;
-  providerId: "codex" | "claude-code" | "acp-cursor";
+  providerId: string;
   signInHint: string;
   expiredHint: string;
 }
 
-const PROVIDERS: ProviderConfig[] = [
-  {
-    key: "codex",
+const FIRST_PARTY_PROVIDER_CONFIGS: Readonly<
+  Partial<Record<string, Omit<ProviderConfig, "providerId">>>
+> = {
+  codex: {
     name: "Codex",
-    providerId: "codex",
     signInHint: "Run `codex` to sign in and see your usage.",
     expiredHint: "Your Codex session expired. Run `codex`, then reload usage.",
   },
-  {
-    key: "claudeCode",
+  "claude-code": {
     name: "Claude Code",
-    providerId: "claude-code",
     signInHint: "Run `claude` to sign in and see your usage.",
     expiredHint:
       "Your Claude session expired. Run `claude`, then reload usage.",
   },
-  {
-    key: "cursor",
+  "acp-cursor": {
     name: "Cursor",
-    providerId: "acp-cursor",
     signInHint: "Run `cursor-agent login` to sign in and see your usage.",
     expiredHint:
       "Your Cursor session expired. Run `cursor-agent login`, then reload usage.",
   },
-];
+};
+
+function providerConfig(
+  providerId: string,
+  displayName: string | undefined,
+): ProviderConfig {
+  const firstParty = FIRST_PARTY_PROVIDER_CONFIGS[providerId];
+  const name = displayName ?? firstParty?.name ?? providerId;
+  return {
+    providerId,
+    name,
+    signInHint:
+      firstParty?.signInHint ?? `Sign in to ${name}, then reload usage.`,
+    expiredHint:
+      firstParty?.expiredHint ??
+      `Your ${name} session expired. Sign in again, then reload usage.`,
+  };
+}
 
 function barColorClass(usedPercent: number): string {
   if (usedPercent >= 95) {
@@ -160,15 +175,15 @@ interface ProviderUsageBlockProps {
 }
 
 export interface UsageLimitsSettingsSectionContentProps {
-  usage: {
-    codex?: ProviderUsage;
-    claudeCode?: ProviderUsage;
-    cursor?: ProviderUsage;
-  };
+  usage: ProviderUsageResponse;
   isLoading: boolean;
   isError: boolean;
+  isProviderListLoading?: boolean;
+  isProviderListError?: boolean;
   isFetching: boolean;
   onRefresh: () => void;
+  providerStates?: Readonly<Record<string, ProviderUsageQueryState>>;
+  providers?: readonly ProviderInfo[];
   hosts?: readonly Host[];
   selectedHostId?: string | null;
   onSelectHost?: (hostId: string) => void;
@@ -314,7 +329,7 @@ function ProviderUsageBody({
   if (!usage) {
     return (
       <p className="text-xs text-muted-foreground">
-        {isLoading ? "Loading usage…" : "Usage unavailable."}
+        {isLoading ? "Loading usage…" : "Usage not provided."}
       </p>
     );
   }
@@ -335,7 +350,11 @@ function ProviderUsageBody({
         </div>
       );
     case "not_installed":
-      return null;
+      return (
+        <p className="text-xs text-muted-foreground">
+          Not installed on this machine.
+        </p>
+      );
     case "unauthenticated":
       return (
         <p className="text-xs text-muted-foreground">{config.signInHint}</p>
@@ -355,16 +374,38 @@ export function UsageLimitsSettingsSectionContent({
   usage,
   isLoading,
   isError,
+  isProviderListLoading = false,
+  isProviderListError = false,
   isFetching,
   onRefresh,
+  providerStates = {},
+  providers = [],
   hosts = [],
   selectedHostId = null,
   onSelectHost,
 }: UsageLimitsSettingsSectionContentProps) {
   const showMachinePicker = hosts.length > 1 && onSelectHost !== undefined;
-  const visibleProviders = PROVIDERS.filter(
-    (config) => usage[config.key]?.status !== "not_installed",
+  const providerById = new Map(
+    providers.map((provider) => [provider.id, provider] as const),
   );
+  const reportedProviderIds = Object.keys(usage);
+  const orderedProviderIds = [
+    ...providers
+      .filter((provider) => provider.experimental_providerUsage)
+      .map((provider) => provider.id),
+    ...reportedProviderIds.filter(
+      (providerId) => !providerById.has(providerId),
+    ),
+  ];
+  const providerConfigs = orderedProviderIds.map((providerId) =>
+    providerConfig(providerId, providerById.get(providerId)?.displayName),
+  );
+  const emptyMessage =
+    isLoading || isProviderListLoading
+      ? "Loading providers and usage…"
+      : isError || isProviderListError
+        ? "Couldn't load providers or usage right now."
+        : "No providers available.";
   return (
     <SettingsSection
       title="Usage limits"
@@ -402,15 +443,21 @@ export function UsageLimitsSettingsSectionContent({
       }
     >
       <SettingsRowList>
-        {visibleProviders.map((config) => (
-          <ProviderUsageBlock
-            key={config.key}
-            config={config}
-            usage={usage[config.key]}
-            isLoading={isLoading}
-            isError={isError}
-          />
-        ))}
+        {providerConfigs.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{emptyMessage}</p>
+        ) : (
+          providerConfigs.map((config) => (
+            <ProviderUsageBlock
+              key={config.providerId}
+              config={config}
+              usage={usage[config.providerId]}
+              isLoading={
+                providerStates[config.providerId]?.isLoading ?? isLoading
+              }
+              isError={providerStates[config.providerId]?.isError ?? isError}
+            />
+          ))
+        )}
       </SettingsRowList>
     </SettingsSection>
   );
@@ -429,20 +476,38 @@ export function UsageLimitsSettingsSection() {
     hosts.find((host) => host.id === selectedHostId) ?? primaryHost;
   const usageHostId =
     selectedHost?.id ?? systemConfigQuery.data?.primaryHostId ?? undefined;
-  const usageQuery = useSystemUsageLimits({
-    hostId: usageHostId,
-    enabled: systemConfigQuery.data !== undefined,
+  const providersQuery = useSystemProviders(
+    usageHostId === undefined
+      ? {
+          capability: "usage",
+          enabled: systemConfigQuery.data !== undefined,
+        }
+      : {
+          capability: "usage",
+          enabled: systemConfigQuery.data !== undefined,
+          hostId: usageHostId,
+        },
+  );
+  const providers = providersQuery.data ?? [];
+  const usageQuery = useSystemProviderUsageLimits({
+    ...(usageHostId === undefined ? {} : { hostId: usageHostId }),
+    enabled: systemConfigQuery.data !== undefined && providersQuery.isSuccess,
+    providerIds: providers.map((provider) => provider.id),
   });
 
   return (
     <UsageLimitsSettingsSectionContent
-      usage={usageQuery.data ?? {}}
+      usage={usageQuery.usage}
       isLoading={usageQuery.isLoading}
       isError={usageQuery.isError}
+      isProviderListLoading={providersQuery.isLoading}
+      isProviderListError={providersQuery.isError}
       isFetching={usageQuery.isFetching}
       onRefresh={() => {
         void usageQuery.refetch();
       }}
+      providerStates={usageQuery.providerStates}
+      providers={providers}
       hosts={hosts}
       selectedHostId={selectedHost?.id ?? null}
       onSelectHost={setSelectedHostId}

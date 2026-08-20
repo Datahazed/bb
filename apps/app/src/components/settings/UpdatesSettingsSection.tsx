@@ -9,7 +9,6 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
-import type { ProviderCliKey } from "@bb/host-daemon-contract";
 import type { SystemVersionResponse } from "@bb/server-contract";
 import {
   RETRY_ACTION_ICON,
@@ -35,9 +34,11 @@ import {
 import {
   hasProviderCliAction,
   isProviderCliUpdateIssue,
+  providerCliEntries,
   useProviderCliInstallRunner,
   type ProviderCliActionableIssue,
   type ProviderCliIssue,
+  type ProviderCliStatusEntry,
 } from "@/components/provider-cli/provider-cli-install";
 import {
   openProviderCliInstallLog,
@@ -126,18 +127,6 @@ function isNewerChangelogVersion(
 
 /** Stalled machines needed before the page offers a bulk retry. */
 const BULK_RETRY_THRESHOLD = 1;
-
-const PROVIDER_CLI_AGENT_PROVIDER_ID = {
-  codex: "codex",
-  claudeCode: "claude-code",
-  cursor: "acp-cursor",
-} as const satisfies Record<ProviderCliKey, string>;
-
-const PROVIDER_CLI_DISPLAY_ORDER = [
-  "codex",
-  "claudeCode",
-  "cursor",
-] as const satisfies readonly ProviderCliKey[];
 
 function updateCheckErrorDescription(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) {
@@ -1083,6 +1072,24 @@ function visibleProviderUpdateIssues(
   return machine.issues.filter(isProviderCliUpdateIssue);
 }
 
+/** Installed provider rows shown after a successful check, update or not. */
+function visibleInstalledProviderEntries(
+  machine: UpdateInventoryMachine,
+): ProviderCliStatusEntry[] {
+  if (
+    machine.canRetryDaemonUpdate ||
+    machine.host.status !== "connected" ||
+    machine.statusError ||
+    machine.statusPending ||
+    machine.providerStatus === null
+  ) {
+    return [];
+  }
+  return providerCliEntries(machine.providerStatus).filter(
+    (entry) => entry.status.installed,
+  );
+}
+
 /**
  * A machine's bb daemon condition. The machine name now owns the section, so
  * the row names the software that needs attention and uses the same bb mark as
@@ -1245,22 +1252,19 @@ export function MachineUpdatesRows({
   onOpenProvider,
 }: MachineUpdatesRowsProps) {
   const { host } = machine;
-  const updateIssues = visibleProviderUpdateIssues(machine);
+  const providerEntries = visibleInstalledProviderEntries(machine);
   const issuesByProvider = new Map(
-    updateIssues.map((issue) => [issue.provider, issue]),
+    visibleProviderUpdateIssues(machine).map((issue) => [
+      issue.provider,
+      issue,
+    ]),
   );
 
-  if (updateIssues.length === 0) {
+  if (providerEntries.length === 0) {
     return null;
   }
 
-  const rows = PROVIDER_CLI_DISPLAY_ORDER.filter((provider) =>
-    issuesByProvider.has(provider),
-  ).map((provider) => {
-    const status = machine.providerStatus?.[provider];
-    if (status === undefined) {
-      return null;
-    }
+  const rows = providerEntries.map(({ provider, status }) => {
     const issue = issuesByProvider.get(provider) ?? null;
     const state = providerRowState({ issue });
     const jobKey = providerCliJobKey(host.id, provider);
@@ -1273,7 +1277,7 @@ export function MachineUpdatesRows({
         : null;
     const actionable =
       issue !== null && hasProviderCliAction(issue) && !running && !queued;
-    const providerId = PROVIDER_CLI_AGENT_PROVIDER_ID[provider];
+    const providerId = provider;
     const ProviderIcon = getProviderIconInfo(providerId)?.icon;
     return (
       <ResourceRow
@@ -1520,7 +1524,7 @@ export function UpdatesSettingsSection({
     (machine) =>
       machine.host.id === appMachine?.host.id ||
       machineHasRelevantHealthStatus(machine) ||
-      visibleProviderUpdateIssues(machine).length > 0,
+      visibleInstalledProviderEntries(machine).length > 0,
   );
   const hasUpdateWork =
     appUpdateVisible ||

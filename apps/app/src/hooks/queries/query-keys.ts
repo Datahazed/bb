@@ -62,7 +62,7 @@ export const SYSTEM_CLI_SKILLS_QUERY_KEY = "systemCliSkills";
 export const SYSTEM_VERSION_QUERY_KEY = "systemVersion";
 export const HOST_PROVIDER_CLI_STATUS_QUERY_KEY = "hostProviderCliStatus";
 export const SYSTEM_USAGE_LIMITS_QUERY_KEY = "systemUsageLimits";
-export const ONBOARDING_AGENTS_QUERY_KEY = "onboardingAgents";
+export const SYSTEM_PROVIDER_STATES_QUERY_KEY = "systemProviderStates";
 export const HOST_PATH_EXISTENCE_QUERY_KEY = "hostPathExistence";
 export const PROJECT_SKILLS_QUERY_KEY = "projectSkills";
 export const SKILL_CONTENT_QUERY_KEY = "skillContent";
@@ -435,6 +435,7 @@ export type SystemProvidersQueryKey = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
   string | null,
   string | null,
+  "usage" | null,
 ];
 export type AllSystemProvidersQueryKeyPrefix = readonly [
   typeof SYSTEM_PROVIDERS_QUERY_KEY,
@@ -451,9 +452,10 @@ export type HostProviderCliStatusQueryKey = readonly [
 export type SystemUsageLimitsQueryKey = readonly [
   typeof SYSTEM_USAGE_LIMITS_QUERY_KEY,
   string | null,
+  string | null,
 ];
-export type OnboardingAgentsQueryKey = readonly [
-  typeof ONBOARDING_AGENTS_QUERY_KEY,
+export type SystemProviderStatesQueryKey = readonly [
+  typeof SYSTEM_PROVIDER_STATES_QUERY_KEY,
   string | null,
   string | null,
 ];
@@ -1035,6 +1037,7 @@ export function environmentFilePreviewQueryKeyPrefix(
 }
 
 export interface SystemProvidersQueryKeyArgs {
+  capability?: "usage" | null;
   environmentId?: string | null;
   hostId?: string | null;
 }
@@ -1046,6 +1049,7 @@ export function systemProvidersQueryKey(
     SYSTEM_PROVIDERS_QUERY_KEY,
     args.environmentId ?? null,
     args.hostId ?? null,
+    args.capability ?? null,
   ];
 }
 
@@ -1073,14 +1077,15 @@ export function hostProviderCliStatusQueryKey(
 
 export function systemUsageLimitsQueryKey(
   hostId: string | null,
+  providerId: string | null = null,
 ): SystemUsageLimitsQueryKey {
-  return [SYSTEM_USAGE_LIMITS_QUERY_KEY, hostId];
+  return [SYSTEM_USAGE_LIMITS_QUERY_KEY, hostId, providerId];
 }
 
-export function onboardingAgentsQueryKey(
+export function systemProviderStatesQueryKey(
   args: Pick<SystemExecutionOptionsQueryKeyArgs, "environmentId" | "hostId">,
-): OnboardingAgentsQueryKey {
-  return [ONBOARDING_AGENTS_QUERY_KEY, args.environmentId, args.hostId];
+): SystemProviderStatesQueryKey {
+  return [SYSTEM_PROVIDER_STATES_QUERY_KEY, args.environmentId, args.hostId];
 }
 
 export interface SystemExecutionOptionsQueryKeyArgs {

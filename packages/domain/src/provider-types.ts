@@ -43,7 +43,10 @@ export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>;
 
 export const providerComposerCommandSchema = z.object({
   trigger: promptMentionCommandTriggerSchema,
-  name: z.string().min(1).regex(/^[^\s/$]+$/u),
+  name: z
+    .string()
+    .min(1)
+    .regex(/^[^\s/$]+$/u),
   trailingText: z.string().regex(/^\s*$/u),
 });
 export type ProviderComposerCommand = z.infer<
@@ -72,6 +75,10 @@ export const providerInfoSchema = z.object({
   id: z.string(),
   displayName: z.string(),
   logoUrl: z.string().min(1).nullable(),
+  /** Sessionless maintenance methods declared by the provider plugin. */
+  experimental_providerHealth: z.boolean(),
+  experimental_providerUsage: z.boolean(),
+  experimental_providerInstallation: z.boolean(),
   capabilities: providerCapabilitiesSchema,
   composerActions: z.array(providerComposerActionSchema),
   available: z.boolean(),

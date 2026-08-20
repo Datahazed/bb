@@ -12,6 +12,7 @@ import {
   pluginThemeMetaSchema,
   providerInfoSchema,
 } from "@bb/domain";
+import { experimental_providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
@@ -80,10 +81,14 @@ function rejectMultipleProviderHostSelectors(
 
 /**
  * Routes provider discovery through an environment's host or an explicit
- * host. Omitting both preserves the primary-host fallback.
+ * host. Omitting both preserves the primary-host fallback. `capability`
+ * narrows discovery before host probes begin.
  */
 export const systemProvidersQuerySchema = z
-  .object(systemProviderHostQueryFields)
+  .object({
+    ...systemProviderHostQueryFields,
+    capability: z.enum(["usage"]),
+  })
   .partial()
   .superRefine(rejectMultipleProviderHostSelectors);
 export type SystemProvidersQuery = z.infer<typeof systemProvidersQuerySchema>;
@@ -99,9 +104,13 @@ export type SystemExecutionOptionsQuery = z.infer<
   typeof systemExecutionOptionsQuerySchema
 >;
 
-/** Omission preserves the existing behavior of reading the primary machine. */
+/**
+ * Omitting `hostId` reads the primary machine; omitting `providerId` returns
+ * the aggregate used by CLI clients.
+ */
 export const systemUsageLimitsQuerySchema = z.object({
   hostId: z.string().min(1).optional(),
+  providerId: z.string().min(1).optional(),
 });
 export type SystemUsageLimitsQuery = z.infer<
   typeof systemUsageLimitsQuerySchema
@@ -123,33 +132,18 @@ export type SystemVoiceTranscriptionResponse = z.infer<
   typeof systemVoiceTranscriptionResponseSchema
 >;
 
-/**
- * One agent row in onboarding. `planLabel` and `accountEmail` are populated
- * only for the three providers `provider.usage` covers; ACP agents report
- * presence and nothing more, and get no badge rather than a fabricated one.
- */
-export const onboardingAgentSchema = z.object({
+/** One provider's live host-local readiness, in registry display order. */
+export const systemProviderStateSchema = providerHealthSchema.extend({
   providerId: z.string().min(1),
   displayName: z.string().min(1),
-  status: z.enum(["connected", "unauthenticated", "expired", "not_installed"]),
-  planLabel: z.string().min(1).nullable(),
-  accountEmail: z.string().nullable(),
-  /** True only where bb has a managed installer, so only these may be offered. */
-  canInstall: z.boolean(),
-  /**
-   * The agent's own sign-in command, when it has one. bb deliberately does not
-   * drive another tool's login: it shows the command and re-checks, so
-   * credentials only ever pass through the agent itself.
-   */
-  loginCommand: z.string().min(1).nullable(),
 });
-export type OnboardingAgent = z.infer<typeof onboardingAgentSchema>;
+export type SystemProviderState = z.infer<typeof systemProviderStateSchema>;
 
-export const onboardingAgentOverviewSchema = z.object({
-  agents: z.array(onboardingAgentSchema),
+export const systemProviderStatesResponseSchema = z.object({
+  providers: z.array(systemProviderStateSchema),
 });
-export type OnboardingAgentOverview = z.infer<
-  typeof onboardingAgentOverviewSchema
+export type SystemProviderStatesResponse = z.infer<
+  typeof systemProviderStatesResponseSchema
 >;
 
 export const systemConfigResponseSchema = z.object({

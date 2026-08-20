@@ -25,6 +25,9 @@ export default function plugin(bb: BbPluginApi) {
     id: "echo-agent",
     displayName: "Echo Agent",
     capabilities: {
+      experimental_providerHealth: false,
+      experimental_providerUsage: false,
+      experimental_providerInstallation: false,
       supportsServiceTier: false,
       supportsNativeUserQuestion: false,
       fork: "none",

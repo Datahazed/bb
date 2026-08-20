@@ -12,6 +12,9 @@ export default function plugin(bb: BbPluginApi) {
     displayName: "Codex",
     icon: "./icons/codex.svg",
     capabilities: {
+      experimental_providerHealth: true,
+      experimental_providerUsage: true,
+      experimental_providerInstallation: true,
       supportsServiceTier: true,
       supportsNativeUserQuestion: false,
       fork: "checkpoint",

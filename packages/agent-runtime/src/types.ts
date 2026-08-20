@@ -15,6 +15,12 @@ import type {
   ToolCallResponse,
 } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import type {
+  ExperimentalProviderHealthResult,
+  ExperimentalProviderInstallationRunResult,
+  ExperimentalProviderInstallationStatus,
+  ExperimentalProviderUsageResult,
+} from "@bb/provider-bridge-protocol";
 
 export type AgentRuntimeShellEnvironment = Record<string, string>;
 
@@ -173,12 +179,15 @@ export interface AgentRuntimeBridgeLaunch {
     | { kind: "daemon-bundled"; id: string };
   /** Server-validated capabilities from the provider declaration. */
   capabilities: {
+    experimental_providerInstallation: boolean;
     supportsServiceTier: boolean;
     permissionModes: PermissionMode[];
     supportsThreadArchive: boolean;
     supportsThreadRename: boolean;
     fork: ProviderFork;
   };
+  /** Provider-owned statics; interpreted only by the provider bridge. */
+  providerOptions: JsonObject;
 }
 
 export interface EnsureProviderArgs {
@@ -366,6 +375,17 @@ export interface ListModelsArgs {
   cwd?: string;
 }
 
+export interface ProviderMaintenanceArgs {
+  providerId: string;
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  cwd?: string;
+}
+
+export interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
+  requirement?: "thread_rewind";
+}
+
 export interface AgentRuntime {
   ensureProvider(args: EnsureProviderArgs): Promise<void>;
 
@@ -403,6 +423,22 @@ export interface AgentRuntime {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
+
+  providerHealth(
+    args: ProviderMaintenanceArgs,
+  ): Promise<ExperimentalProviderHealthResult>;
+
+  providerUsage(
+    args: ProviderMaintenanceArgs,
+  ): Promise<ExperimentalProviderUsageResult>;
+
+  providerInstallationStatus(
+    args: ProviderInstallationStatusArgs,
+  ): Promise<ExperimentalProviderInstallationStatus>;
+
+  providerInstallationRun(
+    args: ProviderMaintenanceArgs & { action: "install" | "update" },
+  ): Promise<ExperimentalProviderInstallationRunResult>;
 
   listRunningProviders(): string[];
 

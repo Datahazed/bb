@@ -121,16 +121,16 @@ function makeHost(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
 function makeUpdateIssue(args: {
   provider: ProviderCliKey;
 }): ProviderCliActionableIssue {
-  const identity = {
-    codex: { displayName: "Codex", executableName: "codex" },
-    claudeCode: { displayName: "Claude Code", executableName: "claude" },
-    cursor: { displayName: "Cursor", executableName: "agent" },
-  }[args.provider];
+  const identity =
+    args.provider === "codex"
+      ? { displayName: "Codex", executableName: "codex" }
+      : args.provider === "claude-code"
+        ? { displayName: "Claude Code", executableName: "claude" }
+        : { displayName: "Cursor", executableName: "agent" };
   const { displayName, executableName } = identity;
   const action = {
     kind: "update" as const,
     label: "Update" as const,
-    commandKind: "exec" as const,
     command: `${executableName} update`,
   };
   return {
@@ -158,7 +158,7 @@ function makeUpdateIssue(args: {
 }
 
 function makeManualUpdateIssue(args: {
-  provider: "codex" | "claudeCode";
+  provider: "codex" | "claude-code";
 }): ProviderCliIssue {
   const issue = makeUpdateIssue(args);
   return {
@@ -193,11 +193,11 @@ function makeMachine(args: {
       needsUpdate: false,
     };
   };
-  const cursorIssue = issues.find((entry) => entry.provider === "cursor");
+  const cursorIssue = issues.find((entry) => entry.provider === "acp-cursor");
   const cursorStatus =
     cursorIssue?.status ??
     ({
-      ...makeUpdateIssue({ provider: "cursor" }).status,
+      ...makeUpdateIssue({ provider: "acp-cursor" }).status,
       installed: false,
       currentVersion: null,
       latestVersion: null,
@@ -211,8 +211,8 @@ function makeMachine(args: {
       args.host.status === "connected"
         ? {
             codex: upToDate("codex"),
-            claudeCode: upToDate("claudeCode"),
-            cursor: cursorStatus,
+            "claude-code": upToDate("claude-code"),
+            "acp-cursor": cursorStatus,
           }
         : null,
     statusPending: args.statusPending ?? false,
@@ -339,7 +339,7 @@ describe("UpdatesSettingsSection", () => {
           }),
           makeMachine({
             host: makeHost({ id: "host_2", name: "homelab" }),
-            issues: [makeUpdateIssue({ provider: "claudeCode" })],
+            issues: [makeUpdateIssue({ provider: "claude-code" })],
           }),
         ],
       }),
@@ -438,13 +438,19 @@ The canonical release summary.
     // Opening the page runs the check, so there is no freshness stamp: the age
     // of the claim is always "since you got here".
     await waitFor(() => {
-      expect(screen.getByText("Up to date").className).toContain("sr-only");
+      expect(
+        screen
+          .getAllByText("Up to date")
+          .every((label) => label.className.includes("sr-only")),
+      ).toBe(true);
     });
     expect(screen.queryByText("2 up to date")).toBeNull();
     expect(screen.getByRole("heading", { name: /workstation/ })).toBeDefined();
     expect(screen.queryByText("Primary")).toBeNull();
     expect(screen.queryByText("This machine")).toBeNull();
-    expect(screen.queryByText("studio-mac")).toBeNull();
+    expect(screen.getByRole("heading", { name: /studio-mac/ })).toBeDefined();
+    expect(screen.getAllByText("Codex")).toHaveLength(2);
+    expect(screen.getAllByText("Claude Code")).toHaveLength(2);
     expect(screen.queryByText(/Checked/)).toBeNull();
     expect(screen.queryByText(/ago$/)).toBeNull();
     expect(screen.queryByText(/^In sync$/)).toBeNull();
@@ -605,8 +611,13 @@ The canonical release summary.
 
     // Being up to date is the state every row is expected to be in, so it
     // carries no indicator: the page spends its dots on exceptions only.
-    const settled = screen.getByText(/^Up to date/);
-    expect(settled.parentElement?.querySelector(".bg-success")).toBeNull();
+    const settledRows = screen.getAllByText(/^Up to date/);
+    expect(
+      settledRows.every(
+        (settled) =>
+          settled.parentElement?.querySelector(".bg-success") === null,
+      ),
+    ).toBe(true);
     expect(document.querySelector(".bg-success")).toBeNull();
     expect(
       document
@@ -919,7 +930,7 @@ The canonical release summary.
     ).toBeDefined();
   });
 
-  it("shows only provider CLIs that need attention", () => {
+  it("shows installed provider CLIs including up-to-date rows", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -955,7 +966,14 @@ The canonical release summary.
     expect(screen.queryByLabelText(/available update/)).toBeNull();
     expect(screen.getAllByText("workstation")).toHaveLength(1);
     expect(screen.getByText("Codex")).toBeDefined();
-    expect(screen.queryByText("Claude Code")).toBeNull();
+    const claudeRow = screen
+      .getByText("Claude Code")
+      .closest("[data-resource-row]");
+    expect(claudeRow).not.toBeNull();
+    expect(
+      claudeRow?.querySelector('[data-update-state="up-to-date"]'),
+    ).not.toBeNull();
+    expect(screen.queryByText("Cursor")).toBeNull();
     expect(screen.queryByText(/^Update available/)).toBeNull();
     expect(screen.queryByText("Choose an update below.")).toBeNull();
     const providerIcon = document.querySelector('[data-provider-icon="codex"]');
@@ -1038,7 +1056,7 @@ The canonical release summary.
       isDesktop: false,
     });
     const host = makeHost({ id: "host_1", name: "workstation" });
-    const cursorIssue = makeUpdateIssue({ provider: "cursor" });
+    const cursorIssue = makeUpdateIssue({ provider: "acp-cursor" });
     useUpdateInventoryMock.mockReturnValue(
       makeInventory({
         machines: [makeMachine({ host, issues: [cursorIssue] })],
@@ -1078,7 +1096,7 @@ The canonical release summary.
             host,
             issues: [
               makeUpdateIssue({ provider: "codex" }),
-              makeUpdateIssue({ provider: "claudeCode" }),
+              makeUpdateIssue({ provider: "claude-code" }),
             ],
           }),
         ],
@@ -1235,7 +1253,7 @@ The canonical release summary.
                   currentVersion: null,
                 },
               },
-              makeUpdateIssue({ provider: "claudeCode" }),
+              makeUpdateIssue({ provider: "claude-code" }),
             ],
           }),
         ],
@@ -1256,7 +1274,7 @@ The canonical release summary.
     });
     const host = makeHost({ id: "host_1", name: "workstation" });
     const codexIssue = makeUpdateIssue({ provider: "codex" });
-    const claudeIssue = makeUpdateIssue({ provider: "claudeCode" });
+    const claudeIssue = makeUpdateIssue({ provider: "claude-code" });
     useUpdateInventoryMock.mockReturnValue(
       makeInventory({
         machines: [makeMachine({ host, issues: [codexIssue, claudeIssue] })],
@@ -1264,7 +1282,7 @@ The canonical release summary.
     );
     useProviderCliInstallRunnerMock.mockReturnValue({
       failuresByJobKey: new Map(),
-      queuedJobKeys: new Set(["host_1:claudeCode"]),
+      queuedJobKeys: new Set(["host_1:claude-code"]),
       runningJobKey: "host_1:codex",
       startInstall: startInstallMock,
     });
@@ -1296,7 +1314,7 @@ The canonical release summary.
       isDesktop: false,
     });
     const host = makeHost({ id: "host_1", name: "workstation" });
-    const issue = makeUpdateIssue({ provider: "claudeCode" });
+    const issue = makeUpdateIssue({ provider: "claude-code" });
     const logDialogState = {
       displayName: "Claude Code",
       log: "$ claude update\npermission denied\n",
@@ -1311,7 +1329,7 @@ The canonical release summary.
     useProviderCliInstallRunnerMock.mockReturnValue({
       failuresByJobKey: new Map([
         [
-          "host_1:claudeCode",
+          "host_1:claude-code",
           { issueFingerprint: issue.fingerprint, logDialogState },
         ],
       ]),
@@ -1498,7 +1516,7 @@ The canonical release summary.
     const laptop = makeHost({ id: "host_1", name: "laptop" });
     const homelab = makeHost({ id: "host_2", name: "homelab" });
     const laptopIssue = makeUpdateIssue({ provider: "codex" });
-    const homelabIssue = makeUpdateIssue({ provider: "claudeCode" });
+    const homelabIssue = makeUpdateIssue({ provider: "claude-code" });
     useUpdateInventoryMock.mockReturnValue(
       makeInventory({
         machines: [
@@ -1541,7 +1559,7 @@ The canonical release summary.
       isDesktop: false,
     });
     const host = makeHost({ id: "host_1", name: "workstation" });
-    const issue = makeManualUpdateIssue({ provider: "claudeCode" });
+    const issue = makeManualUpdateIssue({ provider: "claude-code" });
     useUpdateInventoryMock.mockReturnValue(
       makeInventory({
         machines: [makeMachine({ host, issues: [issue] })],

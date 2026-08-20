@@ -12,6 +12,10 @@ export default function plugin(bb: BbPluginApi) {
     displayName: "Pi",
     icon: "./icons/pi.svg",
     capabilities: {
+      experimental_providerHealth: true,
+      // Pi does not expose subscription usage, so usage settings omit it.
+      experimental_providerUsage: false,
+      experimental_providerInstallation: false,
       supportsServiceTier: false,
       supportsNativeUserQuestion: false,
       fork: "checkpoint",
