@@ -1082,6 +1082,21 @@ export function registerPluginCommands(
               const pkg = pluginPackageSummarySchema.parse(raw);
               if (pkg.name !== undefined) {
                 summary = `Installing ${pkg.name}@${pkg.version ?? "?"} from ${path}`;
+                // The same id installed from another local directory is
+                // moved, not refused; name the install being replaced so
+                // the confirmation is about the move, not a fresh install.
+                const pluginId = derivePluginId(pkg.name);
+                const { plugins } = await createCliBbSdk(
+                  getUrl(),
+                ).plugins.list();
+                const installed = plugins.find((p) => p.id === pluginId);
+                if (
+                  installed !== undefined &&
+                  installed.source.startsWith("path:") &&
+                  installed.rootDir !== path
+                ) {
+                  summary = `${summary}\nThis moves "${pluginId}" from ${installed.rootDir}; its settings, secrets, and schedules are kept.`;
+                }
               }
             } catch {
               // fall through to the bare path summary
@@ -1225,7 +1240,7 @@ export function registerPluginCommands(
             if (!shouldAttempt) {
               if (result.outcome === "pinned") {
                 console.log(
-                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range, git branch, or git semver range to receive updates.`,
+                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range, git branch, or git semver range to receive updates (remove deletes the plugin's settings, secrets, and schedules). A local path plugin updates with \`bb plugin reload\`; move it with \`bb plugin install path:<new directory>\`.`,
                 );
               } else if (result.outcome === "incompatible") {
                 console.log(
@@ -1847,7 +1862,7 @@ export function registerPluginCommands(
   plugin
     .command("remove <id>")
     .description(
-      "Remove an installed plugin (git:/npm: managed files are deleted; local path sources are left alone)",
+      "Remove an installed plugin and delete its settings, secrets, and schedules (git:/npm: managed files are deleted; local path sources stay on disk). To move a local plugin to another directory, install the new path instead",
     )
     .option("--json", "Output JSON")
     .action(

@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
+  getInstalledPlugin,
   migrate,
   upsertInstalledPlugin,
   type DbConnection,
@@ -821,6 +822,170 @@ describe("plugin service", () => {
       status: "running",
     });
     expect(service.getApi("reinstalled")).toBeDefined();
+  });
+
+  it("re-points a path plugin at a new checkout and keeps its settings, secrets, and schedules", async () => {
+    // Two checkouts of the same plugin (same package name, so same id).
+    const serverSource = (marker: string) => `
+      export default function plugin(bb) {
+        bb.settings.define({
+          floor: { type: "string", label: "Floor", default: "60" },
+          token: { type: "string", label: "Token", secret: true },
+        });
+        bb.background.schedule("sweep", "0 * * * *", async () => {});
+        globalThis.__movedCheckout = "${marker}";
+      }`;
+    const checkoutA = await writePlugin(join(workDir, "a"), {
+      name: "bb-plugin-moved",
+      serverSource: serverSource("a"),
+    });
+    const checkoutB = await writePlugin(join(workDir, "b"), {
+      name: "bb-plugin-moved",
+      serverSource: serverSource("b"),
+    });
+    await service.installPath(checkoutA);
+    await service.updateSettings("moved", { floor: "1", token: "s3cret" });
+    expect(
+      db.$client
+        .prepare("SELECT name FROM plugin_schedules WHERE plugin_id = ?")
+        .all("moved"),
+    ).toEqual([{ name: "sweep" }]);
+
+    // The same id from a different local directory replaces the registration
+    // in place instead of demanding a remove (which would delete settings).
+    const moved = await service.installPath(checkoutB);
+
+    expect(moved).toMatchObject({
+      id: "moved",
+      status: "running",
+      source: `path:${checkoutB}`,
+      rootDir: checkoutB,
+    });
+    expect((globalThis as Record<string, unknown>).__movedCheckout).toBe("b");
+    expect(getInstalledPlugin(db, "moved")).toMatchObject({
+      sourceKind: "path",
+      sourcePath: checkoutB,
+      rootDir: checkoutB,
+    });
+    expect((await service.getSettings("moved"))?.values).toEqual({
+      floor: "1",
+      token: { set: true },
+    });
+    expect(
+      db.$client
+        .prepare("SELECT name FROM plugin_schedules WHERE plugin_id = ?")
+        .all("moved"),
+    ).toEqual([{ name: "sweep" }]);
+
+    // A broken new checkout is refused before the live install is touched.
+    const checkoutC = join(workDir, "c", "bb-plugin-moved");
+    await mkdir(checkoutC, { recursive: true });
+    await writeFile(join(checkoutC, "package.json"), "{ not json");
+    await expect(service.installPath(checkoutC)).rejects.toThrowError();
+    expect(getInstalledPlugin(db, "moved")?.rootDir).toBe(checkoutB);
+    expect(service.list().find((p) => p.id === "moved")?.status).toBe(
+      "running",
+    );
+    expect((await service.getSettings("moved"))?.values).toEqual({
+      floor: "1",
+      token: { set: true },
+    });
+  });
+
+  it("keeps a moved path plugin disabled instead of starting it", async () => {
+    const serverSource = (marker: string) => `
+      export default function plugin() {
+        globalThis.__disabledMoveStarted = "${marker}";
+      }`;
+    const checkoutA = await writePlugin(join(workDir, "a"), {
+      name: "bb-plugin-dormant",
+      serverSource: serverSource("a"),
+    });
+    const checkoutB = await writePlugin(join(workDir, "b"), {
+      name: "bb-plugin-dormant",
+      serverSource: serverSource("b"),
+    });
+    await service.installPath(checkoutA);
+    expect(await service.setEnabled("dormant", false)).toMatchObject({
+      enabled: false,
+      status: "disabled",
+    });
+    delete (globalThis as Record<string, unknown>).__disabledMoveStarted;
+
+    const moved = await service.installPath(checkoutB);
+
+    expect(moved).toMatchObject({
+      id: "dormant",
+      enabled: false,
+      status: "disabled",
+      source: `path:${checkoutB}`,
+    });
+    expect(getInstalledPlugin(db, "dormant")).toMatchObject({
+      enabled: false,
+      rootDir: checkoutB,
+    });
+    expect(
+      (globalThis as Record<string, unknown>).__disabledMoveStarted,
+    ).toBeUndefined();
+    expect(service.getApi("dormant")).toBeUndefined();
+
+    // Re-enabling runs the new checkout.
+    expect(await service.setEnabled("dormant", true)).toMatchObject({
+      status: "running",
+    });
+    expect((globalThis as Record<string, unknown>).__disabledMoveStarted).toBe(
+      "b",
+    );
+  });
+
+  it("rejects a path move whose new checkout fails to start and keeps the old install running", async () => {
+    const checkoutA = await writePlugin(join(workDir, "a"), {
+      name: "bb-plugin-brittle",
+      version: "0.2.0",
+      serverSource: `
+        export default function plugin(bb) {
+          bb.settings.define({
+            token: { type: "string", label: "Token", secret: true },
+          });
+          globalThis.__brittleCheckout = "a";
+        }`,
+    });
+    // A valid package whose factory throws: validation passes, loading fails.
+    const checkoutB = await writePlugin(join(workDir, "b"), {
+      name: "bb-plugin-brittle",
+      version: "0.3.0",
+      serverSource: `
+        export default function plugin() {
+          globalThis.__brittleCheckout = "b";
+          throw new Error("boom at startup");
+        }`,
+    });
+    await service.installPath(checkoutA);
+    await service.updateSettings("brittle", { token: "s3cret" });
+
+    await expect(service.installPath(checkoutB)).rejects.toThrowError(
+      /failed to start from path:.*boom at startup.*was kept/,
+    );
+
+    // The old registration and instance are back, with their configuration.
+    expect(getInstalledPlugin(db, "brittle")).toMatchObject({
+      sourcePath: checkoutA,
+      rootDir: checkoutA,
+      version: "0.2.0",
+      enabled: true,
+    });
+    expect(service.list().find((p) => p.id === "brittle")).toMatchObject({
+      source: `path:${checkoutA}`,
+      version: "0.2.0",
+      status: "running",
+    });
+    expect((globalThis as Record<string, unknown>).__brittleCheckout).toBe(
+      "a",
+    );
+    expect(service.getApi("brittle")).toBeDefined();
+    expect((await service.getSettings("brittle"))?.values).toEqual({
+      token: { set: true },
+    });
   });
 
   it("warns when a path plugin is installed from inside a managed workspace", async () => {
