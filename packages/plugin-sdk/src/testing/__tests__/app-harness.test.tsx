@@ -4,6 +4,8 @@ import { cleanup, fireEvent, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
+  ExperimentalUiInspectionApi,
+  ExperimentalUiInspectionSessionEvent,
   PluginComposerApi,
   PluginComposerScope,
   PluginMessageDirectiveProps,
@@ -436,6 +438,93 @@ describe("loadPluginApp", () => {
     });
     expect(setterWasAvailable).toBe(false);
     expect(mounted.inspection.threadRowStatusCalls).toEqual([]);
+    await mounted.lifecycle.dispose();
+  });
+
+  it("simulates plugin-stamped UI inspection events and cleanup", async () => {
+    const parent = document.createElement("aside");
+    parent.dataset.codeName = "left sidebar";
+    const child = document.createElement("button");
+    child.textContent = "Inspect";
+    document.body.append(parent, child);
+    const events: ExperimentalUiInspectionSessionEvent[] = [];
+    let retainedApi: ExperimentalUiInspectionApi | undefined;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.contentScripts.register({
+          id: "inspector",
+          mount({ experimental_uiInspection }) {
+            retainedApi = experimental_uiInspection;
+            if (experimental_uiInspection === undefined) return;
+            experimental_uiInspection.register(child, {
+              codeName: "inspect action",
+              name: "Inspect action",
+              kind: "action",
+              logicalParent: parent,
+            });
+            experimental_uiInspection.startSession({
+              onEvent: (event) => events.push(event),
+            });
+          },
+        });
+      }),
+    );
+
+    const mounted = await mountPluginContentScripts(captured, {
+      pluginId: "plugin-guide",
+    });
+    const host = mounted.inspection.uiInspection;
+    expect(retainedApi).toBeDefined();
+    expect(host?.registeredElements).toEqual([child]);
+    expect(host?.activeSessionCount).toBe(1);
+    expect(
+      host
+        ?.getTarget(child)
+        ?.hierarchy.map(({ metadata }) => metadata.codeName),
+    ).toEqual(["left sidebar", "inspect action"]);
+    expect(host?.getTarget(child)?.target.source).toEqual({
+      kind: "plugin",
+      pluginId: "plugin-guide",
+    });
+
+    host?.hover(child, { x: 12, y: 24 });
+    host?.select(child, { x: 12, y: 24 });
+    expect(events.map(({ type }) => type)).toEqual(["hover", "select"]);
+    expect(events[0]).toMatchObject({
+      target: { target: { source: { pluginId: "plugin-guide" } } },
+    });
+
+    await mounted.lifecycle.dispose();
+    await mounted.lifecycle.dispose();
+    expect(host?.registeredElements).toEqual([]);
+    expect(host?.activeSessionCount).toBe(0);
+    retainedApi?.register(child, {
+      codeName: "late",
+      name: "Late",
+      kind: "action",
+    });
+    expect(host?.registeredElements).toEqual([]);
+  });
+
+  it("can omit the experimental UI inspection API for compatibility tests", async () => {
+    let wasAvailable = true;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.contentScripts.register({
+          id: "compatibility",
+          mount({ experimental_uiInspection }) {
+            wasAvailable = experimental_uiInspection !== undefined;
+          },
+        });
+      }),
+    );
+
+    const mounted = await mountPluginContentScripts(captured, {
+      pluginId: "plugin-guide",
+      omitExperimentalUiInspection: true,
+    });
+    expect(wasAvailable).toBe(false);
+    expect(mounted.inspection.uiInspection).toBeNull();
     await mounted.lifecycle.dispose();
   });
 
