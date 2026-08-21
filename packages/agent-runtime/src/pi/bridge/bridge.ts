@@ -139,7 +139,7 @@ const piCommandSchema = z.discriminatedUnion("method", [
   }),
 ]);
 
-export type PiCommand = z.infer<typeof piCommandSchema>;
+type PiCommand = z.infer<typeof piCommandSchema>;
 
 /**
  * The known-method set, derived from the schema union so it cannot drift
@@ -205,11 +205,6 @@ interface BridgeEventNotification {
 }
 
 interface CurrentThreadSessionArgs {
-  sessionSerial: number;
-  threadId: string;
-}
-
-interface CreateSessionCallbackArgs {
   sessionSerial: number;
   threadId: string;
 }
@@ -460,7 +455,7 @@ function removeThreadSessionIfCurrent(args: CurrentThreadSessionArgs): void {
 }
 
 function createOnPiEvent(
-  args: CreateSessionCallbackArgs,
+  args: CurrentThreadSessionArgs,
 ): (event: AgentSessionEvent) => void {
   return (event: AgentSessionEvent) => {
     const threadSession = getCurrentThreadSession({
@@ -488,7 +483,7 @@ function createOnPiEvent(
 }
 
 function createOnSessionDone(
-  args: CreateSessionCallbackArgs,
+  args: CurrentThreadSessionArgs,
 ): (error?: unknown) => void {
   return (error?: unknown) => {
     if (error) {
@@ -540,7 +535,7 @@ function reportPromptSettled(args: {
 }
 
 function reportSessionError(
-  args: CreateSessionCallbackArgs & { error: unknown },
+  args: CurrentThreadSessionArgs & { error: unknown },
 ): void {
   const threadSession = getCurrentThreadSession({
     sessionSerial: args.sessionSerial,
@@ -1094,10 +1089,7 @@ interface ExtractedInput {
   images: ImageContent[];
 }
 
-function extractInput(input: unknown): ExtractedInput {
-  if (typeof input === "string") return { text: input, images: [] };
-  if (!Array.isArray(input)) return { images: [] };
-
+function extractInput(input: TurnStartParams["input"]): ExtractedInput {
   const chunks: string[] = [];
   const images: ImageContent[] = [];
 

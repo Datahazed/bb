@@ -6,7 +6,7 @@ import {
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
   isThreadForkable,
   type ForkThreadCreateSeed,
-} from "@/lib/fork-thread-request";
+} from "@bb/client-core";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
@@ -14,12 +14,12 @@ import { threadDefaultExecutionOptionsQueryKey } from "@/hooks/queries/query-key
 import { findCachedProviderInfo } from "@/hooks/queries/system-queries";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 
-export interface UseForkThreadFromMessageArgs {
+interface UseForkThreadFromMessageArgs {
   /** Source thread the fork branches from. Null until the thread loads. */
   sourceThread: Thread | null;
 }
 
-export interface ForkThreadFromMessageTarget {
+interface ForkThreadFromMessageTarget {
   sourceSeqEnd: number;
 }
 

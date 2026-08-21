@@ -5,8 +5,6 @@ export type ParsedGitDiffFile = ReturnType<
   typeof parsePatchFiles
 >[number]["files"][number];
 
-export type { GitDiffFileChangeKind };
-
 export interface GitDiffStats {
   filesCount: number;
   insertions: number;
@@ -25,7 +23,7 @@ export function parseGitDiffFiles(
 }
 
 /** A normalized single-file patch plus the file it parsed to. */
-export interface NormalizedFilePatch {
+interface NormalizedFilePatch {
   /** Complete patch text, including a `diff --git` header. */
   patch: string;
   file: ParsedGitDiffFile;
@@ -64,7 +62,7 @@ export function normalizeFilePatch({
   return { patch: patchText, file };
 }
 
-export interface GitDiffContextEnrichmentInput {
+interface GitDiffContextEnrichmentInput {
   fileDiff: ParsedGitDiffFile;
   oldFile: FileContents;
   newFile: FileContents;
@@ -94,47 +92,6 @@ export function enrichGitDiffFileForContext({
           : `${fileDiff.cacheKey}:context`,
     }) ?? fileDiff
   );
-}
-
-export function summarizeGitDiff(
-  files: ParsedGitDiffFile[],
-  diff: string,
-): GitDiffStats {
-  if (files.length > 0) {
-    let insertions = 0;
-    let deletions = 0;
-    for (const file of files) {
-      const fileStats = summarizeGitDiffFile(file);
-      insertions += fileStats.insertions;
-      deletions += fileStats.deletions;
-    }
-    return { filesCount: files.length, insertions, deletions };
-  }
-
-  let insertions = 0;
-  let deletions = 0;
-  let filesCount = 0;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("diff --git ")) {
-      filesCount += 1;
-      continue;
-    }
-    if (line.startsWith("+++ ")) continue;
-    if (line.startsWith("--- ")) continue;
-    if (line.startsWith("+")) {
-      insertions += 1;
-      continue;
-    }
-    if (line.startsWith("-")) {
-      deletions += 1;
-    }
-  }
-  return {
-    filesCount:
-      filesCount > 0 ? filesCount : insertions > 0 || deletions > 0 ? 1 : 0,
-    insertions,
-    deletions,
-  };
 }
 
 export function summarizeGitDiffFile(
@@ -207,10 +164,6 @@ export function isPreviewableImagePath(path: string | undefined): boolean {
   return (
     extension !== undefined && IMAGE_GIT_DIFF_FILE_EXTENSIONS.has(extension)
   );
-}
-
-export function isImageGitDiffFile(file: ParsedGitDiffFile): boolean {
-  return isPreviewableImagePath(file.name);
 }
 
 export function isSvgGitDiffFile(file: ParsedGitDiffFile): boolean {

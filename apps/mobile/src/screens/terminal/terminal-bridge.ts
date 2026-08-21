@@ -56,7 +56,7 @@ export interface TerminalPageTheme {
 // ---------------------------------------------------------------------------
 // Accessory keys
 
-export const TERMINAL_ACCESSORY_KEYS = [
+const TERMINAL_ACCESSORY_KEYS = [
   "Escape",
   "Tab",
   "ArrowLeft",
@@ -71,13 +71,7 @@ export const TERMINAL_ACCESSORY_KEYS = [
 ] as const;
 export type TerminalAccessoryKey = (typeof TERMINAL_ACCESSORY_KEYS)[number];
 
-export function isTerminalAccessoryKey(
-  value: string,
-): value is TerminalAccessoryKey {
-  return (TERMINAL_ACCESSORY_KEYS as readonly string[]).includes(value);
-}
-
-export interface TerminalKeySequenceModes {
+interface TerminalKeySequenceModes {
   /** DECCKM: the application (vim, less, zsh) asked for SS3 cursor keys. */
   applicationCursorKeys: boolean;
 }
@@ -161,7 +155,7 @@ export function applyControlModifier(text: string): string {
   }
 }
 
-export interface StickyControlResult {
+interface StickyControlResult {
   text: string;
   /** Whether the sticky modifier was spent on this input. */
   consumed: boolean;
@@ -218,7 +212,7 @@ export type TerminalPageMessage =
 // ---------------------------------------------------------------------------
 // Encoding
 
-export function encodeBytesBase64(bytes: Uint8Array): string {
+function encodeBytesBase64(bytes: Uint8Array): string {
   let binary = "";
   for (let index = 0; index < bytes.length; index += 1) {
     binary += String.fromCharCode(bytes[index] ?? 0);
@@ -271,7 +265,7 @@ export interface TerminalWriter {
   write(data: string | Uint8Array, callback?: () => void): void;
 }
 
-export interface WriteTerminalOutputArgs {
+interface WriteTerminalOutputArgs {
   terminal: TerminalWriter;
   data: string | Uint8Array;
   isReplay: boolean;
@@ -308,15 +302,15 @@ export function canForwardTerminalData(
 // ---------------------------------------------------------------------------
 // Output batching (host side)
 
-export const TERMINAL_WRITE_BATCH_MAX_BYTES = 16 * 1024;
-export const TERMINAL_WRITE_BATCH_MAX_DELAY_MS = 16;
+const TERMINAL_WRITE_BATCH_MAX_BYTES = 16 * 1024;
+const TERMINAL_WRITE_BATCH_MAX_DELAY_MS = 16;
 
 export interface TerminalWriteBatch {
   chunks: string[];
   replay: boolean;
 }
 
-export interface TerminalWriteBatcherOptions {
+interface TerminalWriteBatcherOptions {
   flush: (batch: TerminalWriteBatch) => void;
   maxBytes?: number;
   maxDelayMs?: number;

@@ -112,22 +112,8 @@ export interface AgentRuntimeOptions {
    */
   turnStartWatchdog?: { thresholdMs?: number; intervalMs?: number };
 
-  /** Optional executable used to run Node-based provider bridges. */
-  bridgeNodeExecutablePath?: string;
-
-  /** Optional env values needed by the executable used for Node-based bridges. */
-  bridgeNodeEnv?: Record<string, string>;
-
   /** Optional caller-provided skill roots to expose to provider sessions. */
   skillRoots?: readonly AgentRuntimeSkillRoot[];
-
-  /**
-   * Streamed-text coalescing window for the delta assembler: within the
-   * window, per-token text/output delta events concatenate into one timeline
-   * event per stream, flushed trailing-edge (no timers) and never reordered
-   * across other events. Default 100ms; 0 disables batching.
-   */
-  textDeltaFlushMs?: number;
 
   /** Called when a provider emits a translated event.
    *  Every event has `threadId` (bb ID) and `providerThreadId` (provider's internal ID). */
@@ -217,11 +203,6 @@ export interface StartThreadArgs {
   dynamicTools?: DynamicTool[];
   disallowedTools?: readonly string[];
   instructionMode?: InstructionMode;
-  /** JSON Schema constraining the session's structured output. Session-level
-   *  structured output is claude-code only (SDK `outputFormat` is fixed at
-   *  query creation); other adapters reject it. Absent means no structured
-   *  output. */
-  outputSchema?: JsonObject;
   /**
    * Present means fork the new thread from this source provider session
    * instead of starting fresh; absent means a normal start.
@@ -233,7 +214,7 @@ export interface StartThreadResult {
   providerThreadId: string;
 }
 
-export interface PrepareThreadRewindArgs {
+interface PrepareThreadRewindArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   environmentId: string;
@@ -250,11 +231,11 @@ export interface PrepareThreadRewindArgs {
   instructionMode?: InstructionMode;
 }
 
-export interface PrepareThreadRewindResult {
+interface PrepareThreadRewindResult {
   providerThreadId: string;
 }
 
-export interface DiscardThreadRewindArgs {
+interface DiscardThreadRewindArgs {
   leaseId: string;
 }
 
@@ -296,11 +277,11 @@ export interface SteerTurnArgs {
   instructions?: string;
 }
 
-export interface SteerTurnAppliedResult {
+interface SteerTurnAppliedResult {
   status: "steered";
 }
 
-export interface SteerTurnStaleResult {
+interface SteerTurnStaleResult {
   status: "stale";
   activeTurnId: string | null;
 }
@@ -350,18 +331,18 @@ export interface RenameThreadArgs {
   title: string;
 }
 
-export interface ClearThreadGoalArgs {
+interface ClearThreadGoalArgs {
   threadId: string;
 }
 
-export interface ArchiveThreadArgs {
+interface ArchiveThreadArgs {
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   providerId: string;
   providerThreadId: string;
   threadId: string;
 }
 
-export interface UnarchiveThreadArgs {
+interface UnarchiveThreadArgs {
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   providerId: string;
   providerThreadId: string;
@@ -375,14 +356,14 @@ export interface ListModelsArgs {
   cwd?: string;
 }
 
-export interface ProviderMaintenanceArgs {
+interface ProviderMaintenanceArgs {
   providerId: string;
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   cwd?: string;
 }
 
-export interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
+interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
   requirement?: "thread_rewind";
 }
 

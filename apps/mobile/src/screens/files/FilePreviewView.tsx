@@ -1,5 +1,4 @@
 import type { FilePreviewLineRange } from "@bb/client-core";
-import * as Clipboard from "expo-clipboard";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
@@ -16,6 +15,7 @@ import {
   useWorkspaceFilePreview,
   type FilePreviewContent,
 } from "@/data/files";
+import { copyWithToast } from "@/lib/clipboard";
 import { useTheme } from "@/theme";
 import {
   ActionSheet,
@@ -30,7 +30,7 @@ import {
   type ActionSheetAction,
 } from "@/ui";
 import { CsvFilePreviewBody } from "./CsvFilePreviewBody";
-import { useThreadFileOpener, type FileOpenHandler } from "./file-opener";
+import { useThreadFileOpener } from "./file-opener";
 import {
   describeFilePreviewTargetSource,
   type FilePreviewTarget,
@@ -53,7 +53,7 @@ import {
 } from "./TextFilePreviewBody";
 import { useThreadLocalFileLinks } from "./use-thread-local-file-links";
 
-export interface FilePreviewViewProps {
+interface FilePreviewViewProps {
   /** Null for the root-compose panel (project files only). */
   threadId: string | null;
   projectId: string | null;
@@ -65,15 +65,6 @@ export interface FilePreviewViewProps {
   target: FilePreviewTarget;
   /** Highlighted + scrolled to on open. */
   lineRange: FilePreviewLineRange | null;
-  /** Omit the in-body header (a panel tab that renders its own strip). */
-  showHeader?: boolean;
-  /** Where links inside the file open (default: the thread file opener). */
-  onOpenFile?: FileOpenHandler;
-  /**
-   * "Add to chat" for a long-pressed line. Default: quote into the thread's
-   * registered composer host, else copy the `path:line` reference.
-   */
-  onAddToChat?: (text: string) => void;
   /** After a successful quote (a panel tab closes the panel so the composer shows). */
   onAddedToChat?: () => void;
   /** Rendered inside the workspace panel sheet: the markdown body uses the sheet-aware scroller. */
@@ -85,12 +76,6 @@ type ViewMode = "preview" | "source";
 
 function initialViewMode(lineRange: FilePreviewLineRange | null): ViewMode {
   return lineRange === null ? "preview" : "source";
-}
-
-function copyWithToast(text: string, label: string): void {
-  void Clipboard.setStringAsync(text)
-    .then(() => toast.success(label))
-    .catch(() => toast.error("Could not copy"));
 }
 
 /**
@@ -108,17 +93,13 @@ export function FilePreviewView({
   workspaceRootPath,
   target,
   lineRange,
-  showHeader = true,
-  onOpenFile,
-  onAddToChat,
   onAddedToChat,
   inSheet = false,
   testID = "file-preview",
 }: FilePreviewViewProps) {
   const { tokens } = useTheme();
   const { serverUrl } = useProfileClient();
-  const defaultOpen = useThreadFileOpener(threadId);
-  const openFile = onOpenFile ?? defaultOpen;
+  const openFile = useThreadFileOpener(threadId);
   const localLinks = useThreadLocalFileLinks({
     threadId,
     environmentId,
@@ -230,12 +211,6 @@ export function FilePreviewView({
   );
   const addToChat = useCallback(
     (text: string, reference: string) => {
-      if (onAddToChat) {
-        onAddToChat(text);
-        toast.success("Added to chat");
-        onAddedToChat?.();
-        return;
-      }
       const host =
         threadId === null ? null : resolveThreadComposerHost(threadId);
       if (host) {
@@ -246,7 +221,7 @@ export function FilePreviewView({
       }
       copyWithToast(reference, "Reference copied");
     },
-    [onAddToChat, onAddedToChat, threadId],
+    [onAddedToChat, threadId],
   );
   const lineActions = useMemo<ActionSheetAction[]>(() => {
     if (menuLine === null || sourceText === null) return [];
@@ -404,108 +379,106 @@ export function FilePreviewView({
 
   return (
     <View className="flex-1 bg-background" testID={testID}>
-      {showHeader ? (
-        <View className="gap-2 border-b border-border px-4 pb-2 pt-2">
-          <View className="flex-row items-center gap-2">
-            <Icon name="FileText" size={18} color={tokens.mutedForeground} />
-            <Text
-              variant="title"
-              className="min-w-0 flex-1"
-              numberOfLines={1}
-              testID="file-preview-name"
-            >
-              {name}
-            </Text>
-            <Pill size="sm" variant="outline">
-              {describeFilePreviewTargetSource(target)}
-            </Pill>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Copy path"
-            onPress={copyPath}
-            className="flex-row items-center gap-1 active:opacity-70"
-            testID="file-preview-path"
+      <View className="gap-2 border-b border-border px-4 pb-2 pt-2">
+        <View className="flex-row items-center gap-2">
+          <Icon name="FileText" size={18} color={tokens.mutedForeground} />
+          <Text
+            variant="title"
+            className="min-w-0 flex-1"
+            numberOfLines={1}
+            testID="file-preview-name"
           >
-            <Text
-              variant="caption"
-              mono
-              numberOfLines={1}
-              className="min-w-0 flex-1"
-            >
-              {target.path}
+            {name}
+          </Text>
+          <Pill size="sm" variant="outline">
+            {describeFilePreviewTargetSource(target)}
+          </Pill>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Copy path"
+          onPress={copyPath}
+          className="flex-row items-center gap-1 active:opacity-70"
+          testID="file-preview-path"
+        >
+          <Text
+            variant="caption"
+            mono
+            numberOfLines={1}
+            className="min-w-0 flex-1"
+          >
+            {target.path}
+          </Text>
+          <Icon name="Copy" size={12} color={tokens.mutedForeground} />
+        </Pressable>
+        <View className="flex-row items-center gap-2">
+          {sizeLabel ? (
+            <Text variant="caption" testID="file-preview-size">
+              {sizeLabel}
             </Text>
-            <Icon name="Copy" size={12} color={tokens.mutedForeground} />
-          </Pressable>
-          <View className="flex-row items-center gap-2">
-            {sizeLabel ? (
-              <Text variant="caption" testID="file-preview-size">
-                {sizeLabel}
-              </Text>
-            ) : null}
-            <View className="flex-1" />
-            {hasSourceToggle ? (
-              <View className="flex-row overflow-hidden rounded-md border border-border">
-                {(["preview", "source"] as const).map((mode) => (
-                  <Pressable
-                    key={mode}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: viewMode === mode }}
-                    onPress={() => setViewMode(mode)}
-                    className={
-                      viewMode === mode
-                        ? "bg-surface-selected px-2.5 py-1"
-                        : "px-2.5 py-1 active:bg-state-hover"
-                    }
-                    testID={`file-preview-mode-${mode}`}
+          ) : null}
+          <View className="flex-1" />
+          {hasSourceToggle ? (
+            <View className="flex-row overflow-hidden rounded-md border border-border">
+              {(["preview", "source"] as const).map((mode) => (
+                <Pressable
+                  key={mode}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: viewMode === mode }}
+                  onPress={() => setViewMode(mode)}
+                  className={
+                    viewMode === mode
+                      ? "bg-surface-selected px-2.5 py-1"
+                      : "px-2.5 py-1 active:bg-state-hover"
+                  }
+                  testID={`file-preview-mode-${mode}`}
+                >
+                  <Text
+                    variant="chrome"
+                    tone={viewMode === mode ? "foreground" : "muted"}
                   >
-                    <Text
-                      variant="chrome"
-                      tone={viewMode === mode ? "foreground" : "muted"}
-                    >
-                      {mode === "preview" ? "Preview" : "Source"}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-            {sourceText !== null ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                icon="Target"
-                accessibilityLabel="Jump to line"
-                onPress={() => {
-                  setJumpValue("");
-                  jumpSheet.present();
-                }}
-                testID="file-preview-jump"
-              >
-                Line
-              </Button>
-            ) : null}
-            {externalUrl !== null ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                icon="ExternalLink"
-                accessibilityLabel="Open in browser"
-                onPress={openExternally}
-                testID="file-preview-open-external"
-              />
-            ) : null}
+                    {mode === "preview" ? "Preview" : "Source"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          {sourceText !== null ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="Target"
+              accessibilityLabel="Jump to line"
+              onPress={() => {
+                setJumpValue("");
+                jumpSheet.present();
+              }}
+              testID="file-preview-jump"
+            >
+              Line
+            </Button>
+          ) : null}
+          {externalUrl !== null ? (
             <Button
               variant="ghost"
               size="icon"
-              icon="RotateCcw"
-              accessibilityLabel="Reload"
-              loading={query.isFetching && !query.isLoading}
-              onPress={() => void query.refetch()}
-              testID="file-preview-refresh"
+              icon="ExternalLink"
+              accessibilityLabel="Open in browser"
+              onPress={openExternally}
+              testID="file-preview-open-external"
             />
-          </View>
+          ) : null}
+          <Button
+            variant="ghost"
+            size="icon"
+            icon="RotateCcw"
+            accessibilityLabel="Reload"
+            loading={query.isFetching && !query.isLoading}
+            onPress={() => void query.refetch()}
+            testID="file-preview-refresh"
+          />
         </View>
-      ) : null}
+      </View>
       <View className="flex-1">{body}</View>
       <Sheet controller={jumpSheet} title="Jump to line" stackBehavior="push">
         <View className="gap-3 px-4 pb-2">

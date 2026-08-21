@@ -48,18 +48,6 @@ export function displayPluginVersion(version: string): string {
   return /^[0-9a-f]{12,}$/iu.test(version) ? version.slice(0, 7) : version;
 }
 
-/** Success verdict banner tint (sketch v2 `.banner`). */
-export const SUCCESS_BANNER_STYLE = {
-  background: "color-mix(in oklab, var(--success) 9%, var(--canvas))",
-  borderColor: "color-mix(in oklab, var(--success) 35%, var(--canvas))",
-} as const;
-
-/** Warning note tint (sketch `.notebox.warn`, full-trust warning). */
-export const WARNING_NOTE_STYLE = {
-  background: "color-mix(in oklab, var(--warning-text) 6%, var(--canvas))",
-  borderColor: "color-mix(in oklab, var(--warning-text) 35%, var(--canvas))",
-} as const;
-
 export const SUCCESS_TEXT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
 } as const;
@@ -160,7 +148,7 @@ export function CatalogEntryIcon({
  * the entry's initial and not a tile. The `className` sizes the footprint so
  * it aligns with sibling logo images.
  */
-export function PlaceholderBadge({
+function PlaceholderBadge({
   className,
   iconName = "Zap",
 }: {
@@ -188,7 +176,7 @@ export function formatAbsoluteDate(epochMs: number): string {
   });
 }
 
-export interface DetailsDisclosureProps {
+interface DetailsDisclosureProps {
   summary: string;
   children: ReactNode;
   /** Pre-expand when the details are the story (failure, skipped release). */
@@ -240,19 +228,14 @@ export function DetailsDisclosure({
 export function KeyValueGrid({
   entries,
 }: {
-  entries: { key: string; value: ReactNode; mono?: boolean }[];
+  entries: { key: string; value: ReactNode }[];
 }) {
   return (
     <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1.5 text-xs">
       {entries.map((entry) => (
         <div key={entry.key} className="contents">
           <dt className="text-muted-foreground">{entry.key}</dt>
-          <dd
-            className={cn(
-              "min-w-0 break-words text-foreground",
-              entry.mono !== false && "font-mono",
-            )}
-          >
+          <dd className="min-w-0 break-words text-foreground font-mono">
             {entry.value}
           </dd>
         </div>

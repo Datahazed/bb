@@ -67,7 +67,7 @@ interface InferenceCompleteArgs<T extends TSchema> {
   timeoutMs?: number;
 }
 
-export interface InferenceTimeoutErrorArgs {
+interface InferenceTimeoutErrorArgs {
   timeoutMs: number;
 }
 
@@ -126,7 +126,7 @@ function shouldTreatAsInferenceTimeout(error: Error): boolean {
   );
 }
 
-export function isTransientInferenceError(error: Error): boolean {
+function isTransientInferenceError(error: Error): boolean {
   return (
     error instanceof InferenceTimeoutError ||
     (error instanceof ApiError &&

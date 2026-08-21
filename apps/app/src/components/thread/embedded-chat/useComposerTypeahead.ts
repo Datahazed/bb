@@ -4,7 +4,7 @@ import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/pr
 import type { PromptBoxAction } from "@/components/promptbox/PromptBoxActionsMenu";
 import { withAppPromptActions } from "@/components/promptbox/PromptBoxActionsMenu";
 import type { ProviderComposerAction } from "@bb/domain";
-import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
+import { buildProviderPromptActionProps } from "@bb/client-core";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 
@@ -14,8 +14,6 @@ interface UseComposerTypeaheadArgs {
   mentionsProjectId?: string;
   providerId: string;
   environmentId: string | null;
-  /** Composer surface used to exclude commands that require an existing thread. */
-  commandScope: "new-thread" | "thread";
   /** The thread the composer belongs to (excluded from thread mentions). */
   currentThreadId: string;
   selectedProviderComposerActions:
@@ -24,7 +22,7 @@ interface UseComposerTypeaheadArgs {
   resolveMentionLink: PromptMentionLinkResolver;
 }
 
-export interface UseComposerTypeaheadResult {
+interface UseComposerTypeaheadResult {
   typeaheadConfig: TypeaheadConfig;
   promptActions: readonly PromptBoxAction[];
 }
@@ -39,7 +37,6 @@ export function useComposerTypeahead({
   mentionsProjectId,
   providerId,
   environmentId,
-  commandScope,
   currentThreadId,
   selectedProviderComposerActions,
   resolveMentionLink,
@@ -65,7 +62,7 @@ export function useComposerTypeahead({
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId,
-    commandScope,
+    commandScope: "thread",
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions,
     environmentId,

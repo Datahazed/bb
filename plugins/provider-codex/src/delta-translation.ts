@@ -25,7 +25,6 @@ import {
   type ThreadDelta,
   type ThreadEventItemStatus,
   type ThreadEventTurnStatus,
-  type ThreadEventUserContent,
   type JsonRpcMessage,
   type ProviderRuntimeEvent,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -39,15 +38,14 @@ import {
   type CodexHandledEvent,
   type CodexHandledThreadItem,
   type CodexItemStatus,
-  type CodexParsedUserInput,
   type CodexRateLimitSnapshot,
   type CodexRateLimitSnapshotUpdate,
   type CodexTurnStatus,
 } from "./schemas.js";
 import { codexVisibilityMetadata } from "./visibility.js";
 
-function assertNever(value: never, message?: string): never {
-  throw new Error(message ?? `Unexpected value: ${String(value)}`);
+function assertNever(value: never): never {
+  throw new Error(`Unexpected value: ${String(value)}`);
 }
 
 interface CodexEventTranslationState {
@@ -393,24 +391,6 @@ function toItemStatus(status: CodexItemStatus): ThreadEventItemStatus {
       return "interrupted";
     default:
       return assertNever(status);
-  }
-}
-
-function translateCodexUserContent(
-  content: CodexParsedUserInput,
-): ThreadEventUserContent {
-  switch (content.type) {
-    case "text":
-      return { type: "text", text: content.text };
-    case "image":
-      return { type: "image", url: content.url };
-    case "localImage":
-      return { type: "localImage", path: content.path };
-    case "skill":
-    case "mention":
-      return { type: "text", text: `[${content.type}: ${content.name}]` };
-    default:
-      return assertNever(content);
   }
 }
 

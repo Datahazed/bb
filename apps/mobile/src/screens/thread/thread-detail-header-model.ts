@@ -1,4 +1,3 @@
-import { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";
 import type {
   Environment,
   Host,
@@ -14,7 +13,7 @@ import { assertNever } from "@bb/thread-view";
  * hides "working" tones; the timeline's working indicator already shows them.
  */
 
-export type ThreadStatusPillTone =
+type ThreadStatusPillTone =
   | "working"
   | "attention"
   | "error"
@@ -70,19 +69,13 @@ export function describeThreadStatusPill({
   }
 }
 
-export function isThreadRuntimeBusy(
-  runtimeDisplayStatus: ThreadRuntimeDisplayStatus,
-): boolean {
-  return isRunningThreadRuntimeDisplayStatus(runtimeDisplayStatus);
-}
-
 function lastPathSegment(path: string): string {
   const trimmed = path.replace(/[\\/]+$/, "");
   const index = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
   return index >= 0 ? trimmed.slice(index + 1) : trimmed;
 }
 
-export interface ThreadEnvironmentSummaryArgs {
+interface ThreadEnvironmentSummaryArgs {
   environment: Pick<
     Environment,
     "name" | "branchName" | "path" | "managed" | "status"

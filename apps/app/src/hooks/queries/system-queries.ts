@@ -47,28 +47,24 @@ import {
   systemUsageLimitsQueryKey,
   systemVersionQueryKey,
 } from "./query-keys";
-import { requireEnabledQueryArg } from "./query-helpers";
+import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
   FOCUS_OWNED_LIVE_QUERY_POLICY,
   SERVER_SESSION_QUERY_POLICY,
   SESSION_STATIC_QUERY_POLICY,
 } from "./query-policies";
 
-export interface UseSystemExecutionOptionsArgs {
+interface UseSystemExecutionOptionsArgs {
   enabled?: boolean;
   environmentId?: string;
   hostId?: string;
   providerId?: string;
 }
 
-export interface UseSystemProviderStatesOptions extends QueryOptions {
+interface UseSystemProviderStatesOptions extends QueryOptions {
   environmentId?: string;
   hostId?: string;
   poll?: boolean;
-}
-
-interface QueryOptions {
-  enabled?: boolean;
 }
 
 type SystemProviderRoutingArgs =
@@ -76,11 +72,11 @@ type SystemProviderRoutingArgs =
   | { environmentId?: never; hostId: string }
   | { environmentId?: never; hostId?: never };
 
-export type UseSystemProvidersArgs = QueryOptions &
+type UseSystemProvidersArgs = QueryOptions &
   SystemProviderRoutingArgs &
   Pick<SystemProvidersQuery, "capability">;
 
-export type UseSystemProviderInfoArgs = UseSystemProvidersArgs & {
+type UseSystemProviderInfoArgs = UseSystemProvidersArgs & {
   providerId?: string;
 };
 
@@ -559,7 +555,7 @@ export function useSystemVersion(options?: QueryOptions) {
   });
 }
 
-export interface UseHostProviderCliStatusArgs {
+interface UseHostProviderCliStatusArgs {
   hostId: string | null;
   enabled?: boolean;
 }
@@ -607,35 +603,12 @@ export function useSystemProviderStates(
   });
 }
 
-export interface UseSystemUsageLimitsArgs extends QueryOptions {
-  hostId?: string;
-  providerId?: string;
-}
-
-export function useSystemUsageLimits(args: UseSystemUsageLimitsArgs = {}) {
-  const hostId = args.hostId ?? null;
-  const providerId = args.providerId ?? null;
-  return useQuery<ProviderUsageResponse>({
-    queryKey: systemUsageLimitsQueryKey(hostId, providerId),
-    queryFn: ({ signal }) =>
-      sdk.system.usageLimits({
-        ...(args.hostId === undefined ? {} : { hostId: args.hostId }),
-        ...(args.providerId === undefined
-          ? {}
-          : { providerId: args.providerId }),
-        signal,
-      }),
-    enabled: args.enabled ?? true,
-    ...FOCUS_OWNED_LIVE_QUERY_POLICY,
-  });
-}
-
 export interface ProviderUsageQueryState {
   isError: boolean;
   isLoading: boolean;
 }
 
-export interface UseSystemProviderUsageLimitsArgs extends QueryOptions {
+interface UseSystemProviderUsageLimitsArgs extends QueryOptions {
   hostId?: string;
   providerIds: readonly string[];
 }

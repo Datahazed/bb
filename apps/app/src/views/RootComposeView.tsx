@@ -35,7 +35,6 @@ import {
   type ProjectMachineSetupCompletion,
   type ProjectMachineSetupDialogTarget,
 } from "@/components/dialogs/ProjectMachineSetupDialog";
-import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type {
@@ -53,7 +52,7 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
-import type { FileTabViewerOverride } from "@/components/plugin/file-opener-tabs";
+import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
 import { usePluginNewThreadPanelActions } from "@/components/plugin/PluginPanelActions";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
@@ -75,16 +74,16 @@ import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
-import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import type { PromptDraftAttachment } from "@bb/client-core";
 import {
   buildForkThreadRequest,
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
   type ForkThreadCreateSeed,
-} from "@/lib/fork-thread-request";
+} from "@bb/client-core";
 import {
   buildThreadHandoffPromptDraft,
   readThreadHandoffCreateSeedFromLocationState,
-} from "@/lib/thread-handoff-request";
+} from "@bb/client-core";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import {
   getThreadRoutePath,
@@ -106,12 +105,11 @@ import {
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
 import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
-import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import type {
   HostFileTabState,
   ThreadStorageFileTabState,
   WorkspaceFileTabState,
-} from "@/lib/file-preview";
+} from "@bb/client-core";
 import {
   resolveUrlOpenTarget,
   useOpenLinksInAppBrowserPreference,
@@ -147,12 +145,11 @@ import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
-import { isSecondaryFileTab } from "@/components/secondary-panel/secondaryPanelTabState";
-import { resolveRightPanelFileVisual } from "@/components/secondary-panel/rightPanelFileVisuals";
+import { isSecondaryFileTab } from "@bb/client-core";
+import { RightPanelFileTabIcon } from "@/components/secondary-panel/RightPanelFileTabIcon";
 import {
   DEFAULT_TERMINAL_COLS,
   DEFAULT_TERMINAL_ROWS,
-  terminalStatusLabel,
 } from "@/components/thread/terminal/useThreadTerminalController";
 import {
   buildTerminalSyncedSecondaryFileTabs,
@@ -179,7 +176,6 @@ import {
   RootComposePanelTabContent,
   type RootComposeTerminalTarget,
 } from "./RootComposePanelTabContent";
-export { resolveRootComposeProjectFileRouting } from "./RootComposePanelTabContent";
 
 const ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY = "bb.promptbox.zen-mode.root-compose";
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
@@ -188,11 +184,6 @@ const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
 const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
   "min-h-full flex-1 items-center justify-center pb-12";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
-
-type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
-type NullableSecondaryPanelChangeHandler = (
-  panel: ThreadSecondaryPanelTab | null,
-) => void;
 
 interface LegacyProjectComposeRedirectProps {
   projectId: string;
@@ -209,7 +200,7 @@ export function readSectionIdFromLocationState(state: unknown): string | null {
   return sectionId.length > 0 ? sectionId : null;
 }
 
-export type RootComposeSectionTarget =
+type RootComposeSectionTarget =
   | { kind: "clear" }
   | { sectionId: string; kind: "set" };
 
@@ -239,10 +230,6 @@ export function shouldStartComposingFromLocationState(state: unknown): boolean {
   return "focusPrompt" in state && state.focusPrompt === true;
 }
 
-export function requestRootComposePluginFocus(storageKey: string | null): void {
-  requestComposerFocus(storageKey);
-}
-
 interface BuildMobileRecentThreadsArgs {
   sidebarNavigation: SidebarBootstrapResponse | undefined;
 }
@@ -250,11 +237,6 @@ interface BuildMobileRecentThreadsArgs {
 interface ShouldNavigateAfterThreadCreateArgs {
   isForkDraft: boolean;
   navigateToThreadAfterCreate: boolean;
-}
-
-interface ResolveRootComposePanelThreadIdArgs {
-  environmentId: string | null;
-  reuseThreadOptions: readonly ReuseThreadOption[];
 }
 
 interface CanCreateRootComposeTerminalArgs {
@@ -273,37 +255,6 @@ interface BuildRootComposeTerminalSessionsArgs {
 interface RootComposeRightPanelToggleProps {
   isOpen: boolean;
   onToggle: () => void;
-}
-
-export function resolveRootComposePanelTogglePlacement(args: {
-  isHosted: boolean;
-  isOpen: boolean;
-}): {
-  inlinePanelToggle: "button" | "reserved";
-  showPinnedToggle: boolean;
-} {
-  if (args.isHosted) {
-    return { inlinePanelToggle: "button", showPinnedToggle: false };
-  }
-  return {
-    inlinePanelToggle: "button",
-    showPinnedToggle: !args.isOpen,
-  };
-}
-
-interface RightPanelFileTabIconProps {
-  path: string;
-}
-
-function RightPanelFileTabIcon({ path }: RightPanelFileTabIconProps) {
-  const visual = resolveRightPanelFileVisual({ path });
-  return (
-    <Icon
-      name={visual.iconName}
-      className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
-      aria-hidden
-    />
-  );
 }
 
 export function RootComposeRightPanelToggle({
@@ -471,20 +422,6 @@ export function buildMobileRecentThreads({
     threads.push(...project.threads);
   }
   return threads;
-}
-
-export function resolveRootComposePanelThreadId({
-  environmentId,
-  reuseThreadOptions,
-}: ResolveRootComposePanelThreadIdArgs): string | null {
-  if (environmentId === null) {
-    return null;
-  }
-
-  const reuseOption = reuseThreadOptions.find(
-    (option) => option.environmentId === environmentId,
-  );
-  return reuseOption?.threads[0]?.id ?? null;
 }
 
 export function canCreateRootComposeTerminal({
@@ -736,7 +673,7 @@ function RootComposeSurface({
       // Root may be showing the empty welcome instead of a mounted editor.
       // Route focus through the shared request channel so the subscription
       // below first reveals the composer and then focuses it.
-      focus: () => requestRootComposePluginFocus(promptDraft.storageKey),
+      focus: () => requestComposerFocus(promptDraft.storageKey),
     }),
     [promptDraft.storageKey, sharedPluginComposerHost],
   );
@@ -970,11 +907,6 @@ function RootComposeSurface({
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,
   );
-  const setRootSecondaryPanelForSurface =
-    useCallback<NullableSecondaryPanelChangeHandler>(
-      (panel) => setRootSecondaryPanel(panel),
-      [setRootSecondaryPanel],
-    );
   const rootPanelEnvironmentQuery = useEnvironment(rootPanelEnvironmentId, {
     enabled: rootPanelEnvironmentId !== null,
     staleTime: 5_000,
@@ -1023,13 +955,11 @@ function RootComposeSurface({
   );
   const { threadStorageFiles: rootThreadStorageFiles } = useThreadStorageViewer(
     {
-      activePath: null,
       fileListEnabled: shouldLoadThreadStorageFileList({
         hasThread: rootPanelThreadId !== null,
         isSecondaryPanelOpen,
         secondaryTabs: fixedPanelTabsState.secondary.tabs,
       }),
-      filePreviewEnabled: false,
       threadId: rootPanelThreadId ?? undefined,
     },
   );
@@ -1147,7 +1077,7 @@ function RootComposeSurface({
   const openPersistedWorkspaceFile = useCallback(
     (
       file: WorkspaceFileTabState,
-      options?: { viewer?: FileTabViewerOverride },
+      options?: { viewer?: FileOpenerOverride },
     ) => {
       openTab({ kind: "workspace-file-preview", tab: file }, options);
     },
@@ -1156,7 +1086,7 @@ function RootComposeSurface({
   const openPersistedStorageFile = useCallback(
     (
       file: ThreadStorageFileTabState,
-      options?: { viewer?: FileTabViewerOverride },
+      options?: { viewer?: FileOpenerOverride },
     ) => {
       openTab({ kind: "thread-storage-file-preview", tab: file }, options);
     },
@@ -1170,14 +1100,8 @@ function RootComposeSurface({
       [openTab],
     );
   const closeRootSecondaryPanel = useCallback(() => {
-    setRootSecondaryPanelForSurface(null);
-  }, [setRootSecondaryPanelForSurface]);
-  const openRootSecondaryPanel = useCallback<SecondaryPanelChangeHandler>(
-    (panel) => {
-      setRootSecondaryPanelForSurface(panel);
-    },
-    [setRootSecondaryPanelForSurface],
-  );
+    setRootSecondaryPanel(null);
+  }, [setRootSecondaryPanel]);
   const toggleRootPersistedSecondaryPanel = useCallback(() => {
     if (isPersistedSecondaryPanelOpen) {
       closeRootSecondaryPanel();
@@ -1200,7 +1124,7 @@ function RootComposeSurface({
     openPersistedDiffFile: () => undefined,
     openPersistedDiffPanel: () => undefined,
     openPersistedHostFile,
-    openPersistedPanel: openRootSecondaryPanel,
+    openPersistedPanel: setRootSecondaryPanel,
     openPersistedStorageFile,
     openPersistedWorkspaceFile,
     togglePersistedPanel: toggleRootPersistedSecondaryPanel,
@@ -1341,9 +1265,6 @@ function RootComposeSurface({
     },
     [openBrowserTab, openCompactDrawer, rootPanelThreadId],
   );
-  const handleOpenBrowser = useCallback(() => {
-    openBrowserTabAndReveal();
-  }, [openBrowserTabAndReveal]);
   const handleBrowserAddressFocusRequestConsumed = useCallback(
     (request: BrowserAddressFocusRequest) => {
       setBrowserAddressFocusRequest((current) =>
@@ -1455,9 +1376,6 @@ function RootComposeSurface({
     }
     handleOpenNewTab();
   }, [closeSecondaryPanel, handleOpenNewTab, isSecondaryPanelOpen]);
-  const handleSecondaryPanelFocus = useCallback(() => {
-    touchFixedPanelTabsState();
-  }, [touchFixedPanelTabsState]);
   const createEnvironmentTerminalMutation = useCreateEnvironmentTerminal();
   const createHostPathTerminalMutation = useCreateTerminal();
   const closeEnvironmentTerminalMutation = useCloseEnvironmentTerminal();
@@ -1624,7 +1542,7 @@ function RootComposeSurface({
         onActivateTab={activateTab}
         onAutoFocusNewTabHandled={handleNewTabAutoFocusHandled}
         onAutoFocusTerminalHandled={handleTerminalAutoFocusHandled}
-        onOpenBrowser={handleOpenBrowser}
+        onOpenBrowser={openBrowserTabAndReveal}
         onOpenPanelLink={handleOpenPanelLink}
         onSelectFileSearchResult={handleSelectFileSearchResult}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
@@ -1648,7 +1566,6 @@ function RootComposeSurface({
       activeFixedSecondaryTabId,
       canCreateRootTerminal,
       handleNewTabAutoFocusHandled,
-      handleOpenBrowser,
       handleOpenPanelLink,
       handleRootPanelSelectionAddToChat,
       handleSelectFileSearchResult,
@@ -1657,6 +1574,7 @@ function RootComposeSurface({
       isPersistedSecondaryPanelOpen,
       isProjectless,
       isSecondaryPanelOpen,
+      openBrowserTabAndReveal,
       projectId,
       primaryHostId,
       projectSources,
@@ -1726,7 +1644,7 @@ function RootComposeSurface({
               statusLabel:
                 session === undefined || session.status === "running"
                   ? null
-                  : terminalStatusLabel(session),
+                  : session.status,
               onSelect: () => handleActivateTerminalTab(tab.terminalId),
               onClose: () => handleCloseTerminalTab(tab.terminalId),
             };
@@ -1825,14 +1743,12 @@ function RootComposeSurface({
   // The shared position class keeps this footprint paired with the no-drag
   // cutout the macOS window-drag strip carves for it while the panel is closed
   // (see RootComposeSecondaryContent).
-  const panelTogglePositionClassName =
-    ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS;
-  const panelTogglePlacement = resolveRootComposePanelTogglePlacement({
-    isHosted: (paneContext?.secondaryPanelHost ?? null) !== null,
-    isOpen: isSecondaryPanelOpen,
-  });
-  const rootPanelToggle = panelTogglePlacement.showPinnedToggle ? (
-    <div className={`fixed z-40 ${panelTogglePositionClassName}`}>
+  const showPinnedToggle =
+    (paneContext?.secondaryPanelHost ?? null) === null && !isSecondaryPanelOpen;
+  const rootPanelToggle = showPinnedToggle ? (
+    <div
+      className={`fixed z-40 ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS}`}
+    >
       <RootComposeRightPanelToggle
         isOpen={isSecondaryPanelOpen}
         onToggle={handleToggleSecondaryPanel}
@@ -2048,7 +1964,6 @@ function RootComposeSurface({
               }
               isSecondaryPanelOpen={isSecondaryPanelOpen}
               onToggleSecondaryPanel={handleToggleSecondaryPanel}
-              panelTogglePositionClassName={panelTogglePositionClassName}
               secondaryPanel={{
                 activeTab: activeFixedSecondaryTab,
                 canUseGitUi: false,
@@ -2068,14 +1983,13 @@ function RootComposeSurface({
                 // shared with threads. Info, Diff, and conversation full-screen
                 // stay thread-only because no thread exists on this surface yet.
                 showConversationCollapseControl: false,
-                inlinePanelToggle: panelTogglePlacement.inlinePanelToggle,
                 onClose: closeSecondaryPanel,
                 onCollapse: closeSecondaryPanel,
                 onTabReorder: reorderTab,
                 onOpenNewTab: handleOpenNewTab,
                 onOpenFilePreview: handleOpenFilePreview,
                 onSelectionAddToChat: handleRootPanelSelectionAddToChat,
-                onPanelFocus: handleSecondaryPanelFocus,
+                onPanelFocus: touchFixedPanelTabsState,
               }}
             >
               {showEmptyWelcome ? (

@@ -1,15 +1,7 @@
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { useTheme } from "@/theme";
-import {
-  cn,
-  Icon,
-  Separator,
-  Spinner,
-  Switch,
-  Text,
-  type IconName,
-} from "@/ui";
+import { cn, Icon, Spinner, Switch, Text, type IconName } from "@/ui";
 
 /**
  * The settings screens' building blocks: a titled card of rows
@@ -62,12 +54,7 @@ export function SettingsSection({
   );
 }
 
-/** Separator between rows inside a `SettingsSection` (pass `index > 0`). */
-export function SettingsRowDivider() {
-  return <Separator />;
-}
-
-export interface SettingsControlRowProps {
+interface SettingsControlRowProps {
   label: string;
   description?: string;
   /** Small pill after the label ("dev-only", "Installed"). */
@@ -158,7 +145,7 @@ export function SettingsControlRow({
   );
 }
 
-export interface SettingsSwitchRowProps {
+interface SettingsSwitchRowProps {
   label: string;
   description?: string;
   badge?: string;
@@ -207,7 +194,7 @@ export function SettingsSwitchRow({
   );
 }
 
-export interface SettingsValueRowProps {
+interface SettingsValueRowProps {
   label: string;
   value: string;
   description?: string;

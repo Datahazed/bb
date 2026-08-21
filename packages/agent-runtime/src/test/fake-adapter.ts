@@ -9,7 +9,6 @@ import {
   threadEventItemSchema,
   turnScope,
   type ApprovalPendingInteractionPayload,
-  type AvailableModel,
   type PendingInteractionUserQuestionOption,
   type ProviderCapabilities,
   type ThreadEvent,
@@ -28,17 +27,13 @@ import type {
   ProviderInteractiveResponse,
   ProviderRuntimeEvent,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import {
-  flattenPromptInputGroups,
-  noPreparedProviderCommandDispatch,
-} from "../provider-adapter.js";
+import { flattenPromptInputGroups } from "../provider-adapter.js";
 import { parseAvailableModelList } from "../shared/available-models.js";
 import { classifySessionExecutionSettingsChange } from "../execution-options.js";
 type FakeUserQuestionCapability =
   ProviderCapabilities["supportsNativeUserQuestion"];
 
-export interface CreateFakeProviderExecutionContext {
-  displayName?: string;
+interface CreateFakeProviderExecutionContext {
   id?: string;
   scriptPath?: string;
   supportsNativeUserQuestion?: FakeUserQuestionCapability;
@@ -50,7 +45,6 @@ interface FakeEventMessage {
 }
 
 const DEFAULT_ADAPTER_ID = "fake";
-const DEFAULT_DISPLAY_NAME = "Fake Provider";
 const FAKE_USER_QUESTION_REQUEST_METHOD = "interaction/user_question";
 const FAKE_APPROVAL_REQUEST_METHOD = "interaction/approval";
 
@@ -105,7 +99,6 @@ function buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {
         params: {
           cwd: command.cwd,
           dynamicTools: command.dynamicTools,
-          input: command.input,
           options: command.options,
           threadId: command.threadId,
         },
@@ -608,13 +601,6 @@ function buildInteractiveResponse(
   return args.resolution;
 }
 
-function parseModelListResult(result: unknown): {
-  models: AvailableModel[];
-  selectedOnlyModels: AvailableModel[];
-} {
-  return parseAvailableModelList(result);
-}
-
 export function createFakeAdapter(
   options: CreateFakeProviderExecutionContext = {},
 ): ProviderAdapter {
@@ -655,17 +641,13 @@ export function createFakeAdapter(
     decodeInteractiveRequest: createDecodeInteractiveRequest(
       supportsNativeUserQuestion,
     ),
-    displayName: options.displayName ?? DEFAULT_DISPLAY_NAME,
     id: options.id ?? DEFAULT_ADAPTER_ID,
-    parseModelListResult,
-    prepareTurnStart: noPreparedProviderCommandDispatch,
+    parseModelListResult: parseAvailableModelList,
     process: {
       args: buildNodeScriptArgs(options.scriptPath ?? fakeProviderScriptPath),
       command: "node",
     },
-    translateEvent(event) {
-      return translateEventMessage(event);
-    },
+    translateEvent: translateEventMessage,
     translateAcceptedCommand() {
       return [];
     },

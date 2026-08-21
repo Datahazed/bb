@@ -102,7 +102,7 @@ interface StartIdleProviderSessionReaperArgs {
   setIntervalFn: IdleProviderSessionReaperIntervalFn;
 }
 
-export interface CreateHostDaemonAppOptions {
+interface CreateHostDaemonAppOptions {
   dataDir: string;
   serverUrl: string;
   hostKey: string;
@@ -117,7 +117,6 @@ export interface CreateHostDaemonAppOptions {
   machineCredential?: string;
   connectMachineId?: string;
   autoUpdate?: boolean;
-  installUpdateTarball?: (tarballPath: string) => Promise<void>;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
@@ -127,7 +126,6 @@ export interface CreateHostDaemonAppOptions {
     NonNullable<AgentRuntimeOptions["shellEnv"]>
   >;
   nowMs?: () => number;
-  threadStorageRootPath?: string;
   hostWatcher?: HostWatcher;
   onToolCall?: (request: ToolCallRequest) => Promise<ToolCallResponse>;
   fetchFn?: FetchFn;
@@ -230,12 +228,7 @@ interface MaybeInvalidateSessionArgs {
 export async function createHostDaemonApp(
   options: CreateHostDaemonAppOptions,
 ): Promise<HostDaemonApp> {
-  const threadStorageRootPath = await ensureThreadStorageRoot(
-    options.dataDir,
-    options.threadStorageRootPath
-      ? { configuredRoot: options.threadStorageRootPath }
-      : {},
-  );
+  const threadStorageRootPath = await ensureThreadStorageRoot(options.dataDir);
   const dataDirSkillsRootPath = await ensureDataDirSkillsRootPath(
     options.dataDir,
   );
@@ -298,13 +291,13 @@ export async function createHostDaemonApp(
   async function flushThreadEventsBeforeInteractiveRegistration(): Promise<void> {
     // Interactive registration creates server-owned turn-scoped timeline state,
     // so the server must first observe the provider turn/started for that turn.
-    await eventSink.flushRequired();
+    await eventSink.flush();
   }
 
   async function flushThreadEventsBeforeToolCall(): Promise<void> {
     // Dynamic tool calls can append server-owned turn-scoped events, so the
     // server must first observe any provider turn/started already emitted.
-    await eventSink.flushRequired();
+    await eventSink.flush();
   }
 
   const serverClient = createServerClient({
@@ -829,10 +822,7 @@ export async function createHostDaemonApp(
     hostType: options.hostType,
     dataDir: options.dataDir,
     instanceId: options.instanceId,
-    localApiPort:
-      options.localApiConfig?.mode === "full"
-        ? options.localApiConfig.port
-        : null,
+    localApiPort: options.localApiConfig?.port ?? null,
     logger: options.logger,
     machineCredential: options.machineCredential,
     connectMachineId: options.connectMachineId,
@@ -841,7 +831,6 @@ export async function createHostDaemonApp(
       dataDir: options.dataDir,
       enabled: options.autoUpdate ?? false,
       fetchFn: options.fetchFn,
-      installTarball: options.installUpdateTarball,
       logger: options.logger,
       serverUrl: options.serverUrl,
     }),

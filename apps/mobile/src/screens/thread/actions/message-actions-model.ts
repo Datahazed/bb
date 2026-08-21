@@ -58,7 +58,7 @@ export interface TimelineMessageActionHandlers {
   sendToMainThread?: (target: { messageText: string }) => void;
 }
 
-export type MessageActionKey =
+type MessageActionKey =
   | "copy"
   | "quote-paragraph"
   | "add-to-chat"
@@ -72,7 +72,7 @@ export interface MessageActionItem {
   icon: IconName;
 }
 
-export interface MessageActionCapabilities {
+interface MessageActionCapabilities {
   canQuote: boolean;
   canEdit: boolean;
   canFork: boolean;
@@ -159,7 +159,7 @@ export function canEditUserMessage(
 }
 
 /** The prompt input an edit resubmits: text + mentions, then local images and files. */
-export function buildEditMessageInput(
+function buildEditMessageInput(
   target: Pick<
     TimelineMessageActionsTarget,
     "text" | "mentions" | "attachments"

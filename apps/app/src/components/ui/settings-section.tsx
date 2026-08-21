@@ -1,13 +1,11 @@
 import type { ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export interface SettingsSectionProps {
+interface SettingsSectionProps {
   action?: ReactNode;
   children: ReactNode;
   description?: string;
   title: ReactNode;
-  /** A compact utility that belongs directly beside the section title. */
-  titleAction?: ReactNode;
   /**
    * Extra classes for the card, e.g. a section whose whole body is one link
    * and needs a positioning context and a hover state.
@@ -20,7 +18,6 @@ export function SettingsSection({
   children,
   description,
   title,
-  titleAction,
   bodyClassName,
 }: SettingsSectionProps) {
   return (
@@ -36,7 +33,6 @@ export function SettingsSection({
             <h2 className="min-w-0 text-sm font-semibold text-foreground">
               {title}
             </h2>
-            {titleAction ? <div className="shrink-0">{titleAction}</div> : null}
           </div>
           {description ? (
             <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
@@ -58,7 +54,7 @@ export function SettingsSection({
   );
 }
 
-export interface SettingsRowListProps {
+interface SettingsRowListProps {
   children: ReactNode;
 }
 
@@ -66,7 +62,7 @@ export function SettingsRowList({ children }: SettingsRowListProps) {
   return <div className="divide-y divide-border">{children}</div>;
 }
 
-export interface SettingsRowProps {
+interface SettingsRowProps {
   children: ReactNode;
   /** Extra classes for rows that need positioning, e.g. a stretched row link. */
   className?: string;
@@ -85,7 +81,7 @@ export function SettingsRow({ children, className }: SettingsRowProps) {
   );
 }
 
-export interface SettingsWithControlProps {
+interface SettingsWithControlProps {
   label: string;
   labelBadge?: string;
   description?: ReactNode;

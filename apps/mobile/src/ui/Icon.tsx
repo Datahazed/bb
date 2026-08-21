@@ -4,9 +4,9 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { ICON_MAP, type IconName } from "./icon-map";
 
 /** theme.css `--icon-stroke-width`. */
-export const ICON_STROKE_WIDTH = 1.75;
+const ICON_STROKE_WIDTH = 1.75;
 /** Touch base size (web `size-5` under `pointer: coarse`). */
-export const ICON_SIZE_DEFAULT = 20;
+const ICON_SIZE_DEFAULT = 20;
 
 export interface IconProps {
   name: IconName;
@@ -45,4 +45,4 @@ export function Icon({
   );
 }
 
-export { ICON_MAP, ICON_NAMES, isIconName, type IconName } from "./icon-map";
+export { ICON_NAMES, isIconName, type IconName } from "./icon-map";

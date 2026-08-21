@@ -2,7 +2,6 @@ import type {
   CustomAcpAgent,
   CustomProviderModel,
 } from "@bb/config/bb-app-managed-config";
-import type { AppSurface } from "@bb/config/app-surface";
 import type { DbConnection } from "@bb/db";
 import type { FeatureFlags, ProviderNativeSkillRoots } from "@bb/domain";
 import type { Logger } from "@bb/logger";
@@ -25,7 +24,6 @@ export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
 export interface ServerRuntimeConfig {
   appVersion: string;
-  appSurface: AppSurface;
   builtinSkillsRootPath: string;
   customAcpAgents: CustomAcpAgent[];
   customModels: CustomProviderModel[];
@@ -48,7 +46,6 @@ export interface ServerRuntimeConfig {
   openAiApiKey: string;
   serverPort: number;
   sharedSkillRoots: ProviderNativeSkillRoots;
-  threadStorageRootPath: string;
   transcriptionModel: string;
   appUrl?: string;
   devAppPort?: number;
@@ -77,7 +74,7 @@ export interface ServerAppDeps extends AppDeps {
   bbAppManagedConfig: BbAppManagedConfigReloader;
 }
 
-export type LifecycleDeps = Pick<
+export type WorkSessionDeps = Pick<
   AppDeps,
   | "config"
   | "db"
@@ -90,13 +87,7 @@ export type LifecycleDeps = Pick<
   | "telemetry"
 >;
 
-export type WorkSessionDeps = LifecycleDeps;
-
 export type LoggedWorkSessionDeps = WorkSessionDeps & Pick<AppDeps, "logger">;
 
-export type PendingInteractionWorkSessionDeps = WorkSessionDeps &
-  Pick<AppDeps, "pendingInteractions">;
-
-export type LoggedPendingInteractionWorkSessionDeps =
-  PendingInteractionWorkSessionDeps &
-    Pick<AppDeps, "logger" | "terminalSessions">;
+export type LoggedPendingInteractionWorkSessionDeps = WorkSessionDeps &
+  Pick<AppDeps, "logger" | "pendingInteractions" | "terminalSessions">;

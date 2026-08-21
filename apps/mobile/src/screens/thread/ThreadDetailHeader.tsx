@@ -12,7 +12,7 @@ import type { ThreadStatusPill } from "./thread-detail-header-model";
  * (environment line, child roll-up, git action) lives in the menu sheet.
  */
 
-export interface ThreadHeaderTitleProps {
+interface ThreadHeaderTitleProps {
   title: string;
   statusPill: ThreadStatusPill;
   /** Pill shown beside the title for side chats / child threads. */
@@ -25,7 +25,7 @@ export interface ThreadHeaderTitleProps {
  * Subtitle shown under the title. Idle threads show none, and working threads
  * show none either: the timeline's working indicator already carries that.
  */
-export function headerSubtitle(
+function headerSubtitle(
   statusPill: ThreadStatusPill,
   childPillLabel: ThreadHeaderTitleProps["childPillLabel"],
 ): string | null {
@@ -86,7 +86,7 @@ export function ThreadHeaderTitle({
   );
 }
 
-export interface ThreadHeaderActionsProps {
+interface ThreadHeaderActionsProps {
   /** Opens the thread actions menu (null while the thread is loading). */
   onOpenActions: (() => void) | null;
   /** Opens the workspace panel (Info / Diff / Files / Terminal); null while loading. */

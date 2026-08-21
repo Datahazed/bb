@@ -15,7 +15,6 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import {
   type JsonValue,
-  type PermissionEscalation,
   type RuntimePermissionPolicy,
   type ThreadEvent,
 } from "@bb/domain";
@@ -32,7 +31,8 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
 }));
 
-import { buildSessionOptions, handleLine } from "../bridge.js";
+import { handleLine } from "../bridge.js";
+import { buildSessionOptions } from "../session-options.js";
 import {
   type ClaudePermissionMode,
   type ClaudeUserQuestionInput,
@@ -757,7 +757,6 @@ describe("bridge", () => {
       {},
     );
 
-    expect(options.tools).toBeUndefined();
     expect(options.cwd).toBe("/tmp/worktree");
     expect(options.disallowedTools).toEqual([
       "ExitPlanMode",
@@ -871,7 +870,6 @@ describe("bridge", () => {
       {},
     );
 
-    expect(options.tools).toBeUndefined();
     expect(options.cwd).toBe("/tmp/worktree");
     expect(options.systemPrompt).toEqual({
       type: "preset",
@@ -3644,7 +3642,6 @@ describe("bridge", () => {
     try {
       const threadId = "thread-stale-resume-error";
       const staleProviderThreadId = "stale-provider-thread";
-      const staleErrorText = `No conversation found with session ID: ${staleProviderThreadId}`;
       const inputText = "Reply READY";
       bridge.sendRequest(1, "thread/resume", {
         threadId,

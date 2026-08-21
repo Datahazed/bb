@@ -196,9 +196,7 @@ export function describePluginRow(
   return parts.join(" · ");
 }
 
-export function pluginIsLocalSource(
-  plugin: Pick<InstalledPlugin, "source">,
-): boolean {
+function pluginIsLocalSource(plugin: Pick<InstalledPlugin, "source">): boolean {
   return plugin.source.startsWith("path:");
 }
 
@@ -337,13 +335,6 @@ export function pluginSettingsChanges(
     changed[key] = draft;
   }
   return changed;
-}
-
-/** Keys of a schema in declaration order (the server's object order). */
-export function pluginSettingEntries(
-  schema: Record<string, PluginSettingDescriptor>,
-): [string, PluginSettingDescriptor][] {
-  return Object.entries(schema);
 }
 
 /** One plugin's last update-check result, flattened for rendering. */

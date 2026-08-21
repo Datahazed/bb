@@ -41,7 +41,7 @@ export interface MobileRealtimeConnectFailedEvent {
 
 const AUTH_REJECTION_PATTERN = /\b40[13]\b|unauthorized|forbidden/iu;
 
-export function isAuthRejectionMessage(message: string | null): boolean {
+function isAuthRejectionMessage(message: string | null): boolean {
   return message !== null && AUTH_REJECTION_PATTERN.test(message);
 }
 
@@ -87,8 +87,6 @@ export interface MobileRealtime {
    * `inactive`), an open socket is probed and a closed one reconnects now.
    */
   resume(): void;
-  /** Drop the current socket and connect again right away, skipping backoff. */
-  reconnectNow(): void;
   /**
    * Something that may have fixed the connection just happened (a fresh
    * session cookie): a closed socket waiting out its backoff reconnects
@@ -114,8 +112,6 @@ export interface MobileRealtime {
   getConnectionState(): MobileRealtimeConnectionState;
   isSuspended(): boolean;
   consumePendingOpenFile(threadId: string): ThreadOpenFile | null;
-  /** Parse and dispatch one raw server frame (exposed for tests). */
-  handleIncomingMessage(data: string): void;
   dispose(): void;
 }
 
@@ -125,17 +121,14 @@ export interface CreateMobileRealtimeOptions {
   socketFactory?: RealtimeSocketFactory;
   /** Extra upgrade headers, evaluated per connection attempt (cookie hook). */
   headers?: () => Record<string, string>;
-  minReconnectDelayMs?: number;
-  maxReconnectDelayMs?: number;
-  reconnectGrowFactor?: number;
   connectionTimeoutMs?: number;
   onInvalidMessage?: (error: unknown) => void;
 }
 
-export const REALTIME_MIN_RECONNECT_DELAY_MS = 1000;
-export const REALTIME_MAX_RECONNECT_DELAY_MS = 30_000;
-export const REALTIME_RECONNECT_GROW_FACTOR = 1.5;
-export const REALTIME_CONNECTION_TIMEOUT_MS = 10_000;
+const REALTIME_MIN_RECONNECT_DELAY_MS = 1000;
+const REALTIME_MAX_RECONNECT_DELAY_MS = 30_000;
+const REALTIME_RECONNECT_GROW_FACTOR = 1.5;
+const REALTIME_CONNECTION_TIMEOUT_MS = 10_000;
 /** Same cadence as the web manager (apps/app/src/lib/ws.ts). */
 export const REALTIME_PING_INTERVAL_MS = 25_000;
 export const REALTIME_PONG_TIMEOUT_MS = 5_000;
@@ -164,9 +157,9 @@ export function createMobileRealtime(
 ): MobileRealtime {
   const socketFactory = options.socketFactory ?? defaultRealtimeSocketFactory;
   const backoff = {
-    minDelayMs: options.minReconnectDelayMs ?? REALTIME_MIN_RECONNECT_DELAY_MS,
-    maxDelayMs: options.maxReconnectDelayMs ?? REALTIME_MAX_RECONNECT_DELAY_MS,
-    growFactor: options.reconnectGrowFactor ?? REALTIME_RECONNECT_GROW_FACTOR,
+    minDelayMs: REALTIME_MIN_RECONNECT_DELAY_MS,
+    maxDelayMs: REALTIME_MAX_RECONNECT_DELAY_MS,
+    growFactor: REALTIME_RECONNECT_GROW_FACTOR,
   };
   const connectionTimeoutMs =
     options.connectionTimeoutMs ?? REALTIME_CONNECTION_TIMEOUT_MS;
@@ -537,7 +530,6 @@ export function createMobileRealtime(
       if (!started || disposed) return;
       openSocket();
     },
-    reconnectNow,
     probeOrReconnect,
     subscribe(target) {
       const key = realtimeSubscriptionTargetKey(target);
@@ -576,7 +568,6 @@ export function createMobileRealtime(
       pendingOpenFileByThreadId.delete(threadId);
       return pending;
     },
-    handleIncomingMessage,
     dispose() {
       if (disposed) return;
       disposed = true;

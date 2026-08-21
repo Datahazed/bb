@@ -19,7 +19,7 @@ import {
 import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
 import { type PluginBuildToolchain } from "./toolchain.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
-import { validatePluginBuildManifest } from "./plugin-manifest.js";
+import { isRecord, validatePluginBuildManifest } from "./plugin-manifest.js";
 import {
   pluginScopeRoots,
   scopePluginUtilities,
@@ -297,10 +297,6 @@ type ScannerSource = {
   pattern: string;
   negated: boolean;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function readDependencyNames(pkg: Record<string, unknown>): string[] {
   const names = new Set<string>();
@@ -598,13 +594,13 @@ async function bundledInputPaths(
   return paths;
 }
 
-export interface PluginAppBuildResult {
+interface PluginAppBuildResult {
   jsPath: string;
   cssPath: string;
   metaPath: string;
 }
 
-export interface PluginAppBuildOptions {
+interface PluginAppBuildOptions {
   /**
    * Minify app.js and app.css. On by default: the artifacts are what every
    * browser downloads and parses, so bytes are the product. `bb plugin dev`

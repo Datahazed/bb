@@ -17,14 +17,13 @@ interface SplitLayoutStore {
   set(atom: typeof splitLayoutAtom, value: SplitLayout): void;
 }
 
-export interface OpenThreadInSplitArgs {
+interface OpenThreadInSplitArgs {
   store: SplitLayoutStore;
   navigate: (route: string, options?: { replace?: boolean }) => void;
   projectId: string;
   threadId: string;
   /** Splits are off on compact viewports. */
   isCompact: boolean;
-  threadSplitsEnabled: boolean;
 }
 
 /**
@@ -42,13 +41,12 @@ export function openThreadInSplit({
   projectId,
   threadId,
   isCompact,
-  threadSplitsEnabled,
 }: OpenThreadInSplitArgs): void {
   const route = getThreadRoutePath({ projectId, threadId });
   const layout = store.get(splitLayoutAtom);
   // No split to grow (compact viewport, or a non-thread route with no layout):
   // behave like an ordinary open.
-  if (!threadSplitsEnabled || isCompact || layout === null) {
+  if (isCompact || layout === null) {
     navigate(route);
     return;
   }

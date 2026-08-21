@@ -33,7 +33,7 @@ import {
   type NewThreadPromptBoxProps,
 } from "@/components/promptbox/NewThreadPromptBox";
 import { withAppPromptActions } from "@/components/promptbox/PromptBoxActionsMenu";
-import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
+import { buildProviderPromptActionProps } from "@bb/client-core";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import { type PluginComposerHost } from "@/components/plugin/plugin-composer-host";
@@ -67,7 +67,7 @@ import {
   promptDraftToInput,
   type PromptDraftAttachment,
   type PromptDraftState,
-} from "@/lib/prompt-draft";
+} from "@bb/client-core";
 import {
   getProjectComposeRoutePath,
   getThreadRoutePath,
@@ -91,7 +91,7 @@ import {
   type RootComposeSelectedBranch,
 } from "@/views/root-compose-thread-environment";
 
-export type NewThreadComposerSelectionScope = "new-thread" | "component-local";
+type NewThreadComposerSelectionScope = "new-thread" | "component-local";
 
 export interface NewThreadComposerSeed {
   providerId?: string;
@@ -103,14 +103,14 @@ export interface NewThreadComposerSeed {
   initialPrompt?: string;
 }
 
-export interface NewThreadComposerLocks {
+interface NewThreadComposerLocks {
   project?: boolean;
   provider?: boolean;
   environment?: boolean;
   branch?: boolean;
 }
 
-export interface NewThreadComposerPromptOptions {
+interface NewThreadComposerPromptOptions {
   id?: string;
   placeholder?: string;
   autoFocus?: boolean;
@@ -142,17 +142,10 @@ export interface NewThreadComposerState {
   projectSources: SidebarProject["sources"];
   connectedHostIds: ReadonlySet<string>;
   primaryHostId: string | null;
-  reuseThreadOptions: ReturnType<typeof buildReuseThreadOptions>;
-  effectiveEnvironmentValue: string;
   parsedEnvironment: ParsedEnvironment;
   projectHostId: string | null;
   panelThreadId: string | null;
   selectedProviderId: string;
-  selectedModel: string;
-  reasoningLevel: ReasoningLevel;
-  permissionMode: PermissionMode;
-  serviceTier: ServiceTier | undefined;
-  supportsServiceTier: boolean;
   promptDraft: PromptDraftController;
   promptBoxRef: React.RefObject<PromptBoxHandle | null>;
   pluginComposerHost: PluginComposerHost;
@@ -1469,17 +1462,10 @@ export function NewThreadComposer({
     projectSources,
     connectedHostIds,
     primaryHostId,
-    reuseThreadOptions,
-    effectiveEnvironmentValue,
     parsedEnvironment,
     projectHostId,
     panelThreadId,
     selectedProviderId,
-    selectedModel,
-    reasoningLevel,
-    permissionMode,
-    serviceTier,
-    supportsServiceTier,
     promptDraft,
     promptBoxRef,
     pluginComposerHost,

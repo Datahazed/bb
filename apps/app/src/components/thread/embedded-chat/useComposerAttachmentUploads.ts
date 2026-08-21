@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
-import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import type { PromptDraftAttachment } from "@bb/client-core";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
 
 interface UseComposerAttachmentUploadsArgs {
@@ -14,7 +14,7 @@ interface UseComposerAttachmentUploadsArgs {
   ) => void;
 }
 
-export interface UseComposerAttachmentUploadsResult {
+interface UseComposerAttachmentUploadsResult {
   bottomAttachmentError: string | null;
   setBottomAttachmentError: (error: string | null) => void;
   handleAttachBottomFiles: (files: File[]) => Promise<void>;
@@ -25,7 +25,7 @@ export interface UseComposerAttachmentUploadsResult {
   isAttachingInlineFiles: boolean;
 }
 
-export interface DraftAttachmentUploadTarget {
+interface DraftAttachmentUploadTarget {
   /** Changes whenever a newly mounted draft must not receive older uploads. */
   key: string;
   addAttachment: (attachment: PromptDraftAttachment) => void;
@@ -36,7 +36,7 @@ interface UseDraftAttachmentUploadsArgs {
   target: DraftAttachmentUploadTarget | null;
 }
 
-export interface UseDraftAttachmentUploadsResult {
+interface UseDraftAttachmentUploadsResult {
   attachmentError: string | null;
   setAttachmentError: (error: string | null) => void;
   handleAttachFiles: (files: File[]) => Promise<void>;

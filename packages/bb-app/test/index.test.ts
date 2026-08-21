@@ -1,11 +1,5 @@
 import { spawn } from "node:child_process";
-import {
-  mkdtempSync,
-  readFileSync,
-  statSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import {
   createServer,
   type IncomingMessage,
@@ -17,34 +11,30 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import {
-  createHostEnrollKeyRequestBody,
-  isMainModule,
-  parseLauncherArgs,
-  resolveBbAppRuntimeContext,
-  resolveBbAppRuntimeState,
-  resolveDataDir,
-  resolvePort,
-  resolveBbAppStartContext,
-  resolveBbAppCommand,
-  resolveWorktreeRuntimePolicy,
-  runBbApp,
-} from "../src/index.js";
+import { resolvePortFromEnv } from "@bb/config/runtime";
 import {
   completeFullStackSupervision,
   createDaemonEnv,
+  createHostEnrollKeyRequestBody,
   createServerEnv,
   createHostDaemonJoinEnv,
+  parseLauncherArgs,
   readBbAppPackageVersion,
+  resolveBbAppRuntimeState,
+  resolveDataDir,
+  resolveBbAppStartContext,
+  resolveBbAppCommand,
   resolveServerListenerUrl,
+  resolveWorktreeRuntimePolicy,
+  runBbApp,
   runBundledCliCommand,
   superviseFullStackProcesses,
   terminateManagedFullStackProcesses,
   waitForHostDaemonStatus,
   waitForProcessExit,
 } from "../src/launcher.js";
-import type { BbAppStartContext } from "../src/index.js";
 import type {
+  BbAppStartContext,
   DelayMillisecondsArgs,
   DelayMillisecondsFn,
   FullStackSupervisionResult,
@@ -637,11 +627,11 @@ describe("bb-app launcher", () => {
     expect(resolveDataDir({ env, homeDir: "/home/tester" })).toBe(
       "/home/tester/custom-bb",
     );
-    expect(resolvePort({ defaultPort: 1, env, name: "BB_SERVER_PORT" })).toBe(
-      48886,
-    );
     expect(
-      resolvePort({ defaultPort: 1, env, name: "BB_HOST_DAEMON_PORT" }),
+      resolvePortFromEnv({ defaultPort: 1, env, name: "BB_SERVER_PORT" }),
+    ).toBe(48886);
+    expect(
+      resolvePortFromEnv({ defaultPort: 1, env, name: "BB_HOST_DAEMON_PORT" }),
     ).toBe(48887);
   });
 
@@ -904,13 +894,16 @@ describe("bb-app launcher", () => {
       "utf8",
     );
 
-    const context = await resolveBbAppRuntimeContext({
-      entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
-      env: { BB_DATA_DIR: dataDir },
-      homeDir: "/home/tester",
-      options: { help: false },
-      serverUrlMode: "managed",
-    });
+    const context = (
+      await resolveBbAppRuntimeState({
+        entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js")
+          .href,
+        env: { BB_DATA_DIR: dataDir },
+        homeDir: "/home/tester",
+        options: { help: false },
+        serverUrlMode: "managed",
+      })
+    ).context;
 
     expect(context.serverUrl).toBe("https://bb.example.test");
   });
@@ -946,13 +939,16 @@ describe("bb-app launcher", () => {
       "utf8",
     );
 
-    const context = await resolveBbAppRuntimeContext({
-      entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
-      env: { BB_DATA_DIR: dataDir },
-      homeDir: "/home/tester",
-      options: { help: false },
-      serverUrlMode: "local",
-    });
+    const context = (
+      await resolveBbAppRuntimeState({
+        entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js")
+          .href,
+        env: { BB_DATA_DIR: dataDir },
+        homeDir: "/home/tester",
+        options: { help: false },
+        serverUrlMode: "local",
+      })
+    ).context;
 
     expect(context.serverUrl).toBe("http://127.0.0.1:38886");
   });
@@ -1938,21 +1934,6 @@ describe("bb-app launcher", () => {
       await envServer.close();
       await configServer.close();
     }
-  });
-
-  it("detects npm bin symlinks as the main module", () => {
-    const testDir = mkdtempSync(join(tmpdir(), "bb-bb-app-main-"));
-    const realEntryPath = join(testDir, "dist-index.js");
-    const symlinkPath = join(testDir, "bb");
-    writeFileSync(realEntryPath, "", "utf8");
-    symlinkSync(realEntryPath, symlinkPath);
-
-    expect(
-      isMainModule({
-        entrypointPath: symlinkPath,
-        moduleUrl: pathToFileURL(realEntryPath).href,
-      }),
-    ).toBe(true);
   });
 
   it("observes child processes that exited before wait registration", async () => {

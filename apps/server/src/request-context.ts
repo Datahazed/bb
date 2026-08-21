@@ -8,15 +8,15 @@ import {
 import type { Context } from "hono";
 
 export const TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY = "bbTrustedRemoteAddress";
-export const GATE_AUTH_HEADER_NAME = "x-bb-gate-auth";
-export const GATE_MACHINE_ID_HEADER_NAME = "x-bb-gate-machine-id";
-export type GateAuthKind = "machine" | "session";
+const GATE_AUTH_HEADER_NAME = "x-bb-gate-auth";
+const GATE_MACHINE_ID_HEADER_NAME = "x-bb-gate-machine-id";
+type GateAuthKind = "machine" | "session";
 
 export interface GateAuthHeaderReader {
   req: { header(name: string): string | undefined };
 }
 
-export interface TrustedRemoteAddressReader {
+interface TrustedRemoteAddressReader {
   get(key: typeof TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY): string | undefined;
 }
 

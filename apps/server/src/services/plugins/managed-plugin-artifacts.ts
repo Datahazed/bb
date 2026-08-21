@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
+import { derivePluginId } from "@bb/domain";
 import {
   createPluginArtifact,
   getInstalledPlugin,
@@ -44,11 +45,7 @@ import {
   runInstallCommand,
 } from "./install-sources.js";
 import { gitSelectorRefName } from "./git-source-intent.js";
-import {
-  derivePluginId,
-  readPluginManifest,
-  type PluginManifest,
-} from "./manifest.js";
+import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import type {
   PluginListEntry,
   PluginServiceDeps,
@@ -117,16 +114,17 @@ interface ActivateManagedUpdateArgs {
   beforePersist?: () => Promise<void>;
 }
 
-export interface ManagedPluginArtifactsContext {
+interface ManagedPluginArtifactsContext {
   deps: PluginServiceDeps;
   withArtifactLock: <T>(key: string, fn: () => Promise<T>) => Promise<T>;
   sourceKind: (source: string) => "path" | "git" | "npm" | "builtin";
   checkEngineRange: (manifest: PluginManifest) => string | undefined;
   checkPluginSdkRange: (manifest: PluginManifest) => string | undefined;
-  isPackagedBuiltinAppEntry: (args: {
+  isPackagedBuiltinEntry: (args: {
     kind: "path" | "git" | "npm" | "builtin";
     manifest: PluginManifest;
     rootDir: string;
+    artifact: "app" | "server" | "host";
   }) => boolean;
   registerInstalled: (args: RegisterInstalledArgs) => Promise<PluginListEntry>;
   assertInstallRegistrationAvailable: (
@@ -240,7 +238,7 @@ export function createManagedPluginArtifacts(
     sourceKind,
     checkEngineRange,
     checkPluginSdkRange,
-    isPackagedBuiltinAppEntry,
+    isPackagedBuiltinEntry,
     registerInstalled,
     assertInstallRegistrationAvailable,
     refuseBuiltinShadow,
@@ -339,7 +337,12 @@ export function createManagedPluginArtifacts(
           );
         }
       } else if (
-        !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: args.rootDir })
+        !isPackagedBuiltinEntry({
+          kind,
+          manifest,
+          rootDir: args.rootDir,
+          artifact: "app",
+        })
       ) {
         try {
           await buildPluginApp(
@@ -954,7 +957,6 @@ export function createManagedPluginArtifacts(
         await rm(stagingDir, { recursive: true, force: true });
         throw error;
       }
-      throw new Error("unreachable git install state");
     });
   }
 
@@ -1234,7 +1236,6 @@ export function createManagedPluginArtifacts(
         await rm(stagingPrefix, { recursive: true, force: true });
         throw error;
       }
-      throw new Error("unreachable npm install state");
     });
   }
 
@@ -1522,7 +1523,6 @@ export function createManagedPluginArtifacts(
   async function applyNpmCandidate(args: {
     row: InstalledPluginRow;
     selectionIntent: NpmSourceIntentForResolution;
-    sourceIntent: NpmSourceIntentForResolution;
     candidate: NpmResolvedCandidate;
   }): Promise<void> {
     const targetPrefix = npmArtifactCacheDir(
@@ -1563,10 +1563,10 @@ export function createManagedPluginArtifacts(
           rootDir: targetRoot,
           manifest,
           source:
-            args.sourceIntent.specKind === "default"
-              ? `npm:${args.sourceIntent.packageName}`
-              : `npm:${args.sourceIntent.packageName}@${args.sourceIntent.requestedSpec}`,
-          sourceIntent: { kind: "npm", ...args.sourceIntent },
+            args.selectionIntent.specKind === "default"
+              ? `npm:${args.selectionIntent.packageName}`
+              : `npm:${args.selectionIntent.packageName}@${args.selectionIntent.requestedSpec}`,
+          sourceIntent: { kind: "npm", ...args.selectionIntent },
           exactResolution: {
             kind: "npm",
             version: args.candidate.version,
@@ -1638,10 +1638,10 @@ export function createManagedPluginArtifacts(
           rootDir: targetRoot,
           manifest,
           source:
-            args.sourceIntent.specKind === "default"
-              ? `npm:${args.sourceIntent.packageName}`
-              : `npm:${args.sourceIntent.packageName}@${args.sourceIntent.requestedSpec}`,
-          sourceIntent: { kind: "npm", ...args.sourceIntent },
+            args.selectionIntent.specKind === "default"
+              ? `npm:${args.selectionIntent.packageName}`
+              : `npm:${args.selectionIntent.packageName}@${args.selectionIntent.requestedSpec}`,
+          sourceIntent: { kind: "npm", ...args.selectionIntent },
           exactResolution: {
             kind: "npm",
             version: args.candidate.version,

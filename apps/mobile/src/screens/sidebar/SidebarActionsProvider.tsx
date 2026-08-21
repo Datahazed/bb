@@ -14,7 +14,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { useRenameProject, useDeleteProject } from "@/data/projects";
 import {
   useCreateSection,
@@ -47,6 +47,7 @@ import {
   useUnarchiveThread,
   useUnpinThread,
 } from "@/data/threads";
+import { describeError } from "@/lib/describe-error";
 import { useTheme } from "@/theme";
 import {
   Icon,
@@ -58,6 +59,7 @@ import {
   useSheet,
   type IconName,
 } from "@/ui";
+import { CenteredRow, CheckRow, SheetHeader } from "../shell/sheet-rows";
 import {
   newThreadHref,
   newProjectHref,
@@ -100,14 +102,13 @@ type SheetState =
   | { kind: "display-options" }
   | { kind: "section-reorder" };
 
-export interface SidebarActions {
+interface SidebarActions {
   openThreadMenu(thread: ThreadListEntry): void;
   openProjectMenu(project: SidebarProject): void;
   openSectionMenu(section: SidebarSectionDefinition): void;
   openDisplayOptions(): void;
   /** The drag-to-reorder list of top-level sections for the current mode. */
   openSectionReorder(): void;
-  openCreateSection(): void;
   /** Navigate to the thread detail. */
   openThread(thread: Pick<ThreadListEntry, "id">): void;
   /** Navigate to the composer, preselecting a project and/or section. */
@@ -149,10 +150,6 @@ const SORT_OPTIONS: readonly {
   { label: "Alphabetical", sort: "alpha", icon: "Sort" },
 ];
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function sectionErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof BbHttpError && error.code === "section_name_conflict") {
     return "Section name already exists.";
@@ -167,26 +164,6 @@ interface MenuAction {
   destructive?: boolean;
   disabled?: boolean;
   onPress: () => void;
-}
-
-function SheetHeader({
-  title,
-  message,
-}: {
-  title: string;
-  message?: string | null;
-}) {
-  return (
-    <>
-      <View className="gap-1 px-4 pb-3 pt-1">
-        <Text variant="heading" numberOfLines={2}>
-          {title}
-        </Text>
-        {message ? <Text variant="caption">{message}</Text> : null}
-      </View>
-      <Separator />
-    </>
-  );
 }
 
 function MenuRows({ actions }: { actions: readonly MenuAction[] }) {
@@ -213,58 +190,6 @@ function MenuRows({ actions }: { actions: readonly MenuAction[] }) {
         />
       ))}
     </>
-  );
-}
-
-function CheckRow({
-  label,
-  icon,
-  checked,
-  onPress,
-  testID,
-}: {
-  label: string;
-  icon: IconName;
-  checked: boolean;
-  onPress: () => void;
-  testID: string;
-}) {
-  const { tokens } = useTheme();
-  return (
-    <ListRow
-      title={label}
-      leading={icon}
-      selected={checked}
-      trailing={
-        checked ? (
-          <Icon name="Check" size={18} color={tokens.foreground} />
-        ) : null
-      }
-      onPress={onPress}
-      testID={testID}
-    />
-  );
-}
-
-/** Full-width secondary row with centered copy (Cancel / Done). */
-function CenteredRow({
-  label,
-  onPress,
-  testID,
-}: {
-  label: string;
-  onPress: () => void;
-  testID: string;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      className="min-h-[44px] items-center justify-center px-4 active:bg-state-hover"
-      testID={testID}
-    >
-      <Text variant="label">{label}</Text>
-    </Pressable>
   );
 }
 
@@ -300,7 +225,7 @@ function ConfirmRows({
   );
 }
 
-export interface SidebarActionsProviderProps {
+interface SidebarActionsProviderProps {
   children: ReactNode;
   /**
    * Handles "new thread" in place of navigating home with params (the home
@@ -360,8 +285,6 @@ export function SidebarActionsProvider({
       openSectionMenu: (section) => present({ kind: "section-menu", section }),
       openDisplayOptions: () => present({ kind: "display-options" }),
       openSectionReorder: () => present({ kind: "section-reorder" }),
-      openCreateSection: () =>
-        present({ kind: "section-create", moveThread: null }),
       openThread: (thread) => navigate(threadHref(thread.id)),
       createThread: (target) => {
         if (onCreateThread?.(target)) return;

@@ -36,12 +36,10 @@ import { isFsErrorWithCode } from "./fs-errors.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import { resolveHostPlatform } from "./host-platform.js";
 
-export type WorkspaceOpenTargetListHandler = (
+type WorkspaceOpenTargetListHandler = (
   query: WorkspaceOpenTargetsQuery,
 ) => Promise<WorkspaceOpenTarget[]>;
-export type OpenInTargetHandler = (
-  request: OpenPathInTargetArgs,
-) => Promise<void>;
+type OpenInTargetHandler = (request: OpenPathInTargetArgs) => Promise<void>;
 
 /**
  * Browser-reachable local HTTP API for colocated setups.
@@ -52,7 +50,7 @@ export type OpenInTargetHandler = (
  * through the server and connected work host daemon instead of adding them to a
  * client.
  */
-export interface StartLocalApiServerOptions {
+interface StartLocalApiServerOptions {
   dataDir?: string;
   hostId: string;
   localApiConfig: HostDaemonLocalApiConfig;
@@ -105,10 +103,6 @@ function isSelfEvidentLocalHostname(hostname: string): boolean {
   return /^\d{1,3}(?:\.\d{1,3}){3}$/u.test(hostname);
 }
 
-function isNoEntryError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
 function createClientConfigLoader(
   dataDir: string | undefined,
   nowMs: () => number = Date.now,
@@ -142,7 +136,7 @@ async function readClientConfig(dataDir: string): Promise<ClientConfig> {
       JSON.parse(await fs.readFile(formatClientConfigPath(dataDir), "utf8")),
     );
   } catch (error) {
-    if (!isNoEntryError(error)) {
+    if (!isFsErrorWithCode(error, "ENOENT")) {
       throw error;
     }
     return EMPTY_CLIENT_CONFIG;
@@ -195,8 +189,6 @@ async function resolveOpenPathInTargetArgs({
     columnNumber: request.columnNumber,
     context: {
       kind: "remote-ssh",
-      serverOrigin,
-      hostId: request.context.hostId,
       sshAuthority,
     },
     lineNumber: request.lineNumber,
@@ -287,12 +279,6 @@ export async function startLocalApiServer(
         { error: `origin "${origin}" is not a local BB app origin` },
         403,
       );
-    }
-    await next();
-  });
-  app.use("*", async (c, next) => {
-    if (options.localApiConfig.mode === "health-only") {
-      return c.notFound();
     }
     await next();
   });

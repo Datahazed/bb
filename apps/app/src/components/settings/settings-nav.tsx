@@ -33,7 +33,7 @@ export const SETTINGS_NAV_SECTIONS = [
   label: string;
 }[];
 
-export type SettingsNavSection = (typeof SETTINGS_NAV_SECTIONS)[number];
+type SettingsNavSection = (typeof SETTINGS_NAV_SECTIONS)[number];
 
 export type SettingsSectionId = SettingsNavSection["id"];
 
@@ -48,13 +48,11 @@ function isSettingsProviderId(value: string): value is SettingsProviderId {
   return SETTINGS_PROVIDER_ENTRIES.some((provider) => provider.id === value);
 }
 
-export function isSettingsSectionId(value: string): value is SettingsSectionId {
+function isSettingsSectionId(value: string): value is SettingsSectionId {
   return SETTINGS_NAV_SECTIONS.some((section) => section.id === value);
 }
 
 export interface SettingsNavState {
-  /** Host id from /settings/machines/:hostId, else null. */
-  activeMachineId: string | null;
   /** Provider id from /settings/providers/:providerId, else null. */
   activeProviderId: SettingsProviderId | null;
   /** Selected bucket; null while a provider page is active. */
@@ -142,7 +140,6 @@ export function useSettingsNavState(): SettingsNavState {
     .sort((left, right) => left.label.localeCompare(right.label));
 
   return {
-    activeMachineId,
     activePluginId,
     activeProviderId,
     activeSection,

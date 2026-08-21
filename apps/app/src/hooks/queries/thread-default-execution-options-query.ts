@@ -7,17 +7,13 @@ import {
   writeCachedThreadExecutionOptions,
 } from "@/lib/thread-execution-options-cache";
 import { useThreadDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
-import { requireEnabledQueryArg } from "./query-helpers";
+import { requireThreadId } from "./query-helpers";
 import { threadDefaultExecutionOptionsQueryKey } from "./query-keys";
 import { REALTIME_OWNED_NO_FOCUS_QUERY_POLICY } from "./query-policies";
 
 export {
   allThreadDefaultExecutionOptionsQueryKeyPrefix,
   threadDefaultExecutionOptionsQueryKey,
-} from "./query-keys";
-export type {
-  ThreadDefaultExecutionOptionsQueryKey,
-  ThreadDefaultExecutionOptionsQueryKeyPrefix,
 } from "./query-keys";
 
 interface ThreadDefaultExecutionOptionsQueryOptions {
@@ -26,11 +22,7 @@ interface ThreadDefaultExecutionOptionsQueryOptions {
   staleTime?: number;
 }
 
-function requireThreadId(id: string, hookName: string): string {
-  return requireEnabledQueryArg({ value: id, hookName, argName: "thread id" });
-}
-
-export async function fetchThreadDefaultExecutionOptions(
+async function fetchThreadDefaultExecutionOptions(
   threadId: string,
   signal?: AbortSignal,
 ): Promise<ResolvedThreadExecutionOptions | null> {

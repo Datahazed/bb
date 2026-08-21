@@ -9,15 +9,15 @@ import type {
   ExperimentalFileOpenOptions,
   JsonValue,
 } from "@get-bb/plugin-sdk";
-import type { FileTabViewerOverride } from "@/components/plugin/file-opener-tabs";
+import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
 
-export interface AppUrlOpenIntent {
+interface AppUrlOpenIntent {
   url: string;
 }
 
 export interface AppFilePreviewIntent extends ExperimentalFileOpenOptions {
   /** Internal per-activation override used by BB-owned Open with… menus. */
-  viewer?: FileTabViewerOverride;
+  viewer?: FileOpenerOverride;
 }
 
 /** Internal identity. Public plugin callers never supply `ownerId`. */
@@ -32,7 +32,7 @@ export interface AppFixedTabOpenIntent {
   target?: JsonValue;
 }
 
-export interface AppNavigationHostCapabilities {
+interface AppNavigationHostCapabilities {
   openFileExternally?: (intent: ExperimentalFileOpenOptions) => boolean;
   openFilePreview?: (intent: AppFilePreviewIntent) => boolean;
   openFixedTab?: (intent: AppFixedTabOpenIntent) => boolean;

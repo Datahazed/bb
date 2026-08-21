@@ -18,18 +18,15 @@ import { Button, cn, Icon, Text, TextArea } from "@/ui";
 const OTHER_OPTION_LABEL = "Other…";
 const PREVIEW_MAX_HEIGHT = 220;
 
-export interface QuestionFormProps {
+interface QuestionFormProps {
   /** Resets the form when a different interaction takes over. */
   interactionId: string;
   questions: readonly InteractionFormQuestion[];
   /** Everything disabled while a submit / server `resolving` is in flight. */
   disabled: boolean;
   submitting: boolean;
-  submitLabel?: string;
-  cancelLabel?: string;
   onSubmit: (formState: QuestionFormState) => void;
   onCancel: () => void;
-  testID?: string;
 }
 
 interface QuestionOptionRowProps {
@@ -245,11 +242,8 @@ export function QuestionForm({
   questions,
   disabled,
   submitting,
-  submitLabel = "Submit answer",
-  cancelLabel = "Cancel",
   onSubmit,
   onCancel,
-  testID,
 }: QuestionFormProps) {
   const [formState, setFormState] = useState<QuestionFormState>(() =>
     createInitialFormState(questions),
@@ -294,7 +288,7 @@ export function QuestionForm({
   const currentState = answerStateFor(formState, currentQuestion);
 
   return (
-    <View testID={testID}>
+    <View>
       {totalQuestions > 1 ? (
         <QuestionTabs
           currentIndex={currentIndex}
@@ -331,7 +325,7 @@ export function QuestionForm({
           onPress={onCancel}
           testID="question-cancel"
         >
-          {cancelLabel}
+          Cancel
         </Button>
         <View className="flex-row items-center gap-2">
           {!isFirst ? (
@@ -353,7 +347,7 @@ export function QuestionForm({
             onPress={handleAdvance}
             testID={isLast ? "question-submit" : "question-next"}
           >
-            {isLast ? submitLabel : "Next"}
+            {isLast ? "Submit answer" : "Next"}
           </Button>
         </View>
       </View>

@@ -40,13 +40,13 @@ import type { TimelineRowKind } from "../../rows";
 
 const SKILL_FILE_NAME = "SKILL.md";
 
-export function isSkillReadIntent(intent: TimelineActivityIntent): boolean {
+function isSkillReadIntent(intent: TimelineActivityIntent): boolean {
   if (intent.type !== "read") return false;
   const target = (intent.path ?? intent.name).replaceAll("\\", "/");
   return target.split("/").pop() === SKILL_FILE_NAME;
 }
 
-export function explorationIntentIcon(
+function explorationIntentIcon(
   intentType: "read" | "list_files" | "search",
 ): IconName {
   switch (intentType) {
@@ -158,7 +158,7 @@ export function commandMetadataLines(row: TimelineCommandWorkRow): string[] {
   return lines;
 }
 
-export function formatToolArgValue(value: JsonValue): string {
+function formatToolArgValue(value: JsonValue): string {
   if (typeof value === "string") return value;
   if (value === null) return "null";
   if (typeof value === "number" || typeof value === "boolean") {
@@ -167,7 +167,7 @@ export function formatToolArgValue(value: JsonValue): string {
   return JSON.stringify(value, null, 2);
 }
 
-export interface ToolArgEntry {
+interface ToolArgEntry {
   key: string;
   value: string;
 }
@@ -181,7 +181,7 @@ export function toolArgEntries(args: TimelineToolArgs): ToolArgEntry[] {
 }
 
 /** Characters per line the tool-card header estimate assumes (phone width, 14px mono). */
-export const TOOL_HEADER_CHARS_PER_LINE = 40;
+const TOOL_HEADER_CHARS_PER_LINE = 40;
 
 /**
  * Estimated rendered line count of the tool-card header (tool name plus one
@@ -210,29 +210,12 @@ export function estimateToolHeaderLines(
 }
 
 // ---------------------------------------------------------------------------
-// Image view
-// ---------------------------------------------------------------------------
-
-/**
- * `GET /api/v1/threads/:id/host-files/content?path=…` on the profile's
- * server (web `buildThreadHostFileContentUrl`, absolute for expo-image).
- */
-export function buildThreadHostFileContentUrl(
-  serverUrl: string,
-  threadId: string,
-  path: string,
-): string {
-  const base = serverUrl.replace(/\/+$/, "");
-  return `${base}/api/v1/threads/${encodeURIComponent(threadId)}/host-files/content?path=${encodeURIComponent(path)}`;
-}
-
-// ---------------------------------------------------------------------------
 // Approval (read-only decision glyph)
 // ---------------------------------------------------------------------------
 
-export type ApprovalDecisionTone = "pending" | "granted" | "denied" | "muted";
+type ApprovalDecisionTone = "pending" | "granted" | "denied" | "muted";
 
-export interface ApprovalDecision {
+interface ApprovalDecision {
   icon: IconName;
   tone: ApprovalDecisionTone;
   /** Accessibility label for the glyph. */
@@ -290,7 +273,7 @@ export function describeApprovalDecision(
 // Question (answered body)
 // ---------------------------------------------------------------------------
 
-export interface AnsweredQuestionEntry {
+interface AnsweredQuestionEntry {
   id: string;
   prompt: string;
   /** Option labels (falling back to raw values) the user picked. */
@@ -375,7 +358,7 @@ export function deriveWorkflowAgentDisplayState(
   return agent.state;
 }
 
-export function formatCompactTokens(tokens: number): string {
+function formatCompactTokens(tokens: number): string {
   if (tokens >= 1_000_000) {
     return `${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
   }
@@ -385,7 +368,7 @@ export function formatCompactTokens(tokens: number): string {
   return `${tokens}`;
 }
 
-export function formatCompactDuration(durationMs: number): string {
+function formatCompactDuration(durationMs: number): string {
   const totalSeconds = Math.max(0, Math.round(durationMs / 1_000));
   if (totalSeconds < 60) return `${totalSeconds}s`;
   const minutes = Math.floor(totalSeconds / 60);
@@ -543,7 +526,7 @@ export function formatWorkflowUsage(
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-export type WorkflowBodyKind =
+type WorkflowBodyKind =
   | { kind: "tree"; snapshot: WorkflowProgressSnapshot }
   | { kind: "text"; text: string }
   | { kind: "none" };

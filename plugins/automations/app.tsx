@@ -30,11 +30,12 @@ import type {
 import { AutomationDetailView } from "./detail-view";
 import {
   AutomationOverviewView,
+  automationProjectLabel,
   CREATE_AUTOMATION_PROMPT,
   type AutomationCollectionMode,
 } from "./overview-view";
 import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "./delayed-loading.js";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import {
   Dialog,
   DialogContent,
@@ -43,7 +44,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
-import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { ResourceListState } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { OptionRequestGate } from "./src/option-request-gate.js";
@@ -51,13 +51,6 @@ import { OptionRequestGate } from "./src/option-request-gate.js";
 const PANEL_PATH = "automations";
 const PERSONAL_PROJECT_ID = "proj_personal";
 type OverviewEntry = AutomationsOverviewResponse["automations"][number];
-
-function automationProjectLabel(
-  project: OverviewEntry["project"] | null | undefined,
-): string {
-  if (project == null) return "Workspace";
-  return project.id === PERSONAL_PROJECT_ID ? "Local" : project.name;
-}
 
 // ---------------------------------------------------------------------------
 // rpc boundary — the backend validates every response with zod, so the wire
@@ -480,10 +473,6 @@ function useMutations() {
     update: (route: DetailRoute, agent: AgentExecutionUpdate) =>
       rpc.call("automations_update", { ...route, agent }),
   };
-}
-
-function routeOf(automation: AutomationResponse): DetailRoute {
-  return { projectId: automation.projectId, automationId: automation.id };
 }
 
 /**

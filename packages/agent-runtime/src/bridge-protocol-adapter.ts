@@ -51,7 +51,6 @@ import type {
   BuildInteractiveResponseArgs,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { decodeNormalizedProviderToolCallRequest } from "@bb/provider-bridge-protocol/bridge-kit";
-import { noPreparedProviderCommandDispatch } from "./provider-adapter.js";
 import { parseAvailableModelList } from "./shared/available-models.js";
 import type { AgentRuntimeSkillRoot } from "./types.js";
 
@@ -62,16 +61,15 @@ import type { AgentRuntimeSkillRoot } from "./types.js";
  * public {@link ProviderAdapter.capabilities}, and keeps the ladder to bound
  * what the initialize handshake may claim.
  */
-export interface BridgeAdapterCapabilities extends Omit<
+interface BridgeAdapterCapabilities extends Omit<
   ProviderCapabilities,
   "supportsFork" | "supportsSessionRewind"
 > {
   fork: ProviderFork;
 }
 
-export interface BridgeProtocolAdapterOptions {
+interface BridgeProtocolAdapterOptions {
   id: string;
-  displayName: string;
   capabilities: BridgeAdapterCapabilities;
   process: { command: string; args: string[]; env?: Record<string, string> };
   /**
@@ -81,11 +79,6 @@ export interface BridgeProtocolAdapterOptions {
    * interpret — e.g. the ACP launch spec.
    */
   staticProviderOptions?: Record<string, unknown>;
-  /**
-   * Override for the delta assembler's streamed-text coalescing window
-   * (default 100ms; 0 disables batching). One knob for every provider.
-   */
-  textDeltaFlushMs?: number;
 }
 
 const threadIdentityNotificationParamsSchema = z
@@ -233,12 +226,7 @@ export function createBridgeProtocolAdapter(
   const threadIdsWithOpenWork = new Set<string>();
   // The narrow grammar: bridges emit parsed semantic deltas (`thread/delta`)
   // and this assembler constructs every canonical timeline event.
-  const deltaAssembler = createDeltaAssembler({
-    providerId: options.id,
-    ...(options.textDeltaFlushMs === undefined
-      ? {}
-      : { textDeltaFlushMs: options.textDeltaFlushMs }),
-  });
+  const deltaAssembler = createDeltaAssembler({ providerId: options.id });
 
   function gate(
     capability: keyof BridgeCapabilities & string,
@@ -252,7 +240,6 @@ export function createBridgeProtocolAdapter(
 
   const adapter: ProviderAdapter = {
     id: options.id,
-    displayName: options.displayName,
     capabilities,
     // The handshake owns approval-policy placement; before it completes the
     // runtime-owned default is the safe reading (every request re-checked).
@@ -351,7 +338,6 @@ export function createBridgeProtocolAdapter(
             params: {
               threadId: command.threadId,
               cwd: command.cwd,
-              ...(command.input !== undefined ? { input: command.input } : {}),
               options: toBridgeWireOptions(
                 command.options,
                 options.staticProviderOptions,
@@ -590,8 +576,6 @@ export function createBridgeProtocolAdapter(
         },
       ];
     },
-
-    prepareTurnStart: noPreparedProviderCommandDispatch,
 
     /**
      * The bridge is the only side that knows about provider work bb models as

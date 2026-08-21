@@ -1,7 +1,6 @@
 import {
   areTimelinePaginationCursorsEqual,
   buildLoadedTimelineState,
-  buildSurfaceKey,
   mergeLoadedTimelineWithLatest,
   prependOlderTimelineRows,
   recoverLoadedTimelineAfterStaleCursor,
@@ -56,7 +55,7 @@ const EMPTY_BACKGROUND_COMMANDS: ThreadTimelineResponse["activeBackgroundCommand
  * us); the controller then refetches the latest window and re-derives the
  * cursor from it.
  */
-export function isStaleTimelinePaginationCursorError(error: unknown): boolean {
+function isStaleTimelinePaginationCursorError(error: unknown): boolean {
   return (
     error instanceof BbHttpError &&
     error.status === 400 &&
@@ -79,11 +78,7 @@ export function useThreadTimelineController({
 }: UseThreadTimelineControllerArgs): UseThreadTimelineControllerResult {
   const { sdk } = useProfileClient();
   const latestTimelineQuery = useThreadTimeline(threadId, { enabled });
-  const surfaceKey = buildSurfaceKey({
-    rowFilter: undefined,
-    surfaceKey: undefined,
-    threadId,
-  });
+  const surfaceKey = threadId;
   const [loadedTimeline, setLoadedTimeline] = useState<LoadedTimelineState>(
     () => emptyLoadedTimeline(surfaceKey),
   );

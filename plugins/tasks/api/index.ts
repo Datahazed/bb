@@ -27,8 +27,6 @@ import {
   type CommentProvider,
 } from "../shared/contract";
 
-type PluginDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
-
 interface TaskLabelIdRow {
   task_id: string;
   label_id: string;
@@ -181,10 +179,6 @@ function taskFailure(error: TasksDomainFailure) {
   return { ok: false as const, error: error.detail };
 }
 
-function projectFailure(error: TasksDomainFailure) {
-  return { ok: false as const, error: error.detail };
-}
-
 function statusName(status: TaskStatus): string {
   return status
     .split("_")
@@ -196,7 +190,7 @@ function priorityName(priority: StoredTask["priority"]): string {
   return priority[0]?.toUpperCase() + priority.slice(1);
 }
 
-function publishTasksChanged(
+export function publishTasksChanged(
   bb: BbPluginApi,
   taskId: string,
   projectId: string,
@@ -712,7 +706,7 @@ export function registerHandlers(
         publishProjectsChanged(bb, project.id);
         return { ok: true, project };
       } catch (error) {
-        if (error instanceof TasksDomainFailure) return projectFailure(error);
+        if (error instanceof TasksDomainFailure) return taskFailure(error);
         throw error;
       }
     },
@@ -735,7 +729,7 @@ export function registerHandlers(
         }
         return { ok: true, deleted };
       } catch (error) {
-        if (error instanceof TasksDomainFailure) return projectFailure(error);
+        if (error instanceof TasksDomainFailure) return taskFailure(error);
         throw error;
       }
     },

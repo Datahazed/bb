@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { OptionDisplay } from "@/components/pickers/OptionPicker";
+import { OptionDisplay } from "@bb/shared-ui/option-display";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
@@ -13,7 +13,7 @@ const CHECKOUT_CHIP_BASE_CLASS_NAME =
   "flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground";
 const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} cursor-pointer transition-colors hover:bg-state-hover hover:text-foreground`;
 
-export interface ThreadEnvironmentSummaryProps {
+interface ThreadEnvironmentSummaryProps {
   /** Display name of the thread's project, shown alongside the environment. */
   projectName?: string;
   /** Full mode label used on larger prompt boxes and in the title. */

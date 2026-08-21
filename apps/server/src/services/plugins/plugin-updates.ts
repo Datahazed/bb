@@ -44,7 +44,7 @@ import type {
   PluginUpdateCheckEntry,
 } from "./plugin-service-internal.js";
 
-export const PLUGIN_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+const PLUGIN_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 /** A git range check can stage several clones per plugin; bound the fan-out. */
 const UPDATE_CHECK_CONCURRENCY = 4;
 
@@ -77,7 +77,7 @@ export interface PluginUpdates {
   applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
 }
 
-export interface PluginUpdatesContext {
+interface PluginUpdatesContext {
   deps: PluginServiceDeps;
   registrationMutationKey: string;
   withLifecycleLock: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
@@ -299,7 +299,6 @@ export function createPluginUpdates(
   async function resolveUpdateForRow(args: {
     row: InstalledPluginRow;
     npmRun: NpmResolverRun;
-    npmIntentOverride?: NpmSourceIntentForResolution;
   }): Promise<PluginUpdateResolution> {
     const installed = installedUpdateVersion(args.row);
     if (args.row.sourceKind === "path" || args.row.sourceKind === "builtin") {
@@ -321,11 +320,10 @@ export function createPluginUpdates(
     }
     if (args.row.sourceKind === "npm") {
       return resolveNpmUpdate({
-        intent: args.npmIntentOverride ?? npmIntentForRow(args.row),
+        intent: npmIntentForRow(args.row),
         current: installed,
         appVersion: deps.appVersion,
         run: args.npmRun,
-        includePinned: args.npmIntentOverride !== undefined,
       });
     }
     if (args.row.gitResolvedCommit === null) {
@@ -666,7 +664,6 @@ export function createPluginUpdates(
             await applyNpmCandidate({
               row: activationRow,
               selectionIntent: selectionNpmIntent,
-              sourceIntent: selectionNpmIntent,
               candidate: selected.candidate,
             });
           } else if (

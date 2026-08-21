@@ -1,42 +1,22 @@
 export {
   applyTextChange,
-  computeTextChange,
   createComposerValue,
-  deleteRange,
   emptyComposerValue,
   hasComposerText,
   hasWhitespaceAt,
   insertMention,
   insertText,
-  isComposerValueEmpty,
-  mentionContaining,
-  mentionEndingAt,
-  normalizeComposerMentions,
-  removeMention,
-  replaceRange,
-  type ApplyTextChangeResult,
-  type ComposerMention,
   type ComposerValue,
-  type DeleteRangeResult,
-  type InsertMentionArgs,
-  type ReplaceRangeResult,
-  type TextChange,
   type TextSelection,
 } from "./document";
 export {
   appendQuoteToComposerValue,
   commandInsertionFromSuggestion,
   composerValueFromDraftState,
-  composerValueFromPromptEditorValue,
   composerValueFromPromptInput,
   composerValueToDraftState,
-  composerValueToPromptEditorValue,
   composerValueToPromptInput,
-  mentionDisplayText,
   mentionInsertionFromSuggestion,
-  promptMentionResourceFromSuggestion,
-  type MentionInsertion,
-  type PromptEditorValue,
 } from "./serialization";
 export {
   buildCommandSuggestions,
@@ -49,37 +29,20 @@ export {
   mergeMentionSuggestions,
   PROMPT_MENTION_SOURCE_LIMIT,
   type CommandPromptAction,
-  type NamedMentionCandidate,
   type PluginMentionSearchGroup,
-  type PluginMentionSearchItem,
-  type ThreadMentionSuggestion,
 } from "./suggestions";
+export { buildTypeaheadTriggers, findActiveComposerTrigger } from "./trigger";
 export {
-  buildTypeaheadTriggers,
-  createTriggerEditor,
-  findActiveComposerTrigger,
-  maskMentionRanges,
-} from "./trigger";
-export {
-  describeSubmitMode,
   resolveSubmitAffordance,
   type ComposerSubmitKind,
   type ComposerSubmitMode,
-  type SubmitAffordance,
 } from "./submit-mode";
 export {
-  APP_PROMPT_ACTIONS,
-  AUTOMATION_PROMPT_ACTION,
   buildComposerPromptActions,
-  CREATE_PLUGIN_PROMPT_ACTION,
-  orderPromptActions,
   PROMPT_ACTION_PRESENTATION,
   resolvePromptActionInsertion,
-  withAppPromptActions,
   type ComposerAction,
   type ComposerPromptAction,
-  type ComposerPromptActionKind,
-  type PromptActionInsertion,
 } from "./actions";
 export {
   resolveTypeaheadMaxHeight,

@@ -41,12 +41,12 @@ export interface RuntimeProviderProcess {
   stderrTail: Buffer;
 }
 
-export interface RuntimeProviderProcessLineArgs {
+interface RuntimeProviderProcessLineArgs {
   line: string;
   providerProcess: RuntimeProviderProcess;
 }
 
-export interface RuntimeProviderProcessManagerArgs {
+interface RuntimeProviderProcessManagerArgs {
   additionalWorkspaceWriteRoots: readonly string[];
   adapterFactory?: ProviderAdapterFactory;
   bridgeBundleDir: string | undefined;
@@ -70,30 +70,25 @@ export interface RuntimeProviderProcessManagerArgs {
   onProviderIdentityWaitersInterrupted: (
     providerProcess: RuntimeProviderProcess,
   ) => void;
-  onProviderThreadDetached: (
-    threadId: string,
-    providerProcess: RuntimeProviderProcess,
-  ) => void;
+  onProviderThreadDetached: (threadId: string) => void;
   onStderr: AgentRuntimeOptions["onStderr"];
   skillRoots: readonly AgentRuntimeSkillRoot[];
-  /** Streamed-text coalescing window override for the delta assembler. */
-  textDeltaFlushMs?: number;
   workspacePath: string;
 }
 
-export interface EnsureRuntimeProviderArgs {
+interface EnsureRuntimeProviderArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   processKey: string;
   providerId: string;
 }
 
-export interface RequireRuntimeProviderProcessArgs {
+interface RequireRuntimeProviderProcessArgs {
   processKey: string;
   providerId: string;
 }
 
-export interface ShutdownRuntimeProviderArgs {
+interface ShutdownRuntimeProviderArgs {
   processKey: string;
   providerId: string;
   timeoutMs?: number;
@@ -172,7 +167,7 @@ function bridgeConfigurationKey(parts: BridgeProcessKeyParts): string {
   return `${parts.base}\u0000${parts.suffix}`;
 }
 
-export class ProviderProcessExitedError extends Error {
+class ProviderProcessExitedError extends Error {
   constructor(args: ProviderProcessExitedErrorArgs) {
     const stderr = formatProviderStderr(args.stderrTail);
     super(
@@ -456,7 +451,7 @@ export class RuntimeProviderProcessManager {
       this.args.onProviderIdentityWaitersInterrupted(providerProcess);
 
       for (const threadId of providerProcess.identity.threadIds) {
-        this.args.onProviderThreadDetached(threadId, providerProcess);
+        this.args.onProviderThreadDetached(threadId);
       }
       this.processes.delete(processKey);
     }
@@ -479,9 +474,6 @@ export class RuntimeProviderProcessManager {
         : {}),
       ...(this.args.bridgeNodeExecutablePath !== undefined
         ? { bridgeNodeExecutablePath: this.args.bridgeNodeExecutablePath }
-        : {}),
-      ...(this.args.textDeltaFlushMs !== undefined
-        ? { textDeltaFlushMs: this.args.textDeltaFlushMs }
         : {}),
     };
 
@@ -716,7 +708,7 @@ export class RuntimeProviderProcessManager {
       this.args.captureThreadExitState(threadId),
     );
     for (const threadId of threadIds) {
-      this.args.onProviderThreadDetached(threadId, args.providerProcess);
+      this.args.onProviderThreadDetached(threadId);
     }
     for (const [, pending] of args.providerProcess.pending) {
       pending.reject(
@@ -755,7 +747,7 @@ export class RuntimeProviderProcessManager {
  * (`exitCode`) and signal terminations (`signalCode`). Node reports a
  * signal-killed child with a null `exitCode` and a set `signalCode`.
  */
-export function hasChildProcessExited(child: ChildProcess): boolean {
+function hasChildProcessExited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null;
 }
 

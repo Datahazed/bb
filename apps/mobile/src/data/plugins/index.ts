@@ -13,31 +13,22 @@ export {
   normalizeMarketplaceSourceInput,
   normalizePluginSourceInput,
   pluginDisplayName,
-  pluginIsLocalSource,
   pluginRemovalDescription,
   pluginRemovalLabel,
   pluginRowSignal,
   pluginRuntimeStatusPresentation,
   pluginSecretIsSet,
-  pluginSettingEntries,
   pluginSettingFieldValue,
   pluginSettingsAvailability,
   pluginSettingsChanges,
   sortPlugins,
   summarizePluginUpdate,
-  type PluginCatalogGroup,
   type PluginRowSignal,
-  type PluginRuntimeStatusPresentation,
   type PluginSettingDraft,
-  type PluginSettingsAvailability,
   type PluginStatusTone,
-  type PluginUpdateSummary,
 } from "./plugin-model";
 export {
-  buildPluginLogsUrl,
-  fetchPluginLogs,
   PLUGIN_LOGS_DEFAULT_TAIL,
-  PLUGIN_LOGS_MAX_TAIL,
   toPluginLogLines,
   type PluginLogLine,
 } from "./plugin-logs";
@@ -50,8 +41,6 @@ export {
   usePluginMarketplaces,
   usePluginSettings,
   usePluginUpdates,
-  type CatalogInstallPlanArgs,
-  type UsePluginLogsArgs,
 } from "./plugin-queries";
 export {
   useAddMarketplace,
@@ -64,20 +53,5 @@ export {
   useRemovePlugin,
   useSetPluginEnabled,
   useUpdatePluginSettings,
-  type AddMarketplaceArgs,
-  type ApplyPluginUpdateArgs,
-  type CheckPluginUpdatesArgs,
-  type InstallPluginArgs,
-  type RefreshMarketplacesArgs,
-  type ReloadPluginsArgs,
-  type RemoveMarketplaceArgs,
-  type RemovePluginArgs,
-  type SetPluginEnabledArgs,
-  type UpdatePluginSettingsArgs,
 } from "./plugin-mutations";
-export {
-  fetchSvgAsset,
-  isSvgDocument,
-  resolveServerAssetUrl,
-  useServerSvgAsset,
-} from "./server-svg-asset";
+export { useServerSvgAsset } from "./server-svg-asset";

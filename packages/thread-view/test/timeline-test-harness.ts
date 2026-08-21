@@ -14,7 +14,6 @@ import type {
   JsonValue,
   ThreadEventRow,
   ThreadEventRowOfType,
-  ThreadEventUserContent,
   SystemThreadInterruptedReason,
   ThreadEventWarningCategory,
   ThreadTurnInitiator,
@@ -92,16 +91,8 @@ type ClientTurnRequestedArgs = EventFactoryRowOptions & {
   text: string;
 };
 
-type ClientThreadStartArgs = ClientTurnRequestedArgs;
-
 interface InputAcceptedArgs extends ProviderTurnEventOptions {
   clientRequestId: ClientTurnRequestId;
-}
-
-interface ProviderUserMessageArgs extends ProviderTurnEventOptions {
-  content?: ThreadEventUserContent[];
-  itemId?: string;
-  text: string;
 }
 
 interface AssistantDeltaArgs extends ProviderTurnEventOptions {
@@ -192,11 +183,6 @@ interface FileChangeCompletedArgs extends ProviderTurnEventOptions {
 
 type FileChangeStartedArgs = FileChangeCompletedArgs;
 
-interface FileChangeOutputDeltaArgs extends ProviderTurnEventOptions {
-  delta: string;
-  itemId: string;
-}
-
 interface ContextCompactionArgs extends ProviderTurnEventOptions {
   itemId?: string;
 }
@@ -281,9 +267,6 @@ export interface TimelineEventFactory {
   assistantCompleted(
     args: AssistantCompletedArgs,
   ): ThreadEventRowOfType<"item/completed">;
-  clientThreadStart(
-    args: ClientThreadStartArgs,
-  ): ThreadEventRowOfType<"client/thread/start">;
   clientTurnRequested(
     args: ClientTurnRequestedArgs,
   ): ThreadEventRowOfType<"client/turn/requested">;
@@ -308,9 +291,6 @@ export interface TimelineEventFactory {
   fileChangeCompleted(
     args: FileChangeCompletedArgs,
   ): ThreadEventRowOfType<"item/completed">;
-  fileChangeOutputDelta(
-    args: FileChangeOutputDeltaArgs,
-  ): ThreadEventRowOfType<"item/fileChange/outputDelta">;
   fileChangeStarted(
     args: FileChangeStartedArgs,
   ): ThreadEventRowOfType<"item/started">;
@@ -332,9 +312,6 @@ export interface TimelineEventFactory {
   providerWarning(
     args?: ProviderWarningArgs,
   ): ThreadEventRowOfType<"provider/warning">;
-  providerUserMessage(
-    args: ProviderUserMessageArgs,
-  ): ThreadEventRowOfType<"item/completed">;
   reasoningCompleted(
     args: ReasoningCompletedArgs,
   ): ThreadEventRowOfType<"item/completed">;
@@ -393,30 +370,6 @@ export function fromRows(rows: ThreadEventRow[]): ThreadEventWithMeta[] {
   return rows.map((row) =>
     decodeThreadEventRow(withExplicitApprovalStatus(row)),
   );
-}
-
-export function flattenEventProjectionMessages(
-  projection: EventProjection,
-): EventProjectionMessage[] {
-  const messages: EventProjectionMessage[] = [];
-  for (const entry of projection.entries) {
-    if (entry.kind === "projected-message") {
-      messages.push(entry.message);
-      continue;
-    }
-    if (entry.turn.messages) {
-      messages.push(...entry.turn.messages);
-      continue;
-    }
-    if (entry.turn.terminalMessage) {
-      messages.push(entry.turn.terminalMessage);
-    }
-  }
-  return messages;
-}
-
-export function unique<T>(values: T[]): T[] {
-  return [...new Set(values)];
 }
 
 function withExplicitApprovalStatus(row: ThreadEventRow): ThreadEventRow {
@@ -553,22 +506,6 @@ export function createTimelineEventFactory(
             ...(args.parentToolCallId
               ? { parentToolCallId: args.parentToolCallId }
               : {}),
-          },
-        },
-      };
-    },
-    clientThreadStart(args) {
-      const base = nextThreadScopedRowBase("client-thread-start", args);
-      return {
-        ...base,
-        type: "client/thread/start",
-        data: {
-          direction: "outbound",
-          source: args.source ?? "spawn",
-          initiator: args.initiator ?? "user",
-          request: {
-            method: "thread/start",
-            params: {},
           },
         },
       };
@@ -719,21 +656,6 @@ export function createTimelineEventFactory(
             status: args.status ?? "completed",
             approvalStatus: args.approvalStatus ?? null,
           },
-        },
-      };
-    },
-    fileChangeOutputDelta(args) {
-      const base = nextProviderTurnScopedRowBase(
-        "file-change-output-delta",
-        args,
-      );
-      return {
-        ...base,
-        type: "item/fileChange/outputDelta",
-        data: {
-          ...providerFields(args),
-          itemId: args.itemId,
-          delta: args.delta,
         },
       };
     },
@@ -1004,21 +926,6 @@ export function createTimelineEventFactory(
         },
       };
     },
-    providerUserMessage(args) {
-      const base = nextProviderTurnScopedRowBase("provider-user-message", args);
-      return {
-        ...base,
-        type: "item/completed",
-        data: {
-          ...providerFields(args),
-          item: {
-            type: "userMessage",
-            id: args.itemId ?? `user-${base.seq}`,
-            content: args.content ?? [{ type: "text", text: args.text }],
-          },
-        },
-      };
-    },
     reasoningCompleted(args) {
       const base = nextProviderTurnScopedRowBase("reasoning-completed", args);
       return {
@@ -1144,8 +1051,6 @@ export function renderTimelineFixture(
       : args.projectionOptions.turnMessageDetail,
   });
   const commonProjectionOptions = {
-    includeDebugRawEvents:
-      args.projectionOptions.includeDebugRawEvents ?? false,
     includeProviderUnhandledOperations:
       args.projectionOptions.includeProviderUnhandledOperations ?? false,
     isLatestPage: true,

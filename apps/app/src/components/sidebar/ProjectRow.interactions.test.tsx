@@ -19,7 +19,7 @@ import {
   ProjectRow,
   type ProjectThreadListState,
 } from "./ProjectRow";
-import { buildSidebarEntitySectionId } from "./sidebarSectionOrder";
+import { buildSidebarEntitySectionId } from "@bb/client-core";
 
 const mockUpdateEnvironment = vi.hoisted(() => ({
   mutate: vi.fn(),
@@ -31,10 +31,6 @@ const mockDraftThreadIds = vi.hoisted(() => ({
 
 vi.mock("@/hooks/useLocalPathPicker", () => ({
   usePathPickerHost: () => ({ hostId: null, hostName: null }),
-}));
-
-vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
-  useThreadSplitsEnabled: () => false,
 }));
 
 vi.mock("@/hooks/mutations/environment-mutations", () => ({

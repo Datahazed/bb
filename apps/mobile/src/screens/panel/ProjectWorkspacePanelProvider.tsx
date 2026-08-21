@@ -4,11 +4,11 @@ import { WorkspacePanelProvider } from "./PanelProvider";
 import type { PanelScope } from "./panel-model";
 
 /** The web's root-compose panel state id, namespaced per server profile. */
-export function rootComposePanelStateId(profileId: string): string {
+function rootComposePanelStateId(profileId: string): string {
   return `root-compose:${profileId}`;
 }
 
-export interface ProjectWorkspacePanelProviderProps {
+interface ProjectWorkspacePanelProviderProps {
   /** The project the compose screen is targeting (null = personal / none yet). */
   projectId: string | null;
   /** A reused environment picked on the compose screen, else null. */

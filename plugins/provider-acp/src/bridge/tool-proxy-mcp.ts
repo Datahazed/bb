@@ -24,7 +24,7 @@ export interface AcpMcpServerConfig {
   env: { name: string; value: string }[];
 }
 
-export interface BuildAcpMcpServerConfigArgs {
+interface BuildAcpMcpServerConfigArgs {
   bridgeArgs: string[];
   command: string;
   dynamicTools: readonly DynamicTool[];
@@ -40,16 +40,7 @@ interface BridgeRequestBase {
   token: string;
 }
 
-type BridgeRequest = BridgeRequestBase &
-  (
-    | { kind: "initialized"; toolCount: number }
-    | {
-        kind: "toolCall";
-        arguments: Record<string, unknown>;
-        callId: string;
-        tool: string;
-      }
-  );
+type BridgeRequest = BridgeRequestBase & BridgeRequestPayload;
 
 type BridgeRequestPayload =
   | { kind: "initialized"; toolCount: number }
@@ -112,7 +103,7 @@ let nextMcpToolCallId = 0;
  * resets the timer. AskUserQuestion waits on the user for minutes, so the call
  * must send progress well inside that window (#1944).
  */
-export const TOOL_CALL_PROGRESS_INTERVAL_MS = 15_000;
+const TOOL_CALL_PROGRESS_INTERVAL_MS = 15_000;
 
 export function buildAcpMcpServerConfig(
   args: BuildAcpMcpServerConfigArgs,
@@ -224,7 +215,7 @@ function objectParams(params: unknown): Record<string, unknown> {
 }
 
 /** The `_meta.progressToken` of a request, when the client asked for one. */
-export function readProgressToken(params: unknown): string | number | null {
+function readProgressToken(params: unknown): string | number | null {
   const meta = objectParams(objectParams(params)._meta).progressToken;
   return typeof meta === "string" || typeof meta === "number" ? meta : null;
 }
@@ -234,16 +225,14 @@ export function readProgressToken(params: unknown): string | number | null {
  * the returned stop function runs. Progress is a counter: the MCP spec only
  * requires it to increase, and the total is unknown while a user is typing.
  */
-export function startProgressHeartbeat(args: {
+function startProgressHeartbeat(args: {
   intervalMs?: number;
   progressToken: string | number;
-  write?: (message: unknown) => void;
 }): () => void {
-  const write = args.write ?? writeJson;
   let progress = 0;
   const timer = setInterval(() => {
     progress += 1;
-    write({
+    writeJson({
       jsonrpc: "2.0",
       method: "notifications/progress",
       params: { progressToken: args.progressToken, progress },

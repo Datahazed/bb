@@ -40,7 +40,7 @@ import {
 import { useHosts, usePrimaryHost } from "@/hooks/queries/host-queries";
 import { useDialogState } from "@/hooks/useDialogState";
 import { usePromptDraftInputThreadIds } from "@/hooks/usePromptDraftStorage";
-import { getCollapsedChildActivity } from "@/lib/thread-activity";
+import { getCollapsedChildActivity } from "@bb/client-core";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -58,7 +58,7 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
-import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -80,15 +80,21 @@ import {
 import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import type { ProjectThreadListState } from "./ProjectRow";
 import {
+  buildMachineThreadGroups,
+  buildPinnedSidebarState,
+  CHRONOLOGICAL_CONTAINER_ID,
   compareByCreatedAtDescending,
   compareStandardThreads,
   createSidebarProjectIdResolver,
   isSidebarProjectThread,
+  NO_MACHINE_GROUP_KEY,
   resolveSidebarProjectId,
+  sectionKeyForThreadSection,
+  buildSidebarEntitySectionId,
   type ProjectThreadItem,
   type SidebarSectionDefinition,
   type ThreadComparator,
-} from "./projectThreadGroups";
+} from "@bb/client-core";
 import {
   SortableProjectRow,
   type ProjectListRowModel,
@@ -98,7 +104,6 @@ import {
   type PinnedThreadTreeProps,
 } from "./PinnedThreadTree";
 import { useThreadTitleMentionResources } from "@/components/thread/ThreadTitleMentions";
-import { buildPinnedSidebarState } from "./pinnedSidebarThreads";
 import {
   collapsedEnvironmentIdsAtom,
   collapsedThreadIdsAtom,
@@ -113,12 +118,6 @@ import {
   type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
-import { sectionKeyForThreadSection } from "./sectionKeys";
-import {
-  buildMachineThreadGroups,
-  NO_MACHINE_GROUP_KEY,
-} from "./machineThreadGroups";
-import { CHRONOLOGICAL_CONTAINER_ID } from "./projectThreadGroups";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -144,7 +143,6 @@ import {
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
-import { buildSidebarEntitySectionId } from "./sidebarSectionOrder";
 import {
   renderBuiltInSidebarSection,
   SortableSidebarSection,
@@ -153,6 +151,7 @@ import {
 } from "./BuiltInSidebarSection";
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
+import { haveSameOrder } from "./usePersistedSidebarSectionOrder";
 import {
   resolveThreadTitleDisplayText,
   type ThreadTitleMentionResources,
@@ -284,16 +283,6 @@ type OpenSidebarMenu =
   | "threadsDisplayOptions"
   | `displayOptions:${string}`
   | null;
-
-function hasSameStringList(
-  left: readonly string[],
-  right: readonly string[],
-): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  return left.every((sectionId, index) => sectionId === right[index]);
-}
 
 function removeCollapsedIds<T extends string>(
   current: T[],
@@ -1754,7 +1743,7 @@ function ProjectListComponent({
   );
   useEffect(() => {
     if (
-      hasSameStringList(
+      haveSameOrder(
         collapsedSidebarSectionIdList,
         normalizedCollapsedSidebarSectionIds,
       )

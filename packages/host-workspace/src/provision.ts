@@ -13,7 +13,6 @@ import type {
   DiffFilesResult,
   DiffPatchArgs,
   DiffPatchEntry,
-  FetchOptions,
   PullRequestActionOptions,
   StatusOptions,
   SquashMergeOptions,
@@ -25,7 +24,11 @@ import {
   withCheckoutMutationAdmission,
   withCheckoutMutationLock,
 } from "./checkout-mutation-lock.js";
-import { createWorktree, removeWorktree } from "./provisioning.js";
+import {
+  createWorktree,
+  removeWorktree,
+  throwIfProvisionAborted,
+} from "./provisioning.js";
 import {
   detectGitRepo,
   getAbsoluteGitDir,
@@ -53,7 +56,7 @@ interface ProvisionBase {
   signal?: AbortSignal;
 }
 
-export type UnmanagedCheckoutOpts =
+type UnmanagedCheckoutOpts =
   | {
       /**
        * Runs `git switch <name>` (no-op if HEAD is already there).
@@ -71,7 +74,7 @@ export type UnmanagedCheckoutOpts =
       baseBranch: string;
     };
 
-export interface UnmanagedWorkspaceOpts extends ProvisionBase {
+interface UnmanagedWorkspaceOpts extends ProvisionBase {
   workspaceProvisionType: "unmanaged";
   /** Path to validate. Must exist. */
   path: string;
@@ -79,7 +82,7 @@ export interface UnmanagedWorkspaceOpts extends ProvisionBase {
   checkout?: UnmanagedCheckoutOpts;
 }
 
-export interface ManagedWorkspaceBaseOpts extends ProvisionBase {
+interface ManagedWorkspaceBaseOpts extends ProvisionBase {
   /** Source repo path */
   sourcePath: string;
   /** Target path for worktree/clone creation */
@@ -97,17 +100,17 @@ export interface ManagedWorkspaceBaseOpts extends ProvisionBase {
   setupPath?: string;
 }
 
-export interface ManagedWorktreeOpts extends ManagedWorkspaceBaseOpts {
+interface ManagedWorktreeOpts extends ManagedWorkspaceBaseOpts {
   workspaceProvisionType: "managed-worktree";
 }
 
-export interface ReconnectManagedWorktreeOpts extends ProvisionBase {
+interface ReconnectManagedWorktreeOpts extends ProvisionBase {
   workspaceProvisionType: "reconnect-managed-worktree";
   /** Existing worktree path to reconnect */
   path: string;
 }
 
-export interface PersonalWorkspaceOpts extends ProvisionBase {
+interface PersonalWorkspaceOpts extends ProvisionBase {
   workspaceProvisionType: "personal";
   /** Environment ID that owns the personal scratch workspace. */
   environmentId: string;
@@ -123,7 +126,7 @@ export type ProvisionWorkspaceArgs =
   | PersonalWorkspaceOpts
   | ReconnectManagedWorktreeOpts;
 
-export interface ValidatePersonalWorkspaceTargetPathArgs {
+interface ValidatePersonalWorkspaceTargetPathArgs {
   environmentId: string;
   personalWorkspaceRoot: string;
   targetPath: string;
@@ -158,13 +161,11 @@ export interface HostWorkspace {
   diffPatch(args: DiffPatchArgs): Promise<DiffPatchEntry[]>;
   getPullRequest(): Promise<GitHostPullRequestLookup>;
   runPullRequestAction(action: PullRequestActionOptions): Promise<void>;
-  listBranches(): Promise<string[]>;
   listFiles(): Promise<string[]>;
 
   // Git mutations
   commit(options: CommitOptions): Promise<CommitResult>;
   reset(): Promise<void>;
-  fetch(options?: FetchOptions): Promise<void>;
   squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult>;
 
   // Lifecycle
@@ -274,10 +275,6 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return this.ws.runPullRequestAction(action);
   }
 
-  listBranches(): Promise<string[]> {
-    return this.ws.getBranches();
-  }
-
   listFiles(): Promise<string[]> {
     return this.ws.listFiles();
   }
@@ -288,10 +285,6 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 
   reset(): Promise<void> {
     return this.ws.reset();
-  }
-
-  fetch(options?: FetchOptions): Promise<void> {
-    return this.ws.fetch(options);
   }
 
   squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult> {
@@ -306,19 +299,6 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 // ---------------------------------------------------------------------------
 // provisionWorkspace
 // ---------------------------------------------------------------------------
-
-export interface OpenWorkspaceArgs {
-  path: string;
-}
-
-export async function openWorkspace(
-  args: OpenWorkspaceArgs,
-): Promise<HostWorkspace> {
-  return provisionWorkspace({
-    workspaceProvisionType: "unmanaged",
-    path: args.path,
-  });
-}
 
 export async function provisionWorkspace(
   opts: ProvisionWorkspaceArgs,
@@ -450,20 +430,6 @@ function getCheckoutCompletedText(args: CheckoutCompletedTextArgs): string {
     return `Created branch ${checkout.name}`;
   }
   return `Switched to branch ${checkout.name}`;
-}
-
-function createProvisionCancelledError(cause?: unknown): WorkspaceError {
-  return new WorkspaceError(
-    "provision_cancelled",
-    "Workspace provisioning was cancelled",
-    { cause },
-  );
-}
-
-function throwIfProvisionAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) {
-    throw createProvisionCancelledError(signal.reason);
-  }
 }
 
 async function validateUnmanagedCheckout(

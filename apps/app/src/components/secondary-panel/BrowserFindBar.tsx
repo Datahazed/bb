@@ -6,7 +6,7 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 
@@ -16,7 +16,7 @@ export interface BrowserFindMatches {
   matches: number;
 }
 
-export interface BrowserFindBarProps {
+interface BrowserFindBarProps {
   inputRef: RefObject<HTMLInputElement | null>;
   query: string;
   /** Null until the first result for the current query arrives, or when the query is empty. */
@@ -36,7 +36,7 @@ interface FindBarButtonProps {
   onClick: () => void;
 }
 
-export function formatBrowserFindMatches(
+function formatBrowserFindMatches(
   matches: BrowserFindMatches | null,
 ): string | null {
   if (matches === null) {

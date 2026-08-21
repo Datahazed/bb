@@ -27,7 +27,7 @@ export interface TerminalStreamSink {
   onSession(session: TerminalSession): void;
 }
 
-export interface TerminalStreamControllerOptions {
+interface TerminalStreamControllerOptions {
   sink: TerminalStreamSink;
   /** `GET /terminals/:id/output?sinceSeq=`; null disables the gap fill. */
   fetchOutput: ((sinceSeq: number) => Promise<TerminalOutputResponse>) | null;
@@ -58,7 +58,7 @@ interface PendingGapFill {
   timer: unknown;
 }
 
-export const TERMINAL_GAP_FILL_TIMEOUT_MS = 8_000;
+const TERMINAL_GAP_FILL_TIMEOUT_MS = 8_000;
 export const TERMINAL_GAP_NOTICE =
   "Some terminal output was unavailable after reconnect";
 

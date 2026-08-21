@@ -23,7 +23,6 @@ import {
   getCurrentBranch,
   hasRef,
   hasUncommittedChanges,
-  listBranches,
   parseNameStatusEntries,
   parseNameStatusSourceEntries,
   parseNumstatEntriesZ,
@@ -78,11 +77,6 @@ export interface CommitOptions {
 export interface CommitResult {
   commitSha: string;
   commitSubject: string;
-}
-
-export interface FetchOptions {
-  remote?: string;
-  branch?: string;
 }
 
 export interface SquashMergeOptions {
@@ -566,10 +560,7 @@ async function readHeadNumstat(
   workspacePath: string,
   timeoutMs?: number,
 ): Promise<string> {
-  const runUncommittedDiff = createUncommittedDiffRunner(
-    workspacePath,
-    timeoutMs,
-  );
+  const runUncommittedDiff = createUncommittedDiffRunner(workspacePath);
   const result = await runUncommittedDiff(
     (baseRef) => ["diff", "--numstat", "-z", baseRef, "--"],
     { cwd: workspacePath, timeoutMs },
@@ -604,7 +595,6 @@ type UncommittedDiffRunner = (
 
 function createUncommittedDiffRunner(
   workspacePath: string,
-  defaultTimeoutMs?: number,
 ): UncommittedDiffRunner {
   let emptyTreeShaPromise: Promise<string> | null = null;
 
@@ -617,7 +607,7 @@ function createUncommittedDiffRunner(
     const headResult = await runGit(headArgs, {
       ...options,
       allowFailure: true,
-      timeoutMs: options.timeoutMs ?? defaultTimeoutMs,
+      timeoutMs: options.timeoutMs,
     });
     if (headResult.exitCode === 0) {
       return headResult;
@@ -630,10 +620,7 @@ function createUncommittedDiffRunner(
       );
     }
 
-    emptyTreeShaPromise ??= readEmptyTreeSha(
-      workspacePath,
-      options.timeoutMs ?? defaultTimeoutMs,
-    );
+    emptyTreeShaPromise ??= readEmptyTreeSha(workspacePath, options.timeoutMs);
     return runGit(buildArgs(await emptyTreeShaPromise), options);
   };
 }
@@ -1045,10 +1032,6 @@ export class Workspace {
     );
   }
 
-  async getBranches(): Promise<string[]> {
-    return listBranches(this.path);
-  }
-
   async listFiles(): Promise<string[]> {
     const gitResult = await runGit(
       ["ls-files", "--cached", "--others", "--exclude-standard"],
@@ -1108,88 +1091,6 @@ export class Workspace {
     await this.withMutation(async () => {
       await runGit(["reset", "--hard", "HEAD"], { cwd: this.path });
       await runGit(["clean", "-fd"], { cwd: this.path });
-    });
-  }
-
-  async fetch(options: FetchOptions = {}): Promise<void> {
-    await ensureGitRepo(this.path);
-
-    const remote = options.remote ?? "origin";
-    const args = ["fetch", remote];
-    if (options.branch) {
-      args.push(options.branch);
-    }
-
-    await runGit(args, { cwd: this.path });
-  }
-
-  async checkoutBranch(branchName: string): Promise<void> {
-    await ensureGitRepo(this.path);
-
-    await this.withMutation(async () => {
-      if ((await this.currentBranch) === branchName) {
-        return;
-      }
-
-      if (await hasRef(this.path, `refs/heads/${branchName}`)) {
-        await runGit(["checkout", branchName], { cwd: this.path });
-        return;
-      }
-
-      if (await hasRef(this.path, `refs/remotes/origin/${branchName}`)) {
-        await runGit(["checkout", "-B", branchName, `origin/${branchName}`], {
-          cwd: this.path,
-        });
-        await runGit(
-          ["branch", "--set-upstream-to", `origin/${branchName}`, branchName],
-          { cwd: this.path },
-        );
-        return;
-      }
-
-      await runGit(["checkout", "-B", branchName], { cwd: this.path });
-    });
-  }
-
-  async detachHead(): Promise<void> {
-    await ensureGitRepo(this.path);
-
-    await this.withMutation(async () => {
-      if ((await this.currentBranch) === undefined) {
-        return;
-      }
-
-      await runGit(["checkout", "--detach"], { cwd: this.path });
-    });
-  }
-
-  async stash(message = "bb-workspace-stash"): Promise<string | null> {
-    await ensureGitRepo(this.path);
-
-    return this.withMutation(async () => {
-      if (!(await hasUncommittedChanges(this.path))) {
-        return null;
-      }
-
-      await runGit(["stash", "push", "--include-untracked", "-m", message], {
-        cwd: this.path,
-      });
-      const ref = await runGit(["stash", "list", "-1", "--format=%gd"], {
-        cwd: this.path,
-      });
-      return ref.stdout.trim() || null;
-    });
-  }
-
-  async stashPop(ref?: string): Promise<void> {
-    await ensureGitRepo(this.path);
-
-    const args = ["stash", "pop"];
-    if (ref) {
-      args.push(ref);
-    }
-    await this.withMutation(async () => {
-      await runGit(args, { cwd: this.path });
     });
   }
 

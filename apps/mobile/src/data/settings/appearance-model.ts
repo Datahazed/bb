@@ -1,7 +1,6 @@
 import {
   builtInThemes,
   FAVICON_COLORS,
-  isBuiltInThemeId,
   type AppTheme,
   type BuiltInThemeId,
   type FaviconColor,
@@ -74,11 +73,6 @@ export function paletteLabel(
   );
 }
 
-/** Whether the active palette renders natively or falls back to `default`. */
-export function isNativelyRenderedPalette(themeId: string): boolean {
-  return isBuiltInThemeId(themeId);
-}
-
 export interface FaviconColorOption {
   value: FaviconColorPreference;
   label: string;
@@ -87,7 +81,7 @@ export interface FaviconColorOption {
 }
 
 /** The same tints the web favicon uses (apps/app/src/lib/favicon-color-preference.ts). */
-export const FAVICON_COLOR_VALUES: Record<FaviconColor, string> = {
+const FAVICON_COLOR_VALUES: Record<FaviconColor, string> = {
   red: "#e5484d",
   orange: "#f76b15",
   yellow: "#ffba18",

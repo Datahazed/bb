@@ -44,7 +44,7 @@ import {
 import {
   appendQuoteAndAttachmentsToDraft,
   isPromptDraftEmpty,
-} from "@/lib/prompt-draft";
+} from "@bb/client-core";
 import {
   AUTOMATIONS_PLUGIN_ID,
   getPluginPanelRoutePath,
@@ -555,7 +555,7 @@ function setComposerInputLock(
   }
 }
 
-export function subscribeComposerInputLock(
+function subscribeComposerInputLock(
   storageKey: string | null,
   listener: ComposerInputLockListener,
 ): () => void {

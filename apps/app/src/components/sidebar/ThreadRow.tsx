@@ -50,7 +50,7 @@ import {
   resolveThreadListIndicator,
   type CollapsedChildActivity,
   type ThreadListIndicatorState,
-} from "@/lib/thread-activity";
+} from "@bb/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -73,13 +73,12 @@ import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { useSidebarThreadShortcut } from "./sidebarThreadShortcuts";
-import { SidebarThreadTitle } from "./SidebarThreadTitleMentions";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 import {
+  ThreadTitleMentions,
   useSidebarProjectName,
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
@@ -137,10 +136,6 @@ interface ThreadRowProps {
   hasComposerDraft: boolean;
   onProjectSelect?: () => void;
   options: ThreadRowOptions;
-  // Visible row text override. Defaults to the thread title.
-  displayTitle?: string;
-  // Accessible name + hover tooltip override. Defaults to the thread title.
-  accessibleTitle?: string;
 }
 
 type ThreadRowClickCaptureHandler = MouseEventHandler<HTMLDivElement>;
@@ -509,8 +504,6 @@ function ThreadRowComponent({
   hasComposerDraft,
   onProjectSelect,
   options,
-  displayTitle,
-  accessibleTitle,
 }: ThreadRowProps) {
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
@@ -533,9 +526,7 @@ function ThreadRowComponent({
   const threadUnreadError = threadUnreadDone && thread.status === "error";
   const threadUnreadSuccess = threadUnreadDone && !threadUnreadError;
   const threadTitle = getThreadDisplayTitle(thread);
-  // Inside a section the row shows the leaf but keeps the full path for a11y.
-  const visibleTitle = displayTitle ?? threadTitle;
-  const labelTitle = useThreadTitleDisplayText(accessibleTitle ?? threadTitle);
+  const labelTitle = useThreadTitleDisplayText(threadTitle);
   const crossProjectName = useSidebarProjectName(crossProjectId);
   const crossProjectLabel =
     crossProjectId === null
@@ -562,10 +553,9 @@ function ThreadRowComponent({
     },
     [startEditing],
   );
-  const threadSplitsEnabled = useThreadSplitsEnabled();
   const splitIndicator = usePaneContentSplitIndicator(
     { kind: "thread", projectId, threadId: thread.id },
-    threadSplitsEnabled,
+    true,
   );
   const { onPointerDown: onSplitDragPointerDown, openInSplit } =
     useThreadRowSplitDrag({
@@ -738,7 +728,7 @@ function ThreadRowComponent({
             title={labelTitle}
             onDoubleClick={startTitleEditing}
           >
-            <SidebarThreadTitle title={visibleTitle} />
+            <ThreadTitleMentions title={threadTitle} />
           </span>
         )}
         {crossProjectLabel !== null ? (

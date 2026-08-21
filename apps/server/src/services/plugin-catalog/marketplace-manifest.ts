@@ -7,6 +7,7 @@ import {
 } from "@bb/server-contract";
 import semver from "semver";
 import { z } from "zod";
+import { formatIssues } from "../plugins/collection-manifest.js";
 import {
   gitRangeSourceSpec,
   gitSemverTagName,
@@ -39,7 +40,7 @@ export const BUILTIN_PUBLISHER_KEY = "builtin";
  * Entries one manifest may list. The 1 MiB document limit alone still allows
  * thousands of entries, and each entry costs an icon request and an icon row.
  */
-export const MARKETPLACE_MAX_ENTRIES = 256;
+const MARKETPLACE_MAX_ENTRIES = 256;
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 /**
@@ -308,15 +309,6 @@ const marketplaceManifestSchema = z
 
 export type MarketplaceManifest = z.infer<typeof marketplaceManifestSchema>;
 export type MarketplaceEntry = MarketplaceManifest["plugins"][number];
-
-function formatIssues(error: z.ZodError): string {
-  return error.issues
-    .map((issue) => {
-      const path = issue.path.join(".");
-      return path.length === 0 ? issue.message : `${path}: ${issue.message}`;
-    })
-    .join("; ");
-}
 
 /**
  * Parse a marketplace manifest. The document is rejected whole: consumers see

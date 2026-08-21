@@ -16,12 +16,8 @@ import { Icon } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@bb/shared-ui/button";
-import {
-  APP_PAGE_HEADER_SURFACE_CLASS,
-  HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
-  HEADER_SEAM_CLASS,
-} from "@/components/layout/AppPageHeader";
-import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+import { HEADER_PANE_ACTION_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
@@ -66,10 +62,7 @@ import {
 } from "./useSecondaryPanelResize";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
-import {
-  GitDiffTabContent,
-  ThreadInfoTabContent,
-} from "./ThreadSecondaryPanelTabContent";
+import { GitDiffTabContent } from "./ThreadSecondaryPanelTabContent";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
@@ -103,10 +96,6 @@ import {
 } from "./SidebarSplitContainer";
 import { SIDEBAR_FIXED_INFO_TAB_ID } from "./sidebarSplitLayout";
 import type { GitDiffTabStatus } from "./gitDiffTabEligibility";
-export type {
-  GitDiffDisplayMode,
-  GitDiffSelectionOption,
-} from "./GitDiffToolbar";
 export type {
   SecondaryPanelPaneRenderContext,
   SecondaryPanelRenderableTab,
@@ -155,14 +144,11 @@ export function getReservedInlinePanelToggleClassName(
  */
 export function getSecondaryPanelChromeStackClassName(
   hasGitDiffToolbar: boolean,
-  surface: "panel" | "page" = "panel",
 ): string {
   return cn(
     "shrink-0",
     hasGitDiffToolbar && "flex flex-col",
-    surface === "page"
-      ? cn(APP_PAGE_HEADER_SURFACE_CLASS, HEADER_SEAM_CLASS)
-      : SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
+    SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
   );
 }
 
@@ -218,12 +204,10 @@ export function resolveCollapsedPanelTrafficLightReserveClassName({
   return reserves && MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS;
 }
 
-export function resolveSecondaryPanelHideControl() {
-  return {
-    iconName: "PanelRight" as const,
-    label: "Hide right panel",
-  };
-}
+const HIDE_PANEL_CONTROL = {
+  iconName: "PanelRight" as const,
+  label: "Hide right panel",
+};
 
 export interface SecondaryPanelFixedTab {
   ariaLabel: string;
@@ -262,12 +246,6 @@ export interface ThreadSecondaryPanelProps {
   showConversationCollapseControl?: boolean;
   showNewTabButton?: boolean;
   /**
-   * Use the app page-header surface when this panel's top row is a direct
-   * sibling of a page header. The default keeps thread panels on sidebar
-   * chrome.
-   */
-  topChromeSurface?: "panel" | "page";
-  /**
    * How the panel's own inline hide control (top chrome, trailing edge) renders
    * on the wide layout:
    * - "button": render it (the default).
@@ -290,8 +268,6 @@ export interface ThreadSecondaryPanelProps {
    */
   resizablePanelId?: string;
   onPanelFocus: () => void;
-  /** Reports the panel's live percentage while it resizes. */
-  onPanelResize?: (sizePercent: number) => void;
   onCollapse: () => void;
   onClose: () => void;
   onClearPendingGitDiffIntent?: () => void;
@@ -338,11 +314,9 @@ export function ThreadSecondaryPanel({
   isOpen,
   showConversationCollapseControl = true,
   showNewTabButton = true,
-  topChromeSurface = "panel",
   inlinePanelToggle = "button",
   resizablePanelId = "thread-detail-secondary-panel",
   onPanelFocus,
-  onPanelResize,
   onCollapse,
   onClose,
   onClearPendingGitDiffIntent,
@@ -369,7 +343,7 @@ export function ThreadSecondaryPanel({
     [tabs],
   );
   const hasActiveRenderableTab = activeRenderableTab !== undefined;
-  const hideControl = resolveSecondaryPanelHideControl();
+  const hideControl = HIDE_PANEL_CONTROL;
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
   const conversationCollapseControl =
@@ -415,11 +389,10 @@ export function ThreadSecondaryPanel({
     (size: number) => {
       if (size > 0) {
         hasPanelExpandedRef.current = true;
-        onPanelResize?.(size);
       }
       handleSecondaryPanelResize(size);
     },
-    [handleSecondaryPanelResize, onPanelResize],
+    [handleSecondaryPanelResize],
   );
   const hostLayout = useContext(SecondaryPanelHostLayoutContext);
   const handlePanelCollapse = useCallback(() => {
@@ -569,7 +542,6 @@ export function ThreadSecondaryPanel({
   interface PanelSurfaceArgs {
     activeSurfaceFixedTab: SecondaryPanelFixedTab | undefined;
     activeSurfaceTabId: string | null;
-    chromeSurface: "panel" | "page";
     surfaceTabs: readonly SecondaryPanelRenderableTab[];
     fixedSurfaceTabs: readonly SecondaryPanelFixedTab[];
     isFocused: boolean;
@@ -719,7 +691,6 @@ export function ThreadSecondaryPanel({
               }
               title={fixedTab.title}
               usesDesktopChrome={usesDesktopChrome}
-              activeTreatment="fill"
             />
           );
         })}
@@ -731,7 +702,6 @@ export function ThreadSecondaryPanel({
             onReorderTab={onSurfaceTabReorder}
             usesDesktopChrome={usesDesktopChrome}
             isPanelOpen={isOpen}
-            activeTreatment="fill"
           />
         ) : null}
         {showGroupNewTabButton ? (
@@ -748,7 +718,6 @@ export function ThreadSecondaryPanel({
   const renderPanelSurface = ({
     activeSurfaceFixedTab,
     activeSurfaceTabId,
-    chromeSurface,
     surfaceTabs,
     fixedSurfaceTabs,
     isFocused,
@@ -800,7 +769,6 @@ export function ThreadSecondaryPanel({
         <div
           className={getSecondaryPanelChromeStackClassName(
             showsSurfaceDiffToolbar,
-            chromeSurface,
           )}
         >
           <div
@@ -946,7 +914,9 @@ export function ThreadSecondaryPanel({
               workspaceRootPath={workspaceRootPath}
             />
           ) : activeSurfaceFixedTab?.tab.kind === "thread-info" ? (
-            <ThreadInfoTabContent metadataContent={metadataContent} />
+            <div className="flex min-h-0 flex-1 flex-col">
+              {metadataContent}
+            </div>
           ) : (
             <EmptyStatePanel className="m-4 rounded-lg">
               This panel view is unavailable.
@@ -1013,7 +983,6 @@ export function ThreadSecondaryPanel({
         return renderPanelSurface({
           activeSurfaceFixedTab: activePaneFixedTab,
           activeSurfaceTabId: activePaneTabId,
-          chromeSurface: "panel",
           surfaceTabs: paneTabs,
           fixedSurfaceTabs: paneFixedTabs,
           isFocused: pane.isFocused,
@@ -1038,7 +1007,6 @@ export function ThreadSecondaryPanel({
     renderPanelSurface({
       activeSurfaceFixedTab: activeFixedTab,
       activeSurfaceTabId: activeTab?.id ?? null,
-      chromeSurface: topChromeSurface,
       surfaceTabs: tabs,
       fixedSurfaceTabs: fixedTabs,
       isFocused: true,
@@ -1186,7 +1154,6 @@ interface NewTabButtonProps {
 }
 
 interface PinnedIconTabProps {
-  activeTreatment: "fill" | "underline";
   ariaLabel: string;
   ariaKeyshortcuts?: string;
   isActive: boolean;
@@ -1199,7 +1166,6 @@ interface PinnedIconTabProps {
 }
 
 function PinnedIconTab({
-  activeTreatment,
   ariaLabel,
   ariaKeyshortcuts,
   isActive,
@@ -1229,7 +1195,6 @@ function PinnedIconTab({
             leadingVisual={leadingVisual}
             title={title}
             isActive={isActive}
-            activeTreatment={activeTreatment}
             onSelect={onClick}
             closeAction={null}
           />

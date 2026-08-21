@@ -1,4 +1,3 @@
-import * as Clipboard from "expo-clipboard";
 import { useCallback, useMemo, useState, type ReactElement } from "react";
 import {
   isRelativeFilePathCandidate,
@@ -7,6 +6,7 @@ import {
   useThreadStorageFiles,
   type RelativeFileLinkCandidate,
 } from "@/data/files";
+import { copyWithToast } from "@/lib/clipboard";
 import {
   parseLocalFileLineSuffix,
   type MarkdownLinkTarget,
@@ -16,7 +16,7 @@ import { ActionSheet, toast, useSheet, type ActionSheetAction } from "@/ui";
 import { useThreadFileOpener, type FileOpenHandler } from "./file-opener";
 import type { FilePreviewTarget } from "./file-preview-target";
 
-export interface UseThreadLocalFileLinksArgs {
+interface UseThreadLocalFileLinksArgs {
   /** Null outside a thread (root compose): only workspace files resolve. */
   threadId: string | null;
   /** Null while the thread has no environment (host-file reads unavailable). */
@@ -27,15 +27,9 @@ export interface UseThreadLocalFileLinksArgs {
   onOpenFile?: FileOpenHandler;
 }
 
-export interface ThreadLocalFileLinks {
+interface ThreadLocalFileLinks {
   /** An absolute `/path[:line]` link (markdown `onFilePress`). */
   openLocalFileLink: (link: MarkdownLocalFileLink) => void;
-  /**
-   * A relative `path[:line]` reference that could live under the workspace or
-   * thread storage: opens it when one root is known, asks when both are.
-   * Returns true when handled.
-   */
-  openRelativeFileLink: (href: string) => boolean;
   /** Drop-in `onLinkPress` for `<Markdown>`: claims relative file references. */
   onMarkdownLinkPress: (link: MarkdownLinkTarget) => boolean;
   /** Mount once near the host: the "which root?" picker sheet. */
@@ -181,11 +175,7 @@ export function useThreadLocalFileLinks({
       key: "copy",
       label: "Copy path",
       icon: "Copy",
-      onPress: () => {
-        void Clipboard.setStringAsync(pending.relativePath)
-          .then(() => toast.success("Path copied"))
-          .catch(() => toast.error("Could not copy"));
-      },
+      onPress: () => copyWithToast(pending.relativePath, "Path copied"),
     });
     return actions;
   }, [openFile, pending]);
@@ -201,7 +191,6 @@ export function useThreadLocalFileLinks({
 
   return {
     openLocalFileLink,
-    openRelativeFileLink,
     onMarkdownLinkPress,
     pickerSheet,
   };

@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { FileContents } from "@pierre/diffs";
+import type { GitDiffFileChangeKind } from "@bb/server-contract";
 import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -22,10 +23,9 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   formatGitDiffFileLabel,
   enrichGitDiffFileForContext,
-  isImageGitDiffFile,
+  isPreviewableImagePath,
   isSvgGitDiffFile,
   normalizeGitDiffPath,
-  type GitDiffFileChangeKind,
   type ParsedGitDiffFile,
 } from "./git-diff-parsing";
 
@@ -116,14 +116,14 @@ type DiffFileEnrichmentState =
  * - `loading` / `error`: show progress or a retry.
  * - `ready`: pierre now owns expansion; the affordance retires.
  */
-export type DiffContextExpansionStatus =
+type DiffContextExpansionStatus =
   | "unavailable"
   | "idle"
   | "loading"
   | "ready"
   | "error";
 
-export interface DiffContextExpansionState {
+interface DiffContextExpansionState {
   status: DiffContextExpansionStatus;
   request: () => void;
 }
@@ -234,7 +234,7 @@ function isImagePreviewCard(
     fileDiff.hunks.length === 0 &&
     fileDiff.type !== "rename-pure" &&
     onRequestFileContents !== undefined &&
-    isImageGitDiffFile(fileDiff)
+    isPreviewableImagePath(fileDiff.name)
   );
 }
 
@@ -255,15 +255,7 @@ function svgTextToDataUrl(contents: string): string | null {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(trimmedContents)}`;
 }
 
-function getImageSizeStat(
-  enrichment: DiffFileEnrichmentState,
-  changeKind: GitDiffFileChangeKind,
-): DiffImageSizeStat | null {
-  if (enrichment.status !== "ready-image") return null;
-  return getGitDiffCardImageSizeStat(enrichment, changeKind);
-}
-
-export interface UseGitDiffCardBodyArgs {
+interface UseGitDiffCardBodyArgs {
   fileDiff: ParsedGitDiffFile;
   changeKind: GitDiffFileChangeKind;
   /** When true, holds the body at a skeleton (queued render slots). */
@@ -273,7 +265,7 @@ export interface UseGitDiffCardBodyArgs {
   patchText?: string;
 }
 
-export interface GitDiffCardBodyState {
+interface GitDiffCardBodyState {
   bodySentinelRef: RefCallback<HTMLDivElement>;
   enrichment: DiffFileEnrichmentState;
   enrichedFileDiff: ParsedGitDiffFile;
@@ -514,9 +506,10 @@ export function useGitDiffCardBody({
     setHasBodyEnteredViewport(true);
   }, []);
 
-  const imageSizeStat = isImageCard
-    ? getImageSizeStat(enrichment, changeKind)
-    : null;
+  const imageSizeStat =
+    isImageCard && enrichment.status === "ready-image"
+      ? getGitDiffCardImageSizeStat(enrichment, changeKind)
+      : null;
 
   return {
     bodySentinelRef,
@@ -564,7 +557,7 @@ function getDiffContextExpansionStatus({
   }
 }
 
-function GitDiffCardBodySkeleton() {
+export function GitDiffCardBodySkeleton() {
   return (
     <div className="space-y-1.5 px-3 py-3">
       <Skeleton className="h-3 w-full rounded-sm" />
@@ -648,7 +641,7 @@ export function getGitDiffCardImageSizeStat(
   return { addedBytes, removedBytes };
 }
 
-export interface GitDiffCardImagePreviewBodyProps {
+interface GitDiffCardImagePreviewBodyProps {
   preview: GitDiffCardImagePreview;
   fileDiffLabel: string;
   fitToFrame?: boolean;
@@ -807,7 +800,7 @@ function GitDiffCardSvgBody({
   );
 }
 
-export interface GitDiffCardBodyProps {
+interface GitDiffCardBodyProps {
   state: GitDiffCardBodyState;
   presentation: DiffPresentation;
   svgDisplayMode: GitDiffCardSvgDisplayMode;

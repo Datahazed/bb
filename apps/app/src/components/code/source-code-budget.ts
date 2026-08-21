@@ -9,7 +9,7 @@
  */
 
 export const SOURCE_CODE_MAX_LINES = 5_000;
-export const SOURCE_CODE_MAX_CHARS = 512 * 1024;
+const SOURCE_CODE_MAX_CHARS = 512 * 1024;
 
 export interface SourceCodeTruncation {
   /** The rendered prefix, cut at a line boundary. */
@@ -18,8 +18,8 @@ export interface SourceCodeTruncation {
   totalLineCount: number;
 }
 
-// FNV-1a over the contents; only used to derive a mount key for renders
-// whose caller did not supply a `cacheKey`.
+// FNV-1a over the contents, prefixed with the length; used to fold file
+// contents into a highlight cache key.
 export function hashSourceContents(contents: string): string {
   let hash = 0x811c9dc5;
   for (let index = 0; index < contents.length; index += 1) {

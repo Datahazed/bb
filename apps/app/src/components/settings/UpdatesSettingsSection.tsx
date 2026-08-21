@@ -46,6 +46,7 @@ import {
   type ProviderCliInstallFailure,
 } from "@/components/provider-cli/provider-cli-install-store";
 import {
+  checkErrorDescription,
   getAppUpdateCheckSnapshot,
   startAppUpdateCheck,
   subscribeAppUpdateCheck,
@@ -128,13 +129,6 @@ function isNewerChangelogVersion(
 /** Stalled machines needed before the page offers a bulk retry. */
 const BULK_RETRY_THRESHOLD = 1;
 
-function updateCheckErrorDescription(error: unknown): string {
-  if (error instanceof Error && error.message.length > 0) {
-    return error.message;
-  }
-  return "The update check did not complete.";
-}
-
 /**
  * A row action. The icon-only form delegates to the shared
  * `ResourceActionButton`, which already owns the tooltip, the loading
@@ -215,39 +209,6 @@ export function UpdateActionButton({
       {iconPosition === "start" ? visibleLabel : null}
     </Button>
   );
-}
-
-export interface UpdatesSectionProps {
-  /** Which machine or supporting domain this block covers. */
-  domain: string;
-  title: ReactNode;
-  /** Right-hand slot for compact identity or contextual actions. */
-  action?: ReactNode;
-  children: ReactNode;
-}
-
-/**
- * One machine or supporting update block, using the same settings chrome as
- * the rest of Settings.
- */
-export function UpdatesSection({
-  domain,
-  title,
-  action,
-  children,
-}: UpdatesSectionProps) {
-  return (
-    <div data-updates-domain={domain}>
-      <SettingsSection title={title} action={action}>
-        {children}
-      </SettingsSection>
-    </div>
-  );
-}
-
-/** Rows owned by one machine, on the settings card's own divider. */
-export function UpdatesRowList({ children }: { children: ReactNode }) {
-  return <SettingsRowList>{children}</SettingsRowList>;
 }
 
 /**
@@ -882,7 +843,7 @@ export function ChangelogPreviewCard() {
   );
 }
 
-export interface BbAppUpdateRowsProps {
+interface BbAppUpdateRowsProps {
   systemVersion: SystemVersionResponse | undefined;
   desktopInfo: BbDesktopInfo | null;
   isDesktop: boolean;
@@ -1037,7 +998,7 @@ export function BbAppUpdateRows({
   return row(name, settledStatus);
 }
 
-export interface MachineUpdatesRowsProps {
+interface MachineUpdatesRowsProps {
   machine: UpdateInventoryMachine;
   runningJobKey: string | null;
   queuedJobKeys: ReadonlySet<string>;
@@ -1376,27 +1337,30 @@ export function MachineUpdatesSection({
 }) {
   return (
     <div data-updates-machine={machine.host.id}>
-      <UpdatesSection
-        domain="machine"
-        title={
-          <span className="flex min-w-0 items-center gap-2">
-            <Icon
-              name="Laptop"
-              className="size-4 shrink-0 text-muted-foreground"
-              aria-hidden
-            />
-            <span className="truncate">{machine.host.name}</span>
-            {isThisMachine ? <SettingsBadge>This machine</SettingsBadge> : null}
-          </span>
-        }
-        action={
-          action === undefined ? undefined : (
-            <div className="pr-4">{action}</div>
-          )
-        }
-      >
-        <UpdatesRowList>{children}</UpdatesRowList>
-      </UpdatesSection>
+      <div data-updates-domain="machine">
+        <SettingsSection
+          title={
+            <span className="flex min-w-0 items-center gap-2">
+              <Icon
+                name="Laptop"
+                className="size-4 shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+              <span className="truncate">{machine.host.name}</span>
+              {isThisMachine ? (
+                <SettingsBadge>This machine</SettingsBadge>
+              ) : null}
+            </span>
+          }
+          action={
+            action === undefined ? undefined : (
+              <div className="pr-4">{action}</div>
+            )
+          }
+        >
+          <SettingsRowList>{children}</SettingsRowList>
+        </SettingsSection>
+      </div>
     </div>
   );
 }
@@ -1415,7 +1379,7 @@ function useNow(intervalMs: number): number {
  * Settings → Updates: one consolidated, per-machine view of bb and provider
  * CLI updates. Replaces the stacked update/provider-health toasts (BB-48).
  */
-export interface UpdatesSettingsSectionProps {
+interface UpdatesSettingsSectionProps {
   /** Default-off experiment gate owned by Settings → Experiments. */
   showChangelogPreview?: boolean;
 }
@@ -1632,7 +1596,7 @@ export function UpdatesSettingsSection({
                       : () => {
                           void desktopApi.installUpdate().catch((error) => {
                             appToast.error("Relaunch failed", {
-                              description: updateCheckErrorDescription(error),
+                              description: checkErrorDescription(error),
                             });
                           });
                         }
@@ -1643,7 +1607,7 @@ export function UpdatesSettingsSection({
                       : () => {
                           void desktopApi.checkForUpdates().catch((error) => {
                             appToast.error("Update retry failed", {
-                              description: updateCheckErrorDescription(error),
+                              description: checkErrorDescription(error),
                             });
                           });
                         }

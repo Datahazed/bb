@@ -13,7 +13,7 @@ import {
   type TimelineTurnChildrenState,
 } from "./rows";
 
-export interface UseTimelineListItemsArgs {
+interface UseTimelineListItemsArgs {
   rows: readonly TimelineRow[];
   /** Thread runtime is running. */
   scopeActive: boolean;
@@ -23,11 +23,9 @@ export interface UseTimelineListItemsArgs {
   resetKey: string;
 }
 
-export interface UseTimelineListItemsResult {
+interface UseTimelineListItemsResult {
   /** Flat list items; each carries its own `expanded` flag. */
   items: TimelineListItem[];
-  /** Row ids currently expanded (user choice or auto-expansion). */
-  expandedRowIds: ReadonlySet<string>;
   /** Stable across renders (safe to hand to memoized cells). */
   toggleRow: (rowId: string) => void;
 }
@@ -126,5 +124,5 @@ export function useTimelineListItems({
     [expandedRowIds, rows, scopeActive, turnChildren],
   );
 
-  return { items, expandedRowIds, toggleRow };
+  return { items, toggleRow };
 }

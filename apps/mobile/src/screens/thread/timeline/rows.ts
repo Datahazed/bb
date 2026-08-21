@@ -63,7 +63,7 @@ type TimelineViewWorkRowOfKind<K extends TimelineViewWorkRow["workKind"]> =
   Extract<TimelineViewWorkRow, { workKind: K }>;
 
 /** The narrowed view row each kind carries in `TimelineListItem.row`. */
-export interface TimelineRowByKind {
+interface TimelineRowByKind {
   "conversation:user": TimelineUserConversationRow;
   "conversation:assistant": Extract<
     TimelineConversationRow,
@@ -86,9 +86,9 @@ export interface TimelineRowByKind {
 }
 
 /** Load state of a completed turn's lazily fetched children. */
-export type TimelineLazyChildrenStatus = "loading" | "error" | "loaded";
+type TimelineLazyChildrenStatus = "loading" | "error" | "loaded";
 
-export interface TimelineListItemOfKind<K extends TimelineRowKind> {
+interface TimelineListItemOfKind<K extends TimelineRowKind> {
   /** Stable across rebuilds: the row id, prefixed by the container chain. */
   key: string;
   kind: K;
@@ -131,7 +131,7 @@ export type TimelineTurnChildrenState =
   | { status: "error" }
   | { status: "loaded"; rows: readonly TimelineRow[] };
 
-export interface BuildTimelineListItemsArgs {
+interface BuildTimelineListItemsArgs {
   rows: readonly TimelineRow[];
   /** Thread runtime is running (top-level scope active). */
   scopeActive: boolean;
@@ -150,7 +150,7 @@ export interface BuildTimelineListItemsArgs {
   itemCache?: TimelineListItemCache;
 }
 
-export function timelineRowKind(row: ThreadTimelineViewRow): TimelineRowKind {
+function timelineRowKind(row: ThreadTimelineViewRow): TimelineRowKind {
   switch (row.kind) {
     case "conversation":
       return row.role === "user"
@@ -174,7 +174,7 @@ export function timelineRowKind(row: ThreadTimelineViewRow): TimelineRowKind {
  * shimmer while they are the active frontier; step summaries are a flat
  * recap; closed-step leaves take the muted summary style.
  */
-export function timelineRowTitleOptions({
+function timelineRowTitleOptions({
   activeLatestBundleId,
   row,
   scopeActive,
@@ -194,7 +194,7 @@ export function timelineRowTitleOptions({
   };
 }
 
-export type TimelineTitleCache = WeakMap<
+type TimelineTitleCache = WeakMap<
   ThreadTimelineViewRow,
   { optionsKey: string; title: TimelineTitle }
 >;
@@ -225,7 +225,7 @@ function buildRowTitle(
  * items are retained: `buildTimelineListItems` swaps `current` for the map it
  * produced, so rows that left the list are dropped.
  */
-export interface TimelineListItemCache {
+interface TimelineListItemCache {
   current: ReadonlyMap<string, TimelineListItem>;
 }
 

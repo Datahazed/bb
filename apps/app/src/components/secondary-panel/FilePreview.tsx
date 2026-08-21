@@ -23,7 +23,7 @@ import { copyToClipboardWithToast } from "@/lib/clipboard";
 import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
-} from "@/lib/file-preview";
+} from "@bb/client-core";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
   type CodeOverflowMode,
@@ -38,15 +38,15 @@ export interface FilePreviewFile {
   contents: string;
 }
 
-export type IframePreviewSandbox = "allow-scripts";
+type IframePreviewSandbox = "allow-scripts";
 
-export interface IframeFilePreviewTarget {
+interface IframeFilePreviewTarget {
   sandbox: IframePreviewSandbox | null;
   title: string;
   url: string;
 }
 
-export type FilePreviewState =
+type FilePreviewState =
   | { kind: "loading" }
   | { kind: "empty" }
   | { kind: "not-found" }
@@ -68,7 +68,7 @@ export type FilePreviewState =
       markdownUrlTransform?: UrlTransform;
     };
 
-export interface FilePreviewProps {
+interface FilePreviewProps {
   state: FilePreviewState;
   path: string;
   copyPath?: string | null;
@@ -174,7 +174,7 @@ interface CsvPreviewData {
 type FilePreviewViewMode = "preview" | "source";
 export type TextFilePreviewKind = "csv" | "markdown";
 type FilePreviewToggleKind = "csv" | "html" | "markdown";
-export type FilePreviewHeaderMode = "file" | "none";
+type FilePreviewHeaderMode = "file" | "none";
 type IframeLoadState = "loading" | "loaded" | "error";
 
 const CSV_PREVIEW_MAX_COLUMNS = 100;
@@ -875,10 +875,7 @@ function MarkdownFilePreview({
     // Keep rendered Markdown on the ordinary document background. Its parent
     // owns the boundary, so another raised "paper" layer would make nested
     // file viewers feel like cards stacked inside cards.
-    <SecondaryPanelSelectionActions
-      className="contents"
-      onSelectionAddToChat={onSelectionAddToChat}
-    >
+    <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
       <div className="flex-auto bg-background px-4 py-4">
         <MarkdownPreview
           allowHtml
@@ -906,10 +903,7 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
   const truncationNote = getCsvTruncationNote(preview, bodyRows.length);
 
   return (
-    <SecondaryPanelSelectionActions
-      className="contents"
-      onSelectionAddToChat={onSelectionAddToChat}
-    >
+    <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
       {/* Single scroll container for both axes: the sticky header row and
           row-number gutter stick against this box, the horizontal scrollbar
           stays visible at the panel bottom, and the sticky cells are clipped

@@ -22,7 +22,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { emptyPromptDraftState } from "@/lib/prompt-draft";
+import { emptyPromptDraftState } from "@bb/client-core";
 import {
   getComposerInputLock,
   useComposer,
@@ -68,7 +68,7 @@ import {
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
-} from "./mentions/types";
+} from "@bb/client-core";
 
 type PromptBoxProps = ComponentProps<typeof PromptBoxInternal>;
 

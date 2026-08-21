@@ -16,11 +16,11 @@ import { useTheme } from "@/theme";
 import { Icon, Text } from "@/ui";
 
 /** Fixed so a row's slot is `index × height` and the drag math stays in a worklet. */
-export const SECTION_REORDER_ROW_HEIGHT = 48;
+const SECTION_REORDER_ROW_HEIGHT = 48;
 const LIFT_SCALE = 1.02;
 const SPRING = { damping: 22, stiffness: 260, mass: 0.8 };
 
-export interface SectionReorderListProps {
+interface SectionReorderListProps {
   entries: readonly SidebarSectionOrderEntry[];
   /** Fires once per drop with the full new order. */
   onReorder: (order: SidebarSectionId[]) => void;
