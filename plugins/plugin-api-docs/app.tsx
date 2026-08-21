@@ -18,10 +18,16 @@ import {
   experimental_NewThreadComposer,
   useBbNavigate,
 } from "@get-bb/plugin-sdk/app";
+import {
+  createPluginGuideInspector,
+  type PluginGuideInspector,
+} from "./inspector";
 
 // JSX reads lowercase-first tags as DOM elements, so the experimental_
 // export needs a capitalized alias to render as a component.
 const LiveNewThreadComposer = experimental_NewThreadComposer;
+const INSPECTOR_ACTION_ID = "ui-inspector";
+let inspector: PluginGuideInspector | null = null;
 
 /**
  * The plugin ids this bb can actually open a page for: the ones installed on
@@ -142,5 +148,38 @@ export default definePluginApp((app) => {
     icon: "Puzzle",
     path: "plugin-api",
     component: PluginApiMapPage,
+  });
+  app.slots.sidebarFooterAction({
+    id: INSPECTOR_ACTION_ID,
+    title: "Inspect bb UI",
+    icon: "Target",
+    experimental_activeTitle: "Stop inspecting bb UI",
+    experimental_activeIndicator: "dot",
+    run: () => inspector?.toggle(),
+  });
+  app.contentScripts.register({
+    id: "ui-inspector",
+    mount(context) {
+      const nextInspector = createPluginGuideInspector({
+        document,
+        inspection: context.experimental_uiInspection,
+        setFooterActive: (active) =>
+          context.experimental_setSidebarFooterActionActive?.(
+            INSPECTOR_ACTION_ID,
+            active,
+          ),
+      });
+      inspector = nextInspector;
+      const unregisterCommand =
+        context.experimental_registerAppCommandHandler?.(
+          "plugin.inspector.toggle",
+          () => nextInspector.toggle(),
+        );
+      return () => {
+        unregisterCommand?.();
+        nextInspector.dispose();
+        if (inspector === nextInspector) inspector = null;
+      };
+    },
   });
 });

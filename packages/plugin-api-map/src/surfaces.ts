@@ -63,7 +63,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
     id: "app-shell",
     title: "The bb app window",
     blurb:
-      "The main bb window, containing the sidebar, the conversation, and the side panel. A plugin can add rows, controls, panel tabs, and message content to the numbered regions.",
+      "The main bb window, containing the sidebar, the conversation, and the side panel. A plugin can add rows, controls, panel tabs, and message content to the numbered regions. To inspect bb UI, click the inspector icon in the sidebar footer or use your assigned shortcut, then hover an element. Click to pin.",
     surfaces: [
       {
         id: "nav-panel",
