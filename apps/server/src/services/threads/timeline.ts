@@ -11,6 +11,7 @@ import type {
   ClientTurnRequestId,
   ProviderComposerCommand,
   Thread,
+  ThreadEventItemType,
 } from "@bb/domain";
 import type {
   ThreadConversationOutlineItem,
@@ -578,15 +579,54 @@ function partitionAcceptedInputRowsByRequestedTurn(
   };
 }
 
+/**
+ * Item kinds the projection tracks by bare call id across turns. A tool can
+ * outlive the turn that spawned it; its terminal row then arrives scoped to a
+ * later turn, and the projection merges it into the spawning turn's row. File
+ * edits are partitioned by scope, buffered text is keyed per turn, and
+ * background tasks carry their own thread-scoped state rows, so none of those
+ * cross turns.
+ */
+const CROSS_TURN_TOOL_ITEM_KINDS: ReadonlySet<ThreadEventItemType> = new Set([
+  "commandExecution",
+  "toolCall",
+  "webSearch",
+  "webFetch",
+  "imageView",
+]);
+
 function filterExactEventRowsForRequestedTurn(
   args: FilterExactEventRowsForRequestedTurnArgs,
 ): FilterExactEventRowsForRequestedTurnResult {
   const rows: StoredEventRow[] = [];
   let removedRows = false;
+  // Tool calls the requested turn started that have not ended yet. A later
+  // turn's `item/*` row for one of these ids is the same lifecycle the
+  // projection merges into the spawning turn, so the details keep it; dropping
+  // it would render the call unfinished forever. The id leaves the set at its
+  // `item/completed`, so a later turn that reuses the id for a new item (a
+  // resumed ACP session restarting its counter) stays out of this turn.
+  const openToolCallIds = new Set<string>();
   for (const row of args.exactEventRows) {
     if (row.scopeKind === "turn" && row.turnId !== args.turnId) {
-      removedRows = true;
-      continue;
+      const continuesOpenToolCall =
+        row.itemId !== null &&
+        row.type.startsWith("item/") &&
+        openToolCallIds.has(row.itemId);
+      if (!continuesOpenToolCall) {
+        removedRows = true;
+        continue;
+      }
+    } else if (
+      row.type === "item/started" &&
+      row.itemId !== null &&
+      row.itemKind !== null &&
+      CROSS_TURN_TOOL_ITEM_KINDS.has(row.itemKind)
+    ) {
+      openToolCallIds.add(row.itemId);
+    }
+    if (row.type === "item/completed" && row.itemId !== null) {
+      openToolCallIds.delete(row.itemId);
     }
 
     const requestId = tryReadClientTurnRequestedRequestId(row);
