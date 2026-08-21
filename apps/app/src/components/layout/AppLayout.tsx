@@ -21,6 +21,7 @@ import {
   useSidebarThreadTitleMentionResources,
 } from "@/components/thread/ThreadTitleMentions";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { CommandPalette } from "@/components/commands/CommandPalette";
 import {
   resolveAutomationBreadcrumbs,
   resolveToolsAreaHeaderMeta,
@@ -848,6 +849,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             active={isSidebarResizing}
             cursor="col-resize"
           />
+          <CommandPalette />
           <ProjectPathDialog
             target={quickCreateProject.projectPathDialog.target}
             pending={quickCreateProject.isCreating}
