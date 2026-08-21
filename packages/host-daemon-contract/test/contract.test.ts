@@ -689,6 +689,14 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "host.write_file may omit mode to preserve existing permissions; when present it only controls newly created files.",
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.detail":
+    "a tool_use approval's presentation has a detail only when the bridge summarized the call; a missing detail means the label and title are the whole summary, not an empty string.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.suppress":
+    "a tool_use approval's presentation marks suppress only for low-value rows the bridge wants collapsed; absence means render normally.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.tint":
+    "a tool_use approval's presentation carries a tint only when the bridge wants an accent colour; absence means the neutral row tint, which is not a colour value.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.title":
+    "a tool_use approval's presentation has a title only when the call has a headline (a path, a query); absence means the label stands alone.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
     "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins carry plugin-declared bridge options.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
@@ -1123,7 +1131,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(146);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(147);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

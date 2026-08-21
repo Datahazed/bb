@@ -41,7 +41,7 @@ type ApprovalTimelineItem = Extract<
  */
 type ApprovalTimelineItemSubject = Exclude<
   PendingInteractionApprovalSubject,
-  { kind: "permission_grant" } | { kind: "plan" }
+  { kind: "permission_grant" } | { kind: "plan" } | { kind: "tool_use" }
 >;
 type ApprovalTimelineItemStatus = Extract<
   ApprovalTimelineItem["status"],
@@ -444,6 +444,12 @@ export function appendPendingInteractionTimelineEvent(
     // duplicate it.
     case "plan":
       return;
+    // Unsupported until WS5 (interactions): no producer raises tool_use yet,
+    // and the single interaction-lifecycle event it will ride does not exist.
+    case "tool_use":
+      throw new Error(
+        "tool_use approval subjects are not produced until WS5 (interactions)",
+      );
     default:
       return assertNever(subject, "Unsupported approval subject for timeline");
   }
@@ -498,6 +504,11 @@ export function appendPendingInteractionTimelineEventInTransaction(
     // already the timeline record.
     case "plan":
       return;
+    // Unsupported until WS5: see appendPendingInteractionTimelineEvent.
+    case "tool_use":
+      throw new Error(
+        "tool_use approval subjects are not produced until WS5 (interactions)",
+      );
     default:
       return assertNever(subject, "Unsupported approval subject for timeline");
   }

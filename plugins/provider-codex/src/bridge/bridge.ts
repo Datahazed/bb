@@ -1236,6 +1236,14 @@ function handleInitialize(id: string | number): void {
       threadGoalClear: true,
       fork: "checkpoint",
       approvalEnforcedBy: "runtime",
+      // grammarVersions [2, 2] — this bridge emits the v2 delta grammar only
+      // (v3 shapes land per bridge in WS1b). steerMode "inject" — codex
+      // `turn/steer` injects into the live turn natively.
+      grammarVersions: [
+        PROVIDER_BRIDGE_PROTOCOL_VERSION,
+        PROVIDER_BRIDGE_PROTOCOL_VERSION,
+      ],
+      steerMode: "inject",
     },
   };
   sendResult(id, result);

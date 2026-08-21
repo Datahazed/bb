@@ -1,3 +1,15 @@
+// Version 147 carries the provider plugin v3 contract across the daemon wire:
+// the thread-event item union gains fileRead, search, delegation, planSteps
+// and namespaced extension items plus an optional persisted `presentation`,
+// two thread-scoped `item/delegation/*` events join the backgroundTask pair,
+// and the interaction payload gains the `tool_use` approval subject. Every
+// addition is a new union member or an optional field, so an older daemon's
+// traffic still parses and nothing in this version emits the new shapes yet;
+// the bump exists because the repository does not ship a widened event wire
+// on an untested compatibility assumption — the version mismatch is what
+// moves enrolled machines onto a daemon whose bridge runtime also negotiates
+// the `thread/delta` grammar range (bridge protocol `grammarVersions`).
+//
 // Version 146 adds the lightweight `host.list_branch_options` RPC so branch
 // pickers can read cached refs while the daemon refreshes remotes in the
 // background. Older daemons cannot parse or serve that command.
@@ -110,7 +122,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 146 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 147 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

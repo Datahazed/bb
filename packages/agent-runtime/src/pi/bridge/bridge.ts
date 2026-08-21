@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-
 import {
   existsSync,
   mkdirSync,
@@ -608,6 +607,13 @@ async function handleRequest(
           threadGoalClear: false,
           fork: "checkpoint",
           approvalEnforcedBy: "runtime",
+          // Pi emits the v2 grammar only, and delivers a steer inside the
+          // live run (between assistant turns), which is `inject`.
+          grammarVersions: [
+            PROVIDER_BRIDGE_PROTOCOL_VERSION,
+            PROVIDER_BRIDGE_PROTOCOL_VERSION,
+          ],
+          steerMode: "inject",
         },
       };
       sendResult(request.id, result);
@@ -1058,9 +1064,7 @@ async function handleThreadStop(
     // the SDK session is detached on close, so no further events flow. The
     // assembler settles only a turn it actually holds open (or one owed to
     // pending accepted input), so an idle interrupt fabricates nothing.
-    sendThreadDeltas(params.threadId, [
-      { kind: "session.ended" },
-    ]);
+    sendThreadDeltas(params.threadId, [{ kind: "session.ended" }]);
   }
   // A release detaches the idle session and must not fabricate an
   // interruption (#1584): the close path emits no turn events.

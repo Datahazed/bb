@@ -258,6 +258,117 @@ describe("delta assembler", () => {
     }
   });
 
+  // -- grammar v3 presentation ----------------------------------------------
+
+  const openPresentation = {
+    label: { pending: "Reading file", completed: "Read file" },
+    icon: { glyph: "FileText" },
+    title: "src/index.ts",
+  };
+  const closePresentation = {
+    ...openPresentation,
+    detail: "12 lines",
+  };
+
+  function toolOpen(
+    providerItemId: string,
+    presentation?: typeof openPresentation,
+  ): ThreadDelta {
+    return {
+      kind: "item.open",
+      key: { providerItemId },
+      item: { type: "tool", tool: "Read", args: { path: "src/index.ts" } },
+      ...(presentation === undefined ? {} : { presentation }),
+    };
+  }
+
+  function itemOf(event: ThreadEvent | undefined) {
+    return event?.type === "item/started" || event?.type === "item/completed"
+      ? event.item
+      : undefined;
+  }
+
+  it("persists the open presentation and echoes it onto a close that carries none", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const started = itemOf(
+      assemble(assembler, toolOpen("tc-1", openPresentation))[0],
+    );
+    expect(started).toMatchObject({
+      type: "toolCall",
+      presentation: openPresentation,
+    });
+
+    const closed = itemOf(
+      assemble(assembler, {
+        kind: "item.close",
+        key: { providerItemId: "tc-1" },
+        status: "completed",
+        item: { type: "tool", tool: "Read", result: "…" },
+      })[0],
+    );
+    expect(closed).toMatchObject({
+      type: "toolCall",
+      status: "completed",
+      presentation: openPresentation,
+    });
+  });
+
+  it("lets the close's presentation win over the opened one", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, toolOpen("tc-1", openPresentation));
+    const closed = itemOf(
+      assemble(assembler, {
+        kind: "item.close",
+        key: { providerItemId: "tc-1" },
+        status: "completed",
+        item: { type: "tool", tool: "Read" },
+        presentation: closePresentation,
+      })[0],
+    );
+    expect(closed).toMatchObject({ presentation: closePresentation });
+  });
+
+  it("keeps each settled shape's own presentation on a dual-settle", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    assemble(assembler, toolOpen("tc-re", openPresentation));
+    const events = assemble(assembler, {
+      kind: "item.close",
+      key: { providerItemId: "tc-re" },
+      status: "completed",
+      item: {
+        type: "fileChange",
+        changes: [{ path: "/tmp/a.ts", kind: "update", diff: "+x" }],
+      },
+      presentation: closePresentation,
+    });
+    const settled = events.map(itemOf);
+    expect(settled.map((item) => item?.type)).toEqual([
+      "toolCall",
+      "fileChange",
+    ]);
+    expect(settled[0]).toMatchObject({ presentation: openPresentation });
+    expect(settled[1]).toMatchObject({ presentation: closePresentation });
+  });
+
+  it("adds no presentation key to v2 items that never carried one", () => {
+    const assembler = createAssembler();
+    assemble(assembler, { kind: "turn.open" });
+    const started = itemOf(assemble(assembler, toolOpen("tc-1"))[0]);
+    const closed = itemOf(
+      assemble(assembler, {
+        kind: "item.close",
+        key: { providerItemId: "tc-1" },
+        status: "completed",
+        item: { type: "tool", tool: "Read" },
+      })[0],
+    );
+    expect(started).not.toHaveProperty("presentation");
+    expect(closed).not.toHaveProperty("presentation");
+  });
+
   it("clears pairing state at the turn boundary so late closes get bare items", () => {
     const assembler = createAssembler();
     assemble(assembler, { kind: "turn.open" }, bashOpen("tc-1"));

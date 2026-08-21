@@ -1,3 +1,4 @@
+import { providerRecoveryKindSchema } from "@bb/domain";
 import { z } from "zod";
 
 /**
@@ -12,6 +13,7 @@ export const BRIDGE_NOTIFICATION_METHODS = {
   sessionReplaced: "session/replaced",
   threadOpenWork: "thread/openWork",
   providerRaw: "provider/raw",
+  providerRecovery: "provider/recovery",
   error: "error",
 } as const;
 
@@ -81,6 +83,38 @@ export const providerRawNotificationSchema = z
     payload: z.unknown(),
   })
   .passthrough();
+
+/**
+ * A typed recovery hint: the bridge tells the runtime WHAT went wrong in the
+ * runtime's own vocabulary, so the runtime never matches provider error text
+ * (the codex regex set, the account-restart list, the archive idempotency
+ * string match all go away in WS4). A runtime signal, not a timeline item —
+ * the user-visible consequence, when there is one, is the `provider/error`
+ * delta the bridge emits alongside, and the timeline stays free of
+ * "restarting the bridge" noise. Lives here with `session/replaced` rather
+ * than in `thread/delta` for the same reason `provider/raw` does: it is
+ * consumed by the runtime's recovery logic, never persisted.
+ *
+ * `threadId` is absent for provider-wide conditions (`authRequired`,
+ * `rateLimited` at the account level) and present when the hint is about one
+ * session (`sessionArchived`, `staleTurn`). `retryable` says whether the
+ * runtime may retry the failed command after acting on the hint.
+ *
+ * Additive: no consumer yet. WS4 (runtime cleanup) acts on each kind; until
+ * then the runtime ignores the method like any unknown notification.
+ */
+export const providerRecoveryNotificationSchema = z
+  .object({
+    threadId: z.string().min(1).optional(),
+    kind: providerRecoveryKindSchema,
+    message: z.string().min(1),
+    retryable: z.boolean(),
+  })
+  .passthrough();
+
+export type ProviderRecoveryNotification = z.infer<
+  typeof providerRecoveryNotificationSchema
+>;
 
 export const errorNotificationSchema = z
   .object({

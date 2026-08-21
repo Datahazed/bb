@@ -186,6 +186,16 @@ export function formatPendingInteractionSubjectDetailLines(
         ? [`Plan file: ${interaction.payload.subject.planFilePath}`]
         : [];
     }
+    case "tool_use": {
+      // Declarative base only: no producer emits this subject until WS5
+      // rewires the interaction producers and designs the tool-use surface.
+      const { tool, presentation } = interaction.payload.subject;
+      return [
+        `Tool: ${tool}`,
+        ...(presentation.title ? [presentation.title] : []),
+        ...(presentation.detail ? [presentation.detail] : []),
+      ];
+    }
     default:
       return assertNever(interaction.payload.subject);
   }

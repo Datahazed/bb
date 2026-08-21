@@ -425,6 +425,8 @@ function formatInteractiveRequest(request: PendingInteractionCreate): string {
       return `permission_grant:${subject.toolName ?? "unknown"}`;
     case "plan":
       return `plan:${previewText(subject.plan)}`;
+    case "tool_use":
+      return `tool_use:${subject.tool}`;
   }
 }
 
@@ -725,6 +727,9 @@ function expectSemanticApprovalRequest(
     case "plan":
       expect(request.payload.subject.plan.length).toBeGreaterThan(0);
       break;
+    case "tool_use":
+      // Unsupported until WS5: no fake or real producer raises it yet.
+      throw new Error("tool_use approval subjects are not produced until WS5");
   }
   expect(request.payload.availableDecisions.length).toBeGreaterThan(0);
   for (const decision of request.payload.availableDecisions) {
@@ -854,8 +859,7 @@ function withBridgeLaunch(
 ): AgentRuntime {
   return {
     ...runtime,
-    ensureProvider: (args) =>
-      runtime.ensureProvider({ bridgeLaunch, ...args }),
+    ensureProvider: (args) => runtime.ensureProvider({ bridgeLaunch, ...args }),
     startThread: (args) => runtime.startThread({ bridgeLaunch, ...args }),
     prepareThreadRewind: (args) =>
       runtime.prepareThreadRewind({ bridgeLaunch, ...args }),

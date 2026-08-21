@@ -5,7 +5,11 @@ import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
 import type { JsonValue } from "./json-value.js";
-import type { PluginRpcContract, PluginRpcHandlers } from "./rpc-contract.js";
+import type {
+  PluginRpcContract,
+  PluginRpcHandlers,
+  StandardSchemaV1,
+} from "./rpc-contract.js";
 import type {
   ExperimentalHostClient,
   ExperimentalHostSignals,
@@ -566,6 +570,52 @@ export interface PluginProviderCapabilities {
 }
 
 /**
+ * Provider copy core surfaces render from per-provider tables today (usage
+ * banners, sign-in hints, the mobile picker, the agent guide). Declared once
+ * here so no core surface keys copy on a provider id. Mirrors
+ * `ProviderStrings` in `@bb/domain`, which is the client projection.
+ */
+export interface PluginProviderStrings {
+  /** How to sign in on the host ("Run `claude` on the machine to sign in."). */
+  signInHint: string;
+  /** Shown when a session's credentials expired. */
+  expiredHint: string;
+  /** Where to install the agent. */
+  installUrl: string;
+  /** Brand prefix stripped from model display names ("Claude "). */
+  brandPrefix?: string;
+  /** Plan-mode banner copy for providers that declare the `plan` action. */
+  planModeCopy?: string;
+  /** Per-theme tint for the provider icon. */
+  iconTint?: { light: string; dark: string };
+}
+
+/**
+ * One selectable option for a picker — a service tier or a reasoning level.
+ * `id` is the wire value the bridge receives; `label` is what the picker
+ * shows. Declared lists are the cold-cache fallback; `model/list` is precise
+ * per model.
+ */
+export interface PluginProviderOptionDescriptor {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+/**
+ * Payload schemas for one extension kind this provider emits, keyed by the
+ * kind's local name (the server prefixes the plugin id to form the
+ * namespaced `"<pluginId>/<name>"`). `item` validates `item.open` payloads
+ * with `type: "extension"`, `state` validates `extension.state` payloads;
+ * each is optional so a kind can be item-only or state-only. Schemas are
+ * Standard Schema v1 validators (zod 4 schemas qualify).
+ */
+export interface PluginProviderExtensionKindDeclaration {
+  item?: StandardSchemaV1;
+  state?: StandardSchemaV1;
+}
+
+/**
  * One provider this plugin contributes to BB's provider registry.
  *
  * Ids are stable public identifiers — thread rows and routes reference them —
@@ -613,6 +663,28 @@ export interface PluginProviderDeclaration {
   /** Composer actions this provider supports. No duplicates; may be empty
    * (the universal skills typeahead is implicit). */
   composerActions: readonly PluginProviderComposerAction[];
+  // -------------------------------------------------------------------------
+  // Target-state declaration fields (docs/provider-plugin-api.md §1). Each is
+  // validated and carried on the normalized declaration; WS2a projects them
+  // onto `ProviderInfo` and the surfaces that read per-provider tables today.
+  // See docs/api_to_audit.md for what to audit before stabilizing.
+  // -------------------------------------------------------------------------
+  /** Provider copy for core surfaces ({@link PluginProviderStrings}). */
+  experimental_strings?: PluginProviderStrings;
+  /** Service tiers this provider accepts, as picker options. Non-empty when
+   * present, unique ids. The coarse `capabilities.supportsServiceTier` stays
+   * until WS2a stabilizes. */
+  experimental_serviceTiers?: readonly PluginProviderOptionDescriptor[];
+  /** Reasoning levels as picker options with labels, beside the coarse
+   * `capabilities.reasoningLevels` ladder (ids only). Non-empty when present,
+   * unique ids. WS2a merges the two. */
+  experimental_reasoningLevels?: readonly PluginProviderOptionDescriptor[];
+  /** Extension kinds this provider's bridge may emit, keyed by local name
+   * (`[a-z0-9-]+`). The server validates extension payloads against these
+   * schemas at ingest (WS1a). */
+  experimental_extensionKinds?: Readonly<
+    Record<string, PluginProviderExtensionKindDeclaration>
+  >;
 }
 
 export interface PluginAgents {

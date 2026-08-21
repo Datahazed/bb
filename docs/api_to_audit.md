@@ -394,6 +394,40 @@ bridge as provider-scoped static options. Core does not interpret its keys.
    installed-only provider, and that targeted requests may continue resolving
    a registered provider even while discovery says it is absent.
 
+## Provider declaration target-state fields (`PluginProviderDeclaration.experimental_strings`, `experimental_serviceTiers`, `experimental_reasoningLevels`, `experimental_extensionKinds`)
+
+**What it does.** Adds the target-state declaration fields from
+[docs/provider-plugin-api.md](provider-plugin-api.md) §1 beside the existing
+`capabilities`: provider copy (`strings`: sign-in and expiry hints, install
+URL, brand prefix, plan-mode copy, icon tint), service tiers and reasoning
+levels as `{ id, label, description? }` picker options, and the extension
+kinds the provider's bridge may emit (`{ item?, state? }` Standard Schema
+validators keyed by local name). `validatePluginProviderDeclaration` checks
+and deep-freezes them and carries them on the normalized declaration. Nothing
+projects them yet: `ProviderInfo` gained matching optional `strings`,
+`serviceTiers`, `reasoningLevels`, and `extensionKinds` fields, and WS2a
+(registry) fills them from the declaration and points the usage banners,
+pickers, mobile, and the agent guide at them instead of per-provider tables;
+WS1a (generic assembler) validates extension payloads against the declared
+schemas at ingest.
+
+**Audit before stabilizing.**
+
+1. **One reasoning-level source.** `capabilities.reasoningLevels` (an id
+   ladder) and `experimental_reasoningLevels` (labelled options) say the same
+   thing twice during the transition. Delete the ladder once every first-party
+   plugin declares the option form, and decide whether the coarse
+   `capabilities.supportsServiceTier` boolean survives beside
+   `experimental_serviceTiers` or is implied by it.
+2. **Copy limits and markup.** `strings` values are capped at 512 characters
+   and rendered as plain text. Confirm that is enough for every surface that
+   reads them today (usage banners, the mobile picker, the guide) and that
+   none of them needs inline Markdown or links.
+3. **Extension-kind ceiling and schema cost.** 32 kinds per provider and
+   Standard Schema validators executed at server ingest are guesses. Confirm
+   the ceiling against real plugins and set the payload size limit the server
+   enforces before validating.
+
 ## `@get-bb/plugin-sdk/provider-bridge` (the provider-bridge authoring surface)
 
 **What it does.** The published module a provider bridge compiles against. A

@@ -75,8 +75,14 @@ the daemon — that decoupling is the protocol's reason to exist.
 
 Handshake capabilities are **session-behavior facts** (`sessionRestore`,
 `threadArchive`, `threadRename`, `threadGoalClear`, `fork`,
-`approvalEnforcedBy`). They are reported by the code that implements
-them, so they cannot drift from behavior. The runtime never sends a
+`approvalEnforcedBy`, `grammarVersions`, `steerMode`). They are reported by
+the code that implements them, so they cannot drift from behavior.
+`grammarVersions` is the inclusive `[min, max]` range of the `thread/delta`
+grammar the bridge speaks (default `[2, 2]`: a bridge that says nothing
+speaks exactly the version it negotiated), which is how the vocabulary can
+grow without a daemon bump. `steerMode` says whether `turn/steer` is
+injected into the live model loop (`inject`) or held for the next prompt
+boundary (`queue`, the default and the conservative reading). The runtime never sends a
 capability-gated method to a bridge that did not advertise it. A handshake
 fact may only _narrow_ what the provider's declaration advertises (a
 declared fork affordance can turn out unavailable for this agent), never
@@ -169,6 +175,43 @@ adapter) consumes the deltas and owns every timeline invariant:
   thread's state.
 - **Settlement.** `session.ended` and settling errors close open turns and
   items with the right statuses.
+
+### Grammar v3 (accepted beside v2)
+
+The target provider-plugin surface ([provider-plugin-api.md](provider-plugin-api.md))
+grows the delta vocabulary; every addition is a new union member or an
+optional field, so the protocol version stays at 2 and a v2 bridge's deltas
+validate unchanged. A bridge that emits any of it reports
+`grammarVersions: [2, 3]`.
+
+- **Core item shapes** `fileRead`, `search` (`mode: content | path | list`),
+  `delegation` (`childRef`, `label`, `background`, `summary?`; one shape for
+  codex `spawnAgent`/`wait`, the Claude `Agent` tool, and backgrounded
+  agents, replacing `thread/openWork`), and `planSteps` (a structured plan
+  snapshot as an item, beside the turn-level `turn.plan`).
+- **`presentation`** on `item.open` and `item.close`, the one place it
+  travels: `label {pending, completed}`, `icon {glyph}` (host glyphs only —
+  a plugin-relative asset path cannot outlive the plugin, and a durable
+  content-addressed form is later work), `title?`, `detail?` (≤ 280 chars),
+  `suppress?`, `tint?`. The assembler persists it on the canonical item (the
+  close's value wins, the open's survives when the close carries none), so
+  the row renders after the plugin is gone and mobile renders every kind
+  without plugin code. Optional for core shapes until the v2 paths are
+  deleted; required when the shape is `extension`.
+- **Extension kinds** `"<pluginId>/<name>"`: the `extension` item shape
+  (opaque JSON `payload`; its lifecycle delta must carry a `presentation`)
+  and the thread-scoped
+  `extension.state` delta (latest snapshot wins per kind). Only the namespace
+  is validated on the wire; the server validates payloads against the
+  plugin's declared schemas at ingest.
+- **`provider/recovery`** is a bridge → runtime _notification_ beside
+  `session/replaced`, not a delta: `{ threadId?, kind: sessionArchived |
+authRequired | restartRecommended | staleTurn | rateLimited, message,
+retryable }`. The runtime acts on the kind and never matches error text.
+
+The assembler refuses v3 shapes with `UnsupportedDeltaShapeError` until the
+generic assembler lands; the schemas accept them so bridges can be written
+and conformance-tested against the contract first.
 
 ## Identifiers
 

@@ -78,6 +78,15 @@ export function describeApprovalSubject(
         plan: subject.plan,
         detailLines: subject.planFilePath ? [subject.planFilePath] : [],
       };
+    // Declarative base only: no producer emits this subject until WS5
+    // designs the tool-use approval surface.
+    case "tool_use":
+      return {
+        title: payload.reason ?? subject.presentation.label.pending,
+        command: null,
+        plan: null,
+        detailLines: formatPendingInteractionSubjectDetailLines(interaction),
+      };
     default:
       return assertNever(subject);
   }

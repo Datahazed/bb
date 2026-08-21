@@ -63,6 +63,37 @@ describe("handshake version gate", () => {
     );
     expect(() => requests[0]?.onResult(null)).toThrowError(/malformed result/);
   });
+
+  it("states the assembler's grammar range and rejects a bridge with no common version", () => {
+    const adapter = makeAdapter();
+    const requests = adapter.buildPostInitializeRequests?.() ?? [];
+    expect(requests[0]?.plan).toMatchObject({
+      method: "initialize",
+      params: { grammarVersions: [2, 2] },
+    });
+    // A bridge that only speaks a future grammar would connect and then have
+    // every thread/delta refused — the same silent-timeline failure as a
+    // wrong protocol version, so it fails startup the same legible way.
+    expect(() =>
+      requests[0]?.onResult({
+        protocolVersion: 2,
+        capabilities: { grammarVersions: [3, 4] },
+      }),
+    ).toThrowError(
+      /grammar versions 3-4.*assembles versions 2-2.*fake-bridge/s,
+    );
+    // An overlapping range (a v3-capable bridge talking to a v2 runtime) and
+    // an older bridge that omits the field both negotiate.
+    expect(() =>
+      requests[0]?.onResult({
+        protocolVersion: 2,
+        capabilities: { grammarVersions: [2, 3] },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      requests[0]?.onResult({ protocolVersion: 2, capabilities: {} }),
+    ).not.toThrow();
+  });
 });
 
 describe("handshake gating", () => {

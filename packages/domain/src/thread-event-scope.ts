@@ -115,6 +115,16 @@ const threadEventScopeDefinitionByType = {
     rationale:
       "Terminal task state can arrive turns after the spawning turn completed; thread scope avoids appending into a closed turn's sequence range.",
   },
+  "item/delegation/progress": {
+    policy: "thread",
+    rationale:
+      "Background delegations outlive their spawning turn exactly like background tasks; thread scope keeps turn windows sequence-contiguous.",
+  },
+  "item/delegation/completed": {
+    policy: "thread",
+    rationale:
+      "A background delegation's terminal state can arrive turns after the spawning turn completed; thread scope avoids appending into a closed turn's sequence range.",
+  },
   "thread/tokenUsage/updated": { policy: "turn" },
   "thread/contextWindowUsage/updated": {
     policy: "thread-or-turn",

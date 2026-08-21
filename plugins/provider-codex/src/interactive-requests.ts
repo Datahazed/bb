@@ -261,6 +261,11 @@ export function buildCodexInteractiveResponse(
       throw new ProviderResponseEncodeError(
         "Codex plan-review interactive requests are unsupported",
       );
+    // Unsupported until WS5: this bridge raises no tool_use subject yet.
+    case "tool_use":
+      throw new ProviderResponseEncodeError(
+        "tool_use approval subjects are not produced by the Codex bridge until WS5",
+      );
     default:
       return assertNever(args.request.payload.subject);
   }

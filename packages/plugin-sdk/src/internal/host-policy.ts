@@ -10,8 +10,11 @@ import type {
   PluginProviderCapabilities,
   PluginProviderComposerAction,
   PluginProviderDeclaration,
+  PluginProviderExtensionKindDeclaration,
+  PluginProviderOptionDescriptor,
   PluginProviderPermissionMode,
   PluginProviderReasoningLevel,
+  PluginProviderStrings,
   PluginSettingDescriptor,
   PluginSettingDescriptors,
 } from "../backend-contract.js";
@@ -423,6 +426,202 @@ function normalizeProviderBridgeOptions(
   return normalized;
 }
 
+const PROVIDER_STRING_MAX_CHARS = 512;
+const PROVIDER_EXTENSION_KIND_NAME_PATTERN = /^[a-z0-9-]+$/u;
+const PROVIDER_EXTENSION_KINDS_MAX = 32;
+
+function requireNonBlankString(args: {
+  providerId: string;
+  field: string;
+  value: unknown;
+}): string {
+  const { providerId, field, value } = args;
+  if (
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    value.length > PROVIDER_STRING_MAX_CHARS
+  ) {
+    throw new Error(
+      `provider "${providerId}" ${field} must be a non-blank string of at most ${PROVIDER_STRING_MAX_CHARS} characters`,
+    );
+  }
+  return value;
+}
+
+function validateProviderStrings(
+  providerId: string,
+  value: unknown,
+): PluginProviderStrings {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `provider "${providerId}" experimental_strings must be an object`,
+    );
+  }
+  const record: Record<string, unknown> = Object.fromEntries(
+    Object.entries(value),
+  );
+  const required = (field: "signInHint" | "expiredHint" | "installUrl") =>
+    requireNonBlankString({
+      providerId,
+      field: `experimental_strings.${field}`,
+      value: record[field],
+    });
+  const optional = (field: "brandPrefix" | "planModeCopy") =>
+    record[field] === undefined
+      ? undefined
+      : requireNonBlankString({
+          providerId,
+          field: `experimental_strings.${field}`,
+          value: record[field],
+        });
+  let iconTint: PluginProviderStrings["iconTint"];
+  if (record.iconTint !== undefined) {
+    const tint = record.iconTint;
+    if (typeof tint !== "object" || tint === null || Array.isArray(tint)) {
+      throw new Error(
+        `provider "${providerId}" experimental_strings.iconTint must be { light, dark }`,
+      );
+    }
+    const tintRecord: Record<string, unknown> = Object.fromEntries(
+      Object.entries(tint),
+    );
+    iconTint = Object.freeze({
+      light: requireNonBlankString({
+        providerId,
+        field: "experimental_strings.iconTint.light",
+        value: tintRecord.light,
+      }),
+      dark: requireNonBlankString({
+        providerId,
+        field: "experimental_strings.iconTint.dark",
+        value: tintRecord.dark,
+      }),
+    });
+  }
+  const brandPrefix = optional("brandPrefix");
+  const planModeCopy = optional("planModeCopy");
+  return Object.freeze({
+    signInHint: required("signInHint"),
+    expiredHint: required("expiredHint"),
+    installUrl: required("installUrl"),
+    ...(brandPrefix === undefined ? {} : { brandPrefix }),
+    ...(planModeCopy === undefined ? {} : { planModeCopy }),
+    ...(iconTint === undefined ? {} : { iconTint }),
+  });
+}
+
+function validateProviderOptionDescriptors(args: {
+  providerId: string;
+  field: string;
+  value: unknown;
+}): readonly PluginProviderOptionDescriptor[] {
+  const { providerId, field, value } = args;
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(
+      `provider "${providerId}" ${field} must be a non-empty array of { id, label, description? }`,
+    );
+  }
+  const seen = new Set<string>();
+  const normalized = value.map(
+    (entry, index): PluginProviderOptionDescriptor => {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+        throw new Error(
+          `provider "${providerId}" ${field}[${index}] must be { id, label, description? }`,
+        );
+      }
+      const record: Record<string, unknown> = Object.fromEntries(
+        Object.entries(entry),
+      );
+      const id = requireNonBlankString({
+        providerId,
+        field: `${field}[${index}].id`,
+        value: record.id,
+      });
+      if (seen.has(id)) {
+        throw new Error(
+          `provider "${providerId}" ${field} id ${JSON.stringify(id)} is duplicated`,
+        );
+      }
+      seen.add(id);
+      const label = requireNonBlankString({
+        providerId,
+        field: `${field}[${index}].label`,
+        value: record.label,
+      });
+      const description =
+        record.description === undefined
+          ? undefined
+          : requireNonBlankString({
+              providerId,
+              field: `${field}[${index}].description`,
+              value: record.description,
+            });
+      return Object.freeze({
+        id,
+        label,
+        ...(description === undefined ? {} : { description }),
+      });
+    },
+  );
+  return Object.freeze(normalized);
+}
+
+function validateProviderExtensionKinds(
+  providerId: string,
+  value: unknown,
+): Readonly<Record<string, PluginProviderExtensionKindDeclaration>> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `provider "${providerId}" experimental_extensionKinds must be an object keyed by kind name`,
+    );
+  }
+  const entries = Object.entries(value);
+  if (entries.length > PROVIDER_EXTENSION_KINDS_MAX) {
+    throw new Error(
+      `provider "${providerId}" experimental_extensionKinds declares more than ${PROVIDER_EXTENSION_KINDS_MAX} kinds`,
+    );
+  }
+  const normalized: Record<string, PluginProviderExtensionKindDeclaration> = {};
+  for (const [name, declaration] of entries) {
+    if (!PROVIDER_EXTENSION_KIND_NAME_PATTERN.test(name)) {
+      throw new Error(
+        `provider "${providerId}" experimental_extensionKinds name ${JSON.stringify(name)} must match ${PROVIDER_EXTENSION_KIND_NAME_PATTERN}`,
+      );
+    }
+    if (
+      typeof declaration !== "object" ||
+      declaration === null ||
+      Array.isArray(declaration)
+    ) {
+      throw new Error(
+        `provider "${providerId}" experimental_extensionKinds.${name} must be { item?, state? }`,
+      );
+    }
+    const item = Reflect.get(declaration, "item");
+    const state = Reflect.get(declaration, "state");
+    if (item === undefined && state === undefined) {
+      throw new Error(
+        `provider "${providerId}" experimental_extensionKinds.${name} must declare an item schema, a state schema, or both`,
+      );
+    }
+    if (item !== undefined && !isStandardSchema(item)) {
+      throw new Error(
+        `provider "${providerId}" experimental_extensionKinds.${name}.item must be a Standard Schema v1 validator`,
+      );
+    }
+    if (state !== undefined && !isStandardSchema(state)) {
+      throw new Error(
+        `provider "${providerId}" experimental_extensionKinds.${name}.state must be a Standard Schema v1 validator`,
+      );
+    }
+    normalized[name] = Object.freeze({
+      ...(item === undefined ? {} : { item }),
+      ...(state === undefined ? {} : { state }),
+    });
+  }
+  return Object.freeze(normalized);
+}
+
 /**
  * Validate one `bb.agents.experimental_registerProvider` declaration. Plugin
  * sources are untyped at runtime, so every field is checked; the production
@@ -582,6 +781,35 @@ export function validatePluginProviderDeclaration(
       `provider "${id}" experimental_visibility "installed" requires experimental_providerHealth`,
     );
   }
+  // Target-state declaration fields: validated and carried when present so
+  // WS2a can project them, never silently dropped.
+  const strings =
+    declaration.experimental_strings === undefined
+      ? undefined
+      : validateProviderStrings(id, declaration.experimental_strings);
+  const serviceTiers =
+    declaration.experimental_serviceTiers === undefined
+      ? undefined
+      : validateProviderOptionDescriptors({
+          providerId: id,
+          field: "experimental_serviceTiers",
+          value: declaration.experimental_serviceTiers,
+        });
+  const reasoningLevels =
+    declaration.experimental_reasoningLevels === undefined
+      ? undefined
+      : validateProviderOptionDescriptors({
+          providerId: id,
+          field: "experimental_reasoningLevels",
+          value: declaration.experimental_reasoningLevels,
+        });
+  const extensionKinds =
+    declaration.experimental_extensionKinds === undefined
+      ? undefined
+      : validateProviderExtensionKinds(
+          id,
+          declaration.experimental_extensionKinds,
+        );
   return Object.freeze({
     id,
     displayName,
@@ -592,6 +820,16 @@ export function validatePluginProviderDeclaration(
     experimental_visibility: visibility,
     capabilities: normalizedCapabilities,
     composerActions,
+    ...(strings === undefined ? {} : { experimental_strings: strings }),
+    ...(serviceTiers === undefined
+      ? {}
+      : { experimental_serviceTiers: serviceTiers }),
+    ...(reasoningLevels === undefined
+      ? {}
+      : { experimental_reasoningLevels: reasoningLevels }),
+    ...(extensionKinds === undefined
+      ? {}
+      : { experimental_extensionKinds: extensionKinds }),
   });
 }
 

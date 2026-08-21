@@ -27,13 +27,17 @@ import {
   BRIDGE_REQUEST_METHODS,
   bridgeCapabilitiesSchema,
   initializeResultSchema,
+  negotiateGrammarVersion,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
   threadDeltaNotificationParamsSchema,
   type BridgeCapabilities,
   type SkillsConfigureRoot,
 } from "@bb/provider-bridge-protocol";
-import { createDeltaAssembler } from "./delta-assembler.js";
+import {
+  ASSEMBLER_GRAMMAR_VERSIONS,
+  createDeltaAssembler,
+} from "./delta-assembler.js";
 import { z } from "zod";
 import type {
   AdapterCommand,
@@ -540,6 +544,9 @@ export function createBridgeProtocolAdapter(
             params: {
               protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
               client: { name: "bb", version: "1.0.0" },
+              // The assembler's grammar range, so a bridge that speaks a
+              // wider range emits only what this runtime can assemble.
+              grammarVersions: ASSEMBLER_GRAMMAR_VERSIONS,
             },
           },
           onResult(result) {
@@ -569,6 +576,22 @@ export function createBridgeProtocolAdapter(
             ) {
               throw new Error(
                 `Provider bridge "${options.id}" speaks Provider Bridge Protocol version ${parsed.data.protocolVersion}, but this runtime requires version ${PROVIDER_BRIDGE_PROTOCOL_VERSION}. Update the "${options.id}" provider plugin to a build published for protocol version ${PROVIDER_BRIDGE_PROTOCOL_VERSION}.`,
+              );
+            }
+            // Same gate for the delta grammar: a bridge whose range shares
+            // no version with the assembler's would connect and then have
+            // every `thread/delta` refused, which is the silently empty
+            // timeline the version gate above exists to prevent.
+            const grammarVersion = negotiateGrammarVersion(
+              ASSEMBLER_GRAMMAR_VERSIONS,
+              parsed.data.capabilities.grammarVersions,
+            );
+            if (grammarVersion === null) {
+              const [bridgeMin, bridgeMax] =
+                parsed.data.capabilities.grammarVersions;
+              const [runtimeMin, runtimeMax] = ASSEMBLER_GRAMMAR_VERSIONS;
+              throw new Error(
+                `Provider bridge "${options.id}" speaks thread/delta grammar versions ${bridgeMin}-${bridgeMax}, but this runtime assembles versions ${runtimeMin}-${runtimeMax}. Update the "${options.id}" provider plugin or bb so the two ranges overlap.`,
               );
             }
             handshake = parsed.data.capabilities;

@@ -42,6 +42,9 @@ function pendingInteractionBlockerLabel(
       return "permission grant";
     case "plan":
       return "plan review";
+    // Declarative base only: no producer emits this subject until WS5.
+    case "tool_use":
+      return "tool-use approval";
     default: {
       const exhaustiveCheck: never = interaction.payload.subject;
       return exhaustiveCheck;

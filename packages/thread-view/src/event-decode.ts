@@ -23,6 +23,8 @@ export function getEventProviderThreadId(
     case "item/completed":
     case "item/backgroundTask/progress":
     case "item/backgroundTask/completed":
+    case "item/delegation/progress":
+    case "item/delegation/completed":
     case "item/agentMessage/delta":
     case "item/commandExecution/outputDelta":
     case "item/fileChange/outputDelta":
@@ -70,6 +72,8 @@ export function getEventParentToolCallId(
     case "item/completed":
     case "item/backgroundTask/progress":
     case "item/backgroundTask/completed":
+    case "item/delegation/progress":
+    case "item/delegation/completed":
       return decoded.item.parentToolCallId;
     case "item/agentMessage/delta":
     case "item/commandExecution/outputDelta":

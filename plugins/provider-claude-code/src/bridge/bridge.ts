@@ -1902,6 +1902,14 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
           threadGoalClear: false,
           fork: "checkpoint",
           approvalEnforcedBy: "provider",
+          // grammarVersions [2, 2] — this bridge emits the v2 delta grammar
+          // only (v3 shapes land per bridge in WS1b). steerMode "inject" —
+          // a steer joins the live SDK prompt iterator mid-turn.
+          grammarVersions: [
+            PROVIDER_BRIDGE_PROTOCOL_VERSION,
+            PROVIDER_BRIDGE_PROTOCOL_VERSION,
+          ],
+          steerMode: "inject",
         },
       };
       sendResult(request.id, result);

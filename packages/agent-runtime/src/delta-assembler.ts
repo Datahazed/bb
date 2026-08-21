@@ -30,18 +30,36 @@ import type {
   ClientTurnRequestId,
   ThreadEvent,
   ThreadEventItem,
+  ThreadEventItemPresentation,
   ThreadEventItemStatus,
   ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import type {
+  BridgeGrammarVersions,
   DeltaFileChange,
   DeltaItemKey,
   DeltaItemShape,
   DeltaNoTurnFallback,
   ThreadDelta,
 } from "@bb/provider-bridge-protocol";
-import { THREAD_DELTA_KEY_SEPARATOR } from "@bb/provider-bridge-protocol";
+import {
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_KEY_SEPARATOR,
+} from "@bb/provider-bridge-protocol";
+
+/**
+ * The `thread/delta` grammar range this assembler speaks, reported to every
+ * bridge in the `initialize` params so the two sides negotiate a version
+ * (see `negotiateGrammarVersion` in the protocol). Stays `[2, 2]` while the
+ * v3 shapes throw `UnsupportedDeltaShapeError` below; WS1a widens it to
+ * `[2, 3]` when it implements them, and the same commit is what lets a
+ * `[2, 3]` bridge start emitting v3.
+ */
+export const ASSEMBLER_GRAMMAR_VERSIONS: BridgeGrammarVersions = [
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+];
 import {
   buildEditDiff,
   toOptionalRecord,
@@ -304,6 +322,46 @@ function streamKeyString(args: {
     args.channel,
     args.streamKey ?? args.channel,
   ].join(SEP);
+}
+
+/**
+ * Grammar v3 item shapes (`fileRead`, `search`, `delegation`, `planSteps`,
+ * `extension`) are accepted by the protocol schema so v3 bridges validate,
+ * but this assembler does not build their canonical items yet. WS1a (generic
+ * assembler) implements them; until then a bridge that emits one fails loudly
+ * here instead of silently dropping or mis-shaping the item. Every existing
+ * v2 stream is untouched — no shipped bridge emits these shapes.
+ */
+export class UnsupportedDeltaShapeError extends Error {
+  constructor(shapeType: string, site: string) {
+    super(
+      `thread/delta item shape "${shapeType}" is not assembled yet (${site}): grammar v3 shapes are accepted by the protocol but implemented by WS1a`,
+    );
+    this.name = "UnsupportedDeltaShapeError";
+  }
+}
+
+/**
+ * Grammar v3 presentation rides the lifecycle delta, not the shape, and is
+ * persisted on the canonical item so the row renders after the plugin is
+ * gone. `userMessage` is bb-authored and carries none.
+ */
+function withPresentation<TItem extends ThreadEventItem>(
+  item: TItem,
+  presentation: ThreadEventItemPresentation | undefined,
+): TItem {
+  if (presentation === undefined || item.type === "userMessage") {
+    return item;
+  }
+  return { ...item, presentation };
+}
+
+function presentationOf(
+  item: ThreadEventItem | undefined,
+): ThreadEventItemPresentation | undefined {
+  return item !== undefined && "presentation" in item
+    ? item.presentation
+    : undefined;
 }
 
 function trimOldestEntries<T>(map: Map<string, T>, max: number): void {
@@ -697,6 +755,14 @@ export function createDeltaAssembler(
       case "imageView":
       case "backgroundTask":
         return item.type === shape.type;
+      // Unsupported until WS1a (generic assembler): see
+      // UnsupportedDeltaShapeError.
+      case "fileRead":
+      case "search":
+      case "delegation":
+      case "planSteps":
+      case "extension":
+        throw new UnsupportedDeltaShapeError(shape.type, "shapeMatchesItem");
     }
   }
 
@@ -846,6 +912,14 @@ export function createDeltaAssembler(
         );
       case "backgroundTask":
         return buildBackgroundTaskItem(bbItemId, shape, parentToolCallId);
+      // Unsupported until WS1a (generic assembler): see
+      // UnsupportedDeltaShapeError.
+      case "fileRead":
+      case "search":
+      case "delegation":
+      case "planSteps":
+      case "extension":
+        throw new UnsupportedDeltaShapeError(shape.type, "buildOpenedItem");
     }
   }
 
@@ -1017,6 +1091,17 @@ export function createDeltaAssembler(
       case "imageView":
         // Status-less canonical items: the terminal shape is the whole item.
         return buildOpenedItem(bbItemId, shape, parentToolCallId);
+      // Unsupported until WS1a (generic assembler): see
+      // UnsupportedDeltaShapeError.
+      case "fileRead":
+      case "search":
+      case "delegation":
+      case "planSteps":
+      case "extension":
+        throw new UnsupportedDeltaShapeError(
+          shape.type,
+          "buildClosedItemFromShape",
+        );
     }
   }
 
@@ -1192,7 +1277,10 @@ export function createDeltaAssembler(
           registerItemId(state, delta.key.providerItemId, bbItemId);
         }
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
-        const item = buildOpenedItem(bbItemId, delta.item, parentToolCallId);
+        const item = withPresentation(
+          buildOpenedItem(bbItemId, delta.item, parentToolCallId),
+          delta.presentation,
+        );
         state.openItemsByKey.set(keyStr, {
           bbItemId,
           item,
@@ -1271,7 +1359,10 @@ export function createDeltaAssembler(
             threadId: UNSTAMPED_THREAD_ID,
             providerThreadId: "",
             scope: turnScope(turnId),
-            item: completeStartedItem(open.item, closeFields, parentToolCallId),
+            item: withPresentation(
+              completeStartedItem(open.item, closeFields, parentToolCallId),
+              presentationOf(open.item),
+            ),
           });
         }
         const bbItemId =
@@ -1283,11 +1374,17 @@ export function createDeltaAssembler(
         if (delta.key.providerItemId !== undefined) {
           registerItemId(state, delta.key.providerItemId, bbItemId);
         }
-        const item = buildClosedItemFromShape(
-          bbItemId,
-          delta.item,
-          closeFields,
-          parentToolCallId ?? open?.item.parentToolCallId,
+        // Close-echo for presentation: the close's value wins; when the close
+        // carries none the opened item's survives onto the completed item.
+        const presentation = delta.presentation ?? presentationOf(open?.item);
+        const item = withPresentation(
+          buildClosedItemFromShape(
+            bbItemId,
+            delta.item,
+            closeFields,
+            parentToolCallId ?? open?.item.parentToolCallId,
+          ),
+          presentation,
         );
         state.openItemsByKey.delete(keyStr);
         state.commandSnapshotsByKey.delete(keyStr);
@@ -1304,10 +1401,13 @@ export function createDeltaAssembler(
             threadId: UNSTAMPED_THREAD_ID,
             providerThreadId: "",
             scope: threadScope(),
-            item: buildBackgroundTaskItem(
-              bbItemId,
-              delta.item,
-              parentToolCallId ?? open?.item.parentToolCallId,
+            item: withPresentation(
+              buildBackgroundTaskItem(
+                bbItemId,
+                delta.item,
+                parentToolCallId ?? open?.item.parentToolCallId,
+              ),
+              presentation,
             ),
           });
           return;
@@ -1358,6 +1458,14 @@ export function createDeltaAssembler(
           mintItemId();
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
         let event: ThreadEvent;
+        if (delta.snapshot?.type === "delegation") {
+          // Unsupported until WS1a: a background-delegation snapshot becomes
+          // `item/delegation/progress` once the generic assembler lands.
+          throw new UnsupportedDeltaShapeError(
+            delta.snapshot.type,
+            "item.progress snapshot",
+          );
+        }
         if (delta.snapshot !== undefined) {
           // Background-task snapshot progress is structurally thread-scoped by
           // the domain grammar; it needs no open turn.
@@ -1970,6 +2078,17 @@ export function createDeltaAssembler(
           rateLimits: delta.rateLimits,
         });
         return;
+      }
+
+      case "extension.state": {
+        // Unsupported until WS1a: plugin-declared thread state has no
+        // canonical event yet (the extension-state event and its latest-
+        // snapshot-wins fold land with the generic assembler). Loud, not
+        // silent — see UnsupportedDeltaShapeError.
+        throw new UnsupportedDeltaShapeError(
+          `extension.state:${delta.extensionKind}`,
+          "extension.state",
+        );
       }
 
       case "session.reset": {
