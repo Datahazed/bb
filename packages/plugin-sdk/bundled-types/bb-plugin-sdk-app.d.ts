@@ -83,9 +83,9 @@ declare const serviceTierSchema: z.ZodEnum<{
 }>;
 type ServiceTier = z.infer<typeof serviceTierSchema>;
 declare const permissionModeSchema: z.ZodEnum<{
+    full: "full";
     auto: "auto";
     "accept-edits": "accept-edits";
-    full: "full";
 }>;
 type PermissionMode = z.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
@@ -607,6 +607,13 @@ interface PluginSidebarFooterActionRegistration {
      * Experimental: see docs/api_to_audit.md.
      */
     experimental_activeIndicator?: "dot";
+    /**
+     * Keep this action's pointer activation available while a UI inspection
+     * session is capturing other controls. Hover metadata is still reported.
+     * Use only for the control that starts/stops the inspector itself.
+     * Experimental: see docs/api_to_audit.md.
+     */
+    experimental_inspectionActivationPassthrough?: boolean;
     /**
      * Runs when the user activates the action (e.g. call `openSettings()`,
      * open a panel via other surfaces, toast). Errors (sync or async) are
@@ -1147,6 +1154,13 @@ interface ExperimentalUiInspectionApi {
 type ExperimentalPluginAppCommandId = "plugin.inspector.toggle";
 /** Handler for one fixed Core-owned app command. */
 type ExperimentalPluginAppCommandHandler = () => void | Promise<void>;
+/** Root-composer navigation requested by one plugin content-script generation. */
+interface ExperimentalPluginComposeNavigationOptions {
+    /** Seed used when the destination composer does not already hold a draft. */
+    readonly initialPrompt?: string;
+    /** Focus the root composer after navigation. */
+    readonly focusPrompt?: boolean;
+}
 /** Stable lifecycle values for one content-script instance in one bb client. */
 interface PluginContentScriptContext {
     /** The id of the plugin that owns this script. */
@@ -1184,6 +1198,12 @@ interface PluginContentScriptContext {
      * content-script generation. Experimental: see docs/api_to_audit.md.
      */
     readonly experimental_registerAppCommandHandler?: (command: ExperimentalPluginAppCommandId, handler: ExperimentalPluginAppCommandHandler) => PluginContentScriptDisposer;
+    /**
+     * Navigate through Core's React Router to the root composer. Returns false
+     * when no app navigation host is mounted. Experimental: see
+     * docs/api_to_audit.md.
+     */
+    readonly experimental_navigateToCompose?: (options?: ExperimentalPluginComposeNavigationOptions) => boolean;
 }
 /** Cleanup returned by a frontend content script. */
 type PluginContentScriptDisposer = () => void | Promise<void>;
@@ -1762,4 +1782,4 @@ declare const experimental_useSidebarThreadPullRequest: (threadId: string) => Pl
 declare const experimental_useSidebarThreadSplit: (threadId: string) => PluginSidebarThreadSplit;
 
 export { Markdown, ThreadChat, definePluginApp, experimental_NewThreadComposer, experimental_useSidebarThreadActions, experimental_useSidebarThreadPullRequest, experimental_useSidebarThreadSplit, experimental_useSidebarThreads, useBbContext, useBbNavigate, useComposer, useComposerView, useRealtime, useRealtimeConnectionState, useRpc, useSettings };
-export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalPluginAppCommandHandler, ExperimentalPluginAppCommandId, ExperimentalUiInspectionAccessibility, ExperimentalUiInspectionApi, ExperimentalUiInspectionBounds, ExperimentalUiInspectionElement, ExperimentalUiInspectionMetadata, ExperimentalUiInspectionPointer, ExperimentalUiInspectionRegistration, ExperimentalUiInspectionSession, ExperimentalUiInspectionSessionEvent, ExperimentalUiInspectionSessionOptions, ExperimentalUiInspectionSource, ExperimentalUiInspectionStyle, ExperimentalUiInspectionTarget, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderIconRegistration, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalPluginAppCommandHandler, ExperimentalPluginAppCommandId, ExperimentalPluginComposeNavigationOptions, ExperimentalUiInspectionAccessibility, ExperimentalUiInspectionApi, ExperimentalUiInspectionBounds, ExperimentalUiInspectionElement, ExperimentalUiInspectionMetadata, ExperimentalUiInspectionPointer, ExperimentalUiInspectionRegistration, ExperimentalUiInspectionSession, ExperimentalUiInspectionSessionEvent, ExperimentalUiInspectionSessionOptions, ExperimentalUiInspectionSource, ExperimentalUiInspectionStyle, ExperimentalUiInspectionTarget, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderIconRegistration, PluginRealtimeConnectionState, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

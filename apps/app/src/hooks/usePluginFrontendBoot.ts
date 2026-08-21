@@ -1,5 +1,8 @@
 import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { bootPluginFrontends } from "../lib/plugin-frontend-lazy";
+import { setPluginContentScriptComposeNavigator } from "../lib/plugin-content-script-navigation";
+import { getRootComposeRoutePath } from "../lib/route-paths";
 import { useSystemConfig } from "./queries/system-queries";
 
 /**
@@ -11,8 +14,21 @@ import { useSystemConfig } from "./queries/system-queries";
  * schedulePluginFrontendReconcile (no page refresh needed).
  */
 export function usePluginFrontendBoot(): void {
+  const navigate = useNavigate();
   const systemConfig = useSystemConfig();
   const resolved = systemConfig.data !== undefined;
+  useEffect(
+    () =>
+      setPluginContentScriptComposeNavigator((options) => {
+        void navigate(getRootComposeRoutePath(), {
+          state: {
+            focusPrompt: options.focusPrompt ?? false,
+            initialPrompt: options.initialPrompt ?? "",
+          },
+        });
+      }),
+    [navigate],
+  );
   useEffect(() => {
     if (resolved) void bootPluginFrontends();
   }, [resolved]);

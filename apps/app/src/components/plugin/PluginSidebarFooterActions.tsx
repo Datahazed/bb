@@ -79,6 +79,11 @@ function PluginSidebarFooterAction({
         aria-label={title}
         aria-pressed={active}
         data-active={active}
+        data-bb-ui-inspection-activation-passthrough={
+          action.experimental_inspectionActivationPassthrough
+            ? "true"
+            : undefined
+        }
         data-testid={`plugin-sidebar-footer-action-${action.pluginId}-${action.id}`}
         onClick={() => {
           onNavigate?.();

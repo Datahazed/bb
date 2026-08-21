@@ -56,6 +56,7 @@ import {
   clearPluginAppCommandHandlerByOwner,
   registerPluginAppCommandHandler,
 } from "./plugin-app-command-handler";
+import { navigatePluginContentScriptToCompose } from "./plugin-content-script-navigation";
 import { createPluginUiInspectionApi } from "./ui-inspection";
 
 /**
@@ -601,6 +602,10 @@ async function mountWithTimeout(
               pluginId,
               statusOwner,
             );
+          },
+          experimental_navigateToCompose: (options = {}) => {
+            if (controller.signal.aborted) return false;
+            return navigatePluginContentScriptToCompose(options);
           },
           experimental_setThreadRowStatus: (
             threadId: unknown,

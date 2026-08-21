@@ -1,6 +1,7 @@
 import { describe, expectTypeOf, it } from "vitest";
 import type {
   ExperimentalPluginAppCommandHandler,
+  ExperimentalPluginComposeNavigationOptions,
   ExperimentalUiInspectionApi,
   ExperimentalUiInspectionMetadata,
   ExperimentalUiInspectionSessionEvent,
@@ -24,6 +25,9 @@ describe("experimental UI inspection contract", () => {
     expectTypeOf(registration.experimental_activeIndicator).toEqualTypeOf<
       "dot" | undefined
     >();
+    expectTypeOf(
+      registration.experimental_inspectionActivationPassthrough,
+    ).toEqualTypeOf<boolean | undefined>();
   });
 
   it("types plugin metadata registration and hover/select sessions", () => {
@@ -61,6 +65,12 @@ describe("experimental UI inspection contract", () => {
       PluginContentScriptContext["experimental_setSidebarFooterActionActive"]
     >().toEqualTypeOf<
       ((actionId: string, active: boolean) => void) | undefined
+    >();
+    expectTypeOf<
+      PluginContentScriptContext["experimental_navigateToCompose"]
+    >().toEqualTypeOf<
+      | ((options?: ExperimentalPluginComposeNavigationOptions) => boolean)
+      | undefined
     >();
   });
 });
