@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": "0c59c72352faf4a3d9dac75a2e7e01f7afc688c9",
-  "candidate": "05a51219867182fc2aed6e4e64b9a24f7f857bd8",
+  "candidate": "8221547629aefb370706463be2dc1b0b6d917cbb",
   "checkpoint": "at-plugin-reference-example",
   "fixture": {
     "project": "Automations project",
