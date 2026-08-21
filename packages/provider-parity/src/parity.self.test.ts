@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   compareParity,
@@ -39,7 +40,7 @@ import {
  */
 
 const cells = listRecordedCells(RECORDINGS_ROOT);
-const checkoutRoot = new URL("../../..", import.meta.url).pathname;
+const checkoutRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 function readPinned(): Record<string, RowCountsEntry> {
   if (!existsSync(ROW_COUNTS_PATH)) return {};

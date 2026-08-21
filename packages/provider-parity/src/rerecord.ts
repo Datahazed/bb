@@ -29,6 +29,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { BridgeRecordingDirection } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   CURRENT_BRIDGE_LANE_FILE,
@@ -49,7 +50,9 @@ import { loadParityLeg, type ParityLeg } from "./leg.js";
 const BRIDGE_TO_RUNTIME: BridgeRecordingDirection = "bridge→runtime";
 
 const REDACT_SCRIPT = resolve(
-  new URL("../../../scripts/provider-recordings/redact.mjs", import.meta.url).pathname,
+  fileURLToPath(
+    new URL("../../../scripts/provider-recordings/redact.mjs", import.meta.url),
+  ),
 );
 
 /** Run `scripts/provider-recordings/redact.mjs` over one file, in place. */
@@ -84,7 +87,9 @@ function usage(): never {
 }
 
 const callerCwd = process.env.INIT_CWD ?? process.cwd();
-const checkoutRoot = resolve(new URL("../../..", import.meta.url).pathname);
+const checkoutRoot = resolve(
+  fileURLToPath(new URL("../../..", import.meta.url)),
+);
 
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {

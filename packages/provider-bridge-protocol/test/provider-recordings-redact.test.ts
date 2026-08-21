@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -8,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 
 const REDACT_SCRIPT = new URL(
@@ -16,9 +18,10 @@ const REDACT_SCRIPT = new URL(
 );
 
 it("redacts every documented GitHub token prefix", () => {
-  const root = mkdtempSync(join(tmpdir(), "bb-recording-redact-"));
+  const root = mkdtempSync(join(tmpdir(), "bb recording redact "));
   const inputDir = join(root, "input");
   const outputDir = join(root, "output");
+  const redactScript = pathToFileURL(join(root, "redact script.mjs"));
   const tokens = [
     `ghp_${"a".repeat(36)}`,
     `gho_${"b".repeat(36)}`,
@@ -30,6 +33,7 @@ it("redacts every documented GitHub token prefix", () => {
   ];
 
   try {
+    copyFileSync(REDACT_SCRIPT, redactScript);
     mkdirSync(inputDir);
     writeFileSync(
       join(inputDir, "github.ndjson"),
@@ -38,7 +42,13 @@ it("redacts every documented GitHub token prefix", () => {
 
     const stdout = execFileSync(
       process.execPath,
-      [REDACT_SCRIPT.pathname, inputDir, outputDir, "--home", "/home/tester"],
+      [
+        fileURLToPath(redactScript),
+        inputDir,
+        outputDir,
+        "--home",
+        "/home/tester",
+      ],
       { encoding: "utf8" },
     );
     const output = readFileSync(join(outputDir, "github.ndjson"), "utf8");
