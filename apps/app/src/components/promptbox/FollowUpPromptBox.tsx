@@ -144,6 +144,12 @@ export interface FollowUpComposerProps {
   onChangeMessage: (value: string, mentionRanges: PromptTextMention[]) => void;
   onModifierSubmit: () => void;
   onSubmit: () => void;
+  /**
+   * Escape pressed in the editor with no higher-priority consumer open.
+   * The sent-message editor passes its cancel action; when omitted, Escape
+   * blurs the editor (the bottom and queued-message composers' behavior).
+   */
+  onEscape?: () => void;
   /** Accessible label and tooltip for the primary submit action. */
   submitTitle?: string;
   compactPromptPlaceholder: string;
@@ -210,8 +216,8 @@ export interface FollowUpPromptBoxProps {
   /** Active scope used to filter and lifecycle-key plugin banner slots. */
   pluginComposerScope?: PluginComposerScope | null;
   textEffects?: readonly ComposerTextEffectSource[];
-  /** zenMode resetKey — typically the active thread id, so zen-mode collapses on thread change. */
-  zenModeResetKey: string | number;
+  /** Scope key for resetting a manually collapsed prompt box on thread change. */
+  collapseResetKey: string | number;
   /**
    * Changing this refocuses the composer caret to the end — e.g. after editing a
    * queued message restores its text into the draft.
@@ -303,7 +309,7 @@ function FollowUpPromptBoxWithComposer({
   pluginComposerHost,
   pluginComposerScope,
   textEffects,
-  zenModeResetKey,
+  collapseResetKey,
   focusEndKey,
   isPrimaryComposer = true,
   showScrollToBottomButton = true,
@@ -371,19 +377,26 @@ function FollowUpPromptBoxWithComposer({
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
   const pendingFocusLossCleanupRef = useRef<(() => void) | null>(null);
   const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
-  const isMobilePromptBoxCompact = isCompactViewport && !isInteractionExpanded;
+  const [widePromptBoxCollapsedFor, setWidePromptBoxCollapsedFor] = useState<
+    string | number | null
+  >(null);
+  const isWidePromptBoxCollapsed =
+    widePromptBoxCollapsedFor === collapseResetKey;
+  const isPromptBoxCompact =
+    isWidePromptBoxCollapsed || (isCompactViewport && !isInteractionExpanded);
   const compactConfig = useMemo(
     () =>
-      isCompactViewport
+      isCompactViewport || isWidePromptBoxCollapsed
         ? {
-            isCompact: isMobilePromptBoxCompact,
+            isCompact: isPromptBoxCompact,
             placeholder: composer.compactPromptPlaceholder,
           }
         : undefined,
     [
       composer.compactPromptPlaceholder,
       isCompactViewport,
-      isMobilePromptBoxCompact,
+      isPromptBoxCompact,
+      isWidePromptBoxCollapsed,
     ],
   );
   const setInteractionExpanded = useCallback((nextExpanded: boolean) => {
@@ -404,6 +417,7 @@ function FollowUpPromptBoxWithComposer({
   const handleComposerFocus = useCallback(
     (event: ReactFocusEvent) => {
       cancelPendingFocusLoss();
+      setWidePromptBoxCollapsedFor(null);
       if (interactionExpandedRef.current) return;
       if (
         !isCompactViewport ||
@@ -564,6 +578,13 @@ function FollowUpPromptBoxWithComposer({
       setInteractionExpanded,
     ],
   );
+  const collapseWidePromptBox = useCallback(() => {
+    cancelPendingFocusExpansion();
+    cancelPendingFocusLoss();
+    interactionExpandedRef.current = false;
+    setIsInteractionExpanded(false);
+    setWidePromptBoxCollapsedFor(collapseResetKey);
+  }, [cancelPendingFocusExpansion, cancelPendingFocusLoss, collapseResetKey]);
   useEffect(
     () => () => {
       cancelPendingFocusExpansion();
@@ -710,6 +731,7 @@ function FollowUpPromptBoxWithComposer({
         mentionRanges={composer.mentionRanges}
         onChange={composer.onChangeMessage}
         onSubmit={onPrimarySubmit}
+        onEscape={composer.onEscape}
         blurOnPointerSubmit={isCompactViewport && isPointerCoarse}
         textEffects={textEffects}
         onComposerLayoutChange={setComposerLayout}
@@ -759,17 +781,11 @@ function FollowUpPromptBoxWithComposer({
           suppressPluginComposerCustomizations
         }
         compact={compactConfig}
-        zenMode={{
-          layout: "thread",
-          storageKey: null,
-          resetKey: `${zenModeResetKey}:${
-            isCompactViewport ? "mobile" : "desktop"
-          }`,
-          resetOnSubmit: true,
-        }}
+        editorLayout="thread"
+        onCollapse={isCompactViewport ? undefined : collapseWidePromptBox}
         footerStart={footerStart}
       />
-      {!isMobilePromptBoxCompact ? (
+      {!isPromptBoxCompact ? (
         <div
           data-follow-up-composer-footer=""
           className="mt-1 flex min-h-6 max-h-6 select-none items-center justify-between gap-2 overflow-hidden pl-[15px] pr-3.5 opacity-100 transition-[max-height,min-height,margin-top,opacity] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"

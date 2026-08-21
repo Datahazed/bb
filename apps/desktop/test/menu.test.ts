@@ -31,6 +31,7 @@ function menuArgs(
     connectServersSkipReason: null,
     createNewWindow: () => {},
     isMac: true,
+    openAbout: () => {},
     openNewTab: () => {},
     openNewThread: () => {},
     openServerDaemonLogs: () => {},
@@ -176,8 +177,7 @@ describe("application menu", () => {
     );
     const appMenu = template[0]?.submenu as MenuItemConstructorOptions[];
     const windowMenu = template.find((item) => item.label === "Window");
-    const windowSubmenu =
-      windowMenu?.submenu as MenuItemConstructorOptions[];
+    const windowSubmenu = windowMenu?.submenu as MenuItemConstructorOptions[];
     const viewMenu = template.find((item) => item.label === "View");
     const viewSubmenu = viewMenu?.submenu as MenuItemConstructorOptions[];
     const fileMenu = template.find((item) => item.label === "File");
@@ -186,10 +186,7 @@ describe("application menu", () => {
       (item) => item.label === "Close Window",
     );
 
-    expect(appMenu.map((item) => item.role).filter(Boolean)).toEqual([
-      "about",
-      "quit",
-    ]);
+    expect(appMenu.map((item) => item.role).filter(Boolean)).toEqual(["quit"]);
     expect(windowSubmenu.map((item) => item.role).filter(Boolean)).toEqual([
       "minimize",
     ]);

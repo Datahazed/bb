@@ -44,6 +44,7 @@ interface ApplicationMenuServerItem {
 export interface InstallApplicationMenuArgs {
   accelerators: ApplicationMenuAccelerators;
   isMac: boolean;
+  openAbout(): void;
   openNewTab(): void;
   openNewThread(): void;
   openSettings(): void;
@@ -123,7 +124,12 @@ export function buildApplicationMenuTemplate(
     {
       label: app.name,
       submenu: [
-        { role: "about" },
+        {
+          label: `About ${app.name}`,
+          click() {
+            args.openAbout();
+          },
+        },
         { type: "separator" },
         {
           accelerator: args.accelerators.openSettings,
@@ -247,10 +253,7 @@ export function buildApplicationMenuTemplate(
           submenu: createServerMenuItems(args),
         },
         ...(args.isMac
-          ? [
-              { type: "separator" as const },
-              { role: "front" as const },
-            ]
+          ? [{ type: "separator" as const }, { role: "front" as const }]
           : []),
       ],
     },

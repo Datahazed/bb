@@ -184,8 +184,6 @@ interface NewThreadPromptBoxUIProps {
   textEffects?: readonly ComposerTextEffectSource[];
   /** Hide every plugin composer customization; see PromptBoxInternal. */
   suppressPluginComposerCustomizations?: boolean;
-  /** zenMode storage key used for the root-compose zen-mode atom. */
-  zenModeStorageKey: string;
   /** Overrides the default new-thread placeholder copy. */
   placeholder?: string;
 
@@ -239,7 +237,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   pluginComposerHost,
   textEffects,
   suppressPluginComposerCustomizations,
-  zenModeStorageKey,
   placeholder: placeholderOverride,
   history,
   typeahead,
@@ -313,7 +310,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           suppressPluginComposerCustomizations={
             suppressPluginComposerCustomizations
           }
-          zenModeStorageKey={zenModeStorageKey}
           placeholder={placeholderOverride}
           history={history}
           typeahead={typeahead}
@@ -353,7 +349,6 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   autoFocus,
   textEffects,
   suppressPluginComposerCustomizations,
-  zenModeStorageKey,
   placeholder: placeholderOverride,
   history,
   typeahead,
@@ -427,10 +422,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
           title: submitTitle,
         }}
         autoFocus={autoFocus}
-        zenMode={{
-          layout: "root-compose",
-          storageKey: zenModeStorageKey,
-        }}
+        editorLayout="root-compose"
         minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
         placeholder={placeholder}
         header={modeConfig.header}
