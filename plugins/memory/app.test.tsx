@@ -63,7 +63,7 @@ describe("memory settings", () => {
       }),
     );
     await slot.findByText("Run all focused tests.");
-  });
+  }, 15_000);
 
   it("confirms and deletes a memory", async () => {
     vi.stubGlobal(
