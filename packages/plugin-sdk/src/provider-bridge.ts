@@ -178,6 +178,8 @@ export {
   decodeBridgeJsonRpcResponse,
   decodeToolCallResponsePayload,
   errorEnvelopeSchema,
+  experimental_isProviderBridgeRecording,
+  experimental_recordProviderChildIo,
   extractResultText,
   getRawSdkMessage,
   getRecordProperty,

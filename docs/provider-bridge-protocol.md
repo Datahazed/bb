@@ -431,3 +431,73 @@ never let a descendant holding an inherited pipe inject into a fresh
 session. The bridge's own environment is constructed by the runtime from an
 allowlist; bridges construct their children's environments the same way and
 must not leak their own inherited env downward (#1366, #1545).
+
+## Record mode
+
+Set `BB_PROVIDER_BRIDGE_RECORD_DIR` to a directory and every bridge process
+tees the lines that cross its two boundaries into NDJSON files. The bootstrap
+(`bridge-worker-entry.ts`) records the runtime wire for every bridge, first-
+or third-party. A bridge that spawns its provider child records the provider
+wire by calling `experimental_recordProviderChildIo(child, { threadId })`
+right after `spawn()`; the call is a no-op when record mode is off. A bridge
+whose provider pipe belongs to an SDK checks
+`experimental_isProviderBridgeRecording()` and takes the spawn over (the
+Claude bridge does this through the Agent SDK's `spawnClaudeCodeProcess`
+seam). Pi runs in-process and records its SDK event boundary instead.
+
+Layout: `<dir>/<threadId>/<direction>.ndjson`, with `_process` for lines that
+belong to no thread (`initialize`, `model/list`, provider health, and the
+children those spawn). The four directions are `runtime→bridge`,
+`bridge→runtime`, `provider→bridge`, and `bridge→provider`. One entry per
+line: `{ "ts", "run", "seq", "dir", "line" }`. `seq` is one counter across
+every lane of the process and `run` identifies the process, so the files of a
+thread merge back into their exact order even across a bridge restart.
+Responses, which carry only an id, land in the scope of the request they
+answer. Nothing buffers: each line is appended as it crosses.
+
+The daemon forwards the variable to the bridges it spawns and the runtime
+appends the provider id, so a daemon started with it writes
+`<dir>/<providerId>/<threadId>/…`. `withoutBridgeRuntimeEnv` and the
+`BB_*` allowlist both strip the variable from provider children, so a
+recorded provider never records itself.
+
+Recordings are the input of the parity harness
+(`packages/provider-bridge-protocol/src/testing/parity.ts`): the provider
+lanes replay into a fake child (`replay-provider-child.mjs`, for which the
+recording is the script), the runtime lanes replay into a bridge, and two
+checkouts are diffed on the assembled events and projected rows with
+`pnpm parity --old <checkout> --new .` (`@bb/provider-parity`). Each leg
+assembles and projects with its own checkout's code. Differences a migration
+PR intends go in `recordings/parity-allowlist.json` with the PR and reason;
+an entry that masks nothing is reported stale and fails the run.
+
+Redacted recordings live under `packages/provider-bridge-protocol/recordings`,
+one `<provider>/<cell>` directory per live-QA matrix cell with a
+`manifest.json` (provider, cell, CLI version, date, what the session did);
+`scripts/provider-recordings/redact.mjs` and `package-cells.mjs` produce
+them. `recordings/row-counts.json` pins each cell's event, row,
+`provider/unhandled`, and grammar-drop counts; `parity.self.test.ts` checks
+the pins and replays every cell through the current bridge on each commit,
+and `UPDATE_PARITY_ROW_COUNTS=1` rewrites the pins deliberately. Raw
+recordings stay out of git.
+
+A recording is never rewritten. When a bridge change alters what the bridge
+emits for a recording, `pnpm --filter @bb/provider-parity rerecord
+[--plan-with <recording-time checkout>]` writes the bridge's current output
+to `bridge→runtime.current.ndjson` beside the recorded lane; the self-suite
+pins and compares against that file when it exists, while `pnpm parity`
+still paces a pre-migration leg from the recorded lane (and the current leg
+from the current one). `pnpm parity --dump-dir <dir>` writes both legs'
+normalized event and row lists per cell, for allowlist entries that must
+name a list index. Re-recorded lanes pass through `redact.mjs` before they
+are written. The committed current lanes are the v3 bridges' output for the
+v2 recordings: the stack's assembler reads only v3, so every replayable cell
+carries one, and they assemble to the same pinned counts as the recordings.
+
+The conformance kit runs the same recordings as its recorded-traffic
+scenario set: `replayRecordedCells` replays a bridge's cells and
+`checkRecordedCellReplay` reports `recorded/<cell>/{replays,
+events-schema-valid, grammar, turn-lifecycle, not-empty}` per cell. Each
+first-party bridge has a `bridge.recorded-conformance.test.ts` beside its
+scripted suite, so conformance reflects the real dialect as well as the
+protocol.
