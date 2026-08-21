@@ -171,8 +171,8 @@ const pendingInteractionPlanApprovalSubjectSchema = z.object({
  * kind). Policy-bearing like the other approval subjects: `auto` approves it,
  * `accept-edits` asks. `presentation` is the bridge's declarative rendering
  * of the call, so the approval banner reads the same on every client with no
- * tool-name table. Not yet produced by any bridge: WS5 (interactions) rewires
- * the producers.
+ * tool-name table. The ACP bridge raises it for every permission that is
+ * neither a command nor a file change; WS5 (interactions) rewires the rest.
  */
 export const pendingInteractionToolUseApprovalSubjectSchema = z.object({
   kind: z.literal("tool_use"),

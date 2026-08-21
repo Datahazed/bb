@@ -225,10 +225,12 @@ export type DeltaDelegationShape = z.infer<typeof deltaDelegationShapeSchema>;
 
 /**
  * A structured plan snapshot as an item (grammar v3): codex `update_plan`
- * (295 production threads, discarded by the UI today because it only rides
- * the turn-level `turn.plan`) and Claude `TaskCreate`/`TaskUpdate`/`TodoWrite`.
- * Each snapshot carries the full step list and supersedes the previous one.
- * `turn.plan` stays for bridges that only know the turn-level form.
+ * (295 production threads, discarded by the UI while it only rode the
+ * turn-level `turn.plan`), ACP `plan` updates, and Claude
+ * `TaskCreate`/`TaskUpdate`/`TodoWrite`. Each snapshot carries the full step
+ * list and supersedes the previous one. The turn-level `turn.plan` delta is
+ * gone: every in-repo bridge speaks this form, and the persisted
+ * `turn/plan/updated` event type stays as read-only history.
  */
 export const deltaPlanStepsShapeSchema = z.object({
   type: z.literal("planSteps"),
@@ -494,18 +496,6 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
       noTurnFallback: deltaNoTurnFallbackSchema.optional(),
     })
     .superRefine(requireExtensionPresentation),
-
-  /**
-   * The provider's plan for the open turn (ACP `plan` updates, codex
-   * `turn/plan/updated`). Mirrors `turn/plan/updated`.
-   */
-  z.object({
-    kind: z.literal("turn.plan"),
-    steps: z.array(threadEventPlanStepSchema),
-    explanation: z.string().optional(),
-    providerTurnId: providerTurnIdSchema.optional(),
-    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
-  }),
 
   /**
    * Free-form progress on an open item (non-command tool updates), or — with

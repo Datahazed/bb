@@ -1746,28 +1746,6 @@ export function createDeltaAssembler(
         return;
       }
 
-      case "turn.plan": {
-        const turnId =
-          delta.providerTurnId !== undefined
-            ? resolveVouchedTurnId(state, delta.providerTurnId)
-            : state.currentTurnId;
-        if (turnId === undefined) {
-          pushNoTurnFallback(state, delta.noTurnFallback, undefined, events);
-          return;
-        }
-        events.push({
-          type: "turn/plan/updated",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: turnScope(turnId),
-          plan: delta.steps,
-          ...(delta.explanation === undefined
-            ? {}
-            : { explanation: delta.explanation }),
-        });
-        return;
-      }
-
       case "item.progress": {
         const keyStr = itemKeyString(delta.key);
         const open = state.openItemsByKey.get(keyStr);

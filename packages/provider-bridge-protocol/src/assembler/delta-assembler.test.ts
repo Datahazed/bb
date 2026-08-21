@@ -812,48 +812,6 @@ describe("delta assembler", () => {
     ).toEqual([expect.objectContaining({ scope: turnScope(turnId) })]);
   });
 
-  it("emits turn/plan/updated for the open turn and falls back when idle", () => {
-    const assembler = createAssembler();
-    const raw = {
-      jsonrpc: "2.0" as const,
-      method: "acp/update",
-      params: { update: { sessionUpdate: "plan" } },
-    };
-    expect(
-      assemble(assembler, {
-        kind: "turn.plan",
-        steps: [{ step: "Fix bug", status: "active" }],
-        noTurnFallback: { raw, rawType: "acp/update:plan" },
-      }),
-    ).toEqual([
-      expect.objectContaining({
-        type: "provider/unhandled",
-        rawType: "acp/update:plan",
-        scope: threadScope(),
-      }),
-    ]);
-    assemble(assembler, { kind: "turn.open" });
-    const turnId = assembler.getOpenTurnId(THREAD_ID) ?? "";
-    expect(
-      assemble(assembler, {
-        kind: "turn.plan",
-        steps: [
-          { step: "Read files", status: "completed" },
-          { step: "Fix bug", status: "active" },
-        ],
-      }),
-    ).toEqual([
-      expect.objectContaining({
-        type: "turn/plan/updated",
-        scope: turnScope(turnId),
-        plan: [
-          { step: "Read files", status: "completed" },
-          { step: "Fix bug", status: "active" },
-        ],
-      }),
-    ]);
-  });
-
   // -- turnless item/stream deltas --------------------------------------------
 
   it("never fabricates a turn for turnless item deltas: fallback surfaces, no fallback drops", () => {

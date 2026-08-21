@@ -78,8 +78,8 @@ export function describeApprovalSubject(
         plan: subject.plan,
         detailLines: subject.planFilePath ? [subject.planFilePath] : [],
       };
-    // Declarative base only: no producer emits this subject until WS5
-    // designs the tool-use approval surface.
+    // The ACP bridge raises this for generic tool permissions; the subject's
+    // presentation is the banner's base until WS5 designs the tool-use surface.
     case "tool_use":
       return {
         title: payload.reason ?? subject.presentation.label.pending,

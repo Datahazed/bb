@@ -15,7 +15,8 @@
  * does not know — so the wire stays at 2 and the `grammarVersions` handshake
  * range is how a bridge says which vocabulary it speaks. Members only one
  * in-repo bridge ever spoke (`thread.goal`, the `thread/openWork`
- * notification) were dropped under that range once the bridge migrated; the
+ * notification, `turn.plan`) were dropped under that range once the bridge
+ * migrated; the
  * stabilization workstream that makes `presentation` required is the one
  * that tightens the parse for every bridge and must bump.
  *

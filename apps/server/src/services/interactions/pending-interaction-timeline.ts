@@ -444,12 +444,12 @@ export function appendPendingInteractionTimelineEvent(
     // duplicate it.
     case "plan":
       return;
-    // Unsupported until WS5 (interactions): no producer raises tool_use yet,
-    // and the single interaction-lifecycle event it will ride does not exist.
+    // A tool-use approval has no timeline item of its own: the provider's own
+    // tool call (the ACP agent's tool_call with the same id) is the timeline
+    // record, and the banner renders the subject's presentation. The single
+    // interaction-lifecycle event it will ride is WS5's (interactions).
     case "tool_use":
-      throw new Error(
-        "tool_use approval subjects are not produced until WS5 (interactions)",
-      );
+      return;
     default:
       return assertNever(subject, "Unsupported approval subject for timeline");
   }
@@ -504,11 +504,10 @@ export function appendPendingInteractionTimelineEventInTransaction(
     // already the timeline record.
     case "plan":
       return;
-    // Unsupported until WS5: see appendPendingInteractionTimelineEvent.
+    // See appendPendingInteractionTimelineEvent: the provider's own tool call
+    // is the timeline record.
     case "tool_use":
-      throw new Error(
-        "tool_use approval subjects are not produced until WS5 (interactions)",
-      );
+      return;
     default:
       return assertNever(subject, "Unsupported approval subject for timeline");
   }

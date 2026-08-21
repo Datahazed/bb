@@ -44,7 +44,8 @@ export function extractAcpContentText(
 // Tool calls
 // ---------------------------------------------------------------------------
 
-const acpToolKindSchema = z.enum([
+/** The ACP tool-call kind vocabulary; an absent kind reads as `other`. */
+export const acpToolKindSchema = z.enum([
   "read",
   "edit",
   "delete",
@@ -55,6 +56,7 @@ const acpToolKindSchema = z.enum([
   "fetch",
   "other",
 ]);
+export type AcpToolKind = z.infer<typeof acpToolKindSchema>;
 
 const acpToolCallStatusSchema = z.enum([
   "pending",

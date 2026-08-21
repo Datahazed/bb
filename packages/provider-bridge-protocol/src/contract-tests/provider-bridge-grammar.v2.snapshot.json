@@ -152,13 +152,6 @@
       "providerTurnId": "optional",
       "parentRef": "optional"
     },
-    "turn.plan": {
-      "kind": "required",
-      "steps": "required",
-      "explanation": "optional",
-      "providerTurnId": "optional",
-      "noTurnFallback": "optional"
-    },
     "unhandled": {
       "kind": "required",
       "raw": "required",

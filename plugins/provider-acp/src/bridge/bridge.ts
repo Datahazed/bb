@@ -382,6 +382,9 @@ async function forwardDynamicToolCall(args: {
     return { ok: false, error: "No active ACP session for dynamic tool call." };
   }
 
+  // The agent's own tool_call for this MCP call is the timeline row; the
+  // translator binds it to the bb tool so the row reads as that tool (Q31).
+  session.translator.noteInjectedToolCall(session.bbThreadId, args.tool);
   try {
     const result = await sendRuntimeRequest("item/tool/call", {
       providerThreadId: session.providerThreadId,
@@ -1382,6 +1385,10 @@ function handlePermissionRequest(
           session.bbThreadId,
           toolCall.toolCallId,
         ),
+        injectedTool: session.translator.getInjectedToolBinding(
+          session.bbThreadId,
+          toolCall.toolCallId,
+        ),
       }
     : undefined;
 
@@ -1595,6 +1602,16 @@ async function startAgentSession(
   }
 
   const translator = createAcpDeltaTranslator();
+  // The session's bb-injected tools: a proxied call to one is a bb tool and
+  // reads the way its definition says (Q31).
+  translator.configureInjectedTools(
+    (params.dynamicTools ?? []).map((tool) => ({
+      name: tool.name,
+      ...(tool.presentation === undefined
+        ? {}
+        : { presentation: tool.presentation }),
+    })),
+  );
   // Ordering guarantee: thread/identity precedes any thread/delta for the
   // session, so pre-identity notifications are held and flushed after the
   // identity goes out.

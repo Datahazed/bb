@@ -221,7 +221,8 @@ range is what gates a bridge: every bridge in this repo reports
   `delegation` (`childRef`, `label`, `background`, `summary?`; one shape for
   codex `spawnAgent`/`wait`, the Claude `Agent` tool, and backgrounded
   agents, which replaced `thread/openWork`), and `planSteps` (a structured plan
-  snapshot as an item, beside the turn-level `turn.plan`).
+  snapshot as an item, which replaced the turn-level `turn.plan` delta once
+  the ACP bridge — its last speaker — migrated).
 - **`presentation`** on `item.open` and `item.close`, the one place it
   travels: `label {pending, completed}`, `icon {glyph}` (host glyphs only —
   a plugin-relative asset path cannot outlive the plugin, and a durable

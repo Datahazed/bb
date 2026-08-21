@@ -397,8 +397,8 @@ function buildApprovalSubject({
       };
     }
     case "tool_use": {
-      // Declarative base only: no producer emits this subject until WS5
-      // designs the tool-use approval surface.
+      // The ACP bridge raises this for generic tool permissions; the subject's
+      // presentation is the banner's base until WS5 designs the tool-use surface.
       const detailLines =
         formatPendingInteractionSubjectDetailLines(interaction);
       return {

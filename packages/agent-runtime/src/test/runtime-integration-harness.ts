@@ -730,8 +730,11 @@ function expectSemanticApprovalRequest(
       expect(request.payload.subject.plan.length).toBeGreaterThan(0);
       break;
     case "tool_use":
-      // Unsupported until WS5: no fake or real producer raises it yet.
-      throw new Error("tool_use approval subjects are not produced until WS5");
+      expect(request.payload.subject.tool.length).toBeGreaterThan(0);
+      expect(
+        request.payload.subject.presentation.label.pending.length,
+      ).toBeGreaterThan(0);
+      break;
   }
   expect(request.payload.availableDecisions.length).toBeGreaterThan(0);
   for (const decision of request.payload.availableDecisions) {

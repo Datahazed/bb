@@ -23,10 +23,6 @@ describe("thread delta schemas", () => {
         exitCode: 0,
         item: { type: "command", command: "ls", cwd: "/repo" },
       },
-      {
-        kind: "turn.plan",
-        steps: [{ step: "Fix bug", status: "active" }],
-      },
       { kind: "item.progress", key: { providerItemId: "tc-1" }, message: "…" },
       {
         kind: "item.textDelta",
