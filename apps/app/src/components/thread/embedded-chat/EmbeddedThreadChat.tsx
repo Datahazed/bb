@@ -553,6 +553,7 @@ function EmbeddedThreadChatWithComposer({
         id: threadId,
         input: submittedInput,
         mode: "steer-if-active",
+        ...executionRequestFields,
       })
       .catch((error) => {
         if (!isMountedRef.current) {
@@ -576,6 +577,7 @@ function EmbeddedThreadChatWithComposer({
     canSubmitModifierShortcut,
     currentPromptDraft,
     currentPromptDraftInput,
+    executionRequestFields,
     handleSendQueuedImmediately,
     labels.sendError,
     promptDraft,

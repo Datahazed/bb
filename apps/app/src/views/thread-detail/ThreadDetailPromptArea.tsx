@@ -912,6 +912,7 @@ export function ThreadDetailPromptArea({
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
     const shortcutRequest = buildFollowUpShortcutRequest({
+      execution: followUpExecutionSelection,
       input: submittedInput,
       queuedMessages: queuedMessagesRef.current,
       threadId: thread.id,
@@ -961,6 +962,7 @@ export function ThreadDetailPromptArea({
     canSubmitModifierShortcut,
     currentPromptDraft,
     currentPromptDraftInput,
+    followUpExecutionSelection,
     promptDraft,
     queuedMessagesRef,
     sendMessage,
