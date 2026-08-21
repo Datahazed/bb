@@ -85,6 +85,91 @@ payloads. Use it to reproduce performance problems that only appear at scale.
   deletes the database file first. Without `--reset` the fixture appends.
 - Example: `pnpm seed:perf -- --reset --events 400000`.
 
+## Provider Corpus
+
+The provider corpus is a private set of real production threads (307 threads,
+330,626 event rows, extracted from a personal `~/.bb/bb.db`). It is the
+regression oracle for the provider-plugin migration: every layer must project
+the same rows and build timelines at the same speed. The corpus contains real
+prompts, code, and paths, so it is **never committed**; `.gitignore` blocks
+every `provider-corpus/` directory except the in-repo harness and scripts.
+
+- Location: `~/.bb/provider-corpus/` by default. Tests read it through
+  `BB_PROVIDER_CORPUS_DIR` and skip when the variable is unset or the directory
+  has no `manifest.json`, so CI and fresh checkouts stay green.
+- Layout: `manifest.json` (thread selection and reasons), `profile.json`,
+  `threads/<provider>/<threadId>/{meta.json,events.ndjson}`, and the generated
+  `snapshots/` directory described below.
+- Reader: `@bb/test-helpers` exports `corpusAvailable()`,
+  `listCorpusThreads({ provider?, reasons? })`, and `loadCorpusThread(id)`.
+  Event rows decode through the same `parseStoredThreadEvent` the server uses.
+
+Gates under `apps/server/test/provider-corpus/`:
+
+- `row-snapshots.test.ts` loads each thread into in-memory SQLite and projects
+  every timeline page the way `GET /threads/:id/timeline` does (default and
+  nested variants), then compares the rows with
+  `snapshots/rows/<provider>/<threadId>.json`.
+- `timeline-perf.test.ts` measures the 10 largest threads per provider (latest
+  page and full page walk, five builds each, calibrated against a synthetic
+  thread built in the same run) and compares with `snapshots/perf-baseline.json`.
+  The CI micro-benchmark in the same file needs no corpus.
+
+Run them:
+
+```bash
+scripts/provider-corpus/snapshot-rows.sh compare   # default mode, fails on diffs
+scripts/provider-corpus/snapshot-rows.sh write     # refresh the baseline
+```
+
+The script wraps `pnpm exec turbo run test:provider-corpus --filter=@bb/server`
+with `BB_PROVIDER_CORPUS_SNAPSHOT=write|compare`. Turbo strips undeclared
+variables, so use that task (not the package `test` task) when you set the
+corpus variables. Each run writes `snapshots/rows-last-run.json` and
+`snapshots/perf-last-run.md` with totals and the perf table.
+
+Compare mode fails on any row diff that `snapshots/allowlist.json` does not
+cover. An entry names a scope, a path, and the PR that made the change:
+
+```json
+[
+  {
+    "threadId": "thr_abc123",
+    "path": "/variants/*/pages/*/rows/*/output",
+    "pr": "#1234",
+    "reason": "…"
+  },
+  {
+    "provider": "codex",
+    "path": "/variants/default/pages/**/planSteps",
+    "pr": "#1235",
+    "reason": "…"
+  },
+  { "*": true, "path": "/variants/**/maxSeq", "pr": "#1236", "reason": "…" }
+]
+```
+
+`path` is a JSON pointer over the snapshot, or a glob where `*` matches one
+segment and `**` any number. The run prints the entries it used; an entry that
+covers nothing fails the run because it is stale. Refresh the baseline with
+`write` only when the diff is the intended behavior change, in the PR that
+makes it, and remove the allowlist entries it absorbs.
+
+Perf compare mode passes when each thread's normalized cost is within 10% of
+the baseline (or within 5 ms of intrinsic cost for the small latest-page
+builds) and the median event size is within 15%. The normalized cost is the
+minimum build time over five samples divided by the minimum time of a fixed
+CPU workload (JSON codec and sorting over a deterministic document) run once
+per sample right before the builds. The workload shares no code with the
+timeline, so a uniform timeline regression still moves the ratio, while
+machine speed and steady load cancel. Each thread gets up to three attempts so
+a burst of load does not fail the run (write mode keeps the median attempt);
+raw p50/p95 are printed for information. The
+baseline records the gate settings and compare mode refuses a baseline
+written with different ones. Run the gate on a machine whose load average is
+below its core count: when the machine is oversubscribed the table header
+says so and even paired ratios drift by 10–20%.
+
 ## Local Cloud
 
 Run the Cloud dashboard and Connect worker against one local D1 database:

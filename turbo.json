@@ -428,6 +428,21 @@
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
+    // The provider-corpus gates read a private corpus through
+    // BB_PROVIDER_CORPUS_DIR and write snapshots next to it, so the task is
+    // uncacheable and must see those two variables (strict env mode strips
+    // everything undeclared). Without the variable the suites skip.
+    "@bb/server#test:provider-corpus": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "topo"
+      ],
+      "cache": false,
+      "passThroughEnv": [
+        "BB_PROVIDER_CORPUS_DIR",
+        "BB_PROVIDER_CORPUS_SNAPSHOT"
+      ]
+    },
     // Builds real plugin host artifacts (the builtin artifacts suite, plus the
     // fixture that pins the published bridge surface as bundled-not-stubbed),
     // so it needs the SDK dist for the same reason as @bb/server#test.
