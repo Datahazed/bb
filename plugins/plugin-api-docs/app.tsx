@@ -155,6 +155,7 @@ export default definePluginApp((app) => {
     icon: "Target",
     experimental_activeTitle: "Stop inspecting bb UI",
     experimental_activeIndicator: "dot",
+    experimental_inspectionActivationPassthrough: true,
     run: () => inspector?.toggle(),
   });
   app.contentScripts.register({
@@ -168,6 +169,11 @@ export default definePluginApp((app) => {
             INSPECTOR_ACTION_ID,
             active,
           ),
+        navigateToCompose: (prompt) =>
+          context.experimental_navigateToCompose?.({
+            initialPrompt: prompt,
+            focusPrompt: true,
+          }) ?? false,
       });
       inspector = nextInspector;
       const unregisterCommand =
