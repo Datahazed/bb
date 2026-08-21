@@ -2,13 +2,19 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type {
+  SystemConfigResponse,
   SystemExecutionOptionsResponse,
   SystemProviderStatesResponse,
 } from "@bb/server-contract";
+import {
+  defaultAppSettings,
+  defaultAppTheme,
+  defaultExperiments,
+} from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { hostsQueryKey } from "./queries/query-keys";
+import { hostsQueryKey, systemConfigQueryKey } from "./queries/query-keys";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { useThreadCreationOptions } from "./useThreadCreationOptions";
 
@@ -19,6 +25,7 @@ const PROJECT_PROVIDER_ID = "project-provider";
 vi.mock("@/lib/sdk", () => ({
   sdk: {
     system: {
+      config: vi.fn(),
       executionOptions: vi.fn(),
       providerStates: vi.fn(),
     },
@@ -42,6 +49,27 @@ function readyProviderStates(providerId: string): SystemProviderStatesResponse {
         loginCommand: null,
       },
     ],
+  };
+}
+
+function systemConfig(streamerMode: boolean): SystemConfigResponse {
+  return {
+    generalSettings: { ...defaultAppSettings, streamerMode },
+    keybindings: [],
+    defaultKeybindings: [],
+    keybindingOverrides: [],
+    experiments: defaultExperiments,
+    appearance: defaultAppTheme,
+    customThemes: [],
+    pluginThemes: [],
+    featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
+    hostDaemonPort: null,
+    localHelperPorts: [],
+    serverUrl: "http://localhost:38886",
+    primaryHostId: null,
+    primaryHostPlatform: null,
+    voiceTranscriptionEnabled: false,
+    dataDir: "/tmp/bb-test",
   };
 }
 
@@ -237,6 +265,7 @@ function setProjectScopedValue(baseKey: string, value: string): void {
 }
 
 beforeEach(() => {
+  vi.mocked(sdk.system.config).mockResolvedValue(systemConfig(false));
   vi.mocked(sdk.system.executionOptions).mockResolvedValue(
     executionOptionsResponse(),
   );
@@ -887,6 +916,33 @@ describe("useThreadCreationOptions", () => {
     await waitFor(() => {
       expect(result.current.selectedModel).toBe("global-model");
       expect(result.current.executionInputSources.model).toBe("explicit");
+    });
+  });
+
+  it("preserves a hidden model for execution and masks its picker label in streamer mode", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(systemConfigQueryKey(), systemConfig(true));
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          resetKey: "thr_hidden_model",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "private-preview-model",
+          initialReasoningLevel: "high",
+          initialPermissionMode: "full",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("private-preview-model");
+      expect(result.current.modelOptions[0]).toMatchObject({
+        value: "private-preview-model",
+        label: "Hidden model",
+      });
+      expect(result.current.activeModel).toBeUndefined();
+      expect(result.current.executionInputSources.model).toBeUndefined();
     });
   });
 

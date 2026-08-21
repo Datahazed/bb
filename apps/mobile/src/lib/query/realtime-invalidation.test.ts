@@ -156,6 +156,29 @@ describe("installRealtimeInvalidation", () => {
     expect(invalidated).toEqual([]);
   });
 
+  it("immediately drops model data on a realtime config change", () => {
+    const { factory, queryClient } = setup();
+    const executionOptionsKey = [
+      ...allSystemExecutionOptionsQueryKeyPrefix(),
+      null,
+      null,
+      "claude-code",
+    ] as const;
+    queryClient.setQueryData(executionOptionsKey, {
+      models: [{ model: "private-preview-model" }],
+    });
+
+    factory.latest().receive(
+      JSON.stringify({
+        type: "changed",
+        entity: "system",
+        changes: ["config-changed"],
+      }),
+    );
+
+    expect(queryClient.getQueryData(executionOptionsKey)).toBeUndefined();
+  });
+
   it("evicts the observer-less diff patch cache on a resume reconnect, before the watermark catch-up", () => {
     const factory = createFakeSocketFactory();
     const realtime = createMobileRealtime({
@@ -306,7 +329,7 @@ describe("queryKeysForChangedMessage", () => {
     ).toContainEqual(threadQueryKey("t1"));
   });
 
-  it("maps system changes to config plus provider/default keys for settings and plugin changes", () => {
+  it("leaves config/model scrubs out of the debounced config-change keys", () => {
     expect(
       queryKeysForChangedMessage({
         type: "changed",
@@ -314,9 +337,7 @@ describe("queryKeysForChangedMessage", () => {
         changes: ["config-changed"],
       }),
     ).toEqual([
-      systemConfigQueryKey(),
       allSystemProvidersQueryKeyPrefix(),
-      allSystemExecutionOptionsQueryKeyPrefix(),
       allProjectDefaultExecutionOptionsQueryKeyPrefix(),
       // A settings write can switch the palette; the picker's catalog follows.
       themeCatalogQueryKey(),

@@ -162,7 +162,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "environmentWorkStatusQueryKeyPrefix",
     "hostsQueryKey",
     "sidebarNavigationQueryKey",
-    "systemConfigQueryKey",
     "threadDefaultExecutionOptionsQueryKey",
     "threadQueryKey",
     "threadTabsQueryKey",

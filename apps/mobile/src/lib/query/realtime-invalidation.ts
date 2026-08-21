@@ -307,7 +307,11 @@ export function queryKeysForChangedMessage(
       ];
     case "system": {
       const kinds = new Set(message.changes);
-      const keys: QueryKey[] = [systemConfigQueryKey()];
+      // `config-changed` scrubs config/model data synchronously in the
+      // realtime bridge so privacy never waits for this debounced wave.
+      const keys: QueryKey[] = kinds.has("config-changed")
+        ? []
+        : [systemConfigQueryKey()];
       if (
         kinds.has("config-changed") ||
         kinds.has("provider-registrations-changed") ||
@@ -317,9 +321,11 @@ export function queryKeysForChangedMessage(
         // provider plugins change the roster and the resolved defaults.
         keys.push(
           allSystemProvidersQueryKeyPrefix(),
-          allSystemExecutionOptionsQueryKeyPrefix(),
           allProjectDefaultExecutionOptionsQueryKeyPrefix(),
         );
+        if (!kinds.has("config-changed")) {
+          keys.push(allSystemExecutionOptionsQueryKeyPrefix());
+        }
       }
       if (kinds.has("plugins-changed")) {
         // Plugin mention providers / skills come and go with plugins.
@@ -549,6 +555,18 @@ export function installRealtimeInvalidation(
   });
 
   const unsubscribeChanged = realtime.onChanged((message) => {
+    if (
+      message.entity === "system" &&
+      message.changes.includes("config-changed")
+    ) {
+      // A peer cannot tell which config field changed. Pessimistically drop
+      // model rows and re-read config immediately so an enabling streamer-mode
+      // toggle cannot leave private names visible on a slow or failed refresh.
+      void queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
+      void queryClient.resetQueries({
+        queryKey: allSystemExecutionOptionsQueryKeyPrefix(),
+      });
+    }
     const eviction = diffPatchEvictionForChangedMessage(message);
     if (eviction === "all") {
       pendingPatchEvictions = "all";

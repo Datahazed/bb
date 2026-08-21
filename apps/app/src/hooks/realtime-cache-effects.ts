@@ -15,6 +15,7 @@ import {
   invalidateRealtimeQueriesAfterServerReconnect,
   invalidateRealtimeQueriesFetchedBeforeInitialConnect,
   refetchErroredRealtimeQueriesOnInitialConnect,
+  resetModelPresentationAfterConfigChange,
 } from "./cache-owners/system-cache-effects";
 import { createBufferedEnvironmentInvalidator } from "./buffered-environment-invalidator";
 import {
@@ -424,6 +425,14 @@ export function createRealtimeCacheEffects({
       resetThreadChangeState(threadChangeState);
     },
     handleChanged: (message) => {
+      // Privacy is the exception to hidden-window deferral: cached model names
+      // must disappear from every peer before a refetch can succeed or fail.
+      if (
+        message.entity === "system" &&
+        message.changes.includes("config-changed")
+      ) {
+        resetModelPresentationAfterConfigChange({ queryClient });
+      }
       const documentVisible = visibility.isDocumentVisible();
       switch (message.entity) {
         case "thread":

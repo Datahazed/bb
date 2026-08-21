@@ -61,9 +61,9 @@ every window and client sees the same value.
 - The entries stay in `config.json`. A thread request that names a hidden model
   explicitly still runs with it, and default model resolution for a new thread
   keeps the full list.
-- A composer whose stored selection is a hidden model falls back to the
-  provider default, and the next send records that default. Select the custom
-  model again after you turn streamer mode off.
+- A composer whose stored selection is hidden preserves it for execution and
+  renders `Hidden model`; turning streamer mode off restores the ordinary
+  catalog label.
 
 ## Mobile app
 

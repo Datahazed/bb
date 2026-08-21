@@ -196,6 +196,33 @@ describe("createRealtimeCacheEffects", () => {
     }
   });
 
+  it("immediately drops model data in a hidden peer window on config change", () => {
+    const visibility = createFakeVisibility();
+    visibility.setVisible(false);
+    const { effects, queryClient } =
+      createRealtimeEffectsTestContext(visibility);
+    const configKey = systemConfigQueryKey();
+    const executionOptionsKey = systemExecutionOptionsQueryKey({
+      environmentId: null,
+      hostId: "host-1",
+      providerId: "claude-code",
+    });
+    queryClient.setQueryData(configKey, { generalSettings: {} });
+    queryClient.setQueryData(executionOptionsKey, {
+      models: [{ model: "private-preview-model" }],
+    });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "system",
+      changes: ["config-changed"],
+    });
+
+    expect(queryClient.getQueryData(executionOptionsKey)).toBeUndefined();
+    expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true);
+    effects.dispose();
+  });
+
   it("invalidates the affected thread tabs when another client changes them", () => {
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const tabsKey = threadTabsQueryKey("thr_1");
@@ -2086,7 +2113,7 @@ describe("createRealtimeCacheEffects", () => {
       effects.dispose();
     });
 
-    it("holds a debounce that elapses hidden and non-thread changes until visible", async () => {
+    it("holds hidden changes until visible except the config privacy scrub", async () => {
       vi.useFakeTimers();
       const visibility = createFakeVisibility();
       const { effects, queryClient } =
@@ -2132,7 +2159,8 @@ describe("createRealtimeCacheEffects", () => {
         false,
       );
       expect(queryClient.getQueryState(projectsKey)?.isInvalidated).toBe(false);
-      expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(false);
+      // Config/model privacy applies immediately even in a hidden peer window.
+      expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true);
 
       visibility.setVisible(true);
       // Environment changes re-enter their own debounce on resume.

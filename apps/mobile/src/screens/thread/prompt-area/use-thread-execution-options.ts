@@ -23,7 +23,7 @@ import {
   resolvePermissionModeSelection,
   resolveReasoningLevel,
 } from "@/data/compose";
-import { useSystemExecutionOptions } from "@/data/system";
+import { useSystemConfig, useSystemExecutionOptions } from "@/data/system";
 import { buildFollowUpExecutionInputSources } from "./follow-up-submission";
 
 export interface UseThreadExecutionOptionsArgs {
@@ -94,6 +94,7 @@ export function useThreadExecutionOptions({
     ...(providerId ? { providerId } : {}),
     enabled: enabled && thread !== undefined && thread.archivedAt === null,
   });
+  const systemConfig = useSystemConfig({ enabled });
   const catalog = executionOptions.data;
   const providerInfo = catalog?.providers.find(
     (provider) => provider.id === providerId,
@@ -118,9 +119,17 @@ export function useThreadExecutionOptions({
     picks.model ??
     (isFallbackModelActive ? modelFallback.fallbackModel : defaults?.model) ??
     "";
+  const modelPresentationPrivacy =
+    systemConfig.data?.generalSettings.streamerMode === true ||
+    systemConfig.data === undefined ||
+    systemConfig.isFetching ||
+    systemConfig.isError;
+  const hideProvisionalModelCatalog =
+    modelPresentationPrivacy && executionOptions.isPlaceholderData;
   const isLoadingModels =
     executionOptions.isLoading ||
-    (executionOptions.isPlaceholderData && (catalog?.models.length ?? 0) === 0);
+    (executionOptions.isPlaceholderData &&
+      ((catalog?.models.length ?? 0) === 0 || modelPresentationPrivacy));
   const modelLoadError = catalog?.modelLoadError ?? null;
   const catalogVerified =
     executionOptions.isSuccess &&
@@ -129,11 +138,18 @@ export function useThreadExecutionOptions({
   const modelSelection = useMemo(
     () =>
       resolveModelSelection({
-        executionOptions: catalog,
+        executionOptions: hideProvisionalModelCatalog ? undefined : catalog,
         selectedModel: rawModel,
         catalogVerified,
+        streamerMode: modelPresentationPrivacy,
       }),
-    [catalog, catalogVerified, rawModel],
+    [
+      catalog,
+      catalogVerified,
+      hideProvisionalModelCatalog,
+      modelPresentationPrivacy,
+      rawModel,
+    ],
   );
   const effectiveModel = isFallbackModelActive
     ? modelFallback.fallbackModel

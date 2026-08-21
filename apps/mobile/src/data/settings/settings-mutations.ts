@@ -54,6 +54,21 @@ function invalidateSystemConfig(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
 }
 
+function streamerModeChanged(
+  transaction: ConfigTransaction | undefined,
+  next: AppSettings,
+): boolean {
+  return (
+    transaction?.previous?.generalSettings.streamerMode !== next.streamerMode
+  );
+}
+
+function resetSystemExecutionOptions(queryClient: QueryClient): void {
+  void queryClient.resetQueries({
+    queryKey: allSystemExecutionOptionsQueryKeyPrefix(),
+  });
+}
+
 /** Replace the user's opt-in experiments (full object). */
 export function useUpdateExperiments() {
   const { sdk } = useProfileClient();
@@ -84,16 +99,30 @@ export function useUpdateGeneralSettings() {
   return useMutation<AppSettings, Error, AppSettings, ConfigTransaction>({
     meta: { errorMessage: "Failed to update general settings." },
     mutationFn: (settings) => sdk.system.updateGeneralSettings(settings),
-    onMutate: (generalSettings) =>
-      beginConfigTransaction(queryClient, { generalSettings }),
-    onError: (_error, _settings, transaction) => {
-      rollbackConfigTransaction(queryClient, transaction);
-    },
-    onSuccess: (generalSettings) => {
-      beginConfigTransaction(queryClient, { generalSettings });
-      void queryClient.invalidateQueries({
-        queryKey: allSystemExecutionOptionsQueryKeyPrefix(),
+    onMutate: (generalSettings) => {
+      const transaction = beginConfigTransaction(queryClient, {
+        generalSettings,
       });
+      if (streamerModeChanged(transaction, generalSettings)) {
+        resetSystemExecutionOptions(queryClient);
+      }
+      return transaction;
+    },
+    onError: (_error, settings, transaction) => {
+      rollbackConfigTransaction(queryClient, transaction);
+      if (streamerModeChanged(transaction, settings)) {
+        resetSystemExecutionOptions(queryClient);
+      }
+    },
+    onSuccess: (generalSettings, _settings, transaction) => {
+      beginConfigTransaction(queryClient, { generalSettings });
+      if (streamerModeChanged(transaction, generalSettings)) {
+        resetSystemExecutionOptions(queryClient);
+      } else {
+        void queryClient.invalidateQueries({
+          queryKey: allSystemExecutionOptionsQueryKeyPrefix(),
+        });
+      }
       void queryClient.invalidateQueries({
         queryKey: allProjectDefaultExecutionOptionsQueryKeyPrefix(),
       });

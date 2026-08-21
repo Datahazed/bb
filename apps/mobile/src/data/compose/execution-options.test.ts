@@ -55,6 +55,7 @@ describe("resolveModelSelection", () => {
       executionOptions: catalog,
       selectedModel: "gpt-5",
       catalogVerified: true,
+      streamerMode: false,
     });
     expect(resolved.selectedModel).toBe("gpt-5");
     expect(resolved.activeModel?.model).toBe("gpt-5");
@@ -71,6 +72,7 @@ describe("resolveModelSelection", () => {
       executionOptions: catalog,
       selectedModel: "gpt-4.1",
       catalogVerified: true,
+      streamerMode: false,
     });
     expect(resolved.selectedModel).toBe("gpt-4.1");
     expect(resolved.options.map((o) => o.value)).toEqual([
@@ -87,6 +89,7 @@ describe("resolveModelSelection", () => {
       executionOptions: catalog,
       selectedModel: "gone",
       catalogVerified: false,
+      streamerMode: false,
     });
     expect(unverified.selectedModel).toBe("gone");
     expect(unverified.isRecovery).toBe(false);
@@ -94,6 +97,7 @@ describe("resolveModelSelection", () => {
       executionOptions: catalog,
       selectedModel: "gone",
       catalogVerified: true,
+      streamerMode: false,
     });
     expect(verified.selectedModel).toBe("gpt-5-mini");
     expect(verified.isRecovery).toBe(true);
@@ -101,9 +105,35 @@ describe("resolveModelSelection", () => {
       executionOptions: undefined,
       selectedModel: null,
       catalogVerified: false,
+      streamerMode: false,
     });
     expect(empty.selectedModel).toBe("");
     expect(empty.activeModel).toBeUndefined();
+  });
+
+  it("preserves and masks a catalog-omitted selection only in streamer mode", () => {
+    const hidden = resolveModelSelection({
+      executionOptions: catalog,
+      selectedModel: "private-preview-model",
+      catalogVerified: true,
+      streamerMode: true,
+    });
+    expect(hidden.selectedModel).toBe("private-preview-model");
+    expect(hidden.activeModel).toBeUndefined();
+    expect(hidden.options[0]).toMatchObject({
+      value: "private-preview-model",
+      label: "Hidden model",
+    });
+    expect(hidden.isRecovery).toBe(false);
+
+    const visible = resolveModelSelection({
+      executionOptions: catalog,
+      selectedModel: "private-preview-model",
+      catalogVerified: true,
+      streamerMode: false,
+    });
+    expect(visible.selectedModel).toBe("gpt-5-mini");
+    expect(visible.isRecovery).toBe(true);
   });
 
   it("re-points a prefix-free id at its unique prefixed row (Pi providers)", () => {
@@ -120,6 +150,7 @@ describe("resolveModelSelection", () => {
       executionOptions: pi,
       selectedModel: "deepseek/deepseek-v4",
       catalogVerified: true,
+      streamerMode: false,
     });
     expect(resolved.selectedModel).toBe("openrouter/deepseek/deepseek-v4");
     expect(resolved.isRecovery).toBe(true);

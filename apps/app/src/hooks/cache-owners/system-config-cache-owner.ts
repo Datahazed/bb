@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
   applyAppKeybindingOverrides,
   type AppKeybindingOverrides,
+  type AppSettings,
 } from "@bb/domain";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import { systemConfigQueryKey } from "../queries/query-keys";
@@ -57,4 +58,16 @@ export function readCachedStreamerMode(
 ): boolean | undefined {
   return queryClient.getQueryData<SystemConfigResponse>(systemConfigQueryKey())
     ?.generalSettings.streamerMode;
+}
+
+/** Keep a successful General settings write visible while config refetches. */
+export function writeCachedGeneralSettings(
+  queryClient: QueryClient,
+  generalSettings: AppSettings,
+): void {
+  queryClient.setQueryData<SystemConfigResponse>(
+    systemConfigQueryKey(),
+    (current) =>
+      current === undefined ? current : { ...current, generalSettings },
+  );
 }

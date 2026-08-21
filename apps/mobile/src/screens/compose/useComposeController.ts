@@ -637,10 +637,18 @@ export function useComposeController(params: ComposeParams): ComposeController {
   const rawModel =
     storedProviderSelection.model ||
     (providerMatchesDefaults ? (projectDefaults?.model ?? "") : "");
+  const modelPresentationPrivacy =
+    systemConfig.data?.generalSettings.streamerMode === true ||
+    systemConfig.data === undefined ||
+    systemConfig.isFetching ||
+    systemConfig.isError;
+  const hideProvisionalModelCatalog =
+    modelPresentationPrivacy && executionOptions.isPlaceholderData;
   const isLoadingModels =
     executionOptions.isLoading ||
     (executionOptions.isPlaceholderData &&
-      (executionOptions.data?.models.length ?? 0) === 0);
+      ((executionOptions.data?.models.length ?? 0) === 0 ||
+        modelPresentationPrivacy));
   const modelLoadError = executionOptions.data?.modelLoadError ?? null;
   const catalogVerified =
     executionOptions.isSuccess &&
@@ -649,11 +657,20 @@ export function useComposeController(params: ComposeParams): ComposeController {
   const modelSelection = useMemo(
     () =>
       resolveModelSelection({
-        executionOptions: executionOptions.data,
+        executionOptions: hideProvisionalModelCatalog
+          ? undefined
+          : executionOptions.data,
         selectedModel: rawModel,
         catalogVerified,
+        streamerMode: modelPresentationPrivacy,
       }),
-    [catalogVerified, executionOptions.data, rawModel],
+    [
+      catalogVerified,
+      executionOptions.data,
+      hideProvisionalModelCatalog,
+      modelPresentationPrivacy,
+      rawModel,
+    ],
   );
   const reasoningOptions = useMemo(
     () => buildReasoningOptions(modelSelection.activeModel),

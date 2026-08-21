@@ -67,6 +67,7 @@ export { formatModelLabel, resolvePermissionModeSelection };
 
 const EMPTY_PROVIDERS: ProviderInfo[] = [];
 const EMPTY_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
+const HIDDEN_MODEL_LABEL = "Hidden model";
 
 const DEFAULT_SUPPORTED_PERMISSION_MODES: readonly PermissionMode[] = ["full"];
 
@@ -377,11 +378,21 @@ export function useThreadCreationOptions(
   const hostsQuery = useHosts();
   const systemConfig = useSystemConfig();
   const providers = executionOptionsQuery.data?.providers ?? EMPTY_PROVIDERS;
+  const modelPresentationPrivacy =
+    systemConfig.data?.generalSettings?.streamerMode === true ||
+    systemConfig.data === undefined ||
+    systemConfig.isFetching ||
+    systemConfig.isError;
+  // A persistent preload may predate a toggle made in another client. Do not
+  // render provisional rows until the current config proves they are public.
+  const hideProvisionalModelCatalog =
+    modelPresentationPrivacy && executionOptionsQuery.isPlaceholderData;
   const isLoadingModels =
     executionOptionsQueryEnabled &&
     (executionOptionsQuery.isLoading ||
       (executionOptionsQuery.isPlaceholderData &&
-        (executionOptionsQuery.data?.models.length ?? 0) === 0));
+        ((executionOptionsQuery.data?.models.length ?? 0) === 0 ||
+          modelPresentationPrivacy)));
   const modelLoadError =
     executionOptionsQuery.data?.modelLoadError ?? NO_MODEL_LOAD_ERROR;
   const modelLoadFailed =
@@ -523,6 +534,7 @@ export function useThreadCreationOptions(
   // one was meant.
   const selectedModelSelection = useMemo(() => {
     if (!rawSelectedModel) return rawSelectedModel;
+    if (hideProvisionalModelCatalog) return rawSelectedModel;
     const catalog = [
       ...(executionOptionsQuery.data?.models ?? []),
       ...(executionOptionsQuery.data?.selectedOnlyModels ?? []),
@@ -537,6 +549,7 @@ export function useThreadCreationOptions(
   }, [
     executionOptionsQuery.data?.models,
     executionOptionsQuery.data?.selectedOnlyModels,
+    hideProvisionalModelCatalog,
     rawSelectedModel,
   ]);
 
@@ -545,6 +558,7 @@ export function useThreadCreationOptions(
   // model after it has been retired so the picker can render its label and
   // the user isn't silently moved to a different model.
   const availableModels = useMemo(() => {
+    if (hideProvisionalModelCatalog) return [];
     const activeModels = executionOptionsQuery.data?.models ?? [];
     if (!selectedModelSelection) return activeModels;
     if (activeModels.some((model) => model.model === selectedModelSelection)) {
@@ -558,9 +572,17 @@ export function useThreadCreationOptions(
   }, [
     executionOptionsQuery.data?.models,
     executionOptionsQuery.data?.selectedOnlyModels,
+    hideProvisionalModelCatalog,
     selectedModelSelection,
   ]);
+  const hiddenSelectedModel =
+    modelPresentationPrivacy &&
+    selectedModelSelection.length > 0 &&
+    !availableModels.some((model) => model.model === selectedModelSelection);
   const selectedModel = useMemo(() => {
+    if (hiddenSelectedModel) {
+      return selectedModelSelection;
+    }
     // An unverified catalog (discovery error, or preloaded placeholder rows) is
     // temporary: keep an existing explicit selection instead of treating a
     // partial/provisional catalog as proof that it disappeared. Once discovery
@@ -581,34 +603,50 @@ export function useThreadCreationOptions(
       availableModels.find((model) => model.isDefault)?.model ??
       availableModels[0].model
     );
-  }, [availableModels, modelCatalogIsUnverified, selectedModelSelection]);
+  }, [
+    availableModels,
+    hiddenSelectedModel,
+    modelCatalogIsUnverified,
+    selectedModelSelection,
+  ]);
   // True when the stored string is not what will run: either the model is gone
   // and the catalog default replaces it, or a prefix-free Pi id resolved to its
   // canonical row. Both cases send the model explicitly, so the stored value
   // catches up with what the turn actually used.
   const isUnavailableModelRecovery =
+    !hiddenSelectedModel &&
     !modelCatalogIsUnverified &&
     rawSelectedModel.length > 0 &&
     selectedModel !== rawSelectedModel;
 
-  const modelOptions = useMemo(
-    (): ModelPickerOption[] =>
-      availableModels.map((model) => ({
-        value: model.model,
-        label: formatModelLabel(model.displayName || model.model),
-        ...(model.routeProviderId
-          ? { routeProviderId: model.routeProviderId }
-          : {}),
-      })),
-    [availableModels],
-  );
+  const modelOptions = useMemo((): ModelPickerOption[] => {
+    const options = availableModels.map((model) => ({
+      value: model.model,
+      label: formatModelLabel(model.displayName || model.model),
+      ...(model.routeProviderId
+        ? { routeProviderId: model.routeProviderId }
+        : {}),
+    }));
+    return hiddenSelectedModel
+      ? [
+          {
+            value: selectedModelSelection,
+            label: HIDDEN_MODEL_LABEL,
+          },
+          ...options,
+        ]
+      : options;
+  }, [availableModels, hiddenSelectedModel, selectedModelSelection]);
 
   // Models behind the picker's collapsed "More models" section. A promoted
   // current selection already lives in `availableModels`, so it is excluded
   // here rather than listed twice.
   const moreModelOptions = useMemo(
     (): ModelPickerOption[] =>
-      (executionOptionsQuery.data?.selectedOnlyModels ?? [])
+      (hideProvisionalModelCatalog
+        ? []
+        : (executionOptionsQuery.data?.selectedOnlyModels ?? [])
+      )
         .filter(
           (model) =>
             !availableModels.some((active) => active.model === model.model),
@@ -620,16 +658,21 @@ export function useThreadCreationOptions(
             ? { routeProviderId: model.routeProviderId }
             : {}),
         })),
-    [executionOptionsQuery.data?.selectedOnlyModels, availableModels],
+    [
+      executionOptionsQuery.data?.selectedOnlyModels,
+      availableModels,
+      hideProvisionalModelCatalog,
+    ],
   );
 
-  const activeModel = useMemo(
-    () =>
+  const activeModel = useMemo(() => {
+    if (hiddenSelectedModel) return undefined;
+    return (
       availableModels.find((model) => model.model === selectedModel) ??
       availableModels.find((model) => model.isDefault) ??
-      availableModels[0],
-    [availableModels, selectedModel],
-  );
+      availableModels[0]
+    );
+  }, [availableModels, hiddenSelectedModel, selectedModel]);
 
   const reasoningOptions = useMemo((): PickerOption<ReasoningLevel>[] => {
     if (!activeModel) {

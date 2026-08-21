@@ -183,9 +183,9 @@ share so a private or early-access model id does not appear. It defaults to
 off. The entries stay in `config.json`, and a thread that names a hidden model
 explicitly still runs with it. Default model resolution for a new thread also
 keeps the full list, so a provider whose only models are custom still starts.
-A composer whose stored selection is a hidden model treats it as unavailable
-and falls back to the provider default; the next send records that default, so
-select the custom model again after you turn streamer mode off. Set it with
+A composer whose stored selection is hidden keeps that model for execution and
+renders it as `Hidden model`, without exposing its id or display name. Turning
+streamer mode off restores its ordinary catalog label. Set the preference with
 `bb settings general streamerMode <true|false>`.
 
 Outside an open typeahead menu, Shift+Enter inserts a newline. In zen mode,

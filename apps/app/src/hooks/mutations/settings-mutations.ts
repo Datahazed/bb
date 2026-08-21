@@ -16,6 +16,7 @@ import {
   beginKeyboardSettingsCacheTransaction,
   readCachedStreamerMode,
   rollbackKeyboardSettingsCacheTransaction,
+  writeCachedGeneralSettings,
 } from "../cache-owners/system-config-cache-owner";
 
 /**
@@ -52,9 +53,10 @@ export function useUpdateGeneralSettings() {
     },
     mutationFn: (settings: AppSettings) =>
       sdk.system.updateGeneralSettings(settings),
-    onSuccess: (_settings, written) => {
+    onSuccess: (written) => {
       // Read the previous value before the config invalidation replaces it.
       const previous = readCachedStreamerMode(queryClient);
+      writeCachedGeneralSettings(queryClient, written);
       invalidateGeneralSettingsDependencies({ queryClient });
       // An unknown previous value also resets: a stale preload is the risk.
       if (previous !== written.streamerMode) {

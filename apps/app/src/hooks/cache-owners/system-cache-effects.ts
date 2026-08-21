@@ -185,6 +185,19 @@ export function resetModelCatalogsAfterStreamerModeChange({
   });
 }
 
+/**
+ * Privacy scrub for realtime peers. `config-changed` does not identify the
+ * changed setting, so every peer must pessimistically forget model rows before
+ * it refetches `/system/config`; otherwise an enabling toggle can leave a
+ * private name visible when either refetch is slow or fails.
+ */
+export function resetModelPresentationAfterConfigChange({
+  queryClient,
+}: QueryClientArg): void {
+  void queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
+  void resetModelCatalogsAfterStreamerModeChange({ queryClient });
+}
+
 function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
   return [
     hostsQueryKey(),

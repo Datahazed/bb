@@ -64,6 +64,7 @@ export const PERMISSION_CEILING_REASON =
   "Above the selected machine's permission limit. Change it in Settings → Machines.";
 
 const DEFAULT_SUPPORTED_PERMISSION_MODES: readonly PermissionMode[] = ["full"];
+const HIDDEN_MODEL_LABEL = "Hidden model";
 
 /** Case-normalise a raw model id into a displayable label. */
 export function formatModelLabel(value: string): string {
@@ -129,6 +130,8 @@ export interface ResolveModelSelectionArgs {
    * the explicit selection is kept instead of snapping to the default.
    */
   catalogVerified: boolean;
+  /** Preserve and generically label a selection omitted by the public catalog. */
+  streamerMode: boolean;
 }
 
 export interface ResolvedModelSelection {
@@ -157,6 +160,7 @@ export function resolveModelSelection({
   executionOptions,
   selectedModel,
   catalogVerified,
+  streamerMode,
 }: ResolveModelSelectionArgs): ResolvedModelSelection {
   const activeModels = executionOptions?.models ?? [];
   const selectedOnly = executionOptions?.selectedOnlyModels ?? [];
@@ -167,13 +171,19 @@ export function resolveModelSelection({
     const prefixed = catalog.filter((model) => model.model.endsWith(`/${raw}`));
     if (prefixed.length === 1) normalized = prefixed[0].model;
   }
+  const hiddenSelection =
+    streamerMode &&
+    normalized.length > 0 &&
+    !catalog.some((model) => model.model === normalized);
   let availableModels = activeModels;
   if (normalized && !activeModels.some((model) => model.model === normalized)) {
     const promoted = selectedOnly.find((model) => model.model === normalized);
     if (promoted) availableModels = [promoted, ...activeModels];
   }
   let effective: string;
-  if (!catalogVerified && normalized) {
+  if (hiddenSelection) {
+    effective = normalized;
+  } else if (!catalogVerified && normalized) {
     effective = normalized;
   } else if (availableModels.length === 0) {
     effective = normalized;
@@ -184,18 +194,33 @@ export function resolveModelSelection({
       availableModels.find((model) => model.isDefault)?.model ??
       availableModels[0].model;
   }
-  const activeModel =
-    availableModels.find((model) => model.model === effective) ??
-    availableModels.find((model) => model.isDefault) ??
-    availableModels[0];
+  const activeModel = hiddenSelection
+    ? undefined
+    : (availableModels.find((model) => model.model === effective) ??
+      availableModels.find((model) => model.isDefault) ??
+      availableModels[0]);
+  const options = availableModels.map(modelToOption);
   return {
     selectedModel: effective,
     activeModel,
-    options: availableModels.map(modelToOption),
+    options: hiddenSelection
+      ? [
+          {
+            value: effective,
+            label: HIDDEN_MODEL_LABEL,
+            description: "",
+          },
+          ...options,
+        ]
+      : options,
     moreOptions: selectedOnly
       .filter((model) => !availableModels.some((m) => m.model === model.model))
       .map(modelToOption),
-    isRecovery: catalogVerified && raw.length > 0 && effective !== raw,
+    isRecovery:
+      !hiddenSelection &&
+      catalogVerified &&
+      raw.length > 0 &&
+      effective !== raw,
   };
 }
 

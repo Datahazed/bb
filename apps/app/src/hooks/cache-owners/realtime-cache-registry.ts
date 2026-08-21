@@ -84,7 +84,6 @@ import {
   environmentWorkStatusQueryKeyPrefix,
   hostsQueryKey,
   sidebarNavigationQueryKey,
-  systemConfigQueryKey,
   allSystemProvidersQueryKeyPrefix,
   threadDefaultExecutionOptionsQueryKey,
   threadQueryKey,
@@ -605,10 +604,10 @@ export const REALTIME_HOST_CHANGE_REGISTRY = {
 export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
   "config-changed": {
     dirty: [
-      dirtySystemConfigQueries, // Experiments gate UI surfaces; other windows re-read after a settings write.
+      // RealtimeCacheEffects resets config/model data synchronously before
+      // hidden-window deferral so streamer-mode privacy never waits on a read.
       dirtyAllThreadTimelineQueries, // General settings can change whether diagnostic provider rows are projected.
       dirtySystemProviderQueries,
-      dirtySystemExecutionOptionQueries,
     ],
   },
   // Plugin load/dispose/enable/disable/reload changes the host-rendered
@@ -1200,10 +1199,6 @@ function dirtyProjectSourceDependentQueries({
 
 function dirtyHostAvailabilityQueries(): QueryKey[] {
   return [hostsQueryKey(), allHostQueryKeyPrefix()];
-}
-
-function dirtySystemConfigQueries(): QueryKey[] {
-  return [systemConfigQueryKey()];
 }
 
 function dirtyAllThreadTimelineQueries(): QueryKey[] {
