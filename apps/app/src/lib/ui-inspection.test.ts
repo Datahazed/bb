@@ -3,6 +3,11 @@
 import type { ExperimentalUiInspectionSessionEvent } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  installForeignDomMutationGuard,
+  pluginHostNodeMoveRefusalCount,
+  uninstallForeignDomMutationGuardForTest,
+} from "./foreign-dom-mutation-guard";
+import {
   createPluginUiInspectionApi,
   registerUiInspectionMetadata,
   resolveUiInspectionTarget,
@@ -33,6 +38,7 @@ function pointerEvent(
 }
 
 afterEach(() => {
+  uninstallForeignDomMutationGuardForTest();
   document.body.replaceChildren();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -258,6 +264,35 @@ describe("UI inspection session", () => {
     expect(underlying).not.toHaveBeenCalled();
   });
 
+  it("passes activation through to the inspector's own footer control", () => {
+    const element = document.createElement("button");
+    element.dataset.codeName = "inspector toggle";
+    element.dataset.bbUiInspectionActivationPassthrough = "true";
+    document.body.append(element);
+    const underlying = vi.fn();
+    element.addEventListener("click", underlying);
+    const events: ExperimentalUiInspectionSessionEvent[] = [];
+    const session = startUiInspectionSession({
+      onEvent: (event) => events.push(event),
+    });
+
+    const down = pointerEvent("pointerdown", { target: element });
+    const up = pointerEvent("pointerup", { target: element });
+    const click = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    });
+    element.dispatchEvent(click);
+
+    expect(down.defaultPrevented).toBe(false);
+    expect(up.defaultPrevented).toBe(false);
+    expect(click.defaultPrevented).toBe(false);
+    expect(underlying).toHaveBeenCalledOnce();
+    expect(events.some(({ type }) => type === "select")).toBe(false);
+    session.dispose();
+  });
+
   it("reports a frozen target that detaches before selection", () => {
     const element = document.createElement("button");
     element.dataset.codeName = "removed";
@@ -301,6 +336,33 @@ describe("UI inspection session", () => {
     expect(warn).toHaveBeenCalledWith(
       "bb UI inspection callback failed: plugin exploded",
     );
+    session.dispose();
+  });
+
+  it("runs plugin inspection callbacks inside the DOM isolation fence", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    installForeignDomMutationGuard();
+    const controller = new AbortController();
+    const reactParent = document.createElement("div");
+    const reactOwned = document.createElement("button");
+    Object.defineProperty(reactOwned, "__reactFiber$test", { value: {} });
+    reactOwned.dataset.codeName = "host action";
+    reactParent.append(reactOwned);
+    document.body.append(reactParent);
+    const foreignParent = document.createElement("section");
+    document.body.append(foreignParent);
+    const api = createPluginUiInspectionApi("plugin-guide", controller.signal);
+    const session = api.startSession({
+      onEvent(event) {
+        if (event.type === "select") foreignParent.append(reactOwned);
+      },
+    });
+
+    pointerEvent("pointerdown", { target: reactOwned });
+    pointerEvent("pointerup", { target: reactOwned });
+
+    expect(reactOwned.parentNode).toBe(reactParent);
+    expect(pluginHostNodeMoveRefusalCount()).toBe(1);
     session.dispose();
   });
 });

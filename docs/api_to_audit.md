@@ -192,6 +192,10 @@ plugin show that its existing footer action is active. Core owns selected
 styling, the dot, tooltip/accessibility-label swap, `aria-pressed`, and cleanup;
 the original `run` callback remains the activation path.
 
+`experimental_inspectionActivationPassthrough` marks the inspector's own
+footer control so its pointer activation can stop inspection while hover still
+reports that control's metadata. It is not a general opt-out from inspection.
+
 Before stabilization, audit:
 
 - whether dot plus selected treatment is sufficient across themes, contrast
@@ -221,6 +225,17 @@ Before stabilization, audit:
   graduate into a general manifest/command contribution after real demand;
 - discoverability in Keyboard settings and accessible announcement of the
   same active state shown by the sidebar-footer action.
+
+## Content-script compose navigation
+
+`PluginContentScriptContext.experimental_navigateToCompose` lets a long-lived
+content script open the root composer through Core's React Router while
+preserving app Back/Forward history. It accepts the same initial-prompt and
+focus intent as `useBbNavigate().toCompose` and returns false if the app
+navigation host is unavailable.
+
+Before stabilization, audit whether this should remain a narrow content-script
+bridge or become part of a broader non-React navigation surface.
 
 ## `bb.agents.registerTool({ experimental_statusLabels })`
 

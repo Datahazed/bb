@@ -166,6 +166,7 @@ describe("PluginSidebarFooterActions", () => {
             icon: "Scan",
             experimental_activeTitle: "Stop inspecting UI",
             experimental_activeIndicator: "dot",
+            experimental_inspectionActivationPassthrough: true,
             run: () => {},
           },
         ],
@@ -184,6 +185,9 @@ describe("PluginSidebarFooterActions", () => {
     const active = screen.getByRole("button", { name: "Stop inspecting UI" });
     expect(active.getAttribute("aria-pressed")).toBe("true");
     expect(active.getAttribute("data-active")).toBe("true");
+    expect(
+      active.getAttribute("data-bb-ui-inspection-activation-passthrough"),
+    ).toBe("true");
     expect(
       screen.queryByTestId(
         "plugin-sidebar-footer-action-indicator-guide-inspect",

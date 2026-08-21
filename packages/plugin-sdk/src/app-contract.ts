@@ -412,6 +412,13 @@ export interface PluginSidebarFooterActionRegistration {
    */
   experimental_activeIndicator?: "dot";
   /**
+   * Keep this action's pointer activation available while a UI inspection
+   * session is capturing other controls. Hover metadata is still reported.
+   * Use only for the control that starts/stops the inspector itself.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_inspectionActivationPassthrough?: boolean;
+  /**
    * Runs when the user activates the action (e.g. call `openSettings()`,
    * open a panel via other surfaces, toast). Errors (sync or async) are
    * contained and logged; they never break the sidebar.
@@ -1024,6 +1031,14 @@ export type ExperimentalPluginAppCommandId = "plugin.inspector.toggle";
 /** Handler for one fixed Core-owned app command. */
 export type ExperimentalPluginAppCommandHandler = () => void | Promise<void>;
 
+/** Root-composer navigation requested by one plugin content-script generation. */
+export interface ExperimentalPluginComposeNavigationOptions {
+  /** Seed used when the destination composer does not already hold a draft. */
+  readonly initialPrompt?: string;
+  /** Focus the root composer after navigation. */
+  readonly focusPrompt?: boolean;
+}
+
 /** Stable lifecycle values for one content-script instance in one bb client. */
 export interface PluginContentScriptContext {
   /** The id of the plugin that owns this script. */
@@ -1070,6 +1085,14 @@ export interface PluginContentScriptContext {
     command: ExperimentalPluginAppCommandId,
     handler: ExperimentalPluginAppCommandHandler,
   ) => PluginContentScriptDisposer;
+  /**
+   * Navigate through Core's React Router to the root composer. Returns false
+   * when no app navigation host is mounted. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  readonly experimental_navigateToCompose?: (
+    options?: ExperimentalPluginComposeNavigationOptions,
+  ) => boolean;
 }
 
 /** Cleanup returned by a frontend content script. */
