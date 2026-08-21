@@ -31,6 +31,7 @@ function menuArgs(
     connectServersSkipReason: null,
     createNewWindow: () => {},
     isMac: true,
+    openAbout: () => {},
     openNewTab: () => {},
     openNewThread: () => {},
     openServerDaemonLogs: () => {},
@@ -54,6 +55,21 @@ function findServerSubmenu(
 }
 
 describe("application menu", () => {
+  it("opens the custom About dialog instead of the native panel", () => {
+    // The native `about` role cannot carry a Copy button, so the app menu must
+    // route through our own dialog.
+    const openAbout = vi.fn();
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, { openAbout }),
+    );
+    const appSubmenu = template[0]?.submenu as MenuItemConstructorOptions[];
+    const aboutItem = appSubmenu.find((item) => item.label === "About bb");
+
+    expect(aboutItem?.role).toBeUndefined();
+    aboutItem?.click?.({} as never, undefined, {} as never);
+    expect(openAbout).toHaveBeenCalledTimes(1);
+  });
+
   it("closes a native panel when Electron omits its window", () => {
     vi.mocked(Menu.sendActionToFirstResponder).mockClear();
     const closeWindowOrSideTab = vi.fn();
@@ -176,8 +192,7 @@ describe("application menu", () => {
     );
     const appMenu = template[0]?.submenu as MenuItemConstructorOptions[];
     const windowMenu = template.find((item) => item.label === "Window");
-    const windowSubmenu =
-      windowMenu?.submenu as MenuItemConstructorOptions[];
+    const windowSubmenu = windowMenu?.submenu as MenuItemConstructorOptions[];
     const viewMenu = template.find((item) => item.label === "View");
     const viewSubmenu = viewMenu?.submenu as MenuItemConstructorOptions[];
     const fileMenu = template.find((item) => item.label === "File");
@@ -186,10 +201,7 @@ describe("application menu", () => {
       (item) => item.label === "Close Window",
     );
 
-    expect(appMenu.map((item) => item.role).filter(Boolean)).toEqual([
-      "about",
-      "quit",
-    ]);
+    expect(appMenu.map((item) => item.role).filter(Boolean)).toEqual(["quit"]);
     expect(windowSubmenu.map((item) => item.role).filter(Boolean)).toEqual([
       "minimize",
     ]);

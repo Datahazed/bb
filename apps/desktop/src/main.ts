@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { accessSync, constants as fsConstants } from "node:fs";
-import { homedir } from "node:os";
+import { arch, homedir, release, type as osType } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   app,
   BrowserWindow,
   clipboard,
+  dialog,
   ipcMain,
   nativeImage,
   nativeTheme,
@@ -108,6 +109,11 @@ import {
   type DesktopBrowserWindowCreator,
   type DesktopWindowFactory,
 } from "./desktop-window-factory.js";
+import {
+  createDesktopAboutDialogOptions,
+  createDesktopAboutPanelOptions,
+  type DesktopAboutFacts,
+} from "./desktop-about-panel.js";
 import { registerDesktopContextMenu } from "./desktop-context-menu.js";
 import { resolveBbDesktopPlatform } from "./desktop-platform.js";
 import {
@@ -404,6 +410,48 @@ function getDesktopVersion(version: string | undefined): string {
   return version;
 }
 
+function readDesktopAboutFacts(applicationName: string): DesktopAboutFacts {
+  return {
+    applicationName,
+    buildDate: process.env.BB_DESKTOP_BUILD_DATE ?? "",
+    channel: DESKTOP_RELEASE_CHANNEL,
+    commit: process.env.BB_DESKTOP_COMMIT ?? "",
+    electronVersion: process.versions.electron,
+    osArch: arch(),
+    osRelease: release(),
+    osType: osType(),
+    platform: process.platform,
+    pluginSdkVersion: process.env.BB_DESKTOP_PLUGIN_SDK_VERSION ?? "",
+    version: getDesktopVersion(process.env.BB_DESKTOP_VERSION),
+  };
+}
+
+function installAboutPanel(applicationName: string): void {
+  app.setAboutPanelOptions(
+    createDesktopAboutPanelOptions(readDesktopAboutFacts(applicationName)),
+  );
+}
+
+/**
+ * The About dialog is read at click time, not at launch, so a session left open
+ * for days still reports the build's real age.
+ */
+async function showAboutDialog(): Promise<void> {
+  const { copyButtonId, ...messageBoxOptions } =
+    createDesktopAboutDialogOptions(
+      readDesktopAboutFacts(app.getName()),
+      Date.now(),
+    );
+  const parentWindow = getFocusedApplicationWindow();
+  const result =
+    parentWindow === null
+      ? await dialog.showMessageBox(messageBoxOptions)
+      : await dialog.showMessageBox(parentWindow, messageBoxOptions);
+  if (result.response === copyButtonId) {
+    clipboard.writeText(messageBoxOptions.detail);
+  }
+}
+
 function getCurrentDesktopInfo(): BbDesktopInfo | null {
   return mergeDesktopUpdateInfo({
     autoInfo: desktopAutoUpdateService?.getInfo() ?? null,
@@ -688,6 +736,9 @@ function installCurrentApplicationMenu(): void {
         initialUrl: currentWindowUrl,
         stateKey: null,
       });
+    },
+    openAbout() {
+      void showAboutDialog();
     },
     openNewTab() {
       const browserWindow = getFocusedApplicationWindow();
@@ -2013,7 +2064,11 @@ async function runDesktopApp(): Promise<void> {
     platform: process.platform,
   });
 
-  app.setName(app.isPackaged ? DESKTOP_RELEASE_INFO.applicationName : "bb-dev");
+  const applicationName = app.isPackaged
+    ? DESKTOP_RELEASE_INFO.applicationName
+    : "bb-dev";
+  app.setName(applicationName);
+  installAboutPanel(applicationName);
 
   if (!app.requestSingleInstanceLock()) {
     app.quit();
