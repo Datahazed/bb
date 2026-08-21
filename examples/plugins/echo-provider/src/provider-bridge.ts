@@ -14,19 +14,27 @@
  *   non-JSON line and an unsolicited response-shaped line are ignored and
  *   the bridge stays alive. The dispatch table is keyed by the protocol
  *   package's own method vocabulary, so it cannot drift from the schemas.
- * - Ids: the bridge mints every turn and item id, with per-instance entropy
- *   so ids never collide across process restarts or session resumes.
- * - Grammar: every accepted turn settles (accepted → started → completed);
- *   every item opens with item/started before any delta; a release stop
+ * - Handshake: initialize answers protocol version 2 — the narrow-grammar
+ *   dialect — and grammar range [3, 3]. The runtime rejects any other
+ *   protocol version, or a grammar range without 3, at spawn.
+ * - Grammar: the bridge emits `thread/delta` semantic deltas, never finished
+ *   timeline events — the runtime's assembler mints every turn and item id
+ *   and constructs the canonical events. Every accepted turn settles
+ *   (`input.accepted` → `turn.open` → `turn.boundary`); every session
+ *   construction (start and resume) opens with `session.reset` so the
+ *   assembler drops any prior id space for the thread; a release stop
  *   fabricates nothing.
  */
 import {
+  type ClientTurnRequestId,
   type PromptInput,
-  type ThreadEvent,
+  type ThreadDelta,
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   BRIDGE_REQUEST_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
+  THREAD_DELTA_NOTIFICATION_METHOD,
   initializeParamsSchema,
   modelListParamsSchema,
   threadResumeParamsSchema,
@@ -46,10 +54,9 @@ import { join } from "node:path";
 // sessionRestore and every capability defaults to "no").
 // ---------------------------------------------------------------------------
 
-/** Per-instance entropy baked into every minted id (the #1224 lesson). */
+/** Per-instance entropy baked into minted provider thread ids. */
 const instanceNonce = randomUUID().replaceAll("-", "").slice(0, 12);
 let threadCounter = 0;
-let turnCounter = 0;
 
 /** threadId → providerThreadId for sessions this instance has opened. */
 const sessions = new Map<string, string>();
@@ -81,19 +88,23 @@ function notify(method: string, params: Record<string, unknown>): void {
   writeMessage({ method, params });
 }
 
-function emitThreadEvent(threadId: string, event: ThreadEvent): void {
-  notify(BRIDGE_NOTIFICATION_METHODS.threadEvent, { threadId, event });
+/** Emit one batched `thread/delta` notification for a thread. */
+function emitDeltas(threadId: string, deltas: ThreadDelta[]): void {
+  notify(THREAD_DELTA_NOTIFICATION_METHOD, { threadId, deltas });
 }
 
 // ---------------------------------------------------------------------------
-// The echo turn: accepted → started → item/started → delta(s) → completed.
-// Turns settle synchronously — echoing needs no provider round-trip.
+// The echo turn, in deltas: input.accepted → turn.open → a streamed assistant
+// message → turn.boundary. The runtime's assembler turns this into the
+// canonical accepted/started/item/completed event sequence with ids it mints
+// itself. Turns settle synchronously — echoing needs no provider round-trip.
 // ---------------------------------------------------------------------------
 
 function promptText(input: readonly PromptInput[]): string {
   return input
-    .filter((item): item is Extract<PromptInput, { type: "text" }> =>
-      item.type === "text",
+    .filter(
+      (item): item is Extract<PromptInput, { type: "text" }> =>
+        item.type === "text",
     )
     .map((item) => item.text)
     .join("");
@@ -101,55 +112,55 @@ function promptText(input: readonly PromptInput[]): string {
 
 function runEchoTurn(args: {
   threadId: string;
-  providerThreadId: string;
   input: readonly PromptInput[];
   /** Present only for turn/start; thread/start input has no request id. */
-  clientRequestId?: string;
+  clientRequestId?: ClientTurnRequestId;
 }): void {
-  turnCounter += 1;
-  const turnId = `turn_echo_${instanceNonce}_${turnCounter}`;
-  const itemId = `${turnId}_item_1`;
-  const scope = { kind: "turn", turnId } as const;
-  const base = {
-    threadId: args.threadId,
-    providerThreadId: args.providerThreadId,
-  };
   const text = `echo: ${promptText(args.input)}`;
-
+  const deltas: ThreadDelta[] = [];
+  // The provider consumed the input. thread/start input carries no
+  // clientRequestId, so a first-turn-on-start emits no acceptance.
   if (args.clientRequestId !== undefined) {
-    emitThreadEvent(args.threadId, {
-      type: "turn/input/accepted",
-      ...base,
+    deltas.push({
+      kind: "input.accepted",
       clientRequestId: args.clientRequestId,
-      scope,
     });
   }
-  emitThreadEvent(args.threadId, { type: "turn/started", ...base, scope });
-  emitThreadEvent(args.threadId, {
-    type: "item/started",
-    ...base,
-    item: { type: "agentMessage", id: itemId, text: "" },
-    scope,
+  deltas.push(
+    { kind: "turn.open" },
+    // A streamed assistant message on an anonymous stream (the echo agent
+    // names no item ids, so the key is a bridge-chosen channel): the
+    // assembler synthesizes item/started for the delta-first stream, and the
+    // close's `text` is the provider's final text for the completed item.
+    {
+      kind: "item.textDelta",
+      key: { channel: "echo" },
+      channel: "agentMessage",
+      text,
+    },
+    {
+      kind: "item.textClose",
+      key: { channel: "echo" },
+      channel: "agentMessage",
+      text,
+    },
+    { kind: "turn.boundary", status: "completed" },
+  );
+  emitDeltas(args.threadId, deltas);
+}
+
+/**
+ * Every session construction is a provider id-space boundary: identity
+ * precedes traffic, and `session.reset` tells the assembler to drop any
+ * assembly state it still holds for the thread from a previous session.
+ */
+function openSession(threadId: string, providerThreadId: string): void {
+  sessions.set(threadId, providerThreadId);
+  notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
+    threadId,
+    providerThreadId,
   });
-  emitThreadEvent(args.threadId, {
-    type: "item/agentMessage/delta",
-    ...base,
-    itemId,
-    delta: text,
-    scope,
-  });
-  emitThreadEvent(args.threadId, {
-    type: "item/completed",
-    ...base,
-    item: { type: "agentMessage", id: itemId, text },
-    scope,
-  });
-  emitThreadEvent(args.threadId, {
-    type: "turn/completed",
-    ...base,
-    status: "completed",
-    scope,
-  });
+  emitDeltas(threadId, [{ kind: "session.reset" }]);
 }
 
 // ---------------------------------------------------------------------------
@@ -177,12 +188,16 @@ const handlers: Record<string, RequestHandler> = {
       invalidParams(id, BRIDGE_REQUEST_METHODS.initialize, parsed.error.issues);
       return;
     }
-    // All capabilities absent: sessionRestore, threadArchive, threadRename
+    // Session capabilities absent: sessionRestore, threadArchive, threadRename
     // and threadGoalClear read false and fork reads "none", so the runtime
-    // will never send this bridge a capability-gated method.
+    // will never send this bridge a capability-gated method. The grammar
+    // range is stated: the runtime assembles grammar v3 only, and a bridge
+    // that says nothing reads as v2 and is refused at the handshake.
     respondResult(id, {
       protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
-      capabilities: {},
+      capabilities: {
+        grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
+      },
     });
   },
 
@@ -208,20 +223,14 @@ const handlers: Record<string, RequestHandler> = {
     }
     threadCounter += 1;
     const providerThreadId = `echo_${instanceNonce}_${threadCounter}`;
-    sessions.set(parsed.data.threadId, providerThreadId);
-    // Identity precedes every thread/event for the session.
-    notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
-      threadId: parsed.data.threadId,
-      providerThreadId,
-    });
+    openSession(parsed.data.threadId, providerThreadId);
     respondResult(id, { providerThreadId });
     // A start that carries input runs its first turn immediately. It has no
     // clientRequestId (only turn/start and turn/steer carry one), so no
-    // turn/input/accepted is emitted for it.
+    // input.accepted delta is emitted for it.
     if (parsed.data.input !== undefined && parsed.data.input.length > 0) {
       runEchoTurn({
         threadId: parsed.data.threadId,
-        providerThreadId,
         input: parsed.data.input,
       });
     }
@@ -237,14 +246,11 @@ const handlers: Record<string, RequestHandler> = {
       );
       return;
     }
-    // Stateless resume: re-adopt the caller's provider thread id. Turn and
-    // item ids stay unique across the resume because every minted id embeds
-    // the instance nonce plus a monotonic counter.
-    sessions.set(parsed.data.threadId, parsed.data.providerThreadId);
-    notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
-      threadId: parsed.data.threadId,
-      providerThreadId: parsed.data.providerThreadId,
-    });
+    // Stateless resume: re-adopt the caller's provider thread id. The
+    // session.reset inside openSession is what keeps assembler-minted turn
+    // and item ids unique across the resume even if this provider reused
+    // its native keys.
+    openSession(parsed.data.threadId, parsed.data.providerThreadId);
     respondResult(id, { providerThreadId: parsed.data.providerThreadId });
   },
 
@@ -257,7 +263,6 @@ const handlers: Record<string, RequestHandler> = {
     respondResult(id, {});
     runEchoTurn({
       threadId: parsed.data.threadId,
-      providerThreadId: parsed.data.providerThreadId,
       input: parsed.data.input,
       clientRequestId: parsed.data.clientRequestId,
     });

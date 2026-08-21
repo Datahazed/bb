@@ -209,7 +209,6 @@ function createFollowUpPromptBoxProps(
     execution: {
       provider: {
         selectedId: "codex",
-        displayName: "Codex",
       },
       model: {
         selected: "gpt-5",
@@ -437,6 +436,45 @@ describe("FollowUpPromptBox", () => {
     expect(queuedMessages.previousElementSibling).toBe(pluginHeaderRoot);
   });
 
+  it("does not mount plugin banners for a retained inactive composer without a real scope", () => {
+    setPluginSlotRegistrations("inactive-banner", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      composerCustomizations: [
+        {
+          id: "inactive",
+          banners: [
+            {
+              id: "banner",
+              component: () => (
+                <div data-testid="inactive-plugin-banner">Plugin banner</div>
+              ),
+            },
+          ],
+        },
+      ],
+      pendingInteractions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+    });
+
+    render(
+      <FollowUpPromptBox
+        {...createFollowUpPromptBoxProps({ kind: "ready" })}
+        stack={<div data-testid="retained-native-stack">Queued messages</div>}
+        pluginComposerHost={null}
+        pluginComposerScope={null}
+        suppressPluginComposerCustomizations
+      />,
+    );
+
+    expect(screen.getByTestId("retained-native-stack")).toBeTruthy();
+    expect(screen.queryByTestId("inactive-plugin-banner")).toBeNull();
+  });
+
   it("keeps the bottom composer mounted when its stack changes", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
 
@@ -466,6 +504,56 @@ describe("FollowUpPromptBox", () => {
     expect(input.value).toBe("Uncommitted editor state");
     fireEvent.click(screen.getByText("Submit"));
     expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the editor mounted and hidden while a pending interaction takes its place", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    const { container, rerender } = render(<FollowUpPromptBox {...props} />);
+    const promptBox = screen.getByTestId("prompt-box");
+    const input = screen.getByLabelText<HTMLInputElement>("Follow-up prompt");
+    input.value = "Draft typed before the approval";
+    const composerShell = container.querySelector<HTMLElement>(
+      "[data-follow-up-composer]",
+    );
+    expect(composerShell?.hidden).toBe(false);
+
+    rerender(
+      <FollowUpPromptBox
+        {...props}
+        composer={{
+          ...props.composer!,
+          submitMode: { kind: "blocked", reason: "pending-interaction" },
+        }}
+        stack={<div data-testid="pending-stack">Plan mode</div>}
+        pendingInteraction={
+          <div data-testid="pending-interaction">Allow file write?</div>
+        }
+      />,
+    );
+
+    // Same component instance and DOM: no TipTap teardown per approval.
+    expect(screen.getByTestId("prompt-box")).toBe(promptBox);
+    expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
+    expect(input.value).toBe("Draft typed before the approval");
+    expect(composerShell?.hidden).toBe(true);
+    // The interaction renders below the (reduced) stack, above the composer.
+    const interaction = screen.getByTestId("pending-interaction");
+    const stackItem = screen.getByTestId("pending-stack");
+    expect(
+      stackItem.compareDocumentPosition(interaction) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      interaction.compareDocumentPosition(promptBox) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+
+    rerender(<FollowUpPromptBox {...props} />);
+
+    expect(screen.getByTestId("prompt-box")).toBe(promptBox);
+    expect(screen.getByLabelText("Follow-up prompt")).toBe(input);
+    expect(composerShell?.hidden).toBe(false);
+    expect(screen.queryByTestId("pending-interaction")).toBeNull();
   });
 
   it.each([
@@ -969,6 +1057,18 @@ describe("FollowUpPromptBox", () => {
         Reflect.deleteProperty(window, "visualViewport");
       }
     }
+  });
+
+  it("keeps the status footer out of text selection", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    props.environmentSummary = <span>Local environment</span>;
+    render(<FollowUpPromptBox {...props} />);
+
+    const footer = document.querySelector("[data-follow-up-composer-footer]");
+    expect(footer?.classList.contains("select-none")).toBe(true);
+    expect(screen.getByText("Local environment").closest(".select-none")).toBe(
+      footer,
+    );
   });
 
   it("keeps the full composer visible on desktop", () => {

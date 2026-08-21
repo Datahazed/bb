@@ -3,6 +3,9 @@ import { createProviderRegistryService } from "../../src/services/providers/prov
 
 const CURSOR_LIKE_INFO = {
   available: true,
+  experimental_providerHealth: true,
+  experimental_providerUsage: true,
+  experimental_providerInstallation: false,
   capabilities: {
     supportsThreadArchive: false,
     supportsThreadRename: false,
@@ -20,7 +23,6 @@ const CURSOR_LIKE_INFO = {
 
 const MINIMAL_SERVER_CAPABILITIES = {
   supportsManualCompaction: false,
-  supportsWorkflows: false,
   reasoningLevels: ["medium" as const],
   fork: "none" as const,
 };
@@ -29,11 +31,15 @@ function registerProvider(
   registry: ReturnType<typeof createProviderRegistryService>,
   id: string,
   pluginId: string,
+  installRank?: { bundledIndex: number | null; installedAt: number },
 ): { dispose(): void } {
   return registry.register({
+    bridgeOptions: {},
     info: { ...CURSOR_LIKE_INFO, id },
     serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
     pluginId,
+    visibility: "always",
+    ...(installRank === undefined ? {} : { installRank }),
   });
 }
 
@@ -41,6 +47,7 @@ describe("provider registry policy accessors", () => {
   it("answers from the registration, not a core seed", () => {
     const registry = createProviderRegistryService();
     registry.register({
+      bridgeOptions: {},
       info: {
         ...CURSOR_LIKE_INFO,
         id: "codex",
@@ -53,6 +60,7 @@ describe("provider registry policy accessors", () => {
       },
       serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
       pluginId: "provider-codex",
+      visibility: "always",
     });
     expect(registry.getServerCapabilities("codex")).toStrictEqual(
       MINIMAL_SERVER_CAPABILITIES,
@@ -108,12 +116,14 @@ describe("provider registry policy accessors", () => {
   it("stops claiming capabilities for a provider whose plugin is gone", () => {
     const registry = createProviderRegistryService();
     const handle = registry.register({
+      bridgeOptions: {},
       info: { ...CURSOR_LIKE_INFO, id: "codex" },
       serverCapabilities: {
         ...MINIMAL_SERVER_CAPABILITIES,
         supportsManualCompaction: true,
       },
       pluginId: "provider-codex",
+      visibility: "always",
     });
     expect(registry.supportsManualCompaction("codex")).toBe(true);
 
@@ -125,29 +135,46 @@ describe("provider registry policy accessors", () => {
 });
 
 describe("provider registry ordering", () => {
-  // Listing order is product policy. Plugins load alphabetically by plugin id
-  // and a disable/re-enable moves a registration to the end, so order must not
-  // come from registration order.
-  it("lists product-ordered ids first regardless of registration order", () => {
+  // Listing order is plugin install order, not registration order: plugins
+  // load alphabetically by plugin id and a disable/re-enable moves a
+  // registration to the end, so order must not come from registration order.
+  // Bundled plugins rank by their bundled position (they install first, at
+  // bootstrap); everything else ranks by install time.
+  it("lists bundled plugins first in bundled order, then others by install time", () => {
     const registry = createProviderRegistryService();
-    registerProvider(registry, "pi", "provider-pi");
-    registerProvider(registry, "acp-cursor", "provider-acp");
-    registerProvider(registry, "codex", "provider-codex");
-    registerProvider(registry, "claude-code", "provider-claude-code");
+    registerProvider(registry, "late-agent", "late", {
+      bundledIndex: null,
+      installedAt: 2_000,
+    });
+    registerProvider(registry, "pi", "provider-pi", {
+      bundledIndex: 2,
+      installedAt: 5_000,
+    });
+    registerProvider(registry, "early-agent", "early", {
+      bundledIndex: null,
+      installedAt: 1_000,
+    });
+    registerProvider(registry, "codex", "provider-codex", {
+      bundledIndex: 0,
+      installedAt: 9_000,
+    });
 
     expect(registry.list().map((entry) => entry.info.id)).toStrictEqual([
       "codex",
-      "claude-code",
       "pi",
-      "acp-cursor",
+      "early-agent",
+      "late-agent",
     ]);
   });
 
-  it("appends undeclared ids after the product order, by registration", () => {
+  it("keeps registration order among entries with no install rank", () => {
     const registry = createProviderRegistryService();
     registerProvider(registry, "zeta-agent", "zeta");
-    registerProvider(registry, "codex", "provider-codex");
     registerProvider(registry, "alpha-agent", "alpha");
+    registerProvider(registry, "codex", "provider-codex", {
+      bundledIndex: 0,
+      installedAt: 0,
+    });
 
     expect(registry.list().map((entry) => entry.info.id)).toStrictEqual([
       "codex",
@@ -158,9 +185,18 @@ describe("provider registry ordering", () => {
 
   it("re-enabling a provider plugin restores its listing position", () => {
     const registry = createProviderRegistryService();
-    registerProvider(registry, "codex", "provider-codex");
-    const pi = registerProvider(registry, "pi", "provider-pi");
-    registerProvider(registry, "acp-cursor", "provider-acp");
+    registerProvider(registry, "codex", "provider-codex", {
+      bundledIndex: 0,
+      installedAt: 0,
+    });
+    const pi = registerProvider(registry, "pi", "provider-pi", {
+      bundledIndex: 1,
+      installedAt: 0,
+    });
+    registerProvider(registry, "acp-cursor", "provider-acp", {
+      bundledIndex: 2,
+      installedAt: 0,
+    });
 
     pi.dispose();
     expect(registry.list().map((entry) => entry.info.id)).toStrictEqual([
@@ -168,7 +204,51 @@ describe("provider registry ordering", () => {
       "acp-cursor",
     ]);
 
-    registerProvider(registry, "pi", "provider-pi");
+    registerProvider(registry, "pi", "provider-pi", {
+      bundledIndex: 1,
+      installedAt: 0,
+    });
+    expect(registry.list().map((entry) => entry.info.id)).toStrictEqual([
+      "codex",
+      "pi",
+      "acp-cursor",
+    ]);
+  });
+
+  it("lets the user's providerOrder lead and reads a default only when registered", () => {
+    const preferences = {
+      providerOrder: ["acp-cursor", "ghost", "pi"],
+      defaultProviderId: "ghost" as string | null,
+    };
+    const registry = createProviderRegistryService({
+      readUserProviderPreferences: () => preferences,
+    });
+    registerProvider(registry, "codex", "provider-codex", {
+      bundledIndex: 0,
+      installedAt: 0,
+    });
+    registerProvider(registry, "pi", "provider-pi", {
+      bundledIndex: 1,
+      installedAt: 0,
+    });
+    registerProvider(registry, "acp-cursor", "provider-acp", {
+      bundledIndex: 2,
+      installedAt: 0,
+    });
+
+    // Pinned ids lead in the user's order (an unknown id is ignored); the
+    // rest keep install order.
+    expect(registry.list().map((entry) => entry.info.id)).toStrictEqual([
+      "acp-cursor",
+      "pi",
+      "codex",
+    ]);
+    // A default naming no registered provider answers null, never the id.
+    expect(registry.getUserDefaultProviderId()).toBeNull();
+    preferences.defaultProviderId = "codex";
+    expect(registry.getUserDefaultProviderId()).toBe("codex");
+    // Preferences are read per call: a settings change applies at once.
+    preferences.providerOrder = [];
     expect(registry.list().map((entry) => entry.info.id)).toStrictEqual([
       "codex",
       "pi",
@@ -190,34 +270,28 @@ describe("provider registry", () => {
     ).toThrow(/already registered/);
   });
 
-  // Squatting, not shadowing: with the official plugin disabled its id is
-  // free, and for pi the runtime would still execute the daemon-bundled
-  // bridge under the impostor's metadata.
-  it("keeps first-party ids reserved even with no live registration", () => {
+  // Flat ids: no reservation table. Any plugin may claim an id nobody holds,
+  // and the first live registration wins until it is disposed.
+  it("frees an id the moment its registration is disposed", () => {
     const registry = createProviderRegistryService();
-    for (const [providerId, owner] of [
-      ["codex", "provider-codex"],
-      ["claude-code", "provider-claude-code"],
-      ["pi", "provider-pi"],
-      ["acp-cursor", "provider-acp"],
-      ["acp-anything", "provider-acp"],
-    ] as const) {
-      expect(() => registerProvider(registry, providerId, "impostor")).toThrow(
-        new RegExp(`reserved for the "${owner}" plugin`),
-      );
-      // The owner itself registers normally.
-      registerProvider(registry, providerId, owner).dispose();
+    for (const providerId of ["codex", "pi", "acp-cursor", "acp-anything"]) {
+      const handle = registerProvider(registry, providerId, "first-plugin");
+      expect(() =>
+        registerProvider(registry, providerId, "second-plugin"),
+      ).toThrow(/already registered/);
+      handle.dispose();
+      registerProvider(registry, providerId, "second-plugin").dispose();
     }
-    // Unreserved ids are unaffected.
-    registerProvider(registry, "some-third-party-agent", "impostor");
   });
 
   it("adds and disposes plugin registrations", () => {
     const registry = createProviderRegistryService();
     const handle = registry.register({
+      bridgeOptions: {},
       info: CURSOR_LIKE_INFO,
       serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
       pluginId: "some-plugin",
+      visibility: "always",
     });
     expect(registry.get("plugin-provider")).toMatchObject({
       source: { kind: "plugin", pluginId: "some-plugin" },
@@ -231,9 +305,11 @@ describe("provider registry", () => {
     // Disposing twice, or after a re-registration, must not remove a newer
     // registration for the same id.
     const second = registry.register({
+      bridgeOptions: {},
       info: CURSOR_LIKE_INFO,
       serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
       pluginId: "other-plugin",
+      visibility: "always",
     });
     handle.dispose();
     expect(registry.get("plugin-provider")).toMatchObject({

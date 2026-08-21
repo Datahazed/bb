@@ -1,5 +1,6 @@
 import {
   dynamicToolSchema,
+  experimental_buildBridgeToolCallContent,
   type DynamicTool,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { createConnection } from "node:net";
@@ -13,6 +14,8 @@ const ENV_PORT = "BB_ACP_DYNAMIC_TOOL_PORT";
 const ENV_TOKEN = "BB_ACP_DYNAMIC_TOOL_TOKEN";
 const ENV_THREAD_ID = "BB_ACP_DYNAMIC_TOOL_THREAD_ID";
 const ENV_TOOLS = "BB_ACP_DYNAMIC_TOOLS";
+/** Test-only override for the progress heartbeat interval (milliseconds). */
+const ENV_PROGRESS_INTERVAL_MS = "BB_ACP_DYNAMIC_TOOL_PROGRESS_INTERVAL_MS";
 
 export interface AcpMcpServerConfig {
   name: string;
@@ -21,7 +24,7 @@ export interface AcpMcpServerConfig {
   env: { name: string; value: string }[];
 }
 
-export interface BuildAcpMcpServerConfigArgs {
+interface BuildAcpMcpServerConfigArgs {
   bridgeArgs: string[];
   command: string;
   dynamicTools: readonly DynamicTool[];
@@ -32,26 +35,49 @@ export interface BuildAcpMcpServerConfigArgs {
   token: string;
 }
 
-interface BridgeToolCallRequest {
-  arguments: Record<string, unknown>;
-  callId: string;
+interface BridgeRequestBase {
   threadId: string;
   token: string;
-  tool: string;
 }
 
-type BridgeToolCallResponse =
-  | { ok: true; content: string; isError?: boolean }
-  | { ok: false; error: string };
+type BridgeRequest = BridgeRequestBase & BridgeRequestPayload;
+
+type BridgeRequestPayload =
+  | { kind: "initialized"; toolCount: number }
+  | {
+      kind: "toolCall";
+      arguments: Record<string, unknown>;
+      callId: string;
+      tool: string;
+    };
 
 const bridgeToolCallResponseSchema = z.union([
   z.object({
     ok: z.literal(true),
     content: z.string(),
+    contentBlocks: z
+      .array(
+        z.discriminatedUnion("type", [
+          z.object({ type: z.literal("text"), text: z.string() }),
+          z.object({
+            type: z.literal("image"),
+            data: z.string(),
+            mimeType: z.string(),
+          }),
+        ]),
+      )
+      .optional(),
+    // The initialized response and older text-only responses omit images.
+    // Parsing them as an empty list keeps the re-executed packaged artifact
+    // compatible with that legacy socket shape.
+    images: z
+      .array(z.object({ data: z.string(), mimeType: z.string() }))
+      .default([]),
     isError: z.boolean().optional(),
   }),
   z.object({ ok: z.literal(false), error: z.string() }),
 ]);
+type BridgeToolCallResponse = z.infer<typeof bridgeToolCallResponseSchema>;
 
 interface JsonRpcMessage {
   id?: string | number;
@@ -62,12 +88,22 @@ interface JsonRpcMessage {
 interface McpServerEnvironment {
   host: string;
   port: number;
+  progressIntervalMs: number | undefined;
   threadId: string;
   token: string;
   tools: DynamicTool[];
 }
 
 let nextMcpToolCallId = 0;
+
+/**
+ * Interval between `notifications/progress` messages for a pending tools/call.
+ * The MCP TypeScript SDK client (OpenCode, and most ACP agents) fails a request
+ * after 60 seconds unless a progress notification for its `progressToken`
+ * resets the timer. AskUserQuestion waits on the user for minutes, so the call
+ * must send progress well inside that window (#1944).
+ */
+const TOOL_CALL_PROGRESS_INTERVAL_MS = 15_000;
 
 export function buildAcpMcpServerConfig(
   args: BuildAcpMcpServerConfigArgs,
@@ -101,9 +137,15 @@ function readEnvironment(): McpServerEnvironment {
   }
   const parsedTools = JSON.parse(toolsJson) as unknown;
   const tools = dynamicToolSchema.array().parse(parsedTools);
+  const rawProgressInterval = process.env[ENV_PROGRESS_INTERVAL_MS];
+  const progressIntervalMs =
+    rawProgressInterval !== undefined && Number(rawProgressInterval) > 0
+      ? Number(rawProgressInterval)
+      : undefined;
   return {
     host,
     port,
+    progressIntervalMs,
     threadId,
     token,
     tools,
@@ -129,14 +171,14 @@ function mcpToolCallId(toolName: string): string {
 
 function callBridge(
   env: McpServerEnvironment,
-  request: Omit<BridgeToolCallRequest, "threadId" | "token">,
+  request: BridgeRequestPayload,
 ): Promise<BridgeToolCallResponse> {
   return new Promise((resolve, reject) => {
     const socket = createConnection({ host: env.host, port: env.port });
     let buffer = "";
     socket.setEncoding("utf8");
     socket.on("connect", () => {
-      const payload: BridgeToolCallRequest = {
+      const payload: BridgeRequest = {
         ...request,
         threadId: env.threadId,
         token: env.token,
@@ -172,6 +214,33 @@ function objectParams(params: unknown): Record<string, unknown> {
     : {};
 }
 
+/** The `_meta.progressToken` of a request, when the client asked for one. */
+function readProgressToken(params: unknown): string | number | null {
+  const meta = objectParams(objectParams(params)._meta).progressToken;
+  return typeof meta === "string" || typeof meta === "number" ? meta : null;
+}
+
+/**
+ * Sends `notifications/progress` for `progressToken` every `intervalMs` until
+ * the returned stop function runs. Progress is a counter: the MCP spec only
+ * requires it to increase, and the total is unknown while a user is typing.
+ */
+function startProgressHeartbeat(args: {
+  intervalMs?: number;
+  progressToken: string | number;
+}): () => void {
+  let progress = 0;
+  const timer = setInterval(() => {
+    progress += 1;
+    writeJson({
+      jsonrpc: "2.0",
+      method: "notifications/progress",
+      params: { progressToken: args.progressToken, progress },
+    });
+  }, args.intervalMs ?? TOOL_CALL_PROGRESS_INTERVAL_MS);
+  return () => clearInterval(timer);
+}
+
 async function handleRequest(
   env: McpServerEnvironment,
   message: JsonRpcMessage,
@@ -189,6 +258,16 @@ async function handleRequest(
             : "2024-11-05",
         capabilities: { tools: {} },
         serverInfo: { name: ACP_BRIDGE_MCP_SERVER_NAME, version: "1.0.0" },
+      });
+      void callBridge(env, {
+        kind: "initialized",
+        toolCount: env.tools.length,
+      }).catch((error) => {
+        process.stderr.write(
+          `bb-bridge MCP: failed to report initialize: ${
+            error instanceof Error ? error.message : String(error)
+          }\n`,
+        );
       });
       return;
 
@@ -217,12 +296,22 @@ async function handleRequest(
         !Array.isArray(rawArguments)
           ? (rawArguments as Record<string, unknown>)
           : {};
+      const progressToken = readProgressToken(message.params);
+      const stopHeartbeat =
+        progressToken === null
+          ? () => {}
+          : startProgressHeartbeat({
+              intervalMs: env.progressIntervalMs,
+              progressToken,
+            });
       try {
         const result = await callBridge(env, {
+          kind: "toolCall",
           arguments: toolArguments,
           callId: mcpToolCallId(tool.name),
           tool: tool.name,
         });
+        stopHeartbeat();
         if (!result.ok) {
           writeResult(message.id, {
             content: [{ type: "text", text: result.error }],
@@ -231,10 +320,11 @@ async function handleRequest(
           return;
         }
         writeResult(message.id, {
-          content: [{ type: "text", text: result.content }],
+          content: experimental_buildBridgeToolCallContent(result),
           ...(result.isError ? { isError: true } : {}),
         });
       } catch (error) {
+        stopHeartbeat();
         writeResult(message.id, {
           content: [
             {

@@ -42,11 +42,13 @@ import {
 } from "./injected-skills.js";
 import { reconnectProvisionArgs } from "./workspace-provision-target.js";
 import type { FetchSkillTree } from "./skill-trees.js";
+import { userExecutableProcessOptions } from "./user-executable-env.js";
 
 type StopWatching = () => void | Promise<void>;
 
 const STOP_WATCHING: StopWatching = () => undefined;
 const PROVIDER_MAINTENANCE_WORKSPACE_DIR = "provider-maintenance-workspace";
+const PROVIDER_MAINTENANCE_IDLE_TIMEOUT_MS = 60_000;
 const PROVIDER_PROCESS_EXIT_DETAIL_MAX_LENGTH = 4000;
 
 interface RuntimeSkillConfig {
@@ -149,7 +151,7 @@ export interface RuntimeEntry {
   terminals: Set<string>;
 }
 
-export interface InjectedSkillsChangedNotification {
+interface InjectedSkillsChangedNotification {
   changedPaths: string[];
   sourceType: InjectedSkillsObservedChange["sourceType"];
 }
@@ -172,15 +174,15 @@ export interface EnsureEnvironmentArgs {
   provision?: ProvisionWorkspaceArgs;
 }
 
-export interface CancelEnvironmentProvisionArgs {
+interface CancelEnvironmentProvisionArgs {
   environmentId: string;
 }
 
-export interface CancelEnvironmentProvisionResult {
+interface CancelEnvironmentProvisionResult {
   aborted: boolean;
 }
 
-export interface RefreshEnvironmentWorkspaceArgs {
+interface RefreshEnvironmentWorkspaceArgs {
   environmentId: string;
   provision: ProvisionWorkspaceArgs;
   workspacePath: string;
@@ -201,6 +203,7 @@ export interface RuntimeManagerOptions {
   provisionWorkspace?: (
     options: ProvisionWorkspaceArgs,
   ) => Promise<HostWorkspace>;
+  providerMaintenanceIdleTimeoutMs?: number;
   shellEnv?: AgentRuntimeOptions["shellEnv"];
   onEvent?: (args: { environmentId: string; event: ThreadEvent }) => void;
   threadStorageRootPath?: string | null;
@@ -226,7 +229,7 @@ export interface RuntimeManagerReapIdleProviderSessionsArgs {
   providerSessionReapingEnabled: boolean;
 }
 
-export interface RuntimeManagerReapedIdleProviderSession extends ReapedIdleProviderSession {
+interface RuntimeManagerReapedIdleProviderSession extends ReapedIdleProviderSession {
   environmentId: string;
 }
 
@@ -238,9 +241,9 @@ export interface RuntimeManagerReapIdleProviderSessionsResult {
  * `interrupt` stops an old runtime even while it runs a turn. `keep` leaves
  * that turn alone and reports its environment to the caller.
  */
-export type ReleaseThreadActiveTurnPolicy = "interrupt" | "keep";
+type ReleaseThreadActiveTurnPolicy = "interrupt" | "keep";
 
-export interface ReleaseThreadFromOtherEnvironmentsResult {
+interface ReleaseThreadFromOtherEnvironmentsResult {
   /** Environments that still run a turn for the thread under `keep`. */
   activeTurnEnvironmentIds: string[];
   /** Provider checkpoint retained by a stopped runtime, when one reported it. */
@@ -288,10 +291,13 @@ function providerProcessEnvFromShellEnv(
   if (shellEnv.PATH) {
     env.PATH = shellEnv.PATH;
   }
-  // The Claude bridge resolves the CLI from its own process env; forward the
-  // documented override past the BB_* spawn sanitization.
-  if (shellEnv.BB_CLAUDE_CODE_EXECUTABLE) {
-    env.BB_CLAUDE_CODE_EXECUTABLE = shellEnv.BB_CLAUDE_CODE_EXECUTABLE;
+  // Bridge record mode (docs/provider-bridge-protocol.md) rides the same
+  // forward, from the daemon's own env rather than the shell env: the shell
+  // env doubles as the agent's shell environment, and the variable must reach
+  // the bridge process only, never the provider child or its shells.
+  const recordDir = process.env.BB_PROVIDER_BRIDGE_RECORD_DIR;
+  if (recordDir) {
+    env.BB_PROVIDER_BRIDGE_RECORD_DIR = recordDir;
   }
   return Object.keys(env).length > 0 ? env : null;
 }
@@ -324,7 +330,9 @@ export class RuntimeManager {
   private pendingProviderMaintenanceRuntime: PendingProviderMaintenanceRuntime | null =
     null;
   private providerMaintenanceRuntimeGeneration = 0;
-  private managedShellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {};
+  private providerMaintenanceActiveRequests = 0;
+  private providerMaintenanceIdleTimer: ReturnType<typeof setTimeout> | null =
+    null;
   private stopWatchingDataDirSkillsRoot: StopWatching = STOP_WATCHING;
 
   constructor(private readonly options: RuntimeManagerOptions = {}) {
@@ -619,10 +627,7 @@ export class RuntimeManager {
   }
 
   getShellEnv(): NonNullable<AgentRuntimeOptions["shellEnv"]> {
-    return {
-      ...this.baseShellEnv,
-      ...this.managedShellEnv,
-    };
+    return { ...this.baseShellEnv };
   }
 
   async replaceBaseShellEnv(
@@ -824,12 +829,6 @@ export class RuntimeManager {
     return null;
   }
 
-  replaceManagedShellEnv(
-    shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
-  ): void {
-    this.managedShellEnv = { ...shellEnv };
-  }
-
   /**
    * Tears down the resident provider-maintenance runtime so the next caller
    * gets a fresh one. In-flight maintenance RPCs fail with "Runtime shutting
@@ -847,6 +846,7 @@ export class RuntimeManager {
   }
 
   private async shutdownProviderMaintenanceRuntime(): Promise<void> {
+    this.clearProviderMaintenanceIdleTimer();
     const existingRuntime = this.providerMaintenanceRuntime;
     const pendingRuntime = this.pendingProviderMaintenanceRuntime;
     this.providerMaintenanceRuntimeGeneration += 1;
@@ -871,6 +871,38 @@ export class RuntimeManager {
     );
   }
 
+  private clearProviderMaintenanceIdleTimer(): void {
+    if (this.providerMaintenanceIdleTimer === null) return;
+    clearTimeout(this.providerMaintenanceIdleTimer);
+    this.providerMaintenanceIdleTimer = null;
+  }
+
+  private scheduleProviderMaintenanceIdleShutdown(): void {
+    this.clearProviderMaintenanceIdleTimer();
+    if (
+      this.providerMaintenanceActiveRequests > 0 ||
+      (this.providerMaintenanceRuntime === null &&
+        this.pendingProviderMaintenanceRuntime === null)
+    ) {
+      return;
+    }
+
+    const timeoutMs =
+      this.options.providerMaintenanceIdleTimeoutMs ??
+      PROVIDER_MAINTENANCE_IDLE_TIMEOUT_MS;
+    this.providerMaintenanceIdleTimer = setTimeout(() => {
+      this.providerMaintenanceIdleTimer = null;
+      if (this.providerMaintenanceActiveRequests > 0) return;
+      void this.shutdownProviderMaintenanceRuntime().catch((error) => {
+        this.options.logger?.warn(
+          { err: error },
+          "Failed to shut down idle provider maintenance runtime",
+        );
+      });
+    }, timeoutMs);
+    this.providerMaintenanceIdleTimer.unref();
+  }
+
   private async evictIdleRuntimeEntries(): Promise<void> {
     const idleEntries = [...this.entries.values()].filter(
       (entry) => !this.entryHasActiveEnvironmentWork(entry),
@@ -883,13 +915,6 @@ export class RuntimeManager {
 
     await Promise.all(idleEntries.map((entry) => entry.runtime.shutdown()));
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
-  }
-
-  async openWorkspace(path: string): Promise<HostWorkspace> {
-    return this.provisionWorkspace({
-      workspaceProvisionType: "unmanaged",
-      path,
-    });
   }
 
   async ensureProviderMaintenanceRuntime(args: {
@@ -926,6 +951,23 @@ export class RuntimeManager {
     };
     this.pendingProviderMaintenanceRuntime = pendingRuntime;
     return promise;
+  }
+
+  async withProviderMaintenanceRuntime<TResult>(
+    args: { dataDir: string },
+    request: (runtime: AgentRuntime) => Promise<TResult>,
+  ): Promise<TResult> {
+    this.clearProviderMaintenanceIdleTimer();
+    this.providerMaintenanceActiveRequests += 1;
+    try {
+      const runtime = await this.ensureProviderMaintenanceRuntime(args);
+      return await request(runtime);
+    } finally {
+      this.providerMaintenanceActiveRequests -= 1;
+      if (this.providerMaintenanceActiveRequests === 0) {
+        this.scheduleProviderMaintenanceIdleShutdown();
+      }
+    }
   }
 
   async ensureEnvironment(args: EnsureEnvironmentArgs): Promise<RuntimeEntry> {
@@ -1023,7 +1065,7 @@ export class RuntimeManager {
       );
     }
 
-    const workspace = await this.provisionWorkspace(args.provision);
+    const workspace = await this.provisionHostWorkspace(args.provision);
     if (workspace.path !== args.workspacePath) {
       throw new Error(
         `Workspace refresh for ${args.environmentId} returned ${workspace.path}, not ${args.workspacePath}`,
@@ -1108,7 +1150,10 @@ export class RuntimeManager {
       );
     }
 
-    await this.provisionWorkspace({ ...args.provision, signal: args.signal });
+    await this.provisionHostWorkspace({
+      ...args.provision,
+      signal: args.signal,
+    });
     this.options.onWorkspaceStatusChanged?.({
       environmentId: args.entry.environmentId,
       changeKinds: ["work-status-changed", "git-refs-changed"],
@@ -1382,12 +1427,8 @@ export class RuntimeManager {
       );
     }
 
-    const setupPath = this.getShellEnv().PATH;
-    const workspace = await this.provisionWorkspace({
+    const workspace = await this.provisionHostWorkspace({
       ...provision,
-      ...(provision.workspaceProvisionType === "managed-worktree" && setupPath
-        ? { setupPath }
-        : {}),
       signal: args.provisionSignal,
     });
     const workspaceWriteRoots =
@@ -1421,6 +1462,21 @@ export class RuntimeManager {
         })),
       onInteractiveRequest: this.options.onInteractiveRequest,
       onStderr: this.options.onStderr,
+      onProviderRecovery: (hint) => {
+        // Parse-and-forward only: the recovery actions land with the runtime
+        // cleanup workstream. Logged so a hint is never silently consumed.
+        this.options.logger?.debug(
+          {
+            environmentId: args.environmentId,
+            providerId: hint.providerId,
+            threadId: hint.threadId,
+            kind: hint.kind,
+            retryable: hint.retryable,
+            message: hint.message,
+          },
+          "Provider bridge raised a recovery hint",
+        );
+      },
       onProcessExit: (info) => {
         if (!info.expected) {
           for (const event of this.buildUnexpectedProviderExitEvents(info)) {
@@ -1452,6 +1508,15 @@ export class RuntimeManager {
       workspace,
       path: workspace.path,
     };
+  }
+
+  private provisionHostWorkspace(
+    provision: ProvisionWorkspaceArgs,
+  ): Promise<HostWorkspace> {
+    return this.provisionWorkspace({
+      ...provision,
+      ...userExecutableProcessOptions(this.getShellEnv()),
+    });
   }
 
   private async stopWatchingStatus(entry: RuntimeEntry): Promise<void> {

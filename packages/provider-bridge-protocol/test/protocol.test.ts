@@ -7,12 +7,14 @@ import {
 import {
   bridgeCapabilitiesSchema,
   initializeResultSchema,
-  threadEventNotificationSchema,
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  experimental_providerInstallationStatusParamsSchema,
   threadStopParamsSchema,
   ThreadEventGrammar,
   toolCallRequestParamsSchema,
   turnStartParamsSchema,
 } from "../src/index.js";
+import { CONFORMANCE_ASSEMBLED_EVENT_METHOD } from "../src/conformance/index.js";
 
 describe("handshake", () => {
   it("reads an older bridge's minimal initialize result as definite absences", () => {
@@ -39,13 +41,20 @@ describe("handshake", () => {
   });
 });
 
-describe("thread/event strictness", () => {
-  it("rejects a payload whose event is not a valid ThreadEvent", () => {
-    const result = threadEventNotificationSchema.safeParse({
-      threadId: "thr_1",
-      event: { type: "definitely/not/a/thread/event", data: {} },
-    });
-    expect(result.success).toBe(false);
+describe("provider installation status", () => {
+  it("accepts the typed thread rewind requirement and rejects arbitrary operations", () => {
+    expect(
+      experimental_providerInstallationStatusParamsSchema.parse({
+        providerId: "codex",
+        requirement: "thread_rewind",
+      }).requirement,
+    ).toBe("thread_rewind");
+    expect(
+      experimental_providerInstallationStatusParamsSchema.safeParse({
+        providerId: "codex",
+        requirement: "anything",
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -309,10 +318,13 @@ describe("conformance turn/settles-without-activity", () => {
     const providerThreadId = "p_stub_1";
     let turnCounter = 0;
 
+    // The stub plays both bridge and transport, so it emits its events
+    // directly on the kit's internal assembled-event lane (a real transport
+    // assembles the bridge's thread/delta notifications into this lane).
     const emit = (threadId: string, event: ThreadEvent): void => {
       outbox.push({
         jsonrpc: "2.0",
-        method: "thread/event",
+        method: CONFORMANCE_ASSEMBLED_EVENT_METHOD,
         params: { threadId, event },
       });
     };
@@ -375,7 +387,10 @@ describe("conformance turn/settles-without-activity", () => {
       };
       switch (method) {
         case "initialize":
-          respond({ protocolVersion: 1, capabilities: {} });
+          respond({
+            protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+            capabilities: {},
+          });
           return;
         case "thread/start":
         case "thread/resume":

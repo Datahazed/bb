@@ -19,7 +19,6 @@ export const pluginUpdateOutcomeSchema = z.enum([
   "incompatible",
   "unavailable",
 ]);
-export type PluginUpdateOutcome = z.infer<typeof pluginUpdateOutcomeSchema>;
 
 export const pluginResolvedVersionSchema = z.object({
   version: z.string(),
@@ -45,21 +44,12 @@ export type PluginUpdateCheckEntry = z.infer<
 export const pluginUpdateCheckRequestSchema = z
   .object({ id: z.string().min(1).optional() })
   .strict();
-export type PluginUpdateCheckRequest = z.infer<
-  typeof pluginUpdateCheckRequestSchema
->;
 
 export const pluginUpdateCheckResponseSchema = z.object({
   results: z.array(pluginUpdateCheckEntrySchema),
 });
-export type PluginUpdateCheckResponse = z.infer<
-  typeof pluginUpdateCheckResponseSchema
->;
 
 export const pluginApplyUpdateRequestSchema = z.object({}).strict();
-export type PluginApplyUpdateRequest = z.infer<
-  typeof pluginApplyUpdateRequestSchema
->;
 
 export const pluginApplyUpdateResultSchema = z.object({
   applied: z.boolean(),
@@ -76,9 +66,6 @@ export const pluginSourceHistoryEntrySchema = z.object({
   version: z.string(),
   activatedAt: z.number(),
 });
-export type PluginSourceHistoryEntry = z.infer<
-  typeof pluginSourceHistoryEntrySchema
->;
 
 export const pluginSourceDetailSchema = z.object({
   requested: z.string(),
@@ -128,8 +115,6 @@ export const pluginServiceEntrySchema = z.object({
   name: z.string(),
   state: z.enum(["running", "backoff", "stopped"]),
 });
-export type PluginServiceEntry = z.infer<typeof pluginServiceEntrySchema>;
-
 export const pluginScheduleEntrySchema = z.object({
   name: z.string(),
   cron: z.string(),
@@ -145,6 +130,7 @@ export const pluginAppStateSchema = z.object({
     .object({
       jsUrl: z.string(),
       cssUrl: z.string().nullable(),
+      jsBytes: z.number().int().nonnegative(),
       hash: z.string(),
       sdkMajor: z.number(),
       sdkVersion: z.string(),
@@ -192,8 +178,11 @@ export const installedPluginSchema = z.object({
    * Publisher badge: `BB Official` for a bundled plugin, the listing
    * marketplace's display name for a catalog install, and null for a plugin
    * the user added from a source, which has no publisher bb can vouch for.
+   * Servers before bb-app 0.38.0 do not send it; a client that reads such a
+   * response treats the plugin as unlabeled instead of failing after the
+   * server already applied the change.
    */
-  publisherLabel: z.string().nullable(),
+  publisherLabel: z.string().nullable().default(null),
   sourceDisplay: z.string(),
   updateState: pluginUpdateStateSchema,
   enabled: z.boolean(),
@@ -248,9 +237,6 @@ export const pluginInstallSourceRequestSchema = z
     ),
   })
   .strict();
-export type PluginInstallSourceRequest = z.infer<
-  typeof pluginInstallSourceRequestSchema
->;
 
 /** Marketplace names and entry ids share one shape: lowercase kebab-case. */
 export const PLUGIN_MARKETPLACE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
@@ -280,23 +266,15 @@ export const pluginCatalogInstallRequestSchema = z
     confirmedSource: z.lazy(() => pluginCatalogResolvedSourceSchema).optional(),
   })
   .strict();
-export type PluginCatalogInstallRequest = z.infer<
-  typeof pluginCatalogInstallRequestSchema
->;
 
 export const pluginInstallRequestSchema = pluginInstallSourceRequestSchema;
-export type PluginInstallRequest = z.infer<typeof pluginInstallRequestSchema>;
 
 export const pluginMutationResponseSchema = z.object({
   ok: z.literal(true),
   plugin: installedPluginSchema,
 });
-export type PluginMutationResponse = z.infer<
-  typeof pluginMutationResponseSchema
->;
 
 export const pluginInstallResponseSchema = pluginMutationResponseSchema;
-export type PluginInstallResponse = PluginMutationResponse;
 
 export const pluginReloadResponseSchema = z.object({
   ok: z.literal(true),
@@ -360,14 +338,10 @@ export type PluginSettingsResponse = z.infer<
 export const pluginSettingsUpdateRequestSchema = z
   .object({ values: z.record(z.string(), jsonValueSchema) })
   .strict();
-export type PluginSettingsUpdateRequest = z.infer<
-  typeof pluginSettingsUpdateRequestSchema
->;
 
 export const pluginTokenRequestSchema = z
   .object({ rotate: z.boolean().optional().default(false) })
   .strict();
-export type PluginTokenRequest = z.infer<typeof pluginTokenRequestSchema>;
 
 export const pluginTokenResponseSchema = z.object({
   ok: z.literal(true),
@@ -385,9 +359,6 @@ export type PluginCatalogStatus = z.infer<typeof pluginCatalogStatusSchema>;
 export const pluginCatalogStatusResponseSchema = z.object({
   catalog: pluginCatalogStatusSchema,
 });
-export type PluginCatalogStatusResponse = z.infer<
-  typeof pluginCatalogStatusResponseSchema
->;
 
 /** Display metadata of the person or organization behind a catalog entry. */
 export const pluginCatalogAuthorSchema = z.object({
@@ -408,8 +379,24 @@ export const pluginCatalogSearchResultSchema = z.object({
    * names a host icon. The app never requests the marketplace's own URL.
    */
   iconUrl: z.string().nullable(),
+  /**
+   * Whether the app masks `iconUrl` with the surrounding text color, as it
+   * does a plugin's own compact `branding.icon`, instead of showing the
+   * image's own colors. True for bundled compact icons and for catalog SVGs;
+   * false for PNG and WebP. Servers before bb-app 0.40.0 do not send it;
+   * those icons render untinted.
+   */
+  iconTinted: z.boolean().default(false),
   category: z.string(),
   source: z.string(),
+  /**
+   * Where a person can read the plugin's code before an install: the git
+   * repository of a git-sourced entry, or the public npm package page of an
+   * npm-sourced entry on the default registry. Null for plugins bundled with
+   * the app and for packages on a private registry. Older servers do not
+   * send it; those entries show no link.
+   */
+  repositoryUrl: z.string().nullable().default(null),
   /** Marketplace that lists the entry; plugins bundled with the app use `bb-community`. */
   marketplace: z.string(),
   marketplaceDisplayName: z.string(),
@@ -442,9 +429,6 @@ export type PluginCatalogSearchResult = z.infer<
 export const pluginCatalogSearchResponseSchema = z.object({
   results: z.array(pluginCatalogSearchResultSchema),
 });
-export type PluginCatalogSearchResponse = z.infer<
-  typeof pluginCatalogSearchResponseSchema
->;
 
 /**
  * The true source an install will run against, resolved before anything runs.
@@ -537,9 +521,6 @@ export type PluginCatalogInstallPlan = z.infer<
 export const pluginCatalogInstallPlanResponseSchema = z.object({
   plan: pluginCatalogInstallPlanSchema,
 });
-export type PluginCatalogInstallPlanResponse = z.infer<
-  typeof pluginCatalogInstallPlanResponseSchema
->;
 
 export const pluginMarketplaceSourceKindSchema = z.enum([
   "https",
@@ -571,9 +552,6 @@ export type PluginMarketplace = z.infer<typeof pluginMarketplaceSchema>;
 export const pluginMarketplaceListResponseSchema = z.object({
   marketplaces: z.array(pluginMarketplaceSchema),
 });
-export type PluginMarketplaceListResponse = z.infer<
-  typeof pluginMarketplaceListResponseSchema
->;
 
 export const pluginMarketplaceAddRequestSchema = z
   .object({
@@ -584,26 +562,17 @@ export const pluginMarketplaceAddRequestSchema = z
     source: z.string().min(1),
   })
   .strict();
-export type PluginMarketplaceAddRequest = z.infer<
-  typeof pluginMarketplaceAddRequestSchema
->;
 
 export const pluginMarketplaceMutationResponseSchema = z.object({
   ok: z.literal(true),
   marketplace: pluginMarketplaceSchema,
 });
-export type PluginMarketplaceMutationResponse = z.infer<
-  typeof pluginMarketplaceMutationResponseSchema
->;
 
 export const pluginMarketplaceRemoveResponseSchema = z.object({
   ok: z.literal(true),
   /** Installs whose provenance became `direct`; they keep running as before. */
   convertedPluginIds: z.array(z.string()),
 });
-export type PluginMarketplaceRemoveResponse = z.infer<
-  typeof pluginMarketplaceRemoveResponseSchema
->;
 
 export const pluginMarketplaceRefreshRequestSchema = z
   .object({
@@ -611,9 +580,6 @@ export const pluginMarketplaceRefreshRequestSchema = z
     name: pluginMarketplaceNameSchema.optional(),
   })
   .strict();
-export type PluginMarketplaceRefreshRequest = z.infer<
-  typeof pluginMarketplaceRefreshRequestSchema
->;
 
 export const pluginMarketplaceRefreshResultSchema = z.object({
   name: z.string(),
@@ -629,6 +595,3 @@ export type PluginMarketplaceRefreshResult = z.infer<
 export const pluginMarketplaceRefreshResponseSchema = z.object({
   results: z.array(pluginMarketplaceRefreshResultSchema),
 });
-export type PluginMarketplaceRefreshResponse = z.infer<
-  typeof pluginMarketplaceRefreshResponseSchema
->;

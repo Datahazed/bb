@@ -18,17 +18,14 @@ import {
   type AvailableModel,
   type PromptInput,
   type ReasoningLevel,
-  type ThreadEvent,
+  type ThreadDelta,
   hostDaemonAcpLaunchSpecSchema,
   bridgeRequestEnvelopeSchema,
-  buildAcceptedUserMessageEvent,
-  buildEditDiff,
   createBridgeIo,
   createBridgeLineHandler,
   decodeBridgeJsonRpcResponse,
   decodeToolCallResponsePayload,
   mimeTypeFromExtension,
-  queueAcceptedUserMessage,
   runBridgeRequest,
   withoutBridgeRuntimeEnv,
   type BridgeJsonRpcResponse,
@@ -36,16 +33,22 @@ import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
+  THREAD_DELTA_NOTIFICATION_METHOD,
   type InitializeResult,
   experimental_defineProviderBridge,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { execFile } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+
+type DecodedToolCallResponse = ReturnType<typeof decodeToolCallResponsePayload>;
+type BridgeToolCallContent = DecodedToolCallResponse["contentBlocks"][number];
+type BridgeToolCallImage = DecodedToolCallResponse["images"][number];
 import {
   ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,
   ACP_COMPACTION_COMPLETED_METHOD,
@@ -57,7 +60,6 @@ import {
   ACP_UPDATE_METHOD,
   ACP_WARNING_METHOD,
   acpBridgeCommandSchema,
-  type AcpBridgeAgentCommand,
   type AcpBridgeCommand,
   type AcpBridgeNativeReasoning,
   type AcpBridgePermissionCli,
@@ -65,9 +67,9 @@ import {
   acpBridgeCommandMethodValues,
 } from "../bridge-protocol.js";
 import {
-  createAcpEventTranslator,
-  type AcpEventTranslator,
-} from "../event-translation.js";
+  createAcpDeltaTranslator,
+  type AcpDeltaTranslator,
+} from "../delta-translation.js";
 import {
   buildAcpPermissionInteractionPayload,
   resolveAcpPermissionDecision,
@@ -76,10 +78,17 @@ import { acpProfileFromLaunchSpec, type AcpAgentProfile } from "../profiles.js";
 import {
   buildAcpModelListParams,
   buildAcpSessionParams,
+  type AcpAgentCommandParam,
   type AcpModelListParams,
   type AcpSessionParams,
   type AcpSkillRoot,
 } from "../session-params.js";
+import {
+  getAcpProviderHealth,
+  getAcpProviderInstallationRun,
+  getAcpProviderInstallationStatus,
+  getAcpProviderUsage,
+} from "./provider-maintenance.js";
 import {
   ACP_PROTOCOL_VERSION,
   type AcpConfigOption,
@@ -106,6 +115,12 @@ import {
   type AcpAgentRequestResponder,
 } from "./agent-connection.js";
 import {
+  approveCursorSessionMcpServer,
+  revokeCursorSessionMcpServer,
+  type CursorMcpApproval,
+} from "./cursor-mcp-approval.js";
+import {
+  ACP_NATIVE_REASONING_EFFORTS,
   buildAgentModelCatalog,
   buildAcpNativeReasoningSupport,
   buildModelCatalogFromConfigOptions,
@@ -119,6 +134,7 @@ import {
   type AgentModelCatalog,
 } from "./model-catalog.js";
 import {
+  ACP_BRIDGE_MCP_SERVER_NAME,
   buildAcpMcpServerConfig,
   runAcpDynamicToolMcpServer,
   type AcpMcpServerConfig,
@@ -130,7 +146,6 @@ import {
 
 interface AcpSessionPolicy {
   permissionMode: "accept-edits" | "full";
-  permissionEscalation: "ask" | "deny" | null;
   workspaceWriteRoots: string[];
 }
 
@@ -139,24 +154,40 @@ interface PendingAcpPermission {
   options: AcpPermissionOption[];
 }
 
+/**
+ * Turn input bb handed the bridge, waiting to reach the agent. ACP has no
+ * provider acknowledgement to correlate acceptance against, so the designed
+ * correlation point is the `session/prompt` request that carries the input:
+ * before that the agent has not seen the input at all, and a queued steer can
+ * still be dropped by a failed or stopping turn.
+ */
+interface AcpPendingTurnInput {
+  clientRequestId: string;
+  input: PromptInput[];
+  /**
+   * The command to answer once the input reaches the agent, or `null` for a
+   * steer, which is answered at queue time. Waiting for the cancelled prompt
+   * to be reissued would risk the runtime's 30-second command timeout.
+   */
+  requestId: AcpBridgeRequestId | null;
+}
+
 interface AcpThreadSession {
   bbThreadId: string;
   providerThreadId: string;
   /** Every session-scoped notification is translated through this. */
-  translator: AcpEventTranslator;
+  translator: AcpDeltaTranslator;
   connection: AcpAgentConnection;
-  agentLabel: string;
   supportsImageInput: boolean;
   supportsLoadSession: boolean;
   policy: AcpSessionPolicy;
-  cwd: string;
   pendingInstructions: string | undefined;
   /**
    * Which agent prompt is in flight for this bb turn: an ordinary `"turn"`,
    * the provider-local `"compaction"` maintenance prompt, or none.
    */
   activePromptKind: "turn" | "compaction" | null;
-  queuedInputs: PromptInput[][];
+  queuedInputs: AcpPendingTurnInput[];
   /** True while a session/prompt request is outstanding. */
   promptRequestPending: boolean;
   /** True after a steer sent session/cancel for the current prompt. */
@@ -168,6 +199,7 @@ interface AcpThreadSession {
   /** Resolves when the in-flight turn or maintenance prompt fully settles. */
   turnSettled: Promise<void> | undefined;
   pendingPermissions: Set<PendingAcpPermission>;
+  cursorMcpApproval: CursorMcpApproval | undefined;
 }
 
 const sessionsByBbThreadId = new Map<string, AcpThreadSession>();
@@ -203,6 +235,8 @@ interface BridgeRuntimeRequest {
 const { send, sendResult, sendError } = createBridgeIo<
   BridgeNotification | BridgeRuntimeRequest
 >();
+
+type AcpBridgeRequestId = Parameters<typeof sendResult>[0];
 
 function sendNotification(
   method: string,
@@ -240,16 +274,9 @@ function sendRuntimeRequest(
 }
 
 // ---------------------------------------------------------------------------
-// Thread-event emission
+// Thread-delta emission
 // ---------------------------------------------------------------------------
 
-/**
- * Per-process entropy for canonical turn/item id prefixes (#1224): combined
- * with a per-session serial below, ids never collide across process restarts
- * or session resumes.
- */
-const canonicalIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
-let canonicalSessionSerial = 0;
 /**
  * Skill roots latched by the canonical `skills/configure` request. ACP agents
  * have no skill-directory concept, so the roots are listed in the session
@@ -259,42 +286,34 @@ let canonicalSessionSerial = 0;
 let configuredSkillRoots: AcpSkillRoot[] | null = null;
 const ACP_CANONICAL_PROVIDER_ID = "acp";
 
-function createSessionTranslator(): AcpEventTranslator {
-  canonicalSessionSerial += 1;
-  const idPrefix = `${canonicalIdEntropyPrefix}${canonicalSessionSerial}-`;
-  return createAcpEventTranslator({
-    providerId: ACP_CANONICAL_PROVIDER_ID,
-    turnIdPrefix: idPrefix,
-    itemIdPrefix: idPrefix,
-    synthesizeItemStarted: true,
-  });
-}
-
-function sendThreadEvents(
-  session: AcpThreadSession,
-  events: readonly ThreadEvent[],
+function sendThreadDeltas(
+  threadId: string,
+  deltas: readonly ThreadDelta[],
 ): void {
-  for (const event of events) {
-    sendNotification(BRIDGE_NOTIFICATION_METHODS.threadEvent, {
-      threadId: session.bbThreadId,
-      event,
-    });
+  if (deltas.length === 0) {
+    return;
   }
+  sendNotification(THREAD_DELTA_NOTIFICATION_METHOD, {
+    threadId,
+    deltas: [...deltas],
+  });
 }
 
 /**
  * The one session-scoped emitter: it runs the ACP-flavored notification
- * through the session translator and emits the finished `ThreadEvent`s as
- * `thread/event` notifications. The `acp/*` envelope never reaches the wire —
- * it is only the translator's input vocabulary.
+ * through the session translator and emits the parsed semantic deltas as one
+ * batched `thread/delta` notification. The `acp/*` envelope never reaches the
+ * wire — it is only the translator's input vocabulary. Turn/item ids are
+ * minted by the runtime's delta assembler, so no id entropy lives here
+ * anymore (#1224 discipline is held centrally).
  */
 function emitForSession(
   session: AcpThreadSession,
   method: string,
   params: Record<string, unknown>,
 ): void {
-  sendThreadEvents(
-    session,
+  sendThreadDeltas(
+    session.bbThreadId,
     session.translator.translateAcpEvent(
       { jsonrpc: "2.0", method, params },
       { threadId: session.bbThreadId },
@@ -303,14 +322,13 @@ function emitForSession(
 }
 
 function emitSessionError(session: AcpThreadSession, message: string): void {
-  // Settle any open translator turn first: every accepted turn reaches
-  // exactly one terminal state, and settlement events precede the error
-  // signal. Without an open turn the error stays a runtime notification —
-  // translating it would fabricate a failed turn bb never accepted.
-  const state = session.translator.resolveState({
-    threadId: session.bbThreadId,
-  });
-  if (state.currentTurnId !== undefined) {
+  // Settle any open turn first: every accepted turn reaches exactly one
+  // terminal state, and settlement events precede the error signal. With no
+  // prompt in flight the error stays a runtime notification — a settling
+  // error delta on an idle thread would surface a diagnostic for a turn bb
+  // never accepted. `activePromptKind` mirrors the turn the bridge itself
+  // opened with `turn.open`.
+  if (session.activePromptKind !== null) {
     emitForSession(session, "error", {
       threadId: session.bbThreadId,
       message,
@@ -326,10 +344,11 @@ function emitSessionError(session: AcpThreadSession, message: string): void {
 }
 
 function resolveBridgeProcessArgsForMcpServer(): string[] {
-  const entryPoint = process.argv[1]
-    ? resolve(process.argv[1])
-    : fileURLToPath(import.meta.url);
-  return [...process.execArgv, entryPoint, "--mcp-stdio"];
+  // process.argv[1] is the provider-bridge bootstrap, not this module: the
+  // bootstrap imports this artifact, so only import.meta.url names the file
+  // that understands `--mcp-stdio`. The bootstrap rejects the flag with a
+  // usage error, which the ACP agent reports as "bb-bridge: Transport closed".
+  return [...process.execArgv, fileURLToPath(import.meta.url), "--mcp-stdio"];
 }
 
 function resolveBridgeProcessEnvForMcpServer(): AcpMcpServerConfig["env"] {
@@ -349,7 +368,13 @@ async function forwardDynamicToolCall(args: {
   threadId: string;
   tool: string;
 }): Promise<
-  | { ok: true; content: string; isError?: boolean }
+  | {
+      ok: true;
+      content: string;
+      contentBlocks: BridgeToolCallContent[];
+      images: BridgeToolCallImage[];
+      isError?: boolean;
+    }
   | { ok: false; error: string }
 > {
   const session = sessionsByBbThreadId.get(args.threadId);
@@ -357,6 +382,9 @@ async function forwardDynamicToolCall(args: {
     return { ok: false, error: "No active ACP session for dynamic tool call." };
   }
 
+  // The agent's own tool_call for this MCP call is the timeline row; the
+  // translator binds it to the bb tool so the row reads as that tool (Q31).
+  session.translator.noteInjectedToolCall(session.bbThreadId, args.tool);
   try {
     const result = await sendRuntimeRequest("item/tool/call", {
       providerThreadId: session.providerThreadId,
@@ -400,6 +428,13 @@ function handleDynamicToolBridgeSocket(
       socket.end(
         `${JSON.stringify({ ok: false, error: "Invalid dynamic tool request" })}\n`,
       );
+      return;
+    }
+    if (request.data.kind === "initialized") {
+      process.stderr.write(
+        `acp bridge: "${ACP_BRIDGE_MCP_SERVER_NAME}" answered initialize for thread "${request.data.threadId}" (${request.data.toolCount} tools)\n`,
+      );
+      socket.end(`${JSON.stringify({ ok: true, content: "" })}\n`);
       return;
     }
     void forwardDynamicToolCall(request.data).then((response) => {
@@ -449,18 +484,20 @@ async function buildSessionMcpServers(
     return [];
   }
   const bridge = await ensureDynamicToolBridge();
-  return [
-    buildAcpMcpServerConfig({
-      bridgeArgs: resolveBridgeProcessArgsForMcpServer(),
-      command: process.execPath,
-      dynamicTools,
-      host: bridge.host,
-      port: bridge.port,
-      runtimeEnv: resolveBridgeProcessEnvForMcpServer(),
-      threadId: params.threadId,
-      token: bridge.token,
-    }),
-  ];
+  const config = buildAcpMcpServerConfig({
+    bridgeArgs: resolveBridgeProcessArgsForMcpServer(),
+    command: process.execPath,
+    dynamicTools,
+    host: bridge.host,
+    port: bridge.port,
+    runtimeEnv: resolveBridgeProcessEnvForMcpServer(),
+    threadId: params.threadId,
+    token: bridge.token,
+  });
+  process.stderr.write(
+    `acp bridge: built "${config.name}" session MCP config for thread "${params.threadId}" (${dynamicTools.length} tools)\n`,
+  );
+  return [config];
 }
 
 // ---------------------------------------------------------------------------
@@ -473,12 +510,7 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
   model: ACP_DEFAULT_MODEL_ID,
   displayName: "Agent default",
   description: "Model selection is managed by the connected ACP agent.",
-  supportedReasoningEfforts: [
-    {
-      reasoningEffort: "medium",
-      description: "Reasoning effort is managed by the connected ACP agent.",
-    },
-  ],
+  supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
   defaultReasoningEffort: "medium",
   isDefault: true,
 };
@@ -489,7 +521,9 @@ const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
   "ACP agent is not authenticated.";
 
 function reasoningSupportFromCli(
-  reasoningCli: AcpBridgeReasoningCli | undefined,
+  reasoningCli:
+    | Pick<AcpBridgeReasoningCli, "supportedLevels" | "defaultLevel">
+    | undefined,
 ):
   | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
   | undefined {
@@ -501,28 +535,6 @@ function reasoningSupportFromCli(
     reasoningCli.defaultLevel !== undefined &&
     supportedLevels.includes(reasoningCli.defaultLevel)
       ? reasoningCli.defaultLevel
-      : supportedLevels.includes("medium")
-        ? "medium"
-        : supportedLevels[0];
-  return {
-    supportedReasoningEfforts: reasoningEffortsForLevels(supportedLevels),
-    defaultReasoningEffort,
-  };
-}
-
-function reasoningSupportFromNativeHint(
-  nativeReasoning: AcpBridgeNativeReasoning | undefined,
-):
-  | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
-  | undefined {
-  if (nativeReasoning === undefined) {
-    return undefined;
-  }
-  const supportedLevels = nativeReasoning.supportedLevels;
-  const defaultReasoningEffort =
-    nativeReasoning.defaultLevel !== undefined &&
-    supportedLevels.includes(nativeReasoning.defaultLevel)
-      ? nativeReasoning.defaultLevel
       : supportedLevels.includes("medium")
         ? "medium"
         : supportedLevels[0];
@@ -557,7 +569,7 @@ function applyNativeReasoningHintToModel(
   model: AvailableModel,
   nativeReasoning: AcpBridgeNativeReasoning | undefined,
 ): AvailableModel {
-  const reasoningSupport = reasoningSupportFromNativeHint(nativeReasoning);
+  const reasoningSupport = reasoningSupportFromCli(nativeReasoning);
   return reasoningSupport === undefined ||
     !modelHasOnlyAgentManagedReasoning(model)
     ? model
@@ -589,28 +601,15 @@ function applyConfiguredReasoningToModels(
   return models.map((model) => applyConfiguredReasoningToModel(model, args));
 }
 
-function resolveReasoningCliValue(args: {
-  reasoningCli: AcpBridgeReasoningCli;
+function resolveHintReasoningValue(args: {
+  hint: Pick<AcpBridgeReasoningCli, "supportedLevels" | "levelValues">;
   reasoningLevel: ReasoningLevel;
 }): string | undefined {
-  const override = args.reasoningCli.levelValues?.[args.reasoningLevel];
+  const override = args.hint.levelValues?.[args.reasoningLevel];
   if (override !== undefined) {
     return override;
   }
-  return args.reasoningCli.supportedLevels.includes(args.reasoningLevel)
-    ? args.reasoningLevel
-    : undefined;
-}
-
-function nativeReasoningLevelToValue(args: {
-  nativeReasoning: AcpBridgeNativeReasoning;
-  reasoningLevel: ReasoningLevel;
-}): string | undefined {
-  const override = args.nativeReasoning.levelValues?.[args.reasoningLevel];
-  if (override !== undefined) {
-    return override;
-  }
-  return args.nativeReasoning.supportedLevels.includes(args.reasoningLevel)
+  return args.hint.supportedLevels.includes(args.reasoningLevel)
     ? args.reasoningLevel
     : undefined;
 }
@@ -622,8 +621,8 @@ function nativeReasoningToThoughtLevelOption(
     return undefined;
   }
   const options = nativeReasoning.supportedLevels.flatMap((level) => {
-    const value = nativeReasoningLevelToValue({
-      nativeReasoning,
+    const value = resolveHintReasoningValue({
+      hint: nativeReasoning,
       reasoningLevel: level,
     });
     return value === undefined
@@ -638,8 +637,8 @@ function nativeReasoningToThoughtLevelOption(
   const currentValue =
     nativeReasoning.defaultLevel === undefined
       ? undefined
-      : nativeReasoningLevelToValue({
-          nativeReasoning,
+      : resolveHintReasoningValue({
+          hint: nativeReasoning,
           reasoningLevel: nativeReasoning.defaultLevel,
         });
   return {
@@ -696,13 +695,22 @@ interface AcpDynamicToolBridge {
   token: string;
 }
 
-const dynamicToolBridgeRequestSchema = z.object({
-  arguments: z.record(z.string(), z.unknown()).default({}),
-  callId: z.string().min(1),
-  threadId: z.string().min(1),
-  token: z.string().min(1),
-  tool: z.string().min(1),
-});
+const dynamicToolBridgeRequestSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("initialized"),
+    threadId: z.string().min(1),
+    token: z.string().min(1),
+    toolCount: z.number().int().nonnegative(),
+  }),
+  z.object({
+    kind: z.literal("toolCall"),
+    arguments: z.record(z.string(), z.unknown()).default({}),
+    callId: z.string().min(1),
+    threadId: z.string().min(1),
+    token: z.string().min(1),
+    tool: z.string().min(1),
+  }),
+]);
 
 let cachedModelCatalog: { key: string; catalog: AgentModelCatalog } | null =
   null;
@@ -721,7 +729,7 @@ function resolveAcpAuthMethodId(
   authMethods: readonly { id: string }[] | undefined,
   env: Record<string, string | undefined>,
 ): string | undefined {
-  // Grok is currently the only known ACP agent that advertises auth methods.
+  // Grok is currently the only built-in ACP provider that advertises auth methods.
   // Keep this preference local until another authenticated ACP provider needs
   // a data-driven policy; cached_token is an ACP-side local-login flow.
   const methodIds = new Set((authMethods ?? []).map((method) => method.id));
@@ -764,7 +772,7 @@ async function authenticateAcpAgent(args: {
  * the picker to the synthetic entry, session starts to the unresolved id.
  */
 async function loadAgentModelCatalog(
-  listCommand: AcpBridgeAgentCommand,
+  listCommand: AcpAgentCommandParam,
 ): Promise<AgentModelCatalog | null> {
   const stdout = await new Promise<string | null>((resolveExec, rejectExec) => {
     execFile(
@@ -814,7 +822,7 @@ async function loadAgentModelCatalog(
 }
 
 async function loadSessionDiscoveredModels(
-  agent: AcpBridgeAgentCommand,
+  agent: AcpAgentCommandParam,
 ): Promise<AvailableModel[] | null> {
   const key = JSON.stringify(agent);
   if (
@@ -834,6 +842,7 @@ async function loadSessionDiscoveredModels(
     args: agent.args,
     cwd: agent.cwd ?? process.cwd(),
     env: childEnv,
+    recordThreadId: null,
     onNotification: () => {},
     onRequest: (_method, _params, responder) => {
       responder.error(-32601, "ACP model discovery does not support requests");
@@ -1085,8 +1094,8 @@ async function resolveAgentLaunchArgs(
     params.reasoningCli !== undefined &&
     params.launchReasoningLevel !== undefined
   ) {
-    const reasoningValue = resolveReasoningCliValue({
-      reasoningCli: params.reasoningCli,
+    const reasoningValue = resolveHintReasoningValue({
+      hint: params.reasoningCli,
       reasoningLevel: params.launchReasoningLevel,
     });
     if (reasoningValue !== undefined) {
@@ -1328,10 +1337,6 @@ function cancelPendingPermissions(session: AcpThreadSession): void {
   session.pendingPermissions.clear();
 }
 
-const acpRawInputCommandSchema = z
-  .object({ command: z.string() })
-  .passthrough();
-
 function handlePermissionRequest(
   session: AcpThreadSession,
   params: unknown,
@@ -1365,17 +1370,25 @@ function handlePermissionRequest(
   session.pendingPermissions.add(pending);
 
   const toolCall = parsed.data.toolCall;
-  const rawInputCommand = acpRawInputCommandSchema.safeParse(
-    toolCall?.rawInput,
-  );
   const normalizedToolCall = toolCall?.toolCallId
     ? {
         toolCallId: toolCall.toolCallId,
-        ...(toolCall.title ? { title: toolCall.title } : {}),
-        ...(toolCall.kind ? { kind: toolCall.kind } : {}),
-        ...(rawInputCommand.success
-          ? { command: rawInputCommand.data.command }
+        ...(toolCall.title !== undefined ? { title: toolCall.title } : {}),
+        ...(toolCall.kind !== undefined ? { kind: toolCall.kind } : {}),
+        ...(toolCall.rawInput !== undefined
+          ? { rawInput: toolCall.rawInput }
           : {}),
+        ...(toolCall.locations !== undefined
+          ? { locations: toolCall.locations }
+          : {}),
+        startedToolCall: session.translator.getMergedToolCall(
+          session.bbThreadId,
+          toolCall.toolCallId,
+        ),
+        injectedTool: session.translator.getInjectedToolBinding(
+          session.bbThreadId,
+          toolCall.toolCallId,
+        ),
       }
     : undefined;
 
@@ -1386,13 +1399,14 @@ function handlePermissionRequest(
       toolCall: normalizedToolCall,
       options: parsed.data.options,
     });
-    const state = session.translator.resolveState({
-      threadId: session.bbThreadId,
-    });
+    // Turn ids are runtime-minted under the narrow grammar: `turnId: null`
+    // asks the runtime to stamp its active turn for this thread (the wire
+    // contract's unresolved marker), which is the turn the permission
+    // interrupted.
     void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
       providerThreadId: session.providerThreadId,
       threadId: session.bbThreadId,
-      turnId: state.currentTurnId ?? null,
+      turnId: null,
       payload,
     })
       .then((result) => {
@@ -1501,12 +1515,14 @@ async function handleFsWriteTextFile(
     await fs.mkdir(dirname(parsed.data.path), { recursive: true });
     await fs.writeFile(parsed.data.path, parsed.data.content, "utf8");
 
-    const diff = buildEditDiff(parsed.data.path, oldText, parsed.data.content);
+    // The assembler builds the diff from oldText/content, so the envelope
+    // carries the texts instead of a pre-built diff string.
     emitForSession(session, ACP_FS_WRITE_METHOD, {
       threadId: session.bbThreadId,
       path: parsed.data.path,
       kind: oldText === undefined ? "add" : "update",
-      ...(diff ? { diff } : {}),
+      ...(oldText === undefined ? {} : { oldText }),
+      content: parsed.data.content,
     });
     responder.result(null);
   } catch (error) {
@@ -1530,6 +1546,25 @@ function removeSession(session: AcpThreadSession): void {
     session.bbThreadId
   ) {
     bbThreadIdByProviderThreadId.delete(session.providerThreadId);
+  }
+}
+
+async function releaseCursorMcpApproval(
+  session: AcpThreadSession,
+): Promise<void> {
+  const approval = session.cursorMcpApproval;
+  session.cursorMcpApproval = undefined;
+  if (!approval) {
+    return;
+  }
+  try {
+    await revokeCursorSessionMcpServer(approval);
+  } catch (error) {
+    process.stderr.write(
+      `acp bridge: failed to remove Cursor session MCP approval for thread "${session.bbThreadId}": ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
   }
 }
 
@@ -1566,8 +1601,18 @@ async function startAgentSession(
     await stopSession(existing);
   }
 
-  const translator = createSessionTranslator();
-  // Ordering guarantee: thread/identity precedes any thread/event for the
+  const translator = createAcpDeltaTranslator();
+  // The session's bb-injected tools: a proxied call to one is a bb tool and
+  // reads the way its definition says (Q31).
+  translator.configureInjectedTools(
+    (params.dynamicTools ?? []).map((tool) => ({
+      name: tool.name,
+      ...(tool.presentation === undefined
+        ? {}
+        : { presentation: tool.presentation }),
+    })),
+  );
+  // Ordering guarantee: thread/identity precedes any thread/delta for the
   // session, so pre-identity notifications are held and flushed after the
   // identity goes out.
   const deferredEmits: {
@@ -1601,6 +1646,7 @@ async function startAgentSession(
     args: launch.args,
     cwd: params.cwd,
     env: childEnv,
+    recordThreadId: bbThreadId,
     onNotification: (method, notificationParams) =>
       handleAgentNotification(session, method, notificationParams),
     onRequest: (method, requestParams, responder) =>
@@ -1612,6 +1658,7 @@ async function startAgentSession(
       if (!wasCurrent || session.stopping) {
         return;
       }
+      void releaseCursorMcpApproval(session);
       emitSessionError(
         session,
         `ACP agent "${agentLabel}" exited unexpectedly` +
@@ -1625,15 +1672,12 @@ async function startAgentSession(
     providerThreadId: "",
     translator,
     connection,
-    agentLabel,
     supportsImageInput: false,
     supportsLoadSession: false,
     policy: {
       permissionMode: params.permissionMode,
-      permissionEscalation: params.permissionEscalation,
       workspaceWriteRoots: params.workspaceWriteRoots,
     },
-    cwd: params.cwd,
     pendingInstructions: params.instructions,
     activePromptKind: null,
     queuedInputs: [],
@@ -1645,6 +1689,7 @@ async function startAgentSession(
     stopping: false,
     turnSettled: undefined,
     pendingPermissions: new Set(),
+    cursorMcpApproval: undefined,
   };
 
   try {
@@ -1678,6 +1723,20 @@ async function startAgentSession(
     }
     session.supportsLoadSession = supportsLoadSession;
     const mcpServers = await buildSessionMcpServers(params);
+    const mcpServer = mcpServers[0];
+    if (mcpServer) {
+      session.cursorMcpApproval = await approveCursorSessionMcpServer({
+        agentCommand: params.agent.command,
+        config: mcpServer,
+        cwd: params.cwd,
+        env: childEnv,
+      });
+      if (session.cursorMcpApproval?.installedByBb) {
+        process.stderr.write(
+          `acp bridge: installed Cursor session MCP approval for thread "${bbThreadId}"\n`,
+        );
+      }
+    }
 
     let sessionId: string | undefined;
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
@@ -1784,6 +1843,11 @@ async function startAgentSession(
       providerThreadId: sessionId,
       sessionRestorable: session.supportsLoadSession,
     });
+    // The provider id-space boundary: a new agent session was constructed for
+    // this thread (start/resume/fork all land here), so the assembler drops
+    // the thread's assembly state — settled item keys, id maps, accumulated
+    // usage — before any of the new session's deltas.
+    sendThreadDeltas(bbThreadId, [{ kind: "session.reset" }]);
     for (const deferred of deferredEmits) {
       emitForSession(session, deferred.method, deferred.params);
     }
@@ -1793,6 +1857,7 @@ async function startAgentSession(
     session.stopping = true;
     connection.kill();
     removeSession(session);
+    await releaseCursorMcpApproval(session);
     throw error;
   }
 }
@@ -1802,7 +1867,10 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
     return;
   }
   session.stopping = true;
-  session.queuedInputs = [];
+  dropQueuedTurnInputs(
+    session,
+    "ACP session stopped before the steer was sent",
+  );
   cancelPendingPermissions(session);
 
   if (session.activePromptKind !== null && !session.connection.exited) {
@@ -1821,6 +1889,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
 
   session.connection.kill();
   removeSession(session);
+  await releaseCursorMcpApproval(session);
 }
 
 /**
@@ -1829,15 +1898,19 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
  * any in-flight prompt rejection is swallowed by the turn loop because
  * `stopping` is already set.
  */
-function releaseSession(session: AcpThreadSession): void {
+async function releaseSession(session: AcpThreadSession): Promise<void> {
   if (session.stopping) {
     return;
   }
   session.stopping = true;
-  session.queuedInputs = [];
+  dropQueuedTurnInputs(
+    session,
+    "ACP session released before the steer was sent",
+  );
   cancelPendingPermissions(session);
   session.connection.kill();
   removeSession(session);
+  await releaseCursorMcpApproval(session);
 }
 
 // ---------------------------------------------------------------------------
@@ -1860,12 +1933,58 @@ function requestSteerCancel(session: AcpThreadSession): void {
   });
 }
 
+/**
+ * Accepted-input correlation (turn/input/accepted): the input reached the
+ * agent, so bb can attach it to the turn it runs in. Reporting acceptance
+ * before the `session/prompt` request goes out would claim an input the agent
+ * may never be given.
+ */
+function acceptTurnInput(
+  session: AcpThreadSession,
+  pending: AcpPendingTurnInput,
+): void {
+  sendThreadDeltas(session.bbThreadId, [
+    { kind: "input.accepted", clientRequestId: pending.clientRequestId },
+  ]);
+  const requestId = takeTurnInputRequestId(pending);
+  if (requestId !== null) {
+    sendResult(requestId, { threadId: session.bbThreadId });
+  }
+}
+
+/**
+ * Report input the turn ended without ever sending. Reply, never drop (#853):
+ * a command still waiting on the input fails instead of hanging, and no
+ * acceptance is reported for a turn the agent never received it in.
+ */
+function dropTurnInput(pending: AcpPendingTurnInput, reason: string): void {
+  const requestId = takeTurnInputRequestId(pending);
+  if (requestId !== null) {
+    sendError(requestId, -32000, reason);
+  }
+}
+
+/** Answers a command at most once, whatever else happens to the input. */
+function takeTurnInputRequestId(
+  pending: AcpPendingTurnInput,
+): AcpBridgeRequestId | null {
+  const requestId = pending.requestId;
+  pending.requestId = null;
+  return requestId;
+}
+
+function dropQueuedTurnInputs(session: AcpThreadSession, reason: string): void {
+  for (const pending of session.queuedInputs.splice(0)) {
+    dropTurnInput(pending, reason);
+  }
+}
+
 function finishTurn(
   session: AcpThreadSession,
   stopReason: z.infer<typeof acpStopReasonSchema>,
 ): void {
   session.activePromptKind = null;
-  session.queuedInputs = [];
+  dropQueuedTurnInputs(session, "ACP turn ended before the steer was sent");
   session.promptRequestPending = false;
   session.cancelRequested = false;
   emitForSession(session, ACP_TURN_COMPLETED_METHOD, {
@@ -1874,16 +1993,20 @@ function finishTurn(
   });
 }
 
-function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
+function runTurn(
+  session: AcpThreadSession,
+  firstInput: AcpPendingTurnInput,
+): void {
   session.activePromptKind = "turn";
   emitForSession(session, ACP_TURN_STARTED_METHOD, {
     threadId: session.bbThreadId,
   });
 
   session.turnSettled = (async () => {
-    let input = firstInput;
+    let pending = firstInput;
     for (;;) {
       if (session.stopping) {
+        dropTurnInput(pending, "ACP session is stopping");
         finishTurn(session, "cancelled");
         return;
       }
@@ -1896,10 +2019,14 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
           method: "session/prompt",
           params: {
             sessionId: session.providerThreadId,
-            prompt: buildPromptContentBlocks(session, input),
+            prompt: buildPromptContentBlocks(session, pending.input),
           },
           resultSchema: acpPromptResultSchema,
         });
+        // The agent has the input now, and the turn it runs in is already
+        // open, so the acceptance names that turn instead of waiting as a
+        // pending claim any stale terminal could take (#2014).
+        acceptTurnInput(session, pending);
         // A steer that stacked behind the cancelled prompt still needs its own
         // cancel; otherwise this prompt can hang and strand the later input.
         if (session.queuedInputs.length > 0) {
@@ -1909,17 +2036,24 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
         stopReason = result.stopReason;
       } catch (error) {
         session.promptRequestPending = false;
-        session.queuedInputs = [];
+        // Answered already unless the request never went out at all.
+        dropTurnInput(pending, "ACP turn failed before the prompt was sent");
+        dropQueuedTurnInputs(
+          session,
+          "ACP turn failed before the steer was sent",
+        );
         session.cancelRequested = false;
-        session.activePromptKind = null;
         // An exited agent already produced an error notification from the
         // connection's exit handler; only report in-protocol prompt failures.
+        // The error settles the still-open turn, so it is emitted before
+        // `activePromptKind` clears (the bridge's own open-turn mirror).
         if (!session.stopping && !session.connection.exited) {
           emitSessionError(
             session,
             error instanceof Error ? error.message : String(error),
           );
         }
+        session.activePromptKind = null;
         return;
       }
       session.promptRequestPending = false;
@@ -1928,7 +2062,7 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
       if (!session.stopping) {
         const next = session.queuedInputs.shift();
         if (next) {
-          input = next;
+          pending = next;
           continue;
         }
       }
@@ -1954,13 +2088,15 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
  * Whether an agent has the command at all is a per-agent fact ACP does not
  * expose: opencode's `available_commands_update` lists only its custom
  * commands, never its built-in `/compact`. So the affordance is gated by the
- * server-side per-agent `supportsManualCompaction` declaration
- * (`KNOWN_ACP_AGENTS`, `customAcpAgents`), and the bridge reports whatever the
- * agent does with the request: only an `end_turn` prompt counts as compacted,
+ * provider declaration or custom-agent config, and the bridge reports whatever
+ * the agent does with the request: only an `end_turn` prompt counts as compacted,
  * every other stop reason or prompt rejection fails the turn with the agent's
  * own reason rather than being reported as a shrunk context.
  */
-function startCompaction(session: AcpThreadSession): void {
+function startCompaction(
+  session: AcpThreadSession,
+  pending: AcpPendingTurnInput,
+): void {
   session.activePromptKind = "compaction";
   emitForSession(session, ACP_COMPACTION_STARTED_METHOD, {
     threadId: session.bbThreadId,
@@ -1975,15 +2111,17 @@ function startCompaction(session: AcpThreadSession): void {
     session.turnSettled = undefined;
   };
 
-  session.turnSettled = session.connection
-    .request({
-      method: "session/prompt",
-      params: {
-        sessionId: session.providerThreadId,
-        prompt: [{ type: "text", text: "/compact" }],
-      },
-      resultSchema: acpPromptResultSchema,
-    })
+  const promptResult = session.connection.request({
+    method: "session/prompt",
+    params: {
+      sessionId: session.providerThreadId,
+      prompt: [{ type: "text", text: "/compact" }],
+    },
+    resultSchema: acpPromptResultSchema,
+  });
+  acceptTurnInput(session, pending);
+
+  session.turnSettled = promptResult
     .then((result) => {
       finish(
         result.stopReason === "end_turn"
@@ -2233,6 +2371,13 @@ async function handleRequest(
           threadGoalClear: false,
           fork: "tip",
           approvalEnforcedBy: "runtime",
+          // grammarVersions [3, 3] — this bridge emits the v3 delta grammar
+          // (one streaming dialect; the v3 item shapes land per bridge in
+          // WS1b). steerMode "queue" — ACP v1 has no mid-loop inject: a hard
+          // steer cancels the live prompt and re-prompts with the queued text
+          // at the next boundary.
+          grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
+          steerMode: "queue",
         },
       };
       sendResult(request.id, result);
@@ -2249,6 +2394,55 @@ async function handleRequest(
         ),
       );
       return;
+
+    case "provider/health": {
+      const profile = decodeLaunchProfile(request.params.providerOptions);
+      sendResult(
+        request.id,
+        await getAcpProviderHealth({
+          providerId: request.params.providerId,
+          command: profile?.agentCommand.command ?? null,
+        }),
+      );
+      return;
+    }
+
+    case "provider/usage": {
+      const profile = decodeLaunchProfile(request.params.providerOptions);
+      sendResult(
+        request.id,
+        await getAcpProviderUsage({
+          providerId: request.params.providerId,
+          command: profile?.agentCommand.command ?? null,
+        }),
+      );
+      return;
+    }
+
+    case "provider/installation/status": {
+      const profile = decodeLaunchProfile(request.params.providerOptions);
+      sendResult(
+        request.id,
+        await getAcpProviderInstallationStatus({
+          providerId: request.params.providerId,
+          command: profile?.agentCommand.command ?? null,
+        }),
+      );
+      return;
+    }
+
+    case "provider/installation/run": {
+      const profile = decodeLaunchProfile(request.params.providerOptions);
+      sendResult(
+        request.id,
+        await getAcpProviderInstallationRun({
+          providerId: request.params.providerId,
+          command: profile?.agentCommand.command ?? null,
+          action: request.params.action,
+        }),
+      );
+      return;
+    }
 
     case "thread/start":
     case "thread/resume":
@@ -2327,37 +2521,22 @@ async function handleRequest(
         sendError(request.id, -32000, "A turn is already active");
         return;
       }
-      // Accepted-input correlation (turn/input/accepted): queue onto the
-      // translator so its onTurnStart drains it into the opening turn; a
-      // still-open translator turn gets the event immediately instead.
-      const state = session.translator.resolveState({
-        threadId: session.bbThreadId,
-      });
-      if (state.currentTurnId !== undefined) {
-        sendThreadEvents(
-          session,
-          buildAcceptedUserMessageEvent({
-            clientRequestId: params.clientRequestId,
-            providerThreadId: session.providerThreadId,
-            threadId: session.bbThreadId,
-            turnId: state.currentTurnId,
-          }),
-        );
-      } else {
-        queueAcceptedUserMessage({
-          clientRequestId: params.clientRequestId,
-          state,
-        });
-      }
+      const pending: AcpPendingTurnInput = {
+        clientRequestId: params.clientRequestId,
+        input: params.input,
+        requestId: request.id,
+      };
+      // Both paths answer the command and report the acceptance once the
+      // `session/prompt` request carrying the input has gone out.
+      //
       // A standalone builtin `/compact` mention is bb's manual-compaction
       // request, not model input: it runs the agent's own compaction command
       // instead of becoming a prompt.
       if (isStandaloneBuiltinCompactCommand(params.input)) {
-        startCompaction(session);
+        startCompaction(session, pending);
       } else {
-        runTurn(session, params.input);
+        runTurn(session, pending);
       }
-      sendResult(request.id, { threadId: params.threadId });
       return;
     }
 
@@ -2376,18 +2555,15 @@ async function handleRequest(
         );
         return;
       }
-      // A steer joins the active turn, so its acceptance is emitted
-      // immediately against the expected turn id.
-      sendThreadEvents(
-        session,
-        buildAcceptedUserMessageEvent({
-          clientRequestId: params.clientRequestId,
-          providerThreadId: session.providerThreadId,
-          threadId: session.bbThreadId,
-          turnId: params.expectedTurnId,
-        }),
-      );
-      session.queuedInputs.push(params.input);
+      // A steer joins the active turn, but the agent only learns about it
+      // when the cancelled prompt is reissued with it. The command answers now
+      // — the bridge has the input — while the acceptance waits for that
+      // reissue, so a steer the turn drops is never reported as accepted.
+      session.queuedInputs.push({
+        clientRequestId: params.clientRequestId,
+        input: params.input,
+        requestId: null,
+      });
       requestSteerCancel(session);
       sendResult(request.id, { threadId: params.threadId });
       return;
@@ -2397,7 +2573,7 @@ async function handleRequest(
       const session = sessionsByBbThreadId.get(request.params.threadId);
       if (session) {
         if (request.params.intent === "release") {
-          releaseSession(session);
+          await releaseSession(session);
         } else {
           await stopSession(session);
         }

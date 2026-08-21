@@ -8,7 +8,6 @@ import type {
   PluginFileOpenerSlot,
   PluginMessageDirectiveSlot,
   PluginPendingInteractionSlot,
-  PluginThreadListSlot,
 } from "./plugin-slots";
 
 type ComposerAction = NonNullable<ComposerCustomization["actions"]>[number];
@@ -31,7 +30,7 @@ export interface ResolvedComposerAction extends ResolvedComposerContribution {
   action: ComposerAction;
 }
 
-export interface ResolvedComposerBanner extends ResolvedComposerContribution {
+interface ResolvedComposerBanner extends ResolvedComposerContribution {
   banner: ComposerBanner;
 }
 
@@ -40,12 +39,12 @@ export interface ResolvedComposerPlusMenuItem extends ResolvedComposerContributi
 }
 
 /** One plugin customization's ordered effect rules. */
-export interface ResolvedComposerEditorEffects extends ResolvedComposerContribution {
+interface ResolvedComposerEditorEffects extends ResolvedComposerContribution {
   effects: readonly ComposerEditorEffect[];
 }
 
 /** One plugin customization's draft observer callback. */
-export interface ResolvedComposerDraftObserver extends ResolvedComposerContribution {
+interface ResolvedComposerDraftObserver extends ResolvedComposerContribution {
   onDraftChange: ComposerDraftObserver;
 }
 
@@ -73,23 +72,13 @@ function resolvedComposerContribution(
   };
 }
 
-export function composerCustomizationApplies(
+function composerCustomizationApplies(
   customization: PluginComposerCustomizationSlot,
   scopeKind: PluginComposerScope["kind"],
 ): boolean {
   return (
     customization.scopes === undefined ||
     customization.scopes.includes(scopeKind)
-  );
-}
-
-/** Preserve snapshot order while applying the shared Composer scope contract. */
-export function resolveComposerCustomizations(
-  customizations: readonly PluginComposerCustomizationSlot[],
-  scopeKind: PluginComposerScope["kind"],
-): readonly PluginComposerCustomizationSlot[] {
-  return customizations.filter((customization) =>
-    composerCustomizationApplies(customization, scopeKind),
   );
 }
 
@@ -211,15 +200,6 @@ function resolveMessageDirectiveClaimants(
   };
 }
 
-export function resolveMessageDirective(
-  registrations: readonly PluginMessageDirectiveSlot[],
-  directiveId: string,
-): ResolvedMessageDirective | null {
-  return resolveMessageDirectiveClaimants(
-    registrations.filter((registration) => registration.id === directiveId),
-  );
-}
-
 export function resolveMessageDirectiveRegistry(
   registrations: readonly PluginMessageDirectiveSlot[],
 ): ReadonlyMap<string, ResolvedMessageDirective> {
@@ -265,13 +245,11 @@ export function resolveReplacement<Registration>(
     : { kind: "plugin", registration };
 }
 
-export function resolveThreadListReplacement(
-  registrations: readonly PluginThreadListSlot[],
-  applies?: (registration: PluginThreadListSlot) => boolean,
-): ResolvedReplacement<PluginThreadListSlot> {
-  return resolveReplacement(registrations, applies);
-}
-
+/**
+ * A per-open viewer choice (the link context menu): "builtin" pins the
+ * built-in preview; an opener ref forces that plugin opener. Absent means
+ * follow the extension's automatic or pinned Settings choice.
+ */
 export type FileOpenerOverride =
   | "builtin"
   | { pluginId: string; openerId: string };

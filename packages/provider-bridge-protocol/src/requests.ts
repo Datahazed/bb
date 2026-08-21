@@ -18,6 +18,10 @@ import { bridgeExecutionOptionsSchema } from "./execution-options.js";
 export const BRIDGE_REQUEST_METHODS = {
   initialize: "initialize",
   modelList: "model/list",
+  experimentalProviderHealth: "provider/health",
+  experimentalProviderUsage: "provider/usage",
+  experimentalProviderInstallationStatus: "provider/installation/status",
+  experimentalProviderInstallationRun: "provider/installation/run",
   threadStart: "thread/start",
   threadResume: "thread/resume",
   threadFork: "thread/fork",
@@ -31,13 +35,6 @@ export const BRIDGE_REQUEST_METHODS = {
   turnSteer: "turn/steer",
   skillsConfigure: "skills/configure",
 } as const;
-
-export type BridgeRequestMethod =
-  (typeof BRIDGE_REQUEST_METHODS)[keyof typeof BRIDGE_REQUEST_METHODS];
-
-export const bridgeRequestMethodValues = Object.values(
-  BRIDGE_REQUEST_METHODS,
-) as readonly BridgeRequestMethod[];
 
 const sessionConstructionFields = {
   threadId: z.string().min(1),
@@ -168,8 +165,6 @@ export const skillsConfigureParamsSchema = z
     roots: z.array(skillsConfigureRootSchema),
   })
   .passthrough();
-
-export type SkillsConfigureParams = z.infer<typeof skillsConfigureParamsSchema>;
 
 // ---------------------------------------------------------------------------
 // Results

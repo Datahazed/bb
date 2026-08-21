@@ -10,39 +10,45 @@
  * rename for threads without a live child).
  *
  * Translation lives in `../translator.ts`, `../session-params.ts`, and
- * `../event-translation.ts`; the bridge adds the canonical surface on top:
+ * `../delta-translation.ts`; the bridge emits `thread/delta` semantic deltas
+ * and adds the command plane on top:
  *
- * - Codex mints its own turn/item ids; the bridge stamps bridge-minted ids
- *   (entropy + per-session serial prefix, #1224) onto every event, keeps the
- *   mapping deterministic (`prefix + codexId`), and reverse-maps ids arriving
- *   on requests (steer's expectedTurnId, interrupt's activeTurnId, fork
- *   checkpoints). `turn/completed` additionally carries the Codex turn id as
- *   `providerCheckpointId` so checkpoint forks survive bridge restarts.
+ * - Codex mints its own turn/item ids and the deltas carry them verbatim as
+ *   vouched join keys (`providerTurnId`, `key.providerItemId`); the runtime's
+ *   delta assembler mints the bb ids and reverse-maps command-plane ids, so
+ *   steer's expectedTurnId and interrupt's activeTurnId arrive here already
+ *   provider-native and the bridge does zero id translation. `turn.boundary`
+ *   carries the Codex turn id as `providerCheckpointId` on completed and
+ *   interrupted turns so checkpoint forks survive bridge and runtime restarts.
  * - Canonical → codex method mapping: `thread/stop {intent: "interrupt"}` →
  *   `turn/interrupt`; `{intent: "release"}` → kill that thread's child (no
  *   fabricated interruption — the rollout stays resumable, #1584);
  *   `thread/discard` → `thread/archive`; a standalone builtin /compact prompt
  *   → `thread/compact/start`; `skills/configure` → `skills/extraRoots/set`.
  * - Codex approval requests are decoded to canonical
- *   `PendingInteractionPayload`s and forwarded as `interaction/request`;
- *   resolutions map back through the shared permission mapping.
+ *   `PendingInteractionPayload`s and forwarded as `interaction/request` with
+ *   `providerNativeIds: true` (the runtime translates the subject item ids
+ *   and turn id onto assembler-minted ids); resolutions map back through the
+ *   shared permission mapping.
  */
 
 import {
   isStandaloneBuiltinCompactCommand,
   pendingInteractionResolutionSchema,
-  turnScope,
-  type PendingInteractionPayload,
+  type DynamicTool,
   type PromptInput,
-  type ThreadEvent,
-  type ThreadEventItem,
-  type ThreadEventScope,
+  type ThreadDelta,
   sanitizeInheritedChildProcessEnv,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
+  THREAD_DELTA_NOTIFICATION_METHOD,
   modelListParamsSchema,
+  experimental_providerInstallationRunParamsSchema,
+  experimental_providerInstallationStatusParamsSchema,
+  experimental_providerMaintenanceParamsSchema,
   skillsConfigureParamsSchema,
   threadArchiveParamsSchema,
   threadDiscardParamsSchema,
@@ -58,7 +64,6 @@ import {
   type BridgeExecutionOptions,
   type InitializeResult,
   bridgeRequestEnvelopeSchema,
-  buildAcceptedUserMessageEvent,
   createBridgeIo,
   createBridgeLineHandler,
   decodeBridgeJsonRpcResponse,
@@ -71,18 +76,25 @@ import {
   type ProviderRuntimeEvent,
   experimental_defineProviderBridge,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import {
+  CODEX_MACOS_PERMISSION_EXTENSION_KIND,
+  summarizeCodexMacOsPermissions,
+} from "../extension-kinds.js";
 import {
   buildCodexInteractiveResponse,
   decodeCodexInteractiveRequest,
+  extractCodexMacOsPermissionRequest,
+  type CodexMacOsPermissionRequest,
 } from "../interactive-requests.js";
 import { parseModelsResponse } from "../models.js";
+import { macOsPermissionPresentation } from "../presentation.js";
 import {
   resolveCodexInstructionOverrides,
   toCodexDynamicTools,
   toCodexPermissionSettings,
   toCodexServiceTier,
+  toCodexThreadPermissionSettings,
   toCodexUserInput,
   type BbThreadForkParams,
   type BbThreadStartParams,
@@ -100,6 +112,12 @@ import {
   type CodexAppServerExitInfo,
   type CodexAppServerRequestResponder,
 } from "./app-server-connection.js";
+import {
+  getCodexProviderHealth,
+  getCodexProviderInstallationRun,
+  getCodexProviderInstallationStatus,
+  getCodexProviderUsage,
+} from "./provider-maintenance.js";
 
 // ---------------------------------------------------------------------------
 // Command schema — reply-never-drop (#853)
@@ -116,6 +134,22 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
       .passthrough(),
   }),
   z.object({ method: z.literal("model/list"), params: modelListParamsSchema }),
+  z.object({
+    method: z.literal("provider/health"),
+    params: experimental_providerMaintenanceParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/usage"),
+    params: experimental_providerMaintenanceParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/installation/status"),
+    params: experimental_providerInstallationStatusParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/installation/run"),
+    params: experimental_providerInstallationRunParamsSchema,
+  }),
   z.object({
     method: z.literal("thread/start"),
     params: threadStartParamsSchema,
@@ -287,7 +321,6 @@ const CODEX_INITIALIZE_PARAMS = {
 };
 
 const CHILD_REQUEST_TIMEOUT_MS = 60_000;
-const MAX_TRACKED_ITEM_IDS_PER_SESSION = 512;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
 const MISSING_CODEX_CLI_GUIDANCE =
@@ -331,39 +364,33 @@ function describeCodexLaunchError(error: unknown): string {
 interface CodexSessionConstruction {
   cwd: string;
   instructionMode: "append" | "replace";
-  dynamicTools:
-    | { name: string; description: string; inputSchema: unknown }[]
-    | undefined;
+  dynamicTools: DynamicTool[] | undefined;
 }
 
 interface CodexBridgeSession {
   bbThreadId: string;
   codexThreadId: string | null;
   serial: number;
-  /** Bridge-minted id prefix: process entropy + per-session serial (#1224). */
-  idPrefix: string;
   connection: CodexAppServerConnection | null;
   translator: CodexEventTranslator;
   construction: CodexSessionConstruction;
   constructionSignature: string;
-  /** Bounded Codex-id space; feeds delta-first item/started synthesis. */
-  openedItemIds: Set<string>;
-  /**
-   * Bounded Codex-id space for item incarnations already settled. An explicit
-   * item/started reopens an id, matching the runtime event grammar.
-   */
-  settledItemIds: Set<string>;
   /** Codex-id space; open turns settle as failed if the child dies. */
   openCodexTurnIds: Set<string>;
+  /**
+   * True from thread/resume or thread/fork construction until this session's
+   * first turn/started. Codex replays the rollout's last-turn usage in that
+   * window, scoped to a turn this session never started; the bridge must not
+   * emit it under a bridge-minted turn id bb has never seen (#1727).
+   */
+  awaitingReplayedUsage: boolean;
   identityAnnounced: boolean;
   /**
-   * Events translated before the session's identity is known (codex can emit
+   * Deltas translated before the session's identity is known (codex can emit
    * startup warnings before thread/started). thread/identity must precede
-   * every thread/event for the session, so these flush right after it.
+   * every thread/delta for the session, so these flush right after it.
    */
-  pendingPreIdentityEvents: ThreadEvent[];
-  /** Last `thread/openWork` value sent, so only changes go on the wire. */
-  openWorkReported: boolean;
+  pendingPreIdentityDeltas: ThreadDelta[];
   closing: boolean;
 }
 
@@ -374,22 +401,17 @@ let modelListConnectionPromise: Promise<CodexAppServerConnection> | null = null;
 let sessionSerialCounter = 0;
 let configuredSkillExtraRoots: string[] | null = null;
 
-const bridgeIdEntropyPrefix = `bt${randomUUID().slice(0, 8)}-`;
 /**
- * Structural shape of every id this bridge (or a previous instance of it)
- * mints: entropy + session serial + the Codex-native id. Reverse mapping
- * strips the prefix structurally, so checkpoint forks keep working across
- * bridge restarts, and ids persisted before the bridge minted them (raw Codex
- * ids) pass through unchanged.
+ * Shape of the ids this bridge minted before the narrow-grammar cutover:
+ * entropy + session serial + the Codex-native id. Fork checkpoints persisted
+ * under that scheme still arrive here, so the fork path strips the prefix
+ * structurally; every id minted since IS the raw Codex turn id and passes
+ * through unchanged.
  */
-const BRIDGE_MINTED_ID_PATTERN = /^bt[0-9a-f]{8}-\d+-/;
+const LEGACY_BRIDGE_MINTED_ID_PATTERN = /^bt[0-9a-f]{8}-\d+-/;
 
-function toBridgeId(session: CodexBridgeSession, codexId: string): string {
-  return `${session.idPrefix}${codexId}`;
-}
-
-function stripBridgeIdPrefix(id: string): string {
-  const match = BRIDGE_MINTED_ID_PATTERN.exec(id);
+function stripLegacyBridgeIdPrefix(id: string): string {
+  const match = LEGACY_BRIDGE_MINTED_ID_PATTERN.exec(id);
   return match ? id.slice(match[0].length) : id;
 }
 
@@ -406,15 +428,6 @@ function currentSession(
 
 function releaseSession(session: CodexBridgeSession): void {
   session.closing = true;
-  // The session is gone, so its work is too. Retract the open-work claim or
-  // the runtime keeps refusing to reap a thread that no longer exists here.
-  if (session.openWorkReported) {
-    session.openWorkReported = false;
-    sendNotification(BRIDGE_NOTIFICATION_METHODS.threadOpenWork, {
-      threadId: session.bbThreadId,
-      open: false,
-    });
-  }
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
@@ -466,8 +479,12 @@ function decodeCodexOptions(
 
 /**
  * The construction-scoped option facts. A turn arriving with a different set
- * rebuilds the provider session, reported via session/replaced. Model and
- * serviceTier are deliberately absent: they ride every codex turn/start.
+ * rebuilds the provider session, reported via session/replaced. Compare the
+ * effective Codex permissions, not bb's source policy: auto-reviewed user and
+ * system turns differ in permissionEscalation (`ask` versus `deny`) but both
+ * map to the same Codex construction settings and must keep one session.
+ * Model and serviceTier are deliberately absent: they ride every codex
+ * turn/start.
  *
  * envVars is deliberately absent too: the runtime builds the shell
  * environment only for session-construction commands and sends
@@ -480,266 +497,78 @@ function constructionSignature(
   cwd: string,
   sessionOptions: CodexSessionOptions,
 ): string {
+  const permissionSettings = toCodexThreadPermissionSettings(sessionOptions);
   return JSON.stringify({
     cwd,
     reasoningLevel: sessionOptions.reasoningLevel ?? null,
     memoryEnabled: sessionOptions.memoryEnabled ?? null,
     providerSubagentsEnabled: sessionOptions.providerSubagentsEnabled ?? null,
-    permissionMode: sessionOptions.permissionMode,
-    permissionScope: sessionOptions.permissionScope,
-    approvalReviewer: sessionOptions.approvalReviewer,
-    permissionEscalation: sessionOptions.permissionEscalation,
+    approvalPolicy: permissionSettings.approvalPolicy,
+    approvalsReviewer: permissionSettings.approvalsReviewer,
+    sandbox: permissionSettings.sandbox,
   });
 }
 
 // ---------------------------------------------------------------------------
-// Canonical event emission: bridge-minted ids + delta-first synthesis
+// Thread-delta emission
 // ---------------------------------------------------------------------------
 
-function remapScope(
-  session: CodexBridgeSession,
-  scope: ThreadEventScope,
-): ThreadEventScope {
-  return scope.kind === "turn"
-    ? turnScope(toBridgeId(session, scope.turnId))
-    : scope;
-}
-
-function remapItem(
-  session: CodexBridgeSession,
-  item: ThreadEventItem,
-): ThreadEventItem {
-  return {
-    ...item,
-    id: toBridgeId(session, item.id),
-    ...(item.parentToolCallId !== undefined
-      ? { parentToolCallId: toBridgeId(session, item.parentToolCallId) }
-      : {}),
-  };
-}
-
-function remapEvent(
-  session: CodexBridgeSession,
-  event: ThreadEvent,
-): ThreadEvent {
-  const threadId = session.bbThreadId;
-  const scope = remapScope(session, event.scope);
-  switch (event.type) {
-    case "item/started":
-    case "item/completed":
-      return {
-        ...event,
-        threadId,
-        scope,
-        item: remapItem(session, event.item),
-      };
-    case "item/agentMessage/delta":
-    case "item/commandExecution/outputDelta":
-    case "item/fileChange/outputDelta":
-    case "item/reasoning/summaryTextDelta":
-    case "item/reasoning/textDelta":
-    case "item/plan/delta":
-    case "item/mcpToolCall/progress":
-    case "item/toolCall/progress":
-      return {
-        ...event,
-        threadId,
-        scope,
-        itemId: toBridgeId(session, event.itemId),
-        ...(event.parentToolCallId !== undefined
-          ? { parentToolCallId: toBridgeId(session, event.parentToolCallId) }
-          : {}),
-      };
-    case "turn/started":
-    case "provider/unhandled":
-      return {
-        ...event,
-        threadId,
-        scope,
-        ...(event.parentToolCallId !== undefined
-          ? { parentToolCallId: toBridgeId(session, event.parentToolCallId) }
-          : {}),
-      };
-    case "turn/completed": {
-      // Stamp the Codex turn id as the provider checkpoint: it is the value
-      // codex thread/fork accepts as lastTurnId, and unlike the bridge's
-      // in-memory maps it survives bridge restarts. Only completed turns are
-      // fork points — a failed or interrupted turn may be absent from the
-      // rollout.
-      const codexTurnId =
-        event.scope.kind === "turn" && event.status === "completed"
-          ? event.scope.turnId
-          : undefined;
-      return {
-        ...event,
-        threadId,
-        scope,
-        ...(event.providerCheckpointId === undefined &&
-        codexTurnId !== undefined
-          ? { providerCheckpointId: codexTurnId }
-          : {}),
-      };
-    }
-    default:
-      return { ...event, threadId, scope };
-  }
-}
-
-type SynthesizableDeltaType =
-  | "item/agentMessage/delta"
-  | "item/reasoning/summaryTextDelta"
-  | "item/reasoning/textDelta"
-  | "item/plan/delta";
-
-function synthesizeOpeningItem(
-  type: SynthesizableDeltaType,
-  itemId: string,
-): ThreadEventItem {
-  switch (type) {
-    case "item/agentMessage/delta":
-      return { type: "agentMessage", id: itemId, text: "" };
-    case "item/reasoning/summaryTextDelta":
-    case "item/reasoning/textDelta":
-      return { type: "reasoning", id: itemId, summary: [], content: [] };
-    case "item/plan/delta":
-      return { type: "plan", id: itemId, text: "" };
-  }
-}
-
-function isSynthesizableDeltaType(
-  type: ThreadEvent["type"],
-): type is SynthesizableDeltaType {
-  return (
-    type === "item/agentMessage/delta" ||
-    type === "item/reasoning/summaryTextDelta" ||
-    type === "item/reasoning/textDelta" ||
-    type === "item/plan/delta"
-  );
-}
-
-function rememberTrackedItemId(itemIds: Set<string>, itemId: string): void {
-  itemIds.add(itemId);
-  while (itemIds.size > MAX_TRACKED_ITEM_IDS_PER_SESSION) {
-    const oldest = itemIds.values().next();
-    if (oldest.done) {
-      return;
-    }
-    itemIds.delete(oldest.value);
-  }
-}
-
 /**
- * Stamp one translated (Codex-id-space) event into canonical form, tracking
- * open turns/items and synthesizing `item/started` when Codex streams a
- * text-bearing delta before opening its item — every item's first event must
- * be `item/started` (the delta-first rule). Command/file-change output deltas
- * are not synthesized: Codex always opens those items first, and fabricating
- * a commandExecution without its command would be worse than the anomaly.
+ * Emit one batched `thread/delta` notification, buffering while the session's
+ * identity is unknown (codex can emit startup warnings before thread/started;
+ * thread/identity must precede every thread/delta for the session). The
+ * bridge also tracks the open codex turns off its own delta stream — the
+ * command plane needs them for zero-work gating and child-exit settlement,
+ * and it is the one piece of timeline knowledge that cannot live runtime-side
+ * (a dead child answers no more events).
  */
-function toCanonicalEvents(
+function sendThreadDeltas(
   session: CodexBridgeSession,
-  event: ThreadEvent,
-): ThreadEvent[] {
-  const out: ThreadEvent[] = [];
-
-  if (event.type === "item/started") {
-    session.settledItemIds.delete(event.item.id);
-  } else if (
-    event.type === "item/completed" ||
-    event.type === "item/backgroundTask/completed"
-  ) {
-    if (session.settledItemIds.has(event.item.id)) {
-      return out;
-    }
-    rememberTrackedItemId(session.settledItemIds, event.item.id);
-  }
-
-  if (event.type === "turn/started" && event.scope.kind === "turn") {
-    session.openCodexTurnIds.add(event.scope.turnId);
-  }
-  if (event.type === "turn/completed" && event.scope.kind === "turn") {
-    session.openCodexTurnIds.delete(event.scope.turnId);
-  }
-  if (
-    event.type === "item/started" ||
-    event.type === "item/completed" ||
-    event.type === "item/backgroundTask/completed"
-  ) {
-    rememberTrackedItemId(session.openedItemIds, event.item.id);
-  }
-
-  if (
-    isSynthesizableDeltaType(event.type) &&
-    "itemId" in event &&
-    !session.openedItemIds.has(event.itemId)
-  ) {
-    rememberTrackedItemId(session.openedItemIds, event.itemId);
-    const item = synthesizeOpeningItem(event.type, event.itemId);
-    out.push(
-      remapEvent(session, {
-        type: "item/started",
-        threadId: event.threadId,
-        providerThreadId: event.providerThreadId,
-        scope: event.scope,
-        item:
-          event.parentToolCallId !== undefined
-            ? { ...item, parentToolCallId: event.parentToolCallId }
-            : item,
-      }),
-    );
-  }
-
-  out.push(remapEvent(session, event));
-  return out;
-}
-
-function sendThreadEvent(
-  session: CodexBridgeSession,
-  event: ThreadEvent,
+  deltas: readonly ThreadDelta[],
 ): void {
+  if (deltas.length === 0) {
+    return;
+  }
+  const outDeltas: ThreadDelta[] = [];
+  for (const delta of deltas) {
+    if (delta.kind === "turn.open") {
+      session.awaitingReplayedUsage = false;
+      if (delta.providerTurnId !== undefined) {
+        session.openCodexTurnIds.add(delta.providerTurnId);
+      }
+    }
+    if (delta.kind === "turn.boundary" && delta.providerTurnId !== undefined) {
+      session.openCodexTurnIds.delete(delta.providerTurnId);
+    }
+    // Replayed thread-state snapshot (thread/resume, thread/fork): the turn
+    // it names was never started in this session, so its vouched provider
+    // turn id would mint a bb turn id unknown to bb and the server would
+    // drop the usage as an orphan. Context-window usage is session state and
+    // may be thread-scoped; token usage is turn-only and, on resume,
+    // duplicates the snapshot bb already persisted for that turn, so drop it
+    // (#1727). The fresh session has no current or last turn yet, so the
+    // context-window delta, stripped of its vouched turn, assembles
+    // thread-scoped.
+    if (session.awaitingReplayedUsage) {
+      if (delta.kind === "usage") {
+        continue;
+      }
+      if (delta.kind === "contextWindow") {
+        const { providerTurnId: _replayedTurnId, ...threadScoped } = delta;
+        outDeltas.push(threadScoped);
+        continue;
+      }
+    }
+    outDeltas.push(delta);
+  }
   if (!session.identityAnnounced) {
-    session.pendingPreIdentityEvents.push(event);
+    session.pendingPreIdentityDeltas.push(...outDeltas);
     return;
   }
-  sendNotification(BRIDGE_NOTIFICATION_METHODS.threadEvent, {
+  sendNotification(THREAD_DELTA_NOTIFICATION_METHOD, {
     threadId: session.bbThreadId,
-    event,
+    deltas: outDeltas,
   });
-}
-
-/**
- * Codex models native subagents as tool calls, not as bb background tasks, so
- * the runtime's own background-work tracker cannot see them. Report the
- * current value after every batch of translated events: a session release must
- * not stop this process while a child agent still runs or still owes a
- * followup turn.
- */
-function reportOpenThreadWork(session: CodexBridgeSession): void {
-  const codexThreadId = session.codexThreadId;
-  const open =
-    codexThreadId !== null &&
-    session.translator.hasOpenThreadWork({
-      providerThreadId: codexThreadId,
-    });
-  if (open === session.openWorkReported) {
-    return;
-  }
-  session.openWorkReported = open;
-  sendNotification(BRIDGE_NOTIFICATION_METHODS.threadOpenWork, {
-    threadId: session.bbThreadId,
-    open,
-  });
-}
-
-function emitTranslatedEvents(
-  session: CodexBridgeSession,
-  events: readonly ThreadEvent[],
-): void {
-  for (const event of events) {
-    for (const canonical of toCanonicalEvents(session, event)) {
-      sendThreadEvent(session, canonical);
-    }
-  }
 }
 
 function announceSessionIdentity(
@@ -753,18 +582,16 @@ function announceSessionIdentity(
     return;
   }
   session.identityAnnounced = true;
-  // Identity precedes every thread/event for the session (ordering rule).
+  // Identity precedes every thread/delta for the session (ordering rule).
   // Codex rollouts persist on disk, so every session is restorable.
   sendNotification(BRIDGE_NOTIFICATION_METHODS.threadIdentity, {
     threadId: session.bbThreadId,
     providerThreadId: codexThreadId,
     sessionRestorable: true,
   });
-  const buffered = session.pendingPreIdentityEvents;
-  session.pendingPreIdentityEvents = [];
-  for (const event of buffered) {
-    sendThreadEvent(session, event);
-  }
+  const buffered = session.pendingPreIdentityDeltas;
+  session.pendingPreIdentityDeltas = [];
+  sendThreadDeltas(session, buffered);
 }
 
 // ---------------------------------------------------------------------------
@@ -805,11 +632,10 @@ function handleChildNotification(
       announceSessionIdentity(session, parsed.data.thread.id);
     }
   }
-  emitTranslatedEvents(
+  sendThreadDeltas(
     session,
     session.translator.translateEvent(toProviderRuntimeEvent(method, params)),
   );
-  reportOpenThreadWork(session);
 }
 
 const codexChildToolCallParamsSchema = z.object({
@@ -819,27 +645,6 @@ const codexChildToolCallParamsSchema = z.object({
   tool: z.string().min(1),
   arguments: z.unknown(),
 });
-
-function remapApprovalPayload(
-  session: CodexBridgeSession,
-  payload: PendingInteractionPayload,
-): PendingInteractionPayload {
-  if (payload.kind !== "approval") {
-    return payload;
-  }
-  const subject = payload.subject;
-  switch (subject.kind) {
-    case "command":
-    case "file_change":
-    case "permission_grant":
-      return {
-        ...payload,
-        subject: { ...subject, itemId: toBridgeId(session, subject.itemId) },
-      };
-    default:
-      return payload;
-  }
-}
 
 function handleChildRequest(
   bbThreadId: string,
@@ -869,13 +674,13 @@ function handleChildRequest(
     void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.toolCall, {
       providerThreadId: session.codexThreadId ?? parsed.data.threadId,
       threadId: session.bbThreadId,
-      turnId:
-        parsed.data.turnId === null
-          ? null
-          : toBridgeId(session, parsed.data.turnId),
-      callId: toBridgeId(session, parsed.data.callId),
+      // Codex-native ids: the runtime adapter translates them through the
+      // delta assembler's maps (providerNativeIds below).
+      turnId: parsed.data.turnId,
+      callId: parsed.data.callId,
       tool: parsed.data.tool,
       arguments: parsed.data.arguments ?? {},
+      providerNativeIds: true,
     })
       .then((result) => {
         // The canonical tool-call result shape is codex's native response
@@ -889,6 +694,19 @@ function handleChildRequest(
         );
       });
     return;
+  }
+
+  // A macOS permission profile on a command approval is codex vocabulary
+  // bb's permission layer cannot grant: it goes on the timeline as its own
+  // row (`provider-codex/macos-permission`) and the approval proceeds for
+  // the command itself.
+  const macOsPermission = extractCodexMacOsPermissionRequest({
+    id: 0,
+    method,
+    params,
+  });
+  if (macOsPermission !== null) {
+    sendThreadDeltas(session, [buildMacOsPermissionItemDelta(macOsPermission)]);
   }
 
   let decoded: DecodedInteractiveRequest | null;
@@ -913,9 +731,11 @@ function handleChildRequest(
   void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
     providerThreadId: session.codexThreadId ?? request.providerThreadId,
     threadId: session.bbThreadId,
-    turnId:
-      request.turnId === null ? null : toBridgeId(session, request.turnId),
-    payload: remapApprovalPayload(session, request.payload),
+    // Codex-native ids: the runtime adapter translates the turn id and the
+    // approval subject's item id through the delta assembler's maps.
+    turnId: request.turnId,
+    payload: request.payload,
+    providerNativeIds: true,
   })
     .then((result) => {
       const resolution = pendingInteractionResolutionSchema.parse(result);
@@ -927,6 +747,32 @@ function handleChildRequest(
         error instanceof Error ? error.message : String(error),
       );
     });
+}
+
+/**
+ * The `provider-codex/macos-permission` row for a command approval that asked
+ * for macOS capabilities. Keyed by the approval's codex item id under its own
+ * channel, so a re-asked approval for the same command reuses the row.
+ */
+function buildMacOsPermissionItemDelta(
+  request: CodexMacOsPermissionRequest,
+): ThreadDelta {
+  return {
+    kind: "item.close",
+    key: {
+      providerItemId: `${request.item.approvalItemId}:macos-permission`,
+    },
+    status: "completed",
+    item: {
+      type: "extension",
+      kind: CODEX_MACOS_PERMISSION_EXTENSION_KIND,
+      payload: request.item,
+    },
+    presentation: macOsPermissionPresentation(
+      summarizeCodexMacOsPermissions(request.item.permissions),
+    ),
+    providerTurnId: request.turnId,
+  };
 }
 
 function handleChildExit(
@@ -941,23 +787,23 @@ function handleChildExit(
   session.connection = null;
 
   // Unexpected death with in-flight work: every accepted turn must reach a
-  // terminal state, so settle open turns as failed before reporting.
+  // terminal state, so settle open turns as failed before reporting. The
+  // boundaries ride keyed turn.boundary deltas — the bridge owns the
+  // open-turn set anyway for the zero-work gate, and the generic
+  // session-ended settlement would add item completions codex never emitted
+  // here (and settles turns as interrupted, not failed).
   const openTurnIds = [...session.openCodexTurnIds];
-  session.openCodexTurnIds.clear();
   const message = `codex app-server exited unexpectedly (code ${info.code ?? "null"}, signal ${info.signal ?? "null"})${info.stderrTail ? `: ${info.stderrTail}` : ""}`;
-  for (const codexTurnId of openTurnIds) {
-    sendThreadEvent(
-      session,
-      remapEvent(session, {
-        type: "turn/completed",
-        threadId: session.bbThreadId,
-        providerThreadId: session.codexThreadId ?? "",
-        scope: turnScope(codexTurnId),
-        status: "failed",
-        error: { message },
-      }),
-    );
-  }
+  sendThreadDeltas(
+    session,
+    openTurnIds.map((codexTurnId) => ({
+      kind: "turn.boundary",
+      providerTurnId: codexTurnId,
+      status: "failed",
+      error: { message },
+    })),
+  );
+  session.openCodexTurnIds.clear();
   sendNotification(BRIDGE_NOTIFICATION_METHODS.error, {
     threadId: session.bbThreadId,
     ...(session.codexThreadId !== null
@@ -965,16 +811,18 @@ function handleChildExit(
       : {}),
     message,
   });
-  // Nothing runs behind a dead child, so drop its live state and retract the
-  // open-work claim. The runtime's open-work view is level-triggered: without
-  // this the thread is never idle-reaped, and a stale tracked subagent would
-  // re-raise the claim on the next report.
+  // Nothing runs behind a dead child, so drop its live state and settle every
+  // delegation it still had open as failed: open delegations are open work
+  // for the runtime's reaper, and without the closes the thread would never
+  // be idle-reaped.
   if (session.codexThreadId !== null) {
-    session.translator.clearExitedChildThreadState({
-      providerThreadId: session.codexThreadId,
-    });
+    sendThreadDeltas(
+      session,
+      session.translator.clearExitedChildThreadState({
+        providerThreadId: session.codexThreadId,
+      }),
+    );
   }
-  reportOpenThreadWork(session);
   // The session entry stays (with its identity) so the next turn/start can
   // restore the thread from its rollout via session/replaced.
 }
@@ -984,6 +832,8 @@ function handleChildExit(
 // ---------------------------------------------------------------------------
 
 function spawnChildConnection(callbacks: {
+  /** The bb thread the child serves (record-mode scope); null when none. */
+  recordThreadId: string | null;
   onNotification: (method: string, params: unknown) => void;
   onRequest: (
     method: string,
@@ -1059,7 +909,7 @@ interface ConstructThreadSessionArgs {
   cwd: string;
   options: BridgeExecutionOptions;
   instructionMode: "append" | "replace";
-  dynamicTools?: { name: string; description: string; inputSchema: unknown }[];
+  dynamicTools?: DynamicTool[];
   request: CodexSessionConstructionRequest;
 }
 
@@ -1082,12 +932,19 @@ async function constructThreadSession(
   const translator = createCodexEventTranslator({
     additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
   });
+  translator.configureInjectedTools(
+    (args.dynamicTools ?? []).map((tool) => ({
+      name: tool.name,
+      ...(tool.presentation === undefined
+        ? {}
+        : { presentation: tool.presentation }),
+    })),
+  );
   const session: CodexBridgeSession = {
     bbThreadId: args.threadId,
     codexThreadId:
       args.request.kind === "resume" ? args.request.providerThreadId : null,
     serial,
-    idPrefix: `${bridgeIdEntropyPrefix}${serial}-`,
     connection: null,
     translator,
     construction: {
@@ -1099,12 +956,10 @@ async function constructThreadSession(
       args.cwd,
       decoded.sessionOptions,
     ),
-    openedItemIds: new Set(),
-    settledItemIds: new Set(),
     openCodexTurnIds: new Set(),
+    awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
-    pendingPreIdentityEvents: [],
-    openWorkReported: false,
+    pendingPreIdentityDeltas: [],
     closing: false,
   };
   sessionsByBbThreadId.set(args.threadId, session);
@@ -1113,8 +968,14 @@ async function constructThreadSession(
     // the child speaks keeps identity ahead of any startup notification.
     announceSessionIdentity(session, args.request.providerThreadId);
   }
+  // A fresh provider session may reuse codex-native turn/item ids (a resumed
+  // rollout, a restarted child): reset the assembler's id space for the
+  // thread before any of the new session's deltas. Buffered pre-identity for
+  // start/fork, so it still lands first.
+  sendThreadDeltas(session, [{ kind: "session.reset" }]);
 
   const connection = spawnChildConnection({
+    recordThreadId: args.threadId,
     onNotification: (method, params) =>
       handleChildNotification(args.threadId, serial, method, params),
     onRequest: (method, params, responder) =>
@@ -1183,11 +1044,12 @@ async function constructThreadSession(
           threadId: args.request.sourceProviderThreadId,
           ...(args.request.sourceProviderCheckpointId !== undefined
             ? {
-                // Checkpoints reaching a codex bridge are either bridge-minted
-                // turn ids (strip to the Codex turn id) or previously persisted
-                // Codex turn ids (pass through) — codex thread/fork takes the
-                // Codex turn id as lastTurnId either way.
-                lastTurnId: stripBridgeIdPrefix(
+                // Checkpoints reaching a codex bridge are raw Codex turn ids
+                // (turn.boundary stamps them natively) or legacy bridge-minted
+                // ids persisted before the narrow-grammar cutover (strip to
+                // the Codex turn id) — codex thread/fork takes the Codex turn
+                // id as lastTurnId either way.
+                lastTurnId: stripLegacyBridgeIdPrefix(
                   args.request.sourceProviderCheckpointId,
                 ),
               }
@@ -1273,6 +1135,7 @@ async function withMaintenanceChild<T>(
   fn: (connection: CodexAppServerConnection) => Promise<T>,
 ): Promise<T> {
   const connection = spawnChildConnection({
+    recordThreadId: null,
     onNotification: () => {},
     onRequest: (_method, _params, responder) => {
       responder.error(
@@ -1310,6 +1173,7 @@ async function getModelListConnection(): Promise<CodexAppServerConnection> {
 
   const connectionPromise = (async () => {
     const connection = spawnChildConnection({
+      recordThreadId: null,
       onNotification: () => {},
       onRequest: (_method, _params, responder) => {
         responder.error(
@@ -1379,8 +1243,6 @@ async function withChildForThread<T>(
 // ---------------------------------------------------------------------------
 
 type ThreadStartParamsShape = z.infer<typeof threadStartParamsSchema>;
-type ThreadResumeParamsShape = z.infer<typeof threadResumeParamsSchema>;
-type ThreadForkParamsShape = z.infer<typeof threadForkParamsSchema>;
 type TurnStartParamsShape = z.infer<typeof turnStartParamsSchema>;
 type TurnSteerParamsShape = z.infer<typeof turnSteerParamsSchema>;
 type ThreadStopParamsShape = z.infer<typeof threadStopParamsSchema>;
@@ -1404,6 +1266,12 @@ function handleInitialize(id: string | number): void {
       threadGoalClear: true,
       fork: "checkpoint",
       approvalEnforcedBy: "runtime",
+      // grammarVersions [3, 3] — this bridge emits the v3 delta grammar (one
+      // streaming dialect, one usage dialect; the v3 item shapes land per
+      // bridge in WS1b). steerMode "inject" — codex `turn/steer` injects into
+      // the live turn natively.
+      grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
+      steerMode: "inject",
     },
   };
   sendResult(id, result);
@@ -1558,11 +1426,10 @@ let syntheticZeroWorkTurnCounter = 0;
  */
 function scheduleZeroWorkTurnSettlement(args: {
   clientRequestId: TurnStartParamsShape["clientRequestId"];
-  codexThreadId: string;
   prepared: PreparedProviderCommandDispatch | null;
   session: CodexBridgeSession;
 }): void {
-  const { clientRequestId, codexThreadId, prepared, session } = args;
+  const { clientRequestId, prepared, session } = args;
   if (prepared === null) {
     return;
   }
@@ -1576,34 +1443,15 @@ function scheduleZeroWorkTurnSettlement(args: {
       return;
     }
     syntheticZeroWorkTurnCounter += 1;
-    const turnId = toBridgeId(
-      live,
-      `zero-work-${syntheticZeroWorkTurnCounter}`,
-    );
-    const base = {
-      threadId: live.bbThreadId,
-      providerThreadId: codexThreadId,
-      scope: turnScope(turnId),
-    };
+    const providerTurnId = `zero-work-${syntheticZeroWorkTurnCounter}`;
     // Canonical terminal shape: the turn opens, the input that started it is
     // acknowledged against that turn, and it settles. No providerCheckpointId
     // — a synthetic turn is not a codex fork point.
-    for (const event of [
-      { type: "turn/started" as const, ...base },
-      ...buildAcceptedUserMessageEvent({
-        clientRequestId,
-        providerThreadId: codexThreadId,
-        threadId: live.bbThreadId,
-        turnId,
-      }),
-      {
-        type: "turn/completed" as const,
-        ...base,
-        status: "completed" as const,
-      },
-    ]) {
-      sendThreadEvent(live, event);
-    }
+    sendThreadDeltas(live, [
+      { kind: "turn.open", providerTurnId },
+      { kind: "input.accepted", clientRequestId, providerTurnId },
+      { kind: "turn.boundary", providerTurnId, status: "completed" },
+    ]);
   }, ZERO_WORK_SETTLEMENT_GRACE_MS);
   timer.unref?.();
 }
@@ -1678,7 +1526,6 @@ async function handleTurnStart(
     sendResult(id, { threadId: params.threadId });
     scheduleZeroWorkTurnSettlement({
       clientRequestId: params.clientRequestId,
-      codexThreadId,
       prepared,
       session,
     });
@@ -1715,23 +1562,24 @@ async function handleTurnSteer(
     await session.connection.request({
       method: "turn/steer",
       params: {
+        // The runtime reverse-maps expectedTurnId to the codex-native turn id
+        // before dispatch (assembler-owned bidirectional maps).
         threadId: session.codexThreadId,
-        expectedTurnId: stripBridgeIdPrefix(params.expectedTurnId),
+        expectedTurnId: params.expectedTurnId,
         input: toCodexUserInput(params.input),
       },
       resultSchema: ignoredChildResultSchema,
       timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
     });
     // A steer joins the active turn; codex accepted it against the expected
-    // turn, so the acceptance is emitted against that bridge turn id.
-    for (const event of buildAcceptedUserMessageEvent({
-      clientRequestId: params.clientRequestId,
-      providerThreadId: session.codexThreadId,
-      threadId: session.bbThreadId,
-      turnId: params.expectedTurnId,
-    })) {
-      sendThreadEvent(session, event);
-    }
+    // turn, so the acceptance is emitted against that vouched turn.
+    sendThreadDeltas(session, [
+      {
+        kind: "input.accepted",
+        clientRequestId: params.clientRequestId,
+        providerTurnId: params.expectedTurnId,
+      },
+    ]);
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
     sendError(
@@ -1776,8 +1624,9 @@ async function handleThreadStop(
     await session.connection.request({
       method: "turn/interrupt",
       params: {
+        // Reverse-mapped runtime-side, like steer's expectedTurnId.
         threadId: session.codexThreadId,
-        turnId: stripBridgeIdPrefix(params.activeTurnId),
+        turnId: params.activeTurnId,
       },
       resultSchema: ignoredChildResultSchema,
       timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
@@ -1874,6 +1723,24 @@ async function handleRequest(
       break;
     case "model/list":
       await handleModelList(request.id);
+      break;
+    case "provider/health":
+      sendResult(request.id, await getCodexProviderHealth());
+      break;
+    case "provider/usage":
+      sendResult(request.id, await getCodexProviderUsage());
+      break;
+    case "provider/installation/status":
+      sendResult(
+        request.id,
+        await getCodexProviderInstallationStatus(request.params.requirement),
+      );
+      break;
+    case "provider/installation/run":
+      sendResult(
+        request.id,
+        await getCodexProviderInstallationRun(request.params.action),
+      );
       break;
     case "thread/start":
       await handleThreadConstruction(request.id, request.params, {

@@ -11,17 +11,11 @@ import {
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
-import { validatePluginBuildManifest } from "./plugin-manifest.js";
-import type { PluginBuildToolchain } from "./toolchain.js";
-
-const NODE_ESM_REQUIRE_BANNER = [
-  'import { createRequire as __createRequire } from "node:module";',
-  'import { dirname as __pathDirname } from "node:path";',
-  'import { fileURLToPath as __fileURLToPath } from "node:url";',
-  "const require = __createRequire(import.meta.url);",
-  "var __filename = __fileURLToPath(import.meta.url);",
-  "var __dirname = __pathDirname(__filename);",
-].join("\n");
+import { isRecord, validatePluginBuildManifest } from "./plugin-manifest.js";
+import {
+  NODE_ESM_REQUIRE_BANNER,
+  type PluginBuildToolchain,
+} from "./toolchain.js";
 
 const PLUGIN_SDK_HOST_RUNTIME_NAMESPACE = "bb-host-sdk-runtime";
 const HOST_STAGE_DIRECTORY_PREFIX = ".host-stage-";
@@ -76,10 +70,6 @@ export const HOST_ARTIFACT_RUNTIME_STUBS: Record<string, string> = {
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 interface SourceToken {
@@ -263,7 +253,7 @@ async function readPluginHostConfig(rootDir: string): Promise<{
   };
 }
 
-export interface PluginHostBuildResult {
+interface PluginHostBuildResult {
   jsPath: string;
   mapPath: string;
   metaPath: string;

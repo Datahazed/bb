@@ -109,6 +109,7 @@ export const APP_SHELL_MARKS = [
   "pending-interaction",
   "thread-panel",
   "file-opener",
+  "code-renderers",
   "content-scripts",
 ] as const;
 
@@ -611,26 +612,47 @@ function AppShellWireframeBody() {
             <span className="flex-1" />
             <MiniIcon icon={SidebarRightIcon} className="size-3.5" />
           </div>
-          {/* body: a file preview tab owned by a plugin file opener */}
-          <Mark
-            id="file-opener"
-            label="A plugin file viewer, opened for a matching extension"
-            className="m-2 flex-1 p-2.5"
-            edge
-            chipClassName="right-1 top-[96px]"
-          >
-            <span className="flex items-center gap-1.5 pb-2 text-foreground">
+          {/* body: a plugin-owned file preview whose supplied source content
+              uses the independently replaceable host renderer */}
+          <div className="m-2 flex-1 p-2.5">
+            <Mark
+              id="file-opener"
+              label="A plugin file viewer, opened for a matching extension"
+              className="flex items-center gap-1.5 pb-2 text-foreground"
+              edge
+              chipClassName="right-1 top-[96px]"
+            >
               <MiniIcon icon={File01Icon} className="size-3.5" />
               notes.md
               <PluginGlyph className="ml-auto size-3.5" />
-            </span>
-            <span aria-hidden className="block space-y-1.5">
-              <span className="block h-2 w-5/6 rounded-sm bg-muted/60" />
-              <span className="block h-2 w-2/3 rounded-sm bg-muted/60" />
-              <span className="block h-2 w-3/4 rounded-sm bg-muted/60" />
-              <span className="block h-2 w-1/2 rounded-sm bg-muted/60" />
-            </span>
-          </Mark>
+            </Mark>
+            <Mark
+              id="code-renderers"
+              label="A plugin renderer replacing BB's source or diff presentation"
+              className="block space-y-1.5"
+              edge
+              chipClassName="right-1 top-[145px]"
+            >
+              <span aria-hidden className="flex gap-2">
+                <span className="w-3 text-right text-[8px] text-subtle-foreground">
+                  1
+                </span>
+                <span className="h-2 w-4/5 rounded-sm bg-muted/60" />
+              </span>
+              <span aria-hidden className="flex gap-2">
+                <span className="w-3 text-right text-[8px] text-subtle-foreground">
+                  2
+                </span>
+                <span className="h-2 w-3/5 rounded-sm bg-muted/60" />
+              </span>
+              <span aria-hidden className="flex gap-2">
+                <span className="w-3 text-right text-[8px] text-subtle-foreground">
+                  3
+                </span>
+                <span className="h-2 w-2/3 rounded-sm bg-muted/60" />
+              </span>
+            </Mark>
+          </div>
         </div>
       </div>
     </WindowFrame>

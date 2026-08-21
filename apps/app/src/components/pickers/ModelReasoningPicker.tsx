@@ -14,7 +14,10 @@ import type {
   SystemProvidersQuery,
 } from "@bb/server-contract";
 import { type ReasoningLevel } from "@bb/domain";
-import { stripModelBrandPrefix } from "./model-brand-prefix";
+import {
+  stripModelBrandPrefix,
+  type ProviderPickerOption,
+} from "./model-brand-prefix";
 import { REASONING_LABELS } from "@/lib/reasoning-labels";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
@@ -48,8 +51,8 @@ import {
   OPTION_INTERACTIVE_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
-  type PickerOption,
-} from "./OptionPicker";
+} from "@bb/shared-ui/option-display";
+import { type PickerOption } from "./OptionPicker";
 import type { ModelPickerOption } from "./model-picker-option";
 import {
   formatModelLoadErrorText,
@@ -143,9 +146,9 @@ function fuzzyFilter<T>(
 // stripped from the rendered row, surprising the user.
 function modelSearchText(
   option: ModelPickerOption,
-  providerId: string,
+  brandPrefix: string | undefined,
 ): string {
-  return `${stripModelBrandPrefix(option.label, providerId)} ${option.routeProviderId ?? ""} ${option.value}`;
+  return `${stripModelBrandPrefix(option.label, brandPrefix)} ${option.routeProviderId ?? ""} ${option.value}`;
 }
 
 /**
@@ -156,7 +159,7 @@ function modelSearchText(
  * pointer/native-focus driven); during an active search its filtered options are
  * flattened inline instead, keeping every match reachable from the keyboard.
  */
-export type ModelNavRow =
+type ModelNavRow =
   | { kind: "model"; option: ModelPickerOption }
   | { kind: "more-toggle" };
 
@@ -203,7 +206,7 @@ export function buildModelNavRows({
 interface ModelReasoningPickerProps {
   // Provider state
   providerRouting?: SystemProvidersQuery;
-  providerOptions: readonly PickerOption<string>[];
+  providerOptions: readonly ProviderPickerOption[];
   selectedProviderId: string;
   /** Omit to render the provider as locked (tabs hidden, can't switch). */
   onSelectedProviderChange?: (value: string) => void;
@@ -234,7 +237,6 @@ interface ModelReasoningPickerProps {
   onFastModeChange: (enabled: boolean) => void;
   showFastModeToggle: boolean;
   serviceTierSupportByProvider?: Record<string, boolean>;
-  className?: string;
   /** Render with the dim, hover-to-foreground treatment used inside the prompt box. */
   muted?: boolean;
   /** Render with the popover open on mount. Story-only escape hatch. */
@@ -280,7 +282,6 @@ export function ModelReasoningPicker({
   onFastModeChange,
   showFastModeToggle,
   serviceTierSupportByProvider,
-  className,
   muted,
   defaultOpen = false,
   modal = true,
@@ -347,7 +348,7 @@ export function ModelReasoningPicker({
   const triggerModelLabel = modelIsLoading
     ? "Loading models..."
     : hasSelectedModel
-      ? stripModelBrandPrefix(selectedModelLabel, selectedProviderId)
+      ? stripModelBrandPrefix(selectedModelLabel, selectedProvider?.brandPrefix)
       : selectedModelLoadFailed
         ? hasAlternateSelectionPath
           ? "Select model"
@@ -479,17 +480,18 @@ export function ModelReasoningPicker({
   // Filtered model lists (client-side fuzzy search scoped to the active
   // provider). Matching uses the rendered (brand-stripped) label plus the model
   // id so search reflects what the user sees.
+  const activeBrandPrefix = activeProvider?.brandPrefix;
   const filteredModelOptions = useMemo(() => {
     return fuzzyFilter(activeModelOptions, normalizedQuery, (option) =>
-      modelSearchText(option, activeProviderId),
+      modelSearchText(option, activeBrandPrefix),
     );
-  }, [activeModelOptions, normalizedQuery, activeProviderId]);
+  }, [activeModelOptions, normalizedQuery, activeBrandPrefix]);
 
   const filteredMoreModelOptions = useMemo(() => {
     return fuzzyFilter(activeMoreModelOptions, normalizedQuery, (option) =>
-      modelSearchText(option, activeProviderId),
+      modelSearchText(option, activeBrandPrefix),
     );
-  }, [activeMoreModelOptions, normalizedQuery, activeProviderId]);
+  }, [activeMoreModelOptions, normalizedQuery, activeBrandPrefix]);
 
   // The single navigable-row model that drives arrow keys, Enter, active
   // highlighting, and active-descendant ids.
@@ -828,7 +830,6 @@ export function ModelReasoningPicker({
         LIST_HOVER_TRANSITION,
         muted && OPTION_MUTED_CLASS_NAME,
         disabled && "cursor-default disabled:opacity-100",
-        className,
       )}
     >
       <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME} title={triggerTitle}>
@@ -924,6 +925,8 @@ export function ModelReasoningPicker({
           "flex flex-col p-0",
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
           "max-md:w-full max-md:min-w-0 max-md:max-w-none",
+          !isCompactViewport &&
+            "max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain",
         )}
       >
         <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
@@ -1004,7 +1007,10 @@ export function ModelReasoningPicker({
             className={cn(
               "overflow-y-auto px-1 pb-1 pt-0",
               !isCompactViewport &&
-                "max-h-[min(250px,var(--radix-popover-content-available-height,250px)-80px)]",
+                // Preserve the model scroller's intended height when the outer
+                // menu is capped; otherwise this flex item collapses before the
+                // full desktop menu can scroll to the reasoning controls.
+                "shrink-0 max-h-[min(250px,var(--radix-popover-content-available-height,250px)-80px)]",
             )}
           >
             {isShowingModelError ? null : (
@@ -1038,11 +1044,11 @@ export function ModelReasoningPicker({
                       role={showSearchInput ? "option" : undefined}
                       isActive={active}
                       // The menu always reflects the provider whose models it
-                      // lists (committed or previewed) — strip with
-                      // `activeProviderId`.
+                      // lists (committed or previewed) — strip with the
+                      // active provider's declared prefix.
                       label={stripModelBrandPrefix(
                         option.label,
-                        activeProviderId,
+                        activeBrandPrefix,
                       )}
                       qualifier={option.routeProviderId}
                       selected={!isPreviewing && option.value === modelValue}
@@ -1061,7 +1067,7 @@ export function ModelReasoningPicker({
                     open={moreModelsOpen}
                     onOpenChange={setMoreModelsOpen}
                     openSub={openSub}
-                    activeProviderId={activeProviderId}
+                    activeBrandPrefix={activeBrandPrefix}
                     isPreviewing={isPreviewing}
                     modelValue={modelValue}
                     options={filteredMoreModelOptions}
@@ -1091,6 +1097,9 @@ export function ModelReasoningPicker({
                   <ModelLoadErrorMessage
                     error={activeModelLoadError}
                     providerLabel={activeProviderLabel}
+                    {...(activeProvider?.installUrl === undefined
+                      ? {}
+                      : { installUrl: activeProvider.installUrl })}
                   />
                 ) : activeModelLoadFailed ? (
                   activeModelFailureMessage
@@ -1257,7 +1266,7 @@ function MoreModelsSubmenu({
   open,
   onOpenChange,
   openSub,
-  activeProviderId,
+  activeBrandPrefix,
   isPreviewing,
   modelValue,
   options,
@@ -1266,7 +1275,7 @@ function MoreModelsSubmenu({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   openSub: () => void;
-  activeProviderId: string;
+  activeBrandPrefix: string | undefined;
   isPreviewing: boolean;
   modelValue: string;
   options: readonly ModelPickerOption[];
@@ -1357,7 +1366,7 @@ function MoreModelsSubmenu({
           {options.map((option) => (
             <MenuRowButton
               key={option.value}
-              label={stripModelBrandPrefix(option.label, activeProviderId)}
+              label={stripModelBrandPrefix(option.label, activeBrandPrefix)}
               qualifier={option.routeProviderId}
               selected={!isPreviewing && option.value === modelValue}
               onClick={() => onSelect(option.value)}

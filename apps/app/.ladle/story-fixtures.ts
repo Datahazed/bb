@@ -7,6 +7,10 @@ import type {
   ThreadListEntry,
   WorkspaceStatus,
 } from "@bb/domain";
+import type {
+  ProviderCliKey,
+  ProviderCliStatus,
+} from "@bb/host-daemon-contract";
 import type { ProjectResponse } from "@bb/server-contract";
 import { ClaudeIcon } from "../src/components/icons/ClaudeIcon";
 import { OpenAiIcon } from "../src/components/icons/OpenAiIcon";
@@ -411,6 +415,34 @@ export function makeHost(overrides: Partial<Host> = {}): Host {
     updatedAt: 100,
   };
   return { ...base, ...overrides };
+}
+
+export function makeProviderCliStatus(
+  provider: ProviderCliKey,
+  overrides: Partial<ProviderCliStatus> = {},
+): ProviderCliStatus {
+  const identity =
+    provider === "codex"
+      ? { displayName: "Codex", executableName: "codex" }
+      : provider === "claude-code"
+        ? { displayName: "Claude Code", executableName: "claude" }
+        : { displayName: "Cursor", executableName: "agent" };
+  return {
+    displayName: identity.displayName,
+    executableName: identity.executableName,
+    executablePath: `/usr/local/bin/${identity.executableName}`,
+    installed: true,
+    installSource: "npmGlobal",
+    currentVersion: "1.0.0",
+    latestVersion: "1.0.0",
+    minimumSupportedVersion: null,
+    npmPackageName: null,
+    npmGlobalPackageVersion: null,
+    installAction: null,
+    needsUpdate: false,
+    versionUnsupported: false,
+    ...overrides,
+  };
 }
 
 export function makeEnvironment(

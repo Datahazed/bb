@@ -22,24 +22,13 @@ import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import type { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 export type {
-  PluginApplyUpdateResult,
   PluginHandlerStats,
   PluginRuntimeStatus,
-  PluginServiceEntry,
   PluginUpdateCheckEntry,
 } from "@bb/server-contract";
 
 /** Live state of one registered background service. */
-export type PluginServiceState = "running" | "backoff" | "stopped";
-
-export interface PluginScheduleEntry {
-  name: string;
-  cron: string;
-  nextRunAt: number;
-  lastRunAt: number | null;
-  lastStatus: "running" | "ok" | "error" | null;
-  lastError: string | null;
-}
+type PluginServiceState = "running" | "backoff" | "stopped";
 
 export type PluginListEntry = InstalledPlugin;
 
@@ -63,8 +52,6 @@ export interface LoadedPlugin {
   manifest: PluginManifest;
   handle: PluginApiHandle;
   services: ServiceRuntime[];
-  isBuiltin: boolean;
-  builtinName: string | null;
 }
 
 export interface PluginHostArtifactSnapshot {
@@ -90,7 +77,7 @@ export interface PluginServiceDeps {
     hostId: string,
   ) => Promise<HostDaemonConnectTunnelIdentity>;
   /** Omitted only by isolated plugin tests that exercise no provider surface;
-   * `bb.agents.experimental_registerProvider` throws without it. */
+   * `bb.providers.register` throws without it. */
   providerRegistry?: ProviderRegistryService;
   /** Live provider-bridge artifacts, shared with the internal routes and
    * thread commands. Omitted only by isolated plugin tests that exercise no
@@ -142,6 +129,8 @@ export interface PluginServiceDeps {
     durationMs: number,
     onElapsed: () => void,
   ) => () => void;
+  /** Test seam for the periodic update-check timer. */
+  scheduleUpdateCheck?: (delayMs: number, onElapsed: () => void) => () => void;
   /** Test failpoint after state replay but before pointer restoration. */
   afterPluginRollbackStateRestored?: (args: {
     pluginId: string;

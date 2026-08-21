@@ -1,20 +1,29 @@
 import type { PromptInput, ThreadEvent } from "@bb/domain";
+import { threadEventSchema } from "@bb/domain";
+import { z } from "zod";
 import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_REQUEST_METHODS,
   initializeResultSchema,
-  threadEventNotificationSchema,
+  negotiateGrammarVersion,
   threadIdentityResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   ThreadEventGrammar,
   THREAD_EVENT_GRAMMAR_RULES,
 } from "../index.js";
+import { ASSEMBLER_GRAMMAR_VERSIONS } from "../assembler/delta-assembler.js";
 import {
   ConformanceClient,
   nextConformanceClientRequestId,
   type JsonRpcWireMessage,
 } from "./client.js";
+import { CONFORMANCE_ASSEMBLED_EVENT_METHOD } from "./types.js";
 import type { ConformanceCheckResult } from "./types.js";
+
+/** Params of the kit-internal assembled-event lane (see types.ts). */
+const assembledEventNotificationSchema = z
+  .object({ threadId: z.string().min(1), event: threadEventSchema })
+  .passthrough();
 
 export interface ConformanceSessionFixture {
   /** Workspace directory for the session under test. */
@@ -83,8 +92,10 @@ function threadEvents(
 ): ThreadEvent[] {
   context.client.drainIntoLog();
   const events: ThreadEvent[] = [];
-  for (const message of context.client.notifications("thread/event")) {
-    const parsed = threadEventNotificationSchema.safeParse(message.params);
+  for (const message of context.client.notifications(
+    CONFORMANCE_ASSEMBLED_EVENT_METHOD,
+  )) {
+    const parsed = assembledEventNotificationSchema.safeParse(message.params);
     if (parsed.success && parsed.data.threadId === threadId) {
       events.push(parsed.data.event);
     }
@@ -263,6 +274,7 @@ export async function runHandshakeScenario(
   const id = client.request(BRIDGE_REQUEST_METHODS.initialize, {
     protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
     client: { name: "bb-conformance", version: "0.0.1" },
+    grammarVersions: ASSEMBLER_GRAMMAR_VERSIONS,
   });
   const response = await client.waitForResponse(id);
   const title = "initialize answers a versioned handshake with capabilities";
@@ -280,6 +292,37 @@ export async function runHandshakeScenario(
           .join(
             "; ",
           )} (got ${JSON.stringify(response.result ?? response.error)})`,
+      ),
+    ];
+  }
+  // The runtime rejects a mismatched handshake at spawn (the version gates
+  // the timeline dialect), so a bridge that answers with another version
+  // would never get real traffic — surface that here, before a live run.
+  if (parsed.data.protocolVersion !== PROVIDER_BRIDGE_PROTOCOL_VERSION) {
+    return [
+      fail(
+        "handshake/initialize",
+        title,
+        `bridge answered protocol version ${parsed.data.protocolVersion}; this kit (and the runtime) require ${PROVIDER_BRIDGE_PROTOCOL_VERSION}`,
+      ),
+    ];
+  }
+  // The same gate for the delta grammar: the runtime refuses a bridge whose
+  // range shares no version with its assembler's, and a bridge that omits
+  // the field reads as the grammar its protocol version shipped with.
+  const [bridgeMin, bridgeMax] = parsed.data.capabilities.grammarVersions;
+  if (
+    negotiateGrammarVersion(
+      ASSEMBLER_GRAMMAR_VERSIONS,
+      parsed.data.capabilities.grammarVersions,
+    ) === null
+  ) {
+    const [runtimeMin, runtimeMax] = ASSEMBLER_GRAMMAR_VERSIONS;
+    return [
+      fail(
+        "handshake/initialize",
+        title,
+        `bridge reported grammarVersions [${bridgeMin}, ${bridgeMax}]; the runtime's assembler speaks [${runtimeMin}, ${runtimeMax}], so the handshake would be refused`,
       ),
     ];
   }
@@ -342,7 +385,7 @@ export async function runSessionLifecycleScenarios(
       ),
       skipped(
         "events/schema-valid",
-        "every thread/event payload is a valid ThreadEvent",
+        "every assembled event is a valid ThreadEvent",
         startSkipDetail,
       ),
       skipped(
@@ -375,7 +418,7 @@ export async function runSessionLifecycleScenarios(
     const title = "an accepted turn starts and settles";
     if (started === undefined || started === null) {
       results.push(
-        fail("turn/lifecycle", title, "no turn/started thread/event arrived"),
+        fail("turn/lifecycle", title, "no turn/started event arrived"),
       );
     } else if (completed === undefined || completed === null) {
       results.push(
@@ -385,23 +428,23 @@ export async function runSessionLifecycleScenarios(
       results.push(pass("turn/lifecycle", title));
     }
 
-    // events/schema-valid: every thread/event notification for this thread
-    // must parse; count the ones that did not.
+    // events/schema-valid: every assembled-event notification for this
+    // thread must parse; count the ones that did not.
     {
       client.drainIntoLog();
-      const raw = client.notifications("thread/event");
+      const raw = client.notifications(CONFORMANCE_ASSEMBLED_EVENT_METHOD);
       const invalid = raw.filter(
         (message) =>
-          !threadEventNotificationSchema.safeParse(message.params).success,
+          !assembledEventNotificationSchema.safeParse(message.params).success,
       );
-      const title2 = "every thread/event payload is a valid ThreadEvent";
+      const title2 = "every assembled event is a valid ThreadEvent";
       results.push(
         invalid.length === 0
           ? pass("events/schema-valid", title2)
           : fail(
               "events/schema-valid",
               title2,
-              `${invalid.length} thread/event notification(s) failed validation; first: ${JSON.stringify(invalid[0]?.params).slice(0, 400)}`,
+              `${invalid.length} assembled event notification(s) failed validation; first: ${JSON.stringify(invalid[0]?.params).slice(0, 400)}`,
             ),
       );
     }

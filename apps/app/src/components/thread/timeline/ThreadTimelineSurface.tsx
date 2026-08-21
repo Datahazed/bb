@@ -11,7 +11,7 @@ import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { usePreferredTheme } from "@/hooks/useTheme";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
 import { ThreadTimelineRows } from "./ThreadTimelineRows.js";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows.js";
@@ -68,7 +68,6 @@ export interface ThreadTimelineSurfaceProps {
   ongoingIndicatorLabel?: string;
   isStopping?: boolean;
   stoppingAnchorAt?: number;
-  timelineErrorLabel?: string;
   timelineErrorClassName?: string;
   timelineRows: TimelineRow[];
   threadId: string;
@@ -169,7 +168,6 @@ export function ThreadTimelineSurface({
   ongoingIndicatorLabel,
   isStopping = false,
   stoppingAnchorAt = 0,
-  timelineErrorLabel = "Failed to load timeline",
   timelineErrorClassName = "mt-6 text-destructive",
   timelineRows,
   threadId,
@@ -178,7 +176,9 @@ export function ThreadTimelineSurface({
   unreadDividerPlacement,
   workspaceRootPath,
 }: ThreadTimelineSurfaceProps) {
-  const preferredTheme = usePreferredTheme();
+  const systemConfigQuery = useSystemConfig();
+  const timelineWindowingEnabled =
+    systemConfigQuery.data?.experiments.timelineWindowing ?? false;
   const showActiveThinking =
     activeThinking !== null && ongoingIndicatorLabel === undefined;
   const activeThinkingText = activeThinking?.text.trim() ?? "";
@@ -216,7 +216,7 @@ export function ThreadTimelineSurface({
         (loadingContent ?? <DelayedThreadLoadingIndicator />)
       ) : timelineError ? (
         <TimelineStatusIndicator
-          label={timelineErrorLabel}
+          label="Failed to load timeline"
           className={timelineErrorClassName}
         />
       ) : timelineRowsWithPendingStop.length > 0 ? (
@@ -241,8 +241,8 @@ export function ThreadTimelineSurface({
           hasOlderTimelineRows={hasOlderTimelineRows}
           isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
           onLoadOlderRows={onLoadOlderRows}
-          themeType={preferredTheme}
           timelineRows={timelineRowsWithPendingStop}
+          timelineWindowingEnabled={timelineWindowingEnabled}
           threadId={threadId}
           threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
           unreadDividerAutoScroll={unreadDividerAutoScroll}
@@ -320,7 +320,7 @@ function LoadOlderMessages({
 }
 
 // Delay before revealing the loading indicator so fast loads don't flash.
-export const LOADING_INDICATOR_REVEAL_DELAY_MS = 200;
+const LOADING_INDICATOR_REVEAL_DELAY_MS = 200;
 
 function DelayedThreadLoadingIndicator() {
   const [visible, setVisible] = useState(false);

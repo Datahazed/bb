@@ -20,11 +20,11 @@ import {
   getRootComposeRoutePath,
   getThreadRoutePath,
   PLUGIN_PANEL_ROUTE_PATH,
-  THREAD_DETAIL_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
 } from "@/lib/route-paths";
 
 const FIRST_PANE_ID = "pane-1";
+const SPLITTABLE_THREAD_ROUTE_PATH = "/projects/:projectId/threads/:threadId";
 
 export function threadPaneContent(thread: ThreadRoutePathArgs): PaneContent {
   return {
@@ -47,9 +47,7 @@ export function createSinglePaneLayout(
   };
 }
 
-export function createSinglePaneContentLayout(
-  content: PaneContent,
-): SplitLayout {
+function createSinglePaneContentLayout(content: PaneContent): SplitLayout {
   return {
     root: { type: "pane", paneId: FIRST_PANE_ID, content },
     focusedPaneId: FIRST_PANE_ID,
@@ -87,7 +85,7 @@ export function paneContentForPathname(pathname: string): PaneContent | null {
     return { kind: "new-thread" };
   }
   const thread = matchPath(
-    { path: THREAD_DETAIL_ROUTE_PATH, end: false },
+    { path: SPLITTABLE_THREAD_ROUTE_PATH, end: false },
     pathname,
   );
   if (thread?.params.projectId && thread.params.threadId) {
@@ -179,7 +177,7 @@ export function applyThreadOpenToLayout(
     : splitPane(layout, layout.focusedPaneId, decision.zone, content);
 }
 
-export interface ThreadPaneActionLayoutResult {
+interface ThreadPaneActionLayoutResult {
   layout: SplitLayout;
   maximizedPaneId: string | null;
   /** Explicit preference update requested by the action, or null when unchanged. */

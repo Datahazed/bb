@@ -12,6 +12,10 @@ import {
   captureBridgeJsonRpcOutput,
   type CapturedBridgeJsonRpcOutput,
 } from "@bb/provider-bridge-protocol/testing";
+import {
+  createBridgeDeltaEventCollector,
+  toConformanceMessages,
+} from "@bb/provider-bridge-protocol/testing";
 
 /**
  * The pi bridge's conformance run: drives the bridge through the canonical
@@ -138,40 +142,48 @@ function createScriptedPiAgentSession(): ScriptedPiAgentSession {
     getContextUsage: vi.fn(() => undefined),
     hasExtensionHandlers: vi.fn(() => false),
     isStreaming: false,
-    prompt: vi.fn(async (promptText: string) => {
-      // A prompt the agent handles without emitting a single SDK event: the
-      // bridge's own pi/prompt/settled report is then the only signal that can
-      // settle the turn (#1431).
-      if (promptText === ZERO_WORK_PROMPT_TEXT) {
-        return;
-      }
-      scriptedTurnCounter += 1;
-      const text = `hello from turn ${scriptedTurnCounter}`;
-      emit(asPiSdkEvent({ type: "agent_start" }));
-      emit(
-        asPiSdkEvent({
-          type: "message_update",
-          assistantMessageEvent: {
-            type: "text_delta",
-            contentIndex: 0,
-            delta: text,
-          },
-        }),
-      );
-      emit(
-        asPiSdkEvent({
-          type: "agent_end",
-          messages: [
-            {
-              role: "assistant",
-              content: [{ type: "text", text }],
-              usage: { input: 12, output: 5 },
+    prompt: vi.fn(
+      async (
+        promptText: string,
+        options?: { preflightResult?: (accepted: boolean) => void },
+      ) => {
+        // Pi accepts a prompt it is about to run in preflight, which is what
+        // tells the bridge the input was consumed rather than queued.
+        options?.preflightResult?.(true);
+        // A prompt the agent handles without emitting a single SDK event: the
+        // bridge's own pi/prompt/settled report is then the only signal that
+        // can settle the turn (#1431).
+        if (promptText === ZERO_WORK_PROMPT_TEXT) {
+          return;
+        }
+        scriptedTurnCounter += 1;
+        const text = `hello from turn ${scriptedTurnCounter}`;
+        emit(asPiSdkEvent({ type: "agent_start" }));
+        emit(
+          asPiSdkEvent({
+            type: "message_update",
+            assistantMessageEvent: {
+              type: "text_delta",
+              contentIndex: 0,
+              delta: text,
             },
-          ],
-          willRetry: false,
-        }),
-      );
-    }),
+          }),
+        );
+        emit(
+          asPiSdkEvent({
+            type: "agent_end",
+            messages: [
+              {
+                role: "assistant",
+                content: [{ type: "text", text }],
+                usage: { input: 12, output: 5 },
+              },
+            ],
+            willRetry: false,
+          }),
+        );
+      },
+    ),
     sessionManager: { getLeafId: vi.fn(() => "pi-conformance-checkpoint") },
     setActiveToolsByName: vi.fn(),
     subscribe: vi.fn((listener: (event: AgentSessionEvent) => void) => {
@@ -239,12 +251,19 @@ afterEach(async () => {
 
 it("passes the canonical protocol suite against the scripted pi session", async () => {
   let drained = 0;
+  // The conformance kit's grammar checks run over canonical ThreadEvents; the
+  // pi bridge emits thread/delta. Run deltas through a real assembler (the
+  // runtime adapter's exact translation, held stateful across the whole run)
+  // and hand the kit its assembled-event notifications.
+  const collector = createBridgeDeltaEventCollector();
   const transport: BridgeConformanceTransport = {
     send: (line) => handleLine(line),
     takeMessages: () => {
       const fresh = output.messages.slice(drained);
       drained = output.messages.length;
-      return fresh;
+      return fresh.flatMap((message) =>
+        toConformanceMessages(message, collector),
+      );
     },
   };
 

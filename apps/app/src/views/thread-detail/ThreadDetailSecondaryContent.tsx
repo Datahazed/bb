@@ -6,7 +6,7 @@ import {
   usePluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
-import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import {
   ThreadMetadataCard,
   ThreadMetadataContent,
@@ -22,15 +22,19 @@ type ThreadTimelinePaneProps = Omit<
   "footer"
 >;
 type ThreadSecondaryPanelProps = Omit<
-  ComponentProps<typeof ThreadSecondaryPanel>,
+  ComponentProps<typeof LazyThreadSecondaryPanel>,
   | "metadataContent"
   | "renderAsDrawer"
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
-  | "browserDeck"
+  | "renderBrowserDeck"
+  | "drawerFallback"
 > & {
   renderBrowserDeck?: (args: {
+    activeBrowserTabId?: string | null;
+    canHandleBrowserCommands?: boolean;
     canShowNativeBrowserView: boolean;
+    onNativeFocus?: () => void;
   }) => ReactNode;
 };
 
@@ -82,13 +86,17 @@ function ThreadDetailSecondaryContentBody({
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
 
   // Mirror ForksRow's query (deduped by react-query) so the visibility gate
-  // accounts for the lazily fetched Forks row.
-  const forksQuery = useThreads({
-    projectId: metadata.thread.projectId,
-    sourceThreadId: metadata.thread.id,
-    originKind: "fork",
-    archived: false,
-  });
+  // accounts for the lazily fetched Forks row. Only the open panel renders the
+  // Info tab, so a closed panel does not need the request.
+  const forksQuery = useThreads(
+    {
+      projectId: metadata.thread.projectId,
+      sourceThreadId: metadata.thread.id,
+      originKind: "fork",
+      archived: false,
+    },
+    { enabled: isSecondaryPanelOpen },
+  );
   const hasForks = (forksQuery.data?.length ?? 0) > 0;
   const metadataContent = useMemo(
     () =>
@@ -137,9 +145,18 @@ function ThreadDetailSecondaryContentBody({
           onToggleMainCollapse,
           resizablePanelId,
         }) => (
-          <ThreadSecondaryPanel
+          <LazyThreadSecondaryPanel
             {...threadSecondaryPanelProps}
-            browserDeck={renderBrowserDeck?.({ canShowNativeBrowserView })}
+            drawerFallback={<ThreadMetadataLoadingSkeleton />}
+            renderBrowserDeck={(activeBrowserTabId, pane) =>
+              renderBrowserDeck?.({
+                activeBrowserTabId,
+                canHandleBrowserCommands:
+                  canShowNativeBrowserView && pane.isFocused,
+                canShowNativeBrowserView,
+                onNativeFocus: pane.onFocusPane,
+              })
+            }
             renderAsDrawer={presentation === "drawer"}
             isConversationCollapsed={
               presentation === "inline" && isMainCollapsed

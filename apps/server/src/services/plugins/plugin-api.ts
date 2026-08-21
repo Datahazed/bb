@@ -20,6 +20,7 @@ import type {
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
   PluginAgentToolExperimentalStatusLabels,
+  PluginAgentToolPresentation,
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
@@ -38,6 +39,7 @@ import type {
   PluginMentionSearchContext,
   PluginMentionTrigger,
   PluginProviderDeclaration,
+  PluginProviders,
   PluginRealtime,
   PluginRpc,
   PluginServerApi,
@@ -65,8 +67,8 @@ import {
   PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS,
   PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS,
   PLUGIN_HTTP_METHODS,
-  PLUGIN_MENTION_TRIGGER_VALUES,
   readRpcMethodContract,
+  registerSettingDescriptors,
   RESERVED_AGENT_TOOL_NAMES,
   RESERVED_BB_CLI_COMMANDS,
   RPC_METHOD_PATTERN,
@@ -78,60 +80,20 @@ import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
-import {
-  readPluginSettingsValues,
-  registerSettingDescriptors,
-} from "./plugin-settings.js";
+import { readPluginSettingsValues } from "./plugin-settings.js";
 
 // The backend plugin API contract lives in @get-bb/plugin-sdk (plugin authors
 // compile against it); this module implements it. Re-exported so server code
 // keeps one import site for plugin API types.
 export type {
   BbPluginApi,
-  PluginAgentConfiguration,
   PluginAgentConfigurationContext,
-  PluginAgentToolContentPart,
   PluginAgentToolContext,
-  PluginAgentToolExperimentalStatusLabels,
-  PluginAgentToolRegistrationBase,
-  PluginAgentToolResult,
-  PluginAgents,
-  PluginBackground,
-  PluginCli,
   PluginCliCommandInfo,
   PluginCliContext,
-  PluginCliRegistration,
-  PluginCliResult,
-  PluginEvents,
-  PluginHttp,
-  PluginHttpAuthMode,
-  PluginHttpHandler,
-  PluginHosts,
-  PluginKvStorage,
-  PluginLogger,
-  PluginMentionItem,
-  PluginMentionProviderRegistration,
-  PluginMentionSearchContext,
   PluginMentionTrigger,
-  PluginRealtime,
-  PluginRpc,
-  PluginRpcContract,
-  PluginRpcError,
-  PluginRpcErrorCode,
-  PluginRpcHandlers,
-  PluginRpcMethodContract,
-  PluginRpcValidationIssue,
-  PluginServerApi,
-  PluginSettings,
-  PluginSettingsHandle,
-  PluginSettingsValues,
-  PluginStatusApi,
-  PluginStorage,
-  PluginThreadEventHandler,
   PluginThreadEventName,
   PluginThreadEventPayloads,
-  PluginUi,
-  StandardSchemaV1,
 } from "@get-bb/plugin-sdk";
 
 /**
@@ -139,7 +101,7 @@ export type {
  * reload/disable (pi's stale-context discipline): captured `bb` references
  * from a previous load fail loudly instead of acting on dead state.
  */
-export class PluginContextStaleError extends Error {
+class PluginContextStaleError extends Error {
   constructor(pluginId: string) {
     super(
       `plugin "${pluginId}" used a stale API handle — it was reloaded or disabled; ` +
@@ -150,26 +112,19 @@ export class PluginContextStaleError extends Error {
 }
 
 /**
- * Thrown from a background service's `start()` to mark the plugin
+ * An error thrown from a background service's `start()` to mark the plugin
  * `needs-configuration` (e.g. no API key yet) instead of crash-looping: the
  * service is not restarted until the plugin is reloaded or its settings are
- * saved (which reloads it). Matched by name too, so plugin code without a
+ * saved (which reloads it). Matched by name, so plugin code without a
  * runtime import can `throw Object.assign(new Error(msg), { name:
  * "NeedsConfigurationError" })`.
  */
-export class NeedsConfigurationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "NeedsConfigurationError";
-  }
-}
-
 export function isNeedsConfigurationError(error: unknown): error is Error {
   return error instanceof Error && error.name === "NeedsConfigurationError";
 }
 
 /** Per-event handler lists recorded by `bb.events.on`; dropped with the handle. */
-export type PluginThreadEventHandlers = {
+type PluginThreadEventHandlers = {
   [E in PluginThreadEventName]: Array<PluginThreadEventHandler<E>>;
 };
 
@@ -201,6 +156,9 @@ export interface PluginAgentToolRecord {
   description: string;
   /** Native timeline labels, null when the standard BB title should render. */
   experimentalStatusLabels: PluginAgentToolExperimentalStatusLabels | null;
+  /** The plugin's declared row presentation (grammar v3), null when it
+   * declared none; the plugin service resolves the full presentation. */
+  experimentalPresentation: PluginAgentToolPresentation | null;
   /** Instructions snippet for the thread-instructions assembly; null when
    * the registration carried none (description-only). */
   instructions: string | null;
@@ -217,14 +175,10 @@ export interface PluginAgentToolRecord {
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
 
-export {
-  PLUGIN_MENTION_TRIGGER_VALUES,
-  RESERVED_AGENT_TOOL_NAMES,
-  RESERVED_BB_CLI_COMMANDS,
-};
+export { RESERVED_AGENT_TOOL_NAMES };
 
 /** Runtime record of a registered mention provider. */
-export interface PluginMentionProviderRecord {
+interface PluginMentionProviderRecord {
   id: string;
   label: string;
   triggers: readonly PluginMentionTrigger[];
@@ -243,14 +197,14 @@ export interface PluginBackgroundServiceRecord {
 }
 
 /** Runtime record of a registered schedule; cron is validated at registration. */
-export interface PluginScheduleRecord {
+interface PluginScheduleRecord {
   name: string;
   cron: string;
   fn: () => void | Promise<void>;
 }
 
 /** Validated record of the plugin's `bb.cli.register` call. */
-export interface PluginCliRegistrationRecord {
+interface PluginCliRegistrationRecord {
   name: string;
   summary: string;
   commands: PluginCliCommandInfo[];
@@ -260,7 +214,7 @@ export interface PluginCliRegistrationRecord {
   ) => PluginCliResult | Promise<PluginCliResult>;
 }
 
-export type PluginSettingsListener = (
+type PluginSettingsListener = (
   next: Record<string, PluginSettingValue | undefined>,
   prev: Record<string, PluginSettingValue | undefined>,
 ) => void;
@@ -311,11 +265,11 @@ export interface PluginApiHandle {
   invalidate(): void;
 }
 
-export type PluginHostWorkerExitHandler = (event: {
+type PluginHostWorkerExitHandler = (event: {
   hostId: string;
 }) => void | Promise<void>;
 
-export interface PluginHostSignalHandler {
+interface PluginHostSignalHandler {
   signal: string;
   payloadSchema: StandardSchemaV1;
   handler: (event: {
@@ -325,13 +279,13 @@ export interface PluginHostSignalHandler {
 }
 
 /** Provider registered by `bb.agents.contributeInstructions`. */
-export type PluginInstructionProvider = (ctx: {
+type PluginInstructionProvider = (ctx: {
   threadId: string;
   projectId: string;
 }) => string | null;
 
 /** Provider registered by `bb.agents.configure`. */
-export type PluginAgentConfigurationProvider = (
+type PluginAgentConfigurationProvider = (
   context: PluginAgentConfigurationContext,
 ) => PluginAgentConfiguration;
 
@@ -340,6 +294,95 @@ export type PluginAgentConfigurationProvider = (
  * default attribution (`origin: "plugin"`, `originPluginId: <plugin id>`)
  * unless the plugin sets those fields explicitly.
  */
+/**
+ * The declared shape of `experimental_presentation`, copied field by field so
+ * a plugin's object cannot smuggle prototypes or extra markup into the
+ * persisted row. Labels share the status-label length cap.
+ */
+function parsePluginAgentToolPresentation(
+  toolName: string,
+  value: unknown,
+): PluginAgentToolPresentation | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `tool "${toolName}" experimental_presentation must be an object`,
+    );
+  }
+  const declared = value as Record<string, unknown>;
+  const presentation: PluginAgentToolPresentation = {};
+  if (declared.label !== undefined) {
+    const label = declared.label;
+    if (
+      typeof label !== "object" ||
+      label === null ||
+      typeof (label as { pending?: unknown }).pending !== "string" ||
+      typeof (label as { completed?: unknown }).completed !== "string"
+    ) {
+      throw new Error(
+        `tool "${toolName}" experimental_presentation.label must provide pending and completed strings`,
+      );
+    }
+    const { pending, completed } = label as {
+      pending: string;
+      completed: string;
+    };
+    if (
+      pending.trim().length === 0 ||
+      completed.trim().length === 0 ||
+      pending.length > PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS ||
+      completed.length > PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS
+    ) {
+      throw new Error(
+        `tool "${toolName}" experimental_presentation.label strings must be non-empty and at most ${PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS} characters`,
+      );
+    }
+    presentation.label = { pending, completed };
+  }
+  if (declared.icon !== undefined) {
+    const icon = declared.icon;
+    if (
+      typeof icon !== "object" ||
+      icon === null ||
+      typeof (icon as { glyph?: unknown }).glyph !== "string" ||
+      (icon as { glyph: string }).glyph.trim().length === 0
+    ) {
+      throw new Error(
+        `tool "${toolName}" experimental_presentation.icon must be { glyph: string }`,
+      );
+    }
+    presentation.icon = { glyph: (icon as { glyph: string }).glyph };
+  }
+  if (declared.suppress !== undefined) {
+    if (typeof declared.suppress !== "boolean") {
+      throw new Error(
+        `tool "${toolName}" experimental_presentation.suppress must be a boolean`,
+      );
+    }
+    presentation.suppress = declared.suppress;
+  }
+  if (declared.tint !== undefined) {
+    const tint = declared.tint;
+    if (
+      typeof tint !== "object" ||
+      tint === null ||
+      typeof (tint as { light?: unknown }).light !== "string" ||
+      typeof (tint as { dark?: unknown }).dark !== "string"
+    ) {
+      throw new Error(
+        `tool "${toolName}" experimental_presentation.tint must provide light and dark strings`,
+      );
+    }
+    presentation.tint = {
+      light: (tint as { light: string }).light,
+      dark: (tint as { dark: string }).dark,
+    };
+  }
+  return presentation;
+}
+
 function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
   return {
     ...sdk,
@@ -408,7 +451,7 @@ export function createPluginApi(options: {
       ports: readonly number[];
     }[],
   ) => void;
-  callPluginHost?: (args: {
+  callPluginHost: (args: {
     contract: PluginRpcContract;
     method: string;
     input: unknown;
@@ -425,11 +468,10 @@ export function createPluginApi(options: {
    * registrations (this plugin's own previous-load entries are ignored:
    * they are disposed before the staged replacements flush at activate). */
   isProviderIdTaken: (providerId: string) => boolean;
-  /** Throws unless this plugin may register this provider id at all: the id
-   * is not reserved for another (first-party) plugin, and this load can
-   * actually execute it — a bridge artifact it built, or an id the daemon
-   * bundles a bridge for. A declaration with no implementation behind it
-   * would list a provider whose every turn dies on the host. */
+  /** Throws unless this plugin can actually execute this provider id — a
+   * bridge artifact it built, or an id the daemon bundles a bridge for. A
+   * declaration with no implementation behind it would list a provider whose
+   * every turn dies on the host. */
   assertProviderRegistrable: (providerId: string) => void;
 }): PluginApiHandle {
   const {
@@ -594,15 +636,27 @@ export function createPluginApi(options: {
     },
   };
 
+  // One reused handle per plugin load: the SDK contract and the fake host
+  // both promise reuse, and a handle per call leaks fds until dispose (#1919).
+  // A plugin that closes the handle itself gets a fresh one on the next call.
+  let databaseHandle: Database.Database | undefined;
   const storage: PluginStorage = {
     kv,
     database() {
       assertLive();
+      if (databaseHandle?.open) return databaseHandle;
+      if (databaseHandle) {
+        // The plugin closed it; drop the dead wrapper so repeated
+        // close-and-reopen calls do not grow the list until dispose.
+        const index = databaseHandles.indexOf(databaseHandle);
+        if (index !== -1) databaseHandles.splice(index, 1);
+      }
       const dir = join(dataDir, "plugins", pluginId);
       mkdirSync(dir, { recursive: true });
       const database = new Database(join(dir, "data.db"));
       database.pragma("journal_mode = WAL");
       database.pragma("busy_timeout = 5000");
+      databaseHandle = database;
       databaseHandles.push(database);
       return database;
     },
@@ -847,6 +901,47 @@ export function createPluginApi(options: {
   let agentConfigurationProvider: PluginAgentConfigurationProvider | null =
     null;
   let instructionProvider: PluginInstructionProvider | null = null;
+  function registerProviderDeclaration(
+    declaration: PluginProviderDeclaration,
+  ): { dispose(): void } {
+    assertLive();
+    // Shared host policy: the fake host validates identically.
+    const normalized = validatePluginProviderDeclaration(declaration);
+    assertProviderRegistrable(normalized.id);
+    if (providerRegistrations.has(normalized.id)) {
+      throw new Error(
+        `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
+      );
+    }
+    const entry = {
+      declaration: normalized,
+      disposer: null as { dispose(): void } | null,
+      disposed: false,
+    };
+    if (activated) {
+      // Live registration: the registry enforces collisions itself.
+      entry.disposer = registerProvider(normalized);
+    } else if (isProviderIdTaken(normalized.id)) {
+      // Staged registration: surface the collision at call time so it
+      // fails the factory (and therefore the plugin load) like every other
+      // registration error, instead of exploding after the load commits.
+      throw new Error(
+        `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
+      );
+    }
+    providerRegistrations.set(normalized.id, entry);
+    const dispose = (): void => {
+      if (entry.disposed) return;
+      entry.disposed = true;
+      entry.disposer?.dispose();
+      if (providerRegistrations.get(normalized.id) === entry) {
+        providerRegistrations.delete(normalized.id);
+      }
+    };
+    disposeHooks.push(dispose);
+    return { dispose };
+  }
+
   const agents: PluginAgents = {
     configure(provider) {
       assertLive();
@@ -873,48 +968,14 @@ export function createPluginApi(options: {
       instructionProvider = provider;
     },
     experimental_registerProvider(declaration) {
-      assertLive();
-      // Shared host policy: the fake host validates identically.
-      const normalized = validatePluginProviderDeclaration(declaration);
-      assertProviderRegistrable(normalized.id);
-      if (providerRegistrations.has(normalized.id)) {
-        throw new Error(
-          `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
-        );
-      }
-      const entry = {
-        declaration: normalized,
-        disposer: null as { dispose(): void } | null,
-        disposed: false,
-      };
-      if (activated) {
-        // Live registration: the registry enforces collisions itself.
-        entry.disposer = registerProvider(normalized);
-      } else if (isProviderIdTaken(normalized.id)) {
-        // Staged registration: surface the collision at call time so it
-        // fails the factory (and therefore the plugin load) like every other
-        // registration error, instead of exploding after the load commits.
-        throw new Error(
-          `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
-        );
-      }
-      providerRegistrations.set(normalized.id, entry);
-      const dispose = (): void => {
-        if (entry.disposed) return;
-        entry.disposed = true;
-        entry.disposer?.dispose();
-        if (providerRegistrations.get(normalized.id) === entry) {
-          providerRegistrations.delete(normalized.id);
-        }
-      };
-      disposeHooks.push(dispose);
-      return { dispose };
+      return registerProviderDeclaration(declaration);
     },
     registerTool(tool: {
       name: string;
       description: string;
       instructions?: string;
       experimental_statusLabels?: PluginAgentToolExperimentalStatusLabels;
+      experimental_presentation?: PluginAgentToolPresentation;
       parameters: unknown;
       execute(
         params: never,
@@ -978,6 +1039,10 @@ export function createPluginApi(options: {
           );
         }
       }
+      const experimentalPresentation = parsePluginAgentToolPresentation(
+        name,
+        tool.experimental_presentation,
+      );
       if (typeof tool.execute !== "function") {
         throw new Error(
           `tool "${name}" must provide an execute(params, ctx) function`,
@@ -1052,6 +1117,7 @@ export function createPluginApi(options: {
                 pending: experimentalStatusLabels.pending,
                 completed: experimentalStatusLabels.completed,
               },
+        experimentalPresentation,
         instructions:
           tool.instructions !== undefined && tool.instructions.trim().length > 0
             ? tool.instructions
@@ -1197,10 +1263,6 @@ export function createPluginApi(options: {
   const hosts: PluginHosts = {
     experimental_client({ contract, experimental_signals }) {
       assertLive();
-      if (callPluginHost === undefined) {
-        throw new Error("host plugin transport is unavailable");
-      }
-      const invokeHost = callPluginHost;
       return {
         async call(method, input, callOptions) {
           assertLive();
@@ -1220,7 +1282,7 @@ export function createPluginApi(options: {
           ) {
             throw new Error(`host rpc method "${method}" requires a host id`);
           }
-          return invokeHost({
+          return callPluginHost({
             contract,
             method,
             input,
@@ -1307,6 +1369,12 @@ export function createPluginApi(options: {
     },
   };
 
+  const providers: PluginProviders = {
+    register(declaration) {
+      return registerProviderDeclaration(declaration);
+    },
+  };
+
   const api: BbPluginApi = {
     pluginId,
     log,
@@ -1318,6 +1386,7 @@ export function createPluginApi(options: {
     background,
     cli,
     agents,
+    providers,
     ui,
     events,
     status,

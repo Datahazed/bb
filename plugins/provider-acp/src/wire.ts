@@ -17,7 +17,6 @@ const acpTextContentBlockSchema = z
     text: z.string(),
   })
   .passthrough();
-export type AcpTextContentBlock = z.infer<typeof acpTextContentBlockSchema>;
 
 const acpOtherContentBlockSchema = z
   .object({
@@ -45,6 +44,7 @@ export function extractAcpContentText(
 // Tool calls
 // ---------------------------------------------------------------------------
 
+/** The ACP tool-call kind vocabulary; an absent kind reads as `other`. */
 export const acpToolKindSchema = z.enum([
   "read",
   "edit",
@@ -64,7 +64,6 @@ const acpToolCallStatusSchema = z.enum([
   "completed",
   "failed",
 ]);
-export type AcpToolCallStatus = z.infer<typeof acpToolCallStatusSchema>;
 
 const acpToolCallContentSchema = z.union([
   z
@@ -219,7 +218,6 @@ export const acpInitializeResultSchema = z
     authMethods: z.array(z.object({ id: z.string() }).passthrough()).optional(),
   })
   .passthrough();
-export type AcpInitializeResult = z.infer<typeof acpInitializeResultSchema>;
 
 /**
  * Some ACP agents serialize an absent optional string as an explicit `null`
@@ -238,9 +236,6 @@ const acpConfigOptionSelectOptionSchema = z
     name: acpOptionalString,
   })
   .passthrough();
-export type AcpConfigOptionSelectOption = z.infer<
-  typeof acpConfigOptionSelectOptionSchema
->;
 
 const acpConfigOptionSchema = z
   .object({
@@ -261,7 +256,6 @@ const acpSessionModelSchema = z
     description: acpOptionalString,
   })
   .passthrough();
-export type AcpSessionModel = z.infer<typeof acpSessionModelSchema>;
 
 const acpSessionModelsSchema = z
   .object({
@@ -347,7 +341,6 @@ export const acpSessionNewResultSchema = z
       .transform((options, ctx) => parseAcpConfigOptions(options, ctx)),
   })
   .passthrough();
-export type AcpSessionNewResult = z.infer<typeof acpSessionNewResultSchema>;
 
 export const acpConfigStateResultSchema = z
   .object({
@@ -394,7 +387,7 @@ export type AcpPermissionOptionKind = z.infer<
   typeof acpPermissionOptionKindSchema
 >;
 
-export const acpPermissionOptionSchema = z
+const acpPermissionOptionSchema = z
   .object({
     optionId: z.string(),
     name: z.string(),
@@ -410,9 +403,6 @@ export const acpRequestPermissionParamsSchema = z
     options: z.array(acpPermissionOptionSchema).min(1),
   })
   .passthrough();
-export type AcpRequestPermissionParams = z.infer<
-  typeof acpRequestPermissionParamsSchema
->;
 
 export const acpReadTextFileParamsSchema = z
   .object({

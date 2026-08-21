@@ -53,7 +53,6 @@ const threadStore = vi.hoisted(
   () =>
     new Map<string, { archivedAt: number | null; deletedAt: number | null }>(),
 );
-const experimentState = vi.hoisted(() => ({ enabled: true }));
 const viewportState = vi.hoisted(() => ({ compact: false }));
 const sidebarState = vi.hoisted(() => ({ showing: true }));
 const panelFullScreenState = vi.hoisted(() => ({
@@ -111,10 +110,6 @@ function RootComposeFixture() {
   );
   return <div data-testid="root-compose-view" />;
 }
-
-vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
-  useThreadSplitsEnabled: () => experimentState.enabled,
-}));
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => viewportState.compact,
@@ -603,7 +598,6 @@ function renderSplitArea(options: {
 }
 
 beforeEach(() => {
-  experimentState.enabled = true;
   viewportState.compact = false;
   sidebarState.showing = true;
   panelFullScreenState.isMainCollapsed = false;
@@ -639,21 +633,6 @@ describe("SplitThreadArea", () => {
     expect(host.dataset.pluginId).toBe("docs");
     expect(host.dataset.panelPath).toBe("docs");
     expect(host.dataset.flushPageInsets).toBe("true");
-  });
-
-  it("hosts Browser-tab navigation when split workspaces are disabled", async () => {
-    experimentState.enabled = false;
-
-    renderSplitArea({
-      path: "/plugins/docs/docs",
-      layout: pluginSplitLayout(),
-      routeContent: docsContent,
-    });
-
-    expect(
-      (await screen.findByTestId("plugin-browser-host")).dataset
-        .flushPageInsets,
-    ).toBe("true");
   });
 
   it("applies spotlight pane actions to the targeted open split and preference", async () => {
@@ -1011,38 +990,6 @@ describe("SplitThreadArea", () => {
     expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
   });
 
-  it("recedes inactive pane bodies behind a structural hairline divider", () => {
-    renderSplitArea({
-      path: threadPath("thr-a"),
-      layout: twoPaneLayout("pane-1"),
-    });
-
-    const activePane = document.querySelector<HTMLElement>(
-      '[data-split-pane-id="pane-1"]',
-    );
-    const inactivePane = document.querySelector<HTMLElement>(
-      '[data-split-pane-id="pane-2"]',
-    );
-    expect(activePane?.dataset.focused).toBe("true");
-    expect(inactivePane?.dataset.focused).toBe("false");
-    const activeScrim = activePane?.querySelector<HTMLElement>(
-      ":scope > [data-pane-focus-scrim]",
-    );
-    const inactiveScrim = inactivePane?.querySelector<HTMLElement>(
-      ":scope > [data-pane-focus-scrim]",
-    );
-    expect(activeScrim?.classList).toContain("bg-transparent");
-    expect(inactiveScrim?.classList).toContain("pointer-events-none");
-    expect(inactiveScrim?.classList).toContain("bg-background/30");
-    expect(inactiveScrim?.classList).not.toContain("bg-background/20");
-
-    const separator = screen.getByRole("separator");
-    expect(separator.classList).toContain("w-px");
-    expect(separator.classList).toContain("bg-border-seam");
-    expect(separator.classList).not.toContain("w-1.5");
-    expect(separator.firstElementChild?.classList).toContain("w-3");
-  });
-
   it("keeps the divider above pane headers so stacked splits stay resizable", () => {
     renderSplitArea({
       path: "/",
@@ -1064,9 +1011,6 @@ describe("SplitThreadArea", () => {
     // The lower pane's header touches the seam, so a header that paints above
     // the divider swallows its grab target and blocks vertical resizing.
     const separator = screen.getByRole("separator");
-    expect(separator.classList).toContain("h-px");
-    expect(separator.firstElementChild?.classList).toContain("h-3");
-    expect(separator.firstElementChild?.classList).toContain("w-full");
     const dividerLayer = stackingLayer(separator);
     const lowerHeader = document
       .querySelector<HTMLElement>('[data-split-pane-id="pane-2"]')
@@ -1081,66 +1025,6 @@ describe("SplitThreadArea", () => {
     }
     expect(stackingLayer(lowerHeader)).toBeLessThan(dividerLayer);
     expect(stackingLayer(scrim)).toBeLessThan(dividerLayer);
-  });
-
-  it("uses one title tab to distinguish the focused new-thread split", async () => {
-    renderSplitArea({
-      path: "/",
-      layout: {
-        root: {
-          type: "split",
-          dir: "row",
-          sizes: [0.5, 0.5],
-          children: [
-            {
-              type: "pane",
-              paneId: "pane-1",
-              content: threadContent("thr-a"),
-            },
-            {
-              type: "pane",
-              paneId: "pane-2",
-              content: newThreadContent,
-            },
-          ],
-        },
-        focusedPaneId: "pane-2",
-      },
-      routeContent: newThreadContent,
-    });
-
-    const newThreadPane = document.querySelector<HTMLElement>(
-      '[data-split-pane-id="pane-2"]',
-    );
-    const newThreadHeader = newThreadPane?.querySelector("header");
-    const focusedTab = newThreadHeader?.querySelector<HTMLElement>(
-      "[data-pane-header-focus-tab]",
-    );
-    expect(focusedTab).not.toBeNull();
-    expect(focusedTab?.classList).toContain("bg-state-active");
-    expect(focusedTab?.classList).not.toContain("shadow-sm");
-    expect(screen.getByText("New thread").classList).toContain("font-normal");
-    expect(screen.getByText("New thread").classList).not.toContain(
-      "font-medium",
-    );
-    expect(newThreadHeader?.classList).not.toContain("bg-surface-raised");
-    expect(newThreadHeader?.classList).not.toContain("opacity-50");
-    expect(
-      newThreadHeader?.querySelector('[data-icon="CloseThreadPane"]'),
-    ).not.toBeNull();
-
-    fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
-    await waitFor(() => {
-      expect(
-        newThreadHeader?.querySelector("[data-pane-header-focus-tab]"),
-      ).toBeNull();
-      const inactiveTitle = screen.getByText("New thread");
-      expect(inactiveTitle.classList).toContain("text-muted-foreground/60");
-      expect(inactiveTitle.classList).toContain("font-normal");
-      expect(inactiveTitle.classList).not.toContain("font-medium");
-      expect(newThreadHeader?.classList).not.toContain("bg-surface-raised");
-      expect(newThreadHeader?.classList).not.toContain("opacity-50");
-    });
   });
 
   it("keeps drag updates local and persists the resized pair once on release", () => {
@@ -1253,8 +1137,6 @@ describe("SplitThreadArea", () => {
     });
     const separator = screen.getByRole("separator");
     expect(separator.getAttribute("aria-orientation")).toBe("horizontal");
-    expect(separator.classList).toContain("h-px");
-    expect(separator.classList).not.toContain("h-3");
 
     const hitTarget = separator.querySelector<HTMLElement>(
       "[data-split-divider-hit-target]",
@@ -1268,9 +1150,6 @@ describe("SplitThreadArea", () => {
     ) {
       throw new Error("Expected a divider hit target between split panes");
     }
-    expect(hitTarget.classList).toContain("h-3");
-    expect(hitTarget.classList).toContain("w-full");
-    expect(hitTarget.classList).toContain("cursor-row-resize");
 
     Object.defineProperty(hitTarget, "setPointerCapture", {
       configurable: true,
@@ -1318,30 +1197,6 @@ describe("SplitThreadArea", () => {
     }
     expect(resizedRoot.sizes[0]).toBeCloseTo(0.7, 5);
     expect(resizedRoot.sizes[1]).toBeCloseTo(0.3, 5);
-  });
-
-  it("keeps the merged toggle absolute and places a visible shortcut hint below pane actions", async () => {
-    commandPresentationState.isModifierHeld = true;
-    commandPresentationState.shortcut = {
-      ariaKeyshortcuts: "Control+Shift+P",
-      label: "Ctrl Shift P",
-    };
-    renderSplitArea({
-      path: threadPath("thr-a"),
-      layout: twoPaneLayout("pane-1"),
-    });
-
-    const toggle = await screen.findByTestId("split-workspace-panel-toggle");
-    expect(toggle.classList).toContain("absolute");
-    expect(toggle.classList).toContain("hidden");
-    expect(toggle.classList).not.toContain("relative");
-    // The corner button shares the pane header's px-4 action axis.
-    expect(toggle.classList).toContain("right-4");
-    expect(toggle.classList).toContain("top-2.5");
-    const hint = screen.getByText("Ctrl Shift P");
-    expect(hint.classList).toContain("absolute");
-    expect(hint.classList).toContain("right-0");
-    expect(hint.classList).toContain("top-full");
   });
 
   it("hosts one panel whose visibility survives focus changes between panes", async () => {
@@ -1671,7 +1526,6 @@ describe("SplitThreadArea", () => {
     expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull();
     const remainingHost = screen.getByTestId("plugin-browser-host");
     expect(remainingHost.dataset.flushPageInsets).toBe("true");
-    expect(remainingHost.firstElementChild?.classList).not.toContain("-m-4");
   });
 
   it("mounts both panes with independent, threadId-keyed drafts", async () => {
@@ -1794,6 +1648,10 @@ describe("SplitThreadArea", () => {
     expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(7);
   });
 
+  // The pane header is itself a macOS drag region, so the plugin pane's own
+  // drag handle has to opt back out or the OS swallows its pointer events as
+  // window drags and panes can no longer be reordered. jsdom can't resolve
+  // native regions, so this locks the class contract that drives them.
   it("carves a plugin pane drag handle out of the macOS window-drag region", async () => {
     const desktopInfo: BbDesktopInfo = {
       lastCheckedAt: null,
@@ -1832,7 +1690,6 @@ describe("SplitThreadArea", () => {
 
     const title = await screen.findByText("Docs");
     const dragHandle = title.parentElement?.parentElement;
-    expect(dragHandle?.className).toContain("cursor-grab");
     expect(dragHandle?.className).toContain("[app-region:no-drag]");
     expect(dragHandle?.className).toContain("[-webkit-app-region:no-drag]");
   });

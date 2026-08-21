@@ -8,9 +8,11 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
+import { experimental_recordProviderChildIo } from "@get-bb/plugin-sdk/provider-bridge";
 import type { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
+const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
 
 export interface AcpAgentRequestResponder {
   result(value: unknown): void;
@@ -23,11 +25,16 @@ export interface AcpAgentExitInfo {
   stderrTail: string;
 }
 
-export interface CreateAcpAgentConnectionOptions {
+interface CreateAcpAgentConnectionOptions {
   command: string;
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
+  /**
+   * The bb thread this agent serves, for record mode; null for process-level
+   * agents (model discovery).
+   */
+  recordThreadId: string | null;
   onNotification(method: string, params: unknown): void;
   onRequest(
     method: string,
@@ -37,7 +44,7 @@ export interface CreateAcpAgentConnectionOptions {
   onExit(info: AcpAgentExitInfo): void;
 }
 
-export interface AcpAgentRequestArgs<TResult> {
+interface AcpAgentRequestArgs<TResult> {
   method: string;
   params: unknown;
   resultSchema: z.ZodType<TResult>;
@@ -66,8 +73,57 @@ interface ParsedAgentMessage {
   id?: string | number;
   method?: string;
   result?: unknown;
-  error?: { code?: number; message?: string };
+  error?: AgentErrorObject;
   params?: unknown;
+}
+
+interface AgentErrorObject {
+  code?: number;
+  message?: string;
+  data?: unknown;
+}
+
+function isClosedAgentStdinError(error: Error): boolean {
+  return (
+    "code" in error &&
+    typeof error.code === "string" &&
+    CLOSED_STDIN_ERROR_CODES.has(error.code)
+  );
+}
+
+/**
+ * ACP agents answer a failed request with a generic JSON-RPC message such as
+ * "Internal error" and put the real cause in `error.data` (for example
+ * `{ details: "bb-bridge: Transport closed" }`). Carry that cause into the
+ * rejection so agent-side failures are diagnosable from bb logs.
+ */
+export function formatAgentError(error: AgentErrorObject): string {
+  const message =
+    error.message ?? `ACP agent returned error code ${error.code ?? "unknown"}`;
+  const details = formatAgentErrorData(error.data);
+  return details === undefined ? message : `${message}: ${details}`;
+}
+
+function formatAgentErrorData(data: unknown): string | undefined {
+  if (data === undefined || data === null) {
+    return undefined;
+  }
+  if (typeof data === "string") {
+    return data.trim() === "" ? undefined : data;
+  }
+  if (
+    typeof data === "object" &&
+    "details" in data &&
+    typeof data.details === "string" &&
+    data.details.trim() !== ""
+  ) {
+    return data.details;
+  }
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return undefined;
+  }
 }
 
 function parseAgentLine(line: string): ParsedAgentMessage | null {
@@ -95,19 +151,14 @@ export function createAcpAgentConnection(
     env: options.env,
     stdio: ["pipe", "pipe", "pipe"],
   });
+  experimental_recordProviderChildIo(child, {
+    threadId: options.recordThreadId,
+  });
 
   const pending = new Map<number, PendingAgentRequest>();
   const stderrChunks: string[] = [];
   let nextRequestId = 1;
   let exited = false;
-
-  function writeLine(message: object): void {
-    const stdin = child.stdin;
-    if (!stdin || stdin.destroyed || !stdin.writable) {
-      return;
-    }
-    stdin.write(JSON.stringify(message) + "\n");
-  }
 
   function rejectAllPending(error: Error): void {
     for (const [, request] of pending) {
@@ -115,6 +166,46 @@ export function createAcpAgentConnection(
     }
     pending.clear();
   }
+
+  function closeForAgentStdin(error: Error): void {
+    if (exited) {
+      return;
+    }
+    exited = true;
+    const code =
+      "code" in error && typeof error.code === "string"
+        ? ` (${error.code})`
+        : "";
+    const detail = `stdin closed${code}: ${error.message}`;
+    rejectAllPending(
+      new AcpAgentExitedError(`ACP agent "${options.command}" ${detail}`),
+    );
+    // The protocol cannot recover once the agent stops reading requests.
+    // Kill immediately so a child that keeps other handles open cannot leak.
+    child.kill("SIGKILL");
+    const stderrTail = [...stderrChunks, detail].join("\n");
+    options.onExit({ code: null, signal: null, stderrTail });
+  }
+
+  function writeLine(message: object): void {
+    const stdin = child.stdin;
+    if (!stdin || stdin.destroyed || !stdin.writable) {
+      closeForAgentStdin(new Error("stdin is not writable"));
+      return;
+    }
+    stdin.write(JSON.stringify(message) + "\n");
+  }
+
+  // The agent can close its read end between the writable check in writeLine
+  // and the kernel accepting the write. Node reports that race asynchronously
+  // on the stream. A closed input is an irrecoverable transport failure: all
+  // requests must settle even when the child keeps other handles open.
+  child.stdin?.on("error", (error) => {
+    if (!isClosedAgentStdinError(error)) {
+      throw error;
+    }
+    closeForAgentStdin(error);
+  });
 
   if (child.stdout) {
     const stdoutLines = createInterface({
@@ -139,12 +230,7 @@ export function createAcpAgentConnection(
         }
         pending.delete(numericId);
         if (message.error) {
-          request.reject(
-            new Error(
-              message.error.message ??
-                `ACP agent returned error code ${message.error.code ?? "unknown"}`,
-            ),
-          );
+          request.reject(new Error(formatAgentError(message.error)));
         } else {
           request.resolve(message.result);
         }

@@ -61,6 +61,7 @@ import type {
   PluginMentionSearchContext,
   PluginMentionTrigger,
   PluginProviderDeclaration,
+  PluginProviders,
   PluginRealtime,
   PluginRpc,
   PluginServerApi,
@@ -888,13 +889,14 @@ function createFakePluginHostInternal(
   const storageRoot = persistentState.storageRoot;
 
   // One shared temp-file handle: every database() call sees the same data,
-  // like the host's handles over one on-disk file.
+  // like the host's handles over one on-disk file. Like the host, a handle
+  // the plugin closed itself is replaced on the next call.
   let databaseHandle: Database.Database | undefined;
   const storage: PluginStorage = {
     kv,
     database() {
       assertLive();
-      if (!databaseHandle) {
+      if (!databaseHandle?.open) {
         databaseHandle = new Database(join(storageRoot, "data.db"));
         databaseHandle.pragma("busy_timeout = 5000");
       }
@@ -1196,6 +1198,32 @@ function createFakePluginHostInternal(
   let instructionProvider:
     | ((ctx: { threadId: string; projectId: string }) => string | null)
     | null = null;
+  function registerProviderDeclaration(
+    declaration: PluginProviderDeclaration,
+  ): { dispose(): void } {
+    assertLive();
+    // The shared validator: the fake host must accept and reject provider
+    // declarations exactly like production.
+    const normalized = validatePluginProviderDeclaration(declaration);
+    if (
+      providerRegistrations.some((existing) => existing.id === normalized.id)
+    ) {
+      throw new Error(
+        `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
+      );
+    }
+    providerRegistrations.push(normalized);
+    let disposed = false;
+    const dispose = (): void => {
+      if (disposed) return;
+      disposed = true;
+      const index = providerRegistrations.indexOf(normalized);
+      if (index !== -1) providerRegistrations.splice(index, 1);
+    };
+    disposeHooks.push(dispose);
+    return { dispose };
+  }
+
   const agents: PluginAgents = {
     configure(provider) {
       assertLive();
@@ -1222,27 +1250,7 @@ function createFakePluginHostInternal(
       instructionProvider = provider;
     },
     experimental_registerProvider(declaration) {
-      assertLive();
-      // The shared validator: the fake host must accept and reject provider
-      // declarations exactly like production.
-      const normalized = validatePluginProviderDeclaration(declaration);
-      if (
-        providerRegistrations.some((existing) => existing.id === normalized.id)
-      ) {
-        throw new Error(
-          `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
-        );
-      }
-      providerRegistrations.push(normalized);
-      let disposed = false;
-      const dispose = (): void => {
-        if (disposed) return;
-        disposed = true;
-        const index = providerRegistrations.indexOf(normalized);
-        if (index !== -1) providerRegistrations.splice(index, 1);
-      };
-      disposeHooks.push(dispose);
-      return { dispose };
+      return registerProviderDeclaration(declaration);
     },
     registerTool(tool: {
       name: string;
@@ -1716,6 +1724,12 @@ function createFakePluginHostInternal(
     },
   };
 
+  const providers: PluginProviders = {
+    register(declaration) {
+      return registerProviderDeclaration(declaration);
+    },
+  };
+
   const bb: BbPluginApi = {
     pluginId,
     log,
@@ -1727,6 +1741,7 @@ function createFakePluginHostInternal(
     background,
     cli,
     agents,
+    providers,
     ui,
     events,
     status,

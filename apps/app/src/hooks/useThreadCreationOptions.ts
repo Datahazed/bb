@@ -1,4 +1,11 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   AvailableModel,
   PermissionMode,
@@ -16,15 +23,20 @@ import type {
 } from "@bb/server-contract";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
+import type { ProviderPickerOption } from "@/components/pickers/model-brand-prefix";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getProviderIconInfo } from "@/lib/provider-icon";
 import { REASONING_LABELS } from "@/lib/reasoning-labels";
-import { permissionModeRank, reconcileReasoningLevel } from "@bb/domain";
+import {
+  permissionModeRank,
+  providerModelCatalogDependsOnWorkspace,
+  reconcileReasoningLevel,
+} from "@bb/domain";
 import { selectPrimaryHost, useHosts } from "./queries/host-queries";
 import {
-  useOnboardingAgents,
+  useSystemProviderStates,
   useSystemConfig,
   useSystemExecutionOptions,
 } from "./queries/system-queries";
@@ -60,7 +72,7 @@ const EMPTY_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
 const DEFAULT_SUPPORTED_PERMISSION_MODES: readonly PermissionMode[] = ["full"];
 
 const PERMISSION_CEILING_REASON =
-  "Above this machine's permission limit. Change it in Settings → Machines.";
+  "Above the selected machine's permission limit. Change it in Settings → Machines.";
 
 type StringSelectionSetter = (value: string) => void;
 type ServiceTierSelectionSetter = (value: ServiceTier | undefined) => void;
@@ -73,7 +85,7 @@ interface ModelReasoningSelection {
   reasoningLevel: ReasoningLevel;
 }
 
-export interface ProviderModelReasoningSelection extends ModelReasoningSelection {
+interface ProviderModelReasoningSelection extends ModelReasoningSelection {
   providerId: string;
 }
 
@@ -81,12 +93,12 @@ type ProviderModelReasoningSelectionSetter = (
   selection: ProviderModelReasoningSelection,
 ) => void;
 
-export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
+interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   executionOptionsRouting: SystemProvidersQuery;
   selectedProviderId: string;
   setSelectedProviderId: StringSelectionSetter;
   setProviderModelReasoning: ProviderModelReasoningSelectionSetter;
-  providerOptions: PickerOption<string>[];
+  providerOptions: ProviderPickerOption[];
   hasMultipleProviders: boolean;
   selectedProviderDisplayName: string;
   selectedProviderComposerActions: readonly ProviderComposerAction[];
@@ -105,7 +117,6 @@ export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   modelOptions: ModelPickerOption[];
   moreModelOptions: ModelPickerOption[];
   isLoadingModels: boolean;
-  isResolvingInitialProvider: boolean;
   modelLoadFailed: boolean;
   modelLoadError: SystemExecutionOptionsModelLoadError | null;
   reasoningOptions: PickerOption<ReasoningLevel>[];
@@ -118,17 +129,35 @@ export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
 
 interface ResolveThreadCreationProviderRoutingArgs {
   environmentId?: string;
+  environmentHostId?: string;
   environmentSelectionValue: string;
+  providerId: string;
   scope: "component-local" | "new-thread";
 }
 
-export function resolveThreadCreationProviderRouting({
+function resolveThreadCreationProviderRouting({
   environmentId,
+  environmentHostId,
   environmentSelectionValue,
+  providerId,
   scope,
 }: ResolveThreadCreationProviderRoutingArgs): SystemProvidersQuery {
   if (scope === "component-local") {
-    return environmentId === undefined ? {} : { environmentId };
+    if (environmentId === undefined) {
+      return {};
+    }
+    // A host-scoped catalog is the same for every environment on the machine,
+    // so route by host: opening threads in different environments then shares
+    // one cached query instead of issuing a probe per environment. Workspace-
+    // scoped catalogs (and providers whose scope is unknown) keep the
+    // environment so the server can pass the workspace path through.
+    if (
+      environmentHostId !== undefined &&
+      !providerModelCatalogDependsOnWorkspace(providerId)
+    ) {
+      return { hostId: environmentHostId };
+    }
+    return { environmentId };
   }
   const parsed = parseEnvironmentValue(environmentSelectionValue);
   if (parsed?.type === "host") {
@@ -141,6 +170,10 @@ export function resolveThreadCreationProviderRouting({
 }
 
 const NO_MODEL_LOAD_ERROR: SystemExecutionOptionsModelLoadError | null = null;
+
+type InitialReadyProviderResolution =
+  | { status: "unresolved" }
+  | { status: "resolved"; providerId: string | null };
 
 function sanitizeStoredEnvironmentValue(stored: string): string {
   // Legacy guard: earlier iterations briefly persisted `reuse:<envId>` to
@@ -167,13 +200,14 @@ export function useThreadCreationOptions(
   const {
     enabled = true,
     environmentId,
+    environmentHostId,
     initialEnvironmentSelectionValue,
     initialModel,
     initialProviderId,
     initialPermissionMode,
     initialReasoningLevel,
     initialServiceTier,
-    preferConnectedProviderWhenUnset = false,
+    preferReadyProviderWhenUnset = false,
     preferenceProjectId,
     resolveProviderRouting,
     resetKey,
@@ -207,6 +241,8 @@ export function useThreadCreationOptions(
         initialServiceTier,
       }),
     );
+  const [initialReadyProvider, setInitialReadyProvider] =
+    useState<InitialReadyProviderResolution>({ status: "unresolved" });
   const localProviderSelectionsRef = useRef<
     Map<string, ModelReasoningSelection>
   >(new Map());
@@ -260,7 +296,7 @@ export function useThreadCreationOptions(
     usesLocalThreadSelections,
   ]);
 
-  const selectedProviderIdBeforeConnectedFallback = usesStoredCreateSelections
+  const selectedProviderIdBeforeReadyFallback = usesStoredCreateSelections
     ? storedProviderId || renderedThreadSelections.selectedProviderId
     : renderedThreadSelections.selectedProviderId;
   const rawServiceTier = usesStoredCreateSelections
@@ -281,26 +317,54 @@ export function useThreadCreationOptions(
     ? resolveProviderRouting(rawEnvironmentSelectionValue)
     : resolveThreadCreationProviderRouting({
         environmentId,
+        environmentHostId,
         environmentSelectionValue: rawEnvironmentSelectionValue,
+        providerId: selectedProviderIdBeforeReadyFallback,
         scope,
       });
-  const shouldResolveConnectedProvider =
+  const canResolveReadyProvider =
     executionOptionsQueryEnabled &&
     scope === "new-thread" &&
-    preferConnectedProviderWhenUnset &&
-    selectedProviderIdBeforeConnectedFallback.length === 0;
-  const connectedAgentsQuery = useOnboardingAgents({
-    enabled: shouldResolveConnectedProvider,
+    preferReadyProviderWhenUnset &&
+    selectedProviderIdBeforeReadyFallback.length === 0;
+  const shouldResolveReadyProvider =
+    canResolveReadyProvider && initialReadyProvider.status === "unresolved";
+  const providerStatesQuery = useSystemProviderStates({
+    enabled: shouldResolveReadyProvider,
     ...executionOptionsRouting,
     poll: false,
   });
-  const connectedProviderId = shouldResolveConnectedProvider
-    ? connectedAgentsQuery.data?.agents.find(
-        (agent) => agent.status === "connected",
+  const queriedReadyProviderId = shouldResolveReadyProvider
+    ? providerStatesQuery.data?.providers.find(
+        (provider) => provider.status === "ready",
       )?.providerId
     : undefined;
+  const readyProviderId =
+    initialReadyProvider.status === "resolved"
+      ? (initialReadyProvider.providerId ?? undefined)
+      : queriedReadyProviderId;
+  // This is an initial default, not a host-scoped live selection. Once the
+  // first routed probe settles, retain its answer so changing machines does
+  // not silently reselect the provider or repeat provider health probes.
+  useEffect(() => {
+    if (!shouldResolveReadyProvider || providerStatesQuery.isPending) {
+      return;
+    }
+    setInitialReadyProvider((current) =>
+      current.status === "resolved"
+        ? current
+        : {
+            status: "resolved",
+            providerId: queriedReadyProviderId ?? null,
+          },
+    );
+  }, [
+    providerStatesQuery.isPending,
+    queriedReadyProviderId,
+    shouldResolveReadyProvider,
+  ]);
   const rawSelectedProviderId =
-    selectedProviderIdBeforeConnectedFallback || connectedProviderId || "";
+    selectedProviderIdBeforeReadyFallback || readyProviderId || "";
   // Omission delegates the no-selection fallback to the server, whose product
   // default comes from the same provider catalog that orders the picker.
   const executionOptionsProviderId = executionOptionsQueryEnabled
@@ -319,8 +383,6 @@ export function useThreadCreationOptions(
     (executionOptionsQuery.isLoading ||
       (executionOptionsQuery.isPlaceholderData &&
         (executionOptionsQuery.data?.models.length ?? 0) === 0));
-  const isResolvingInitialProvider =
-    shouldResolveConnectedProvider && connectedAgentsQuery.isPending;
   const modelLoadError =
     executionOptionsQuery.data?.modelLoadError ?? NO_MODEL_LOAD_ERROR;
   const modelLoadFailed =
@@ -374,11 +436,20 @@ export function useThreadCreationOptions(
   );
 
   const providerOptions = useMemo(
-    (): PickerOption<string>[] =>
+    (): ProviderPickerOption[] =>
       providers.map((p) => ({
         value: p.id,
         label: p.displayName,
         icon: getProviderIconInfo(p.id, p.logoUrl ?? null)?.icon,
+        ...(p.strings?.brandPrefix === undefined
+          ? {}
+          : { brandPrefix: p.strings.brandPrefix }),
+        ...(p.strings?.planModeCopy === undefined
+          ? {}
+          : { planModeCopy: p.strings.planModeCopy }),
+        ...(p.strings?.installUrl === undefined
+          ? {}
+          : { installUrl: p.strings.installUrl }),
       })),
     [providers],
   );
@@ -630,9 +701,9 @@ export function useThreadCreationOptions(
   const touchedFieldsPendingReset =
     usesLocalThreadSelections && threadResetKeyRef.current !== resetKey;
   const effectiveInitialProviderSource: ExecutionInputFieldSource | undefined =
-    shouldResolveConnectedProvider &&
-    connectedProviderId !== undefined &&
-    effectiveProviderId === connectedProviderId
+    canResolveReadyProvider &&
+    readyProviderId !== undefined &&
+    effectiveProviderId === readyProviderId
       ? "client-preference"
       : undefined;
   const executionInputSources = useMemo(
@@ -965,7 +1036,6 @@ export function useThreadCreationOptions(
     modelOptions,
     moreModelOptions,
     isLoadingModels,
-    isResolvingInitialProvider,
     modelLoadFailed,
     modelLoadError,
     reasoningOptions,

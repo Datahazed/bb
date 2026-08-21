@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import {
   deleteThreadEventSuffixInTransaction,
   events,
@@ -242,7 +242,7 @@ function resolveEditableTurnCandidate(
         eq(events.threadId, thread.id),
         eq(events.type, "turn/started"),
         lt(events.sequence, requestRow.sequence),
-        sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`,
+        isNull(events.parentToolCallId),
       ),
     )
     .orderBy(desc(events.sequence))
@@ -260,11 +260,23 @@ function resolveEditableTurnCandidate(
   ) {
     conflict("This earlier turn has no provider history");
   }
+  // Runtime-assembled Codex timelines have bb-minted turn ids and persist the
+  // native Codex turn id as the checkpoint. Older timelines used the native
+  // UUID directly and have no checkpoint, so retain that compatibility
+  // fallback without ever forwarding a bb-minted id to Codex.
+  const legacyCodexCheckpoint =
+    thread.providerId === "codex" &&
+    precedingTurnId !== null &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      precedingTurnId,
+    )
+      ? precedingTurnId
+      : null;
   const precedingProviderCheckpoint =
     precedingTurnId === null
       ? null
       : thread.providerId === "codex"
-        ? precedingTurnId
+        ? (precedingCompletion?.providerCheckpointId ?? legacyCodexCheckpoint)
         : (precedingCompletion?.providerCheckpointId ?? null);
   if (precedingTurnId !== null && precedingProviderCheckpoint === null) {
     conflict("This earlier provider turn has no editable history checkpoint");
@@ -446,12 +458,9 @@ export async function editThreadMessage(
   await ensureHostSessionReadyForWork(deps, {
     hostId: readyEnvironment.hostId,
   });
-  const execution = await buildExecutionOptions(
-    deps,
-    args.payload,
-    { threadId: editableThread.id },
-    "client/turn/requested",
-  );
+  const execution = await buildExecutionOptions(deps, args.payload, {
+    threadId: editableThread.id,
+  });
 
   let stagedProviderThreadId: string | null = null;
   let rewindLeaseId: string | null = null;
@@ -467,7 +476,6 @@ export async function editThreadMessage(
       requestId: createClientTurnRequestId(),
       execution,
       permissionEscalation: resolvePermissionEscalation({
-        thread: editableThread,
         initiator,
       }),
       environment: readyEnvironment,

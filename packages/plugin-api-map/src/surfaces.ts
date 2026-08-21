@@ -203,6 +203,24 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Docs"],
       },
       {
+        id: "code-renderers",
+        title: "Source & diff renderers",
+        summary:
+          "Replaces bb's source-code or diff renderer everywhere that kind of content appears. With this, a plugin can:",
+        bullets: [
+          "Register the source-code and diff replacements independently",
+          "Apply each replacement across bb's file previews, timeline and environment diffs, and plugin pages",
+          "Hand any individual render back to bb's built-in renderer, and fall back to it automatically if the plugin is unavailable or crashes",
+        ],
+        apiSymbols: [
+          "PluginSourceCodeRendererRegistration",
+          "PluginSourceCodeRendererProps",
+          "PluginDiffRendererRegistration",
+          "PluginDiffRendererProps",
+        ],
+        experimental: true,
+      },
+      {
         id: "content-scripts",
         title: "App-wide scripts",
         summary:

@@ -10,6 +10,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import { useEditor, type Editor } from "@tiptap/react";
 import {
   useCallback,
+  useContext,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -24,6 +25,8 @@ import {
   type Ref,
 } from "react";
 import {
+  commandPillDismissedRangeEnd,
+  findActiveTrigger,
   orderCommandSuggestions,
   type ActiveTrigger,
   type CommandMenuState,
@@ -33,17 +36,21 @@ import {
   type PromptMentionSuggestion,
   type TypeaheadMenuState,
   type TypeaheadTrigger,
-} from "@/components/promptbox/mentions/types";
+} from "@bb/client-core";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import {
   useAppCommandKeyDispatch,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
-import { commandPillDismissedRangeEnd } from "@/components/promptbox/mentions/command-trigger";
-import { findActiveTrigger } from "@/components/promptbox/mentions/find-active-trigger";
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { ComposerActionsSlot } from "@/components/plugin/PluginComposerActions";
 import { useResolvedComposerEditor } from "@/components/plugin/composer-slot-hooks";
 import {
@@ -68,14 +75,14 @@ import { createJsonLocalStorage } from "@/lib/browser-storage";
 import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   type PluginMentionTrigger,
-} from "@/lib/plugin-mention-triggers";
+} from "@bb/client-core";
 import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import {
   arePromptDraftStatesEqual,
   isPromptDraftEmpty,
   type PromptDraftAttachment,
   type PromptDraftState,
-} from "@/lib/prompt-draft";
+} from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { VoiceRecordingBar } from "./VoiceRecordingBar";
@@ -113,6 +120,7 @@ import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
 import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 import { ComposerEditorSlot } from "./ComposerEditorSlot";
+import { QueuedEditorTypeaheadLayoutContext } from "./queued-editor-typeahead-layout";
 
 const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
@@ -210,10 +218,76 @@ function shouldFinishVoiceCompletionTransitionImmediately(): boolean {
 export interface PromptBoxSubmissionConfig {
   isSubmitting?: boolean;
   disabled?: boolean;
+  /** Explains why submission is disabled. Shown on hover and used as the action's accessible label. */
+  disabledReason?: string;
   title?: string;
   isRunning?: boolean;
   onStop?: () => void;
   onModifierSubmit?: () => void;
+}
+
+interface PromptSubmitButtonProps {
+  canSubmit: boolean;
+  className: string;
+  disabledReason: string | undefined;
+  isCompact: boolean;
+  isSubmitting: boolean;
+  isZenMode: boolean;
+  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  title: string;
+}
+
+function PromptSubmitButton({
+  canSubmit,
+  className,
+  disabledReason,
+  isCompact,
+  isSubmitting,
+  isZenMode,
+  onClick,
+  onPointerDown,
+  title,
+}: PromptSubmitButtonProps) {
+  const button = (
+    <Button
+      data-promptbox-submit-action=""
+      type="submit"
+      size={isCompact ? "icon" : "sm"}
+      variant="default"
+      aria-label={title}
+      disabled={!canSubmit}
+      onPointerDown={onPointerDown}
+      onClick={onClick}
+      className={className}
+    >
+      {isSubmitting ? (
+        <Icon name="Spinner" className="size-4 animate-spin" />
+      ) : isZenMode ? (
+        <Icon name="ArrowUp" className="size-4" />
+      ) : (
+        <Icon name="CornerDownLeft" className="size-4" />
+      )}
+    </Button>
+  );
+
+  if (!disabledReason) return button;
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            data-promptbox-submit-disabled-reason=""
+            className="inline-flex shrink-0"
+          >
+            {button}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">{disabledReason}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 /**
@@ -259,6 +333,11 @@ export interface TypeaheadCommandConfig {
   loadMore: () => void;
   /** Called whenever the active command query changes; null when no command trigger is active. */
   onQueryChange: (query: string | null) => void;
+  /**
+   * Called when the editor gains focus. Hosts use it to warm the command
+   * catalog before the first trigger char (see `useCommandSuggestions`).
+   */
+  onEditorFocus?: () => void;
 }
 
 /**
@@ -298,14 +377,14 @@ export interface AttachmentsConfig {
   projectId?: string;
 }
 
-export interface PromptBoxZenModeConfig {
+interface PromptBoxZenModeConfig {
   layout?: ZenModeLayout;
   storageKey?: string | null;
   resetKey?: string | number;
   resetOnSubmit?: boolean;
 }
 
-export interface PromptBoxCompactConfig {
+interface PromptBoxCompactConfig {
   isCompact: boolean;
   placeholder?: string;
 }
@@ -317,7 +396,7 @@ export interface HistoryConfig {
   resetKey?: string | number;
 }
 
-export type PromptVoiceState = "idle" | "recording" | "transcribing" | "error";
+type PromptVoiceState = "idle" | "recording" | "transcribing" | "error";
 
 export interface PromptVoiceConfig {
   state: PromptVoiceState;
@@ -343,9 +422,9 @@ export interface PromptBoxHandle {
 
 export type { PromptBoxAction } from "./PromptBoxActionsMenu";
 
-export type MentionMenuPlacement = "top" | "bottom";
+type MentionMenuPlacement = "top" | "bottom";
 
-export interface PromptBoxInternalProps {
+interface PromptBoxInternalProps {
   id?: string;
   value: string;
   mentionRanges: readonly PromptTextMention[];
@@ -484,8 +563,41 @@ function createTransientZenModeAtom() {
   );
 }
 
-function promptEditorValueKey(value: PromptEditorValueKey): string {
-  return JSON.stringify(value);
+/**
+ * Structural equality between the last value synced into the editor and the
+ * incoming controlled value. This used to be a JSON.stringify key compare,
+ * which re-serialized the full text twice per keystroke — several ms per
+ * character once a large paste (e.g. a 1 MB minified bundle) sits in the box.
+ * In the controlled round-trip the text and mention references are identical,
+ * so this normally settles on pointer equality alone.
+ */
+export function arePromptEditorValuesEqual(
+  left: PromptEditorValueKey | null,
+  right: PromptEditorValueKey,
+): boolean {
+  if (left === null) return false;
+  if (left.text !== right.text) return false;
+  if (left.mentions === right.mentions) return true;
+  if (left.mentions.length !== right.mentions.length) return false;
+  for (let index = 0; index < left.mentions.length; index += 1) {
+    const leftMention = left.mentions[index]!;
+    const rightMention = right.mentions[index]!;
+    if (leftMention === rightMention) continue;
+    if (
+      leftMention.start !== rightMention.start ||
+      leftMention.end !== rightMention.end
+    ) {
+      return false;
+    }
+    if (
+      leftMention.resource !== rightMention.resource &&
+      JSON.stringify(leftMention.resource) !==
+        JSON.stringify(rightMention.resource)
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function normalizePastedPlainText(text: string): string {
@@ -794,9 +906,13 @@ function revealPromptEditorSelection({
   const scrollContainerRect = scrollContainer.getBoundingClientRect();
   if (scrollContainerRect.height <= 0) return;
 
+  // Reveal the head, not `to`. While the user drags or Shift+Arrows a
+  // selection upward, the anchor stays below and `to` is the anchor. The
+  // browser autoscrolls toward the head; revealing `to` scrolled back toward
+  // the anchor on every selection update and the prompt jittered.
   let selectionRect: ReturnType<Editor["view"]["coordsAtPos"]>;
   try {
-    selectionRect = editor.view.coordsAtPos(editor.state.selection.to);
+    selectionRect = editor.view.coordsAtPos(editor.state.selection.head);
   } catch {
     return;
   }
@@ -1136,6 +1252,7 @@ export function PromptBoxInternal({
   const {
     isSubmitting = false,
     disabled: submitDisabled = false,
+    disabledReason: submitDisabledReason,
     title: submitTitle = "Submit (Enter)",
     isRunning = false,
     onStop,
@@ -1155,7 +1272,12 @@ export function PromptBoxInternal({
     isLoading: commandLoading,
     isError: commandError,
     onQueryChange: onCommandQueryChange,
+    onEditorFocus: onCommandEditorFocus,
   } = typeahead.command;
+  const onCommandEditorFocusRef = useRef(onCommandEditorFocus);
+  useEffect(() => {
+    onCommandEditorFocusRef.current = onCommandEditorFocus;
+  }, [onCommandEditorFocus]);
   const {
     items: attachments = [],
     isAttaching = false,
@@ -1180,6 +1302,10 @@ export function PromptBoxInternal({
   // Passive text autofocus opens the soft keyboard on coarse-pointer devices.
   const shouldAvoidSoftKeyboardAutofocus = isPointerCoarse;
   const formRef = useRef<HTMLFormElement>(null);
+  const typeaheadMenuRef = useRef<HTMLDivElement>(null);
+  const reportQueuedEditorTypeaheadLayout = useContext(
+    QueuedEditorTypeaheadLayoutContext,
+  );
   const blurAfterPointerSubmitRef = useRef(false);
   const heightAnimationFromRef = useRef<number | null>(null);
   const capturePromptBoxHeight = useCallback(() => {
@@ -1211,7 +1337,7 @@ export function PromptBoxInternal({
   const mentionRangesRef = useRef<readonly PromptTextMention[]>(mentionRanges);
   const placeholderRef = useRef(placeholder);
   const skipEditorChangeRef = useRef(false);
-  const editorValueKeyRef = useRef("");
+  const lastSyncedEditorValueRef = useRef<PromptEditorValueKey | null>(null);
   const triggerKeyRef = useRef("");
   const handleEditorKeyDownRef = useRef<
     (event: KeyboardEvent, isOriginalIPadHardwareEnter?: boolean) => boolean
@@ -1616,16 +1742,30 @@ export function PromptBoxInternal({
     [richTextEditing],
   );
 
+  // TipTap reads `content` only when it (re)creates the editor, which happens
+  // on the `[richTextEditing]` deps below. Building it on every render parsed
+  // the whole prompt each keystroke (~7 ms for a 1 MB rich-text draft). The
+  // value the content was built from travels with it so onCreate records the
+  // matching "last synced" value; the controlled-value effect then applies any
+  // newer props through setContent.
+  const initialEditorContent = useMemo(() => {
+    const initialValue: PromptEditorValueKey = {
+      text: value,
+      mentions: mentionRanges,
+    };
+    return {
+      value: initialValue,
+      content: promptEditorContentFromValue(initialValue, {
+        richTextMarkdown: richTextEditing,
+      }),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- value/mentionRanges are read once per editor instance on purpose (see above).
+  }, [richTextEditing]);
+
   const editor = useEditor(
     {
       extensions: editorExtensions,
-      content: promptEditorContentFromValue(
-        {
-          text: value,
-          mentions: mentionRanges,
-        },
-        { richTextMarkdown: richTextEditing },
-      ),
+      content: initialEditorContent.content,
       immediatelyRender: false,
       editorProps: {
         attributes: {
@@ -1646,6 +1786,10 @@ export function PromptBoxInternal({
         handleDOMEvents: {
           auxclick: (_view, event) => {
             return suppressPromptEditorAnchorActivation(event);
+          },
+          focus: () => {
+            onCommandEditorFocusRef.current?.();
+            return false;
           },
           blur: () => {
             triggerKeyRef.current = "";
@@ -1771,7 +1915,7 @@ export function PromptBoxInternal({
               const nextValue = trimTrailingPromptNewlines(
                 promptEditorValueFromDoc(currentEditor.state.doc),
               );
-              editorValueKeyRef.current = promptEditorValueKey(nextValue);
+              lastSyncedEditorValueRef.current = nextValue;
               onChangeRef.current(nextValue.text, nextValue.mentions);
             }
             return true;
@@ -1797,10 +1941,7 @@ export function PromptBoxInternal({
       },
       onCreate({ editor: createdEditor }) {
         editorRef.current = createdEditor;
-        editorValueKeyRef.current = promptEditorValueKey({
-          text: value,
-          mentions: mentionRanges,
-        });
+        lastSyncedEditorValueRef.current = initialEditorContent.value;
       },
       onSelectionUpdate({ editor: updatedEditor, transaction }) {
         // A typing transaction changes both the document and the selection, so
@@ -1815,7 +1956,7 @@ export function PromptBoxInternal({
       onUpdate({ editor: updatedEditor, transaction }) {
         if (skipEditorChangeRef.current) return;
         const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
-        editorValueKeyRef.current = promptEditorValueKey(nextValue);
+        lastSyncedEditorValueRef.current = nextValue;
         onChangeRef.current(nextValue.text, nextValue.mentions);
         syncTriggerStateRef.current(updatedEditor);
         // Native typing already asks ProseMirror to scroll the selection into
@@ -1921,8 +2062,9 @@ export function PromptBoxInternal({
       text: value,
       mentions: mentionRanges,
     };
-    const nextKey = promptEditorValueKey(nextValue);
-    if (nextKey === editorValueKeyRef.current) {
+    if (
+      arePromptEditorValuesEqual(lastSyncedEditorValueRef.current, nextValue)
+    ) {
       return;
     }
 
@@ -1933,7 +2075,7 @@ export function PromptBoxInternal({
           richTextMarkdown: richTextEditing,
         }),
       );
-      editorValueKeyRef.current = nextKey;
+      lastSyncedEditorValueRef.current = nextValue;
     } finally {
       skipEditorChangeRef.current = false;
     }
@@ -2035,6 +2177,10 @@ export function PromptBoxInternal({
     if (fromHeight === null || !formElement) return;
     heightAnimationFromRef.current = null;
     if (getMediaQuerySnapshot(REDUCED_MOTION_QUERY)) return;
+    // Phones keep this tween on purpose. Snapping the expansion (measured
+    // on iPhone) left WebKit's native caret at the position computed at
+    // focus time, one line above the editor; the per-frame layouts of the
+    // tween are what make iOS refresh the caret rect.
 
     const previousTransition = formElement.style.transition;
     const previousWillChange = formElement.style.willChange;
@@ -2155,6 +2301,32 @@ export function PromptBoxInternal({
       ? { trigger: "command", state: commandMenuState }
       : { trigger: "mention", state: mentionMenuState };
 
+  useLayoutEffect(() => {
+    if (reportQueuedEditorTypeaheadLayout === null) return;
+    const menu = typeaheadMenuRef.current;
+    if (!showTypeaheadMenu || menu === null) {
+      reportQueuedEditorTypeaheadLayout({ height: 0, isOpen: false });
+      return;
+    }
+
+    const reportOpenLayout = () => {
+      reportQueuedEditorTypeaheadLayout({
+        height: menu.getBoundingClientRect().height,
+        isOpen: true,
+      });
+    };
+    reportOpenLayout();
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(reportOpenLayout);
+    resizeObserver?.observe(menu);
+    return () => {
+      resizeObserver?.disconnect();
+      reportQueuedEditorTypeaheadLayout({ height: 0, isOpen: false });
+    };
+  }, [reportQueuedEditorTypeaheadLayout, showTypeaheadMenu]);
+
   useEffect(() => {
     if (activeSuggestions.length === 0) {
       setSelectedIndex(0);
@@ -2192,7 +2364,7 @@ export function PromptBoxInternal({
   const finishApply = useCallback(
     (appliedEditor: Editor) => {
       const nextValue = promptEditorValueFromDoc(appliedEditor.state.doc);
-      editorValueKeyRef.current = promptEditorValueKey(nextValue);
+      lastSyncedEditorValueRef.current = nextValue;
       onChangeRef.current(nextValue.text, nextValue.mentions);
 
       requestAnimationFrame(() => {
@@ -2586,9 +2758,13 @@ export function PromptBoxInternal({
     setVoiceActionTransition("exiting");
     voice?.cancel();
   }, [voice]);
-  const effectiveSubmitTitle = isZenMode
+  const actionSubmitTitle = isZenMode
     ? submitTitle.replace(/^Submit\s+/, "")
     : submitTitle;
+  const effectiveSubmitTitle =
+    !canSubmit && submitDisabledReason
+      ? submitDisabledReason
+      : actionSubmitTitle;
 
   const emitAttachmentFiles = useCallback(
     (files: File[]) => {
@@ -2638,18 +2814,22 @@ export function PromptBoxInternal({
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       if (event.button !== 0) return;
       const currentEditor = editorRef.current;
+      const editorElement = currentEditor?.view.dom;
+      const activeElement = editorElement?.ownerDocument.activeElement;
       if (
         !currentEditor ||
         currentEditor.isDestroyed ||
-        !currentEditor.isFocused
+        !editorElement?.contains(activeElement ?? null)
       ) {
         return;
       }
 
       // Focus transfer happens before click. On iOS, moving focus from the
       // editor to this button begins keyboard dismissal and resizes the app
-      // shell before the form can submit. Keep the editor focused; the click
-      // still owns the commit, while genuine outside focus dismisses normally.
+      // shell before the form can submit. Use the DOM's focus state here rather
+      // than TipTap's event-derived isFocused flag, which can briefly lag the
+      // browser. Keep the editor focused; the click still owns the commit,
+      // while genuine outside focus dismisses normally.
       event.preventDefault();
     },
     [],
@@ -3118,7 +3298,7 @@ export function PromptBoxInternal({
             <div
               data-promptbox-expanded-only=""
               inert={showVoiceActionGroup ? true : undefined}
-              className={cn("pl-4 pr-14 pt-3", compact && "pr-14")}
+              className="pl-4 pr-14 pt-3"
             >
               {header}
             </div>
@@ -3188,7 +3368,6 @@ export function PromptBoxInternal({
               scrollContainerRef={editorScrollContainerRef}
               inputLocked={composerInputLocked}
               isZenMode={isZenMode}
-              hasCompactControls={compact !== undefined}
               isCompactLayout={showCompactLayout}
               minHeight={minHeight}
               layout={zenModeLayout}
@@ -3198,6 +3377,8 @@ export function PromptBoxInternal({
 
           {showTypeaheadMenu ? (
             <div
+              ref={typeaheadMenuRef}
+              data-promptbox-typeahead-menu=""
               className={cn(
                 // Zen mode: menu floats inside the form, anchored just above
                 // the action footer so it stays visible. The form's pb-3 +
@@ -3253,7 +3434,7 @@ export function PromptBoxInternal({
             <div
               data-promptbox-action-row=""
               className={cn(
-                "relative flex shrink-0 flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
+                "relative flex shrink-0 select-none flex-row items-center gap-3 pb-2 pl-3.5 pr-2 pt-1.5",
                 showCompactLayout && "absolute inset-y-0 right-2 gap-0 p-0",
               )}
             >
@@ -3394,15 +3575,8 @@ export function PromptBoxInternal({
                         <Icon name="Mic" className="size-4" />
                       </Button>
                     ) : (
-                      <Button
-                        data-promptbox-submit-action=""
-                        type="submit"
-                        size={showCompactLayout ? "icon" : "sm"}
-                        variant="default"
-                        aria-label={effectiveSubmitTitle}
-                        disabled={!canSubmit}
-                        onPointerDown={handleSubmitPointerDown}
-                        onClick={handleSubmitClick}
+                      <PromptSubmitButton
+                        canSubmit={canSubmit}
                         className={cn(
                           showCompactLayout
                             ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
@@ -3416,18 +3590,16 @@ export function PromptBoxInternal({
                           // stays pinned while the prompt height animates.
                           "transition-colors",
                         )}
-                      >
-                        {isSubmitting ? (
-                          <Icon
-                            name="Spinner"
-                            className="size-4 animate-spin"
-                          />
-                        ) : isZenMode ? (
-                          <Icon name="ArrowUp" className="size-4" />
-                        ) : (
-                          <Icon name="CornerDownLeft" className="size-4" />
-                        )}
-                      </Button>
+                        disabledReason={
+                          !canSubmit ? submitDisabledReason : undefined
+                        }
+                        isCompact={showCompactLayout}
+                        isSubmitting={isSubmitting}
+                        isZenMode={isZenMode}
+                        onPointerDown={handleSubmitPointerDown}
+                        onClick={handleSubmitClick}
+                        title={effectiveSubmitTitle}
+                      />
                     )}
                   </div>
                 </ComposerActionsSlot>

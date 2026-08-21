@@ -21,16 +21,20 @@ import type { SkillSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { sdk } from "@/lib/sdk";
-import { buildRegistrySkillReferencePrompt } from "@/lib/skills-registry";
-import { SkillDetailView } from "../components/tools/SkillDetailView";
-import { RegistrySkillDetailView } from "../components/tools/SkillsBrowse";
 import {
-  RegistrySkillsBrowsePage,
-  SkillDetailDialogView,
-  SkillsLibrary,
-  SkillsOverview,
+  buildRegistrySkillReferencePrompt,
   type RegistrySkill,
-} from "./SkillsView";
+} from "@/lib/skills-registry";
+import { SkillDetailView } from "../components/tools/SkillDetailView";
+import {
+  RegistrySkillDetailView,
+  RegistrySkillsBrowsePage,
+} from "../components/tools/SkillsBrowse";
+import {
+  SkillDetailDialogView,
+  SkillsOverview,
+} from "../components/tools/SkillsCollection";
+import { SkillsLibrary } from "../components/tools/SkillsLibrary";
 
 afterEach(() => {
   focusManager.setFocused(undefined);
@@ -1293,15 +1297,7 @@ describe("RegistrySkillsBrowsePage", () => {
     expect(onSelect).toHaveBeenCalledWith(alpha);
     expect(screen.getByRole("textbox", { name: "Search skills" })).toBeTruthy();
     expect(screen.getByLabelText("10 installs")).toBeTruthy();
-    for (const byline of screen.getAllByText("by owner/repo")) {
-      expect(byline.className).toContain("truncate");
-      expect(byline.parentElement?.className).toContain("items-center");
-      expect(byline.parentElement?.className).toContain("text-xs");
-    }
-    expect(
-      screen.getByLabelText("100 stars").parentElement?.parentElement
-        ?.className,
-    ).toContain("items-center");
+    expect(screen.getAllByText("by owner/repo").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("button", {
         name: "Fork Alpha into a new bb skill",

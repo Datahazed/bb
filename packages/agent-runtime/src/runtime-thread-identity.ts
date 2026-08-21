@@ -13,46 +13,46 @@ export interface RuntimeProviderIdentityState {
   threadIds: Set<string>;
 }
 
-export interface CreateRuntimeProviderIdentityStateArgs {
+interface CreateRuntimeProviderIdentityStateArgs {
   providerId: string;
 }
 
-export interface RegisterThreadProviderArgs {
+interface RegisterThreadProviderArgs {
   providerId: string;
   providerState: RuntimeProviderIdentityState;
   shouldWaitForProviderIdentity: boolean;
   threadId: string;
 }
 
-export interface RecordProviderThreadIdentityArgs {
+interface RecordProviderThreadIdentityArgs {
   providerState: RuntimeProviderIdentityState;
   providerThreadId: string;
   threadId: string;
 }
 
-export interface ResolveBbThreadIdForProviderThreadArgs {
+interface ResolveBbThreadIdForProviderThreadArgs {
   providerState: RuntimeProviderIdentityState;
   providerThreadId: string | undefined;
 }
 
-export interface WaitForProviderThreadIdentityArgs {
+interface WaitForProviderThreadIdentityArgs {
   providerState: RuntimeProviderIdentityState;
   threadId: string;
   timeoutMs: number;
 }
 
-export interface ForgetThreadArgs {
+interface ForgetThreadArgs {
   providerState: RuntimeProviderIdentityState;
   threadId: string;
 }
 
-export interface ResolveProviderEventThreadIdArgs {
+interface ResolveProviderEventThreadIdArgs {
   eventThreadId: string | undefined;
   providerState: RuntimeProviderIdentityState;
   sourceThreadId: string | undefined;
 }
 
-export interface StampThreadEventScopeArgs {
+interface StampThreadEventScopeArgs {
   event: ThreadEvent;
   providerThreadId: string | undefined;
   threadId: string;
@@ -243,14 +243,6 @@ export class RuntimeThreadIdentityRegistry {
       waiter.resolve(null);
     }
     this.clearThread(args.threadId);
-  }
-
-  clearProviderState(providerState: RuntimeProviderIdentityState): void {
-    providerState.pendingIdentityThreadIds = [];
-    for (const threadId of providerState.threadIds) {
-      this.clearThread(threadId);
-    }
-    this.resolvePendingIdentityWaiters(providerState);
   }
 
   resolvePendingIdentityWaiters(

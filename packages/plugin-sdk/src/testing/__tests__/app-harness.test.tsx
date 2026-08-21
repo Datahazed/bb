@@ -8,6 +8,7 @@ import type {
   PluginComposerScope,
   PluginMessageDirectiveProps,
   PluginNavPanelProps,
+  ExperimentalPluginFixedTabReference,
 } from "../../app-contract.js";
 import {
   installTestPluginRuntime,
@@ -22,13 +23,76 @@ import { defineRpcContract } from "../../rpc-contract.js";
 installTestPluginRuntime();
 const {
   definePluginApp,
+  experimental_FileLink: FileLink,
+  experimental_UrlLink: UrlLink,
+  experimental_useAppPanel,
+  experimental_useFixedTabTarget,
   ThreadChat,
+  useBbNavigate,
   useComposer,
   useComposerView,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
 } = await import("../../app.js");
+
+type TestTaskTarget = {
+  kind: "task";
+  taskId: string;
+};
+
+const taskDetailsTab = {
+  panelId: "tasks",
+  id: "details",
+  experimental_target: {
+    validate(value): value is TestTaskTarget {
+      return (
+        typeof value === "object" &&
+        value !== null &&
+        !Array.isArray(value) &&
+        value.kind === "task" &&
+        typeof value.taskId === "string"
+      );
+    },
+  },
+} satisfies ExperimentalPluginFixedTabReference<TestTaskTarget>;
+
+function FixedTabProbe() {
+  const panel = experimental_useAppPanel();
+  const targetState = experimental_useFixedTabTarget(taskDetailsTab);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() =>
+          panel.openFixedTab({
+            surface: { kind: "current" },
+            tab: taskDetailsTab,
+            target: { kind: "task", taskId: "TASK-42" },
+          })
+        }
+      >
+        Open details
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          panel.openFixedTab({
+            surface: { kind: "current" },
+            tab: taskDetailsTab,
+          })
+        }
+      >
+        Select details
+      </button>
+      {targetState === null ? null : (
+        <button type="button" onClick={targetState.clear}>
+          Clear {targetState.target.taskId}
+        </button>
+      )}
+    </div>
+  );
+}
 
 const typedRpcContract = defineRpcContract({
   getItem: {
@@ -82,6 +146,96 @@ function Panel({ subPath }: PluginNavPanelProps) {
 function RealtimeConnectionProbe() {
   const state = useRealtimeConnectionState();
   return <div>Realtime: {state}</div>;
+}
+
+function UrlNavigationProbe() {
+  const navigate = useBbNavigate();
+  return (
+    <div>
+      <UrlLink href="https://example.com/from-link">Open link</UrlLink>
+      <UrlLink
+        href="https://example.com/native"
+        target="preview-pane"
+        rel="nofollow"
+      >
+        Open in explicit target
+      </UrlLink>
+      <button
+        type="button"
+        onClick={() =>
+          navigate.experimental_openUrl("https://example.com/imperative")
+        }
+      >
+        Open imperatively
+      </button>
+    </div>
+  );
+}
+
+const fileIntent = {
+  target: {
+    kind: "workspace" as const,
+    environmentId: "env_42",
+    path: "src/example.ts",
+  },
+  location: { kind: "line" as const, line: 12, column: 4 },
+};
+
+function FileNavigationProbe() {
+  const navigate = useBbNavigate();
+  return (
+    <div>
+      <FileLink {...fileIntent}>Open file</FileLink>
+      <button
+        type="button"
+        onClick={() => navigate.experimental_openFileExternally(fileIntent)}
+      >
+        Open file externally
+      </button>
+    </div>
+  );
+}
+
+function MalformedFileLinkProbe() {
+  return (
+    <FileLink
+      target={{
+        kind: "workspace",
+        environmentId: "env_42",
+        path: "../secret",
+      }}
+    >
+      Open malformed file
+    </FileLink>
+  );
+}
+
+function MalformedUnicodeFileLinkProbe() {
+  return (
+    <FileLink
+      target={{
+        kind: "workspace",
+        environmentId: "env_42",
+        path: String.fromCharCode(0xd800),
+      }}
+    >
+      Open malformed Unicode file
+    </FileLink>
+  );
+}
+
+function SchemeLikeFileLinkProbe() {
+  return (
+    <FileLink
+      target={{
+        kind: "workspace",
+        environmentId: "env_42",
+        path: "vscode:foo",
+      }}
+    >
+      Open scheme-like file
+    </FileLink>
+  );
 }
 
 let capturedComposerVisualSetters: Pick<
@@ -589,6 +743,19 @@ describe("loadPluginApp", () => {
     function Navigation({ subPath }: PluginNavPanelProps) {
       return <span>{subPath}</span>;
     }
+    const targetContract = {
+      validate(
+        value: import("../../json-value.js").JsonValue,
+      ): value is TestTaskTarget {
+        return (
+          typeof value === "object" &&
+          value !== null &&
+          !Array.isArray(value) &&
+          value.kind === "task" &&
+          typeof value.taskId === "string"
+        );
+      },
+    };
     const captured = await loadPluginApp(
       definePluginApp((builder) => {
         builder.slots.navPanel({
@@ -599,11 +766,13 @@ describe("loadPluginApp", () => {
           component: Panel,
           experimental_fixedTabs: [
             {
+              panelId: "tasks",
               id: "navigation",
               title: "Navigation",
               icon: "PanelRight",
               component: Navigation,
               layout: "flush",
+              experimental_target: targetContract,
             },
           ],
         });
@@ -612,13 +781,98 @@ describe("loadPluginApp", () => {
 
     expect(captured.navPanels[0]?.experimental_fixedTabs).toEqual([
       {
+        panelId: "tasks",
         id: "navigation",
         title: "Navigation",
         icon: "PanelRight",
         component: Navigation,
         layout: "flush",
+        experimental_target: targetContract,
       },
     ]);
+  });
+
+  it("rejects a malformed fixed-tab target contract", async () => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            path: "tasks",
+            component: Panel,
+            experimental_fixedTabs: [
+              {
+                panelId: "tasks",
+                id: "details",
+                title: "Details",
+                icon: "Info",
+                component: Panel,
+                experimental_target: {
+                  // @ts-expect-error Runtime collector coverage for malformed JS.
+                  validate: "not-a-function",
+                },
+              },
+            ],
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      '"experimental_target.validate" must be a function when set',
+    );
+  });
+
+  it("rejects a fixed-tab reference scoped to a different nav panel", async () => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            path: "tasks",
+            component: Panel,
+            experimental_fixedTabs: [
+              {
+                panelId: "other-page",
+                id: "navigation",
+                title: "Navigation",
+                icon: "PanelRight",
+                component: Panel,
+              },
+            ],
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      '"panelId" must match its containing navPanel id "tasks"',
+    );
+  });
+
+  it("rejects a fixed-tab registration without an owner panel", async () => {
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            path: "tasks",
+            component: Panel,
+            experimental_fixedTabs: [
+              // @ts-expect-error Runtime collector coverage for malformed JS.
+              {
+                id: "navigation",
+                title: "Navigation",
+                icon: "PanelRight",
+                component: Panel,
+              },
+            ],
+          });
+        }),
+      ),
+    ).rejects.toThrow('"panelId" must be a non-empty string');
   });
 
   it("rejects duplicate nav panel fixed tab ids", async () => {
@@ -633,12 +887,14 @@ describe("loadPluginApp", () => {
             component: Panel,
             experimental_fixedTabs: [
               {
+                panelId: "tasks",
                 id: "navigation",
                 title: "First",
                 icon: "PanelRight",
                 component: Panel,
               },
               {
+                panelId: "tasks",
                 id: "navigation",
                 title: "Second",
                 icon: "PanelRight",
@@ -939,6 +1195,138 @@ describe("typed rpc test runtime", () => {
 });
 
 describe("renderSlot", () => {
+  it("records URL intents from links and imperative navigation through one host boundary", () => {
+    const slot = renderSlot(
+      { component: UrlNavigationProbe },
+      {},
+      { openUrl: () => true },
+    );
+    fireEvent.click(slot.getByRole("link", { name: "Open link" }));
+    const explicitTargetLink = slot.getByRole("link", {
+      name: "Open in explicit target",
+    });
+    expect(explicitTargetLink.getAttribute("target")).toBe("preview-pane");
+    expect(explicitTargetLink.getAttribute("rel")).toBe(
+      "nofollow noopener noreferrer",
+    );
+    expect(fireEvent.click(explicitTargetLink)).toBe(true);
+    fireEvent.click(slot.getByRole("button", { name: "Open imperatively" }));
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "experimental_openUrl", url: "https://example.com/from-link" },
+      {
+        method: "experimental_openUrl",
+        url: "https://example.com/imperative",
+      },
+    ]);
+  });
+
+  it("exposes a scheme-safe href for file links", () => {
+    const slot = renderSlot(
+      { component: SchemeLikeFileLinkProbe },
+      {},
+      { openFilePreview: () => true },
+    );
+    const link = slot.getByRole("link", { name: "Open scheme-like file" });
+    expect(link.getAttribute("href")).toBe("./vscode%3Afoo");
+    fireEvent.click(link);
+    expect(slot.inspection.navigateCalls).toEqual([
+      {
+        method: "experimental_openFilePreview",
+        options: {
+          target: {
+            kind: "workspace",
+            environmentId: "env_42",
+            path: "vscode:foo",
+          },
+          location: null,
+        },
+      },
+    ]);
+  });
+
+  it("makes malformed file-link targets inert", () => {
+    const slot = renderSlot(
+      { component: MalformedFileLinkProbe },
+      {},
+      { openFilePreview: () => true },
+    );
+    const invalid = slot.getByText("Open malformed file");
+    expect(
+      slot.queryByRole("link", { name: "Open malformed file" }),
+    ).toBeNull();
+    expect(invalid.getAttribute("href")).toBeNull();
+    fireEvent.click(invalid);
+    expect(slot.inspection.navigateCalls).toEqual([]);
+  });
+
+  it("makes malformed Unicode file-link targets inert", () => {
+    const slot = renderSlot(
+      { component: MalformedUnicodeFileLinkProbe },
+      {},
+      { openFilePreview: () => true },
+    );
+    const invalid = slot.getByText("Open malformed Unicode file");
+    expect(
+      slot.queryByRole("link", { name: "Open malformed Unicode file" }),
+    ).toBeNull();
+    expect(invalid.getAttribute("href")).toBeNull();
+    fireEvent.click(invalid);
+    expect(slot.inspection.navigateCalls).toEqual([]);
+  });
+
+  it("records file-link preview and imperative external intents through one host boundary", () => {
+    const slot = renderSlot(
+      { component: FileNavigationProbe },
+      {},
+      {
+        openFilePreview: () => true,
+        openFileExternally: () => true,
+      },
+    );
+    fireEvent.click(slot.getByRole("link", { name: "Open file" }));
+    fireEvent.click(slot.getByRole("button", { name: "Open file externally" }));
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "experimental_openFilePreview", options: fileIntent },
+      { method: "experimental_openFileExternally", options: fileIntent },
+    ]);
+  });
+
+  it("records fixed-tab opens and retains target state until the owner clears it", () => {
+    const slot = renderSlot(
+      { component: FixedTabProbe },
+      {},
+      {
+        experimental_openFixedTab: () => true,
+        experimental_fixedTabTarget: {
+          panelId: "tasks",
+          tabId: "details",
+          target: { kind: "task", taskId: "TASK-7" },
+        },
+      },
+    );
+
+    fireEvent.click(slot.getByRole("button", { name: "Clear TASK-7" }));
+    expect(slot.queryByRole("button", { name: "Clear TASK-7" })).toBeNull();
+
+    fireEvent.click(slot.getByRole("button", { name: "Open details" }));
+    expect(slot.getByRole("button", { name: "Clear TASK-42" })).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Select details" }));
+    expect(slot.getByRole("button", { name: "Clear TASK-42" })).toBeTruthy();
+    expect(slot.inspection.experimental_fixedTabOpenCalls).toEqual([
+      {
+        surface: { kind: "current" },
+        panelId: "tasks",
+        tabId: "details",
+        target: { kind: "task", taskId: "TASK-42" },
+      },
+      {
+        surface: { kind: "current" },
+        panelId: "tasks",
+        tabId: "details",
+      },
+    ]);
+  });
+
   it("drives the shared realtime connection lifecycle", async () => {
     const slot = renderSlot(
       app.homepageSections[0]!,

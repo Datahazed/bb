@@ -194,6 +194,22 @@ describe("storage", () => {
     const rows = again.prepare("SELECT body, starred FROM notes").all();
     expect(rows).toEqual([{ body: "hello", starred: 0 }]);
   });
+
+  it("database() replaces a handle the plugin closed itself, like the host", () => {
+    const { bb } = createFakePluginHost();
+    const db = bb.storage.database();
+    db.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)");
+    db.prepare("INSERT INTO notes (body) VALUES (?)").run("hello");
+    db.close();
+
+    const reopened = bb.storage.database();
+    expect(reopened).not.toBe(db);
+    expect(reopened.open).toBe(true);
+    expect(reopened.prepare("SELECT body FROM notes").all()).toEqual([
+      { body: "hello" },
+    ]);
+    expect(bb.storage.database()).toBe(reopened);
+  });
 });
 
 describe("settings", () => {
@@ -418,7 +434,11 @@ describe("http", () => {
         clone: () => real.clone(),
       } as unknown as Response;
     });
-    bb.http.route("GET", "/not-a-response", () => ({ status: 200 }) as Response);
+    bb.http.route(
+      "GET",
+      "/not-a-response",
+      () => ({ status: 200 }) as Response,
+    );
 
     const foreign = await harness.fetchHttp("GET", "/foreign");
     expect(foreign.status).toBe(201);
@@ -823,10 +843,10 @@ describe("agent tools", () => {
       thread: { ...configurationContext.thread, id: "thread-beta" },
       host: { id: "host-beta", name: "Beta host" },
       provider: {
-      id: "claude-code",
-      model: "claude-opus",
-      capabilities: { supportsNativeUserQuestion: false },
-    },
+        id: "claude-code",
+        model: "claude-opus",
+        capabilities: { supportsNativeUserQuestion: false },
+      },
     };
     const beta = await harness.resolveAgentConfiguration(betaContext);
 
@@ -979,35 +999,35 @@ describe("realtime and status", () => {
   });
 });
 
-describe("agents.experimental_registerProvider", () => {
+describe("providers.register", () => {
   function agentDeclaration(
     overrides: Record<string, unknown> = {},
-  ): Parameters<BbPluginApi["agents"]["experimental_registerProvider"]>[0] {
+  ): Parameters<BbPluginApi["providers"]["register"]>[0] {
     return {
       id: "my-agent",
       displayName: "My Agent",
       icon: "./icons/agent.svg",
       capabilities: {
+        experimental_providerHealth: true,
+        experimental_providerUsage: false,
+        experimental_providerInstallation: false,
         supportsServiceTier: false,
         supportsNativeUserQuestion: true,
         fork: "tip",
         supportsManualCompaction: true,
         supportsThreadArchive: false,
         supportsThreadRename: false,
-        supportsWorkflows: false,
         permissionModes: ["accept-edits", "full"],
         reasoningLevels: ["low", "medium", "high"],
       },
       composerActions: ["plan"],
       ...overrides,
-    } as Parameters<
-      BbPluginApi["agents"]["experimental_registerProvider"]
-    >[0];
+    } as Parameters<BbPluginApi["providers"]["register"]>[0];
   }
 
   it("rejects malformed declarations with the shared host policy", () => {
     const { bb } = createFakePluginHost();
-    const register = bb.agents.experimental_registerProvider;
+    const register = bb.providers.register;
 
     expect(() => register(agentDeclaration({ id: "Bad_Id!" }))).toThrow(
       /invalid provider id/,
@@ -1046,16 +1066,48 @@ describe("agents.experimental_registerProvider", () => {
       ),
     ).toThrow(/capabilities.fork must be one of none, tip, checkpoint/);
     expect(() =>
+      register(
+        agentDeclaration({
+          capabilities: {
+            ...agentDeclaration().capabilities,
+            experimental_providerUsage: "yes",
+            experimental_providerInstallation: false,
+          },
+        }),
+      ),
+    ).toThrow(/experimental_providerUsage must be a boolean/);
+    expect(() =>
       register(agentDeclaration({ icon: "./../outside.svg" })),
     ).toThrow(/icon must not escape the plugin directory/);
     // The `bb.branding.icon` grammar: "./" means a plugin file, anything else
     // is a host glyph name. A path without the prefix is neither.
-    expect(() =>
-      register(agentDeclaration({ icon: "/abs/icon.svg" })),
-    ).toThrow(/icon looks like a path but does not start with "\.\/"/);
+    expect(() => register(agentDeclaration({ icon: "/abs/icon.svg" }))).toThrow(
+      /icon looks like a path but does not start with "\.\/"/,
+    );
     expect(() =>
       register(agentDeclaration({ composerActions: ["plan", "plan"] })),
     ).toThrow(/composerActions entry "plan" is duplicated/);
+    expect(() =>
+      register(agentDeclaration({ experimental_visibility: "sometimes" })),
+    ).toThrow(/experimental_visibility must be "always" or "installed"/);
+    expect(() =>
+      register(
+        agentDeclaration({
+          experimental_visibility: "installed",
+          capabilities: {
+            ...agentDeclaration().capabilities,
+            experimental_providerHealth: false,
+          },
+        }),
+      ),
+    ).toThrow(/"installed" requires experimental_providerHealth/);
+    expect(() =>
+      register(
+        agentDeclaration({
+          experimental_bridgeOptions: { timeout: Number.POSITIVE_INFINITY },
+        }),
+      ),
+    ).toThrow(/experimental_bridgeOptions\.timeout must be finite JSON/);
     // A bare glyph name is the other half of the grammar and is accepted; this
     // one commits, so it goes last.
     expect(() => register(agentDeclaration({ icon: "Zap" }))).not.toThrow();
@@ -1063,7 +1115,7 @@ describe("agents.experimental_registerProvider", () => {
 
   it("round-trips a registration through the harness and dispose", () => {
     const { bb, harness } = createFakePluginHost();
-    const handle = bb.agents.experimental_registerProvider(
+    const handle = bb.providers.register(
       agentDeclaration({ displayName: "  My Agent  " }),
     );
 
@@ -1073,8 +1125,14 @@ describe("agents.experimental_registerProvider", () => {
     expect(registered.displayName).toBe("My Agent");
     expect(Object.isFrozen(registered)).toBe(true);
     expect(Object.isFrozen(registered.capabilities)).toBe(true);
+    expect(registered.experimental_visibility).toBe("always");
 
-    // Live ids are collision-rejected until disposed.
+    // Live ids are collision-rejected until disposed — through either entry
+    // point, because the legacy `bb.agents.experimental_registerProvider`
+    // alias shares the same registration table.
+    expect(() => bb.providers.register(agentDeclaration())).toThrow(
+      /already registered/,
+    );
     expect(() =>
       bb.agents.experimental_registerProvider(agentDeclaration()),
     ).toThrow(/already registered/);
@@ -1084,7 +1142,7 @@ describe("agents.experimental_registerProvider", () => {
     expect(harness.registrations.providerRegistrations).toEqual([]);
 
     // A disposed id can be re-registered (settings-driven re-declaration).
-    bb.agents.experimental_registerProvider(
+    bb.providers.register(
       agentDeclaration({ displayName: "Second Declaration" }),
     );
     expect(
@@ -1094,9 +1152,54 @@ describe("agents.experimental_registerProvider", () => {
     ).toEqual(["Second Declaration"]);
   });
 
+  it("normalizes and deeply freezes opaque provider bridge options", () => {
+    const { bb, harness } = createFakePluginHost();
+    bb.providers.register(
+      agentDeclaration({
+        experimental_visibility: "installed",
+        experimental_bridgeOptions: {
+          launch: { command: "example-agent", args: ["serve"] },
+        },
+      }),
+    );
+
+    const registered = harness.registrations.providerRegistrations[0]!;
+    expect(registered.experimental_visibility).toBe("installed");
+    expect(registered.experimental_bridgeOptions).toEqual({
+      launch: { command: "example-agent", args: ["serve"] },
+    });
+    expect(Object.isFrozen(registered.experimental_bridgeOptions)).toBe(true);
+    expect(Object.isFrozen(registered.experimental_bridgeOptions?.launch)).toBe(
+      true,
+    );
+  });
+
+  it("defaults maintenance support omitted by older plugins to false", () => {
+    const { bb, harness } = createFakePluginHost();
+    const declaration = agentDeclaration();
+    Reflect.deleteProperty(
+      declaration.capabilities,
+      "experimental_providerHealth",
+    );
+    Reflect.deleteProperty(
+      declaration.capabilities,
+      "experimental_providerUsage",
+    );
+
+    bb.providers.register(declaration);
+
+    expect(
+      harness.registrations.providerRegistrations[0]?.capabilities,
+    ).toMatchObject({
+      experimental_providerHealth: false,
+      experimental_providerUsage: false,
+      experimental_providerInstallation: false,
+    });
+  });
+
   it("clears registrations on dispose", async () => {
     const { bb, harness } = createFakePluginHost();
-    bb.agents.experimental_registerProvider(
+    bb.providers.register(
       agentDeclaration({ id: "my-second-agent" }),
     );
     expect(
@@ -1106,7 +1209,7 @@ describe("agents.experimental_registerProvider", () => {
     await harness.dispose();
     expect(harness.registrations.providerRegistrations).toEqual([]);
     expect(() =>
-      bb.agents.experimental_registerProvider(agentDeclaration()),
+      bb.providers.register(agentDeclaration()),
     ).toThrow("used a stale API handle");
   });
 });

@@ -136,7 +136,7 @@ function TweetEmbed({ href, id }: { href: string; id: string }) {
   return <TweetCard tweet={tweet} />;
 }
 
-export function PostMedia({
+function PostMedia({
   src,
   alt,
   caption,

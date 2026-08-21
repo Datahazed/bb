@@ -60,6 +60,9 @@ const ZERO_WORK_PROMPT_TEXT = "/clear";
 const LATE_TURN_START_PROMPT_TEXT = "/late-start";
 const LATE_TURN_START_DELAY_MS = 60;
 
+/** A prompt that stays open until the client sends turn/interrupt. */
+const INTERRUPTIBLE_PROMPT_TEXT = "/wait-for-interrupt";
+
 /**
  * A prompt that spawns a native subagent (open thread work) and then dies with
  * the subagent still running — the crash/OOM shape. The bridge has to settle
@@ -72,6 +75,24 @@ function firstInputText(input) {
   const first = Array.isArray(input) ? input[0] : undefined;
   return first && first.type === "text" ? first.text : undefined;
 }
+
+const FIXED_TOKEN_USAGE = {
+  total: {
+    totalTokens: 39970,
+    inputTokens: 39960,
+    cachedInputTokens: 0,
+    outputTokens: 10,
+    reasoningOutputTokens: 0,
+  },
+  last: {
+    totalTokens: 19993,
+    inputTokens: 19988,
+    cachedInputTokens: 0,
+    outputTokens: 5,
+    reasoningOutputTokens: 0,
+  },
+  modelContextWindow: 258400,
+};
 
 function runScriptedTurn(threadId) {
   turnCounter += 1;
@@ -92,6 +113,15 @@ function runScriptedTurn(threadId) {
     turnId,
     item: { type: "agentMessage", id: itemId, text },
   });
+  if (String(threadId).startsWith("usage-replay-")) {
+    // Usage-replay threads also report the turn's own usage, like the real
+    // app-server, so tests can tell a replay from live turn usage (#1727).
+    notify("thread/tokenUsage/updated", {
+      threadId,
+      turnId,
+      tokenUsage: FIXED_TOKEN_USAGE,
+    });
+  }
   notify("turn/completed", {
     threadId,
     turn: { id: turnId, status: "completed" },
@@ -177,6 +207,14 @@ async function runScriptFileTurn(threadId) {
   }
 }
 
+function replayLastTurnUsage(threadId) {
+  notify("thread/tokenUsage/updated", {
+    threadId,
+    turnId: "turn-fx-1",
+    tokenUsage: FIXED_TOKEN_USAGE,
+  });
+}
+
 async function handleRequest(message) {
   const { id, method } = message;
   const params = message.params ?? {};
@@ -230,13 +268,29 @@ async function handleRequest(message) {
         );
         return;
       }
+      // Mirror the real app-server (codex-cli 0.147.0, observed live for
+      // #1727): thread/resume replays the rollout's last-turn token usage,
+      // scoped to that PREVIOUS turn's id, before any new turn is started.
+      // Opt-in via a `usage-replay-` provider-thread-id prefix.
+      if (String(params.threadId).startsWith("usage-replay-")) {
+        replayLastTurnUsage(params.threadId);
+      }
       respond(id, { thread: { id: params.threadId } });
       return;
     }
     case "thread/fork": {
       threadCounter += 1;
-      const threadId = `codex-fx-${process.pid}-fork-${threadCounter}`;
+      const replaysUsage = String(params.threadId).startsWith("usage-replay-");
+      const threadId = replaysUsage
+        ? `usage-replay-fork-${process.pid}-${threadCounter}`
+        : `codex-fx-${process.pid}-fork-${threadCounter}`;
       respond(id, { thread: { id: threadId } });
+      // thread/fork replays the source rollout's last-turn usage the same way,
+      // after the response, under the NEW thread id but the SOURCE turn id
+      // (#1727).
+      if (replaysUsage) {
+        replayLastTurnUsage(threadId);
+      }
       return;
     }
     case "turn/start": {
@@ -276,6 +330,17 @@ async function handleRequest(message) {
           () => runScriptedTurn(params.threadId),
           LATE_TURN_START_DELAY_MS,
         );
+        return;
+      }
+      if (firstInputText(params.input) === INTERRUPTIBLE_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        openTurnIdsByThreadId.set(params.threadId, turnId);
+        notify("turn/started", {
+          threadId: params.threadId,
+          turn: { id: turnId, status: "inProgress" },
+        });
+        respond(id, {});
         return;
       }
       if (scriptedTurns) {

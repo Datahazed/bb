@@ -21,7 +21,6 @@ import {
 import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
-import { resolveThreadStorageRootPath } from "../../src/services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
 import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "../../src/constants.js";
@@ -29,6 +28,7 @@ import type { NotificationHub } from "../../src/ws/hub.js";
 import { NotificationHub as NotificationHubImpl } from "../../src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../src/ws/watch-interests.js";
 import { HostSharedPortCoordinator } from "../../src/ws/host-shared-ports.js";
+import { WorkspaceReadCaches } from "../../src/services/environments/workspace-read-cache.js";
 
 const TEST_MACHINE_KEY_PREFIX = "test-daemon-key";
 const TEST_SERVER_HOST = "127.0.0.1";
@@ -133,6 +133,7 @@ export async function createTestAppHarness(
   const hub = new NotificationHubImpl();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
+  const workspaceReadCaches = new WorkspaceReadCaches({ hub });
   const providerRegistry = createProviderRegistryService({
     resolveAcpAgentCapabilities: (providerId) =>
       resolveAcpAgentCapabilitiesForProviderId({ config }, providerId),
@@ -164,7 +165,6 @@ export async function createTestAppHarness(
     },
   };
   const config: ServerRuntimeConfig = {
-    appSurface: "web",
     appVersion: "0.0.0-test",
     builtinSkillsRootPath: join(dataDir, "builtin-skills"),
     customAcpAgents: [],
@@ -181,10 +181,6 @@ export async function createTestAppHarness(
     openAiApiKey: "test-openai-key",
     serverPort: 3334,
     sharedSkillRoots: { user: [], project: [] },
-    threadStorageRootPath: resolveThreadStorageRootPath({
-      dataDir,
-      env: {},
-    }),
     transcriptionModel: "test/mock-transcription",
     appUrl: "https://bb.example.test",
     ...configOverrides,
@@ -244,6 +240,7 @@ export async function createTestAppHarness(
     terminalSessions,
     watchInterests,
     sharedPorts,
+    workspaceReadCaches,
   };
   const { app, pluginCatalogService, pluginService } = createApp(deps);
 

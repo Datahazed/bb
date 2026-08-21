@@ -18,8 +18,14 @@ import type {
   PluginRealtimeConnectionState,
   PluginRpcContract,
   PluginRpcClient,
+  PluginProvidersState,
   PluginSettingsState,
+  ExperimentalAppPanel,
+  ExperimentalFixedTabTargetState,
+  ExperimentalPluginFixedTabReference,
+  JsonValue,
 } from "@get-bb/plugin-sdk";
+import { jsonValueSchema } from "@bb/domain";
 import {
   PluginSlotOwnershipContext,
   usePluginId,
@@ -30,6 +36,7 @@ import {
   usePluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import { sdk } from "@/lib/sdk";
+import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
 import {
@@ -39,7 +46,7 @@ import {
 import {
   appendQuoteAndAttachmentsToDraft,
   isPromptDraftEmpty,
-} from "@/lib/prompt-draft";
+} from "@bb/client-core";
 import {
   AUTOMATIONS_PLUGIN_ID,
   getPluginPanelRoutePath,
@@ -52,6 +59,12 @@ import { useRouteState } from "@/hooks/useRouteState";
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
 import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { normalizeExperimentalFileOpenOptions } from "@/lib/live-file-navigation";
+import {
+  getPluginFixedTabOwnerId,
+  useAppFixedTabTarget,
+} from "@/lib/app-fixed-tab-navigation";
 
 /**
  * Host implementations of the `@get-bb/plugin-sdk/app` hooks (plugin design
@@ -264,6 +277,27 @@ export function useSettings(): PluginSettingsState {
   };
 }
 
+const EMPTY_PROVIDERS: readonly never[] = [];
+
+/**
+ * The provider directory for plugins: the host's own provider roster query
+ * (shared cache, realtime invalidation), in picker order.
+ */
+export function useProviders(): PluginProvidersState {
+  const query = useSystemProviders();
+  const providers = query.data;
+  return useMemo<PluginProvidersState>(
+    () =>
+      providers === undefined
+        ? {
+            status: query.isError ? "error" : "loading",
+            providers: EMPTY_PROVIDERS,
+          }
+        : { status: "ready", providers },
+    [providers, query.isError],
+  );
+}
+
 export function useBbContext(): BbContext {
   const { projectId, threadId } = useRouteState();
   return useMemo(
@@ -277,6 +311,7 @@ export function useBbNavigate(): BbNavigate {
   const location = useLocation();
   const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
   const navigate = useNavigate();
+  const appNavigation = useAppNavigationHost();
   const toThread = useCallback(
     (threadId: string) => {
       // The canonical thread path carries the owning project, which the
@@ -334,6 +369,30 @@ export function useBbNavigate(): BbNavigate {
     (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,
     [openThreadPanelHandler, pluginId],
   );
+  const experimental_openUrl = useCallback<BbNavigate["experimental_openUrl"]>(
+    (url) => appNavigation.openUrl({ url }),
+    [appNavigation],
+  );
+  const experimental_openFilePreview = useCallback<
+    BbNavigate["experimental_openFilePreview"]
+  >(
+    (options) => {
+      const normalized = normalizeExperimentalFileOpenOptions(options);
+      return normalized !== null && appNavigation.openFilePreview(normalized);
+    },
+    [appNavigation],
+  );
+  const experimental_openFileExternally = useCallback<
+    BbNavigate["experimental_openFileExternally"]
+  >(
+    (options) => {
+      const normalized = normalizeExperimentalFileOpenOptions(options);
+      return (
+        normalized !== null && appNavigation.openFileExternally(normalized)
+      );
+    },
+    [appNavigation],
+  );
   return useMemo(
     () => ({
       toThread,
@@ -341,10 +400,74 @@ export function useBbNavigate(): BbNavigate {
       toPluginPanel,
       toCompose,
       openThreadPanel,
+      experimental_openFileExternally,
+      experimental_openFilePreview,
+      experimental_openUrl,
     }),
-    [toThread, toProject, toPluginPanel, toCompose, openThreadPanel],
+    [
+      toThread,
+      toProject,
+      toPluginPanel,
+      toCompose,
+      openThreadPanel,
+      experimental_openFileExternally,
+      experimental_openFilePreview,
+      experimental_openUrl,
+    ],
   );
 }
+
+function useExperimentalAppPanel(): ExperimentalAppPanel {
+  const pluginId = usePluginId();
+  const appNavigation = useAppNavigationHost();
+  const openFixedTab = useCallback<ExperimentalAppPanel["openFixedTab"]>(
+    (options) => {
+      const targetResult =
+        options.target === undefined
+          ? null
+          : jsonValueSchema.safeParse(options.target);
+      if (targetResult !== null && !targetResult.success) return false;
+      return appNavigation.openFixedTab({
+        surface: options.surface,
+        tab: {
+          ownerId: getPluginFixedTabOwnerId(pluginId, options.tab.panelId),
+          tabId: options.tab.id,
+        },
+        ...(targetResult?.success === true
+          ? { target: targetResult.data }
+          : {}),
+      });
+    },
+    [appNavigation, pluginId],
+  );
+  return useMemo(() => ({ openFixedTab }), [openFixedTab]);
+}
+
+function useExperimentalFixedTabTarget<Target extends JsonValue>(
+  tab: ExperimentalPluginFixedTabReference<Target>,
+): ExperimentalFixedTabTargetState<Target> | null {
+  const pluginId = usePluginId();
+  const state = useAppFixedTabTarget(
+    getPluginFixedTabOwnerId(pluginId, tab.panelId),
+    tab.id,
+  );
+  if (state === null || tab.experimental_target === undefined) return null;
+  try {
+    if (!tab.experimental_target.validate(state.target)) return null;
+  } catch {
+    return null;
+  }
+  return {
+    clear: state.clear,
+    sequence: state.sequence,
+    target: state.target,
+  };
+}
+
+export {
+  useExperimentalAppPanel as experimental_useAppPanel,
+  useExperimentalFixedTabTarget as experimental_useFixedTabTarget,
+};
 
 function reconcileComposerMentions(
   currentText: string,
@@ -455,7 +578,7 @@ function setComposerInputLock(
   }
 }
 
-export function subscribeComposerInputLock(
+function subscribeComposerInputLock(
   storageKey: string | null,
   listener: ComposerInputLockListener,
 ): () => void {

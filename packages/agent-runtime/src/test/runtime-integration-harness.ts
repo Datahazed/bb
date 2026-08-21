@@ -41,36 +41,30 @@ import {
   type RuntimeWaitPredicate,
 } from "./runtime-wait-helpers.js";
 
-export type ThreadIdentityEvent = Extract<
-  ThreadEvent,
-  { type: "thread/identity" }
->;
+type ThreadIdentityEvent = Extract<ThreadEvent, { type: "thread/identity" }>;
 export type TurnStartedEvent = Extract<ThreadEvent, { type: "turn/started" }>;
-export type InputAcceptedEvent = Extract<
-  ThreadEvent,
-  { type: "turn/input/accepted" }
->;
-export type ErrorThreadEvent = Extract<
+type InputAcceptedEvent = Extract<ThreadEvent, { type: "turn/input/accepted" }>;
+type ErrorThreadEvent = Extract<
   ThreadEvent,
   { type: "provider/error" | "system/error" }
 >;
-export type WaitPredicate = RuntimeWaitPredicate;
+type WaitPredicate = RuntimeWaitPredicate;
 
-export interface RuntimeDiagnosticsArgs {
+interface RuntimeDiagnosticsArgs {
   ctx: TestContext;
   threadId?: string;
 }
 
-export interface RuntimeWaitArgs extends RuntimeDiagnosticsArgs {
+interface RuntimeWaitArgs extends RuntimeDiagnosticsArgs {
   label: string;
   timeoutMs?: number;
 }
 
-export interface RuntimeConditionWaitArgs extends RuntimeWaitArgs {
+interface RuntimeConditionWaitArgs extends RuntimeWaitArgs {
   predicate: WaitPredicate;
 }
 
-export interface TurnCompletedCountWaitArgs extends RuntimeWaitArgs {
+interface TurnCompletedCountWaitArgs extends RuntimeWaitArgs {
   count: number;
 }
 
@@ -78,31 +72,28 @@ export interface ThreadWaitArgs extends RuntimeWaitArgs {
   threadId: string;
 }
 
-export interface ThreadTurnCompletedCountWaitArgs extends ThreadWaitArgs {
+interface ThreadTurnCompletedCountWaitArgs extends ThreadWaitArgs {
   count: number;
 }
 
-export interface ToolCallWaitArgs extends ThreadWaitArgs {
+interface ToolCallWaitArgs extends ThreadWaitArgs {
   toolName: string;
 }
 
-export interface InteractiveRequestWaitArgs extends ThreadWaitArgs {
+interface InteractiveRequestWaitArgs extends ThreadWaitArgs {
   count: number;
 }
 
-export type RuntimeOptionsTemplate = Omit<
-  AgentRuntimeExecutionOptions,
-  "model"
->;
+type RuntimeOptionsTemplate = Omit<AgentRuntimeExecutionOptions, "model">;
 
-export type RuntimeOptionsPreset =
+type RuntimeOptionsPreset =
   | "full"
   | "accept-edits-ask"
   | "accept-edits-deny"
   | "auto-ask"
   | "auto-deny";
 
-export interface ResolveRuntimeOptionsArgs {
+interface ResolveRuntimeOptionsArgs {
   ctx: TestContext;
   providerId: string;
   preset: RuntimeOptionsPreset;
@@ -111,7 +102,7 @@ export interface ResolveRuntimeOptionsArgs {
 const fullRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "full",
   permissionScope: "full",
   approvalReviewer: null,
@@ -121,7 +112,7 @@ const fullRuntimeOptionsTemplate = {
 const workspaceWriteAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "accept-edits",
   permissionScope: "workspace",
   approvalReviewer: "user",
@@ -131,7 +122,7 @@ const workspaceWriteAskRuntimeOptionsTemplate = {
 const workspaceWriteDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "accept-edits",
   permissionScope: "workspace",
   approvalReviewer: "user",
@@ -141,7 +132,7 @@ const workspaceWriteDenyRuntimeOptionsTemplate = {
 const readonlyAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "auto",
   permissionScope: "workspace",
   approvalReviewer: "automatic",
@@ -151,7 +142,7 @@ const readonlyAskRuntimeOptionsTemplate = {
 const readonlyDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "auto",
   permissionScope: "workspace",
   approvalReviewer: "automatic",
@@ -189,13 +180,13 @@ function collectTurnIds(events: ThreadEvent[]): Set<string> {
   return turnIds;
 }
 
-export interface RuntimeRestartTurnIdAssertionArgs {
+interface RuntimeRestartTurnIdAssertionArgs {
   firstEvents: ThreadEvent[];
   providerId: string;
   secondEvents: ThreadEvent[];
 }
 
-export interface ResolveProviderThreadIdArgs {
+interface ResolveProviderThreadIdArgs {
   events: ThreadEvent[];
   fallbackProviderThreadId: string | undefined;
   threadId: string;
@@ -434,6 +425,8 @@ function formatInteractiveRequest(request: PendingInteractionCreate): string {
       return `permission_grant:${subject.toolName ?? "unknown"}`;
     case "plan":
       return `plan:${previewText(subject.plan)}`;
+    case "tool_use":
+      return `tool_use:${subject.tool}`;
   }
 }
 
@@ -532,8 +525,10 @@ export function waitForThreadTurnCompletedCount(
   });
 }
 
-export function waitForThreadTurnStarted(args: ThreadWaitArgs): Promise<void> {
-  return waitForSharedThreadTurnStarted({
+export async function waitForThreadTurnStarted(
+  args: ThreadWaitArgs,
+): Promise<void> {
+  await waitForSharedThreadTurnStarted({
     describeFailure: () => describeRuntimeDiagnostics(args),
     events: args.ctx.events,
     failFast: () => failOnRuntimeError(args),
@@ -639,7 +634,7 @@ export function getCompletedCommands(events: ThreadEvent[]): string[] {
   return commands;
 }
 
-export async function resolveDefaultModel(
+async function resolveDefaultModel(
   providerId: string,
   ctx: TestContext,
 ): Promise<string> {
@@ -734,6 +729,12 @@ function expectSemanticApprovalRequest(
     case "plan":
       expect(request.payload.subject.plan.length).toBeGreaterThan(0);
       break;
+    case "tool_use":
+      expect(request.payload.subject.tool.length).toBeGreaterThan(0);
+      expect(
+        request.payload.subject.presentation.label.pending.length,
+      ).toBeGreaterThan(0);
+      break;
   }
   expect(request.payload.availableDecisions.length).toBeGreaterThan(0);
   for (const decision of request.payload.availableDecisions) {
@@ -770,7 +771,7 @@ function expectSemanticInteractiveRequest(
   expectSemanticUserQuestionRequest(request);
 }
 
-export interface TestContext {
+interface TestContext {
   runtime: AgentRuntime;
   events: ThreadEvent[];
   toolCalls: ToolCallRequest[];
@@ -779,15 +780,13 @@ export interface TestContext {
   ownsTmpDir: boolean;
 }
 
-export type TestToolCallHandler = (
-  req: ToolCallRequest,
-) => Promise<ToolCallResponse>;
+type TestToolCallHandler = (req: ToolCallRequest) => Promise<ToolCallResponse>;
 
-export type TestInteractiveRequestHandler = (
+type TestInteractiveRequestHandler = (
   req: PendingInteractionCreate,
 ) => Promise<PendingInteractionResolution>;
 
-export interface CreateTestRuntimeOptions {
+interface CreateTestRuntimeOptions {
   onInteractiveRequest?: TestInteractiveRequestHandler;
   onToolCall?: TestToolCallHandler;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
@@ -865,8 +864,7 @@ function withBridgeLaunch(
 ): AgentRuntime {
   return {
     ...runtime,
-    ensureProvider: (args) =>
-      runtime.ensureProvider({ bridgeLaunch, ...args }),
+    ensureProvider: (args) => runtime.ensureProvider({ bridgeLaunch, ...args }),
     startThread: (args) => runtime.startThread({ bridgeLaunch, ...args }),
     prepareThreadRewind: (args) =>
       runtime.prepareThreadRewind({ bridgeLaunch, ...args }),

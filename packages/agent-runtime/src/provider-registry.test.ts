@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import { createProviderForId } from "./provider-registry.js";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type { AgentRuntimeBridgeLaunch } from "./types.js";
@@ -28,7 +27,17 @@ const ACP_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
     digest: "e".repeat(64),
     artifactPath: "/data/provider-bridges/acp.mjs",
   },
+  providerOptions: {
+    acpLaunchSpec: {
+      displayName: "Cursor",
+      command: "cursor-agent",
+      args: ["acp"],
+      env: {},
+    },
+  },
+  envPassthrough: [],
   capabilities: {
+    experimental_providerInstallation: false,
     supportsServiceTier: true,
     permissionModes: ["accept-edits", "full"],
     supportsThreadArchive: false,
@@ -43,7 +52,10 @@ const PI_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
   pluginId: "provider-fixture",
   dataDir: "/data/plugins/provider-fixture/bridge-data",
   source: { kind: "daemon-bundled", id: "pi" },
+  providerOptions: {},
+  envPassthrough: [],
   capabilities: {
+    experimental_providerInstallation: false,
     supportsServiceTier: false,
     permissionModes: ["full"],
     supportsThreadArchive: false,
@@ -98,8 +110,7 @@ describe("provider registry", () => {
       threadId: "thread-1",
       cwd: "/workspace",
       options: {
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        workflowsEnabled: false,
+        providerOptions: {},
         permissionMode: "full",
         permissionScope: "full",
         approvalReviewer: null,
@@ -214,11 +225,7 @@ describe("provider registry", () => {
     }
   });
 
-  it("carries the built-in cursor launch spec to the acp bridge", () => {
-    // The server resolves launch specs only for configured and known ACP
-    // agents; bb's own cursor provider has none, so the registry's built-in
-    // table is the only thing that tells the bridge what to spawn — and it has
-    // to survive the move onto the generic artifact route.
+  it("carries the plugin-declared cursor launch spec to the acp bridge", () => {
     const provider = createProviderForId("acp-cursor", {
       additionalWorkspaceWriteRoots: [],
       bridgeLaunch: ACP_BRIDGE_LAUNCH,
@@ -228,8 +235,7 @@ describe("provider registry", () => {
       threadId: "thread-1",
       cwd: "/workspace",
       options: {
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        workflowsEnabled: false,
+        providerOptions: {},
         permissionMode: "full",
         permissionScope: "full",
         approvalReviewer: null,
@@ -277,8 +283,7 @@ describe("provider registry", () => {
       threadId: "thread-1",
       cwd: "/workspace",
       options: {
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        workflowsEnabled: false,
+        providerOptions: {},
         permissionMode: "full",
         permissionScope: "full",
         approvalReviewer: null,
@@ -329,12 +334,15 @@ describe("provider registry", () => {
       bridgeLaunch: {
         pluginId: "provider-fixture",
         dataDir: "/data/plugins/provider-fixture/bridge-data",
+        providerOptions: {},
+        envPassthrough: [],
         source: {
           kind: "artifact",
           digest: "a".repeat(64),
           artifactPath: "/data/provider-bridges/artifact.mjs",
         },
         capabilities: {
+          experimental_providerInstallation: false,
           supportsServiceTier: false,
           permissionModes: ["full"],
           supportsThreadArchive: false,
@@ -362,12 +370,15 @@ describe("provider registry", () => {
       bridgeLaunch: {
         pluginId: "provider-fixture",
         dataDir: "/data/plugins/provider-fixture/bridge-data",
+        providerOptions: {},
+        envPassthrough: [],
         source: {
           kind: "artifact",
           digest: "b".repeat(64),
           artifactPath: "/data/provider-bridges/codex.mjs",
         },
         capabilities: {
+          experimental_providerInstallation: false,
           supportsServiceTier: true,
           permissionModes: ["accept-edits", "auto", "full"],
           supportsThreadArchive: true,
@@ -390,8 +401,7 @@ describe("provider registry", () => {
       threadId: "thread-1",
       cwd: "/workspace",
       options: {
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        workflowsEnabled: false,
+        providerOptions: {},
         permissionMode: "full",
         permissionScope: "full",
         approvalReviewer: null,
@@ -426,7 +436,10 @@ describe("provider registry", () => {
           digest: "b".repeat(64),
           artifactPath: "/data/provider-bridges/artifact.mjs",
         },
+        providerOptions: {},
+        envPassthrough: [],
         capabilities: {
+          experimental_providerInstallation: false,
           supportsServiceTier: false,
           permissionModes: ["full"],
           supportsThreadArchive: false,
@@ -457,6 +470,8 @@ describe("provider registry", () => {
           digest: "c".repeat(64),
           artifactPath: "/data/provider-bridges/graduated-pi.mjs",
         },
+        providerOptions: {},
+        envPassthrough: [],
         capabilities: PI_BRIDGE_LAUNCH.capabilities,
       },
     });
@@ -473,6 +488,8 @@ describe("provider registry", () => {
         bridgeLaunch: {
           pluginId: "provider-fixture",
           dataDir: "/data/plugins/provider-fixture/bridge-data",
+          providerOptions: {},
+          envPassthrough: [],
           source: { kind: "daemon-bundled", id: "not-bundled" },
           capabilities: PI_BRIDGE_LAUNCH.capabilities,
         },
@@ -494,7 +511,10 @@ describe("provider registry", () => {
           digest: "d".repeat(64),
           artifactPath: "/data/provider-bridges/artifact.mjs",
         },
+        providerOptions: {},
+        envPassthrough: [],
         capabilities: {
+          experimental_providerInstallation: false,
           supportsServiceTier: true,
           permissionModes: ["accept-edits", "full"],
           supportsThreadArchive: false,

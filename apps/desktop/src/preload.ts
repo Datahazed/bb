@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 import { appCommandIdSchema } from "@bb/domain";
 import {
+  bbDesktopBrowserFindResultSchema,
   bbDesktopBrowserOpenTabRequestSchema,
   bbDesktopBrowserScopedOpenTabRequestSchema,
+  bbDesktopBrowserTabRefSchema,
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
   bbDesktopInfoSchema,
@@ -10,8 +12,10 @@ import {
   type BbDesktopApi,
   type BbDesktopAppCommandHandler,
   type BbDesktopBrowserApi,
+  type BbDesktopBrowserFindResultHandler,
   type BbDesktopBrowserOpenTabHandler,
   type BbDesktopBrowserScopedOpenTabHandler,
+  type BbDesktopBrowserFocusHandler,
   type BbDesktopBrowserSnapshotHandler,
   type BbDesktopBrowserStateHandler,
   type BbDesktopBrowserUnsubscribe,
@@ -36,6 +40,10 @@ import {
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
+  BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
+  BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -44,9 +52,11 @@ import {
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
+  BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
+  BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
@@ -160,7 +170,9 @@ const browserStateListeners = new Set<BbDesktopBrowserStateHandler>();
 const browserOpenTabListeners = new Set<BbDesktopBrowserOpenTabHandler>();
 const browserScopedOpenTabListeners =
   new Set<BbDesktopBrowserScopedOpenTabHandler>();
+const browserFocusListeners = new Set<BbDesktopBrowserFocusHandler>();
 const browserSnapshotListeners = new Set<BbDesktopBrowserSnapshotHandler>();
+const browserFindResultListeners = new Set<BbDesktopBrowserFindResultHandler>();
 const closeWindowRequestListeners =
   new Set<BbDesktopCloseWindowRequestHandler>();
 const openNewTabListeners = new Set<BbDesktopOpenNewTabHandler>();
@@ -235,6 +247,9 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   stop(tabId): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_STOP_CHANNEL, { tabId });
   },
+  focus(tabId): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_FOCUS_CHANNEL, { tabId });
+  },
   setBounds(request): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL, {
       ...request,
@@ -243,6 +258,12 @@ const bbBrowserApi: BbDesktopBrowserApi = {
   },
   setVisible(request): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL, request);
+  },
+  setVisibleWithoutFocus(request): void {
+    ipcRenderer.send(
+      BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL,
+      request,
+    );
   },
   onState(listener): BbDesktopBrowserUnsubscribe {
     browserStateListeners.add(listener);
@@ -262,10 +283,28 @@ const bbBrowserApi: BbDesktopBrowserApi = {
       browserScopedOpenTabListeners.delete(listener);
     };
   },
+  onFocus(listener): BbDesktopBrowserUnsubscribe {
+    browserFocusListeners.add(listener);
+    return () => {
+      browserFocusListeners.delete(listener);
+    };
+  },
   onSnapshot(listener): BbDesktopBrowserUnsubscribe {
     browserSnapshotListeners.add(listener);
     return () => {
       browserSnapshotListeners.delete(listener);
+    };
+  },
+  findInPage(request): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL, request);
+  },
+  stopFindInPage(request): void {
+    ipcRenderer.send(BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL, request);
+  },
+  onFindResult(listener): BbDesktopBrowserUnsubscribe {
+    browserFindResultListeners.add(listener);
+    return () => {
+      browserFindResultListeners.delete(listener);
     };
   },
 };
@@ -387,6 +426,19 @@ ipcRenderer.on(BB_DESKTOP_BROWSER_STATE_CHANNEL, (_event, payload: unknown) => {
 });
 
 ipcRenderer.on(
+  BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
+  (_event, payload: unknown) => {
+    const parsed = bbDesktopBrowserTabRefSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    for (const listener of browserFocusListeners) {
+      listener(parsed.data.tabId);
+    }
+  },
+);
+
+ipcRenderer.on(
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
   (_event, payload: unknown) => {
     const parsed = bbDesktopBrowserOpenTabRequestSchema.safeParse(payload);
@@ -421,6 +473,19 @@ ipcRenderer.on(
       return;
     }
     for (const listener of browserSnapshotListeners) {
+      listener(parsed.data);
+    }
+  },
+);
+
+ipcRenderer.on(
+  BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
+  (_event, payload: unknown) => {
+    const parsed = bbDesktopBrowserFindResultSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    for (const listener of browserFindResultListeners) {
       listener(parsed.data);
     }
   },

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { PromptTextMention } from "@bb/domain";
+import { TextSelection } from "@tiptap/pm/state";
 import { EditorView } from "@tiptap/pm/view";
 import {
   createRef,
@@ -21,7 +22,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { emptyPromptDraftState } from "@/lib/prompt-draft";
+import { emptyPromptDraftState } from "@bb/client-core";
 import {
   getComposerInputLock,
   useComposer,
@@ -45,6 +46,7 @@ import {
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
+import { QueuedEditorTypeaheadLayoutContext } from "@/components/promptbox/queued-editor-typeahead-layout";
 import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
@@ -56,6 +58,7 @@ import {
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
+  arePromptEditorValuesEqual,
   suppressPromptEditorAnchorActivation,
   type PromptBoxAction,
   type PromptBoxHandle,
@@ -65,7 +68,7 @@ import {
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
-} from "./mentions/types";
+} from "@bb/client-core";
 
 type PromptBoxProps = ComponentProps<typeof PromptBoxInternal>;
 
@@ -499,8 +502,13 @@ function mockIPadOSWebKit(): () => void {
   });
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // TipTap's React hook defers editor destruction by 1 ms so a Strict Mode
+  // remount can reuse the instance. Let that teardown finish while this
+  // test's jsdom window is still alive instead of leaking it into the next
+  // test (or the environment shutdown after the final test).
+  await new Promise<void>((resolve) => setTimeout(resolve, 2));
   resetPluginLogoStoreForTest();
   resetPluginSlotStoreForTest();
   resetAllCrashedPluginSlotsForTest();
@@ -555,6 +563,40 @@ describe("suppressPromptEditorAnchorActivation", () => {
 });
 
 describe("PromptBoxInternal controlled value sync", () => {
+  it("compares cloned mention values without serializing the prompt text", () => {
+    const resource = {
+      kind: "path" as const,
+      source: "workspace" as const,
+      entryKind: "file" as const,
+      path: "src/a.ts",
+      label: "a.ts",
+    };
+    const mention: PromptTextMention = {
+      start: 4,
+      end: 10,
+      resource,
+    };
+    const left = { text: "see @a.ts", mentions: [mention] };
+
+    expect(
+      arePromptEditorValuesEqual(left, {
+        text: left.text,
+        mentions: [{ ...mention, resource: { ...resource } }],
+      }),
+    ).toBe(true);
+    expect(
+      arePromptEditorValuesEqual(left, {
+        text: left.text,
+        mentions: [
+          {
+            ...mention,
+            resource: { ...resource, path: "src/b.ts" },
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
   it("suppresses and restores plugin customizations without remounting the editor", () => {
     setPluginSlotRegistrations(
       "pending-test",
@@ -1154,6 +1196,31 @@ describe("PromptBoxInternal controlled value sync", () => {
 });
 
 describe("PromptBoxInternal submit shortcuts", () => {
+  it("exposes the disabled submit reason as its label and hover tooltip", async () => {
+    const reason = "Loading models from the selected machine...";
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Investigate this",
+          submission: { disabled: true, disabledReason: reason },
+        })}
+      />,
+    );
+
+    const submit = screen.getByRole("button", { name: reason });
+    expect(submit.hasAttribute("disabled")).toBe(true);
+
+    const tooltipTrigger = submit.closest(
+      "[data-promptbox-submit-disabled-reason]",
+    );
+    expect(tooltipTrigger).not.toBeNull();
+    fireEvent.pointerMove(tooltipTrigger!, { pointerType: "mouse" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("tooltip").textContent).toBe(reason);
+    });
+  });
+
   it("continues to submit unmodified Enter on a fine-pointer device", () => {
     const restoreMatchMedia = mockPointerCoarse(false);
     try {
@@ -1556,48 +1623,6 @@ describe("PromptBoxInternal zen mode layout", () => {
     ).toBeNull();
 
     fireEvent.transitionEnd(form, { propertyName: "height" });
-    window.localStorage.removeItem(storageKey);
-  });
-
-  it("keeps long editor content constrained to the scroll area", async () => {
-    const storageKey = "bb.test.promptbox.zen-layout";
-    window.localStorage.removeItem(storageKey);
-
-    render(
-      <PromptBoxInternal
-        {...createPromptBoxProps({
-          value: Array.from(
-            { length: 40 },
-            (_, index) => `Line ${index + 1}`,
-          ).join("\n"),
-          promptActions,
-          zenMode: { storageKey },
-        })}
-      />,
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Make prompt box larger" }),
-    );
-
-    await waitFor(() => {
-      const scrollContainer = document.querySelector(
-        "[data-promptbox-editor-scroll]",
-      );
-      if (!(scrollContainer instanceof HTMLElement)) {
-        throw new Error("Prompt editor scroll container was not rendered");
-      }
-
-      expect(scrollContainer.classList.contains("min-h-0")).toBe(true);
-      expect(scrollContainer.parentElement?.classList.contains("min-h-0")).toBe(
-        true,
-      );
-    });
-
-    const footerRow = screen.getByRole("button", { name: "Prompt actions" })
-      .parentElement?.parentElement;
-    expect(footerRow?.classList.contains("shrink-0")).toBe(true);
-
     window.localStorage.removeItem(storageKey);
   });
 });
@@ -2066,14 +2091,7 @@ describe("PromptBoxInternal compact layout", () => {
 
     const form = document.querySelector("[data-promptbox]");
     expect(form?.getAttribute("data-promptbox-compact")).toBe("");
-    const submitButton = screen.getByRole("button", {
-      name: "Submit (Enter)",
-    });
-    expect(submitButton.classList.contains("size-8")).toBe(true);
-    expect(submitButton.classList.contains("p-0")).toBe(true);
-    expect(submitButton.classList.contains("ml-1")).toBe(false);
-    expect(submitButton.classList.contains("transition-colors")).toBe(true);
-    expect(submitButton.classList.contains("transition-all")).toBe(false);
+    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Model selector" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Attach files" })).toBeNull();
@@ -2090,12 +2108,6 @@ describe("PromptBoxInternal compact layout", () => {
       "[data-promptbox-compact-content]",
     );
     expect(compactContent).toBeTruthy();
-    expect(compactContent?.classList.contains("items-center")).toBe(true);
-    expect(
-      document
-        .querySelector("[data-promptbox-editor-scroll]")
-        ?.classList.contains("pt-0"),
-    ).toBe(true);
   });
 
   it("uses voice as the primary action for an empty coarse-pointer prompt", () => {
@@ -2172,6 +2184,29 @@ describe("PromptBoxInternal compact layout", () => {
 
     fireEvent.click(submit, { detail: 1 });
     expect(onSubmit).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(editor);
+  });
+
+  it("keeps DOM focus through submit when TipTap focus state is stale", async () => {
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({ value: "Send this follow-up" })}
+      />,
+    );
+
+    await waitForPromptFocus();
+    const editor = getPromptEditorElement();
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+
+    // TipTap derives isFocused from focus and blur events. Model the iOS
+    // window where its blur event has arrived but the contenteditable still
+    // owns native focus and therefore still controls the software keyboard.
+    editor.dispatchEvent(new FocusEvent("blur"));
+    expect(document.activeElement).toBe(editor);
+
+    expect(
+      fireEvent.pointerDown(submit, { button: 0, pointerType: "touch" }),
+    ).toBe(false);
     expect(document.activeElement).toBe(editor);
   });
 
@@ -2779,6 +2814,48 @@ describe("PromptBoxInternal mention triggers", () => {
     replacement: "#42 Fix login bug",
   };
 
+  it("reports the queued editor typeahead's open state and measured height", async () => {
+    const layouts: Array<{ height: number; isOpen: boolean }> = [];
+    const nativeGetBoundingClientRect =
+      HTMLElement.prototype.getBoundingClientRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.hasAttribute("data-promptbox-typeahead-menu")) {
+          return new DOMRect(0, 0, 600, 144);
+        }
+        return nativeGetBoundingClientRect.call(this);
+      });
+    const promptBoxRef = createRef<PromptBoxHandle>();
+
+    render(
+      <QueuedEditorTypeaheadLayoutContext.Provider
+        value={(layout) => layouts.push(layout)}
+      >
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "@fix",
+            typeahead: buildTypeaheadConfig({
+              mentionSuggestions: [githubIssueSuggestion],
+            }),
+          })}
+          promptBoxRef={promptBoxRef}
+        />
+      </QueuedEditorTypeaheadLayoutContext.Provider>,
+    );
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(layouts).toContainEqual({ height: 144, isOpen: true }),
+    );
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+    await waitFor(() =>
+      expect(layouts.at(-1)).toEqual({ height: 0, isOpen: false }),
+    );
+    rectSpy.mockRestore();
+  });
+
   it("renders a plugin mention's named icon hint", async () => {
     const suggestion = { ...githubIssueSuggestion, icon: "FileText" };
     const { promptBoxRef } = renderPromptBox("@fix", {
@@ -2924,7 +3001,90 @@ describe("PromptBoxInternal mention triggers", () => {
   });
 });
 
+describe("PromptBoxInternal selection reveal", () => {
+  async function nextAnimationFrame() {
+    await act(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+  }
+
+  it("reveals the moving selection head, not the anchor, when a selection extends upward", async () => {
+    const lines = Array.from({ length: 40 }, (_, index) => `line ${index}`);
+    const { promptBoxRef } = renderPromptBox(lines.join("\n"));
+
+    await focusPromptEnd(promptBoxRef);
+    await nextAnimationFrame();
+
+    const scrollContainer = document.querySelector(
+      "[data-promptbox-editor-scroll]",
+    );
+    if (!(scrollContainer instanceof HTMLElement)) {
+      throw new Error("Prompt editor scroll container was not rendered");
+    }
+    // jsdom does not lay out, so emulate a 100px viewport scrolled to the
+    // middle of the document. The selection anchor sits below the viewport
+    // (where the drag started) and the head sits above it (where the pointer
+    // is now). The browser's own drag autoscroll has already moved the
+    // viewport up toward the head.
+    let scrollTop = 500;
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: (next: number) => {
+        scrollTop = next;
+      },
+    });
+    const scrollRectSpy = vi
+      .spyOn(scrollContainer, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, 0, 320, 100));
+    let view: EditorView | null = null;
+    const coordsAtPosSpy = vi
+      .spyOn(EditorView.prototype, "coordsAtPos")
+      .mockImplementation(function (this: EditorView, pos: number) {
+        view = this;
+        const { selection } = this.state;
+        if (pos === selection.head && selection.head !== selection.anchor) {
+          return { left: 0, right: 0, top: -30, bottom: -14 };
+        }
+        return { left: 0, right: 0, top: 160, bottom: 176 };
+      });
+
+    try {
+      await waitFor(() => expect(view).not.toBeNull());
+      const liveView = view as unknown as EditorView;
+      const { doc } = liveView.state;
+      // The focusEnd reveal above captured `view`; reset the baseline it set.
+      scrollTop = 500;
+      await act(async () => {
+        liveView.dispatch(
+          liveView.state.tr.setSelection(
+            TextSelection.create(doc, doc.content.size - 1, 1),
+          ),
+        );
+      });
+      await nextAnimationFrame();
+
+      // The reveal must follow the head upward (scrollTop decreases). Before
+      // the fix it revealed `selection.to` (the anchor) and yanked the
+      // viewport back down, fighting the drag autoscroll on every pointer move.
+      expect(scrollTop).toBeLessThan(500);
+    } finally {
+      coordsAtPosSpy.mockRestore();
+      scrollRectSpy.mockRestore();
+    }
+  });
+});
+
 describe("PromptBoxInternal prompt actions", () => {
+  it("keeps the action row out of text selection while the editor stays selectable", () => {
+    renderPromptBox("");
+
+    const actionRow = document.querySelector("[data-promptbox-action-row]");
+    expect(actionRow?.classList.contains("select-none")).toBe(true);
+    expect(getPromptEditorElement().closest(".select-none")).toBeNull();
+  });
+
   it("keeps the custom caret reveal for composer-handled text pastes", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 

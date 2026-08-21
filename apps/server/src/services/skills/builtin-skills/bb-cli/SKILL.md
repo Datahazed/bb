@@ -11,6 +11,8 @@ message agents, or inspect projects, providers, and environments.
 ## Start With Context
 
 - Use `bb status` to identify the current project, thread, and environment.
+  It also lists enabled plugins that are not running (incompatible, error,
+  missing); `bb plugin list` shows each plugin's status detail.
 - Prefer `--json` when command output will drive follow-up work.
 - Run `bb guide` for the system overview and `bb guide <chapter>` for full
   command reference.
@@ -41,10 +43,12 @@ message agents, or inspect projects, providers, and environments.
 
 ## Remote Client
 
-- `bb-app client ssh-target set <server-origin> <ssh-target>` configures the
+- `bb-app client ssh-target set <server-origin> <ssh-target> [--host-id <id>]`
+  configures the
   local helper to open files from a remote bb server in local editors. The SSH
   target is the value that works after `ssh`, such as `devbox` or
-  `user@devbox`.
+  `user@devbox`. Pass the work-host ID from `bb machine list` when the server
+  has more than one machine; single-machine servers are selected automatically.
 - These mappings live on the client machine in `<dataDir>/client.json`;
   the CLI resolves the server's host ID when writing the mapping, and the remote
   server does not read the file.
@@ -90,6 +94,10 @@ message agents, or inspect projects, providers, and environments.
   keyboard keeps Return as a newline; iPadOS WebKit preserves the Enter
   shortcuts for a connected Magic Keyboard. Update the preference with
   `bb settings general steerActiveThreadOnEnter <true|false>`.
+- The `streamerMode` General preference defaults to false. Enable it to hide
+  every `customModels` entry from `~/.bb/config.json` in all model lists
+  (pickers, `bb provider models`, and the SDK) during a screen share. Update it
+  with `bb settings general streamerMode <true|false>`.
 - Settings → Keyboard records server-backed per-command shortcut overrides.
   The `showKeyboardHints` preference controls the delayed badges shown while
   holding Command or Control and defaults to true; update it with
@@ -105,15 +113,17 @@ message agents, or inspect projects, providers, and environments.
   specific connected machine instead of the primary machine.
 - Extensions provides the unified Skills and Plugins management UI, while
   Automations stays in the Plugins section beside threads.
-- The default-off `newOnboarding` experiment exposes the first-run agent and
-  project setup guide. Change it with
-  `bb settings experiment newOnboarding <true|false>`. Use
-  `bb settings replay-onboarding` to enable it and show the guide again.
+- The default-off `changelogPreview` experiment shows the latest release notes
+  on Settings → Updates. Change it with
+  `bb settings experiment changelogPreview <true|false>`.
 - The default-on `editMessages` experiment allows accepted root user messages
   in Codex, Claude Code, and Pi threads to be replaced and rerun, including
   failed or incomplete turns. Submitting an edit to a running thread stops and
   settles the current turn first. Change it with:
   `bb settings experiment editMessages <true|false>`.
+- The default-off `timelineWindowing` experiment mounts only nearby rows in
+  long timelines and large expanded timeline details. Change it with
+  `bb settings experiment timelineWindowing <true|false>`.
 - Thread timeline windows are capped by event count as well as by user-message
   count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), because a thread
   with few user messages but many events would otherwise reproject its whole
@@ -221,11 +231,19 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   `bb connect servers` lists every bb on the paired account (handle,
   name, url, live) so callers can discover siblings; `--json` includes
   `selfHandle` for deduping this server. When you start a local server the user
-  should open remotely, expose the port and give them the share URL. Remote
+  should open remotely, expose the port and give them the share URL.
+  `bb connect machine-code` mints a one-time code (10 minutes, single use)
+  that pairs the bb mobile app with this bb (it needs the `mobileApp`
+  experiment: `bb settings experiment mobileApp true`): it prints the code, server URL,
+  connect apex, and expiry; `--json` returns `{code, serverUrl, apex,
+  expiresAt}`. The phone enrolls as a connect machine with its own revocable
+  credential (visible in the getbb.app dashboard). Settings → Remote access →
+  Add mobile device shows the same code as a QR. A machine-limit failure names
+  the dashboard so the user can revoke an unused device. Remote
   access is owned by the builtin `connect` plugin: `bb plugin disable connect`
   cuts it off entirely; with bb connect still enabled, `bb plugin enable
   connect` restores the command. Plugins → Connect shows the current URL, QR
-  code, shared ports, re-pair form, and disconnect control.
+  code, mobile pairing, shared ports, re-pair form, and disconnect control.
 - Add remote execution machines from Settings → Machines. Its one-line
   installer stores the bb connect machine credential locally and configures
   both the daemon protocol and agent-launched `bb` CLI to traverse the account
@@ -284,7 +302,8 @@ status|install` to inspect or install provider CLIs on a selected machine.
   returning the stable server attachment DTO. Optional `--filename` and
   `--mime-type` override inferred metadata. Pass the returned relative `path`
   to thread `--file` or `--image`; image MIME types are capped at 10MB and
-  other files at 25MB. `bb project attachment download <project-id>
+  other files at 25MB, and image/heic or image/heif uploads are rejected
+  (convert them to JPEG or PNG first). `bb project attachment download <project-id>
 <attachment-path> --client-file <path>` writes existing attachment bytes on
   the CLI machine. There is no project-attachment list or per-file remove API.
 - `bb project history|reorder` exposes project prompt recall and sidebar order.
@@ -308,6 +327,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
 - Use `--parent-self` inside a thread to parent the new thread to the current
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
+- A parent can live in a different project. Pass `--project <other-id>` with
+  `--parent-self` to delegate work in another repository; the child still
+  reports back to its parent and stays under its parent's permission ceiling.
 - If provider or model choice matters, inspect options with `bb provider list`
   and `bb provider models <provider-id>`. Both accept `--machine <id-or-name>`
   (alias `--host`) or `--environment <id>` to inspect the machine where work
@@ -342,6 +364,7 @@ environment pull-request show <id>`. Diff commands require an explicit target
   and bb discovers it automatically. An OpenCode agent is a session mode, not
   a model, and cannot be selected through bb. This list also has no set/unset
   CLI surface; edit the JSON and run `bb-app config refresh` or restart bb.
+  The `streamerMode` General preference hides every entry from model lists.
 - Top-level `sharedSkillRoots` uses the same relative `user` and `project`
   paths. bb lists these skills as read-only. bb injects them into each provider,
   so one physical skill collection can support bb and standalone provider CLIs.
@@ -452,12 +475,11 @@ For review or fix pipelines, get the environment ID from
 - For failed threads, inspect `bb thread show <id> --json` and
   `bb thread log <id>` before deciding whether to retry, clarify, or update the
   user.
-- The opt-in Provider retry plugin automatically waits for structured Codex and
-  Claude Code subscription-window resets when the failed turn was accepted and
-  its execution settings remain available. Prior output or tool activity does
-  not block recovery. Enable it with
-  `bb plugin enable provider-retry` or under Extensions → Plugins. Its timers
-  last only while the current bb server/plugin process is running. Inspect it
+- The Provider retry plugin is enabled on fresh installations and automatically
+  waits for structured Codex and Claude Code subscription-window resets when
+  the failed turn was accepted and its execution settings remain available.
+  Prior output or tool activity does not block recovery. Its timers last only
+  while the current bb server/plugin process is running. Inspect it
   with `bb provider-retry status [thread-id]`, or cancel one with
   `bb provider-retry cancel <thread-id>`. Automatic waits default to six hours;
   configure longer waits with
@@ -506,7 +528,10 @@ For review or fix pipelines, get the environment ID from
 add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   = that comment). Avoid progress spam.
 - Delegated threads are attached automatically. For work started independently,
-  run `bb tasks attach <key-or-id>` from the working thread.
+  run `bb tasks attach <key-or-id>` from the working thread. When a thread is
+  done with a task or a respawned worker replaced it, run `bb tasks detach
+<key-or-id> [--thread <thread-id>]`. `bb tasks threads <key>` lists live
+  threads first, newest first.
 - When implementation is ready for review, run `bb tasks update <key-or-id>
 --status in_review`; if blocked, leave the status accurate and explain the
   blocker in a comment.
@@ -564,6 +589,14 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   `bb automation create --project <id> --name "..." --cron "..." --timezone "..." --script-file ./watch.sh`
   (or `--script "<inline>"`). A script that exits 0 with empty stdout, or whose
   last non-empty line is `{"wakeAgent": false}`, stays silent.
+- `--script-file` reads the file relative to your cwd from the thread's
+  environment host (the server host outside a thread; `--host <name-or-id>`
+  overrides) and stores a private copy that runs execute. The copy is a
+  snapshot: edits to the source file do nothing until you run
+  `bb automation update <id> --project <id> --script-file <path>` again with
+  the same script flags; `create` and `update` print that exact command.
+  `create`, `update`, and `show` print the stored copy path on the `Script:`
+  line (`execution.storedScriptPath` in `--json`).
 - Script automations run on the server with cwd set to the plugin data
   directory. They have no environment/workspace. Injected variables are
   `BB_SERVER_URL`, `BB_PROJECT_ID`, `BB_AUTOMATION_ID`, and
@@ -729,7 +762,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     bundled inside the app and install from the local copy — no network. Installed official
     plugins are pinned to the bundled copy and update with BB app releases.
   - The store also lists the **BB Community marketplace** catalog: a manifest
-    the server re-reads at startup and every six hours from
+    the server re-reads at startup and every two hours from
     `https://getbb.app/marketplace/v1/marketplace.json`
     (override with `BB_MARKETPLACE_URL`, which the server reads only at
     startup). Its entries install from their listed
@@ -789,9 +822,12 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     both exist the install fails — write `@semver:<range>` or `@ref:<name>`.
     Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip. Reinstalling an already-installed managed plugin is
-    refused — use `bb plugin update`. Plugins that declare a frontend (`bb.app`)
-    are built at install time for path sources and git sources without a
-    prebuilt app when their imported dependencies are already available;
+    refused — use `bb plugin update`. Installing a local path for an id that
+    is already installed from another local path moves the plugin to the new
+    directory and keeps its settings, secrets, and schedules. Plugins that
+    declare a frontend (`bb.app`) are built at install time for path sources
+    and git sources without a prebuilt app when their imported dependencies
+    are already available;
     git/npm packages can also ship a metadata-validated prebuilt `dist/`, and
     npm packages must. Managed git/npm installs refuse `engines.bb` /
     `engines.bbPluginSdk` mismatches, manifest vs. artifact identity mismatches,
@@ -811,7 +847,11 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     updates for tracking sources, including newer tags that satisfy a Git
     semver range. Same full-trust confirmation as install (`--yes` skips;
     non-TTY refuses without it). Use `bb plugin outdated` to preview available
-    updates; changing a pinned source requires reinstalling it after removal.
+    updates. Changing a pinned git:/npm: source requires `bb plugin remove`
+    (which deletes the plugin's settings, secrets, and schedules) and a fresh
+    install. A local path plugin is never removed to change it: edit it in
+    place and `bb plugin reload <id>`, or `bb plugin install path:<new dir>`
+    to move it; both keep its configuration.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
   - `bb plugin source <id> [--json]` — requested and resolved source, the
@@ -819,7 +859,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     prefix and resolved tag for a Git range install, engine ranges, install
     time, integrity/registry details, and recent activation history.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
-    `bb plugin remove <id>` (builtin removals are remembered).
+    `bb plugin remove <id>` (deletes the plugin's settings, secrets, and
+    schedules; managed git/npm files are deleted, local path sources stay on
+    disk, builtin removals are remembered).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
     settings. Reload the plugin after configuring (`bb plugin reload <id>`).
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.
@@ -875,7 +917,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     Re-running on a migrated plugin is a no-op. Needs no server.
   - `bb plugin dev [path]` — watch loop for an installed plugin (default:
     cwd): on every change it rebuilds the frontend bundle (when `bb.app` is
-    declared) and reloads the plugin; open app pages pick the new UI up live.
+    declared; unminified, unlike `bb plugin build`) and reloads the plugin;
+    open app pages pick the new UI up live.
     Build/reload failures print and keep watching; Ctrl+C stops.
   - Frontend entries default-export `definePluginApp` from
     `@get-bb/plugin-sdk/app` and register UI slots (homepageSection,

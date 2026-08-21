@@ -1,12 +1,9 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listSystemProviderInfos } from "../../../src/services/system/execution-options.js";
-import {
-  resolveCreateThreadExecutionDefaults,
-  resolveWorkflowsEnabledPolicy,
-} from "../../../src/services/threads/thread-default-policy.js";
+import { resolveCreateThreadExecutionDefaults } from "../../../src/services/threads/thread-default-policy.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
 /**
@@ -57,18 +54,20 @@ async function writePlugin(
 
 const REGISTER_PROVIDER_SOURCE = (id: string): string => `
   export default function plugin(bb: any) {
-    bb.agents.experimental_registerProvider({
+    bb.providers.register({
       id: ${JSON.stringify(id)},
       displayName: "My Remote Agent",
       icon: "./icons/agent.svg",
       capabilities: {
+        experimental_providerHealth: true,
+        experimental_providerUsage: true,
+      experimental_providerInstallation: false,
         supportsServiceTier: true,
         supportsNativeUserQuestion: true,
         fork: "tip",
         supportsManualCompaction: true,
         supportsThreadArchive: false,
         supportsThreadRename: false,
-        supportsWorkflows: false,
         permissionModes: ["accept-edits", "full"],
         reasoningLevels: ["low", "medium", "high"],
       },
@@ -77,7 +76,7 @@ const REGISTER_PROVIDER_SOURCE = (id: string): string => `
   }
 `;
 
-describe("bb.agents.experimental_registerProvider (server)", () => {
+describe("bb.providers.register (server)", () => {
   let workDir: string;
 
   beforeEach(async () => {
@@ -90,12 +89,17 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
 
   it("adds the provider to the composed listing and removes it when the plugin is disabled", async () => {
     await withTestHarness(async (harness) => {
+      const notifySystem = vi.spyOn(harness.deps.hub, "notifySystem");
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-remote-agent",
         serverSource: REGISTER_PROVIDER_SOURCE("my-remote-agent"),
       });
       const entry = await harness.pluginService.installPath(rootDir);
       expect(entry.status).toBe("running");
+      expect(notifySystem).toHaveBeenCalledWith([
+        "plugins-changed",
+        "provider-registrations-changed",
+      ]);
 
       const registration = harness.deps.providerRegistry.get("my-remote-agent");
       expect(registration).toMatchObject({
@@ -105,6 +109,9 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
           displayName: "My Remote Agent",
           available: true,
           logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
+          experimental_providerHealth: true,
+          experimental_providerUsage: true,
+          experimental_providerInstallation: false,
           capabilities: {
             supportsThreadArchive: false,
             supportsThreadRename: false,
@@ -122,7 +129,6 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
           ],
         },
         serverCapabilities: {
-          supportsWorkflows: false,
           reasoningLevels: ["low", "medium", "high"],
         },
       });
@@ -139,12 +145,18 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       );
 
       // Disabling the plugin runs its dispose hooks and removes the provider.
+      notifySystem.mockClear();
       await harness.pluginService.setEnabled(entry.id, false);
+      expect(notifySystem).toHaveBeenCalledWith([
+        "plugins-changed",
+        "provider-registrations-changed",
+      ]);
       expect(harness.deps.providerRegistry.get("my-remote-agent")).toBeNull();
       const afterDisable = await listSystemProviderInfos(harness.deps, {});
       expect(afterDisable.map((provider) => provider.id)).not.toContain(
         "my-remote-agent",
       );
+      notifySystem.mockRestore();
     });
   });
 
@@ -206,9 +218,8 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       const registry = harness.deps.providerRegistry;
 
       // The policy layer answers from the plugin declaration: create-thread
-      // default resolution accepts the plugin provider id, the permission
-      // modes come from the declaration, and the workflows policy reads the
-      // mapped server capabilities (always false for plugin providers today).
+      // default resolution accepts the plugin provider id and the permission
+      // modes come from the declaration.
       const resolved = resolveCreateThreadExecutionDefaults(registry, {
         requestedProviderId: "policy-agent",
         storedDefaults: null,
@@ -217,9 +228,6 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       expect(
         registry.getSupportedPermissionModes("policy-agent"),
       ).not.toBeNull();
-      expect(resolveWorkflowsEnabledPolicy(registry, "policy-agent")).toBe(
-        false,
-      );
       // A fuller proof (POST /threads through the route) needs a faked
       // daemon host session; these policy calls are the slice that gated
       // plugin providers before the repoint.
@@ -272,11 +280,10 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
     });
   });
 
-  // Reservation, not just collision: the id belongs to provider-codex even
-  // when nothing has registered it (the plugin is disabled, or failed), and
-  // for a daemon-bundled id like pi the host would otherwise run bb's own
-  // bridge under the impostor's metadata.
-  it("rejects a first-party id claimed by another plugin as a load failure", async () => {
+  // Flat ids: no reservation table. The first live registration wins, so a
+  // later plugin claiming a first-party id collides with the incumbent and
+  // fails its load — and once the incumbent is disabled, the id is free.
+  it("rejects a live id claimed by another plugin as a load failure", async () => {
     await withTestHarness(async (harness) => {
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-shadow-codex",
@@ -285,7 +292,7 @@ describe("bb.agents.experimental_registerProvider (server)", () => {
       const entry = await harness.pluginService.installPath(rootDir);
       expect(entry.status).toBe("error");
       expect(entry.statusDetail).toContain(
-        'Provider "codex" is reserved for the "provider-codex" plugin',
+        'Provider "codex" is already registered; a plugin cannot shadow an existing provider.',
       );
       // The incumbent registration is untouched and the failed plugin
       // contributed nothing.

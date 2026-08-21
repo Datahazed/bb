@@ -30,16 +30,25 @@ function providerHostResponse(
       },
     };
   }
-  if (request.command.type === "known_acp_agents.status") {
+  if (request.command.type === "provider.health") {
     return {
       ok: true as const,
       result: {
-        agents: request.command.agents.map((agent) => ({
-          ...agent,
-          installed: agent.id === installedProviderId,
-          executablePath:
-            agent.id === installedProviderId ? `/bin/${agent.id}` : null,
-        })),
+        supported: true as const,
+        health: {
+          status:
+            request.command.providerId === installedProviderId
+              ? ("ready" as const)
+              : ("not_installed" as const),
+          statusMessage: null,
+          accountEmail: null,
+          planLabel: null,
+          installedVersion: null,
+          minimumSupportedVersion: null,
+          canInstall: false,
+          canUpdate: false,
+          loginCommand: null,
+        },
       },
     };
   }
@@ -146,17 +155,12 @@ describe("system provider host routing", () => {
         "remote-model",
       ]);
       // Only the routing facts matter here; `bridgeLaunch` rides every
-      // command and has its own tests.
+      // command and has its own tests. The Codex catalog is host-scoped, so
+      // the environment read carries no workspace path and is served from the
+      // memo filled by the explicit-host read: one probe on the remote host.
       expect(
         remoteModelCommands.map(({ bridgeLaunch: _ignored, ...rest }) => rest),
-      ).toEqual([
-        { type: "provider.list_models", providerId: "codex" },
-        {
-          type: "provider.list_models",
-          providerId: "codex",
-          cwd: "/tmp/test-environment",
-        },
-      ]);
+      ).toEqual([{ type: "provider.list_models", providerId: "codex" }]);
     });
   });
 

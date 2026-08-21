@@ -17,6 +17,18 @@ type ThreadDetailSecondaryContentProps = ComponentProps<
   typeof ThreadDetailSecondaryContent
 >;
 
+const secondaryPanelMockState = vi.hoisted(() => ({
+  renderBrowserDeck: undefined as
+    | ((
+        activeBrowserTabId: string,
+        pane: {
+          isFocused: boolean;
+          onFocusPane: () => void;
+        },
+      ) => ReactNode)
+    | undefined,
+}));
+
 vi.mock("@/lib/bb-desktop", () => ({
   DEFAULT_DESKTOP_WINDOW_STATE: { isFullScreen: false },
   getBbDesktopInfo: () => null,
@@ -28,8 +40,12 @@ vi.mock("@/components/ui/sidebar.js", () => ({
   useOptionalIsSidebarShowing: () => true,
 }));
 
+const { useThreadsMock } = vi.hoisted(() => ({
+  useThreadsMock: vi.fn((..._args: unknown[]) => ({ data: [] })),
+}));
+
 vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThreads: () => ({ data: [] }),
+  useThreads: useThreadsMock,
 }));
 
 vi.mock("jotai", async (importOriginal) => ({
@@ -103,11 +119,13 @@ vi.mock(
       >();
 
     const ThreadSecondaryPanel = ({
+      renderBrowserDeck,
       inlinePanelToggle,
       metadataContent,
       renderAsDrawer,
-    }: ComponentProps<typeof actual.ThreadSecondaryPanel>) =>
-      React.createElement(
+    }: ComponentProps<typeof actual.ThreadSecondaryPanel>) => {
+      secondaryPanelMockState.renderBrowserDeck = renderBrowserDeck;
+      return React.createElement(
         "section",
         {
           "data-inline-panel-toggle": inlinePanelToggle,
@@ -117,6 +135,7 @@ vi.mock(
         },
         metadataContent,
       );
+    };
 
     return { ...actual, ThreadSecondaryPanel };
   },
@@ -201,6 +220,7 @@ function createProps(
       onParentSelectorOpenChange: noop,
       onRetryParentThreads: noop,
       onMergeBaseBranchChange: noop,
+      parentThreadProjectId: null,
       parentThreadDisplayName: null,
       parentThreads: [],
       isLoadingParentThreads: false,
@@ -220,17 +240,15 @@ function createProps(
     secondaryPanel: {
       activeTab: null,
       canUseGitUi: false,
-      fileTabs: [],
-      isBrowserTabActive: true,
+      tabs: [],
+      fixedTabs: [],
       isOpen: true,
       onCollapse: noop,
       onClose: noop,
-      onFileTabReorder: noop,
+      onTabReorder: noop,
       onOpenNewTab: noop,
-      onPanelChange: noop,
       onPanelFocus: noop,
       renderBrowserDeck: () => null,
-      showGitDiffTab: false,
     },
     timeline: {
       activeThinking: null,
@@ -294,20 +312,28 @@ function renderThreadDetail(
 afterEach(() => {
   cleanup();
   publishedHostedPanel = null;
+  secondaryPanelMockState.renderBrowserDeck = undefined;
+  useThreadsMock.mockClear();
 });
 
+// The secondary panel chunk loads lazily, so the panel appears one tick
+// after the first render.
 describe("ThreadDetailSecondaryContent", () => {
-  it("keeps the standalone panel hide control in the panel toolbar", () => {
+  it("keeps the standalone panel hide control in the panel toolbar", async () => {
     renderThreadDetail(false);
 
     expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .getAttribute("data-inline-panel-toggle"),
+      (
+        await screen.findByTestId(
+          "inline-secondary-panel",
+          {},
+          { timeout: 5_000 },
+        )
+      ).getAttribute("data-inline-panel-toggle"),
     ).toBe("button");
   });
 
-  it("places the hosted panel hide control at the outer edge of its toolbar", () => {
+  it("places the hosted panel hide control at the outer edge of its toolbar", async () => {
     renderThreadDetail(true, false, true);
 
     expect(screen.getByTestId("header").closest("[inert]")).toBeNull();
@@ -323,17 +349,17 @@ describe("ThreadDetailSecondaryContent", () => {
     });
     render(<>{publishedHostedPanel.panel}</>);
     expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .getAttribute("data-inline-panel-toggle"),
+      (await screen.findByTestId("inline-secondary-panel")).getAttribute(
+        "data-inline-panel-toggle",
+      ),
     ).toBe("button");
   });
 
-  it("keeps the thread header inside the timeline column beside the panel", () => {
+  it("keeps the thread header inside the timeline column beside the panel", async () => {
     renderThreadDetail(false);
 
+    const sidePanel = await screen.findByTestId("inline-secondary-panel");
     const timelinePanel = screen.getByTestId("panel");
-    const sidePanel = screen.getByTestId("inline-secondary-panel");
     const panelGroup = screen.getByTestId("panel-group");
     expect(timelinePanel.contains(screen.getByTestId("header"))).toBe(true);
     expect(timelinePanel.contains(sidePanel)).toBe(false);
@@ -343,13 +369,96 @@ describe("ThreadDetailSecondaryContent", () => {
     expect(sidePanel.textContent).toContain("No thread details available.");
   });
 
-  it("keeps the thread metadata loading presentation in the panel", () => {
+  it("keeps the thread metadata loading presentation in the panel", async () => {
     renderThreadDetail(false, true);
 
     expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .contains(screen.getByTestId("metadata-card")),
+      (await screen.findByTestId("inline-secondary-panel")).contains(
+        screen.getByTestId("metadata-card"),
+      ),
     ).toBe(true);
+  });
+
+  it("pins a split browser pane to its tab and gates native commands by pane focus", () => {
+    const renderBrowserDeck = vi.fn(() => null);
+    const props = createProps();
+    props.secondaryPanel.renderBrowserDeck = renderBrowserDeck;
+
+    render(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...props} />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    const panelBrowserDeck = secondaryPanelMockState.renderBrowserDeck;
+    expect(panelBrowserDeck).toBeDefined();
+    if (panelBrowserDeck === undefined) return;
+
+    const onFocusPane = vi.fn();
+    panelBrowserDeck("browser-split", {
+      isFocused: true,
+      onFocusPane,
+    });
+    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
+      activeBrowserTabId: "browser-split",
+      canHandleBrowserCommands: true,
+      canShowNativeBrowserView: true,
+      onNativeFocus: onFocusPane,
+    });
+
+    panelBrowserDeck("browser-split", {
+      isFocused: false,
+      onFocusPane,
+    });
+    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
+      activeBrowserTabId: "browser-split",
+      canHandleBrowserCommands: false,
+      canShowNativeBrowserView: true,
+      onNativeFocus: onFocusPane,
+    });
+  });
+
+  it("only requests the forks list while the secondary panel is open", () => {
+    const props = createProps();
+    const { rerender } = render(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent
+              {...props}
+              isSecondaryPanelOpen={false}
+            />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    expect(useThreadsMock).toHaveBeenLastCalledWith(
+      {
+        projectId: "proj-test",
+        sourceThreadId: "thread-1",
+        originKind: "fork",
+        archived: false,
+      },
+      { enabled: false },
+    );
+
+    rerender(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...props} isSecondaryPanelOpen />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    expect(useThreadsMock).toHaveBeenLastCalledWith(expect.anything(), {
+      enabled: true,
+    });
   });
 });

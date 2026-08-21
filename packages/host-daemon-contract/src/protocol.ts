@@ -1,3 +1,132 @@
+// Version 151 lets the daemon re-resolve an auto/steer turn target from its
+// live runtime after the server observed an active thread but before it had a
+// turn id. A command that an older daemon reports as `appliedAs: "new-turn"`
+// can now report `appliedAs: "steer"`, preventing a child/system notification
+// from replacing the user turn that was still starting.
+//
+// Version 150 adds an OPTIONAL `presentation` to each bb-injected tool
+// definition (`dynamicTools[]` on thread.start, turn.submit and the resume
+// contexts): how a call to the tool reads as a timeline row (grammar v3),
+// resolved once by the server from the owning plugin's declaration and
+// stamped by the bridge, beside `server: "bb"`, on the call's
+// item.open/item.close. Additive and tolerated by an older daemon — the
+// field is optional and `dynamicToolSchema` is not strict, so an old daemon
+// strips the unknown key and keeps working; bumped per the repository rule
+// that a widened server↔daemon wire bumps unless compatibility was
+// deliberately tested. Stabilization makes the field required.
+//
+// Version 149 makes the thread runtime execution options provider-agnostic.
+// `claudeCodePermissionMode`, `workflowsEnabled`, `memoryEnabled`, and
+// `providerSubagentsEnabled` are gone from `options`; a REQUIRED
+// `providerOptions` JSON object (derived per command by the owning provider
+// plugin and opaque to the daemon) and an optional `promptMode: "plan"`
+// replace them. `bridgeLaunch` gains a REQUIRED `envPassthrough` list naming
+// the daemon environment variables the bridge may read, replacing the
+// hardcoded `BB_CLAUDE_CODE_EXECUTABLE` forwarding. The schemas are strict,
+// so an older daemon rejects the new payloads outright, and a newer daemon
+// would treat an older server's provider knobs as absent.
+//
+// Version 148 is the generic assembler and the v3 delta grammar cutover. The
+// daemon now emits `thread/extensionState/updated` (plugin-declared thread
+// state) in its event batches — a new union member an older server's batch
+// schema would reject — and its bridge runtime assembles the `thread/delta`
+// grammar v3 only: the v2 streaming and usage dialects are gone, and every
+// plugin bridge the server serves reports `grammarVersions: [3, 3]`. A
+// version-147 daemon would refuse those bridges at the handshake, so the
+// mismatch is what moves enrolled machines onto a daemon that speaks the
+// grammar its bridges emit.
+//
+// Version 147 carries the provider plugin v3 contract across the daemon wire:
+// the thread-event item union gains fileRead, search, delegation, planSteps
+// and namespaced extension items plus an optional persisted `presentation`,
+// two thread-scoped `item/delegation/*` events join the backgroundTask pair,
+// and the interaction payload gains the `tool_use` approval subject. Every
+// addition is a new union member or an optional field, so an older daemon's
+// traffic still parses and nothing in this version emits the new shapes yet;
+// the bump exists because the repository does not ship a widened event wire
+// on an untested compatibility assumption — the version mismatch is what
+// moves enrolled machines onto a daemon whose bridge runtime also negotiates
+// the `thread/delta` grammar range (bridge protocol `grammarVersions`).
+//
+// Version 146 adds the lightweight `host.list_branch_options` RPC so branch
+// pickers can read cached refs while the daemon refreshes remotes in the
+// background. Older daemons cannot parse or serve that command.
+//
+// Version 145 adds provider-owned static options and installation capability
+// metadata to bridge launches, forwards typed installation requirements, and
+// removes the core `known_acp_agents.status` RPC. Older daemons reject the new
+// launch fields and cannot safely interpret the provider-owned behavior.
+//
+// Version 144 moves provider installation status and execution plans into the
+// provider bridge contract. The server now sends provider-scoped
+// `provider.installation.*` commands with bridge launch metadata; older
+// daemons only understand the removed hard-coded `provider_cli.*` commands.
+//
+// Version 143 lets daemons from before session-open's `localApiPort` field
+// reach the protocol-version check by defaulting that field at the server
+// boundary. Without it, those daemons receive `invalid_request` instead of
+// `protocol_version_mismatch`, so their protocol self-updater never runs.
+//
+// Version 142 ships Pi context-window usage after every SDK turn ends, once
+// its assistant response and tool results are both reflected in the session.
+// Older bundled bridges report only after the full agent run ends, leaving the
+// meter stale throughout multi-tool turns.
+//
+// Version 141 extends the consumed-not-queued acceptance rule to the remaining
+// providers. Pi reports `input.accepted` for a turn only once it read the
+// input: a prompt pi queues behind a live run stays unaccepted, and the
+// queue-time settle report that used to accompany it is gone, so it can no
+// longer complete an empty turn for a message pi has not answered. ACP reports
+// acceptance once the `session/prompt` request carrying the input goes out, so
+// a steer the turn drops is no longer reported as accepted. Older daemons emit
+// the queue-time semantics and produce those phantom turns.
+//
+// Version 140 reports each daemon's browser-local editor helper port during
+// session open. The server uses those ports to let a remote browser discover
+// the helper on its own machine instead of assuming every machine uses the
+// primary server host's port.
+//
+// Version 139 keeps a resumed Claude session's provider-owned task-notification
+// result from claiming a newly accepted human input, and delays turn/start
+// acceptance until Claude's SDK prompt iterator consumes the input. Older
+// daemons can still make a sent message appear to complete immediately while
+// its real response continues under a second, unaccepted turn.
+//
+// Version 138 removes the `workspace.discover_repos` command. It existed only
+// for the first-run onboarding flow's project step, which is deleted; no server
+// sends it any more. A newer daemon no longer answers it, so an older server
+// paired with a new daemon would fail that command instead of returning repos.
+// It also adds generic provider.health, changes provider.usage from one
+// fixed three-provider result into a provider-targeted bridge query, and makes
+// provider registration authoritative for whether a bridge implements either
+// method. Older daemons cannot parse the new command shapes and would still
+// gate the requests on initialize results, silently suppressing calls to new
+// bridges that no longer advertise the methods there.
+//
+// Version 137 removes the `claudeCodeMockCliTraffic` runtime option and the
+// Claude Code mock CLI traffic experiment behind it. Current servers no longer
+// send the field, and current bridges no longer accept it.
+//
+// Version 136 carries the narrow-grammar provider bridge protocol (bridge
+// protocol v2): the provider bridge artifacts a server serves to daemons now
+// speak `thread/delta` only — the `thread/event` lane is gone. An old daemon's
+// runtime would ignore the delta notifications and render empty timelines, and
+// old runtimes predate the bridge-handshake version check, so this daemon
+// protocol version is the only gate that forces those daemons to update.
+//
+// Version 135 adds the `compaction-skipped` provider warning category. The Pi
+// bridge now reports a refused manual compaction ("Nothing to compact") as
+// that warning plus a completed turn instead of a failed turn. An older daemon
+// still sends the failed turn, so the server would move the thread to error.
+//
+// Version 134 keeps replayed Codex usage snapshots off unknown turn ids: the
+// Codex bridge drops the turn-only token usage that codex replays on
+// thread/resume and thread/fork and emits the replayed context-window usage
+// thread-scoped, instead of naming a turn id bb never stored a turn/started
+// for. Older daemons still send those orphan snapshots and the server drops
+// them, so enrolled machines must update for the replayed context usage to
+// land.
+//
 // Version 133 carries Claude's terminal-failure drain suppression through the
 // provider bridge. Older daemons can otherwise keep translating trailing SDK
 // output under the prior event semantics after the server has accepted the
@@ -31,7 +160,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 133 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 151 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

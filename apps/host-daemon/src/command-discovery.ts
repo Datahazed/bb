@@ -20,6 +20,38 @@ const FRONTMATTER_DELIMITER = "---";
 const MAX_SCAN_DEPTH = 24;
 const MAX_SCAN_ENTRY_COUNT = 1_000;
 
+interface CommandScanRootBase {
+  /** Prefix prepended to the derived invocation name, e.g. `plugin-name:`. */
+  namePrefix: string;
+  source: HostCommandSource;
+  origin: HostCommandOrigin;
+  /** Stable root identity for native skill roots that share one root kind. */
+  skillIdentitySeed?: string;
+}
+
+interface CommandScanDirectoryRoot extends CommandScanRootBase {
+  /** Optional boundary that a project-origin recursive root must stay within. */
+  boundaryPath?: string;
+  /** Absolute directory to scan. Missing dir -> no records (no throw). */
+  rootPath: string;
+  shape: "skill" | "skill-recursive" | "skill-directory" | "command";
+}
+
+interface CommandScanFileRoot extends CommandScanRootBase {
+  /** Absolute file to scan. Missing file -> no record (no throw). */
+  filePath: string;
+  shape: "command-file";
+}
+
+interface CommandScanSkillFileRoot extends CommandScanRootBase {
+  /** Fallback command name used when the file has no frontmatter `name`. */
+  fallbackName: string;
+  /** Absolute SKILL.md file to scan. Missing file -> no record (no throw). */
+  filePath: string;
+  shape: "skill-file";
+  source: "skill";
+}
+
 /**
  * Scan shape for a root:
  * - `skill`: one level of `<root>/<dir>/SKILL.md`; the command name is the
@@ -38,52 +70,12 @@ const MAX_SCAN_ENTRY_COUNT = 1_000;
  * - `command-file`: a single command markdown file; the command name is the
  *   file name without `.md`.
  */
-export type CommandScanShape =
-  | "skill"
-  | "skill-recursive"
-  | "skill-directory"
-  | "skill-file"
-  | "command"
-  | "command-file";
-
-interface CommandScanRootBase {
-  /** Prefix prepended to the derived invocation name, e.g. `plugin-name:`. */
-  namePrefix: string;
-  source: HostCommandSource;
-  origin: HostCommandOrigin;
-  /** Stable root identity for native skill roots that share one root kind. */
-  skillIdentitySeed?: string;
-}
-
-export interface CommandScanDirectoryRoot extends CommandScanRootBase {
-  /** Optional boundary that a project-origin recursive root must stay within. */
-  boundaryPath?: string;
-  /** Absolute directory to scan. Missing dir -> no records (no throw). */
-  rootPath: string;
-  shape: "skill" | "skill-recursive" | "skill-directory" | "command";
-}
-
-export interface CommandScanFileRoot extends CommandScanRootBase {
-  /** Absolute file to scan. Missing file -> no record (no throw). */
-  filePath: string;
-  shape: "command-file";
-}
-
-export interface CommandScanSkillFileRoot extends CommandScanRootBase {
-  /** Fallback command name used when the file has no frontmatter `name`. */
-  fallbackName: string;
-  /** Absolute SKILL.md file to scan. Missing file -> no record (no throw). */
-  filePath: string;
-  shape: "skill-file";
-  source: "skill";
-}
-
 export type CommandScanRoot =
   | CommandScanDirectoryRoot
   | CommandScanFileRoot
   | CommandScanSkillFileRoot;
 
-export interface DiscoverProviderCommandsArgs {
+interface DiscoverProviderCommandsArgs {
   roots: readonly CommandScanRoot[];
 }
 
@@ -352,7 +344,7 @@ async function walkMarkdownTree(args: WalkMarkdownTreeArgs): Promise<void> {
   }
 }
 
-function isPathWithinDirectory(
+export function isPathWithinDirectory(
   directoryPath: string,
   candidatePath: string,
 ): boolean {
@@ -542,7 +534,7 @@ export type SkillScanRoot = CommandScanRoot & {
   rootKind: SkillRootKind;
 };
 
-export interface DiscoverSkillsArgs {
+interface DiscoverSkillsArgs {
   roots: readonly SkillScanRoot[];
 }
 

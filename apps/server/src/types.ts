@@ -2,7 +2,6 @@ import type {
   CustomAcpAgent,
   CustomProviderModel,
 } from "@bb/config/bb-app-managed-config";
-import type { AppSurface } from "@bb/config/app-surface";
 import type { DbConnection } from "@bb/db";
 import type { FeatureFlags, ProviderNativeSkillRoots } from "@bb/domain";
 import type { Logger } from "@bb/logger";
@@ -15,6 +14,7 @@ import type { TerminalSessionLifecycle } from "./services/terminals/terminal-ses
 import type { LifecycleDedupers } from "./lifecycle-dedupers.js";
 import type { NotificationHub } from "./ws/hub.js";
 import type { WatchInterestCoordinator } from "./ws/watch-interests.js";
+import type { WorkspaceReadCaches } from "./services/environments/workspace-read-cache.js";
 import type { HostSharedPortCoordinator } from "./ws/host-shared-ports.js";
 import type { SkillTreeRegistry } from "./services/skills/injected-skills.js";
 import type { ProviderRegistryService } from "./services/providers/provider-registry.js";
@@ -24,7 +24,6 @@ export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
 export interface ServerRuntimeConfig {
   appVersion: string;
-  appSurface: AppSurface;
   builtinSkillsRootPath: string;
   customAcpAgents: CustomAcpAgent[];
   customModels: CustomProviderModel[];
@@ -47,10 +46,15 @@ export interface ServerRuntimeConfig {
   openAiApiKey: string;
   serverPort: number;
   sharedSkillRoots: ProviderNativeSkillRoots;
-  threadStorageRootPath: string;
   transcriptionModel: string;
   appUrl?: string;
   devAppPort?: number;
+  /**
+   * Per-spawn identity from the bb-app launcher, echoed on /health so the
+   * launcher can tell this server from another one that owns the same port.
+   * Absent when the server was not started by the launcher.
+   */
+  launchId?: string;
 }
 
 export interface AppDeps {
@@ -68,6 +72,7 @@ export interface AppDeps {
   terminalSessions: TerminalSessionLifecycle;
   watchInterests: WatchInterestCoordinator;
   sharedPorts: HostSharedPortCoordinator;
+  workspaceReadCaches: WorkspaceReadCaches;
 }
 
 export interface ServerAppDeps extends AppDeps {
@@ -75,7 +80,7 @@ export interface ServerAppDeps extends AppDeps {
   bbAppManagedConfig: BbAppManagedConfigReloader;
 }
 
-export type LifecycleDeps = Pick<
+export type WorkSessionDeps = Pick<
   AppDeps,
   | "config"
   | "db"
@@ -88,13 +93,7 @@ export type LifecycleDeps = Pick<
   | "telemetry"
 >;
 
-export type WorkSessionDeps = LifecycleDeps;
-
 export type LoggedWorkSessionDeps = WorkSessionDeps & Pick<AppDeps, "logger">;
 
-export type PendingInteractionWorkSessionDeps = WorkSessionDeps &
-  Pick<AppDeps, "pendingInteractions">;
-
-export type LoggedPendingInteractionWorkSessionDeps =
-  PendingInteractionWorkSessionDeps &
-    Pick<AppDeps, "logger" | "terminalSessions">;
+export type LoggedPendingInteractionWorkSessionDeps = WorkSessionDeps &
+  Pick<AppDeps, "logger" | "pendingInteractions" | "terminalSessions">;

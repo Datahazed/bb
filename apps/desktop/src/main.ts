@@ -31,7 +31,6 @@ import {
 } from "@bb/desktop-contract";
 import {
   serverMessageLenientSchema,
-  systemConfigResponseSchema,
   type ClientMessage,
 } from "@bb/server-contract";
 import { z } from "zod";
@@ -69,6 +68,7 @@ import {
   type CompatibleServerProbeResult,
   type ServerProbeResult,
 } from "./server-probe.js";
+import { loadRemoteServerPage } from "./remote-server-load.js";
 import {
   BUILTIN_SERVER_NAME,
   createServerTargetStore,
@@ -81,6 +81,7 @@ import {
   createConnectServerSync,
   type ConnectAccountServer,
   type ConnectServerSync,
+  type ConnectServerSyncSkipReason,
 } from "./connect-server-sync.js";
 import {
   createCredentialCookieSource,
@@ -115,8 +116,8 @@ import {
   type DesktopUpdateService,
 } from "./desktop-update-check.js";
 import {
+  DESKTOP_RELEASE_CHANNEL,
   DESKTOP_RELEASE_INFO,
-  DESKTOP_UPDATE_CHANNEL,
   resolveDesktopUpdateSupport,
 } from "./desktop-update-provider.js";
 import {
@@ -150,8 +151,8 @@ import {
 } from "./desktop-browser-view.js";
 import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
+import { parseDesktopSystemConfig } from "./desktop-system-config.js";
 import { ensurePackagedUserShellPath } from "./desktop-shell-path.js";
-import { clearPackagedSessionHttpCache } from "./desktop-session-cache.js";
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
 import {
   createLogTailer,
@@ -320,6 +321,8 @@ let enrollingDesktopMachine: Promise<void> | null = null;
 let connectSessionRenewal: ConnectSessionRenewal | null = null;
 let serverTargetGeneration = 0;
 let connectAccountServers: ConnectAccountServer[] = [];
+/** Why the last Connect sync listed nothing; null after a successful sync. */
+let connectServerSyncSkipReason: ConnectServerSyncSkipReason | null = null;
 let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
 let desktopBridgePath: string | null = null;
 let desktopUserDataPath: string | null = null;
@@ -639,7 +642,7 @@ function listMenuConnectServers(): ConnectServerRef[] {
   return servers;
 }
 
-function buildMenuServerItems(): Array<{
+function buildMenuServerItems(connectServers: ConnectServerRef[]): Array<{
   checked: boolean;
   id: string;
   name: string;
@@ -652,7 +655,7 @@ function buildMenuServerItems(): Array<{
       name: BUILTIN_SERVER_NAME,
     },
   ];
-  for (const server of listMenuConnectServers()) {
+  for (const server of connectServers) {
     items.push({
       checked:
         target.kind === "connect" && target.server.handle === server.handle,
@@ -672,8 +675,13 @@ function buildMenuServerItems(): Array<{
 }
 
 function installCurrentApplicationMenu(): void {
+  const connectServers = listMenuConnectServers();
   installApplicationMenu({
     accelerators: currentApplicationMenuAccelerators,
+    // Only explain an empty Connect list; a persisted selection that is still
+    // listed needs no note beneath it.
+    connectServersSkipReason:
+      connectServers.length === 0 ? connectServerSyncSkipReason : null,
     isMac: process.platform === "darwin",
     createNewWindow() {
       void createApplicationWindow({
@@ -760,7 +768,7 @@ function installCurrentApplicationMenu(): void {
       connectServerSync?.onListRequested();
     },
     serverDaemonLogsMenuEnabled: shouldEnableServerDaemonLogsMenu(),
-    servers: buildMenuServerItems(),
+    servers: buildMenuServerItems(connectServers),
   });
 }
 
@@ -807,7 +815,7 @@ async function fetchSystemConfig(args: FetchSystemConfigArgs) {
     );
   }
   const payload: unknown = await response.json();
-  return systemConfigResponseSchema.parse(payload);
+  return parseDesktopSystemConfig(payload);
 }
 
 function createSystemConfigSync(serverUrl: string): SystemConfigSync {
@@ -1217,22 +1225,49 @@ async function applyServerTarget(): Promise<void> {
       expiresAt: result.expiresAt,
       remoteServerUrl: target.server.url,
     });
-    bbAppLoaded = true;
-    await loadWindowUrl({ url: target.server.url });
+    const loaded = await loadRemoteServerTarget(target.server.url, isCurrent);
     if (!isCurrent()) {
       return;
     }
-    startRemoteSystemConfigSync(target.server.url);
+    if (!loaded) {
+      // No session to keep alive for a server that is not on screen.
+      connectSessionRenewal?.stop();
+    }
   } else {
     // A custom server is a plain web load with no bb Connect involved.
-    bbAppLoaded = true;
-    await loadWindowUrl({ url: target.url });
+    await loadRemoteServerTarget(target.url, isCurrent);
     if (!isCurrent()) {
       return;
     }
-    startRemoteSystemConfigSync(target.url);
   }
   refreshApplicationMenu();
+}
+
+/**
+ * Load a connect or custom server's page. An unreachable host renders the
+ * startup error view instead of rejecting, so the app never lands on the
+ * crash screen or a blank window. `bbAppLoaded` flips only once the page is
+ * really up. Resolves to whether the page loaded.
+ */
+async function loadRemoteServerTarget(
+  serverUrl: string,
+  isCurrent: () => boolean,
+): Promise<boolean> {
+  const loaded = await loadRemoteServerPage({
+    isCurrent,
+    loadStartupError,
+    loadUrl: loadWindowUrl,
+    logWarning: (message) => {
+      createDesktopLogger().warn(message);
+    },
+    serverUrl,
+  });
+  if (!loaded || !isCurrent()) {
+    return loaded;
+  }
+  bbAppLoaded = true;
+  startRemoteSystemConfigSync(serverUrl);
+  return true;
 }
 
 async function setActiveServerTarget(serverId: string): Promise<void> {
@@ -2040,10 +2075,9 @@ async function runDesktopApp(): Promise<void> {
   });
 
   await app.whenReady();
-  await clearPackagedSessionHttpCache({
-    isPackaged: app.isPackaged,
-    session: session.defaultSession,
-  });
+  if (app.isPackaged) {
+    await session.defaultSession.clearCache();
+  }
 
   const paths = createDesktopPathContext();
   const iconPath = resolveDesktopIconPath({
@@ -2129,8 +2163,14 @@ async function runDesktopApp(): Promise<void> {
     onUnauthorized() {
       void clearCachedConnectCredential();
     },
+    onSkipped(reason) {
+      connectServerSyncSkipReason = reason;
+      // Electron menus are immutable once built: rebuild so the reason shows.
+      refreshApplicationMenu();
+    },
     onServers(servers) {
       connectAccountServers = servers;
+      connectServerSyncSkipReason = null;
       const selected = serverTargetStore?.getConnectServer() ?? null;
       const synced = servers.find(
         (server) => server.handle === selected?.handle,
@@ -2170,7 +2210,7 @@ async function runDesktopApp(): Promise<void> {
     platform: desktopPlatform,
   });
   desktopUpdateService = createDesktopUpdateService({
-    channel: DESKTOP_UPDATE_CHANNEL,
+    channel: DESKTOP_RELEASE_CHANNEL,
     currentVersion: desktopVersion,
     enabled:
       desktopUpdateSupport.versionCheck &&

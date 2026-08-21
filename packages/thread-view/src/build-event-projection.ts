@@ -22,14 +22,7 @@ import {
 import { parseFileEditFromItemEvent } from "./file-edit-parsing.js";
 import { parseWebActivityLifecycleEvent } from "./web-activity-lifecycle.js";
 import { parseOperationMessage } from "./parse-operation-message.js";
-import {
-  parseErrorMessage,
-  isDuplicateEventType,
-  isIgnoredItemStartEvent,
-  isIgnoredItemCompletedEvent,
-  appendDebugEvent,
-} from "./parse-error-message.js";
-import { isIgnoredNoiseType } from "./timeline-noise-events.js";
+import { parseErrorMessage } from "./parse-error-message.js";
 import {
   normalizeEventProjection,
   sortEventProjectionMessagesBySource,
@@ -189,7 +182,6 @@ function isEventProjectionCallMessage(
     case "web-search":
       return true;
     case "assistant-text":
-    case "debug/raw-event":
     case "error":
     case "operation":
     case "permission-grant-lifecycle":
@@ -240,11 +232,21 @@ function getBackgroundAgentModel(
     : null;
 }
 
-function getBackgroundTaskFamilyId(itemId: string): string {
-  // Claude keeps the provider task id when a settled task restarts and makes
-  // each persisted item unique with a `#N` generation suffix. The restarted
-  // task may omit its original spawning call, so use the stable family id to
-  // carry forward metadata already correlated from an earlier generation.
+function getBackgroundTaskFamilyId(
+  message: EventProjectionWorkflowMessage,
+): string {
+  // A restarted settled task mints a fresh timeline item but may omit its
+  // original spawning call, so the stable family id carries forward metadata
+  // already correlated from an earlier generation. The item's explicit
+  // `familyId` (the provider's task id) is that key; it is namespaced under a
+  // prefix so it can never collide with a legacy item-id-derived key.
+  if (message.familyId !== null) {
+    return `family:${message.familyId}`;
+  }
+  // Legacy fallback for events persisted before `familyId` existed: claude's
+  // bridge minted item ids as `task:<taskId>#<generation>` (suffix only for
+  // generation > 1), smuggling the family through the id text.
+  const itemId = message.itemId;
   const generationMatch = /#(\d+)$/.exec(itemId);
   if (!generationMatch) {
     return itemId;
@@ -268,7 +270,7 @@ function enrichBackgroundAgentModels(
       continue;
     }
 
-    const taskFamilyId = getBackgroundTaskFamilyId(message.itemId);
+    const taskFamilyId = getBackgroundTaskFamilyId(message);
     const model =
       getBackgroundAgentModel(message, callMessageById) ??
       message.model ??
@@ -467,7 +469,27 @@ function getToolCallName(decoded: ThreadEvent): string | undefined {
   return decoded.item.tool;
 }
 
+/** A grammar v3 `delegation` item lifecycle event (turn-scoped or background). */
+function isDelegationItemEvent(decoded: ThreadEvent): boolean {
+  return (
+    (decoded.type === "item/started" ||
+      decoded.type === "item/completed" ||
+      decoded.type === "item/delegation/completed") &&
+    decoded.item.type === "delegation"
+  );
+}
+
 function getToolCallReceiverThreadIds(decoded: ThreadEvent): string[] {
+  if (
+    (decoded.type === "item/started" ||
+      decoded.type === "item/completed" ||
+      decoded.type === "item/delegation/completed") &&
+    decoded.item.type === "delegation"
+  ) {
+    // The delegation names its child directly; that child's turns map to
+    // this call exactly as a spawnAgent receiver would.
+    return [decoded.item.childRef];
+  }
   if (
     (decoded.type !== "item/started" && decoded.type !== "item/completed") ||
     decoded.item.type !== "toolCall"
@@ -597,6 +619,18 @@ function getCompactionTurnFinalization(
       detail: decoded.detail ?? decoded.message,
     };
   }
+  // The provider declined a requested compaction (for example pi's "Nothing
+  // to compact"): the row settles as a skipped compaction instead of staying
+  // pending forever. Other warnings inside the turn leave the row alone.
+  if (
+    decoded.type === "provider/warning" &&
+    decoded.category === "compaction-skipped"
+  ) {
+    return {
+      status: "completed",
+      detail: decoded.details ?? decoded.summary,
+    };
+  }
   if (decoded.type === "turn/completed" && decoded.status === "failed") {
     return {
       status: "error",
@@ -618,7 +652,6 @@ function buildFlatProjectionData(
   args: BuildFlatProjectionDataArgs,
 ): BuildFlatProjectionDataResult {
   const state = createProjectionState();
-  const includeDebugRawEvents = args.options?.includeDebugRawEvents ?? false;
   const shouldTrackActiveThinking = args.includeActiveThinking;
 
   const orderedEvents = args.events;
@@ -703,7 +736,7 @@ function buildFlatProjectionData(
 
     const compactionTurnFinalization = getCompactionTurnFinalization(decoded);
     if (compactionTurnFinalization) {
-      finalizeOpenCompactionsForTurn({
+      const settledPendingCompaction = finalizeOpenCompactionsForTurn({
         state,
         meta,
         threadId: decoded.threadId,
@@ -711,6 +744,11 @@ function buildFlatProjectionData(
         status: compactionTurnFinalization.status,
         detail: compactionTurnFinalization.detail,
       });
+      // The skipped-compaction row already carries the warning text; do not
+      // render the same notice a second time as a standalone warning row.
+      if (settledPendingCompaction && decoded.type === "provider/warning") {
+        continue;
+      }
     }
 
     if (isTerminalBufferedTextFlushEvent(eventType)) {
@@ -896,8 +934,9 @@ function buildFlatProjectionData(
           }
         }
         if (
-          toolCallName &&
-          PROVIDER_THREAD_DELEGATION_TOOL_NAMES.has(toolCallName)
+          (toolCallName &&
+            PROVIDER_THREAD_DELEGATION_TOOL_NAMES.has(toolCallName)) ||
+          isDelegationItemEvent(decoded)
         ) {
           if (
             toolCallReceiverThreadIds.length === 0 ||
@@ -1049,23 +1088,6 @@ function buildFlatProjectionData(
       flushToolActivityBeforeNonToolMessage(state);
       state.messages.push(error);
       continue;
-    }
-
-    if (includeDebugRawEvents) {
-      const debugReason = isDuplicateEventType(eventType)
-        ? "duplicate-event"
-        : isIgnoredNoiseType(eventType) ||
-            isIgnoredItemStartEvent(decoded) ||
-            isIgnoredItemCompletedEvent(decoded)
-          ? "ignored-noise"
-          : "unhandled";
-
-      if (debugReason !== "unhandled") {
-        continue;
-      }
-
-      flushToolActivityBeforeNonToolMessage(state);
-      appendDebugEvent(state.messages, decoded, meta, debugReason);
     }
   }
 

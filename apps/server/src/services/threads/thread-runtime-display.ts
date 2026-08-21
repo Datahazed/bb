@@ -3,7 +3,7 @@ import {
   getLatestSessionForHost,
   getSessionById,
   listActiveBackgroundTaskCountsByThreadIds,
-  listLatestGoalEventRowsByThreadIds,
+  listLatestThreadStateEventRowsByThreadIds,
   listLatestSessionsForHosts,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listStoredClientTurnRequestRowsByKeys,
@@ -13,6 +13,7 @@ import {
   type ThreadClientTurnRequestKey,
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
+import { LEGACY_CODEX_GOAL_EXTENSION_KIND } from "@bb/domain";
 import type {
   Thread,
   ThreadActivityState,
@@ -31,8 +32,8 @@ import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../constants.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
-import { parseStoredEvent } from "./thread-data.js";
 import { canThreadSpawnChild } from "./thread-parent.js";
+import { toThreadEventWithMeta } from "./timeline.js";
 
 type ThreadRuntimeDisplayHub = Pick<
   NotificationHub,
@@ -242,7 +243,7 @@ function resolveThreadEnvironmentHostId(
   return getEnvironment(deps.db, thread.environmentId)?.hostId ?? null;
 }
 
-export function toThreadResponseWithHost(
+function toThreadResponseWithHost(
   deps: ThreadRuntimeDisplayDeps,
   args: ToThreadResponseWithHostArgs,
 ): ThreadWithRuntime {
@@ -272,17 +273,6 @@ export function toThreadResponseFromThread(
         threadIds: [args.thread.id],
       })[0]?.activeBackgroundAgentCount ?? 0,
     canSpawnChild: canThreadSpawnChild(deps, { thread: args.thread }),
-  };
-}
-
-function toThreadEventWithMeta(row: StoredEventRow): ThreadEventWithMeta {
-  return {
-    event: parseStoredEvent(row),
-    meta: {
-      id: row.id,
-      seq: row.sequence,
-      createdAt: row.createdAt,
-    },
   };
 }
 
@@ -326,8 +316,9 @@ function listPromptBannerActivityCandidateRows(
   deps: ThreadPromptBannerDeps,
   threads: readonly Thread[],
 ): StoredEventRow[] {
-  const latestGoalRows = listLatestGoalEventRowsByThreadIds(deps.db, {
+  const latestGoalRows = listLatestThreadStateEventRowsByThreadIds(deps.db, {
     threadIds: threads.map((thread) => thread.id),
+    kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
   });
   const openAcceptedRows = listOpenTurnInputAcceptedRowsByThreadIds(deps.db, {
     threadIds: threads

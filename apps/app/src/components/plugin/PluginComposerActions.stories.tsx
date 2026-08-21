@@ -28,7 +28,7 @@ import {
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { setPluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
-import type { PromptDraftState } from "@/lib/prompt-draft";
+import type { PromptDraftState } from "@bb/client-core";
 import {
   ThreadRow,
   type ThreadRowOptions,
@@ -272,6 +272,7 @@ function ThreadRowStatusFixture() {
                 <SidebarMenuItem>
                   <ThreadRow
                     projectId={PROJECT_ID}
+                    crossProjectId={null}
                     thread={makeThreadListEntry({
                       id: THREAD_ID,
                       projectId: PROJECT_ID,

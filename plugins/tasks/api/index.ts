@@ -27,8 +27,6 @@ import {
   type CommentProvider,
 } from "../shared/contract";
 
-type PluginDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
-
 interface TaskLabelIdRow {
   task_id: string;
   label_id: string;
@@ -54,6 +52,7 @@ const PRESET_REASONING_LEVELS = [
   "high",
   "xhigh",
   "max",
+  "ultra",
 ] as const;
 
 const MAX_THREAD_SEARCH_RESULTS = 10;
@@ -180,10 +179,6 @@ function taskFailure(error: TasksDomainFailure) {
   return { ok: false as const, error: error.detail };
 }
 
-function projectFailure(error: TasksDomainFailure) {
-  return { ok: false as const, error: error.detail };
-}
-
 function statusName(status: TaskStatus): string {
   return status
     .split("_")
@@ -195,7 +190,7 @@ function priorityName(priority: StoredTask["priority"]): string {
   return priority[0]?.toUpperCase() + priority.slice(1);
 }
 
-function publishTasksChanged(
+export function publishTasksChanged(
   bb: BbPluginApi,
   taskId: string,
   projectId: string,
@@ -679,9 +674,9 @@ export function registerHandlers(
       return { folder };
     },
     deleteFolder(input) {
-      const deleted = store.tasks.deleteFolder(input.folderId);
-      if (deleted) publishProjectsChanged(bb, null);
-      return { deleted };
+      const result = store.tasks.deleteFolder(input.folderId);
+      if (result.deleted) publishProjectsChanged(bb, null);
+      return result;
     },
     listFolders() {
       return { folders: store.tasks.listFolders() };
@@ -711,7 +706,7 @@ export function registerHandlers(
         publishProjectsChanged(bb, project.id);
         return { ok: true, project };
       } catch (error) {
-        if (error instanceof TasksDomainFailure) return projectFailure(error);
+        if (error instanceof TasksDomainFailure) return taskFailure(error);
         throw error;
       }
     },
@@ -734,7 +729,7 @@ export function registerHandlers(
         }
         return { ok: true, deleted };
       } catch (error) {
-        if (error instanceof TasksDomainFailure) return projectFailure(error);
+        if (error instanceof TasksDomainFailure) return taskFailure(error);
         throw error;
       }
     },
@@ -1023,8 +1018,7 @@ export function registerHandlers(
         providers: providers.map((provider) => ({
           id: provider.id,
           name: provider.displayName,
-          permissionModes:
-            provider.capabilities.permissionModes,
+          permissionModes: provider.capabilities.permissionModes,
         })),
       };
     },
