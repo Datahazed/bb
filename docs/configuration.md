@@ -143,6 +143,14 @@ By default, helper inference and voice transcription use Codex credentials from
 the host daemon. Run `codex login` on the host for the default path. Set
 provider env keys only when opting into a non-Codex provider route.
 
+With a ChatGPT subscription login, `codex/` voice transcription posts to a
+`chatgpt.com` endpoint that sits behind Cloudflare bot protection. On some
+networks Cloudflare challenges that request; bb retries, then reports
+"Voice transcription is temporarily unavailable" and logs the Cloudflare
+challenge on the server. If that happens often, route transcription through an
+API key instead: `codex login --with-api-key`, or set `BB_TRANSCRIPTION` to
+`openai/gpt-transcribe` with `OPENAI_API_KEY`.
+
 The microphone picker in Settings → Voice Input is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as
 `bb.voiceInput.audioInputDeviceId`; it does not change `bb-app config` or the
