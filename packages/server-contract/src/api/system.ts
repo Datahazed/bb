@@ -6,6 +6,7 @@ import {
   appKeybindingsSchema,
   appThemeSchema,
   availableModelSchema,
+  BUILTIN_THEME_IDS,
   experimentsSchema,
   featureFlagsSchema,
   permissionModeSchema,
@@ -194,12 +195,24 @@ export type SystemAttentionResponse = z.infer<
 >;
 
 /**
- * Theme catalog: the on-disk custom-theme directory plus the discovered custom
- * themes and the active palette. Drives `bb theme list` / `bb theme dir`.
+ * Theme catalog: canonical built-ins, the on-disk custom-theme directory,
+ * discovered custom/plugin themes, and the active palette. Drives
+ * `bb theme list` / `bb theme dir` and plugin palette pickers.
  */
 export const themeCatalogResponseSchema = z.object({
   /** Absolute path of the custom-theme root: `<data-dir>/theme`. */
   dir: z.string(),
+  /**
+   * Canonical metadata for BB's bundled palettes, in display order.
+   * Experimental: see `docs/api_to_audit.md`.
+   */
+  experimental_builtIn: z.array(
+    z.object({
+      id: z.enum(BUILTIN_THEME_IDS),
+      name: z.string().min(1),
+      description: z.string().min(1),
+    }),
+  ),
   /** Discovered custom theme names (each has a `theme.css`). */
   custom: z.array(z.string()),
   /** Palettes contributed by currently loaded plugins. */

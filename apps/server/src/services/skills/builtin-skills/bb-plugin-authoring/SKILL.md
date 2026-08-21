@@ -601,6 +601,23 @@ Prefer your own `bb.settings` and `bb.storage` over `sdk.system` and
 `sdk.plugins` for your plugin's own configuration. The `system` and `plugins`
 areas write app-wide state that the user owns.
 
+Palette switchers and pickers should build their options from one catalog,
+not copy BB's built-in palette list:
+
+```ts
+const catalog = await bb.sdk.theme.catalog();
+const palettes = [
+  ...catalog.experimental_builtIn,
+  ...catalog.custom.map((id) => ({ id, name: id, description: "Custom" })),
+  ...catalog.plugins,
+];
+```
+
+`experimental_builtIn` supplies typed ids, names, descriptions, and BB's
+canonical display order. It deliberately omits CSS and code-theme assets. Client
+light/dark mode is the separate `experimental_appearance` app-runtime store.
+Experimental: see `docs/api_to_audit.md`.
+
 ```ts
 const thread = await bb.sdk.threads.spawn({
   projectId,
@@ -2166,7 +2183,7 @@ Hooks:
   connection) because plugin signals are ephemeral and are not replayed.
 - `experimental_appearance` → app-wide `{ getSnapshot, subscribe }` store.
   `getSnapshot()` returns `{ colorMode, colorModePreference,
-  setColorModePreference }`; `colorMode` is the applied `"light" | "dark"`
+setColorModePreference }`; `colorMode` is the applied `"light" | "dark"`
   result after resolving a `"system"` preference. Use point-of-use reads in
   callbacks and content scripts, or subscribe when non-React behavior must
   react to later changes.

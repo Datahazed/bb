@@ -18,7 +18,7 @@ export interface ThemeGetArgs {
 export interface ThemeArea {
   /** The active app palette, resolved server-side (built-in id or custom CSS). */
   get(args?: ThemeGetArgs): Promise<ThemeGetResult>;
-  /** The custom-theme directory plus discovered themes and the active palette. */
+  /** Canonical built-ins, custom/plugin palettes, their directory, and active palette. */
   catalog(args?: ThemeCatalogArgs): Promise<ThemeCatalogResult>;
   /** Set the complete app appearance selection in one request. */
   set(selection: ThemeSetInput): Promise<ThemeSetResult>;

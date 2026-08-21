@@ -675,6 +675,60 @@ describe("sdk", () => {
     expect(harness.sdk.callsTo("plugins.catalog.status")).toEqual([[]]);
   });
 
+  it("lets a palette plugin consume canonical built-ins without hardcoding them", async () => {
+    const { bb, harness } = createFakePluginHost({
+      sdk: {
+        theme: {
+          catalog: async () => ({
+            dir: "/tmp/bb/theme",
+            experimental_builtIn: [
+              {
+                id: "default",
+                name: "Default",
+                description: "The standard bb look",
+              },
+              {
+                id: "nord",
+                name: "Nord",
+                description: "Cool, muted arctic blues",
+              },
+            ],
+            custom: ["paper"],
+            plugins: [
+              {
+                id: "plugin:ayu:mirage",
+                pluginId: "ayu",
+                name: "Ayu Mirage",
+                description: "A muted dark palette",
+              },
+            ],
+            active: {
+              themeId: "nord",
+              customCss: null,
+              faviconColor: "default",
+              resolvedCodeTheme: { dark: "nord", light: "nord", files: {} },
+            },
+          }),
+        },
+      },
+    });
+
+    const catalog = await bb.sdk.theme.catalog();
+    const selectable = [
+      ...catalog.experimental_builtIn.map(({ id, name }) => ({ id, name })),
+      ...catalog.custom.map((id) => ({ id, name: id })),
+      ...catalog.plugins.map(({ id, name }) => ({ id, name })),
+    ];
+
+    expect(selectable).toEqual([
+      { id: "default", name: "Default" },
+      { id: "nord", name: "Nord" },
+      { id: "paper", name: "paper" },
+      { id: "plugin:ayu:mirage", name: "Ayu Mirage" },
+    ]);
+    expect(harness.sdk.callsTo("theme.catalog")).toEqual([[]]);
+  });
+
   it("throws a stub-naming error for unstubbed methods and accepts late stubs", async () => {
     const { bb, harness } = createFakePluginHost();
     expect(() => bb.sdk.projects.list({})).toThrow(
@@ -1199,17 +1253,15 @@ describe("providers.register", () => {
 
   it("clears registrations on dispose", async () => {
     const { bb, harness } = createFakePluginHost();
-    bb.providers.register(
-      agentDeclaration({ id: "my-second-agent" }),
-    );
+    bb.providers.register(agentDeclaration({ id: "my-second-agent" }));
     expect(
       harness.registrations.providerRegistrations.map((entry) => entry.id),
     ).toEqual(["my-second-agent"]);
 
     await harness.dispose();
     expect(harness.registrations.providerRegistrations).toEqual([]);
-    expect(() =>
-      bb.providers.register(agentDeclaration()),
-    ).toThrow("used a stale API handle");
+    expect(() => bb.providers.register(agentDeclaration())).toThrow(
+      "used a stale API handle",
+    );
   });
 });

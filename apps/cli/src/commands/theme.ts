@@ -66,7 +66,7 @@ export function registerThemeCommands(
         if (
           outputJson(opts, {
             active: catalog.active,
-            builtInThemes,
+            builtInThemes: catalog.experimental_builtIn,
             custom: catalog.custom,
             plugins: catalog.plugins,
             dir: catalog.dir,
@@ -77,7 +77,7 @@ export function registerThemeCommands(
         const active = catalog.active.themeId;
         console.log("");
         console.log("Built-in:");
-        for (const entry of builtInThemes) {
+        for (const entry of catalog.experimental_builtIn) {
           const marker = active === entry.id ? "*" : " ";
           console.log(`${marker} ${entry.id.padEnd(12)} ${entry.description}`);
         }

@@ -5,6 +5,7 @@ import { getStoredFaviconColor, getStoredThemeId } from "@bb/db";
 import {
   appThemeSchema,
   builtInPaletteCodeThemes,
+  builtInThemes,
   defaultAppTheme,
   formatPluginThemeId,
   resolveCodeTheme,
@@ -187,6 +188,7 @@ describe("appearance settings", () => {
         await readJson(response),
       );
       expect(catalog.dir).toBe(join(harness.config.dataDir, "theme"));
+      expect(catalog.experimental_builtIn).toEqual(builtInThemes);
       expect(catalog.custom).toEqual(["amber", "zephyr"]);
       expect(catalog.plugins).toEqual([]);
       expect(catalog.active).toEqual(defaultAppTheme);

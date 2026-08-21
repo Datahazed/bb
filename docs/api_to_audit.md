@@ -29,13 +29,13 @@ not coupled to any slot context.
 The [live BB Community catalog](https://getbb.app/marketplace/v1/marketplace.json)
 was checked against each latest compatible release:
 
-| Plugin                                                                                                                                          | Released implementation                                                                                                                                          | Appearance API outcome                                                                                                                 |
-| ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| [Theme Toggle 0.2.1](https://github.com/xMinor-1/bb-plugins/blob/3a6ef78555814fe63891eac72a145ca9c114e9a6/plugins/theme-toggle/app.tsx#L23-L74) | Reads/writes private `bb.theme` storage, dispatches a synthetic storage event, calls `matchMedia`, and toggles the root `dark` class from a content-script menu. | Direct beneficiary: replace that block with `experimental_appearance.getSnapshot()`; palette reads/writes stay on `bb.sdk.theme`.       |
-| [Monaco 0.1.0](https://github.com/andrewkchan/bb-plugin-monaco/blob/f165b11328efbed70f904bb0e65d432d014c5950/app.tsx#L34-L47)                   | Observes the root `dark` class to choose `vs` / `vs-dark`.                                                                                                       | Direct beneficiary: map reactive `colorMode` from `experimental_useAppearance()`.                                                      |
-| [Ayu 0.2.2](https://github.com/vburojevic/bb-plugin-ayu/blob/8881e00888854462fc8a7c68de386fef8229f8aa/package.json#L21-L41)                     | Contributes declarative palettes and uses `bb.sdk.theme` in its palette explorer.                                                                                | No migration: the existing palette contracts are the correct surface.                                                                  |
-| [Tokyo Night 0.1.0](https://github.com/krehel/bb-plugin-tokyo-night/blob/a5234d1a72e1fa58f3826cb239acd485701f76fe/package.json)                 | Contributes declarative light/dark palette CSS.                                                                                                                  | No migration: CSS already reacts to the client mode.                                                                                   |
-| [Fonts 0.1.0](https://github.com/gtramontina/bb-plugin-fonts/blob/d48637a2052b0336b8ac12476101a816c8b421de/client-runtime.ts#L104-L111)         | Recomputes typography overrides after mode or palette changes.                                                                                                   | Partially covered for mode, but it also needs a stable palette-change notification. Keep that separate instead of adding palette here.  |
+| Plugin                                                                                                                                          | Released implementation                                                                                                                                          | Appearance API outcome                                                                                                                                                                                                         |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [Theme Toggle 0.2.1](https://github.com/xMinor-1/bb-plugins/blob/3a6ef78555814fe63891eac72a145ca9c114e9a6/plugins/theme-toggle/app.tsx#L23-L74) | Reads/writes private `bb.theme` storage, dispatches a synthetic storage event, calls `matchMedia`, and toggles the root `dark` class from a content-script menu. | Direct beneficiary: replace that block with `experimental_appearance.getSnapshot()`; palette reads/writes stay on `bb.sdk.theme`. Its separate hardcoded built-in palette list can use `theme.catalog().experimental_builtIn`. |
+| [Monaco 0.1.0](https://github.com/andrewkchan/bb-plugin-monaco/blob/f165b11328efbed70f904bb0e65d432d014c5950/app.tsx#L34-L47)                   | Observes the root `dark` class to choose `vs` / `vs-dark`.                                                                                                       | Direct beneficiary: map reactive `colorMode` from `experimental_useAppearance()`.                                                                                                                                              |
+| [Ayu 0.2.2](https://github.com/vburojevic/bb-plugin-ayu/blob/8881e00888854462fc8a7c68de386fef8229f8aa/package.json#L21-L41)                     | Contributes declarative palettes and uses `bb.sdk.theme` in its palette explorer.                                                                                | No migration: the existing palette contracts are the correct surface.                                                                                                                                                          |
+| [Tokyo Night 0.1.0](https://github.com/krehel/bb-plugin-tokyo-night/blob/a5234d1a72e1fa58f3826cb239acd485701f76fe/package.json)                 | Contributes declarative light/dark palette CSS.                                                                                                                  | No migration: CSS already reacts to the client mode.                                                                                                                                                                           |
+| [Fonts 0.1.0](https://github.com/gtramontina/bb-plugin-fonts/blob/d48637a2052b0336b8ac12476101a816c8b421de/client-runtime.ts#L104-L111)         | Recomputes typography overrides after mode or palette changes.                                                                                                   | Partially covered for mode, but it also needs a stable palette-change notification. Keep that separate instead of adding palette here.                                                                                         |
 
 The hook deliberately omits palette ids, palette CSS, resolved code-theme
 files, favicon selection, and CSS tokens. Plugin styles already receive live
@@ -54,6 +54,28 @@ the existing shared app runtime so it adds no appearance subsystem or lazy
 chunk to plugin bundles. Confirm snapshots retain identity until a semantic
 value changes, subscriptions fire once per relevant change and clean up
 correctly, and the hook remains a thin wrapper over the same general store.
+
+## Theme catalog built-ins (`ThemeCatalogResponse.experimental_builtIn`)
+
+**What it does.** Adds BB's canonical bundled-palette metadata to the existing
+`bb.sdk.theme.catalog()` result. Each item has a typed built-in `id`, display
+`name`, and `description`; array order is the host's canonical display order. This is
+palette discovery, not client light/dark mode, and it does not expose palette
+CSS, code-theme files, or semantic CSS tokens.
+
+The concrete consumer is
+[Theme Toggle 0.2.1](https://github.com/xMinor-1/bb-plugins/blob/3a6ef78555814fe63891eac72a145ca9c114e9a6/plugins/theme-toggle/server.ts),
+which copies BB's six built-in palettes into plugin source before appending
+`catalog.custom` and `catalog.plugins`. That copy can drift whenever BB adds,
+removes, renames, reorders, or redescribes a built-in. `bb theme list` now also
+uses the catalog value, while preserving its existing JSON key.
+
+**Audit before stabilizing.** Confirm external palette switchers have adopted
+the field and no longer maintain built-in copies; decide whether consumers may
+rely on display order for cycling or need an explicit order value; verify id,
+name, and description remain the minimal useful metadata; and re-check whether
+the field belongs on `catalog()` after real use. Keep mode and palette APIs
+separate.
 
 ## `experimental_buildBridgeToolCallContent`
 

@@ -24,6 +24,14 @@ mode. Do not use it to restyle ordinary plugin UI: plugin CSS already inherits
 BB's live semantic variables, and server-owned palette selection remains on
 `bb.sdk.theme`. The contract does not expose palette state or CSS tokens.
 
+## Palette catalog
+
+Backend plugins that present a palette picker or cycle palettes should read
+`bb.sdk.theme.catalog().experimental_builtIn` for BB's canonical built-in
+palette ids, names, descriptions, and order. Append `custom` and `plugins` from
+the same result instead of copying BB's built-in list into plugin source.
+Palette CSS and code-theme assets remain host-owned and are not returned.
+
 ## Composer customization
 
 Composer UI extensions register through `app.composer.customize(...)`. A

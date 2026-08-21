@@ -448,6 +448,14 @@ describe("SDK public type entrypoints", () => {
     >();
   });
 
+  it("types built-in palette ids in the experimental theme catalog", () => {
+    expectTypeOf<
+      RootThemeCatalog["experimental_builtIn"][number]["id"]
+    >().toEqualTypeOf<
+      "default" | "nord" | "dracula" | "solarized" | "gruvbox" | "catppuccin"
+    >();
+  });
+
   it("makes provider host selectors mutually exclusive", () => {
     expectTypeOf<{
       environmentId: string;

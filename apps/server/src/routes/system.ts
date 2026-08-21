@@ -15,6 +15,7 @@ import {
 } from "@bb/db";
 import {
   applyAppKeybindingOverrides,
+  builtInThemes,
   customThemeNameSchema,
   isBuiltInThemeId,
   resolveCodeTheme,
@@ -244,6 +245,7 @@ export function registerSystemRoutes(
   get(routes.themes, async (context) =>
     context.json({
       dir: themeRoot,
+      experimental_builtIn: [...builtInThemes],
       custom: listCustomThemeNames(themeRoot),
       plugins: pluginService.listThemes(),
       active: await resolveSelectedTheme(
