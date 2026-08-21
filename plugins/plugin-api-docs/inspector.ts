@@ -278,7 +278,6 @@ export function createPluginGuideInspector(
 
   const createCard = (
     nextMode: Exclude<PluginGuideInspectorMode, "idle" | "active">,
-    pointer?: ExperimentalUiInspectionPointer,
   ): HTMLDivElement => {
     ensureStyle();
     removeCard();
@@ -294,7 +293,6 @@ export function createPluginGuideInspector(
     }
     document.body.append(nextCard);
     card = nextCard;
-    if (pointer) positionHoverCard(nextCard, pointer);
     return nextCard;
   };
 
@@ -353,7 +351,7 @@ export function createPluginGuideInspector(
     nextMode: "hover" | "pinned" | "handoff",
     pointer?: ExperimentalUiInspectionPointer,
   ): HTMLDivElement => {
-    const nextCard = createCard(nextMode, pointer);
+    const nextCard = createCard(nextMode);
     const metadata = target.target.metadata;
     const payload = createInspectionPayload(target, now());
     const header = element(document, "div", "pgi-header");
@@ -511,6 +509,7 @@ export function createPluginGuideInspector(
       actions.append(feedback);
       nextCard.append(actions);
     }
+    if (pointer) positionHoverCard(nextCard, pointer);
     return nextCard;
   };
 
@@ -520,11 +519,12 @@ export function createPluginGuideInspector(
     message: string,
     pointer?: ExperimentalUiInspectionPointer,
   ): void => {
-    const nextCard = createCard(nextMode, pointer);
+    const nextCard = createCard(nextMode);
     const content = element(document, "div", "pgi-message");
     content.append(element(document, "strong", "", title));
     content.append(element(document, "span", "", message));
     nextCard.append(content);
+    if (pointer) positionHoverCard(nextCard, pointer);
   };
 
   const renderHandoff = (
