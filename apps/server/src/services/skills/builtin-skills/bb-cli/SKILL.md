@@ -384,6 +384,13 @@ or artifacts, validation performed, and blockers.
 <seconds>` when you need a shorter or longer budget.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
+- Add `--plan` to `bb thread spawn` or `bb thread tell` to send the prompt as
+  the provider's structured `/plan` action: the agent proposes a plan for
+  approval before executing (Claude Code and Codex). Plain `/plan ...` text is
+  not recognized and reaches the provider as literal text. Review the proposed
+  plan with `bb thread interactions`; `bb thread cancel-plan` leaves Plan mode
+  early. The SDK equivalent is `input: [createBuiltinPlanCommandTextInput(text)]`
+  (exported by `@bb/sdk`) on `threads.spawn` / `threads.send`.
 - Use `bb thread edit-message <thread-id> --message "..."` to replace and rerun
   the latest eligible user message in a Codex, Claude Code, or Pi thread. Pass
   `--expected-request-sequence <sequence>` to select an earlier message. Failed
@@ -409,7 +416,13 @@ or artifacts, validation performed, and blockers.
 - Use `bb thread show <thread-id>` for status, parent, environment, pull request
   status, and result.
 - Use `bb thread show <thread-id> --git-diff` to review file changes.
-- Use `bb thread log <thread-id>` to inspect the conversation.
+- Use `bb thread log <thread-id>` to inspect the conversation. The default
+  shows only the newest 20 user-message turns and ends with a notice when older
+  history was omitted; `--limit <n>` (max 100) widens the window and `--all`
+  prints the whole thread. `--json` prints the oldest 100 raw events and warns
+  on stderr when more exist; page with `--after-seq <seq>` or pass `--all`.
+  Grep the `--all` output, not the default page, when checking whether a
+  thread ever received a message.
 - Use `bb thread output <thread-id>` to read the latest final output, or
   `bb thread output --self` for the current thread.
 
@@ -857,7 +870,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     repository subdirectory for a nested plugin, the semver range with its tag
     prefix and resolved tag for a Git range install, engine ranges, install
     time, integrity/registry details, and recent activation history.
-  - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
+  - `bb plugin enable|disable <id>`, `bb plugin reload [id]` (exits 1 when a
+    reloaded plugin does not come up on its current sources: the previous
+    instance was kept, or it is degraded because a service ignored its abort),
     `bb plugin remove <id>` (deletes the plugin's settings, secrets, and
     schedules; managed git/npm files are deleted, local path sources stay on
     disk, builtin removals are remembered).

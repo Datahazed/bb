@@ -220,6 +220,12 @@ above for a connected Magic Keyboard.
 
 ## Keyboard Shortcuts
 
+`Mod+Shift+P` opens the quick palette: type to filter, then run a command with
+Enter. It lists only commands that apply on the current surface, shows each
+one's shortcut, and offers recently run commands first. The numbered
+accelerator families and the relative cycle commands stay rebindable but
+unlisted.
+
 Settings → Keyboard edits app command shortcuts. Overrides are stored in the
 server database, applied live to every connected window, and kept across
 restarts. Resetting a shortcut removes its override so future bb releases can
@@ -243,6 +249,7 @@ delayed shortcut badges without disabling any shortcuts.
 
 | Area      | Command                                   | Default                           | Availability             |
 | --------- | ----------------------------------------- | --------------------------------- | ------------------------ |
+| Palette   | Quick palette                             | `Mod+Shift+P`                     | All clients              |
 | Threads   | New thread                                | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
 | Threads   | Search threads                            | `Mod+K`                           | All clients              |
 | Threads   | Rename focused thread                     | Unassigned                        | Thread view              |
