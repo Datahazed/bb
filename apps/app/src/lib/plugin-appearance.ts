@@ -7,7 +7,7 @@ import {
 } from "@/hooks/useTheme";
 
 /** Host implementation of the plugin SDK's client appearance contract. */
-export function experimental_useAppearance(): ExperimentalPluginAppearance {
+export function usePluginAppearance(): ExperimentalPluginAppearance {
   const colorMode = usePreferredTheme();
   const colorModePreference = useThemePreference();
   return useMemo(

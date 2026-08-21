@@ -2,7 +2,7 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { experimental_useAppearance } from "./plugin-appearance";
+import { usePluginAppearance } from "./plugin-appearance";
 
 function installColorMode(initial: "light" | "dark"): {
   setColorMode(mode: "light" | "dark"): void;
@@ -55,7 +55,7 @@ afterEach(() => {
 describe("experimental_useAppearance", () => {
   it("maps preference and system changes to semantic client appearance", () => {
     const system = installColorMode("dark");
-    const { result } = renderHook(() => experimental_useAppearance());
+    const { result } = renderHook(() => usePluginAppearance());
 
     expect(result.current.colorModePreference).toBe("system");
     expect(result.current.colorMode).toBe("dark");
