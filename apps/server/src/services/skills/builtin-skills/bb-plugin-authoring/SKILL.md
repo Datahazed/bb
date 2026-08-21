@@ -1315,6 +1315,7 @@ export default definePluginApp((app) => {
     icon: "Smartphone",
     experimental_activeTitle: "Stop remote access",
     experimental_activeIndicator: "dot",
+    experimental_inspectionActivationPassthrough: true,
     run: ({ openSettings }) => openSettings(),
   });
   app.slots.messageDirective({ id: "inline-vis", component: InlineVis });
@@ -1470,7 +1471,8 @@ The host mounts scripts in registration order after the bundle loads and
 `definePluginApp` setup validates. `mount` receives `{ pluginId, generation,
 signal, experimental_uiInspection?,
 experimental_setSidebarFooterActionActive?,
-experimental_registerAppCommandHandler?, experimental_setThreadRowStatus? }`:
+experimental_registerAppCommandHandler?, experimental_navigateToCompose?,
+experimental_setThreadRowStatus? }`:
 `generation` is a monotonic per-window mount attempt number, and `signal`
 aborts before cleanup starts. The optional experimental setter targets an
 explicit thread row with `{ icon, label, tone? }` or clears it with `null`.
@@ -1498,12 +1500,24 @@ callback unchanged, paints selected treatment plus the dot, updates the
 tooltip/accessibility label, sets `aria-pressed`, and clears the state on
 frontend-generation teardown.
 
+An inspector's own footer action may also set
+`experimental_inspectionActivationPassthrough: true`. While inspection is
+active, the host still reports hover metadata for that action but lets its
+pointer activation reach the existing `run` callback so the same control can
+stop inspection. Do not use it for unrelated footer actions.
+
 `experimental_registerAppCommandHandler("plugin.inspector.toggle", handler)`
 connects the one fixed, user-remappable UI Inspector command to the same toggle
 used by the footer action. Feature-detect it on older bb clients. The returned
 disposer and generation teardown remove the handler; synchronous and async
 handler errors are contained. This is a single command hook, not a general
 plugin keybinding registry.
+
+`experimental_navigateToCompose({ initialPrompt?, focusPrompt? })` asks the
+app's React Router host to open the root composer while preserving normal
+Back/Forward history. It returns `false` when no app navigation host is
+mounted. Use this bridge for a content-script handoff instead of writing
+`window.history` directly, and feature-detect it on older bb clients.
 
 A script may return nothing, a disposer, or a promise of either; async mount
 setup is time-boxed to 10 seconds. Keep long-running work outside the returned
@@ -1654,7 +1668,8 @@ Slot props contracts (versioned, additive-only):
   (next to Settings / bug report). No plugin component — the host paints
   the chrome so icons stay consistent. Registration:
   `{ id, title, icon, experimental_activeTitle?,
-experimental_activeIndicator?, run }`. Activating it calls
+experimental_activeIndicator?, experimental_inspectionActivationPassthrough?,
+run }`. Activating it calls
   `run({ openSettings })` — use `openSettings()` to open this plugin's
   detail page in Tools, or do anything else (rpc, toast). Errors from `run`
   (sync or async) are contained and logged,
@@ -1664,7 +1679,10 @@ experimental_activeIndicator?, run }`. Activating it calls
   `experimental_activeTitle` for the active tooltip/accessibility label and
   `experimental_activeIndicator: "dot"` for the host-painted dot, then call
   `experimental_setSidebarFooterActionActive` from a content script to set
-  `aria-pressed` and selected styling for this plugin-owned action.
+  `aria-pressed` and selected styling for this plugin-owned action. An
+  inspector toggle may additionally set
+  `experimental_inspectionActivationPassthrough: true` so the active control's
+  pointer activation reaches `run` instead of selecting itself.
 - `fileOpener` → `{ path: string, source, experimental_Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Matching files use the first applicable opener in deterministic slot order
