@@ -12,7 +12,7 @@
     "name": "bb Plugin Guide",
     "description": "Browse the bb plugin API as an annotated map of the product.",
     "branding": {
-      "icon": "./icons/ai-generative.svg"
+      "icon": "Target"
     },
     "server": "./server.ts",
     "app": "./app.tsx"
