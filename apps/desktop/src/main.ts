@@ -68,6 +68,7 @@ import {
   type CompatibleServerProbeResult,
   type ServerProbeResult,
 } from "./server-probe.js";
+import { loadRemoteServerPage } from "./remote-server-load.js";
 import {
   BUILTIN_SERVER_NAME,
   createServerTargetStore,
@@ -1216,22 +1217,49 @@ async function applyServerTarget(): Promise<void> {
       expiresAt: result.expiresAt,
       remoteServerUrl: target.server.url,
     });
-    bbAppLoaded = true;
-    await loadWindowUrl({ url: target.server.url });
+    const loaded = await loadRemoteServerTarget(target.server.url, isCurrent);
     if (!isCurrent()) {
       return;
     }
-    startRemoteSystemConfigSync(target.server.url);
+    if (!loaded) {
+      // No session to keep alive for a server that is not on screen.
+      connectSessionRenewal?.stop();
+    }
   } else {
     // A custom server is a plain web load with no bb Connect involved.
-    bbAppLoaded = true;
-    await loadWindowUrl({ url: target.url });
+    await loadRemoteServerTarget(target.url, isCurrent);
     if (!isCurrent()) {
       return;
     }
-    startRemoteSystemConfigSync(target.url);
   }
   refreshApplicationMenu();
+}
+
+/**
+ * Load a connect or custom server's page. An unreachable host renders the
+ * startup error view instead of rejecting, so the app never lands on the
+ * crash screen or a blank window. `bbAppLoaded` flips only once the page is
+ * really up. Resolves to whether the page loaded.
+ */
+async function loadRemoteServerTarget(
+  serverUrl: string,
+  isCurrent: () => boolean,
+): Promise<boolean> {
+  const loaded = await loadRemoteServerPage({
+    isCurrent,
+    loadStartupError,
+    loadUrl: loadWindowUrl,
+    logWarning: (message) => {
+      createDesktopLogger().warn(message);
+    },
+    serverUrl,
+  });
+  if (!loaded || !isCurrent()) {
+    return loaded;
+  }
+  bbAppLoaded = true;
+  startRemoteSystemConfigSync(serverUrl);
+  return true;
 }
 
 async function setActiveServerTarget(serverId: string): Promise<void> {
