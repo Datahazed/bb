@@ -14,7 +14,8 @@ function shouldHandleUrlClick(
     event.ctrlKey ||
     event.metaKey ||
     event.shiftKey ||
-    event.currentTarget.hasAttribute("download")
+    event.currentTarget.hasAttribute("download") ||
+    event.currentTarget.hasAttribute("target")
   ) {
     return false;
   }
@@ -51,12 +52,40 @@ export function ExperimentalUrlLink({
     },
     [href, navigation, onClick],
   );
+  const normalizedTarget = target?.toLowerCase();
+  const opensNewBrowsingContext =
+    normalizedTarget !== undefined &&
+    normalizedTarget !== "" &&
+    normalizedTarget !== "_self" &&
+    normalizedTarget !== "_parent" &&
+    normalizedTarget !== "_top" &&
+    normalizedTarget !== "_unfencedtop";
+  const relTokens = rel?.split(/\s+/u).filter(Boolean) ?? [];
+  const normalizedRelTokens = relTokens.map((token) => token.toLowerCase());
+  const resolvedRel =
+    opensNewBrowsingContext && !normalizedRelTokens.includes("opener")
+      ? [
+          ...relTokens,
+          ...(normalizedRelTokens.includes("noopener") ? [] : ["noopener"]),
+          ...(normalizedRelTokens.includes("noreferrer") ? [] : ["noreferrer"]),
+        ].join(" ")
+      : rel;
+  if (target !== undefined) {
+    return (
+      <a
+        {...anchorProps}
+        href={href}
+        target={target}
+        rel={resolvedRel}
+        onClick={handleClick}
+      />
+    );
+  }
   return (
     <RouteAnchor
       {...anchorProps}
       href={href}
-      target={target}
-      rel={target === "_blank" ? (rel ?? "noopener noreferrer") : rel}
+      rel={resolvedRel}
       onClick={handleClick}
     />
   );
