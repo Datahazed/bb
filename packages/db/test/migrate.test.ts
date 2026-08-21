@@ -862,6 +862,18 @@ function dropThreadSectionSchema(db: DbConnection): void {
   db.$client.exec("DROP TABLE IF EXISTS thread_sections;");
 }
 
+function dropThreadSectionIconColumn(db: DbConnection): void {
+  for (const table of ["thread_sections", "thread_folders"]) {
+    if (!readTableNames(db).includes(table)) continue;
+    const columns = db.$client
+      .prepare<[], TableInfoRow>(`PRAGMA table_info(${table})`)
+      .all();
+    if (columns.some((column) => column.name === "icon")) {
+      db.$client.prepare(`ALTER TABLE ${table} DROP COLUMN icon`).run();
+    }
+  }
+}
+
 function restorePre0022ThreadTypeSchema(db: DbConnection): void {
   db.$client.exec(`
     ALTER TABLE project_execution_defaults
@@ -2021,6 +2033,7 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
+      dropThreadSectionIconColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       migrate(db);
@@ -2425,6 +2438,7 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
+      dropThreadSectionIconColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(
@@ -2526,6 +2540,7 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
+      dropThreadSectionIconColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(() => migrate(db)).not.toThrow();
@@ -2547,6 +2562,36 @@ describe("migrate", () => {
         "threads_section_archived_deleted_idx",
       );
       expect(db.$client.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("adds nullable thread section icons without losing persisted sections", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      db.$client.exec(`
+        INSERT INTO thread_sections (id, name, created_at, updated_at)
+        VALUES ('sec_before_icons', 'Planning', 1000, 1000);
+        ALTER TABLE thread_sections DROP COLUMN icon;
+      `);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+        )
+        .run(latestMigrationWhen);
+
+      expect(() => migrate(db)).not.toThrow();
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { icon: string | null; name: string }
+          >("SELECT icon, name FROM thread_sections WHERE id = 'sec_before_icons'")
+          .get(),
+      ).toEqual({ icon: null, name: "Planning" });
     } finally {
       closeConnection(db);
     }
@@ -5115,6 +5160,7 @@ describe("migrate", () => {
       });
 
       dropEventParentToolCallIdColumn(db);
+      dropThreadSectionIconColumn(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",

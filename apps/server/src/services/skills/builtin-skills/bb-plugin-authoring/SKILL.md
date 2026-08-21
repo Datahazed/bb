@@ -1555,6 +1555,22 @@ export default definePluginApp((app) => {
     icon: "Smartphone",
     run: ({ openSettings }) => openSettings(),
   });
+  app.slots.experimental_sidebarSectionAction({
+    id: "fullscreen",
+    placement: "inline-preferred",
+    presentation: ({ section, sidebar }) => {
+      const pressed = sidebar.experimental_fullscreenSectionId === section.id;
+      return {
+        title: pressed ? "Exit Full Screen" : "Full Screen Section",
+        icon: pressed ? "Minimize2" : "Maximize2",
+        pressed,
+      };
+    },
+    run: ({ section, sidebar }) => {
+      const pressed = sidebar.experimental_fullscreenSectionId === section.id;
+      sidebar.experimental_setFullscreenSection(pressed ? null : section.id);
+    },
+  });
   app.slots.messageDirective({ id: "inline-vis", component: InlineVis });
   app.slots.experimental_threadList({
     id: "inbox",
@@ -1564,6 +1580,19 @@ export default definePluginApp((app) => {
   });
 });
 ```
+
+### A host-rendered action on section headers
+
+`app.slots.experimental_sidebarSectionAction` contributes a host-rendered
+action to persisted thread-section headers. `presentation(context)` returns
+the current title, icon, pressed state, and optional disabled state; `run`
+receives the same live context. The host places a pressed action inline, then
+at most one inactive `inline-preferred` action, and puts remaining actions in
+the section's existing overflow menu. Unknown icon names are omitted while the
+accessible title remains. Use
+`sidebar.experimental_setFullscreenSection(sectionId | null)` for section
+fullscreen behavior; this state is client-local and the host suspends it while
+search is active.
 
 ### A control in the thread header
 
@@ -1928,6 +1957,14 @@ target? })`. Inside the fixed-tab component,
   (sync or async) are contained and logged,
   never breaking the sidebar. `title` is the tooltip + accessible label;
   `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).
+- `experimental_sidebarSectionAction` → host-rendered action on each persisted
+  thread-section header. Registration:
+  `{ id, placement?: "inline-preferred" | "menu", presentation, run }`.
+  Both callbacks receive the current section and a sidebar view exposing the
+  active fullscreen section plus `experimental_setFullscreenSection`. The
+  presentation returns `{ title, icon, pressed?, disabled? }`. Pressed actions
+  stay inline; the host overflows additional actions into the existing menu.
+  Experimental: see `docs/api_to_audit.md`.
 - `fileOpener` → `{ path: string, source, Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Matching files use the first applicable opener in deterministic slot order
