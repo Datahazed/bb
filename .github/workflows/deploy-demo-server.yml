@@ -6,10 +6,11 @@ name: Deploy Demo Server
 # and test, deploy. It serves from workers.dev; see the wrangler config for
 # why it is not on demo.getbb.app.
 #
-# Paths: the worker bundles @bb/server-contract from source, and the
-# contract is what its tests check the fixtures against, so a contract change
-# redeploys the demo too. That is the point: a demo that has drifted from the
-# contract is a demo that crashes in front of a reviewer.
+# Paths: the worker bundles its workspace dependencies from source, and the
+# contract is what its tests check the fixtures against, so a dependency change
+# redeploys the demo too. The frozen lockfile also controls the bundled external
+# dependency graph. A demo that has drifted from either crashes in front of a
+# reviewer.
 
 on:
   push:
@@ -17,8 +18,12 @@ on:
       - main
     paths:
       - "apps/demo-server/**"
+      - "packages/domain/**"
+      - "packages/host-daemon-contract/**"
+      - "packages/provider-bridge-protocol/**"
       - "packages/server-contract/**"
       - ".github/workflows/deploy-demo-server.yml"
+      - "pnpm-lock.yaml"
   workflow_dispatch:
 
 env:
