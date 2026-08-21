@@ -385,6 +385,22 @@ export type ThreadEventItem = z.infer<typeof threadEventItemSchema>;
 export type ThreadEventItemType = ThreadEventItem["type"];
 
 /**
+ * True when a started item is the agent's own foreground work on its turn:
+ * not echoed user input, not a background task that outlives turns by design,
+ * and not delegated child work. A provider that streams such an item on a turn
+ * it already settled has reopened that turn (Codex continues on a completed
+ * turn id after hooks/compaction, #1646); the host grammar, the runtime's
+ * active-turn state, and the server's thread status all key off this one rule.
+ */
+export function isRootTurnWorkItem(item: ThreadEventItem): boolean {
+  return (
+    item.type !== "userMessage" &&
+    item.type !== "backgroundTask" &&
+    item.parentToolCallId === undefined
+  );
+}
+
+/**
  * Events originating from a provider process via the agent runtime.
  * These carry `providerThreadId` — the provider's internal session/thread ID.
  */

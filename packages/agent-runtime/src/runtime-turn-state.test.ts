@@ -168,3 +168,61 @@ describe("RuntimeTurnState", () => {
   });
 });
 
+describe("RuntimeTurnState reopened turns (#1646)", () => {
+  function commandStarted(
+    turnId: string,
+    options: { parentToolCallId?: string } = {},
+  ): ThreadEvent {
+    return {
+      type: "item/started",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: turnScope(turnId),
+      item: {
+        type: "commandExecution",
+        id: `${turnId}-cmd`,
+        command: "npm test",
+        cwd: "/repo",
+        status: "pending",
+        approvalStatus: null,
+        ...(options.parentToolCallId
+          ? { parentToolCallId: options.parentToolCallId }
+          : {}),
+      },
+    };
+  }
+
+  it("reopens the active turn when root work resumes on a settled turn", () => {
+    const state = new RuntimeTurnState();
+    state.observe(turnStarted("turn-1"));
+    state.observe(turnCompleted("turn-1"));
+    expect(state.getActiveTurnId("t1")).toBeNull();
+
+    state.observe(commandStarted("turn-1"));
+    expect(state.getActiveTurnId("t1")).toBe("turn-1");
+
+    state.observe(turnCompleted("turn-1"));
+    expect(state.getActiveTurnId("t1")).toBeNull();
+  });
+
+  it("reopens the root turn an unlinked auxiliary turn displaced", () => {
+    const state = new RuntimeTurnState();
+    state.observe(turnStarted("turn-a"));
+    state.observe(turnStarted("turn-b"));
+    state.observe(turnCompleted("turn-b"));
+    expect(state.getActiveTurnId("t1")).toBeNull();
+
+    state.observe(commandStarted("turn-a"));
+    expect(state.getActiveTurnId("t1")).toBe("turn-a");
+  });
+
+  it("does not reopen from delegated child work or while a turn is active", () => {
+    const state = new RuntimeTurnState();
+    state.observe(commandStarted("child-turn", { parentToolCallId: "tool-1" }));
+    expect(state.getActiveTurnId("t1")).toBeNull();
+
+    state.observe(turnStarted("turn-2"));
+    state.observe(commandStarted("turn-1"));
+    expect(state.getActiveTurnId("t1")).toBe("turn-2");
+  });
+});

@@ -233,6 +233,66 @@ describe("streaming thread event grammar", () => {
     expect(results[3]).toMatchObject({ rule: "turn/starts-once" });
   });
 
+  // Codex can keep working on a turn it already settled (#1646). That root
+  // work reopens the turn, so the provider's second completion is the thread's
+  // idle signal and must pass; a restart of the reopened turn still must not.
+  it("lets a turn that root work reopened settle again", () => {
+    const turnScoped = (turnId: string, event: ThreadEvent): ThreadEvent => ({
+      ...event,
+      scope: { kind: "turn", turnId },
+    });
+    const results = observeAll([
+      turnStarted("turn_1"),
+      turnCompleted("turn_1"),
+      turnScoped("turn_1", started("item_1")),
+      turnStarted("turn_1"),
+      turnCompleted("turn_1"),
+      turnCompleted("turn_1"),
+    ]);
+    expect(results.map((result) => result.kind)).toEqual([
+      "ok",
+      "ok",
+      "ok",
+      "violation",
+      "ok",
+      "violation",
+    ]);
+    expect(results[3]).toMatchObject({ rule: "turn/starts-once" });
+    expect(results[5]).toMatchObject({ rule: "turn/settles-once" });
+  });
+
+  it("does not reopen a settled turn for user input or delegated child work", () => {
+    const results = observeAll([
+      turnStarted("turn_1"),
+      turnCompleted("turn_1"),
+      {
+        type: "item/started",
+        ...identity,
+        item: { type: "userMessage", id: "item_u", content: [] },
+        scope: { kind: "turn", turnId: "turn_1" },
+      },
+      {
+        type: "item/started",
+        ...identity,
+        item: {
+          type: "agentMessage",
+          id: "item_c",
+          text: "",
+          parentToolCallId: "call_1",
+        },
+        scope: { kind: "turn", turnId: "turn_1" },
+      },
+      turnCompleted("turn_1"),
+    ]);
+    expect(results.map((result) => result.kind)).toEqual([
+      "ok",
+      "ok",
+      "ok",
+      "ok",
+      "violation",
+    ]);
+  });
+
   it("keeps each thread's items and turns separate", () => {
     const grammar = new ThreadEventGrammar();
     expect(grammar.observe(started("item_1")).kind).toBe("ok");

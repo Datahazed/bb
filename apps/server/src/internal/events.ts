@@ -1,7 +1,8 @@
-import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import {
   appendDaemonEventsInTransaction,
   deriveStoredEventItemFields,
+  getRootStoredTurnStartedSequence,
   getThread,
   listCompletedTurnsByThreadIds,
   listThreadEnvironmentAssignmentsOnHost,
@@ -23,6 +24,8 @@ import {
   type HostDaemonRejectedEvent,
 } from "@bb/host-daemon-contract";
 import {
+  getThreadEventScopeTurnId,
+  isRootTurnWorkItem,
   requireThreadEventScopeTurnId,
   type ThreadEventType,
   type ThreadEventTurnStatus,
@@ -159,6 +162,18 @@ interface HasThreadCommandFailureSystemErrorForTurnArgs {
 interface HasThreadStopBeforeTurnStartedArgs {
   threadId: string;
   turnId: string;
+}
+
+interface HasThreadStopSinceTurnRequestedArgs {
+  /** Exclusive upper bound on the stop's sequence. */
+  beforeSequence?: number;
+  threadId: string;
+  turnStartedSequence: number;
+}
+
+interface ResolveReopenedRootTurnIdArgs {
+  event: Extract<HostDaemonEventEnvelope["event"], { type: "item/started" }>;
+  threadId: string;
 }
 
 interface ActivePruneCandidate {
@@ -404,6 +419,35 @@ async function applyEventEffects(
         continue;
       }
 
+      if (event.type === "item/started") {
+        // Thread status is otherwise derived from root turn lifecycle events
+        // alone. A provider can stream root work on a turn the thread already
+        // settled (Codex continues a completed turn after hooks/compaction, or
+        // an unlinked auxiliary turn's completion settled the thread while the
+        // root turn kept running, #1646). That work is real: the thread must
+        // read as active again until the provider settles the turn.
+        const reopenedTurnId = resolveReopenedRootTurnId(deps, {
+          event,
+          threadId: entry.threadId,
+        });
+        if (reopenedTurnId === null) {
+          continue;
+        }
+        deps.logger.warn(
+          {
+            itemType: event.item.type,
+            threadId: entry.threadId,
+            turnId: reopenedTurnId,
+          },
+          "Provider resumed root work on a settled turn; reactivating thread",
+        );
+        applyLoggedThreadLifecycleEvent(deps, {
+          event: { type: "run.started" },
+          threadId: entry.threadId,
+        });
+        continue;
+      }
+
       if (event.type === "turn/completed") {
         const turnId = requireThreadEventScopeTurnId({
           type: event.type,
@@ -611,7 +655,23 @@ function hasThreadStopBeforeTurnStarted(
   if (!turnStarted) {
     return false;
   }
+  return hasThreadStopSinceTurnRequested(deps, {
+    beforeSequence: turnStarted.sequence,
+    threadId: args.threadId,
+    turnStartedSequence: turnStarted.sequence,
+  });
+}
 
+/**
+ * True when a stop was recorded after the turn request that produced the turn
+ * started at `turnStartedSequence`. Only a newer turn request clears the
+ * user's stop intent. `beforeSequence` bounds the search (exclusive); omit it
+ * to consider every stop since the request.
+ */
+function hasThreadStopSinceTurnRequested(
+  deps: Pick<AppDeps, "db">,
+  args: HasThreadStopSinceTurnRequestedArgs,
+): boolean {
   const latestTurnRequest = deps.db
     .select({ sequence: storedEvents.sequence })
     .from(storedEvents)
@@ -619,7 +679,7 @@ function hasThreadStopBeforeTurnStarted(
       and(
         eq(storedEvents.threadId, args.threadId),
         eq(storedEvents.type, "client/turn/requested"),
-        lt(storedEvents.sequence, turnStarted.sequence),
+        lt(storedEvents.sequence, args.turnStartedSequence),
       ),
     )
     .orderBy(desc(storedEvents.sequence))
@@ -636,12 +696,90 @@ function hasThreadStopBeforeTurnStarted(
           eq(storedEvents.threadId, args.threadId),
           eq(storedEvents.type, "system/thread/interrupted"),
           gt(storedEvents.sequence, lowerSequence),
-          lt(storedEvents.sequence, turnStarted.sequence),
+          ...(args.beforeSequence === undefined
+            ? []
+            : [lt(storedEvents.sequence, args.beforeSequence)]),
         ),
       )
       .limit(1)
       .get() !== undefined
   );
+}
+
+/**
+ * Returns the turn id when `event` is root provider work on a root turn while
+ * the thread is not running, and that work must reactivate the thread. The
+ * turn qualifies when it is still open (an auxiliary turn's completion settled
+ * the thread out from under it) or when it is the thread's latest root turn
+ * (the provider continued a turn it already settled and will settle it again).
+ * Work on an older settled turn is stale: nothing is left to settle the thread
+ * again, so it must not reactivate. A stop since the turn's request wins over
+ * any late work.
+ */
+function resolveReopenedRootTurnId(
+  deps: Pick<AppDeps, "db">,
+  args: ResolveReopenedRootTurnIdArgs,
+): string | null {
+  const { event } = args;
+  if (!isRootTurnWorkItem(event.item)) {
+    return null;
+  }
+  const turnId = getThreadEventScopeTurnId(event.scope);
+  if (turnId === undefined) {
+    return null;
+  }
+  const thread = getThread(deps.db, args.threadId);
+  if (
+    !thread ||
+    (thread.status !== "idle" && thread.status !== "error") ||
+    thread.archivedAt !== null ||
+    thread.deletedAt !== null
+  ) {
+    return null;
+  }
+  const turnStartedSequence = getRootStoredTurnStartedSequence(deps.db, {
+    threadId: args.threadId,
+    turnId,
+  });
+  if (turnStartedSequence === null) {
+    return null;
+  }
+  const turnCompleted = deps.db
+    .select({ id: storedEvents.id })
+    .from(storedEvents)
+    .where(
+      and(
+        eq(storedEvents.threadId, args.threadId),
+        eq(storedEvents.turnId, turnId),
+        eq(storedEvents.type, "turn/completed"),
+      ),
+    )
+    .limit(1)
+    .get();
+  if (turnCompleted !== undefined) {
+    const newerRootTurnStarted = deps.db
+      .select({ id: storedEvents.id })
+      .from(storedEvents)
+      .where(
+        and(
+          eq(storedEvents.threadId, args.threadId),
+          eq(storedEvents.type, "turn/started"),
+          isNull(storedEvents.parentToolCallId),
+          gt(storedEvents.sequence, turnStartedSequence),
+        ),
+      )
+      .limit(1)
+      .get();
+    if (newerRootTurnStarted !== undefined) {
+      return null;
+    }
+  }
+  return hasThreadStopSinceTurnRequested(deps, {
+    threadId: args.threadId,
+    turnStartedSequence,
+  })
+    ? null
+    : turnId;
 }
 
 function hasThreadAlreadyStartedRun(

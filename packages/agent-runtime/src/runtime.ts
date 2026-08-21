@@ -741,6 +741,17 @@ export function createAgentRuntimeWithAdapters(
     if (event.type === "provider/error" && event.willRetry !== true) {
       pendingTurnStarts.delete(event.threadId);
       markHostedProviderSessionIdle(event.threadId);
+      return;
+    }
+
+    // Root work that reopened a settled turn (RuntimeTurnState) means the
+    // provider session is busy again: its idle clock must restart from the
+    // turn's next settlement, not from the one the provider walked back.
+    if (
+      event.type === "item/started" &&
+      turnState.getActiveTurnId(event.threadId) !== null
+    ) {
+      markProviderSessionNotIdle(event.threadId);
     }
   }
 

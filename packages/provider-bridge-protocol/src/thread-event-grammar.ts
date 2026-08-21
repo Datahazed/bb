@@ -12,7 +12,7 @@
  * reconstructs item payloads or turn history.
  */
 import type { ThreadEvent } from "@bb/domain";
-import { getThreadEventScopeTurnId } from "@bb/domain";
+import { getThreadEventScopeTurnId, isRootTurnWorkItem } from "@bb/domain";
 
 /**
  * Every ThreadEvent that streams into an already-open item by `itemId`. Listed
@@ -128,6 +128,19 @@ export class ThreadEventGrammar {
         state.openItemIds.add(event.item.id);
         state.settledItemIds.delete(event.item.id);
         trim(state.openItemIds);
+        // Root work on a turn the provider already settled reopens that turn
+        // (Codex continues a completed turn after hooks/compaction, #1646).
+        // The provider settles it again when that work ends, and that second
+        // turn/completed is the only signal that the thread is idle again, so
+        // it must pass turn/settles-once.
+        const turnId = turnIdOf(event);
+        if (
+          turnId !== undefined &&
+          isRootTurnWorkItem(event.item) &&
+          state.completedTurnIds.delete(turnId)
+        ) {
+          state.startedTurnIds.add(turnId);
+        }
         return OK;
       }
       case "item/completed":

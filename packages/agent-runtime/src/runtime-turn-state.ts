@@ -1,5 +1,9 @@
 import type { ThreadEvent } from "@bb/domain";
-import { requireThreadEventScopeTurnId } from "@bb/domain";
+import {
+  getThreadEventScopeTurnId,
+  isRootTurnWorkItem,
+  requireThreadEventScopeTurnId,
+} from "@bb/domain";
 
 interface PendingActiveTurnWaiter {
   resolve: (turnId: string | null) => void;
@@ -92,6 +96,25 @@ export class RuntimeTurnState {
       if (this.activeTurnIdByThreadId.get(event.threadId) === turnId) {
         this.activeTurnIdByThreadId.delete(event.threadId);
       }
+      return;
+    }
+
+    if (event.type === "item/started") {
+      // Root work while no turn is active means the provider resumed a turn
+      // it already settled (#1646). Track it as the active turn again so
+      // thread/stop interrupts that work instead of releasing the session.
+      if (
+        this.activeTurnIdByThreadId.has(event.threadId) ||
+        !isRootTurnWorkItem(event.item)
+      ) {
+        return;
+      }
+      const turnId = getThreadEventScopeTurnId(event.scope);
+      if (turnId === undefined) {
+        return;
+      }
+      this.activeTurnIdByThreadId.set(event.threadId, turnId);
+      this.resolveWaiters(event.threadId, turnId);
     }
   }
 
