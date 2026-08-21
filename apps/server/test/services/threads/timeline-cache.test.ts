@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ThreadTimelineResponse } from "@bb/server-contract";
 import type { ThreadTimelinePageRequest } from "../../../src/services/threads/timeline-pagination.js";
 import {
-  buildThreadTimelineCacheKey,
+  buildThreadTimelineParamsKey,
   createThreadTimelineCache,
   type ThreadTimelineCacheKeyArgs,
 } from "../../../src/services/threads/timeline-cache.js";
@@ -48,7 +48,6 @@ const latestPage: ThreadTimelinePageRequest = {
 
 const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   threadId: "thr_x",
-  maxSeq: 10,
   status: "idle",
   environmentId: null,
   page: latestPage,
@@ -57,37 +56,68 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   includeProviderUnhandledOperations: false,
 };
 
+const k = (paramsKey: string, maxSeq = 1) => ({ paramsKey, maxSeq });
+
 describe("createThreadTimelineCache", () => {
-  it("builds once for the same key and serves cached on repeat", () => {
+  it("builds once for the same shape and revision and serves cached on repeat", () => {
     const cache = createThreadTimelineCache();
     const build = vi.fn(() => makeResponse(3));
 
-    const first = cache.getOrBuild("k", build);
-    const second = cache.getOrBuild("k", build);
+    const first = cache.getOrBuild(k("k"), build);
+    const second = cache.getOrBuild(k("k"), build);
 
     expect(build).toHaveBeenCalledTimes(1);
     expect(second).toBe(first);
     expect(cache.size).toBe(1);
   });
 
-  it("rebuilds when the key changes (e.g. new maxSeq)", () => {
+  it("rebuilds on a new maxSeq and replaces the prior revision of the same shape", () => {
     const cache = createThreadTimelineCache();
     const build = vi.fn(() => makeResponse(3));
 
-    cache.getOrBuild("k1", build);
-    cache.getOrBuild("k2", build);
+    cache.getOrBuild(k("k", 10), build);
+    cache.getOrBuild(k("k", 11), build);
 
     expect(build).toHaveBeenCalledTimes(2);
+    expect(cache.size).toBe(1);
+  });
+
+  it("never returns a newer revision to a request for an older maxSeq", () => {
+    const cache = createThreadTimelineCache();
+    const newer = makeResponse(2);
+    cache.getOrBuild(k("k", 11), () => newer);
+    const rebuilt = makeResponse(1);
+    const served = cache.getOrBuild(k("k", 10), () => rebuilt);
+    expect(served).toBe(rebuilt);
+  });
+
+  it("retains separate request shapes independently", () => {
+    const cache = createThreadTimelineCache();
+    const build = vi.fn(() => makeResponse(3));
+
+    cache.getOrBuild(k("latest", 10), build);
+    cache.getOrBuild(k("older:5", 10), build);
+
+    expect(cache.size).toBe(2);
   });
 
   it("does not cache responses above the row cap (streaming expanded turns)", () => {
     const cache = createThreadTimelineCache({ maxCacheableRows: 5 });
     const build = vi.fn(() => makeResponse(50));
 
-    cache.getOrBuild("k", build);
-    cache.getOrBuild("k", build);
+    cache.getOrBuild(k("k"), build);
+    cache.getOrBuild(k("k"), build);
 
     expect(build).toHaveBeenCalledTimes(2);
+    expect(cache.size).toBe(0);
+  });
+
+  it("drops a cached revision when its replacement is above the row cap", () => {
+    const cache = createThreadTimelineCache({ maxCacheableRows: 5 });
+
+    cache.getOrBuild(k("k", 1), () => makeResponse(3));
+    expect(cache.size).toBe(1);
+    cache.getOrBuild(k("k", 2), () => makeResponse(50));
     expect(cache.size).toBe(0);
   });
 
@@ -95,24 +125,23 @@ describe("createThreadTimelineCache", () => {
     const cache = createThreadTimelineCache({ maxEntries: 2 });
     const build = vi.fn(() => makeResponse(1));
 
-    cache.getOrBuild("a", build); // [a]
-    cache.getOrBuild("b", build); // [a,b]
-    cache.getOrBuild("a", build); // touch a -> [b,a]
-    cache.getOrBuild("c", build); // evict b -> [a,c]
+    cache.getOrBuild(k("a"), build); // [a]
+    cache.getOrBuild(k("b"), build); // [a,b]
+    cache.getOrBuild(k("a"), build); // touch a -> [b,a]
+    cache.getOrBuild(k("c"), build); // evict b -> [a,c]
 
     expect(cache.size).toBe(2);
     const buildAgain = vi.fn(() => makeResponse(1));
-    cache.getOrBuild("a", buildAgain); // still cached
-    cache.getOrBuild("b", buildAgain); // evicted -> rebuild
+    cache.getOrBuild(k("a"), buildAgain); // still cached
+    cache.getOrBuild(k("b"), buildAgain); // evicted -> rebuild
     expect(buildAgain).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("buildThreadTimelineCacheKey", () => {
+describe("buildThreadTimelineParamsKey", () => {
   it("differs when any projection input differs", () => {
-    const base = buildThreadTimelineCacheKey(baseKeyArgs);
+    const base = buildThreadTimelineParamsKey(baseKeyArgs);
     const variants: ThreadTimelineCacheKeyArgs[] = [
-      { ...baseKeyArgs, maxSeq: 11 },
       { ...baseKeyArgs, status: "active" },
       { ...baseKeyArgs, environmentId: "env_1" },
       { ...baseKeyArgs, includeNestedRows: true },
@@ -128,12 +157,12 @@ describe("buildThreadTimelineCacheKey", () => {
       },
     ];
     for (const variant of variants) {
-      expect(buildThreadTimelineCacheKey(variant)).not.toBe(base);
+      expect(buildThreadTimelineParamsKey(variant)).not.toBe(base);
     }
   });
 
   it("distinguishes older-page cursors", () => {
-    const cursorA = buildThreadTimelineCacheKey({
+    const cursorA = buildThreadTimelineParamsKey({
       ...baseKeyArgs,
       page: {
         kind: "older",
@@ -141,7 +170,7 @@ describe("buildThreadTimelineCacheKey", () => {
         beforeCursor: { anchorSeq: 5, anchorId: "a5" },
       },
     });
-    const cursorB = buildThreadTimelineCacheKey({
+    const cursorB = buildThreadTimelineParamsKey({
       ...baseKeyArgs,
       page: {
         kind: "older",

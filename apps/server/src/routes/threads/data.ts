@@ -56,7 +56,6 @@ import type {
 } from "../../services/threads/timeline-pagination.js";
 import { createSlowThreadTimelineBuildLogger } from "../../services/threads/timeline-build-log.js";
 import {
-  buildThreadTimelineCacheKey,
   buildThreadTimelineParamsKey,
   createThreadTimelineCache,
 } from "../../services/threads/timeline-cache.js";
@@ -355,8 +354,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       summaryOnly,
       includeProviderUnhandledOperations,
     };
+    const paramsKey = buildThreadTimelineParamsKey(keyArgs);
     const full = timelineCache.getOrBuild(
-      buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
+      { paramsKey, maxSeq },
       () => {
         const { profile, response } = buildThreadTimelineWithProfile(
           deps.db,
@@ -399,7 +399,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       query.afterSequence,
       "afterSequence",
     );
-    const paramsKey = buildThreadTimelineParamsKey(keyArgs);
     const previous =
       afterSequence === undefined
         ? undefined

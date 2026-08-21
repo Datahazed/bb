@@ -13,9 +13,12 @@ import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
  * (detail view + side-chat tabs), debounced realtime invalidations that fire
  * after the tail already settled, and re-opening a thread.
  *
- * Keying on the thread high-water `maxSeq` makes invalidation implicit: any
- * appended event bumps `maxSeq`, producing a new key and a cold rebuild. The
- * key MUST also include every other input the projection depends on:
+ * Entries are keyed by request shape (`paramsKey`) and store the thread
+ * high-water `maxSeq` they were built at. A request with a different `maxSeq`
+ * is a miss that *replaces* the slot: `maxSeq` never decreases, so the old
+ * revision could never be looked up again and keeping it until global LRU
+ * eviction only pins a dead response per appended event (#2066). The request
+ * shape MUST include every other input the projection depends on:
  * `thread.status` (interrupt flips earlier rows), `environmentId` (workspace
  * root relativizes file paths), provider display name (labels dynamic-provider
  * diagnostic rows), and the row-shape request flags. Event pruning
@@ -23,10 +26,9 @@ import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
  * and never lowers `maxSeq`, so it cannot stale a cached entry.
  *
  * Entries with many rows are not cached: an expanded active turn (the streaming
- * case) produces hundreds of rows AND a `maxSeq` that changes on every event,
- * so caching it only thrashes the LRU and pins large objects for no reuse. Idle
- * windows collapse completed turns to a handful of rows regardless of thread
- * size, so the cap excludes exactly the entries that would never be reused.
+ * case) produces hundreds of rows that are rebuilt on every event, so storing
+ * them pins a large object for no reuse. The per-shape slot bounds the *count*
+ * of retained revisions; the row cap bounds their *size*.
  */
 
 const DEFAULT_MAX_ENTRIES = 128;
@@ -40,7 +42,7 @@ interface ThreadTimelineCacheOptions {
 
 interface ThreadTimelineCache {
   getOrBuild(
-    key: string,
+    key: { paramsKey: string; maxSeq: number },
     build: () => ThreadTimelineResponse,
   ): ThreadTimelineResponse;
   /** Number of currently cached entries (for tests/metrics). */
@@ -53,21 +55,27 @@ export function createThreadTimelineCache(
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const maxCacheableRows =
     options.maxCacheableRows ?? DEFAULT_MAX_CACHEABLE_ROWS;
-  const entries = new Map<string, ThreadTimelineResponse>();
+  const entries = new Map<
+    string,
+    { maxSeq: number; value: ThreadTimelineResponse }
+  >();
 
   return {
-    getOrBuild(key, build) {
-      const cached = entries.get(key);
-      if (cached !== undefined) {
+    getOrBuild({ paramsKey, maxSeq }, build) {
+      const cached = entries.get(paramsKey);
+      if (cached?.maxSeq === maxSeq) {
         // Re-insert to mark most-recently-used.
-        entries.delete(key);
-        entries.set(key, cached);
-        return cached;
+        entries.delete(paramsKey);
+        entries.set(paramsKey, cached);
+        return cached.value;
       }
 
       const value = build();
+      // A newer revision supersedes the stored one even when the new value is
+      // too large to cache: the old one can never hit again.
+      entries.delete(paramsKey);
       if (value.rows.length <= maxCacheableRows) {
-        entries.set(key, value);
+        entries.set(paramsKey, { maxSeq, value });
         while (entries.size > maxEntries) {
           const oldest = entries.keys().next().value;
           if (oldest === undefined) {
@@ -86,8 +94,6 @@ export function createThreadTimelineCache(
 
 export interface ThreadTimelineCacheKeyArgs {
   threadId: string;
-  /** Thread high-water event sequence; bumps on every appended event. */
-  maxSeq: number;
   status: ThreadStatus;
   environmentId: string | null;
   providerDisplayName?: string;
@@ -104,12 +110,12 @@ function pageKeyPart(page: ThreadTimelinePageRequest): string {
 }
 
 /**
- * The cache identity *excluding* `maxSeq` — i.e. everything that selects which
- * window is being requested, but not which revision of it. Used to track the
- * latest-sent rows per request shape for delta computation.
+ * The request shape: everything that selects which window is being requested,
+ * but not which revision (`maxSeq`) of it. Shared by the response cache and the
+ * latest-rows delta cache.
  */
 export function buildThreadTimelineParamsKey(
-  args: Omit<ThreadTimelineCacheKeyArgs, "maxSeq">,
+  args: ThreadTimelineCacheKeyArgs,
 ): string {
   return [
     args.threadId,
@@ -121,10 +127,4 @@ export function buildThreadTimelineParamsKey(
     args.summaryOnly ? "1" : "0",
     args.includeProviderUnhandledOperations ? "1" : "0",
   ].join("|");
-}
-
-export function buildThreadTimelineCacheKey(
-  args: ThreadTimelineCacheKeyArgs,
-): string {
-  return `${args.maxSeq}|${buildThreadTimelineParamsKey(args)}`;
 }
