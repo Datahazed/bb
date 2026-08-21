@@ -81,7 +81,7 @@
     "remark-math": "^6.0.0",
     "remark-parse": "^11.0.0",
     "sonner-native": "^0.27.0",
-    "sugar-high": "^1.2.1",
+    "sugar-high": "^2.0.1",
     "tailwind-merge": "^3.4.0",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
