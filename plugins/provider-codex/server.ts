@@ -1,4 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { codexExtensionKinds } from "./src/extension-kinds.js";
 
 /**
  * First-party Codex provider plugin. The declaration is the only source of
@@ -72,5 +73,9 @@ export default function plugin(bb: BbPluginApi) {
         providerSubagentsEnabled: context.settings.subagentsDisabled !== true,
       };
     },
+    // Codex goals (thread state) and the macOS permission profile (an item
+    // beside an approval) are codex's own vocabulary, validated at ingest
+    // against these schemas.
+    experimental_extensionKinds: codexExtensionKinds,
   });
 }

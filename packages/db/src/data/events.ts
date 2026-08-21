@@ -1030,8 +1030,10 @@ export interface ListStoredEventRowsByParentToolCallIdsArgs {
 export type GetStoredEventRowsByParentToolCallIdsDataBytesArgs =
   ListStoredEventRowsByParentToolCallIdsArgs;
 
-export interface ListLatestGoalEventRowsByThreadIdsArgs {
+export interface ListLatestThreadStateEventRowsByThreadIdsArgs {
   threadIds: readonly string[];
+  /** The plugin thread-state kind (`"<pluginId>/<name>"`) to read. */
+  kind: string;
 }
 
 export interface ListOpenTurnInputAcceptedRowsByThreadIdsArgs {
@@ -1302,26 +1304,34 @@ export function listStoredEventRows(
   return merged;
 }
 
-export function listLatestGoalEventRowsByThreadIds(
+export function listLatestThreadStateEventRowsByThreadIds(
   db: DbQueryConnection,
-  args: ListLatestGoalEventRowsByThreadIdsArgs,
+  args: ListLatestThreadStateEventRowsByThreadIdsArgs,
 ): StoredEventRow[] {
   return queryInSqliteVariableBatches({
     dedupeKey: (threadId) => threadId,
-    fixedVariableCount: 0,
+    fixedVariableCount: 1,
     queryBatch: (threadIds) => {
       // This runs over every listed thread on each sidebar bootstrap, so it
-      // must stay proportional to goal events, not all events. Literal goal
-      // types imply the partial-index predicate at prepare time; INDEXED BY
-      // prevents a stats-less planner from walking the full thread index; and
-      // no ORDER BY is needed because sequence is unique per thread (#1131).
-      const goalTypes = [
+      // must stay proportional to thread-state events, not all events. The
+      // literal type list implies the partial-index predicate at prepare
+      // time; INDEXED BY prevents a stats-less planner from walking the full
+      // thread index; and no ORDER BY is needed because sequence is unique
+      // per thread (#1131). Legacy goal rows count as the goal kind (they
+      // convert to it at read time); a live extension-state row counts only
+      // for its own kind.
+      const stateTypes = [
         "thread/goal/updated",
         "thread/goal/cleared",
+        "thread/extensionState/updated",
       ] as const satisfies readonly ThreadEventType[];
-      const goalTypesPredicate = sql.raw(
-        `IN (${goalTypes.map((type) => `'${type}'`).join(", ")})`,
+      const stateTypesPredicate = sql.raw(
+        `IN (${stateTypes.map((type) => `'${type}'`).join(", ")})`,
       );
+      const kindPredicate = sql`(
+        candidate.type <> 'thread/extensionState/updated'
+        OR json_extract(candidate.data, '$.kind') = ${args.kind}
+      )`;
       const threadIdList = sql.join(
         threadIds.map((threadId) => sql`${threadId}`),
         sql`, `,
@@ -1330,19 +1340,21 @@ export function listLatestGoalEventRowsByThreadIds(
         .select(storedEventRowFields)
         .from(events)
         .where(sql`${events}.rowid IN (
-        SELECT latest_goal.rowid
-        FROM ${events} AS latest_goal INDEXED BY events_goal_thread_sequence_idx
-        WHERE latest_goal.thread_id IN (${threadIdList})
-          AND latest_goal.type ${goalTypesPredicate}
-          AND latest_goal.sequence = (
+        SELECT latest_state.rowid
+        FROM ${events} AS latest_state INDEXED BY events_thread_state_thread_sequence_idx
+        WHERE latest_state.thread_id IN (${threadIdList})
+          AND latest_state.type ${stateTypesPredicate}
+          AND latest_state.sequence = (
             SELECT MAX(candidate.sequence)
-            FROM ${events} AS candidate INDEXED BY events_goal_thread_sequence_idx
-            WHERE candidate.thread_id = latest_goal.thread_id
-              AND candidate.type ${goalTypesPredicate}
+            FROM ${events} AS candidate INDEXED BY events_thread_state_thread_sequence_idx
+            WHERE candidate.thread_id = latest_state.thread_id
+              AND candidate.type ${stateTypesPredicate}
+              AND ${kindPredicate}
           )
       )`)
         .all();
     },
+
     values: args.threadIds,
     variableCountPerValue: 1,
   });

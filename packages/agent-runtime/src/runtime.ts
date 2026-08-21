@@ -2457,14 +2457,12 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
           } catch {
             return null;
           }
+          // Open background tasks and open delegations (a codex native
+          // sub-agent still running, or still owed a followup turn) are
+          // live provider work; reaping the session would destroy it.
           if (
             providerSessionReapingEnabled
-              ? backgroundWorkState.hasOpenThreadWork(candidate.threadId) ||
-                (proc.adapter.hasOpenThreadWork?.({
-                  providerThreadId: candidate.providerThreadId,
-                  threadId: candidate.threadId,
-                }) ??
-                  false)
+              ? backgroundWorkState.hasOpenThreadWork(candidate.threadId)
               : !isThreadScopedCodexProcess(proc)
           ) {
             return null;

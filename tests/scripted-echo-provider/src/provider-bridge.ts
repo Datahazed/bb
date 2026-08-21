@@ -132,11 +132,11 @@ export const scriptedEchoOptionsSchema = z
         }),
       )
       .optional(),
-    /** Delay the `thread.goalCleared` delta by this many ms after the answer. */
+    /** Delay the goal-cleared state delta by this many ms after the answer. */
     goalClearNotifyDelayMs: z.number().int().nonnegative().optional(),
     /**
      * The `cleared` value `thread/goal/clear` answers (default true). The
-     * `thread.goalCleared` delta is emitted either way: a false answer models
+     * goal-cleared state delta is emitted either way: a false answer models
      * a provider that persisted the clear after it had already responded.
      */
     goalClearReportsCleared: z.boolean().optional(),
@@ -1250,7 +1250,16 @@ const handlers: Record<string, RequestHandler> = {
     const session = sessions.get(parsed.data.threadId);
     const options = session?.options ?? processOptions;
     const notifyCleared = (): void => {
-      emitDeltas(parsed.data.threadId, [{ kind: "thread.goalCleared" }]);
+      // `thread/goal/clear` models codex's Goal, whose cleared state is the
+      // codex plugin's `provider-codex/goal` thread state with a null
+      // snapshot — the signal the runtime waits for before it answers.
+      emitDeltas(parsed.data.threadId, [
+        {
+          kind: "extension.state",
+          extensionKind: "provider-codex/goal",
+          payload: null,
+        },
+      ]);
     };
     const answer = { cleared: options.goalClearReportsCleared ?? true };
     if (options.goalClearNotifyDelayMs === undefined) {

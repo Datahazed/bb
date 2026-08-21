@@ -13,9 +13,11 @@
  * addition is a new union member or an optional field — a v2 bridge's
  * deltas still validate and a v2 runtime ignores a notification method it
  * does not know — so the wire stays at 2 and the `grammarVersions` handshake
- * range is how a bridge says which vocabulary it speaks. The workstream that
- * deletes the v2 paths (makes `presentation` required, drops `thread.goal`)
- * is the one that tightens the parse and must bump.
+ * range is how a bridge says which vocabulary it speaks. Members only one
+ * in-repo bridge ever spoke (`thread.goal`, the `thread/openWork`
+ * notification) were dropped under that range once the bridge migrated; the
+ * stabilization workstream that makes `presentation` required is the one
+ * that tightens the parse for every bridge and must bump.
  *
  * To accept an intentional grammar change: review the diff, then run
  *   pnpm exec turbo run test --filter=@bb/provider-bridge-protocol -- -u
@@ -74,7 +76,9 @@ describe("guardrail G3: delta grammar shape is paired with the protocol version"
       recoveryNotification: zodObjectFields(providerRecoveryNotificationSchema),
       requestMethods: Object.values(BRIDGE_REQUEST_METHODS).sort(),
       notificationMethods: Object.values(BRIDGE_NOTIFICATION_METHODS).sort(),
-      inboundRequestMethods: Object.values(BRIDGE_INBOUND_REQUEST_METHODS).sort(),
+      inboundRequestMethods: Object.values(
+        BRIDGE_INBOUND_REQUEST_METHODS,
+      ).sort(),
     };
     await expect(`${JSON.stringify(grammar, null, 2)}\n`).toMatchFileSnapshot(
       `./provider-bridge-grammar.v${PROVIDER_BRIDGE_PROTOCOL_VERSION}.snapshot.json`,

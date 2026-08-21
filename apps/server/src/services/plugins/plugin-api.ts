@@ -20,6 +20,7 @@ import type {
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
   PluginAgentToolExperimentalStatusLabels,
+  PluginAgentToolPresentation,
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
@@ -155,6 +156,9 @@ export interface PluginAgentToolRecord {
   description: string;
   /** Native timeline labels, null when the standard BB title should render. */
   experimentalStatusLabels: PluginAgentToolExperimentalStatusLabels | null;
+  /** The plugin's declared row presentation (grammar v3), null when it
+   * declared none; the plugin service resolves the full presentation. */
+  experimentalPresentation: PluginAgentToolPresentation | null;
   /** Instructions snippet for the thread-instructions assembly; null when
    * the registration carried none (description-only). */
   instructions: string | null;
@@ -290,6 +294,95 @@ type PluginAgentConfigurationProvider = (
  * default attribution (`origin: "plugin"`, `originPluginId: <plugin id>`)
  * unless the plugin sets those fields explicitly.
  */
+/**
+ * The declared shape of `experimental_presentation`, copied field by field so
+ * a plugin's object cannot smuggle prototypes or extra markup into the
+ * persisted row. Labels share the status-label length cap.
+ */
+function parsePluginAgentToolPresentation(
+  toolName: string,
+  value: unknown,
+): PluginAgentToolPresentation | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `tool "${toolName}" experimental_presentation must be an object`,
+    );
+  }
+  const declared = value as Record<string, unknown>;
+  const presentation: PluginAgentToolPresentation = {};
+  if (declared.label !== undefined) {
+    const label = declared.label;
+    if (
+      typeof label !== "object" ||
+      label === null ||
+      typeof (label as { pending?: unknown }).pending !== "string" ||
+      typeof (label as { completed?: unknown }).completed !== "string"
+    ) {
+      throw new Error(
+        `tool "${toolName}" experimental_presentation.label must provide pending and completed strings`,
+      );
+    }
+    const { pending, completed } = label as {
+      pending: string;
+      completed: string;
+    };
+    if (
+      pending.trim().length === 0 ||
+      completed.trim().length === 0 ||
+      pending.length > PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS ||
+      completed.length > PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS
+    ) {
+      throw new Error(
+        `tool "${toolName}" experimental_presentation.label strings must be non-empty and at most ${PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS} characters`,
+      );
+    }
+    presentation.label = { pending, completed };
+  }
+  if (declared.icon !== undefined) {
+    const icon = declared.icon;
+    if (
+      typeof icon !== "object" ||
+      icon === null ||
+      typeof (icon as { glyph?: unknown }).glyph !== "string" ||
+      (icon as { glyph: string }).glyph.trim().length === 0
+    ) {
+      throw new Error(
+        `tool "${toolName}" experimental_presentation.icon must be { glyph: string }`,
+      );
+    }
+    presentation.icon = { glyph: (icon as { glyph: string }).glyph };
+  }
+  if (declared.suppress !== undefined) {
+    if (typeof declared.suppress !== "boolean") {
+      throw new Error(
+        `tool "${toolName}" experimental_presentation.suppress must be a boolean`,
+      );
+    }
+    presentation.suppress = declared.suppress;
+  }
+  if (declared.tint !== undefined) {
+    const tint = declared.tint;
+    if (
+      typeof tint !== "object" ||
+      tint === null ||
+      typeof (tint as { light?: unknown }).light !== "string" ||
+      typeof (tint as { dark?: unknown }).dark !== "string"
+    ) {
+      throw new Error(
+        `tool "${toolName}" experimental_presentation.tint must provide light and dark strings`,
+      );
+    }
+    presentation.tint = {
+      light: (tint as { light: string }).light,
+      dark: (tint as { dark: string }).dark,
+    };
+  }
+  return presentation;
+}
+
 function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
   return {
     ...sdk,
@@ -882,6 +975,7 @@ export function createPluginApi(options: {
       description: string;
       instructions?: string;
       experimental_statusLabels?: PluginAgentToolExperimentalStatusLabels;
+      experimental_presentation?: PluginAgentToolPresentation;
       parameters: unknown;
       execute(
         params: never,
@@ -945,6 +1039,10 @@ export function createPluginApi(options: {
           );
         }
       }
+      const experimentalPresentation = parsePluginAgentToolPresentation(
+        name,
+        tool.experimental_presentation,
+      );
       if (typeof tool.execute !== "function") {
         throw new Error(
           `tool "${name}" must provide an execute(params, ctx) function`,
@@ -1019,6 +1117,7 @@ export function createPluginApi(options: {
                 pending: experimentalStatusLabels.pending,
                 completed: experimentalStatusLabels.completed,
               },
+        experimentalPresentation,
         instructions:
           tool.instructions !== undefined && tool.instructions.trim().length > 0
             ? tool.instructions

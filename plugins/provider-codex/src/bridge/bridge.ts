@@ -35,6 +35,7 @@
 import {
   isStandaloneBuiltinCompactCommand,
   pendingInteractionResolutionSchema,
+  type DynamicTool,
   type PromptInput,
   type ThreadDelta,
   sanitizeInheritedChildProcessEnv,
@@ -77,10 +78,17 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import {
+  CODEX_MACOS_PERMISSION_EXTENSION_KIND,
+  summarizeCodexMacOsPermissions,
+} from "../extension-kinds.js";
+import {
   buildCodexInteractiveResponse,
   decodeCodexInteractiveRequest,
+  extractCodexMacOsPermissionRequest,
+  type CodexMacOsPermissionRequest,
 } from "../interactive-requests.js";
 import { parseModelsResponse } from "../models.js";
+import { macOsPermissionPresentation } from "../presentation.js";
 import {
   resolveCodexInstructionOverrides,
   toCodexDynamicTools,
@@ -355,9 +363,7 @@ function describeCodexLaunchError(error: unknown): string {
 interface CodexSessionConstruction {
   cwd: string;
   instructionMode: "append" | "replace";
-  dynamicTools:
-    | { name: string; description: string; inputSchema: unknown }[]
-    | undefined;
+  dynamicTools: DynamicTool[] | undefined;
 }
 
 interface CodexBridgeSession {
@@ -384,8 +390,6 @@ interface CodexBridgeSession {
    * every thread/delta for the session, so these flush right after it.
    */
   pendingPreIdentityDeltas: ThreadDelta[];
-  /** Last `thread/openWork` value sent, so only changes go on the wire. */
-  openWorkReported: boolean;
   closing: boolean;
 }
 
@@ -423,15 +427,6 @@ function currentSession(
 
 function releaseSession(session: CodexBridgeSession): void {
   session.closing = true;
-  // The session is gone, so its work is too. Retract the open-work claim or
-  // the runtime keeps refusing to reap a thread that no longer exists here.
-  if (session.openWorkReported) {
-    session.openWorkReported = false;
-    sendNotification(BRIDGE_NOTIFICATION_METHODS.threadOpenWork, {
-      threadId: session.bbThreadId,
-      open: false,
-    });
-  }
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
@@ -571,30 +566,6 @@ function sendThreadDeltas(
   });
 }
 
-/**
- * Codex models native subagents as tool calls, not as bb background tasks, so
- * the runtime's own background-work tracker cannot see them. Report the
- * current value after every batch of translated events: a session release must
- * not stop this process while a child agent still runs or still owes a
- * followup turn.
- */
-function reportOpenThreadWork(session: CodexBridgeSession): void {
-  const codexThreadId = session.codexThreadId;
-  const open =
-    codexThreadId !== null &&
-    session.translator.hasOpenThreadWork({
-      providerThreadId: codexThreadId,
-    });
-  if (open === session.openWorkReported) {
-    return;
-  }
-  session.openWorkReported = open;
-  sendNotification(BRIDGE_NOTIFICATION_METHODS.threadOpenWork, {
-    threadId: session.bbThreadId,
-    open,
-  });
-}
-
 function announceSessionIdentity(
   session: CodexBridgeSession,
   codexThreadId: string,
@@ -660,7 +631,6 @@ function handleChildNotification(
     session,
     session.translator.translateEvent(toProviderRuntimeEvent(method, params)),
   );
-  reportOpenThreadWork(session);
 }
 
 const codexChildToolCallParamsSchema = z.object({
@@ -721,6 +691,19 @@ function handleChildRequest(
     return;
   }
 
+  // A macOS permission profile on a command approval is codex vocabulary
+  // bb's permission layer cannot grant: it goes on the timeline as its own
+  // row (`provider-codex/macos-permission`) and the approval proceeds for
+  // the command itself.
+  const macOsPermission = extractCodexMacOsPermissionRequest({
+    id: 0,
+    method,
+    params,
+  });
+  if (macOsPermission !== null) {
+    sendThreadDeltas(session, [buildMacOsPermissionItemDelta(macOsPermission)]);
+  }
+
   let decoded: DecodedInteractiveRequest | null;
   try {
     decoded = decodeCodexInteractiveRequest({ id: 0, method, params });
@@ -761,6 +744,32 @@ function handleChildRequest(
     });
 }
 
+/**
+ * The `provider-codex/macos-permission` row for a command approval that asked
+ * for macOS capabilities. Keyed by the approval's codex item id under its own
+ * channel, so a re-asked approval for the same command reuses the row.
+ */
+function buildMacOsPermissionItemDelta(
+  request: CodexMacOsPermissionRequest,
+): ThreadDelta {
+  return {
+    kind: "item.close",
+    key: {
+      providerItemId: `${request.item.approvalItemId}:macos-permission`,
+    },
+    status: "completed",
+    item: {
+      type: "extension",
+      kind: CODEX_MACOS_PERMISSION_EXTENSION_KIND,
+      payload: request.item,
+    },
+    presentation: macOsPermissionPresentation(
+      summarizeCodexMacOsPermissions(request.item.permissions),
+    ),
+    providerTurnId: request.turnId,
+  };
+}
+
 function handleChildExit(
   bbThreadId: string,
   serial: number,
@@ -797,16 +806,18 @@ function handleChildExit(
       : {}),
     message,
   });
-  // Nothing runs behind a dead child, so drop its live state and retract the
-  // open-work claim. The runtime's open-work view is level-triggered: without
-  // this the thread is never idle-reaped, and a stale tracked subagent would
-  // re-raise the claim on the next report.
+  // Nothing runs behind a dead child, so drop its live state and settle every
+  // delegation it still had open as failed: open delegations are open work
+  // for the runtime's reaper, and without the closes the thread would never
+  // be idle-reaped.
   if (session.codexThreadId !== null) {
-    session.translator.clearExitedChildThreadState({
-      providerThreadId: session.codexThreadId,
-    });
+    sendThreadDeltas(
+      session,
+      session.translator.clearExitedChildThreadState({
+        providerThreadId: session.codexThreadId,
+      }),
+    );
   }
-  reportOpenThreadWork(session);
   // The session entry stays (with its identity) so the next turn/start can
   // restore the thread from its rollout via session/replaced.
 }
@@ -893,7 +904,7 @@ interface ConstructThreadSessionArgs {
   cwd: string;
   options: BridgeExecutionOptions;
   instructionMode: "append" | "replace";
-  dynamicTools?: { name: string; description: string; inputSchema: unknown }[];
+  dynamicTools?: DynamicTool[];
   request: CodexSessionConstructionRequest;
 }
 
@@ -916,6 +927,14 @@ async function constructThreadSession(
   const translator = createCodexEventTranslator({
     additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
   });
+  translator.configureInjectedTools(
+    (args.dynamicTools ?? []).map((tool) => ({
+      name: tool.name,
+      ...(tool.presentation === undefined
+        ? {}
+        : { presentation: tool.presentation }),
+    })),
+  );
   const session: CodexBridgeSession = {
     bbThreadId: args.threadId,
     codexThreadId:
@@ -936,7 +955,6 @@ async function constructThreadSession(
     awaitingReplayedUsage: args.request.kind !== "start",
     identityAnnounced: false,
     pendingPreIdentityDeltas: [],
-    openWorkReported: false,
     closing: false,
   };
   sessionsByBbThreadId.set(args.threadId, session);

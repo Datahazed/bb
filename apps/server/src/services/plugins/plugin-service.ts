@@ -8,10 +8,13 @@ import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
   derivePluginId,
   formatPluginThemeId,
+  isPluginOwnedIconPath,
   type DeclaredCodeTheme,
+  type DynamicTool,
   type JsonValue,
   type PluginThemeMeta,
   type SystemChangeKind,
+  type ThreadEventItemPresentation,
   type ToolCallResponse,
 } from "@bb/domain";
 import {
@@ -951,6 +954,9 @@ function normalizePluginAgentConfiguration(args: {
   };
 }
 
+/** The glyph a bb-injected tool wears when neither it nor its plugin names one. */
+const GENERIC_AGENT_TOOL_GLYPH = "Toolbox";
+
 export function createPluginService(deps: PluginServiceDeps): PluginService {
   const logger = deps.logger;
   const bundledPlugins =
@@ -1105,6 +1111,51 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
    * order within a plugin, deduped first-wins (defensive — registration
    * already blocks cross-plugin collisions and reserved names).
    */
+  /**
+   * The one full presentation a bb-injected tool carries to the bridge
+   * (grammar v3): the plugin's declaration first, then its status labels for
+   * the label, then a generic label; the plugin's branding glyph, then
+   * `Toolbox`. Resolved here, once, so the wire never carries a hole a
+   * bridge would have to fill with a tool-name table of its own.
+   */
+  function resolveAgentToolPresentation(
+    pluginId: string,
+    record: PluginAgentToolRecord,
+  ): ThreadEventItemPresentation {
+    const declared = record.experimentalPresentation;
+    const brandingIcon = loaded.get(pluginId)?.manifest.branding.icon;
+    const glyph =
+      declared?.icon?.glyph ??
+      (brandingIcon !== undefined && !isPluginOwnedIconPath(brandingIcon)
+        ? brandingIcon
+        : GENERIC_AGENT_TOOL_GLYPH);
+    return {
+      label: declared?.label ??
+        record.experimentalStatusLabels ?? {
+          pending: `Running ${record.name}`,
+          completed: `Ran ${record.name}`,
+        },
+      icon: { glyph },
+      ...(declared?.suppress === undefined
+        ? {}
+        : { suppress: declared.suppress }),
+      ...(declared?.tint === undefined ? {} : { tint: declared.tint }),
+    };
+  }
+
+  function toAgentDynamicTool(
+    pluginId: string,
+    record: PluginAgentToolRecord,
+    inputSchema: unknown = record.inputSchema,
+  ): DynamicTool {
+    return {
+      name: record.name,
+      description: record.description,
+      inputSchema,
+      presentation: resolveAgentToolPresentation(pluginId, record),
+    };
+  }
+
   function collectAgentTools(): Array<{
     pluginId: string;
     record: PluginAgentToolRecord;
@@ -2075,11 +2126,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     listAgentTools() {
       return collectAgentTools().map(({ pluginId, record }) => ({
         pluginId,
-        tool: {
-          name: record.name,
-          description: record.description,
-          inputSchema: record.inputSchema,
-        },
+        tool: toAgentDynamicTool(pluginId, record),
         instructions: record.instructions,
       }));
     },
@@ -2101,11 +2148,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           tools.push(
             ...pluginTools.map(({ record }) => ({
               pluginId,
-              tool: {
-                name: record.name,
-                description: record.description,
-                inputSchema: record.inputSchema,
-              },
+              tool: toAgentDynamicTool(pluginId, record),
               instructions: record.instructions,
             })),
           );
@@ -2136,12 +2179,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             .filter(({ record }) => selectedTools.has(record.name))
             .map(({ record }) => ({
               pluginId,
-              tool: {
-                name: record.name,
-                description: record.description,
-                inputSchema:
-                  parameterOverrides.get(record.name) ?? record.inputSchema,
-              },
+              tool: toAgentDynamicTool(
+                pluginId,
+                record,
+                parameterOverrides.get(record.name) ?? record.inputSchema,
+              ),
               instructions: record.instructions,
             })),
         );

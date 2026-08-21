@@ -220,7 +220,7 @@ range is what gates a bridge: every bridge in this repo reports
 - **Core item shapes** `fileRead`, `search` (`mode: content | path | list`),
   `delegation` (`childRef`, `label`, `background`, `summary?`; one shape for
   codex `spawnAgent`/`wait`, the Claude `Agent` tool, and backgrounded
-  agents, replacing `thread/openWork`), and `planSteps` (a structured plan
+  agents, which replaced `thread/openWork`), and `planSteps` (a structured plan
   snapshot as an item, beside the turn-level `turn.plan`).
 - **`presentation`** on `item.open` and `item.close`, the one place it
   travels: `label {pending, completed}`, `icon {glyph}` (host glyphs only —
@@ -231,6 +231,15 @@ range is what gates a bridge: every bridge in this repo reports
   the row renders after the plugin is gone and mobile renders every kind
   without plugin code. Optional for core shapes until the v2 paths are
   deleted; required when the shape is `extension`.
+- **bb-injected tools carry their presentation.** Every `dynamicTools[]`
+  definition on `thread/start`, `thread/resume` and `thread/fork` carries the
+  `presentation` the server resolved for it (from the owning plugin's
+  `experimental_presentation`, its status labels, or a generic label and the
+  plugin's glyph). A bridge stamps that presentation, beside `server: "bb"`,
+  on the `item.open`/`item.close` of every call to the tool, so no tool-name
+  table labels bb tools anywhere downstream. Optional on the wire while the
+  grammar migrates (a definition recorded before the field existed presents
+  generically); the stabilization pass makes it required.
 - **Extension kinds** `"<pluginId>/<name>"`: the `extension` item shape
   (opaque JSON `payload`; its lifecycle delta must carry a `presentation`)
   and the thread-scoped
@@ -381,16 +390,14 @@ carries the whole item, so refusing it would lose real content.
    `fork: "tip"` bridge rejects checkpoint forks with
    `FORK_CHECKPOINT_UNSUPPORTED` rather than cloning history the bb timeline
    does not show.
-5. `thread/openWork` reports whether a thread still owns provider work that
-   outlives its turn and that bb cannot see. Work reported as
-   `backgroundTask` items is already tracked by the runtime; this is for
-   work the provider models as something else (codex reports native
-   subagents as tool calls). It is level-triggered — send the current value,
-   the runtime keeps the last one heard — and a bridge that never sends it
-   reads as no open work. Retract it (`open: false`) when the session is
-   released, or the runtime will refuse to reap a thread that no longer
-   exists on your side. Missing this is how an idle-looking thread gets its
-   parent process stopped out from under a running child agent.
+5. Open work is what the timeline says it is. A `backgroundTask` item and a
+   `delegation` item that are still pending are live provider work, and the
+   runtime will not reap the session while one is open. Model a native
+   sub-agent as a `delegation` (codex does), re-open it when the agent works
+   again, and settle it — as failed — when your provider child dies, or the
+   runtime keeps refusing to reap a thread that no longer exists on your
+   side. There is no side channel for this (the former `thread/openWork`
+   notification is gone; a runtime ignores it).
 
 ## Ordering guarantees
 

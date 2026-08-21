@@ -484,7 +484,9 @@ describe("createAgentRuntime command contracts", () => {
         expect(events).toContainEqual(
           expect.objectContaining({
             threadId: "t-goal",
-            type: "thread/goal/cleared",
+            type: "thread/extensionState/updated",
+            kind: "provider-codex/goal",
+            payload: null,
           }),
         );
       } finally {

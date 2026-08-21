@@ -101,14 +101,6 @@ export interface BridgeProtocolAdapter {
   classifyExecutionSettingsChange(
     args: ClassifyProviderExecutionSettingsChangeArgs,
   ): ProviderExecutionSettingsChange;
-  /**
-   * Whether this thread owns provider work that can outlive its turn (the
-   * bridge's last `thread/openWork` report).
-   */
-  hasOpenThreadWork(args: {
-    providerThreadId: string;
-    threadId: string;
-  }): boolean;
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
   /** The `initialize` handshake, sent before any thread work starts. */
   buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[];
@@ -172,10 +164,6 @@ const threadIdentityNotificationParamsSchema = z
     providerThreadId: z.string().min(1),
     sessionRestorable: z.boolean().optional(),
   })
-  .passthrough();
-
-const threadOpenWorkNotificationParamsSchema = z
-  .object({ threadId: z.string().min(1), open: z.boolean() })
   .passthrough();
 
 const sessionReplacedNotificationParamsSchema = z
@@ -303,9 +291,6 @@ export function createBridgeProtocolAdapter(
       ? handshake.fork
       : declaredFork;
   }
-  // Last `thread/openWork` value per bb thread. Level-triggered, so a missed
-  // intermediate notification cannot strand the runtime on a stale answer.
-  const threadIdsWithOpenWork = new Set<string>();
   // The narrow grammar: bridges emit parsed semantic deltas (`thread/delta`)
   // and this assembler constructs every canonical timeline event.
   const deltaAssembler = createDeltaAssembler({ providerId: options.id });
@@ -678,16 +663,6 @@ export function createBridgeProtocolAdapter(
       ];
     },
 
-    /**
-     * The bridge is the only side that knows about provider work bb models as
-     * something other than a background task (codex's native subagents are
-     * tool calls). It reports the current value with `thread/openWork`; a
-     * bridge that never sends it reads as no open work.
-     */
-    hasOpenThreadWork({ threadId }): boolean {
-      return threadIdsWithOpenWork.has(threadId);
-    },
-
     parseModelListResult: parseAvailableModelList,
 
     translateEvent(event: ProviderRuntimeEvent): ThreadEvent[] {
@@ -743,21 +718,6 @@ export function createBridgeProtocolAdapter(
             scope: { kind: "thread" },
           },
         ];
-      }
-      if (method === BRIDGE_NOTIFICATION_METHODS.threadOpenWork) {
-        // Not a timeline event: it only updates the reaper's view of whether
-        // stopping this thread would destroy live provider work.
-        const parsed = threadOpenWorkNotificationParamsSchema.safeParse(
-          event.params,
-        );
-        if (parsed.success) {
-          if (parsed.data.open) {
-            threadIdsWithOpenWork.add(parsed.data.threadId);
-          } else {
-            threadIdsWithOpenWork.delete(parsed.data.threadId);
-          }
-        }
-        return [];
       }
       if (method === BRIDGE_NOTIFICATION_METHODS.error) {
         const parsed = errorNotificationParamsSchema.safeParse(event.params);

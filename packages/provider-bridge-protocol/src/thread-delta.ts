@@ -38,7 +38,6 @@ import {
   threadEventTokenUsageBreakdownSchema,
   threadEventTurnStatusSchema,
   threadEventWarningCategorySchema,
-  threadTimelineGoalStatusSchema,
   workflowProgressSnapshotSchema,
 } from "@bb/domain";
 import { z } from "zod";
@@ -207,8 +206,8 @@ export type DeltaSearchShape = z.infer<typeof deltaSearchShapeSchema>;
  * Delegated work (grammar v3): one shape for the three encodings in the
  * production data — codex `spawnAgent`/`wait` tool calls, the Claude `Agent`
  * tool with nested child turns, and backgrounded `local_agent` background
- * tasks — and for the `thread/openWork` notification, since an open
- * delegation IS open work. `childRef` is the provider-native child id; the
+ * tasks — and for what the `thread/openWork` notification used to report,
+ * since an open delegation IS open work. `childRef` is the provider-native child id; the
  * child's own deltas link back through `parentRef`. `background: true` marks
  * a delegation that outlives its turn: the assembler routes its progress and
  * close to the thread-scoped `item/delegation/*` events exactly as it does
@@ -651,23 +650,14 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     providerThreadId: z.string().min(1),
   }),
   z.object({ kind: z.literal("thread.name"), name: z.string().min(1) }),
-  z.object({
-    kind: z.literal("thread.goal"),
-    objective: z.string(),
-    status: threadTimelineGoalStatusSchema,
-    tokenBudget: z.number().nullable(),
-    tokensUsed: z.number(),
-    timeUsedSeconds: z.number(),
-  }),
-  z.object({ kind: z.literal("thread.goalCleared") }),
 
   /**
    * Plugin-declared thread state (grammar v3): `"<pluginId>/<name>"` kinds
    * beside the core thread-state family (usage, context window, rate limits,
    * model fallback, context cleared). Latest snapshot wins per kind — the
    * assembler and the timeline keep one value per `kind`, so a bridge re-sends
-   * the whole state, never a diff. Codex goals (`thread.goal` above) become a
-   * codex extension state once the codex plugin declares the kind. The payload
+   * the whole state, never a diff. Codex goals ride this way (the codex
+   * plugin's `provider-codex/goal`, a null payload once cleared). The payload
    * is opaque here; the server validates it against the plugin's declared
    * `state` schema at ingest (the same site as extension items).
    * The namespaced kind travels as `extensionKind` only because `kind` is

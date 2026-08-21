@@ -5,6 +5,7 @@ import {
   reasoningLevelSchema,
 } from "./shared-types.js";
 import { extensionKindSchema } from "./provider-extension-kind.js";
+import { threadEventItemPresentationSchema } from "./item-presentation.js";
 
 export const modelReasoningEffortSchema = z.object({
   reasoningEffort: reasoningLevelSchema,
@@ -219,9 +220,24 @@ export const toolCallResponseSchema = z.object({
 });
 export type ToolCallResponse = z.infer<typeof toolCallResponseSchema>;
 
+/**
+ * A bb-injected tool handed to a provider bridge at session construction.
+ *
+ * `presentation` is how a call to this tool reads as a timeline row (grammar
+ * v3, docs/provider-plugin-api.md §3): the bridge stamps it on the
+ * `item.open`/`item.close` for the call beside `server: "bb"`, so no core
+ * table of bb tool names is needed to label the row. The server resolves it
+ * once, at its boundary, for every tool it injects — from the owning
+ * plugin's declaration, falling back to a generic label and the plugin's
+ * glyph. Optional on the wire while the grammar migrates (A1, additive then
+ * delete): a definition recorded before the field existed carries none, and
+ * a bridge then presents the call generically; the stabilization pass makes
+ * it required.
+ */
 export const dynamicToolSchema = z.object({
   name: z.string(),
   description: z.string(),
   inputSchema: z.unknown(),
+  presentation: threadEventItemPresentationSchema.optional(),
 });
 export type DynamicTool = z.infer<typeof dynamicToolSchema>;

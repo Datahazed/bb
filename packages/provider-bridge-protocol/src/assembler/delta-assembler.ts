@@ -2330,31 +2330,6 @@ export function createDeltaAssembler(
         return;
       }
 
-      case "thread.goal": {
-        events.push({
-          type: "thread/goal/updated",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: threadScope(),
-          objective: delta.objective,
-          status: delta.status,
-          tokenBudget: delta.tokenBudget,
-          tokensUsed: delta.tokensUsed,
-          timeUsedSeconds: delta.timeUsedSeconds,
-        });
-        return;
-      }
-
-      case "thread.goalCleared": {
-        events.push({
-          type: "thread/goal/cleared",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: threadScope(),
-        });
-        return;
-      }
-
       case "provider.rateLimits": {
         events.push({
           type: "provider/rateLimits/updated",

@@ -331,6 +331,33 @@ Each label is capped at 80 characters and rendered as a truncating segment.
    only for non-MCP native plugin tools. Confirm that distinction stays sound
    as provider adapters and dynamic-tool provenance evolve.
 
+## `bb.agents.registerTool({ experimental_presentation })`
+
+**What it does.** Lets a native plugin tool declare how its calls read as a
+timeline row in the grammar v3 vocabulary
+([provider-plugin-api.md](provider-plugin-api.md) §3): a `label` pair
+(pending/completed), an `icon` glyph, `suppress` for low-value rows clients
+collapse by default, and an optional `tint`. The server resolves one full
+presentation per injected tool at its boundary — the declaration, then
+`experimental_statusLabels` for the label, then a generic `Running <name>` /
+`Ran <name>` label and the owning plugin's branding glyph (or `Toolbox`) —
+and hands it to the bridge on the tool definition. A bridge stamps it, beside
+`server: "bb"`, on the `item.open`/`item.close` of every call to the tool, so
+the persisted row carries its presentation and no core table of bb tool names
+is needed.
+
+**Audit before stabilizing.**
+
+1. **Supersedes `experimental_statusLabels`.** The label pair is the same
+   vocabulary; stabilize one field and delete the other in the same change.
+2. **Per-call headline.** `title` and `detail` are per-call, not
+   per-definition; decide whether a plugin may derive them from the call's
+   arguments (a bounded interpolation) or whether the bridge always owns them.
+3. **Glyph vocabulary.** The icon is a host glyph name; confirm the plugin
+   branding glyph fallback reads well for multi-tool plugins, and whether a
+   content-addressed asset form should be accepted once the persisted
+   presentation supports it.
+
 ## `bb.providers.register` (and its `bb.agents.experimental_registerProvider` alias)
 
 **What it does.** Lets a plugin declare an agent provider into the server's

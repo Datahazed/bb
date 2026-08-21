@@ -11,7 +11,6 @@ import { z } from "zod";
 export const BRIDGE_NOTIFICATION_METHODS = {
   threadIdentity: "thread/identity",
   sessionReplaced: "session/replaced",
-  threadOpenWork: "thread/openWork",
   providerRaw: "provider/raw",
   providerRecovery: "provider/recovery",
   error: "error",
@@ -44,28 +43,6 @@ export const sessionReplacedNotificationSchema = z
     reason: z.string().min(1),
     /** True when provider-side context did not survive the replacement. */
     contextLost: z.boolean().default(false),
-  })
-  .passthrough();
-
-/**
- * Whether the thread still owns provider work that outlives its turn and that
- * the bb timeline cannot see.
- *
- * Backgrounded tasks the bridge reports as `backgroundTask` items are already
- * visible to the runtime's own tracker; this covers work a provider models as
- * something else entirely (codex reports native subagents as tool calls, so an
- * idle-looking thread can still have a child agent running). Without it the
- * session reaper stops the parent process and kills that work.
- *
- * Level-triggered, not edge-triggered: the bridge sends the current value and
- * the runtime keeps the last one it heard, so a missed intermediate state
- * cannot leave the runtime permanently wrong. Absence reads as no open work,
- * which is what every bridge that never sends it means.
- */
-export const threadOpenWorkNotificationSchema = z
-  .object({
-    threadId: z.string().min(1),
-    open: z.boolean(),
   })
   .passthrough();
 

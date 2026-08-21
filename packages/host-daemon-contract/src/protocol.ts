@@ -1,3 +1,14 @@
+// Version 150 adds an OPTIONAL `presentation` to each bb-injected tool
+// definition (`dynamicTools[]` on thread.start, turn.submit and the resume
+// contexts): how a call to the tool reads as a timeline row (grammar v3),
+// resolved once by the server from the owning plugin's declaration and
+// stamped by the bridge, beside `server: "bb"`, on the call's
+// item.open/item.close. Additive and tolerated by an older daemon — the
+// field is optional and `dynamicToolSchema` is not strict, so an old daemon
+// strips the unknown key and keeps working; bumped per the repository rule
+// that a widened server↔daemon wire bumps unless compatibility was
+// deliberately tested. Stabilization makes the field required.
+//
 // Version 149 makes the thread runtime execution options provider-agnostic.
 // `claudeCodePermissionMode`, `workflowsEnabled`, `memoryEnabled`, and
 // `providerSubagentsEnabled` are gone from `options`; a REQUIRED
@@ -143,7 +154,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 149 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 150 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

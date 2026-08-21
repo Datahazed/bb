@@ -377,6 +377,25 @@ export interface PluginAgentToolExperimentalStatusLabels {
   completed: string;
 }
 
+/**
+ * How calls to a native plugin tool read as a timeline row (grammar v3). Every
+ * field is optional at registration: the server fills what the plugin leaves
+ * out (the `experimental_statusLabels` pair as the label, then a generic
+ * label; the plugin's branding glyph, then `Toolbox`) and hands one complete
+ * presentation to the provider bridge with the tool definition.
+ */
+export interface PluginAgentToolPresentation {
+  /** Row title while the call is pending and once it settled. */
+  label?: PluginAgentToolExperimentalStatusLabels;
+  /** A named host glyph (`{ glyph: "Workflow" }`). */
+  icon?: { glyph: string };
+  /** Low-value rows clients collapse by default (a question a dedicated
+   * interaction row already shows, a bookkeeping call). */
+  suppress?: boolean;
+  /** Accent colour per theme; omitted rows use the neutral row tint. */
+  tint?: { light: string; dark: string };
+}
+
 export interface PluginAgentToolRegistrationBase {
   /** Tool name shown to the model: [a-zA-Z0-9_-]+, unique across plugins,
    * and not a built-in dynamic tool (see RESERVED_AGENT_TOOL_NAMES in the
@@ -396,6 +415,12 @@ export interface PluginAgentToolRegistrationBase {
    * approval, error, and interruption states keep BB's standard rendering.
    */
   experimental_statusLabels?: PluginAgentToolExperimentalStatusLabels;
+  /**
+   * How calls to this tool read as a timeline row (grammar v3). Supersedes
+   * `experimental_statusLabels`, which still supplies the label when this
+   * field omits one. See docs/api_to_audit.md.
+   */
+  experimental_presentation?: PluginAgentToolPresentation;
 }
 
 /** Stable, plain-data context resolved by the server for one agent session. */

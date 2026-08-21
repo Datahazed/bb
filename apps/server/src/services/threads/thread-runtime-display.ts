@@ -3,7 +3,7 @@ import {
   getLatestSessionForHost,
   getSessionById,
   listActiveBackgroundTaskCountsByThreadIds,
-  listLatestGoalEventRowsByThreadIds,
+  listLatestThreadStateEventRowsByThreadIds,
   listLatestSessionsForHosts,
   listOpenTurnInputAcceptedRowsByThreadIds,
   listStoredClientTurnRequestRowsByKeys,
@@ -13,6 +13,7 @@ import {
   type ThreadClientTurnRequestKey,
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
+import { LEGACY_CODEX_GOAL_EXTENSION_KIND } from "@bb/domain";
 import type {
   Thread,
   ThreadActivityState,
@@ -315,8 +316,9 @@ function listPromptBannerActivityCandidateRows(
   deps: ThreadPromptBannerDeps,
   threads: readonly Thread[],
 ): StoredEventRow[] {
-  const latestGoalRows = listLatestGoalEventRowsByThreadIds(deps.db, {
+  const latestGoalRows = listLatestThreadStateEventRowsByThreadIds(deps.db, {
     threadIds: threads.map((thread) => thread.id),
+    kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
   });
   const openAcceptedRows = listOpenTurnInputAcceptedRowsByThreadIds(deps.db, {
     threadIds: threads

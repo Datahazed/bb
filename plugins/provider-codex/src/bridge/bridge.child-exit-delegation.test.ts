@@ -5,15 +5,16 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { BridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type { ThreadDelta } from "@get-bb/plugin-sdk/provider-bridge";
 
 import { handleLine } from "./bridge.js";
 
 /**
- * Codex models native subagents as tool calls, so the bridge reports open
- * thread work itself and the runtime's view of it is level-triggered: it stays
- * true until a retraction arrives. When the app-server child dies with a
- * subagent still tracked, nothing runs behind the claim anymore — leaving it
- * standing makes the runtime refuse to reap that thread forever.
+ * A codex native sub-agent is a `delegation` item, and an open delegation is
+ * open work for the runtime's reaper. When the app-server child dies with a
+ * sub-agent still tracked, nothing runs behind that row anymore — leaving it
+ * pending would make the runtime refuse to reap the thread forever, so the
+ * bridge settles it as failed on the wire.
  */
 
 const THREAD_ID = "thr_child_exit_open_work";
@@ -32,36 +33,44 @@ const sessionOptions = {
 let harness: BridgeJsonRpcTestHarness;
 let workspaceDir: string;
 
-function openWorkReports(): boolean[] {
-  const reports: boolean[] = [];
+type DelegationLifecycle = Extract<
+  ThreadDelta,
+  { kind: "item.open" | "item.close" }
+> & { item: { type: "delegation" } };
+
+function delegationDeltas(): DelegationLifecycle[] {
+  const found: DelegationLifecycle[] = [];
   for (const message of harness.messages) {
-    if (message.method !== "thread/openWork") continue;
-    const params = message.params;
-    if (
-      typeof params === "object" &&
-      params !== null &&
-      "threadId" in params &&
-      params.threadId === THREAD_ID &&
-      "open" in params &&
-      typeof params.open === "boolean"
-    ) {
-      reports.push(params.open);
+    if (message.method !== "thread/delta") continue;
+    const params = message.params as
+      | { threadId?: unknown; deltas?: unknown }
+      | undefined;
+    if (params?.threadId !== THREAD_ID || !Array.isArray(params.deltas)) {
+      continue;
+    }
+    for (const delta of params.deltas as ThreadDelta[]) {
+      if (
+        (delta.kind === "item.open" || delta.kind === "item.close") &&
+        delta.item.type === "delegation"
+      ) {
+        found.push(delta as DelegationLifecycle);
+      }
     }
   }
-  return reports;
+  return found;
 }
 
-async function waitForOpenWorkReports(
-  predicate: (reports: boolean[]) => boolean,
-): Promise<boolean[]> {
+async function waitForDelegationDeltas(
+  predicate: (deltas: DelegationLifecycle[]) => boolean,
+): Promise<DelegationLifecycle[]> {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
-    const reports = openWorkReports();
-    if (predicate(reports)) return reports;
+    const deltas = delegationDeltas();
+    if (predicate(deltas)) return deltas;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   throw new Error(
-    `Timed out waiting for open-work reports (saw ${JSON.stringify(openWorkReports())})`,
+    `Timed out waiting for delegation deltas (saw ${JSON.stringify(delegationDeltas())})`,
   );
 }
 
@@ -89,7 +98,7 @@ afterEach(async () => {
   rmSync(workspaceDir, { recursive: true, force: true });
 });
 
-it("retracts open thread work when the app-server child dies", async () => {
+it("settles the open delegation as failed when the app-server child dies", async () => {
   harness.sendRequest(1, "thread/start", {
     threadId: THREAD_ID,
     cwd: workspaceDir,
@@ -113,10 +122,22 @@ it("retracts open thread work when the app-server child dies", async () => {
   });
   await harness.waitForResponse(2);
 
-  // The subagent claims open work; the child's death must retract it.
-  const reports = await waitForOpenWorkReports(
-    (all) => all.includes(true) && all.at(-1) === false,
+  // The sub-agent opens a pending delegation; the child's death closes it.
+  const deltas = await waitForDelegationDeltas(
+    (all) =>
+      all.some((delta) => delta.kind === "item.open") &&
+      all.at(-1)?.kind === "item.close",
   );
-  expect(reports.at(0)).toBe(true);
-  expect(reports.at(-1)).toBe(false);
+  const open = deltas.find((delta) => delta.kind === "item.open");
+  const close = deltas.at(-1);
+  expect(open?.item.type).toBe("delegation");
+  expect(open?.presentation).toBeDefined();
+  expect(close).toEqual(
+    expect.objectContaining({
+      kind: "item.close",
+      key: open?.key,
+      status: "failed",
+      item: expect.objectContaining({ type: "delegation" }),
+    }),
+  );
 }, 30_000);

@@ -469,7 +469,27 @@ function getToolCallName(decoded: ThreadEvent): string | undefined {
   return decoded.item.tool;
 }
 
+/** A grammar v3 `delegation` item lifecycle event (turn-scoped or background). */
+function isDelegationItemEvent(decoded: ThreadEvent): boolean {
+  return (
+    (decoded.type === "item/started" ||
+      decoded.type === "item/completed" ||
+      decoded.type === "item/delegation/completed") &&
+    decoded.item.type === "delegation"
+  );
+}
+
 function getToolCallReceiverThreadIds(decoded: ThreadEvent): string[] {
+  if (
+    (decoded.type === "item/started" ||
+      decoded.type === "item/completed" ||
+      decoded.type === "item/delegation/completed") &&
+    decoded.item.type === "delegation"
+  ) {
+    // The delegation names its child directly; that child's turns map to
+    // this call exactly as a spawnAgent receiver would.
+    return [decoded.item.childRef];
+  }
   if (
     (decoded.type !== "item/started" && decoded.type !== "item/completed") ||
     decoded.item.type !== "toolCall"
@@ -914,8 +934,9 @@ function buildFlatProjectionData(
           }
         }
         if (
-          toolCallName &&
-          PROVIDER_THREAD_DELEGATION_TOOL_NAMES.has(toolCallName)
+          (toolCallName &&
+            PROVIDER_THREAD_DELEGATION_TOOL_NAMES.has(toolCallName)) ||
+          isDelegationItemEvent(decoded)
         ) {
           if (
             toolCallReceiverThreadIds.length === 0 ||

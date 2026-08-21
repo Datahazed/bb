@@ -134,6 +134,15 @@ interface ToolCallCompletedArgs extends ProviderTurnEventOptions {
 
 type ToolCallStartedArgs = ToolCallCompletedArgs;
 
+interface DelegationEventArgs extends ProviderTurnEventOptions {
+  itemId?: string;
+  childRef: string;
+  label: string;
+  background?: boolean;
+  summary?: string;
+  status?: "pending" | "completed" | "failed" | "interrupted";
+}
+
 interface CommandCompletedArgs extends ProviderTurnEventOptions {
   aggregatedOutput?: string;
   approvalStatus?: "waiting_for_approval" | "denied" | null;
@@ -330,6 +339,12 @@ export interface TimelineEventFactory {
   ): ThreadEventRowOfType<"system/thread-provisioning">;
   toolCallCompleted(
     args: ToolCallCompletedArgs,
+  ): ThreadEventRowOfType<"item/completed">;
+  delegationStarted(
+    args: DelegationEventArgs,
+  ): ThreadEventRowOfType<"item/started">;
+  delegationCompleted(
+    args: DelegationEventArgs,
   ): ThreadEventRowOfType<"item/completed">;
   toolCallStarted(
     args: ToolCallStartedArgs,
@@ -843,6 +858,44 @@ export function createTimelineEventFactory(
             result: args.result,
             error: args.error,
             status: args.status ?? "completed",
+          },
+        },
+      };
+    },
+    delegationStarted(args) {
+      const base = nextProviderTurnScopedRowBase("delegation-started", args);
+      return {
+        ...base,
+        type: "item/started",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "delegation",
+            id: args.itemId ?? `delegation-${base.seq}`,
+            childRef: args.childRef,
+            label: args.label,
+            status: args.status ?? "pending",
+            background: args.background ?? false,
+            ...(args.summary === undefined ? {} : { summary: args.summary }),
+          },
+        },
+      };
+    },
+    delegationCompleted(args) {
+      const base = nextProviderTurnScopedRowBase("delegation-completed", args);
+      return {
+        ...base,
+        type: "item/completed",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "delegation",
+            id: args.itemId ?? `delegation-${base.seq}`,
+            childRef: args.childRef,
+            label: args.label,
+            status: args.status ?? "completed",
+            background: args.background ?? false,
+            ...(args.summary === undefined ? {} : { summary: args.summary }),
           },
         },
       };

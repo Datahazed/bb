@@ -123,17 +123,6 @@
     "session.reset": {
       "kind": "required"
     },
-    "thread.goal": {
-      "kind": "required",
-      "objective": "required",
-      "status": "required",
-      "tokenBudget": "required",
-      "tokensUsed": "required",
-      "timeUsedSeconds": "required"
-    },
-    "thread.goalCleared": {
-      "kind": "required"
-    },
     "thread.identity": {
       "kind": "required",
       "providerThreadId": "required"
@@ -333,8 +322,7 @@
     "provider/raw",
     "provider/recovery",
     "session/replaced",
-    "thread/identity",
-    "thread/openWork"
+    "thread/identity"
   ],
   "inboundRequestMethods": [
     "interaction/request",
