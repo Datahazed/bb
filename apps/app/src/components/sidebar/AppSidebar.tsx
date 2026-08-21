@@ -275,7 +275,13 @@ export function AppSidebar({
 
   return (
     <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
-      <Sidebar ref={sidebarRef} onKeyDown={threadSearch.onKeyDown}>
+      <Sidebar
+        ref={sidebarRef}
+        onKeyDown={threadSearch.onKeyDown}
+        data-code-name="app.sidebar"
+        data-code-label="Left sidebar"
+        data-code-kind="region"
+      >
         {showTopReserve ? (
           /* Top reserve that keeps the sidebar's content (New Thread / New
              Projects) anchored below the title-bar chrome, mirroring
@@ -339,7 +345,12 @@ export function AppSidebar({
             onNavigate={threadSearch.onExternalThreadOpen}
           />
         </SidebarContent>
-        <SidebarFooter className="relative">
+        <SidebarFooter
+          className="relative"
+          data-code-name="app.sidebar.footer-actions"
+          data-code-label="Footer actions"
+          data-code-kind="group"
+        >
           <OverflowFade placement="above" tone="sidebar" size="sm" />
           {/* The footer holds a variable number of plugin action buttons, so a
            * narrowed sidebar plus several plugins can no longer fit the action
@@ -354,6 +365,9 @@ export function AppSidebar({
             <SidebarMenuItem className="min-w-0">
               <SidebarMenuButton
                 asChild
+                data-code-name="app.sidebar.footer-actions.settings"
+                data-code-label="Settings"
+                data-code-kind="action"
                 aria-label={
                   settingsShortcut
                     ? `Settings (${settingsShortcut.label})`
@@ -379,6 +393,9 @@ export function AppSidebar({
             <SidebarMenuItem className="min-w-0">
               <SidebarMenuButton
                 className={SIDEBAR_FOOTER_ACTION_CLASS}
+                data-code-name="app.sidebar.footer-actions.report-bug"
+                data-code-label="Report a bug"
+                data-code-kind="action"
                 tooltip={{
                   children: "Report a bug",
                   hidden: false,

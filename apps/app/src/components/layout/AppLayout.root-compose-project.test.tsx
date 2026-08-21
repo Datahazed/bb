@@ -190,5 +190,15 @@ describe("AppLayout root compose project preference", () => {
     expect(
       window.localStorage.getItem(ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY),
     ).toBe("proj_last_run");
+
+    expect(
+      document.querySelector('[data-testid="app-layout-root"]'),
+    ).toMatchObject({
+      dataset: {
+        codeName: "app.window",
+        codeLabel: "App window",
+        codeKind: "window",
+      },
+    });
   });
 });
