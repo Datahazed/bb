@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   PLUGIN_FRONTEND_BOOT_TIMEOUT_MS,
   requestBrowserIdle,
@@ -6,8 +7,12 @@ import {
 } from "../lib/plugin-frontend-boot-schedule";
 import { markPluginFrontendSettleFloorReached } from "../lib/plugin-frontend-boot-state";
 import { bootPluginFrontends } from "../lib/plugin-frontend-lazy";
+import { setPluginContentScriptComposeNavigator } from "../lib/plugin-content-script-navigation";
 import { whenRouteContentPainted } from "../lib/route-content-paint";
-import { getPluginPanelRoutePluginId } from "../lib/route-paths";
+import {
+  getPluginPanelRoutePluginId,
+  getRootComposeRoutePath,
+} from "../lib/route-paths";
 import { useSystemConfig } from "./queries/system-queries";
 
 /**
@@ -31,8 +36,21 @@ export const PLUGIN_FRONTEND_SETTLE_FLOOR_MS = 15_000;
  * schedulePluginFrontendReconcile (no page refresh needed).
  */
 export function usePluginFrontendBoot(): void {
+  const navigate = useNavigate();
   const systemConfig = useSystemConfig();
   const resolved = systemConfig.data !== undefined;
+  useEffect(
+    () =>
+      setPluginContentScriptComposeNavigator((options) => {
+        void navigate(getRootComposeRoutePath(), {
+          state: {
+            focusPrompt: options.focusPrompt ?? false,
+            initialPrompt: options.initialPrompt ?? "",
+          },
+        });
+      }),
+    [navigate],
+  );
   useEffect(() => {
     if (!resolved) return;
     if (getPluginPanelRoutePluginId(window.location.pathname) !== null) {
