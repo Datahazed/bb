@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +20,10 @@ import {
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
 import { PluginSidebarFooterActions } from "./PluginSidebarFooterActions";
+import {
+  resetPluginSidebarFooterActionActiveForTest,
+  setPluginSidebarFooterActionActive,
+} from "@/lib/plugin-sidebar-footer-action-state";
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -55,6 +65,7 @@ afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
   resetPluginLogoStoreForTest();
+  resetPluginSidebarFooterActionActiveForTest();
   vi.restoreAllMocks();
 });
 
@@ -142,5 +153,41 @@ describe("PluginSidebarFooterActions", () => {
     expect(screen.getByLabelText("Current path").textContent).toBe(
       "/settings/plugins/remote",
     );
+  });
+
+  it("renders the plugin-owned active label, selection, and dot", () => {
+    setPluginSlotRegistrations(
+      "guide",
+      registrationSet({
+        sidebarFooterActions: [
+          {
+            id: "inspect",
+            title: "Inspect UI",
+            icon: "Scan",
+            experimental_activeTitle: "Stop inspecting UI",
+            experimental_activeIndicator: "dot",
+            run: () => {},
+          },
+        ],
+      }),
+    );
+    renderWithProviders(<PluginSidebarFooterActions />);
+
+    expect(
+      screen
+        .getByRole("button", { name: "Inspect UI" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+    act(() => {
+      setPluginSidebarFooterActionActive("guide", "inspect", true, "owner");
+    });
+    const active = screen.getByRole("button", { name: "Stop inspecting UI" });
+    expect(active.getAttribute("aria-pressed")).toBe("true");
+    expect(active.getAttribute("data-active")).toBe("true");
+    expect(
+      screen.queryByTestId(
+        "plugin-sidebar-footer-action-indicator-guide-inspect",
+      ),
+    ).not.toBeNull();
   });
 });

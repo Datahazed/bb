@@ -476,6 +476,7 @@ describe("app keybindings", () => {
       const overrides = [
         { command: "thread.new" as const, shortcut },
         { command: "modelPicker.toggle" as const, shortcut },
+        { command: "plugin.inspector.toggle" as const, shortcut },
       ];
       const response = await harness.app.request("/api/v1/settings/keyboard", {
         method: "PUT",
@@ -506,6 +507,11 @@ describe("app keybindings", () => {
           .filter((binding) => binding.command === "modelPicker.toggle")
           .every((binding) => binding.shortcut.key === "u"),
       ).toBe(true);
+      expect(
+        config.keybindings.find(
+          (binding) => binding.command === "plugin.inspector.toggle",
+        ),
+      ).toMatchObject({ shortcut });
     });
   });
 

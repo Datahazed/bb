@@ -8,10 +8,11 @@ import {
   type PluginSidebarFooterActionSlot,
 } from "@/lib/plugin-slots";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import { usePluginSidebarFooterActionActive } from "@/lib/plugin-sidebar-footer-action-state";
 
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
-  "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
+  "text-muted-foreground hover:text-sidebar-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground [&>svg]:opacity-80",
 );
 
 /**
@@ -42,33 +43,56 @@ function PluginSidebarFooterActionList({
   return (
     <>
       {actions.map((action) => (
-        <SidebarMenuItem
+        <PluginSidebarFooterAction
           key={`${action.pluginId}/${action.id}/${action.generation}`}
-          className="min-w-0"
-        >
-          <SidebarMenuButton
-            className={SIDEBAR_FOOTER_ACTION_CLASS}
-            tooltip={{
-              children: action.title,
-              hidden: false,
-              side: "top",
-            }}
-            aria-label={action.title}
-            data-testid={`plugin-sidebar-footer-action-${action.pluginId}-${action.id}`}
-            onClick={() => {
-              onNavigate?.();
-              runSidebarFooterAction({
-                action,
-                navigate,
-              });
-            }}
-          >
-            <PluginIcon pluginId={action.pluginId} icon={action.icon} />
-            <span className="sr-only">{action.title}</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+          action={action}
+          navigate={navigate}
+          onNavigate={onNavigate}
+        />
       ))}
     </>
+  );
+}
+
+function PluginSidebarFooterAction({
+  action,
+  navigate,
+  onNavigate,
+}: {
+  action: PluginSidebarFooterActionSlot;
+  navigate: ReturnType<typeof useNavigate>;
+  onNavigate?: () => void;
+}) {
+  const active = usePluginSidebarFooterActionActive(action.pluginId, action.id);
+  const title =
+    active && action.experimental_activeTitle !== undefined
+      ? action.experimental_activeTitle
+      : action.title;
+  return (
+    <SidebarMenuItem className="min-w-0">
+      <SidebarMenuButton
+        className={SIDEBAR_FOOTER_ACTION_CLASS}
+        tooltip={{ children: title, hidden: false, side: "top" }}
+        aria-label={title}
+        aria-pressed={active}
+        data-active={active}
+        data-testid={`plugin-sidebar-footer-action-${action.pluginId}-${action.id}`}
+        onClick={() => {
+          onNavigate?.();
+          runSidebarFooterAction({ action, navigate });
+        }}
+      >
+        <PluginIcon pluginId={action.pluginId} icon={action.icon} />
+        {active && action.experimental_activeIndicator === "dot" ? (
+          <span
+            aria-hidden="true"
+            className="absolute right-1 top-1 size-1.5 rounded-full bg-sidebar-primary"
+            data-testid={`plugin-sidebar-footer-action-indicator-${action.pluginId}-${action.id}`}
+          />
+        ) : null}
+        <span className="sr-only">{title}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 
