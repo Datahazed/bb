@@ -52,6 +52,8 @@ export interface FileListArgs {
 export interface PathListArgs extends FileListArgs {
   includeFiles: boolean;
   includeDirectories: boolean;
+  /** Dot-prefixed paths. Defaults to true; `node_modules` and gitignored paths are never listed. */
+  includeHidden?: boolean;
 }
 
 export interface FileMkdirArgs {
@@ -147,6 +149,7 @@ export function createFilesArea(args: CreateSdkAreaArgs): FilesArea {
               hostId: input.hostId,
               includeDirectories: input.includeDirectories,
               includeFiles: input.includeFiles,
+              includeHidden: input.includeHidden,
               limit: input.limit,
               path: input.path,
               query: input.query,

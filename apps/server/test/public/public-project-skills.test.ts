@@ -1554,6 +1554,15 @@ describe("public project skills route", () => {
         path: "references/layout.md",
         dotfiles: "deny",
       });
+      // The read path denies dotfiles, so the listing must never offer one.
+      expect(stub.requests.map((request) => request.command)).toContainEqual({
+        type: "host.list_files",
+        path: "/home/.codex/skills/documents",
+        limit: 200,
+        includeHidden: false,
+        excludeNames: ["node_modules"],
+        respectGitignore: false,
+      });
     });
   });
 

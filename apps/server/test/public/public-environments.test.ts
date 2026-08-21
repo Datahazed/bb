@@ -328,11 +328,17 @@ describe("public environments", () => {
           command.type === "host.list_paths" &&
           command.path === "/tmp/personal-workspace",
       );
+      // Workspace search policy is filled in once here: dot paths such as
+      // .github/workflows/ci.yml are listed (#2093), node_modules is not, and
+      // gitignored trees stay out of the walk.
       expect(pathsCommand.command).toMatchObject({
         path: "/tmp/personal-workspace",
         query: "app",
         includeFiles: true,
         includeDirectories: false,
+        includeHidden: true,
+        excludeNames: ["node_modules"],
+        respectGitignore: true,
       });
       await reportQueuedCommandSuccess(harness, pathsCommand, {
         paths: [
@@ -361,6 +367,42 @@ describe("public environments", () => {
         ],
         truncated: false,
       });
+    });
+  });
+
+  it("passes includeHidden=false through the environment paths route", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-paths-hidden",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/hidden-workspace",
+      });
+
+      const pathsPromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/paths?includeFiles=true&includeDirectories=true&includeHidden=false`,
+      );
+      const pathsCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "host.list_paths" &&
+          command.path === "/tmp/hidden-workspace",
+      );
+      expect(pathsCommand.command).toMatchObject({
+        includeHidden: false,
+        excludeNames: ["node_modules"],
+        respectGitignore: true,
+      });
+      await reportQueuedCommandSuccess(harness, pathsCommand, {
+        paths: [],
+        truncated: false,
+      });
+      expect((await pathsPromise).status).toBe(200);
     });
   });
 

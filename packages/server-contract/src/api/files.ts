@@ -54,6 +54,8 @@ export const hostPathListRequestSchema = z
     limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX).optional(),
     includeFiles: z.boolean(),
     includeDirectories: z.boolean(),
+    /** Dot-prefixed paths; omitted means the server default (shown). */
+    includeHidden: z.boolean().optional(),
   })
   .strict();
 export type HostPathListRequest = z.infer<typeof hostPathListRequestSchema>;

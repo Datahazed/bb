@@ -18,7 +18,10 @@ import {
   callHostRetryableOnlineRpc,
 } from "../hosts/online-rpc.js";
 import type { ProjectCommandWorkspace as CommandWorkspace } from "../projects/project-workspace.js";
-import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
+import {
+  SKILL_DIRECTORY_LIST_POLICY,
+  resolveServerOwnedSkillCatalogEntries,
+} from "./injected-skills.js";
 import { resolveSkillCatalog } from "./skill-catalog.js";
 import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
 import { hostPathDirname, resolveSharedSkills } from "./shared-skills.js";
@@ -413,7 +416,12 @@ export async function listProjectSkillFiles(
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
-    command: { type: "host.list_files", path: rootPath, limit: 200 },
+    command: {
+      type: "host.list_files",
+      path: rootPath,
+      limit: 200,
+      ...SKILL_DIRECTORY_LIST_POLICY,
+    },
   });
   const files = result.files
     .map((file) => file.path)

@@ -12,8 +12,7 @@ import { isFsErrorWithCode } from "../fs-errors.js";
 import {
   finalizeListedFiles,
   finalizeListedPaths,
-  listFilesRecursively,
-  listPathsRecursively,
+  listRootPaths,
 } from "./file-list.js";
 import {
   readFileForTransport,
@@ -72,11 +71,23 @@ export async function listHostFiles(
       path: command.path,
     });
 
-    return finalizeListedFiles({
-      filePaths: await listFilesRecursively(realRootPath, realRootPath),
+    const listed = await listRootPaths({
+      root: realRootPath,
+      includeFiles: true,
+      includeDirectories: false,
+      includeHidden: command.includeHidden,
+      excludeNames: command.excludeNames,
+      respectGitignore: command.respectGitignore,
+    });
+    const result = finalizeListedFiles({
+      filePaths: listed.paths.map((pathEntry) => pathEntry.path),
       limit: command.limit,
       ...(command.query ? { query: command.query } : {}),
     });
+    return {
+      files: result.files,
+      truncated: result.truncated || listed.truncated,
+    };
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT")) {
       return { files: [], truncated: false };
@@ -98,18 +109,25 @@ export async function listHostPaths(
       path: command.path,
     });
 
-    return finalizeListedPaths({
-      paths: await listPathsRecursively({
-        dir: realRootPath,
-        root: realRootPath,
-        includeFiles: command.includeFiles,
-        includeDirectories: command.includeDirectories,
-      }),
+    const listed = await listRootPaths({
+      root: realRootPath,
+      includeFiles: command.includeFiles,
+      includeDirectories: command.includeDirectories,
+      includeHidden: command.includeHidden,
+      excludeNames: command.excludeNames,
+      respectGitignore: command.respectGitignore,
+    });
+    const result = finalizeListedPaths({
+      paths: listed.paths,
       limit: command.limit,
       includeFiles: command.includeFiles,
       includeDirectories: command.includeDirectories,
       ...(command.query ? { query: command.query } : {}),
     });
+    return {
+      paths: result.paths,
+      truncated: result.truncated || listed.truncated,
+    };
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT")) {
       return { paths: [], truncated: false };

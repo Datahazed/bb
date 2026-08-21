@@ -12,6 +12,8 @@ interface FileTargetOptions {
 interface FileListOptions extends FileTargetOptions {
   directories?: boolean;
   files?: boolean;
+  /** Commander `--no-hidden`: true unless the flag is passed. */
+  hidden?: boolean;
   limit?: string;
   query?: string;
 }
@@ -143,6 +145,7 @@ export function registerFileCommands(
     .option("--limit <count>", "Maximum entries")
     .option("--files", "Include files")
     .option("--directories", "Include directories")
+    .option("--no-hidden", "Exclude dot-prefixed paths")
     .option("--host <id>", "Machine ID")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -154,6 +157,7 @@ export function registerFileCommands(
           path,
           includeFiles,
           includeDirectories,
+          ...(opts.hidden === false ? { includeHidden: false } : {}),
           ...(opts.host ? { hostId: opts.host } : {}),
           ...(opts.query ? { query: opts.query } : {}),
           ...(limit ? { limit } : {}),

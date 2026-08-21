@@ -623,7 +623,29 @@ const hostWriteFileCommandSchema = z
   })
   .strict();
 
-const hostListFilesCommandSchema = z.object({
+/**
+ * Listing policy for the recursive walkers (`host.list_files`,
+ * `host.list_paths`). The server owns these decisions and fills them in once
+ * at its boundary; the daemon applies exactly what it is told. Its only
+ * literal is that `.git` is never listed or descended.
+ *
+ * - `includeHidden`: list dot-prefixed entries (`.github`, `.env`, ...).
+ * - `excludeNames`: basenames that are neither listed nor descended
+ *   (`node_modules`, ...).
+ * - `respectGitignore`: when the root is inside a git worktree, take the
+ *   candidates from `git ls-files --cached --others --exclude-standard`
+ *   (tracked + untracked-not-ignored) instead of a readdir walk, so ignored
+ *   trees such as `.venv`, `.next` or `.turbo` never enter the walk. Roots
+ *   outside git fall back to the readdir walk.
+ */
+const pathListPolicySchema = z.object({
+  includeHidden: z.boolean(),
+  excludeNames: z.array(z.string().min(1)),
+  respectGitignore: z.boolean(),
+});
+export type PathListPolicy = z.infer<typeof pathListPolicySchema>;
+
+const hostListFilesCommandSchema = pathListPolicySchema.extend({
   type: z.literal("host.list_files"),
   path: z.string().min(1),
   query: z.string().max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
@@ -642,8 +664,8 @@ const hostPathEntrySchema = z.object({
 });
 export type HostPathEntry = z.infer<typeof hostPathEntrySchema>;
 
-const hostListPathsCommandSchema = z
-  .object({
+const hostListPathsCommandSchema = pathListPolicySchema
+  .extend({
     type: z.literal("host.list_paths"),
     path: z.string().min(1),
     query: z.string().max(FILE_LIST_QUERY_MAX_LENGTH).optional(),

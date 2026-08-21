@@ -23,4 +23,5 @@ export {
   readDefaultBranchRefs,
   readGitBlob,
   runGit,
+  runGitWithNullRecordLimit,
 } from "./git.js";

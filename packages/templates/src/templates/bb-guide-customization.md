@@ -158,7 +158,10 @@ Voice transcription uses the `BB_TRANSCRIPTION` model, which defaults to
 
 `bb file` supports `--host` for remote machines and `--root` on mutating
 commands to confine access beneath an absolute directory. Use `--json` for
-metadata and machine-readable results.
+metadata and machine-readable results. `bb file list` and `bb file paths`
+include dot-prefixed paths by default (`bb file paths --no-hidden` excludes
+them); node_modules and, inside a git worktree, gitignored paths are never
+listed.
 
 Client-local UI preferences
 

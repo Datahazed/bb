@@ -39,6 +39,8 @@ interface EnvironmentBranchesCommandOptions {
 interface EnvironmentPathsCommandOptions {
   directories?: boolean;
   files?: boolean;
+  /** Commander `--no-hidden`: true unless the flag is passed. */
+  hidden?: boolean;
   json?: boolean;
   limit?: string;
   query?: string;
@@ -417,6 +419,7 @@ export function registerEnvironmentCommands(
     .option("--limit <count>", "Maximum paths")
     .option("--files", "Include files")
     .option("--directories", "Include directories")
+    .option("--no-hidden", "Exclude dot-prefixed paths")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: EnvironmentPathsCommandOptions) => {
@@ -428,6 +431,7 @@ export function registerEnvironmentCommands(
           environmentId: id,
           includeFiles: booleanQueryValue(includeFiles),
           includeDirectories: booleanQueryValue(includeDirectories),
+          ...(opts.hidden === false ? { includeHidden: "false" } : {}),
           ...(opts.query !== undefined ? { query: opts.query } : {}),
           ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
         });

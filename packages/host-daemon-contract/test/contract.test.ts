@@ -1128,7 +1128,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(150);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(151);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1452,12 +1452,28 @@ describe("host-daemon command schemas", () => {
         type: "host.list_files",
         path: "/tmp/workspace",
         limit: 1000,
+        includeHidden: true,
+        excludeNames: ["node_modules"],
+        respectGitignore: true,
       }),
     ).toMatchObject({
       type: "host.list_files",
       path: "/tmp/workspace",
       limit: 1000,
+      includeHidden: true,
+      excludeNames: ["node_modules"],
+      respectGitignore: true,
     });
+
+    // Listing policy is the server's to fill in; a command without it is
+    // an older server and must be rejected rather than defaulted.
+    expect(() =>
+      hostDaemonOnlineRpcCommandSchema.parse({
+        type: "host.list_files",
+        path: "/tmp/workspace",
+        limit: 1000,
+      }),
+    ).toThrow();
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
@@ -1466,6 +1482,9 @@ describe("host-daemon command schemas", () => {
         limit: 1000,
         includeFiles: true,
         includeDirectories: true,
+        includeHidden: false,
+        excludeNames: [],
+        respectGitignore: false,
       }),
     ).toMatchObject({
       type: "host.list_paths",
@@ -1473,6 +1492,9 @@ describe("host-daemon command schemas", () => {
       limit: 1000,
       includeFiles: true,
       includeDirectories: true,
+      includeHidden: false,
+      excludeNames: [],
+      respectGitignore: false,
     });
 
     expect(
@@ -1615,6 +1637,9 @@ describe("host-daemon command schemas", () => {
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
         limit: 100,
+        includeHidden: true,
+        excludeNames: ["node_modules"],
+        respectGitignore: false,
       }),
     ).toMatchObject({
       type: "host.list_files",
@@ -1722,13 +1747,23 @@ describe("host-daemon command schemas", () => {
 
   it("rejects online-RPC-only read commands from the settled command schema", () => {
     const onlineReadCommands = [
-      { type: "host.list_files", path: "/tmp/workspace", limit: 100 },
+      {
+        type: "host.list_files",
+        path: "/tmp/workspace",
+        limit: 100,
+        includeHidden: true,
+        excludeNames: ["node_modules"],
+        respectGitignore: true,
+      },
       {
         type: "host.list_paths",
         path: "/tmp/workspace",
         limit: 100,
         includeFiles: true,
         includeDirectories: true,
+        includeHidden: true,
+        excludeNames: ["node_modules"],
+        respectGitignore: true,
       },
       {
         type: "host.list_branch_options",

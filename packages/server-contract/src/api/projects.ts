@@ -193,12 +193,15 @@ export const projectPathsQuerySchema = z
     limit: z.string().regex(/^\d+$/).optional(),
     includeFiles: pathListIncludeQueryValueSchema,
     includeDirectories: pathListIncludeQueryValueSchema,
+    /** Dot-prefixed paths; omitted means the server default (shown). */
+    includeHidden: pathListIncludeQueryValueSchema,
   })
   .partial({
     hostId: true,
     environmentId: true,
     query: true,
     limit: true,
+    includeHidden: true,
   })
   .superRefine(rejectMultipleProjectWorkspaceSelectors);
 export type ProjectPathsQuery = z.infer<typeof projectPathsQuerySchema>;

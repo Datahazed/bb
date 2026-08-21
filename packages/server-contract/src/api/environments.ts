@@ -43,6 +43,8 @@ export const environmentPathsQuerySchema = z.object({
   limit: z.string().regex(/^\d+$/).optional(),
   includeFiles: pathListIncludeQueryValueSchema,
   includeDirectories: pathListIncludeQueryValueSchema,
+  /** Dot-prefixed paths; omitted means the server default (shown). */
+  includeHidden: pathListIncludeQueryValueSchema.optional(),
 });
 export type EnvironmentPathsQuery = z.infer<typeof environmentPathsQuerySchema>;
 

@@ -74,6 +74,10 @@ Making your repo work with bb:
     --limit <count>                       Maximum results
     --files                               Include only files unless combined with --directories
     --directories                         Include only directories unless combined with --files
+    --no-hidden                           Exclude dot-prefixed paths (.github, .env, ...)
+
+  Path search lists dot-prefixed paths by default. node_modules and, in a git
+  worktree, gitignored paths (.venv, .next, .turbo, ...) are never listed.
 
   bb environment diff <id>                Show file summary and full git diff
   bb environment diff-files <id>          List changed-file metadata

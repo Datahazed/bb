@@ -191,6 +191,9 @@ describe("host file routes", () => {
           limit: 1000,
           includeFiles: true,
           includeDirectories: true,
+          includeHidden: true,
+          excludeNames: ["node_modules"],
+          respectGitignore: true,
         },
         {
           type: "host.mkdir",
@@ -209,6 +212,45 @@ describe("host file routes", () => {
           path: "/notes/b.md",
           rootPath: "/notes",
           recursive: false,
+        },
+      ]);
+    });
+  });
+
+  it("passes an explicit includeHidden override through to the listing policy", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      seedPrimaryHost(harness.deps, host.id);
+      const commands: HostDaemonOnlineRpcRequestMessage["command"][] = [];
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          commands.push(request.command);
+          return { ok: true, result: { paths: [], truncated: false } };
+        },
+      });
+
+      const response = await harness.app.request(
+        ...postJson("/api/v1/files/paths", {
+          path: "/notes",
+          includeFiles: true,
+          includeDirectories: false,
+          includeHidden: false,
+        }),
+      );
+      expect(response.status).toBe(200);
+
+      expect(commands).toEqual([
+        {
+          type: "host.list_paths",
+          path: "/notes",
+          limit: 1000,
+          includeFiles: true,
+          includeDirectories: false,
+          includeHidden: false,
+          excludeNames: ["node_modules"],
+          respectGitignore: true,
         },
       ]);
     });

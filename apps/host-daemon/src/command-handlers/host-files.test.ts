@@ -11,6 +11,8 @@ import {
 } from "../command-dispatch-support.js";
 import {
   browseHostDirectory,
+  listHostFiles,
+  listHostPaths,
   readHostFile,
   readHostFileMetadata,
   readHostRelativeFile,
@@ -236,6 +238,88 @@ describe("readHostFileMetadata", () => {
       code: "invalid_path",
       message: expect.stringContaining("escapes read root"),
     });
+  });
+});
+
+describe("listHostPaths / listHostFiles (#2093)", () => {
+  const workspacePolicy = {
+    includeHidden: true,
+    excludeNames: ["node_modules"],
+    respectGitignore: true,
+  };
+
+  async function seedWorkspace(): Promise<string> {
+    const root = await initRepo();
+    await fs.mkdir(path.join(root, ".github", "workflows"), { recursive: true });
+    await fs.writeFile(path.join(root, ".github", "workflows", "ci.yml"), "name: ci\n");
+    await fs.writeFile(path.join(root, "AGENTS.md"), "# agents\n");
+    await fs.writeFile(path.join(root, ".gitignore"), ".venv/\n");
+    await fs.mkdir(path.join(root, ".venv", "lib"), { recursive: true });
+    await fs.writeFile(path.join(root, ".venv", "lib", "ci.yml"), "");
+    await runGit(["add", "-A"], { cwd: root });
+    await runGit(["commit", "-q", "-m", "init"], { cwd: root });
+    return root;
+  }
+
+  it("finds the same .github/workflows/ci.yml that host.read_file serves", async () => {
+    const root = await seedWorkspace();
+
+    const search = await listHostPaths({
+      type: "host.list_paths",
+      path: root,
+      query: "ci.yml",
+      limit: 5,
+      includeFiles: true,
+      includeDirectories: false,
+      ...workspacePolicy,
+    });
+    const read = await readHostFile({
+      type: "host.read_file",
+      path: path.join(root, ".github", "workflows", "ci.yml"),
+    });
+
+    expect(read.content).toBe("name: ci\n");
+    expect(search.paths.map((entry) => entry.path)).toEqual([
+      ".github/workflows/ci.yml",
+    ]);
+    expect(search.truncated).toBe(false);
+  });
+
+  it("keeps gitignored trees out of the full listing while listing dot paths", async () => {
+    const root = await seedWorkspace();
+
+    const result = await listHostPaths({
+      type: "host.list_paths",
+      path: root,
+      limit: 100,
+      includeFiles: true,
+      includeDirectories: true,
+      ...workspacePolicy,
+    });
+
+    expect(result.paths.map((entry) => entry.path)).toEqual([
+      ".github",
+      ".github/workflows",
+      ".github/workflows/ci.yml",
+      ".gitignore",
+      "AGENTS.md",
+    ]);
+  });
+
+  it("hides dot entries from host.list_files when told to", async () => {
+    const root = await seedWorkspace();
+    await fs.writeFile(path.join(root, ".DS_Store"), "");
+
+    const result = await listHostFiles({
+      type: "host.list_files",
+      path: root,
+      limit: 100,
+      includeHidden: false,
+      excludeNames: [],
+      respectGitignore: false,
+    });
+
+    expect(result.files.map((entry) => entry.path)).toEqual(["AGENTS.md"]);
   });
 });
 

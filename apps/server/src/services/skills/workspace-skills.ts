@@ -5,6 +5,7 @@ import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import {
+  SKILL_DIRECTORY_LIST_POLICY,
   resolveProjectSkillSourceFromContent,
   type ProjectInjectedSkillSource,
 } from "./injected-skills.js";
@@ -83,6 +84,7 @@ export async function resolveWorkspaceProjectSkills(
       path: skillsRootPath,
       query: SKILL_FILE_NAME,
       limit: MAX_PROJECT_SKILLS,
+      ...SKILL_DIRECTORY_LIST_POLICY,
     },
   });
   if (result.truncated) {

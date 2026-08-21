@@ -4,13 +4,29 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import matter from "gray-matter";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonInjectedSkillSource,
+  PathListPolicy,
+} from "@bb/host-daemon-contract";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
 import { isFsErrorWithCode } from "../lib/fs-errors.js";
 import { REGISTRY_SKILL_PROVENANCE_FILE_NAME } from "./registry-skill-provenance.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
+
+/**
+ * Listing policy for a host skill directory (`.bb/skills`, or one skill's
+ * root). Dot entries stay hidden because the matching read path
+ * (`host.read_file_relative` with `dotfiles: "deny"`) refuses them, so a listed
+ * `.DS_Store` would be a dead link; skills are a product convention, not a
+ * git one, so gitignore does not decide what a skill contains.
+ */
+export const SKILL_DIRECTORY_LIST_POLICY: PathListPolicy = {
+  includeHidden: false,
+  excludeNames: ["node_modules"],
+  respectGitignore: false,
+};
 const SKILL_NAME_PATTERN = /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 const SKILL_FRONTMATTER_DELIMITER = "---";
 

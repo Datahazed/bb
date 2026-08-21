@@ -35,6 +35,8 @@ Discovery:
 
   bb project branches <id> --host <id>   List branches for a machine source
   bb project paths <id>                   Search workspace paths
+    --query <query>                       Fuzzy path query
+    --no-hidden                           Exclude dot-prefixed paths (.github, .env, ...)
   bb project files <id>                   List workspace files
   bb project content <id> <path>          Read file content (binary is base64)
   bb project commands <id> --provider <id>
@@ -47,6 +49,10 @@ Discovery:
   environment selects its owning machine and workspace; otherwise an explicit
   machine selects that machine's project source. Omitting both intentionally
   falls back to the primary machine's project source.
+
+  Path and file listings include dot-prefixed paths by default. node_modules
+  and, in a git worktree, gitignored paths (.venv, .next, .turbo, ...) are
+  never listed.
 
 Attachments:
 

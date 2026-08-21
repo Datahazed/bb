@@ -809,11 +809,15 @@ export default async function plugin(
   async function listEntries(
     vault: Vault,
   ): Promise<{ entries: VaultEntry[]; truncated: boolean }> {
+    // Vault paths reject dot segments (`requireVaultPath`), and the sync state
+    // file sits at the root as a dotfile, so every vault listing excludes
+    // hidden paths.
     const result = await bb.sdk.files.listPaths({
       ...hostArgs(vault),
       path: vault.rootPath,
       includeFiles: true,
       includeDirectories: true,
+      includeHidden: false,
       limit: MAX_TREE_ENTRIES,
     });
     return {
@@ -1146,6 +1150,7 @@ export default async function plugin(
         path: vault.rootPath,
         includeFiles: true,
         includeDirectories: true,
+        includeHidden: false,
         limit: MAX_TREE_ENTRIES,
       });
       if (result.truncated) {
@@ -1300,6 +1305,7 @@ export default async function plugin(
       path: vault.rootPath,
       includeFiles: true,
       includeDirectories: true,
+      includeHidden: false,
       limit: MAX_TREE_ENTRIES,
     });
     if (currentListing.truncated) {
@@ -2242,6 +2248,7 @@ export default async function plugin(
       path: rootPath,
       includeFiles: true,
       includeDirectories: true,
+      includeHidden: false,
       limit: MAX_TREE_ENTRIES,
     });
     if (listing.truncated) {

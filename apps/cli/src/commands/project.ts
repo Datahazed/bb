@@ -49,6 +49,8 @@ interface ProjectReorderCommandOptions {
 interface ProjectDiscoveryCommandOptions {
   environment?: string;
   host?: string;
+  /** Commander `--no-hidden` on `paths`: true unless the flag is passed. */
+  hidden?: boolean;
   machine?: string;
   json?: boolean;
   limit?: string;
@@ -408,6 +410,7 @@ export function registerProjectCommands(
     .description("Search project workspace files and directories")
     .option("--query <query>", "Fuzzy path query")
     .option("--limit <count>", "Maximum paths")
+    .option("--no-hidden", "Exclude dot-prefixed paths")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, opts: ProjectDiscoveryCommandOptions) => {
@@ -417,6 +420,7 @@ export function registerProjectCommands(
           ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
           includeFiles: "true",
           includeDirectories: "true",
+          ...(opts.hidden === false ? { includeHidden: "false" } : {}),
           ...(opts.query ? { query: opts.query } : {}),
           ...(opts.limit ? { limit: opts.limit } : {}),
         });

@@ -1422,6 +1422,9 @@ describe("thread runtime config", () => {
             command: expect.objectContaining({
               type: "host.list_files",
               path: path.join(workspacePath, ".bb", "skills"),
+              // The read side denies dotfiles, so the listing must too.
+              includeHidden: false,
+              respectGitignore: false,
             }),
           }),
           expect.objectContaining({

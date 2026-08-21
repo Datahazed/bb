@@ -1,3 +1,11 @@
+// Version 151 moves path-listing policy to the server. `host.list_files` and
+// `host.list_paths` gain REQUIRED `includeHidden`, `excludeNames` and
+// `respectGitignore` fields; the daemon applies exactly what it is told
+// instead of its old hardcoded dot-entry / node_modules skip, lists a git
+// worktree through `git ls-files --exclude-standard` when asked to respect
+// gitignore, and caps the readdir walk. An older daemon rejects the new
+// fields; a newer daemon would reject an older server's commands.
+//
 // Version 150 adds an OPTIONAL `presentation` to each bb-injected tool
 // definition (`dynamicTools[]` on thread.start, turn.submit and the resume
 // contexts): how a call to the tool reads as a timeline row (grammar v3),
@@ -154,7 +162,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 150 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 151 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
