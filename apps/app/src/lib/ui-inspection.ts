@@ -444,6 +444,9 @@ export function startUiInspectionSession(
     if (clickCleanup !== null) clearTimeout(clickCleanup);
     clickCleanup = null;
     consume(event);
+    if (disposed) {
+      document.removeEventListener("click", onClick, true);
+    }
   };
 
   document.addEventListener("pointermove", onPointerMove, true);
@@ -458,7 +461,9 @@ export function startUiInspectionSession(
       document.removeEventListener("pointermove", onPointerMove, true);
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("pointerup", onPointerUp, true);
-      document.removeEventListener("click", onClick, true);
+      if (!suppressClick) {
+        document.removeEventListener("click", onClick, true);
+      }
       if (frame !== null) {
         if (view !== null && typeof frame === "number") {
           view.cancelAnimationFrame(frame);
@@ -467,8 +472,14 @@ export function startUiInspectionSession(
         }
       }
       if (clickCleanup !== null) clearTimeout(clickCleanup);
+      if (suppressClick) {
+        clickCleanup = setTimeout(() => {
+          suppressClick = false;
+          clickCleanup = null;
+          document.removeEventListener("click", onClick, true);
+        }, 0);
+      }
       frame = null;
-      clickCleanup = null;
       pendingMove = null;
       frozen = null;
       overlay.remove();
