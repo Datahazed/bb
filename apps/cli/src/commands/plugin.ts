@@ -1627,7 +1627,7 @@ export function registerPluginCommands(
               );
             }
             const report = await runPluginCapture({
-              serverUrl: opts.appUrl ?? getUrl(),
+              appUrl: opts.appUrl ?? getUrl(),
               pluginId: plan.pluginId,
               outDir: resolve(process.cwd(), opts.capture),
               harnessPath,

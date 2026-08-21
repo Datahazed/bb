@@ -272,6 +272,9 @@ added/updated/unchanged counts.
                                  a headless window loads this bb, reads which
                                  surfaces the plugin registered from the
                                  running app, and writes one PNG per surface.
+                                 --app-url <url> points the window at the app
+                                 shell when it is not the server origin (a
+                                 source dev instance serves it from Vite).
                                  --json for the raw plan. A plugin that
                                  registers no visual surface plans nothing,
                                  which is not an error
@@ -484,7 +487,9 @@ bb — depend on the published `bb-app` package and call the CLI:
 ```
 
 A listing needs screenshots of the plugin's own surfaces, so `bb plugin
-screenshot` reads which surfaces the plugin registers and plans one shot each:
+screenshot` reads which surfaces the plugin registers and plans one shot each
+(seed the plugin's data first — the `plugin-listing-screenshots` skill covers
+which screens to lead with and what to seed):
 a nav panel is captured at `/plugins/<id>/<panel>`, and surfaces that only
 exist inside a thread, composer, or open file are captured against one shared
 fixture workspace used for every plugin, so listings stay comparable and no

@@ -17,7 +17,8 @@ const { join } = require("node:path");
 
 const WIDTH = 1440;
 const HEIGHT = 900;
-const SETTLE_MS = 1200;
+const QUIET_MS = 700;
+const QUIET_TIMEOUT_MS = 10000;
 const READY_TIMEOUT_MS = 20000;
 
 /** Snapshot arrays are keyed by plural slot names; the catalog by slot name. */
@@ -116,6 +117,23 @@ async function waitForPlugin(webContents, pluginId) {
   }
 }
 
+/**
+ * Resolve once the page stops changing.
+ *
+ * Registration is not readiness: a panel mounts, then fetches, and shooting in
+ * between photographs skeleton rows. Waiting for the DOM to go quiet covers
+ * that without the harness knowing anything about a given plugin's loading UI.
+ */
+const WAIT_FOR_QUIET = (quietMs, timeoutMs) => `new Promise((resolve) => {
+  let timer = null;
+  const done = () => { observer.disconnect(); clearTimeout(cap); resolve(true); };
+  const bump = () => { clearTimeout(timer); timer = setTimeout(done, ${quietMs}); };
+  const observer = new MutationObserver(bump);
+  observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+  const cap = setTimeout(done, ${timeoutMs});
+  bump();
+})`;
+
 /** Registrations hold React components; pull out only JSON-safe identity. */
 const READ_SNAPSHOT = `(() => {
   const s = window.__bbPluginSlotSnapshot();
@@ -144,7 +162,7 @@ async function main() {
     webPreferences: { backgroundThrottling: false },
   });
 
-  await win.loadURL(new URL("/", plan.serverUrl).toString());
+  await win.loadURL(new URL("/", plan.appUrl).toString());
   await waitForSnapshot(win.webContents);
   // Plugin frontends mount after the shell: wait until this plugin has
   // registered something, or say which plugins did so the miss is debuggable.
@@ -153,9 +171,14 @@ async function main() {
 
   const written = [];
   for (const step of steps) {
-    await win.loadURL(new URL(step.url, plan.serverUrl).toString());
-    await waitForSnapshot(win.webContents);
-    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+    await win.loadURL(new URL(step.url, plan.appUrl).toString());
+    // Re-check registration on the destination, not just on the way in: a
+    // plugin whose service restarts (seeding its demo data does exactly that)
+    // is briefly unregistered, and its route renders blank until it returns.
+    await waitForPlugin(win.webContents, plan.pluginId);
+    await win.webContents.executeJavaScript(
+      WAIT_FOR_QUIET(QUIET_MS, QUIET_TIMEOUT_MS),
+    );
     const image = await win.webContents.capturePage();
     const outPath = join(plan.outDir, step.outputFile);
     writeFileSync(outPath, image.toPNG());

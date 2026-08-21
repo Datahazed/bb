@@ -120,7 +120,8 @@ export function resolveElectronBinary(
  * the plan here only supplies the catalog (routes and file stems).
  */
 export async function runPluginCapture(args: {
-  serverUrl: string;
+  /** Origin serving the app shell — the server for a packaged bb, Vite's port for a source dev instance. */
+  appUrl: string;
   pluginId: string;
   outDir: string;
   harnessPath: string;
@@ -132,7 +133,7 @@ export async function runPluginCapture(args: {
   await writeFile(
     planPath,
     JSON.stringify({
-      serverUrl: args.serverUrl,
+      appUrl: args.appUrl,
       pluginId: args.pluginId,
       outDir: args.outDir,
       surfaces: PLUGIN_CAPTURE_SURFACES,

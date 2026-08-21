@@ -266,6 +266,17 @@ Use this shape as a guide. Confirm every field against the current schema.
 }
 ```
 
+## Add listing screenshots
+
+A listing with no screenshots asks people to install on faith. Take them with
+`bb plugin screenshot [path] --capture <dir>`, which finds the surfaces the
+plugin registers and photographs each one against the running bb.
+
+Seed the plugin's data before capturing, and look at every image before
+attaching it: a screenshot of an empty panel is worse than none. The
+`plugin-listing-screenshots` skill covers which screens to lead with for this
+kind of plugin, what to seed, and what makes a shot unusable.
+
 ## Add the icon
 
 Always vendor the plugin's icon. Copy the icon file into the marketplace `icons/` directory. Reference only that vendored copy from the entry.
