@@ -147,8 +147,41 @@ function ariaBoolean(
   return null;
 }
 
+const NAME_FROM_CONTENT_ROLES = new Set([
+  "button",
+  "cell",
+  "checkbox",
+  "columnheader",
+  "heading",
+  "link",
+  "menuitem",
+  "option",
+  "radio",
+  "rowheader",
+  "switch",
+  "tab",
+  "treeitem",
+]);
+const NAME_FROM_CONTENT_TAGS = new Set([
+  "caption",
+  "label",
+  "legend",
+  "summary",
+]);
+const ACCESSIBLE_NAME_MAX_LENGTH = 240;
+
+function boundedAccessibleName(
+  value: string | null | undefined,
+): string | null {
+  const normalized = value?.replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  return normalized.length <= ACCESSIBLE_NAME_MAX_LENGTH
+    ? normalized
+    : `${normalized.slice(0, ACCESSIBLE_NAME_MAX_LENGTH - 1)}…`;
+}
+
 function accessibleName(element: Element): string | null {
-  const ariaLabel = element.getAttribute("aria-label")?.trim();
+  const ariaLabel = boundedAccessibleName(element.getAttribute("aria-label"));
   if (ariaLabel) return ariaLabel;
   const labelledBy = element.getAttribute("aria-labelledby")?.trim();
   if (labelledBy) {
@@ -158,14 +191,20 @@ function accessibleName(element: Element): string | null {
         element.ownerDocument.getElementById(id)?.textContent?.trim(),
       )
       .filter((value): value is string => Boolean(value));
-    if (labels.length > 0) return labels.join(" ");
+    if (labels.length > 0) return boundedAccessibleName(labels.join(" "));
   }
-  const alt = element.getAttribute("alt")?.trim();
+  const alt = boundedAccessibleName(element.getAttribute("alt"));
   if (alt) return alt;
-  const title = element.getAttribute("title")?.trim();
+  const title = boundedAccessibleName(element.getAttribute("title"));
   if (title) return title;
-  const text = element.textContent?.replace(/\s+/g, " ").trim();
-  return text || null;
+  const role = element.getAttribute("role") ?? implicitRole(element);
+  if (
+    !NAME_FROM_CONTENT_ROLES.has(role ?? "") &&
+    !NAME_FROM_CONTENT_TAGS.has(element.tagName.toLowerCase())
+  ) {
+    return null;
+  }
+  return boundedAccessibleName(element.textContent);
 }
 
 function snapshotBounds(element: Element): ExperimentalUiInspectionBounds {
