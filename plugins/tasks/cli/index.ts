@@ -70,6 +70,7 @@ Commands:
   preset list|show|create|update|delete
   dispatch                       Dispatch a task to a new agent thread
   attach                         Attach an agent thread to a task
+  detach                         Detach an agent thread from a task
   threads                        List threads attached to a task
   seed-demo                      Create sample data (requires --yes)
 
@@ -121,6 +122,8 @@ const DISPATCH_HELP =
   "Usage: bb tasks dispatch <key> --preset <name> [--instructions <extra>] [--json]";
 const ATTACH_HELP =
   "Usage: bb tasks attach <key> [--thread <thread-id>] [--json]";
+const DETACH_HELP =
+  "Usage: bb tasks detach <key> [--thread <thread-id>] [--json]";
 const THREADS_HELP = "Usage: bb tasks threads <key> [--json]";
 
 interface PluginStatus {
@@ -1825,6 +1828,19 @@ async function runDispatch(
     : result.threadId;
 }
 
+/** `--thread` wins; otherwise the invoking agent thread (env, then CLI ctx). */
+function resolveInvokingThreadId(
+  args: ParsedArgs,
+  ctx: PluginCliContext,
+): string {
+  const threadId =
+    option(args, "thread") ?? process.env.BB_THREAD_ID ?? ctx.threadId;
+  if (!threadId) {
+    throw new CliError("missing --thread and BB_THREAD_ID is not set");
+  }
+  return threadId;
+}
+
 async function runAttach(
   bb: BbPluginApi,
   store: TasksApiStore,
@@ -1837,11 +1853,7 @@ async function runAttach(
   assertAllowed(args, ["thread"]);
   const [address] = requirePositionals(args, 1, ATTACH_HELP);
   const task = await resolveTask(domain, address!);
-  const threadId =
-    option(args, "thread") ?? process.env.BB_THREAD_ID ?? ctx.threadId;
-  if (!threadId) {
-    throw new CliError("missing --thread and BB_THREAD_ID is not set");
-  }
+  const threadId = resolveInvokingThreadId(args, ctx);
   const result = delegationRpcContract.taskThreadsAttach.output.parse(
     await delegationHandlers(bb, store).taskThreadsAttach(
       delegationRpcContract.taskThreadsAttach.input.parse({
@@ -1853,6 +1865,32 @@ async function runAttach(
   return args.flags.has("json")
     ? JSON.stringify({ task, ...result })
     : `Attached ${result.threadId} to ${task.key}`;
+}
+
+async function runDetach(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  domain: TasksDomain,
+  ctx: PluginCliContext,
+  argv: string[],
+): Promise<string> {
+  const args = parseArgs(argv);
+  if (args.flags.has("help")) return DETACH_HELP;
+  assertAllowed(args, ["thread"]);
+  const [address] = requirePositionals(args, 1, DETACH_HELP);
+  const task = await resolveTask(domain, address!);
+  const threadId = resolveInvokingThreadId(args, ctx);
+  const result = delegationRpcContract.taskThreadsDetach.output.parse(
+    await delegationHandlers(bb, store).taskThreadsDetach(
+      delegationRpcContract.taskThreadsDetach.input.parse({
+        taskId: task.id,
+        threadId,
+      }),
+    ),
+  );
+  return args.flags.has("json")
+    ? JSON.stringify({ task, ...result })
+    : `Detached ${result.threadId} from ${task.key}`;
 }
 
 async function runThreads(
@@ -1986,6 +2024,11 @@ export function registerTasksCli(
         usage: ATTACH_HELP,
       },
       {
+        name: "detach",
+        summary: "Detach an agent thread from a task",
+        usage: DETACH_HELP,
+      },
+      {
         name: "threads",
         summary: "List agent threads attached to a task",
         usage: THREADS_HELP,
@@ -2055,6 +2098,9 @@ export function registerTasksCli(
             break;
           case "attach":
             stdout = await runAttach(bb, store, domain, ctx, rest);
+            break;
+          case "detach":
+            stdout = await runDetach(bb, store, domain, ctx, rest);
             break;
           case "threads":
             stdout = await runThreads(domain, rest);

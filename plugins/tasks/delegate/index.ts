@@ -411,6 +411,24 @@ export function handlers(
       publishTasksChanged(bb, task.id, task.projectId);
       return { threadId: thread.id };
     },
+
+    async taskThreadsDetach(input) {
+      const task = requireTask(store.tasks, input.taskId);
+      const taskThread = store.tasks.getTaskThreadByThreadId(
+        task.id,
+        input.threadId,
+      );
+      if (!taskThread) {
+        throw new Error(
+          `Thread ${input.threadId} is not attached to ${task.key}`,
+        );
+      }
+      store.tasks.deleteTaskThread(taskThread.id);
+
+      publishThreadsChanged(bb, task.id);
+      publishTasksChanged(bb, task.id, task.projectId);
+      return { threadId: taskThread.threadId };
+    },
   };
 }
 

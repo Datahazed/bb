@@ -1652,11 +1652,19 @@ export function createTasksStore(db: PluginDatabase) {
     return thread;
   }
 
+  // Live threads first, newest first within each group: after an
+  // orchestrator respawns a worker, the thread holding the work leads the
+  // list and the dead predecessors trail it.
   function listTaskThreads(taskId: string): TaskThread[] {
     return db
       .prepare<[string], TaskThreadRow>(
         `
-        SELECT * FROM task_threads WHERE task_id = ? ORDER BY attached_at, id
+        SELECT * FROM task_threads
+        WHERE task_id = ?
+        ORDER BY
+          CASE WHEN live_status IN ('completed', 'failed') THEN 1 ELSE 0 END,
+          attached_at DESC,
+          id DESC
       `,
       )
       .all(taskId)

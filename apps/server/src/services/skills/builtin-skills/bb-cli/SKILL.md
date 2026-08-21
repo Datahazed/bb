@@ -527,7 +527,10 @@ For review or fix pipelines, get the environment ID from
 add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   = that comment). Avoid progress spam.
 - Delegated threads are attached automatically. For work started independently,
-  run `bb tasks attach <key-or-id>` from the working thread.
+  run `bb tasks attach <key-or-id>` from the working thread. When a thread is
+  done with a task or a respawned worker replaced it, run `bb tasks detach
+<key-or-id> [--thread <thread-id>]`. `bb tasks threads <key>` lists live
+  threads first, newest first.
 - When implementation is ready for review, run `bb tasks update <key-or-id>
 --status in_review`; if blocked, leave the status accurate and explain the
   blocker in a comment.
