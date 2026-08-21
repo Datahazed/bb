@@ -135,6 +135,7 @@ describe("Plugin Guide inspector", () => {
         icon: "Target",
         experimental_activeTitle: "Stop inspecting bb UI",
         experimental_activeIndicator: "dot",
+        experimental_inspectionActivationPassthrough: true,
       },
     ]);
     expect(app.contentScripts.map(({ id }) => id)).toEqual(["ui-inspector"]);
@@ -165,6 +166,39 @@ describe("Plugin Guide inspector", () => {
 
     await cleanup?.();
     expect(unregister).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands new-thread navigation to the Core content-script bridge", async () => {
+    const host = inspectionHost();
+    const active = vi.fn();
+    const navigateToCompose = vi.fn(() => true);
+    const cleanup = await app.contentScripts[0]!.mount({
+      pluginId: "plugin-api-docs",
+      generation: 1,
+      signal: new AbortController().signal,
+      experimental_uiInspection: host.inspection,
+      experimental_setSidebarFooterActionActive: (_id, value) => active(value),
+      experimental_navigateToCompose: navigateToCompose,
+    } satisfies PluginContentScriptContext);
+
+    app.sidebarFooterActions[0]!.run({ openSettings: vi.fn() });
+    host.emit({
+      type: "select",
+      target: targetFixture(),
+      pointer: { x: 20, y: 30 },
+    });
+    [...document.querySelectorAll("button")]
+      .find((button) => button.textContent === "New thread")
+      ?.click();
+
+    expect(navigateToCompose).toHaveBeenCalledWith({
+      initialPrompt: expect.stringContaining(
+        "app.window / app.sidebar.footer-actions.plugin-api-docs.ui-inspector",
+      ),
+      focusPrompt: true,
+    });
+    expect(active).toHaveBeenLastCalledWith(false);
+    await cleanup?.();
   });
 
   it("shows structured hover details, pins on select, and copies a serializable payload", async () => {
@@ -311,6 +345,11 @@ describe("Plugin Guide inspector", () => {
     unavailable.start();
     expect(unavailable.mode).toBe("unavailable");
     expect(document.body.textContent).toContain("Inspector unavailable");
+    expect(
+      document.querySelector<HTMLElement>(
+        "[data-bb-plugin-guide-inspector-card]",
+      )?.style,
+    ).toMatchObject({ right: "16px", bottom: "16px" });
     unavailable.stop();
 
     const host = inspectionHost();
@@ -328,6 +367,11 @@ describe("Plugin Guide inspector", () => {
     host.emit({ type: "error", code: "internal", message: "Snapshot failed." });
     expect(inspector.mode).toBe("error");
     expect(document.body.textContent).toContain("Snapshot failed.");
+    expect(
+      document.querySelector<HTMLElement>(
+        "[data-bb-plugin-guide-inspector-card]",
+      )?.style,
+    ).toMatchObject({ right: "16px", bottom: "16px" });
   });
 
   it("sends to an existing thread and opens a new composer with useful context", async () => {
@@ -383,7 +427,7 @@ describe("Plugin Guide inspector", () => {
     );
   });
 
-  it("places new-thread context in React Router location state", () => {
+  it("keeps the pinned card when Core cannot open a new composer", () => {
     const host = inspectionHost();
     const inspector = createPluginGuideInspector({
       document,
@@ -400,18 +444,102 @@ describe("Plugin Guide inspector", () => {
       .find((button) => button.textContent === "New thread")
       ?.click();
 
-    expect(window.location.pathname).toBe("/");
-    expect(window.history.state).toMatchObject({
-      idx: expect.any(Number),
-      key: expect.any(String),
-      usr: {
-        focusPrompt: true,
-        replaceInitialPrompt: true,
-        initialPrompt: expect.stringContaining(
-          "app.window / app.sidebar.footer-actions.plugin-api-docs.ui-inspector",
-        ),
-      },
+    expect(inspector.mode).toBe("pinned");
+    expect(document.body.textContent).toContain(
+      "New-thread handoff is unavailable.",
+    );
+  });
+
+  it("ignores a late thread-list response after inspection stops", async () => {
+    const host = inspectionHost();
+    let resolveList!: (response: Response) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveList = resolve;
+        }),
+    );
+    const inspector = createPluginGuideInspector({
+      document,
+      inspection: host.inspection,
+      fetch: fetchMock,
     });
+    inspector.start();
+    host.emit({
+      type: "select",
+      target: targetFixture(),
+      pointer: { x: 20, y: 30 },
+    });
+    [...document.querySelectorAll("button")]
+      .find((button) => button.textContent === "Send to thread")
+      ?.click();
+    expect(inspector.mode).toBe("handoff");
+
+    inspector.stop();
+    resolveList(
+      new Response(JSON.stringify([{ id: "thr_late", title: "Late" }]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(inspector.mode).toBe("idle");
+    expect(
+      document.querySelector("[data-bb-plugin-guide-inspector-card]"),
+    ).toBeNull();
+  });
+
+  it("ignores a late send response after the inspector is disposed", async () => {
+    const host = inspectionHost();
+    let resolveSend!: (response: Response) => void;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes("/send")) {
+        return new Promise<Response>((resolve) => {
+          resolveSend = resolve;
+        });
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify([{ id: "thr_existing", title: "Existing" }]),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      );
+    });
+    const inspector = createPluginGuideInspector({
+      document,
+      inspection: host.inspection,
+      fetch: fetchMock,
+    });
+    inspector.start();
+    host.emit({
+      type: "select",
+      target: targetFixture(),
+      pointer: { x: 20, y: 30 },
+    });
+    [...document.querySelectorAll("button")]
+      .find((button) => button.textContent === "Send to thread")
+      ?.click();
+    await vi.waitFor(() =>
+      expect(document.querySelector("select")?.value).toBe("thr_existing"),
+    );
+    [...document.querySelectorAll("button")]
+      .find((button) => button.textContent === "Send")
+      ?.click();
+
+    inspector.dispose();
+    resolveSend(new Response("{}", { status: 200 }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(inspector.mode).toBe("idle");
+    expect(
+      document.querySelector("[data-bb-plugin-guide-inspector-card]"),
+    ).toBeNull();
   });
 });
 
