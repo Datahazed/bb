@@ -1,11 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  experimental_runSidebarFooterAction,
-  loadPluginApp,
-  renderSlot,
-} from "@get-bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
 
@@ -20,6 +16,7 @@ describe("Plugin API Tester app", () => {
       icon: "Beaker",
       path: "plugin-api-tester",
     });
+    expect(app.sidebarFooterActions).toHaveLength(0);
 
     const slot = renderSlot(
       app.navPanels[0]!,
@@ -37,10 +34,17 @@ describe("Plugin API Tester app", () => {
       "system",
     );
 
-    fireEvent.click(slot.getByRole("button", { name: "Light" }));
+    const lightButton = slot.getByRole("button", { name: /Light/ });
+    const systemButton = slot.getByRole("button", { name: /System/ });
+    expect(lightButton.getAttribute("aria-pressed")).toBe("false");
+    expect(systemButton.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(lightButton);
     expect(slot.inspection.experimental_appearancePreferenceCalls).toEqual([
       "light",
     ]);
+    expect(lightButton.getAttribute("aria-pressed")).toBe("true");
+    expect(systemButton.getAttribute("aria-pressed")).toBe("false");
     expect(slot.getByLabelText("Resolved color mode").textContent).toBe(
       "light",
     );
@@ -56,32 +60,7 @@ describe("Plugin API Tester app", () => {
     expect(slot.getByLabelText("Color mode preference").textContent).toBe(
       "system",
     );
-  });
-
-  it("toggles the resolved color mode directly from the footer", async () => {
-    expect(app.sidebarFooterActions).toHaveLength(1);
-    expect(app.sidebarFooterActions[0]).toMatchObject({
-      id: "toggle-color-mode",
-      title: "Toggle color mode",
-      icon: "Beaker",
-    });
-
-    const result = await experimental_runSidebarFooterAction(
-      app.sidebarFooterActions[0]!,
-      {
-        experimental_appearance: {
-          colorMode: "dark",
-          colorModePreference: "system",
-        },
-      },
-    );
-    expect(result).toEqual({
-      appearance: {
-        colorMode: "light",
-        colorModePreference: "light",
-      },
-      openSettingsCalls: 0,
-      experimental_appearancePreferenceCalls: ["light"],
-    });
+    expect(lightButton.getAttribute("aria-pressed")).toBe("false");
+    expect(systemButton.getAttribute("aria-pressed")).toBe("true");
   });
 });

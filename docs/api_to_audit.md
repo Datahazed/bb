@@ -20,9 +20,9 @@ local-storage/class manipulation](https://github.com/xMinor-1/bb-plugins/blob/3a
 The host behavior test covers the existing client appearance store, and the
 [Plugin API Tester](../plugins/plugin-api-tester/app.tsx) is the first in-repo
 plugin consumer: its panel renders and updates both values through the same
-SDK harness external authors use. Its host-rendered sidebar footer action
-imports the general store and toggles directly between the resolved light/dark
-modes without opening the plugin panel. The same import works in a content
+SDK harness external authors use, with the three preferences presented as
+explicit panel controls. The representative Theme Toggle-style content-script
+fixture imports the general store directly. The same import works in a content
 script, ordinary callback, helper module, or module setup; appearance access is
 not coupled to any slot context.
 
