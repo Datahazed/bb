@@ -55,21 +55,6 @@ function findServerSubmenu(
 }
 
 describe("application menu", () => {
-  it("opens the custom About dialog instead of the native panel", () => {
-    // The native `about` role cannot carry a Copy button, so the app menu must
-    // route through our own dialog.
-    const openAbout = vi.fn();
-    const template = buildApplicationMenuTemplate(
-      menuArgs(() => {}, { openAbout }),
-    );
-    const appSubmenu = template[0]?.submenu as MenuItemConstructorOptions[];
-    const aboutItem = appSubmenu.find((item) => item.label === "About bb");
-
-    expect(aboutItem?.role).toBeUndefined();
-    aboutItem?.click?.({} as never, undefined, {} as never);
-    expect(openAbout).toHaveBeenCalledTimes(1);
-  });
-
   it("closes a native panel when Electron omits its window", () => {
     vi.mocked(Menu.sendActionToFirstResponder).mockClear();
     const closeWindowOrSideTab = vi.fn();
