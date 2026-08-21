@@ -151,6 +151,7 @@ async function scriptedEchoDispatchLaunch(
       options.scripted === undefined
         ? {}
         : { scripted: JSON.parse(JSON.stringify(options.scripted)) },
+    envPassthrough: [],
     capabilities: {
       experimental_providerInstallation: false,
       supportsServiceTier: false,
@@ -241,7 +242,7 @@ function threadStartCommand(
       model: "fake-model",
       serviceTier: "default",
       reasoningLevel: "medium",
-      workflowsEnabled: false,
+      providerOptions: {},
       permissionMode: "full",
       permissionScope: "full",
       approvalReviewer: null,
@@ -269,7 +270,7 @@ function turnSubmitCommand(
       model: "fake-model",
       serviceTier: "default",
       reasoningLevel: "medium",
-      workflowsEnabled: false,
+      providerOptions: {},
       permissionMode: "full",
       permissionScope: "full",
       approvalReviewer: null,

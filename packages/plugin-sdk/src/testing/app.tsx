@@ -45,6 +45,7 @@ import {
   type PluginSidebarThreadActions,
   type PluginSidebarThreadPullRequestState,
   type PluginSidebarThreadSplit,
+  type PluginProvidersState,
   type PluginSidebarThreadsState,
   type PluginSourceCodeRendererRegistration,
   type PluginThreadHeaderActionRegistration,
@@ -183,6 +184,7 @@ interface SlotEnv {
   sidebarActions: PluginSidebarThreadActions;
   sidebarActionCalls: SidebarActionCall[];
   sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
+  providers: PluginProvidersState;
 }
 
 interface TestFixedTabTargetStore {
@@ -652,6 +654,9 @@ const testPluginSdkApp = {
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
     return useSlotEnv("experimental_useSidebarThreads").sidebarThreads;
   },
+  experimental_useProviders(): PluginProvidersState {
+    return useSlotEnv("experimental_useProviders").providers;
+  },
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions {
     return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;
   },
@@ -953,6 +958,11 @@ export interface RenderSlotOptions<
    */
   sidebarThreads?: Partial<PluginSidebarThreadsState>;
   /**
+   * The provider directory `experimental_useProviders()` reports. Omitted →
+   * a ready, empty list. Pass `{ status: "loading" }` to test that branch.
+   */
+  providers?: Partial<PluginProvidersState>;
+  /**
    * Pull requests `experimental_useSidebarThreadPullRequest()` reports, keyed
    * by thread id. Omitted → every thread reports none.
    */
@@ -1199,6 +1209,10 @@ export function renderSlot<
     threads: options.sidebarThreads?.threads ?? [],
     projects: options.sidebarThreads?.projects ?? [],
   };
+  const providers: PluginProvidersState = {
+    status: options.providers?.status ?? "ready",
+    providers: options.providers?.providers ?? [],
+  };
   const sidebarActions: PluginSidebarThreadActions = {
     open(threadId, openOptions) {
       sidebarActionCalls.push({
@@ -1391,6 +1405,7 @@ export function renderSlot<
     sidebarActions,
     sidebarActionCalls,
     sidebarPullRequests,
+    providers,
   };
 
   const releaseComposerOwnership = (): void => {

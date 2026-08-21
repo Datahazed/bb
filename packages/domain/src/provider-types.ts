@@ -136,6 +136,11 @@ export type ProviderExtensionKinds = z.infer<
 export const providerInfoSchema = z.object({
   id: z.string(),
   displayName: z.string(),
+  /**
+   * Declared grouping key shared by related providers (the ACP agents).
+   * Absent when the provider declared none. Grouping only.
+   */
+  family: z.string().min(1).optional(),
   logoUrl: z.string().min(1).nullable(),
   /** Sessionless maintenance methods declared by the provider plugin. */
   experimental_providerHealth: z.boolean(),

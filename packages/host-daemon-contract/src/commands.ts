@@ -271,6 +271,13 @@ const hostDaemonBridgeLaunchSchema = z
       })
       .strict(),
     providerOptions: jsonObjectSchema,
+    /**
+     * Daemon environment variable names the bridge may read (the provider's
+     * declared `experimental_env.passthrough`). The daemon strips every
+     * inherited `BB_*` variable from provider processes and forwards exactly
+     * these. Always present; empty when the provider declared none.
+     */
+    envPassthrough: z.array(z.string().min(1)),
   })
   .strict();
 export type HostDaemonBridgeLaunch = z.infer<

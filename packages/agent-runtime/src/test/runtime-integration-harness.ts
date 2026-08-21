@@ -102,7 +102,7 @@ interface ResolveRuntimeOptionsArgs {
 const fullRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "full",
   permissionScope: "full",
   approvalReviewer: null,
@@ -112,7 +112,7 @@ const fullRuntimeOptionsTemplate = {
 const workspaceWriteAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "accept-edits",
   permissionScope: "workspace",
   approvalReviewer: "user",
@@ -122,7 +122,7 @@ const workspaceWriteAskRuntimeOptionsTemplate = {
 const workspaceWriteDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "accept-edits",
   permissionScope: "workspace",
   approvalReviewer: "user",
@@ -132,7 +132,7 @@ const workspaceWriteDenyRuntimeOptionsTemplate = {
 const readonlyAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "auto",
   permissionScope: "workspace",
   approvalReviewer: "automatic",
@@ -142,7 +142,7 @@ const readonlyAskRuntimeOptionsTemplate = {
 const readonlyDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "auto",
   permissionScope: "workspace",
   approvalReviewer: "automatic",

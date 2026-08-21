@@ -547,6 +547,7 @@ export const DISPATCH_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
   pluginId: "provider-pi",
   source: { kind: "daemon-bundled", id: "pi" },
   providerOptions: {},
+  envPassthrough: [],
   capabilities: {
     experimental_providerInstallation: false,
     supportsServiceTier: true,
@@ -571,4 +572,5 @@ export const DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
   source: { kind: "daemon-bundled", id: "pi" },
   capabilities: DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
   providerOptions: {},
+  envPassthrough: [],
 };

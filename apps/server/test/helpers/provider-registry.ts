@@ -64,11 +64,16 @@ async function loadDeclarations(
     throw new Error(`${pluginId} has no default plugin export`);
   }
   const captured: PluginProviderDeclaration[] = [];
+  const register = (declaration: PluginProviderDeclaration): void => {
+    captured.push(declaration);
+  };
   const bb = {
-    agents: {
-      experimental_registerProvider(declaration: PluginProviderDeclaration) {
-        captured.push(declaration);
-      },
+    providers: { register },
+    agents: { experimental_registerProvider: register },
+    // The provider plugins define their own settings before registering;
+    // the capture stub records nothing, so reads answer the defaults.
+    settings: {
+      define: () => ({ get: async () => ({}), onChange: () => undefined }),
     },
   } as unknown as BbPluginApi;
   (entry as (bb: BbPluginApi) => void)(bb);
@@ -79,6 +84,24 @@ async function loadDeclarations(
   // boundary, so every declaration is validated before it is trusted.
   return captured.map(validatePluginProviderDeclaration);
 }
+
+/**
+ * The loaded first-party declarations, keyed by plugin id — for tests that
+ * pin the projected `ProviderInfo` against the declarations themselves.
+ */
+export async function loadFirstPartyProviderDeclarations(): Promise<
+  ReadonlyMap<string, readonly PluginProviderDeclaration[]>
+> {
+  const entries = await Promise.all(
+    FIRST_PARTY_PROVIDER_PLUGIN_IDS.map(
+      async (pluginId) => [pluginId, await loadDeclarations(pluginId)] as const,
+    ),
+  );
+  return new Map(entries);
+}
+
+/** No stored plugin settings: every per-command option hook sees defaults. */
+const NO_PLUGIN_SETTINGS = (): Readonly<Record<string, never>> => ({});
 
 /**
  * Registers the first-party providers into an existing registry, exactly as
@@ -114,8 +137,15 @@ export async function registerFirstPartyProviders(
           available: !unavailable.has(pluginId),
           pluginId,
           declaration,
+          readSettings: NO_PLUGIN_SETTINGS,
         }),
         pluginId,
+        // The bundled order: codex, claude-code, pi, acp — the same install
+        // rank the plugin runtime assigns from the bundled plugin list.
+        installRank: {
+          bundledIndex: FIRST_PARTY_PROVIDER_PLUGIN_IDS.indexOf(pluginId),
+          installedAt: 0,
+        },
       });
     }
     if (
@@ -135,7 +165,7 @@ export async function registerFirstPartyProviders(
  * plugins whose bridge the server tests never launch; the fake providers get
  * the real scripted echo artifact (`registerFakeProviders`).
  */
-function stubHostArtifact(pluginId: string): PluginHostArtifactSnapshot {
+export function stubHostArtifact(pluginId: string): PluginHostArtifactSnapshot {
   const bytes = Buffer.from(`// stub host artifact for ${pluginId}\n`);
   const path = join(tmpdir(), `bb-stub-host-artifact-${pluginId}.mjs`);
   writeFileSync(path, bytes);
@@ -206,6 +236,7 @@ export const TRANSPORT_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
   pluginId: "provider-pi",
   source: { kind: "daemon-bundled", id: "pi" },
   providerOptions: {},
+  envPassthrough: [],
   capabilities: {
     experimental_providerInstallation: false,
     supportsServiceTier: false,
@@ -286,12 +317,12 @@ export async function registerFakeProviders(
             supportsManualCompaction: true,
             supportsThreadArchive: true,
             supportsThreadRename: true,
-            supportsWorkflows: true,
             permissionModes: ["accept-edits", "auto", "full"],
             reasoningLevels: ["low", "medium", "high"],
           },
           composerActions: ["plan", "goal"],
         }),
+        readSettings: NO_PLUGIN_SETTINGS,
       }),
       pluginId,
     });

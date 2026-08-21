@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type { ProviderExecutionContext } from "./provider-adapter.js";
 
-function makeAdapter() {
+function makeAdapter(staticProviderOptions?: Record<string, unknown>) {
   return createBridgeProtocolAdapter({
     id: "fake-bridge",
     capabilities: {
@@ -15,6 +15,7 @@ function makeAdapter() {
       permissionModes: ["full"],
     },
     process: { command: "node", args: ["fake-bridge.mjs"] },
+    ...(staticProviderOptions === undefined ? {} : { staticProviderOptions }),
   });
 }
 
@@ -35,7 +36,7 @@ const fullModeOptions: ProviderExecutionContext = {
   permissionScope: "full",
   approvalReviewer: null,
   permissionEscalation: null,
-  workflowsEnabled: false,
+  providerOptions: {},
 };
 
 describe("handshake version gate", () => {
@@ -274,8 +275,8 @@ describe("thread/stop intent", () => {
 });
 
 describe("options mapping", () => {
-  it("keeps core fields top-level and packs provider-flavored fields opaquely", () => {
-    const adapter = makeAdapter();
+  it("keeps core fields top-level and merges the plugin-derived bag over the static options", () => {
+    const adapter = makeAdapter({ acpLaunchSpec: { command: "echo" } });
     const plan = adapter.buildCommandPlan({
       type: "turn/start",
       threadId: "thr_1",
@@ -285,8 +286,8 @@ describe("options mapping", () => {
       options: {
         ...fullModeOptions,
         model: "gpt-5.6-sol",
-        workflowsEnabled: true,
-        memoryEnabled: false,
+        promptMode: "plan",
+        providerOptions: { memoryEnabled: false },
       },
     });
     expect(plan).toMatchObject({
@@ -295,8 +296,9 @@ describe("options mapping", () => {
         options: {
           model: "gpt-5.6-sol",
           permissionMode: "full",
+          promptMode: "plan",
           providerOptions: {
-            workflowsEnabled: true,
+            acpLaunchSpec: { command: "echo" },
             memoryEnabled: false,
           },
         },
@@ -304,7 +306,7 @@ describe("options mapping", () => {
     });
     const options = (plan as { params: { options: Record<string, unknown> } })
       .params.options;
-    expect(options).not.toHaveProperty("workflowsEnabled");
+    expect(options).not.toHaveProperty("memoryEnabled");
     expect(options).not.toHaveProperty("skillRoots");
   });
 });

@@ -188,6 +188,22 @@ and falls back to the provider default; the next send records that default, so
 select the custom model again after you turn streamer mode off. Set it with
 `bb settings general streamerMode <true|false>`.
 
+Settings → Providers lists every registered agent provider in picker order.
+Move a provider up or down to change the order and choose the default for new
+threads. Both are persisted preferences: `providerOrder` is the list of ids
+that lead the picker (ids not listed follow in plugin install order, and an id
+that names no registered provider is ignored) and `defaultProviderId` is the
+provider new threads use when neither the caller nor the project chose one
+(`null` means the first available provider in picker order). Set them with
+`bb settings general providerOrder '["claude-code","codex"]'` and
+`bb settings general defaultProviderId claude-code` (or `null`).
+
+Each provider's own options live on its plugin: Codex memory and native
+subagents under the Codex provider plugin, Claude Code memory, native
+subagents and the Workflow tool under the Claude Code provider plugin. Read
+and set them like any plugin setting, for example
+`bb plugin config provider-claude-code set workflowsDisabled true`.
+
 Outside an open typeahead menu, Shift+Enter inserts a newline. In zen mode,
 unmodified Enter also inserts a newline. On coarse-pointer touch devices, the
 software-keyboard Return path inserts a newline and the submit button sends.

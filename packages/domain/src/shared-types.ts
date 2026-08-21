@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonObjectSchema } from "./json-value.js";
 
 /**
  * Order is load-bearing: `reasoningRank` (index) drives model-switch
@@ -534,23 +535,33 @@ export type RuntimePermissionPolicy = z.infer<
   typeof runtimePermissionPolicySchema
 >;
 
+/**
+ * BB prompt modes a provider maps natively. `plan` is entered through the
+ * provider's declared `plan` composer action; absent means an ordinary
+ * prompt.
+ */
+export const promptModeSchema = z.literal("plan");
+export type PromptMode = z.infer<typeof promptModeSchema>;
+
+/**
+ * The provider-agnostic execution options the server dispatches with every
+ * session and turn command. No provider-named field may be added here:
+ * provider-flavored knobs (memory, native subagents, a native plan flag, …)
+ * travel in `providerOptions`, the opaque bag the owning plugin derives per
+ * command (`experimental_deriveProviderOptions`) and only its bridge reads.
+ */
 const runtimeThreadExecutionBaseOptionsSchema = z.object({
   model: z.string().min(1),
   serviceTier: serviceTierSchema,
   reasoningLevel: reasoningLevelSchema,
-  claudeCodePermissionMode: z.literal("plan").optional(),
+  /** Present only when the prompt entered a BB prompt mode. */
+  promptMode: promptModeSchema.optional(),
   /**
-   * Server-owned product policy: whether the provider session may use the
-   * Workflows feature. Filled explicitly at the server boundary (per-provider
-   * policy), never defaulted downstream.
+   * Plugin-derived, provider-scoped options. Always present — an empty
+   * object when the provider derives none — so the daemon never has to
+   * guess whether the server ran the hook.
    */
-  workflowsEnabled: z.boolean(),
-  // Optional for legacy command compatibility; the server fills the current
-  // provider preference before dispatching new runtime work.
-  memoryEnabled: z.boolean().optional(),
-  // Optional for legacy command compatibility; the server fills the current
-  // provider preference before dispatching new runtime work.
-  providerSubagentsEnabled: z.boolean().optional(),
+  providerOptions: jsonObjectSchema,
 });
 
 export const runtimeThreadExecutionOptionsSchema =

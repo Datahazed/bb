@@ -1,3 +1,14 @@
+// Version 149 makes the thread runtime execution options provider-agnostic.
+// `claudeCodePermissionMode`, `workflowsEnabled`, `memoryEnabled`, and
+// `providerSubagentsEnabled` are gone from `options`; a REQUIRED
+// `providerOptions` JSON object (derived per command by the owning provider
+// plugin and opaque to the daemon) and an optional `promptMode: "plan"`
+// replace them. `bridgeLaunch` gains a REQUIRED `envPassthrough` list naming
+// the daemon environment variables the bridge may read, replacing the
+// hardcoded `BB_CLAUDE_CODE_EXECUTABLE` forwarding. The schemas are strict,
+// so an older daemon rejects the new payloads outright, and a newer daemon
+// would treat an older server's provider knobs as absent.
+//
 // Version 148 is the generic assembler and the v3 delta grammar cutover. The
 // daemon now emits `thread/extensionState/updated` (plugin-declared thread
 // state) in its event batches — a new union member an older server's batch
@@ -132,7 +143,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 148 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 149 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

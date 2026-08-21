@@ -75,7 +75,12 @@ export function formatAutomationModelLabel(
   return context ? `${label} (${context})` : label;
 }
 
-/** Providers read as names in the composer, never as raw ids. */
+/**
+ * A readable name for a provider id the host's directory
+ * (`experimental_useProviders`) no longer lists — an automation whose
+ * provider plugin was removed. Live providers take their `displayName` from
+ * the directory; this is only the fallback.
+ */
 export function formatAutomationProviderLabel(providerId: string): string {
   if (providerId.startsWith("claude")) return "Claude";
   if (providerId.startsWith("codex")) return "Codex";

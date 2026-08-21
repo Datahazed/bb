@@ -2,10 +2,11 @@
  * Guardrail G10 — docs/provider-plugin-api.md stays true to the types.
  *
  * The target-state doc describes the surface every provider workstream keeps
- * true. Its ```ts blocks are target-state pseudo-code (`bb.providers.register`
- * does not exist yet; `TimelineRow { kind, payload, presentation }` is a
- * sketch), so they cannot be compiled as-is. This test does the next best
- * thing and does it mechanically:
+ * true. Its ```ts blocks are target-state pseudo-code (the registration block
+ * uses the stabilized names the `experimental_` fields will take;
+ * `TimelineRow { kind, payload, presentation }` is a sketch), so they cannot
+ * be compiled as-is. This test does the next best thing and does it
+ * mechanically:
  *
  *  1. every ```ts block is extracted and its field names parsed;
  *  2. each block is mapped, field by field, onto the real contract — a zod
@@ -69,9 +70,7 @@ type DeclarationPath =
 const REGISTRATION_FIELDS = {
   id: "id",
   displayName: "displayName",
-  family: {
-    gap: "WS2a (registry): optional grouping replaces the acp- prefix",
-  },
+  family: "experimental_family",
   icon: "icon",
   strings: "experimental_strings",
   signInHint: "strings.signInHint",
@@ -87,15 +86,13 @@ const REGISTRATION_FIELDS = {
   supportsNativeUserQuestion: "capabilities.supportsNativeUserQuestion",
   supportsManualCompaction: "capabilities.supportsManualCompaction",
   maintenance: {
-    gap: "WS2a (registry): folds capabilities.experimental_provider{Health,Usage,Installation}",
+    gap: "WS-final (stabilization): folds capabilities.experimental_provider{Health,Usage,Installation} into one object when the experimental_ prefixes drop — declaring the same three facts twice during the transition would violate one-fact-one-place",
   },
   composerActions: "composerActions",
   extensionKinds: "experimental_extensionKinds",
-  models: { gap: "WS2a (registry): cold-cache fallback model list" },
-  env: { gap: "WS2a (registry): declared daemon env passthrough" },
-  deriveProviderOptions: {
-    gap: "WS2a (registry): per-command providerOptions derivation",
-  },
+  models: "experimental_models",
+  env: "experimental_env",
+  deriveProviderOptions: "experimental_deriveProviderOptions",
 } as const satisfies Record<string, DeclarationPath | Gap>;
 
 type DeclarationGapKeys = {
@@ -126,9 +123,7 @@ const EXECUTION_OPTION_FIELDS = {
   model: "model",
   serviceTier: "serviceTier",
   reasoningLevel: "reasoningLevel",
-  promptMode: {
-    gap: "WS2b (plan mode): promptMode replaces claudeCodePermissionMode",
-  },
+  promptMode: "promptMode",
   instructions: "instructions",
   providerOptions: "providerOptions",
 } as const satisfies Record<

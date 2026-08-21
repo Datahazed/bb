@@ -2,6 +2,7 @@ import type { ComponentPropsWithoutRef, ComponentType, ReactNode } from "react";
 import type {
   PermissionMode,
   PromptInput,
+  ProviderInfo,
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
@@ -645,7 +646,8 @@ export interface PluginSidebarThread {
   originKind: "fork" | null;
   /** The plugin that spawned it, or null for non-plugin origins. */
   originPluginId: string | null;
-  /** The agent provider this thread runs on, e.g. "codex", "claude-code". */
+  /** The agent provider this thread runs on; resolve it through
+   * {@link PluginSdkApp.experimental_useProviders} for a name and icon. */
   providerId: string;
 
   /** The agent is blocked on the user: an approval or a question. */
@@ -730,6 +732,18 @@ export interface PluginSidebarThreadsState {
   status: "loading" | "ready" | "error";
   threads: readonly PluginSidebarThread[];
   projects: readonly PluginSidebarProject[];
+}
+
+/**
+ * The provider directory (see {@link PluginSdkApp.experimental_useProviders}):
+ * every registered agent provider in picker order, as the same `ProviderInfo`
+ * the host's own pickers read. `logoUrl` is server-relative
+ * (`/api/v1/system/providers/<id>/logo`) or null when the provider declared a
+ * glyph or no icon; `strings` carries the provider's declared copy.
+ */
+export interface PluginProvidersState {
+  status: "loading" | "ready" | "error";
+  providers: readonly ProviderInfo[];
 }
 
 /**
@@ -1798,6 +1812,13 @@ export interface PluginSdkApp {
   experimental_useSidebarThreadSplit(
     threadId: string,
   ): PluginSidebarThreadSplit;
+  /**
+   * The provider directory (see {@link PluginProvidersState}). Reads the
+   * host's own cached provider roster, so a plugin that shows a thread's
+   * provider never re-vendors provider names, icons, or copy. Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_useProviders(): PluginProvidersState;
   /**
    * The host-owned chat component (see {@link ThreadChatProps}). Together
    * with `Markdown`, the only components the SDK ships — everything else

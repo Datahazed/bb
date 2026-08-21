@@ -12,6 +12,7 @@ type ExpectedBbPluginApiKey =
   | "log"
   | "onDispose"
   | "pluginId"
+  | "providers"
   | "realtime"
   | "rpc"
   | "sdk"
@@ -58,10 +59,13 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginProviderComposerAction",
   "PluginProviderDeclaration",
   "PluginProviderExtensionKindDeclaration",
+  "PluginProviderFallbackModel",
   "PluginProviderOptionDescriptor",
+  "PluginProviderOptionsContext",
   "PluginProviderPermissionMode",
   "PluginProviderReasoningLevel",
   "PluginProviderStrings",
+  "PluginProviders",
   "PluginRealtime",
   "PluginRpc",
   "PluginServerApi",

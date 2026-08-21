@@ -57,7 +57,6 @@ async function setup() {
           supportsManualCompaction: false,
           supportsThreadArchive: false,
           supportsThreadRename: false,
-          supportsWorkflows: false,
           permissionModes: ["full"],
           reasoningLevels: ["medium"],
         },
@@ -69,6 +68,7 @@ async function setup() {
           },
         },
       }),
+      readSettings: () => ({}),
     }),
     pluginId: PLUGIN_ID,
   });

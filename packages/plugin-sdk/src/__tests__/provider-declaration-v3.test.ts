@@ -19,7 +19,6 @@ function declaration(
       supportsManualCompaction: false,
       supportsThreadArchive: false,
       supportsThreadRename: false,
-      supportsWorkflows: false,
       permissionModes: ["full"],
       reasoningLevels: ["medium"],
     },

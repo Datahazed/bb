@@ -27,6 +27,7 @@ import {
   ModelReasoningPicker,
 } from "./ModelReasoningPicker";
 import type { PickerOption } from "./OptionPicker";
+import type { ProviderPickerOption } from "./model-brand-prefix";
 import type { ModelPickerOption } from "./model-picker-option";
 
 type CapturedCommandHandler = (invocation: {
@@ -61,9 +62,11 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useIsAppCommandModifierHeld: () => false,
 }));
 
-const providerOptions: readonly PickerOption<string>[] = [
-  { value: "codex", label: "Codex" },
-  { value: "claude-code", label: "Claude Code" },
+// The brand prefix comes from each provider's declared strings; the picker
+// strips it from model labels under that provider's tab.
+const providerOptions: readonly ProviderPickerOption[] = [
+  { value: "codex", label: "Codex", brandPrefix: "GPT-" },
+  { value: "claude-code", label: "Claude Code", brandPrefix: "Claude " },
 ];
 
 const codexModels: readonly PickerOption<string>[] = [
@@ -164,7 +167,7 @@ function renderPicker({
   pickerReasoningOptions?: readonly PickerOption<ReasoningLevel>[];
   reasoningValue?: ReasoningLevel;
   moreModelOptions?: readonly ModelPickerOption[];
-  pickerProviderOptions?: readonly PickerOption<string>[];
+  pickerProviderOptions?: readonly ProviderPickerOption[];
   alternateProviderModels?: AvailableModel[];
   providerRouting?: SystemProvidersQuery;
   selectedProviderId?: string;

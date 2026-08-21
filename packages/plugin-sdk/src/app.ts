@@ -76,3 +76,5 @@ export const experimental_useSidebarThreadPullRequest =
   runtime.experimental_useSidebarThreadPullRequest;
 export const experimental_useSidebarThreadSplit =
   runtime.experimental_useSidebarThreadSplit;
+// The provider directory (experimental — see docs/api_to_audit.md).
+export const experimental_useProviders = runtime.experimental_useProviders;

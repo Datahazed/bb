@@ -19,6 +19,7 @@ import {
   useBbNavigate,
   useComposer,
   useComposerView,
+  useProviders,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
@@ -81,6 +82,9 @@ export const pluginSdkAppImplementation = {
   experimental_useSidebarThreadActions: useSidebarThreadActions,
   experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
   experimental_useSidebarThreadSplit: useSidebarThreadSplit,
+  // Experimental (see docs/api_to_audit.md): the provider directory, so no
+  // plugin re-vendors provider names or icons.
+  experimental_useProviders: useProviders,
 } satisfies PluginSdkApp;
 
 /**

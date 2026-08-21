@@ -198,6 +198,12 @@ export interface AgentRuntimeBridgeLaunch {
   };
   /** Provider-owned statics; interpreted only by the provider bridge. */
   providerOptions: JsonObject;
+  /**
+   * Daemon environment variable names the bridge may read. Provider
+   * processes are spawned with every inherited `BB_*` variable stripped;
+   * exactly these are forwarded from the daemon's own environment.
+   */
+  envPassthrough: readonly string[];
 }
 
 export interface EnsureProviderArgs {

@@ -99,7 +99,7 @@ widen it.
 The sessionless `provider/health`, `provider/usage`,
 `provider/installation/status`, and `provider/installation/run` methods are
 different: their support is declared by each provider through
-`bb.agents.experimental_registerProvider`, so the server can skip an
+`bb.providers.register`, so the server can skip an
 unsupported host probe and clients can omit providers that never expose usage
 or installation management before a bridge has started. A shared bridge may
 declare health or usage for every provider it owns and still return

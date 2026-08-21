@@ -1052,18 +1052,29 @@ safety policy such as permission escalation is unchanged. The legacy
 `contributeInstructions` provider remains excluded from side chats, so use
 `configure` for side-chat-aware dynamic instructions.
 
-### bb.agents.experimental_registerProvider — agent providers
+### bb.providers.register — agent providers
 
 A plugin can contribute a full agent provider: a picker entry whose threads
 run on a **provider bridge** the plugin ships. The working reference is
 `examples/plugins/echo-provider` — declaration, bridge, and conformance test
-in one small package.
+in one small package. (`bb.agents.experimental_registerProvider` is the older
+name for the same call and still works.)
 
 ```ts
-bb.agents.experimental_registerProvider({
+bb.providers.register({
   id: "echo-agent", // stable public id; thread rows persist it
   displayName: "Echo Agent", // 1-80 chars, shown in the picker
   icon: "./icons/echo.svg", // optional; same grammar as bb.branding.icon
+  experimental_family: "echo", // optional grouping key for related providers
+  // Copy core surfaces render (usage banners, pickers, the guide).
+  experimental_strings: {
+    signInHint: "Run `echo-agent login` on the machine to sign in.",
+    expiredHint: "Your Echo session expired. Run `echo-agent login`, then reload.",
+    installUrl: "https://example.com/echo-agent",
+    brandPrefix: "Echo ", // optional; stripped from model display names
+    planModeCopy: "Echo will plan without executing.", // optional
+    iconTint: { light: "#334155", dark: "#CBD5E1" }, // optional
+  },
   // Optional immutable JSON forwarded opaquely to this plugin's bridge.
   experimental_bridgeOptions: { launch: { command: "echo-agent" } },
   // "installed" hides the row until provider/health finds the executable.
@@ -1081,11 +1092,31 @@ bb.agents.experimental_registerProvider({
     supportsManualCompaction: false,
     supportsThreadArchive: false, // bb mirrors archive/unarchive onto it
     supportsThreadRename: false, // bb forwards renames to it
-    supportsWorkflows: false, // the provider can run bb Workflow tools
     permissionModes: ["full"], // non-empty, no duplicates
     reasoningLevels: ["medium"], // coarse fallback ladder
   },
-  composerActions: [], // skills typeahead is implicit
+  // Labelled picker options; the coarse ladder above is labelled for you
+  // when these are omitted. `model/list` is precise per model at runtime.
+  experimental_reasoningLevels: [{ id: "medium", label: "Medium" }],
+  experimental_serviceTiers: undefined, // e.g. [{ id: "fast", label: "Fast" }]
+  composerActions: [], // skills typeahead is implicit; ["plan"] opts into plan mode
+  // Cold-cache fallback models: shown only until the first model/list probe
+  // completes, or when a probe fails transiently. Exactly one isDefault.
+  experimental_models: { fallback: [] },
+  // Daemon env vars the bridge may read. Provider processes are spawned with
+  // inherited BB_* variables stripped; exactly these are forwarded.
+  experimental_env: { passthrough: ["BB_ECHO_AGENT_EXECUTABLE"] },
+  // Called by the server on EVERY session and turn command. The returned
+  // JSON reaches the bridge as `options.providerOptions`; core never reads
+  // it. This is where the provider's own knobs travel — read them from the
+  // plugin's own `bb.settings.define` values in `ctx.settings` (secrets are
+  // omitted). `ctx.promptMode` is "plan" when the prompt entered plan mode.
+  experimental_deriveProviderOptions(ctx) {
+    return {
+      verbose: ctx.settings.verbose === true,
+      plan: ctx.promptMode === "plan",
+    };
+  },
 });
 ```
 
@@ -1118,10 +1149,15 @@ export default definePluginApp((app) => {
 (The four first-party provider plugins ship no `app.tsx`: bb vendors their
 marks itself, so an icon-only bundle would only add fetches at boot.)
 
-Ids are collision-rejected against core providers and other plugins'
-registrations; registrations replace wholesale on reload like every other
-surface. Disabling the plugin removes the provider (open threads show a
-provider-unavailable state instead of erroring).
+Ids are flat and collision-rejected: the first live registration of an id
+wins and a later one from another plugin fails that plugin's load; no id is
+reserved ahead of time. Registrations replace wholesale on reload like every
+other surface. Disabling the plugin removes the provider (open threads show a
+provider-unavailable state instead of erroring). The provider picker lists
+providers in plugin install order (bundled first-party plugins first); the
+user reorders them and picks a default in Settings → Providers
+(`bb settings general providerOrder '["my-agent","codex"]'` and
+`bb settings general defaultProviderId my-agent`).
 
 `experimental_bridgeOptions` must be a plain JSON object no larger than 64
 KiB. It is validated and frozen at registration, then carried on every bridge
@@ -1498,6 +1534,29 @@ silently stop working:
 ```tsx
 <a data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id}>
 ```
+
+### The provider directory
+
+`experimental_useProviders()` returns `{ status, providers }` — every
+registered agent provider in picker order, as the same `ProviderInfo` the
+host's composer reads (`id`, `displayName`, `logoUrl`, `available`,
+`capabilities`, `composerActions`, and the declared `strings`,
+`reasoningLevels`, `serviceTiers`). It reads the host's own cached roster, so
+it costs no extra request. Use it whenever a surface shows a thread's or
+automation's provider: never vendor provider names or copy in a plugin.
+
+```tsx
+const { providers } = experimental_useProviders();
+const name =
+  providers.find((provider) => provider.id === thread.providerId)?.displayName ??
+  thread.providerId;
+```
+
+`status` is `"loading"` until the roster arrives and `"error"` when the request
+failed; `providers` is empty in both cases, so fall back to the id. The
+backend counterpart is `bb.sdk.providers.list()`. Keep the hook in the plugin
+entry (`app.tsx`) and pass names down as props, so view components stay pure
+and testable outside the plugin runtime.
 
 ### Trusted frontend content scripts
 

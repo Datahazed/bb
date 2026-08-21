@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { buildAutomationEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import {
   definePluginApp,
+  experimental_useProviders,
   useBbNavigate,
   useRealtime,
   useRpc,
@@ -597,6 +598,9 @@ function DetailView({
 }) {
   const navigate = useBbNavigate();
   const { automation, error, missing, refetch } = useAutomation(route);
+  // The host's provider directory names the execution provider; this plugin
+  // vendors no provider names.
+  const { providers } = experimental_useProviders();
   const [editingRequested, setEditingRequested] = useState(initialEditing);
   const editingExecutionKey =
     automation?.execution.mode === "agent"
@@ -745,10 +749,18 @@ function DetailView({
         ? "Local"
         : route.projectId;
 
+  const execution = automation.execution;
+  const providerName =
+    execution.mode === "agent"
+      ? providers.find((provider) => provider.id === execution.providerId)
+          ?.displayName
+      : undefined;
+
   return (
     <AutomationDetailView
       automation={automation}
       projectLabel={projectLabel}
+      {...(providerName === undefined ? {} : { providerName })}
       runsState={runsState}
       actionPending={actionPending}
       executionOptions={executionOptionsState.options}

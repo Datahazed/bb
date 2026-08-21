@@ -215,9 +215,10 @@ const providerNativeIdsParamsSchema = z
 
 /**
  * Execution options → canonical wire options. Core execution fields map
- * one-to-one; every field the shared context still carries for a specific
- * provider travels in the opaque `providerOptions` bag so nothing is lost
- * while the migration is in flight.
+ * one-to-one; the plugin-derived `providerOptions` bag is merged over the
+ * bridge's static options (declared `experimental_bridgeOptions`, the ACP
+ * launch spec, the environment's extra write roots) so the bridge reads one
+ * bag.
  */
 function toBridgeWireOptions(
   options: ProviderExecutionContext,
@@ -227,27 +228,23 @@ function toBridgeWireOptions(
     model,
     serviceTier,
     reasoningLevel,
+    promptMode,
     instructions,
     envVars,
     permissionMode,
     permissionScope,
     approvalReviewer,
     permissionEscalation,
-    skillRoots: _skillRoots,
-    ...providerFlavored
   } = options;
   const providerOptions = {
     ...staticProviderOptions,
-    ...Object.fromEntries(
-      Object.entries(providerFlavored).filter(
-        ([, value]) => value !== undefined,
-      ),
-    ),
+    ...options.providerOptions,
   };
   return {
     ...(model !== undefined ? { model } : {}),
     ...(serviceTier !== undefined ? { serviceTier } : {}),
     ...(reasoningLevel !== undefined ? { reasoningLevel } : {}),
+    ...(promptMode !== undefined ? { promptMode } : {}),
     ...(instructions !== undefined ? { instructions } : {}),
     ...(envVars !== undefined ? { envVars } : {}),
     permissionMode,

@@ -558,9 +558,6 @@ export interface PluginProviderCapabilities {
   /** The provider stores a thread name of its own, so BB forwards renames to
    * it. */
   supportsThreadRename: boolean;
-  /** The provider can run BB's Workflow tools — gates the workflows opt-in on
-   * new threads. */
-  supportsWorkflows: boolean;
   /** Permission modes the provider can actually run in. Non-empty, no
    * duplicates. */
   permissionModes: readonly PluginProviderPermissionMode[];
@@ -616,13 +613,64 @@ export interface PluginProviderExtensionKindDeclaration {
 }
 
 /**
+ * Per-command context handed to
+ * {@link PluginProviderDeclaration.experimental_deriveProviderOptions}. The
+ * server builds one for every session and turn command it dispatches on a
+ * thread of this provider.
+ */
+export interface PluginProviderOptionsContext {
+  threadId: string;
+  projectId: string;
+  /** The resolved model id for this command. */
+  model: string;
+  /** BB's permission mode for this command (already clamped to the host). */
+  permissionMode: PluginProviderPermissionMode;
+  /**
+   * `"plan"` when the prompt entered plan mode through this provider's
+   * declared `plan` composer action. Absent for an ordinary prompt — plan
+   * mode is a BB prompt mode, so the bridge maps it onto whatever the agent
+   * calls it natively.
+   */
+  promptMode?: "plan";
+  /**
+   * This plugin's own settings values (`bb.settings.define`), read at call
+   * time. Secret settings are omitted — provider options ride the daemon
+   * wire and are persisted with the session, so a secret must never be
+   * derived into them.
+   */
+  settings: Readonly<Record<string, PluginSettingValue | undefined>>;
+}
+
+/**
+ * One cold-cache fallback model. The provider's live `model/list` result is
+ * the only real model source; this list stands in only while no probe has
+ * completed, or when a probe fails transiently, so the picker is not empty.
+ * `id` is the wire model id the bridge receives.
+ */
+export interface PluginProviderFallbackModel {
+  id: string;
+  /** Picker display name ("Opus 5 (1M)"). */
+  displayName: string;
+  description: string;
+  /** Reasoning levels this model supports, lowest to highest. Non-empty. */
+  supportedReasoningEfforts: readonly {
+    reasoningEffort: PluginProviderReasoningLevel;
+    description: string;
+  }[];
+  /** Must be one of `supportedReasoningEfforts`. */
+  defaultReasoningEffort: PluginProviderReasoningLevel;
+  /** Exactly one entry in the list is the default. */
+  isDefault: boolean;
+}
+
+/**
  * One provider this plugin contributes to BB's provider registry.
  *
  * Ids are stable public identifiers — thread rows and routes reference them —
  * and are collision-rejected: a declaration whose id matches another plugin's
- * live registration, or reserves a first-party provider it does not own, is
- * refused. Registrations are replaced wholesale on plugin reload, like every
- * other plugin surface.
+ * live registration is refused; the first registration wins and no id is
+ * reserved ahead of time. Registrations are replaced wholesale on plugin
+ * reload, like every other plugin surface.
  *
  * A declaration owns the provider's static metadata and bridge options. The
  * executable implementation is the plugin's own provider bridge, named by
@@ -637,6 +685,12 @@ export interface PluginProviderDeclaration {
   id: string;
   /** Picker display name: 1–80 characters, non-blank. */
   displayName: string;
+  /**
+   * Optional grouping key (same grammar as `id`) for providers that share a
+   * family — the ACP agents, for example — so clients can group them without
+   * parsing a prefix out of the id. Grouping only: no policy keys on it.
+   */
+  experimental_family?: string;
   /**
    * Optional picker icon, in the same grammar as `bb.branding.icon`: either a
    * named host glyph (`"Zap"`) or a plugin-relative path starting with `"./"`
@@ -685,6 +739,40 @@ export interface PluginProviderDeclaration {
   experimental_extensionKinds?: Readonly<
     Record<string, PluginProviderExtensionKindDeclaration>
   >;
+  /**
+   * Cold-cache fallback models ({@link PluginProviderFallbackModel}). The
+   * server offers them only while a model probe has not completed or failed
+   * transiently; the live `model/list` result always replaces them. Ids must
+   * be unique and exactly one entry must be the default.
+   */
+  experimental_models?: {
+    fallback: readonly PluginProviderFallbackModel[];
+  };
+  /**
+   * Daemon environment variables this provider's bridge may read. Provider
+   * processes are spawned with every inherited `BB_*` variable stripped, so a
+   * bridge that honors an operator override (a CLI path, say) names it here
+   * and the daemon forwards exactly those variables. Names are
+   * `[A-Z_][A-Z0-9_]*`, at most 32.
+   */
+  experimental_env?: {
+    passthrough: readonly string[];
+  };
+  /**
+   * Derive this provider's opaque per-command options. Called synchronously
+   * by the server for every session and turn command on a thread of this
+   * provider, with the command's {@link PluginProviderOptionsContext}; the
+   * returned JSON object reaches this plugin's bridge as
+   * `options.providerOptions`, merged over `experimental_bridgeOptions`. Core
+   * never interprets its keys — this is where a provider's own knobs (memory,
+   * native subagents, a native plan flag) travel instead of on the shared
+   * execution contract. A throw fails the command with the plugin named, so
+   * a buggy hook cannot silently run a turn with default knobs. Must be fast:
+   * it sits on the turn-submit path.
+   */
+  experimental_deriveProviderOptions?: (
+    context: PluginProviderOptionsContext,
+  ) => Readonly<Record<string, JsonValue>>;
 }
 
 export interface PluginAgents {
@@ -759,17 +847,36 @@ export interface PluginAgents {
     provider: (ctx: { threadId: string; projectId: string }) => string | null,
   ): void;
   /**
-   * Register an agent provider this plugin contributes (experimental — see
-   * docs/api_to_audit.md before relying on it). The declaration is validated
-   * at call time; the provider joins the server's provider registry when the
-   * plugin load commits and then appears in provider listings. Ids are stable
-   * and collision-rejected: an id already claimed by a core provider or
-   * another plugin fails this plugin's load. A plugin may register several
-   * providers and may re-register after `dispose()` (a settings-driven
-   * re-declaration); registrations are replaced wholesale on plugin reload,
-   * like every other surface. The disposer removes the registration.
+   * The original registration entry point, kept as an alias of
+   * {@link PluginProviders.register} (`bb.providers.register`) so plugins
+   * compiled against it keep loading. New code registers through
+   * `bb.providers`; this alias goes when the surface stabilizes.
    */
   experimental_registerProvider(declaration: PluginProviderDeclaration): {
+    dispose(): void;
+  };
+}
+
+/**
+ * Provider registration (docs/provider-plugin-api.md §1). Owns only
+ * registration; `bb.agents` keeps `configure`, `registerTool`, and
+ * `contributeInstructions`.
+ */
+export interface PluginProviders {
+  /**
+   * Register an agent provider this plugin contributes (see
+   * docs/api_to_audit.md before relying on it). The declaration is validated
+   * at call time; the provider joins the server's provider registry when the
+   * plugin load commits and then appears in provider listings as exactly one
+   * client shape, `ProviderInfo`. Ids are flat and collision-rejected: the
+   * first live registration of an id wins, a later one from another plugin
+   * fails that plugin's load, and no id is reserved ahead of time. A plugin
+   * may register several providers and may re-register after `dispose()` (a
+   * settings-driven re-declaration); registrations are replaced wholesale on
+   * plugin reload, like every other surface. The disposer removes the
+   * registration.
+   */
+  register(declaration: PluginProviderDeclaration): {
     dispose(): void;
   };
 }
@@ -950,6 +1057,8 @@ export interface BbPluginApi {
   readonly cli: PluginCli;
   /** Per-turn agent context contributions (design §4.4). */
   readonly agents: PluginAgents;
+  /** Agent provider registration (docs/provider-plugin-api.md §1). */
+  readonly providers: PluginProviders;
   /** Host-rendered UI contributions (design §4.9). */
   readonly ui: PluginUi;
   /** Additive plugin lifecycle listeners (design §4.5). */

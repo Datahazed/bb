@@ -23,6 +23,7 @@ import type {
 } from "@bb/server-contract";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
+import type { ProviderPickerOption } from "@/components/pickers/model-brand-prefix";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
@@ -97,7 +98,7 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   selectedProviderId: string;
   setSelectedProviderId: StringSelectionSetter;
   setProviderModelReasoning: ProviderModelReasoningSelectionSetter;
-  providerOptions: PickerOption<string>[];
+  providerOptions: ProviderPickerOption[];
   hasMultipleProviders: boolean;
   selectedProviderDisplayName: string;
   selectedProviderComposerActions: readonly ProviderComposerAction[];
@@ -435,11 +436,20 @@ export function useThreadCreationOptions(
   );
 
   const providerOptions = useMemo(
-    (): PickerOption<string>[] =>
+    (): ProviderPickerOption[] =>
       providers.map((p) => ({
         value: p.id,
         label: p.displayName,
         icon: getProviderIconInfo(p.id, p.logoUrl ?? null)?.icon,
+        ...(p.strings?.brandPrefix === undefined
+          ? {}
+          : { brandPrefix: p.strings.brandPrefix }),
+        ...(p.strings?.planModeCopy === undefined
+          ? {}
+          : { planModeCopy: p.strings.planModeCopy }),
+        ...(p.strings?.installUrl === undefined
+          ? {}
+          : { installUrl: p.strings.installUrl }),
       })),
     [providers],
   );

@@ -331,7 +331,7 @@ Each label is capped at 80 characters and rendered as a truncating segment.
    only for non-MCP native plugin tools. Confirm that distinction stays sound
    as provider adapters and dynamic-tool provenance evolve.
 
-## `bb.agents.experimental_registerProvider`
+## `bb.providers.register` (and its `bb.agents.experimental_registerProvider` alias)
 
 **What it does.** Lets a plugin declare an agent provider into the server's
 `ProviderRegistryService`. The declaration owns static metadata and opaque
@@ -342,10 +342,21 @@ validated at call time by the shared host policy
 (`validatePluginProviderDeclaration`); registrations stage during the factory
 and commit when the plugin load commits, are replaced wholesale on reload, and
 are removed by the returned disposer or on unload/disable. Declarations are
-now the ONLY source of providers — the core catalog seed is deleted, so
-disabling a provider plugin removes its provider. A registered provider is
-mapped onto `ProviderInfo` + `ProviderServerCapabilities` and appears in the
-composed provider listing (`GET /system/providers` / execution options).
+the ONLY source of providers — the core catalog seed is deleted, so disabling
+a provider plugin removes its provider. A registered provider is mapped onto
+exactly one client shape, `ProviderInfo`, plus the backend-only
+`ProviderServerCapabilities`, and appears in the composed provider listing
+(`GET /system/providers` / execution options). `bb.providers` is the namespace
+(`bb.agents` keeps `configure`, `registerTool`, `contributeInstructions`);
+`bb.agents.experimental_registerProvider` is an alias kept for plugins
+compiled against it and goes at stabilization.
+
+Ids are flat and first-wins: a live id collision fails the later plugin's
+load, and no id is reserved ahead of time (`RESERVED_PROVIDER_ID_OWNERS` is
+gone). Listing order is plugin install order — bundled first-party plugins
+rank first, in their bundled-list order, then every other plugin by install
+time — under the user's `providerOrder` / `defaultProviderId` app settings
+(`PRODUCT_PROVIDER_ORDER` and `PRODUCT_DEFAULT_PROVIDER_ID` are gone).
 `experimental_visibility: "installed"` withholds a provider from unscoped
 listings until its own `provider/health` result is not `not_installed`.
 `experimental_bridgeOptions` is validated as bounded JSON, rides every daemon
@@ -354,12 +365,13 @@ bridge as provider-scoped static options. Core does not interpret its keys.
 
 **Audit before stabilizing.**
 
-1. **Listing order is a server-side table.** `PRODUCT_PROVIDER_ORDER` in
-   `provider-registry.ts` names the ids that lead the picker (and its head is
-   the product default provider); everything else follows by registration
-   order. Decide whether third-party providers ever need to influence their
-   own position — self-declared ranking is hostile, so any answer other than
-   "no" needs a design — before the ordering behavior freezes into clients.
+1. **Install-order ranking.** Bundled plugins rank by their position in
+   `BUNDLED_PLUGINS`; other plugins by `installedAt`. Confirm that a
+   reinstalled builtin (tombstone then reinstall) keeping its bundled rank is
+   right, and that `installedAt` is the fact users expect for third-party
+   order (vs. first-load time). The user overlay (`providerOrder`) is an
+   ordered id list that ignores unknown ids; decide whether stale ids should
+   be pruned on write.
 2. **Icon URL shape.** `icon` uses the `bb.branding.icon` grammar (a named host
    glyph, or a `./`-prefixed plugin-relative SVG). A path is snapshotted at
    registration and served from `/api/v1/system/providers/<id>/logo`; a glyph
@@ -369,20 +381,18 @@ bridge as provider-scoped static options. Core does not interpret its keys.
    before either freezes into clients.
 3. **Collision semantics.** Ids are first-come collision-rejected: a staged
    collision fails the whole plugin load; a post-activation registration
-   throws to the plugin. First-party ids (`codex`, `claude-code`, `pi`, and
-   the whole `acp-` prefix) are additionally reserved to their official
-   plugin whether or not it is currently loaded. Confirm first-wins (vs.
-   deterministic priority) is right across plugin load order, that a plugin
-   re-declaring its own id on reload/settings change never races another
-   plugin's claim, and decide whether the reserved set should be a namespace
-   rule (e.g. plugin-scoped id prefixes) before third-party ids proliferate.
+   throws to the plugin. With reservation gone, a disabled first-party plugin
+   leaves its id claimable by anyone until it is re-enabled (which then fails
+   to load). Confirm first-wins is right across plugin load order, and decide
+   whether a namespace rule (plugin-scoped id prefixes) is wanted before
+   third-party ids proliferate.
 4. **Bridge delivery.** A provider bridge is a second consumer of the
    plugin's `bb.host` artifact: it is exported by name
    (`experimental_providerBridge`), built into `dist/host.js`, recorded in the
    one live-host-artifact registry, served by the one host artifact route, and
    cached once per plugin on the daemon. Thread commands carry `bridgeLaunch
-{pluginId, source: {kind: "artifact", digest, byteLength}}`. Pi is the one
-   provider whose bridge stays daemon-bundled
+{pluginId, source: {kind: "artifact", digest, byteLength}, envPassthrough}`.
+   Pi is the one provider whose bridge stays daemon-bundled
    (`DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS`); every other provider, first-party or
    not, arrives as an artifact. Before stabilizing: confirm one artifact per
    plugin survives (a plugin declaring several providers today ships one bridge
@@ -394,15 +404,13 @@ bridge as provider-scoped static options. Core does not interpret its keys.
 5. **What a capability may be.** `supportsHostAiServices` was removed after
    shipping: it declared that bb's voice-transcription and structured-inference
    features could route through the provider, which is a fact about the daemon
-   bundle (it ships a codex ChatGPT client and answers
-   `codex.inference.complete` / `codex.voice.transcribe`) rather than about the
-   provider. A plugin declaring it true could not make the daemon grow a
-   client, so the flag could only ever be wrong. The routing now lives in the
-   AI-services module that consumes it; the future home for the real
-   capability is a bounded host RPC a plugin can offer (`bb.host`), once the
-   host-plugin foundation exists. Apply the same test to every remaining
-   capability before stabilizing: a declaration may assert what the provider
-   itself implements, never what bb or its daemon can do with it.
+   bundle rather than about the provider. `supportsWorkflows` went the same
+   way in WS2a: whether a session may use the Workflow tool is the Claude
+   plugin's own knob (its `workflowsDisabled` setting, derived into
+   `providerOptions`), not a fact core needs. Apply the same test to every
+   remaining capability before stabilizing: a declaration may assert what the
+   provider itself implements and an external consumer needs pre-session,
+   never what bb or its daemon can do with it.
 6. **Static bridge options and visibility.** Confirm 64 KiB remains a suitable
    declaration-time limit, that opaque options should continue to be shared by
    every host rather than resolved per host, and whether deep-frozen plain JSON
@@ -411,41 +419,83 @@ bridge as provider-scoped static options. Core does not interpret its keys.
    installed-only provider, and that targeted requests may continue resolving
    a registered provider even while discovery says it is absent.
 
-## Provider declaration target-state fields (`PluginProviderDeclaration.experimental_strings`, `experimental_serviceTiers`, `experimental_reasoningLevels`, `experimental_extensionKinds`)
+## Provider declaration target-state fields (`PluginProviderDeclaration.experimental_strings`, `experimental_serviceTiers`, `experimental_reasoningLevels`, `experimental_extensionKinds`, `experimental_family`, `experimental_models`, `experimental_env`, `experimental_deriveProviderOptions`; `ProviderInfo.strings`/`serviceTiers`/`reasoningLevels`/`extensionKinds`/`family`)
 
-**What it does.** Adds the target-state declaration fields from
+**What it does.** The target-state declaration fields from
 [docs/provider-plugin-api.md](provider-plugin-api.md) §1 beside the existing
 `capabilities`: provider copy (`strings`: sign-in and expiry hints, install
 URL, brand prefix, plan-mode copy, icon tint), service tiers and reasoning
-levels as `{ id, label, description? }` picker options, and the extension
-kinds the provider's bridge may emit (`{ item?, state? }` Standard Schema
-validators keyed by local name). `validatePluginProviderDeclaration` checks
-and deep-freezes them and carries them on the normalized declaration. Nothing
-projects them yet: `ProviderInfo` gained matching optional `strings`,
-`serviceTiers`, `reasoningLevels`, and `extensionKinds` fields, and WS2a
-(registry) fills them from the declaration and points the usage banners,
-pickers, mobile, and the agent guide at them instead of per-provider tables.
-The server already validates extension payloads against the declared
-schemas at ingest (`apps/server/src/internal/extension-payloads.ts`): the
-registry carries the validators on each registration and resolves a
-namespaced kind through its plugin-id prefix.
+levels as `{ id, label, description? }` picker options, the extension kinds
+the provider's bridge may emit (`{ item?, state? }` Standard Schema validators
+keyed by local name), an optional `family` grouping key, a cold-cache
+`models.fallback` list, the daemon `env.passthrough` variable names the
+bridge may read, and the per-command `deriveProviderOptions(ctx)` hook.
+`validatePluginProviderDeclaration` checks and deep-freezes them.
+
+WS2a projects them: `ProviderInfo` carries `strings`, `serviceTiers` (the
+declared list, or `default`/`fast` when only `supportsServiceTier` is set),
+`reasoningLevels` (the declared options, or the coarse ladder labelled),
+`extensionKinds` namespaced by the OWNING PLUGIN id, and `family`; the usage
+banners (web + mobile), the model picker's brand strip and install link, and
+the plan-mode permission display read `strings` instead of per-provider
+tables. The fallback list is served by the model-list route when a probe fails
+transiently (the app vendors no catalog). `env.passthrough` rides
+`bridgeLaunch.envPassthrough` and the daemon forwards exactly those variables
+past its `BB_*` spawn sanitization. The hook runs on every session and turn
+command with `{ threadId, projectId, model, permissionMode, promptMode?,
+settings }` — `settings` being the plugin's own non-secret `bb.settings`
+values — and its bounded-JSON result rides the command as
+`options.providerOptions`, merged over the static bridge options. The shared
+execution contract carries no provider-named field: `claudeCodePermissionMode`,
+`workflowsEnabled`, `memoryEnabled` and `providerSubagentsEnabled` are gone,
+replaced by `promptMode: "plan"` (set only when the prompt entered plan mode
+through the provider's declared `plan` composer action) and the bag. The
+server validates extension payloads against the declared schemas at ingest
+(`apps/server/src/internal/extension-payloads.ts`): the registry carries the
+validators on each registration and resolves a namespaced kind through its
+plugin-id prefix.
 
 **Audit before stabilizing.**
 
 1. **One reasoning-level source.** `capabilities.reasoningLevels` (an id
    ladder) and `experimental_reasoningLevels` (labelled options) say the same
-   thing twice during the transition. Delete the ladder once every first-party
-   plugin declares the option form, and decide whether the coarse
+   thing twice during the transition; the projection prefers the options and
+   labels the ladder from a fixed table otherwise. Delete the ladder once every
+   first-party plugin declares the option form, and decide whether the coarse
    `capabilities.supportsServiceTier` boolean survives beside
-   `experimental_serviceTiers` or is implied by it.
+   `experimental_serviceTiers` or is implied by it. Likewise fold the three
+   `experimental_provider{Health,Usage,Installation}` booleans into the doc's
+   `maintenance` object when the prefixes drop (declaring both now would say
+   one fact twice).
 2. **Copy limits and markup.** `strings` values are capped at 512 characters
    and rendered as plain text. Confirm that is enough for every surface that
    reads them today (usage banners, the mobile picker, the guide) and that
-   none of them needs inline Markdown or links.
+   none of them needs inline Markdown or links. The plan-mode permission
+   display keys on the PRESENCE of `planModeCopy`: a provider with a `plan`
+   action but no copy (Codex) keeps its ordinary permission display. Confirm
+   presence is the right switch rather than a separate boolean.
 3. **Extension-kind ceiling and schema cost.** 32 kinds per provider and
    Standard Schema validators executed at server ingest are guesses. Confirm
    the ceiling against real plugins and set the payload size limit the server
    enforces before validating.
+4. **Hook contract.** The hook is synchronous and runs on the turn-submit
+   path; a throw fails the command with the plugin named. Confirm sync is
+   enough (no plugin has asked for I/O), that omitting secrets from
+   `ctx.settings` is the right rule, that the 64 KiB bound shared with bridge
+   options fits, and whether `ctx` should carry the reasoning level and
+   service tier too. The bag is persisted with the session and diffed
+   structurally by the runtime to decide session vs. live changes; confirm
+   that is the right granularity once bridges reconcile everything themselves.
+5. **Fallback models and env passthrough.** The fallback list (64 max, exactly
+   one default) is offered only on a transient probe failure; confirm the
+   cold-cache composer (which now waits for the first probe) does not want it
+   too, and that name-only env passthrough (no value validation, `BB_*` or
+   otherwise) is the right scope.
+6. **Provider settings migration.** Migration 0105 copies the five retired
+   `codex*`/`claudeCode*` app-settings rows into `plugin_settings` for
+   `provider-codex` / `provider-claude-code`. Confirm the plugin setting keys
+   (`memoryEnabled`, `subagentsDisabled`, `workflowsDisabled`) before plugins
+   outside this repo start reading them.
 
 ## `@get-bb/plugin-sdk/provider-bridge` (the provider-bridge authoring surface)
 
@@ -567,6 +617,27 @@ protocol`'s `assembler`, `conformance`, and `testing` subpaths.
 3. **Surface size.** 14 value exports plus 20 types. The JSON-RPC harness
    duplicates a little of the bridge kit's envelope parsing; fold or keep
    deliberately.
+
+## `app.experimental_useProviders` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** The provider directory for plugin frontends: `{ status,
+providers }` where `providers` is the host's own `ProviderInfo[]` roster in
+picker order (the same query the composer's provider tabs read, shared cache,
+realtime invalidation). Pairs with the backend `bb.sdk.providers.list()`. It
+exists so that a plugin showing a thread's provider (tasks, automations,
+provider-retry) stops vendoring provider names, icons, and copy.
+
+**Audit before stabilizing.**
+
+1. **Routing.** The hook reads the primary-host roster (no `environmentId` /
+   `hostId` argument), so installed-only providers of another machine are not
+   listed. Decide whether plugins need host-scoped listing before freezing the
+   signature.
+2. **Icons.** `logoUrl` is null for the bundled first-party providers (their
+   marks are vendored in the app), so a plugin still cannot draw every
+   provider's icon from this hook alone. Decide whether the host serves its
+   vendored marks through the logo route, or exposes an icon component, before
+   telling plugins to delete their copies.
 
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
 

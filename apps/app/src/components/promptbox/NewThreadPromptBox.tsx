@@ -65,7 +65,7 @@ import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
-  isClaudePlanModePrompt,
+  isPlanModePrompt,
   permissionDisplayForPromptMode,
 } from "@bb/client-core";
 
@@ -361,20 +361,23 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   const isProjectlessPrompt = project?.value === null;
   const placeholder =
     placeholderOverride ?? getNewThreadPromptPlaceholder(isProjectlessPrompt);
+  const selectedProviderPlanModeCopy = execution.provider.options?.find(
+    (option) => option.value === execution.provider.selectedId,
+  )?.planModeCopy;
   const promptModeInput = useMemo(
     () => ({
-      providerId: execution.provider.selectedId,
+      planModeCopy: selectedProviderPlanModeCopy,
       value,
       mentionRanges,
     }),
-    [execution.provider.selectedId, mentionRanges, value],
+    [selectedProviderPlanModeCopy, mentionRanges, value],
   );
   const permissionDisplayOverride = useMemo(
     () => permissionDisplayForPromptMode(promptModeInput),
     [promptModeInput],
   );
   const permissionPickerDisabledByPlanMode =
-    isClaudePlanModePrompt(promptModeInput);
+    isPlanModePrompt(promptModeInput);
   const submitTitle = isSubmitting
     ? "Submitting..."
     : execution.model.isLoading

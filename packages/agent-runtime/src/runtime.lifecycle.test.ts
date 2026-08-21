@@ -317,12 +317,13 @@ describe("createAgentRuntime lifecycle", () => {
         instructions: "Initial instructions",
         options: {
           ...fullRuntimeOptions,
-          memoryEnabled: true,
           permissionMode: "auto",
           permissionScope: "workspace",
           approvalReviewer: "automatic",
           permissionEscalation: "ask",
-          providerSubagentsEnabled: true,
+          // The plugin-derived bag rides the command as-is; only the owning
+          // bridge reads its keys.
+          providerOptions: { memoryEnabled: true, providerSubagentsEnabled: true },
         },
       });
 
@@ -333,15 +334,17 @@ describe("createAgentRuntime lifecycle", () => {
         instructions: "Initial instructions",
         options: {
           ...fullRuntimeOptions,
-          memoryEnabled: false,
           model: "test-model-2",
           permissionMode: "auto",
           permissionScope: "workspace",
           approvalReviewer: "automatic",
           permissionEscalation: "deny",
-          providerSubagentsEnabled: false,
           reasoningLevel: "high",
-          workflowsEnabled: true,
+          providerOptions: {
+            memoryEnabled: false,
+            providerSubagentsEnabled: false,
+            workflowsEnabled: true,
+          },
         },
       });
 
@@ -354,7 +357,6 @@ describe("createAgentRuntime lifecycle", () => {
           providerOptions: {
             memoryEnabled: true,
             providerSubagentsEnabled: true,
-            workflowsEnabled: false,
           },
         },
       });

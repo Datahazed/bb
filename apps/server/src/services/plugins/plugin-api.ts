@@ -38,6 +38,7 @@ import type {
   PluginMentionSearchContext,
   PluginMentionTrigger,
   PluginProviderDeclaration,
+  PluginProviders,
   PluginRealtime,
   PluginRpc,
   PluginServerApi,
@@ -374,11 +375,10 @@ export function createPluginApi(options: {
    * registrations (this plugin's own previous-load entries are ignored:
    * they are disposed before the staged replacements flush at activate). */
   isProviderIdTaken: (providerId: string) => boolean;
-  /** Throws unless this plugin may register this provider id at all: the id
-   * is not reserved for another (first-party) plugin, and this load can
-   * actually execute it — a bridge artifact it built, or an id the daemon
-   * bundles a bridge for. A declaration with no implementation behind it
-   * would list a provider whose every turn dies on the host. */
+  /** Throws unless this plugin can actually execute this provider id — a
+   * bridge artifact it built, or an id the daemon bundles a bridge for. A
+   * declaration with no implementation behind it would list a provider whose
+   * every turn dies on the host. */
   assertProviderRegistrable: (providerId: string) => void;
 }): PluginApiHandle {
   const {
@@ -808,6 +808,47 @@ export function createPluginApi(options: {
   let agentConfigurationProvider: PluginAgentConfigurationProvider | null =
     null;
   let instructionProvider: PluginInstructionProvider | null = null;
+  function registerProviderDeclaration(
+    declaration: PluginProviderDeclaration,
+  ): { dispose(): void } {
+    assertLive();
+    // Shared host policy: the fake host validates identically.
+    const normalized = validatePluginProviderDeclaration(declaration);
+    assertProviderRegistrable(normalized.id);
+    if (providerRegistrations.has(normalized.id)) {
+      throw new Error(
+        `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
+      );
+    }
+    const entry = {
+      declaration: normalized,
+      disposer: null as { dispose(): void } | null,
+      disposed: false,
+    };
+    if (activated) {
+      // Live registration: the registry enforces collisions itself.
+      entry.disposer = registerProvider(normalized);
+    } else if (isProviderIdTaken(normalized.id)) {
+      // Staged registration: surface the collision at call time so it
+      // fails the factory (and therefore the plugin load) like every other
+      // registration error, instead of exploding after the load commits.
+      throw new Error(
+        `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
+      );
+    }
+    providerRegistrations.set(normalized.id, entry);
+    const dispose = (): void => {
+      if (entry.disposed) return;
+      entry.disposed = true;
+      entry.disposer?.dispose();
+      if (providerRegistrations.get(normalized.id) === entry) {
+        providerRegistrations.delete(normalized.id);
+      }
+    };
+    disposeHooks.push(dispose);
+    return { dispose };
+  }
+
   const agents: PluginAgents = {
     configure(provider) {
       assertLive();
@@ -834,42 +875,7 @@ export function createPluginApi(options: {
       instructionProvider = provider;
     },
     experimental_registerProvider(declaration) {
-      assertLive();
-      // Shared host policy: the fake host validates identically.
-      const normalized = validatePluginProviderDeclaration(declaration);
-      assertProviderRegistrable(normalized.id);
-      if (providerRegistrations.has(normalized.id)) {
-        throw new Error(
-          `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
-        );
-      }
-      const entry = {
-        declaration: normalized,
-        disposer: null as { dispose(): void } | null,
-        disposed: false,
-      };
-      if (activated) {
-        // Live registration: the registry enforces collisions itself.
-        entry.disposer = registerProvider(normalized);
-      } else if (isProviderIdTaken(normalized.id)) {
-        // Staged registration: surface the collision at call time so it
-        // fails the factory (and therefore the plugin load) like every other
-        // registration error, instead of exploding after the load commits.
-        throw new Error(
-          `Provider "${normalized.id}" is already registered; a plugin cannot shadow an existing provider.`,
-        );
-      }
-      providerRegistrations.set(normalized.id, entry);
-      const dispose = (): void => {
-        if (entry.disposed) return;
-        entry.disposed = true;
-        entry.disposer?.dispose();
-        if (providerRegistrations.get(normalized.id) === entry) {
-          providerRegistrations.delete(normalized.id);
-        }
-      };
-      disposeHooks.push(dispose);
-      return { dispose };
+      return registerProviderDeclaration(declaration);
     },
     registerTool(tool: {
       name: string;
@@ -1264,6 +1270,12 @@ export function createPluginApi(options: {
     },
   };
 
+  const providers: PluginProviders = {
+    register(declaration) {
+      return registerProviderDeclaration(declaration);
+    },
+  };
+
   const api: BbPluginApi = {
     pluginId,
     log,
@@ -1275,6 +1287,7 @@ export function createPluginApi(options: {
     background,
     cli,
     agents,
+    providers,
     ui,
     events,
     status,

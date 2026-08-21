@@ -290,11 +290,6 @@ function providerProcessEnvFromShellEnv(
   if (shellEnv.PATH) {
     env.PATH = shellEnv.PATH;
   }
-  // The Claude bridge resolves the CLI from its own process env; forward the
-  // documented override past the BB_* spawn sanitization.
-  if (shellEnv.BB_CLAUDE_CODE_EXECUTABLE) {
-    env.BB_CLAUDE_CODE_EXECUTABLE = shellEnv.BB_CLAUDE_CODE_EXECUTABLE;
-  }
   // Bridge record mode (docs/provider-bridge-protocol.md) rides the same
   // forward, from the daemon's own env rather than the shell env: the shell
   // env doubles as the agent's shell environment, and the variable must reach

@@ -54,7 +54,7 @@ import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
 import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import {
-  isClaudePlanModePrompt,
+  isPlanModePrompt,
   permissionDisplayForActivePromptMode,
   permissionDisplayForPromptMode,
   shouldDisablePermissionPickerForActivePromptMode,
@@ -592,23 +592,28 @@ function FollowUpPromptBoxWithComposer({
     ),
     [execution, executionControlsDisabled],
   );
+  const selectedProviderPlanModeCopy = execution.provider.options?.find(
+    (option) => option.value === execution.provider.selectedId,
+  )?.planModeCopy;
   const promptModeInput = useMemo(
     () => ({
-      providerId: execution.provider.selectedId,
+      planModeCopy: selectedProviderPlanModeCopy,
       value: composer.message,
       mentionRanges: composer.mentionRanges,
     }),
-    [composer.mentionRanges, composer.message, execution.provider.selectedId],
+    [composer.mentionRanges, composer.message, selectedProviderPlanModeCopy],
   );
   const permissionDisplayOverride = useMemo(
     () =>
-      permissionDisplayForActivePromptMode(activePromptMode) ??
-      permissionDisplayForPromptMode(promptModeInput),
-    [activePromptMode, promptModeInput],
+      permissionDisplayForActivePromptMode(
+        activePromptMode,
+        selectedProviderPlanModeCopy,
+      ) ?? permissionDisplayForPromptMode(promptModeInput),
+    [activePromptMode, promptModeInput, selectedProviderPlanModeCopy],
   );
   const permissionPickerDisabledByPlanMode =
     shouldDisablePermissionPickerForActivePromptMode(activePromptMode) ||
-    isClaudePlanModePrompt(promptModeInput);
+    isPlanModePrompt(promptModeInput);
   const permissionReadOnlyResolved =
     (permissionReadOnly ?? readOnly ?? false) || hasPendingInteraction;
   const permissionPickerDisabled =

@@ -31,7 +31,7 @@ export const fullRuntimeOptions = {
   model: "test-model",
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "full",
   permissionScope: "full",
   approvalReviewer: null,
@@ -142,6 +142,7 @@ export function createScriptedEchoLaunch(
         ? {}
         : { scripted: scriptToJson(options.scripted) }),
     },
+    envPassthrough: [],
   };
 }
 

@@ -144,10 +144,26 @@ export function createProviderForId(
         bridgeLaunch.pluginId,
         bridgeLaunch.dataDir,
       ],
-      ...(adapterOptions.bridgeNodeEnv !== undefined
-        ? { env: adapterOptions.bridgeNodeEnv }
-        : {}),
+      env: {
+        // The declared passthrough: the runtime strips every inherited
+        // `BB_*` variable from provider processes, so a bridge that honors an
+        // operator override names it and gets exactly that forwarded.
+        ...pickDeclaredEnv(process.env, bridgeLaunch.envPassthrough),
+        ...adapterOptions.bridgeNodeEnv,
+      },
     },
     ...buildPluginStaticProviderOptions(adapterOptions),
   });
+}
+
+function pickDeclaredEnv(
+  env: NodeJS.ProcessEnv,
+  names: readonly string[],
+): Record<string, string> {
+  const picked: Record<string, string> = {};
+  for (const name of names) {
+    const value = env[name];
+    if (value !== undefined && value !== "") picked[name] = value;
+  }
+  return picked;
 }

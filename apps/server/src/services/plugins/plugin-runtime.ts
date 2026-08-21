@@ -51,7 +51,10 @@ import {
 import { parsePluginSource } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import { buildPluginProviderRegistration } from "../providers/plugin-provider-registration.js";
-import { reservedProviderIdProblem } from "../providers/provider-registry.js";
+import type { ProviderInstallRank } from "../providers/provider-registry.js";
+import { BUNDLED_PLUGINS } from "./builtin-registry.js";
+import { readPluginSettingsValuesSync } from "./plugin-settings.js";
+import type { PluginSettingDescriptors } from "@get-bb/plugin-sdk";
 import {
   isPluginSdkRangeSatisfied,
   pluginSdkRangeProblem,
@@ -1276,10 +1279,28 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     for (const registration of registrations) registration.dispose();
   }
 
+  /**
+   * Where this plugin sits in install order: bundled plugins rank by their
+   * bundled position (they install first, at bootstrap), everything else by
+   * install time. This is the provider picker's order absent a user setting.
+   */
+  function providerInstallRank(row: InstalledPluginRow): ProviderInstallRank {
+    const name = row.sourceKind === "builtin" ? row.sourceBuiltinName : null;
+    const bundledIndex =
+      name === null
+        ? -1
+        : BUNDLED_PLUGINS.findIndex((plugin) => plugin.name === name);
+    return {
+      bundledIndex: bundledIndex === -1 ? null : bundledIndex,
+      installedAt: row.installedAt,
+    };
+  }
+
   function registerPluginProvider(args: {
     available: boolean;
     declaration: PluginProviderDeclaration;
     row: InstalledPluginRow;
+    settingsDescriptors: PluginSettingDescriptors;
   }): { dispose(): void } {
     if (!deps.providerRegistry) {
       throw new Error("the provider registry is unavailable in this host");
@@ -1293,15 +1314,23 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         available: args.available,
         pluginId: args.row.id,
         declaration: args.declaration,
+        readSettings: () =>
+          readPluginSettingsValuesSync({
+            db: deps.db,
+            pluginId: args.row.id,
+            descriptors: args.settingsDescriptors,
+          }),
       }),
       ...(icon === null ? {} : { icon }),
       pluginId: args.row.id,
+      installRank: providerInstallRank(args.row),
     });
   }
 
   function replaceUnavailableProviderRegistrations(
     row: InstalledPluginRow,
     declarations: readonly PluginProviderDeclaration[],
+    settingsDescriptors: PluginSettingDescriptors,
   ): void {
     disposeUnavailableProviderRegistrations(row.id);
     const registrations: Array<{ dispose(): void }> = [];
@@ -1312,6 +1341,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             available: false,
             declaration,
             row,
+            settingsDescriptors,
           }),
         );
       }
@@ -1410,6 +1440,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       row.id,
       manifest,
     );
+    const settingsDescriptorsRef: { current: PluginSettingDescriptors } = {
+      current: {},
+    };
     const handle = createPluginApi({
       pluginId: row.id,
       logger: deps.logger,
@@ -1487,19 +1520,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           available: true,
           declaration,
           row,
+          // Bound once the handle exists (below); registrations only flush
+          // at activate(), after the factory — and therefore after
+          // `bb.settings.define` — has run.
+          settingsDescriptors: settingsDescriptorsRef.current,
         });
       },
       assertProviderRegistrable: (providerId) => {
-        // Reserved first-party ids, checked at call time so a staged
-        // registration fails the factory (the registry enforces the same rule
-        // for live registrations).
-        const reserved = reservedProviderIdProblem({
-          pluginId: row.id,
-          providerId,
-        });
-        if (reserved !== null) {
-          throw new Error(reserved);
-        }
         // A declaration is metadata; the implementation is the bridge this
         // plugin declares in its manifest (or, for pi, the bridge the daemon
         // bundles). A failed artifact build still stages the declaration so
@@ -1526,6 +1553,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         return existing !== null && existing.source.pluginId !== row.id;
       },
     });
+    // `settings.define` mutates this record in place, so binding the
+    // reference once is enough for later per-command reads.
+    settingsDescriptorsRef.current = handle.settings.descriptors;
     // Mutable trees are edited between loads, so invalidate the previous
     // generation's URLs before importing (managed git:/npm: artifacts are
     // immutable after promotion and keep their cached modules).
@@ -1593,6 +1623,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         replaceUnavailableProviderRegistrations(
           row,
           handle.listProviderDeclarations(),
+          handle.settings.descriptors,
         );
       } catch (error) {
         hostArtifactProblem += `; failed to retain provider declaration: ${

@@ -10,7 +10,9 @@ import type {
   ClientTurnRequestId,
   DynamicTool,
   InstructionMode,
+  JsonObject,
   PromptInput,
+  PromptMode,
   ReasoningLevel,
   RuntimePermissionPolicy,
   RuntimeThreadExecutionOptions,
@@ -54,15 +56,13 @@ export type ProviderExecutionContext = {
   model?: string;
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
-  claudeCodePermissionMode?: "plan";
+  /** BB prompt mode, present only when the prompt entered one. */
+  promptMode?: PromptMode;
   /**
-   * Server-owned workflows policy. Filled explicitly at the server boundary
-   * and passed through required end-to-end; providers without the concept
-   * receive (and ignore) an explicit false.
+   * Plugin-derived, provider-scoped options from the server. Opaque here;
+   * merged over the bridge's static options onto the wire `providerOptions`.
    */
-  workflowsEnabled: boolean;
-  memoryEnabled?: boolean;
-  providerSubagentsEnabled?: boolean;
+  providerOptions: JsonObject;
   instructions?: string;
   envVars?: Record<string, string>;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
