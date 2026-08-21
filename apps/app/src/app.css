@@ -55,6 +55,19 @@
     overscroll-behavior-y: none;
   }
 
+  /*
+   * App chrome (sidebar, page headers, composer toolbars) opts out of text
+   * selection with `select-none` so drags and Select All only pick up
+   * content. `user-select: auto` resolves from the parent, so WebKit would
+   * carry that opt-out into editable controls inside those regions (the
+   * sidebar thread search, the inline thread-title rename) and refuse to
+   * select their text. Restore native selection on the controls themselves.
+   */
+  .select-none
+    :where(input, textarea, [contenteditable]:not([contenteditable="false"])) {
+    user-select: text;
+  }
+
   .chat-prompt-box {
     padding-bottom: 0.5rem;
   }

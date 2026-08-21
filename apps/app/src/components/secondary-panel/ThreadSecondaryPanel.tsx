@@ -146,7 +146,7 @@ export function getSecondaryPanelChromeStackClassName(
   hasGitDiffToolbar: boolean,
 ): string {
   return cn(
-    "shrink-0",
+    "shrink-0 select-none",
     hasGitDiffToolbar && "flex flex-col",
     SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
   );

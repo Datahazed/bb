@@ -1059,6 +1059,18 @@ describe("FollowUpPromptBox", () => {
     }
   });
 
+  it("keeps the status footer out of text selection", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    props.environmentSummary = <span>Local environment</span>;
+    render(<FollowUpPromptBox {...props} />);
+
+    const footer = document.querySelector("[data-follow-up-composer-footer]");
+    expect(footer?.classList.contains("select-none")).toBe(true);
+    expect(screen.getByText("Local environment").closest(".select-none")).toBe(
+      footer,
+    );
+  });
+
   it("keeps the full composer visible on desktop", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     props.environmentSummary = <span>Local environment</span>;
