@@ -115,6 +115,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   if (serverConfig.BB_DEV_APP_PORT !== undefined) {
     runtimeConfig.devAppPort = serverConfig.BB_DEV_APP_PORT;
   }
+  if (serverConfig.BB_SERVER_LAUNCH_ID !== undefined) {
+    runtimeConfig.launchId = serverConfig.BB_SERVER_LAUNCH_ID;
+  }
   const terminalSessions = new TerminalSessionLifecycle({
     config: runtimeConfig,
     db,
