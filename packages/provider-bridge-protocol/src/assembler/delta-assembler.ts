@@ -1,15 +1,16 @@
 /**
- * The runtime delta assembler.
+ * The delta assembler.
  *
- * One per bridge-protocol adapter: it consumes `thread/delta` notifications
+ * One per bridge-protocol adapter in the runtime (and one per conformance or
+ * calibration run in the testing kit): it consumes `thread/delta` notifications
  * (parsed semantic deltas from a bridge) and constructs every canonical
  * `ThreadEvent`. The bridge knows the dialect; this module knows the
  * timeline — it mints turn/item ids (entropy+serial, #1224 discipline held
  * centrally), correlates accepted input with the queue-until-turn-opens and
  * claim-if-idle terminal rules, synthesizes `item/started` for delta-first
  * streams, pairs item opens with closes (echoing started fields), diffs
- * cumulative command-output snapshots, accumulates token usage, settles
- * turns and items on session end, and coalesces streamed-text events per
+ * cumulative command-output snapshots, settles turns and items on session
+ * end, and coalesces streamed-text events per
  * flush window (`textDeltaFlushMs`, the same trailing-edge no-timer
  * discipline as the progress throttle) so chatty providers stop producing
  * one timeline event per token.
@@ -32,39 +33,38 @@ import type {
   ThreadEventItem,
   ThreadEventItemPresentation,
   ThreadEventItemStatus,
-  ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
+import type { BridgeGrammarVersions } from "../handshake.js";
 import type {
-  BridgeGrammarVersions,
   DeltaFileChange,
   DeltaItemKey,
   DeltaItemShape,
   DeltaNoTurnFallback,
+  DeltaTextChannel,
   ThreadDelta,
-} from "@bb/provider-bridge-protocol";
-import {
-  PROVIDER_BRIDGE_PROTOCOL_VERSION,
-  THREAD_DELTA_KEY_SEPARATOR,
-} from "@bb/provider-bridge-protocol";
+} from "../thread-delta.js";
+import { THREAD_DELTA_KEY_SEPARATOR } from "../thread-delta.js";
+import { THREAD_DELTA_GRAMMAR_V3 } from "../version.js";
 
 /**
  * The `thread/delta` grammar range this assembler speaks, reported to every
  * bridge in the `initialize` params so the two sides negotiate a version
- * (see `negotiateGrammarVersion` in the protocol). Stays `[2, 2]` while the
- * v3 shapes throw `UnsupportedDeltaShapeError` below; WS1a widens it to
- * `[2, 3]` when it implements them, and the same commit is what lets a
- * `[2, 3]` bridge start emitting v3.
+ * (see `negotiateGrammarVersion` in the protocol). `[3, 3]`: the v2 dialects
+ * (`message.*`, `usage.turn`/`usage.exact`) are deleted, so a bridge whose
+ * range lacks 3 — including one that predates `grammarVersions` and reads as
+ * `[2, 2]` — is refused at the handshake with a legible error instead of
+ * connecting to an assembler that would drop its every stream.
  */
 export const ASSEMBLER_GRAMMAR_VERSIONS: BridgeGrammarVersions = [
-  PROVIDER_BRIDGE_PROTOCOL_VERSION,
-  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
+  THREAD_DELTA_GRAMMAR_V3,
 ];
 import {
   buildEditDiff,
   toOptionalRecord,
   withParentToolCallId,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+} from "../bridge-kit/adapter-utils.js";
 
 declare const unstampedThreadIdBrand: unique symbol;
 
@@ -82,12 +82,12 @@ const UNSTAMPED_THREAD_ID = "" as UnstampedThreadId;
 // Cumulative-text diffing (absorbed from the pi bridge's diff-cumulative-text)
 // ---------------------------------------------------------------------------
 
-interface DiffCumulativeTextArgs {
+export interface DiffCumulativeTextArgs {
   nextText: string;
   previousText?: string;
 }
 
-interface DiffCumulativeTextResult {
+export interface DiffCumulativeTextResult {
   delta: string;
   nextText: string;
   reset: boolean;
@@ -128,13 +128,22 @@ const MAX_SETTLED_ITEM_KEYS = 512;
 
 interface OpenItemState {
   bbItemId: string;
+  key: DeltaItemKey;
   item: ThreadEventItem;
   /**
-   * Thread-attached items (backgroundTask) outlive turns by design: turn
-   * settlement never clears or completes them, and while one is open its
-   * thread is pinned against LRU eviction.
+   * Thread-attached items (backgroundTask, background delegation) outlive
+   * turns by design: turn settlement never clears or completes them, and
+   * while one is open its thread is pinned against LRU eviction.
    */
   threadAttached: boolean;
+  /**
+   * Accumulated stream text for text items (`item.textDelta`): the item's
+   * primary text (agentMessage/plan text, reasoning content) and, for
+   * reasoning, its summary. An `item.textClose` without a provider-final
+   * text settles from these.
+   */
+  text: string;
+  summaryText: string;
 }
 
 /** A throttled progress emission awaiting its trailing-edge flush. */
@@ -195,21 +204,12 @@ interface EventSink {
   push(...newEvents: ThreadEvent[]): void;
 }
 
-interface OpenStreamState {
-  bbItemId: string;
-  channel: "assistant" | "reasoning";
-  parentToolCallId: string | undefined;
-  text: string;
-}
-
 interface ThreadAssemblyState {
   currentTurnId: string | undefined;
   lastTurnId: string | undefined;
   pendingAccepted: ClientTurnRequestId[];
   /** Open (started, unsettled) items keyed by their provider join key. */
   openItemsByKey: Map<string, OpenItemState>;
-  /** Open message streams keyed by parentRef/channel/streamKey. */
-  openStreamsByKey: Map<string, OpenStreamState>;
   /** Last cumulative command-output snapshot per item key. */
   commandSnapshotsByKey: Map<string, string>;
   /** Both-way provider↔bb item id maps for command-plane reverse lookup. */
@@ -226,7 +226,6 @@ interface ThreadAssemblyState {
    * families like acp fs-writes legitimately close the same key repeatedly).
    */
   settledItemKeys: Set<string>;
-  cumulativeTokens: ThreadEventTokenUsageBreakdown;
   /**
    * Central progress throttling (one emission per item key per policy
    * interval): last emission time per key — seeded by `item.open`, so a
@@ -245,7 +244,7 @@ interface ThreadAssemblyState {
   pendingTextByStream: Map<string, PendingTextState>;
 }
 
-interface CreateDeltaAssemblerOptions {
+export interface CreateDeltaAssemblerOptions {
   /** Provider id stamped onto provider/unhandled events. */
   providerId: string;
   /**
@@ -278,7 +277,7 @@ interface CreateDeltaAssemblerOptions {
   now?: () => number;
 }
 
-interface AssembleDeltasArgs {
+export interface AssembleDeltasArgs {
   threadId: string;
   deltas: readonly ThreadDelta[];
 }
@@ -310,35 +309,6 @@ function itemKeyString(key: DeltaItemKey): string {
     key.channel ?? "",
     key.parentRef ?? "",
   ].join(SEP);
-}
-
-function streamKeyString(args: {
-  channel: string;
-  parentRef: string | undefined;
-  streamKey: string | undefined;
-}): string {
-  return [
-    args.parentRef ?? "root",
-    args.channel,
-    args.streamKey ?? args.channel,
-  ].join(SEP);
-}
-
-/**
- * Grammar v3 item shapes (`fileRead`, `search`, `delegation`, `planSteps`,
- * `extension`) are accepted by the protocol schema so v3 bridges validate,
- * but this assembler does not build their canonical items yet. WS1a (generic
- * assembler) implements them; until then a bridge that emits one fails loudly
- * here instead of silently dropping or mis-shaping the item. Every existing
- * v2 stream is untouched — no shipped bridge emits these shapes.
- */
-export class UnsupportedDeltaShapeError extends Error {
-  constructor(shapeType: string, site: string) {
-    super(
-      `thread/delta item shape "${shapeType}" is not assembled yet (${site}): grammar v3 shapes are accepted by the protocol but implemented by WS1a`,
-    );
-    this.name = "UnsupportedDeltaShapeError";
-  }
 }
 
 /**
@@ -411,20 +381,12 @@ export function createDeltaAssembler(
       lastTurnId: undefined,
       pendingAccepted: [],
       openItemsByKey: new Map(),
-      openStreamsByKey: new Map(),
       commandSnapshotsByKey: new Map(),
       bbItemIdByProviderItemId: new Map(),
       providerItemIdByBbItemId: new Map(),
       bbTurnIdByProviderTurnId: new Map(),
       providerTurnIdByBbTurnId: new Map(),
       settledItemKeys: new Set(),
-      cumulativeTokens: {
-        totalTokens: 0,
-        inputTokens: 0,
-        cachedInputTokens: 0,
-        outputTokens: 0,
-        reasoningOutputTokens: 0,
-      },
       progressLastEmitByKey: new Map(),
       pendingProgressByKey: new Map(),
       textLastEmitByStream: new Map(),
@@ -702,7 +664,6 @@ export function createDeltaAssembler(
         state.pendingProgressByKey.delete(key);
       }
     }
-    state.openStreamsByKey.clear();
     state.commandSnapshotsByKey.clear();
   }
 
@@ -754,15 +715,15 @@ export function createDeltaAssembler(
       case "webFetch":
       case "imageView":
       case "backgroundTask":
-        return item.type === shape.type;
-      // Unsupported until WS1a (generic assembler): see
-      // UnsupportedDeltaShapeError.
       case "fileRead":
       case "search":
       case "delegation":
       case "planSteps":
+        return item.type === shape.type;
       case "extension":
-        throw new UnsupportedDeltaShapeError(shape.type, "shapeMatchesItem");
+        // Two extension kinds are two classifications: a close that names a
+        // different kind than the open settles both (dual-settle).
+        return item.type === "extension" && item.kind === shape.kind;
     }
   }
 
@@ -801,10 +762,184 @@ export function createDeltaAssembler(
     );
   }
 
+  /**
+   * Grammar v3 status-bearing core kinds. One builder per kind serves open
+   * (`status: "pending"`), close (the terminal status) and close-echo: the
+   * shape carries every field but the status, exactly like `command`.
+   */
+  function buildFileReadItem(
+    bbItemId: string,
+    shape: Extract<DeltaItemShape, { type: "fileRead" }>,
+    status: ThreadEventItemStatus,
+    parentToolCallId: string | undefined,
+  ): Extract<ThreadEventItem, { type: "fileRead" }> {
+    return withParentToolCallId(
+      {
+        type: "fileRead",
+        id: bbItemId,
+        path: shape.path,
+        ...(shape.cmd === undefined ? {} : { cmd: shape.cmd }),
+        status,
+      },
+      parentToolCallId,
+    );
+  }
+
+  function buildSearchItem(
+    bbItemId: string,
+    shape: Extract<DeltaItemShape, { type: "search" }>,
+    status: ThreadEventItemStatus,
+    parentToolCallId: string | undefined,
+  ): Extract<ThreadEventItem, { type: "search" }> {
+    return withParentToolCallId(
+      {
+        type: "search",
+        id: bbItemId,
+        mode: shape.mode,
+        query: shape.query,
+        ...(shape.path === undefined ? {} : { path: shape.path }),
+        ...(shape.cmd === undefined ? {} : { cmd: shape.cmd }),
+        status,
+      },
+      parentToolCallId,
+    );
+  }
+
+  /**
+   * A delegation's `summary` is the child's terminal summary: the close's
+   * shape carries it, and a close without one keeps what the open (or the
+   * last progress snapshot) said, so a bare terminal snapshot never erases
+   * the summary a provider reported earlier.
+   */
+  function buildDelegationItem(
+    bbItemId: string,
+    shape: Extract<DeltaItemShape, { type: "delegation" }>,
+    status: ThreadEventItemStatus,
+    parentToolCallId: string | undefined,
+    fallbackSummary?: string,
+  ): Extract<ThreadEventItem, { type: "delegation" }> {
+    const summary = shape.summary ?? fallbackSummary;
+    return withParentToolCallId(
+      {
+        type: "delegation",
+        id: bbItemId,
+        childRef: shape.childRef,
+        label: shape.label,
+        status,
+        background: shape.background,
+        ...(summary === undefined ? {} : { summary }),
+      },
+      parentToolCallId,
+    );
+  }
+
+  /**
+   * A plugin-defined item: opaque payload plus the mandatory presentation the
+   * lifecycle delta carries (an extension item has no core renderer, so the
+   * declarative base is the whole row). The server validates the payload
+   * against the plugin's declared schema at ingest.
+   */
+  function buildExtensionItem(
+    bbItemId: string,
+    shape: Extract<DeltaItemShape, { type: "extension" }>,
+    status: ThreadEventItemStatus,
+    parentToolCallId: string | undefined,
+    presentation: ThreadEventItemPresentation | undefined,
+  ): Extract<ThreadEventItem, { type: "extension" }> {
+    if (presentation === undefined) {
+      // Unreachable for a parsed delta: the protocol schema refuses an
+      // `item.open`/`item.close` whose shape is `extension` and that carries
+      // no presentation (requireExtensionPresentation). Stated here because
+      // the TypeScript delta type does not encode that refinement.
+      throw new Error(
+        `extension item "${shape.kind}" reached the assembler without a presentation`,
+      );
+    }
+    return withParentToolCallId(
+      {
+        type: "extension",
+        id: bbItemId,
+        kind: shape.kind,
+        payload: shape.payload,
+        status,
+        presentation,
+      },
+      parentToolCallId,
+    );
+  }
+
+  function buildPlanStepsItem(
+    bbItemId: string,
+    shape: Extract<DeltaItemShape, { type: "planSteps" }>,
+    status: ThreadEventItemStatus,
+    parentToolCallId: string | undefined,
+  ): Extract<ThreadEventItem, { type: "planSteps" }> {
+    return withParentToolCallId(
+      {
+        type: "planSteps",
+        id: bbItemId,
+        steps: shape.steps,
+        ...(shape.explanation === undefined
+          ? {}
+          : { explanation: shape.explanation }),
+        status,
+      },
+      parentToolCallId,
+    );
+  }
+
+  /**
+   * Work that outlives its turn: background tasks, and delegations the bridge
+   * marked `background`. Their progress and terminal state ride the
+   * thread-scoped `item/<kind>/progress|completed` events, and turn
+   * settlement never clears or completes them.
+   */
+  function isThreadAttachedShape(shape: DeltaItemShape): boolean {
+    switch (shape.type) {
+      case "backgroundTask":
+        return true;
+      case "delegation":
+        return shape.background;
+      case "command":
+      case "fileChange":
+      case "tool":
+      case "compaction":
+      case "agentMessage":
+      case "reasoning":
+      case "plan":
+      case "webSearch":
+      case "webFetch":
+      case "imageView":
+      case "fileRead":
+      case "search":
+      case "planSteps":
+      case "extension":
+        return false;
+    }
+  }
+
+  /**
+   * The opened (pending) canonical item for a shape. `presentation` is the
+   * lifecycle delta's (grammar v3): persisted on every kind that carries one,
+   * required for `extension`, absent on v2 traffic.
+   */
   function buildOpenedItem(
     bbItemId: string,
     shape: DeltaItemShape,
     parentToolCallId: string | undefined,
+    presentation: ThreadEventItemPresentation | undefined,
+  ): ThreadEventItem {
+    return withPresentation(
+      buildOpenedItemShape(bbItemId, shape, parentToolCallId, presentation),
+      presentation,
+    );
+  }
+
+  function buildOpenedItemShape(
+    bbItemId: string,
+    shape: DeltaItemShape,
+    parentToolCallId: string | undefined,
+    presentation: ThreadEventItemPresentation | undefined,
   ): ThreadEventItem {
     switch (shape.type) {
       case "command":
@@ -912,14 +1047,27 @@ export function createDeltaAssembler(
         );
       case "backgroundTask":
         return buildBackgroundTaskItem(bbItemId, shape, parentToolCallId);
-      // Unsupported until WS1a (generic assembler): see
-      // UnsupportedDeltaShapeError.
       case "fileRead":
+        return buildFileReadItem(bbItemId, shape, "pending", parentToolCallId);
       case "search":
+        return buildSearchItem(bbItemId, shape, "pending", parentToolCallId);
       case "delegation":
+        return buildDelegationItem(
+          bbItemId,
+          shape,
+          "pending",
+          parentToolCallId,
+        );
       case "planSteps":
+        return buildPlanStepsItem(bbItemId, shape, "pending", parentToolCallId);
       case "extension":
-        throw new UnsupportedDeltaShapeError(shape.type, "buildOpenedItem");
+        return buildExtensionItem(
+          bbItemId,
+          shape,
+          "pending",
+          parentToolCallId,
+          presentation,
+        );
     }
   }
 
@@ -929,6 +1077,8 @@ export function createDeltaAssembler(
     resultText?: string;
     approvalStatus?: "denied";
     status: ThreadEventItemStatus;
+    /** The opened delegation's last known summary (close-echo fallback). */
+    delegationSummary?: string;
   }
 
   /** Close-echo: started-item fields survive onto the completed item. */
@@ -989,18 +1139,58 @@ export function createDeltaAssembler(
           { type: "contextCompaction", id: started.id },
           parent,
         );
+      case "fileRead":
+        return buildFileReadItem(started.id, started, close.status, parent);
+      case "search":
+        return buildSearchItem(started.id, started, close.status, parent);
+      case "delegation":
+        return buildDelegationItem(started.id, started, close.status, parent);
+      case "planSteps":
+        return buildPlanStepsItem(started.id, started, close.status, parent);
+      case "extension":
+        return buildExtensionItem(
+          started.id,
+          started,
+          close.status,
+          parent,
+          started.presentation,
+        );
       default:
         // Message-ish started items never travel item.close; settle generically.
         return started;
     }
   }
 
-  /** Build the completed item from the close delta's terminal shape. */
+  /**
+   * Build the completed item from the close delta's terminal shape.
+   * `presentation` is the close-echo result (the close's own, else the opened
+   * item's); required for `extension`.
+   */
   function buildClosedItemFromShape(
     bbItemId: string,
     shape: DeltaItemShape,
     close: CloseFields,
     parentToolCallId: string | undefined,
+    presentation: ThreadEventItemPresentation | undefined,
+  ): ThreadEventItem {
+    return withPresentation(
+      buildClosedItemShape(
+        bbItemId,
+        shape,
+        close,
+        parentToolCallId,
+        presentation,
+      ),
+      presentation,
+    );
+  }
+
+  function buildClosedItemShape(
+    bbItemId: string,
+    shape: DeltaItemShape,
+    close: CloseFields,
+    parentToolCallId: string | undefined,
+    presentation: ThreadEventItemPresentation | undefined,
   ): ThreadEventItem {
     switch (shape.type) {
       case "command": {
@@ -1085,22 +1275,48 @@ export function createDeltaAssembler(
         );
       case "backgroundTask":
         return buildBackgroundTaskItem(bbItemId, shape, parentToolCallId);
+      case "fileRead":
+        return buildFileReadItem(
+          bbItemId,
+          shape,
+          close.status,
+          parentToolCallId,
+        );
+      case "search":
+        return buildSearchItem(bbItemId, shape, close.status, parentToolCallId);
+      case "delegation":
+        return buildDelegationItem(
+          bbItemId,
+          shape,
+          close.status,
+          parentToolCallId,
+          close.delegationSummary,
+        );
+      case "planSteps":
+        return buildPlanStepsItem(
+          bbItemId,
+          shape,
+          close.status,
+          parentToolCallId,
+        );
+      case "extension":
+        return buildExtensionItem(
+          bbItemId,
+          shape,
+          close.status,
+          parentToolCallId,
+          presentation,
+        );
       case "agentMessage":
       case "reasoning":
       case "plan":
       case "imageView":
         // Status-less canonical items: the terminal shape is the whole item.
-        return buildOpenedItem(bbItemId, shape, parentToolCallId);
-      // Unsupported until WS1a (generic assembler): see
-      // UnsupportedDeltaShapeError.
-      case "fileRead":
-      case "search":
-      case "delegation":
-      case "planSteps":
-      case "extension":
-        throw new UnsupportedDeltaShapeError(
-          shape.type,
-          "buildClosedItemFromShape",
+        return buildOpenedItemShape(
+          bbItemId,
+          shape,
+          parentToolCallId,
+          presentation,
         );
     }
   }
@@ -1137,15 +1353,107 @@ export function createDeltaAssembler(
     });
   }
 
+  /**
+   * A tool call ends the assistant text in its scope: anonymous (channel-
+   * keyed) agentMessage items under the same parentRef are released so later
+   * text mints a fresh item instead of appending to pre-tool content. Items
+   * the provider named by id (codex) keep their own lifecycle — the provider
+   * closes them itself.
+   */
   function detachAssistantStreams(
     state: ThreadAssemblyState,
     parentRef: string | undefined,
   ): void {
-    const prefix = `${parentRef ?? "root"}${SEP}assistant${SEP}`;
-    for (const key of [...state.openStreamsByKey.keys()]) {
-      if (key.startsWith(prefix)) {
-        state.openStreamsByKey.delete(key);
+    for (const [keyStr, open] of [...state.openItemsByKey]) {
+      if (
+        open.key.providerItemId === undefined &&
+        open.item.type === "agentMessage" &&
+        open.key.parentRef === parentRef
+      ) {
+        state.openItemsByKey.delete(keyStr);
       }
+    }
+  }
+
+  /**
+   * The settled form of a streamed text item from what the stream carried:
+   * the accumulated text (or a provider-final one) on the item's text field,
+   * a reasoning item's summary and content each from their own channel.
+   */
+  function settleTextItem(
+    open: OpenItemState,
+    finalText: string | undefined,
+    channel: DeltaTextChannel | undefined,
+  ): ThreadEventItem | undefined {
+    const text =
+      channel === "reasoningSummary" ? open.text : (finalText ?? open.text);
+    const summaryText =
+      channel === "reasoningSummary"
+        ? (finalText ?? open.summaryText)
+        : open.summaryText;
+    switch (open.item.type) {
+      case "agentMessage":
+        return withPresentation(
+          withParentToolCallId(
+            { type: "agentMessage", id: open.bbItemId, text },
+            open.item.parentToolCallId,
+          ),
+          open.item.presentation,
+        );
+      case "plan":
+        return withPresentation(
+          withParentToolCallId(
+            { type: "plan", id: open.bbItemId, text },
+            open.item.parentToolCallId,
+          ),
+          open.item.presentation,
+        );
+      case "reasoning":
+        return withPresentation(
+          withParentToolCallId(
+            {
+              type: "reasoning",
+              id: open.bbItemId,
+              summary: summaryText.length === 0 ? [] : [summaryText],
+              content: text.length === 0 ? [] : [text],
+            },
+            open.item.parentToolCallId,
+          ),
+          open.item.presentation,
+        );
+      default:
+        return undefined;
+    }
+  }
+
+  /** The empty text item a bare `item.textClose` mints for its channel. */
+  function buildTextItemForChannel(
+    bbItemId: string,
+    channel: DeltaTextChannel,
+    text: string,
+    parentToolCallId: string | undefined,
+  ): ThreadEventItem {
+    switch (channel) {
+      case "agentMessage":
+        return withParentToolCallId(
+          { type: "agentMessage", id: bbItemId, text },
+          parentToolCallId,
+        );
+      case "plan":
+        return withParentToolCallId(
+          { type: "plan", id: bbItemId, text },
+          parentToolCallId,
+        );
+      case "reasoningText":
+        return withParentToolCallId(
+          { type: "reasoning", id: bbItemId, summary: [], content: [text] },
+          parentToolCallId,
+        );
+      case "reasoningSummary":
+        return withParentToolCallId(
+          { type: "reasoning", id: bbItemId, summary: [text], content: [] },
+          parentToolCallId,
+        );
     }
   }
 
@@ -1277,14 +1585,19 @@ export function createDeltaAssembler(
           registerItemId(state, delta.key.providerItemId, bbItemId);
         }
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
-        const item = withPresentation(
-          buildOpenedItem(bbItemId, delta.item, parentToolCallId),
+        const item = buildOpenedItem(
+          bbItemId,
+          delta.item,
+          parentToolCallId,
           delta.presentation,
         );
         state.openItemsByKey.set(keyStr, {
           bbItemId,
+          key: delta.key,
           item,
-          threadAttached: delta.item.type === "backgroundTask",
+          threadAttached: isThreadAttachedShape(delta.item),
+          text: "",
+          summaryText: "",
         });
         // The open seeds the progress throttle window: a provider's first
         // progress right after the open is already inside the interval.
@@ -1300,10 +1613,11 @@ export function createDeltaAssembler(
       }
 
       case "item.close": {
-        // A background-task close is structurally thread-scoped
-        // (item/backgroundTask/completed) and needs no open turn — terminal
-        // task state can arrive turns after the spawning turn settled.
-        const threadScoped = delta.item.type === "backgroundTask";
+        // A background-task or background-delegation close is structurally
+        // thread-scoped (item/backgroundTask/completed,
+        // item/delegation/completed) and needs no open turn — terminal state
+        // can arrive turns after the spawning turn settled.
+        const threadScoped = isThreadAttachedShape(delta.item);
         const turnId = threadScoped
           ? undefined
           : delta.providerTurnId !== undefined
@@ -1331,6 +1645,8 @@ export function createDeltaAssembler(
         }
         const open = state.openItemsByKey.get(keyStr);
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
+        const openDelegationSummary =
+          open?.item.type === "delegation" ? open.item.summary : undefined;
         const closeFields: CloseFields = {
           status: delta.status,
           ...(delta.resultText === undefined
@@ -1343,6 +1659,9 @@ export function createDeltaAssembler(
           ...(delta.approvalStatus === undefined
             ? {}
             : { approvalStatus: delta.approvalStatus }),
+          ...(openDelegationSummary === undefined
+            ? {}
+            : { delegationSummary: openDelegationSummary }),
         };
         // Uniform close rule: the delta's `item` is ALWAYS the full terminal
         // shape and the completed item is built from it. An open item under
@@ -1377,13 +1696,11 @@ export function createDeltaAssembler(
         // Close-echo for presentation: the close's value wins; when the close
         // carries none the opened item's survives onto the completed item.
         const presentation = delta.presentation ?? presentationOf(open?.item);
-        const item = withPresentation(
-          buildClosedItemFromShape(
-            bbItemId,
-            delta.item,
-            closeFields,
-            parentToolCallId ?? open?.item.parentToolCallId,
-          ),
+        const item = buildClosedItemFromShape(
+          bbItemId,
+          delta.item,
+          closeFields,
+          parentToolCallId ?? open?.item.parentToolCallId,
           presentation,
         );
         state.openItemsByKey.delete(keyStr);
@@ -1395,20 +1712,25 @@ export function createDeltaAssembler(
         if (delta.key.providerItemId !== undefined) {
           rememberSettledKey(state, keyStr);
         }
-        if (delta.item.type === "backgroundTask") {
+        // Thread-attached work settles on its own thread-scoped terminal
+        // event; `item` is already the full terminal item for it.
+        if (item.type === "backgroundTask") {
           events.push({
             type: "item/backgroundTask/completed",
             threadId: UNSTAMPED_THREAD_ID,
             providerThreadId: "",
             scope: threadScope(),
-            item: withPresentation(
-              buildBackgroundTaskItem(
-                bbItemId,
-                delta.item,
-                parentToolCallId ?? open?.item.parentToolCallId,
-              ),
-              presentation,
-            ),
+            item,
+          });
+          return;
+        }
+        if (item.type === "delegation" && item.background) {
+          events.push({
+            type: "item/delegation/completed",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: threadScope(),
+            item,
           });
           return;
         }
@@ -1459,14 +1781,29 @@ export function createDeltaAssembler(
         const parentToolCallId = mapParentRef(state, delta.key.parentRef);
         let event: ThreadEvent;
         if (delta.snapshot?.type === "delegation") {
-          // Unsupported until WS1a: a background-delegation snapshot becomes
-          // `item/delegation/progress` once the generic assembler lands.
-          throw new UnsupportedDeltaShapeError(
-            delta.snapshot.type,
-            "item.progress snapshot",
-          );
-        }
-        if (delta.snapshot !== undefined) {
+          // A background-delegation snapshot is structurally thread-scoped
+          // (item/delegation/progress) like a background task's; the child
+          // is still running, so the item stays pending and keeps the last
+          // summary the provider reported.
+          event = {
+            type: "item/delegation/progress",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: threadScope(),
+            item: withPresentation(
+              buildDelegationItem(
+                bbItemId,
+                delta.snapshot,
+                "pending",
+                parentToolCallId ?? open?.item.parentToolCallId,
+                open?.item.type === "delegation"
+                  ? open.item.summary
+                  : undefined,
+              ),
+              presentationOf(open?.item),
+            ),
+          };
+        } else if (delta.snapshot !== undefined) {
           // Background-task snapshot progress is structurally thread-scoped by
           // the domain grammar; it needs no open turn.
           event = {
@@ -1560,11 +1897,19 @@ export function createDeltaAssembler(
               : delta.channel === "plan"
                 ? { type: "plan", text: "" }
                 : { type: "reasoning", summary: [], content: [] };
-          const item = buildOpenedItem(bbItemId, shape, parentToolCallId);
+          const item = buildOpenedItem(
+            bbItemId,
+            shape,
+            parentToolCallId,
+            undefined,
+          );
           state.openItemsByKey.set(keyStr, {
             bbItemId,
+            key: delta.key,
             item,
             threadAttached: false,
+            text: "",
+            summaryText: "",
           });
           events.push({
             type: "item/started",
@@ -1573,6 +1918,14 @@ export function createDeltaAssembler(
             scope: turnScope(turnId),
             item,
           });
+        }
+        const openText = state.openItemsByKey.get(keyStr);
+        if (openText !== undefined) {
+          if (delta.channel === "reasoningSummary") {
+            openText.summaryText += delta.text;
+          } else {
+            openText.text += delta.text;
+          }
         }
         const type =
           delta.channel === "agentMessage"
@@ -1590,6 +1943,84 @@ export function createDeltaAssembler(
           itemId: bbItemId,
           delta: delta.text,
           ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
+        });
+        return;
+      }
+
+      case "item.textClose": {
+        const turnId =
+          delta.providerTurnId !== undefined
+            ? resolveVouchedTurnId(state, delta.providerTurnId)
+            : state.currentTurnId;
+        if (turnId === undefined) {
+          pushNoTurnFallback(
+            state,
+            delta.noTurnFallback,
+            delta.key.parentRef,
+            events,
+          );
+          return;
+        }
+        const keyStr = itemKeyString(delta.key);
+        if (
+          delta.key.providerItemId !== undefined &&
+          state.settledItemKeys.has(keyStr)
+        ) {
+          // A repeated close for a settled provider id is a retry (the
+          // item.close dedup rule, held for text closes too).
+          return;
+        }
+        const open = state.openItemsByKey.get(keyStr);
+        // Settling always releases the key: later text mints a fresh item
+        // even when the settle emits nothing (whitespace-only accumulation).
+        state.openItemsByKey.delete(keyStr);
+        const accumulated =
+          open === undefined
+            ? undefined
+            : delta.channel === "reasoningSummary"
+              ? open.summaryText
+              : open.text;
+        const finalText = delta.text ?? accumulated;
+        if (finalText === undefined || finalText.length === 0) {
+          return;
+        }
+        // Empty-after-trim suppression for accumulated settles (the ACP
+        // translators' rule, held centrally): a stream that only ever
+        // received whitespace completes no item. Provider-final text is
+        // emitted as given.
+        if (delta.text === undefined && finalText.trim().length === 0) {
+          return;
+        }
+        const parentToolCallId = mapParentRef(state, delta.key.parentRef);
+        let item: ThreadEventItem | undefined =
+          open === undefined
+            ? undefined
+            : settleTextItem(open, delta.text, delta.channel);
+        let bbItemId = open?.bbItemId;
+        if (item === undefined) {
+          bbItemId =
+            bbItemId ??
+            (delta.key.providerItemId !== undefined
+              ? state.bbItemIdByProviderItemId.get(delta.key.providerItemId)
+              : undefined) ??
+            mintItemId();
+          item = buildTextItemForChannel(
+            bbItemId,
+            delta.channel,
+            finalText,
+            parentToolCallId ?? open?.item.parentToolCallId,
+          );
+        }
+        if (delta.key.providerItemId !== undefined && bbItemId !== undefined) {
+          registerItemId(state, delta.key.providerItemId, bbItemId);
+          rememberSettledKey(state, keyStr);
+        }
+        events.push({
+          type: "item/completed",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: turnScope(turnId),
+          item,
         });
         return;
       }
@@ -1639,114 +2070,6 @@ export function createDeltaAssembler(
         return;
       }
 
-      case "message.delta": {
-        const turnId = state.currentTurnId;
-        if (turnId === undefined) {
-          pushNoTurnFallback(
-            state,
-            delta.noTurnFallback,
-            delta.parentRef,
-            events,
-          );
-          return;
-        }
-        const streamKey = streamKeyString({
-          channel: delta.channel,
-          parentRef: delta.parentRef,
-          streamKey: delta.streamKey,
-        });
-        const parentToolCallId = mapParentRef(state, delta.parentRef);
-        let stream = state.openStreamsByKey.get(streamKey);
-        if (stream === undefined) {
-          const bbItemId = mintItemId();
-          stream = {
-            bbItemId,
-            channel: delta.channel,
-            parentToolCallId,
-            text: "",
-          };
-          state.openStreamsByKey.set(streamKey, stream);
-          const item: ThreadEventItem =
-            delta.channel === "assistant"
-              ? { type: "agentMessage", id: bbItemId, text: "" }
-              : { type: "reasoning", id: bbItemId, summary: [], content: [] };
-          events.push({
-            type: "item/started",
-            threadId: UNSTAMPED_THREAD_ID,
-            providerThreadId: "",
-            scope: turnScope(turnId),
-            item: withParentToolCallId(item, parentToolCallId),
-          });
-        }
-        stream.text += delta.text;
-        events.push({
-          type:
-            delta.channel === "assistant"
-              ? "item/agentMessage/delta"
-              : "item/reasoning/textDelta",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: turnScope(turnId),
-          itemId: stream.bbItemId,
-          delta: delta.text,
-          ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
-        });
-        return;
-      }
-
-      case "message.close": {
-        const streamKey = streamKeyString({
-          channel: delta.channel,
-          parentRef: delta.parentRef,
-          streamKey: delta.streamKey,
-        });
-        const stream = state.openStreamsByKey.get(streamKey);
-        const turnId = state.currentTurnId;
-        if (turnId === undefined) {
-          pushNoTurnFallback(
-            state,
-            delta.noTurnFallback,
-            delta.parentRef,
-            events,
-          );
-          return;
-        }
-        // Settling always releases the stream: later text mints a fresh item
-        // even when the settle emits nothing (whitespace-only accumulation).
-        state.openStreamsByKey.delete(streamKey);
-        const finalText = delta.text ?? stream?.text;
-        if (finalText === undefined || finalText.length === 0) {
-          return;
-        }
-        // Empty-after-trim suppression for accumulated settles (the ACP
-        // translators' rule, held centrally): a stream that only ever
-        // received whitespace completes no item. Provider-final text is
-        // emitted as given.
-        if (delta.text === undefined && finalText.trim().length === 0) {
-          return;
-        }
-        const bbItemId = stream?.bbItemId ?? mintItemId();
-        const parentToolCallId =
-          stream?.parentToolCallId ?? mapParentRef(state, delta.parentRef);
-        const item: ThreadEventItem =
-          delta.channel === "assistant"
-            ? { type: "agentMessage", id: bbItemId, text: finalText }
-            : {
-                type: "reasoning",
-                id: bbItemId,
-                summary: [],
-                content: [finalText],
-              };
-        events.push({
-          type: "item/completed",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: turnScope(turnId),
-          item: withParentToolCallId(item, parentToolCallId),
-        });
-        return;
-      }
-
       case "command.outputSnapshot": {
         if (state.currentTurnId === undefined) {
           pushNoTurnFallback(
@@ -1784,35 +2107,9 @@ export function createDeltaAssembler(
         return;
       }
 
-      case "usage.turn": {
-        const turnId = currentOrLastTurnId(state);
-        if (turnId === undefined) {
-          return;
-        }
-        state.cumulativeTokens.totalTokens += delta.tokens.totalTokens;
-        state.cumulativeTokens.inputTokens += delta.tokens.inputTokens;
-        state.cumulativeTokens.cachedInputTokens +=
-          delta.tokens.cachedInputTokens;
-        state.cumulativeTokens.outputTokens += delta.tokens.outputTokens;
-        state.cumulativeTokens.reasoningOutputTokens +=
-          delta.tokens.reasoningOutputTokens;
-        events.push({
-          type: "thread/tokenUsage/updated",
-          threadId: UNSTAMPED_THREAD_ID,
-          providerThreadId: "",
-          scope: turnScope(turnId),
-          tokenUsage: {
-            total: { ...state.cumulativeTokens },
-            last: { ...delta.tokens },
-            modelContextWindow: delta.modelContextWindow ?? null,
-          },
-        });
-        return;
-      }
-
-      case "usage.exact": {
-        // The provider accumulates its own totals: fan the snapshot out
-        // verbatim to both usage events (codex's tokenUsage handling).
+      case "usage": {
+        // The provider (or its bridge) owns the totals: forward verbatim to
+        // the vouched turn, else the turn that is open or just closed.
         const turnId =
           delta.providerTurnId !== undefined
             ? resolveVouchedTurnId(state, delta.providerTurnId)
@@ -1820,38 +2117,27 @@ export function createDeltaAssembler(
         if (turnId === undefined) {
           return;
         }
-        events.push(
-          {
-            type: "thread/tokenUsage/updated",
-            threadId: UNSTAMPED_THREAD_ID,
-            providerThreadId: "",
-            scope: turnScope(turnId),
-            tokenUsage: {
-              total: { ...delta.total },
-              last: { ...delta.last },
-              modelContextWindow: delta.modelContextWindow,
-            },
+        events.push({
+          type: "thread/tokenUsage/updated",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: turnScope(turnId),
+          tokenUsage: {
+            total: { ...delta.total },
+            last: { ...delta.last },
+            modelContextWindow: delta.modelContextWindow,
           },
-          {
-            type: "thread/contextWindowUsage/updated",
-            threadId: UNSTAMPED_THREAD_ID,
-            providerThreadId: "",
-            scope: turnScope(turnId),
-            contextWindowUsage: {
-              usedTokens: delta.last.totalTokens,
-              modelContextWindow: delta.modelContextWindow,
-              estimated: false,
-            },
-          },
-        );
+        });
         return;
       }
 
       case "contextWindow": {
         const turnId =
-          delta.attach === "open"
-            ? state.currentTurnId
-            : currentOrLastTurnId(state);
+          delta.providerTurnId !== undefined
+            ? resolveVouchedTurnId(state, delta.providerTurnId)
+            : delta.attach === "open"
+              ? state.currentTurnId
+              : currentOrLastTurnId(state);
         events.push({
           type: "thread/contextWindowUsage/updated",
           threadId: UNSTAMPED_THREAD_ID,
@@ -2081,14 +2367,19 @@ export function createDeltaAssembler(
       }
 
       case "extension.state": {
-        // Unsupported until WS1a: plugin-declared thread state has no
-        // canonical event yet (the extension-state event and its latest-
-        // snapshot-wins fold land with the generic assembler). Loud, not
-        // silent — see UnsupportedDeltaShapeError.
-        throw new UnsupportedDeltaShapeError(
-          `extension.state:${delta.extensionKind}`,
-          "extension.state",
-        );
+        // Plugin-declared thread state: thread-scoped like goals and rate
+        // limits, latest snapshot per kind wins downstream. The payload is
+        // opaque here; the server validates it against the plugin's declared
+        // `state` schema at ingest.
+        events.push({
+          type: "thread/extensionState/updated",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: threadScope(),
+          kind: delta.extensionKind,
+          payload: delta.payload,
+        });
+        return;
       }
 
       case "session.reset": {
@@ -2105,45 +2396,33 @@ export function createDeltaAssembler(
         if (turnId === undefined) {
           return;
         }
-        for (const stream of state.openStreamsByKey.values()) {
-          const item: ThreadEventItem =
-            stream.channel === "assistant"
-              ? {
-                  type: "agentMessage",
-                  id: stream.bbItemId,
-                  text: stream.text,
-                }
-              : {
-                  type: "reasoning",
-                  id: stream.bbItemId,
-                  summary: [],
-                  content: stream.text.length === 0 ? [] : [stream.text],
-                };
-          events.push({
-            type: "item/completed",
-            threadId: UNSTAMPED_THREAD_ID,
-            providerThreadId: "",
-            scope: turnScope(turnId),
-            item: withParentToolCallId(item, stream.parentToolCallId),
-          });
-        }
         for (const open of state.openItemsByKey.values()) {
-          // Thread-attached items (background tasks) have a provider-owned
-          // lifecycle that outlives sessions; bridges drain them with explicit
-          // item.close deltas when the backing session dies.
+          // Thread-attached items (background tasks, background delegations)
+          // have a provider-owned lifecycle that outlives sessions; bridges
+          // drain them with explicit item.close deltas when the backing
+          // session dies.
           if (open.threadAttached) {
             continue;
           }
+          // A text item that streamed settles with what it received so far;
+          // one that never streamed keeps its opened shape, and status-bearing
+          // items settle as interrupted.
+          const streamed = open.text.length > 0 || open.summaryText.length > 0;
+          const item =
+            (streamed
+              ? settleTextItem(open, undefined, undefined)
+              : undefined) ??
+            completeStartedItem(
+              open.item,
+              { status: "interrupted" },
+              undefined,
+            );
           events.push({
             type: "item/completed",
             threadId: UNSTAMPED_THREAD_ID,
             providerThreadId: "",
             scope: turnScope(turnId),
-            item: completeStartedItem(
-              open.item,
-              { status: "interrupted" },
-              undefined,
-            ),
+            item,
           });
         }
         events.push({
@@ -2221,7 +2500,7 @@ export function createDeltaAssembler(
           continue;
         }
         if (
-          delta.kind === "message.close" ||
+          delta.kind === "item.textClose" ||
           delta.kind === "item.close" ||
           delta.kind === "session.ended"
         ) {

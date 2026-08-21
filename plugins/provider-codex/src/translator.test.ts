@@ -10,10 +10,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { turnScope, type ThreadEvent } from "@bb/domain";
 import type { RuntimePermissionPolicy } from "@bb/domain";
-import {
-  createDeltaAssembler,
-  type DeltaAssembler,
-} from "@bb/agent-runtime/test/bridge-delta-assembly";
+import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type { DeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { ServerNotification as CodexServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
 import type { Turn } from "./generated/codex-app-server/schema/v2/Turn.js";
 import {
@@ -66,13 +64,17 @@ function codexTurn(args: {
 interface CodexTranslatorHarness {
   assembler: DeltaAssembler;
   translator: CodexEventTranslator;
-  translate(event: Parameters<CodexEventTranslator["translateEvent"]>[0]): ThreadEvent[];
+  translate(
+    event: Parameters<CodexEventTranslator["translateEvent"]>[0],
+  ): ThreadEvent[];
   turnId(codexTurnId: string): string;
   itemId(codexItemId: string): string;
 }
 
 function createHarness(
-  translator = createCodexEventTranslator({ additionalWorkspaceWriteRoots: [] }),
+  translator = createCodexEventTranslator({
+    additionalWorkspaceWriteRoots: [],
+  }),
 ): CodexTranslatorHarness {
   const assembler = createDeltaAssembler({
     providerId: "codex",

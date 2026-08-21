@@ -407,9 +407,11 @@ and deep-freezes them and carries them on the normalized declaration. Nothing
 projects them yet: `ProviderInfo` gained matching optional `strings`,
 `serviceTiers`, `reasoningLevels`, and `extensionKinds` fields, and WS2a
 (registry) fills them from the declaration and points the usage banners,
-pickers, mobile, and the agent guide at them instead of per-provider tables;
-WS1a (generic assembler) validates extension payloads against the declared
-schemas at ingest.
+pickers, mobile, and the agent guide at them instead of per-provider tables.
+The server already validates extension payloads against the declared
+schemas at ingest (`apps/server/src/internal/extension-payloads.ts`): the
+registry carries the validators on each registration and resolves a
+namespaced kind through its plugin-id prefix.
 
 **Audit before stabilizing.**
 
@@ -504,6 +506,50 @@ build inlines the SDK's published, self-contained bundle.
    refuses anything else by name. Decide the deprecation window for a version
    bump (a plugin's artifact and the daemon update independently) before the
    first third-party bridge ships.
+
+## `@get-bb/plugin-sdk/provider-bridge/testing` (the provider-bridge testing kit)
+
+**What it does.** The published kit a bridge author proves a bridge with
+before shipping it, with no private `@bb/*` package in reach: the
+conformance kit (`experimental_runBridgeConformance`,
+`experimental_formatConformanceReport`, `experimental_ConformanceClient`,
+`experimental_checkItemOpensBeforeDelta`) that drives a bridge through the
+canonical protocol scenarios; the real delta assembler
+(`experimental_createDeltaAssembler`, `ASSEMBLER_GRAMMAR_VERSIONS`) — the
+exact code the daemon runs, so a test sees the canonical `ThreadEvent`s the
+runtime would build from the bridge's `thread/delta` stream; the delta→event
+collector that feeds captured notifications through it
+(`experimental_createBridgeDeltaEventCollector`,
+`experimental_assembleCapturedThreadEvents`,
+`experimental_toConformanceMessages`); the in-process JSON-RPC harness
+(`experimental_captureBridgeJsonRpcOutput`,
+`experimental_createBridgeJsonRpcTestHarness`); and the calibration
+normalizer (`experimental_normalizeCalibrationEvents`,
+`experimental_describeCalibrationEvents`).
+Framework-agnostic (the stdout capture patches `process.stdout.write`
+itself; nothing imports a test runner). Curated by hand, named exports only.
+The echo example and every first-party bridge suite import only this entry
+and `@get-bb/plugin-sdk/provider-bridge` — the "zero first-party privilege"
+proof for the testing surface. In-repo the kit is `@bb/provider-bridge-
+protocol`'s `assembler`, `conformance`, and `testing` subpaths.
+
+**Audit before stabilizing.**
+
+1. **The assembled-event lane.** The conformance kit's grammar checks run
+   over canonical `ThreadEvent`s, so a transport assembles the bridge's
+   deltas and re-emits them on the kit-internal
+   `CONFORMANCE_ASSEMBLED_EVENT_METHOD` notification
+   (`experimental_toConformanceMessages`). Now that the assembler lives
+   beside the kit, the kit could assemble itself and the lane could go;
+   decide before the transport shape is a public promise.
+2. **Calibration normalizer scope.** `experimental_normalizeCalibrationEvents`
+   interns the id fields the first-party goldens needed
+   (`turnId`, `itemId`, `id`, `parentToolCallId`) and drops
+   `providerCheckpointId`. Confirm the defaults against a third-party
+   bridge's goldens before fixing them.
+3. **Surface size.** 14 value exports plus 20 types. The JSON-RPC harness
+   duplicates a little of the bridge kit's envelope parsing; fold or keep
+   deliberately.
 
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
 

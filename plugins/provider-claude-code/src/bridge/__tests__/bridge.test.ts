@@ -39,10 +39,11 @@ import {
 } from "../../interactive-contract.js";
 import { listClaudeCodeBridgeModels } from "../model-list.js";
 import {
-  createBridgeJsonRpcTestHarness,
-  type BridgeJsonRpcOutputMessage,
-} from "@bb/provider-bridge-protocol/testing";
-import { assembleCapturedThreadEvents } from "@bb/agent-runtime/test/bridge-delta-assembly";
+  experimental_assembleCapturedThreadEvents as assembleCapturedThreadEvents,
+  experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type { BridgeJsonRpcOutputMessage } from "@get-bb/plugin-sdk/provider-bridge/testing";
+
 import { BRIDGE_INBOUND_REQUEST_METHODS } from "@bb/provider-bridge-protocol";
 
 type BridgeSessionOptions = ReturnType<typeof buildSessionOptions>;

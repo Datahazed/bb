@@ -143,6 +143,11 @@ const threadEventScopeDefinitionByType = {
     rationale:
       "Subscription usage is account-scoped state that can affect multiple turns and threads.",
   },
+  "thread/extensionState/updated": {
+    policy: "thread",
+    rationale:
+      "Plugin-declared thread state is current thread metadata (like goals), not part of a specific turn transcript; latest snapshot per kind wins.",
+  },
   "provider/warning": {
     policy: "thread-or-turn",
     rationale:

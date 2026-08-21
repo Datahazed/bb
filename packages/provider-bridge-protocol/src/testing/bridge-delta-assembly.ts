@@ -2,26 +2,22 @@
  * Test-side view of the runtime's delta assembly: bridge tests capture raw
  * JSON-RPC output, and bridges emit `thread/delta` notifications rather than
  * finished `ThreadEvent`s. These helpers run captured notifications through
- * a real delta assembler — the exact translation the bridge protocol adapter
- * performs — so assertions keep working against canonical `ThreadEvent`s.
+ * the real delta assembler — the exact translation the bridge protocol
+ * adapter performs — so assertions keep working against canonical
+ * `ThreadEvent`s.
  */
 import type { ThreadEvent } from "@bb/domain";
 import {
   THREAD_DELTA_NOTIFICATION_METHOD,
   threadDeltaNotificationParamsSchema,
-} from "@bb/provider-bridge-protocol";
-import { CONFORMANCE_ASSEMBLED_EVENT_METHOD } from "@bb/provider-bridge-protocol/conformance";
+} from "../thread-delta.js";
+import { CONFORMANCE_ASSEMBLED_EVENT_METHOD } from "../conformance/types.js";
 import {
   createDeltaAssembler,
   type DeltaAssembler,
-} from "../delta-assembler.js";
+} from "../assembler/delta-assembler.js";
 
-// Re-exported for bridge suites outside this package (the acp plugin's
-// equivalence tests build a real assembler through this test-only path).
-export { createDeltaAssembler };
-export type { DeltaAssembler };
-
-interface CapturedBridgeNotification {
+export interface CapturedBridgeNotification {
   method?: string;
   params?: unknown;
 }
@@ -55,7 +51,9 @@ export function createBridgeDeltaEventCollector(
         throw new Error(
           `Invalid thread/delta notification: ${parsed.error.issues
             .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-            .join("; ")} (params: ${JSON.stringify(message.params)?.slice(0, 400)})`,
+            .join(
+              "; ",
+            )} (params: ${JSON.stringify(message.params)?.slice(0, 400)})`,
         );
       }
       return assembler.assemble({

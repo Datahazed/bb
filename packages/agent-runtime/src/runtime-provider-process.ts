@@ -7,10 +7,8 @@ import {
   stopProcessGroupLeaderFirst,
   supportsProcessGroups,
 } from "@bb/process-utils";
-import type {
-  ProviderAdapter,
-  ProviderAdapterFactory,
-} from "./provider-adapter.js";
+import type { BridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
+import type { CreateBridgeAdapterOptions } from "./provider-adapter.js";
 import { createProviderForId } from "./provider-registry.js";
 import { filterSkillRootsForProvider } from "./runtime-skill-roots.js";
 import {
@@ -28,7 +26,7 @@ import type {
 } from "./types.js";
 
 export interface RuntimeProviderProcess {
-  adapter: ProviderAdapter;
+  adapter: BridgeProtocolAdapter;
   child: ChildProcess;
   expectedShutdownExpectations: number;
   exitFinalized: Promise<void>;
@@ -48,7 +46,16 @@ interface RuntimeProviderProcessLineArgs {
 
 interface RuntimeProviderProcessManagerArgs {
   additionalWorkspaceWriteRoots: readonly string[];
-  adapterFactory?: ProviderAdapterFactory;
+  /**
+   * Builds the adapter for a provider process. Defaults to the bridge
+   * registry (`createProviderForId`); the process-lifecycle tests substitute
+   * an adapter whose process spec points at a raw script, to exercise spawn,
+   * stderr and exit mechanics below the protocol.
+   */
+  createAdapter?: (
+    providerId: string,
+    options: CreateBridgeAdapterOptions,
+  ) => BridgeProtocolAdapter;
   bridgeBundleDir: string | undefined;
   bridgeNodeEnv?: Record<string, string>;
   bridgeNodeExecutablePath?: string;
@@ -107,7 +114,7 @@ interface TerminateProviderProcessArgs {
 }
 
 interface SpawnProviderArgs {
-  adapter: ProviderAdapter;
+  adapter: BridgeProtocolAdapter;
   processKey: string;
   providerId: string;
 }
@@ -251,7 +258,7 @@ export class RuntimeProviderProcessManager {
           });
         }
 
-        for (const request of adapter.buildPostInitializeRequests?.() ?? []) {
+        for (const request of adapter.buildPostInitializeRequests()) {
           try {
             const result = await sendJsonRpcRequest({
               child: providerProcess.child,
@@ -463,7 +470,7 @@ export class RuntimeProviderProcessManager {
     providerId: string,
     acpLaunchSpec: HostDaemonAcpLaunchSpec | undefined,
     bridgeLaunch: AgentRuntimeBridgeLaunch | undefined,
-  ): ProviderAdapter {
+  ): BridgeProtocolAdapter {
     const adapterOptions = {
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
       ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
@@ -477,10 +484,10 @@ export class RuntimeProviderProcessManager {
         : {}),
     };
 
-    if (this.args.adapterFactory) {
-      return this.args.adapterFactory(providerId, adapterOptions);
-    }
-    return createProviderForId(providerId, adapterOptions);
+    return (this.args.createAdapter ?? createProviderForId)(
+      providerId,
+      adapterOptions,
+    );
   }
 
   private spawnProvider(args: SpawnProviderArgs): RuntimeProviderProcess {

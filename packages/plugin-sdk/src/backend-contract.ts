@@ -681,7 +681,7 @@ export interface PluginProviderDeclaration {
   experimental_reasoningLevels?: readonly PluginProviderOptionDescriptor[];
   /** Extension kinds this provider's bridge may emit, keyed by local name
    * (`[a-z0-9-]+`). The server validates extension payloads against these
-   * schemas at ingest (WS1a). */
+   * schemas at ingest and persists a `provider/unhandled` on a miss. */
   experimental_extensionKinds?: Readonly<
     Record<string, PluginProviderExtensionKindDeclaration>
   >;

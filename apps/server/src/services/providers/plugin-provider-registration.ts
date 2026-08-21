@@ -104,6 +104,9 @@ export function buildPluginProviderRegistration(args: {
     info,
     serverCapabilities,
     bridgeOptions: declaration.experimental_bridgeOptions ?? {},
+    // The validators themselves, for the ingest route; clients learn only
+    // which kinds exist (`ProviderInfo.extensionKinds`, projected by WS2a).
+    extensionKinds: declaration.experimental_extensionKinds ?? {},
     visibility: declaration.experimental_visibility ?? "always",
   };
 }

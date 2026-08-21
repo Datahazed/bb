@@ -1,4 +1,4 @@
-import type { ProviderAdapter } from "./provider-adapter.js";
+import type { BridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type {
   ClassifyProviderExecutionSettingsChangeArgs,
   ProviderExecutionSettingsChange,
@@ -11,7 +11,7 @@ import type { ProviderExecutionContext } from "./provider-adapter.js";
 import type { RuntimePermissionPolicy } from "@bb/domain";
 
 interface AssertProviderSupportsExecutionOptionsArgs {
-  adapter: ProviderAdapter;
+  adapter: BridgeProtocolAdapter;
   options: AgentRuntimeExecutionOptions;
   providerId: string;
 }

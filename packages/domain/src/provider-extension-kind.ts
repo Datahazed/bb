@@ -12,17 +12,10 @@ import { z } from "zod";
  *
  * Only the namespace SHAPE is validated here. The payload is opaque to this
  * layer: the server validates it against the owning plugin's declared
- * `extensionKinds` schema when the event is ingested, which is wired in a
- * later workstream (WS1a, generic assembler + ingest validation).
+ * `extensionKinds` schema when the event is ingested
+ * (apps/server/src/internal/extension-payloads.ts).
  */
 export const EXTENSION_KIND_PATTERN = /^[a-z0-9-]+\/[a-z0-9-]+$/u;
-
-export const extensionKindSchema = z
-  .string()
-  .regex(
-    EXTENSION_KIND_PATTERN,
-    'extension kinds are "<pluginId>/<name>" (lowercase letters, digits, and "-")',
-  );
 
 /** A namespaced extension kind, `"<pluginId>/<name>"`. */
 export type ExtensionKind = `${string}/${string}`;
@@ -30,6 +23,12 @@ export type ExtensionKind = `${string}/${string}`;
 export function isExtensionKind(value: string): value is ExtensionKind {
   return EXTENSION_KIND_PATTERN.test(value);
 }
+
+/** Parses to the {@link ExtensionKind} type, so consumers can split it. */
+export const extensionKindSchema = z.string().refine(isExtensionKind, {
+  message:
+    'extension kinds are "<pluginId>/<name>" (lowercase letters, digits, and "-")',
+});
 
 /** Split a validated extension kind into its plugin id and local name. */
 export function parseExtensionKind(kind: ExtensionKind): {

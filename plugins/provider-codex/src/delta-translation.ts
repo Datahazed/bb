@@ -598,7 +598,8 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
           ...(parsedItem.error?.message === undefined
             ? {}
             : { error: parsedItem.error.message }),
-          ...(parsedItem.durationMs === null || parsedItem.durationMs === undefined
+          ...(parsedItem.durationMs === null ||
+          parsedItem.durationMs === undefined
             ? {}
             : { durationMs: parsedItem.durationMs }),
         },
@@ -617,7 +618,8 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
             : { args: parsedItem.arguments }),
           ...(result === undefined ? {} : { result }),
           ...(error === undefined ? {} : { error }),
-          ...(parsedItem.durationMs === null || parsedItem.durationMs === undefined
+          ...(parsedItem.durationMs === null ||
+          parsedItem.durationMs === undefined
             ? {}
             : { durationMs: parsedItem.durationMs }),
         },
@@ -653,7 +655,12 @@ function translateCodexItemShape(item: unknown): CodexItemTranslationResult {
       }
       const shape = normalizeCodexWebItemShape(parsedItem);
       return shape
-        ? { kind: "translated", shape, status: "completed", approvalDenied: false }
+        ? {
+            kind: "translated",
+            shape,
+            status: "completed",
+            approvalDenied: false,
+          }
         : { kind: "unhandled" };
     }
     case "imageView":
@@ -903,32 +910,42 @@ export function translateCodexEventToDeltas(
           providerTurnId: handledEvent.params.turnId,
         },
       ];
-    case "thread/tokenUsage/updated":
+    case "thread/tokenUsage/updated": {
+      // Codex reports exact cumulative totals, so the `usage` delta forwards
+      // them verbatim; its `last.totalTokens` is also the context-window
+      // reading, which rides the `contextWindow` delta beside it (both scoped
+      // to the same vouched turn).
+      const { tokenUsage, turnId } = handledEvent.params;
       return [
         {
-          kind: "usage.exact",
+          kind: "usage",
           total: {
-            totalTokens: handledEvent.params.tokenUsage.total.totalTokens,
-            inputTokens: handledEvent.params.tokenUsage.total.inputTokens,
-            cachedInputTokens:
-              handledEvent.params.tokenUsage.total.cachedInputTokens,
-            outputTokens: handledEvent.params.tokenUsage.total.outputTokens,
-            reasoningOutputTokens:
-              handledEvent.params.tokenUsage.total.reasoningOutputTokens,
+            totalTokens: tokenUsage.total.totalTokens,
+            inputTokens: tokenUsage.total.inputTokens,
+            cachedInputTokens: tokenUsage.total.cachedInputTokens,
+            outputTokens: tokenUsage.total.outputTokens,
+            reasoningOutputTokens: tokenUsage.total.reasoningOutputTokens,
           },
           last: {
-            totalTokens: handledEvent.params.tokenUsage.last.totalTokens,
-            inputTokens: handledEvent.params.tokenUsage.last.inputTokens,
-            cachedInputTokens:
-              handledEvent.params.tokenUsage.last.cachedInputTokens,
-            outputTokens: handledEvent.params.tokenUsage.last.outputTokens,
-            reasoningOutputTokens:
-              handledEvent.params.tokenUsage.last.reasoningOutputTokens,
+            totalTokens: tokenUsage.last.totalTokens,
+            inputTokens: tokenUsage.last.inputTokens,
+            cachedInputTokens: tokenUsage.last.cachedInputTokens,
+            outputTokens: tokenUsage.last.outputTokens,
+            reasoningOutputTokens: tokenUsage.last.reasoningOutputTokens,
           },
-          modelContextWindow: handledEvent.params.tokenUsage.modelContextWindow,
-          providerTurnId: handledEvent.params.turnId,
+          modelContextWindow: tokenUsage.modelContextWindow,
+          providerTurnId: turnId,
+        },
+        {
+          kind: "contextWindow",
+          used: tokenUsage.last.totalTokens,
+          size: tokenUsage.modelContextWindow,
+          estimated: false,
+          attach: "currentOrLast",
+          providerTurnId: turnId,
         },
       ];
+    }
     case "turn/plan/updated":
       return [
         {

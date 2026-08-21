@@ -32,6 +32,12 @@
       "import": "./dist/provider-bridge.js",
       "default": "./dist/provider-bridge.js"
     },
+    "./provider-bridge/testing": {
+      "source": "./src/provider-bridge-testing.ts",
+      "types": "./bundled-types/bb-plugin-sdk-provider-bridge-testing.d.ts",
+      "import": "./dist/provider-bridge-testing.js",
+      "default": "./dist/provider-bridge-testing.js"
+    },
     "./app": {
       "source": "./src/app.ts",
       "types": "./bundled-types/bb-plugin-sdk-app.d.ts",

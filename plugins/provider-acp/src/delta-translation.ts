@@ -326,17 +326,17 @@ export function createAcpDeltaTranslator() {
 
   function closeThoughtStream(): ThreadDelta {
     return {
-      kind: "message.close",
-      channel: "reasoning",
-      streamKey: THOUGHT_STREAM_KEY,
+      kind: "item.textClose",
+      key: { channel: THOUGHT_STREAM_KEY },
+      channel: "reasoningText",
     };
   }
 
   function closeAssistantStream(): ThreadDelta {
     return {
-      kind: "message.close",
-      channel: "assistant",
-      streamKey: ASSISTANT_STREAM_KEY,
+      kind: "item.textClose",
+      key: { channel: ASSISTANT_STREAM_KEY },
+      channel: "agentMessage",
     };
   }
 
@@ -427,9 +427,9 @@ export function createAcpDeltaTranslator() {
         return [
           closeThoughtStream(),
           {
-            kind: "message.delta",
-            channel: "assistant",
-            streamKey: ASSISTANT_STREAM_KEY,
+            kind: "item.textDelta",
+            key: { channel: ASSISTANT_STREAM_KEY },
+            channel: "agentMessage",
             text,
             noTurnFallback: noTurnFallbackFor(rawEvent),
           },
@@ -446,9 +446,9 @@ export function createAcpDeltaTranslator() {
         }
         return [
           {
-            kind: "message.delta",
-            channel: "reasoning",
-            streamKey: THOUGHT_STREAM_KEY,
+            kind: "item.textDelta",
+            key: { channel: THOUGHT_STREAM_KEY },
+            channel: "reasoningText",
             text,
             noTurnFallback: noTurnFallbackFor(rawEvent),
           },

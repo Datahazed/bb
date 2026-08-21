@@ -131,8 +131,9 @@ export async function registerFirstPartyProviders(
 /**
  * A one-line bundle standing in for a built host artifact: real bytes at a real
  * path, so the internal plugin host artifact route serves them and a daemon
- * that downloads and hash-verifies it succeeds. Nothing executes it — the
- * harnesses that get this far run a fake adapter.
+ * that downloads and hash-verifies it succeeds. Used only for first-party
+ * plugins whose bridge the server tests never launch; the fake providers get
+ * the real scripted echo artifact (`registerFakeProviders`).
  */
 function stubHostArtifact(pluginId: string): PluginHostArtifactSnapshot {
   const bytes = Buffer.from(`// stub host artifact for ${pluginId}\n`);
@@ -218,22 +219,54 @@ export const TRANSPORT_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
 /**
  * Provider ids the fake-stack integration tests create threads on. `fake` is
  * the default there; the alpha/beta pair exercises per-provider process
- * isolation.
+ * isolation. All three run the scripted echo bridge.
  */
 const FAKE_PROVIDER_IDS = ["fake", "fake-alpha", "fake-beta"] as const;
 
+/** The scripted echo provider's plugin root (`tests/scripted-echo-provider`). */
+export function scriptedEchoProviderRootDir(): string {
+  return fileURLToPath(
+    new URL("../../../../tests/scripted-echo-provider", import.meta.url),
+  );
+}
+
 /**
- * Declare the fake providers into a registry with a stub bridge artifact each,
- * the way a real provider plugin would. Every bridge-bound command carries a
- * `bridgeLaunch`, so a provider with neither a declaration nor an artifact
- * cannot have a command built for it at all — while the daemon side of those
- * tests runs a fake adapter and never reads the launch. Capabilities are
- * permissive: those tests are about lifecycle, not policy.
+ * Build the scripted echo bridge artifact exactly as the plugin runtime builds
+ * a real provider plugin's `bb.host` entry. Rebuilt from source per call, like
+ * the first-party bridges above, so a stale `dist/` cannot make a test pass
+ * against yesterday's bridge.
  */
-export function registerFakeProviders(
+export async function buildScriptedEchoProviderArtifact(): Promise<PluginHostArtifactSnapshot> {
+  const toolchain = await resolvePluginBuildToolchain(
+    join(tmpdir(), "bb-plugin-build-toolchain"),
+  );
+  const build = await buildPluginHost(
+    scriptedEchoProviderRootDir(),
+    "0.0.0-test",
+    toolchain,
+  );
+  const bytes = await readFile(build.jsPath);
+  return {
+    digest: build.artifactDigest,
+    byteLength: bytes.byteLength,
+    path: build.jsPath,
+    generation: "test-scripted-echo",
+  };
+}
+
+/**
+ * Declare the fake providers into a registry, each backed by the scripted
+ * echo bridge artifact, the way a real provider plugin would be. Every
+ * bridge-bound command carries a `bridgeLaunch`, and the daemon really runs
+ * the artifact through the bridge-protocol adapter — there is no test-only
+ * adapter path. Capabilities are permissive: those tests are about
+ * lifecycle, not policy.
+ */
+export async function registerFakeProviders(
   registry: ProviderRegistryService,
   artifacts: PluginHostArtifactRegistry,
-): void {
+): Promise<void> {
+  const artifact = await buildScriptedEchoProviderArtifact();
   for (const providerId of FAKE_PROVIDER_IDS) {
     const pluginId = `provider-${providerId}`;
     registry.register({
@@ -248,7 +281,7 @@ export function registerFakeProviders(
             experimental_providerUsage: true,
             experimental_providerInstallation: false,
             supportsServiceTier: true,
-            supportsNativeUserQuestion: false,
+            supportsNativeUserQuestion: true,
             fork: "checkpoint",
             supportsManualCompaction: true,
             supportsThreadArchive: true,
@@ -262,6 +295,6 @@ export function registerFakeProviders(
       }),
       pluginId,
     });
-    artifacts.set(pluginId, stubHostArtifact(pluginId));
+    artifacts.set(pluginId, artifact);
   }
 }

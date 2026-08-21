@@ -1,3 +1,13 @@
+// Version 148 is the generic assembler and the v3 delta grammar cutover. The
+// daemon now emits `thread/extensionState/updated` (plugin-declared thread
+// state) in its event batches — a new union member an older server's batch
+// schema would reject — and its bridge runtime assembles the `thread/delta`
+// grammar v3 only: the v2 streaming and usage dialects are gone, and every
+// plugin bridge the server serves reports `grammarVersions: [3, 3]`. A
+// version-147 daemon would refuse those bridges at the handshake, so the
+// mismatch is what moves enrolled machines onto a daemon that speaks the
+// grammar its bridges emit.
+//
 // Version 147 carries the provider plugin v3 contract across the daemon wire:
 // the thread-event item union gains fileRead, search, delegation, planSteps
 // and namespaced extension items plus an optional persisted `presentation`,
@@ -122,7 +132,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 147 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 148 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

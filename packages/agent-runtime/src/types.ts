@@ -9,6 +9,7 @@ import type {
   PendingInteractionResolution,
   PromptInput,
   ProviderFork,
+  ProviderRecoveryKind,
   RuntimeThreadExecutionOptions,
   ThreadEvent,
   ToolCallRequest,
@@ -134,6 +135,29 @@ export interface AgentRuntimeOptions {
 
   /** Called when a provider process exits unexpectedly. */
   onProcessExit?: (info: AgentRuntimeProcessExitInfo) => void;
+
+  /**
+   * Called when a bridge raises a typed `provider/recovery` hint. The runtime
+   * parses and forwards; it does not act on the kind yet (the recovery
+   * actions — unarchive-and-retry, bridge restart, stale-steer drop, retry
+   * scheduling — land with the runtime cleanup workstream). A runtime signal,
+   * never a timeline event.
+   */
+  onProviderRecovery?: (hint: AgentRuntimeProviderRecoveryHint) => void;
+}
+
+/**
+ * A bridge's `provider/recovery` notification, stamped with the provider it
+ * came from. `threadId` is the bb thread for session-scoped hints
+ * (`sessionArchived`, `staleTurn`) and absent for provider-wide ones
+ * (`authRequired`, account-level `rateLimited`).
+ */
+export interface AgentRuntimeProviderRecoveryHint {
+  providerId: string;
+  threadId?: string;
+  kind: ProviderRecoveryKind;
+  message: string;
+  retryable: boolean;
 }
 
 // ---------------------------------------------------------------------------

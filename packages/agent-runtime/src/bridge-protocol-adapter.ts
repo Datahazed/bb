@@ -1,5 +1,5 @@
 /**
- * The one ProviderAdapter for protocol-pure bridges.
+ * The one adapter the runtime drives: the Provider Bridge Protocol speaker.
  *
  * A bridge that speaks the canonical Provider Bridge Protocol
  * (@bb/provider-bridge-protocol) needs no bespoke adapter: commands map to
@@ -15,6 +15,7 @@
  * `session/replaced` notification.
  */
 import type {
+  AvailableModel,
   ProviderCapabilities,
   ProviderFork,
   ThreadEvent,
@@ -30,6 +31,7 @@ import {
   negotiateGrammarVersion,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
+  providerRecoveryNotificationSchema,
   threadDeltaNotificationParamsSchema,
   type BridgeCapabilities,
   type SkillsConfigureRoot,
@@ -37,12 +39,14 @@ import {
 import {
   ASSEMBLER_GRAMMAR_VERSIONS,
   createDeltaAssembler,
-} from "./delta-assembler.js";
+} from "@bb/provider-bridge-protocol/assembler";
 import { z } from "zod";
 import type {
   AdapterCommand,
-  ProviderAdapter,
+  ClassifyProviderExecutionSettingsChangeArgs,
+  ProviderAcceptedCommandTranslationArgs,
   ProviderExecutionContext,
+  ProviderExecutionSettingsChange,
 } from "./provider-adapter.js";
 import type {
   DecodedInteractiveRequest,
@@ -56,14 +60,91 @@ import type {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { decodeNormalizedProviderToolCallRequest } from "@bb/provider-bridge-protocol/bridge-kit";
 import { parseAvailableModelList } from "./shared/available-models.js";
-import type { AgentRuntimeSkillRoot } from "./types.js";
+import type {
+  AgentRuntimeProviderRecoveryHint,
+  AgentRuntimeSkillRoot,
+} from "./types.js";
+
+/** A decoded recovery hint before the runtime stamps the provider id. */
+export type ProviderRecoveryHint = Omit<
+  AgentRuntimeProviderRecoveryHint,
+  "providerId"
+>;
+
+/**
+ * The one adapter the runtime drives: the Provider Bridge Protocol speaker.
+ * Every provider — first-party plugin bridges, the daemon-bundled pi bridge,
+ * third-party plugin bridges, the test harness's scripted echo bridge — runs
+ * behind this contract, so there is no provider-specific implementation and
+ * no interface for one to hide behind. The runtime owns the command plane
+ * (it builds requests through `buildCommandPlan`, sends them, and reads the
+ * results); the adapter owns the wire: the handshake, the `thread/delta`
+ * assembler, the tool-call and interaction codecs.
+ */
+export interface BridgeProtocolAdapter {
+  id: string;
+  capabilities: ProviderCapabilities;
+  /**
+   * Where approval escalation is enforced, as the handshake reported it.
+   * `runtime`: the runtime applies the thread's current policy to every
+   * forwarded request. `provider`: the bridge enforced the policy before
+   * forwarding, so a forwarded approval must not be reclassified against
+   * mutable thread settings.
+   */
+  readonly approvalEnforcedBy: "runtime" | "provider";
+  process: { command: string; args: string[]; env?: Record<string, string> };
+  /**
+   * Classifies execution-setting drift. `live` settings ride the next turn
+   * command; `session` settings require rebuilding the provider session.
+   * Bridges reconcile options internally, so the answer is always `live`.
+   */
+  classifyExecutionSettingsChange(
+    args: ClassifyProviderExecutionSettingsChangeArgs,
+  ): ProviderExecutionSettingsChange;
+  /**
+   * Whether this thread owns provider work that can outlive its turn (the
+   * bridge's last `thread/openWork` report).
+   */
+  hasOpenThreadWork(args: {
+    providerThreadId: string;
+    threadId: string;
+  }): boolean;
+  buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
+  /** The `initialize` handshake, sent before any thread work starts. */
+  buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[];
+  parseModelListResult(result: unknown): {
+    models: AvailableModel[];
+    selectedOnlyModels: AvailableModel[];
+  };
+  /** Assemble a bridge notification into canonical timeline events. */
+  translateEvent(event: ProviderRuntimeEvent): ThreadEvent[];
+  /**
+   * A typed `provider/recovery` hint carried by this notification, or null
+   * for anything else. Decoded here (the adapter owns the wire), forwarded by
+   * the runtime to `onProviderRecovery` — never a timeline event.
+   */
+  decodeRecoveryHint(event: ProviderRuntimeEvent): ProviderRecoveryHint | null;
+  /** Events implied by a successful command; the bridge protocol has none. */
+  translateAcceptedCommand(
+    args: ProviderAcceptedCommandTranslationArgs,
+  ): ThreadEvent[];
+  decodeToolCallRequest(
+    request: ProviderInboundRequest,
+  ): DecodedToolCallRequest | null;
+  decodeInteractiveRequest(
+    request: ProviderInboundRequest,
+  ): DecodedInteractiveRequest | null;
+  buildInteractiveResponse(
+    args: BuildInteractiveResponseArgs,
+  ): ProviderInteractiveResponse;
+}
 
 /**
  * A bridge adapter is built from the provider's DECLARED capabilities, which
  * name the fork ladder directly ({@link ProviderFork}) rather than the two
  * booleans clients gate on. The adapter projects those booleans onto its
- * public {@link ProviderAdapter.capabilities}, and keeps the ladder to bound
- * what the initialize handshake may claim.
+ * public {@link BridgeProtocolAdapter.capabilities}, and keeps the ladder to
+ * bound what the initialize handshake may claim.
  */
 interface BridgeAdapterCapabilities extends Omit<
   ProviderCapabilities,
@@ -205,7 +286,7 @@ function toBridgeSkillRoots(
 
 export function createBridgeProtocolAdapter(
   options: BridgeProtocolAdapterOptions,
-): ProviderAdapter {
+): BridgeProtocolAdapter {
   let handshake: BridgeCapabilities = bridgeCapabilitiesSchema.parse({});
   const { fork: declaredFork, ...declaredCapabilities } = options.capabilities;
   const capabilities: ProviderCapabilities = {
@@ -242,7 +323,7 @@ export function createBridgeProtocolAdapter(
     return { kind: "noop", reason: `${capability} not advertised` };
   }
 
-  const adapter: ProviderAdapter = {
+  const adapter: BridgeProtocolAdapter = {
     id: options.id,
     capabilities,
     // The handshake owns approval-policy placement; before it completes the
@@ -704,6 +785,29 @@ export function createBridgeProtocolAdapter(
       // provider/raw is droppable diagnostics by contract; anything else is
       // forward skew from a newer bridge and is ignored the same way.
       return [];
+    },
+
+    decodeRecoveryHint(
+      event: ProviderRuntimeEvent,
+    ): ProviderRecoveryHint | null {
+      if (event.method !== BRIDGE_NOTIFICATION_METHODS.providerRecovery) {
+        return null;
+      }
+      const parsed = providerRecoveryNotificationSchema.safeParse(event.params);
+      if (!parsed.success) {
+        // A malformed hint is dropped like any other malformed notification:
+        // the bridge's `provider/error` delta beside it carries the
+        // user-visible consequence.
+        return null;
+      }
+      return {
+        ...(parsed.data.threadId === undefined
+          ? {}
+          : { threadId: parsed.data.threadId }),
+        kind: parsed.data.kind,
+        message: parsed.data.message,
+        retryable: parsed.data.retryable,
+      };
     },
 
     // Input acceptance rides `input.accepted` deltas through the assembler;

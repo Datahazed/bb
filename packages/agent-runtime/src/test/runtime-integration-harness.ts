@@ -525,8 +525,10 @@ export function waitForThreadTurnCompletedCount(
   });
 }
 
-export function waitForThreadTurnStarted(args: ThreadWaitArgs): Promise<void> {
-  return waitForSharedThreadTurnStarted({
+export async function waitForThreadTurnStarted(
+  args: ThreadWaitArgs,
+): Promise<void> {
+  await waitForSharedThreadTurnStarted({
     describeFailure: () => describeRuntimeDiagnostics(args),
     events: args.ctx.events,
     failFast: () => failOnRuntimeError(args),

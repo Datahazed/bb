@@ -936,7 +936,7 @@ describe("thread runtime config", () => {
     await withTestHarness(async (harness) => {
       // A non-Claude provider that declares `supportsWorkflows: true`, like
       // the first third-party workflow provider would.
-      registerFakeProviders(
+      await registerFakeProviders(
         harness.deps.providerRegistry,
         harness.deps.pluginHostArtifacts,
       );

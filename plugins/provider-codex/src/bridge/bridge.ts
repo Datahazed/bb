@@ -42,6 +42,7 @@ import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
   modelListParamsSchema,
   experimental_providerInstallationRunParamsSchema,
@@ -546,16 +547,17 @@ function sendThreadDeltas(
     // may be thread-scoped; token usage is turn-only and, on resume,
     // duplicates the snapshot bb already persisted for that turn, so drop it
     // (#1727). The fresh session has no current or last turn yet, so the
-    // context-window delta assembles thread-scoped.
-    if (session.awaitingReplayedUsage && delta.kind === "usage.exact") {
-      outDeltas.push({
-        kind: "contextWindow",
-        used: delta.last.totalTokens,
-        size: delta.modelContextWindow,
-        estimated: false,
-        attach: "currentOrLast",
-      });
-      continue;
+    // context-window delta, stripped of its vouched turn, assembles
+    // thread-scoped.
+    if (session.awaitingReplayedUsage) {
+      if (delta.kind === "usage") {
+        continue;
+      }
+      if (delta.kind === "contextWindow") {
+        const { providerTurnId: _replayedTurnId, ...threadScoped } = delta;
+        outDeltas.push(threadScoped);
+        continue;
+      }
     }
     outDeltas.push(delta);
   }
@@ -1236,13 +1238,11 @@ function handleInitialize(id: string | number): void {
       threadGoalClear: true,
       fork: "checkpoint",
       approvalEnforcedBy: "runtime",
-      // grammarVersions [2, 2] — this bridge emits the v2 delta grammar only
-      // (v3 shapes land per bridge in WS1b). steerMode "inject" — codex
-      // `turn/steer` injects into the live turn natively.
-      grammarVersions: [
-        PROVIDER_BRIDGE_PROTOCOL_VERSION,
-        PROVIDER_BRIDGE_PROTOCOL_VERSION,
-      ],
+      // grammarVersions [3, 3] — this bridge emits the v3 delta grammar (one
+      // streaming dialect, one usage dialect; the v3 item shapes land per
+      // bridge in WS1b). steerMode "inject" — codex `turn/steer` injects into
+      // the live turn natively.
+      grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
       steerMode: "inject",
     },
   };

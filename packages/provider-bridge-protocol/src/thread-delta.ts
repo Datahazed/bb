@@ -1,6 +1,6 @@
 /**
  * The narrow-grammar `thread/delta` notification: the protocol's one and only
- * timeline lane (protocol version 2).
+ * timeline lane (protocol version 2, grammar v3).
  *
  * A bridge emits parsed *semantic deltas* instead of finished `ThreadEvent`s:
  * the runtime's delta assembler owns turn/item id minting, accepted-input
@@ -9,13 +9,17 @@
  * (tool-call ids, stream keys, parent refs, provider turn ids) so the
  * assembler can hold the bidirectional provider↔bb id maps.
  *
- * Grammar v3 (docs/provider-plugin-api.md §3) is accepted beside v2 in this
- * schema: the core vocabulary gains `fileRead`, `search`, `delegation`,
- * `planSteps` and the open `extension` shape, every `item.open`/`item.close`
- * may carry a declarative `presentation`, and `extension.state` carries
- * plugin-declared thread state. Every v3 addition is optional or a new union
- * member, so a v2 bridge's deltas still validate unchanged; the workstream
- * that deletes the v2 paths makes `presentation` required.
+ * Grammar v3 (docs/provider-plugin-api.md §3): the core vocabulary has
+ * `fileRead`, `search`, `delegation`, `planSteps` and the open `extension`
+ * shape, every `item.open`/`item.close` may carry a declarative
+ * `presentation`, `extension.state` carries plugin-declared thread state,
+ * and there is one streaming dialect (`item.textDelta`/`item.textClose`)
+ * and one usage dialect (`usage` + `contextWindow`). The v2 dialects
+ * (`message.delta`/`message.close`, `usage.turn`/`usage.exact`) are gone:
+ * every bridge in this repo emits v3 and a bridge that reports a grammar
+ * range without 3 is refused at the handshake. `presentation` stays optional
+ * until every first-party bridge attaches it; the stabilization pass makes
+ * it required.
  */
 import {
   backgroundTaskStatusSchema,
@@ -208,7 +212,7 @@ export type DeltaSearchShape = z.infer<typeof deltaSearchShapeSchema>;
  * child's own deltas link back through `parentRef`. `background: true` marks
  * a delegation that outlives its turn: the assembler routes its progress and
  * close to the thread-scoped `item/delegation/*` events exactly as it does
- * for `backgroundTask` (WS1a). The terminal `status` rides `item.close`, as
+ * for `backgroundTask`. The terminal `status` rides `item.close`, as
  * for `command` and `tool`; `summary` is the child's terminal summary.
  */
 export const deltaDelegationShapeSchema = z.object({
@@ -238,11 +242,10 @@ export type DeltaPlanStepsShape = z.infer<typeof deltaPlanStepsShapeSchema>;
  * A plugin-defined item kind outside the core vocabulary (grammar v3).
  * `kind` is the namespaced `"<pluginId>/<name>"` the plugin declared in its
  * provider registration (`extensionKinds`); only the namespace shape is
- * validated here. The payload is opaque JSON at this layer.
- *
- * TODO(WS1a): the server validates `payload` against the plugin's declared
- * item schema for `kind` at ingest and rejects the event on mismatch; until
- * that lands the assembler refuses extension shapes (see delta-assembler.ts).
+ * validated here. The payload is opaque JSON at this layer: the assembler
+ * copies it onto the canonical item, and the server validates it against the
+ * plugin's declared item schema for `kind` at ingest, persisting a
+ * `provider/unhandled` in its place on a miss.
  *
  * The shape carries no presentation of its own: presentation lives in ONE
  * place, the `item.open`/`item.close` delta's `presentation` field, and for
@@ -321,7 +324,7 @@ export type DeltaItemShapeType = DeltaItemShape["type"];
  * The re-embedded snapshot an `item.progress` may carry for work that
  * outlives its turn. `backgroundTask` is the v2 form; `delegation` joins it in
  * v3 for background delegations (the assembler routes it to
- * `item/delegation/progress` in WS1a).
+ * `item/delegation/progress`).
  */
 export const deltaProgressSnapshotSchema = z.discriminatedUnion("type", [
   deltaBackgroundTaskShapeSchema,
@@ -329,12 +332,12 @@ export const deltaProgressSnapshotSchema = z.discriminatedUnion("type", [
 ]);
 export type DeltaProgressSnapshot = z.infer<typeof deltaProgressSnapshotSchema>;
 
-export const deltaMessageChannelSchema = z.enum(["assistant", "reasoning"]);
-export type DeltaMessageChannel = z.infer<typeof deltaMessageChannelSchema>;
-
 /**
- * Item-keyed text channels (codex): channels that synthesize a delta-first
- * `item/started` for an unknown item id.
+ * The streamed-text channels: which text item a stream feeds and which of its
+ * fields the text lands in. `agentMessage` and `plan` items have one text;
+ * a `reasoning` item has `summary` (`reasoningSummary`) and `content`
+ * (`reasoningText`). A delta for an unknown item key synthesizes the
+ * channel's `item/started`.
  */
 export const deltaTextChannelSchema = z.enum([
   "agentMessage",
@@ -529,45 +532,42 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
   }),
 
   /**
-   * Streamed message text. The assembler synthesizes `item/started` on
-   * delta-first opens and accumulates the stream text.
-   */
-  z.object({
-    kind: z.literal("message.delta"),
-    channel: deltaMessageChannelSchema,
-    streamKey: deltaKeyPartSchema,
-    text: z.string(),
-    parentRef: deltaKeyPartSchema.optional(),
-    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
-  }),
-
-  /**
-   * Close a message stream. `text` present: settle with the provider's final
-   * text (preferred over accumulation). `text` absent: settle with the
-   * accumulated stream text (ACP-style). Silent stream release needs no
-   * delta: a tool `item.open` in the same scope auto-detaches the open
-   * assistant stream so later text mints a fresh item.
-   */
-  z.object({
-    kind: z.literal("message.close"),
-    channel: deltaMessageChannelSchema,
-    streamKey: deltaKeyPartSchema.optional(),
-    text: z.string().optional(),
-    parentRef: deltaKeyPartSchema.optional(),
-    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
-  }),
-
-  /**
-   * Item-keyed streamed text (codex message/reasoning/plan deltas). The first
-   * delta for an unknown item id synthesizes the channel's `item/started`;
-   * later deltas (and deltas for an id the provider already opened or
-   * settled) reuse the mapped id.
+   * Streamed text — the one streaming dialect. Every text stream is keyed
+   * like every other item: by the provider's own item id when the provider
+   * names its message items (codex), or by a bridge-chosen `key.channel`
+   * (`"assistant"`, `"thinking-2"`) plus `key.parentRef` for providers whose
+   * streams are anonymous (claude, pi, acp). The first delta for an unknown
+   * key synthesizes the channel's `item/started`; later deltas (and deltas
+   * for a provider id already opened or settled) reuse the mapped id. The
+   * assembler accumulates the stream text per open item so `item.textClose`
+   * can settle without a provider-final text.
    */
   z.object({
     kind: z.literal("item.textDelta"),
     key: deltaItemKeySchema,
     channel: deltaTextChannelSchema,
     text: z.string(),
+    providerTurnId: providerTurnIdSchema.optional(),
+    noTurnFallback: deltaNoTurnFallbackSchema.optional(),
+  }),
+
+  /**
+   * Settle a text stream. `text` present: the provider's final text, preferred
+   * over the accumulated stream (and enough on its own — a close for a key
+   * nothing streamed under completes a fresh item). `text` absent: settle
+   * with the accumulated stream text, completing nothing when the stream only
+   * ever received whitespace. Either way the key is released, so later text
+   * mints a fresh item. `channel` says which item to mint for a bare close
+   * and where a provider-final `text` lands on a reasoning item. Providers
+   * that name their message items may instead settle through `item.close`
+   * with the full terminal shape (the uniform close rule) — that is the same
+   * item lifecycle, not a second streaming dialect.
+   */
+  z.object({
+    kind: z.literal("item.textClose"),
+    key: deltaItemKeySchema,
+    channel: deltaTextChannelSchema,
+    text: z.string().optional(),
     providerTurnId: providerTurnIdSchema.optional(),
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
@@ -596,21 +596,18 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     noTurnFallback: deltaNoTurnFallbackSchema.optional(),
   }),
 
-  /** Last-turn usage; the assembler accumulates the running thread totals. */
-  z.object({
-    kind: z.literal("usage.turn"),
-    tokens: threadEventTokenUsageBreakdownSchema,
-    modelContextWindow: z.number().nullable().optional(),
-  }),
-
   /**
-   * Exact provider-reported usage (codex): the provider already accumulates,
-   * so the assembler fans the snapshot out verbatim to both usage events
-   * (`thread/tokenUsage/updated` + `thread/contextWindowUsage/updated`, the
-   * context meter reading `last.totalTokens`).
+   * Provider-reported usage — the one usage dialect. `total` is the running
+   * session total and `last` the most recent turn's usage; a provider that
+   * reports exact cumulative totals (codex) forwards both verbatim, and a
+   * provider that reports per-turn usage (claude, pi) sums `last` into
+   * `total` itself (`addTokenUsage` in the bridge kit), resetting at every
+   * session construction alongside `session.reset`. Emits
+   * `thread/tokenUsage/updated` only: a provider whose usage also measures
+   * the context window sends the `contextWindow` delta beside it.
    */
   z.object({
-    kind: z.literal("usage.exact"),
+    kind: z.literal("usage"),
     total: threadEventTokenUsageBreakdownSchema,
     last: threadEventTokenUsageBreakdownSchema,
     modelContextWindow: z.number().nullable(),
@@ -619,7 +616,10 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
 
   /**
    * Context-window meter. `attach: "currentOrLast"` legalizes post-turn
-   * attachment (pi reports after `agent_end` for the turn that just closed).
+   * attachment (pi reports after `agent_end` for the turn that just closed);
+   * a `providerTurnId` scopes the reading to that vouched turn instead
+   * (codex measures the window per native turn) and `attach` is then
+   * irrelevant.
    */
   z.object({
     kind: z.literal("contextWindow"),
@@ -627,6 +627,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     size: z.number().nullable().optional(),
     estimated: z.boolean(),
     attach: deltaAttachSchema,
+    providerTurnId: providerTurnIdSchema.optional(),
   }),
 
   z.object({
@@ -668,7 +669,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
    * the whole state, never a diff. Codex goals (`thread.goal` above) become a
    * codex extension state once the codex plugin declares the kind. The payload
    * is opaque here; the server validates it against the plugin's declared
-   * `state` schema at ingest (TODO(WS1a), same site as extension items).
+   * `state` schema at ingest (the same site as extension items).
    * The namespaced kind travels as `extensionKind` only because `kind` is
    * this union's discriminator; the item shape and the persisted item call
    * the same value `kind`.

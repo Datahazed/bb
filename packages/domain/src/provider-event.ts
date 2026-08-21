@@ -294,7 +294,7 @@ export type ThreadEventPlanStepsItem = z.infer<
  * A plugin-defined item kind outside the core vocabulary
  * (`"<pluginId>/<name>"`, see provider-extension-kind.ts). The payload is
  * opaque JSON here; the server validates it against the owning plugin's
- * declared schema at ingest (WS1a). `presentation` is REQUIRED — an
+ * declared schema at ingest. `presentation` is REQUIRED — an
  * extension item has no core renderer to fall back on, so the declarative
  * base is the only thing every client can show.
  */
@@ -765,8 +765,7 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
    * true`). Thread-scoped for the same reason as `item/backgroundTask/
    * progress`: a background child outlives its spawning turn, and late events
    * must not interleave into later turns' sequence-contiguous windows. The
-   * item is placed in the timeline by its turn-scoped `item/started`. Not yet
-   * produced: the delta assembler emits it in WS1a.
+   * item is placed in the timeline by its turn-scoped `item/started`.
    */
   z.object({
     type: z.literal("item/delegation/progress"),
@@ -778,7 +777,7 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
    * Terminal state for a background delegation, carrying the full final item.
    * Dedicated event (instead of the turn-scoped `item/completed`) because it
    * may arrive turns after the `item/started`. Foreground delegations settle
-   * through `item/completed`. Not yet produced: WS1a.
+   * through `item/completed`.
    */
   z.object({
     type: z.literal("item/delegation/completed"),
@@ -825,6 +824,23 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     threadId: z.string(),
     providerThreadId: z.string(),
     rateLimits: providerRateLimitStateSchema,
+  }),
+  /**
+   * Plugin-declared thread state (grammar v3): a `"<pluginId>/<name>"` kind
+   * beside the core thread-state family (usage, context window, rate limits,
+   * model fallback, context cleared). Latest snapshot wins per `kind`: a
+   * bridge re-sends the whole state, never a diff, and a consumer keeps one
+   * value per kind. The server validated `payload` against the owning
+   * plugin's declared `state` schema at ingest; a payload that failed that
+   * check was persisted as `provider/unhandled` instead, so every stored row
+   * of this type carries a payload its plugin vouched for.
+   */
+  z.object({
+    type: z.literal("thread/extensionState/updated"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    kind: extensionKindSchema,
+    payload: jsonValueSchema,
   }),
   z.object({
     type: z.literal("provider/warning"),

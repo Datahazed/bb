@@ -8,7 +8,7 @@ import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   createDeltaAssembler,
   type DeltaAssembler,
-} from "../delta-assembler.js";
+} from "@bb/provider-bridge-protocol/assembler";
 import {
   createPiDeltaTranslator,
   type PiModelContextWindowResolver,
@@ -755,8 +755,7 @@ describe("pi delta translation equivalence", () => {
 
     const started = events.find(
       (event) =>
-        event.type === "item/started" &&
-        event.item.type === "commandExecution",
+        event.type === "item/started" && event.item.type === "commandExecution",
     );
     if (started?.type !== "item/started") {
       throw new Error("expected a commandExecution item/started");

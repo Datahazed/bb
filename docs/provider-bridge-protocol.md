@@ -41,9 +41,12 @@ cannot resolve them. Everything a bridge compiles against is published at
 **`@get-bb/plugin-sdk/provider-bridge`**: the protocol schemas (including
 the `thread/delta` grammar), the bridge kit (JSON-RPC plumbing, tool-call
 and interaction codecs, visibility, dialect-parsing helpers), and the domain
-vocabulary the params reference. In-repo, those are implemented by
-`@bb/provider-bridge-protocol` and `@bb/domain`; test infrastructure stays
-private in `@bb/provider-bridge-protocol/testing`.
+vocabulary the params reference, and the testing kit a bridge proves itself
+with — the conformance scenarios, the real delta assembler, the JSON-RPC
+harness and the calibration normalizer — is published beside it as
+**`@get-bb/plugin-sdk/provider-bridge/testing`**. In-repo, those are
+implemented by `@bb/provider-bridge-protocol` (the grammar, the
+`assembler`, `conformance` and `testing` subpaths) and `@bb/domain`.
 
 ## Transport
 
@@ -79,8 +82,13 @@ Handshake capabilities are **session-behavior facts** (`sessionRestore`,
 the code that implements them, so they cannot drift from behavior.
 `grammarVersions` is the inclusive `[min, max]` range of the `thread/delta`
 grammar the bridge speaks (default `[2, 2]`: a bridge that says nothing
-speaks exactly the version it negotiated), which is how the vocabulary can
-grow without a daemon bump. `steerMode` says whether `turn/steer` is
+speaks the grammar that shipped with the protocol version it negotiated),
+which is how the vocabulary can change without a protocol bump. The runtime
+states its assembler's range in the `initialize` params and both sides use
+the highest common version; today the assembler speaks **v3 only**
+(`[3, 3]`), so every bridge reports `[3, 3]` and a bridge whose range
+misses 3 — including one that predates the field — is refused at spawn with
+a legible error. `steerMode` says whether `turn/steer` is
 injected into the live model loop (`inject`) or held for the next prompt
 boundary (`queue`, the default and the conservative reading). The runtime never sends a
 capability-gated method to a bridge that did not advertise it. A handshake
@@ -129,8 +137,8 @@ only then does it earn a handshake capability.
 Everything timeline-bound rides one notification: `thread/delta
 { threadId, deltas }`. A delta is a parsed _semantic_ unit — `turn.open`,
 `turn.boundary`, `input.accepted`, `item.open`/`item.close` with a full item
-shape, streamed text (`message.delta`, `item.textDelta`), usage,
-context-window, errors/warnings, `unhandled` diagnostics, session lifecycle
+shape, streamed text (`item.textDelta`/`item.textClose`), `usage`,
+`contextWindow`, errors/warnings, `unhandled` diagnostics, session lifecycle
 (`session.reset`, `session.ended`) — never a raw provider event and never a
 finished `ThreadEvent`. The schemas in
 `@bb/provider-bridge-protocol/src/thread-delta.ts` are the source of truth
@@ -157,7 +165,29 @@ adapter) consumes the deltas and owns every timeline invariant:
   close-without-open); repeated closes for a settled provider-identified
   key are deduped and an explicit reopen reuses the same bb id.
 - **Accumulation.** Streamed text, cumulative output snapshots (diffed into
-  deltas/resets), token usage totals, and progress-event throttling.
+  deltas/resets), and progress-event throttling.
+- **One streaming dialect.** Every text stream is an item keyed like every
+  other item: by the provider's own item id when it names its message items
+  (codex), or by a bridge-chosen `key.channel` (`assistant`, `thinking-2`)
+  plus `key.parentRef` for anonymous streams (claude, pi, acp).
+  `item.textDelta { key, channel: agentMessage | reasoningText |
+reasoningSummary | plan, text }` synthesizes the channel's `item/started`
+  on first sight and accumulates; `item.textClose { key, channel, text? }`
+  settles with the provider-final `text` or, absent that, the accumulated
+  stream (a whitespace-only stream completes nothing), and releases the
+  key. A tool `item.open` releases the anonymous assistant stream in its
+  scope so later text mints a fresh item; provider-named items keep their
+  own lifecycle and may settle through `item.close` with the full terminal
+  shape like any item. `session.ended` settles a streamed item with the
+  text it received.
+- **One usage dialect.** `usage { total, last, modelContextWindow }` is
+  forwarded verbatim as `thread/tokenUsage/updated`: a provider with exact
+  cumulative totals (codex) sends both as reported, and a provider that
+  reports per turn (claude, pi) sums `last` into `total` itself
+  (`addTokenUsage` in the bridge kit), resetting where it sends
+  `session.reset`. The context meter is always the separate `contextWindow`
+  delta, which may name a vouched `providerTurnId` (codex sends one beside
+  each `usage`).
 - **Streamed-text batching.** Coalescing is assembler policy, not bridge
   policy: within a per-stream flush window (`textDeltaFlushMs`, 100ms
   default, 0 disables) consecutive streamed-text events — assistant/
@@ -176,13 +206,16 @@ adapter) consumes the deltas and owns every timeline invariant:
 - **Settlement.** `session.ended` and settling errors close open turns and
   items with the right statuses.
 
-### Grammar v3 (accepted beside v2)
+### Grammar v3
 
 The target provider-plugin surface ([provider-plugin-api.md](provider-plugin-api.md))
-grows the delta vocabulary; every addition is a new union member or an
-optional field, so the protocol version stays at 2 and a v2 bridge's deltas
-validate unchanged. A bridge that emits any of it reports
-`grammarVersions: [2, 3]`.
+grew the delta vocabulary into grammar v3: new union members and optional
+fields beside the v2 grammar, plus one streaming dialect and one usage
+dialect replacing v2's two of each (`message.delta`/`message.close` and
+`usage.turn`/`usage.exact` are deleted). The protocol version stays at 2 —
+the envelope and the method vocabulary did not change — and the grammar
+range is what gates a bridge: every bridge in this repo reports
+`grammarVersions: [3, 3]`.
 
 - **Core item shapes** `fileRead`, `search` (`mode: content | path | list`),
   `delegation` (`childRef`, `label`, `background`, `summary?`; one shape for
@@ -208,10 +241,25 @@ validate unchanged. A bridge that emits any of it reports
   `session/replaced`, not a delta: `{ threadId?, kind: sessionArchived |
 authRequired | restartRecommended | staleTurn | rateLimited, message,
 retryable }`. The runtime acts on the kind and never matches error text.
+  Today the bridge adapter decodes it and the runtime forwards it to its
+  `onProviderRecovery` hook (the daemon logs it); the per-kind actions land
+  with the runtime cleanup workstream.
 
-The assembler refuses v3 shapes with `UnsupportedDeltaShapeError` until the
-generic assembler lands; the schemas accept them so bridges can be written
-and conformance-tested against the contract first.
+The assembler builds every v3 core kind: `fileRead`, `search` and
+`planSteps` open pending and settle from the terminal shape like `command`;
+a foreground `delegation` settles through the turn-scoped `item/completed`,
+and a `background: true` delegation is thread-attached like a background
+task — its `item.progress` snapshots and its `item.close` ride the
+thread-scoped `item/delegation/progress` and `item/delegation/completed`
+events, need no open turn, and survive turn settlement and `session.ended`.
+The assembler reports `grammarVersions: [2, 3]`. An `extension` shape
+becomes the canonical `extension` item (opaque payload, the delta's
+presentation); `extension.state` becomes the thread-scoped
+`thread/extensionState/updated` event. The server validates both payloads
+against the owning plugin's declared `experimental_extensionKinds` schema at
+ingest (64 KiB cap); an undeclared kind or a schema miss is persisted as a
+`provider/unhandled` in the same batch slot, never dropped and never stored
+unvalidated.
 
 ## Identifiers
 
@@ -281,8 +329,8 @@ it:
 Assembler-owned invariants over the assembled timeline:
 
 1. **Every item's first event is `item/started`.** The assembler synthesizes
-   the opening event for delta-first text streams (`message.delta`,
-   `item.textDelta`), so a bridge streams without bookkeeping. Output
+   the opening event for delta-first text streams (`item.textDelta`), so a
+   bridge streams without bookkeeping. Output
    deltas (`item.outputDelta`) never synthesize — a command item without
    its command would be worse than the anomaly — but still register the key
    so a later open correlates.

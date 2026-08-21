@@ -17,12 +17,15 @@ import {
   isAcpProviderId,
 } from "./acp-provider-tier.js";
 import type {
+  ExtensionKind,
   JsonValue,
   PermissionMode,
   ProviderFork,
   ProviderInfo,
   ReasoningLevel,
 } from "@bb/domain";
+import { parseExtensionKind } from "@bb/domain";
+import type { PluginProviderExtensionKindDeclaration } from "@get-bb/plugin-sdk";
 
 /**
  * Backend-only provider facts, the server-side half of a declaration (the
@@ -111,11 +114,24 @@ export function reservedProviderIdProblem(args: {
   }.`;
 }
 
+/**
+ * The payload validators a provider declared for its extension kinds, keyed
+ * by the kind's local name (the namespaced kind is `"<pluginId>/<name>"`,
+ * see `parseExtensionKind`). Server-only: the event ingest route validates
+ * every `extension` item and `extension.state` payload against these before
+ * persisting it, so clients never see a payload the plugin did not vouch
+ * for. Schemas are code, so they live here rather than on `ProviderInfo`.
+ */
+export type ProviderExtensionKindSchemas = Readonly<
+  Record<string, PluginProviderExtensionKindDeclaration>
+>;
+
 export interface ProviderRegistration {
   info: ProviderInfo;
   serverCapabilities: ProviderServerCapabilities;
   /** Opaque provider-owned statics forwarded to this registration's bridge. */
   bridgeOptions: Readonly<Record<string, JsonValue>>;
+  extensionKinds: ProviderExtensionKindSchemas;
   visibility: "always" | "installed";
   source: ProviderRegistrationSource;
   /**
@@ -164,6 +180,15 @@ export interface ProviderRegistryService {
    */
   supportsManualCompaction(providerId: string): boolean;
   /**
+   * The declared validators for one namespaced extension kind, found through
+   * the kind's plugin-id prefix (a plugin's providers share one namespace).
+   * Null when no live registration from that plugin declares the name — an
+   * undeclared kind is rejected at ingest exactly like a failing payload.
+   */
+  getExtensionKindSchemas(
+    kind: ExtensionKind,
+  ): PluginProviderExtensionKindDeclaration | null;
+  /**
    * Adds a plugin-registered provider. Rejects id collisions with any live
    * registration — a plugin cannot shadow another plugin's provider — and
    * first-party ids claimed by a plugin that does not own them
@@ -175,9 +200,10 @@ export interface ProviderRegistryService {
   register(
     registration: Omit<
       ProviderRegistration,
-      "bridgeOptions" | "source" | "visibility"
+      "bridgeOptions" | "extensionKinds" | "source" | "visibility"
     > & {
       bridgeOptions?: ProviderRegistration["bridgeOptions"];
+      extensionKinds?: ProviderRegistration["extensionKinds"];
       pluginId: string;
       visibility?: ProviderRegistration["visibility"];
     },
@@ -379,6 +405,20 @@ export function createProviderRegistryService(
       return false;
     },
 
+    getExtensionKindSchemas(kind) {
+      const { pluginId, name } = parseExtensionKind(kind);
+      for (const registration of pluginRegistrations.values()) {
+        if (registration.source.pluginId !== pluginId) {
+          continue;
+        }
+        const declared = registration.extensionKinds[name];
+        if (declared !== undefined) {
+          return declared;
+        }
+      }
+      return null;
+    },
+
     register(registration) {
       const providerId = registration.info.id;
       const reserved = reservedProviderIdProblem({
@@ -397,6 +437,7 @@ export function createProviderRegistryService(
         info: registration.info,
         serverCapabilities: registration.serverCapabilities,
         bridgeOptions: registration.bridgeOptions ?? {},
+        extensionKinds: registration.extensionKinds ?? {},
         visibility: registration.visibility ?? "always",
         source: { kind: "plugin", pluginId: registration.pluginId },
         ...(registration.icon === undefined ? {} : { icon: registration.icon }),

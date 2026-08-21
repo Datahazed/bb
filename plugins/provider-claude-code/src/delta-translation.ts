@@ -37,6 +37,9 @@ import {
   type ProviderRateLimitStatus,
   type ProviderRuntimeEvent,
   type ThreadDelta,
+  type ThreadEventTokenUsageBreakdown,
+  ZERO_TOKEN_USAGE,
+  addTokenUsage,
   claudeTaskToolNameSchema,
   claudeTaskToolOutputSchema,
   type ClaudeTaskToolOutput,
@@ -112,6 +115,16 @@ export interface ClaudeDeltaTranslationContext {
 }
 
 const ASSISTANT_STREAM_KEY = "assistant";
+
+/**
+ * One anonymous stream per thinking block, keyed by its content index so the
+ * streamed deltas and the block's final text settle the same reasoning item.
+ * Prefixed so a thinking stream can never share a key with the assistant
+ * stream or another channel-keyed family.
+ */
+function thinkingStreamChannel(contentIndex: number): string {
+  return `thinking-${contentIndex}`;
+}
 
 // ---------------------------------------------------------------------------
 // Claude tool classification (dialect → delta item shapes)
@@ -540,6 +553,12 @@ interface ClaudeTurnMirror {
 
 interface ClaudeThreadDialectState {
   mirror: ClaudeTurnMirror;
+  /**
+   * Running session token total for the `usage` delta: the SDK reports per
+   * result (per turn), and one translator lives per session, so this resets
+   * exactly where the bridge sends `session.reset`.
+   */
+  cumulativeTokens: ThreadEventTokenUsageBreakdown;
   latestRequestContextTokens: number | undefined;
   latestProviderCheckpointId: string | undefined;
   lastModelFallback:
@@ -574,6 +593,7 @@ interface ClaudeThreadDialectState {
 function createThreadState(): ClaudeThreadDialectState {
   return {
     mirror: { turnOpen: false, pendingInputs: 0, segment: 0 },
+    cumulativeTokens: ZERO_TOKEN_USAGE,
     latestRequestContextTokens: undefined,
     latestProviderCheckpointId: undefined,
     lastModelFallback: undefined,
@@ -1040,22 +1060,23 @@ export function createClaudeDeltaTranslator() {
       // Provider-final reasoning text: settles the streamed reasoning item
       // under the (parentRef, contentIndex) stream key, or mints one fresh.
       deltas.push({
-        kind: "message.close",
-        channel: "reasoning",
-        streamKey: String(thinkingBlock.contentIndex),
+        kind: "item.textClose",
+        key: {
+          channel: thinkingStreamChannel(thinkingBlock.contentIndex),
+          ...parentRefField,
+        },
+        channel: "reasoningText",
         text: thinkingBlock.text,
-        ...parentRefField,
       });
     }
 
     const text = extractAssistantText(message);
     if (text) {
       deltas.push({
-        kind: "message.close",
-        channel: "assistant",
-        streamKey: ASSISTANT_STREAM_KEY,
+        kind: "item.textClose",
+        key: { channel: ASSISTANT_STREAM_KEY, ...parentRefField },
+        channel: "agentMessage",
         text,
-        ...parentRefField,
       });
     }
 
@@ -1094,11 +1115,13 @@ export function createClaudeDeltaTranslator() {
     if (reasoningDelta) {
       deltas.push({ kind: "turn.open" });
       deltas.push({
-        kind: "message.delta",
-        channel: "reasoning",
-        streamKey: String(reasoningDelta.contentIndex),
+        kind: "item.textDelta",
+        key: {
+          channel: thinkingStreamChannel(reasoningDelta.contentIndex),
+          ...parentRefField,
+        },
+        channel: "reasoningText",
         text: reasoningDelta.delta,
-        ...parentRefField,
       });
     }
 
@@ -1106,11 +1129,10 @@ export function createClaudeDeltaTranslator() {
     if (textDelta) {
       deltas.push({ kind: "turn.open" });
       deltas.push({
-        kind: "message.delta",
-        channel: "assistant",
-        streamKey: ASSISTANT_STREAM_KEY,
+        kind: "item.textDelta",
+        key: { channel: ASSISTANT_STREAM_KEY, ...parentRefField },
+        channel: "agentMessage",
         text: textDelta.delta,
-        ...parentRefField,
       });
     }
 
@@ -1241,9 +1263,14 @@ export function createClaudeDeltaTranslator() {
     }
     const tokenUsage = extractClaudeResultTokenUsage(message);
     if (tokenUsage !== undefined) {
+      state.cumulativeTokens = addTokenUsage(
+        state.cumulativeTokens,
+        tokenUsage.last,
+      );
       deltas.push({
-        kind: "usage.turn",
-        tokens: tokenUsage.last,
+        kind: "usage",
+        total: state.cumulativeTokens,
+        last: tokenUsage.last,
         modelContextWindow: tokenUsage.modelContextWindow,
       });
     }
@@ -1503,11 +1530,7 @@ export function createClaudeDeltaTranslator() {
     const state = stateFor({ threadId });
     const deltas: ThreadDelta[] = [];
     if (state.mirror.turnOpen) {
-      deltas.push(
-        ...withMirror(state, [
-          { kind: "session.ended" },
-        ]),
-      );
+      deltas.push(...withMirror(state, [{ kind: "session.ended" }]));
     }
     deltas.push(
       ...buildInterruptedClaudeTaskDeltas({ tasks: state.tasksById }),

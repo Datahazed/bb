@@ -46,6 +46,7 @@ import type {
   PluginProviderStrings,
 } from "../backend-contract.js";
 import * as providerBridgeSdk from "../provider-bridge.js";
+import * as providerBridgeTestingSdk from "../provider-bridge-testing.js";
 
 const DOC_URL = new URL(
   "../../../../docs/provider-plugin-api.md",
@@ -335,6 +336,23 @@ describe("guardrail G10: docs/provider-plugin-api.md matches the contract", () =
     expect(typeof providerBridgeSdk.experimental_defineProviderBridge).toBe(
       "function",
     );
+  });
+
+  it("§2 the assembler ships with the conformance kit and JSON-RPC harness as provider-bridge/testing", () => {
+    // The doc names the entry `@get-bb/plugin-sdk/provider-bridge/testing`;
+    // the value exports carry the experimental_ prefix until stabilization.
+    expect(
+      typeof providerBridgeTestingSdk.experimental_createDeltaAssembler,
+    ).toBe("function");
+    expect(
+      typeof providerBridgeTestingSdk.experimental_runBridgeConformance,
+    ).toBe("function");
+    expect(
+      typeof providerBridgeTestingSdk.experimental_createBridgeJsonRpcTestHarness,
+    ).toBe("function");
+    expect(
+      typeof providerBridgeTestingSdk.experimental_normalizeCalibrationEvents,
+    ).toBe("function");
   });
 
   it("§2 handshake, execution options and recovery fields match the protocol schemas", async () => {

@@ -15,10 +15,7 @@ import type {
   ThreadEvent,
 } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
-import type {
-  AdapterCommand,
-  ProviderAdapterFactory,
-} from "./provider-adapter.js";
+import type { AdapterCommand } from "./provider-adapter.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
   experimental_providerHealthResultSchema,
@@ -159,16 +156,12 @@ interface CodexArchivedSessionRecoveryArgs {
   threadId: string;
 }
 
-interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
-  adapterFactory?: ProviderAdapterFactory;
-}
-
 interface ResolveProviderRequestThreadIdArgs extends ResolveRuntimeProviderRequestThreadIdArgs {
   proc: ProviderProcess;
 }
 
 interface ResolveThreadStoragePathArgs {
-  options: AgentRuntimeInternalOptions;
+  options: AgentRuntimeOptions;
   threadId: string;
 }
 
@@ -324,12 +317,6 @@ function resolveThreadStoragePath(
  * interactions.
  */
 export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
-  return createAgentRuntimeWithAdapters(options);
-}
-
-export function createAgentRuntimeWithAdapters(
-  options: AgentRuntimeInternalOptions,
-): AgentRuntime {
   const additionalWorkspaceWriteRoots =
     options.additionalWorkspaceWriteRoots ?? [];
   const skillRoots = normalizeSkillRoots({
@@ -384,7 +371,6 @@ export function createAgentRuntimeWithAdapters(
 
   const providerProcesses = new RuntimeProviderProcessManager({
     additionalWorkspaceWriteRoots,
-    adapterFactory: options.adapterFactory,
     bridgeBundleDir: options.bridgeBundleDir,
     ...(bridgeNodeEnv !== undefined ? { bridgeNodeEnv } : {}),
     bridgeNodeExecutablePath: process.execPath,
@@ -407,6 +393,9 @@ export function createAgentRuntimeWithAdapters(
         providerProcess.identity,
       ),
     onProviderThreadDetached: (threadId) => {
+      // Open background work dies with the provider process: bridges settle
+      // it with explicit deltas on their own teardown, and the server's
+      // reconciliation settles what a dead process never could.
       threadIdentityRegistry.clearThread(threadId);
       clearThreadRuntimeConfig(threadId);
       turnState.clearThread(threadId);
@@ -1179,6 +1168,16 @@ export function createAgentRuntimeWithAdapters(
       sourceThreadId !== undefined &&
       suppressedThreadEventIds.has(sourceThreadId)
     ) {
+      return;
+    }
+    // A typed recovery hint is a runtime signal, not timeline traffic: parse
+    // and forward it, and let the translator see nothing of it.
+    const recoveryHint = args.proc.adapter.decodeRecoveryHint?.(args.parsed);
+    if (recoveryHint !== null && recoveryHint !== undefined) {
+      options.onProviderRecovery?.({
+        providerId: args.proc.providerId,
+        ...recoveryHint,
+      });
       return;
     }
     emitTranslatedEvents({

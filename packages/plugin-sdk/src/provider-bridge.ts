@@ -63,6 +63,8 @@ export {
   BRIDGE_NOTIFICATION_METHODS,
   BRIDGE_REQUEST_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V2,
+  THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
   bridgeCapabilitiesSchema,
   bridgeGrammarVersionsSchema,
@@ -74,7 +76,6 @@ export {
   deltaFileReadShapeSchema,
   deltaItemKeySchema,
   deltaItemShapeSchema,
-  deltaMessageChannelSchema,
   deltaNoTurnFallbackSchema,
   deltaOutputChannelSchema,
   deltaPlanStepsShapeSchema,
@@ -129,7 +130,6 @@ export type {
   DeltaItemKey,
   DeltaItemShape,
   DeltaItemShapeType,
-  DeltaMessageChannel,
   DeltaNoTurnFallback,
   DeltaOutputChannel,
   DeltaPlanStepsShape,
@@ -165,6 +165,8 @@ export type {
 // ---------------------------------------------------------------------------
 
 export {
+  ZERO_TOKEN_USAGE,
+  addTokenUsage,
   bashArgsSchema,
   bridgeRequestEnvelopeSchema,
   buildBridgeToolCallContent as experimental_buildBridgeToolCallContent,

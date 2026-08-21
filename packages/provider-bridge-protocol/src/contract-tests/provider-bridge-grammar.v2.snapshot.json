@@ -20,7 +20,8 @@
       "used": "required",
       "size": "optional",
       "estimated": "required",
-      "attach": "required"
+      "attach": "required",
+      "providerTurnId": "optional"
     },
     "extension.state": {
       "kind": "required",
@@ -71,28 +72,20 @@
       "providerTurnId": "optional",
       "noTurnFallback": "optional"
     },
+    "item.textClose": {
+      "kind": "required",
+      "key": "required",
+      "channel": "required",
+      "text": "optional",
+      "providerTurnId": "optional",
+      "noTurnFallback": "optional"
+    },
     "item.textDelta": {
       "kind": "required",
       "key": "required",
       "channel": "required",
       "text": "required",
       "providerTurnId": "optional",
-      "noTurnFallback": "optional"
-    },
-    "message.close": {
-      "kind": "required",
-      "channel": "required",
-      "streamKey": "optional",
-      "text": "optional",
-      "parentRef": "optional",
-      "noTurnFallback": "optional"
-    },
-    "message.delta": {
-      "kind": "required",
-      "channel": "required",
-      "streamKey": "required",
-      "text": "required",
-      "parentRef": "optional",
       "noTurnFallback": "optional"
     },
     "provider.error": {
@@ -186,17 +179,12 @@
       "parentRef": "optional",
       "providerTurnId": "optional"
     },
-    "usage.exact": {
+    "usage": {
       "kind": "required",
       "total": "required",
       "last": "required",
       "modelContextWindow": "required",
       "providerTurnId": "optional"
-    },
-    "usage.turn": {
-      "kind": "required",
-      "tokens": "required",
-      "modelContextWindow": "optional"
     }
   },
   "itemShapes": {
