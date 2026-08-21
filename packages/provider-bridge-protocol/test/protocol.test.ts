@@ -261,7 +261,7 @@ describe("streaming thread event grammar", () => {
     expect(results[5]).toMatchObject({ rule: "turn/settles-once" });
   });
 
-  it("does not reopen a settled turn for user input or delegated child work", () => {
+  it("does not reopen a settled turn for user input, delegated child work, or post-turn compaction", () => {
     const results = observeAll([
       turnStarted("turn_1"),
       turnCompleted("turn_1"),
@@ -282,9 +282,17 @@ describe("streaming thread event grammar", () => {
         },
         scope: { kind: "turn", turnId: "turn_1" },
       },
+      // Pi threshold compaction attaches to the turn that just closed (#1542).
+      {
+        type: "item/started",
+        ...identity,
+        item: { type: "contextCompaction", id: "item_k" },
+        scope: { kind: "turn", turnId: "turn_1" },
+      },
       turnCompleted("turn_1"),
     ]);
     expect(results.map((result) => result.kind)).toEqual([
+      "ok",
       "ok",
       "ok",
       "ok",

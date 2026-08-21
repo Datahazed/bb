@@ -129,7 +129,8 @@ export class ThreadEventGrammar {
         state.settledItemIds.delete(event.item.id);
         trim(state.openItemIds);
         // Root work on a turn the provider already settled reopens that turn
-        // (Codex continues a completed turn after hooks/compaction, #1646).
+        // (Codex continues a completed turn after hooks, #1646). Provider
+        // maintenance such as compaction is not root work (isRootTurnWorkItem).
         // The provider settles it again when that work ends, and that second
         // turn/completed is the only signal that the thread is idle again, so
         // it must pass turn/settles-once.

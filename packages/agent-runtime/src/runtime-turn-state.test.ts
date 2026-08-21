@@ -225,4 +225,20 @@ describe("RuntimeTurnState reopened turns (#1646)", () => {
     state.observe(commandStarted("turn-1"));
     expect(state.getActiveTurnId("t1")).toBe("turn-2");
   });
+
+  it("does not reopen a settled turn for post-turn context compaction", () => {
+    // Pi threshold compaction attaches to the turn that just closed and no
+    // second turn/completed follows (#1542); the session must stay idle.
+    const state = new RuntimeTurnState();
+    state.observe(turnStarted("turn-1"));
+    state.observe(turnCompleted("turn-1"));
+    state.observe({
+      type: "item/started",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: turnScope("turn-1"),
+      item: { type: "contextCompaction", id: "compaction-1" },
+    });
+    expect(state.getActiveTurnId("t1")).toBeNull();
+  });
 });

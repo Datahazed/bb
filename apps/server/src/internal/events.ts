@@ -2,7 +2,6 @@ import { and, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import {
   appendDaemonEventsInTransaction,
   deriveStoredEventItemFields,
-  getRootStoredTurnStartedSequence,
   getThread,
   listCompletedTurnsByThreadIds,
   listThreadEnvironmentAssignmentsOnHost,
@@ -173,6 +172,8 @@ interface HasThreadStopSinceTurnRequestedArgs {
 
 interface ResolveReopenedRootTurnIdArgs {
   event: Extract<HostDaemonEventEnvelope["event"], { type: "item/started" }>;
+  /** Per-batch thread row cache; see `applyEventEffects`. */
+  threadRowsById: Map<string, ReturnType<typeof getThread>>;
   threadId: string;
 }
 
@@ -388,6 +389,11 @@ async function applyEventEffects(
   // work stay deferred to avoid command waits inside daemon ingress.
   const followUps: EventEffectFollowUp[] = [];
   const failedParentNotificationThreadIds = new Set<string>();
+  // Thread rows read by the reopen check below, memoized for the batch so the
+  // common case (root items streaming on an active thread) costs one lookup
+  // per thread instead of one per item. Every branch that changes a thread's
+  // lifecycle evicts its row so later items in the batch see the new status.
+  const threadRowsById = new Map<string, ReturnType<typeof getThread>>();
   for (const entry of events) {
     try {
       const event = entry.event;
@@ -412,6 +418,7 @@ async function applyEventEffects(
         if (!isRootTurnStartedEvent(event)) {
           continue;
         }
+        threadRowsById.delete(entry.threadId);
         applyLoggedThreadLifecycleEvent(deps, {
           event: { type: "run.started" },
           threadId: entry.threadId,
@@ -422,12 +429,13 @@ async function applyEventEffects(
       if (event.type === "item/started") {
         // Thread status is otherwise derived from root turn lifecycle events
         // alone. A provider can stream root work on a turn the thread already
-        // settled (Codex continues a completed turn after hooks/compaction, or
+        // settled (Codex continues a completed turn after hooks, or
         // an unlinked auxiliary turn's completion settled the thread while the
         // root turn kept running, #1646). That work is real: the thread must
         // read as active again until the provider settles the turn.
         const reopenedTurnId = resolveReopenedRootTurnId(deps, {
           event,
+          threadRowsById,
           threadId: entry.threadId,
         });
         if (reopenedTurnId === null) {
@@ -441,6 +449,7 @@ async function applyEventEffects(
           },
           "Provider resumed root work on a settled turn; reactivating thread",
         );
+        threadRowsById.delete(entry.threadId);
         applyLoggedThreadLifecycleEvent(deps, {
           event: { type: "run.started" },
           threadId: entry.threadId,
@@ -462,6 +471,7 @@ async function applyEventEffects(
         ) {
           continue;
         }
+        threadRowsById.delete(entry.threadId);
         const turnCompleted = applyTurnCompletedEvent(deps, {
           ...event,
           threadId: entry.threadId,
@@ -511,6 +521,7 @@ async function applyEventEffects(
         if (!thread) {
           continue;
         }
+        threadRowsById.delete(entry.threadId);
         deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
           threadIds: [entry.threadId],
           reason:
@@ -728,7 +739,11 @@ function resolveReopenedRootTurnId(
   if (turnId === undefined) {
     return null;
   }
-  const thread = getThread(deps.db, args.threadId);
+  let thread = args.threadRowsById.get(args.threadId);
+  if (thread === undefined) {
+    thread = getThread(deps.db, args.threadId);
+    args.threadRowsById.set(args.threadId, thread);
+  }
   if (
     !thread ||
     (thread.status !== "idle" && thread.status !== "error") ||
@@ -737,13 +752,24 @@ function resolveReopenedRootTurnId(
   ) {
     return null;
   }
-  const turnStartedSequence = getRootStoredTurnStartedSequence(deps.db, {
-    threadId: args.threadId,
-    turnId,
-  });
-  if (turnStartedSequence === null) {
+  const rootTurnStarted = deps.db
+    .select({ sequence: storedEvents.sequence })
+    .from(storedEvents)
+    .where(
+      and(
+        eq(storedEvents.threadId, args.threadId),
+        eq(storedEvents.turnId, turnId),
+        eq(storedEvents.type, "turn/started"),
+        isNull(storedEvents.parentToolCallId),
+      ),
+    )
+    .orderBy(storedEvents.sequence)
+    .limit(1)
+    .get();
+  if (rootTurnStarted === undefined) {
     return null;
   }
+  const turnStartedSequence = rootTurnStarted.sequence;
   const turnCompleted = deps.db
     .select({ id: storedEvents.id })
     .from(storedEvents)

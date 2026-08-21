@@ -387,15 +387,24 @@ export type ThreadEventItemType = ThreadEventItem["type"];
 /**
  * True when a started item is the agent's own foreground work on its turn:
  * not echoed user input, not a background task that outlives turns by design,
- * and not delegated child work. A provider that streams such an item on a turn
- * it already settled has reopened that turn (Codex continues on a completed
- * turn id after hooks/compaction, #1646); the host grammar, the runtime's
- * active-turn state, and the server's thread status all key off this one rule.
+ * not context compaction, and not delegated child work. A provider that
+ * streams such an item on a turn it already settled has reopened that turn
+ * (Codex continues on a completed turn id after hooks, #1646); the host
+ * grammar, the runtime's active-turn state, and the server's thread status
+ * all key off this one rule.
+ *
+ * Context compaction is provider maintenance, not agent work, and it attaches
+ * to a settled turn by design: pi's threshold compaction runs after
+ * `agent_end` and pins its item to the turn that just closed (`attach:
+ * "currentOrLast"`, #1542) with no second `turn/completed` to follow. Counting
+ * it as a reopen would leave every compacted pi thread active until a manual
+ * stop.
  */
 export function isRootTurnWorkItem(item: ThreadEventItem): boolean {
   return (
     item.type !== "userMessage" &&
     item.type !== "backgroundTask" &&
+    item.type !== "contextCompaction" &&
     item.parentToolCallId === undefined
   );
 }

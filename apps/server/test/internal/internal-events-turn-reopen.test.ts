@@ -105,6 +105,35 @@ function commandStarted(
   };
 }
 
+function compactionItem(
+  threadId: string,
+  turnId: string,
+  phase: "started" | "completed",
+): HostDaemonEventEnvelope {
+  return {
+    threadId,
+    event: {
+      type: phase === "started" ? "item/started" : "item/completed",
+      threadId,
+      providerThreadId: PROVIDER_THREAD_ID,
+      scope: turnScope(turnId),
+      item: { type: "contextCompaction", id: "compaction-1" },
+    },
+  };
+}
+
+function compacted(threadId: string, turnId: string): HostDaemonEventEnvelope {
+  return {
+    threadId,
+    event: {
+      type: "thread/compacted",
+      threadId,
+      providerThreadId: PROVIDER_THREAD_ID,
+      scope: turnScope(turnId),
+    },
+  };
+}
+
 function interrupted(threadId: string): HostDaemonEventEnvelope {
   return {
     threadId,
@@ -133,6 +162,31 @@ describe("root provider work on a turn the thread already settled (#1646)", () =
 
       expect(
         (await post([commandStarted(thread.id, "turn-x", "cmd-1")])).status,
+      ).toBe(200);
+      expect(status()).toBe("active");
+
+      expect((await post([turnCompleted(thread.id, "turn-x")])).status).toBe(
+        200,
+      );
+      expect(status()).toBe("idle");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("reactivates within one batch when the completion and the late work arrive together", async () => {
+    const { harness, thread, post, status } = await setup();
+    try {
+      expect(
+        (
+          await post([
+            turnStarted(thread.id, "turn-x"),
+            commandStarted(thread.id, "turn-x", "cmd-0"),
+            turnCompleted(thread.id, "turn-x"),
+            commandStarted(thread.id, "turn-x", "cmd-1"),
+            commandStarted(thread.id, "turn-x", "cmd-2"),
+          ])
+        ).status,
       ).toBe(200);
       expect(status()).toBe("active");
 
@@ -189,6 +243,40 @@ describe("root provider work on a turn the thread already settled (#1646)", () =
 
       expect(
         (await post([commandStarted(thread.id, "turn-x", "cmd-1")])).status,
+      ).toBe(200);
+      expect(status()).toBe("idle");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("stays idle through post-turn context compaction on the completed turn", async () => {
+    // Pi's threshold compaction runs after agent_end and attaches its item to
+    // the turn that just closed; no second turn/completed follows (#1542).
+    const { harness, thread, post, status } = await setup();
+    try {
+      expect(
+        (
+          await post([
+            turnStarted(thread.id, "turn-x"),
+            turnCompleted(thread.id, "turn-x"),
+          ])
+        ).status,
+      ).toBe(200);
+      expect(status()).toBe("idle");
+
+      expect(
+        (await post([compactionItem(thread.id, "turn-x", "started")])).status,
+      ).toBe(200);
+      expect(status()).toBe("idle");
+
+      expect(
+        (
+          await post([
+            compactionItem(thread.id, "turn-x", "completed"),
+            compacted(thread.id, "turn-x"),
+          ])
+        ).status,
       ).toBe(200);
       expect(status()).toBe("idle");
     } finally {
