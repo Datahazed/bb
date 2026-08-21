@@ -17,6 +17,16 @@ import {
   type BbNavigate,
   type ComposerCustomization,
   type ComposerView,
+  type ExperimentalUiInspectionAccessibility,
+  type ExperimentalUiInspectionApi,
+  type ExperimentalUiInspectionBounds,
+  type ExperimentalUiInspectionElement,
+  type ExperimentalUiInspectionMetadata,
+  type ExperimentalUiInspectionPointer,
+  type ExperimentalUiInspectionSessionEvent,
+  type ExperimentalUiInspectionSource,
+  type ExperimentalUiInspectionStyle,
+  type ExperimentalUiInspectionTarget,
   type PluginAppDefinition,
   type PluginAppSetup,
   type PluginContentScriptDisposer,
@@ -796,11 +806,24 @@ export interface ContentScriptTestMountOptions {
    * thread-row status API. Current-host behavior is enabled by default.
    */
   omitExperimentalThreadRowStatus?: boolean;
+  /** Simulate an older compatible host without the optional inspection API. */
+  omitExperimentalUiInspection?: boolean;
 }
 
 export interface ContentScriptThreadRowStatusCall {
   threadId: string;
   status: PluginComposerThreadRowStatus | null;
+}
+
+export interface ContentScriptUiInspectionTestHost {
+  readonly registeredElements: readonly Element[];
+  readonly activeSessionCount: number;
+  getTarget(element: Element): ExperimentalUiInspectionTarget | null;
+  hover(
+    element: Element | null,
+    pointer?: ExperimentalUiInspectionPointer,
+  ): void;
+  select(element: Element, pointer?: ExperimentalUiInspectionPointer): void;
 }
 
 export interface MountedPluginContentScripts {
@@ -809,11 +832,246 @@ export interface MountedPluginContentScripts {
     readonly signal: AbortSignal;
     readonly disposed: boolean;
     readonly threadRowStatusCalls: readonly ContentScriptThreadRowStatusCall[];
+    readonly uiInspection: ContentScriptUiInspectionTestHost | null;
     getThreadRowStatus(threadId: string): PluginComposerThreadRowStatus | null;
   };
   lifecycle: {
     /** Abort, then run returned cleanup functions once in reverse order. */
     dispose(): Promise<void>;
+  };
+}
+
+interface TestUiInspectionRecord {
+  metadata: ExperimentalUiInspectionMetadata;
+  source: ExperimentalUiInspectionSource;
+}
+
+function createUiInspectionBounds(
+  element: Element,
+): ExperimentalUiInspectionBounds {
+  const rect = element.getBoundingClientRect();
+  return {
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    left: rect.left,
+  };
+}
+
+function createUiInspectionStyle(
+  element: Element,
+): ExperimentalUiInspectionStyle {
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+  return {
+    display: style?.display ?? "",
+    position: style?.position ?? "",
+    color: style?.color ?? "",
+    backgroundColor: style?.backgroundColor ?? "",
+    fontFamily: style?.fontFamily ?? "",
+    fontSize: style?.fontSize ?? "",
+    fontWeight: style?.fontWeight ?? "",
+    lineHeight: style?.lineHeight ?? "",
+    padding: style?.padding ?? "",
+    margin: style?.margin ?? "",
+    border: style?.border ?? "",
+    borderRadius: style?.borderRadius ?? "",
+    gap: style?.gap ?? "",
+    opacity: style?.opacity ?? "",
+  };
+}
+
+function testAccessibleName(element: Element): string | null {
+  const explicit = element.getAttribute("aria-label")?.trim();
+  if (explicit) return explicit;
+  const text = element.textContent?.replace(/\s+/g, " ").trim();
+  return text || null;
+}
+
+function createUiInspectionAccessibility(
+  element: Element,
+): ExperimentalUiInspectionAccessibility {
+  const ariaBoolean = (
+    attribute: "aria-expanded" | "aria-pressed" | "aria-selected",
+  ): boolean | null => {
+    const value = element.getAttribute(attribute);
+    return value === "true" ? true : value === "false" ? false : null;
+  };
+  return {
+    role:
+      element.getAttribute("role") ??
+      (element.tagName.toLowerCase() === "button" ? "button" : null),
+    name: testAccessibleName(element),
+    disabled:
+      ("disabled" in element && element.disabled === true) ||
+      element.getAttribute("aria-disabled") === "true",
+    expanded: ariaBoolean("aria-expanded"),
+    pressed: ariaBoolean("aria-pressed"),
+    selected: ariaBoolean("aria-selected"),
+  };
+}
+
+function createTestUiInspectionHost(
+  pluginId: string,
+  signal: AbortSignal,
+): {
+  api: ExperimentalUiInspectionApi;
+  inspection: ContentScriptUiInspectionTestHost;
+} {
+  const registrations = new Map<Element, TestUiInspectionRecord>();
+  const sessions = new Set<
+    (event: ExperimentalUiInspectionSessionEvent) => void
+  >();
+
+  const recordFor = (element: Element): TestUiInspectionRecord | null => {
+    const registered = registrations.get(element);
+    if (registered !== undefined) return registered;
+    const codeName = element.getAttribute("data-code-name")?.trim();
+    if (!codeName) return null;
+    return {
+      metadata: {
+        codeName,
+        name: element.getAttribute("data-code-label")?.trim() || codeName,
+        kind: element.getAttribute("data-code-kind")?.trim() || "element",
+      },
+      source: { kind: "core" },
+    };
+  };
+
+  const nearest = (element: Element | null): Element | null => {
+    let current = element;
+    while (current !== null) {
+      if (recordFor(current) !== null) return current;
+      current = current.parentElement;
+    }
+    return null;
+  };
+
+  const getTarget = (
+    element: Element,
+  ): ExperimentalUiInspectionTarget | null => {
+    const deepest = nearest(element);
+    if (deepest === null) return null;
+    const reversed: ExperimentalUiInspectionElement[] = [];
+    const visited = new Set<Element>();
+    let current: Element | null = deepest;
+    while (current !== null && !visited.has(current)) {
+      visited.add(current);
+      const record = recordFor(current);
+      if (record === null) break;
+      const { logicalParent, ...metadata } = record.metadata;
+      reversed.push({
+        element: current,
+        metadata: {
+          ...metadata,
+          ...(metadata.state === undefined
+            ? {}
+            : { state: { ...metadata.state } }),
+          ...(metadata.tokens === undefined
+            ? {}
+            : { tokens: [...metadata.tokens] }),
+          ...(metadata.context === undefined
+            ? {}
+            : { context: { ...metadata.context } }),
+        },
+        source: { ...record.source },
+        bounds: createUiInspectionBounds(current),
+        style: createUiInspectionStyle(current),
+        accessibility: createUiInspectionAccessibility(current),
+      });
+      current = nearest(logicalParent ?? current.parentElement);
+    }
+    const hierarchy = reversed.reverse();
+    const target = hierarchy.at(-1);
+    return target === undefined ? null : { target, hierarchy };
+  };
+
+  const deliver = (event: ExperimentalUiInspectionSessionEvent): void => {
+    for (const callback of sessions) {
+      try {
+        callback(event);
+      } catch (error) {
+        console.warn(
+          `bb UI inspection callback failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  };
+
+  const clear = (): void => {
+    registrations.clear();
+    sessions.clear();
+  };
+  signal.addEventListener("abort", clear, { once: true });
+
+  const inspection: ContentScriptUiInspectionTestHost = {
+    get registeredElements() {
+      return [...registrations.keys()];
+    },
+    get activeSessionCount() {
+      return sessions.size;
+    },
+    getTarget,
+    hover(element, pointer = { x: 0, y: 0 }) {
+      deliver({
+        type: "hover",
+        target: element === null ? null : getTarget(element),
+        pointer,
+      });
+    },
+    select(element, pointer = { x: 0, y: 0 }) {
+      const target = getTarget(element);
+      if (target === null) {
+        deliver({
+          type: "error",
+          code: element.isConnected ? "internal" : "target-detached",
+          message: element.isConnected
+            ? "The element is not inspectable."
+            : "The inspected element is no longer attached.",
+        });
+        return;
+      }
+      deliver({ type: "select", target, pointer });
+    },
+  };
+
+  return {
+    inspection,
+    api: {
+      register(element, metadata) {
+        if (signal.aborted) return { dispose() {} };
+        const record: TestUiInspectionRecord = {
+          metadata: { ...metadata },
+          source: { kind: "plugin", pluginId },
+        };
+        registrations.set(element, record);
+        let disposed = false;
+        return {
+          dispose() {
+            if (disposed) return;
+            disposed = true;
+            if (registrations.get(element) === record) {
+              registrations.delete(element);
+            }
+          },
+        };
+      },
+      startSession({ onEvent }) {
+        if (signal.aborted) return { dispose() {} };
+        sessions.add(onEvent);
+        let disposed = false;
+        return {
+          dispose() {
+            if (disposed) return;
+            disposed = true;
+            sessions.delete(onEvent);
+          },
+        };
+      },
+    },
   };
 }
 
@@ -834,6 +1092,9 @@ export async function mountPluginContentScripts(
   }> = [];
   const threadRowStatuses = new Map<string, PluginComposerThreadRowStatus>();
   const threadRowStatusCalls: ContentScriptThreadRowStatusCall[] = [];
+  const uiInspectionHost = options.omitExperimentalUiInspection
+    ? null
+    : createTestUiInspectionHost(options.pluginId, controller.signal);
   let disposed = false;
   const setThreadRowStatus = (threadId: unknown, status: unknown): void => {
     if (controller.signal.aborted) return;
@@ -887,6 +1148,9 @@ export async function mountPluginContentScripts(
         ...(!options.omitExperimentalThreadRowStatus
           ? { experimental_setThreadRowStatus: setThreadRowStatus }
           : {}),
+        ...(uiInspectionHost === null
+          ? {}
+          : { experimental_uiInspection: uiInspectionHost.api }),
       });
       if (result !== undefined && typeof result !== "function") {
         throw new Error(
@@ -915,6 +1179,7 @@ export async function mountPluginContentScripts(
           status: status === null ? null : { ...status },
         }));
       },
+      uiInspection: uiInspectionHost?.inspection ?? null,
       getThreadRowStatus(threadId) {
         const status = threadRowStatuses.get(threadId);
         return status === undefined ? null : { ...status };

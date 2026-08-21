@@ -62,6 +62,7 @@ import {
   clearPluginThreadRowStatusesByOwner,
   setPluginThreadRowStatus,
 } from "./plugin-thread-row-status";
+import { createPluginUiInspectionApi } from "./ui-inspection";
 
 /**
  * Plugin frontend bundle loading (plugin design §5.1). Once per page load,
@@ -566,6 +567,11 @@ async function mountWithTimeout(
   generation: number,
   controller: AbortController,
   statusOwner: symbol,
+  uiInspection: NonNullable<
+    Parameters<
+      PluginContentScriptRegistration["mount"]
+    >[0]["experimental_uiInspection"]
+  >,
   deps: PluginFrontendReconcileDeps,
 ): Promise<PluginContentScriptDisposer | null> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -577,6 +583,7 @@ async function mountWithTimeout(
           pluginId,
           generation,
           signal: controller.signal,
+          experimental_uiInspection: uiInspection,
           experimental_setThreadRowStatus: (
             threadId: unknown,
             status: unknown,
@@ -674,6 +681,11 @@ async function activateContentScripts(
     cssRelease,
     disposed: false,
   };
+  const uiInspection = createPluginUiInspectionApi(
+    pluginId,
+    controller.signal,
+    deps.warn,
+  );
   try {
     for (const registration of registrations) {
       const dispose = await mountWithTimeout(
@@ -682,6 +694,7 @@ async function activateContentScripts(
         generation,
         controller,
         statusOwner,
+        uiInspection,
         deps,
       );
       activation.scripts.push({ id: registration.id, dispose });
