@@ -333,10 +333,32 @@ export function collectPluginAppRegistrations(
         if (typeof registration.run !== "function") {
           throw new Error(`${kind}: "run" must be a function`);
         }
+        const experimentalActiveTitle = requireOptionalString(
+          kind,
+          "experimental_activeTitle",
+          registration.experimental_activeTitle,
+        );
+        if (
+          registration.experimental_activeIndicator !== undefined &&
+          registration.experimental_activeIndicator !== "dot"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_activeIndicator" must be "dot" when set`,
+          );
+        }
         collected.sidebarFooterActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
+          ...(experimentalActiveTitle === undefined
+            ? {}
+            : { experimental_activeTitle: experimentalActiveTitle }),
+          ...(registration.experimental_activeIndicator === undefined
+            ? {}
+            : {
+                experimental_activeIndicator:
+                  registration.experimental_activeIndicator,
+              }),
           run: registration.run,
         });
       },

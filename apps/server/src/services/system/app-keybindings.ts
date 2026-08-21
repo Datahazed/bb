@@ -150,6 +150,12 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   binding("settings.open", ",", { mod: true }, mainWithoutModal),
   binding("sidebar.toggle", "\\", { mod: true }, mainWithoutModal),
   binding(
+    "plugin.inspector.toggle",
+    ".",
+    { mod: true, shift: true },
+    mainWithoutModal,
+  ),
+  binding(
     "thread.previous",
     "[",
     { control: true, shift: true },
