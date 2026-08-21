@@ -541,6 +541,34 @@ describe("AppCommandProvider", () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
+  it("does not treat the closed responsive sidebar as an open modal", () => {
+    const handler = vi.fn();
+    registerPluginAppCommandHandler(
+      "plugin.inspector.toggle",
+      handler,
+      "plugin-guide",
+      "generation",
+    );
+    renderProvider(null);
+    const responsiveSidebar = document.createElement("div");
+    responsiveSidebar.setAttribute("role", "dialog");
+    responsiveSidebar.setAttribute("aria-modal", "true");
+    responsiveSidebar.setAttribute("data-state", "closed");
+    document.body.append(responsiveSidebar);
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: ">",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it("gives later scoped bindings precedence on the same chord", () => {
     renderProvider(
       <>
