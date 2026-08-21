@@ -32,6 +32,10 @@ import { DEMO_THREADS } from "./fixtures/timelines.js";
 
 const ORIGIN = "https://demo.example.test";
 const THREAD_ID = DEMO_THREADS[0].id;
+const EXPECTED_MAX_REQUEST_BYTES = 64 * 1024;
+const EXPECTED_MAX_INPUT_PARTS = 32;
+const EXPECTED_MAX_QUEUED_MESSAGES = 16;
+const EXPECTED_MAX_QUEUED_BYTES = 64 * 1024;
 
 /** A world on a manual clock, so the scripted reply lands when the test says so. */
 function createWorld() {
@@ -61,7 +65,15 @@ function createWorld() {
         body: JSON.stringify(body),
       }),
     );
-  return { world, get, send, advance, notices, clock: () => now };
+  const sendRaw = (method: string, path: string, body: string) =>
+    world.handle(
+      new Request(`${ORIGIN}${path}`, {
+        method,
+        headers: { "content-type": "application/json" },
+        body,
+      }),
+    );
+  return { world, get, send, sendRaw, advance, notices, clock: () => now };
 }
 
 async function parsed<T>(
@@ -171,6 +183,36 @@ describe("demo world routes", () => {
 });
 
 describe("sending a message", () => {
+  it("rejects request bodies and prompt part arrays beyond the demo limits", async () => {
+    const { send, sendRaw } = createWorld();
+    const oversizedBody = await sendRaw(
+      "POST",
+      `/api/v1/threads/${THREAD_ID}/send`,
+      JSON.stringify(sendBody("x".repeat(EXPECTED_MAX_REQUEST_BYTES))),
+    );
+    expect(oversizedBody.status).toBe(413);
+    expect(await oversizedBody.json()).toMatchObject({
+      code: "invalid_request",
+    });
+
+    const tooManyParts = await send(
+      "POST",
+      `/api/v1/threads/${THREAD_ID}/send`,
+      {
+        input: Array.from({ length: EXPECTED_MAX_INPUT_PARTS + 1 }, () => ({
+          type: "text" as const,
+          text: "x",
+          mentions: [],
+        })),
+        mode: "auto",
+      },
+    );
+    expect(tooManyParts.status).toBe(413);
+    expect(await tooManyParts.json()).toMatchObject({
+      code: "invalid_request",
+    });
+  });
+
   it("shows the user row at once, then the scripted reply after the delay", async () => {
     const { get, send, advance, notices, clock } = createWorld();
     const sentAt = clock();
@@ -293,6 +335,55 @@ describe("sending a message", () => {
       "queue-changed",
       "events-appended",
     ]);
+  });
+
+  it("rejects queued messages before retained entry or byte limits are exceeded", async () => {
+    const { get, send } = createWorld();
+    for (let index = 0; index < EXPECTED_MAX_QUEUED_MESSAGES; index += 1) {
+      expect(
+        (
+          await send("POST", `/api/v1/threads/${THREAD_ID}/queued-messages`, {
+            input: [{ type: "text", text: `Later ${index}.`, mentions: [] }],
+          })
+        ).status,
+      ).toBe(200);
+    }
+    const full = await send(
+      "POST",
+      `/api/v1/threads/${THREAD_ID}/queued-messages`,
+      { input: [{ type: "text", text: "One too many.", mentions: [] }] },
+    );
+    expect(full.status).toBe(409);
+    expect(await full.json()).toMatchObject({ code: "queue_full" });
+    expect(
+      await parsed(
+        get(`/api/v1/threads/${THREAD_ID}/queued-messages`),
+        threadQueuedMessageListResponseSchema,
+      ),
+    ).toHaveLength(EXPECTED_MAX_QUEUED_MESSAGES);
+
+    const otherThreadId = DEMO_THREADS[1].id;
+    const halfLimit = "x".repeat(EXPECTED_MAX_QUEUED_BYTES / 2);
+    expect(
+      (
+        await send("POST", `/api/v1/threads/${otherThreadId}/queued-messages`, {
+          input: [{ type: "text", text: halfLimit, mentions: [] }],
+        })
+      ).status,
+    ).toBe(200);
+    const tooManyBytes = await send(
+      "POST",
+      `/api/v1/threads/${otherThreadId}/queued-messages`,
+      { input: [{ type: "text", text: halfLimit, mentions: [] }] },
+    );
+    expect(tooManyBytes.status).toBe(409);
+    expect(await tooManyBytes.json()).toMatchObject({ code: "queue_full" });
+    expect(
+      await parsed(
+        get(`/api/v1/threads/${otherThreadId}/queued-messages`),
+        threadQueuedMessageListResponseSchema,
+      ),
+    ).toHaveLength(1);
   });
 
   it("caps message length and the number of turns it keeps", async () => {

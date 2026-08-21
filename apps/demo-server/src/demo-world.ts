@@ -81,6 +81,18 @@ export const MAX_MESSAGE_CHARS = 4_000;
 /** Sent turns kept per thread. Older ones fall off so a session cannot grow without bound. */
 export const MAX_TURNS_PER_THREAD = 20;
 
+/** Largest JSON request the public demo will buffer. */
+export const MAX_REQUEST_BYTES = 64 * 1024;
+
+/** Prompt parts accepted by send and queue routes. */
+export const MAX_INPUT_PARTS = 32;
+
+/** Queued messages retained for one demo thread. */
+export const MAX_QUEUED_MESSAGES = 16;
+
+/** Serialized queued-message bytes retained for one demo thread. */
+export const MAX_QUEUED_BYTES = 64 * 1024;
+
 const THREAD_PATH =
   /^\/threads\/(thr_[a-z0-9]+)(?:\/([a-z-]+(?:\/[a-z0-9_-]+)*))?$/u;
 
@@ -94,6 +106,10 @@ interface ThreadState {
   turns: SentTurn[];
 }
 
+type ReadJsonResult =
+  | { ok: true; value: unknown }
+  | { ok: false; response: Response };
+
 export interface DemoWorldOptions {
   now?: () => number;
   /** Runs `fn` after `ms`; swapped for a manual scheduler in tests. */
@@ -101,9 +117,14 @@ export interface DemoWorldOptions {
 }
 
 const JSON_HEADERS = { "content-type": "application/json" };
+const TEXT_ENCODER = new TextEncoder();
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+}
+
+function apiError(status: number, code: string, message: string): Response {
+  return json({ code, message }, status);
 }
 
 /**
@@ -137,12 +158,89 @@ function notFound(threadId: string): Response {
   );
 }
 
-async function readJson(request: Request): Promise<unknown> {
-  try {
-    return await request.json();
-  } catch {
-    return null;
+async function readJson(request: Request): Promise<ReadJsonResult> {
+  const declaredLength = request.headers.get("content-length");
+  if (declaredLength !== null && Number(declaredLength) > MAX_REQUEST_BYTES) {
+    return {
+      ok: false,
+      response: apiError(
+        413,
+        "invalid_request",
+        `Request body exceeds ${MAX_REQUEST_BYTES / 1024} KiB`,
+      ),
+    };
   }
+
+  if (request.body === null) return { ok: true, value: null };
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      receivedBytes += value.byteLength;
+      if (receivedBytes > MAX_REQUEST_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // The response is still 413 if the sender closed while cancellation raced it.
+        }
+        return {
+          ok: false,
+          response: apiError(
+            413,
+            "invalid_request",
+            `Request body exceeds ${MAX_REQUEST_BYTES / 1024} KiB`,
+          ),
+        };
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return { ok: true, value: null };
+  }
+
+  const bytes = new Uint8Array(receivedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return {
+      ok: true,
+      value: JSON.parse(new TextDecoder().decode(bytes)),
+    };
+  } catch {
+    return { ok: true, value: null };
+  }
+}
+
+function promptInputLimit(value: unknown): Response | null {
+  return typeof value === "object" &&
+    value !== null &&
+    "input" in value &&
+    Array.isArray(value.input) &&
+    value.input.length > MAX_INPUT_PARTS
+    ? apiError(
+        413,
+        "invalid_request",
+        `Prompt input exceeds ${MAX_INPUT_PARTS} parts`,
+      )
+    : null;
+}
+
+function jsonBytes(value: unknown): number {
+  return TEXT_ENCODER.encode(JSON.stringify(value)).byteLength;
+}
+
+function queueFull(): Response {
+  return apiError(
+    409,
+    "queue_full",
+    "The demo queue is full. Send a queued message before adding another.",
+  );
 }
 
 /** The text of a prompt, as the composer sends it: text parts joined, attachments dropped. */
@@ -290,7 +388,11 @@ export class DemoWorld {
   ): Promise<Response | null> {
     const threadId = state.seed.id;
     if (sub === "send") {
-      const body = sendMessageRequestSchema.safeParse(await readJson(request));
+      const rawBody = await readJson(request);
+      if (!rawBody.ok) return rawBody.response;
+      const inputLimit = promptInputLimit(rawBody.value);
+      if (inputLimit) return inputLimit;
+      const body = sendMessageRequestSchema.safeParse(rawBody.value);
       if (!body.success) return badRequest(body.error);
       this.appendTurn(state, promptText(body.data.input), now);
       return json({ ok: true });
@@ -309,38 +411,42 @@ export class DemoWorld {
       return json({ ok: true });
     }
     if (sub === "queued-messages") {
-      const body = createQueuedMessageRequestSchema.safeParse(
-        await readJson(request),
-      );
+      const rawBody = await readJson(request);
+      if (!rawBody.ok) return rawBody.response;
+      const inputLimit = promptInputLimit(rawBody.value);
+      if (inputLimit) return inputLimit;
+      const body = createQueuedMessageRequestSchema.safeParse(rawBody.value);
       if (!body.success) return badRequest(body.error);
+      const queue = this.queuedFor(threadId);
+      if (queue.length >= MAX_QUEUED_MESSAGES) return queueFull();
       const message = queuedMessage({
-        id: `qm_demo${this.nextQueuedId++}`,
+        id: `qm_demo${this.nextQueuedId}`,
         content: body.data.input,
         now,
       });
-      this.queued.set(threadId, [...this.queuedFor(threadId), message]);
+      if (jsonBytes([...queue, message]) > MAX_QUEUED_BYTES) return queueFull();
+      this.nextQueuedId += 1;
+      queue.push(message);
+      this.queued.set(threadId, queue);
       this.emit(threadId, ["queue-changed"]);
       return json(message);
     }
     const sendQueued = /^queued-messages\/([a-z0-9_]+)\/send$/u.exec(sub);
     if (sendQueued) {
-      const body = sendQueuedMessageRequestSchema.safeParse(
-        await readJson(request),
-      );
+      const rawBody = await readJson(request);
+      if (!rawBody.ok) return rawBody.response;
+      const body = sendQueuedMessageRequestSchema.safeParse(rawBody.value);
       if (!body.success) return badRequest(body.error);
       const queuedMessageId = sendQueued[1];
-      const message = this.queuedFor(threadId).find(
+      const queue = this.queuedFor(threadId);
+      const queuedIndex = queue.findIndex(
         (entry) => entry.id === queuedMessageId,
       );
-      if (!message) {
+      if (queuedIndex === -1) {
         return json({ message: "Queued message not found" }, 404);
       }
-      this.queued.set(
-        threadId,
-        this.queuedFor(threadId).filter(
-          (entry) => entry.id !== queuedMessageId,
-        ),
-      );
+      const [message] = queue.splice(queuedIndex, 1);
+      if (queue.length === 0) this.queued.delete(threadId);
       this.emit(threadId, ["queue-changed"]);
       this.appendTurn(state, promptText(message.content), now);
       return json({
@@ -358,9 +464,9 @@ export class DemoWorld {
    * demo accepts the write and echoes it back without storing it.
    */
   private async handleUpdateTabs(request: Request): Promise<Response> {
-    const body = updateThreadTabsRequestSchema.safeParse(
-      await readJson(request),
-    );
+    const rawBody = await readJson(request);
+    if (!rawBody.ok) return rawBody.response;
+    const body = updateThreadTabsRequestSchema.safeParse(rawBody.value);
     if (!body.success) return badRequest(body.error);
     const response: ThreadTabsResponse = {
       revision: body.data.expectedRevision + 1,
