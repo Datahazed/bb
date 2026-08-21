@@ -18,6 +18,7 @@ import {
   type AvailableModel,
   type ProviderInfo,
 } from "@bb/domain";
+import { getAppSettings } from "@bb/db";
 import {
   normalizeHostDaemonAcpLaunchSpec,
   type HostDaemonRetryableOnlineRpcCommand,
@@ -342,7 +343,10 @@ function findCustomAcpAgentForProviderId(
  * Load one provider's model catalog on an already-resolved host. Unlike the
  * full execution-options response, this does not probe for other installed ACP
  * agents, so thread creation can resolve an omitted model with one targeted
- * daemon request.
+ * daemon request. This is execution policy, not a public list, so it keeps
+ * every custom model: streamer mode must not change which default model a
+ * thread resolves to, and a provider whose only models come from config.json
+ * must still be able to start a thread.
  */
 export async function resolveSystemProviderModels(
   deps: LoggedWorkSessionDeps,
@@ -381,6 +385,23 @@ export async function resolveSystemProviderModels(
     selectedOnlyModels,
     modelLoadError: result.modelLoadError,
   };
+}
+
+/**
+ * The config.json custom models that public model lists may show. Streamer
+ * mode hides all of them: a custom entry is often a private or early-access
+ * model id, and the execution-options response is where every picker, the CLI,
+ * and the SDK read them from. Execution policy is unaffected: an explicit
+ * thread model request bypasses the catalog, and `resolveSystemProviderModels`
+ * keeps the full list for default resolution.
+ */
+export function listVisibleCustomModels(
+  deps: Pick<LoggedWorkSessionDeps, "config" | "db">,
+): CustomProviderModel[] {
+  if (deps.config.customModels.length === 0) {
+    return deps.config.customModels;
+  }
+  return getAppSettings(deps.db).streamerMode ? [] : deps.config.customModels;
 }
 
 function buildCustomModel(
@@ -533,7 +554,7 @@ export async function resolveSystemExecutionOptions(
     const { models, selectedOnlyModels } = appendCustomModels(
       deps.providerRegistry,
       {
-        customModels: deps.config.customModels,
+        customModels: listVisibleCustomModels(deps),
         models: [],
         providerId: modelsProvider.id,
         selectedOnlyModels: [],
@@ -566,7 +587,7 @@ export async function resolveSystemExecutionOptions(
   const { models, selectedOnlyModels } = appendCustomModels(
     deps.providerRegistry,
     {
-      customModels: deps.config.customModels,
+      customModels: listVisibleCustomModels(deps),
       models: modelResult.models,
       providerId: modelsProvider.id,
       selectedOnlyModels: modelResult.selectedOnlyModels,

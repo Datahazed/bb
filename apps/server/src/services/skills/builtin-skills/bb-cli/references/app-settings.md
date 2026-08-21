@@ -50,6 +50,21 @@ every window and client sees the same value.
   stays a newline; iPadOS WebKit preserves the Enter shortcuts for a connected
   Magic Keyboard.
 
+## Streamer mode
+
+- `streamerMode` defaults to false. Set it with
+  `bb settings general streamerMode <true|false>`.
+- When enabled, every `customModels` entry from `~/.bb/config.json` is hidden
+  in all model lists: the pickers, `bb provider models`, and
+  `sdk.providers.models`. Use it during a screen share so a private or
+  early-access model id does not appear.
+- The entries stay in `config.json`. A thread request that names a hidden model
+  explicitly still runs with it, and default model resolution for a new thread
+  keeps the full list.
+- A composer whose stored selection is a hidden model falls back to the
+  provider default, and the next send records that default. Select the custom
+  model again after you turn streamer mode off.
+
 ## Mobile app
 
 - The `mobileApp` experiment defaults to false while the bb mobile app is in
