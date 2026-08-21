@@ -77,6 +77,7 @@ const INSPECTOR_CSS = `
   border-radius: calc(var(--radius, 0.5rem) + 2px);
   background: var(--popover);
   color: var(--popover-foreground);
+  outline: none;
   box-shadow: 0 18px 48px rgb(0 0 0 / 0.24), 0 2px 8px rgb(0 0 0 / 0.12);
   font: 400 12px/1.4 var(--font-sans, ui-sans-serif, system-ui, sans-serif);
 }
