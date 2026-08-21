@@ -585,14 +585,6 @@ export interface PluginSidebarFooterActionContext {
    * and `settingsSection` slots render.
    */
   openSettings(): void;
-  /**
-   * The current client's semantic appearance at activation time. Use this for
-   * direct action behavior that cannot call React hooks, such as toggling the
-   * client-local color-mode preference from the footer icon.
-   *
-   * @experimental Audit before relying on this as a stable contract.
-   */
-  experimental_appearance: ExperimentalPluginAppearance;
 }
 
 /**
@@ -1148,14 +1140,6 @@ export interface PluginContentScriptContext {
   readonly generation: number;
   /** Aborted before cleanup begins on replacement, deactivation, or teardown. */
   readonly signal: AbortSignal;
-  /**
-   * Read the current client's semantic appearance when non-React content
-   * script behavior runs. Call it at the point of use rather than retaining a
-   * snapshot; writes from a disposed script generation are ignored.
-   *
-   * @experimental Audit before relying on this as a stable contract.
-   */
-  readonly experimental_getAppearance: () => ExperimentalPluginAppearance;
   /**
    * Persistently decorate any thread row for this plugin generation.
    *
@@ -1810,6 +1794,21 @@ export interface ExperimentalPluginAppearance {
   ): void;
 }
 
+/**
+ * App-wide access to the current semantic appearance outside React.
+ *
+ * `getSnapshot()` returns the same object until either semantic value changes.
+ * Subscribe when behavior must react to later changes; the returned function
+ * removes that listener. React components should normally use
+ * `experimental_useAppearance()` instead.
+ *
+ * @experimental Audit before relying on this as a stable contract.
+ */
+export interface ExperimentalPluginAppearanceStore {
+  readonly getSnapshot: () => ExperimentalPluginAppearance;
+  readonly subscribe: (listener: () => void) => () => void;
+}
+
 export interface BbNavigate {
   toThread(threadId: string): void;
   toProject(projectId: string): void;
@@ -1885,7 +1884,12 @@ export interface PluginSdkApp {
   useRealtimeConnectionState(): PluginRealtimeConnectionState;
   useSettings(): PluginSettingsState;
   /**
-   * Read or update this client's semantic light/dark appearance.
+   * Read, update, or subscribe to this client's semantic light/dark appearance
+   * from any plugin code. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_appearance: ExperimentalPluginAppearanceStore;
+  /**
+   * React convenience wrapper over `experimental_appearance`.
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_useAppearance(): ExperimentalPluginAppearance;

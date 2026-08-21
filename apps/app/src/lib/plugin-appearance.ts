@@ -1,11 +1,13 @@
-import { useMemo } from "react";
-import type { ExperimentalPluginAppearance } from "@get-bb/plugin-sdk";
+import { useSyncExternalStore } from "react";
+import type {
+  ExperimentalPluginAppearance,
+  ExperimentalPluginAppearanceStore,
+} from "@get-bb/plugin-sdk";
 import {
   getPreferredTheme,
   getThemePreference,
   setPreferredTheme,
-  usePreferredTheme,
-  useThemePreference,
+  subscribeThemeAppearance,
 } from "@/hooks/useTheme";
 
 function setPluginColorModePreference(
@@ -24,25 +26,43 @@ function setPluginColorModePreference(
   setPreferredTheme(preference);
 }
 
-/** Current semantic appearance for plugin callbacks outside React. */
-export function getPluginAppearance(): ExperimentalPluginAppearance {
-  return {
-    colorMode: getPreferredTheme(),
-    colorModePreference: getThemePreference(),
+const serverAppearance: ExperimentalPluginAppearance = {
+  colorMode: "light",
+  colorModePreference: "system",
+  setColorModePreference: setPluginColorModePreference,
+};
+
+let cachedAppearance: ExperimentalPluginAppearance | undefined;
+
+function getPluginAppearanceSnapshot(): ExperimentalPluginAppearance {
+  if (typeof window === "undefined") return serverAppearance;
+  const colorMode = getPreferredTheme();
+  const colorModePreference = getThemePreference();
+  if (
+    cachedAppearance?.colorMode === colorMode &&
+    cachedAppearance.colorModePreference === colorModePreference
+  ) {
+    return cachedAppearance;
+  }
+  cachedAppearance = {
+    colorMode,
+    colorModePreference,
     setColorModePreference: setPluginColorModePreference,
   };
+  return cachedAppearance;
 }
 
-/** Host implementation of the plugin SDK's client appearance contract. */
+/** Host implementation of the app-wide plugin appearance contract. */
+export const pluginAppearanceStore: ExperimentalPluginAppearanceStore = {
+  getSnapshot: getPluginAppearanceSnapshot,
+  subscribe: subscribeThemeAppearance,
+};
+
+/** React convenience wrapper over the app-wide plugin appearance store. */
 export function usePluginAppearance(): ExperimentalPluginAppearance {
-  const colorMode = usePreferredTheme();
-  const colorModePreference = useThemePreference();
-  return useMemo(
-    () => ({
-      colorMode,
-      colorModePreference,
-      setColorModePreference: setPluginColorModePreference,
-    }),
-    [colorMode, colorModePreference],
+  return useSyncExternalStore(
+    pluginAppearanceStore.subscribe,
+    pluginAppearanceStore.getSnapshot,
+    () => serverAppearance,
   );
 }

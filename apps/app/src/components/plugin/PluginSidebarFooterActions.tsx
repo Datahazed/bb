@@ -3,7 +3,6 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
-import { usePluginAppearance } from "@/lib/plugin-appearance";
 import {
   usePluginSlots,
   type PluginSidebarFooterActionSlot,
@@ -40,7 +39,6 @@ function PluginSidebarFooterActionList({
   onNavigate?: () => void;
 }) {
   const navigate = useNavigate();
-  const appearance = usePluginAppearance();
   return (
     <>
       {actions.map((action) => (
@@ -61,7 +59,6 @@ function PluginSidebarFooterActionList({
               onNavigate?.();
               runSidebarFooterAction({
                 action,
-                appearance,
                 navigate,
               });
             }}
@@ -77,11 +74,9 @@ function PluginSidebarFooterActionList({
 
 function runSidebarFooterAction({
   action,
-  appearance,
   navigate,
 }: {
   action: PluginSidebarFooterActionSlot;
-  appearance: ReturnType<typeof usePluginAppearance>;
   navigate: ReturnType<typeof useNavigate>;
 }): void {
   const openSettings = () => {
@@ -99,7 +94,6 @@ function runSidebarFooterAction({
   try {
     const result = action.run({
       openSettings,
-      experimental_appearance: appearance,
     });
     if (result instanceof Promise) result.catch(warn);
   } catch (error) {

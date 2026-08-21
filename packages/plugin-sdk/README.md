@@ -11,21 +11,18 @@ the built-in `bb-plugin-authoring` skill synchronized with those declarations.
 
 ## Client appearance
 
-`experimental_useAppearance()` exposes the current client's resolved
-`colorMode`, its `colorModePreference`, and `setColorModePreference(...)`.
-Use it when JavaScript must choose light/dark behavior that CSS cannot express,
-such as a canvas or third-party editor theme. Do not use it to restyle ordinary
-plugin UI: plugin CSS already inherits BB's live semantic variables, and
-server-owned palette selection remains on `bb.sdk.theme`.
+`experimental_appearance` is one app-wide store available from any plugin
+code. `getSnapshot()` returns the current client's resolved `colorMode`, its
+`colorModePreference`, and `setColorModePreference(...)`; `subscribe()`
+reacts to later semantic changes. `experimental_useAppearance()` is the React
+convenience wrapper over that same store.
 
-Host-rendered `sidebarFooterAction` callbacks receive the same semantic value
-as `experimental_appearance` because callbacks cannot call React hooks. The
-snapshot is current when the action runs, so an icon can, for example, switch
-the resolved mode to the opposite explicit preference.
-
-Content scripts call `experimental_getAppearance()` from their mount context
-when non-React behavior needs a fresh snapshot. It returns the same semantic
-value and setter; it does not expose palette state or CSS tokens.
+Use the contract when JavaScript must choose light/dark behavior that CSS
+cannot express, such as a canvas or third-party editor theme, or when a
+non-React callback such as a footer action or content script needs the current
+mode. Do not use it to restyle ordinary plugin UI: plugin CSS already inherits
+BB's live semantic variables, and server-owned palette selection remains on
+`bb.sdk.theme`. The contract does not expose palette state or CSS tokens.
 
 ## Composer customization
 

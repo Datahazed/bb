@@ -2,7 +2,10 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { usePluginAppearance } from "./plugin-appearance";
+import {
+  pluginAppearanceStore,
+  usePluginAppearance,
+} from "./plugin-appearance";
 
 function installColorMode(initial: "light" | "dark"): {
   setColorMode(mode: "light" | "dark"): void;
@@ -53,24 +56,33 @@ afterEach(() => {
 });
 
 describe("experimental_useAppearance", () => {
-  it("maps preference and system changes to semantic client appearance", () => {
+  it("shares stable, reactive semantic snapshots across store and hook", () => {
     const system = installColorMode("dark");
+    const notifications = vi.fn();
+    const unsubscribe = pluginAppearanceStore.subscribe(notifications);
     const { result } = renderHook(() => usePluginAppearance());
 
     expect(result.current.colorModePreference).toBe("system");
     expect(result.current.colorMode).toBe("dark");
+    expect(pluginAppearanceStore.getSnapshot()).toBe(result.current);
+    expect(pluginAppearanceStore.getSnapshot()).toBe(
+      pluginAppearanceStore.getSnapshot(),
+    );
 
     act(() => result.current.setColorModePreference("light"));
     expect(result.current.colorModePreference).toBe("light");
     expect(result.current.colorMode).toBe("light");
+    expect(notifications).toHaveBeenCalledTimes(1);
 
     act(() => result.current.setColorModePreference("system"));
     expect(result.current.colorModePreference).toBe("system");
     expect(result.current.colorMode).toBe("dark");
+    expect(notifications).toHaveBeenCalledTimes(2);
 
     act(() => system.setColorMode("light"));
     expect(result.current.colorModePreference).toBe("system");
     expect(result.current.colorMode).toBe("light");
+    expect(notifications).toHaveBeenCalledTimes(3);
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     act(() =>
@@ -83,5 +95,7 @@ describe("experimental_useAppearance", () => {
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('expected "light", "dark", or "system"'),
     );
+    expect(notifications).toHaveBeenCalledTimes(3);
+    unsubscribe();
   });
 });

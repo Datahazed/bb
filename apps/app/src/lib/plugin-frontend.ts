@@ -49,7 +49,6 @@ import {
 } from "./plugin-app-definition";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
 import { createGatedPierreDiffsReact } from "./plugin-pierre-diffs-react";
-import { getPluginAppearance } from "./plugin-appearance";
 import { getPluginPanelRoutePluginId } from "./route-paths";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 import {
@@ -574,16 +573,6 @@ async function mountWithTimeout(
           pluginId,
           generation,
           signal: controller.signal,
-          experimental_getAppearance: () => {
-            const appearance = getPluginAppearance();
-            return {
-              ...appearance,
-              setColorModePreference(preference) {
-                if (controller.signal.aborted) return;
-                appearance.setColorModePreference(preference);
-              },
-            };
-          },
           experimental_setThreadRowStatus: (
             threadId: unknown,
             status: unknown,

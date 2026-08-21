@@ -63,6 +63,7 @@ export const useRpc = runtime.useRpc;
 export const useRealtime = runtime.useRealtime;
 export const useRealtimeConnectionState = runtime.useRealtimeConnectionState;
 export const useSettings = runtime.useSettings;
+export const experimental_appearance = runtime.experimental_appearance;
 export const experimental_useAppearance = runtime.experimental_useAppearance;
 export const useBbContext = runtime.useBbContext;
 export const useBbNavigate = runtime.useBbNavigate;

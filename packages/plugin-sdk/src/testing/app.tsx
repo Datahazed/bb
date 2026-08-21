@@ -63,6 +63,7 @@ import {
   type ExperimentalFixedTabTargetState,
   type ExperimentalOpenFixedTabOptions,
   type ExperimentalPluginAppearance,
+  type ExperimentalPluginAppearanceStore,
   type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
   type ExperimentalPermissionModePickerProps,
@@ -175,8 +176,13 @@ type ExperimentalAppearanceSnapshot = Pick<
   "colorMode" | "colorModePreference"
 >;
 
-interface TestAppearanceStore {
-  getSnapshot(): ExperimentalAppearanceSnapshot;
+interface TestAppearanceStore extends ExperimentalPluginAppearanceStore {
+  readonly preferenceCalls: Array<
+    ExperimentalPluginAppearance["colorModePreference"]
+  >;
+  getSnapshot(): ExperimentalPluginAppearance;
+  getSnapshotValues(): ExperimentalAppearanceSnapshot;
+  reset(snapshot: ExperimentalAppearanceSnapshot): void;
   setColorModePreference(
     preference: ExperimentalPluginAppearance["colorModePreference"],
   ): void;
@@ -190,7 +196,6 @@ interface SlotEnv {
   realtimeHandlers: Map<string, Set<(payload: unknown) => void>>;
   realtimeConnection: TestRealtimeConnectionStore;
   settingsState: PluginSettingsState;
-  appearance: TestAppearanceStore;
   bbContext: BbContext;
   navigate: BbNavigate;
   navigateCalls: NavigateCall[];
@@ -255,6 +260,71 @@ function useSlotEnv(hook: string): SlotEnv {
   }
   return env;
 }
+
+function createTestAppearanceStore(): TestAppearanceStore {
+  let values: ExperimentalAppearanceSnapshot = {
+    colorMode: "light",
+    colorModePreference: "system",
+  };
+  let systemColorMode = values.colorMode;
+  let snapshot: ExperimentalPluginAppearance;
+  const listeners = new Set<() => void>();
+  const preferenceCalls: Array<
+    ExperimentalPluginAppearance["colorModePreference"]
+  > = [];
+
+  const setColorModePreference = (
+    preference: ExperimentalPluginAppearance["colorModePreference"],
+  ): void => {
+    preferenceCalls.push(preference);
+    setSnapshot({
+      colorMode: preference === "system" ? systemColorMode : preference,
+      colorModePreference: preference,
+    });
+  };
+  const buildSnapshot = (): ExperimentalPluginAppearance => ({
+    ...values,
+    setColorModePreference,
+  });
+  const setSnapshot = (next: ExperimentalAppearanceSnapshot): void => {
+    if (
+      next.colorMode === values.colorMode &&
+      next.colorModePreference === values.colorModePreference
+    ) {
+      return;
+    }
+    values = { ...next };
+    snapshot = buildSnapshot();
+    for (const listener of listeners) listener();
+  };
+  snapshot = buildSnapshot();
+
+  return {
+    preferenceCalls,
+    getSnapshot: () => snapshot,
+    getSnapshotValues: () => ({ ...values }),
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    reset(next) {
+      preferenceCalls.length = 0;
+      systemColorMode = next.colorMode;
+      setSnapshot(next);
+    },
+    setColorModePreference,
+    setSnapshot(next) {
+      if (next.colorModePreference === "system") {
+        systemColorMode = next.colorMode;
+      }
+      setSnapshot(next);
+    },
+  };
+}
+
+// Appearance is client-global in BB, so every harness execution shape uses
+// the same store too. Each driver resets it before executing a captured slot.
+const testAppearanceStore = createTestAppearanceStore();
 
 // ---------------------------------------------------------------------------
 // The fake @get-bb/plugin-sdk/app runtime.
@@ -715,6 +785,7 @@ function TestDiff({
 
 const testPluginSdkApp = {
   definePluginApp,
+  experimental_appearance: testAppearanceStore,
   useRpc<
     Contract extends PluginRpcContract = PluginRpcContract,
   >(): PluginRpcClient<Contract> {
@@ -754,18 +825,10 @@ const testPluginSdkApp = {
     return useSlotEnv("useSettings").settingsState;
   },
   experimental_useAppearance(): ExperimentalPluginAppearance {
-    const appearance = useSlotEnv("experimental_useAppearance").appearance;
-    const snapshot = useSyncExternalStore(
-      appearance.subscribe,
-      appearance.getSnapshot,
-      appearance.getSnapshot,
-    );
-    return useMemo(
-      () => ({
-        ...snapshot,
-        setColorModePreference: appearance.setColorModePreference,
-      }),
-      [appearance, snapshot],
+    return useSyncExternalStore(
+      testAppearanceStore.subscribe,
+      testAppearanceStore.getSnapshot,
+      testAppearanceStore.getSnapshot,
     );
   },
   useBbContext(): BbContext {
@@ -961,7 +1024,7 @@ export async function loadPluginApp(
 }
 
 export interface ExperimentalRunSidebarFooterActionOptions {
-  /** Appearance snapshot supplied to the action. Defaults to light/system. */
+  /** Initial app-wide appearance. Defaults to light/system. */
   experimental_appearance?: ExperimentalAppearanceSnapshot;
   /** Optional assertion spy or host-like implementation. */
   openSettings?: () => void;
@@ -972,48 +1035,28 @@ export interface ExperimentalRunSidebarFooterActionResult {
   appearance: ExperimentalAppearanceSnapshot;
   /** Number of times the action requested its plugin detail page. */
   openSettingsCalls: number;
-  /** Preference writes made through the action context, in order. */
+  /** Preference writes made through the app-wide store, in order. */
   experimental_appearancePreferenceCalls: Array<
     ExperimentalPluginAppearance["colorModePreference"]
   >;
 }
 
 /**
- * Run a captured host-rendered footer action with the same semantic appearance
- * context BB supplies at click time.
+ * Run a captured host-rendered footer action after initializing the app-wide
+ * appearance store exported from `@get-bb/plugin-sdk/app`.
  */
 export async function experimental_runSidebarFooterAction(
   registration: PluginSidebarFooterActionRegistration,
   options: ExperimentalRunSidebarFooterActionOptions = {},
 ): Promise<ExperimentalRunSidebarFooterActionResult> {
-  let appearanceSnapshot: ExperimentalAppearanceSnapshot = {
-    ...(options.experimental_appearance ?? {
+  testAppearanceStore.reset(
+    options.experimental_appearance ?? {
       colorMode: "light",
       colorModePreference: "system",
-    }),
-  };
-  const systemColorMode = appearanceSnapshot.colorMode;
-  const appearancePreferenceCalls: Array<
-    ExperimentalPluginAppearance["colorModePreference"]
-  > = [];
-  const appearance: ExperimentalPluginAppearance = {
-    get colorMode() {
-      return appearanceSnapshot.colorMode;
     },
-    get colorModePreference() {
-      return appearanceSnapshot.colorModePreference;
-    },
-    setColorModePreference(preference) {
-      appearancePreferenceCalls.push(preference);
-      appearanceSnapshot = {
-        colorMode: preference === "system" ? systemColorMode : preference,
-        colorModePreference: preference,
-      };
-    },
-  };
+  );
   let openSettingsCalls = 0;
   const context: PluginSidebarFooterActionContext = {
-    experimental_appearance: appearance,
     openSettings() {
       openSettingsCalls += 1;
       options.openSettings?.();
@@ -1023,9 +1066,11 @@ export async function experimental_runSidebarFooterAction(
   await registration.run(context);
 
   return {
-    appearance: { ...appearanceSnapshot },
+    appearance: testAppearanceStore.getSnapshotValues(),
     openSettingsCalls,
-    experimental_appearancePreferenceCalls: [...appearancePreferenceCalls],
+    experimental_appearancePreferenceCalls: [
+      ...testAppearanceStore.preferenceCalls,
+    ],
   };
 }
 
@@ -1033,7 +1078,7 @@ export interface ContentScriptTestMountOptions {
   pluginId: string;
   /** Defaults to 1. Pass the host generation you want the plugin to observe. */
   generation?: number;
-  /** Initial value returned by `experimental_getAppearance()`. */
+  /** Initial value exposed by the app-wide appearance store. */
   experimental_appearance?: ExperimentalAppearanceSnapshot;
   /**
    * Simulate an older compatible host that predates the optional experimental
@@ -1054,7 +1099,7 @@ export interface MountedPluginContentScripts {
     readonly disposed: boolean;
     /** Current semantic appearance after content-script preference writes. */
     readonly experimental_appearance: ExperimentalAppearanceSnapshot;
-    /** Preference writes made through `experimental_getAppearance()`. */
+    /** Preference writes made through the app-wide appearance store. */
     readonly experimental_appearancePreferenceCalls: readonly ExperimentalPluginAppearance["colorModePreference"][];
     readonly threadRowStatusCalls: readonly ContentScriptThreadRowStatusCall[];
     getThreadRowStatus(threadId: string): PluginComposerThreadRowStatus | null;
@@ -1082,28 +1127,13 @@ export async function mountPluginContentScripts(
   }> = [];
   const threadRowStatuses = new Map<string, PluginComposerThreadRowStatus>();
   const threadRowStatusCalls: ContentScriptThreadRowStatusCall[] = [];
-  let appearanceSnapshot: ExperimentalAppearanceSnapshot = {
-    ...(options.experimental_appearance ?? {
+  testAppearanceStore.reset(
+    options.experimental_appearance ?? {
       colorMode: "light",
       colorModePreference: "system",
-    }),
-  };
-  const systemColorMode = appearanceSnapshot.colorMode;
-  const appearancePreferenceCalls: Array<
-    ExperimentalPluginAppearance["colorModePreference"]
-  > = [];
-  let disposed = false;
-  const getAppearance = (): ExperimentalPluginAppearance => ({
-    ...appearanceSnapshot,
-    setColorModePreference(preference) {
-      if (controller.signal.aborted) return;
-      appearancePreferenceCalls.push(preference);
-      appearanceSnapshot = {
-        colorMode: preference === "system" ? systemColorMode : preference,
-        colorModePreference: preference,
-      };
     },
-  });
+  );
+  let disposed = false;
   const setThreadRowStatus = (threadId: unknown, status: unknown): void => {
     if (controller.signal.aborted) return;
     if (typeof threadId !== "string" || threadId.trim().length === 0) {
@@ -1153,7 +1183,6 @@ export async function mountPluginContentScripts(
         pluginId: options.pluginId,
         generation,
         signal: controller.signal,
-        experimental_getAppearance: getAppearance,
         ...(!options.omitExperimentalThreadRowStatus
           ? { experimental_setThreadRowStatus: setThreadRowStatus }
           : {}),
@@ -1180,10 +1209,10 @@ export async function mountPluginContentScripts(
         return disposed;
       },
       get experimental_appearance() {
-        return { ...appearanceSnapshot };
+        return testAppearanceStore.getSnapshotValues();
       },
       get experimental_appearancePreferenceCalls() {
-        return [...appearancePreferenceCalls];
+        return [...testAppearanceStore.preferenceCalls];
       },
       get threadRowStatusCalls() {
         return threadRowStatusCalls.map(({ threadId, status }) => ({
@@ -1427,46 +1456,14 @@ export function renderSlot<
     },
   };
 
-  let appearanceSnapshot: ExperimentalAppearanceSnapshot =
+  testAppearanceStore.reset(
     options.experimental_appearance ?? {
       colorMode: "light",
       colorModePreference: "system",
-    };
-  let systemColorMode = appearanceSnapshot.colorMode;
-  const appearanceListeners = new Set<() => void>();
-  const appearancePreferenceCalls: Array<
-    ExperimentalPluginAppearance["colorModePreference"]
-  > = [];
-  const publishAppearance = (next: ExperimentalAppearanceSnapshot): void => {
-    if (
-      next.colorMode === appearanceSnapshot.colorMode &&
-      next.colorModePreference === appearanceSnapshot.colorModePreference
-    ) {
-      return;
-    }
-    appearanceSnapshot = next;
-    for (const listener of appearanceListeners) listener();
-  };
-  const appearance: TestAppearanceStore = {
-    getSnapshot: () => appearanceSnapshot,
-    subscribe(listener) {
-      appearanceListeners.add(listener);
-      return () => appearanceListeners.delete(listener);
     },
-    setColorModePreference(preference) {
-      appearancePreferenceCalls.push(preference);
-      publishAppearance({
-        colorMode: preference === "system" ? systemColorMode : preference,
-        colorModePreference: preference,
-      });
-    },
-    setSnapshot(snapshot) {
-      if (snapshot.colorModePreference === "system") {
-        systemColorMode = snapshot.colorMode;
-      }
-      publishAppearance(snapshot);
-    },
-  };
+  );
+  const appearance = testAppearanceStore;
+  const appearancePreferenceCalls = testAppearanceStore.preferenceCalls;
 
   const navigateCalls: NavigateCall[] = [];
   const experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[] = [];
@@ -1729,7 +1726,6 @@ export function renderSlot<
     realtimeHandlers,
     realtimeConnection,
     settingsState: { values: options.settings, isLoading: false },
-    appearance,
     bbContext: { projectId, threadId },
     navigate,
     navigateCalls,

@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 
-import type {
-  ExperimentalPluginAppearance,
-  PluginComposerThreadRowStatus,
-} from "@get-bb/plugin-sdk";
+import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -504,41 +501,6 @@ describe("reconcilePluginFrontends", () => {
     deps.fetchCandidates.mockResolvedValue([]);
     await reconcilePluginFrontends(state, deps);
     expect(getPluginThreadRowStatus("thr_source")).toBeNull();
-  });
-
-  it("gives content scripts current semantic appearance and rejects stale writes", async () => {
-    setPreferredTheme("dark");
-    const state = createPluginFrontendReconcileState();
-    const deps = makeDeps([candidate("theme-toggle", "v1")]);
-    let getAppearance: (() => ExperimentalPluginAppearance) | undefined;
-    deps.importModule.mockResolvedValue(
-      contentScriptModule((app) => {
-        app.contentScripts.register({
-          id: "appearance-menu",
-          mount({ experimental_getAppearance }) {
-            getAppearance = experimental_getAppearance;
-          },
-        });
-      }),
-    );
-
-    await reconcilePluginFrontends(state, deps);
-    expect(getAppearance?.()).toMatchObject({
-      colorMode: "dark",
-      colorModePreference: "dark",
-    });
-
-    getAppearance?.().setColorModePreference("light");
-    expect(getAppearance?.()).toMatchObject({
-      colorMode: "light",
-      colorModePreference: "light",
-    });
-    expect(document.documentElement.classList.contains("dark")).toBe(false);
-
-    deps.fetchCandidates.mockResolvedValue([]);
-    await reconcilePluginFrontends(state, deps);
-    getAppearance?.().setColorModePreference("dark");
-    expect(document.documentElement.classList.contains("dark")).toBe(false);
   });
 
   it("rolls back a status from a partially mounted generation and rejects its retained setter", async () => {

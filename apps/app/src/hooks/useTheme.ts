@@ -81,6 +81,7 @@ let currentTheme: Theme = "light";
 let currentThemePreference: ThemePreference = "system";
 const themeSubscribers = new Set<ThemeListener>();
 const themePreferenceSubscribers = new Set<ThemeListener>();
+const themeAppearanceSubscribers = new Set<ThemeListener>();
 let initialized = false;
 
 function emitTheme() {
@@ -99,6 +100,9 @@ function emitTheme() {
   }
   if (themeChanged) {
     themeSubscribers.forEach((listener) => listener());
+  }
+  if (themePreferenceChanged || themeChanged) {
+    themeAppearanceSubscribers.forEach((listener) => listener());
   }
 }
 
@@ -151,4 +155,13 @@ export function useThemePreference(): ThemePreference {
     getThemePreference,
     () => "system",
   );
+}
+
+/** Subscribe once when either the selected preference or resolved mode changes. */
+export function subscribeThemeAppearance(listener: ThemeListener): () => void {
+  ensureThemeObserver();
+  themeAppearanceSubscribers.add(listener);
+  return () => {
+    themeAppearanceSubscribers.delete(listener);
+  };
 }

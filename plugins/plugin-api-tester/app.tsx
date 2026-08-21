@@ -1,5 +1,6 @@
 import {
   definePluginApp,
+  experimental_appearance,
   experimental_useAppearance,
 } from "@get-bb/plugin-sdk/app";
 
@@ -86,7 +87,8 @@ export default definePluginApp((app) => {
     id: "toggle-color-mode",
     title: "Toggle color mode",
     icon: "Beaker",
-    run({ experimental_appearance: appearance }) {
+    run() {
+      const appearance = experimental_appearance.getSnapshot();
       appearance.setColorModePreference(
         appearance.colorMode === "dark" ? "light" : "dark",
       );

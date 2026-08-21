@@ -1292,6 +1292,7 @@ import {
   useRealtime,
   useRealtimeConnectionState,
   useSettings,
+  experimental_appearance,
   experimental_useAppearance,
   useBbContext,
   useBbNavigate,
@@ -1307,9 +1308,9 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 export default definePluginApp((app) => {
   app.contentScripts.register({
     id: "editor-enhancement",
-    mount({ pluginId, generation, signal, experimental_getAppearance }) {
-      const appearance = experimental_getAppearance();
+    mount({ pluginId, generation, signal }) {
       const onKeyDown = (event: KeyboardEvent) => {
+        const appearance = experimental_appearance.getSnapshot();
         // Ordinary trusted, same-origin DOM behavior.
       };
       document.addEventListener("keydown", onKeyDown, { signal });
@@ -1397,10 +1398,12 @@ export default definePluginApp((app) => {
     id: "toggle-color-mode",
     title: "Toggle color mode",
     icon: "Palette",
-    run: ({ experimental_appearance: appearance }) =>
+    run: () => {
+      const appearance = experimental_appearance.getSnapshot();
       appearance.setColorModePreference(
         appearance.colorMode === "dark" ? "light" : "dark",
-      ),
+      );
+    },
   });
   app.slots.messageDirective({ id: "inline-vis", component: InlineVis });
   app.slots.experimental_threadList({
@@ -1576,14 +1579,13 @@ compatible ESM bundle.
 
 The host mounts scripts in registration order after the bundle loads and
 `definePluginApp` setup validates. `mount` receives
-`{ pluginId, generation, signal, experimental_getAppearance,
-experimental_setThreadRowStatus? }`:
+`{ pluginId, generation, signal, experimental_setThreadRowStatus? }`:
 `generation` is a monotonic per-window mount attempt number, and `signal`
-aborts before cleanup starts. `experimental_getAppearance()` returns the same
-semantic value as the React hook at call time; use it for non-React behavior
-that needs to read or set client mode, and call it at the point of use instead
-of retaining a snapshot. Writes from a disposed generation are ignored. The
-optional experimental thread-row setter targets an
+aborts before cleanup starts. Import the app-wide `experimental_appearance`
+store for non-React behavior that needs to read or set client mode. Call
+`getSnapshot()` at the point of use, or call `subscribe()` and return its
+cleanup function when behavior must react to later changes. The optional
+experimental thread-row setter targets an
 explicit thread row with `{ icon, label, tone? }` or clears it with `null`.
 Use `tone: "running"` for the host's animated running treatment. The host
 scopes statuses to the calling plugin and automatically clears them when that
@@ -1775,11 +1777,10 @@ target? })`. Inside the fixed-tab component,
   (next to Settings / bug report). No plugin component — the host paints
   the chrome so icons stay consistent. Registration:
   `{ id, title, icon, run }`. Activating it calls
-  `run({ openSettings, experimental_appearance })` — use `openSettings()` to
-  open this plugin's detail page in Tools. The experimental appearance value
-  is the same semantic contract as `experimental_useAppearance()`, captured at
-  activation time so a non-React action can read the resolved mode and update
-  the client-local preference. Errors from `run`
+  `run({ openSettings })` — use `openSettings()` to open this plugin's detail
+  page in Tools. A non-React action can import
+  `experimental_appearance`, call `getSnapshot()` at activation time, and
+  update the client-local preference. Errors from `run`
   (sync or async) are contained and logged,
   never breaking the sidebar. `title` is the tooltip + accessible label;
   `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).
@@ -2163,16 +2164,18 @@ Hooks:
   `"reconnecting"` for the same shared socket used by `useRealtime`. Reconcile
   durable server state on subsequent transitions to `connected` (not the first
   connection) because plugin signals are ephemeral and are not replayed.
-- `experimental_useAppearance()` → `{ colorMode, colorModePreference,
-setColorModePreference }`. `colorMode` is the applied `"light" | "dark"`
-  result after resolving a `"system"` preference. Use it for non-CSS consumers
-  such as a canvas or third-party editor theme; ordinary plugin UI already
-  inherits BB's live semantic CSS variables. The preference setter is
-  client-local. Outside React, a `sidebarFooterAction` gets the same value as
-  `experimental_appearance`, and a content script calls
-  `experimental_getAppearance()` at the point of use. Palette selection
-  remains on `bb.sdk.theme`; none of these adapters expose palette ids, raw
-  CSS, code-theme files, or CSS tokens.
+- `experimental_appearance` → app-wide `{ getSnapshot, subscribe }` store.
+  `getSnapshot()` returns `{ colorMode, colorModePreference,
+  setColorModePreference }`; `colorMode` is the applied `"light" | "dark"`
+  result after resolving a `"system"` preference. Use point-of-use reads in
+  callbacks and content scripts, or subscribe when non-React behavior must
+  react to later changes.
+- `experimental_useAppearance()` → React convenience wrapper over
+  `experimental_appearance`. Use it for non-CSS consumers such as a canvas or
+  third-party editor theme; ordinary plugin UI already inherits BB's live
+  semantic CSS variables. The preference setter is client-local. Palette
+  selection remains on `bb.sdk.theme`; neither surface exposes palette ids,
+  raw CSS, code-theme files, or CSS tokens.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
