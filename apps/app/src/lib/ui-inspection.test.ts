@@ -86,6 +86,10 @@ describe("UI inspection registry", () => {
       },
     });
     expect(result?.target.metadata).not.toHaveProperty("logicalParent");
+    expect(result?.hierarchy[0]?.accessibility).toMatchObject({
+      role: "main",
+      name: null,
+    });
 
     actionRegistration.dispose();
     sidebarRegistration.dispose();
