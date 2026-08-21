@@ -9,6 +9,15 @@ The authoritative contracts are the exported declarations in
 [`src/app-contract.ts`](src/app-contract.ts). Keep author-facing guidance in
 the built-in `bb-plugin-authoring` skill synchronized with those declarations.
 
+## Client appearance
+
+`experimental_useAppearance()` exposes the current client's resolved
+`colorMode`, its `colorModePreference`, and `setColorModePreference(...)`.
+Use it when JavaScript must choose light/dark behavior that CSS cannot express,
+such as a canvas or third-party editor theme. Do not use it to restyle ordinary
+plugin UI: plugin CSS already inherits BB's live semantic variables, and
+server-owned palette selection remains on `bb.sdk.theme`.
+
 ## Composer customization
 
 Composer UI extensions register through `app.composer.customize(...)`. A
@@ -155,7 +164,7 @@ await scripts.lifecycle.dispose();
 `loadPluginApp` installs the runtime before a thunk import and validates all
 registrations. `mountPluginContentScripts` mirrors the host's ordered mount,
 rollback, independent per-window signal, and exact-once disposal. `renderSlot` supplies
-RPC, realtime, settings, navigation, context, and scoped composer behavior,
+RPC, realtime, appearance, settings, navigation, context, and scoped composer behavior,
 then returns Testing Library queries plus the same behavior/inspection/lifecycle
 split. Use a setup-file `installTestPluginRuntime()` only when a static app
 import is unavoidable.

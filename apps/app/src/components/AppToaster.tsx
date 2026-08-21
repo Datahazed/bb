@@ -1,7 +1,7 @@
 import { Toaster, type ToasterProps } from "sonner";
-import { usePreferredTheme } from "@/hooks/useTheme";
+import { experimental_useAppearance } from "@/lib/plugin-appearance";
 
 export function AppToaster(props: ToasterProps) {
-  const theme = usePreferredTheme();
-  return <Toaster theme={theme} {...props} />;
+  const { colorMode } = experimental_useAppearance();
+  return <Toaster theme={colorMode} {...props} />;
 }

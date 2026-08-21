@@ -16,6 +16,7 @@ import type {
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { definePluginApp } from "./plugin-app-definition";
+import { experimental_useAppearance } from "./plugin-appearance";
 import {
   useBbContext,
   useBbNavigate,
@@ -64,6 +65,7 @@ export const pluginSdkAppImplementation = {
   useRealtimeConnectionState,
   useRpc,
   useSettings,
+  experimental_useAppearance,
   // The host-owned components in the SDK (plugin design: deliberate
   // exception to §5.5) — stable product capabilities, not a UI kit.
   ThreadChat: PluginThreadChat,

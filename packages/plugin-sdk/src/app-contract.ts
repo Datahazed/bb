@@ -1772,6 +1772,28 @@ export interface BbContext {
   threadId: string | null;
 }
 
+/**
+ * The current client's semantic light/dark appearance.
+ *
+ * Palette CSS is deliberately absent: plugin styles already inherit BB's live
+ * CSS variables, while server-owned palette selection remains available from
+ * `bb.sdk.theme`. This contract is only for JavaScript consumers that must
+ * choose behavior which CSS cannot express (for example a canvas/editor theme)
+ * or offer the same client-local mode preference as BB.
+ *
+ * @experimental Audit before relying on this as a stable contract.
+ */
+export interface ExperimentalPluginAppearance {
+  /** The mode currently applied after resolving a `system` preference. */
+  colorMode: "light" | "dark";
+  /** This client's selected mode preference. */
+  colorModePreference: "light" | "dark" | "system";
+  /** Update this client's mode preference. */
+  setColorModePreference(
+    preference: ExperimentalPluginAppearance["colorModePreference"],
+  ): void;
+}
+
 export interface BbNavigate {
   toThread(threadId: string): void;
   toProject(projectId: string): void;
@@ -1846,6 +1868,11 @@ export interface PluginSdkApp {
    */
   useRealtimeConnectionState(): PluginRealtimeConnectionState;
   useSettings(): PluginSettingsState;
+  /**
+   * Read or update this client's semantic light/dark appearance.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useAppearance(): ExperimentalPluginAppearance;
   useBbContext(): BbContext;
   useBbNavigate(): BbNavigate;
   /** Select one of this plugin's eligible fixed tabs on the current surface. */

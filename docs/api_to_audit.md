@@ -5,6 +5,41 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## Client appearance (`experimental_useAppearance`)
+
+**What it does.** Gives plugin React components the current client's resolved
+`"light" | "dark"` color mode, its selected `"light" | "dark" | "system"`
+preference, and a setter for that client-local preference. The evidence is
+[Monaco's private root-class observer](https://github.com/andrewkchan/bb-plugin-monaco/blob/f165b11328efbed70f904bb0e65d432d014c5950/app.tsx#L34-L47),
+which must choose a non-CSS editor theme, and [Theme Toggle's private
+local-storage/class manipulation](https://github.com/xMinor-1/bb-plugins/blob/3a6ef78555814fe63891eac72a145ca9c114e9a6/plugins/theme-toggle/app.tsx#L23-L74).
+[AppToaster](../apps/app/src/components/AppToaster.tsx) is the first in-repo
+consumer; the plugin SDK harness includes a representative appearance-control
+fixture for external authors.
+
+The other Appearance-tagged releases did not justify widening the contract:
+[Ayu](https://github.com/vburojevic/bb-plugin-ayu/blob/8881e00888854462fc8a7c68de386fef8229f8aa/package.json)
+and [Tokyo Night](https://github.com/krehel/bb-plugin-tokyo-night/blob/a5234d1a72e1fa58f3826cb239acd485701f76fe/package.json)
+are declarative `bb.themes` palettes, while [Fonts](https://github.com/gtramontina/bb-plugin-fonts/blob/d48637a2052b0336b8ac12476101a816c8b421de/client-runtime.ts#L104-L111)
+reapplies typography CSS configuration. Those needs remain covered by theme
+CSS variables/`bb.themes`, not this JavaScript mode API.
+
+The hook deliberately omits palette ids, palette CSS, resolved code-theme
+files, favicon selection, and CSS tokens. Plugin styles already receive live
+semantic CSS variables; theme-only plugins use `bb.themes`; server-owned
+palette reads/writes use `bb.sdk.theme`; and BB's host-owned code renderers own
+their code-theme assets.
+
+**Audit before stabilizing.** Confirm the `colorMode` /
+`colorModePreference` names remain unambiguous beside BB's separate palette
+concept; verify `system` reactivity across browser, desktop, remote, and
+multi-window clients; confirm preference writes remain client-local and obey
+the same persistence/cross-window behavior as Settings; measure adoption by a
+second non-editor external plugin; and re-check that no stable JavaScript
+consumer needs a palette-change revision before adding one. Keep the hook on
+the existing shared app runtime so it adds no appearance subsystem or lazy
+chunk to plugin bundles.
+
 ## `experimental_buildBridgeToolCallContent`
 
 **What it does.** Converts a decoded bb tool-call response into the ordered

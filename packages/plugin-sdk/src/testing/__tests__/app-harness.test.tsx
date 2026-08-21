@@ -28,6 +28,7 @@ const {
   experimental_ProviderModelPicker: ProviderModelPicker,
   experimental_PermissionModePicker: PermissionModePicker,
   experimental_useAppPanel,
+  experimental_useAppearance,
   experimental_useFixedTabTarget,
   ThreadChat,
   useBbNavigate,
@@ -234,6 +235,23 @@ function Panel({ subPath }: PluginNavPanelProps) {
 function RealtimeConnectionProbe() {
   const state = useRealtimeConnectionState();
   return <div>Realtime: {state}</div>;
+}
+
+function AppearanceProbe() {
+  const appearance = experimental_useAppearance();
+  return (
+    <div>
+      <span>
+        Appearance: {appearance.colorMode}/{appearance.colorModePreference}
+      </span>
+      <button
+        type="button"
+        onClick={() => appearance.setColorModePreference("light")}
+      >
+        Use light
+      </button>
+    </div>
+  );
 }
 
 function UrlNavigationProbe() {
@@ -1428,6 +1446,36 @@ describe("renderSlot", () => {
 
     await slot.behavior.setRealtimeConnectionState("reconnecting");
     await slot.findByText("Realtime: reconnecting");
+  });
+
+  it("models semantic appearance preference writes and reactive host changes", async () => {
+    const defaultSlot = renderSlot({ component: AppearanceProbe }, {});
+    expect(defaultSlot.getByText("Appearance: light/system")).toBeTruthy();
+    defaultSlot.unmount();
+
+    const slot = renderSlot(
+      { component: AppearanceProbe },
+      {},
+      {
+        experimental_appearance: {
+          colorMode: "dark",
+          colorModePreference: "system",
+        },
+      },
+    );
+    expect(slot.getByText("Appearance: dark/system")).toBeTruthy();
+
+    fireEvent.click(slot.getByRole("button", { name: "Use light" }));
+    expect(slot.getByText("Appearance: light/light")).toBeTruthy();
+    expect(slot.inspection.experimental_appearancePreferenceCalls).toEqual([
+      "light",
+    ]);
+
+    await slot.behavior.experimental_setAppearance({
+      colorMode: "dark",
+      colorModePreference: "system",
+    });
+    expect(slot.getByText("Appearance: dark/system")).toBeTruthy();
   });
 
   it("refreshes rendered RPC data after a realtime event", async () => {

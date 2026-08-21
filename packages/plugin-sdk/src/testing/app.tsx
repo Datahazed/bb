@@ -61,6 +61,7 @@ import {
   type ExperimentalAppPanel,
   type ExperimentalFixedTabTargetState,
   type ExperimentalOpenFixedTabOptions,
+  type ExperimentalPluginAppearance,
   type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
   type ExperimentalPermissionModePickerProps,
@@ -168,12 +169,27 @@ interface TestComposerStore {
   subscribe(listener: () => void): () => void;
 }
 
+type ExperimentalAppearanceSnapshot = Pick<
+  ExperimentalPluginAppearance,
+  "colorMode" | "colorModePreference"
+>;
+
+interface TestAppearanceStore {
+  getSnapshot(): ExperimentalAppearanceSnapshot;
+  setColorModePreference(
+    preference: ExperimentalPluginAppearance["colorModePreference"],
+  ): void;
+  setSnapshot(snapshot: ExperimentalAppearanceSnapshot): void;
+  subscribe(listener: () => void): () => void;
+}
+
 interface SlotEnv {
   rpcClient: PluginRpcClient;
   rpcCalls: RpcCall[];
   realtimeHandlers: Map<string, Set<(payload: unknown) => void>>;
   realtimeConnection: TestRealtimeConnectionStore;
   settingsState: PluginSettingsState;
+  appearance: TestAppearanceStore;
   bbContext: BbContext;
   navigate: BbNavigate;
   navigateCalls: NavigateCall[];
@@ -736,6 +752,21 @@ const testPluginSdkApp = {
   useSettings(): PluginSettingsState {
     return useSlotEnv("useSettings").settingsState;
   },
+  experimental_useAppearance(): ExperimentalPluginAppearance {
+    const appearance = useSlotEnv("experimental_useAppearance").appearance;
+    const snapshot = useSyncExternalStore(
+      appearance.subscribe,
+      appearance.getSnapshot,
+      appearance.getSnapshot,
+    );
+    return useMemo(
+      () => ({
+        ...snapshot,
+        setColorModePreference: appearance.setColorModePreference,
+      }),
+      [appearance, snapshot],
+    );
+  },
   useBbContext(): BbContext {
     return useSlotEnv("useBbContext").bbContext;
   },
@@ -1093,6 +1124,11 @@ export interface RenderSlotOptions<
   context?: { projectId?: string | null; threadId?: string | null };
   /** Initial `useRealtimeConnectionState()` value; defaults to `connected`. */
   realtimeConnectionState?: PluginRealtimeConnectionState;
+  /**
+   * Initial `experimental_useAppearance()` state. Omitted → a system
+   * preference resolved to light.
+   */
+  experimental_appearance?: ExperimentalAppearanceSnapshot;
   /** Initial state for this render's isolated composer scope and view. */
   composer?: {
     text?: string;
@@ -1145,6 +1181,10 @@ export interface RenderedSlotBehaviorDrivers {
   setRealtimeConnectionState(
     state: PluginRealtimeConnectionState,
   ): Promise<void>;
+  /** Drive a client appearance change, including an OS change under system. */
+  experimental_setAppearance(
+    appearance: ExperimentalAppearanceSnapshot,
+  ): Promise<void>;
   /** Replace composer text as a host-originated edit, wrapped in act. */
   setComposerText(text: string): Promise<void>;
   /** Replace the scope snapshots returned by composer hooks, wrapped in act. */
@@ -1161,6 +1201,10 @@ export interface RenderedSlotInspectionState {
   readonly experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[];
   /** Every `experimental_useSidebarThreadActions()` call, in order. */
   readonly sidebarActionCalls: SidebarActionCall[];
+  /** Every client mode preference requested through the appearance hook. */
+  readonly experimental_appearancePreferenceCalls: Array<
+    ExperimentalPluginAppearance["colorModePreference"]
+  >;
   /** Everything written through `useComposer()`. */
   readonly composer: ComposerLog;
 }
@@ -1276,6 +1320,47 @@ export function renderSlot<
       if (state === realtimeConnectionState) return;
       realtimeConnectionState = state;
       for (const listener of realtimeConnectionListeners) listener();
+    },
+  };
+
+  let appearanceSnapshot: ExperimentalAppearanceSnapshot =
+    options.experimental_appearance ?? {
+      colorMode: "light",
+      colorModePreference: "system",
+    };
+  let systemColorMode = appearanceSnapshot.colorMode;
+  const appearanceListeners = new Set<() => void>();
+  const appearancePreferenceCalls: Array<
+    ExperimentalPluginAppearance["colorModePreference"]
+  > = [];
+  const publishAppearance = (next: ExperimentalAppearanceSnapshot): void => {
+    if (
+      next.colorMode === appearanceSnapshot.colorMode &&
+      next.colorModePreference === appearanceSnapshot.colorModePreference
+    ) {
+      return;
+    }
+    appearanceSnapshot = next;
+    for (const listener of appearanceListeners) listener();
+  };
+  const appearance: TestAppearanceStore = {
+    getSnapshot: () => appearanceSnapshot,
+    subscribe(listener) {
+      appearanceListeners.add(listener);
+      return () => appearanceListeners.delete(listener);
+    },
+    setColorModePreference(preference) {
+      appearancePreferenceCalls.push(preference);
+      publishAppearance({
+        colorMode: preference === "system" ? systemColorMode : preference,
+        colorModePreference: preference,
+      });
+    },
+    setSnapshot(snapshot) {
+      if (snapshot.colorModePreference === "system") {
+        systemColorMode = snapshot.colorMode;
+      }
+      publishAppearance(snapshot);
     },
   };
 
@@ -1540,6 +1625,7 @@ export function renderSlot<
     realtimeHandlers,
     realtimeConnection,
     settingsState: { values: options.settings, isLoading: false },
+    appearance,
     bbContext: { projectId, threadId },
     navigate,
     navigateCalls,
@@ -1595,6 +1681,11 @@ export function renderSlot<
   ): Promise<void> => {
     await act(async () => realtimeConnection.setState(state));
   };
+  const setAppearance = async (
+    snapshot: ExperimentalAppearanceSnapshot,
+  ): Promise<void> => {
+    await act(async () => appearance.setSnapshot(snapshot));
+  };
   const setComposerText = async (text: string): Promise<void> => {
     await act(async () => commitComposerText(text));
   };
@@ -1618,15 +1709,18 @@ export function renderSlot<
     rpcCalls,
     emitRealtime,
     setRealtimeConnectionState,
+    experimental_setAppearance: setAppearance,
     setComposerText,
     setComposerScope,
     navigateCalls,
     experimental_fixedTabOpenCalls,
     sidebarActionCalls,
+    experimental_appearancePreferenceCalls: appearancePreferenceCalls,
     composer: composerLog,
     behavior: {
       emitRealtime,
       setRealtimeConnectionState,
+      experimental_setAppearance: setAppearance,
       setComposerText,
       setComposerScope,
     },
@@ -1635,6 +1729,7 @@ export function renderSlot<
       navigateCalls,
       experimental_fixedTabOpenCalls,
       sidebarActionCalls,
+      experimental_appearancePreferenceCalls: appearancePreferenceCalls,
       composer: composerLog,
     },
     lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },
