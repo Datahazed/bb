@@ -27,7 +27,11 @@ import {
   syncPluginTypes,
   type PluginPackageLayoutMigration,
 } from "@bb/templates/plugin-scaffold";
-import { planPluginScreenshots } from "../plugin-screenshot.js";
+import {
+  planPluginScreenshots,
+  resolveElectronBinary,
+  runPluginCapture,
+} from "../plugin-screenshot.js";
 import { action } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import {
@@ -1554,11 +1558,15 @@ export function registerPluginCommands(
       "--fixture-thread <id>",
       "Thread the shared capture fixture seeded, enabling the surfaces that need one",
     )
+    .option(
+      "--capture <outDir>",
+      "Take the screenshots: drives a headless window at this bb, reads which surfaces the plugin registered from the running app, and writes one PNG per surface into <outDir>",
+    )
     .action(
       action(
         async (
           path: string | undefined,
-          opts: JsonOutputOptions & { fixtureThread?: string },
+          opts: JsonOutputOptions & { fixtureThread?: string; capture?: string },
         ) => {
           const rootDir = resolve(process.cwd(), path ?? ".");
           const raw: unknown = JSON.parse(
@@ -1595,6 +1603,37 @@ export function registerPluginCommands(
             console.log(
               `skipped ${slot} — needs the capture fixture; pass --fixture-thread <id>`,
             );
+          }
+          if (opts.capture !== undefined) {
+            const harnessPath = resolve(
+              import.meta.dirname,
+              "../../desktop/scripts/plugin-capture.cjs",
+            );
+            const electronBinary = resolveElectronBinary(
+              process.env,
+              harnessPath,
+            );
+            if (electronBinary === null) {
+              throw new Error(
+                "No Electron found for the capture harness. Run from a bb checkout, or set BB_ELECTRON to an Electron binary.",
+              );
+            }
+            const report = await runPluginCapture({
+              serverUrl: getUrl(),
+              pluginId: plan.pluginId,
+              outDir: resolve(process.cwd(), opts.capture),
+              harnessPath,
+              electronBinary,
+              ...(opts.fixtureThread === undefined
+                ? {}
+                : { fixtureThreadId: opts.fixtureThread }),
+            });
+            if (report.written.length === 0) {
+              console.log("Capture ran; the app reports no surfaces to shoot.");
+            }
+            for (const shot of report.written) {
+              console.log(`wrote ${shot.file}  (${shot.slot})`);
+            }
           }
         },
       ),

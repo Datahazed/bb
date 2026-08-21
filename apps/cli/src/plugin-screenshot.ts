@@ -1,8 +1,12 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   detectPluginSurfaces,
   planPluginCapture,
+  PLUGIN_CAPTURE_SURFACES,
   type PluginCaptureStep,
 } from "@bb/domain";
 
@@ -80,4 +84,82 @@ export async function planPluginScreenshots(args: {
     steps,
     needsFixture: found.slots.filter((slot) => !planned.has(slot)),
   };
+}
+
+export interface CaptureRunResult {
+  readonly pluginId: string;
+  readonly written: ReadonlyArray<{ slot: string; url: string; file: string }>;
+}
+
+/**
+ * Where the desktop package's Electron lives. In a checkout that is the
+ * workspace dependency; a packaged CLI can point BB_ELECTRON at any Electron.
+ */
+export function resolveElectronBinary(
+  env: NodeJS.ProcessEnv,
+  harnessPath: string,
+): string | null {
+  if (env["BB_ELECTRON"] !== undefined && env["BB_ELECTRON"] !== "") {
+    return env["BB_ELECTRON"];
+  }
+  try {
+    // Resolve from beside the harness: Electron is the desktop package's
+    // dependency, not the CLI's, and requiring "electron" under plain node
+    // returns the binary path.
+    const requireFromHarness = createRequire(harnessPath);
+    const resolved: unknown = requireFromHarness("electron");
+    return typeof resolved === "string" ? resolved : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Drive the capture harness against the author's running bb. Which surfaces
+ * the plugin registered is read from the live app in the harness itself —
+ * the plan here only supplies the catalog (routes and file stems).
+ */
+export async function runPluginCapture(args: {
+  serverUrl: string;
+  pluginId: string;
+  outDir: string;
+  harnessPath: string;
+  electronBinary: string;
+  fixtureThreadId?: string;
+}): Promise<CaptureRunResult> {
+  const planDir = await mkdtemp(join(tmpdir(), "bb-plugin-capture-"));
+  const planPath = join(planDir, "plan.json");
+  await writeFile(
+    planPath,
+    JSON.stringify({
+      serverUrl: args.serverUrl,
+      pluginId: args.pluginId,
+      outDir: args.outDir,
+      surfaces: PLUGIN_CAPTURE_SURFACES,
+      ...(args.fixtureThreadId === undefined
+        ? {}
+        : { fixtureThreadId: args.fixtureThreadId }),
+    }),
+  );
+  return await new Promise<CaptureRunResult>((resolvePromise, reject) => {
+    const child = spawn(args.electronBinary, [args.harnessPath, planPath], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (chunk: Buffer) => (out += chunk.toString()));
+    child.stderr.on("data", (chunk: Buffer) => (err += chunk.toString()));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`capture harness exited ${code}: ${err.trim()}`));
+        return;
+      }
+      try {
+        resolvePromise(JSON.parse(out) as CaptureRunResult);
+      } catch {
+        reject(new Error(`capture harness wrote no report: ${out.trim()}`));
+      }
+    });
+  });
 }

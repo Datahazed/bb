@@ -61,3 +61,88 @@ describe("planPluginScreenshots", () => {
     expect(result.slots).not.toContain("homepageSection");
   });
 });
+
+describe("the capture harness planner", async () => {
+  const { createRequire } = await import("node:module");
+  const requireCjs = createRequire(import.meta.url);
+  const harness = requireCjs(
+    "../../../desktop/scripts/plugin-capture.cjs",
+  ) as {
+    planSteps: (
+      plan: {
+        pluginId: string;
+        surfaces: ReadonlyArray<{
+          slot: string;
+          kind: string;
+          route: string;
+          stem: string;
+        }>;
+        fixtureThreadId?: string;
+      },
+      slotIndex: Record<
+        string,
+        Array<{ pluginId: string; path?: string | null }>
+      >,
+    ) => Array<{ slot: string; url: string; outputFile: string }>;
+    SNAPSHOT_KEYS: Record<string, string>;
+  };
+
+  it("maps every capturable surface to a live snapshot key", async () => {
+    const { PLUGIN_CAPTURE_SURFACES } = await import("@bb/domain");
+    for (const surface of PLUGIN_CAPTURE_SURFACES) {
+      expect(harness.SNAPSHOT_KEYS[surface.slot], surface.slot).toBeTruthy();
+    }
+  });
+
+  it("shoots only the target plugin's registrations", () => {
+    const steps = harness.planSteps(
+      {
+        pluginId: "tasks",
+        surfaces: [
+          {
+            slot: "navPanel",
+            kind: "route",
+            route: "/plugins/:pluginId/:panelPath",
+            stem: "01-panel",
+          },
+        ],
+      },
+      {
+        navPanels: [
+          { pluginId: "tasks", path: "/board" },
+          { pluginId: "someone-else", path: "other" },
+        ],
+      },
+    );
+    expect(steps).toEqual([
+      { slot: "navPanel", url: "/plugins/tasks/board", outputFile: "01-panel.png" },
+    ]);
+  });
+
+  it("skips fixture surfaces without a fixture thread, like the CLI planner", () => {
+    const surfaces = [
+      {
+        slot: "messageDirective",
+        kind: "fixture",
+        route: "/threads/:threadId",
+        stem: "06-message",
+      },
+    ];
+    const slotIndex = { messageDirectives: [{ pluginId: "tasks" }] };
+    expect(
+      harness.planSteps({ pluginId: "tasks", surfaces }, slotIndex),
+    ).toEqual([]);
+    expect(
+      harness.planSteps(
+        { pluginId: "tasks", surfaces, fixtureThreadId: "thr_1" },
+        slotIndex,
+      ),
+    ).toEqual([
+      {
+        slot: "messageDirective",
+        url: "/threads/thr_1",
+        outputFile: "06-message.png",
+      },
+    ]);
+  });
+});

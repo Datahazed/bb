@@ -268,6 +268,10 @@ added/updated/unchanged counts.
                                  inside a thread, composer, or open file need
                                  the shared capture fixture — pass
                                  --fixture-thread <id> to include them.
+                                 --capture <outDir> takes the screenshots:
+                                 a headless window loads this bb, reads which
+                                 surfaces the plugin registered from the
+                                 running app, and writes one PNG per surface.
                                  --json for the raw plan. A plugin that
                                  registers no visual surface plans nothing,
                                  which is not an error
