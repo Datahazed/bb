@@ -1678,6 +1678,31 @@ function createForwardUserQuestionRequest(
 }
 
 /**
+ * Enter Plan mode when a later turn of a live session carries `/plan`.
+ *
+ * Session construction used to be the only place the permission mode was
+ * applied, so a mid-conversation `/plan` stripped the mention and pushed the
+ * prompt into a session still in the user's preset mode: Claude never entered
+ * Plan mode and never proposed a plan through ExitPlanMode. The switch must
+ * land before the prompt is pushed, so a refused control request fails the
+ * turn instead of running it in the preset mode. `approvedPlanPermissionMode`
+ * keeps the preset for the approval to restore.
+ */
+async function enterPlanModeIfRequested(
+  threadSession: ThreadSession,
+  params: TurnStartParams | TurnSteerParams,
+): Promise<void> {
+  if (
+    params.claudeCodePermissionMode !== "plan" ||
+    threadSession.permissionMode === "plan"
+  ) {
+    return;
+  }
+  await threadSession.session.setPermissionMode("plan");
+  threadSession.permissionMode = "plan";
+}
+
+/**
  * Leave Plan mode once the user approves a plan.
  *
  * `/plan` overrides the session permission mode for the life of the session:
@@ -2264,6 +2289,7 @@ async function runTurnStart(
       params.threadId,
       withTurnLiveSessionSettings(threadSession.liveSettings, params),
     );
+    await enterPlanModeIfRequested(threadSession, params);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
@@ -2336,6 +2362,7 @@ async function runTurnSteer(
       params.threadId,
       withTurnLiveSessionSettings(threadSession.liveSettings, params),
     );
+    await enterPlanModeIfRequested(threadSession, params);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
