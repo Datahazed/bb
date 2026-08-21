@@ -18,6 +18,10 @@ import {
   useAppCommandShortcut,
   useIsAppCommandModifierHeld,
 } from "./AppCommandProvider";
+import {
+  registerPluginAppCommandHandler,
+  resetPluginAppCommandHandlerForTest,
+} from "@/lib/plugin-app-command-handler";
 
 const testState = vi.hoisted(() => ({
   calls: [] as string[],
@@ -195,6 +199,19 @@ const testState = vi.hoisted(() => ({
         none: [],
       },
     },
+    {
+      command: "plugin.inspector.toggle" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: ".",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: true,
+      },
+      when: { all: ["mainSurface" as const], none: ["modalOpen" as const] },
+    },
   ],
 }));
 
@@ -295,6 +312,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   testState.calls.length = 0;
   testState.showKeyboardHints = true;
+  resetPluginAppCommandHandlerForTest();
 });
 
 describe("AppCommandProvider", () => {
@@ -499,6 +517,28 @@ describe("AppCommandProvider", () => {
 
     expect(dispatchShortcut().defaultPrevented).toBe(true);
     expect(testState.calls).toEqual(["high", "low"]);
+  });
+
+  it("falls back to the fixed plugin inspector handler", () => {
+    const handler = vi.fn();
+    registerPluginAppCommandHandler(
+      "plugin.inspector.toggle",
+      handler,
+      "plugin-guide",
+      "generation",
+    );
+    renderProvider(null);
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: ">",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it("gives later scoped bindings precedence on the same chord", () => {

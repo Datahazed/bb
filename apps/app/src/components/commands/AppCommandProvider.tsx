@@ -29,6 +29,7 @@ import {
   matchesAppCommandContext,
   type AppShortcutPresentation,
 } from "@/lib/app-keybindings";
+import { runPluginAppCommandHandler } from "@/lib/plugin-app-command-handler";
 
 interface AppCommandInvocation {
   target: EventTarget | null;
@@ -229,15 +230,16 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   const dispatch = useCallback(
     (command: AppCommandId, target: EventTarget | null): boolean => {
       const registrations = handlersRef.current.get(command);
-      if (!registrations) return false;
-      const ordered = [...registrations.values()].sort(
-        (left, right) =>
-          right.priority - left.priority || right.sequence - left.sequence,
-      );
-      for (const registration of ordered) {
-        if (registration.handler({ target })) return true;
+      if (registrations) {
+        const ordered = [...registrations.values()].sort(
+          (left, right) =>
+            right.priority - left.priority || right.sequence - left.sequence,
+        );
+        for (const registration of ordered) {
+          if (registration.handler({ target })) return true;
+        }
       }
-      return false;
+      return runPluginAppCommandHandler(command);
     },
     [],
   );

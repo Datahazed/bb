@@ -36,6 +36,14 @@ import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PLUGIN_PANEL_ROUTE_PATH } from "./route-paths";
 import { applyAppThemeCss } from "./themes";
 import { PluginPanelView } from "@/views/PluginPanelView";
+import {
+  getPluginSidebarFooterActionActive,
+  resetPluginSidebarFooterActionActiveForTest,
+} from "./plugin-sidebar-footer-action-state";
+import {
+  resetPluginAppCommandHandlerForTest,
+  runPluginAppCommandHandler,
+} from "./plugin-app-command-handler";
 
 function candidate(
   pluginId: string,
@@ -80,6 +88,8 @@ afterEach(() => {
   resetPluginThreadRowStatusesForTest();
   resetPluginSlotStoreForTest();
   resetPluginCssForTest();
+  resetPluginSidebarFooterActionActiveForTest();
+  resetPluginAppCommandHandlerForTest();
   uninstallForeignDomMutationGuardForTest();
 });
 
@@ -531,6 +541,44 @@ describe("reconcilePluginFrontends", () => {
     deps.fetchCandidates.mockResolvedValue([]);
     await reconcilePluginFrontends(state, deps);
     expect(getPluginThreadRowStatus("thr_source")).toBeNull();
+  });
+
+  it("owns footer active state and the fixed command by frontend generation", async () => {
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("plugin-guide", "v1")]);
+    const command = vi.fn();
+    deps.importModule.mockResolvedValue(
+      contentScriptModule((app) => {
+        app.contentScripts.register({
+          id: "inspector-toggle",
+          mount({
+            experimental_setSidebarFooterActionActive,
+            experimental_registerAppCommandHandler,
+          }) {
+            experimental_setSidebarFooterActionActive?.("inspect", true);
+            experimental_registerAppCommandHandler?.(
+              "plugin.inspector.toggle",
+              command,
+            );
+          },
+        });
+      }),
+    );
+
+    await reconcilePluginFrontends(state, deps);
+    expect(getPluginSidebarFooterActionActive("plugin-guide", "inspect")).toBe(
+      true,
+    );
+    expect(runPluginAppCommandHandler("plugin.inspector.toggle")).toBe(true);
+    expect(command).toHaveBeenCalledTimes(1);
+
+    deps.fetchCandidates.mockResolvedValue([candidate("plugin-guide", "v2")]);
+    deps.importModule.mockResolvedValue(contentScriptModule(() => {}));
+    await reconcilePluginFrontends(state, deps);
+    expect(getPluginSidebarFooterActionActive("plugin-guide", "inspect")).toBe(
+      false,
+    );
+    expect(runPluginAppCommandHandler("plugin.inspector.toggle")).toBe(false);
   });
 
   it("rolls back a status from a partially mounted generation and rejects its retained setter", async () => {

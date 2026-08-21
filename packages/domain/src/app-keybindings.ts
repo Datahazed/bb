@@ -52,6 +52,7 @@ export const APP_COMMAND_IDS = [
   "settings.open",
   "settings.openServers",
   "sidebar.toggle",
+  "plugin.inspector.toggle",
   "panel.newTab",
   "panel.close",
   "panel.toggle",
