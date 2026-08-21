@@ -382,6 +382,37 @@ describe("Plugin Guide inspector", () => {
       "app.window / app.sidebar.footer-actions.plugin-api-docs.ui-inspector",
     );
   });
+
+  it("places new-thread context in React Router location state", () => {
+    const host = inspectionHost();
+    const inspector = createPluginGuideInspector({
+      document,
+      inspection: host.inspection,
+    });
+    inspector.start();
+    host.emit({
+      type: "select",
+      target: targetFixture(),
+      pointer: { x: 20, y: 30 },
+    });
+
+    [...document.querySelectorAll("button")]
+      .find((button) => button.textContent === "New thread")
+      ?.click();
+
+    expect(window.location.pathname).toBe("/");
+    expect(window.history.state).toMatchObject({
+      idx: expect.any(Number),
+      key: expect.any(String),
+      usr: {
+        focusPrompt: true,
+        replaceInitialPrompt: true,
+        initialPrompt: expect.stringContaining(
+          "app.window / app.sidebar.footer-actions.plugin-api-docs.ui-inspector",
+        ),
+      },
+    });
+  });
 });
 
 describe("inspection handoff payload", () => {
