@@ -29,7 +29,7 @@ import {
   File01Icon,
   Folder01Icon,
   GitBranchIcon,
-  Maximize01Icon,
+  InformationCircleIcon,
   Mic01Icon,
   MoreHorizontalIcon,
   PencilEdit01Icon,
@@ -38,8 +38,9 @@ import {
   Search01Icon,
   Settings02Icon,
   SparklesIcon,
-  SidebarLeft01Icon,
+  PlusMinusSquare01Icon,
   SidebarLeftIcon,
+  SidebarRightIcon,
   ToolboxIcon,
   TerminalIcon,
 } from "@hugeicons/core-free-icons";
@@ -75,6 +76,16 @@ export interface SurfaceMapState {
    * matching nav row in place.
    */
   onSelect?: (id: string) => void;
+  /**
+   * The slide currently on stage, so a card naming another surface can tell
+   * whether that surface is on this page or another one.
+   */
+  currentGroupId?: string;
+  /**
+   * Pans to the slide holding a surface and opens its card. Absent outside
+   * the carousel, where there is nothing to pan.
+   */
+  onGoToSurface?: (id: string) => void;
 }
 
 export const SurfaceMapContext = createContext<SurfaceMapState | null>(null);
@@ -90,6 +101,7 @@ export function useSurfaceMap(): SurfaceMapState {
 export const APP_SHELL_MARKS = [
   "nav-panel",
   "thread-list",
+  "thread-row-status",
   "sidebar-footer",
   "thread-header",
   "message-directives",
@@ -104,6 +116,7 @@ export const COMPOSER_MARKS = [
   "composer-banners",
   "mention-provider",
   "composer-rich-text",
+  "composer-state",
   "composer-plus-menu",
   "provider-picker",
   "composer-actions",
@@ -111,8 +124,9 @@ export const COMPOSER_MARKS = [
 
 export const COMPOSE_MARKS = ["homepage-section", "new-thread-panel"] as const;
 
+export const EXTENSIONS_MARKS = ["plugin-status"] as const;
+
 export const SETTINGS_MARKS = [
-  "plugin-status",
   "declarative-settings",
   "settings-section",
 ] as const;
@@ -124,17 +138,39 @@ function Mark({
   label,
   className,
   chipClassName,
+  edge = false,
   children,
 }: {
   id: string;
   label: string;
   className?: string;
   chipClassName?: string;
+  /**
+   * Anchor the chip to the diagram's gutter instead of to this mark, for a
+   * region that hugs an outer edge — those chips crowd the diagram's own
+   * chrome when they sit inside it.
+   *
+   * The mechanism is the containing block: dropping `relative` here makes
+   * the chip resolve against the nearest positioned ancestor, which is the
+   * `relative` gutter wrapper outside the frame. An absolutely positioned
+   * box is not clipped by an ancestor whose descendant its containing block
+   * is not, so the chip escapes both the frame's `overflow-hidden` and the
+   * scroll wrapper's `overflow-x-auto` — and `chipClassName` is then read as
+   * coordinates on the gutter, not on the mark.
+   */
+  edge?: boolean;
   children?: ReactNode;
 }) {
   const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
     useSurfaceMap();
   const active = activeId === id || expandedId === id || spotlightId === id;
+  // The container outline is exclusive: while any region is hovered, only
+  // that region outlines, so two outlines are never on screen to overlap.
+  // The chip fill still follows `active`, so an open card's marker stays lit.
+  const outlined =
+    activeId !== null
+      ? activeId === id
+      : expandedId === id || spotlightId === id;
   const dimmed = Boolean(spotlightId) && spotlightId !== id;
   return (
     <a
@@ -144,6 +180,10 @@ function Mark({
         onSelect
           ? (event) => {
               event.preventDefault();
+              // A marker inside another marked region (the provider glyph in
+              // the picker, the painted range in the draft) must open its own
+              // card, not the enclosing one's.
+              event.stopPropagation();
               onSelect(id);
             }
           : undefined
@@ -153,8 +193,11 @@ function Mark({
       onFocus={() => setActiveId(id)}
       onBlur={() => setActiveId(null)}
       className={cn(
-        "relative rounded-md ring-1 transition-all",
-        active
+        // ring-inset keeps the outline inside this region's own bounds, so
+        // it cannot bleed into a neighbor that shares an edge.
+        "rounded-md ring-1 ring-inset transition-all",
+        edge || "relative",
+        outlined
           ? "bg-surface-selected ring-surface-selected-border"
           : "ring-transparent hover:bg-state-hover",
         dimmed && "opacity-25",
@@ -193,7 +236,7 @@ function MiniIcon({
   return (
     <HugeiconsIcon
       icon={icon}
-      className={cn("size-3.5 shrink-0 text-muted-foreground", className)}
+      className={cn("size-4 shrink-0 text-muted-foreground", className)}
     />
   );
 }
@@ -203,7 +246,7 @@ function PluginGlyph({ className }: { className?: string }) {
   return (
     <HugeiconsIcon
       icon={ElectricPlugsIcon}
-      className={cn("size-3.5 shrink-0 text-foreground", className)}
+      className={cn("size-4 shrink-0 text-foreground", className)}
     />
   );
 }
@@ -218,7 +261,11 @@ function WindowFrame({
   return (
     <div
       className={cn(
-        "select-none overflow-hidden rounded-lg border border-border bg-card text-xs leading-none text-muted-foreground shadow-sm",
+        // bg-background: the window's content areas use the same canvas the
+        // real app paints, so the sidebar (var(--sidebar)) sits against it
+        // at exactly the product's own contrast in every palette. The frame
+        // edge carries the separation from the page.
+        "select-none overflow-hidden rounded-lg border border-border bg-background text-xs leading-none text-muted-foreground shadow-sm",
         className,
       )}
     >
@@ -253,7 +300,7 @@ const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
   settings: () => <MiniIcon icon={Settings02Icon} className="size-4" />,
   "plugin-footer-actions": () => (
     <span className="flex size-5.5 items-center justify-center rounded-md bg-state-hover">
-      <PluginGlyph className="size-3" />
+      <PluginGlyph className="size-3.5" />
     </span>
   ),
   "bug-report": () => <MiniIcon icon={Bug01Icon} className="size-4" />,
@@ -269,8 +316,8 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
     <div className="flex items-center px-2.5 pt-2">
       <MiniIcon icon={SidebarLeftIcon} />
       <span className="flex-1" />
-      <MiniIcon icon={ArrowLeft01Icon} className="size-3" />
-      <MiniIcon icon={ArrowRight01Icon} className="ml-1.5 size-3" />
+      <MiniIcon icon={ArrowLeft01Icon} className="size-3.5" />
+      <MiniIcon icon={ArrowRight01Icon} className="ml-1.5 size-3.5" />
     </div>
   ),
   "primary-actions": () => (
@@ -287,13 +334,16 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       id="nav-panel"
       label="Plugin nav panels, above the thread list"
       className="mx-1.5 px-1.5 pb-2.5 pt-1"
-      chipClassName="-top-1 right-0"
+      edge
+      chipClassName="left-1 top-[124px]"
     >
       <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
         <MiniIcon icon={ToolboxIcon} />
         Extensions
       </span>
-      <span className="flex h-6.5 items-center gap-2 rounded-md bg-state-hover px-2 font-medium text-foreground">
+      {/* The active row uses the sidebar's own accent, exactly like the
+          real nav row (PluginNavSidebarItems). */}
+      <span className="flex h-6.5 items-center gap-2 rounded-md bg-sidebar-accent px-2 font-medium text-sidebar-foreground">
         <PluginGlyph />
         Your panel
       </span>
@@ -304,9 +354,10 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       id="thread-list"
       label="The thread list, replaceable by one plugin"
       className="mx-1.5 flex-1 px-1.5 py-1.5"
-      chipClassName="-top-1 right-0"
+      edge
+      chipClassName="left-1 top-[190px]"
     >
-      <span className="block px-2 pb-1 pt-1.5 text-2xs text-subtle-foreground/75">
+      <span className="block px-2 pb-1 pt-1.5 text-xs text-subtle-foreground/75">
         Pinned
       </span>
       {SIDEBAR_THREADS.map((thread) => (
@@ -316,16 +367,27 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
         >
           <span className="min-w-0 flex-1 truncate">{thread.title}</span>
           {thread.glyph === "spin" ? (
-            <span
-              aria-hidden
-              className="size-2.5 rounded-full border border-muted-foreground border-t-transparent"
-            />
+            // A running status on the row: the glyph a plugin's thread row
+            // status replaces. Its own marker, inside the thread list's.
+            <Mark
+              id="thread-row-status"
+              label="A thread row status set by a plugin"
+              className="flex size-5 shrink-0 items-center justify-center"
+              // Top-right of the glyph and clear of it; the sidebar's padding
+              // still has room for the chip before the panel's edge.
+              chipClassName="-right-4 -top-2"
+            >
+              <span
+                aria-hidden
+                className="size-2.5 rounded-full border border-muted-foreground border-t-transparent"
+              />
+            </Mark>
           ) : thread.glyph === "dot" ? (
             <span aria-hidden className="size-2 rounded-full bg-success" />
           ) : null}
         </span>
       ))}
-      <span className="block px-2 pb-1 pt-2 text-2xs text-subtle-foreground/75">
+      <span className="block px-2 pb-1 pt-2 text-xs text-subtle-foreground/75">
         Projects
       </span>
       {["acme-app", "dotfiles"].map((project) => (
@@ -334,7 +396,7 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
           className="flex h-6.5 items-center gap-1.5 rounded-md px-2"
         >
           <span className="min-w-0 truncate">{project}</span>
-          <MiniIcon icon={ArrowRight01Icon} className="size-2.5" />
+          <MiniIcon icon={ArrowRight01Icon} className="size-3.5" />
         </span>
       ))}
     </Mark>
@@ -358,14 +420,14 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
  * then plugin actions (mirrors MessageActionBar.tsx).
  */
 const MESSAGE_ACTION_RENDERERS: Record<string, () => ReactNode> = {
-  copy: () => <MiniIcon icon={Copy01Icon} className="size-3" />,
-  edit: () => <MiniIcon icon={PencilEdit01Icon} className="size-3" />,
-  "add-to-chat": () => <MiniIcon icon={PlusSignIcon} className="size-3" />,
+  copy: () => <MiniIcon icon={Copy01Icon} className="size-3.5" />,
+  edit: () => <MiniIcon icon={PencilEdit01Icon} className="size-3.5" />,
+  "add-to-chat": () => <MiniIcon icon={PlusSignIcon} className="size-3.5" />,
   "send-to-main-thread": () => (
-    <MiniIcon icon={ArrowLeft01Icon} className="size-3" />
+    <MiniIcon icon={ArrowLeft01Icon} className="size-3.5" />
   ),
-  fork: () => <MiniIcon icon={GitBranchIcon} className="size-3" />,
-  "plugin-actions": () => <PluginGlyph className="size-3" />,
+  fork: () => <MiniIcon icon={GitBranchIcon} className="size-3.5" />,
+  "plugin-actions": () => <PluginGlyph className="size-3.5" />,
 };
 
 /** Registry coverage, checked against the manifest by surfaces.test.ts. */
@@ -377,11 +439,24 @@ export const ANATOMY_RENDERER_KEYS = {
 
 export function AppShellWireframe() {
   return (
-    // Three fixed-ish columns need ~720px; small windows scroll the mockup
-    // horizontally instead of losing the panel and its markers.
-    <div className="overflow-x-auto">
-      <div className="min-w-[720px]">
-        <AppShellWireframeBody />
+    // The padding is the annotation gutter: edge-hugging markers anchor to
+    // this box and sit outside the frame, so they ring the diagram instead
+    // of crowding its chrome.
+    <div className="relative px-7 pb-2 pt-4">
+      {/* Content scripts have no slot of their own — they run across the
+          whole window, so the marker annotates the frame itself. */}
+      <OverlayMark
+        id="content-scripts"
+        label="App-wide plugin scripts, running in the whole window"
+        className="left-1/2 top-0.5 -translate-x-1/2"
+        region="inset-x-7 bottom-2 top-4"
+      />
+      {/* Three fixed-ish columns need ~720px; small windows scroll the
+          mockup horizontally instead of losing the panel and its markers. */}
+      <div className="overflow-x-auto">
+        <div className="min-w-[720px]">
+          <AppShellWireframeBody />
+        </div>
       </div>
     </div>
   );
@@ -390,19 +465,13 @@ export function AppShellWireframe() {
 function AppShellWireframeBody() {
   return (
     <WindowFrame>
-      {/* Window chrome. Content scripts run across the whole window. */}
-      <Mark
-        id="content-scripts"
-        label="App-wide plugin behavior, across the whole window"
-        className="flex items-center gap-2 border-b border-border-hairline px-3 py-2.5"
-        chipClassName="left-1/2 top-1.5 -translate-x-1/2"
-      >
-        <TrafficLights />
-      </Mark>
-
-      <div className="flex">
+      {/* Sized to the real window's aspect: at the diagram's 832px width, a
+          ~523px frame matches the ~1.6:1 footprint of an actual bb window.
+          The thread list and timeline are flex-1, so the height lands there
+          as open canvas. */}
+      <div className="flex min-h-[481px] items-stretch">
         {/* ── sidebar, sections in anatomy-manifest order ── */}
-        <div className="flex w-[264px] shrink-0 flex-col border-r border-border-hairline bg-sidebar">
+        <div className="flex w-[264px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
           {anatomy.appSidebar.map((key) => (
             <Fragment key={key}>{SIDEBAR_SECTION_RENDERERS[key]?.()}</Fragment>
           ))}
@@ -415,22 +484,19 @@ function AppShellWireframeBody() {
             <span className="truncate text-foreground">
               Fix flaky checkout tests
             </span>
-            <MiniIcon icon={MoreHorizontalIcon} className="size-3" />
+            <MiniIcon icon={MoreHorizontalIcon} className="size-3.5" />
             <span className="flex-1" />
             <Mark
               id="thread-header"
               label="Plugin thread-header control, left end of the action row"
               className="flex h-6.5 items-center gap-1 px-2"
-              chipClassName="-top-2.5 left-1"
+              // Top-right of the glyph, clear of it: the frame clips at its
+              // own top edge (this row is the first thing under it), and
+              // px-3 on the row leaves exactly 12px before the frame's edge.
+              chipClassName="-top-1.5 -right-3"
             >
-              <PluginGlyph className="size-3" />
+              <PluginGlyph className="size-3.5" />
             </Mark>
-            <MiniIcon icon={Folder01Icon} className="size-3" />
-            <span className="flex h-5.5 items-center rounded-md border border-border px-1.5 text-2xs">
-              Commit
-            </span>
-            <MiniIcon icon={SidebarLeft01Icon} className="size-3 rotate-180" />
-            <MiniIcon icon={Maximize01Icon} className="size-3" />
           </div>
 
           {/* timeline */}
@@ -461,7 +527,7 @@ function AppShellWireframeBody() {
                   <span className="h-2 w-3.5 rounded-sm bg-muted" />
                 </span>
                 <span className="mt-1.5 flex items-center gap-1.5">
-                  <PluginGlyph className="size-2.5" />
+                  <PluginGlyph className="size-3.5" />
                   ::your-directive
                 </span>
               </Mark>
@@ -492,7 +558,7 @@ function AppShellWireframeBody() {
               chipClassName="-top-2 right-1.5"
             >
               <span className="flex items-center gap-1.5 text-foreground">
-                <PluginGlyph className="size-3" />
+                <PluginGlyph className="size-3.5" />
                 Pick a release channel
               </span>
               <span className="mt-2 flex gap-1.5" aria-hidden>
@@ -505,47 +571,58 @@ function AppShellWireframeBody() {
                 </span>
               </span>
             </Mark>
-            <span
-              aria-hidden
-              className="block h-8 rounded-md border border-border bg-muted/20"
-            />
           </div>
         </div>
 
         {/* ── right panel (ThreadSecondaryPanel) ── */}
-        <div className="flex w-[232px] shrink-0 flex-col border-l border-border-hairline">
-          {/* toolbar: Info/Diff pins, then the tab strip, then new-tab */}
-          <div className="flex h-10 items-center gap-1.5 border-b border-border-hairline px-2">
-            <MiniIcon icon={File01Icon} className="size-3" />
-            <MiniIcon icon={GitBranchIcon} className="size-3" />
-            <span aria-hidden className="mx-0.5 h-4 w-px bg-border-hairline" />
-            <span className="flex h-6 items-center gap-1 rounded-md border border-border px-1.5">
-              <MiniIcon icon={TerminalIcon} className="size-2.5" />
-              Terminal
+        {/* Plain bg-sidebar, like the real ThreadSecondaryPanel — the real
+            panel is not the app's `.fixed.bg-sidebar` element, so it does
+            not get the themed sidebar overlay (grain, edge piping). */}
+        <div className="flex w-[248px] shrink-0 flex-col border-l border-border-seam bg-sidebar">
+          {/* Toolbar, in ThreadSecondaryPanel's own order: the pinned Info
+              and Diff views as icon-only pills, then the strip of open-view
+              pills, then New tab — and, pushed to the far end, the hide
+              control. No separator rule: the real row has none. */}
+          <div className="flex h-10 items-center gap-1 border-b border-border-hairline px-2">
+            <span className="flex h-6 items-center rounded-md px-1.5">
+              <MiniIcon icon={InformationCircleIcon} className="size-3.5" />
+            </span>
+            <span className="flex h-6 items-center rounded-md px-1.5">
+              <MiniIcon icon={PlusMinusSquare01Icon} className="size-3.5" />
+            </span>
+            {/* An open view, pill-shaped like the rest of the strip. It keeps
+                its label off so the plugin's tab beside it stays readable at
+                the diagram's width; the real pill carries one. */}
+            <span className="flex h-6 items-center rounded-md px-1.5">
+              <MiniIcon icon={TerminalIcon} className="size-3.5" />
             </span>
             <Mark
               id="thread-panel"
               label="A plugin tab in the thread side panel"
-              className="flex h-6 items-center gap-1 whitespace-nowrap px-2"
-              chipClassName="-top-2.5 -right-1"
+              className="flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md pl-1.5 pr-2"
+              // Out to the right, into the toolbar's empty stretch: over the
+              // tab it covered the label it was pointing at.
+              chipClassName="-right-7 top-0"
             >
-              <PluginGlyph className="size-2.5" />
+              <PluginGlyph className="size-3.5" />
               <span className="text-foreground">Your tab</span>
             </Mark>
+            <MiniIcon icon={PlusSignIcon} className="size-3.5" />
             <span className="flex-1" />
-            <MiniIcon icon={PlusSignIcon} className="size-3" />
+            <MiniIcon icon={SidebarRightIcon} className="size-3.5" />
           </div>
           {/* body: a file preview tab owned by a plugin file opener */}
           <Mark
             id="file-opener"
             label="A plugin file viewer, opened for a matching extension"
             className="m-2 flex-1 p-2.5"
-            chipClassName="-top-1 right-0"
+            edge
+            chipClassName="right-1 top-[96px]"
           >
             <span className="flex items-center gap-1.5 pb-2 text-foreground">
-              <MiniIcon icon={File01Icon} className="size-3" />
+              <MiniIcon icon={File01Icon} className="size-3.5" />
               notes.md
-              <PluginGlyph className="ml-auto size-3" />
+              <PluginGlyph className="ml-auto size-3.5" />
             </span>
             <span aria-hidden className="block space-y-1.5">
               <span className="block h-2 w-5/6 rounded-sm bg-muted/60" />
@@ -571,14 +648,14 @@ export function ComposerWireframe() {
         label="Plugin composer banners, above the prompt box"
         className="flex items-center gap-2 border border-border-hairline bg-surface-raised px-3 py-2.5"
       >
-        <PluginGlyph className="size-3" />
+        <PluginGlyph className="size-3.5" />
         <span className="text-foreground">Your banner</span>
       </Mark>
       <div
         aria-hidden
         className="flex items-center gap-2 rounded-md border border-border-hairline px-2.5 py-2"
       >
-        <MiniIcon icon={GitBranchIcon} className="size-3" />
+        <MiniIcon icon={GitBranchIcon} className="size-3.5" />
         Uncommitted · 3 files
       </div>
 
@@ -589,59 +666,65 @@ export function ComposerWireframe() {
         className="relative z-10 -mb-1 ml-4 block w-56 rounded-md border border-border bg-popover p-2 shadow-md"
         chipClassName="-right-2 -top-2"
       >
-        <span className="block px-1.5 pb-1 text-2xs text-subtle-foreground/75">
+        <span className="block px-1.5 pb-1 text-xs text-subtle-foreground/75">
           Your plugin
         </span>
         <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
-          <PluginGlyph className="size-2.5" />
+          <PluginGlyph className="size-3.5" />
           release-notes
         </span>
         <span className="flex h-6 items-center gap-1.5 px-1.5">
-          <PluginGlyph className="size-2.5 opacity-60" />
+          <PluginGlyph className="size-3 opacity-60" />
           roadmap
         </span>
       </Mark>
 
       {/* the prompt card */}
-      <div className="rounded-xl border border-border bg-card p-2.5 shadow-sm">
-        <p className="px-1 pt-1 leading-relaxed">
-          Summarize{" "}
-          <span className="rounded-full border border-surface-selected-border bg-surface-selected px-1.5 py-0.5 text-foreground">
-            @release-notes
-          </span>{" "}
-          and fix the{" "}
-          <Mark
-            id="composer-rich-text"
-            label="A draft range painted by a plugin rich-text effect"
-            className="inline-block px-1 py-0.5"
-            chipClassName="-right-2.5 -top-2.5"
-          >
-            <span className="rounded bg-warning/25 px-1 py-0.5 text-foreground ring-1 ring-warning/40">
-              TODO
-            </span>
-          </Mark>{" "}
-          in checkout
-        </p>
+      <div className="rounded-xl border border-border bg-background p-2.5 shadow-lift">
+        {/* The editable draft: what useComposerView reads and setInputLock
+            holds. Marked on the text block itself, not on the card. */}
+        <Mark
+          id="composer-state"
+          label="The draft prompt a plugin can read and lock"
+          className="block px-1 pt-1"
+          chipClassName="-left-3 -top-2.5"
+        >
+          <p className="leading-relaxed">
+            Summarize{" "}
+            <span className="rounded-full border border-surface-selected-border bg-surface-selected px-1.5 py-0.5 text-foreground">
+              @release-notes
+            </span>{" "}
+            and fix the{" "}
+            <Mark
+              id="composer-rich-text"
+              label="A range of the draft prompt painted by a plugin rich-text effect"
+              className="inline-block px-1 py-0.5"
+              chipClassName="-right-2.5 -top-2.5"
+            >
+              <span className="rounded bg-warning/25 px-1 py-0.5 text-foreground ring-1 ring-warning/40">
+                TODO
+              </span>
+            </Mark>{" "}
+            in checkout
+          </p>
+        </Mark>
 
         {/* bottom row: + menu, model picker; then plugin actions, mic, send */}
         <div className="mt-3 flex items-center gap-2 px-0.5">
-          <Mark
-            id="composer-plus-menu"
-            label="Plugin rows in the composer's + menu"
-            className="p-1"
-            chipClassName="-left-2.5 -top-2.5"
+          {/* Drawn pressed: its menu is open below the card. */}
+          <span
+            aria-hidden
+            className="flex size-6 items-center justify-center rounded-md border border-border bg-state-hover"
           >
-            <span className="flex size-6 items-center justify-center rounded-md border border-border">
-              <MiniIcon icon={PlusSignIcon} className="size-3" />
-            </span>
-          </Mark>
+            <MiniIcon icon={PlusSignIcon} className="size-3.5" />
+          </span>
           <Mark
             id="provider-picker"
             label="Your agent provider in the model picker"
             className="p-1"
           >
             <span className="flex h-6 items-center gap-1.5 rounded-md px-1.5">
-              <PluginGlyph className="size-3" />
+              <PluginGlyph className="size-3.5" />
               <span className="text-foreground">Your model</span>
               <span className="text-subtle-foreground">High</span>
             </span>
@@ -654,10 +737,10 @@ export function ComposerWireframe() {
             chipClassName="-top-2.5 -left-2.5"
           >
             <span className="flex size-6 items-center justify-center rounded-md bg-state-hover">
-              <PluginGlyph className="size-3" />
+              <PluginGlyph className="size-3.5" />
             </span>
           </Mark>
-          <MiniIcon icon={Mic01Icon} className="size-3" />
+          <MiniIcon icon={Mic01Icon} className="size-3.5" />
           <span className="flex size-6 items-center justify-center rounded-md bg-foreground">
             <HugeiconsIcon
               icon={ArrowRight01Icon}
@@ -667,10 +750,34 @@ export function ComposerWireframe() {
         </div>
       </div>
 
+      {/* + menu: opens under the + at the card's bottom-left corner. Drawn
+          open — like the mention menu above — so both of the composer's
+          menus, and the plugin row inside this one, are visible at once;
+          something the live composer can never show. */}
+      <Mark
+        id="composer-plus-menu"
+        label="Plugin rows in the composer's + menu"
+        className="relative z-10 -mt-1 ml-3 block w-44 rounded-md border border-border bg-popover p-2 shadow-md"
+        chipClassName="-right-2 -top-2"
+      >
+        <span className="flex h-6 items-center gap-1.5 px-1.5">
+          <MiniIcon icon={File01Icon} className="size-3.5" />
+          Attach files
+        </span>
+        <span className="flex h-6 items-center gap-1.5 px-1.5">
+          <MiniIcon icon={ToolboxIcon} className="size-3.5" />
+          Skills
+        </span>
+        <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
+          <PluginGlyph className="size-3.5" />
+          Your action
+        </span>
+      </Mark>
+
       {/* the strip below the card: environment left, permission mode right */}
       <div className="flex items-center justify-between px-2.5" aria-hidden>
         <span className="flex items-center gap-1.5">
-          <MiniIcon icon={Folder01Icon} className="size-3" />
+          <MiniIcon icon={Folder01Icon} className="size-3.5" />
           acme-app · worktree
         </span>
         <span>Full Access</span>
@@ -679,254 +786,7 @@ export function ComposerWireframe() {
   );
 }
 
-/* ── the new-thread screen (RootComposeView order) ──────────────────── */
-
-export function ComposeScreenWireframe({
-  composer,
-}: {
-  /** The host's real composer, when available; replaces the mock one. */
-  composer?: ReactNode;
-} = {}) {
-  return (
-    <div className="overflow-x-auto">
-      <div className="min-w-[560px]">
-        <ComposeScreenWireframeBody composer={composer} />
-      </div>
-    </div>
-  );
-}
-
-function ComposeScreenWireframeBody({ composer }: { composer?: ReactNode }) {
-  return (
-    <WindowFrame>
-      <div className="flex items-center gap-2 border-b border-border-hairline px-3 py-2">
-        <TrafficLights />
-      </div>
-      {/* Proportions mirror RootComposeView: a centered reading column
-          (max-w-[760px] in the real app) inside a much wider main area,
-          content top-aligned, empty canvas below. */}
-      <div className="flex min-h-[430px] items-stretch">
-        <div className="min-w-0 flex-1 px-6 pb-6 pt-4">
-          <div className="mx-auto w-full max-w-[560px] space-y-2.5">
-            {/* the composer, no greeting above it (RootComposeView order):
-              the real one when the host lends it, the mock otherwise */}
-            {composer ?? <MockHomeComposer />}
-
-            {/* plugin homepage sections render last, below everything */}
-            <Mark
-              id="homepage-section"
-              label="A plugin homepage section, below the composer"
-              className="mt-4 block px-3 py-2.5"
-              chipClassName="-top-1 right-0"
-            >
-              <span className="flex items-center gap-1.5 pb-2 font-medium text-foreground">
-                <PluginGlyph className="size-3" />
-                Your section
-              </span>
-              <span className="grid grid-cols-3 gap-2" aria-hidden>
-                {["Release 1.4", "Bug triage", "Design QA"].map((card) => (
-                  <span
-                    key={card}
-                    className="space-y-1.5 rounded-md border border-border-hairline bg-surface-raised p-2.5"
-                  >
-                    <span className="block text-foreground">{card}</span>
-                    <span className="block h-1.5 w-4/5 rounded-sm bg-muted/60" />
-                    <span className="block h-1.5 w-3/5 rounded-sm bg-muted/60" />
-                  </span>
-                ))}
-              </span>
-            </Mark>
-          </div>
-        </div>
-
-        {/* right panel: no Info/Diff pins here; the new-tab launcher */}
-        <div className="w-[210px] shrink-0 border-l border-border-hairline p-2">
-          <span className="block px-1.5 pb-1.5 pt-1 text-2xs text-subtle-foreground/75">
-            Actions
-          </span>
-          <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-            <MiniIcon icon={Search01Icon} className="size-3" />
-            Open browser
-          </span>
-          <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-            <MiniIcon icon={TerminalIcon} className="size-3" />
-            Start terminal
-          </span>
-          <Mark
-            id="new-thread-panel"
-            label="A plugin action in the new-thread panel launcher"
-            className="flex h-6.5 items-center gap-2 px-2.5"
-            chipClassName="-top-2 right-0"
-          >
-            <PluginGlyph className="size-3" />
-            <span className="text-foreground">Your action</span>
-          </Mark>
-        </div>
-      </div>
-    </WindowFrame>
-  );
-}
-
-/* ── the plugin settings page (PluginSettings.tsx order) ────────────── */
-
-export function SettingsWireframe() {
-  return (
-    <WindowFrame>
-      {/* health banner renders above the page */}
-      <Mark
-        id="plugin-status"
-        label="The needs-configuration banner, above the settings page"
-        className="m-2.5 flex items-center gap-2 border border-warning/40 bg-warning/10 px-3 py-2.5"
-        chipClassName="-top-1.5 right-1.5"
-      >
-        <span aria-hidden className="size-2 shrink-0 rounded-full bg-warning" />
-        <span className="text-warning-text">
-          Set an API key, then reload the plugin
-        </span>
-      </Mark>
-
-      <div className="space-y-3 px-4 pb-4">
-        {/* header: icon, name, description left; the enable switch right */}
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-8 items-center justify-center rounded-md border border-border">
-            <PluginGlyph className="size-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-foreground">
-              Hello
-            </span>
-            <span className="block pt-1">
-              A friendly example plugin · v0.1.0
-            </span>
-          </span>
-          <span
-            aria-hidden
-            className="flex h-4.5 w-8 items-center rounded-full bg-foreground/60 p-0.5"
-          >
-            <span className="ml-auto size-3.5 rounded-full bg-background" />
-          </span>
-        </div>
-
-        {/* Configuration: the declarative form, label left, control right */}
-        <span className="block pt-1 font-medium text-foreground">
-          Configuration
-        </span>
-        <Mark
-          id="declarative-settings"
-          label="The settings form bb renders from your descriptors"
-          className="block border border-border bg-surface-recessed-solid p-3"
-          chipClassName="-top-2 right-1.5"
-        >
-          <span className="flex h-7 items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-foreground">
-              API key
-              <span className="rounded border border-border px-1.5 py-0.5 text-2xs">
-                secret
-              </span>
-            </span>
-            <span
-              aria-hidden
-              className="flex h-5.5 w-28 items-center rounded-md border border-border bg-card px-1.5 text-2xs text-subtle-foreground"
-            >
-              ••••••••
-            </span>
-          </span>
-          <span className="flex h-7 items-center justify-between gap-2">
-            <span className="text-foreground">Workspace</span>
-            <span
-              aria-hidden
-              className="flex h-5.5 w-28 items-center justify-between rounded-md border border-border bg-card px-1.5 text-2xs"
-            >
-              acme-team
-              <MiniIcon
-                icon={ArrowRight01Icon}
-                className="size-2.5 rotate-90"
-              />
-            </span>
-          </span>
-          <span className="flex h-7 items-center justify-between gap-2">
-            <span className="text-foreground">Case-sensitive search</span>
-            <span
-              aria-hidden
-              className="flex h-4.5 w-8 items-center rounded-full bg-foreground/60 p-0.5"
-            >
-              <span className="ml-auto size-3.5 rounded-full bg-background" />
-            </span>
-          </span>
-          <span className="flex justify-end pt-1.5">
-            <span className="flex h-6 items-center rounded-md border border-border px-2 text-foreground">
-              Save settings
-            </span>
-          </span>
-        </Mark>
-
-        {/* plugin settingsSection components render below the form */}
-        <Mark
-          id="settings-section"
-          label="Your custom settings section, below the form"
-          className="block p-3"
-          chipClassName="-top-1 right-0"
-        >
-          <span className="flex items-center gap-1.5 pb-2 font-medium text-foreground">
-            <PluginGlyph className="size-3" />
-            Your section
-          </span>
-          <span
-            aria-hidden
-            className="block space-y-2 rounded-md border border-border bg-surface-recessed-solid p-2.5"
-          >
-            <span className="flex items-center justify-between">
-              <span className="text-foreground">Connected as @acme-bot</span>
-              <span className="flex h-5.5 items-center rounded-md border border-border bg-card px-2 text-foreground">
-                Test connection
-              </span>
-            </span>
-            <span className="block h-2 w-2/3 rounded-sm bg-muted/60" />
-            <span className="block h-2 w-1/2 rounded-sm bg-muted/60" />
-          </span>
-        </Mark>
-      </div>
-    </WindowFrame>
-  );
-}
-
-/** The stand-in composer for surfaces with no bb behind them (the docs site). */
-function MockHomeComposer() {
-  return (
-    <>
-      <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
-        <p className="px-1 pt-1 leading-relaxed text-subtle-foreground">
-          Ask anything. @ to mention files, folders, or sections
-        </p>
-        <div aria-hidden className="h-10" />
-        <div className="flex items-center gap-2 px-0.5" aria-hidden>
-          <span className="flex size-6 items-center justify-center rounded-md border border-border">
-            <MiniIcon icon={PlusSignIcon} className="size-3" />
-          </span>
-          <span className="flex h-6 items-center gap-1.5 rounded-md px-1.5 text-foreground">
-            <MiniIcon icon={SparklesIcon} className="size-3" />
-            Fable 5 · High
-          </span>
-          <span className="flex-1" />
-          <MiniIcon icon={Mic01Icon} className="size-3" />
-          <span className="flex size-6 items-center justify-center rounded-md bg-foreground">
-            <MiniIcon icon={ArrowUp01Icon} className="size-3 text-background" />
-          </span>
-        </div>
-      </div>
-      <div className="flex items-center justify-between px-2.5" aria-hidden>
-        <span className="flex items-center gap-1.5">
-          <MiniIcon icon={Folder01Icon} className="size-3" />
-          acme-app
-          <span className="text-subtle-foreground">· worktree</span>
-        </span>
-        <span>Full Access</span>
-      </div>
-    </>
-  );
-}
-
-/* ── annotating the real composer (plugin surface only) ─────────────── */
+/* ── annotating the real composer (bb plugin only) ──────────────────── */
 
 /**
  * Marker for a real host component: the numbered chip, plus an optional
@@ -950,16 +810,20 @@ function OverlayMark({
   const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
     useSurfaceMap();
   const active = activeId === id || expandedId === id || spotlightId === id;
+  // Exclusive, like Mark's outline: hovering any region shows that region's
+  // ring alone, so overlapping regions (the draft line contains the mention
+  // pill and the painted range) never draw two rings at once.
+  const outlined =
+    activeId !== null
+      ? activeId === id
+      : expandedId === id || spotlightId === id;
   return (
     <>
-      {region && active ? (
+      {region && outlined ? (
         <span
           aria-hidden
           className={cn(
-            // Same tokens as a skeleton Mark; the fill is dialled back
-            // because this one sits over live product UI instead of behind
-            // mockup bones.
-            "pointer-events-none absolute z-10 rounded-md bg-surface-selected/30 ring-1 ring-surface-selected-border",
+            "pointer-events-none absolute z-[5] rounded-md bg-surface-selected/30 ring-1 ring-inset ring-surface-selected-border",
             region,
           )}
         />
@@ -979,7 +843,9 @@ function OverlayMark({
         onMouseLeave={() => setActiveId(null)}
         onFocus={() => setActiveId(id)}
         onBlur={() => setActiveId(null)}
-        className={cn("absolute z-20", className)}
+        // Below the expanded menus (z-10): an open menu should cover resting
+        // chips behind it, exactly as a real popover would.
+        className={cn("absolute z-[6]", className)}
       >
         <span
           aria-hidden
@@ -993,54 +859,569 @@ function OverlayMark({
 }
 
 /**
- * The composer slide when the real thing is available (inside bb): the
- * host's actual NewThreadComposer with the six composer surfaces marked
- * over its real chrome. Marker offsets track the composer's stable layout —
- * editor on top, the +/model/actions row at the card's bottom edge, the
- * project row beneath.
+ * The composer slide inside bb: the real host composer, rendered static,
+ * seated in the thread chrome it actually lives in — window bar, a short
+ * exchange above, the reply box at the bottom. The chrome is what gives the
+ * slide its height, so the page matches the other slides without padding.
+ *
+ * The component is the one the plugin API actually returns
+ * (experimental_NewThreadComposer); the wrapper is `inert`, so nothing
+ * focuses, types, or opens. Over the editor's first line sits a drawn draft
+ * with a real mention pill and a painted range — the two things a plain-text
+ * seed cannot show. The composer's two menus stay collapsed; each expands
+ * only while its own annotation is engaged. The + menu opens upward, as the
+ * real one does when the composer sits at the bottom of the window.
  */
 export function RealComposerAnnotated({ composer }: { composer: ReactNode }) {
+  const { activeId, expandedId } = useSurfaceMap();
+  const engaged = (id: string) => activeId === id || expandedId === id;
   return (
-    <div className="relative mx-auto w-full max-w-2xl">
-      {/* Plugin banners render in the space above the composer. */}
-      <OverlayMark
-        id="composer-banners"
-        label="Plugin composer banners, above the prompt box"
-        className="-top-2 left-6"
-        region="inset-x-0 -top-1 h-8"
-      />
-      <OverlayMark
-        id="mention-provider"
-        label="Plugin @-mention typeahead, inside the editor"
-        className="-left-2 top-6"
-        region="inset-x-2 top-3 h-16"
-      />
-      {/* The draft region: the editor itself, which is what a plugin paints. */}
-      <OverlayMark
-        id="composer-rich-text"
-        label="Plugin draft highlighting, painted over the text"
-        className="left-[55%] top-12"
-        region="inset-x-2 top-3 h-16"
-      />
-      <OverlayMark
-        id="composer-plus-menu"
-        label="Plugin rows in the + menu"
-        className="-left-2 bottom-[46px]"
-        region="bottom-[42px] left-2 size-8"
-      />
-      <OverlayMark
-        id="provider-picker"
-        label="Plugin agent providers, in the model picker"
-        className="bottom-[58px] left-12"
-        region="bottom-[42px] left-11 h-8 w-40"
-      />
-      <OverlayMark
-        id="composer-actions"
-        label="Plugin inline actions, in the action row"
-        className="bottom-[58px] right-24"
-        region="bottom-[42px] right-4 h-8 w-32"
-      />
-      {composer}
+    // The same gutter geometry as the other window slides, so the nav above
+    // and the card below sit the same distance from every frame.
+    <div className="relative px-7 pb-2 pt-4">
+      {/* Below ~720px the annotated composer scrolls sideways rather than
+          reflowing: the overlay markers are measured against the full-width
+          layout, so the diagram keeps that layout at every panel width. */}
+      <div className="overflow-x-auto">
+        <div className="mx-auto w-full min-w-[720px] max-w-3xl select-none text-xs leading-none text-muted-foreground">
+          <WindowFrame>
+            <div className="flex min-h-[506px] flex-col">
+              {/* thread chrome: header and a short exchange, unannotated */}
+              {/* Full-scale chrome (text-sm rows, 44px header, 16px icons): the
+              real composer renders at product size below, so the drawn
+              thread around it holds the same scale instead of miniature. */}
+              <div
+                aria-hidden
+                className="flex h-11 items-center gap-2 border-b border-border-hairline px-4 text-sm"
+              >
+                <span className="truncate text-foreground">
+                  Ship the release notes
+                </span>
+                <MiniIcon icon={MoreHorizontalIcon} className="size-3.5" />
+                <span className="flex-1" />
+              </div>
+              <div
+                aria-hidden
+                className="flex-1 space-y-4 px-4 py-4 text-sm leading-relaxed"
+              >
+                <div className="flex justify-end">
+                  <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-3 py-2 text-foreground">
+                    Draft the release notes
+                  </span>
+                </div>
+                <p className="w-[88%]">
+                  Drafted. Two rough edges left in checkout — reply with what to
+                  fold in.
+                </p>
+              </div>
+
+              {/* the reply box, pinned to the bottom like the real one, at the
+              real product's footprint: the actual composer spans ~two thirds
+              of the thread column, not edge to edge. */}
+              <div className="px-4 pb-4">
+                {/* banner: a plugin banner renders in this slot, above the box */}
+                <Mark
+                  id="composer-banners"
+                  label="Plugin composer banners, above the prompt box"
+                  className="mb-2.5 flex items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3 text-sm"
+                  // Flush with the banner's right edge rather than hanging
+                  // past it: the typeahead below opens at the prompt box's
+                  // exact width, and a chip poking out beyond that edge reads
+                  // as the menu failing to cover it.
+                  chipClassName="right-0 -top-2"
+                >
+                  <PluginGlyph className="size-3.5" />
+                  <span className="text-foreground">Your banner</span>
+                </Mark>
+
+                <div className="relative">
+                  <div inert>{composer}</div>
+
+                  {/* The drawn draft, covering the editor's first line: a real
+                  mention pill and a plugin-painted range. Its fill matches
+                  the prompt box's own background, so it disappears into the
+                  product chrome instead of reading as a pasted-on strip. */}
+                  <div
+                    aria-hidden
+                    className="absolute left-4 right-12 top-[13px] flex h-7 items-center bg-[var(--background)] text-sm leading-none text-foreground"
+                  >
+                    <span className="whitespace-pre">Summarize </span>
+                    <span className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5">
+                      @release-notes
+                    </span>
+                    <span className="whitespace-pre"> and fix the </span>
+                    <span className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40">
+                      TODO
+                    </span>
+                    <span className="whitespace-pre"> in checkout.</span>
+                  </div>
+
+                  {/* the draft itself: what useComposer reads and locks */}
+                  <OverlayMark
+                    id="composer-state"
+                    label="The draft prompt a plugin can read and lock"
+                    className="-left-2 top-4"
+                    region="left-[12px] right-[40px] top-[9px] h-9"
+                  />
+                  {/* the painted range: chip rides the ring's corner */}
+                  <OverlayMark
+                    id="composer-rich-text"
+                    label="Plugin highlighting, painted over the draft prompt"
+                    className="left-[296px] -top-3"
+                    region="left-[252px] top-[12px] h-[30px] w-[53px]"
+                  />
+                  {/* the mention pill; the typeahead expands under it on engage */}
+                  <OverlayMark
+                    id="mention-provider"
+                    label="Plugin mention results in the @ typeahead"
+                    className="left-[182px] -top-3"
+                    region="left-[81px] top-[12px] h-[30px] w-[111px]"
+                  />
+                  {engaged("mention-provider") ? (
+                    <div
+                      aria-hidden
+                      // Placed like the real MentionMenu in a bottom-pinned
+                      // composer: the prompt box's full width (-left-px /
+                      // -right-px, over its 1px border), directly above it
+                      // (bottom-full mb-2), and above every annotation —
+                      // z-20 is the real menu's own tier.
+                      className="pointer-events-none absolute -left-px -right-px bottom-full z-20 mb-2 overflow-hidden rounded-md border border-border bg-popover pb-1 shadow-md"
+                    >
+                      <span className="block px-3 pb-1 pt-1.5 text-xs text-muted-foreground">
+                        Your plugin
+                      </span>
+                      <span className="mx-1 flex h-7 items-center gap-1.5 rounded-md bg-state-hover px-2 text-foreground">
+                        <PluginGlyph className="size-3.5" />
+                        release-notes
+                      </span>
+                      <span className="mx-1 flex h-7 items-center gap-1.5 px-2">
+                        <PluginGlyph className="size-3.5 opacity-60" />
+                        roadmap
+                      </span>
+                    </div>
+                  ) : null}
+
+                  {/* + menu: chip on the + itself; opens upward while engaged,
+                  the direction the real menu takes at the window's bottom */}
+                  <OverlayMark
+                    id="composer-plus-menu"
+                    label="Plugin rows in the composer's + menu"
+                    // On the button's corner but below 81px, where the +
+                    // menu's bottom edge lands when it opens; higher and the
+                    // menu would cut the chip in half.
+                    className="left-[35px] top-[83px]"
+                    region="left-[5px] top-[85px] size-10"
+                  />
+                  {engaged("composer-plus-menu") ? (
+                    <div
+                      aria-hidden
+                      // Placed like the real PromptBoxActionsMenu (Radix,
+                      // align="start", sideOffset 4, flipped upward at the
+                      // window's bottom): left edge on the + button, bottom
+                      // edge 4px above its top (the button region starts at
+                      // 85px), above every annotation.
+                      className="pointer-events-none absolute bottom-[calc(100%-81px)] left-[5px] z-20 w-44 rounded-md border border-border bg-popover p-1 shadow-md"
+                    >
+                      <span className="flex h-6 items-center gap-1.5 px-1.5">
+                        <MiniIcon icon={File01Icon} className="size-3.5" />
+                        Attach files
+                      </span>
+                      <span className="flex h-6 items-center gap-1.5 px-1.5">
+                        <MiniIcon icon={ToolboxIcon} className="size-3.5" />
+                        Skills
+                      </span>
+                      <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
+                        <PluginGlyph className="size-3.5" />
+                        Your action
+                      </span>
+                    </div>
+                  ) : null}
+
+                  {/* agent providers: one annotation for the whole picker */}
+                  <OverlayMark
+                    id="provider-picker"
+                    label="Your agent provider and its mark, in the model picker"
+                    className="left-[184px] top-[71px]"
+                    region="left-[41px] top-[85px] h-10 w-[157px]"
+                  />
+                  {/* inline actions: only the plugin slot, left of voice/send */}
+                  <OverlayMark
+                    id="composer-actions"
+                    label="Plugin composer actions, before voice and send"
+                    className="right-[75px] top-[71px]"
+                    region="right-[81px] top-[87px] size-9"
+                  />
+                </div>
+              </div>
+            </div>
+          </WindowFrame>
+        </div>
+      </div>
     </div>
+  );
+}
+
+/* ── the new-thread screen (RootComposeView order) ──────────────────── */
+
+export function ComposeScreenWireframe({
+  composer,
+}: {
+  /** The host's real composer, when available; replaces the mock one. */
+  composer?: ReactNode;
+} = {}) {
+  return (
+    // Padded for the same annotation gutter as the app-window diagram.
+    <div className="relative px-7 pb-2 pt-4">
+      <div className="overflow-x-auto">
+        <div className="min-w-[560px]">
+          <ComposeScreenWireframeBody composer={composer} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ComposeScreenWireframeBody({ composer }: { composer?: ReactNode }) {
+  return (
+    <WindowFrame>
+      <div className="flex items-center gap-2 border-b border-border-hairline px-3 py-2">
+        <TrafficLights />
+      </div>
+      {/* Proportions mirror RootComposeView: a centered reading column
+          (max-w-[760px] in the real app) inside a much wider main area,
+          content top-aligned, empty canvas below. */}
+      <div className="flex min-h-[485px] items-stretch">
+        <div className="min-w-0 flex-1 px-6 pb-6 pt-4">
+          <div className="mx-auto w-full max-w-[560px] space-y-2.5">
+            {/* the composer, no greeting above it (RootComposeView order):
+              the real one when the host lends it, the mock otherwise.
+              Inert either way — this is a diagram, and a live menu opening
+              here would cover the marked section below it. Width-capped to
+              the real home page's ratio: the product's composer spans about
+              two thirds of the content area, not the whole column. */}
+            {composer ? <div inert>{composer}</div> : <MockHomeComposer />}
+
+            {/* plugin homepage sections render last, below everything */}
+            <Mark
+              id="homepage-section"
+              label="A plugin homepage section, below the composer"
+              className="mt-4 block px-3 py-2.5"
+              chipClassName="-top-1 right-0"
+            >
+              <span className="flex items-center gap-1.5 pb-2 font-medium text-foreground">
+                <PluginGlyph className="size-3.5" />
+                Your section
+              </span>
+              <span className="grid grid-cols-3 gap-2" aria-hidden>
+                {["Release 1.4", "Bug triage", "Design QA"].map((card) => (
+                  <span
+                    key={card}
+                    className="space-y-1.5 rounded-md border border-border-hairline bg-surface-raised p-2.5"
+                  >
+                    <span className="block text-foreground">{card}</span>
+                    <span className="block h-1.5 w-4/5 rounded-sm bg-muted/60" />
+                    <span className="block h-1.5 w-3/5 rounded-sm bg-muted/60" />
+                  </span>
+                ))}
+              </span>
+            </Mark>
+          </div>
+        </div>
+
+        {/* right panel: no Info/Diff pins here; the new-tab launcher */}
+        <div className="w-[210px] shrink-0 border-l border-border-seam bg-sidebar p-2">
+          <span className="block px-1.5 pb-1.5 pt-1 text-xs text-subtle-foreground/75">
+            Actions
+          </span>
+          <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
+            <MiniIcon icon={Search01Icon} className="size-3.5" />
+            Open browser
+          </span>
+          <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
+            <MiniIcon icon={TerminalIcon} className="size-3.5" />
+            Start terminal
+          </span>
+          <Mark
+            id="new-thread-panel"
+            label="A plugin action in the new-thread panel launcher"
+            className="flex h-6.5 items-center gap-2 px-2.5"
+            edge
+            chipClassName="right-1 top-[124px]"
+          >
+            <PluginGlyph className="size-3.5" />
+            <span className="text-foreground">Your action</span>
+          </Mark>
+        </div>
+      </div>
+    </WindowFrame>
+  );
+}
+
+/* ── the plugin settings page (PluginSettings.tsx order) ────────────── */
+
+export function SettingsWireframe() {
+  return (
+    <WindowFrame>
+      {/* Page chrome: the settings area's own title bar (SettingsView). */}
+      <div className="flex items-center gap-2 border-b border-border-hairline px-3 py-2.5">
+        <TrafficLights />
+        <span className="pl-1 font-medium text-foreground">Settings</span>
+      </div>
+
+      <div className="mx-auto min-h-[470px] w-full max-w-[520px] space-y-4 px-4 pb-5 pt-4">
+        {/* Header: icon, name, one-line description (PluginSettings.tsx). */}
+        <div className="flex items-center gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center">
+            <PluginGlyph className="size-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-foreground">
+              Hello
+            </span>
+            <span className="block truncate pt-1 text-subtle-foreground">
+              A friendly example plugin.
+            </span>
+          </span>
+        </div>
+
+        {/* One "Configuration" heading covers both settings surfaces on the
+            real page: the recessed panel holds the form bb generates from the
+            plugin's declared fields, and any settingsSection components render
+            beneath it. The markers distinguish them. */}
+        <div className="space-y-2">
+          <span className="block text-subtle-foreground">Configuration</span>
+          <Mark
+            id="declarative-settings"
+            label="The form bb generates from the fields you declare"
+            className="block bg-surface-recessed-solid p-3"
+            chipClassName="-right-2 -top-2"
+          >
+            <span className="flex items-start justify-between gap-3 py-1.5">
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5 text-foreground">
+                  API key
+                  <span className="rounded border border-border px-1.5 py-0.5 text-xs">
+                    secret
+                  </span>
+                </span>
+                <span className="block pt-1 leading-relaxed">
+                  Stored server-side; never sent to the browser.
+                </span>
+              </span>
+              <span
+                aria-hidden
+                className="flex h-6 w-32 shrink-0 items-center rounded-md border border-border bg-card px-2 text-xs text-subtle-foreground"
+              >
+                ••••••••
+              </span>
+            </span>
+            <span className="flex items-start justify-between gap-3 py-1.5">
+              <span className="min-w-0">
+                <span className="block text-foreground">
+                  Case-sensitive search
+                </span>
+                <span className="block pt-1 leading-relaxed">
+                  Match capitalisation when looking things up.
+                </span>
+              </span>
+              <span
+                aria-hidden
+                className="mt-0.5 flex h-4.5 w-8 shrink-0 items-center rounded-full bg-foreground/60 p-0.5"
+              >
+                <span className="ml-auto size-3.5 rounded-full bg-background" />
+              </span>
+            </span>
+            <span className="flex justify-end pt-2">
+              <span className="flex h-6 items-center rounded-md border border-border bg-card px-2 text-foreground">
+                Save settings
+              </span>
+            </span>
+          </Mark>
+
+          {/* settingsSection slots render under the generated form. */}
+          <Mark
+            id="settings-section"
+            label="A React component you write, under the generated form"
+            className="block px-1 pb-2 pt-2"
+            chipClassName="-right-2 -top-1"
+          >
+            <span className="flex items-center gap-1.5 pb-2 font-medium text-foreground">
+              <PluginGlyph className="size-3.5" />
+              Your section
+            </span>
+            <span
+              aria-hidden
+              className="block space-y-2 rounded-md border border-border bg-card p-2.5"
+            >
+              <span className="flex items-center justify-between">
+                <span className="text-foreground">Connected as @acme-bot</span>
+                <span className="flex h-5.5 items-center rounded-md border border-border px-2 text-foreground">
+                  Test connection
+                </span>
+              </span>
+              <span className="block h-2 w-2/3 rounded-sm bg-muted/60" />
+            </span>
+          </Mark>
+        </div>
+
+        {/* The page's closing section, verbatim from PluginSettings.tsx. */}
+        <div className="space-y-2 border-t border-border-hairline pt-4">
+          <span className="block text-subtle-foreground">Plugin details</span>
+          <span className="flex items-center gap-1 leading-relaxed">
+            Release, capabilities, and health live on
+            <span className="text-foreground underline underline-offset-2">
+              its plugin page
+            </span>
+            <MiniIcon icon={ArrowRight01Icon} className="size-3.5" />
+          </span>
+        </div>
+      </div>
+    </WindowFrame>
+  );
+}
+
+/* ── the plugin's page in Extensions (ToolsView + PluginDetail) ───────── */
+
+/**
+ * The Extensions detail page for one installed plugin. The one pluggable
+ * thing on it is the health banner: a plugin that reports needs-configuration
+ * gets a warning bar at the top of the pane (PluginBannerBar, rendered by
+ * PluginDetailBanners outside the scroll page), above the header and the
+ * section stack bb builds from the manifest and registrations.
+ */
+export function ExtensionsPluginPageWireframe() {
+  return (
+    <WindowFrame>
+      <div className="flex h-10 items-center gap-2 border-b border-border-hairline px-3 text-sm">
+        <TrafficLights />
+        <span className="text-foreground">Extensions</span>
+      </div>
+      <div className="flex min-h-[470px] flex-col">
+        {/* Banner: full pane width, recessed, with a rule under it; the
+            icon/title/detail row lines up with the page gutter below. */}
+        <Mark
+          id="plugin-status"
+          label="The needs-configuration banner bb shows for a plugin that reports it"
+          className="flex items-start gap-2 border-b border-border bg-surface-recessed/55 px-5 py-2.5 text-sm"
+          // Inside the bar's corner: the bar spans the whole frame, so a chip
+          // hung past its right edge would be clipped by the frame.
+          chipClassName="right-2 -top-2"
+        >
+          <MiniIcon
+            icon={Settings02Icon}
+            className="mt-0.5 size-4 text-warning"
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium text-foreground">
+              Needs configuration
+            </span>
+            <span className="block pt-0.5 text-xs leading-relaxed text-muted-foreground">
+              Set an API key in Settings. Reloads when you save.
+            </span>
+          </span>
+          <span className="flex h-7 items-center rounded-md border border-border bg-background px-2.5 text-xs text-foreground">
+            Reload
+          </span>
+        </Mark>
+
+        <div className="mx-auto w-full max-w-[560px] space-y-4 px-4 pb-5 pt-4">
+          {/* Header: icon, name, publisher badge; the enable toggle and menu
+              at the right (PluginDetail header). */}
+          <div className="flex items-center gap-2.5">
+            <PluginGlyph className="size-4" />
+            <span className="text-sm font-semibold text-foreground">Hello</span>
+            <span className="rounded border border-border px-1.5 py-0.5 text-xs">
+              BB Official
+            </span>
+            <span className="flex-1" />
+            <span
+              aria-hidden
+              className="flex h-4.5 w-8 items-center rounded-full bg-foreground/60 p-0.5"
+            >
+              <span className="ml-auto size-3.5 rounded-full bg-background" />
+            </span>
+            <MiniIcon icon={MoreHorizontalIcon} className="size-3.5" />
+          </div>
+          <span className="block font-mono text-xs text-subtle-foreground">
+            ~/.bb/plugins/hello
+          </span>
+
+          <div className="space-y-1.5 border-t border-border-hairline pt-3">
+            <span className="block text-subtle-foreground">About</span>
+            <span className="block text-foreground">
+              A friendly example plugin.
+            </span>
+          </div>
+
+          <div className="space-y-1.5 border-t border-border-hairline pt-3">
+            <span className="block text-subtle-foreground">Configuration</span>
+            <span className="flex items-center gap-1 leading-relaxed">
+              Configure it on
+              <span className="text-foreground underline underline-offset-2">
+                its Settings page
+              </span>
+              <MiniIcon icon={ArrowRight01Icon} className="size-3.5" />
+            </span>
+          </div>
+
+          <div className="space-y-1.5 border-t border-border-hairline pt-3">
+            <span className="block text-subtle-foreground">Capabilities</span>
+            <span
+              aria-hidden
+              className="block divide-y divide-border-hairline rounded-md border border-border-hairline"
+            >
+              {[
+                ["Settings", "API key, Case-sensitive search"],
+                ["bb hello", "Say hello from the terminal"],
+              ].map(([name, what]) => (
+                <span
+                  key={name}
+                  className="flex items-center gap-3 px-2.5 py-1.5"
+                >
+                  <span className="w-24 shrink-0 text-foreground">{name}</span>
+                  <span className="truncate">{what}</span>
+                </span>
+              ))}
+            </span>
+          </div>
+        </div>
+      </div>
+    </WindowFrame>
+  );
+}
+
+/** The stand-in composer for surfaces with no bb behind them (the docs site). */
+function MockHomeComposer() {
+  return (
+    <>
+      <div className="rounded-xl border border-border bg-background p-3 shadow-lift">
+        <p className="px-1 pt-1 leading-relaxed text-subtle-foreground">
+          Ask anything. @ to mention files, folders, or sections
+        </p>
+        <div aria-hidden className="h-10" />
+        <div className="flex items-center gap-2 px-0.5" aria-hidden>
+          <span className="flex size-6 items-center justify-center rounded-md border border-border">
+            <MiniIcon icon={PlusSignIcon} className="size-3.5" />
+          </span>
+          <span className="flex h-6 items-center gap-1.5 rounded-md px-1.5 text-foreground">
+            <MiniIcon icon={SparklesIcon} className="size-3.5" />
+            Fable 5 · High
+          </span>
+          <span className="flex-1" />
+          <MiniIcon icon={Mic01Icon} className="size-3.5" />
+          <span className="flex size-6 items-center justify-center rounded-md bg-foreground">
+            <MiniIcon icon={ArrowUp01Icon} className="size-3 text-background" />
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between px-2.5" aria-hidden>
+        <span className="flex items-center gap-1.5">
+          <MiniIcon icon={Folder01Icon} className="size-3.5" />
+          acme-app
+          <span className="text-subtle-foreground">· worktree</span>
+        </span>
+        <span>Full Access</span>
+      </div>
+    </>
   );
 }

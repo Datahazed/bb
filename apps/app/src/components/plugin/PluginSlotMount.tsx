@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Pill } from "@bb/shared-ui/pill";
+import { useRouteAnchorDelegate } from "@/components/ui/app-route-anchor";
 import {
   PluginContext,
   PluginSlotOwnershipContext,
@@ -223,6 +224,7 @@ export function PluginSlotMount({
   instanceId,
   onCrash,
 }: PluginSlotMountProps) {
+  const onRouteAnchorClick = useRouteAnchorDelegate();
   return (
     <PluginContext.Provider value={pluginId}>
       <PluginSlotBoundary
@@ -240,6 +242,12 @@ export function PluginSlotMount({
           data-bb-plugin-root=""
           data-bb-plugin={pluginId}
           className="contents"
+          // Links in plugin UI behave like links anywhere else in bb: a plain
+          // click on an app route navigates client-side (a bare anchor would
+          // full-load the app and wipe its Back history), and cmd-click opens
+          // a splittable page beside the focused pane. Bubble phase, so the
+          // plugin's own handlers run first and can preventDefault.
+          onClick={onRouteAnchorClick}
         >
           {children}
         </div>

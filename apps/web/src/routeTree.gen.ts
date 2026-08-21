@@ -14,14 +14,9 @@ import { Route as ChangelogRouteImport } from './routes/changelog'
 import { Route as BlogRouteImport } from './routes/blog'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DownloadMacosRouteImport } from './routes/download.macos'
-import { Route as DocsPluginApiRouteImport } from './routes/docs.plugin-api'
 import { Route as BlogSlugRouteImport } from './routes/blog_.$slug'
 import { Route as ApiSubscribeRouteImport } from './routes/api.subscribe'
-import { Route as DocsPluginApiIndexRouteImport } from './routes/docs.plugin-api.index'
 import { Route as MarketplaceV1SplatRouteImport } from './routes/marketplace.v1.$'
-import { Route as DocsPluginApiReferenceRouteImport } from './routes/docs.plugin-api.reference'
-import { Route as DocsPluginApiLayoutsRouteImport } from './routes/docs.plugin-api.layouts'
-import { Route as DocsPluginApiSectionRouteImport } from './routes/docs.plugin-api.$section'
 import { Route as ApiConnectRevokeMachineRouteImport } from './routes/api.connect.revoke-machine'
 import { Route as ApiConnectRedeemMachineRouteImport } from './routes/api.connect.redeem-machine'
 import { Route as ApiConnectRedeemRouteImport } from './routes/api.connect.redeem'
@@ -53,11 +48,6 @@ const DownloadMacosRoute = DownloadMacosRouteImport.update({
   path: '/download/macos',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DocsPluginApiRoute = DocsPluginApiRouteImport.update({
-  id: '/docs/plugin-api',
-  path: '/docs/plugin-api',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const BlogSlugRoute = BlogSlugRouteImport.update({
   id: '/blog_/$slug',
   path: '/blog/$slug',
@@ -68,30 +58,10 @@ const ApiSubscribeRoute = ApiSubscribeRouteImport.update({
   path: '/api/subscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DocsPluginApiIndexRoute = DocsPluginApiIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => DocsPluginApiRoute,
-} as any)
 const MarketplaceV1SplatRoute = MarketplaceV1SplatRouteImport.update({
   id: '/marketplace/v1/$',
   path: '/marketplace/v1/$',
   getParentRoute: () => rootRouteImport,
-} as any)
-const DocsPluginApiReferenceRoute = DocsPluginApiReferenceRouteImport.update({
-  id: '/reference',
-  path: '/reference',
-  getParentRoute: () => DocsPluginApiRoute,
-} as any)
-const DocsPluginApiLayoutsRoute = DocsPluginApiLayoutsRouteImport.update({
-  id: '/layouts',
-  path: '/layouts',
-  getParentRoute: () => DocsPluginApiRoute,
-} as any)
-const DocsPluginApiSectionRoute = DocsPluginApiSectionRouteImport.update({
-  id: '/$section',
-  path: '/$section',
-  getParentRoute: () => DocsPluginApiRoute,
 } as any)
 const ApiConnectRevokeMachineRoute = ApiConnectRevokeMachineRouteImport.update({
   id: '/api/connect/revoke-machine',
@@ -126,18 +96,13 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/blog/$slug': typeof BlogSlugRoute
-  '/docs/plugin-api': typeof DocsPluginApiRouteWithChildren
   '/download/macos': typeof DownloadMacosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/connect/machine-code': typeof ApiConnectMachineCodeRoute
   '/api/connect/redeem': typeof ApiConnectRedeemRoute
   '/api/connect/redeem-machine': typeof ApiConnectRedeemMachineRoute
   '/api/connect/revoke-machine': typeof ApiConnectRevokeMachineRoute
-  '/docs/plugin-api/$section': typeof DocsPluginApiSectionRoute
-  '/docs/plugin-api/layouts': typeof DocsPluginApiLayoutsRoute
-  '/docs/plugin-api/reference': typeof DocsPluginApiReferenceRoute
   '/marketplace/v1/$': typeof MarketplaceV1SplatRoute
-  '/docs/plugin-api/': typeof DocsPluginApiIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -152,11 +117,7 @@ export interface FileRoutesByTo {
   '/api/connect/redeem': typeof ApiConnectRedeemRoute
   '/api/connect/redeem-machine': typeof ApiConnectRedeemMachineRoute
   '/api/connect/revoke-machine': typeof ApiConnectRevokeMachineRoute
-  '/docs/plugin-api/$section': typeof DocsPluginApiSectionRoute
-  '/docs/plugin-api/layouts': typeof DocsPluginApiLayoutsRoute
-  '/docs/plugin-api/reference': typeof DocsPluginApiReferenceRoute
   '/marketplace/v1/$': typeof MarketplaceV1SplatRoute
-  '/docs/plugin-api': typeof DocsPluginApiIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -166,18 +127,13 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/blog_/$slug': typeof BlogSlugRoute
-  '/docs/plugin-api': typeof DocsPluginApiRouteWithChildren
   '/download/macos': typeof DownloadMacosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/connect/machine-code': typeof ApiConnectMachineCodeRoute
   '/api/connect/redeem': typeof ApiConnectRedeemRoute
   '/api/connect/redeem-machine': typeof ApiConnectRedeemMachineRoute
   '/api/connect/revoke-machine': typeof ApiConnectRevokeMachineRoute
-  '/docs/plugin-api/$section': typeof DocsPluginApiSectionRoute
-  '/docs/plugin-api/layouts': typeof DocsPluginApiLayoutsRoute
-  '/docs/plugin-api/reference': typeof DocsPluginApiReferenceRoute
   '/marketplace/v1/$': typeof MarketplaceV1SplatRoute
-  '/docs/plugin-api/': typeof DocsPluginApiIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -188,18 +144,13 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/api/subscribe'
     | '/blog/$slug'
-    | '/docs/plugin-api'
     | '/download/macos'
     | '/api/auth/$'
     | '/api/connect/machine-code'
     | '/api/connect/redeem'
     | '/api/connect/redeem-machine'
     | '/api/connect/revoke-machine'
-    | '/docs/plugin-api/$section'
-    | '/docs/plugin-api/layouts'
-    | '/docs/plugin-api/reference'
     | '/marketplace/v1/$'
-    | '/docs/plugin-api/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -214,11 +165,7 @@ export interface FileRouteTypes {
     | '/api/connect/redeem'
     | '/api/connect/redeem-machine'
     | '/api/connect/revoke-machine'
-    | '/docs/plugin-api/$section'
-    | '/docs/plugin-api/layouts'
-    | '/docs/plugin-api/reference'
     | '/marketplace/v1/$'
-    | '/docs/plugin-api'
   id:
     | '__root__'
     | '/'
@@ -227,18 +174,13 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/api/subscribe'
     | '/blog_/$slug'
-    | '/docs/plugin-api'
     | '/download/macos'
     | '/api/auth/$'
     | '/api/connect/machine-code'
     | '/api/connect/redeem'
     | '/api/connect/redeem-machine'
     | '/api/connect/revoke-machine'
-    | '/docs/plugin-api/$section'
-    | '/docs/plugin-api/layouts'
-    | '/docs/plugin-api/reference'
     | '/marketplace/v1/$'
-    | '/docs/plugin-api/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -248,7 +190,6 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   ApiSubscribeRoute: typeof ApiSubscribeRoute
   BlogSlugRoute: typeof BlogSlugRoute
-  DocsPluginApiRoute: typeof DocsPluginApiRouteWithChildren
   DownloadMacosRoute: typeof DownloadMacosRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiConnectMachineCodeRoute: typeof ApiConnectMachineCodeRoute
@@ -295,13 +236,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DownloadMacosRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/docs/plugin-api': {
-      id: '/docs/plugin-api'
-      path: '/docs/plugin-api'
-      fullPath: '/docs/plugin-api'
-      preLoaderRoute: typeof DocsPluginApiRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/blog_/$slug': {
       id: '/blog_/$slug'
       path: '/blog/$slug'
@@ -316,40 +250,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/docs/plugin-api/': {
-      id: '/docs/plugin-api/'
-      path: '/'
-      fullPath: '/docs/plugin-api/'
-      preLoaderRoute: typeof DocsPluginApiIndexRouteImport
-      parentRoute: typeof DocsPluginApiRoute
-    }
     '/marketplace/v1/$': {
       id: '/marketplace/v1/$'
       path: '/marketplace/v1/$'
       fullPath: '/marketplace/v1/$'
       preLoaderRoute: typeof MarketplaceV1SplatRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/docs/plugin-api/reference': {
-      id: '/docs/plugin-api/reference'
-      path: '/reference'
-      fullPath: '/docs/plugin-api/reference'
-      preLoaderRoute: typeof DocsPluginApiReferenceRouteImport
-      parentRoute: typeof DocsPluginApiRoute
-    }
-    '/docs/plugin-api/layouts': {
-      id: '/docs/plugin-api/layouts'
-      path: '/layouts'
-      fullPath: '/docs/plugin-api/layouts'
-      preLoaderRoute: typeof DocsPluginApiLayoutsRouteImport
-      parentRoute: typeof DocsPluginApiRoute
-    }
-    '/docs/plugin-api/$section': {
-      id: '/docs/plugin-api/$section'
-      path: '/$section'
-      fullPath: '/docs/plugin-api/$section'
-      preLoaderRoute: typeof DocsPluginApiSectionRouteImport
-      parentRoute: typeof DocsPluginApiRoute
     }
     '/api/connect/revoke-machine': {
       id: '/api/connect/revoke-machine'
@@ -389,24 +295,6 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface DocsPluginApiRouteChildren {
-  DocsPluginApiSectionRoute: typeof DocsPluginApiSectionRoute
-  DocsPluginApiLayoutsRoute: typeof DocsPluginApiLayoutsRoute
-  DocsPluginApiReferenceRoute: typeof DocsPluginApiReferenceRoute
-  DocsPluginApiIndexRoute: typeof DocsPluginApiIndexRoute
-}
-
-const DocsPluginApiRouteChildren: DocsPluginApiRouteChildren = {
-  DocsPluginApiSectionRoute: DocsPluginApiSectionRoute,
-  DocsPluginApiLayoutsRoute: DocsPluginApiLayoutsRoute,
-  DocsPluginApiReferenceRoute: DocsPluginApiReferenceRoute,
-  DocsPluginApiIndexRoute: DocsPluginApiIndexRoute,
-}
-
-const DocsPluginApiRouteWithChildren = DocsPluginApiRoute._addFileChildren(
-  DocsPluginApiRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BlogRoute: BlogRoute,
@@ -414,7 +302,6 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,
   BlogSlugRoute: BlogSlugRoute,
-  DocsPluginApiRoute: DocsPluginApiRouteWithChildren,
   DownloadMacosRoute: DownloadMacosRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiConnectMachineCodeRoute: ApiConnectMachineCodeRoute,

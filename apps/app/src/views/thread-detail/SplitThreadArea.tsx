@@ -73,6 +73,7 @@ import {
 } from "./PaneContext";
 import { ThreadDetailView } from "./ThreadDetailView";
 import { RootComposeView } from "@/views/RootComposeView";
+import { PluginDetailPaneView } from "@/views/ToolsView";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import {
   AppPageHeader,
@@ -1036,6 +1037,9 @@ function StandalonePaneContent({
   if (content.kind === "new-thread") {
     return <RootComposeView />;
   }
+  if (content.kind === "plugin-detail") {
+    return <PluginDetailPaneView pluginId={content.pluginId} />;
+  }
   const panel = navPanels.find(
     (candidate) =>
       candidate.pluginId === content.pluginId &&
@@ -1119,7 +1123,9 @@ function NonThreadPaneContent({
           isFocused ? resourceRouteLabel : null,
         )
       : null;
-  const label = panel?.title ?? "New thread";
+  const label =
+    panel?.title ??
+    (content.kind === "plugin-detail" ? "Extension" : "New thread");
   const handlePointerDown = (event: ReactPointerEvent) => {
     if (
       event.target instanceof Element &&
@@ -1224,7 +1230,9 @@ function NonThreadPaneContent({
                       CONTEXT_INACTIVE_TEXT_CLASS,
                   )}
                 >
-                  New thread
+                  {content.kind === "plugin-detail"
+                    ? "Extension"
+                    : "New thread"}
                 </p>
               )}
             </div>
@@ -1243,6 +1251,8 @@ function NonThreadPaneContent({
       >
         {content.kind === "new-thread" ? (
           <RootComposeView />
+        ) : content.kind === "plugin-detail" ? (
+          <PluginDetailPaneView pluginId={content.pluginId} />
         ) : (
           <PluginPanelView
             pluginId={content.pluginId}

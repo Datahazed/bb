@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 /**
- * Guards the plugin API docs' UI-anatomy manifest against the real app.
+ * Guards the Plugin Guide UI-anatomy manifest against the real app.
  *
- * The docs' product-map skeletons (apps/web/src/docs-plugin-api) render the
+ * The Plugin Guide product-map skeletons (packages/plugin-api-map) render the
  * sidebar sections, the sidebar footer, and the message action bar in the
  * order declared by anatomy-manifest.json. This test renders the real
  * components and asserts the same DOM order, so reordering the app fails here
- * until the manifest — and therefore the docs — is updated.
+ * until the manifest — and therefore the guide — is updated.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

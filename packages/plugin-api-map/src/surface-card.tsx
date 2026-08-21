@@ -1,0 +1,184 @@
+/**
+ * The product map's annotation card: click a numbered marker and its details
+ * open in flow directly below the diagram. Always below, at every width, so
+ * the card never covers the region it describes and never moves under the
+ * reader between one marker and the next.
+ */
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+
+import { GROUP_BY_SURFACE_ID, type PluginSurface } from "./surfaces";
+import {
+  annotationChipClass,
+  ExperimentalBadge,
+  renderSurfaceCopy,
+  type SurfaceReference,
+} from "./annotation";
+import { pluginIcon, surfaceIcon } from "./plugin-icons";
+import { UsedByList } from "./used-by";
+import { SurfaceMapContext } from "./wireframes";
+
+export function SurfaceCard({
+  surface,
+  number,
+  onDismiss,
+}: {
+  surface: PluginSurface;
+  /** Marker number, so the card reads as the same annotation. */
+  number: number | null;
+  onDismiss: () => void;
+}) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  // Null outside a map (the reference sidebar renders cards standalone), and
+  // without a resolver the names render as plain text rather than as links
+  // that would dead-end on "Plugin not found".
+  const surfaceMap = useContext(SurfaceMapContext);
+  const pluginPageHref = surfaceMap?.pluginPageHref;
+  const icon = surfaceIcon(surface.id);
+  const { currentGroupId, onGoToSurface, numberOf } = surfaceMap ?? {};
+  // Cross-references only resolve inside the map: the number and the "which
+  // page" answer both come from the carousel. Elsewhere the label is prose.
+  const resolveReference = useCallback(
+    (id: string): SurfaceReference | null => {
+      const group = GROUP_BY_SURFACE_ID.get(id);
+      if (!group || !onGoToSurface) return null;
+      return {
+        number: numberOf?.(id) ?? null,
+        otherPage: group.id === currentGroupId ? null : group.title,
+        onOpen: () => onGoToSurface(id),
+      };
+    },
+    [currentGroupId, numberOf, onGoToSurface],
+  );
+
+  // Dismissal: the close button, Escape, or a click elsewhere within the
+  // guide's own UI (ProductMap owns that listener, scoped to the plugin
+  // root). Losing focus to the rest of bb — another pane, the sidebar — does
+  // not close it, so a card can be read while working beside it. Selecting
+  // another marker replaces the card, and panning to another slide closes
+  // it, because its marker leaves the screen.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onDismiss();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onDismiss]);
+
+  // The card sits below the diagram, so on a short screen it can open past
+  // the fold; bring it into view whenever the open surface changes.
+  useEffect(() => {
+    cardRef.current?.scrollIntoView({ block: "nearest" });
+  }, [surface.id]);
+
+  return (
+    <div
+      ref={cardRef}
+      role="dialog"
+      aria-label={surface.title}
+      className="w-full rounded-lg border border-border bg-popover p-3.5 shadow-lg"
+    >
+      <div className="flex items-start gap-2">
+        {/* A numbered surface is identified by its marker; a pixel-less one
+            has no marker, so it carries the same capability glyph its card on
+            the "Plugin backend" slide was clicked from. */}
+        {number === null ? (
+          icon ? (
+            <HugeiconsIcon
+              icon={icon}
+              className="mt-0.5 size-4 shrink-0 text-file-accent"
+            />
+          ) : null
+        ) : (
+          <span aria-hidden className={annotationChipClass(true, "mt-0.5")}>
+            {number}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-medium text-foreground">
+              {surface.title}
+            </h3>
+            {surface.experimental ? <ExperimentalBadge /> : null}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Close"
+          className="-mr-1 -mt-1 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+        >
+          <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
+        </button>
+      </div>
+
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+        {renderSurfaceCopy(surface.summary, resolveReference)}
+      </p>
+      <ul className="mt-1.5 list-disc space-y-1.5 pl-4 text-sm leading-relaxed text-muted-foreground marker:text-subtle-foreground">
+        {surface.bullets.map((bullet) => (
+          <li key={bullet}>{renderSurfaceCopy(bullet, resolveReference)}</li>
+        ))}
+      </ul>
+
+      {surface.firstParty && surface.firstParty.length > 0 ? (
+        // A footnote, not a second subject: the label recedes to an eyebrow
+        // above the border so the surface copy stays the card's content.
+        <div className="mt-3 flex items-center gap-x-2 border-t border-border-hairline pt-2.5">
+          {/* Inline lead-in, not a stacked heading: the label shares the
+              first baseline with the list, which keeps to one line and
+              drifts when it outgrows the row. */}
+          {/* A subtle pill: the recessed tint alone, no border and no extra
+              weight, so the label sits under the names it introduces. */}
+          <span className="shrink-0 rounded bg-surface-recessed px-2 py-0.5 text-xs font-normal text-subtle-foreground">
+            Used by
+          </span>
+          <UsedByList
+            items={surface.firstParty}
+            renderItem={(plugin) => {
+              const icon = pluginIcon(plugin);
+              const href = pluginPageHref?.(plugin) ?? null;
+              const body = (
+                <>
+                  {icon ? (
+                    <HugeiconsIcon
+                      icon={icon}
+                      className="size-3.5 shrink-0 text-subtle-foreground"
+                    />
+                  ) : null}
+                  {plugin}
+                </>
+              );
+              return href ? (
+                <a
+                  href={href}
+                  // A plain anchor. Inside bb the host opens a plugin's page
+                  // beside the guide on any click; anywhere else it is an
+                  // ordinary link.
+                  className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-foreground"
+                >
+                  {body}
+                </a>
+              ) : (
+                <span className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
+                  {body}
+                </span>
+              );
+            }}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Tracks which surface's card is open. */
+export function useSurfaceCard() {
+  const [openId, setOpenId] = useState<string | null>(null);
+  return {
+    openId,
+    open: (id: string) => setOpenId(id),
+    close: () => setOpenId(null),
+  };
+}

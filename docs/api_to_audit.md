@@ -151,7 +151,13 @@ Before stabilization, audit:
   statuses;
 - persistence expectations across full app reloads and multiple windows;
 - validation, accessibility labels, reduced motion, and cleanup on plugin
-  reload/disable/removal.
+  reload/disable/removal;
+- the name of `PluginComposerThreadRowStatus.tone`. The field is a state the
+  plugin reports (`default | running | success | error`), not a tone: the host
+  maps it to both a color and an animation (`running` pulses in the success
+  color; `success` and `error` are static; omitted is muted). `state` is the
+  candidate rename. Nothing under `plugins/*` sets a status today, so the
+  rename is free until the prefix drops.
 
 ## `bb.agents.registerTool({ experimental_statusLabels })`
 
@@ -433,6 +439,17 @@ Implementation: the shared workflow is
    project metadata with `projects.list({ includePersonal: true })`. Before
    stabilizing, confirm unconditional project switching is right for embedded
    plugin workflows, rather than adding an explicit project-locking policy.
+
+7. **`experimental_suppressPluginUi`.** Renders the embedded composer without
+   any other plugin's customizations (banners, inline actions, + menu rows,
+   draft highlighting), through the host's existing
+   `suppressPluginComposerCustomizations` flag. Added for the Plugin Guide,
+   whose diagrams embed the real composer as an illustration: without it, any
+   installed composer plugin (e.g. a prompt improver's inline action) renders
+   inside the picture, and its actions can rewrite the guide's persisted
+   example draft. Before stabilizing, decide whether "illustration mode" is
+   the right abstraction (it also implies inert), or whether embeds should
+   instead declare which plugins' UI they accept.
 
 ## `app.slots.experimental_newThreadPanelAction` (`@get-bb/plugin-sdk/app`)
 

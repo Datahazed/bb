@@ -119,6 +119,7 @@ export interface NewThreadComposerPromptOptions {
   resolveMentionLink?: PromptMentionLinkResolver;
   pluginComposerHost?: PluginComposerHost | null;
   textEffects?: NewThreadPromptBoxProps["textEffects"];
+  suppressPluginComposerCustomizations?: boolean;
   allowNoProject?: boolean;
   createProject?: ProjectSelectorCreateProjectConfig;
   onRequestMachineSetup?: (host: Host) => void;
@@ -1133,6 +1134,9 @@ export function NewThreadComposer({
           autoFocus={options.autoFocus}
           pluginComposerHost={options.pluginComposerHost}
           textEffects={options.textEffects}
+          suppressPluginComposerCustomizations={
+            options.suppressPluginComposerCustomizations
+          }
           zenModeStorageKey={options.zenModeStorageKey}
           history={{
             currentDraft,

@@ -1,27 +1,34 @@
 export { cn } from "./cn";
-export { annotationChipClass, ExperimentalBadge } from "./annotation";
+export {
+  annotationChipClass,
+  ExperimentalBadge,
+  renderSurfaceCopy,
+  type SurfaceReference,
+} from "./annotation";
 export { firstPartyPluginId, pluginIcon } from "./plugin-icons";
+export { SurfaceCard, useSurfaceCard } from "./surface-card";
+export { panCarets, ProductMap, SURFACE_NUMBERS } from "./product-map";
 export {
-  chooseCardPlacement,
-  GutterCard,
-  GUTTER_CARD_MARGIN,
-  GUTTER_CARD_WIDTH,
-  useGutterCard,
-  type CardPlacement,
-} from "./gutter-card";
-export { ProductMap, SURFACE_NUMBERS } from "./product-map";
+  scrollUsedBy,
+  UsedByList,
+  usedByScrollState,
+  usedByScrollStep,
+  type UsedByScrollMetrics,
+  type UsedByScrollState,
+  type UsedByScrollTarget,
+} from "./used-by";
 export {
+  GROUP_BY_SURFACE_ID,
   SURFACE_GROUPS,
   SURFACES_BY_ID,
-  surfaceHref,
   type PluginSurface,
   type SurfaceGroup,
-  type SurfaceLink,
 } from "./surfaces";
 export {
   AppShellWireframe,
   ComposerWireframe,
   ComposeScreenWireframe,
+  ExtensionsPluginPageWireframe,
   SettingsWireframe,
   SurfaceMapContext,
   useSurfaceMap,
@@ -29,6 +36,7 @@ export {
   APP_SHELL_MARKS,
   COMPOSER_MARKS,
   COMPOSE_MARKS,
+  EXTENSIONS_MARKS,
   SETTINGS_MARKS,
   type SurfaceMapState,
 } from "./wireframes";

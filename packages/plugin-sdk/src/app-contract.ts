@@ -1349,6 +1349,13 @@ export interface NewThreadComposerProps {
    * user typed.
    */
   onSubmit: (request: NewThreadRequest) => void | Promise<void>;
+  /**
+   * Render only bb's own composer: no banners, inline actions, + menu rows,
+   * or draft highlighting from other plugins. For embeds that draw the
+   * composer as an illustration rather than use it, so another plugin's UI
+   * cannot land inside the picture. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_suppressPluginUi?: boolean;
 }
 
 /**

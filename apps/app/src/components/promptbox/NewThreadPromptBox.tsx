@@ -177,6 +177,8 @@ export interface NewThreadPromptBoxUIProps {
   /** Active root-composer binding for plugin composer hooks and customizations. */
   pluginComposerHost?: PluginComposerHost | null;
   textEffects?: readonly ComposerTextEffectSource[];
+  /** Hide every plugin composer customization; see PromptBoxInternal. */
+  suppressPluginComposerCustomizations?: boolean;
   /** zenMode storage key used for the root-compose zen-mode atom. */
   zenModeStorageKey: string;
   /** Overrides the default new-thread placeholder copy. */
@@ -230,6 +232,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   autoFocus,
   pluginComposerHost,
   textEffects,
+  suppressPluginComposerCustomizations,
   zenModeStorageKey,
   placeholder: placeholderOverride,
   history,
@@ -331,6 +334,9 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
             onChange={onChange}
             onSubmit={onSubmit}
             textEffects={textEffects}
+            suppressPluginComposerCustomizations={
+              suppressPluginComposerCustomizations
+            }
             onComposerLayoutChange={setComposerLayout}
             history={history}
             typeahead={typeahead}

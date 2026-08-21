@@ -399,6 +399,25 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
   );
 }
 
+/**
+ * The Extensions detail page, rendered from an explicit plugin id.
+ *
+ * A split pane cannot read the id from `useParams`: only the focused pane
+ * owns the URL, so an unfocused plugin-detail pane would otherwise show
+ * whatever plugin the focused pane happens to name.
+ */
+export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <Suspense fallback={<ToolsBodyFallback />}>
+          <PluginsToolView pluginId={pluginId} />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
 export function ToolsView() {
   const location = useLocation();
   const { pluginId } = useParams<{

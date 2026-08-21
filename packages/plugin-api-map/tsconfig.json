@@ -7,10 +7,11 @@
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "resolveJsonModule": true,
+    "types": ["node", "vitest/globals"],
     "composite": false,
     "declaration": false,
     "declarationMap": false,
     "noEmit": true
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }

@@ -320,35 +320,59 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
   return candidates;
 }
 
+/** A hung CSS fetch must not keep a plugin's UI off the screen forever. */
+const PLUGIN_CSS_LOAD_TIMEOUT_MS = 5000;
+
 /**
  * Point a plugin's stylesheet `<link data-bb-plugin-css="<id>">` at `url`,
  * or remove it (`url: null`). A changed URL swaps in a fresh element (the
  * new sheet loads, then the old element is removed) rather than mutating
  * `href`, so a reload never flashes unstyled plugin UI. If the fresh sheet
  * fails to load, it is dropped and the old sheet stays in place.
+ *
+ * Resolves once the sheet is in effect (or has failed, or timed out), so the
+ * caller can hold a plugin's registrations back until its styles are live.
+ * Without that wait the app mounts the plugin's components against no
+ * stylesheet at all and paints one unstyled frame — visibly oversized layout
+ * that snaps down when the sheet lands.
  */
-export function applyPluginCss(pluginId: string, url: string | null): void {
+export function applyPluginCss(
+  pluginId: string,
+  url: string | null,
+): Promise<void> {
   const marker = "data-bb-plugin-css";
   const existing = [
     ...document.head.querySelectorAll(`link[${marker}="${pluginId}"]`),
   ];
   if (url === null) {
     for (const link of existing) link.remove();
-    return;
+    return Promise.resolve();
   }
-  if (existing.some((link) => link.getAttribute("href") === url)) return;
+  if (existing.some((link) => link.getAttribute("href") === url)) {
+    return Promise.resolve();
+  }
   const link = document.createElement("link");
   link.rel = "stylesheet";
   link.href = url;
   link.setAttribute(marker, pluginId);
-  link.onload = () => {
-    for (const old of existing) old.remove();
-  };
-  link.onerror = () => {
-    link.remove();
-    console.warn(`bb plugin "${pluginId}": failed to load stylesheet ${url}`);
-  };
+  const settled = new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, PLUGIN_CSS_LOAD_TIMEOUT_MS);
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    link.onload = () => {
+      for (const old of existing) old.remove();
+      done();
+    };
+    link.onerror = () => {
+      link.remove();
+      console.warn(`bb plugin "${pluginId}": failed to load stylesheet ${url}`);
+      done();
+    };
+  });
   document.head.appendChild(link);
+  return settled;
 }
 
 // ---------------------------------------------------------------------------
@@ -383,8 +407,11 @@ export function createPluginFrontendReconcileState(): PluginFrontendReconcileSta
 export interface PluginFrontendReconcileDeps {
   fetchCandidates: () => Promise<PluginFrontendCandidate[]>;
   importModule: (url: string) => Promise<unknown>;
-  /** Replace (string) or remove (null) the plugin's CSS `<link>`. */
-  applyCss: (pluginId: string, url: string | null) => void;
+  /**
+   * Replace (string) or remove (null) the plugin's CSS `<link>`. Awaited
+   * before the plugin's registrations go live, so its first paint is styled.
+   */
+  applyCss: (pluginId: string, url: string | null) => void | Promise<void>;
   resetCrashedSlots: (pluginId: string) => void;
   setRegistrations: (
     pluginId: string,
@@ -804,8 +831,11 @@ export async function reconcilePluginFrontends(
       }
 
       state.activeGenerations.set(pluginId, activationResult.activation);
+      // Styles first, and awaited: registrations are what mount the plugin's
+      // components, so publishing them against a stylesheet that is still in
+      // flight paints one unstyled frame.
+      await deps.applyCss(pluginId, candidate.bundle.cssUrl);
       deps.setRegistrations(pluginId, collected);
-      deps.applyCss(pluginId, candidate.bundle.cssUrl);
       state.records.set(pluginId, record);
       state.appliedHashes.set(pluginId, candidate.bundle.hash);
       publishDiagnostic(state, deps, {

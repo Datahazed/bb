@@ -304,6 +304,7 @@ function TestNewThreadComposer({
   focusRequest,
   className,
   draftKey,
+  experimental_suppressPluginUi,
   onSubmit,
 }: NewThreadComposerProps) {
   const [text, setText] = useState(initialPrompt ?? "");
@@ -324,6 +325,7 @@ function TestNewThreadComposer({
       data-layout={layout}
       data-focus-request={focusRequest ?? 0}
       data-draft-key={draftKey ?? ""}
+      data-suppress-plugin-ui={experimental_suppressPluginUi ? "" : undefined}
       className={className}
     >
       <textarea

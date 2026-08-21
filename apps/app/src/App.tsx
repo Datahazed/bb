@@ -38,7 +38,6 @@ import {
   SETTINGS_SECTION_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
   TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
-  TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   TOOLS_PLUGINS_ROUTE_PATH,
   TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
@@ -313,10 +312,6 @@ function AppRoutes() {
           <Route
             path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
             element={<LegacyPluginBrowseRedirect />}
-          />
-          <Route
-            path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
-            element={<ToolsView />}
           />
           <Route
             path={LEGACY_SKILLS_ROUTE_PATH}

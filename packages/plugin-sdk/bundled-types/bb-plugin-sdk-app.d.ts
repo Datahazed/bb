@@ -83,9 +83,9 @@ declare const serviceTierSchema: z.ZodEnum<{
 }>;
 type ServiceTier = z.infer<typeof serviceTierSchema>;
 declare const permissionModeSchema: z.ZodEnum<{
-    full: "full";
     auto: "auto";
     "accept-edits": "accept-edits";
+    full: "full";
 }>;
 type PermissionMode = z.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
@@ -1456,6 +1456,13 @@ interface NewThreadComposerProps {
      * user typed.
      */
     onSubmit: (request: NewThreadRequest) => void | Promise<void>;
+    /**
+     * Render only bb's own composer: no banners, inline actions, + menu rows,
+     * or draft highlighting from other plugins. For embeds that draw the
+     * composer as an illustration rather than use it, so another plugin's UI
+     * cannot land inside the picture. Experimental: see docs/api_to_audit.md.
+     */
+    experimental_suppressPluginUi?: boolean;
 }
 /**
  * Props of the host-owned `Markdown` component — bb's chat message renderer

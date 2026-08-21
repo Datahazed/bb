@@ -1,19 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { ANATOMY_MANIFEST as anatomy } from "@bb/plugin-api-map";
-import { SECTION_BY_SYMBOL_NAME, sectionById } from "./content";
-import {
-  SURFACE_GROUPS,
-  SURFACE_NUMBERS,
-  SURFACES_BY_ID,
-} from "@bb/plugin-api-map";
+import { ANATOMY_MANIFEST as anatomy } from "../src/index";
+import { SURFACE_GROUPS, SURFACE_NUMBERS, SURFACES_BY_ID } from "../src/index";
 import {
   ANATOMY_RENDERER_KEYS,
   APP_SHELL_MARKS,
   COMPOSE_MARKS,
   COMPOSER_MARKS,
+  EXTENSIONS_MARKS,
   SETTINGS_MARKS,
-} from "@bb/plugin-api-map";
+} from "../src/index";
 
 const groupById = new Map(SURFACE_GROUPS.map((group) => [group.id, group]));
 
@@ -32,32 +28,6 @@ describe("product-map surfaces", () => {
     expect(SURFACES_BY_ID.size).toBe(all.length);
   });
 
-  it("links every surface to real reference sections and anchors", () => {
-    const broken: string[] = [];
-    for (const group of SURFACE_GROUPS) {
-      for (const surface of group.surfaces) {
-        expect(surface.links.length).toBeGreaterThan(0);
-        for (const link of surface.links) {
-          if (!sectionById(link.sectionId)) {
-            broken.push(`${surface.id}: unknown section "${link.sectionId}"`);
-            continue;
-          }
-          if (
-            link.anchor &&
-            SECTION_BY_SYMBOL_NAME.get(link.anchor) !== link.sectionId
-          ) {
-            // The anchor must be a real exported symbol AND rendered on the
-            // page the link targets, or the deep link lands nowhere.
-            broken.push(
-              `${surface.id}: anchor "${link.anchor}" is not on section "${link.sectionId}"`,
-            );
-          }
-        }
-      }
-    }
-    expect(broken).toEqual([]);
-  });
-
   it("marks every visual-group surface on its wireframe exactly once", () => {
     // One skeleton per carousel slide, so each group's surfaces must all be
     // marked on that group's own wireframe.
@@ -65,6 +35,9 @@ describe("product-map surfaces", () => {
     expect([...COMPOSER_MARKS].sort()).toEqual(surfaceIds("composer").sort());
     expect([...COMPOSE_MARKS].sort()).toEqual(surfaceIds("home").sort());
     expect([...SETTINGS_MARKS].sort()).toEqual(surfaceIds("settings").sort());
+    expect([...EXTENSIONS_MARKS].sort()).toEqual(
+      surfaceIds("extensions").sort(),
+    );
   });
 
   it("numbers the surfaces a skeleton draws, and only those", () => {
@@ -114,9 +87,55 @@ describe("product-map surfaces", () => {
       ...COMPOSER_MARKS,
       ...COMPOSE_MARKS,
       ...SETTINGS_MARKS,
+      ...EXTENSIONS_MARKS,
     ]);
     for (const id of surfaceIds("headless")) {
       expect(marked.has(id)).toBe(false);
+    }
+  });
+});
+
+describe("surface cross-references", () => {
+  it("points every [label](id) at a real surface", () => {
+    // An id that no longer exists renders as plain prose — the reference just
+    // quietly disappears rather than failing, so nothing else would catch it.
+    const dangling: string[] = [];
+    for (const group of SURFACE_GROUPS) {
+      for (const surface of group.surfaces) {
+        for (const copy of [surface.summary, ...surface.bullets]) {
+          for (const [, id] of copy.matchAll(/\[[^\]]+\]\(([a-z0-9-]+)\)/g)) {
+            if (!SURFACES_BY_ID.has(id)) {
+              dangling.push(`${surface.id}: "${id}"`);
+            }
+            if (id === surface.id) {
+              dangling.push(`${surface.id}: references itself`);
+            }
+          }
+        }
+      }
+    }
+    expect(dangling).toEqual([]);
+  });
+});
+
+describe("surface card copy", () => {
+  it("follows the lead-then-bullets template", () => {
+    // Every card reads the same way: one lead sentence that the bullets hang
+    // off, then the capabilities. A lead that stops mid-thought (or bullets
+    // that have nothing to hang off) reads as a broken card.
+    for (const group of SURFACE_GROUPS) {
+      for (const surface of group.surfaces) {
+        expect(surface.summary, surface.id).toMatch(
+          /\. With this, a plugin can:$/,
+        );
+        expect(surface.bullets.length, surface.id).toBeGreaterThanOrEqual(2);
+        for (const bullet of surface.bullets) {
+          expect(bullet.trim().length, surface.id).toBeGreaterThan(0);
+          // The lead-in already says "can"; a bullet that repeats it reads
+          // "a plugin can: Can register…". Bullets are bare verb phrases.
+          expect(bullet, `${surface.id}: "${bullet}"`).not.toMatch(/^Can\b/);
+        }
+      }
     }
   });
 });
