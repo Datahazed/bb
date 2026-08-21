@@ -71,6 +71,7 @@ declare const appKeybindingOverridesSchema: z$1.ZodArray<z$1.ZodObject<{
         "settings.open": "settings.open";
         "settings.openServers": "settings.openServers";
         "sidebar.toggle": "sidebar.toggle";
+        "plugin.inspector.toggle": "plugin.inspector.toggle";
         "panel.newTab": "panel.newTab";
         "panel.close": "panel.close";
         "panel.toggle": "panel.toggle";
@@ -269,9 +270,9 @@ declare const hostSchema: z$1.ZodObject<{
         disconnected: "disconnected";
     }>;
     maxPermissionMode: z$1.ZodEnum<{
-        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
+        full: "full";
     }>;
     lastSeenAt: z$1.ZodNullable<z$1.ZodNumber>;
     lastRejectedProtocolVersion: z$1.ZodNullable<z$1.ZodNumber>;
@@ -517,9 +518,9 @@ declare const serviceTierSchema: z$1.ZodEnum<{
 }>;
 type ServiceTier = z$1.infer<typeof serviceTierSchema>;
 declare const permissionModeSchema: z$1.ZodEnum<{
-    full: "full";
     auto: "auto";
     "accept-edits": "accept-edits";
+    full: "full";
 }>;
 type PermissionMode = z$1.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
@@ -622,9 +623,9 @@ declare const resolvedThreadExecutionOptionsSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
+        full: "full";
     }>;
     source: z$1.ZodEnum<{
         "client/thread/start": "client/thread/start";
@@ -651,9 +652,9 @@ declare const projectExecutionDefaultsSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
+        full: "full";
     }>;
 }, z$1.core.$strip>;
 type ProjectExecutionDefaults = z$1.infer<typeof projectExecutionDefaultsSchema>;
@@ -1561,8 +1562,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
-        user: "user";
         system: "system";
+        user: "user";
         agent: "agent";
     }>;
     request: z$1.ZodObject<{
@@ -1583,8 +1584,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
-        user: "user";
         system: "system";
+        user: "user";
         agent: "agent";
     }>;
     senderThreadId: z$1.ZodNullable<z$1.ZodString>;
@@ -1810,9 +1811,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         permissionMode: z$1.ZodEnum<{
             readonly: "readonly";
-            full: "full";
             auto: "auto";
             "accept-edits": "accept-edits";
+            full: "full";
             "workspace-write": "workspace-write";
         }>;
     }, z$1.core.$strip>;
@@ -1831,8 +1832,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
-        user: "user";
         system: "system";
+        user: "user";
         agent: "agent";
     }>;
     request: z$1.ZodObject<{
@@ -2041,9 +2042,9 @@ declare const providerInfoSchema: z$1.ZodObject<{
         supportsFork: z$1.ZodBoolean;
         supportsSessionRewind: z$1.ZodBoolean;
         permissionModes: z$1.ZodArray<z$1.ZodEnum<{
-            full: "full";
             auto: "auto";
             "accept-edits": "accept-edits";
+            full: "full";
         }>>;
     }, z$1.core.$strip>;
     composerActions: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
@@ -2224,9 +2225,9 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
+        full: "full";
     }>;
     serviceTier: z$1.ZodEnum<{
         default: "default";
@@ -2940,8 +2941,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        base64: "base64";
         utf8: "utf8";
+        base64: "base64";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -2954,8 +2955,8 @@ declare const environmentArchiveThreadsResponseSchema: z$1.ZodObject<{
 type EnvironmentArchiveThreadsResponse = z$1.infer<typeof environmentArchiveThreadsResponseSchema>;
 declare const pullRequestMergeMethodSchema: z$1.ZodEnum<{
     merge: "merge";
-    squash: "squash";
     rebase: "rebase";
+    squash: "squash";
 }>;
 type PullRequestMergeMethod = z$1.infer<typeof pullRequestMergeMethodSchema>;
 declare const commitActionResponseSchema: z$1.ZodObject<{
@@ -2986,8 +2987,8 @@ declare const pullRequestMergeActionResponseSchema: z$1.ZodObject<{
     action: z$1.ZodLiteral<"pull_request_merge">;
     method: z$1.ZodEnum<{
         merge: "merge";
-        squash: "squash";
         rebase: "rebase";
+        squash: "squash";
     }>;
     message: z$1.ZodString;
 }, z$1.core.$strip>;
@@ -7384,6 +7385,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "settings.open": "settings.open";
             "settings.openServers": "settings.openServers";
             "sidebar.toggle": "sidebar.toggle";
+            "plugin.inspector.toggle": "plugin.inspector.toggle";
             "panel.newTab": "panel.newTab";
             "panel.close": "panel.close";
             "panel.toggle": "panel.toggle";
@@ -7482,6 +7484,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "settings.open": "settings.open";
             "settings.openServers": "settings.openServers";
             "sidebar.toggle": "sidebar.toggle";
+            "plugin.inspector.toggle": "plugin.inspector.toggle";
             "panel.newTab": "panel.newTab";
             "panel.close": "panel.close";
             "panel.toggle": "panel.toggle";
@@ -7580,6 +7583,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "settings.open": "settings.open";
             "settings.openServers": "settings.openServers";
             "sidebar.toggle": "sidebar.toggle";
+            "plugin.inspector.toggle": "plugin.inspector.toggle";
             "panel.newTab": "panel.newTab";
             "panel.close": "panel.close";
             "panel.toggle": "panel.toggle";
@@ -11304,6 +11308,18 @@ interface PluginSidebarFooterActionRegistration {
     /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
     icon: string;
     /**
+     * Tooltip and accessible label while this action is active. Omission keeps
+     * `title` in both states. Experimental: see docs/api_to_audit.md.
+     */
+    experimental_activeTitle?: string;
+    /**
+     * Host-rendered active-state adornment. The active state itself is owned by
+     * the plugin content script and set with
+     * `experimental_setSidebarFooterActionActive`.
+     * Experimental: see docs/api_to_audit.md.
+     */
+    experimental_activeIndicator?: "dot";
+    /**
      * Runs when the user activates the action (e.g. call `openSettings()`,
      * open a panel via other surfaces, toast). Errors (sync or async) are
      * contained and logged; they never break the sidebar.
@@ -11714,6 +11730,135 @@ interface PluginAppSlots {
 interface PluginAppComposer {
     customize(registration: ComposerCustomization): void;
 }
+/** Identity and contextual metadata supplied for one inspectable UI element. */
+interface ExperimentalUiInspectionMetadata {
+    /** Stable, code-facing name used in breadcrumbs and agent context. */
+    readonly codeName: string;
+    /** Human-facing name for the element. */
+    readonly name: string;
+    /** Semantic UI kind, for example `window`, `panel`, `action`, or `field`. */
+    readonly kind: string;
+    /** Owning component or design-system primitive when that is useful context. */
+    readonly component?: string;
+    /** Named visual or behavioral variant. */
+    readonly variant?: string;
+    /** Small, serializable state values relevant to understanding the element. */
+    readonly state?: Readonly<Record<string, JsonValue>>;
+    /** Design-token names applied by this element. */
+    readonly tokens?: readonly string[];
+    /** Small, serializable product context useful to an agent. */
+    readonly context?: Readonly<Record<string, JsonValue>>;
+    /**
+     * Optional inspectable parent when the product hierarchy differs from the
+     * DOM hierarchy. The host still owns traversal and cycle protection.
+     */
+    readonly logicalParent?: Element;
+}
+/** Core-stamped owner of inspected metadata; plugins cannot supply this. */
+type ExperimentalUiInspectionSource = {
+    readonly kind: "core";
+} | {
+    readonly kind: "plugin";
+    readonly pluginId: string;
+    readonly displayName?: string;
+};
+/** Viewport-relative bounds captured for one inspected element. */
+interface ExperimentalUiInspectionBounds {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+    readonly top: number;
+    readonly right: number;
+    readonly bottom: number;
+    readonly left: number;
+}
+/** Fixed computed-style projection captured by Core for the inspect card. */
+interface ExperimentalUiInspectionStyle {
+    readonly display: string;
+    readonly position: string;
+    readonly color: string;
+    readonly backgroundColor: string;
+    readonly fontFamily: string;
+    readonly fontSize: string;
+    readonly fontWeight: string;
+    readonly lineHeight: string;
+    readonly padding: string;
+    readonly margin: string;
+    readonly border: string;
+    readonly borderRadius: string;
+    readonly gap: string;
+    readonly opacity: string;
+}
+/** Fixed accessibility projection captured by Core for the inspect card. */
+interface ExperimentalUiInspectionAccessibility {
+    readonly role: string | null;
+    readonly name: string | null;
+    readonly disabled: boolean;
+    readonly expanded: boolean | null;
+    readonly pressed: boolean | null;
+    readonly selected: boolean | null;
+}
+/** One inspectable element in a resolved root-to-target hierarchy. */
+interface ExperimentalUiInspectionElement {
+    /** The real element from bb's shared renderer; never serialized. */
+    readonly element: Element;
+    readonly metadata: Omit<ExperimentalUiInspectionMetadata, "logicalParent">;
+    readonly source: ExperimentalUiInspectionSource;
+    readonly bounds: ExperimentalUiInspectionBounds;
+    readonly style: ExperimentalUiInspectionStyle;
+    readonly accessibility: ExperimentalUiInspectionAccessibility;
+}
+/** Resolved inspection payload for the deepest inspectable element. */
+interface ExperimentalUiInspectionTarget {
+    readonly target: ExperimentalUiInspectionElement;
+    /** Inspectable ancestors followed by `target`, ordered root-to-target. */
+    readonly hierarchy: readonly ExperimentalUiInspectionElement[];
+}
+/** Viewport pointer position associated with a hover or selection event. */
+interface ExperimentalUiInspectionPointer {
+    readonly x: number;
+    readonly y: number;
+}
+/** Events emitted by one active hover/select inspection session. */
+type ExperimentalUiInspectionSessionEvent = {
+    readonly type: "hover";
+    /** Null means the pointer is not over an inspectable element. */
+    readonly target: ExperimentalUiInspectionTarget | null;
+    readonly pointer: ExperimentalUiInspectionPointer;
+} | {
+    readonly type: "select";
+    /** The host consumes the pointer activation that creates this event. */
+    readonly target: ExperimentalUiInspectionTarget;
+    readonly pointer: ExperimentalUiInspectionPointer;
+} | {
+    readonly type: "error";
+    readonly code: "target-detached" | "internal";
+    readonly message: string;
+};
+interface ExperimentalUiInspectionSessionOptions {
+    /** Errors thrown by this callback are contained and logged by the host. */
+    readonly onEvent: (event: ExperimentalUiInspectionSessionEvent) => void;
+}
+/** Idempotent ownership handle for registered inspectable metadata. */
+interface ExperimentalUiInspectionRegistration {
+    dispose(): void;
+}
+/** Idempotent ownership handle for one active inspection session. */
+interface ExperimentalUiInspectionSession {
+    dispose(): void;
+}
+/** Shared-renderer UI inspection bridge exposed to plugin content scripts. */
+interface ExperimentalUiInspectionApi {
+    /** Register metadata for an element, stamped as owned by this plugin. */
+    register(element: Element, metadata: ExperimentalUiInspectionMetadata): ExperimentalUiInspectionRegistration;
+    /** Start pointer tracking and click-to-select until the handle is disposed. */
+    startSession(options: ExperimentalUiInspectionSessionOptions): ExperimentalUiInspectionSession;
+}
+/** Fixed Core-owned commands that a plugin content script may handle. */
+type ExperimentalPluginAppCommandId = "plugin.inspector.toggle";
+/** Handler for one fixed Core-owned app command. */
+type ExperimentalPluginAppCommandHandler = () => void | Promise<void>;
 /** Stable lifecycle values for one content-script instance in one bb client. */
 interface PluginContentScriptContext {
     /** The id of the plugin that owns this script. */
@@ -11734,6 +11879,23 @@ interface PluginContentScriptContext {
      * surface rolls out across 0.x clients.
      */
     readonly experimental_setThreadRowStatus?: (threadId: string, status: PluginComposerThreadRowStatus | null) => void;
+    /**
+     * Shared-renderer metadata and hover/select inspection bridge.
+     * Experimental: see docs/api_to_audit.md.
+     */
+    readonly experimental_uiInspection?: ExperimentalUiInspectionApi;
+    /**
+     * Set the active presentation for this plugin's registered sidebar-footer
+     * action. The host rejects action ids owned by another plugin generation.
+     * Experimental: see docs/api_to_audit.md.
+     */
+    readonly experimental_setSidebarFooterActionActive?: (actionId: string, active: boolean) => void;
+    /**
+     * Handle a fixed Core-owned, user-remappable app command. The returned
+     * disposer is idempotent and the host also clears the handler with this
+     * content-script generation. Experimental: see docs/api_to_audit.md.
+     */
+    readonly experimental_registerAppCommandHandler?: (command: ExperimentalPluginAppCommandId, handler: ExperimentalPluginAppCommandHandler) => PluginContentScriptDisposer;
 }
 /** Cleanup returned by a frontend content script. */
 type PluginContentScriptDisposer = () => void | Promise<void>;
@@ -14442,4 +14604,4 @@ interface BbPluginApi {
 }
 
 export { PLUGIN_CLI_OUTPUT_MAX_BYTES, defineRpcContract, experimental_defineHostEntry };
-export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalHostCallOptions, ExperimentalHostClient, ExperimentalHostEntry, ExperimentalHostPaths, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, ExperimentalHostSignalContract, ExperimentalHostSignalEvent, ExperimentalHostSignals, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription, ExperimentalHostWorkerLease, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderCapabilities, PluginProviderComposerAction, PluginProviderDeclaration, PluginProviderIconRegistration, PluginProviderPermissionMode, PluginProviderReasoningLevel, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };
+export type { BbContext, BbNavigate, BbPluginApi, ComposerCustomization, ComposerPlusMenuItem, ComposerRichTextSpec, ComposerStructuredDraft, ComposerView, ExperimentalHostCallOptions, ExperimentalHostClient, ExperimentalHostEntry, ExperimentalHostPaths, ExperimentalHostRpcContext, ExperimentalHostRpcHandlers, ExperimentalHostSignalContract, ExperimentalHostSignalEvent, ExperimentalHostSignals, ExperimentalHostWatchChange, ExperimentalHostWatchChangeType, ExperimentalHostWatchEvent, ExperimentalHostWatchListener, ExperimentalHostWatchOptions, ExperimentalHostWatchSubscription, ExperimentalHostWorkerLease, ExperimentalPluginAppCommandHandler, ExperimentalPluginAppCommandId, ExperimentalUiInspectionAccessibility, ExperimentalUiInspectionApi, ExperimentalUiInspectionBounds, ExperimentalUiInspectionElement, ExperimentalUiInspectionMetadata, ExperimentalUiInspectionPointer, ExperimentalUiInspectionRegistration, ExperimentalUiInspectionSession, ExperimentalUiInspectionSessionEvent, ExperimentalUiInspectionSessionOptions, ExperimentalUiInspectionSource, ExperimentalUiInspectionStyle, ExperimentalUiInspectionTarget, JsonValue, MarkdownProps, NewThreadComposerProps, NewThreadRequest, PluginAgentConfiguration, PluginAgentConfigurationContext, PluginAgentToolContentPart, PluginAgentToolContext, PluginAgentToolExperimentalStatusLabels, PluginAgentToolRegistrationBase, PluginAgentToolResult, PluginAgentToolSelection, PluginAgents, PluginAppBuilder, PluginAppComposer, PluginAppContentScripts, PluginAppDefinition, PluginAppSetup, PluginAppSlots, PluginBackground, PluginCli, PluginCliCommandInfo, PluginCliContext, PluginCliExecutionResult, PluginCliOutputLimitError, PluginCliRegistration, PluginCliResult, PluginComposerApi, PluginComposerMention, PluginComposerScope, PluginComposerTextEffect, PluginComposerThreadRowStatus, PluginContentScriptContext, PluginContentScriptDisposer, PluginContentScriptRegistration, PluginEvents, PluginFileOpenerProps, PluginFileOpenerRegistration, PluginFileOpenerSource, PluginHomepageSectionProps, PluginHomepageSectionRegistration, PluginHosts, PluginHttp, PluginHttpAuthMode, PluginHttpHandler, PluginInteractionCancelReason, PluginInteractionRequest, PluginInteractionResult, PluginKvStorage, PluginLogger, PluginMentionItem, PluginMentionProviderRegistration, PluginMentionSearchContext, PluginMentionTrigger, PluginMessageActionContext, PluginMessageActionRegistration, PluginMessageActionThreadPanelOptions, PluginMessageDirectiveMessage, PluginMessageDirectiveOpenWorkspaceFile, PluginMessageDirectiveProps, PluginMessageDirectiveRegistration, PluginNavPanelProps, PluginNavPanelRegistration, PluginNewThreadPanelActionContext, PluginNewThreadPanelActionRegistration, PluginNewThreadPanelProps, PluginPendingInteractionProps, PluginPendingInteractionRegistration, PluginPendingInteractionView, PluginProviderCapabilities, PluginProviderComposerAction, PluginProviderDeclaration, PluginProviderIconRegistration, PluginProviderPermissionMode, PluginProviderReasoningLevel, PluginRealtime, PluginRealtimeConnectionState, PluginRpc, PluginRpcCallArgs, PluginRpcClient, PluginRpcContract, PluginRpcError, PluginRpcErrorCode, PluginRpcHandlers, PluginRpcIssuePathSegment, PluginRpcMethodContract, PluginRpcResult, PluginRpcValidationIssue, PluginSdkApp, PluginServerApi, PluginSettingDescriptor, PluginSettingDescriptors, PluginSettingValue, PluginSettings, PluginSettingsHandle, PluginSettingsSectionProps, PluginSettingsSectionRegistration, PluginSettingsState, PluginSettingsValues, PluginSharedPortTunnelIdentity, PluginSidebarFooterActionContext, PluginSidebarFooterActionProps, PluginSidebarFooterActionRegistration, PluginSidebarProject, PluginSidebarPullRequest, PluginSidebarSplitPane, PluginSidebarThread, PluginSidebarThreadActions, PluginSidebarThreadActivity, PluginSidebarThreadIndicator, PluginSidebarThreadPullRequestState, PluginSidebarThreadSplit, PluginSidebarThreadsState, PluginSidebarWorkspaceKind, PluginStatusApi, PluginStorage, PluginThreadEventHandler, PluginThreadEventName, PluginThreadEventPayloads, PluginThreadHeaderActionProps, PluginThreadHeaderActionRegistration, PluginThreadListProps, PluginThreadListRegistration, PluginThreadPanelActionContext, PluginThreadPanelActionRegistration, PluginThreadPanelProps, PluginUi, StandardSchemaV1, StandardSchemaV1InferInput, StandardSchemaV1InferOutput, StandardSchemaV1Issue, StandardSchemaV1Result, ThreadChatMessageAction, ThreadChatMessageReference, ThreadChatProps };

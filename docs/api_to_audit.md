@@ -159,6 +159,69 @@ Before stabilization, audit:
   candidate rename. Nothing under `plugins/*` sets a status today, so the
   rename is free until the prefix drops.
 
+## UI inspection content-script contract
+
+`PluginContentScriptContext.experimental_uiInspection` exposes two renderer-
+local primitives: `register(element, metadata)` for structured names and
+hierarchy, and `startSession({ onEvent })` for Core-owned hit testing,
+highlighting, selection suppression, snapshots, and cleanup. The related
+`ExperimentalUiInspection*` types define Core/plugin source identity, required
+`codeName` / `name` / `kind`, optional component/variant/state/tokens/context
+and logical-parent metadata, root-to-target hierarchy, fixed bounds/style/
+accessibility snapshots, and hover/select/error events.
+
+Before stabilization, audit:
+
+- whether the fixed style and accessibility field lists cover design and
+  debugging jobs without becoming an arbitrary DOM serializer;
+- how logical parents compose with portals and whether disconnected/replaced
+  elements need a richer error than `target-detached`;
+- pointer, touch, keyboard-only, zoom, nested-window, and multi-window
+  behavior, including activation suppression and teardown;
+- naming conventions for `codeName`, `kind`, component, variant, tokens, and
+  context so metadata from Core and multiple plugins remains legible;
+- whether renderer-local `Element` references should remain in the contract
+  or be hidden behind an opaque handle before stabilization.
+
+## Active sidebar-footer action presentation
+
+`PluginSidebarFooterActionRegistration.experimental_activeTitle` and
+`experimental_activeIndicator` (currently only `"dot"`), paired with
+`PluginContentScriptContext.experimental_setSidebarFooterActionActive`, let a
+plugin show that its existing footer action is active. Core owns selected
+styling, the dot, tooltip/accessibility-label swap, `aria-pressed`, and cleanup;
+the original `run` callback remains the activation path.
+
+Before stabilization, audit:
+
+- whether dot plus selected treatment is sufficient across themes, contrast
+  modes, compact/mobile sidebar presentations, and multiple plugin actions;
+- whether active title should fall back to `title`, and whether more active
+  indicators would create inconsistent host chrome;
+- generation replacement, plugin disable/removal, duplicate action ids, and
+  calls made before or after the owning action registration exists;
+- whether the setter should remain content-script-only or become a small
+  general state controller after more than one real consumer exists.
+
+## Fixed remappable Plugin Guide inspector command
+
+`plugin.inspector.toggle` is a Core-owned app command with a user-remappable
+default binding. `PluginContentScriptContext.experimental_registerAppCommandHandler`
+lets one frontend generation attach the Plugin Guide toggle to that fixed
+command; it does not expose a general plugin command registry or held-command
+lifecycle.
+
+Before stabilization, audit:
+
+- default shortcut conflicts across macOS, Windows, Linux, browsers, desktop
+  DevTools, international layouts, and user overrides;
+- replacement and cleanup when the plugin reloads, disables, or fails, plus
+  deterministic behavior if another plugin registers the fixed command;
+- whether the command should remain a built-in Plugin Guide integration or
+  graduate into a general manifest/command contribution after real demand;
+- discoverability in Keyboard settings and accessible announcement of the
+  same active state shown by the sidebar-footer action.
+
 ## `bb.agents.registerTool({ experimental_statusLabels })`
 
 **What it does.** Lets a native plugin tool supply one short label while it is

@@ -45,6 +45,27 @@ describe("plugin manifest", () => {
     );
   });
 
+  it("loads a persisted 0.4.10 scaffold manifest unchanged", async () => {
+    await writeFile(
+      join(rootDir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-released-scaffold",
+        version: "0.1.0",
+        private: true,
+        type: "module",
+        engines: { bbPluginSdk: ">=0.4.10" },
+        devDependencies: { "@get-bb/plugin-sdk": "0.4.10" },
+        bb: validBb,
+      }),
+    );
+
+    expect(await readPluginManifest(rootDir)).toMatchObject({
+      bbPluginSdkRange: ">=0.4.10",
+      id: "released-scaffold",
+      name: "Contract fixture",
+    });
+  });
+
   it("rejects an invalid engines.bbPluginSdk range clearly", async () => {
     await writeManifest("definitely not semver");
     await expect(readPluginManifest(rootDir)).rejects.toThrow(
