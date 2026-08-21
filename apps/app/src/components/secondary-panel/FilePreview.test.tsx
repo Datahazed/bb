@@ -182,6 +182,20 @@ function renderWithWorkerPool(ui: ReactElement) {
   );
 }
 
+/**
+ * jsdom has no layout, so the CSV table's row virtualizer would see a 0px
+ * scroll box and mount nothing. Give every scroll box a 400px viewport and
+ * every table row its real single-line height.
+ */
+const CSV_TEST_ROW_HEIGHT_PX = 29;
+function mockCsvTableLayout() {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+    function (this: HTMLElement) {
+      return this.tagName === "TR" ? CSV_TEST_ROW_HEIGHT_PX : 400;
+    },
+  );
+}
+
 describe("FilePreview", () => {
   beforeEach(() => {
     pierreMock.state.cachedFileKeys.clear();
@@ -198,6 +212,7 @@ describe("FilePreview", () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("offers a manual file refresh action", () => {
@@ -579,6 +594,7 @@ describe("FilePreview", () => {
   });
 
   it("renders CSV previews as a table by default", () => {
+    mockCsvTableLayout();
     render(
       <FilePreview
         path="reports/customers.csv"
@@ -666,7 +682,54 @@ describe("FilePreview", () => {
     expect(getCsvTruncationNote(preview, preview.rows.length - 1)).toBeNull();
   });
 
+  it("mounts only the CSV rows near the viewport, not the whole 500x100 window", () => {
+    mockCsvTableLayout();
+    const columnCount = 120;
+    const header = Array.from({ length: columnCount }, (_, i) => `col_${i}`);
+    const lines = [header.join(",")];
+    for (let rowIndex = 0; rowIndex < 600; rowIndex += 1) {
+      lines.push(header.map((_, c) => `r${rowIndex}c${c}`).join(","));
+    }
+
+    render(
+      <FilePreview
+        path="data/big.csv"
+        state={{
+          kind: "ready",
+          file: { name: "big.csv", contents: lines.join("\n") },
+          lineRange: null,
+          textPreviewKind: "csv",
+        }}
+      />,
+    );
+
+    const table = screen.getByRole("table", { name: "big.csv CSV preview" });
+    expect(screen.getByText("r0c0")).not.toBeNull();
+    // 400px / 29px is ~14 visible rows; with overscan the mounted set stays
+    // far below the 500-row parse cap (50,000 cells when fully mounted).
+    expect(table.querySelectorAll("td").length).toBeLessThan(6_000);
+    const mountedRows = table.querySelectorAll("tbody tr[data-index]");
+    expect(mountedRows.length).toBeGreaterThanOrEqual(14);
+    expect(mountedRows.length).toBeLessThan(60);
+    expect(screen.queryByText("r499c0")).toBeNull();
+
+    // Scrolling to the bottom mounts the last rows and unmounts the first.
+    const scrollBox = table.parentElement;
+    if (!(scrollBox instanceof HTMLElement)) throw new Error("no scroll box");
+    scrollBox.scrollTop = 499 * CSV_TEST_ROW_HEIGHT_PX;
+    fireEvent.scroll(scrollBox);
+    expect(screen.getByText("r499c0")).not.toBeNull();
+    expect(screen.queryByText("r0c0")).toBeNull();
+    expect(table.querySelectorAll("tbody tr[data-index]").length).toBeLessThan(
+      60,
+    );
+    expect(
+      screen.getByText("Showing the first 500 rows and 100 columns."),
+    ).not.toBeNull();
+  });
+
   it("uses the CSV table preview for loaded CSV text files", () => {
+    mockCsvTableLayout();
     render(
       <SecondaryPanelFilePreview
         activePath="exports/scores.csv"

@@ -1,5 +1,12 @@
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { UrlTransform } from "react-markdown";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@bb/shared-ui/button";
 import { SourceCodeHost } from "@/components/code/SourceCodeHost";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -179,6 +186,13 @@ type IframeLoadState = "loading" | "loaded" | "error";
 
 const CSV_PREVIEW_MAX_COLUMNS = 100;
 const CSV_PREVIEW_MAX_ROWS = 500;
+/**
+ * Every CSV body row is one truncated `leading-5` line with `py-1` and a
+ * bottom border, so this estimate is exact; `measureElement` still corrects
+ * it for zoom or font changes.
+ */
+const CSV_PREVIEW_ROW_HEIGHT_PX = 29;
+const CSV_PREVIEW_OVERSCAN_ROWS = 8;
 
 /**
  * Code previews above either budget render only a leading prefix until the
@@ -902,6 +916,28 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
   const tableWidth = `max(100%, ${3 + columns.length * 18}rem)`;
   const truncationNote = getCsvTruncationNote(preview, bodyRows.length);
 
+  // The parse cap still allows 500 x 100 = 50,000 cells, and a scroll box only
+  // clips painting, not DOM: mounting every row blocked the main thread for
+  // seconds and cost ~150k nodes (#1615). Mount only the rows near the
+  // viewport; spacer rows keep the table's natural height so the scrollbar,
+  // sticky header and sticky row-number gutter behave as before.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: bodyRows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => CSV_PREVIEW_ROW_HEIGHT_PX,
+    overscan: CSV_PREVIEW_OVERSCAN_ROWS,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const totalRowsHeight = rowVirtualizer.getTotalSize();
+  const firstVirtualRow = virtualRows[0];
+  const lastVirtualRow = virtualRows[virtualRows.length - 1];
+  const spacerTopHeight = firstVirtualRow?.start ?? 0;
+  const spacerBottomHeight =
+    lastVirtualRow === undefined
+      ? totalRowsHeight
+      : totalRowsHeight - lastVirtualRow.end;
+
   return (
     <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
       {/* Single scroll container for both axes: the sticky header row and
@@ -912,7 +948,10 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
         {/* overscroll-contain: panning a wide table past its edge must not
             chain into the browser back/forward gesture (kept alive globally —
             see app.css overscroll notes) or scroll an ancestor. */}
-        <div className="persistent-scrollbar min-h-0 overflow-auto overscroll-contain rounded-md border border-border bg-background">
+        <div
+          ref={scrollRef}
+          className="persistent-scrollbar min-h-0 overflow-auto overscroll-contain rounded-md border border-border bg-background"
+        >
           <table
             className="min-w-full table-fixed border-separate border-spacing-0 font-mono text-xs leading-5"
             aria-label={`${file.name} CSV preview`}
@@ -947,30 +986,48 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
               </tr>
             </thead>
             <tbody>
-              {bodyRows.map((row, rowIndex) => (
-                <tr key={rowIndex}>
-                  <th
-                    scope="row"
-                    className="sticky left-0 z-10 w-12 min-w-12 border-b border-r border-border bg-surface-recessed-solid px-2 py-1 text-right font-medium text-muted-foreground"
-                  >
-                    {rowIndex + 2}
-                  </th>
-                  {columns.map((column) => {
-                    const cell = row[column.index] ?? "";
-                    return (
-                      <td
-                        key={column.index}
-                        className="w-72 max-w-72 overflow-hidden border-b border-r border-border px-2 py-1 align-top text-foreground"
-                        title={cell}
-                      >
-                        <span className="block max-w-full truncate">
-                          {cell}
-                        </span>
-                      </td>
-                    );
-                  })}
+              {spacerTopHeight > 0 ? (
+                <tr aria-hidden style={{ height: spacerTopHeight }}>
+                  <td colSpan={columns.length + 1} className="p-0" />
                 </tr>
-              ))}
+              ) : null}
+              {virtualRows.map((virtualRow) => {
+                const rowIndex = virtualRow.index;
+                const row = bodyRows[rowIndex] ?? [];
+                return (
+                  <tr
+                    key={virtualRow.key}
+                    data-index={rowIndex}
+                    ref={rowVirtualizer.measureElement}
+                  >
+                    <th
+                      scope="row"
+                      className="sticky left-0 z-10 w-12 min-w-12 border-b border-r border-border bg-surface-recessed-solid px-2 py-1 text-right font-medium text-muted-foreground"
+                    >
+                      {rowIndex + 2}
+                    </th>
+                    {columns.map((column) => {
+                      const cell = row[column.index] ?? "";
+                      return (
+                        <td
+                          key={column.index}
+                          className="w-72 max-w-72 overflow-hidden border-b border-r border-border px-2 py-1 align-top text-foreground"
+                          title={cell}
+                        >
+                          <span className="block max-w-full truncate">
+                            {cell}
+                          </span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+              {spacerBottomHeight > 0 ? (
+                <tr aria-hidden style={{ height: spacerBottomHeight }}>
+                  <td colSpan={columns.length + 1} className="p-0" />
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
