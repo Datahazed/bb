@@ -954,7 +954,6 @@ describe("agent tools", () => {
     ).resolves.toEqual({
       tools: [],
       skills: [],
-      skillSlots: {},
       instructions: null,
     });
     expect(harness.logEntries.at(-1)?.message).toContain(
@@ -1024,11 +1023,11 @@ describe("agent tools", () => {
 
     expect(alpha.tools.map((tool) => tool.name)).toEqual(["alpha_tool"]);
     expect(alpha.skills).toEqual(["alpha-skill"]);
-    expect(alpha.skillSlots).toEqual({});
+    expect(alpha).not.toHaveProperty("experimental_skillSlots");
     expect(alpha.instructions).toHaveLength(4096);
     expect(beta.tools.map((tool) => tool.name)).toEqual(["beta_tool"]);
     expect(beta.skills).toEqual(["beta-skill"]);
-    expect(beta.skillSlots).toEqual({});
+    expect(beta).not.toHaveProperty("experimental_skillSlots");
     expect(contexts).toEqual([configurationContext, betaContext]);
     expect(harness.registrations.agentTools.map((tool) => tool.name)).toEqual([
       "alpha_tool",
@@ -1036,19 +1035,17 @@ describe("agent tools", () => {
     ]);
   });
 
-  it("returns generated slot content for an object skill selection", async () => {
+  it("returns generated slot content through the experimental field", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "slotted",
       agentSkillIds: ["workflow"],
     });
     bb.agents.configure(() => ({
       tools: [],
-      skills: [
-        {
-          name: "workflow",
-          slots: { preferences: "| planning | Define the work |" },
-        },
-      ],
+      skills: ["workflow"],
+      experimental_skillSlots: {
+        workflow: { preferences: "| planning | Define the work |" },
+      },
     }));
 
     await expect(
@@ -1056,7 +1053,7 @@ describe("agent tools", () => {
     ).resolves.toEqual({
       tools: [],
       skills: ["workflow"],
-      skillSlots: {
+      experimental_skillSlots: {
         workflow: { preferences: "| planning | Define the work |" },
       },
       instructions: null,
@@ -1074,7 +1071,6 @@ describe("agent tools", () => {
     ).resolves.toEqual({
       tools: [],
       skills: [],
-      skillSlots: {},
       instructions: null,
     });
     expect(unknown.harness.logEntries.at(-1)?.message).toContain(

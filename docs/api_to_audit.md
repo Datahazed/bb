@@ -252,6 +252,22 @@ uninstall, removed-section, search, keyboard, and screen-reader behavior; and
 confirm the callback surface is sufficiently declarative without allowing
 plugins to render arbitrary section-header components.
 
+## `PluginAgentConfiguration.experimental_skillSlots`
+
+**What it does.** Lets a plugin fill predefined named regions in a selected
+skill's `SKILL.md` for one agent configuration resolution. Plugins keep using
+the shipped `skills: string[]` contract, then optionally provide Markdown
+content keyed by selected skill name and slot name. The server materializes a
+content-addressed skill variant and rejects unknown skills, unselected skills,
+invalid slot names, oversized content, and missing or duplicate markers.
+
+**Audit before stabilizing.** Confirm runtime-generated skill content is the
+right ownership boundary rather than dynamic instructions or a separate
+resource; establish retention and garbage collection for generated variants;
+verify slot marker syntax composes with skill authoring tools; and preserve the
+exact pre-existing `skills: string[]` and fake-host result shapes for plugins
+that do not opt in.
+
 ## `experimental_buildBridgeToolCallContent`
 
 **Kept experimental (2026-08-22).** it still accepts two input shapes (ordered `contentBlocks` and the legacy aggregate `{ content, images }`) though every first-party caller now passes the ordered form, and no image MIME/size policy exists at the server boundary; drop the legacy input and settle the policy, then stabilize.
