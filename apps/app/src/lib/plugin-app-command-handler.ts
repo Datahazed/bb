@@ -2,7 +2,10 @@ import type {
   ExperimentalPluginAppCommandHandler,
   ExperimentalPluginAppCommandId,
 } from "@get-bb/plugin-sdk";
-import { runWithPluginDomIsolationAsync } from "./foreign-dom-mutation-guard";
+import {
+  runWithPluginDomIsolation,
+  runWithPluginDomIsolationAsync,
+} from "./foreign-dom-mutation-guard";
 
 type Owner = string | symbol;
 
@@ -48,11 +51,16 @@ export function runPluginAppCommandHandler(
       }`,
     );
   try {
-    const result = runWithPluginDomIsolationAsync(
+    const result = runWithPluginDomIsolation(
       () => registration.handler(),
       registration.pluginId,
     );
-    if (result instanceof Promise) result.catch(report);
+    if (result instanceof Promise) {
+      void runWithPluginDomIsolationAsync(
+        () => result,
+        registration.pluginId,
+      ).catch(report);
+    }
   } catch (error) {
     report(error);
   }
