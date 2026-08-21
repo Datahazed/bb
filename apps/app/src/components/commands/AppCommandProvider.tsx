@@ -87,7 +87,7 @@ function browserPlatform(): string {
 function hasOpenModal(): boolean {
   return (
     document.querySelector(
-      '[aria-modal="true"], [role="dialog"][data-state="open"]',
+      '[aria-modal="true"]:not([data-state="closed"]), [role="dialog"][data-state="open"]',
     ) !== null
   );
 }
