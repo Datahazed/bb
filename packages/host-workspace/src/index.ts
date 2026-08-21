@@ -10,6 +10,7 @@ export type { PullRequestActionOptions } from "./workspace.js";
 export {
   WorkspaceError,
   detectGitRepo,
+  detectGitRepoKind,
   fetchRemoteBranches,
   getCheckoutRef,
   getCurrentBranch,

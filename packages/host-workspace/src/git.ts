@@ -588,23 +588,69 @@ async function findWorkspaceGitOperationMarker(
   return undefined;
 }
 
+export type GitRepoKind = "work-tree" | "bare" | "none";
+
+/**
+ * Classifies `cwd` as inside a work tree, at or inside a bare repository, or
+ * not a git repository at all. A bare repository includes the "bare clone +
+ * sibling worktrees" layout where `<root>/.git` is a gitdir file pointing at
+ * `<root>/.bare`: git answers `--is-inside-work-tree` with `false` (exit 0)
+ * there, so that flag alone cannot tell it apart from a plain directory.
+ */
+export async function detectGitRepoKind(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<GitRepoKind> {
+  const result = await runGit(
+    ["rev-parse", "--is-inside-work-tree", "--is-bare-repository"],
+    { cwd, allowFailure: true, timeoutMs: options.timeoutMs },
+  );
+  if (result.exitCode !== 0) {
+    return "none";
+  }
+  const [insideWorkTree, bare] = trimOutput(result.stdout).split("\n");
+  if (insideWorkTree === "true") {
+    return "work-tree";
+  }
+  if (bare === "true") {
+    return "bare";
+  }
+  return "none";
+}
+
+/**
+ * True when `cwd` is inside a git work tree, which is what a workspace needs
+ * for status, diffs, commits, and checkouts. A bare repository root is not a
+ * work tree; use {@link detectGitSource} for worktree-source semantics.
+ */
 export async function detectGitRepo(
   cwd: string,
   options: GitTimeoutOptions = {},
 ): Promise<boolean> {
-  const result = await runGit(["rev-parse", "--is-inside-work-tree"], {
-    cwd,
-    allowFailure: true,
-    timeoutMs: options.timeoutMs,
-  });
-  return result.exitCode === 0 && trimOutput(result.stdout) === "true";
+  return (await detectGitRepoKind(cwd, options)) === "work-tree";
 }
 
+/**
+ * True when `cwd` is a git repository that can serve as the source of a
+ * worktree or a branch listing: a checkout or a bare repository.
+ */
+export async function detectGitSource(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<boolean> {
+  return (await detectGitRepoKind(cwd, options)) !== "none";
+}
+
+/**
+ * Throws `not_git_repo` unless `cwd` is a git repository (checkout or bare).
+ * Callers that need a work tree, such as `git status`, get git's own
+ * "must be run in a work tree" failure on a bare path.
+ */
 export async function ensureGitRepo(
   cwd: string,
   options: GitTimeoutOptions = {},
 ): Promise<void> {
-  if (await detectGitRepo(cwd, options)) {
+  if (await detectGitSource(cwd, options)) {
     return;
   }
 
@@ -620,7 +666,7 @@ export async function readGitRepositoryState(
   cwd: string,
   options: GitTimeoutOptions = {},
 ): Promise<GitRepositoryState> {
-  if (!(await detectGitRepo(cwd, options))) {
+  if (!(await detectGitSource(cwd, options))) {
     return "not_git";
   }
   const result = await runGit(["rev-list", "--all", "--max-count=1"], {
@@ -672,7 +718,7 @@ export async function getCheckoutRef(
   cwd: string,
   options: GitTimeoutOptions = {},
 ): Promise<GitCheckoutRef> {
-  if (!(await detectGitRepo(cwd, options))) {
+  if (!(await detectGitSource(cwd, options))) {
     return { kind: "unknown", reason: "Path is not a git repository" };
   }
 
