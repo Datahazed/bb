@@ -89,6 +89,33 @@ async function waitForSnapshot(webContents) {
   }
 }
 
+function pluginIdsIn(slotIndex) {
+  const ids = new Set();
+  for (const rows of Object.values(slotIndex)) {
+    for (const row of rows) if (row.pluginId) ids.add(row.pluginId);
+  }
+  return [...ids].sort();
+}
+
+async function waitForPlugin(webContents, pluginId) {
+  const start = Date.now();
+  let slotIndex = {};
+  for (;;) {
+    slotIndex = await webContents.executeJavaScript(READ_SNAPSHOT);
+    if (pluginIdsIn(slotIndex).includes(pluginId)) return slotIndex;
+    if (Date.now() - start > READY_TIMEOUT_MS) {
+      const seen = pluginIdsIn(slotIndex);
+      throw new Error(
+        `${pluginId} registered no surface within ${READY_TIMEOUT_MS}ms. ` +
+          (seen.length
+            ? `Plugins that did: ${seen.join(", ")}.`
+            : "No plugin registered anything — is the app signed in and past onboarding?"),
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+}
+
 /** Registrations hold React components; pull out only JSON-safe identity. */
 const READ_SNAPSHOT = `(() => {
   const s = window.__bbPluginSlotSnapshot();
@@ -119,7 +146,9 @@ async function main() {
 
   await win.loadURL(new URL("/", plan.serverUrl).toString());
   await waitForSnapshot(win.webContents);
-  const slotIndex = await win.webContents.executeJavaScript(READ_SNAPSHOT);
+  // Plugin frontends mount after the shell: wait until this plugin has
+  // registered something, or say which plugins did so the miss is debuggable.
+  const slotIndex = await waitForPlugin(win.webContents, plan.pluginId);
   const steps = planSteps(plan, slotIndex);
 
   const written = [];

@@ -1559,6 +1559,10 @@ export function registerPluginCommands(
       "Thread the shared capture fixture seeded, enabling the surfaces that need one",
     )
     .option(
+      "--app-url <url>",
+      "Where the app shell is served when it differs from the server (a source dev instance serves the app from Vite's port); defaults to the server URL",
+    )
+    .option(
       "--capture <outDir>",
       "Take the screenshots: drives a headless window at this bb, reads which surfaces the plugin registered from the running app, and writes one PNG per surface into <outDir>",
     )
@@ -1566,7 +1570,11 @@ export function registerPluginCommands(
       action(
         async (
           path: string | undefined,
-          opts: JsonOutputOptions & { fixtureThread?: string; capture?: string },
+          opts: JsonOutputOptions & {
+            fixtureThread?: string;
+            capture?: string;
+            appUrl?: string;
+          },
         ) => {
           const rootDir = resolve(process.cwd(), path ?? ".");
           const raw: unknown = JSON.parse(
@@ -1619,7 +1627,7 @@ export function registerPluginCommands(
               );
             }
             const report = await runPluginCapture({
-              serverUrl: getUrl(),
+              serverUrl: opts.appUrl ?? getUrl(),
               pluginId: plan.pluginId,
               outDir: resolve(process.cwd(), opts.capture),
               harnessPath,
