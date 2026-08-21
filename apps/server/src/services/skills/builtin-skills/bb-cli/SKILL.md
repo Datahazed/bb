@@ -302,7 +302,8 @@ status|install` to inspect or install provider CLIs on a selected machine.
   returning the stable server attachment DTO. Optional `--filename` and
   `--mime-type` override inferred metadata. Pass the returned relative `path`
   to thread `--file` or `--image`; image MIME types are capped at 10MB and
-  other files at 25MB. `bb project attachment download <project-id>
+  other files at 25MB, and image/heic or image/heif uploads are rejected
+  (convert them to JPEG or PNG first). `bb project attachment download <project-id>
 <attachment-path> --client-file <path>` writes existing attachment bytes on
   the CLI machine. There is no project-attachment list or per-file remove API.
 - `bb project history|reorder` exposes project prompt recall and sidebar order.
