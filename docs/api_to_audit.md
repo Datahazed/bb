@@ -13,9 +13,9 @@ preference, and a setter for that client-local preference. The evidence is
 [Monaco's private root-class observer](https://github.com/andrewkchan/bb-plugin-monaco/blob/f165b11328efbed70f904bb0e65d432d014c5950/app.tsx#L34-L47),
 which must choose a non-CSS editor theme, and [Theme Toggle's private
 local-storage/class manipulation](https://github.com/xMinor-1/bb-plugins/blob/3a6ef78555814fe63891eac72a145ca9c114e9a6/plugins/theme-toggle/app.tsx#L23-L74).
-[AppToaster](../apps/app/src/components/AppToaster.tsx) is the first in-repo
-consumer; the plugin SDK harness includes a representative appearance-control
-fixture for external authors.
+The host behavior test covers the existing client appearance store, while the
+plugin SDK harness includes a representative appearance-control fixture for
+external authors.
 
 The other Appearance-tagged releases did not justify widening the contract:
 [Ayu](https://github.com/vburojevic/bb-plugin-ayu/blob/8881e00888854462fc8a7c68de386fef8229f8aa/package.json)
