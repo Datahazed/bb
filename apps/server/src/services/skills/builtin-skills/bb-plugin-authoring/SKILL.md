@@ -30,7 +30,7 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9", "bbPluginSdk": ">=0.4.3" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": ">=0.4.13" },
   "bb": {
     "name": "Hello",
     "description": "A friendly example plugin.",
@@ -109,7 +109,7 @@ The manifest is `package.json`:
   different branded artwork and provide a dark variant when needed.
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
-  (currently `0.4.3`; the scaffold writes `">=0.4.3"`). bb reads it as a floor,
+  (currently `0.4.13`; the scaffold writes `">=0.4.13"`). bb reads it as a floor,
   not a ceiling: a later SDK in the same major still loads the plugin, so a
   caret range keeps working after the SDK moves forward. Absent means a legacy
   manifest. Managed (`git:`/`npm:`) installs **refuse** a plugin that needs a
@@ -1292,6 +1292,7 @@ import {
   useRealtime,
   useRealtimeConnectionState,
   useSettings,
+  experimental_useAppearance,
   useBbContext,
   useBbNavigate,
   experimental_FileLink as FileLink,
@@ -2150,6 +2151,13 @@ Hooks:
   `"reconnecting"` for the same shared socket used by `useRealtime`. Reconcile
   durable server state on subsequent transitions to `connected` (not the first
   connection) because plugin signals are ephemeral and are not replayed.
+- `experimental_useAppearance()` → `{ colorMode, colorModePreference,
+setColorModePreference }`. `colorMode` is the applied `"light" | "dark"`
+  result after resolving a `"system"` preference. Use it for non-CSS consumers
+  such as a canvas or third-party editor theme; ordinary plugin UI already
+  inherits BB's live semantic CSS variables. The preference setter is
+  client-local. Palette selection remains on `bb.sdk.theme`; the hook does not
+  expose palette ids, raw CSS, code-theme files, or CSS tokens.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
@@ -2417,6 +2425,10 @@ const slot = renderSlot(
       listNotes: () => ({ root: "/notes", notes: [], error: null }),
     }, // method → handler, calls logged
     settings: { greeting: "hi" }, // useSettings() values
+    experimental_appearance: {
+      colorMode: "dark",
+      colorModePreference: "system",
+    },
     context: { projectId: "p1", threadId: null }, // useBbContext()
     realtimeConnectionState: "reconnecting", // useRealtimeConnectionState()
     openUrl: (url) => url.startsWith("https://"),
@@ -2424,6 +2436,10 @@ const slot = renderSlot(
 );
 await slot.findByText("…"); // Testing Library queries
 await slot.behavior.setRealtimeConnectionState("connected");
+await slot.behavior.experimental_setAppearance({
+  colorMode: "light",
+  colorModePreference: "system",
+});
 await slot.behavior.setComposerScope(
   { kind: "queued-message", threadId: "t1", queuedMessageId: "q1" },
   "queued draft",
