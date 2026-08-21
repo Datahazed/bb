@@ -400,6 +400,18 @@ export interface PluginSidebarFooterActionRegistration {
   /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
   icon: string;
   /**
+   * Tooltip and accessible label while this action is active. Omission keeps
+   * `title` in both states. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_activeTitle?: string;
+  /**
+   * Host-rendered active-state adornment. The active state itself is owned by
+   * the plugin content script and set with
+   * `experimental_setSidebarFooterActionActive`.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_activeIndicator?: "dot";
+  /**
    * Runs when the user activates the action (e.g. call `openSettings()`,
    * open a panel via other surfaces, toast). Errors (sync or async) are
    * contained and logged; they never break the sidebar.
@@ -860,6 +872,158 @@ export interface PluginAppComposer {
   customize(registration: ComposerCustomization): void;
 }
 
+/** Identity and contextual metadata supplied for one inspectable UI element. */
+export interface ExperimentalUiInspectionMetadata {
+  /** Stable, code-facing name used in breadcrumbs and agent context. */
+  readonly codeName: string;
+  /** Human-facing name for the element. */
+  readonly name: string;
+  /** Semantic UI kind, for example `window`, `panel`, `action`, or `field`. */
+  readonly kind: string;
+  /** Owning component or design-system primitive when that is useful context. */
+  readonly component?: string;
+  /** Named visual or behavioral variant. */
+  readonly variant?: string;
+  /** Small, serializable state values relevant to understanding the element. */
+  readonly state?: Readonly<Record<string, JsonValue>>;
+  /** Design-token names applied by this element. */
+  readonly tokens?: readonly string[];
+  /** Small, serializable product context useful to an agent. */
+  readonly context?: Readonly<Record<string, JsonValue>>;
+  /**
+   * Optional inspectable parent when the product hierarchy differs from the
+   * DOM hierarchy. The host still owns traversal and cycle protection.
+   */
+  readonly logicalParent?: Element;
+}
+
+/** Core-stamped owner of inspected metadata; plugins cannot supply this. */
+export type ExperimentalUiInspectionSource =
+  | { readonly kind: "core" }
+  | {
+      readonly kind: "plugin";
+      readonly pluginId: string;
+      readonly displayName?: string;
+    };
+
+/** Viewport-relative bounds captured for one inspected element. */
+export interface ExperimentalUiInspectionBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+}
+
+/** Fixed computed-style projection captured by Core for the inspect card. */
+export interface ExperimentalUiInspectionStyle {
+  readonly display: string;
+  readonly position: string;
+  readonly color: string;
+  readonly backgroundColor: string;
+  readonly fontFamily: string;
+  readonly fontSize: string;
+  readonly fontWeight: string;
+  readonly lineHeight: string;
+  readonly padding: string;
+  readonly margin: string;
+  readonly border: string;
+  readonly borderRadius: string;
+  readonly gap: string;
+  readonly opacity: string;
+}
+
+/** Fixed accessibility projection captured by Core for the inspect card. */
+export interface ExperimentalUiInspectionAccessibility {
+  readonly role: string | null;
+  readonly name: string | null;
+  readonly disabled: boolean;
+  readonly expanded: boolean | null;
+  readonly pressed: boolean | null;
+  readonly selected: boolean | null;
+}
+
+/** One inspectable element in a resolved root-to-target hierarchy. */
+export interface ExperimentalUiInspectionElement {
+  /** The real element from bb's shared renderer; never serialized. */
+  readonly element: Element;
+  readonly metadata: Omit<ExperimentalUiInspectionMetadata, "logicalParent">;
+  readonly source: ExperimentalUiInspectionSource;
+  readonly bounds: ExperimentalUiInspectionBounds;
+  readonly style: ExperimentalUiInspectionStyle;
+  readonly accessibility: ExperimentalUiInspectionAccessibility;
+}
+
+/** Resolved inspection payload for the deepest inspectable element. */
+export interface ExperimentalUiInspectionTarget {
+  readonly target: ExperimentalUiInspectionElement;
+  /** Inspectable ancestors followed by `target`, ordered root-to-target. */
+  readonly hierarchy: readonly ExperimentalUiInspectionElement[];
+}
+
+/** Viewport pointer position associated with a hover or selection event. */
+export interface ExperimentalUiInspectionPointer {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** Events emitted by one active hover/select inspection session. */
+export type ExperimentalUiInspectionSessionEvent =
+  | {
+      readonly type: "hover";
+      /** Null means the pointer is not over an inspectable element. */
+      readonly target: ExperimentalUiInspectionTarget | null;
+      readonly pointer: ExperimentalUiInspectionPointer;
+    }
+  | {
+      readonly type: "select";
+      /** The host consumes the pointer activation that creates this event. */
+      readonly target: ExperimentalUiInspectionTarget;
+      readonly pointer: ExperimentalUiInspectionPointer;
+    }
+  | {
+      readonly type: "error";
+      readonly code: "target-detached" | "internal";
+      readonly message: string;
+    };
+
+export interface ExperimentalUiInspectionSessionOptions {
+  /** Errors thrown by this callback are contained and logged by the host. */
+  readonly onEvent: (event: ExperimentalUiInspectionSessionEvent) => void;
+}
+
+/** Idempotent ownership handle for registered inspectable metadata. */
+export interface ExperimentalUiInspectionRegistration {
+  dispose(): void;
+}
+
+/** Idempotent ownership handle for one active inspection session. */
+export interface ExperimentalUiInspectionSession {
+  dispose(): void;
+}
+
+/** Shared-renderer UI inspection bridge exposed to plugin content scripts. */
+export interface ExperimentalUiInspectionApi {
+  /** Register metadata for an element, stamped as owned by this plugin. */
+  register(
+    element: Element,
+    metadata: ExperimentalUiInspectionMetadata,
+  ): ExperimentalUiInspectionRegistration;
+  /** Start pointer tracking and click-to-select until the handle is disposed. */
+  startSession(
+    options: ExperimentalUiInspectionSessionOptions,
+  ): ExperimentalUiInspectionSession;
+}
+
+/** Fixed Core-owned commands that a plugin content script may handle. */
+export type ExperimentalPluginAppCommandId = "plugin.inspector.toggle";
+
+/** Handler for one fixed Core-owned app command. */
+export type ExperimentalPluginAppCommandHandler = () => void | Promise<void>;
+
 /** Stable lifecycle values for one content-script instance in one bb client. */
 export interface PluginContentScriptContext {
   /** The id of the plugin that owns this script. */
@@ -883,6 +1047,29 @@ export interface PluginContentScriptContext {
     threadId: string,
     status: PluginComposerThreadRowStatus | null,
   ) => void;
+  /**
+   * Shared-renderer metadata and hover/select inspection bridge.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  readonly experimental_uiInspection?: ExperimentalUiInspectionApi;
+  /**
+   * Set the active presentation for this plugin's registered sidebar-footer
+   * action. The host rejects action ids owned by another plugin generation.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  readonly experimental_setSidebarFooterActionActive?: (
+    actionId: string,
+    active: boolean,
+  ) => void;
+  /**
+   * Handle a fixed Core-owned, user-remappable app command. The returned
+   * disposer is idempotent and the host also clears the handler with this
+   * content-script generation. Experimental: see docs/api_to_audit.md.
+   */
+  readonly experimental_registerAppCommandHandler?: (
+    command: ExperimentalPluginAppCommandId,
+    handler: ExperimentalPluginAppCommandHandler,
+  ) => PluginContentScriptDisposer;
 }
 
 /** Cleanup returned by a frontend content script. */
