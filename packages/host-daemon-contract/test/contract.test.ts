@@ -1122,8 +1122,11 @@ describe("host-daemon command schemas", () => {
   // against its Pi provider ladder, so enrolled machines must not run that
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
+  // Version 147 lets the daemon forward a provider's re-completion of a turn
+  // that root work reopened (#1646). Older daemons drop it at intake, which
+  // leaves a thread the server reactivated on that work active until a stop.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(146);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(147);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
