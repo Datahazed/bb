@@ -25,7 +25,10 @@ import {
 } from "./provider-permissions.js";
 import {
   AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
+  agentExecutionUpdateSchema,
+  automationAgentExecutionRequestSchema,
   automationScriptInterpreterSchema,
+  automationScriptRequestSchema,
 } from "./rpc-types.js";
 
 const DURATION_PATTERN =
@@ -471,8 +474,10 @@ async function buildExecution(
     const serviceTier = flag(args, "service-tier");
     const parsedServiceTier =
       serviceTier === undefined ? undefined : parseServiceTier(serviceTier);
+    // argv is a system boundary: apply the same request policy (prompt cap)
+    // as the RPC route before the service persists anything (#2166).
     return {
-      execution: {
+      execution: automationAgentExecutionRequestSchema.parse({
         mode: "agent",
         prompt,
         providerId: provider,
@@ -492,7 +497,7 @@ async function buildExecution(
         ...(flag(args, "target-thread")
           ? { targetThreadId: flag(args, "target-thread") }
           : {}),
-      },
+      }),
     };
   }
   if (
@@ -515,8 +520,11 @@ async function buildExecution(
   const timeoutMs = parseTimeoutMs(flag(args, "timeout"));
   const env = parseScriptEnv(flag(args, "env-json"));
   const scriptSource = await loadScriptFileSource(bb, args, ctx);
-  const content = scriptSource ? scriptSource.content : script;
-  if (!content) throw new Error("Missing script content.");
+  // The CLI shape carries both the content and its source path, so only the
+  // script content is parsed with the RPC request policy (size cap) here.
+  const content = automationScriptRequestSchema.parse(
+    scriptSource ? scriptSource.content : script,
+  );
   const interpreter =
     explicitInterpreter ??
     (scriptSource ? inferInterpreterFromPath(scriptSource.path) : undefined);
@@ -591,7 +599,9 @@ async function buildAgentExecutionUpdate(
       environment: await buildAgentEnvironment(bb, args),
     };
   }
-  return update;
+  // argv is a system boundary: apply the same request policy as the RPC route
+  // so an over-cap prompt is rejected before anything is persisted (#2166).
+  return agentExecutionUpdateSchema.parse(update);
 }
 
 async function buildUpdateRequest(
