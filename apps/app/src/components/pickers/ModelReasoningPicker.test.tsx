@@ -106,17 +106,19 @@ const splitPaneContext: PaneContextValue = {
 function availableModel({
   value,
   label,
+  description = "",
   isDefault = false,
 }: {
   value: string;
   label: string;
+  description?: string;
   isDefault?: boolean;
 }): AvailableModel {
   return {
     id: value,
     model: value,
     displayName: label,
-    description: "",
+    description,
     supportedReasoningEfforts: [
       { reasoningEffort: "medium", description: "Medium" },
     ],
@@ -520,11 +522,11 @@ describe("ModelReasoningPicker", () => {
     const modelLabel = "GPT-5.3 Codex Spark";
     const { onModelChange } = renderPicker({
       modelOptions: [
-        { value: apiModel, label: modelLabel, routeProviderId: "openai" },
+        { value: apiModel, label: modelLabel, qualifier: "openai" },
         {
           value: subscriptionModel,
           label: modelLabel,
-          routeProviderId: "openai-codex",
+          qualifier: "openai-codex",
         },
       ],
       modelValue: subscriptionModel,
@@ -547,6 +549,55 @@ describe("ModelReasoningPicker", () => {
     fireEvent.click(apiQualifier);
 
     expect(onModelChange).toHaveBeenCalledWith(apiModel);
+  });
+
+  it("tells apart previewed models that share a display name (#2062)", async () => {
+    // omp exposes the same display name under several route prefixes; the
+    // agent's short description (its "provider/model" id) is the only thing
+    // that distinguishes them, so it fills the inline qualifier slot.
+    const { onModelChange } = renderPicker({
+      alternateProviderModels: [
+        availableModel({
+          value: "github-copilot/gpt-5.1",
+          label: "GPT-5.1",
+          description: "github-copilot/gpt-5.1",
+          isDefault: true,
+        }),
+        availableModel({
+          value: "openai-codex/gpt-5.1",
+          label: "GPT-5.1",
+          description: "openai-codex/gpt-5.1",
+        }),
+        availableModel({
+          value: "github-copilot/gpt-5.2",
+          label: "GPT-5.2",
+          description: "github-copilot/gpt-5.2",
+        }),
+      ],
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    fireEvent.click(screen.getByTitle("Claude Code"));
+
+    const copilotRow = (
+      await screen.findByText("github-copilot/gpt-5.1")
+    ).closest("button");
+    const codexRow = screen.getByText("openai-codex/gpt-5.1").closest("button");
+    expect(copilotRow).not.toBeNull();
+    expect(codexRow).not.toBeNull();
+    expect(copilotRow).not.toBe(codexRow);
+    expect(copilotRow?.textContent).toBe("GPT-5.1github-copilot/gpt-5.1");
+    expect(codexRow?.textContent).toBe("GPT-5.1openai-codex/gpt-5.1");
+    // A unique label keeps its plain single-segment row.
+    expect(screen.getByText("GPT-5.2").closest("button")?.textContent).toBe(
+      "GPT-5.2",
+    );
+    expect(screen.queryByText("github-copilot/gpt-5.2")).toBeNull();
+
+    fireEvent.click(screen.getByText("openai-codex/gpt-5.1"));
+
+    expect(onModelChange).toHaveBeenCalledWith("openai-codex/gpt-5.1");
   });
 
   it("fuzzy-filters a long model list and selects the match by keyboard", () => {

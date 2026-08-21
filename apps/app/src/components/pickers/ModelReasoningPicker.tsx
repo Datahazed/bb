@@ -53,7 +53,10 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import { type PickerOption } from "./OptionPicker";
-import type { ModelPickerOption } from "./model-picker-option";
+import {
+  toModelPickerOptions,
+  type ModelPickerOption,
+} from "./model-picker-option";
 import {
   formatModelLoadErrorText,
   ModelLoadErrorMessage,
@@ -148,8 +151,10 @@ function modelSearchText(
   option: ModelPickerOption,
   brandPrefix: string | undefined,
 ): string {
-  return `${stripModelBrandPrefix(option.label, brandPrefix)} ${option.routeProviderId ?? ""} ${option.value}`;
+  return `${stripModelBrandPrefix(option.label, brandPrefix)} ${option.qualifier ?? ""} ${option.value}`;
 }
+
+const identityLabel = (displayName: string): string => displayName;
 
 /**
  * A keyboard-navigable row in the model list. Each entry maps 1:1 to a rendered,
@@ -384,29 +389,13 @@ export function ModelReasoningPicker({
     if (!isPreviewing) return modelOptions;
     const models = previewQuery.data?.models;
     if (!models || models.length === 0) return [];
-    return models.map((model) => ({
-      value: model.model,
-      label: formatModelLabel
-        ? formatModelLabel(model.displayName || model.model)
-        : model.displayName || model.model,
-      ...(model.routeProviderId
-        ? { routeProviderId: model.routeProviderId }
-        : {}),
-    }));
+    return toModelPickerOptions(models, formatModelLabel ?? identityLabel);
   }, [isPreviewing, modelOptions, previewQuery.data?.models, formatModelLabel]);
   const previewMoreModelOptions = useMemo((): readonly ModelPickerOption[] => {
     if (!isPreviewing) return moreModelOptions;
     const models = previewQuery.data?.selectedOnlyModels;
     if (!models || models.length === 0) return [];
-    return models.map((model) => ({
-      value: model.model,
-      label: formatModelLabel
-        ? formatModelLabel(model.displayName || model.model)
-        : model.displayName || model.model,
-      ...(model.routeProviderId
-        ? { routeProviderId: model.routeProviderId }
-        : {}),
-    }));
+    return toModelPickerOptions(models, formatModelLabel ?? identityLabel);
   }, [
     isPreviewing,
     moreModelOptions,
@@ -1045,7 +1034,7 @@ export function ModelReasoningPicker({
                         option.label,
                         activeBrandPrefix,
                       )}
-                      qualifier={option.routeProviderId}
+                      qualifier={option.qualifier}
                       selected={!isPreviewing && option.value === modelValue}
                       onClick={() => handleModelSelect(option.value)}
                     />
@@ -1362,7 +1351,7 @@ function MoreModelsSubmenu({
             <MenuRowButton
               key={option.value}
               label={stripModelBrandPrefix(option.label, activeBrandPrefix)}
-              qualifier={option.routeProviderId}
+              qualifier={option.qualifier}
               selected={!isPreviewing && option.value === modelValue}
               onClick={() => onSelect(option.value)}
             />

@@ -22,7 +22,10 @@ import type {
   SystemProvidersQuery,
 } from "@bb/server-contract";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
-import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
+import {
+  toModelPickerOptions,
+  type ModelPickerOption,
+} from "@/components/pickers/model-picker-option";
 import type { ProviderPickerOption } from "@/components/pickers/model-brand-prefix";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
@@ -603,13 +606,7 @@ export function useThreadCreationOptions(
 
   const modelOptions = useMemo(
     (): ModelPickerOption[] =>
-      availableModels.map((model) => ({
-        value: model.model,
-        label: formatModelLabel(model.displayName || model.model),
-        ...(model.routeProviderId
-          ? { routeProviderId: model.routeProviderId }
-          : {}),
-      })),
+      toModelPickerOptions(availableModels, formatModelLabel),
     [availableModels],
   );
 
@@ -618,18 +615,13 @@ export function useThreadCreationOptions(
   // here rather than listed twice.
   const moreModelOptions = useMemo(
     (): ModelPickerOption[] =>
-      (executionOptionsQuery.data?.selectedOnlyModels ?? [])
-        .filter(
+      toModelPickerOptions(
+        (executionOptionsQuery.data?.selectedOnlyModels ?? []).filter(
           (model) =>
             !availableModels.some((active) => active.model === model.model),
-        )
-        .map((model) => ({
-          value: model.model,
-          label: formatModelLabel(model.displayName || model.model),
-          ...(model.routeProviderId
-            ? { routeProviderId: model.routeProviderId }
-            : {}),
-        })),
+        ),
+        formatModelLabel,
+      ),
     [executionOptionsQuery.data?.selectedOnlyModels, availableModels],
   );
 

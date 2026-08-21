@@ -438,6 +438,55 @@ describe("acp configOptions model catalog", () => {
     ]);
   });
 
+  it("keeps the per-option description the agent sends (#2062)", () => {
+    // omp sends description: "provider/modelId" on every model select option,
+    // and two providers can expose the same display name; the description is
+    // the only field that tells them apart downstream.
+    const models = buildModelCatalogFromConfigOptions({
+      id: "model",
+      category: "model",
+      type: "select",
+      currentValue: "github-copilot/gpt-5.1",
+      options: [
+        {
+          value: "github-copilot/gpt-5.1",
+          name: "GPT-5.1",
+          description: "github-copilot/gpt-5.1",
+        },
+        {
+          value: "openai-codex/gpt-5.1",
+          name: "GPT-5.1",
+          description: "openai-codex/gpt-5.1",
+        },
+        { value: "opencode/big-pickle", name: "Big Pickle" },
+      ],
+    });
+
+    expect(
+      models.map((model) => ({
+        id: model.id,
+        displayName: model.displayName,
+        description: model.description,
+      })),
+    ).toEqual([
+      {
+        id: "github-copilot/gpt-5.1",
+        displayName: "GPT-5.1",
+        description: "github-copilot/gpt-5.1",
+      },
+      {
+        id: "openai-codex/gpt-5.1",
+        displayName: "GPT-5.1",
+        description: "openai-codex/gpt-5.1",
+      },
+      {
+        id: "opencode/big-pickle",
+        displayName: "Big Pickle",
+        description: "",
+      },
+    ]);
+  });
+
   it("finds and maps ACP thought_level config options", () => {
     const thoughtLevel = {
       id: "effort",

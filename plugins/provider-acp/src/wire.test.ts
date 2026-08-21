@@ -47,6 +47,11 @@ describe("acpSessionNewResultSchema", () => {
             {
               value: "openai-codex/gpt-5.5",
               name: "openai-codex/GPT-5.5",
+              description: "openai-codex/gpt-5.5",
+            },
+            {
+              value: "github-copilot/gpt-5.5",
+              name: "GPT-5.5",
               description: null,
             },
           ],
@@ -72,6 +77,12 @@ describe("acpSessionNewResultSchema", () => {
     expect(parsed.data.configOptions?.[0].options?.[0].name).toBe(
       "openai-codex/GPT-5.5",
     );
+    expect(parsed.data.configOptions?.[0].options?.[0].description).toBe(
+      "openai-codex/gpt-5.5",
+    );
+    expect(
+      parsed.data.configOptions?.[0].options?.[1].description,
+    ).toBeUndefined();
     expect(parsed.data.configOptions?.[1].category).toBeUndefined();
     expect(parsed.data.configOptions?.[1].options?.[0].name).toBeUndefined();
   });

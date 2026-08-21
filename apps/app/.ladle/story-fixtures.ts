@@ -145,47 +145,47 @@ export const STORY_PI_MODELS: readonly ModelPickerOption[] = [
   {
     value: "openai-codex/gpt-5.5",
     label: "GPT-5.5",
-    routeProviderId: "openai-codex",
+    qualifier: "openai-codex",
   },
   {
     value: "openai-codex/gpt-5.4",
     label: "GPT-5.4",
-    routeProviderId: "openai-codex",
+    qualifier: "openai-codex",
   },
   {
     value: "openai-codex/gpt-5.4-mini",
     label: "GPT-5.4 Mini",
-    routeProviderId: "openai-codex",
+    qualifier: "openai-codex",
   },
   {
     value: "openai-codex/gpt-5.3-codex",
     label: "GPT-5.3 Codex",
-    routeProviderId: "openai-codex",
+    qualifier: "openai-codex",
   },
   {
     value: "openai/gpt-5.3-codex-spark",
     label: "GPT-5.3 Codex Spark",
-    routeProviderId: "openai",
+    qualifier: "openai",
   },
   {
     value: "openai-codex/gpt-5.3-codex-spark",
     label: "GPT-5.3 Codex Spark",
-    routeProviderId: "openai-codex",
+    qualifier: "openai-codex",
   },
   {
     value: "anthropic/claude-haiku-4-5",
     label: "Claude Haiku 4.5",
-    routeProviderId: "anthropic",
+    qualifier: "anthropic",
   },
   {
     value: "anthropic/claude-opus-4-8",
     label: "Claude Opus 4.8",
-    routeProviderId: "anthropic",
+    qualifier: "anthropic",
   },
   {
     value: "anthropic/claude-opus-4-7",
     label: "Claude Opus 4.7",
-    routeProviderId: "anthropic",
+    qualifier: "anthropic",
   },
 ];
 

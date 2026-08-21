@@ -597,7 +597,7 @@ describe("useThreadCreationOptions", () => {
       expect(result.current.modelOptions[0]).toEqual({
         value: "global-model",
         label: "Global Model",
-        routeProviderId: "openai-codex",
+        qualifier: "openai-codex",
       });
     });
   });

@@ -101,9 +101,7 @@ function makeAvailableModels({
     id: model.value,
     model: model.value,
     displayName: model.label,
-    ...(model.routeProviderId
-      ? { routeProviderId: model.routeProviderId }
-      : {}),
+    ...(model.qualifier ? { routeProviderId: model.qualifier } : {}),
     description: "",
     supportedReasoningEfforts,
     defaultReasoningEffort,
