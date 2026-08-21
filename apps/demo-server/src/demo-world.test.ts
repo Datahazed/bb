@@ -85,6 +85,27 @@ function texts(timeline: ThreadTimelineResponse): string[] {
   );
 }
 
+function sentUserRow(timeline: ThreadTimelineResponse, text: string) {
+  return timeline.rows.find(
+    (row) =>
+      row.kind === "conversation" && row.role === "user" && row.text === text,
+  );
+}
+
+function rowIdentities(
+  timeline: ThreadTimelineResponse,
+  turnId: string | null | undefined,
+) {
+  return timeline.rows
+    .filter((row) => row.turnId === turnId)
+    .map((row) => ({
+      id: row.id,
+      turnId: row.turnId,
+      sourceSeqStart: row.sourceSeqStart,
+      sourceSeqEnd: row.sourceSeqEnd,
+    }));
+}
+
 describe("demo world routes", () => {
   it("answers every launch-path route with a body the contract accepts", async () => {
     const { get } = createWorld();
@@ -328,6 +349,56 @@ describe("sending a message", () => {
     expect(texts(timeline).at(-2)).toBe(
       `user: turn ${MAX_TURNS_PER_THREAD + 4}`,
     );
+  });
+
+  it("preserves retained turn identity and sequence through eviction", async () => {
+    const { get, send, advance } = createWorld();
+    for (let index = 0; index < MAX_TURNS_PER_THREAD; index += 1) {
+      await send(
+        "POST",
+        `/api/v1/threads/${THREAD_ID}/send`,
+        sendBody(`turn ${index}`),
+      );
+      advance(REPLY_DELAY_MS);
+    }
+
+    const before = await parsed(
+      get(`/api/v1/threads/${THREAD_ID}/timeline`),
+      threadTimelineResponseSchema,
+    );
+    const retainedBefore = sentUserRow(before, "turn 1");
+    const latestBefore = sentUserRow(
+      before,
+      `turn ${MAX_TURNS_PER_THREAD - 1}`,
+    );
+    expect(retainedBefore).toBeDefined();
+    expect(latestBefore).toBeDefined();
+
+    await send(
+      "POST",
+      `/api/v1/threads/${THREAD_ID}/send`,
+      sendBody(`turn ${MAX_TURNS_PER_THREAD}`),
+    );
+    const pending = await parsed(
+      get(`/api/v1/threads/${THREAD_ID}/timeline`),
+      threadTimelineResponseSchema,
+    );
+    const latestPending = sentUserRow(pending, `turn ${MAX_TURNS_PER_THREAD}`);
+    expect(latestPending).toBeDefined();
+    expect(latestPending?.turnId).not.toBe(latestBefore?.turnId);
+    expect(pending.maxSeq).toBeGreaterThan(before.maxSeq);
+
+    advance(REPLY_DELAY_MS);
+    const after = await parsed(
+      get(`/api/v1/threads/${THREAD_ID}/timeline`),
+      threadTimelineResponseSchema,
+    );
+    const retainedAfter = sentUserRow(after, "turn 1");
+    expect(retainedAfter).toBeDefined();
+    expect(rowIdentities(after, retainedAfter?.turnId)).toEqual(
+      rowIdentities(before, retainedBefore?.turnId),
+    );
+    expect(after.maxSeq).toBeGreaterThan(pending.maxSeq);
   });
 });
 

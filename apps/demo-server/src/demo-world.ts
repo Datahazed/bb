@@ -85,6 +85,8 @@ const THREAD_PATH =
   /^\/threads\/(thr_[a-z0-9]+)(?:\/([a-z-]+(?:\/[a-z0-9_-]+)*))?$/u;
 
 interface SentTurn {
+  turnId: string;
+  sourceSeq: number;
   text: string;
   sentAt: number;
 }
@@ -92,6 +94,8 @@ interface SentTurn {
 interface ThreadState {
   seed: DemoThreadSeed;
   turns: SentTurn[];
+  nextTurnNumber: number;
+  nextSourceSeq: number;
 }
 
 export interface DemoWorldOptions {
@@ -157,7 +161,15 @@ export class DemoWorld {
   private readonly now: () => number;
   private readonly schedule: (fn: () => void, ms: number) => void;
   private readonly threads = new Map<string, ThreadState>(
-    DEMO_THREADS.map((seed) => [seed.id, { seed, turns: [] }]),
+    DEMO_THREADS.map((seed): [string, ThreadState] => [
+      seed.id,
+      {
+        seed,
+        turns: [],
+        nextTurnNumber: 1,
+        nextSourceSeq: seed.rows(seed.id, 0).length + 1,
+      },
+    ]),
   );
   private readonly queued = new Map<string, ThreadQueuedMessage[]>();
   private readonly listeners = new Set<
@@ -402,41 +414,42 @@ export class DemoWorld {
   private timeline(state: ThreadState, now: number): ThreadTimelineResponse {
     const threadId = state.seed.id;
     const rows = state.seed.rows(threadId, seedStartedAt(state.seed, now));
-    let seq = rows.length;
-    for (const [index, turn] of state.turns.entries()) {
-      const turnId = `${threadId}-sent-${index + 1}`;
+    let maxSeq = rows.length;
+    for (const turn of state.turns) {
       rows.push(
         conversationRow({
           threadId,
-          turnId,
-          seq: ++seq,
+          turnId: turn.turnId,
+          seq: turn.sourceSeq,
           at: turn.sentAt,
           role: "user",
           text: turn.text,
         }),
       );
+      maxSeq = turn.sourceSeq;
       if (this.replyPending(turn, now)) continue;
       rows.push(
         commandRow({
           threadId,
-          turnId,
-          seq: ++seq,
+          turnId: turn.turnId,
+          seq: turn.sourceSeq + 1,
           at: turn.sentAt + 400,
           ...DEMO_REPLY_COMMAND,
         }),
         conversationRow({
           threadId,
-          turnId,
-          seq: ++seq,
+          turnId: turn.turnId,
+          seq: turn.sourceSeq + 2,
           at: turn.sentAt + REPLY_DELAY_MS,
           role: "assistant",
           text: DEMO_REPLY,
         }),
       );
+      maxSeq = turn.sourceSeq + 2;
     }
     return {
       rows,
-      maxSeq: seq,
+      maxSeq,
       activePromptMode: null,
       activeThinking: null,
       activeWorkflows: [],
@@ -467,7 +480,13 @@ export class DemoWorld {
    * lost timer only delays the second notice.
    */
   private appendTurn(state: ThreadState, text: string, now: number): void {
-    state.turns.push({ text, sentAt: now });
+    state.turns.push({
+      turnId: `${state.seed.id}-sent-${state.nextTurnNumber++}`,
+      sourceSeq: state.nextSourceSeq,
+      text,
+      sentAt: now,
+    });
+    state.nextSourceSeq += 3;
     if (state.turns.length > MAX_TURNS_PER_THREAD) {
       state.turns.splice(0, state.turns.length - MAX_TURNS_PER_THREAD);
     }
