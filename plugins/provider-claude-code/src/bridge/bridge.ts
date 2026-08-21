@@ -856,6 +856,17 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     }),
   );
 
+  // The session's bb-injected tools: a call to one is a bb tool and reads the
+  // way its definition says (Q31).
+  const translator = createClaudeDeltaTranslator();
+  translator.configureInjectedTools(
+    (args.sessionConstructionConfig.dynamicTools ?? []).map((tool) => ({
+      name: tool.name,
+      ...(tool.presentation === undefined
+        ? {}
+        : { presentation: tool.presentation }),
+    })),
+  );
   const threadSession: ThreadSession = {
     session,
     sessionConstructionConfig: args.sessionConstructionConfig,
@@ -864,7 +875,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     closing: false,
     restartBeforeNextTurnReason: null,
     streamEnded: false,
-    translator: createClaudeDeltaTranslator(),
+    translator,
     pendingInteractiveRequests: new Map(),
     permissionEscalation: args.permissionEscalation,
     permissionEscalationByAgentId: new Map(),

@@ -12,6 +12,7 @@ import type {
   ResolvedThreadExecutionOptions,
   SystemThreadProvisioningStatus,
   JsonValue,
+  ThreadEventItemPresentation,
   ThreadEventRow,
   ThreadEventRowOfType,
   SystemThreadInterruptedReason,
@@ -127,12 +128,29 @@ interface ToolCallCompletedArgs extends ProviderTurnEventOptions {
   arguments?: Record<string, JsonValue>;
   error?: string;
   itemId?: string;
+  presentation?: ThreadEventItemPresentation;
   result?: JsonValue;
   status?: "pending" | "completed" | "failed" | "interrupted";
   tool?: string;
 }
 
 type ToolCallStartedArgs = ToolCallCompletedArgs;
+
+interface FileReadEventArgs extends ProviderTurnEventOptions {
+  itemId?: string;
+  path: string;
+  cmd?: string;
+  status?: "pending" | "completed" | "failed" | "interrupted";
+}
+
+interface SearchEventArgs extends ProviderTurnEventOptions {
+  itemId?: string;
+  mode: "content" | "path" | "list";
+  query: string;
+  path?: string;
+  cmd?: string;
+  status?: "pending" | "completed" | "failed" | "interrupted";
+}
 
 interface DelegationEventArgs extends ProviderTurnEventOptions {
   itemId?: string;
@@ -349,6 +367,16 @@ export interface TimelineEventFactory {
   toolCallStarted(
     args: ToolCallStartedArgs,
   ): ThreadEventRowOfType<"item/started">;
+  fileReadStarted(
+    args: FileReadEventArgs,
+  ): ThreadEventRowOfType<"item/started">;
+  fileReadCompleted(
+    args: FileReadEventArgs,
+  ): ThreadEventRowOfType<"item/completed">;
+  searchStarted(args: SearchEventArgs): ThreadEventRowOfType<"item/started">;
+  searchCompleted(
+    args: SearchEventArgs,
+  ): ThreadEventRowOfType<"item/completed">;
   threadCompacted(
     args?: ProviderTurnEventOptions,
   ): ThreadEventRowOfType<"thread/compacted">;
@@ -858,6 +886,9 @@ export function createTimelineEventFactory(
             result: args.result,
             error: args.error,
             status: args.status ?? "completed",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
           },
         },
       };
@@ -915,6 +946,81 @@ export function createTimelineEventFactory(
             result: args.result,
             error: args.error,
             status: args.status ?? "pending",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
+          },
+        },
+      };
+    },
+    fileReadStarted(args) {
+      const base = nextProviderTurnScopedRowBase("file-read-started", args);
+      return {
+        ...base,
+        type: "item/started",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "fileRead",
+            id: args.itemId ?? `file-read-${base.seq}`,
+            path: args.path,
+            ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
+            status: args.status ?? "pending",
+          },
+        },
+      };
+    },
+    fileReadCompleted(args) {
+      const base = nextProviderTurnScopedRowBase("file-read-completed", args);
+      return {
+        ...base,
+        type: "item/completed",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "fileRead",
+            id: args.itemId ?? `file-read-${base.seq}`,
+            path: args.path,
+            ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
+            status: args.status ?? "completed",
+          },
+        },
+      };
+    },
+    searchStarted(args) {
+      const base = nextProviderTurnScopedRowBase("search-started", args);
+      return {
+        ...base,
+        type: "item/started",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "search",
+            id: args.itemId ?? `search-${base.seq}`,
+            mode: args.mode,
+            query: args.query,
+            ...(args.path === undefined ? {} : { path: args.path }),
+            ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
+            status: args.status ?? "pending",
+          },
+        },
+      };
+    },
+    searchCompleted(args) {
+      const base = nextProviderTurnScopedRowBase("search-completed", args);
+      return {
+        ...base,
+        type: "item/completed",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "search",
+            id: args.itemId ?? `search-${base.seq}`,
+            mode: args.mode,
+            query: args.query,
+            ...(args.path === undefined ? {} : { path: args.path }),
+            ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
+            status: args.status ?? "completed",
           },
         },
       };

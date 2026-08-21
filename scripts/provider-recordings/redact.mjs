@@ -7,7 +7,7 @@
  *
  * Every `*.ndjson` under <in-dir> is rewritten under <out-dir> at the same
  * relative path; other files are copied. For each entry the recorded `line`
- * is rewritten:
+ * (or, for a converted transcript, the bare message line) is rewritten:
  *
  *   1. structurally (when it parses as JSON): provider tool and command
  *      catalogs collapse to names, `env`/`envVars` maps lose secret-shaped
@@ -183,6 +183,11 @@ function redactLine(line) {
 
 function createTextRedactor(home) {
   const homePattern = new RegExp(escapeRegExp(home), "g");
+  // Claude Code names its per-project transcript directories and task output
+  // paths after the cwd with every `/` turned into `-` (`-home-user-…`).
+  const dashedHome = home.replace(/\//g, "-");
+  const dashedHomePattern = new RegExp(escapeRegExp(dashedHome), "g");
+  const dashedRedactedHome = REDACTED_HOME.replace(/\//g, "-");
   // `ls -l` owner/group columns name the account even when no path does.
   const userName = home.split("/").filter(Boolean).at(-1) ?? "";
   const ownerPattern =
@@ -190,7 +195,9 @@ function createTextRedactor(home) {
       ? null
       : new RegExp(`(\\s)${escapeRegExp(userName)} ${escapeRegExp(userName)}(\\s)`, "g");
   return (text) => {
-    let out = text.replace(homePattern, REDACTED_HOME);
+    let out = text
+      .replace(homePattern, REDACTED_HOME)
+      .replace(dashedHomePattern, dashedRedactedHome);
     if (ownerPattern !== null) {
       out = out.replace(ownerPattern, "$1user user$2");
     }
@@ -214,9 +221,10 @@ function createTextRedactor(home) {
 
 function createSurvivorSweep(home) {
   const homePattern = new RegExp(escapeRegExp(home), "g");
+  const dashedHomePattern = new RegExp(escapeRegExp(home.replace(/\//g, "-")), "g");
   return (text) => {
     const survivors = [];
-    for (const pattern of [homePattern, EMAIL_PATTERN, AUTHORIZATION_PATTERN, ...TOKEN_PATTERNS]) {
+    for (const pattern of [homePattern, dashedHomePattern, EMAIL_PATTERN, AUTHORIZATION_PATTERN, ...TOKEN_PATTERNS]) {
       pattern.lastIndex = 0;
       for (const match of text.matchAll(pattern)) {
         const hit = match[0];
@@ -244,13 +252,22 @@ function walk(dir, out = []) {
   return out;
 }
 
+/**
+ * A recording entry wraps the provider line (`{ ts, seq, dir, line }`); a
+ * converted transcript (convert-claude-transcript.mjs) is the bare message
+ * per line. Both redact the same way.
+ */
 function redactNdjson(text, redactText) {
   const lines = text.split("\n").filter((line) => line.length > 0);
   const out = [];
   for (const raw of lines) {
     const entry = JSON.parse(raw);
-    const structural = redactLine(entry.line);
-    out.push(JSON.stringify({ ...entry, line: redactText(structural) }));
+    if (entry !== null && typeof entry === "object" && typeof entry.line === "string") {
+      const structural = redactLine(entry.line);
+      out.push(JSON.stringify({ ...entry, line: redactText(structural) }));
+    } else {
+      out.push(redactText(redactLine(raw)));
+    }
   }
   return `${out.join("\n")}\n`;
 }
