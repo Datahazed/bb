@@ -208,6 +208,16 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
     ],
   },
   {
+    label: "Plugins",
+    commands: [
+      command(
+        "plugin.inspector.toggle",
+        "Toggle UI inspector",
+        "Start or stop the Plugin Guide UI inspector.",
+      ),
+    ],
+  },
+  {
     label: "Questions",
     commands: QUESTION_SELECT_APP_COMMAND_IDS.map((id, index) =>
       command(

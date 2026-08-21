@@ -48,6 +48,14 @@ import {
   clearPluginThreadRowStatusesByOwner,
   setPluginThreadRowStatus,
 } from "./plugin-thread-row-status";
+import {
+  clearPluginSidebarFooterActionActiveByOwner,
+  setPluginSidebarFooterActionActive,
+} from "./plugin-sidebar-footer-action-state";
+import {
+  clearPluginAppCommandHandlerByOwner,
+  registerPluginAppCommandHandler,
+} from "./plugin-app-command-handler";
 import { createPluginUiInspectionApi } from "./ui-inspection";
 
 /**
@@ -475,6 +483,8 @@ async function disposeGeneration(
     if (failure !== null) failures.push(failure);
   }
   clearPluginThreadRowStatusesByOwner(activation.statusOwner);
+  clearPluginSidebarFooterActionActiveByOwner(activation.statusOwner);
+  clearPluginAppCommandHandlerByOwner(activation.statusOwner);
   return failures;
 }
 
@@ -520,6 +530,51 @@ async function mountWithTimeout(
           generation,
           signal: controller.signal,
           experimental_uiInspection: uiInspection,
+          experimental_setSidebarFooterActionActive: (
+            actionId: unknown,
+            active: unknown,
+          ) => {
+            if (controller.signal.aborted) return;
+            if (typeof actionId !== "string" || actionId.trim().length === 0) {
+              deps.warn(
+                `bb plugin "${pluginId}": contentScript.experimental_setSidebarFooterActionActive: "actionId" must be a non-empty string`,
+              );
+              return;
+            }
+            if (typeof active !== "boolean") {
+              deps.warn(
+                `bb plugin "${pluginId}": contentScript.experimental_setSidebarFooterActionActive: "active" must be a boolean`,
+              );
+              return;
+            }
+            setPluginSidebarFooterActionActive(
+              pluginId,
+              actionId.trim(),
+              active,
+              statusOwner,
+            );
+          },
+          experimental_registerAppCommandHandler: (command, handler) => {
+            if (controller.signal.aborted) return () => {};
+            if (command !== "plugin.inspector.toggle") {
+              deps.warn(
+                `bb plugin "${pluginId}": contentScript.experimental_registerAppCommandHandler: unsupported command ${JSON.stringify(command)}`,
+              );
+              return () => {};
+            }
+            if (typeof handler !== "function") {
+              deps.warn(
+                `bb plugin "${pluginId}": contentScript.experimental_registerAppCommandHandler: "handler" must be a function`,
+              );
+              return () => {};
+            }
+            return registerPluginAppCommandHandler(
+              command,
+              handler,
+              pluginId,
+              statusOwner,
+            );
+          },
           experimental_setThreadRowStatus: (
             threadId: unknown,
             status: unknown,

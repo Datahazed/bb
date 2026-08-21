@@ -298,6 +298,8 @@ describe("collectPluginAppRegistrations", () => {
         id: "remote",
         title: "Remote access",
         icon: "Smartphone",
+        experimental_activeTitle: "Stop inspecting",
+        experimental_activeIndicator: "dot",
         run,
       });
       app.slots.fileOpener({
@@ -371,6 +373,8 @@ describe("collectPluginAppRegistrations", () => {
         id: "remote",
         title: "Remote access",
         icon: "Smartphone",
+        experimental_activeTitle: "Stop inspecting",
+        experimental_activeIndicator: "dot",
         run,
       },
     ]);
@@ -638,6 +642,20 @@ describe("collectPluginAppRegistrations", () => {
           } as never);
         }),
       /"run" must be a function/,
+    ],
+    [
+      "sidebar footer action invalid active indicator",
+      () =>
+        definePluginApp((app) => {
+          app.slots.sidebarFooterAction({
+            id: "x",
+            title: "X",
+            icon: "Smartphone",
+            experimental_activeIndicator: "badge" as never,
+            run: () => {},
+          });
+        }),
+      /"experimental_activeIndicator" must be "dot"/,
     ],
     [
       "nav panel path with slash",
