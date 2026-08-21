@@ -1569,8 +1569,11 @@ or persisted source strings: the existing `bb.app` build emits a normal CSP-
 compatible ESM bundle.
 
 The host mounts scripts in registration order after the bundle loads and
-`definePluginApp` setup validates. `mount` receives
-`{ pluginId, generation, signal, experimental_setThreadRowStatus? }`:
+`definePluginApp` setup validates. `mount` receives `{ pluginId, generation,
+signal, experimental_uiInspection?,
+experimental_setSidebarFooterActionActive?,
+experimental_registerAppCommandHandler?, experimental_navigateToCompose?,
+experimental_setThreadRowStatus? }`:
 `generation` is a monotonic per-window mount attempt number, and `signal`
 aborts before cleanup starts. The optional experimental setter targets an
 explicit thread row with `{ icon, label, tone? }` or clears it with `null`.
@@ -1578,6 +1581,44 @@ Use `tone: "running"` for the host's animated running treatment. The host
 scopes statuses to the calling plugin and automatically clears them when that
 frontend generation deactivates; feature-detect the setter for compatibility
 with older bb clients.
+
+`experimental_uiInspection` is the feature-detected UI Inspector bridge. Its
+`register(element, metadata)` call makes a plugin-owned element inspectable;
+metadata requires `{ codeName, name, kind }` and may add `component`, `variant`,
+serializable `state`, `tokens`, serializable `context`, and a DOM
+`logicalParent`. `startSession({ onEvent })` yields hover, select, and error
+events containing a root-to-target hierarchy, Core/plugin source identity,
+bounds, a fixed computed-style snapshot, and a fixed accessibility snapshot.
+The returned registration and session handles are idempotently disposable and
+the host also disposes them when `signal` aborts. Element references remain
+renderer-local; copied inspection payloads must use only serializable fields.
+
+`experimental_setSidebarFooterActionActive(actionId, active)` changes the
+presentation of one footer action registered by the calling plugin. Pair it
+with optional registration fields `experimental_activeTitle` and
+`experimental_activeIndicator: "dot"`. The host keeps the existing `run`
+callback unchanged, paints selected treatment plus the dot, updates the
+tooltip/accessibility label, sets `aria-pressed`, and clears the state on
+frontend-generation teardown.
+
+An inspector's own footer action may also set
+`experimental_inspectionActivationPassthrough: true`. While inspection is
+active, the host still reports hover metadata for that action but lets its
+pointer activation reach the existing `run` callback so the same control can
+stop inspection. Do not use it for unrelated footer actions.
+
+`experimental_registerAppCommandHandler("plugin.inspector.toggle", handler)`
+connects the one fixed, user-remappable UI Inspector command to the same toggle
+used by the footer action. Feature-detect it on older bb clients. The returned
+disposer and generation teardown remove the handler; synchronous and async
+handler errors are contained. This is a single command hook, not a general
+plugin keybinding registry.
+
+`experimental_navigateToCompose({ initialPrompt?, focusPrompt? })` asks the
+app's React Router host to open the root composer while preserving normal
+Back/Forward history. It returns `false` when no app navigation host is
+mounted. Use this bridge for a content-script handoff instead of writing
+`window.history` directly, and feature-detect it on older bb clients.
 
 A script may return nothing, a disposer, or a promise of either; async mount
 setup is time-boxed to 10 seconds. Keep long-running work outside the returned
@@ -1763,12 +1804,22 @@ target? })`. Inside the fixed-tab component,
 - `sidebarFooterAction` → host-rendered icon button in the app sidebar footer
   (next to Settings / bug report). No plugin component — the host paints
   the chrome so icons stay consistent. Registration:
-  `{ id, title, icon, run }`. Activating it calls
+  `{ id, title, icon, experimental_activeTitle?,
+experimental_activeIndicator?, experimental_inspectionActivationPassthrough?,
+run }`. Activating it calls
   `run({ openSettings })` — use `openSettings()` to open this plugin's
   detail page in Tools, or do anything else (rpc, toast). Errors from `run`
   (sync or async) are contained and logged,
   never breaking the sidebar. `title` is the tooltip + accessible label;
   `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).
+  Experimental active presentation is feature-detected: use
+  `experimental_activeTitle` for the active tooltip/accessibility label and
+  `experimental_activeIndicator: "dot"` for the host-painted dot, then call
+  `experimental_setSidebarFooterActionActive` from a content script to set
+  `aria-pressed` and selected styling for this plugin-owned action. An
+  inspector toggle may additionally set
+  `experimental_inspectionActivationPassthrough: true` so the active control's
+  pointer activation reaches `run` instead of selecting itself.
 - `fileOpener` → `{ path: string, source, experimental_Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Matching files use the first applicable opener in deterministic slot order
