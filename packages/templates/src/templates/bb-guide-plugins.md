@@ -260,6 +260,17 @@ added/updated/unchanged counts.
                                  major/version, artifactFormatVersion,
                                  pluginId, pluginVersion, and builtWith (bb +
                                  plugin SDK versions); no server required
+  bb plugin screenshot [path]    Plan the listing screenshots for a plugin
+                                 (default: cwd): reads the surfaces its
+                                 frontend registers and reports one shot per
+                                 surface, with the route to capture and the
+                                 file to write. Surfaces that only exist
+                                 inside a thread, composer, or open file need
+                                 the shared capture fixture — pass
+                                 --fixture-thread <id> to include them.
+                                 --json for the raw plan. A plugin that
+                                 registers no visual surface plans nothing,
+                                 which is not an error
   bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
                                  on every change rebuild its declared frontend
                                  (unminified, for readable stack traces),
@@ -467,6 +478,14 @@ bb — depend on the published `bb-app` package and call the CLI:
 "devDependencies": { "bb-app": "^0.35.1" },
 "scripts": { "build": "bb plugin build" }
 ```
+
+A listing needs screenshots of the plugin's own surfaces, so `bb plugin
+screenshot` reads which surfaces the plugin registers and plans one shot each:
+a nav panel is captured at `/plugins/<id>/<panel>`, and surfaces that only
+exist inside a thread, composer, or open file are captured against one shared
+fixture workspace used for every plugin, so listings stay comparable and no
+author has to build a fixture. It reads source, not `dist/`, so it works
+before the plugin has been built or installed anywhere.
 
 `bb plugin build` talks to no server. Depending on `bb-app@X` builds with
 exactly that release's shim configuration, so the bundle cannot be built

@@ -27,6 +27,7 @@ import {
   syncPluginTypes,
   type PluginPackageLayoutMigration,
 } from "@bb/templates/plugin-scaffold";
+import { planPluginScreenshots } from "../plugin-screenshot.js";
 import { action } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import {
@@ -1541,6 +1542,62 @@ export function registerPluginCommands(
           console.log(relative(process.cwd(), file));
         }
       }),
+    );
+
+  plugin
+    .command("screenshot [path]")
+    .description(
+      "Plan the listing screenshots for a plugin: reads the surfaces its frontend registers and reports one shot per surface. Surfaces that only exist inside a thread, composer, or open file need the shared capture fixture",
+    )
+    .option("--json", "Output JSON")
+    .option(
+      "--fixture-thread <id>",
+      "Thread the shared capture fixture seeded, enabling the surfaces that need one",
+    )
+    .action(
+      action(
+        async (
+          path: string | undefined,
+          opts: JsonOutputOptions & { fixtureThread?: string },
+        ) => {
+          const rootDir = resolve(process.cwd(), path ?? ".");
+          const raw: unknown = JSON.parse(
+            await readFile(join(rootDir, "package.json"), "utf8"),
+          );
+          const packageName = pluginPackageSummarySchema.parse(raw).name;
+          if (packageName === undefined) {
+            throw new Error(`No plugin package name in ${rootDir}/package.json`);
+          }
+          const plan = await planPluginScreenshots({
+            rootDir,
+            pluginId: derivePluginId(packageName),
+            ...(opts.fixtureThread === undefined
+              ? {}
+              : { fixtureThreadId: opts.fixtureThread }),
+          });
+          if (opts.json) {
+            outputJson(opts, plan);
+            return;
+          }
+          if (plan.slots.length === 0) {
+            // Not a failure: a plugin that only adds agent tools or a provider
+            // paints nothing, and its listing should not wait on a screenshot
+            // that cannot exist.
+            console.log(
+              `${plan.pluginId} registers no visual surface — no listing screenshots to take.`,
+            );
+            return;
+          }
+          for (const step of plan.steps) {
+            console.log(`${step.outputFile}  ${step.url}  (${step.slot})`);
+          }
+          for (const slot of plan.needsFixture) {
+            console.log(
+              `skipped ${slot} — needs the capture fixture; pass --fixture-thread <id>`,
+            );
+          }
+        },
+      ),
     );
 
   plugin
