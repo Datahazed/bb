@@ -6,24 +6,12 @@ import {
   useState,
 } from "react";
 import type { WorkspaceFile } from "@bb/server-contract";
-import { createRetryingModuleLoader } from "@/lib/plugin-frontend-lazy";
 // Type-only: the runtime edge to `@pierre/trees` is the dynamic `import()`
 // below, so the tree library stays out of the thread route's static closure
 // (bundle-budget.json forbids it there).
 import type { ThreadStorageTreeModel } from "./ThreadStorageFileTree";
 
 const EMPTY_STORAGE_FILES: readonly WorkspaceFile[] = [];
-
-type ThreadStorageFileTreeModule = typeof import("./ThreadStorageFileTree");
-
-/**
- * Loads the tree chunk once and re-tries after a failed fetch, so a flaky
- * network cannot leave the storage browser without a tree for good.
- */
-const loadThreadStorageFileTree =
-  createRetryingModuleLoader<ThreadStorageFileTreeModule>(
-    () => import("./ThreadStorageFileTree"),
-  );
 
 export type ThreadStoragePathSelectHandler = (path: string) => void;
 
@@ -43,6 +31,8 @@ export interface ThreadStorageBrowserController {
   openSearch: () => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  /** A rejected tree chunk import cannot be retried in the same document. */
+  treeLoadError: Error | null;
 }
 
 function buildDirectoryPaths(paths: readonly string[]): string[] {
@@ -128,12 +118,14 @@ export function useThreadStorageBrowser({
   );
 
   const [model, setModel] = useState<ThreadStorageTreeModel | null>(null);
+  const [treeLoadError, setTreeLoadError] = useState<Error | null>(null);
   const shouldLoadTree = loadedFiles.length > 0;
   useEffect(() => {
     if (!shouldLoadTree) return;
     let cancelled = false;
     let createdModel: ThreadStorageTreeModel | null = null;
-    void loadThreadStorageFileTree().then(
+    setTreeLoadError(null);
+    void import("./ThreadStorageFileTree").then(
       ({ createThreadStorageTreeModel }) => {
         if (cancelled) return;
         createdModel = createThreadStorageTreeModel(handleTreeSelectionChange);
@@ -141,8 +133,11 @@ export function useThreadStorageBrowser({
       },
       (error: unknown) => {
         if (cancelled) return;
+        const loadError =
+          error instanceof Error ? error : new Error(String(error));
+        setTreeLoadError(loadError);
         console.warn(
-          `thread storage tree load failed: ${error instanceof Error ? error.message : String(error)}`,
+          `thread storage tree load failed: ${loadError.message}`,
         );
       },
     );
@@ -209,5 +204,6 @@ export function useThreadStorageBrowser({
     openSearch,
     searchQuery,
     setSearchQuery,
+    treeLoadError,
   };
 }

@@ -37,6 +37,7 @@ export function ThreadStorageBrowser({
     model,
     searchQuery,
     setSearchQuery,
+    treeLoadError,
   } = controller;
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isPointerCoarse = usePointerCoarse();
@@ -79,6 +80,23 @@ export function ThreadStorageBrowser({
     body = loadingState;
   } else if (loadedFiles.length === 0) {
     body = <EmptyState message="No files yet." />;
+  } else if (treeLoadError !== null) {
+    body = (
+      <div className="flex items-center gap-2">
+        <EmptyState
+          message="Files could not be displayed."
+          messageClassName="text-destructive"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => window.location.reload()}
+        >
+          Reload bb
+        </Button>
+      </div>
+    );
   } else if (filteredFiles.length === 0) {
     body = <EmptyState message="No files match search." />;
   } else if (model === null) {
