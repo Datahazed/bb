@@ -228,6 +228,32 @@ describe("UI inspection session", () => {
     session.dispose();
   });
 
+  it("still consumes the generated click when selection disposes the session", () => {
+    const element = document.createElement("button");
+    element.dataset.codeName = "inspector toggle";
+    document.body.append(element);
+    const underlying = vi.fn();
+    element.addEventListener("click", underlying);
+    let session: ReturnType<typeof startUiInspectionSession>;
+    session = startUiInspectionSession({
+      onEvent: (event) => {
+        if (event.type === "select") session.dispose();
+      },
+    });
+
+    pointerEvent("pointerdown", { target: element, pointerId: 9 });
+    pointerEvent("pointerup", { target: element, pointerId: 9 });
+    const click = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    });
+    element.dispatchEvent(click);
+
+    expect(click.defaultPrevented).toBe(true);
+    expect(underlying).not.toHaveBeenCalled();
+  });
+
   it("reports a frozen target that detaches before selection", () => {
     const element = document.createElement("button");
     element.dataset.codeName = "removed";
