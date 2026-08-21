@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   markPluginFrontendBootStarted,
@@ -48,7 +49,7 @@ afterEach(() => {
 
 describe("usePluginFrontendBoot", () => {
   it("does not boot on system config alone; boots after route paint plus idle", async () => {
-    renderHook(() => usePluginFrontendBoot());
+    renderHook(() => usePluginFrontendBoot(), { wrapper: MemoryRouter });
     await flushMicrotasks();
     expect(mocks.bootPluginFrontends).not.toHaveBeenCalled();
 
@@ -63,7 +64,7 @@ describe("usePluginFrontendBoot", () => {
   });
 
   it("boots at the 1.5 s timeout when the route never paints", async () => {
-    renderHook(() => usePluginFrontendBoot());
+    renderHook(() => usePluginFrontendBoot(), { wrapper: MemoryRouter });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_400);
     });
@@ -76,14 +77,14 @@ describe("usePluginFrontendBoot", () => {
 
   it("boots immediately on a plugin panel route: the plugin is the page", async () => {
     window.history.replaceState(null, "", "/plugins/tasks/board");
-    renderHook(() => usePluginFrontendBoot());
+    renderHook(() => usePluginFrontendBoot(), { wrapper: MemoryRouter });
     await flushMicrotasks();
     expect(mocks.bootPluginFrontends).toHaveBeenCalledTimes(1);
   });
 
   it("does nothing until system config resolves", async () => {
     mocks.systemConfigData = undefined;
-    renderHook(() => usePluginFrontendBoot());
+    renderHook(() => usePluginFrontendBoot(), { wrapper: MemoryRouter });
     await act(async () => {
       markRouteContentPainted();
       await vi.advanceTimersByTimeAsync(5_000);
@@ -94,10 +95,13 @@ describe("usePluginFrontendBoot", () => {
   it("settles after the floor even when system config never resolves", () => {
     // System config never resolves here: the boot must not wait forever.
     mocks.systemConfigData = undefined;
-    const { result } = renderHook(() => {
-      usePluginFrontendBoot();
-      return usePluginFrontendsSettled();
-    });
+    const { result } = renderHook(
+      () => {
+        usePluginFrontendBoot();
+        return usePluginFrontendsSettled();
+      },
+      { wrapper: MemoryRouter },
+    );
     expect(result.current).toBe(false);
     act(() => vi.advanceTimersByTime(PLUGIN_FRONTEND_SETTLE_FLOOR_MS - 1));
     expect(result.current).toBe(false);
@@ -119,10 +123,13 @@ describe("usePluginFrontendBoot", () => {
       });
     });
     window.history.replaceState(null, "", "/plugins/tasks/board");
-    const { result } = renderHook(() => {
-      usePluginFrontendBoot();
-      return usePluginFrontendsSettled();
-    });
+    const { result } = renderHook(
+      () => {
+        usePluginFrontendBoot();
+        return usePluginFrontendsSettled();
+      },
+      { wrapper: MemoryRouter },
+    );
     await flushMicrotasks();
     expect(mocks.bootPluginFrontends).toHaveBeenCalledTimes(1);
 
