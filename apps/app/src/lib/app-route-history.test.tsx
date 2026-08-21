@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   cleanup,
   fireEvent,
@@ -26,6 +26,11 @@ import {
   resetAppRouteHistoryForTest,
   useRouteStateHistoryNavigation,
 } from "./app-route-history";
+import {
+  navigatePluginContentScriptToCompose,
+  resetPluginContentScriptComposeNavigatorForTest,
+  setPluginContentScriptComposeNavigator,
+} from "./plugin-content-script-navigation";
 
 const TOOL_SKILL_DETAIL_ROUTE = getSkillDetailRoutePath({
   skillId: "skill_review_loop",
@@ -94,6 +99,57 @@ function SidebarControlsHarness() {
           {path}
         </button>
       ))}
+    </div>
+  );
+}
+
+function ContentScriptComposeNavigationHarness() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { canGoBack, goBack } = useRouteStateHistoryNavigation();
+  useEffect(
+    () =>
+      setPluginContentScriptComposeNavigator((options) => {
+        void navigate("/", {
+          state: {
+            focusPrompt: options.focusPrompt ?? false,
+            initialPrompt: options.initialPrompt ?? "",
+          },
+        });
+      }),
+    [navigate],
+  );
+
+  return (
+    <div>
+      <div data-testid="path">{location.pathname}</div>
+      <div data-testid="can-go-back">{String(canGoBack)}</div>
+      <div data-testid="initial-prompt">
+        {String(
+          (location.state as { initialPrompt?: string } | null)
+            ?.initialPrompt ?? "",
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => navigate("/extensions/plugins/plugin-guide")}
+      >
+        Open Plugin Guide
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          navigatePluginContentScriptToCompose({
+            focusPrompt: true,
+            initialPrompt: "Inspect left sidebar / footer actions",
+          })
+        }
+      >
+        Send to new thread
+      </button>
+      <button type="button" onClick={goBack}>
+        Inspector back
+      </button>
     </div>
   );
 }
@@ -204,6 +260,7 @@ describe("useRouteStateHistoryNavigation", () => {
     // The stack is module-scoped (it must survive control remounts); tests
     // must not inherit each other's history.
     resetAppRouteHistoryForTest();
+    resetPluginContentScriptComposeNavigatorForTest();
   });
 
   it("keeps the stack when the controls remount across sidebar layouts", async () => {
@@ -287,6 +344,28 @@ describe("useRouteStateHistoryNavigation", () => {
     await clickAndExpectPath("Go back", "/extensions/skills");
 
     await expectSidebarButtonState("Go forward", false);
+  });
+
+  it("keeps app history when a content script opens a prefilled composer", async () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <ContentScriptComposeNavigationHarness />
+      </MemoryRouter>,
+    );
+
+    await clickAndExpectPath(
+      "Open Plugin Guide",
+      "/extensions/plugins/plugin-guide",
+    );
+    await clickAndExpectPath("Send to new thread", "/");
+    expect(screen.getByTestId("initial-prompt").textContent).toBe(
+      "Inspect left sidebar / footer actions",
+    );
+    expect(screen.getByTestId("can-go-back").textContent).toBe("true");
+    await clickAndExpectPath(
+      "Inspector back",
+      "/extensions/plugins/plugin-guide",
+    );
   });
 
   it("redirects remounted automation edit routes without duplicate history entries", async () => {

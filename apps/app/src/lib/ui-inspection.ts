@@ -11,6 +11,7 @@ import type {
   ExperimentalUiInspectionStyle,
   ExperimentalUiInspectionTarget,
 } from "@get-bb/plugin-sdk";
+import { runWithPluginDomIsolation } from "./foreign-dom-mutation-guard";
 
 interface RegisteredInspectionMetadata {
   metadata: ExperimentalUiInspectionMetadata;
@@ -19,6 +20,8 @@ interface RegisteredInspectionMetadata {
 
 const registrations = new WeakMap<Element, RegisteredInspectionMetadata>();
 const OVERLAY_ATTRIBUTE = "data-bb-ui-inspection-overlay";
+const ACTIVATION_PASSTHROUGH_ATTRIBUTE =
+  "data-bb-ui-inspection-activation-passthrough";
 
 function isElement(value: unknown): value is Element {
   return (
@@ -441,6 +444,12 @@ export function startUiInspectionSession(
   const onPointerDown = (event: PointerEvent): void => {
     if (!isPrimaryPointer(event)) return;
     const element = hitTest(event);
+    if (
+      element !== null &&
+      element.closest(`[${ACTIVATION_PASSTHROUGH_ATTRIBUTE}="true"]`) !== null
+    ) {
+      return;
+    }
     const target = resolveSafely(element, {
       x: event.clientX,
       y: event.clientY,
@@ -570,7 +579,16 @@ export function createPluginUiInspectionApi(
     },
     startSession(options) {
       if (signal.aborted) return { dispose() {} };
-      return own(startUiInspectionSession(options, document, warn));
+      return own(
+        startUiInspectionSession(
+          {
+            onEvent: (event) =>
+              runWithPluginDomIsolation(() => options.onEvent(event), pluginId),
+          },
+          document,
+          warn,
+        ),
+      );
     },
   };
 }

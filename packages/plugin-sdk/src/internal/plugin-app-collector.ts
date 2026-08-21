@@ -346,6 +346,16 @@ export function collectPluginAppRegistrations(
             `${kind}: "experimental_activeIndicator" must be "dot" when set`,
           );
         }
+        if (
+          registration.experimental_inspectionActivationPassthrough !==
+            undefined &&
+          typeof registration.experimental_inspectionActivationPassthrough !==
+            "boolean"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_inspectionActivationPassthrough" must be a boolean when set`,
+          );
+        }
         collected.sidebarFooterActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
@@ -358,6 +368,13 @@ export function collectPluginAppRegistrations(
             : {
                 experimental_activeIndicator:
                   registration.experimental_activeIndicator,
+              }),
+          ...(registration.experimental_inspectionActivationPassthrough ===
+          undefined
+            ? {}
+            : {
+                experimental_inspectionActivationPassthrough:
+                  registration.experimental_inspectionActivationPassthrough,
               }),
           run: registration.run,
         });

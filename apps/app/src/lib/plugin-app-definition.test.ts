@@ -300,6 +300,7 @@ describe("collectPluginAppRegistrations", () => {
         icon: "Smartphone",
         experimental_activeTitle: "Stop inspecting",
         experimental_activeIndicator: "dot",
+        experimental_inspectionActivationPassthrough: true,
         run,
       });
       app.slots.fileOpener({
@@ -375,6 +376,7 @@ describe("collectPluginAppRegistrations", () => {
         icon: "Smartphone",
         experimental_activeTitle: "Stop inspecting",
         experimental_activeIndicator: "dot",
+        experimental_inspectionActivationPassthrough: true,
         run,
       },
     ]);

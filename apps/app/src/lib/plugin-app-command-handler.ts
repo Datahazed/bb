@@ -2,6 +2,7 @@ import type {
   ExperimentalPluginAppCommandHandler,
   ExperimentalPluginAppCommandId,
 } from "@get-bb/plugin-sdk";
+import { runWithPluginDomIsolationAsync } from "./foreign-dom-mutation-guard";
 
 type Owner = string | symbol;
 
@@ -47,7 +48,10 @@ export function runPluginAppCommandHandler(
       }`,
     );
   try {
-    const result = registration.handler();
+    const result = runWithPluginDomIsolationAsync(
+      () => registration.handler(),
+      registration.pluginId,
+    );
     if (result instanceof Promise) result.catch(report);
   } catch (error) {
     report(error);
