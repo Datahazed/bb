@@ -36,7 +36,7 @@ const PRESENTATION = {
   icon: { glyph: "Target" },
 };
 
-async function setup() {
+async function setup(providerId = PROVIDER_ID) {
   const harness = await createTestAppHarness();
   // A provider plugin that declares one extension kind with both surfaces:
   // `goal` items carry an objective, `goal` state carries a status.
@@ -81,7 +81,7 @@ async function setup() {
   const thread = seedThread(harness.deps, {
     projectId: project.id,
     environmentId: environment.id,
-    providerId: PROVIDER_ID,
+    providerId,
     status: "active",
   });
   return { harness, session, thread };
@@ -202,6 +202,46 @@ describe("extension payload ingest validation", () => {
     }
   });
 
+  it("rejects an extension kind owned by another provider plugin", async () => {
+    const { harness, session, thread } = await setup("claude-code");
+    try {
+      const response = await post(harness, session.id, [
+        turnStarted(thread.id),
+        {
+          threadId: thread.id,
+          event: {
+            type: "thread/extensionState/updated",
+            threadId: thread.id,
+            providerThreadId: "claude-session",
+            scope: threadScope(),
+            kind: "provider-codex/goal",
+            // `null` matches Codex's real cleared-goal schema, so only the
+            // provider-plugin ownership boundary can reject this event.
+            payload: null,
+          },
+        },
+      ]);
+      expect(response.status).toBe(200);
+      expect(storedRows(harness, thread.id)).toMatchObject([
+        { type: "turn/started" },
+        {
+          type: "provider/unhandled",
+          data: {
+            providerId: "claude-code",
+            rawType: "extension/state:provider-codex/goal",
+            rawEvent: {
+              params: {
+                reason: expect.stringContaining("provider-claude-code"),
+              },
+            },
+          },
+        },
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("replaces a schema miss with provider/unhandled in the same batch slot", async () => {
     const { harness, session, thread } = await setup();
     try {
@@ -301,7 +341,7 @@ describe("extension payload ingest validation", () => {
       expect(rows.slice(1).map((row) => row.data)).toMatchObject([
         {
           rawEvent: {
-            params: { reason: expect.stringContaining("declares no") },
+            params: { reason: expect.stringContaining("not extension owner") },
           },
         },
         {

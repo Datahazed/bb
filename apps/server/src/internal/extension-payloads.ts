@@ -4,11 +4,11 @@
  * Extension kinds (`"<pluginId>/<name>"`) are opaque JSON on the wire: the
  * daemon's assembler copies the bridge's payload onto the canonical
  * `extension` item or `thread/extensionState/updated` event without reading
- * it. The plugin that owns the kind declared a Standard Schema for it
- * (`experimental_extensionKinds` on its provider declaration), and this is
- * the one place that schema is enforced — before the event is persisted, so
- * nothing a client renders or a plugin reads back came from a payload its
- * plugin did not vouch for.
+ * it. The plugin that registered the thread provider must own the kind and
+ * have declared a Standard Schema for it (`experimental_extensionKinds` on
+ * its provider declaration). This is the one place both are enforced — before
+ * the event is persisted, so nothing a client renders or a plugin reads back
+ * came from a payload its plugin did not vouch for.
  *
  * A payload that fails — undeclared kind, schema miss, validator error, or
  * oversized — is not dropped silently: the event is replaced by a
@@ -132,10 +132,24 @@ async function validateSite(
   deps: ExtensionPayloadValidationDeps,
   site: ExtensionPayloadSite,
 ): Promise<ValidationOutcome> {
+  const { pluginId, name } = parseExtensionKind(site.kind);
+  const threadProviderId = getThread(deps.db, site.threadId)?.providerId;
+  const providerPluginId =
+    threadProviderId === undefined
+      ? undefined
+      : deps.providerRegistry.get(threadProviderId)?.source.pluginId;
+  if (providerPluginId !== pluginId) {
+    return {
+      ok: false,
+      reason:
+        providerPluginId === undefined
+          ? `thread provider "${threadProviderId ?? "unknown"}" has no registered plugin that can own extension kind "${site.kind}"`
+          : `thread provider "${threadProviderId}" belongs to plugin "${providerPluginId}", not extension owner plugin "${pluginId}"`,
+    };
+  }
   const declared = deps.providerRegistry.getExtensionKindSchemas(site.kind);
   const schema = declared?.[site.surface];
   if (schema === undefined) {
-    const { pluginId, name } = parseExtensionKind(site.kind);
     return {
       ok: false,
       reason:
