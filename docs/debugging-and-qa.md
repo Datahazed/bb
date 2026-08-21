@@ -195,3 +195,15 @@ enrollment remains HTTPS-only.
 
 Ctrl-C stops the local services. Local D1 state is kept under
 `.wrangler/cloud-dev`.
+
+## Provider-literal ratchet (G1)
+
+`node scripts/check-provider-literal-ratchet.mjs` counts provider-_id_ literals
+(`"codex"`, `"claude-code"`, `"acp-…"`, `providerId === "…"`, `isAcpProviderId`, …)
+in core (everything outside `plugins/provider-*` and `examples/`) and compares a
+per-file count against `scripts/provider-literal-baseline.json`. The count may
+only go down. Adding a provider-id branch to core fails CI. When you remove
+literals, regenerate the baseline with `--write` and commit it so the reduction
+is recorded. `--list` prints every hit. When the baseline reaches zero, delete
+it and the guard. This is guardrail G1 of the provider-plugin migration
+(the provider-plugin API design (docs/provider-plugin-api.md, added by the v3 contract PR; overview at https://get-bb.github.io/reports/design/provider-plugin-api.html)).
