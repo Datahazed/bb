@@ -206,13 +206,27 @@ function threadChoices(value: unknown): ThreadChoice[] {
 function defaultNavigateToCompose(document: Document, prompt: string): void {
   const view = document.defaultView;
   if (view === null) return;
-  const state = {
+  const locationState = {
     focusPrompt: true,
     initialPrompt: prompt,
     replaceInitialPrompt: true,
   };
-  view.history.pushState(state, "", "/");
-  view.dispatchEvent(new PopStateEvent("popstate", { state }));
+  // React Router stores the user-visible location state under `usr`. Preserve
+  // its browser-history envelope so the root composer receives this state
+  // through `useLocation()` instead of only changing the address bar.
+  const previous = view.history.state as
+    | { idx?: unknown }
+    | null
+    | undefined;
+  const previousIndex =
+    typeof previous?.idx === "number" ? previous.idx : 0;
+  const historyState = {
+    usr: locationState,
+    key: Math.random().toString(36).slice(2, 10),
+    idx: previousIndex + 1,
+  };
+  view.history.pushState(historyState, "", "/");
+  view.dispatchEvent(new PopStateEvent("popstate", { state: historyState }));
 }
 
 export function createPluginGuideInspector(
