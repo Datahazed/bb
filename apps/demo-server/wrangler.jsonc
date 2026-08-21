@@ -13,13 +13,13 @@
 // token is zone read-only and cannot create either, so that is a dashboard
 // step. workers.dev is HTTPS and is all a reviewer needs.
 //
-// Per-client isolation keys on the `cf-connecting-ip` header (src/worker.ts).
-// workers.dev sets it; anything that proxies this worker would collapse every
-// visitor into one shared world, so do not put it behind another proxy.
+// POST /demo mints a random Durable Object id and returns a Direct URL under
+// /demo/<id>. That unguessable path is the demo session credential used by
+// both HTTP and WebSocket traffic; never publish or reuse a reviewer's URL.
 //
 // No D1, no secrets, no bindings beyond the Durable Object: the demo holds
-// fixed fixtures and in-memory per-client state only (one object per client
-// address, see src/worker.ts). Nothing here can reach a real bb server, a
+// fixed fixtures and in-memory per-session state only (one object per random
+// Direct URL, see src/worker.ts). Nothing here can reach a real bb server, a
 // machine, or a user's data.
 {
   "$schema": "node_modules/wrangler/config-schema.json",

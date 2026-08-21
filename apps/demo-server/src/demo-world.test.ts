@@ -157,6 +157,19 @@ describe("demo world routes", () => {
     ).toBe(400);
   });
 
+  it("rejects browser-simple text/plain writes", async () => {
+    const { world } = createWorld();
+    const response = await world.handle(
+      new Request(`${ORIGIN}/api/v1/threads/${THREAD_ID}/send`, {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body: JSON.stringify(sendBody("Cross-site write")),
+      }),
+    );
+
+    expect(response.status).toBe(415);
+  });
+
   it("echoes a tabs write with the next revision", async () => {
     const { send } = createWorld();
     const tabs = await parsed(

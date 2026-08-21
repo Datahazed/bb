@@ -828,10 +828,22 @@ App Store Connect needs all of this:
   commands, so it cannot be on the internet, and connect pairing codes are
   single-use and expire in ten minutes. Give them the **demo server** instead:
   `apps/demo-server` is a Cloudflare Worker that answers the launch-path API
-  from fixed data, runs nothing, and isolates each client address. Deploy it
-  with `pnpm --filter @bb/demo-server deploy`, and rehearse the notes with
-  `e2e/manual/demo-server.yaml` before every submission. Disclose it in the
-  notes: a disclosed demo mode is sanctioned by guideline 2.1.
+  from fixed data, runs nothing, and isolates each random demo session. Deploy
+  it with `pnpm --filter @bb/demo-server deploy`. Before each review, mint a
+  fresh Direct URL and keep it in the private review notes:
+
+  ```sh
+  curl --fail --silent --request POST \
+    --header 'content-type: application/json' \
+    --data '{}' \
+    https://<DEMO-HOST>/demo
+  ```
+
+  The response is `{"serverUrl":"https://<DEMO-HOST>/demo/<SESSION-ID>"}`.
+  That unguessable URL is the reviewer credential: do not publish it or reuse
+  it for another reviewer. Rehearse it with `e2e/manual/demo-server.yaml`
+  before every submission. Disclose the demo in the notes; a disclosed demo
+  mode is sanctioned by guideline 2.1.
 
 Review notes template — keep it literal, and assume the reviewer knows nothing
 about coding agents:
@@ -843,7 +855,7 @@ you. It serves sample conversations and scripted replies; it does not run a
 real coding agent.
 
 1. Open the app. It shows "Connect to a bb server".
-2. Under "Direct URL", in "Server URL", enter: https://<DEMO-HOST>
+2. Under "Direct URL", in "Server URL", enter: https://<DEMO-HOST>/demo/<SESSION-ID>
 3. Tap "Connect".
 4. The app shows a list of conversations. Open any of them to read it.
 5. Type a message and send it. The agent replies after a moment.

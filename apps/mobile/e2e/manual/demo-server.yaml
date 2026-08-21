@@ -8,14 +8,17 @@
 # harness backend:
 #
 #   pnpm --filter @bb/demo-server dev        # the worker on 8799
+#   curl --request POST --header 'content-type: application/json' --data '{}' http://127.0.0.1:8799/demo
 #   EXPO_PUBLIC_BB_E2E=1 pnpm --filter @bb/mobile start --port 8082
-#   cd apps/mobile && maestro test e2e/manual/demo-server.yaml
+#   cd apps/mobile && DEMO_SERVER_URL=<returned-serverUrl> maestro test e2e/manual/demo-server.yaml
 #
-# To rehearse against the deployed worker, set SERVER_URL to its https URL.
+# Mint a session with `POST <worker-origin>/demo`, then set SERVER_URL to the
+# returned path-prefixed URL. The mobile SDK keeps that prefix on both API and
+# WebSocket requests.
 appId: app.getbb.mobile
 env:
   METRO_URL: "http://127.0.0.1:8082"
-  SERVER_URL: "http://127.0.0.1:8799"
+  SERVER_URL: "${DEMO_SERVER_URL}"
 ---
 # The E2E build wipes profiles on launch, so the shared subflow lands on
 # "Connect to a bb server" and adds SERVER_URL as a Direct URL. The probe

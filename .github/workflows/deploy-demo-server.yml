@@ -73,8 +73,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: pnpm --filter @bb/demo-server exec wrangler deploy | tee deploy.log
 
-      # The workers.dev URL is what goes in the App Store review notes. Surface
-      # it on the run so nobody has to open the Cloudflare dashboard for it.
+      # Surface the worker origin so the submitter can mint a private session
+      # URL for the App Store review notes (see apps/mobile/README.md).
       - name: Report the URL
         run: |
           {

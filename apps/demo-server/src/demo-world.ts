@@ -137,6 +137,28 @@ function notFound(threadId: string): Response {
   );
 }
 
+function unsupportedMediaType(): Response {
+  return json(
+    {
+      error: {
+        code: "unsupported_media_type",
+        message: "Demo writes require Content-Type: application/json.",
+      },
+    },
+    415,
+  );
+}
+
+function hasJsonContentType(request: Request): boolean {
+  return (
+    request.headers
+      .get("content-type")
+      ?.split(";", 1)[0]
+      ?.trim()
+      .toLowerCase() === "application/json"
+  );
+}
+
 async function readJson(request: Request): Promise<unknown> {
   try {
     return await request.json();
@@ -193,15 +215,22 @@ export class DemoWorld {
       : null;
   }
 
-  async handle(request: Request): Promise<Response> {
+  async handle(request: Request, serverUrl?: string): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/u, "") || "/";
     if (path === "/health") return json({ ok: true });
     if (!path.startsWith("/api/v1/"))
       return notImplemented(request.method, path);
+    if (request.method !== "GET" && !hasJsonContentType(request)) {
+      return unsupportedMediaType();
+    }
 
     const api = path.slice("/api/v1".length);
-    const response = await this.handleApi(request, api, url.origin);
+    const response = await this.handleApi(
+      request,
+      api,
+      serverUrl ?? url.origin,
+    );
     return response ?? notImplemented(request.method, path);
   }
 

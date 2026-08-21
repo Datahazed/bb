@@ -24,28 +24,128 @@
 //
 // ISOLATION
 //
-// Each client address gets its own Durable Object, so the messages a reviewer
-// sends are visible only to that reviewer. The server is public: a shared
-// world would let anyone put text in front of Apple's reviewer, and would
-// let one visitor read what another typed. State is in-memory only and is
-// dropped when the object goes idle.
+// POST /demo mints a random Durable Object id and returns a Direct URL whose
+// path carries that id. The mobile SDK preserves a Direct URL path prefix for
+// both HTTP and WebSocket traffic, so one unguessable credential selects one
+// world without treating a shared network address as identity. State is
+// in-memory only and is dropped when the object goes idle.
 
-import { DemoStateDO } from "./demo-state.js";
+import { DEMO_SERVER_URL_HEADER, DemoStateDO } from "./demo-state.js";
+
+interface DemoStateStub {
+  fetch(request: Request): Promise<Response>;
+}
+
+interface DemoStateNamespace {
+  newUniqueId(): DurableObjectId;
+  idFromString(id: string): DurableObjectId;
+  get(id: DurableObjectId): DemoStateStub;
+}
 
 export interface Env {
-  DEMO_STATE: DurableObjectNamespace;
+  DEMO_STATE: DemoStateNamespace;
 }
 
 export { DemoStateDO };
 
-/** The Durable Object name for a request: its client address, or one shared fallback when none is known (local dev). */
-export function demoStateName(request: Request): string {
-  return request.headers.get("cf-connecting-ip") ?? "local";
+const DEMO_PATH = "/demo";
+const JSON_HEADERS = {
+  "cache-control": "no-store",
+  "content-type": "application/json",
+};
+
+function json(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+}
+
+function error(status: number, code: string, message: string): Response {
+  return json({ error: { code, message } }, status);
+}
+
+function requestOriginIsSupported(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  return origin === null || origin === new URL(request.url).origin;
+}
+
+function hasJsonContentType(request: Request): boolean {
+  return (
+    request.headers
+      .get("content-type")
+      ?.split(";", 1)[0]
+      ?.trim()
+      .toLowerCase() === "application/json"
+  );
+}
+
+function mintSession(request: Request, env: Env): Response {
+  if (!hasJsonContentType(request)) {
+    return error(
+      415,
+      "unsupported_media_type",
+      "Demo session requests require Content-Type: application/json.",
+    );
+  }
+  const id = env.DEMO_STATE.newUniqueId();
+  const url = new URL(request.url);
+  return json({ serverUrl: `${url.origin}${DEMO_PATH}/${id.toString()}` }, 201);
+}
+
+interface DemoSessionRoute {
+  id: DurableObjectId;
+  serverUrl: string;
+  upstreamUrl: URL;
+}
+
+function demoSessionRoute(request: Request, env: Env): DemoSessionRoute | null {
+  const url = new URL(request.url);
+  if (!url.pathname.startsWith(`${DEMO_PATH}/`)) return null;
+  const [rawId, ...remaining] = url.pathname
+    .slice(`${DEMO_PATH}/`.length)
+    .split("/");
+  if (!rawId) return null;
+
+  let id: DurableObjectId;
+  try {
+    id = env.DEMO_STATE.idFromString(rawId);
+  } catch {
+    return null;
+  }
+
+  const upstreamUrl = new URL(url);
+  upstreamUrl.pathname = `/${remaining.join("/")}`;
+  return {
+    id,
+    serverUrl: `${url.origin}${DEMO_PATH}/${rawId}`,
+    upstreamUrl,
+  };
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const id = env.DEMO_STATE.idFromName(demoStateName(request));
-    return env.DEMO_STATE.get(id).fetch(request);
+    if (!requestOriginIsSupported(request)) {
+      return error(
+        403,
+        "unsupported_origin",
+        "This browser origin cannot access the bb demo server.",
+      );
+    }
+
+    const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === DEMO_PATH) {
+      return mintSession(request, env);
+    }
+
+    const route = demoSessionRoute(request, env);
+    if (route === null) {
+      return error(
+        401,
+        "demo_session_required",
+        `Mint a private demo Direct URL with POST ${DEMO_PATH}.`,
+      );
+    }
+
+    const upstreamRequest = new Request(route.upstreamUrl, request);
+    upstreamRequest.headers.set(DEMO_SERVER_URL_HEADER, route.serverUrl);
+    return env.DEMO_STATE.get(route.id).fetch(upstreamRequest);
   },
 };

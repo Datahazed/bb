@@ -4,6 +4,9 @@
 
 import { DemoWorld } from "./demo-world.js";
 
+/** Set by the public Worker after it validates and strips the session path. */
+export const DEMO_SERVER_URL_HEADER = "x-bb-demo-server-url";
+
 export class DemoStateDO {
   private readonly world = new DemoWorld();
   private readonly sockets = new Set<WebSocket>();
@@ -26,7 +29,10 @@ export class DemoStateDO {
     if (url.pathname.replace(/\/+$/u, "") === "/ws") {
       return this.handleWebSocket(request);
     }
-    return this.world.handle(request);
+    return this.world.handle(
+      request,
+      request.headers.get(DEMO_SERVER_URL_HEADER) ?? url.origin,
+    );
   }
 
   private handleWebSocket(request: Request): Response {
