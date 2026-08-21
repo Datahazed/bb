@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "baseline": "c942421a454ee4157004274053eec5f36c81d7eb",
+  "candidate": "0c59c72352faf4a3d9dac75a2e7e01f7afc688c9",
+  "checkpoint": "cross-source-exact-mention-relevance",
+  "fixture": {
+    "project": "Automations project",
+    "plugin": "Automations",
+    "query": "@automations",
+    "pluginSource": "exact local @Plugin payload commit 8ba72c3bf0d7279595439adf6b21251faeaea98a"
+  },
+  "viewports": [
+    {
+      "viewportClass": "mobile",
+      "viewportWidth": 390,
+      "viewportHeight": 844,
+      "viewportUnit": "css_px",
+      "deviceScaleFactor": 3,
+      "captureWidth": 1170,
+      "captureHeight": 2532,
+      "captureUnit": "device_px",
+      "transitionWidths": [389, 390, 391],
+      "beforeScreenshot": "qa/core-relevance-before-mobile.png",
+      "afterScreenshot": "qa/core-relevance-after-mobile.png",
+      "proof": "Before: Projects precedes Installed. After: the exact Installed/Automations match precedes Projects/Automations project. No horizontal overflow.",
+      "result": "PASS"
+    },
+    {
+      "viewportClass": "small narrow",
+      "viewportWidth": 768,
+      "viewportHeight": 900,
+      "viewportUnit": "css_px",
+      "deviceScaleFactor": 2,
+      "captureWidth": 1536,
+      "captureHeight": 1800,
+      "captureUnit": "device_px",
+      "transitionWidths": [767, 768, 769],
+      "beforeScreenshot": "qa/core-relevance-before-small-narrow.png",
+      "afterScreenshot": "qa/core-relevance-after-small-narrow.png",
+      "proof": "Exact plugin ordering is corrected without clipping or horizontal overflow.",
+      "result": "PASS"
+    },
+    {
+      "viewportClass": "normal desktop",
+      "viewportWidth": 1440,
+      "viewportHeight": 900,
+      "viewportUnit": "css_px",
+      "deviceScaleFactor": 2,
+      "captureWidth": 2880,
+      "captureHeight": 1800,
+      "captureUnit": "device_px",
+      "transitionWidths": [1023, 1024, 1025],
+      "beforeScreenshot": "qa/core-relevance-before-normal-desktop.png",
+      "afterScreenshot": "qa/core-relevance-after-normal-desktop.png",
+      "proof": "Before: Projects/Automations project is first. After: Installed/Automations is first.",
+      "result": "PASS"
+    },
+    {
+      "viewportClass": "very large desktop",
+      "viewportWidth": 3440,
+      "viewportHeight": 1440,
+      "viewportUnit": "css_px",
+      "deviceScaleFactor": 1,
+      "captureWidth": 3440,
+      "captureHeight": 1440,
+      "captureUnit": "device_px",
+      "transitionWidths": [1919, 1920, 1921],
+      "beforeScreenshot": "qa/core-relevance-before-very-large-desktop.png",
+      "afterScreenshot": "qa/core-relevance-after-very-large-desktop.png",
+      "proof": "Exact plugin ordering remains corrected at ultrawide size with no horizontal overflow.",
+      "result": "PASS"
+    }
+  ],
+  "cycles": 5,
+  "elapsedMs": 27500,
+  "responsiveTransitions": "PASS",
+  "sustainedBehavior": "PASS",
+  "result": "PASS"
+}

@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "baseline": "0c59c72352faf4a3d9dac75a2e7e01f7afc688c9",
+  "candidate": "05a51219867182fc2aed6e4e64b9a24f7f857bd8",
+  "checkpoint": "at-plugin-reference-example",
+  "fixture": {
+    "project": "Automations project",
+    "plugin": "Automations",
+    "query": "@automations",
+    "afterPluginSource": "examples/plugins/at-plugin at the candidate commit"
+  },
+  "viewports": [
+    {
+      "viewportClass": "mobile",
+      "viewportWidth": 390,
+      "viewportHeight": 844,
+      "viewportUnit": "css_px",
+      "deviceScaleFactor": 3,
+      "captureWidth": 1170,
+      "captureHeight": 2532,
+      "captureUnit": "device_px",
+      "transitionWidths": [389, 390, 391],
+      "beforeScreenshot": "qa/at-plugin-example-before-mobile.png",
+      "afterScreenshot": "qa/at-plugin-example-after-mobile.png",
+      "proof": "Before: only the project result exists. After installing the candidate example: Installed/Automations is added first. No horizontal overflow.",
+      "result": "PASS"
+    },
+    {
+      "viewportClass": "small narrow",
+      "viewportWidth": 768,
+      "viewportHeight": 900,
+      "viewportUnit": "css_px",
+      "deviceScaleFactor": 2,
+      "captureWidth": 1536,
+      "captureHeight": 1800,
+      "captureUnit": "device_px",
+      "transitionWidths": [767, 768, 769],
+      "beforeScreenshot": "qa/at-plugin-example-before-small-narrow.png",
+      "afterScreenshot": "qa/at-plugin-example-after-small-narrow.png",
+      "proof": "The candidate example adds the Installed result without clipping or horizontal overflow.",
+      "result": "PASS"
+    },
+    {
+      "viewportClass": "normal desktop",
+      "viewportWidth": 1440,
+      "viewportHeight": 900,
+      "viewportUnit": "css_px",
+      "deviceScaleFactor": 2,
+      "captureWidth": 2880,
+      "captureHeight": 1800,
+      "captureUnit": "device_px",
+      "transitionWidths": [1023, 1024, 1025],
+      "beforeScreenshot": "qa/at-plugin-example-before-normal-desktop.png",
+      "afterScreenshot": "qa/at-plugin-example-after-normal-desktop.png",
+      "proof": "The parent has only Projects/Automations project; the candidate adds Installed/Automations first from the example plugin.",
+      "result": "PASS"
+    },
+    {
+      "viewportClass": "very large desktop",
+      "viewportWidth": 3440,
+      "viewportHeight": 1440,
+      "viewportUnit": "css_px",
+      "deviceScaleFactor": 1,
+      "captureWidth": 3440,
+      "captureHeight": 1440,
+      "captureUnit": "device_px",
+      "transitionWidths": [1919, 1920, 1921],
+      "beforeScreenshot": "qa/at-plugin-example-before-very-large-desktop.png",
+      "afterScreenshot": "qa/at-plugin-example-after-very-large-desktop.png",
+      "proof": "The reference example remains visible and correctly ordered at ultrawide size with no horizontal overflow.",
+      "result": "PASS"
+    }
+  ],
+  "cycles": 5,
+  "elapsedMs": 27500,
+  "responsiveTransitions": "PASS",
+  "sustainedBehavior": "PASS",
+  "result": "PASS"
+}
