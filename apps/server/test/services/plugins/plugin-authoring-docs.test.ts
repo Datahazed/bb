@@ -197,6 +197,9 @@ const CONTENT_SCRIPT_CONTEXT_FIELDS = [
   "pluginId",
   "generation",
   "signal",
+  "experimental_uiInspection",
+  "experimental_setSidebarFooterActionActive",
+  "experimental_registerAppCommandHandler",
   "experimental_setThreadRowStatus",
 ] as const satisfies readonly (keyof PluginContentScriptContext)[];
 
@@ -308,6 +311,8 @@ const SIDEBAR_FOOTER_ACTION_REGISTRATION_FIELDS = [
   "id",
   "title",
   "icon",
+  "experimental_activeTitle",
+  "experimental_activeIndicator",
   "run",
 ] as const satisfies readonly (keyof PluginSidebarFooterActionRegistration)[];
 

@@ -208,6 +208,39 @@ describe("docs anatomy manifest", () => {
     expectDocumentOrder(items);
   });
 
+  it("exposes the inspector hierarchy through stable Core metadata", () => {
+    registerTestPlugin();
+    const { container } = renderAppSidebar();
+    const sidebar = container.querySelector('[data-code-name="app.sidebar"]');
+    const footer = container.querySelector(
+      '[data-code-name="app.sidebar.footer-actions"]',
+    );
+    const pluginAction = container.querySelector(
+      '[data-code-name="app.sidebar.footer-actions.docs-anatomy-test.anatomy-footer"]',
+    );
+
+    expect(sidebar).toMatchObject({
+      dataset: {
+        codeLabel: "Left sidebar",
+        codeKind: "region",
+      },
+    });
+    expect(footer).toMatchObject({
+      dataset: {
+        codeLabel: "Footer actions",
+        codeKind: "group",
+      },
+    });
+    expect(pluginAction).toMatchObject({
+      dataset: {
+        codeLabel: "Anatomy footer action",
+        codeKind: "action",
+      },
+    });
+    expect(sidebar?.contains(footer)).toBe(true);
+    expect(footer?.contains(pluginAction)).toBe(true);
+  });
+
   it("matches the message action bar's order", () => {
     render(
       <TooltipProvider delayDuration={0}>
