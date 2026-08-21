@@ -202,7 +202,8 @@ Ctrl-C stops the local services. Local D1 state is kept under
 (`"codex"`, `"claude-code"`, `"acp-…"`, `providerId === "…"`, `isAcpProviderId`, …)
 in core (everything outside `plugins/provider-*` and `examples/`) and compares a
 per-file count against `scripts/provider-literal-baseline.json`. The count may
-only go down. Adding a provider-id branch to core fails CI. When you remove
+only go down, and CI rejects added diff lines containing a provider-id reference
+even when the same change removes an older occurrence. When you only remove
 literals, regenerate the baseline with `--write` and commit it so the reduction
 is recorded. `--list` prints every hit. When the baseline reaches zero, delete
 it and the guard. This is guardrail G1 of the provider-plugin migration

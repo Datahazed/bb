@@ -164,6 +164,41 @@ function baselineFromGit(root, ref) {
   return JSON.parse(raw);
 }
 
+function providerLiteralAdditionsFromGit(root, ref) {
+  const patch = execFileSync(
+    "git",
+    [
+      "diff",
+      "--unified=0",
+      "--no-color",
+      "--no-ext-diff",
+      "--src-prefix=a/",
+      "--dst-prefix=b/",
+      ref,
+      "--",
+      ...SCAN_ROOTS,
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  const additions = [];
+  let rel = null;
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("+++ ")) {
+      rel = line.startsWith("+++ b/") ? line.slice(6) : null;
+      continue;
+    }
+    if (
+      rel &&
+      line.startsWith("+") &&
+      isIncluded(rel.split("/").join(sep)) &&
+      providerLiteralRegex().test(line.slice(1))
+    ) {
+      additions.push(`  + ${rel}: ${line.slice(1).trim()}`);
+    }
+  }
+  return additions;
+}
+
 // --- CLI ---------------------------------------------------------------------
 function main() {
   const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -244,6 +279,16 @@ function main() {
       base = null;
     }
     if (base) {
+      const additions = providerLiteralAdditionsFromGit(ROOT, baseRef);
+      if (additions.length) {
+        console.error(
+          `Provider-literal ratchet FAILED vs ${baseRef} — diff added provider-id references to core:\n${additions.join("\n")}`,
+        );
+        console.error(
+          "Removing an older occurrence does not permit adding or rewriting a provider-specific branch.",
+        );
+        return 1;
+      }
       const bad = [];
       for (const [rel, n] of Object.entries(scan.files)) {
         const was = base.files[rel] ?? 0;

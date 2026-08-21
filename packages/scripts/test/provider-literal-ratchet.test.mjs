@@ -1,5 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdtempSync,
+  mkdirSync,
+  realpathSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,12 +19,12 @@ import {
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const SCRIPT = join(ROOT, "scripts", "check-provider-literal-ratchet.mjs");
 
-function run(args = [], env = {}) {
+function run(args = [], env = {}, script = SCRIPT, cwd = ROOT) {
   try {
     return {
       code: 0,
-      out: execFileSync("node", [SCRIPT, ...args], {
-        cwd: ROOT,
+      out: execFileSync("node", [script, ...args], {
+        cwd,
         encoding: "utf8",
         env: { ...process.env, ...env },
         stdio: ["ignore", "pipe", "pipe"],
@@ -116,4 +123,30 @@ describe("ratchet CLI (against the real repo baseline)", () => {
     // asserts the OK path only.
     expect(run().code).toBe(0);
   }, 30_000);
+
+  it("rejects equal-count substitutions while allowing pure reductions", () => {
+    const fixtureScript = join(realpathSync(dir), "scripts", "ratchet.mjs");
+    const baseline = "scripts/provider-literal-baseline.json";
+    const source = "apps/core/provider.ts";
+    mkdirSync(join(dir, "scripts"), { recursive: true });
+    copyFileSync(SCRIPT, fixtureScript);
+    write(baseline, '{"total":1,"files":{"apps/core/provider.ts":1}}\n');
+    write(source, 'export const defaultId = "codex";\n');
+    const git = (...args) => execFileSync("git", args, { cwd: dir });
+    git("init", "-q");
+    git("config", "user.name", "Ratchet Test");
+    git("config", "user.email", "ratchet@example.invalid");
+    git("add", ".");
+    git("commit", "-qm", "baseline");
+
+    write(source, 'export const matches = providerId === "claude-code";\n');
+    const replacement = run(["--base", "HEAD"], {}, fixtureScript, dir);
+    expect(replacement.code, replacement.out).toBe(1);
+    expect(replacement.out).toMatch(/diff added provider-id references/);
+
+    write(source, "export const generic = true;\n");
+    write(baseline, '{"total":0,"files":{}}\n');
+    const reduction = run(["--base", "HEAD"], {}, fixtureScript, dir);
+    expect(reduction.code, reduction.out).toBe(0);
+  });
 });
