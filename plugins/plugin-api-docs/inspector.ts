@@ -51,7 +51,7 @@ interface PluginGuideInspectorOptions {
   setFooterActive?: (active: boolean) => void;
   fetch?: typeof globalThis.fetch;
   clipboard?: Pick<Clipboard, "writeText">;
-  navigateToCompose?: (prompt: string) => void;
+  navigateToCompose?: (prompt: string) => boolean | void;
   now?: () => Date;
 }
 
@@ -203,32 +203,6 @@ function threadChoices(value: unknown): ThreadChoice[] {
   });
 }
 
-function defaultNavigateToCompose(document: Document, prompt: string): void {
-  const view = document.defaultView;
-  if (view === null) return;
-  const locationState = {
-    focusPrompt: true,
-    initialPrompt: prompt,
-    replaceInitialPrompt: true,
-  };
-  // React Router stores the user-visible location state under `usr`. Preserve
-  // its browser-history envelope so the root composer receives this state
-  // through `useLocation()` instead of only changing the address bar.
-  const previous = view.history.state as
-    | { idx?: unknown }
-    | null
-    | undefined;
-  const previousIndex =
-    typeof previous?.idx === "number" ? previous.idx : 0;
-  const historyState = {
-    usr: locationState,
-    key: Math.random().toString(36).slice(2, 10),
-    idx: previousIndex + 1,
-  };
-  view.history.pushState(historyState, "", "/");
-  view.dispatchEvent(new PopStateEvent("popstate", { state: historyState }));
-}
-
 export function createPluginGuideInspector(
   options: PluginGuideInspectorOptions,
 ): PluginGuideInspector {
@@ -236,9 +210,7 @@ export function createPluginGuideInspector(
   const view = document.defaultView;
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const clipboard = options.clipboard ?? view?.navigator.clipboard;
-  const navigateToCompose =
-    options.navigateToCompose ??
-    ((prompt: string) => defaultNavigateToCompose(document, prompt));
+  const navigateToCompose = options.navigateToCompose ?? (() => false);
   const now = options.now ?? (() => new Date());
   let mode: PluginGuideInspectorMode = "idle";
   let session: ExperimentalUiInspectionSession | null = null;
@@ -511,8 +483,19 @@ export function createPluginGuideInspector(
       newButton.type = "button";
       newButton.addEventListener("click", () => {
         const prompt = formatInspectionAgentPrompt(payload);
-        stop();
-        navigateToCompose(prompt);
+        try {
+          if (navigateToCompose(prompt) === false) {
+            setFeedback("New-thread handoff is unavailable.");
+            return;
+          }
+          stop();
+        } catch (error) {
+          setFeedback(
+            error instanceof Error
+              ? error.message
+              : "New-thread handoff failed.",
+          );
+        }
       });
       const resumeButton = element(document, "button", "pgi-button", "Resume");
       resumeButton.type = "button";
@@ -539,7 +522,12 @@ export function createPluginGuideInspector(
     content.append(element(document, "strong", "", title));
     content.append(element(document, "span", "", message));
     nextCard.append(content);
-    if (pointer) positionHoverCard(nextCard, pointer);
+    if (pointer) {
+      positionHoverCard(nextCard, pointer);
+    } else {
+      nextCard.style.right = "16px";
+      nextCard.style.bottom = "16px";
+    }
   };
 
   const renderHandoff = (
@@ -578,15 +566,18 @@ export function createPluginGuideInspector(
       send.addEventListener("click", () => {
         void (async () => {
           const thread = threads.find(({ id }) => id === select.value);
-          if (!thread || currentTarget === null) return;
+          const target = currentTarget;
+          const controller = handoffController;
+          if (!thread || target === null || controller === null) return;
           send.disabled = true;
           try {
-            const payload = createInspectionPayload(currentTarget, now());
+            const payload = createInspectionPayload(target, now());
             const response = await fetchImpl(
               `/api/v1/threads/${encodeURIComponent(thread.id)}/send`,
               {
                 method: "POST",
                 headers: { "content-type": "application/json" },
+                signal: controller.signal,
                 body: JSON.stringify({
                   input: [
                     {
@@ -602,10 +593,29 @@ export function createPluginGuideInspector(
             if (!response.ok) {
               throw new Error(`Send failed (${response.status}).`);
             }
+            if (
+              disposed ||
+              mode !== "handoff" ||
+              handoffController !== controller ||
+              controller.signal.aborted ||
+              currentTarget !== target
+            ) {
+              return;
+            }
+            handoffController = null;
             mode = "pinned";
-            renderTarget(currentTarget, "pinned");
+            renderTarget(target, "pinned");
             setFeedback(`Sent to ${thread.label}.`);
           } catch (caught) {
+            if (
+              disposed ||
+              mode !== "handoff" ||
+              handoffController !== controller ||
+              controller.signal.aborted ||
+              currentTarget !== target
+            ) {
+              return;
+            }
             send.disabled = false;
             const message =
               caught instanceof Error ? caught.message : "Send failed.";
@@ -630,27 +640,45 @@ export function createPluginGuideInspector(
 
   const beginHandoff = async (): Promise<void> => {
     if (currentTarget === null || mode !== "pinned") return;
+    const target = currentTarget;
     mode = "handoff";
     handoffController?.abort();
-    handoffController = new AbortController();
+    const controller = new AbortController();
+    handoffController = controller;
     renderHandoff([], "Loading threads…");
     try {
       const response = await fetchImpl(
         "/api/v1/threads?archived=false&limit=50",
         {
-          signal: handoffController.signal,
+          signal: controller.signal,
         },
       );
       if (!response.ok)
         throw new Error(`Could not load threads (${response.status}).`);
       const threads = threadChoices(await response.json());
-      if (mode !== "handoff") return;
+      if (
+        disposed ||
+        mode !== "handoff" ||
+        handoffController !== controller ||
+        controller.signal.aborted ||
+        currentTarget !== target
+      ) {
+        return;
+      }
       renderHandoff(
         threads,
         threads.length === 0 ? "No available threads." : undefined,
       );
     } catch (error) {
-      if (handoffController.signal.aborted || mode !== "handoff") return;
+      if (
+        disposed ||
+        mode !== "handoff" ||
+        handoffController !== controller ||
+        controller.signal.aborted ||
+        currentTarget !== target
+      ) {
+        return;
+      }
       renderHandoff(
         [],
         error instanceof Error ? error.message : "Could not load threads.",
