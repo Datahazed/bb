@@ -217,6 +217,44 @@ describe("Plugin Guide inspector", () => {
     expect(active).toHaveBeenCalledWith(true);
   });
 
+  it("measures a populated hover card before keeping it inside the viewport", () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1280,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 900,
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        const populated = this.querySelector(".pgi-body") !== null;
+        return DOMRect.fromRect({
+          width: populated ? 380 : 0,
+          height: populated ? 302 : 0,
+        });
+      },
+    );
+    const host = inspectionHost();
+    const inspector = createPluginGuideInspector({
+      document,
+      inspection: host.inspection,
+    });
+
+    inspector.start();
+    host.emit({
+      type: "hover",
+      target: targetFixture(),
+      pointer: { x: 80, y: 860 },
+    });
+
+    const card = document.querySelector<HTMLElement>(
+      "[data-bb-plugin-guide-inspector-card]",
+    );
+    expect(card?.style.left).toBe("92px");
+    expect(card?.style.top).toBe("586px");
+  });
+
   it("unwinds handoff, pin, and active states with Escape", async () => {
     const host = inspectionHost();
     const fetchMock = vi.fn(
