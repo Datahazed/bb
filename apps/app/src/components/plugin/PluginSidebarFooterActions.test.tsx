@@ -13,6 +13,7 @@ import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
+import { setPreferredTheme } from "@/hooks/useTheme";
 import { PluginSidebarFooterActions } from "./PluginSidebarFooterActions";
 
 function registrationSet(
@@ -55,6 +56,7 @@ afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
   resetPluginLogoStoreForTest();
+  setPreferredTheme("system");
   vi.restoreAllMocks();
 });
 
@@ -142,5 +144,42 @@ describe("PluginSidebarFooterActions", () => {
     expect(screen.getByLabelText("Current path").textContent).toBe(
       "/settings/plugins/remote",
     );
+  });
+
+  it("passes the latest semantic appearance at activation time", () => {
+    setPreferredTheme("dark");
+    const activations: Array<{ colorMode: string; preference: string }> = [];
+    setPluginSlotRegistrations(
+      "appearance",
+      registrationSet({
+        sidebarFooterActions: [
+          {
+            id: "toggle",
+            title: "Toggle color mode",
+            icon: "Palette",
+            run({ experimental_appearance: appearance }) {
+              activations.push({
+                colorMode: appearance.colorMode,
+                preference: appearance.colorModePreference,
+              });
+              appearance.setColorModePreference(
+                appearance.colorMode === "dark" ? "light" : "dark",
+              );
+            },
+          },
+        ],
+      }),
+    );
+
+    renderWithProviders(<PluginSidebarFooterActions />);
+    const toggle = screen.getByRole("button", { name: "Toggle color mode" });
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+
+    expect(activations).toEqual([
+      { colorMode: "dark", preference: "dark" },
+      { colorMode: "light", preference: "light" },
+    ]);
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
 });

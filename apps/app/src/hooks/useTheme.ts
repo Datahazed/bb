@@ -15,11 +15,10 @@ export type ThemePreference = Theme | "system";
 
 type ThemeListener = () => void;
 
-const themePreferenceStorage =
-  createLocalStorageEnumStorage<ThemePreference>(
-    (value): value is ThemePreference =>
-      value === "light" || value === "dark" || value === "system",
-  );
+const themePreferenceStorage = createLocalStorageEnumStorage<ThemePreference>(
+  (value): value is ThemePreference =>
+    value === "light" || value === "dark" || value === "system",
+);
 const themePreferenceAtom = atomWithStorage<ThemePreference>(
   THEME_STORAGE_KEY,
   "system",
@@ -27,7 +26,7 @@ const themePreferenceAtom = atomWithStorage<ThemePreference>(
   { getOnInit: true },
 );
 
-function getThemePreference(): ThemePreference {
+export function getThemePreference(): ThemePreference {
   return getDefaultStore().get(themePreferenceAtom);
 }
 
@@ -67,7 +66,7 @@ function getSystemTheme(): Theme {
   return getMediaQuerySnapshot(DARK_COLOR_SCHEME_QUERY) ? "dark" : "light";
 }
 
-function getPreferredTheme(): Theme {
+export function getPreferredTheme(): Theme {
   const themePreference = getThemePreference();
   return themePreference === "system" ? getSystemTheme() : themePreference;
 }
@@ -89,8 +88,7 @@ function emitTheme() {
   const nextTheme = getPreferredTheme();
   applyThemeClass(nextTheme);
 
-  const themePreferenceChanged =
-    nextThemePreference !== currentThemePreference;
+  const themePreferenceChanged = nextThemePreference !== currentThemePreference;
   const themeChanged = nextTheme !== currentTheme;
 
   currentThemePreference = nextThemePreference;

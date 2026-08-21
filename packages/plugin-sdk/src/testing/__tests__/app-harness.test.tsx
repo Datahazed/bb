@@ -12,6 +12,7 @@ import type {
 } from "../../app-contract.js";
 import {
   installTestPluginRuntime,
+  experimental_runSidebarFooterAction,
   loadPluginApp,
   mountPluginContentScripts,
   renderSlot,
@@ -243,6 +244,9 @@ function AppearanceProbe() {
     <div>
       <span>
         Appearance: {appearance.colorMode}/{appearance.colorModePreference}
+      </span>
+      <span>
+        Monaco theme: {appearance.colorMode === "dark" ? "vs-dark" : "vs"}
       </span>
       <button
         type="button"
@@ -675,6 +679,53 @@ describe("loadPluginApp", () => {
     expect(mounted.inspection.getThreadRowStatus("thr_source")).toBeNull();
     expect(mounted.inspection.threadRowStatusCalls).toHaveLength(1);
     warn.mockRestore();
+  });
+
+  it("models current appearance reads and writes for content scripts", async () => {
+    let getAppearance:
+      | (() => import("../../app-contract.js").ExperimentalPluginAppearance)
+      | undefined;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.contentScripts.register({
+          id: "appearance-menu",
+          mount({ experimental_getAppearance }) {
+            getAppearance = experimental_getAppearance;
+          },
+        });
+      }),
+    );
+
+    const mounted = await mountPluginContentScripts(captured, {
+      pluginId: "theme-toggle",
+      experimental_appearance: {
+        colorMode: "dark",
+        colorModePreference: "system",
+      },
+    });
+    expect(getAppearance?.()).toMatchObject({
+      colorMode: "dark",
+      colorModePreference: "system",
+    });
+
+    getAppearance?.().setColorModePreference("light");
+    expect(getAppearance?.()).toMatchObject({
+      colorMode: "light",
+      colorModePreference: "light",
+    });
+    expect(mounted.inspection.experimental_appearance).toEqual({
+      colorMode: "light",
+      colorModePreference: "light",
+    });
+    expect(mounted.inspection.experimental_appearancePreferenceCalls).toEqual([
+      "light",
+    ]);
+
+    await mounted.lifecycle.dispose();
+    getAppearance?.().setColorModePreference("dark");
+    expect(mounted.inspection.experimental_appearancePreferenceCalls).toEqual([
+      "light",
+    ]);
   });
 
   it("can omit the experimental thread-row status API for compatibility tests", async () => {
@@ -1464,9 +1515,11 @@ describe("renderSlot", () => {
       },
     );
     expect(slot.getByText("Appearance: dark/system")).toBeTruthy();
+    expect(slot.getByText("Monaco theme: vs-dark")).toBeTruthy();
 
     fireEvent.click(slot.getByRole("button", { name: "Use light" }));
     expect(slot.getByText("Appearance: light/light")).toBeTruthy();
+    expect(slot.getByText("Monaco theme: vs")).toBeTruthy();
     expect(slot.inspection.experimental_appearancePreferenceCalls).toEqual([
       "light",
     ]);
@@ -1476,6 +1529,34 @@ describe("renderSlot", () => {
       colorModePreference: "system",
     });
     expect(slot.getByText("Appearance: dark/system")).toBeTruthy();
+  });
+
+  it("models appearance in host-rendered footer action callbacks", async () => {
+    const result = await experimental_runSidebarFooterAction(
+      {
+        id: "toggle-mode",
+        title: "Toggle mode",
+        icon: "Palette",
+        run({ experimental_appearance: appearance, openSettings }) {
+          appearance.setColorModePreference(
+            appearance.colorMode === "dark" ? "light" : "dark",
+          );
+          openSettings();
+        },
+      },
+      {
+        experimental_appearance: {
+          colorMode: "dark",
+          colorModePreference: "system",
+        },
+      },
+    );
+
+    expect(result).toEqual({
+      appearance: { colorMode: "light", colorModePreference: "light" },
+      openSettingsCalls: 1,
+      experimental_appearancePreferenceCalls: ["light"],
+    });
   });
 
   it("refreshes rendered RPC data after a realtime event", async () => {

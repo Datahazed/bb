@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  experimental_runSidebarFooterAction,
+  loadPluginApp,
+  renderSlot,
+} from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
 
@@ -54,16 +58,30 @@ describe("Plugin API Tester app", () => {
     );
   });
 
-  it("registers a footer shortcut to the plugin detail page", async () => {
+  it("toggles the resolved color mode directly from the footer", async () => {
     expect(app.sidebarFooterActions).toHaveLength(1);
     expect(app.sidebarFooterActions[0]).toMatchObject({
-      id: "open-plugin-api-tester",
-      title: "Plugin API Tester",
+      id: "toggle-color-mode",
+      title: "Toggle color mode",
       icon: "Beaker",
     });
 
-    const openSettings = vi.fn();
-    await app.sidebarFooterActions[0]!.run({ openSettings });
-    expect(openSettings).toHaveBeenCalledOnce();
+    const result = await experimental_runSidebarFooterAction(
+      app.sidebarFooterActions[0]!,
+      {
+        experimental_appearance: {
+          colorMode: "dark",
+          colorModePreference: "system",
+        },
+      },
+    );
+    expect(result).toEqual({
+      appearance: {
+        colorMode: "light",
+        colorModePreference: "light",
+      },
+      openSettingsCalls: 0,
+      experimental_appearancePreferenceCalls: ["light"],
+    });
   });
 });

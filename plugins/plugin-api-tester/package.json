@@ -6,7 +6,7 @@
   "description": "Exercise and inspect bb plugin API surfaces during development.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.13"
+    "bbPluginSdk": ">=0.4.14"
   },
   "bb": {
     "name": "Plugin API Tester",

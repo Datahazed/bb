@@ -5,7 +5,7 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
-## Client appearance (`experimental_useAppearance`)
+## Client appearance (`experimental_useAppearance`, `experimental_appearance`, `experimental_getAppearance`)
 
 **What it does.** Gives plugin React components the current client's resolved
 `"light" | "dark"` color mode, its selected `"light" | "dark" | "system"`
@@ -16,14 +16,24 @@ local-storage/class manipulation](https://github.com/xMinor-1/bb-plugins/blob/3a
 The host behavior test covers the existing client appearance store, and the
 [Plugin API Tester](../plugins/plugin-api-tester/app.tsx) is the first in-repo
 plugin consumer: its panel renders and updates both values through the same
-SDK harness external authors use.
+SDK harness external authors use. Its host-rendered sidebar footer action gets
+the same contract as `run({ experimental_appearance })`, since an action
+callback cannot call a React hook, and toggles directly between the resolved
+light/dark modes without opening the plugin panel. Content scripts receive
+`experimental_getAppearance()` so they can read a fresh snapshot at the point
+of use; this is the shape Theme Toggle's non-React menu needs to replace its
+private client storage and root-class writes.
 
-The other Appearance-tagged releases did not justify widening the contract:
-[Ayu](https://github.com/vburojevic/bb-plugin-ayu/blob/8881e00888854462fc8a7c68de386fef8229f8aa/package.json)
-and [Tokyo Night](https://github.com/krehel/bb-plugin-tokyo-night/blob/a5234d1a72e1fa58f3826cb239acd485701f76fe/package.json)
-are declarative `bb.themes` palettes, while [Fonts](https://github.com/gtramontina/bb-plugin-fonts/blob/d48637a2052b0336b8ac12476101a816c8b421de/client-runtime.ts#L104-L111)
-reapplies typography CSS configuration. Those needs remain covered by theme
-CSS variables/`bb.themes`, not this JavaScript mode API.
+The [live BB Community catalog](https://getbb.app/marketplace/v1/marketplace.json)
+was checked against each latest compatible release:
+
+| Plugin                                                                                                                                          | Released implementation                                                                                                                                          | Appearance API outcome                                                                                                                 |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| [Theme Toggle 0.2.1](https://github.com/xMinor-1/bb-plugins/blob/3a6ef78555814fe63891eac72a145ca9c114e9a6/plugins/theme-toggle/app.tsx#L23-L74) | Reads/writes private `bb.theme` storage, dispatches a synthetic storage event, calls `matchMedia`, and toggles the root `dark` class from a content-script menu. | Direct beneficiary: replace that block with `experimental_getAppearance()`; palette reads/writes stay on `bb.sdk.theme`.               |
+| [Monaco 0.1.0](https://github.com/andrewkchan/bb-plugin-monaco/blob/f165b11328efbed70f904bb0e65d432d014c5950/app.tsx#L34-L47)                   | Observes the root `dark` class to choose `vs` / `vs-dark`.                                                                                                       | Direct beneficiary: map reactive `colorMode` from `experimental_useAppearance()`.                                                      |
+| [Ayu 0.2.2](https://github.com/vburojevic/bb-plugin-ayu/blob/8881e00888854462fc8a7c68de386fef8229f8aa/package.json#L21-L41)                     | Contributes declarative palettes and uses `bb.sdk.theme` in its palette explorer.                                                                                | No migration: the existing palette contracts are the correct surface.                                                                  |
+| [Tokyo Night 0.1.0](https://github.com/krehel/bb-plugin-tokyo-night/blob/a5234d1a72e1fa58f3826cb239acd485701f76fe/package.json)                 | Contributes declarative light/dark palette CSS.                                                                                                                  | No migration: CSS already reacts to the client mode.                                                                                   |
+| [Fonts 0.1.0](https://github.com/gtramontina/bb-plugin-fonts/blob/d48637a2052b0336b8ac12476101a816c8b421de/client-runtime.ts#L104-L111)         | Recomputes typography overrides after mode or palette changes.                                                                                                   | Not covered: it needs a stable general appearance-change notification, not mode values or CSS tokens. Keep that prerequisite separate. |
 
 The hook deliberately omits palette ids, palette CSS, resolved code-theme
 files, favicon selection, and CSS tokens. Plugin styles already receive live
@@ -39,7 +49,9 @@ the same persistence/cross-window behavior as Settings; measure adoption by a
 second non-editor external plugin; and re-check that no stable JavaScript
 consumer needs a palette-change revision before adding one. Keep the hook on
 the existing shared app runtime so it adds no appearance subsystem or lazy
-chunk to plugin bundles.
+chunk to plugin bundles. Confirm the footer snapshot remains current at click
+time, content-script reads remain current and generation-scoped, and all three
+adapters continue sharing one semantic contract.
 
 ## `experimental_buildBridgeToolCallContent`
 

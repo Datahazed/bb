@@ -71,5 +71,17 @@ describe("experimental_useAppearance", () => {
     act(() => system.setColorMode("light"));
     expect(result.current.colorModePreference).toBe("system");
     expect(result.current.colorMode).toBe("light");
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    act(() =>
+      (result.current.setColorModePreference as (preference: string) => void)(
+        "sepia",
+      ),
+    );
+    expect(result.current.colorModePreference).toBe("system");
+    expect(result.current.colorMode).toBe("light");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('expected "light", "dark", or "system"'),
+    );
   });
 });

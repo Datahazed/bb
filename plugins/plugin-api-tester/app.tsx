@@ -83,11 +83,13 @@ export default definePluginApp((app) => {
     component: PluginApiTesterPanel,
   });
   app.slots.sidebarFooterAction({
-    id: "open-plugin-api-tester",
-    title: "Plugin API Tester",
+    id: "toggle-color-mode",
+    title: "Toggle color mode",
     icon: "Beaker",
-    run({ openSettings }) {
-      openSettings();
+    run({ experimental_appearance: appearance }) {
+      appearance.setColorModePreference(
+        appearance.colorMode === "dark" ? "light" : "dark",
+      );
     },
   });
 });

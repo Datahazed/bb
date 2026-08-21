@@ -40,6 +40,7 @@ import {
   type PluginSdkApp,
   type PluginSettingsSectionRegistration,
   type PluginSettingsState,
+  type PluginSidebarFooterActionContext,
   type PluginSidebarFooterActionRegistration,
   type PluginSidebarPullRequest,
   type PluginSidebarThreadActions,
@@ -959,10 +960,81 @@ export async function loadPluginApp(
   return collectPluginAppRegistrations(definition);
 }
 
+export interface ExperimentalRunSidebarFooterActionOptions {
+  /** Appearance snapshot supplied to the action. Defaults to light/system. */
+  experimental_appearance?: ExperimentalAppearanceSnapshot;
+  /** Optional assertion spy or host-like implementation. */
+  openSettings?: () => void;
+}
+
+export interface ExperimentalRunSidebarFooterActionResult {
+  /** Appearance after every preference write made by the action. */
+  appearance: ExperimentalAppearanceSnapshot;
+  /** Number of times the action requested its plugin detail page. */
+  openSettingsCalls: number;
+  /** Preference writes made through the action context, in order. */
+  experimental_appearancePreferenceCalls: Array<
+    ExperimentalPluginAppearance["colorModePreference"]
+  >;
+}
+
+/**
+ * Run a captured host-rendered footer action with the same semantic appearance
+ * context BB supplies at click time.
+ */
+export async function experimental_runSidebarFooterAction(
+  registration: PluginSidebarFooterActionRegistration,
+  options: ExperimentalRunSidebarFooterActionOptions = {},
+): Promise<ExperimentalRunSidebarFooterActionResult> {
+  let appearanceSnapshot: ExperimentalAppearanceSnapshot = {
+    ...(options.experimental_appearance ?? {
+      colorMode: "light",
+      colorModePreference: "system",
+    }),
+  };
+  const systemColorMode = appearanceSnapshot.colorMode;
+  const appearancePreferenceCalls: Array<
+    ExperimentalPluginAppearance["colorModePreference"]
+  > = [];
+  const appearance: ExperimentalPluginAppearance = {
+    get colorMode() {
+      return appearanceSnapshot.colorMode;
+    },
+    get colorModePreference() {
+      return appearanceSnapshot.colorModePreference;
+    },
+    setColorModePreference(preference) {
+      appearancePreferenceCalls.push(preference);
+      appearanceSnapshot = {
+        colorMode: preference === "system" ? systemColorMode : preference,
+        colorModePreference: preference,
+      };
+    },
+  };
+  let openSettingsCalls = 0;
+  const context: PluginSidebarFooterActionContext = {
+    experimental_appearance: appearance,
+    openSettings() {
+      openSettingsCalls += 1;
+      options.openSettings?.();
+    },
+  };
+
+  await registration.run(context);
+
+  return {
+    appearance: { ...appearanceSnapshot },
+    openSettingsCalls,
+    experimental_appearancePreferenceCalls: [...appearancePreferenceCalls],
+  };
+}
+
 export interface ContentScriptTestMountOptions {
   pluginId: string;
   /** Defaults to 1. Pass the host generation you want the plugin to observe. */
   generation?: number;
+  /** Initial value returned by `experimental_getAppearance()`. */
+  experimental_appearance?: ExperimentalAppearanceSnapshot;
   /**
    * Simulate an older compatible host that predates the optional experimental
    * thread-row status API. Current-host behavior is enabled by default.
@@ -980,6 +1052,10 @@ export interface MountedPluginContentScripts {
     readonly mountedIds: readonly string[];
     readonly signal: AbortSignal;
     readonly disposed: boolean;
+    /** Current semantic appearance after content-script preference writes. */
+    readonly experimental_appearance: ExperimentalAppearanceSnapshot;
+    /** Preference writes made through `experimental_getAppearance()`. */
+    readonly experimental_appearancePreferenceCalls: readonly ExperimentalPluginAppearance["colorModePreference"][];
     readonly threadRowStatusCalls: readonly ContentScriptThreadRowStatusCall[];
     getThreadRowStatus(threadId: string): PluginComposerThreadRowStatus | null;
   };
@@ -1006,7 +1082,28 @@ export async function mountPluginContentScripts(
   }> = [];
   const threadRowStatuses = new Map<string, PluginComposerThreadRowStatus>();
   const threadRowStatusCalls: ContentScriptThreadRowStatusCall[] = [];
+  let appearanceSnapshot: ExperimentalAppearanceSnapshot = {
+    ...(options.experimental_appearance ?? {
+      colorMode: "light",
+      colorModePreference: "system",
+    }),
+  };
+  const systemColorMode = appearanceSnapshot.colorMode;
+  const appearancePreferenceCalls: Array<
+    ExperimentalPluginAppearance["colorModePreference"]
+  > = [];
   let disposed = false;
+  const getAppearance = (): ExperimentalPluginAppearance => ({
+    ...appearanceSnapshot,
+    setColorModePreference(preference) {
+      if (controller.signal.aborted) return;
+      appearancePreferenceCalls.push(preference);
+      appearanceSnapshot = {
+        colorMode: preference === "system" ? systemColorMode : preference,
+        colorModePreference: preference,
+      };
+    },
+  });
   const setThreadRowStatus = (threadId: unknown, status: unknown): void => {
     if (controller.signal.aborted) return;
     if (typeof threadId !== "string" || threadId.trim().length === 0) {
@@ -1056,6 +1153,7 @@ export async function mountPluginContentScripts(
         pluginId: options.pluginId,
         generation,
         signal: controller.signal,
+        experimental_getAppearance: getAppearance,
         ...(!options.omitExperimentalThreadRowStatus
           ? { experimental_setThreadRowStatus: setThreadRowStatus }
           : {}),
@@ -1080,6 +1178,12 @@ export async function mountPluginContentScripts(
       signal: controller.signal,
       get disposed() {
         return disposed;
+      },
+      get experimental_appearance() {
+        return { ...appearanceSnapshot };
+      },
+      get experimental_appearancePreferenceCalls() {
+        return [...appearancePreferenceCalls];
       },
       get threadRowStatusCalls() {
         return threadRowStatusCalls.map(({ threadId, status }) => ({

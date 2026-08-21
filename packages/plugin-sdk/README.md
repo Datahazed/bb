@@ -18,6 +18,15 @@ such as a canvas or third-party editor theme. Do not use it to restyle ordinary
 plugin UI: plugin CSS already inherits BB's live semantic variables, and
 server-owned palette selection remains on `bb.sdk.theme`.
 
+Host-rendered `sidebarFooterAction` callbacks receive the same semantic value
+as `experimental_appearance` because callbacks cannot call React hooks. The
+snapshot is current when the action runs, so an icon can, for example, switch
+the resolved mode to the opposite explicit preference.
+
+Content scripts call `experimental_getAppearance()` from their mount context
+when non-React behavior needs a fresh snapshot. It returns the same semantic
+value and setter; it does not expose palette state or CSS tokens.
+
 ## Composer customization
 
 Composer UI extensions register through `app.composer.customize(...)`. A

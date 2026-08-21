@@ -585,6 +585,14 @@ export interface PluginSidebarFooterActionContext {
    * and `settingsSection` slots render.
    */
   openSettings(): void;
+  /**
+   * The current client's semantic appearance at activation time. Use this for
+   * direct action behavior that cannot call React hooks, such as toggling the
+   * client-local color-mode preference from the footer icon.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_appearance: ExperimentalPluginAppearance;
 }
 
 /**
@@ -1140,6 +1148,14 @@ export interface PluginContentScriptContext {
   readonly generation: number;
   /** Aborted before cleanup begins on replacement, deactivation, or teardown. */
   readonly signal: AbortSignal;
+  /**
+   * Read the current client's semantic appearance when non-React content
+   * script behavior runs. Call it at the point of use rather than retaining a
+   * snapshot; writes from a disposed script generation are ignored.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  readonly experimental_getAppearance: () => ExperimentalPluginAppearance;
   /**
    * Persistently decorate any thread row for this plugin generation.
    *
