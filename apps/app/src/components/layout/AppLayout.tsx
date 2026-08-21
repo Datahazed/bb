@@ -188,6 +188,9 @@ function SidebarStateBridge({
       ref={providerRef}
       width={`${sidebarLiveWidth ?? sidebarWidth}px`}
       data-testid="app-layout-root"
+      data-code-name="app.window"
+      data-code-label="App window"
+      data-code-kind="window"
       open={open}
       onOpenChange={handleOpenChange}
     >

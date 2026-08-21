@@ -72,6 +72,9 @@ function PluginSidebarFooterAction({
     <SidebarMenuItem className="min-w-0">
       <SidebarMenuButton
         className={SIDEBAR_FOOTER_ACTION_CLASS}
+        data-code-name={`app.sidebar.footer-actions.${action.pluginId}.${action.id}`}
+        data-code-label={title}
+        data-code-kind="action"
         tooltip={{ children: title, hidden: false, side: "top" }}
         aria-label={title}
         aria-pressed={active}
