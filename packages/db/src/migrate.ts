@@ -5,6 +5,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { DbConnection } from "./connection.js";
 import {
+  captureFreshDatabaseSnapshot,
+  isEmptyInMemoryDatabase,
+  restoreFreshDatabaseSnapshot,
+  type FreshDatabaseSnapshot,
+} from "./fresh-database-snapshot.js";
+import {
   compatibleMigrationHashes,
   publishedMigrationWhensByTag,
 } from "./migration-history.js";
@@ -1499,9 +1505,44 @@ function validateAppliedMigrationHistory(
   );
 }
 
+/**
+ * Migrated-from-empty `:memory:` databases, keyed by everything that shapes
+ * the result. Migrating an empty database is a pure function of the
+ * migration files and the options, so after the first full run in a process
+ * every further empty in-memory database (tests open hundreds per run) is
+ * restored from the snapshot instead of re-executing every migration file.
+ */
+const freshInMemoryDatabaseSnapshots = new Map<string, FreshDatabaseSnapshot>();
+
+function freshDatabaseSnapshotKey(
+  migrationsFolder: string,
+  options: MigrateOptions,
+): string {
+  return `${migrationsFolder}\0${options.deferDestructiveLegacyCleanup === true}`;
+}
+
 export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
   const migrationsFolder = resolveMigrationsFolder();
   const sqlite = db.$client;
+
+  const snapshotKey = freshDatabaseSnapshotKey(migrationsFolder, options);
+  const isFreshInMemory = isEmptyInMemoryDatabase(db);
+  const snapshot = isFreshInMemory
+    ? freshInMemoryDatabaseSnapshots.get(snapshotKey)
+    : undefined;
+  if (snapshot) {
+    sqlite.pragma("foreign_keys = OFF");
+    try {
+      restoreFreshDatabaseSnapshot(db, snapshot);
+    } finally {
+      sqlite.pragma("foreign_keys = ON");
+    }
+    // The history and schema validations are pure functions of the migrated
+    // state, which the full run below already validated when it captured the
+    // snapshot. Only the clock-dependent warning is worth repeating.
+    warnAboutFutureAppliedMigrations(db, options);
+    return;
+  }
 
   sqlite.pragma("foreign_keys = OFF");
   try {
@@ -1538,4 +1579,11 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
   warnAboutFutureAppliedMigrations(db, options);
   validateAppliedMigrationHistory(db, migrationsFolder);
   validatePendingInteractionsSchema(db);
+
+  if (isFreshInMemory && !freshInMemoryDatabaseSnapshots.has(snapshotKey)) {
+    const captured = captureFreshDatabaseSnapshot(db);
+    if (captured) {
+      freshInMemoryDatabaseSnapshots.set(snapshotKey, captured);
+    }
+  }
 }
