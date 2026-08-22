@@ -21,6 +21,7 @@ import { useRememberPluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
   AUTH_CALLBACK_ROUTE_PATH,
+  HTML_PREVIEW_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
@@ -57,6 +58,7 @@ import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
+import { HtmlPreviewView } from "./views/HtmlPreviewView";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -381,6 +383,10 @@ export function App() {
             <AppFileExternalNavigationHost>
               <HashNavigationScroll />
               <Routes>
+                <Route
+                  path={HTML_PREVIEW_ROUTE_PATH}
+                  element={<HtmlPreviewView />}
+                />
                 <Route
                   path={AUTH_CALLBACK_ROUTE_PATH}
                   element={<AuthCallbackView />}

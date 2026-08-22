@@ -553,8 +553,13 @@ describe("FilePreview", () => {
       screen.getByRole("button", { name: "Open in external browser" }),
     );
 
-    expect(openSpy).toHaveBeenCalledWith(
+    const expectedUrl = new URL("/html-preview", window.location.origin);
+    expectedUrl.searchParams.set(
+      "src",
       `${window.location.origin}/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html`,
+    );
+    expect(openSpy).toHaveBeenCalledWith(
+      expectedUrl.toString(),
       "_blank",
       "noopener,noreferrer",
     );
@@ -586,9 +591,12 @@ describe("FilePreview", () => {
         screen.getByRole("button", { name: "Open in external browser" }),
       );
 
-      expect(openExternalUrl).toHaveBeenCalledWith(
+      const expectedUrl = new URL("/html-preview", window.location.origin);
+      expectedUrl.searchParams.set(
+        "src",
         `${window.location.origin}/api/v1/threads/thr_1/worktree/files/docs/progress-vis.html`,
       );
+      expect(openExternalUrl).toHaveBeenCalledWith(expectedUrl.toString());
     } finally {
       delete (window as unknown as { bbDesktop?: unknown }).bbDesktop;
     }

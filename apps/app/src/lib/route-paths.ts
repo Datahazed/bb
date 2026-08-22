@@ -6,6 +6,8 @@ import {
   stripRoutePathSuffix,
 } from "@bb/client-core";
 
+export const HTML_PREVIEW_ROUTE_PATH = "/html-preview";
+
 // Route constants and path builders live in @bb/client-core so the native app
 // can build the same links; re-exported here so web imports keep resolving.
 // Only the react-router `matchPath` consumers stay in this file.

@@ -37,6 +37,7 @@ import {
   type CodeOverflowMode,
   type CodeOverflowModeChangeHandler,
 } from "@/lib/code-overflow-mode";
+import { HTML_PREVIEW_ROUTE_PATH } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SecondaryPanelSelectionActions } from "./SecondaryPanelSelectionActions.js";
 
@@ -232,13 +233,16 @@ function getFilePreviewExternalUrl(state: FilePreviewState): string | null {
   return null;
 }
 
-// The preview URL is a same-origin app path; the external browser needs the
-// whole address.
+// Open the raw page inside permanent bb-owned chrome; the nested sandbox keeps
+// workspace HTML from replacing that warning or reaching bb credentials.
 function toAbsolutePreviewUrl(url: string): string {
-  if (typeof window === "undefined") {
-    return url;
-  }
-  return new URL(url, window.location.href).toString();
+  if (typeof window === "undefined") return url;
+  const previewUrl = new URL(HTML_PREVIEW_ROUTE_PATH, window.location.href);
+  previewUrl.searchParams.set(
+    "src",
+    new URL(url, window.location.href).toString(),
+  );
+  return previewUrl.toString();
 }
 
 function getFilePreviewToggleKind(
