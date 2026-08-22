@@ -402,6 +402,14 @@ export function collectPluginAppRegistrations(
             `${kind}: "placement" must be "inline-preferred" or "menu"`,
           );
         }
+        if (
+          registration.experimental_requiresPrimaryModifier !== undefined &&
+          typeof registration.experimental_requiresPrimaryModifier !== "boolean"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_requiresPrimaryModifier" must be a boolean`,
+          );
+        }
         if (typeof registration.presentation !== "function") {
           throw new Error(`${kind}: "presentation" must be a function`);
         }
@@ -412,6 +420,12 @@ export function collectPluginAppRegistrations(
           id,
           ...(registration.placement !== undefined
             ? { placement: registration.placement }
+            : {}),
+          ...(registration.experimental_requiresPrimaryModifier !== undefined
+            ? {
+                experimental_requiresPrimaryModifier:
+                  registration.experimental_requiresPrimaryModifier,
+              }
             : {}),
           presentation: registration.presentation,
           run: registration.run,
