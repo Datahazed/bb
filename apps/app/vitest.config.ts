@@ -24,10 +24,13 @@ export default defineWorkspaceTestConfig({
     environment: "node",
     setupFiles: ["src/test/setup.ts"],
     testTimeout: 15_000,
-    // Stubs never outlive their test, so `vi.stubGlobal`/`vi.stubEnv` files
-    // can share a worker (see `findIsolationRequiringTests`).
+    // Stubs and spies never outlive their test, so `vi.stubGlobal`/
+    // `vi.stubEnv` files can share a worker (see `findIsolationRequiringTests`)
+    // and a `vi.spyOn(window, "requestAnimationFrame")` left behind by one
+    // file cannot stall every file that follows it in the same worker.
     unstubGlobals: true,
     unstubEnvs: true,
+    restoreMocks: true,
     projects: [
       {
         extends: true,

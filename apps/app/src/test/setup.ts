@@ -7,6 +7,17 @@
 // in outside `act`. `components/ui/icon.test.tsx` resets modules to cover the
 // cold path.
 import "@bb/shared-ui/icon-extended";
+import { afterEach } from "vitest";
+
+// Without `globals: true`, Testing Library cannot register its own
+// `afterEach(cleanup)`, and test files share a worker here (`isolate: false`),
+// so a file that forgets to unmount leaks its live React tree — portals,
+// open dialogs, list rows — into every file that follows it in that worker.
+// Register the cleanup once for all DOM tests instead of relying on each file.
+if (typeof document !== "undefined") {
+  const { cleanup } = await import("@testing-library/react");
+  afterEach(cleanup);
+}
 
 /**
  * Shared vitest setup.
@@ -96,10 +107,7 @@ if (
   });
 }
 
-if (
-  typeof Text !== "undefined" &&
-  !("getClientRects" in Text.prototype)
-) {
+if (typeof Text !== "undefined" && !("getClientRects" in Text.prototype)) {
   Object.defineProperty(Text.prototype, "getClientRects", {
     configurable: true,
     value: () => [],

@@ -1,5 +1,10 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  // The root `pnpm test` script sets VITEST_MAX_WORKERS so that parallel
+  // Turbo test tasks do not each spawn a full CPU's worth of Vitest workers.
+  // Strict env mode would otherwise drop it before Vitest sees it. Pass-through
+  // variables do not take part in task hashing.
+  "globalPassThroughEnv": ["VITEST_MAX_WORKERS"],
   "tasks": {
     "@bb/web#build": {
       "inputs": [
@@ -434,10 +439,7 @@
     // uncacheable and must see those two variables (strict env mode strips
     // everything undeclared). Without the variable the suites skip.
     "@bb/server#test:provider-corpus": {
-      "dependsOn": [
-        "//#ensure-native-modules",
-        "topo"
-      ],
+      "dependsOn": ["//#ensure-native-modules", "topo"],
       "cache": false,
       "passThroughEnv": [
         "BB_PROVIDER_CORPUS_DIR",

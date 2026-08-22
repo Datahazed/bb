@@ -204,6 +204,19 @@ export function useScrollToSearchedMessage(
   const olderLoadAttemptKeyRef = useRef<string | null>(null);
   const locationKeyRef = useRef(location.key);
   locationKeyRef.current = location.key;
+  // Reveal timers deliberately survive re-runs of the effect below (a rows
+  // change must not cancel a pending reveal), so they are cleared on unmount
+  // only; otherwise they would fire into a document that no longer exists.
+  const pendingTimersRef = useRef(new Set<number>());
+  useEffect(() => {
+    const pendingTimers = pendingTimersRef.current;
+    return () => {
+      for (const timer of pendingTimers) {
+        window.clearTimeout(timer);
+      }
+      pendingTimers.clear();
+    };
+  }, []);
   const target = readSearchMessageTarget(location.state);
   const targetSeq = target?.seq ?? null;
   const targetThreadId = target?.threadId ?? null;
@@ -259,6 +272,15 @@ export function useScrollToSearchedMessage(
     }
     handledKeyRef.current = location.key;
 
+    const pendingTimers = pendingTimersRef.current;
+    const schedule = (callback: () => void, delayMs: number) => {
+      const timer = window.setTimeout(() => {
+        pendingTimers.delete(timer);
+        callback();
+      }, delayMs);
+      pendingTimers.add(timer);
+    };
+
     let flashed = false;
     const revealTarget = () => {
       if (locationKeyRef.current !== location.key) {
@@ -281,7 +303,7 @@ export function useScrollToSearchedMessage(
       if (!flashed) {
         flashed = true;
         element.classList.add(FLASH_CLASS_NAME);
-        window.setTimeout(() => {
+        schedule(() => {
           element.classList.remove(FLASH_CLASS_NAME);
         }, FLASH_DURATION_MS);
       }
@@ -289,8 +311,8 @@ export function useScrollToSearchedMessage(
 
     // Reveal after initial layout and again after idle placeholder correction.
     const frame = requestAnimationFrame(revealTarget);
-    window.setTimeout(revealTarget, 320);
-    window.setTimeout(revealTarget, POST_WINDOW_SETTLE_REVEAL_MS);
+    schedule(revealTarget, 320);
+    schedule(revealTarget, POST_WINDOW_SETTLE_REVEAL_MS);
     return () => {
       cancelAnimationFrame(frame);
     };

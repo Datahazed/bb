@@ -56,6 +56,7 @@
 
 - Only write high quality tests that verify where there could be potential bugs. Avoid testing trivial getters/setters, framework wiring, or other code that is unlikely to break.
 - Pipe slow test output to a file, then read the file. Example: `pnpm exec turbo run test --filter=@bb/integration-tests --force > /tmp/test-out.txt 2>&1`.
+- `pnpm test` runs the whole repo and caps each package at two Vitest workers with half of Turbo's default task concurrency, so the ~70 parallel test tasks do not oversubscribe the machine (which turns into test timeouts). To run one package at full parallelism, use `pnpm exec turbo run test --filter=@bb/<pkg>`.
 
 ## GitHub Issues And Pull Requests
 

@@ -37,7 +37,7 @@
     "storybook": "turbo run storybook --filter=@bb/app",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "test": "cross-env VITEST_MAX_WORKERS=2 turbo run test --concurrency=50%",
     "test:integration": "turbo run test:integration",
     "qa:standalone:start": "node tests/qa/scripts/run-root-command.mjs standalone:start",
     "qa:standalone:stop": "node tests/qa/scripts/run-root-command.mjs standalone:stop",

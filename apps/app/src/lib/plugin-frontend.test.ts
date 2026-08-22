@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as react from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import clsx from "clsx";
@@ -143,9 +143,14 @@ describe("loadPluginFrontends", () => {
 describe("installPluginRuntime", () => {
   type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: unknown };
 
-  afterEach(() => {
+  // Importing `@get-bb/plugin-sdk/testing/app` seeds the slot for the whole
+  // worker, and test files share workers here, so clear it before as well as
+  // after: `installPluginRuntime` skips an already-populated slot.
+  const clearRuntime = () => {
     delete (globalThis as RuntimeHost).__bbPluginRuntime;
-  });
+  };
+  beforeEach(clearRuntime);
+  afterEach(clearRuntime);
 
   it("exposes the app's own runtime modules on every shim slot, exactly once", () => {
     installPluginRuntime();
