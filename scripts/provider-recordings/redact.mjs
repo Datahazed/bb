@@ -10,9 +10,10 @@
  * (or, for a converted transcript, the bare message line) is rewritten:
  *
  *   1. structurally (when it parses as JSON): provider tool and command
- *      catalogs collapse to names, `env`/`envVars` maps lose secret-shaped
- *      keys and the record-mode variable, and any string longer than
- *      MAX_STRING_CHARS keeps its head and tail around a marker;
+ *      catalogs collapse to names, Claude thinking signatures become
+ *      `REDACTED`, `env`/`envVars` maps lose secret-shaped keys and the
+ *      record-mode variable, and any string longer than MAX_STRING_CHARS
+ *      keeps its head and tail around a marker;
  *   2. textually: absolute paths under the home directory become
  *      `/home/user`, emails become `user@example.com`, and token shapes
  *      (bbde_, GitHub gh[pousr]_/github_pat_, sk-, sk-ant-, xox?-, JWTs,
@@ -145,7 +146,12 @@ function redactValue(value, key, catalogContext) {
   }
   if (value !== null && typeof value === "object") {
     const out = {};
+    const isThinkingBlock = value.type === "thinking";
     for (const [childKey, childValue] of Object.entries(value)) {
+      if (isThinkingBlock && childKey === "signature" && typeof childValue === "string") {
+        out[childKey] = "REDACTED";
+        continue;
+      }
       if (isEnvMap(childKey, childValue)) {
         out[childKey] = redactEnvMap(childValue);
         continue;

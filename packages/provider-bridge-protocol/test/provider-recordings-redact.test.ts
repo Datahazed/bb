@@ -50,3 +50,57 @@ it("redacts every documented GitHub token prefix", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+it("redacts Claude thinking signatures without changing recorded model ids", () => {
+  const root = mkdtempSync(join(tmpdir(), "bb-recording-redact-"));
+  const inputDir = join(root, "input");
+  const outputDir = join(root, "output");
+  const message = {
+    type: "assistant",
+    message: {
+      model: "claude-mangosteen-eap",
+      content: [
+        {
+          type: "thinking",
+          thinking: "synthetic reasoning",
+          signature: "OPAQUE_SIGNATURE_PAYLOAD",
+        },
+        {
+          type: "tool_use",
+          input: { signature: "ordinary-signature" },
+        },
+      ],
+    },
+  };
+  const expected = {
+    ...message,
+    message: {
+      ...message.message,
+      content: [
+        { ...message.message.content[0], signature: "REDACTED" },
+        message.message.content[1],
+      ],
+    },
+  };
+
+  try {
+    mkdirSync(inputDir);
+    writeFileSync(
+      join(inputDir, "thinking.ndjson"),
+      `${JSON.stringify(message)}\n${JSON.stringify({ line: JSON.stringify(message) })}\n`,
+    );
+
+    execFileSync(
+      process.execPath,
+      [REDACT_SCRIPT.pathname, inputDir, outputDir, "--home", "/home/tester"],
+    );
+    const output = readFileSync(join(outputDir, "thinking.ndjson"), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+
+    expect(output).toEqual([expected, { line: JSON.stringify(expected) }]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
