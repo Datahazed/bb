@@ -1,8 +1,16 @@
 import path from "path";
-import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
+import {
+  defineWorkspaceTestConfig,
+  findIsolationRequiringTests,
+} from "../../vitest.shared.js";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
+
+const include = ["src/**/*.test.ts", "src/**/*.test.tsx"];
+const isolationTests = findIsolationRequiringTests(__dirname, ["src"], {
+  stubsRestoredAfterEachTest: true,
+});
 
 export default defineWorkspaceTestConfig({
   plugins: [sharedUiEnvSeam(), react(), tailwindcss()],
@@ -14,8 +22,29 @@ export default defineWorkspaceTestConfig({
   test: {
     silent: "passed-only",
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     setupFiles: ["src/test/setup.ts"],
     testTimeout: 15_000,
+    // Stubs never outlive their test, so `vi.stubGlobal`/`vi.stubEnv` files
+    // can share a worker (see `findIsolationRequiringTests`).
+    unstubGlobals: true,
+    unstubEnvs: true,
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "@bb/app",
+          include,
+          exclude: ["dist/**", "node_modules/**", ...isolationTests],
+          isolate: false,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "@bb/app:isolated",
+          include: isolationTests,
+        },
+      },
+    ],
   },
 });

@@ -61,6 +61,12 @@ function stubPrefersDark(matches: boolean): void {
 }
 
 describe("index.html pre-paint script", () => {
+  // `installDocument` replaces `<head>` and `<body>`; anything holding a
+  // reference to the originals (Testing Library's `screen`, the jsdom
+  // environment's teardown) would otherwise keep pointing at detached nodes.
+  const originalHead = document.head;
+  const originalBody = document.body;
+
   beforeEach(() => {
     localStorage.clear();
     installDocument(indexHtml);
@@ -71,8 +77,7 @@ describe("index.html pre-paint script", () => {
     vi.restoreAllMocks();
     localStorage.clear();
     document.documentElement.className = "";
-    document.head.innerHTML = "";
-    document.body.innerHTML = "";
+    document.documentElement.replaceChildren(originalHead, originalBody);
   });
 
   it("extracts both inline scripts from index.html", () => {
