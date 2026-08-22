@@ -27,6 +27,7 @@ vi.mock("@/lib/sdk", () => ({
       update: vi.fn(),
     },
     system: { config: vi.fn() },
+    threadSections: { experimental_listWithIcons: vi.fn() },
   },
 }));
 
@@ -125,6 +126,9 @@ async function openHostMenu(hostName: string): Promise<void> {
 beforeEach(() => {
   hostDaemon.localDaemonHostId = "host_primary";
   hostDaemon.platform = "darwin";
+  vi.mocked(sdk.threadSections.experimental_listWithIcons).mockResolvedValue(
+    [],
+  );
 });
 
 afterEach(() => {
