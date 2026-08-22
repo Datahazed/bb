@@ -65,9 +65,10 @@
 - When an agent creates a GitHub issue or pull request, add this line at the end of the body:
 
   ```
-  > AGENT GENERATED
+  > AGENT GENERATED: by <model>
   ```
 
+- Replace `<model>` with the name of the model that writes the text, for example `Claude Opus 5`.
 - Add this line to each new issue and pull request. It shows the readers that an agent made the content.
 
 ## Debugging And QA
