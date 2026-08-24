@@ -33,6 +33,7 @@ import type {
   EventProjectionProvisioningTranscriptEntry,
   EventProjectionToolParsedIntent,
   EventProjectionTurn,
+  EventProjectionTurnWindowCoverage,
 } from "./event-projection-types.js";
 import { assertNever } from "./assert-never.js";
 import {
@@ -75,6 +76,15 @@ type ThreadTimelineTurnMessageDetail = "summary" | "full";
 interface ThreadTimelineFromEventsBaseOptions {
   contextOnlyToolCallIds?: ReadonlySet<string>;
   includeProviderUnhandledOperations: boolean;
+  /**
+   * Lifecycle edges physically owned by this sequence window. Backfilled turn
+   * starts/completions still settle partial turns, but must not supply global
+   * timing or a page-local false terminal response.
+   */
+  turnWindowCoverageById?: ReadonlyMap<
+    string,
+    EventProjectionTurnWindowCoverage
+  >;
   /**
    * Tail-only state (`pendingTodos`) is only meaningful on the latest page —
    * this snapshot describes current head state, not historical state. Caller
@@ -1385,6 +1395,7 @@ export function buildThreadTimelineFromEvents(
     providerDisplayName: args.options.providerDisplayName,
     threadStatus: args.options.threadStatus,
     threadName: args.options.threadName,
+    turnWindowCoverageById: args.options.turnWindowCoverageById,
     turnMessageDetail: args.options.turnMessageDetail,
   } satisfies Parameters<typeof buildEventProjection>[1];
   const projection = buildEventProjection(args.events, projectionOptions);

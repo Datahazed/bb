@@ -40,9 +40,18 @@ function assistantMessage(
   };
 }
 
-function commandMessage(args: MessageBaseArgs): EventProjectionCommandMessage {
+interface CommandMessageArgs extends MessageBaseArgs {
+  endSeq?: number;
+}
+
+function commandMessage(
+  args: CommandMessageArgs,
+): EventProjectionCommandMessage {
+  const endSeq = args.endSeq ?? args.seq;
   return {
     ...messageBase(args),
+    sourceSeqEnd: endSeq,
+    createdAt: endSeq,
     kind: "command",
     callId: args.id,
     command: "pnpm test",
@@ -51,7 +60,7 @@ function commandMessage(args: MessageBaseArgs): EventProjectionCommandMessage {
     source: null,
     output: "",
     exitCode: 0,
-    completedAt: args.seq,
+    completedAt: endSeq,
     approvalStatus: null,
     status: "completed",
   };
@@ -251,6 +260,56 @@ describe("groupCompletedTurnMessages", () => {
       },
     ]);
     expect(groups.terminalMessages).toEqual([terminal]);
+  });
+
+  it("folds adjacent progress updates crossed by active work", () => {
+    const command = commandMessage({ id: "command", seq: 1, endSeq: 5 });
+    const first = assistantMessage({ id: "first-progress", seq: 2 });
+    const second = assistantMessage({ id: "second-progress", seq: 3 });
+    const terminal = assistantMessage({ id: "terminal", seq: 6 });
+    const turn = completedTurn([command, first, second, terminal], terminal);
+    turn.completedAt = 7;
+    turn.sourceSeqEnd = 7;
+
+    const groups = groupCompletedTurnMessages(turn);
+
+    expect(groups.summaryItems).toMatchObject([
+      {
+        kind: "summary",
+        startedAt: 1,
+        completedAt: 7,
+        segmentIndex: null,
+      },
+    ]);
+    expect(summarySourceMessageIds(groups)).toEqual([
+      ["command", "first-progress", "second-progress"],
+    ]);
+    expect(groups.terminalMessages).toEqual([terminal]);
+  });
+
+  it("uses only lifecycle edges owned by a partial turn window", () => {
+    const command = commandMessage({ id: "command", seq: 3 });
+    const olderSlice = completedTurn([command], undefined);
+    olderSlice.startedAt = 1;
+    olderSlice.completedAt = 10;
+    olderSlice.windowCoverage = {
+      ownsCompletion: false,
+      ownsStart: true,
+    };
+    const latestSlice = {
+      ...olderSlice,
+      windowCoverage: {
+        ownsCompletion: true,
+        ownsStart: false,
+      },
+    } satisfies EventProjectionTurn;
+
+    expect(groupCompletedTurnMessages(olderSlice).summaryItems).toMatchObject([
+      { kind: "summary", startedAt: 1, completedAt: null },
+    ]);
+    expect(groupCompletedTurnMessages(latestSlice).summaryItems).toMatchObject([
+      { kind: "summary", startedAt: 3, completedAt: 10 },
+    ]);
   });
 
   it("preserves the last assistant message before an ungroupable user message", () => {

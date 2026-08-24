@@ -125,6 +125,7 @@ interface BuildDetailedProjectionArgs {
   contextOnlyToolCallIds?: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
   messages: EventProjectionMessage[];
+  turnWindowCoverageById?: BuildEventProjectionOptions["turnWindowCoverageById"];
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
 }
 
@@ -1030,6 +1031,7 @@ function buildDetailedProjection(
   const projection = groupEventProjectionTurns({
     events: args.events,
     messages: args.messages,
+    turnWindowCoverageById: args.turnWindowCoverageById,
   });
   const semanticProjection = normalizeEventProjection(
     {
@@ -1069,6 +1071,7 @@ function buildFullEventProjection(
     contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events,
     messages: flatProjection.messages,
+    turnWindowCoverageById: options.turnWindowCoverageById,
     turnMessageDetail: options.turnMessageDetail,
   });
 }
@@ -1104,6 +1107,7 @@ export function buildEventProjectionEntries(
     contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events: orderedEvents,
     messages: flatProjection.messages,
+    turnWindowCoverageById: options.turnWindowCoverageById,
     turnMessageDetail: options.turnMessageDetail,
   });
 }

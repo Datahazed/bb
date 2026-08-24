@@ -20,6 +20,7 @@ import type { DbConnection } from "@bb/db";
 import type {
   TimelinePaginationCursor,
   TimelineRow,
+  ThreadTimelineResponse,
 } from "@bb/server-contract";
 import {
   buildThreadTimeline,
@@ -85,6 +86,8 @@ function backgroundTaskData(status: "pending" | "completed"): string {
 }
 
 interface SeedOptions {
+  /** Emit this many consecutive progress messages before deferred commands finish. */
+  assistantProgressCount?: number;
   /**
    * Start a workflow background task at the top of the last turn, and complete
    * it there too when `"completed"`. Its rows sit far below any in-turn cut.
@@ -106,12 +109,16 @@ interface SeedOptions {
   longRunningItemIndexes?: readonly number[];
   /** Character count for each completed command output. */
   outputChars?: number;
+  /** Give every event a deterministic sequence-derived wall-clock time. */
+  eventTimeStepMs?: number;
   /**
    * Emit an output delta for each long-running item after every other item, so
    * the item's presence in a mid-turn window is deltas rather than lifecycle
    * rows.
    */
   streamLongRunningOutput?: boolean;
+  /** Emit one final assistant response after deferred commands finish. */
+  terminalAssistant?: boolean;
   itemsPerTurn: readonly number[];
 }
 
@@ -129,7 +136,14 @@ function seedTurns(
   let sequence = 0;
   const push = (event: Omit<EventInput, "sequence" | "threadId">): void => {
     sequence += 1;
-    events.push({ ...event, sequence, threadId: thread.id });
+    events.push({
+      ...event,
+      ...(options.eventTimeStepMs === undefined
+        ? {}
+        : { createdAt: sequence * options.eventTimeStepMs }),
+      sequence,
+      threadId: thread.id,
+    });
   };
 
   options.itemsPerTurn.forEach((items, index) => {
@@ -299,6 +313,31 @@ function seedTurns(
         }),
       });
     }
+    if (isLastTurn) {
+      for (
+        let progress = 0;
+        progress < (options.assistantProgressCount ?? 0);
+        progress += 1
+      ) {
+        const itemId = `${turnId}-progress-${progress}`;
+        push({
+          type: "item/completed",
+          scope: turnScope(turnId),
+          providerThreadId,
+          itemId,
+          itemKind: "agentMessage",
+          parentToolCallId: null,
+          data: JSON.stringify({
+            item: {
+              type: "agentMessage",
+              id: itemId,
+              text: `Progress ${progress}`,
+            },
+          }),
+        });
+      }
+    }
+
     for (const item of deferred) {
       const itemId = `${turnId}-item-${item}`;
       push({
@@ -325,6 +364,25 @@ function seedTurns(
               options.outputChars === undefined
                 ? `late output ${item}`
                 : "o".repeat(options.outputChars),
+          },
+        }),
+      });
+    }
+
+    if (isLastTurn && options.terminalAssistant === true) {
+      const itemId = `${turnId}-terminal`;
+      push({
+        type: "item/completed",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId,
+        itemKind: "agentMessage",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "agentMessage",
+            id: itemId,
+            text: "Terminal response",
           },
         }),
       });
@@ -473,6 +531,23 @@ function collectCommandCallIds(
     }
     if (row.kind === "turn" && row.children !== null) {
       collectCommandCallIds(row.children, target);
+    }
+  }
+}
+
+function collectAssistantTexts(
+  rows: readonly TimelineRow[],
+  target: string[],
+): void {
+  for (const row of rows) {
+    if (row.kind === "conversation" && row.role === "assistant") {
+      target.push(row.text);
+    }
+    if (row.kind === "work" && row.workKind === "delegation") {
+      collectAssistantTexts(row.childRows, target);
+    }
+    if (row.kind === "turn" && row.children !== null) {
+      collectAssistantTexts(row.children, target);
     }
   }
 }
@@ -664,6 +739,80 @@ describe("in-turn timeline windows", () => {
     expect(commandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
     expect(expandedCommandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
     expect(turnRowIds.size).toBe(pages);
+  }, 15_000);
+
+  it("keeps byte-window timing and terminal responses local to their owning page", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      assistantProgressCount: 3,
+      commandChars: 25_000,
+      completeLastTurn: true,
+      eventTimeStepMs: 1_000,
+      itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
+      longRunningItemIndexes: [0],
+      terminalAssistant: true,
+    });
+
+    const allAssistantTexts: string[] = [];
+    const topLevelAssistantTexts: string[] = [];
+    const turnRows: Extract<TimelineRow, { kind: "turn" }>[] = [];
+    let cursor: TimelinePaginationCursor | null = null;
+    let pages = 0;
+    for (;;) {
+      const page: ThreadTimelineResponse = buildNestedPage(
+        db,
+        thread,
+        LARGE_BUDGET,
+        cursor,
+      ).response;
+      pages += 1;
+      collectAssistantTexts(page.rows, allAssistantTexts);
+      for (const row of page.rows) {
+        if (row.kind === "conversation" && row.role === "assistant") {
+          topLevelAssistantTexts.push(row.text);
+        }
+        if (row.kind === "turn") {
+          turnRows.push(row);
+        }
+      }
+      if (!page.timelinePage.hasOlderRows) {
+        break;
+      }
+      cursor = page.timelinePage.olderCursor;
+      expect(cursor).not.toBeNull();
+      expect(pages).toBeLessThan(10);
+    }
+
+    const turnStartedAt = 2_000;
+    const turnCompletedAt =
+      getLatestThreadSequence(db, { threadId: thread.id }) * 1_000;
+    expect(pages).toBeGreaterThan(1);
+    expect(topLevelAssistantTexts).toEqual(["Terminal response"]);
+    expect(allAssistantTexts.sort()).toEqual([
+      "Progress 0",
+      "Progress 1",
+      "Progress 2",
+      "Terminal response",
+    ]);
+    expect(turnRows).not.toHaveLength(0);
+    expect(
+      turnRows.some(
+        (row) =>
+          row.startedAt === turnStartedAt &&
+          row.completedAt === turnCompletedAt,
+      ),
+    ).toBe(false);
+    expect(
+      turnRows.some(
+        (row) => row.completedAt !== null && row.completedAt < turnCompletedAt,
+      ),
+    ).toBe(true);
+    expect(
+      turnRows.some(
+        (row) =>
+          row.startedAt > turnStartedAt && row.completedAt === turnCompletedAt,
+      ),
+    ).toBe(true);
   }, 15_000);
 
   it("keeps latest byte-page row identities stable while a turn grows", () => {

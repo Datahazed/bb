@@ -4,6 +4,7 @@ import {
   buildThreadTimelineTurnDetailsFromEvents,
   compactThreadTimelineSummaryEvents,
   type AcceptedClientRequestContext,
+  type EventProjectionTurnWindowCoverage,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
 import { LEGACY_CODEX_GOAL_EXTENSION_KIND } from "@bb/domain";
@@ -241,6 +242,57 @@ interface TimelineEventRowSelection {
   oversizedEventPlaceholder: TimelineSystemRow | null;
   rows: StoredEventRow[];
   strategy: ThreadTimelineEventSelectionStrategy;
+}
+
+function resolveTurnWindowCoverage(
+  selection: TimelineEventRowSelection,
+): ReadonlyMap<string, EventProjectionTurnWindowCoverage> | undefined {
+  const sequenceStart = selection.byteWindowSequenceStart;
+  const sequenceEnd = selection.byteWindowSequenceEnd;
+  if (sequenceStart === null || sequenceEnd === null) {
+    return undefined;
+  }
+
+  const coverageById = new Map<
+    string,
+    EventProjectionTurnWindowCoverage & { hasCompletion: boolean }
+  >();
+  for (const row of selection.rows) {
+    if (
+      row.turnId === null ||
+      (row.type !== "turn/started" && row.type !== "turn/completed")
+    ) {
+      continue;
+    }
+    const coverage = coverageById.get(row.turnId) ?? {
+      hasCompletion: false,
+      ownsCompletion: false,
+      ownsStart: false,
+    };
+    const isOwned =
+      row.sequence >= sequenceStart && row.sequence <= sequenceEnd;
+    if (row.type === "turn/started") {
+      coverage.ownsStart ||= isOwned;
+    } else {
+      coverage.hasCompletion = true;
+      coverage.ownsCompletion ||= isOwned;
+    }
+    coverageById.set(row.turnId, coverage);
+  }
+
+  const partialCoverage = new Map<string, EventProjectionTurnWindowCoverage>();
+  for (const [turnId, coverage] of coverageById) {
+    if (
+      coverage.hasCompletion &&
+      (!coverage.ownsStart || !coverage.ownsCompletion)
+    ) {
+      partialCoverage.set(turnId, {
+        ownsCompletion: coverage.ownsCompletion,
+        ownsStart: coverage.ownsStart,
+      });
+    }
+  }
+  return partialCoverage.size === 0 ? undefined : partialCoverage;
 }
 
 interface TimelineWindowRowsArgs {
@@ -1740,6 +1792,7 @@ function buildThreadTimelineInternal(
           contextOnlyToolCallIds: eventSelection.contextOnlyToolCallIds,
           includeNestedRows,
           providerId: thread.providerId,
+          turnWindowCoverageById: resolveTurnWindowCoverage(eventSelection),
           turnMessageDetail: includeNestedRows ? "full" : "summary",
         },
       }),
@@ -2084,8 +2137,7 @@ export function buildTimelineTurnSummaryDetails(
   // route actually holds, so the parent expansion spends what is left rather
   // than a pre-closure estimate of it. The subtraction may go negative, which
   // is the safe direction: the parent fetch then stays inside its bounds.
-  const detailsEventDataBytes =
-    byteLengthOfStoredEventRows(wholeItemEventRows);
+  const detailsEventDataBytes = byteLengthOfStoredEventRows(wholeItemEventRows);
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     maxInlineOutputChars: detailsInlineOutputLimit,
     outOfBoundsChildDataByteLimit:

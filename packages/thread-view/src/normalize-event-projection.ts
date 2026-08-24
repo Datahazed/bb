@@ -242,7 +242,11 @@ function buildSourceTurn(
   sourceTurn: EventProjectionTurn,
   messages: EventProjectionMessage[],
 ): EventProjectionTurn {
-  const terminalMessage = findLastTerminalTimelineMessage(messages);
+  const terminalMessage =
+    sourceTurn.status !== "pending" &&
+    sourceTurn.windowCoverage?.ownsCompletion === false
+      ? undefined
+      : findLastTerminalTimelineMessage(messages);
   const turn: EventProjectionTurn = {
     ...sourceTurn,
     summaryCount: getProjectionSummaryCount(messages, terminalMessage),

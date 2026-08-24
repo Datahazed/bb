@@ -3,6 +3,7 @@ export type {
   EventProjection,
   EventProjectionEntry,
   EventProjectionTurn,
+  EventProjectionTurnWindowCoverage,
   EventProjectionTurnMessageDetail,
   EventProjectionTurnStatus,
 } from "./event-projection.js";

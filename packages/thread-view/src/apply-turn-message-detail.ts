@@ -98,7 +98,10 @@ function applyTurnMessageDetail(
   const messages = (turn.messages ?? []).map((message) =>
     withChildProjectionDetail(message),
   );
-  const terminalMessage = findLastTerminalTimelineMessage(messages);
+  const terminalMessage =
+    turn.status !== "pending" && turn.windowCoverage?.ownsCompletion === false
+      ? undefined
+      : findLastTerminalTimelineMessage(messages);
   const summaryMessages = terminalMessage
     ? messages.slice(0, messages.indexOf(terminalMessage))
     : messages;
@@ -120,6 +123,7 @@ function applyTurnMessageDetail(
     completedAt: turn.completedAt,
     status: turn.status,
     summaryCount,
+    ...(turn.windowCoverage ? { windowCoverage: turn.windowCoverage } : {}),
     ...(turn.externalUserBoundarySeqs
       ? { externalUserBoundarySeqs: turn.externalUserBoundarySeqs }
       : {}),

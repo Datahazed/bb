@@ -4,6 +4,7 @@ import type {
   EventProjection,
   EventProjectionEntry,
   EventProjectionTurn,
+  EventProjectionTurnWindowCoverage,
   EventProjectionTurnStatus,
 } from "./event-projection-types.js";
 import { requireThreadEventScopeTurnId } from "@bb/domain";
@@ -39,6 +40,10 @@ interface ProjectionTurnBoundsUpdate {
 interface GroupEventProjectionTurnsArgs {
   events: ThreadEventWithMeta[];
   messages: EventProjectionMessage[];
+  turnWindowCoverageById?: ReadonlyMap<
+    string,
+    EventProjectionTurnWindowCoverage
+  >;
 }
 
 interface TurnEntryDraft {
@@ -91,6 +96,7 @@ function toEventProjectionTurnStatus(
 function createProjectionTurn(
   event: TurnStartedEvent,
   meta: EventMeta,
+  windowCoverage: EventProjectionTurnWindowCoverage | undefined,
 ): ProjectionTurnDraft {
   const turnId = requireThreadEventScopeTurnId({
     type: event.type,
@@ -108,6 +114,7 @@ function createProjectionTurn(
       completedAt: null,
       status: "pending",
       summaryCount: 0,
+      ...(windowCoverage ? { windowCoverage } : {}),
     },
   };
 }
@@ -210,7 +217,11 @@ function createEventProjectionEntry(
     );
   }
 
-  const terminalMessage = findLastTerminalTimelineMessage(turnDraft.messages);
+  const terminalMessage =
+    turnDraft.turn.status !== "pending" &&
+    turnDraft.turn.windowCoverage?.ownsCompletion === false
+      ? undefined
+      : findLastTerminalTimelineMessage(turnDraft.messages);
   const turn: EventProjectionTurn = {
     ...turnDraft.turn,
     summaryCount: getProjectionSummaryCount(
@@ -255,7 +266,14 @@ export function groupEventProjectionTurns(
         // lifecycle marker must not make the whole timeline unreadable.
         continue;
       }
-      turnsById.set(turnId, createProjectionTurn(event, meta));
+      turnsById.set(
+        turnId,
+        createProjectionTurn(
+          event,
+          meta,
+          args.turnWindowCoverageById?.get(turnId),
+        ),
+      );
       entryDrafts.push({
         kind: "turn",
         turnId,

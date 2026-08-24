@@ -98,8 +98,12 @@ function applySingleSummaryTurnBounds(
     item === onlySummaryGroup
       ? {
           ...item,
-          startedAt: turn.startedAt,
-          completedAt: turn.completedAt,
+          ...(turn.windowCoverage?.ownsStart === false
+            ? {}
+            : { startedAt: turn.startedAt }),
+          ...(turn.windowCoverage?.ownsCompletion === false
+            ? {}
+            : { completedAt: turn.completedAt }),
         }
       : item,
   );
@@ -150,15 +154,41 @@ function isAssistantResponseMessage(
   );
 }
 
+function isTimelineWorkActivityMessage(
+  message: EventProjectionMessage,
+): boolean {
+  return (
+    message.kind !== "assistant-text" &&
+    message.kind !== "user" &&
+    message.kind !== "error"
+  );
+}
+
+function hasWorkActivityBetweenAssistantMessages(
+  messages: readonly EventProjectionMessage[],
+  current: EventProjectionMessage,
+  next: EventProjectionMessage,
+): boolean {
+  return messages.some(
+    (message) =>
+      isTimelineWorkActivityMessage(message) &&
+      message.sourceSeqStart < next.sourceSeqStart &&
+      message.sourceSeqEnd > current.sourceSeqEnd,
+  );
+}
+
 /**
  * Assistant text that the provider followed directly with more assistant
  * text, with no work in between, was a complete response, not narration about
- * upcoming tool activity. Providers re-query the model after it stops without
- * telling bb why (a Claude Code Stop hook injects its reason as a synthetic
- * user message that never becomes a thread event), so the turn carries two
- * answers and only the last one is the terminal message. The earlier answer
- * must stay visible at rest instead of being folded into the collapsed work
- * summary. Text followed by work keeps the existing collapse.
+ * upcoming tool activity. "Between" includes a work item that started before
+ * both messages and completed after them: source ordering places that item
+ * before both texts, but it was still active across their interval. Providers
+ * re-query the model after it stops without telling bb why (a Claude Code Stop
+ * hook injects its reason as a synthetic user message that never becomes a
+ * thread event), so the turn carries two answers and only the last one is the
+ * terminal message. The earlier answer must stay visible at rest instead of
+ * being folded into the collapsed work summary. Text followed by work keeps
+ * the existing collapse.
  */
 function findVisibleResponseMessageIds(
   summaryMessages: readonly EventProjectionMessage[],
@@ -170,7 +200,12 @@ function findVisibleResponseMessageIds(
     const nextMessage = summaryMessages[index + 1] ?? terminalMessage;
     if (
       isAssistantResponseMessage(message) &&
-      isAssistantResponseMessage(nextMessage)
+      isAssistantResponseMessage(nextMessage) &&
+      !hasWorkActivityBetweenAssistantMessages(
+        summaryMessages,
+        message,
+        nextMessage,
+      )
     ) {
       visibleIds.add(message.id);
     }
@@ -193,11 +228,21 @@ function groupCompletedTurnSummaryMessages(
     visibleResponseIds.size === 0 &&
     !summaryMessages.some(isTimelineUngroupableMessage)
   ) {
+    const bounds =
+      summaryMessages.length === 0
+        ? null
+        : getSummaryMessageBounds(summaryMessages);
     return [
       {
         kind: "summary",
-        startedAt: turn.startedAt,
-        completedAt: turn.completedAt,
+        startedAt:
+          turn.windowCoverage?.ownsStart === false
+            ? (bounds?.startedAt ?? turn.startedAt)
+            : turn.startedAt,
+        completedAt:
+          turn.windowCoverage?.ownsCompletion === false
+            ? null
+            : turn.completedAt,
         segmentIndex: null,
         sourceMessages: summaryMessages,
         summaryCount: turn.summaryCount,
