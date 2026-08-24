@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "checkpoint": "plugin-guide-v1-native-desktop-placement",
+  "base": {
+    "commit": "21cb6b68b8fdffe2cd576f11c8af500f98d22c11",
+    "route": "/plugins/plugin-api-docs/plugin-api",
+    "fixture": "fresh isolated bb-dev-app data directory",
+    "windowBoundsCssPx": {
+      "width": 1280,
+      "height": 900
+    },
+    "screenshot": "plugin-guide-before-21cb6b68-native.png",
+    "result": "PASS",
+    "observed": "The exact route is unavailable on the merge base, establishing the prior product state."
+  },
+  "candidate": {
+    "commit": "d92b1c7860e7073bb65febc43f7505ff35d3db8f",
+    "route": "/plugins/plugin-api-docs/plugin-api",
+    "fixture": "fresh isolated bb-dev-app data directory",
+    "interaction": "Opened bb Plugin Guide from the shipped plugin sidebar entry",
+    "result": "PASS"
+  },
+  "viewports": [
+    {
+      "name": "narrow",
+      "windowBoundsCssPx": {
+        "width": 768,
+        "height": 900
+      },
+      "before": "plugin-guide-after-d92b1c786-narrow-768x900-native.png",
+      "after": "plugin-guide-after-d92b1c786-narrow-post-5-cycles-native.png",
+      "result": "PASS",
+      "observed": "The Guide reflows without clipped navigation, overlapping labels, or lost API-map markers."
+    },
+    {
+      "name": "normal",
+      "windowBoundsCssPx": {
+        "width": 1280,
+        "height": 900
+      },
+      "before": "plugin-guide-before-21cb6b68-native.png",
+      "after": "plugin-guide-after-d92b1c786-native.png",
+      "result": "PASS",
+      "observed": "The Guide loads at the exact route and exposes the current plugin API map, including timeline renderer marker 12."
+    },
+    {
+      "name": "very-large",
+      "windowBoundsCssPx": {
+        "width": 1710,
+        "height": 1073
+      },
+      "before": "plugin-guide-after-d92b1c786-large-1710x1073-native.png",
+      "after": "plugin-guide-after-d92b1c786-large-post-5-cycles-native.png",
+      "result": "PASS",
+      "observed": "The Guide remains centered and proportional with no clipping after sustained resizing."
+    }
+  ],
+  "sustainedMotion": {
+    "cycles": 5,
+    "transition": "1710x1073 to 768x900 and back",
+    "elapsedMs": 22052,
+    "result": "PASS",
+    "observed": "Five complete large-to-narrow-to-large cycles produced no stale frames, flicker, layout lock, or degraded settled state."
+  },
+  "console": {
+    "result": "PASS",
+    "observed": "No Plugin Guide errors were emitted; only existing Electron/preload and Jotai development warnings were present."
+  },
+  "overallResult": "PASS"
+}
