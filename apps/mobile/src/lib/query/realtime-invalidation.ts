@@ -11,6 +11,7 @@ import type {
 } from "@bb/server-contract";
 import {
   hashKey,
+  partialMatchKey,
   type QueryClient,
   type QueryKey,
 } from "@tanstack/react-query";
@@ -449,24 +450,39 @@ export function threadPullRequestQueryKeysForCompletedTurn(
  * (~1 KB per unarchived thread) twice per turn. Applied synchronously, not
  * through the debounced map: a list fetch already in flight read the database
  * before this transition and would overwrite the patch when it lands, so it is
- * cancelled and restarted right away. `exact`, because a partial match on
- * the unfiltered list's key would also restart every filtered list.
+ * aborted right away — silently, so the query neither reverts the patch nor
+ * enters an error state — and flagged stale. The restart is the caller's:
+ * `installRealtimeInvalidation` coalesces it through the debounced map, so a
+ * burst of pushes (a workflow fanning out children) restarts the fetch once
+ * per flush rather than once per push. Returns the keys of the aborted
+ * fetches; `exact`, because a partial match on the unfiltered list's key
+ * would also restart every filtered list.
  */
 export function applyThreadStatusChangeFromMessage(
   queryClient: QueryClient,
   message: ChangedMessage,
-): void {
-  if (message.entity !== "thread") return;
+): readonly QueryKey[] {
+  if (message.entity !== "thread") return [];
   const patch = threadStatusChangePatch(message);
-  if (patch === null) return;
+  if (patch === null) return [];
   updateCachedThreadListStatusState(
     queryClient,
     patch.threadId,
     patch.statusChange,
   );
-  for (const queryKey of getFetchingThreadListQueryKeys(queryClient)) {
-    void queryClient.invalidateQueries({ exact: true, queryKey });
+  const abortedQueryKeys = getFetchingThreadListQueryKeys(queryClient);
+  for (const queryKey of abortedQueryKeys) {
+    void queryClient.cancelQueries(
+      { exact: true, queryKey },
+      { revert: false, silent: true },
+    );
+    void queryClient.invalidateQueries({
+      exact: true,
+      queryKey,
+      refetchType: "none",
+    });
   }
+  return abortedQueryKeys;
 }
 
 /**
@@ -529,6 +545,11 @@ function strongerInvalidationPolicy(
 interface PendingInvalidation {
   queryKey: QueryKey;
   policy: TimelineInvalidationPolicy;
+  /**
+   * Match the key exactly (the restart of one aborted list fetch) rather
+   * than as a prefix (every invalidation a message maps to).
+   */
+  exact: boolean;
 }
 
 /**
@@ -592,7 +613,19 @@ export function installRealtimeInvalidation(
           removeEnvironmentDiffPatchQueries(queryClient, environmentId);
         }
       }
-      for (const { queryKey, policy } of entries) {
+      // A prefix invalidation in this window already refetches the list
+      // whose aborted fetch is queued for an exact restart; issuing both
+      // would start the fetch and abort-and-restart it in the same tick.
+      const prefixes = entries
+        .filter((entry) => !entry.exact)
+        .map((entry) => entry.queryKey);
+      for (const { queryKey, policy, exact } of entries) {
+        if (
+          exact &&
+          prefixes.some((prefix) => partialMatchKey(queryKey, prefix))
+        ) {
+          continue;
+        }
         switch (policy) {
           case "timeline-paced":
             invalidateTimelineQueryKeyPaced(queryClient, queryKey);
@@ -601,15 +634,40 @@ export function installRealtimeInvalidation(
             invalidateTimelineQueryKeyTerminal(queryClient, queryKey);
             break;
           case "default":
-            void queryClient.invalidateQueries({ queryKey });
+            void queryClient.invalidateQueries({ queryKey, exact });
             break;
         }
       }
     },
   });
 
+  const queueInvalidation = (
+    queryKey: QueryKey,
+    policy: TimelineInvalidationPolicy,
+    exact: boolean,
+  ): void => {
+    const hash = hashKey(queryKey);
+    const current = pending.get(hash);
+    pending.set(
+      hash,
+      current === undefined
+        ? { queryKey, policy, exact }
+        : {
+            queryKey,
+            policy: strongerInvalidationPolicy(current.policy, policy),
+            // A prefix match subsumes an exact one on the same key.
+            exact: current.exact && exact,
+          },
+    );
+  };
+
   const unsubscribeChanged = realtime.onChanged((message) => {
-    applyThreadStatusChangeFromMessage(queryClient, message);
+    // The patch is synchronous; the restart of the list fetches it aborted
+    // is coalesced with everything else in this window.
+    const restartKeys = applyThreadStatusChangeFromMessage(
+      queryClient,
+      message,
+    );
     const eviction = diffPatchEvictionForChangedMessage(message);
     if (eviction === "all") {
       pendingPatchEvictions = "all";
@@ -620,17 +678,18 @@ export function installRealtimeInvalidation(
       ...queryKeysForChangedMessage(message),
       ...threadPullRequestQueryKeysForCompletedTurn(queryClient, message),
     ];
-    if (keys.length === 0 && eviction === null) return;
+    if (keys.length === 0 && restartKeys.length === 0 && eviction === null) {
+      return;
+    }
+    for (const queryKey of restartKeys) {
+      queueInvalidation(queryKey, "default", true);
+    }
     for (const queryKey of keys) {
-      const hash = hashKey(queryKey);
-      const policy = invalidationPolicyForKey(message, queryKey);
-      const current = pending.get(hash);
-      pending.set(hash, {
+      queueInvalidation(
         queryKey,
-        policy: current
-          ? strongerInvalidationPolicy(current.policy, policy)
-          : policy,
-      });
+        invalidationPolicyForKey(message, queryKey),
+        false,
+      );
     }
     scheduler.schedule();
   });

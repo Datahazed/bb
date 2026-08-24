@@ -5,6 +5,7 @@ import type {
 } from "@bb/server-contract";
 import type {
   InfiniteData,
+  Query,
   QueryClient,
   QueryKey,
 } from "@tanstack/react-query";
@@ -61,6 +62,10 @@ export function* iterateThreadListCacheEntries(
   for (const page of data.pages) yield* page;
 }
 
+/**
+ * `data` itself when the mapper left every page as is: the caller skips the
+ * write.
+ */
 function mapThreadListCacheData<T extends ThreadListCacheData>(
   data: T,
   mapper: ThreadListMapper,
@@ -68,7 +73,30 @@ function mapThreadListCacheData<T extends ThreadListCacheData>(
   if (isThreadListEntryArray(data)) {
     return mapper(data) as T;
   }
-  return { ...data, pages: data.pages.map(mapper) } as T;
+  const pages = data.pages.map(mapper);
+  return pages.every((page, index) => page === data.pages[index])
+    ? data
+    : ({ ...data, pages } as T);
+}
+
+/**
+ * Write a patched list back without touching the query's freshness
+ * bookkeeping. A manual `setQueryData` dispatches `success`, which resets
+ * `dataUpdatedAt` to now and clears `isInvalidated`; a client-side patch is
+ * not fresher server data, and a pending refetch-on-remount (an inactive list
+ * flagged by an earlier push) or the focus retry of an errored refetch must
+ * survive it. The write is `manual`, so a fetch in flight keeps its status.
+ */
+function writeCachedListPatch<TData>(
+  queryClient: QueryClient,
+  query: Query<TData, Error, TData>,
+  data: TData,
+): void {
+  const { dataUpdatedAt, isInvalidated } = query.state;
+  queryClient.setQueryData<TData>(query.queryKey, data, {
+    updatedAt: dataUpdatedAt,
+  });
+  if (isInvalidated) query.invalidate();
 }
 
 export interface CachedThreadList {
@@ -88,12 +116,23 @@ export function getCachedThreadLists(
   return lists;
 }
 
+/**
+ * Apply one mapper to every cached thread list. A list the mapper returned as
+ * is (same array / same pages) is not written at all: a write would rewrite
+ * the query state (see `writeCachedListPatch`) for nothing.
+ */
 export function applyToCachedThreadLists(
   queryClient: QueryClient,
   mapper: ThreadListMapper,
 ): void {
-  for (const { queryKey, data } of getCachedThreadLists(queryClient)) {
-    queryClient.setQueryData(queryKey, mapThreadListCacheData(data, mapper));
+  for (const query of queryClient
+    .getQueryCache()
+    .findAll({ queryKey: threadsQueryKey() })) {
+    const data = query.state.data;
+    if (!isThreadListCacheData(data)) continue;
+    const next = mapThreadListCacheData(data, mapper);
+    if (next === data) continue;
+    writeCachedListPatch(queryClient, query, next);
   }
 }
 
@@ -103,39 +142,47 @@ function mapSidebarProjectThreads(
   project: SidebarProject,
   mapper: ThreadListMapper,
 ): SidebarProject {
-  return { ...project, threads: mapper(project.threads) };
+  const threads = mapper(project.threads);
+  return threads === project.threads ? project : { ...project, threads };
 }
 
+/** `bootstrap` itself when the mapper left every project as is. */
 function mapSidebarBootstrapThreads(
   bootstrap: SidebarBootstrapResponse,
   mapper: ThreadListMapper,
 ): SidebarBootstrapResponse {
-  return {
-    sections: bootstrap.sections,
-    projects: bootstrap.projects.map((project) =>
-      mapSidebarProjectThreads(project, mapper),
-    ),
-    personalProject: mapSidebarProjectThreads(
-      bootstrap.personalProject,
-      mapper,
-    ),
-  };
+  const projects = bootstrap.projects.map((project) =>
+    mapSidebarProjectThreads(project, mapper),
+  );
+  const personalProject = mapSidebarProjectThreads(
+    bootstrap.personalProject,
+    mapper,
+  );
+  return personalProject === bootstrap.personalProject &&
+    projects.every((project, index) => project === bootstrap.projects[index])
+    ? bootstrap
+    : { sections: bootstrap.sections, projects, personalProject };
 }
 
 function applyToCachedSidebarThreads(
   queryClient: QueryClient,
   mapper: ThreadListMapper,
 ): void {
-  queryClient.setQueryData<SidebarBootstrapResponse>(
-    sidebarNavigationQueryKey(),
-    (current) =>
-      current === undefined
-        ? current
-        : mapSidebarBootstrapThreads(current, mapper),
-  );
+  const query = queryClient.getQueryCache().find<SidebarBootstrapResponse>({
+    queryKey: sidebarNavigationQueryKey(),
+    exact: true,
+  });
+  const current = query?.state.data;
+  if (query === undefined || current === undefined) return;
+  const next = mapSidebarBootstrapThreads(current, mapper);
+  if (next === current) return;
+  writeCachedListPatch(queryClient, query, next);
 }
 
-/** Apply one mapper to every cached thread list and the sidebar bootstrap. */
+/**
+ * Apply one mapper to every cached thread list and the sidebar bootstrap,
+ * writing only the lists the mapper changed.
+ */
 export function applyToCachedThreadListsAndSidebar(
   queryClient: QueryClient,
   mapper: ThreadListMapper,
@@ -150,8 +197,9 @@ export function applyToCachedThreadListsAndSidebar(
  * sidebar bootstrap (mirrors the web's `updateCachedThreadListStatusState`).
  * Status never changes list membership (lists filter on project, parent and
  * archive state), so a list without the row is returned as is: the query that
- * will load it reads the current status, and the untouched array identity is
- * what the sidebar rows key on.
+ * will load it reads the current status, and returning the same array skips
+ * both the copy and the cache write (so the list's query state, including a
+ * pending invalidation, stays untouched) on every push.
  */
 export function updateCachedThreadListStatusState(
   queryClient: QueryClient,
@@ -168,10 +216,11 @@ export function updateCachedThreadListStatusState(
 }
 
 /**
- * Thread list and sidebar queries with a fetch in flight. Such a fetch read
+ * Thread list and sidebar queries with a refetch in flight. Such a fetch read
  * the database before the change being patched in, so its response would
- * overwrite the patch when it lands. `THREADS_QUERY_KEY` prefixes the flat
- * and the archived (paginated) lists and nothing else (`thread` and
+ * overwrite the patch when it lands. A first load (no data yet) holds no
+ * patched row and is left alone. `THREADS_QUERY_KEY` prefixes the flat and
+ * the archived (paginated) lists and nothing else (`thread` and
  * `threadSearch` are distinct first segments).
  */
 export function getFetchingThreadListQueryKeys(
@@ -180,12 +229,13 @@ export function getFetchingThreadListQueryKeys(
   return queryClient
     .getQueryCache()
     .findAll({ fetchStatus: "fetching" })
-    .map((query) => query.queryKey)
     .filter(
-      (queryKey) =>
-        queryKey[0] === THREADS_QUERY_KEY ||
-        queryKey[0] === SIDEBAR_NAVIGATION_QUERY_KEY,
-    );
+      (query) =>
+        query.state.data !== undefined &&
+        (query.queryKey[0] === THREADS_QUERY_KEY ||
+          query.queryKey[0] === SIDEBAR_NAVIGATION_QUERY_KEY),
+    )
+    .map((query) => query.queryKey);
 }
 
 /** Every thread the sidebar bootstrap knows about (projects + personal). */

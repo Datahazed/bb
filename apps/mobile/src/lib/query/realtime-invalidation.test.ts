@@ -84,6 +84,42 @@ function statusChangedFrame(
   });
 }
 
+/**
+ * A sidebar observer with a refetch in flight whose responses resolve on
+ * demand and whose aborts are counted (`sdk.projects.sidebarBootstrap`
+ * forwards the signal the same way).
+ */
+function sidebarRefetchInFlight(queryClient: QueryClient) {
+  const responses: ((body: SidebarBootstrapResponse) => void)[] = [];
+  let aborts = 0;
+  const queryFn = vi.fn(
+    ({ signal }: { signal: AbortSignal }) =>
+      new Promise<SidebarBootstrapResponse>((resolve) => {
+        signal.addEventListener("abort", () => {
+          aborts += 1;
+        });
+        responses.push(resolve);
+      }),
+  );
+  const observer = new QueryObserver(queryClient, {
+    queryKey: sidebarNavigationQueryKey(),
+    queryFn,
+    staleTime: Infinity,
+  });
+  const unsubscribe = observer.subscribe(() => {});
+  void observer.refetch();
+  expect(
+    queryClient.getQueryState(sidebarNavigationQueryKey())?.fetchStatus,
+  ).toBe("fetching");
+  return { queryFn, responses, aborts: () => aborts, unsubscribe };
+}
+
+function sidebarRows(queryClient: QueryClient) {
+  return queryClient.getQueryData<SidebarBootstrapResponse>(
+    sidebarNavigationQueryKey(),
+  )?.projects[0].threads;
+}
+
 function setup() {
   const factory = createFakeSocketFactory();
   const realtime = createMobileRealtime({
@@ -331,27 +367,139 @@ describe("installRealtimeInvalidation", () => {
     ]);
   });
 
-  it("cancels and restarts exactly the list fetches in flight, synchronously, so their stale response cannot overwrite the patch", () => {
+  it("aborts a sidebar refetch in flight synchronously and restarts it on the flush, so its stale body cannot overwrite the patch", async () => {
     const { factory, queryClient, invalidateSpy } = setup();
-    queryClient.setQueryData(
-      threadListQueryKey({ archived: false, projectId: "proj_1" }),
-      [threadListEntry({ id: "t1" })],
-    );
-    const observer = new QueryObserver(queryClient, {
-      queryKey: sidebarNavigationQueryKey(),
-      queryFn: () => new Promise<SidebarBootstrapResponse>(() => {}),
-    });
-    const unsubscribe = observer.subscribe(() => {});
-    expect(
-      queryClient.getQueryState(sidebarNavigationQueryKey())?.fetchStatus,
-    ).toBe("fetching");
+    invalidateSpy.mockRestore();
+    const t1 = threadListEntry({ id: "t1" });
+    const idle = () =>
+      sidebarBootstrap({
+        projects: [project({ id: "proj_1", threads: [t1] })],
+      });
+    queryClient.setQueryData(sidebarNavigationQueryKey(), idle());
+    const refetch = sidebarRefetchInFlight(queryClient);
 
     factory.latest().receive(statusChangedFrame("t1", ACTIVE_STATUS_CHANGE));
-    // Not through the debounced map (which would wait and prefix-match).
-    expect(invalidateSpy.mock.calls.map(([filters]) => filters)).toEqual([
-      { exact: true, queryKey: sidebarNavigationQueryKey() },
-    ]);
-    unsubscribe();
+    // The request that read the pre-transition row is aborted at once, the
+    // patch is kept (no revert, no error state), and the restart waits for
+    // the flush.
+    expect(refetch.aborts()).toBe(1);
+    expect(refetch.queryFn).toHaveBeenCalledTimes(1);
+    expect(
+      queryClient.getQueryState(sidebarNavigationQueryKey()),
+    ).toMatchObject({ status: "success", isInvalidated: true });
+    expect(sidebarRows(queryClient)?.[0].status).toBe("active");
+
+    vi.advanceTimersByTime(250);
+    expect(refetch.queryFn).toHaveBeenCalledTimes(2);
+    expect(refetch.aborts()).toBe(1);
+    // The aborted request's body lands late: dropped.
+    refetch.responses[0]?.(idle());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarRows(queryClient)?.[0].status).toBe("active");
+    // The restarted request's body lands.
+    refetch.responses[1]?.(
+      sidebarBootstrap({
+        projects: [
+          project({
+            id: "proj_1",
+            threads: [{ ...t1, ...ACTIVE_STATUS_CHANGE, title: "fresh" }],
+          }),
+        ],
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarRows(queryClient)?.[0].title).toBe("fresh");
+    expect(
+      queryClient.getQueryState(sidebarNavigationQueryKey()),
+    ).toMatchObject({ fetchStatus: "idle", isInvalidated: false });
+    refetch.unsubscribe();
+  });
+
+  it("coalesces a burst of row-carrying pushes into one abort and one restart of the sidebar refetch in flight", () => {
+    const { factory, queryClient, invalidateSpy } = setup();
+    invalidateSpy.mockRestore();
+    const invalidateCalls = vi.spyOn(queryClient, "invalidateQueries");
+    const threads = Array.from({ length: 8 }, (_, index) =>
+      threadListEntry({ id: `t${index + 1}` }),
+    );
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      sidebarBootstrap({ projects: [project({ id: "proj_1", threads })] }),
+    );
+    const refetch = sidebarRefetchInFlight(queryClient);
+    const sidebarCalls = () =>
+      invalidateCalls.mock.calls
+        .map(([filters]) => filters)
+        .filter(
+          (filters) =>
+            filters?.queryKey !== undefined &&
+            hashKey(filters.queryKey) === hashKey(sidebarNavigationQueryKey()),
+        );
+
+    // A workflow fanned out eight children; each one starts within the
+    // 50 ms debounce of the previous.
+    const socket = factory.latest();
+    for (const thread of threads) {
+      socket.receive(statusChangedFrame(thread.id, ACTIVE_STATUS_CHANGE));
+      vi.advanceTimersByTime(14);
+    }
+    expect(
+      sidebarRows(queryClient)?.every((row) => row.status === "active"),
+    ).toBe(true);
+    expect(refetch.aborts()).toBe(1);
+    expect(refetch.queryFn).toHaveBeenCalledTimes(1);
+    expect(
+      sidebarCalls().every((filters) => filters?.refetchType === "none"),
+    ).toBe(true);
+
+    vi.advanceTimersByTime(250);
+    expect(refetch.queryFn).toHaveBeenCalledTimes(2);
+    expect(refetch.aborts()).toBe(1);
+    expect(
+      sidebarCalls().filter((filters) => filters?.refetchType !== "none"),
+    ).toEqual([{ exact: true, queryKey: sidebarNavigationQueryKey() }]);
+    refetch.unsubscribe();
+  });
+
+  it("lets a prefix invalidation in the same window cover the restart of an aborted list fetch", () => {
+    const { factory, queryClient, invalidateSpy } = setup();
+    invalidateSpy.mockRestore();
+    const invalidateCalls = vi.spyOn(queryClient, "invalidateQueries");
+    const t1 = threadListEntry({ id: "t1" });
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      sidebarBootstrap({
+        projects: [project({ id: "proj_1", threads: [t1] })],
+      }),
+    );
+    const refetch = sidebarRefetchInFlight(queryClient);
+
+    const socket = factory.latest();
+    socket.receive(statusChangedFrame("t1", ACTIVE_STATUS_CHANGE));
+    socket.receive(
+      JSON.stringify({
+        type: "changed",
+        entity: "thread",
+        id: "t2",
+        changes: ["title-changed"],
+      }),
+    );
+    vi.advanceTimersByTime(250);
+    // One restart, not a start plus an abort-and-restart in the same tick.
+    expect(refetch.queryFn).toHaveBeenCalledTimes(2);
+    expect(refetch.aborts()).toBe(1);
+    expect(
+      invalidateCalls.mock.calls
+        .map(([filters]) => filters)
+        .filter(
+          (filters) =>
+            filters?.queryKey !== undefined &&
+            hashKey(filters.queryKey) ===
+              hashKey(sidebarNavigationQueryKey()) &&
+            filters.refetchType !== "none",
+        ),
+    ).toEqual([{ queryKey: sidebarNavigationQueryKey(), exact: false }]);
+    refetch.unsubscribe();
   });
 
   it("still refetches the lists when a bare status-changed (stop, interrupt) follows a patched one in the same window", () => {
