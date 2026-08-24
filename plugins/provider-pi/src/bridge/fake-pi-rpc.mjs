@@ -58,7 +58,8 @@
  *   reply names it.
  * - `/ext [<json>]` is an extension command as pi runs one: the optional
  *   `extension_ui_request` is raised (and a dialog awaited) before the prompt
- *   is answered, with no agent run; `get_commands` lists `ext` as an
+ *   is answered, with no agent run unless the json has `run: true` (a run on
+ *   "ext run" follows the answer); `get_commands` lists `ext` as an
  *   extension command
  * - `/ui <json>` emits one `extension_ui_request` line with the given fields
  *   (a fire-and-forget `ctx.ui` call: notify, setStatus, setWidget, setTitle,
@@ -491,9 +492,11 @@ async function handle(command) {
       if (extMatch) {
         // An extension command, as pi runs one: the handler (here, one
         // `ctx.ui` call or nothing) completes before the prompt is answered,
-        // no queue moves, and no agent run starts.
-        if (extMatch[1]) {
-          const request = { type: "extension_ui_request", id: randomUUID(), ...JSON.parse(extMatch[1]) };
+        // no queue moves, and no agent run starts unless the handler asked
+        // for one (`run: true`, pi.sendMessage with triggerTurn).
+        const { run = false, ...ui } = extMatch[1] ? JSON.parse(extMatch[1]) : {};
+        if (ui.method) {
+          const request = { type: "extension_ui_request", id: randomUUID(), ...ui };
           const isDialog = ["select", "confirm", "input", "editor"].includes(request.method);
           const answered = new Promise((resolve) => {
             if (isDialog) pendingDialogs.set(request.id, resolve);
@@ -503,6 +506,10 @@ async function handle(command) {
           await answered;
         }
         respond(id, "prompt");
+        if (run) {
+          await runPrompt("ext run");
+          await drainFollowUps();
+        }
         return;
       }
       if (isStreaming && command.streamingBehavior === "steer") {

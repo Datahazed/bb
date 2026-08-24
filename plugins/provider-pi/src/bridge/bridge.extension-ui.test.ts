@@ -377,3 +377,18 @@ it("ends the turn of an extension command that asks nothing and starts no run", 
   await harness.waitForTurnBoundary(threadId, since);
   expect(assistantTexts(threadId).join("")).toBe("Response to: hello");
 }, 90_000);
+
+it("ends an extension command's turn on the run its handler started, not on pi's answer", async () => {
+  const threadId = "thr_ext_command_run";
+  await harness.startThread(threadId);
+  await turnStart(threadId, '/ext {"run":true}');
+  await harness.waitForTurnBoundary(threadId);
+  // Pi answered the prompt before the run; the turn waited for the run:
+  // every boundary comes after the run's text.
+  const deltas = harness.deltasOf(threadId);
+  expect(assistantTexts(threadId).join("")).toBe("Response to: ext run");
+  const lastText = deltas.map((delta) => delta.kind).lastIndexOf("item.textDelta");
+  const firstBoundary = deltas.findIndex((delta) => delta.kind === "turn.boundary");
+  expect(firstBoundary).toBeGreaterThan(lastText);
+  expect(deltas[firstBoundary]).toMatchObject({ status: "completed" });
+}, 90_000);

@@ -122,6 +122,8 @@ function readinessTimeoutMs(): number {
   return Number.isFinite(configured) && configured > 0 ? configured : 60_000;
 }
 const CHANNEL_REQUEST_TIMEOUT_MS = 30_000;
+/** `get_commands` is a memory read; well inside the runtime's 30 s `turn/start` budget. */
+const EXTENSION_COMMAND_LIST_TIMEOUT_MS = 5_000;
 /** How long an `agent_end` waits for the extension's in-process leaf report. */
 const AGENT_END_LEAF_TIMEOUT_MS = 5_000;
 
@@ -432,11 +434,16 @@ export class PiRpcSession {
     return { consumed: tracked.promise, settled };
   }
 
-  /** The names of the commands this session's loaded extensions registered. */
+  /**
+   * The names of the commands this session's loaded extensions registered.
+   * Answered from memory; the short budget keeps a wedged pi from eating the
+   * runtime's whole `turn/start` budget before the prompt path reports it.
+   */
   async extensionCommandNames(): Promise<Set<string>> {
-    const data = (await this.requireChild().requestOk({ type: "get_commands" })) as
-      | { commands?: unknown }
-      | undefined;
+    const data = (await this.requireChild().requestOk(
+      { type: "get_commands" },
+      EXTENSION_COMMAND_LIST_TIMEOUT_MS,
+    )) as { commands?: unknown } | undefined;
     return toPiExtensionCommandNames(data?.commands);
   }
 
@@ -475,10 +482,16 @@ export class PiRpcSession {
       .then(
         async (): Promise<PiPromptRunOutcome> => {
           if (this.agentStartCount === runsBefore) {
-            // Handled without a run: nothing else will settle the slot.
-            this.dropRunSettlement(settlement);
-            this.isProcessing = false;
-            return {};
+            // A run the handler asked for (pi.sendMessage with triggerTurn)
+            // may surface after pi's answer: pi's own state says whether one
+            // is under way, and its events arrive before that answer does.
+            const state = await this.getState().catch(() => null);
+            if (this.agentStartCount === runsBefore && state?.isStreaming !== true) {
+              // Handled without a run: nothing else will settle the slot.
+              this.dropRunSettlement(settlement);
+              this.isProcessing = false;
+              return {};
+            }
           }
           return await settlement;
         },

@@ -5,10 +5,11 @@
 // extension state), and `host.list_commands` with an optional `bridgeLaunch`
 // so the daemon also asks the provider's bridge for its own commands
 // (`command/list`) and returns the required `diagnostics` list beside the
-// scan. Daemon → server: an interactive-request registration may carry
-// `turnId: null` for a user question a provider raised outside any turn,
-// answers may carry `experimental_verbatimText`, and persisted
-// `extension.state` snapshots ride the thread-delta path. An older daemon
+// scan, and `interactive.resolve` resolutions may carry
+// `experimental_verbatimText`. Daemon → server: an interactive-request
+// registration may carry `turnId: null` for a user question a provider
+// raised outside any turn, and persisted `extension.state` snapshots ride
+// the thread-delta path. An older daemon
 // rejects the unknown commands and the launch field and returns no
 // diagnostics list, so the bump is what moves an enrolled machine forward.
 //
