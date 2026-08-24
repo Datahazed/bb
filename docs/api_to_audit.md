@@ -580,26 +580,6 @@ shape (`{ ts, run, seq, dir, line }`) as a documented fixture format.
 
 **Audit before stabilizing.** Confirm which providers need executable command discovery rather than static files, whether providers should declare support before core starts a bridge, whether string diagnostics need structured severity and source fields, whether command argument completion metadata belongs on this boundary, and whether repeated sessionless loads need a provider-owned cache or disposal lifecycle.
 
-## Provider bridge maintenance (`PluginProviderCapabilities.experimental_providerHealth`, `PluginProviderCapabilities.experimental_providerUsage`, `PluginProviderCapabilities.experimental_providerInstallation`, `ProviderInfo.experimental_providerHealth`, `ProviderInfo.experimental_providerUsage`, `ProviderInfo.experimental_providerInstallation`, `BRIDGE_REQUEST_METHODS.experimentalProviderHealth`, `BRIDGE_REQUEST_METHODS.experimentalProviderUsage`, `BRIDGE_REQUEST_METHODS.experimentalProviderInstallationStatus`, `BRIDGE_REQUEST_METHODS.experimentalProviderInstallationRun`, `experimental_providerMaintenanceParamsSchema`, `experimental_providerHealthSchema`, `experimental_providerHealthResultSchema`, `experimental_providerUsageSchema`, `experimental_providerUsageWindowSchema`, `experimental_providerUsageResultSchema`, and the `experimental_providerInstallation*` schemas/types)
-
-**Kept experimental (2026-08-22).** it is part of the provider-bridge authoring surface and stabilizes together with `experimental_defineProviderBridge` / `experimental_apiVersion` in the later bridge-kit audit.
-
-**What it does.** A request handler throws it to reject the request with a
-typed recovery hint: `runBridgeRequest` answers with the given JSON-RPC
-`code` and `error.data.recovery { kind, message, retryable }`, the same way a
-`ProviderRequestDecodeError` becomes `INVALID_PARAMS`. A handler that answers
-by hand passes the hint to `sendError(id, code, message, { recovery })`
-instead. The runtime reads the hint from the rejected request
-(`JsonRpcResponseError.recovery`) and acts on the kind; see
-[provider-bridge-protocol.md](provider-bridge-protocol.md), "Recovery hints".
-
-**Audit before stabilizing.** Confirm the five kinds cover what third-party
-bridges need to say about a rejection (a `notInstalled`/`needsUpdate` kind
-for installation was deliberately left to `provider/installation/*`). Decide
-whether `retryable` should be per kind (only `sessionArchived` and
-`rateLimited` read it today) and whether the runtime should bound the
-`rateLimited` ladder from the hint rather than from a constant.
-
 ## Provider maintenance toolkit (`experimental_resolveExecutablePath`, `experimental_readCliVersion`, `experimental_commandOutput`, `experimental_versionFrom`, `experimental_compareVersions`, `experimental_formatCommand`, `experimental_npmCommand`, `experimental_npmGlobalInstallCommand`, `experimental_npmLatestVersion`, `experimental_probeNpmGlobalPackage`, `experimental_npmGlobalInstallSource`, `experimental_installationVerification`, `experimental_downloadedInstallerCommand`, `experimental_clampPercent`) (`@get-bb/plugin-sdk/provider-bridge`)
 
 **What it does.** The host-local probes and install-action plumbing behind a
@@ -1079,84 +1059,6 @@ bridge as provider-scoped static options. Core does not interpret its keys.
    enough listing policy, that health failure should continue to hide an
    installed-only provider, and that targeted requests may continue resolving
    a registered provider even while discovery says it is absent.
-
-## Provider declaration target-state fields (`PluginProviderDeclaration.experimental_strings`, `experimental_serviceTiers`, `experimental_reasoningLevels`, `experimental_extensionKinds`, `experimental_family`, `experimental_models`, `experimental_env`, `experimental_deriveProviderOptions`; `ProviderInfo.strings`/`serviceTiers`/`reasoningLevels`/`extensionKinds`/`family`)
-
-**What it does.** The target-state declaration fields from
-[docs/provider-plugin-api.md](provider-plugin-api.md) §1 beside the existing
-`capabilities`: provider copy (`strings`: sign-in and expiry hints, install
-URL, brand prefix, plan-mode copy, icon tint), service tiers and reasoning
-levels as `{ id, label, description? }` picker options, the extension kinds
-the provider's bridge may emit (`{ item?, state? }` Standard Schema validators
-keyed by local name), an optional `family` grouping key, a cold-cache
-`models.fallback` list, the daemon `env.passthrough` variable names the
-bridge may read, and the per-command `deriveProviderOptions(ctx)` hook.
-`validatePluginProviderDeclaration` checks and deep-freezes them.
-
-WS2a projects them: `ProviderInfo` carries `strings`, `serviceTiers` (the
-declared list, or `default`/`fast` when only `supportsServiceTier` is set),
-`reasoningLevels` (the declared options, or the coarse ladder labelled),
-`extensionKinds` namespaced by the OWNING PLUGIN id, and `family`; the usage
-banners (web + mobile), the model picker's brand strip and install link, and
-the plan-mode permission display read `strings` instead of per-provider
-tables. The fallback list is served by the model-list route when a probe fails
-transiently (the app vendors no catalog). `env.passthrough` rides
-`bridgeLaunch.envPassthrough` and the daemon forwards exactly those variables
-past its `BB_*` spawn sanitization. The hook runs on every session and turn
-command with `{ threadId, projectId, model, permissionMode, promptMode?,
-settings }` — `settings` being the plugin's own non-secret `bb.settings`
-values — and its bounded-JSON result rides the command as
-`options.providerOptions`, merged over the static bridge options. The shared
-execution contract carries no provider-named field: `claudeCodePermissionMode`,
-`workflowsEnabled`, `memoryEnabled` and `providerSubagentsEnabled` are gone,
-replaced by `promptMode: "plan"` (set only when the prompt entered plan mode
-through the provider's declared `plan` composer action) and the bag. The
-server validates extension payloads against the declared schemas at ingest
-(`apps/server/src/internal/extension-payloads.ts`): the registry carries the
-validators on each registration and resolves a namespaced kind through its
-plugin-id prefix.
-
-**Audit before stabilizing.**
-
-1. **One reasoning-level source.** `capabilities.reasoningLevels` (an id
-   ladder) and `experimental_reasoningLevels` (labelled options) say the same
-   thing twice during the transition; the projection prefers the options and
-   labels the ladder from a fixed table otherwise. Delete the ladder once every
-   first-party plugin declares the option form, and decide whether the coarse
-   `capabilities.supportsServiceTier` boolean survives beside
-   `experimental_serviceTiers` or is implied by it. Likewise fold the three
-   `experimental_provider{Health,Usage,Installation}` booleans into the doc's
-   `maintenance` object when the prefixes drop (declaring both now would say
-   one fact twice).
-2. **Copy limits and markup.** `strings` values are capped at 512 characters
-   and rendered as plain text. Confirm that is enough for every surface that
-   reads them today (usage banners, the mobile picker, the guide) and that
-   none of them needs inline Markdown or links. The plan-mode permission
-   display keys on the PRESENCE of `planModeCopy`: a provider with a `plan`
-   action but no copy (Codex) keeps its ordinary permission display. Confirm
-   presence is the right switch rather than a separate boolean.
-3. **Extension-kind ceiling and schema cost.** 32 kinds per provider and
-   Standard Schema validators executed at server ingest are guesses. Confirm
-   the ceiling against real plugins and set the payload size limit the server
-   enforces before validating.
-4. **Hook contract.** The hook is synchronous and runs on the turn-submit
-   path; a throw fails the command with the plugin named. Confirm sync is
-   enough (no plugin has asked for I/O), that omitting secrets from
-   `ctx.settings` is the right rule, that the 64 KiB bound shared with bridge
-   options fits, and whether `ctx` should carry the reasoning level and
-   service tier too. The bag is persisted with the session and diffed
-   structurally by the runtime to decide session vs. live changes; confirm
-   that is the right granularity once bridges reconcile everything themselves.
-5. **Fallback models and env passthrough.** The fallback list (64 max, exactly
-   one default) is offered only on a transient probe failure; confirm the
-   cold-cache composer (which now waits for the first probe) does not want it
-   too, and that name-only env passthrough (no value validation, `BB_*` or
-   otherwise) is the right scope.
-6. **Provider settings migration.** Migration 0105 copies the five retired
-   `codex*`/`claudeCode*` app-settings rows into `plugin_settings` for
-   `provider-codex` / `provider-claude-code`. Confirm the plugin setting keys
-   (`memoryEnabled`, `subagentsDisabled`, `workflowsDisabled`) before plugins
-   outside this repo start reading them.
 
 ## Provider extension-state rendering and actions (`app.slots.experimental_providerExtensionState`, `ExperimentalProviderExtensionStateRegistration`, `ExperimentalProviderExtensionStateProps.experimental_dispatchAction`, `PluginProviderExtensionKindDeclaration.experimental_action`, `ThreadsArea.experimental_applyExtensionStateAction`)
 
