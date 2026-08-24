@@ -3,9 +3,7 @@ import type {
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract";
 import { DEFAULT_BB_REQUEST_TIMEOUT_MS } from "@bb/sdk";
-import {
-  validatePluginProviderDeclaration,
-} from "@get-bb/plugin-sdk/internal/host-policy";
+import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import { describe, expect, it, vi } from "vitest";
 import { COMMAND_TIMEOUT_MS } from "../../src/constants.js";
 import { ApiError } from "../../src/errors.js";
@@ -13,10 +11,7 @@ import { buildPluginProviderRegistration } from "../../src/services/providers/pl
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession } from "../helpers/seed.js";
-import {
-  type TestAppHarness,
-  withTestHarness,
-} from "../helpers/test-app.js";
+import { type TestAppHarness, withTestHarness } from "../helpers/test-app.js";
 
 const API = "/api/v1";
 
@@ -154,7 +149,12 @@ describe("public provider installation routes", () => {
 
       expect(response.status).toBe(200);
       const body = (await readJson(response)) as ProviderCliStatusResponse;
-      expect(Object.keys(body)).toEqual(["codex", "claude-code", "pi", "acp-cursor"]);
+      expect(Object.keys(body)).toEqual([
+        "codex",
+        "claude-code",
+        "pi",
+        "acp-cursor",
+      ]);
       expect(Object.values(body).map((status) => status.displayName)).toEqual([
         "Codex",
         "Claude Code",
@@ -299,9 +299,7 @@ describe("public provider installation routes", () => {
         const startedAt = Date.now();
         let resolvedAt: number | null = null;
         const responsePromise = Promise.resolve(
-          harness.app.request(
-            `${API}/hosts/${host.id}/provider-clis/status`,
-          ),
+          harness.app.request(`${API}/hosts/${host.id}/provider-clis/status`),
         ).then((response) => {
           resolvedAt = Date.now();
           return response;
@@ -317,11 +315,52 @@ describe("public provider installation routes", () => {
           DEFAULT_BB_REQUEST_TIMEOUT_MS,
         );
         expect(statusTimeouts).toHaveLength(9);
-        expect(statusTimeouts.some((timeout) => timeout < COMMAND_TIMEOUT_MS))
-          .toBe(true);
+        expect(
+          statusTimeouts.some((timeout) => timeout < COMMAND_TIMEOUT_MS),
+        ).toBe(true);
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  it("forgets memoized host probes after a provider CLI install", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-memo-clear-host",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: handleProviderInstallationRpc,
+      });
+      const { installedProviderProbe, providerModelList } =
+        harness.deps.lifecycleDedupers;
+      const models = { models: [], selectedOnlyModels: [] };
+      await providerModelList.run("models", async () => models);
+      await installedProviderProbe.run("installed", async () => false);
+
+      const response = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/install`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            provider: "claude-code",
+            actionKind: "install",
+          }),
+        },
+      );
+      expect(response.status).toBe(200);
+
+      // A read after the install must probe the host again: the CLI it just
+      // installed is exactly what a memoized answer would misreport.
+      const modelProbe = vi.fn(async () => models);
+      const installedProbe = vi.fn(async () => true);
+      await providerModelList.run("models", modelProbe);
+      await installedProviderProbe.run("installed", installedProbe);
+      expect(modelProbe).toHaveBeenCalledOnce();
+      expect(installedProbe).toHaveBeenCalledOnce();
     });
   });
 
@@ -364,7 +403,10 @@ describe("public provider installation routes", () => {
           method: "POST",
           headers: { "content-type": "application/json" },
           // A provider id nothing registered.
-          body: JSON.stringify({ provider: "no-such-provider", actionKind: "install" }),
+          body: JSON.stringify({
+            provider: "no-such-provider",
+            actionKind: "install",
+          }),
         },
       );
       expect(unsupported.status).toBe(404);

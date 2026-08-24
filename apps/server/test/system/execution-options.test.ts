@@ -1466,7 +1466,7 @@ describe("resolveSystemExecutionOptions model probe memo", () => {
     });
   });
 
-  it("does not memoize a failed probe and re-probes after the daemon reconnects", async () => {
+  it("replays a failed probe for the failure window, forgets it on clear, and re-probes after the daemon reconnects", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-model-memo-invalidation",
@@ -1500,6 +1500,10 @@ describe("resolveSystemExecutionOptions model probe memo", () => {
         },
       });
       const query = { hostId: host.id, providerId: "codex" };
+      const listModelsRequests = () =>
+        responder.requests.filter(
+          (request) => request.command.type === "provider.list_models",
+        );
 
       const failed = await resolveSystemExecutionOptions(harness.deps, query);
       expect(failed.modelLoadError).toEqual({
@@ -1507,7 +1511,19 @@ describe("resolveSystemExecutionOptions model probe memo", () => {
         code: "timeout",
       });
 
+      // The host answered and failed, so the next read inside the failure
+      // window is served from the memo instead of spawning the CLI again.
       failProbe = false;
+      const replayed = await resolveSystemExecutionOptions(harness.deps, query);
+      expect(replayed.modelLoadError).toEqual({
+        providerId: "codex",
+        code: "timeout",
+      });
+      expect(listModelsRequests()).toHaveLength(1);
+
+      // An explicit clear (what the provider CLI install route does) forgets
+      // the failure at once.
+      harness.deps.lifecycleDedupers.providerModelList.clear();
       const recovered = await resolveSystemExecutionOptions(
         harness.deps,
         query,
@@ -1515,11 +1531,7 @@ describe("resolveSystemExecutionOptions model probe memo", () => {
       expect(recovered.modelLoadError).toBeNull();
       expect(recovered.models).toEqual([catalogModel]);
       await resolveSystemExecutionOptions(harness.deps, query);
-      expect(
-        responder.requests.filter(
-          (request) => request.command.type === "provider.list_models",
-        ),
-      ).toHaveLength(2);
+      expect(listModelsRequests()).toHaveLength(2);
 
       // A reconnected daemon may run a different CLI or account: its first
       // probe must not be answered from the previous session's memo.

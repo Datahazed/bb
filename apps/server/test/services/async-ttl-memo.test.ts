@@ -42,6 +42,73 @@ describe("createAsyncTtlMemo", () => {
     expect(recovered).toHaveBeenCalledTimes(1);
   });
 
+  it("replays a memoizable failure until failures.ttlMs, then runs the task again", async () => {
+    let currentTime = 1_000;
+    const memo = createAsyncTtlMemo<string, string>({
+      ttlMs: 60_000,
+      failures: {
+        ttlMs: 100,
+        shouldMemoize: (error) =>
+          error instanceof Error && error.message === "auth_required",
+      },
+      now: () => currentTime,
+    });
+    const failure = new Error("auth_required");
+    const failing = vi.fn(async (): Promise<string> => {
+      throw failure;
+    });
+
+    await expect(memo.run("k", failing)).rejects.toBe(failure);
+    currentTime = 1_099;
+    await expect(memo.run("k", failing)).rejects.toBe(failure);
+    expect(failing).toHaveBeenCalledTimes(1);
+
+    // Past the failure window the task runs again, and its success is kept
+    // for the (longer) success window.
+    currentTime = 1_100;
+    const recovered = vi.fn(async () => "ok");
+    await expect(memo.run("k", recovered)).resolves.toBe("ok");
+    currentTime = 1_100 + 59_999;
+    await expect(memo.run("k", recovered)).resolves.toBe("ok");
+    expect(recovered).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not store a failure the predicate rejects", async () => {
+    const memo = createAsyncTtlMemo<string, string>({
+      ttlMs: 60_000,
+      failures: {
+        ttlMs: 60_000,
+        shouldMemoize: (error) =>
+          error instanceof Error && error.message === "host answered",
+      },
+    });
+    const transport = vi.fn(async (): Promise<string> => {
+      throw new Error("host_unavailable");
+    });
+
+    await expect(memo.run("k", transport)).rejects.toThrow("host_unavailable");
+    await expect(memo.run("k", transport)).rejects.toThrow("host_unavailable");
+    expect(transport).toHaveBeenCalledTimes(2);
+  });
+
+  it("clear() forgets a memoized failure", async () => {
+    const memo = createAsyncTtlMemo<string, string>({
+      ttlMs: 60_000,
+      failures: { ttlMs: 60_000, shouldMemoize: () => true },
+    });
+    const failing = vi.fn(async (): Promise<string> => {
+      throw new Error("probe failed");
+    });
+    await expect(memo.run("k", failing)).rejects.toThrow("probe failed");
+    await expect(memo.run("k", failing)).rejects.toThrow("probe failed");
+    expect(failing).toHaveBeenCalledTimes(1);
+
+    memo.clear();
+    const recovered = vi.fn(async () => "ok");
+    await expect(memo.run("k", recovered)).resolves.toBe("ok");
+    expect(recovered).toHaveBeenCalledTimes(1);
+  });
+
   it("keys entries independently and clears them on demand", async () => {
     const memo = createAsyncTtlMemo<string, string>({ ttlMs: 60_000 });
     await expect(memo.run("a", async () => "A")).resolves.toBe("A");

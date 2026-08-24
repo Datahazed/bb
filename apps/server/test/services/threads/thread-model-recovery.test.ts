@@ -122,6 +122,10 @@ describe("stale model recovery", () => {
         body: { code: "model_catalog_unavailable" },
       });
       temporaryFailure.unregister();
+      // A host-answered probe failure is replayed for the memo's failure
+      // window; this test is about the outcome once the catalog loads, so
+      // forget it the way the provider CLI install route does.
+      harness.deps.lifecycleDedupers.providerModelList.clear();
       registerProviderHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,

@@ -647,7 +647,11 @@ async function probeInstalledProviderMemoized(
  * fresh), the provider registration revision (a plugin reload can change the
  * bridge), and the full command (provider, launch spec, bridge launch, and the
  * workspace path when the catalog is workspace-scoped). Concurrent callers for
- * one key share the in-flight probe; failures are not memoized.
+ * one key share the in-flight probe. A host-answered failure (502/504 other
+ * than `host_unavailable`) is replayed for the memo's short failure window so
+ * a missing or logged-out CLI is not re-spawned on every read; the rejection
+ * flows through the caller's catch into `modelLoadError` exactly as a live
+ * failure does.
  *
  * The probe is skipped only when no daemon session is registered yet: the
  * retryable RPC waits for one, and its answer would then belong to a session

@@ -326,9 +326,12 @@ export function registerHostRoutes(
       },
     }).finally(() => {
       // An install or update changes what the host has, so the next roster
-      // read must probe again rather than replay the pre-install answer. Also
-      // cleared on failure: a half-finished install costs only one re-probe.
+      // and model-list reads must probe again rather than replay the
+      // pre-install answer (for the model list, a memoized missing_executable
+      // failure). Also cleared on failure: a half-finished install costs only
+      // one re-probe.
       deps.lifecycleDedupers.installedProviderProbe.clear();
+      deps.lifecycleDedupers.providerModelList.clear();
     });
     return new Response(providerCliInstallEventsToNdjson(result.events), {
       headers: {
