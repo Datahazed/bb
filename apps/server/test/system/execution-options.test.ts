@@ -4,12 +4,15 @@ import {
   hostDaemonServerWsMessageSchema,
   type HostDaemonOnlineRpcRequestMessage,
 } from "@bb/host-daemon-contract";
+import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   appendCustomModels,
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
   resolveSystemProviderModels,
 } from "../../src/services/system/execution-options.js";
+import { getProviderStates } from "../../src/services/system/provider-states.js";
+import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import { ApiError } from "../../src/errors.js";
 import { availableModelFixture } from "../helpers/available-models.js";
 import {
@@ -579,9 +582,7 @@ describe("resolveSystemExecutionOptions", () => {
     async ({ failStatusRequest }) => {
       await withTestHarness(
         {
-          extraProviders: [
-            await configuredAcpProvider(EXAMPLE_AGENT_SETTING),
-          ],
+          extraProviders: [await configuredAcpProvider(EXAMPLE_AGENT_SETTING)],
         },
         async (harness) => {
           const warn = vi.fn();
@@ -682,9 +683,7 @@ describe("resolveSystemExecutionOptions", () => {
   it("keeps configured providers and custom models when no host can be resolved", async () => {
     await withTestHarness(
       {
-        extraProviders: [
-          await configuredAcpProvider(EXAMPLE_AGENT_SETTING),
-        ],
+        extraProviders: [await configuredAcpProvider(EXAMPLE_AGENT_SETTING)],
         customModels: [
           {
             providerId: "codex",
@@ -1548,6 +1547,281 @@ describe("resolveSystemExecutionOptions model probe memo", () => {
           (request) => request.command.type === "provider.list_models",
         ),
       ).toHaveLength(1);
+    });
+  });
+});
+
+describe("installed-only provider probe memo", () => {
+  /** The registry's `visibility: "installed"` ids, probed by roster reads. */
+  function installedOnlyProviderIds(harness: TestAppHarness): string[] {
+    return harness.deps.providerRegistry
+      .list()
+      .filter((registration) => registration.visibility === "installed")
+      .map((registration) => registration.info.id);
+  }
+
+  function discoveryHealthRequests(
+    requests: readonly HostDaemonOnlineRpcRequestMessage[],
+    providerIds: readonly string[],
+  ): HostDaemonOnlineRpcRequestMessage[] {
+    return requests.filter(
+      (request) =>
+        request.command.type === "provider.health" &&
+        providerIds.includes(request.command.providerId),
+    );
+  }
+
+  it("serves every roster read on a host from one discovery probe per installed-only provider", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-installed-probe-memo-shared",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.health") {
+            throw new Error(`Unexpected RPC command ${request.command.type}`);
+          }
+          return {
+            ok: true,
+            result: providerDiscoveryHealth(
+              request.command.providerId === "acp-opencode",
+            ),
+          };
+        },
+      });
+      const installedOnly = installedOnlyProviderIds(harness);
+
+      const first = await listSystemProviderInfos(harness.deps, {
+        hostId: host.id,
+      });
+      const second = await listSystemProviderInfos(harness.deps, {
+        hostId: host.id,
+      });
+
+      expect(first.map((provider) => provider.id)).toContain("acp-opencode");
+      expect(second).toEqual(first);
+      expect(
+        discoveryHealthRequests(responder.requests, installedOnly),
+      ).toHaveLength(installedOnly.length);
+    });
+  });
+
+  it("keeps readiness live while the discovery answer is memoized", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-installed-probe-memo-readiness",
+      });
+      const catalogModel = availableModelFixture({ model: "gpt-5" });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "provider.health") {
+            return {
+              ok: true,
+              result: providerDiscoveryHealth(
+                !installedOnly.includes(request.command.providerId),
+              ),
+            };
+          }
+          if (request.command.type === "provider.list_models") {
+            return {
+              ok: true,
+              result: { models: [catalogModel], selectedOnlyModels: [] },
+            };
+          }
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        },
+      });
+      const installedOnly = installedOnlyProviderIds(harness);
+
+      await resolveSystemExecutionOptions(harness.deps, {
+        hostId: host.id,
+        providerId: "codex",
+      });
+      const states = await getProviderStates(harness.deps, { hostId: host.id });
+      const readinessProbesAfterOneRead = responder.requests.filter(
+        (request) =>
+          request.command.type === "provider.health" &&
+          !installedOnly.includes(request.command.providerId),
+      ).length;
+      await getProviderStates(harness.deps, { hostId: host.id });
+
+      expect(states.providers.map((provider) => provider.providerId)).toContain(
+        "codex",
+      );
+      // Discovery ran once for the execution-options read and was replayed for
+      // both provider-state reads.
+      expect(
+        discoveryHealthRequests(responder.requests, installedOnly),
+      ).toHaveLength(installedOnly.length);
+      // Readiness (login/auth state) is not discovery: each provider-state read
+      // still asks the host.
+      expect(readinessProbesAfterOneRead).toBeGreaterThan(0);
+      expect(
+        responder.requests.filter(
+          (request) =>
+            request.command.type === "provider.health" &&
+            !installedOnly.includes(request.command.providerId),
+        ),
+      ).toHaveLength(readinessProbesAfterOneRead * 2);
+    });
+  });
+
+  it("does not memoize a failed discovery probe", async () => {
+    await withTestHarness({}, async (harness) => {
+      const warn = vi.fn();
+      harness.deps.logger = { ...harness.deps.logger, warn };
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-installed-probe-memo-failure",
+      });
+      let failOpencode = true;
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.health") {
+            throw new Error(`Unexpected RPC command ${request.command.type}`);
+          }
+          if (request.command.providerId !== "acp-opencode") {
+            return { ok: true, result: providerDiscoveryHealth(false) };
+          }
+          if (failOpencode) {
+            return {
+              ok: false,
+              errorCode: "host_unavailable",
+              errorMessage: "Host is not connected",
+            };
+          }
+          return { ok: true, result: providerDiscoveryHealth(true) };
+        },
+      });
+
+      const failed = await listSystemProviderInfos(harness.deps, {
+        hostId: host.id,
+      });
+      expect(failed.map((provider) => provider.id)).not.toContain(
+        "acp-opencode",
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({ providerId: "acp-opencode" }),
+        "Failed to resolve installed-only provider status",
+      );
+
+      failOpencode = false;
+      const recovered = await listSystemProviderInfos(harness.deps, {
+        hostId: host.id,
+      });
+      expect(recovered.map((provider) => provider.id)).toContain(
+        "acp-opencode",
+      );
+      expect(
+        discoveryHealthRequests(responder.requests, ["acp-opencode"]),
+      ).toHaveLength(2);
+    });
+  });
+
+  it("re-probes after the daemon reconnects", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-installed-probe-memo-reconnect",
+      });
+      const installedOnly = installedOnlyProviderIds(harness);
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: () => ({ ok: true, result: providerDiscoveryHealth(false) }),
+      });
+      const before = await listSystemProviderInfos(harness.deps, {
+        hostId: host.id,
+      });
+      expect(before.map((provider) => provider.id)).not.toContain(
+        "acp-opencode",
+      );
+
+      // The reconnected daemon may have a newly installed agent: its first
+      // roster read must not be answered from the previous session's memo.
+      harness.hub.unregisterDaemon(session.id);
+      const nextSession = seedSession(harness.deps, host.id);
+      const nextResponder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: nextSession.id,
+        handle: (request) => ({
+          ok: true,
+          result: providerDiscoveryHealth(
+            request.command.type === "provider.health" &&
+              request.command.providerId === "acp-opencode",
+          ),
+        }),
+      });
+
+      const after = await listSystemProviderInfos(harness.deps, {
+        hostId: host.id,
+      });
+      expect(after.map((provider) => provider.id)).toContain("acp-opencode");
+      expect(
+        discoveryHealthRequests(nextResponder.requests, installedOnly),
+      ).toHaveLength(installedOnly.length);
+    });
+  });
+
+  it("re-probes after the provider registration revision changes", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-installed-probe-memo-revision",
+      });
+      const installedOnly = installedOnlyProviderIds(harness);
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: () => ({ ok: true, result: providerDiscoveryHealth(false) }),
+      });
+      await listSystemProviderInfos(harness.deps, { hostId: host.id });
+      await listSystemProviderInfos(harness.deps, { hostId: host.id });
+      expect(
+        discoveryHealthRequests(responder.requests, installedOnly),
+      ).toHaveLength(installedOnly.length);
+
+      // A plugin (un)load can change a bridge, so the memo key carries the
+      // registration revision and a register or dispose invalidates it.
+      const pluginId = "provider-revision-bump";
+      const handle = harness.deps.providerRegistry.register({
+        ...buildPluginProviderRegistration({
+          available: true,
+          pluginId,
+          declaration: validatePluginProviderDeclaration({
+            id: "revision-bump",
+            displayName: "Revision Bump",
+            maintenance: { health: false, usage: false, installation: false },
+            capabilities: {
+              supportsServiceTier: false,
+              supportsNativeUserQuestion: false,
+              fork: "none",
+              supportsManualCompaction: false,
+              supportsThreadArchive: false,
+              supportsThreadRename: false,
+              permissionModes: ["full"],
+              reasoningLevels: ["medium"],
+            },
+            composerActions: [],
+          }),
+          readSettings: () => ({}),
+        }),
+        pluginId,
+        iconNames: new Set<string>(),
+      });
+      await listSystemProviderInfos(harness.deps, { hostId: host.id });
+      expect(
+        discoveryHealthRequests(responder.requests, installedOnly),
+      ).toHaveLength(installedOnly.length * 2);
+
+      handle.dispose();
+      await listSystemProviderInfos(harness.deps, { hostId: host.id });
+      expect(
+        discoveryHealthRequests(responder.requests, installedOnly),
+      ).toHaveLength(installedOnly.length * 3);
     });
   });
 });

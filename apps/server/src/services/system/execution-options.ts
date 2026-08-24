@@ -179,18 +179,15 @@ async function listInstalledPluginProviderInfos(
       );
       if (bridgeLaunch === null) return null;
       try {
-        const result = await callHostRetryableOnlineRpc(deps, {
+        const installed = await probeInstalledProviderMemoized(deps, {
           hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
           command: {
             type: "provider.health",
             providerId: registration.info.id,
             bridgeLaunch,
           },
         });
-        return result.supported && result.health.status !== "not_installed"
-          ? registration.info
-          : null;
+        return installed ? registration.info : null;
       } catch (error) {
         if (!canOmitProviderDiscoveryForError(error)) {
           throw error;
@@ -603,6 +600,45 @@ type ProviderListModelsCommand = Extract<
   HostDaemonRetryableOnlineRpcCommand,
   { type: "provider.list_models" }
 >;
+
+type ProviderHealthCommand = Extract<
+  HostDaemonRetryableOnlineRpcCommand,
+  { type: "provider.health" }
+>;
+
+/**
+ * Runs the installed-only discovery probe through the process-wide memo, keyed
+ * like {@link listProviderModelsMemoized}: host, daemon session, registration
+ * revision, and the full command (the bridge launch carries the plugin
+ * artifact digest, so a rebuilt plugin re-probes). The command has no cwd, so
+ * one entry per host serves every roster read. Only "installed or not" is
+ * stored; the caller's 502/504 handling stays outside the memo so a transient
+ * omission is never replayed for the TTL.
+ */
+async function probeInstalledProviderMemoized(
+  deps: LoggedWorkSessionDeps,
+  { command, hostId }: { command: ProviderHealthCommand; hostId: string },
+): Promise<boolean> {
+  const probe = async (): Promise<boolean> => {
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command,
+    });
+    return result.supported && result.health.status !== "not_installed";
+  };
+  const daemonSessionId = deps.hub.getDaemonSessionIdForHost(hostId);
+  if (daemonSessionId === null) {
+    return probe();
+  }
+  const memoKey = JSON.stringify([
+    hostId,
+    daemonSessionId,
+    deps.providerRegistry.getRegistrationRevision(),
+    command,
+  ]);
+  return deps.lifecycleDedupers.installedProviderProbe.run(memoKey, probe);
+}
 
 /**
  * Runs the host model probe through the process-wide memo. The key carries

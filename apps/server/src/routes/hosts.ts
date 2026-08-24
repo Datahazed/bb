@@ -297,10 +297,7 @@ export function registerHostRoutes(
     assertUsableHostId(deps, { hostId });
     await deps.providerRegistry.whenProviderRegistered(payload.provider);
     const registration = deps.providerRegistry.get(payload.provider);
-    if (
-      registration === null ||
-      !registration.info.maintenance.installation
-    ) {
+    if (registration === null || !registration.info.maintenance.installation) {
       throw new ApiError(
         404,
         "provider_installation_unavailable",
@@ -327,6 +324,11 @@ export function registerHostRoutes(
         action: payload.actionKind,
         bridgeLaunch,
       },
+    }).finally(() => {
+      // An install or update changes what the host has, so the next roster
+      // read must probe again rather than replay the pre-install answer. Also
+      // cleared on failure: a half-finished install costs only one re-probe.
+      deps.lifecycleDedupers.installedProviderProbe.clear();
     });
     return new Response(providerCliInstallEventsToNdjson(result.events), {
       headers: {
