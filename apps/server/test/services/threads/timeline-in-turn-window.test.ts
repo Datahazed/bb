@@ -759,14 +759,21 @@ describe("in-turn timeline windows", () => {
     let cursor: TimelinePaginationCursor | null = null;
     let pages = 0;
     for (;;) {
-      const page: ThreadTimelineResponse = buildNestedPage(
+      const page: ThreadTimelineResponse = buildPage(
         db,
         thread,
         LARGE_BUDGET,
         cursor,
       ).response;
+      const nestedPage: ThreadTimelineResponse = buildNestedPage(
+        db,
+        thread,
+        LARGE_BUDGET,
+        cursor,
+      ).response;
+      expect(nestedPage.timelinePage).toEqual(page.timelinePage);
       pages += 1;
-      collectAssistantTexts(page.rows, allAssistantTexts);
+      collectAssistantTexts(nestedPage.rows, allAssistantTexts);
       for (const row of page.rows) {
         if (row.kind === "conversation" && row.role === "assistant") {
           topLevelAssistantTexts.push(row.text);

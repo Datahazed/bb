@@ -98,12 +98,8 @@ function applySingleSummaryTurnBounds(
     item === onlySummaryGroup
       ? {
           ...item,
-          ...(turn.windowCoverage?.ownsStart === false
-            ? {}
-            : { startedAt: turn.startedAt }),
-          ...(turn.windowCoverage?.ownsCompletion === false
-            ? {}
-            : { completedAt: turn.completedAt }),
+          startedAt: turn.startedAt,
+          completedAt: turn.completedAt,
         }
       : item,
   );
@@ -228,21 +224,11 @@ function groupCompletedTurnSummaryMessages(
     visibleResponseIds.size === 0 &&
     !summaryMessages.some(isTimelineUngroupableMessage)
   ) {
-    const bounds =
-      summaryMessages.length === 0
-        ? null
-        : getSummaryMessageBounds(summaryMessages);
     return [
       {
         kind: "summary",
-        startedAt:
-          turn.windowCoverage?.ownsStart === false
-            ? (bounds?.startedAt ?? turn.startedAt)
-            : turn.startedAt,
-        completedAt:
-          turn.windowCoverage?.ownsCompletion === false
-            ? null
-            : turn.completedAt,
+        startedAt: turn.startedAt,
+        completedAt: turn.completedAt,
         segmentIndex: null,
         sourceMessages: summaryMessages,
         summaryCount: turn.summaryCount,

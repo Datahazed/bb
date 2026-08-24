@@ -38,6 +38,7 @@ import type {
 import { assertNever } from "./assert-never.js";
 import {
   durationToCompactString,
+  getMessageCompletedAt,
   getMessageStartedAt,
 } from "./format-helpers.js";
 import { getFileChangeDiffStats } from "./file-change-summary.js";
@@ -1128,9 +1129,9 @@ function getTimelineMessageCompletedAt(
   if (messages.length === 0) {
     return null;
   }
-  let completedAt = messages[0].createdAt;
+  let completedAt = getMessageCompletedAt(messages[0]);
   for (const message of messages.slice(1)) {
-    completedAt = Math.max(completedAt, message.createdAt);
+    completedAt = Math.max(completedAt, getMessageCompletedAt(message));
   }
   return completedAt;
 }

@@ -1,10 +1,12 @@
 import { turnScope } from "@bb/domain";
 import { describe, expect, it } from "vitest";
+import { applyProjectionTurnMessageDetail } from "../src/apply-turn-message-detail.js";
 import { groupCompletedTurnMessages } from "../src/completed-turn-grouping.js";
 import type { CompletedTurnMessageGroups } from "../src/completed-turn-grouping.js";
 import type {
   EventProjectionAssistantTextMessage,
   EventProjectionCommandMessage,
+  EventProjection,
   EventProjectionMessage,
   EventProjectionOperationMessage,
   EventProjectionTurnRequest,
@@ -154,6 +156,23 @@ function summarySourceMessageIds(
   );
 }
 
+function applySummaryDetail(turn: EventProjectionTurn): EventProjectionTurn {
+  const projection: EventProjection = {
+    entries: [{ kind: "turn", turn }],
+    state: {
+      activeBackgroundCommands: [],
+      activeThinking: null,
+      activeWorkflows: [],
+    },
+  };
+  const entry = applyProjectionTurnMessageDetail(projection, "summary")
+    .entries[0];
+  if (!entry || entry.kind !== "turn") {
+    throw new Error("Expected one projected turn");
+  }
+  return entry.turn;
+}
+
 describe("groupCompletedTurnMessages", () => {
   it("unwraps a singleton compaction group after a user message", () => {
     const user = userMessage({ id: "compact-request", seq: 1 });
@@ -287,8 +306,8 @@ describe("groupCompletedTurnMessages", () => {
     expect(groups.terminalMessages).toEqual([terminal]);
   });
 
-  it("uses only lifecycle edges owned by a partial turn window", () => {
-    const command = commandMessage({ id: "command", seq: 3 });
+  it("localizes partial turn bounds before dropping summary messages", () => {
+    const command = commandMessage({ id: "command", seq: 3, endSeq: 5 });
     const olderSlice = completedTurn([command], undefined);
     olderSlice.startedAt = 1;
     olderSlice.completedAt = 10;
@@ -304,12 +323,18 @@ describe("groupCompletedTurnMessages", () => {
       },
     } satisfies EventProjectionTurn;
 
-    expect(groupCompletedTurnMessages(olderSlice).summaryItems).toMatchObject([
-      { kind: "summary", startedAt: 1, completedAt: null },
-    ]);
-    expect(groupCompletedTurnMessages(latestSlice).summaryItems).toMatchObject([
-      { kind: "summary", startedAt: 3, completedAt: 10 },
-    ]);
+    const olderSummary = applySummaryDetail(olderSlice);
+    const latestSummary = applySummaryDetail(latestSlice);
+    expect(olderSummary).toMatchObject({
+      startedAt: 1,
+      completedAt: 5,
+    });
+    expect(olderSummary).not.toHaveProperty("messages");
+    expect(latestSummary).toMatchObject({
+      startedAt: 3,
+      completedAt: 10,
+    });
+    expect(latestSummary).not.toHaveProperty("messages");
   });
 
   it("preserves the last assistant message before an ungroupable user message", () => {

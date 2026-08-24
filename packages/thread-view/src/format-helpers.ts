@@ -6,6 +6,14 @@ export function getMessageStartedAt(message: {
   return message.startedAt ?? message.createdAt;
 }
 
+/** Get the effective completion time of a message, falling back to createdAt. */
+export function getMessageCompletedAt(message: {
+  completedAt?: number | null;
+  createdAt: number;
+}): number {
+  return message.completedAt ?? message.createdAt;
+}
+
 function getNonEmptyStringField(
   record: Record<string, unknown> | null,
   key: string,
