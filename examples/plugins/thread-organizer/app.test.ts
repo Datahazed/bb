@@ -47,11 +47,13 @@ describe("Thread Organizer app registration", () => {
     ]);
     expect(app.sidebarSectionActions).toEqual([
       expect.objectContaining({
-        id: "fullscreen-section",
+        id: "focus-section",
         placement: "inline-preferred",
-        experimental_requiresPrimaryModifier: true,
       }),
     ]);
+    expect(app.sidebarSectionActions[0]).not.toHaveProperty(
+      "experimental_requiresPrimaryModifier",
+    );
   });
 
   it("uses the runtime plugin id when its sidebar controller loads config", async () => {
@@ -97,7 +99,7 @@ describe("Thread Organizer app registration", () => {
     });
 
     expect(action.presentation(context())).toEqual({
-      title: "Full Screen Section",
+      title: "Focus Section",
       icon: "Maximize2",
       pressed: false,
       disabled: false,
@@ -105,7 +107,7 @@ describe("Thread Organizer app registration", () => {
     await action.run(context());
     expect(fullscreenSectionId).toBe("sec_building");
     expect(action.presentation(context())).toEqual({
-      title: "Exit Full Screen",
+      title: "Show all Sections",
       icon: "Minimize2",
       pressed: true,
       disabled: false,

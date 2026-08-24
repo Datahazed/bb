@@ -621,14 +621,13 @@ export default definePluginApp((app) => {
   });
 
   app.slots.experimental_sidebarSectionAction({
-    id: "fullscreen-section",
+    id: "focus-section",
     placement: "inline-preferred",
-    experimental_requiresPrimaryModifier: true,
     presentation(context) {
       const pressed =
         context.sidebar.experimental_fullscreenSectionId === context.section.id;
       return {
-        title: pressed ? "Exit Full Screen" : "Full Screen Section",
+        title: pressed ? "Show all Sections" : "Focus Section",
         icon: pressed ? "Minimize2" : "Maximize2",
         pressed,
         disabled:

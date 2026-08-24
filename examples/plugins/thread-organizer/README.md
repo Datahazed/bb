@@ -20,8 +20,9 @@ package.
   user changes their collapse state.
 - Reordering a non-Inbox stage in the native sidebar saves the same workflow
   order used by plugin settings and future agent instructions.
-- Every native section header gets a direct Full Screen Section action whose
-  pressed state stays visible until the user exits it.
+- Every native section header gets a direct Focus Section action with a concise
+  stateful tooltip; plain click toggles it, Show all Sections restores the
+  sidebar, and the pressed state stays visible.
 
 The plugin does not classify prompts, titles, history, or quoted text. Its
 bundled skill tells agents to move their own thread only when the work clearly
