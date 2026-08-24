@@ -5,7 +5,7 @@
   "type": "module",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.11"
+    "bbPluginSdk": ">=0.4.17"
   },
   "bb": {
     "name": "Thread Organizer",

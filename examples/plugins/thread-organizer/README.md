@@ -4,10 +4,9 @@ Thread Organizer is the reference consumer for plugin-owned thread workflows.
 It demonstrates the experimental section-icon, section-action, and runtime
 skill-slot APIs introduced by the lower layers of this PR stack.
 
-This example intentionally declares `engines.bbPluginSdk >=0.4.11`, the first
-planned SDK release that can contain all three capabilities. It consumes the
-workspace SDK directly and does not vendor or relabel the released 0.4.10
-package.
+This example intentionally declares `engines.bbPluginSdk >=0.4.17`, the SDK
+release containing all three capabilities. It consumes the workspace SDK
+directly and does not vendor or relabel the released 0.4.10 package.
 
 ## Behavior
 
