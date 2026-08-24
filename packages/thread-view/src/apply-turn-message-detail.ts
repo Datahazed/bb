@@ -11,49 +11,6 @@ import {
   isTimelineTerminalMessage,
   isTimelineUngroupableMessage,
 } from "./timeline-message-helpers.js";
-import {
-  getMessageCompletedAt,
-  getMessageStartedAt,
-} from "./format-helpers.js";
-
-interface WindowedTurnBounds {
-  completedAt: number | null;
-  createdAt: number;
-  startedAt: number;
-}
-
-function resolveWindowedTurnBounds(
-  turn: EventProjectionTurn,
-  messages: readonly EventProjectionMessage[],
-): WindowedTurnBounds {
-  if (!turn.windowCoverage || messages.length === 0) {
-    return {
-      completedAt: turn.completedAt,
-      createdAt: turn.createdAt,
-      startedAt: turn.startedAt,
-    };
-  }
-
-  let localStartedAt = getMessageStartedAt(messages[0]);
-  let localCreatedAt = messages[0].createdAt;
-  let localCompletedAt = getMessageCompletedAt(messages[0]);
-  for (const message of messages.slice(1)) {
-    localStartedAt = Math.min(localStartedAt, getMessageStartedAt(message));
-    localCreatedAt = Math.min(localCreatedAt, message.createdAt);
-    localCompletedAt = Math.max(
-      localCompletedAt,
-      getMessageCompletedAt(message),
-    );
-  }
-
-  return {
-    completedAt: turn.windowCoverage.ownsCompletion
-      ? turn.completedAt
-      : localCompletedAt,
-    createdAt: turn.windowCoverage.ownsStart ? turn.createdAt : localCreatedAt,
-    startedAt: turn.windowCoverage.ownsStart ? turn.startedAt : localStartedAt,
-  };
-}
 
 function getProjectionMessageSummaryCount(
   message: EventProjectionMessage,
@@ -155,16 +112,14 @@ function applyTurnMessageDetail(
     (turn.externalUserBoundarySeqs?.length ?? 0) > 0 ||
     isSingletonContextManagementOperation(summaryMessages) ||
     shouldIncludeSummaryTurnMessages(messages, terminalMessage);
-  const windowedBounds = resolveWindowedTurnBounds(turn, messages);
-
   const detailedTurn: EventProjectionTurn = {
     turnId: turn.turnId,
     threadId: turn.threadId,
     sourceSeqStart: turn.sourceSeqStart,
     sourceSeqEnd: turn.sourceSeqEnd,
-    startedAt: windowedBounds.startedAt,
-    createdAt: windowedBounds.createdAt,
-    completedAt: windowedBounds.completedAt,
+    startedAt: turn.startedAt,
+    createdAt: turn.createdAt,
+    completedAt: turn.completedAt,
     status: turn.status,
     summaryCount,
     ...(turn.windowCoverage ? { windowCoverage: turn.windowCoverage } : {}),

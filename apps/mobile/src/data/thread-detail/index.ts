@@ -5,6 +5,7 @@ export {
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
   useThreadQueuedMessages,
+  useTimelineTurnSummaryDetailSegments,
   useTimelineTurnSummaryDetails,
 } from "./thread-detail-queries";
 export { useThreadTimelineController } from "./use-thread-timeline-controller";

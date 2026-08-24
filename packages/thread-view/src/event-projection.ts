@@ -49,10 +49,10 @@ export interface BuildEventProjectionOptions extends BuildEventProjectionMessage
   acceptedClientRequestContext?: AcceptedClientRequestContext;
   contextOnlyToolCallIds?: ReadonlySet<string>;
   /**
-   * Lifecycle edges that belong to the current event window. Sequence-window
-   * projections backfill turn lifecycle rows so a partial completed turn can
-   * still settle, but those context rows must not make the slice claim the
-   * whole turn's timing or terminal response.
+   * Whether the current event window owns a completed turn's terminal edge.
+   * Sequence-window projections backfill turn lifecycle rows so a partial turn
+   * can settle, but a context-only completion must not select a false terminal
+   * response from that slice.
    */
   turnWindowCoverageById?: ReadonlyMap<
     string,
@@ -63,7 +63,6 @@ export interface BuildEventProjectionOptions extends BuildEventProjectionMessage
 
 export interface EventProjectionTurnWindowCoverage {
   ownsCompletion: boolean;
-  ownsStart: boolean;
 }
 
 export type EventProjectionEntry =
@@ -91,8 +90,7 @@ export interface EventProjectionTurn {
   status: EventProjectionTurnStatus;
   summaryCount: number;
   /**
-   * Present only when a sequence window owns less than both lifecycle edges.
-   * Omission means the projection owns the complete turn lifecycle.
+   * Present only when a sequence window does not own the completion edge.
    */
   windowCoverage?: EventProjectionTurnWindowCoverage;
   externalUserBoundarySeqs?: number[];

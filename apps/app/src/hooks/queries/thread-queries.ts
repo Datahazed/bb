@@ -1,5 +1,6 @@
 import {
   useInfiniteQuery,
+  useQueries,
   useQuery,
   useQueryClient,
   type QueryClient,
@@ -1040,9 +1041,18 @@ export function useThreadTimelineTurnSummaryDetails(
   identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
   options?: ThreadTimelineTurnSummaryDetailsQueryOptions,
 ) {
-  return useQuery<TimelineTurnSummaryDetailsResponse>({
+  return useQuery<TimelineTurnSummaryDetailsResponse>(
+    threadTimelineTurnSummaryDetailsQueryOptions(identity, options),
+  );
+}
+
+function threadTimelineTurnSummaryDetailsQueryOptions(
+  identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
+  options?: ThreadTimelineTurnSummaryDetailsQueryOptions,
+) {
+  return {
     queryKey: threadTimelineTurnSummaryDetailsQueryKey(identity),
-    queryFn: ({ signal }) =>
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
       sdk.threads.timelineTurnSummaryDetails({
         threadId: requireThreadId(
           identity.threadId,
@@ -1064,7 +1074,34 @@ export function useThreadTimelineTurnSummaryDetails(
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? Infinity,
     ...HEAVY_PAYLOAD_QUERY_POLICY,
+  };
+}
+
+/** Load and join every bounded detail segment of one logical turn summary. */
+export function useThreadTimelineTurnSummaryDetailSegments(
+  identities: readonly ThreadTimelineTurnSummaryDetailsQueryIdentity[],
+) {
+  const queries = useQueries({
+    queries: identities.map((identity) =>
+      threadTimelineTurnSummaryDetailsQueryOptions(identity),
+    ),
+    combine: (results) => ({
+      data: results.every((result) => result.data !== undefined)
+        ? {
+            rows: results.flatMap((result) => result.data?.rows ?? []),
+          }
+        : undefined,
+      isError: results.some((result) => result.isError),
+      refetches: results.map((result) => result.refetch),
+    }),
   });
+  return {
+    data: queries.data,
+    isError: queries.isError,
+    refetch: async () => {
+      await Promise.all(queries.refetches.map((refetch) => refetch()));
+    },
+  };
 }
 
 export function getLatestPendingInteraction(

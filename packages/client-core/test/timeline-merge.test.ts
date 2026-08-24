@@ -183,7 +183,7 @@ describe("timeline page row merging", () => {
     ]);
   });
 
-  it("keeps distinct byte-budget slices of one finished turn", () => {
+  it("coalesces byte-budget slices into one finished turn", () => {
     const olderCommands = [
       commandRow({ id: "command-1", sequence: 10 }),
       commandRow({ id: "command-2", sequence: 11 }),
@@ -193,25 +193,37 @@ describe("timeline page row merging", () => {
       commandRow({ id: "command-4", sequence: 21 }),
     ];
     const olderSlice = turnSummaryRow({
-      id: "turn-1:sequence-page:10",
+      id: "turn-1",
       sequence: 10,
       children: olderCommands,
     });
+    olderSlice.detailSegments = [
+      { sourceSeqStart: 10, sourceSeqEnd: 11, summaryCount: 2 },
+    ];
     const latestSlice = turnSummaryRow({
-      id: "turn-1:sequence-page:20",
+      id: "turn-1",
       sequence: 20,
       children: latestCommands,
     });
+    latestSlice.detailSegments = [
+      { sourceSeqStart: 20, sourceSeqEnd: 21, summaryCount: 2 },
+    ];
 
     const rows = prependOlderTimelineRows({
       olderRows: [olderSlice],
       loadedRows: [latestSlice],
     });
 
-    expect(rows.map((row) => row.id)).toEqual([
-      "turn-1:sequence-page:10",
-      "turn-1:sequence-page:20",
-    ]);
+    expect(rows.map((row) => row.id)).toEqual(["turn-1"]);
+    expect(rows[0]).toMatchObject({
+      detailSegments: [
+        { sourceSeqStart: 10, sourceSeqEnd: 11, summaryCount: 2 },
+        { sourceSeqStart: 20, sourceSeqEnd: 21, summaryCount: 2 },
+      ],
+      sourceSeqStart: 10,
+      sourceSeqEnd: 21,
+      summaryCount: 4,
+    });
     expect(
       rows.flatMap((row) =>
         row.kind === "turn" && row.children !== null

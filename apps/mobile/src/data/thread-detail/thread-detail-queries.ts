@@ -7,7 +7,7 @@ import type {
   ThreadWithIncludesResponse,
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import {
   shouldRetryTransientReadQuery,
@@ -229,14 +229,24 @@ export function useTimelineTurnSummaryDetails(
   options?: QueryOptions,
 ) {
   const { sdk } = useProfileClient();
+  return useQuery<TimelineTurnSummaryDetailsResponse>(
+    timelineTurnSummaryDetailsQueryOptions(sdk, identity, options),
+  );
+}
+
+function timelineTurnSummaryDetailsQueryOptions(
+  sdk: ReturnType<typeof useProfileClient>["sdk"],
+  identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
+  options?: QueryOptions,
+) {
   const enabled =
     (options?.enabled ?? true) &&
     Boolean(identity.threadId) &&
     Boolean(identity.turnId);
 
-  return useQuery<TimelineTurnSummaryDetailsResponse>({
+  return {
     queryKey: threadTimelineTurnSummaryDetailsQueryKey(identity),
-    queryFn: ({ signal }) =>
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
       sdk.threads.timelineTurnSummaryDetails({
         threadId: requireEnabledQueryArg({
           value: identity.threadId,
@@ -255,7 +265,28 @@ export function useTimelineTurnSummaryDetails(
     },
     refetchOnMount: true,
     staleTime: Infinity,
+  };
+}
+
+/** Load and join every bounded detail segment of one logical turn summary. */
+export function useTimelineTurnSummaryDetailSegments(
+  identities: readonly ThreadTimelineTurnSummaryDetailsQueryIdentity[],
+) {
+  const { sdk } = useProfileClient();
+  const queries = useQueries({
+    queries: identities.map((identity) =>
+      timelineTurnSummaryDetailsQueryOptions(sdk, identity),
+    ),
+    combine: (results) => ({
+      data: results.every((result) => result.data !== undefined)
+        ? {
+            rows: results.flatMap((result) => result.data?.rows ?? []),
+          }
+        : undefined,
+      isError: results.some((result) => result.isError),
+    }),
   });
+  return queries;
 }
 
 /**

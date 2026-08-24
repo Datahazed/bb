@@ -629,7 +629,22 @@ export interface TimelineTurnRow extends TimelineRowBase {
   summaryCount: number;
   completedAt: number | null;
   children: TimelineRow[] | null;
+  /**
+   * Bounded source slices that make up one logical summary when a completed
+   * turn exceeds the timeline response byte limit. Omitted when the row's own
+   * source range is the complete detail range.
+   */
+  detailSegments?: TimelineTurnDetailSegment[];
 }
+
+export const timelineTurnDetailSegmentSchema = z.object({
+  sourceSeqStart: z.number().int(),
+  sourceSeqEnd: z.number().int(),
+  summaryCount: z.number().int().nonnegative(),
+});
+export type TimelineTurnDetailSegment = z.infer<
+  typeof timelineTurnDetailSegmentSchema
+>;
 
 export const timelineTurnRowSchema: z.ZodType<TimelineTurnRow> = z.lazy(() =>
   timelineRowBaseSchema.extend({
@@ -639,6 +654,7 @@ export const timelineTurnRowSchema: z.ZodType<TimelineTurnRow> = z.lazy(() =>
     summaryCount: z.number().int().nonnegative(),
     completedAt: z.number().nullable(),
     children: z.array(timelineRowSchema).nullable(),
+    detailSegments: z.array(timelineTurnDetailSegmentSchema).optional(),
   }),
 );
 

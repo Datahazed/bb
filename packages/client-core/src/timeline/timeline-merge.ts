@@ -3,6 +3,7 @@ import type {
   TimelinePaginationCursor,
   TimelineRow,
 } from "@bb/server-contract";
+import { mergeTimelineTurnPageRows } from "@bb/thread-view";
 import { isOptimisticTimelineRowId } from "./optimistic-timeline-row.js";
 
 type NullableTimelinePaginationCursor = TimelinePaginationCursor | null;
@@ -98,12 +99,22 @@ function appendTimelineRowsPreservingOrder(
   target: TimelineRow[],
   rows: readonly TimelineRow[],
 ): void {
-  const seenIds = new Set(target.map((row) => row.id));
+  const rowIndexById = new Map(target.map((row, index) => [row.id, index]));
   for (const row of rows) {
-    if (seenIds.has(row.id)) {
+    const existingIndex = rowIndexById.get(row.id);
+    if (existingIndex !== undefined) {
+      const existing = target[existingIndex];
+      if (
+        existing?.kind === "turn" &&
+        row.kind === "turn" &&
+        (existing.detailSegments !== undefined ||
+          row.detailSegments !== undefined)
+      ) {
+        target[existingIndex] = mergeTimelineTurnPageRows(existing, row);
+      }
       continue;
     }
-    seenIds.add(row.id);
+    rowIndexById.set(row.id, target.length);
     target.push(row);
   }
 }
@@ -254,7 +265,17 @@ export function mergeLatestTimelineRows({
     if (rowsBefore) {
       rows.push(...rowsBefore);
     }
-    rows.push(latestRowsById.get(row.id) ?? row);
+    const latestRow = latestRowsById.get(row.id);
+    rows.push(
+      row.kind === "turn" &&
+        latestRow?.kind === "turn" &&
+        (row.detailSegments !== undefined ||
+          latestRow.detailSegments !== undefined)
+        ? mergeTimelineTurnPageRows(row, latestRow, {
+            newerWindowStartSequence: latestWindowStartSequence,
+          })
+        : (latestRow ?? row),
+    );
   }
   rows.push(...pendingRows);
   if (areTimelineRowReferencesEqual({ left: loadedRows, right: rows })) {

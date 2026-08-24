@@ -9,6 +9,7 @@ import {
 import type { CommandRegistrar } from "../helpers/command-output-harness.js";
 import * as fixtures from "../helpers/command-output-fixtures.js";
 import { registerThreadCommands } from "../../commands/thread/index.js";
+import type { TimelineTurnRow } from "@bb/server-contract";
 
 describe("bb thread log command output", () => {
   setupCommandOutputTestEnvironment();
@@ -463,6 +464,65 @@ describe("bb thread log command output", () => {
       output.indexOf("third prompt"),
     );
     expect(output).not.toContain("older history omitted");
+  });
+
+  it("bb thread log --all renders byte-window fragments as one worked-for row", async () => {
+    const turnFragment = (start: number, end: number): TimelineTurnRow => ({
+      ...fixtures.makeTimelineBase({
+        id: "thread-log:turn-1:turn",
+        sourceSeqStart: start,
+        sourceSeqEnd: end,
+        startedAt: 1_000,
+        createdAt: 9_000,
+      }),
+      turnId: "turn-1",
+      kind: "turn",
+      status: "completed",
+      summaryCount: 1,
+      completedAt: 9_000,
+      children: null,
+      detailSegments: [
+        { sourceSeqStart: start, sourceSeqEnd: end, summaryCount: 1 },
+      ],
+    });
+    const getTimeline = vi.fn(
+      async (input: { query: { beforeAnchorSeq?: string } }) => {
+        if (input.query.beforeAnchorSeq === undefined) {
+          return {
+            ...fixtures.makeTimelineResponse([turnFragment(5, 8)]),
+            timelinePage: {
+              kind: "latest" as const,
+              segmentLimit: 100,
+              returnedSegmentCount: 1,
+              hasOlderRows: true,
+              olderCursor: {
+                anchorSeq: 5,
+                anchorId: "thread-log:byte-window:5",
+              },
+            },
+          };
+        }
+        return {
+          ...fixtures.makeTimelineResponse([turnFragment(1, 4)]),
+          timelinePage: {
+            kind: "older" as const,
+            segmentLimit: 100,
+            returnedSegmentCount: 1,
+            hasOlderRows: false,
+            olderCursor: null,
+          },
+        };
+      },
+    );
+    stubServerApi({
+      "v1.threads.:id.timeline.$get": getTimeline,
+    });
+
+    await runCommand(["thread", "log", "thread-log", "--all"], register);
+
+    const output = String(vi.mocked(console.log).mock.calls[0]?.[0]);
+    expect(output.match(/Worked for/g)).toHaveLength(1);
+    expect(output).toContain("Worked for (8s)");
   });
 
   it("bb thread log rejects --all combined with --limit", async () => {

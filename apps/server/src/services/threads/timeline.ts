@@ -253,43 +253,23 @@ function resolveTurnWindowCoverage(
     return undefined;
   }
 
-  const coverageById = new Map<
-    string,
-    EventProjectionTurnWindowCoverage & { hasCompletion: boolean }
-  >();
+  const completionOwnershipById = new Map<string, boolean>();
   for (const row of selection.rows) {
-    if (
-      row.turnId === null ||
-      (row.type !== "turn/started" && row.type !== "turn/completed")
-    ) {
+    if (row.turnId === null || row.type !== "turn/completed") {
       continue;
     }
-    const coverage = coverageById.get(row.turnId) ?? {
-      hasCompletion: false,
-      ownsCompletion: false,
-      ownsStart: false,
-    };
     const isOwned =
       row.sequence >= sequenceStart && row.sequence <= sequenceEnd;
-    if (row.type === "turn/started") {
-      coverage.ownsStart ||= isOwned;
-    } else {
-      coverage.hasCompletion = true;
-      coverage.ownsCompletion ||= isOwned;
-    }
-    coverageById.set(row.turnId, coverage);
+    completionOwnershipById.set(
+      row.turnId,
+      (completionOwnershipById.get(row.turnId) ?? false) || isOwned,
+    );
   }
 
   const partialCoverage = new Map<string, EventProjectionTurnWindowCoverage>();
-  for (const [turnId, coverage] of coverageById) {
-    if (
-      coverage.hasCompletion &&
-      (!coverage.ownsStart || !coverage.ownsCompletion)
-    ) {
-      partialCoverage.set(turnId, {
-        ownsCompletion: coverage.ownsCompletion,
-        ownsStart: coverage.ownsStart,
-      });
+  for (const [turnId, ownsCompletion] of completionOwnershipById) {
+    if (!ownsCompletion) {
+      partialCoverage.set(turnId, { ownsCompletion: false });
     }
   }
   return partialCoverage.size === 0 ? undefined : partialCoverage;
@@ -1618,7 +1598,16 @@ function buildSequencePageTimelineRows(
     return [
       {
         ...row,
-        id: `${row.id}${suffix}`,
+        // Byte windows are transport slices of one logical completed turn.
+        // Keep its canonical identity so clients can coalesce the slices into
+        // one "Worked for" row while retaining bounded expansion ranges.
+        detailSegments: [
+          {
+            sourceSeqEnd,
+            sourceSeqStart,
+            summaryCount: row.summaryCount,
+          },
+        ],
         sourceSeqEnd,
         sourceSeqStart,
       },

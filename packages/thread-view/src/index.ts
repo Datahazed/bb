@@ -1,4 +1,8 @@
 export { formatThreadTimelineText } from "./format-timeline-text.js";
+export {
+  coalesceTimelineTurnPageRows,
+  mergeTimelineTurnPageRows,
+} from "./merge-timeline-turn-page-rows.js";
 export { parseAgentMessageEnvelope } from "./agent-message-envelope.js";
 export type { ThreadTimelineTextFormat } from "./format-timeline-text.js";
 export { assertNever } from "./assert-never.js";

@@ -113,7 +113,7 @@ import {
 } from "./timeline-row-containment.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
+import { useThreadTimelineTurnSummaryDetailSegments } from "@/hooks/queries/thread-queries";
 import { type ThreadTimelineTurnSummaryDetailsQueryIdentity } from "@/hooks/queries/query-keys";
 import {
   useSenderThreadMetadataById,
@@ -1514,25 +1514,42 @@ function LazyTurnRowBody({
   const {
     sourceSeqEnd: rowSourceSeqEnd,
     sourceSeqStart: rowSourceSeqStart,
+    detailSegments,
     threadId: rowThreadId,
     turnId: rowTurnId,
   } = row;
-  const identity = useMemo<ThreadTimelineTurnSummaryDetailsQueryIdentity>(
+  const identities = useMemo<ThreadTimelineTurnSummaryDetailsQueryIdentity[]>(
     () =>
-      buildTurnSummaryDetailsIdentity({
-        rowSourceSeqEnd,
-        rowSourceSeqStart,
-        rowThreadId,
-        rowTurnId,
-        threadId,
-      }),
-    [rowSourceSeqEnd, rowSourceSeqStart, rowThreadId, rowTurnId, threadId],
+      (
+        detailSegments ?? [
+          {
+            sourceSeqEnd: rowSourceSeqEnd,
+            sourceSeqStart: rowSourceSeqStart,
+          },
+        ]
+      ).map((segment) =>
+        buildTurnSummaryDetailsIdentity({
+          rowSourceSeqEnd: segment.sourceSeqEnd,
+          rowSourceSeqStart: segment.sourceSeqStart,
+          rowThreadId,
+          rowTurnId,
+          threadId,
+        }),
+      ),
+    [
+      detailSegments,
+      rowSourceSeqEnd,
+      rowSourceSeqStart,
+      rowThreadId,
+      rowTurnId,
+      threadId,
+    ],
   );
   const {
     data: detail,
     isError,
     refetch,
-  } = useThreadTimelineTurnSummaryDetails(identity);
+  } = useThreadTimelineTurnSummaryDetailSegments(identities);
   const handleRetry = useCallback((): void => {
     void refetch();
   }, [refetch]);

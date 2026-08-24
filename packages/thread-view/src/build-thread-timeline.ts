@@ -38,7 +38,6 @@ import type {
 import { assertNever } from "./assert-never.js";
 import {
   durationToCompactString,
-  getMessageCompletedAt,
   getMessageStartedAt,
 } from "./format-helpers.js";
 import { getFileChangeDiffStats } from "./file-change-summary.js";
@@ -78,9 +77,9 @@ interface ThreadTimelineFromEventsBaseOptions {
   contextOnlyToolCallIds?: ReadonlySet<string>;
   includeProviderUnhandledOperations: boolean;
   /**
-   * Lifecycle edges physically owned by this sequence window. Backfilled turn
-   * starts/completions still settle partial turns, but must not supply global
-   * timing or a page-local false terminal response.
+   * Completion edges physically owned by this sequence window. Backfilled
+   * completions still settle partial turns, but must not select a page-local
+   * false terminal response.
    */
   turnWindowCoverageById?: ReadonlyMap<
     string,
@@ -1129,9 +1128,9 @@ function getTimelineMessageCompletedAt(
   if (messages.length === 0) {
     return null;
   }
-  let completedAt = getMessageCompletedAt(messages[0]);
+  let completedAt = messages[0].createdAt;
   for (const message of messages.slice(1)) {
-    completedAt = Math.max(completedAt, getMessageCompletedAt(message));
+    completedAt = Math.max(completedAt, message.createdAt);
   }
   return completedAt;
 }

@@ -7,6 +7,7 @@ import type {
   SidebarBootstrapResponse,
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
+  TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import * as api from "@/lib/api";
@@ -34,6 +35,7 @@ import {
   useThreadQueuedMessages,
   useThreadStorageLocation,
   useThreadTimeline,
+  useThreadTimelineTurnSummaryDetailSegments,
 } from "./thread-queries";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -52,6 +54,7 @@ vi.mock("@/lib/sdk", () => ({
       queuedMessages: { list: vi.fn() },
       storageLocation: vi.fn(),
       timeline: vi.fn(),
+      timelineTurnSummaryDetails: vi.fn(),
     },
   },
 }));
@@ -176,6 +179,60 @@ beforeEach(() => {
     url: "/api/v1/threads/thread-1/host-files/content?path=%2Ftmp%2Flog.txt",
     mimeType: "text/plain",
     content: "preview",
+  });
+});
+
+describe("useThreadTimelineTurnSummaryDetailSegments", () => {
+  it("loads every bounded segment and joins the rows in source order", async () => {
+    vi.mocked(sdk.threads.timelineTurnSummaryDetails).mockImplementation(
+      async ({ sourceSeqStart }) =>
+        ({
+          rows: [
+            {
+              id: `work-${sourceSeqStart}`,
+              threadId: "thread-1",
+              turnId: "turn-1",
+              sourceSeqStart: Number(sourceSeqStart),
+              sourceSeqEnd: Number(sourceSeqStart),
+              startedAt: Number(sourceSeqStart),
+              createdAt: Number(sourceSeqStart),
+              kind: "system",
+              systemKind: "debug",
+              title: `Work ${sourceSeqStart}`,
+              detail: null,
+              status: null,
+            },
+          ],
+        }) satisfies TimelineTurnSummaryDetailsResponse,
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    const result = renderHook(
+      () =>
+        useThreadTimelineTurnSummaryDetailSegments([
+          {
+            sourceSeqStart: 1,
+            sourceSeqEnd: 4,
+            threadId: "thread-1",
+            turnId: "turn-1",
+          },
+          {
+            sourceSeqStart: 5,
+            sourceSeqEnd: 9,
+            threadId: "thread-1",
+            turnId: "turn-1",
+          },
+        ]),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.result.current.data?.rows.map((row) => row.id)).toEqual([
+        "work-1",
+        "work-5",
+      ]);
+    });
+    expect(sdk.threads.timelineTurnSummaryDetails).toHaveBeenCalledTimes(2);
   });
 });
 

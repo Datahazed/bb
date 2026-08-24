@@ -707,8 +707,14 @@ describe("in-turn timeline windows", () => {
           continue;
         }
         expect(row.status).toBe("completed");
-        expect(turnRowIds.has(row.id)).toBe(false);
         turnRowIds.add(row.id);
+        expect(row.detailSegments).toEqual([
+          {
+            sourceSeqEnd: row.sourceSeqEnd,
+            sourceSeqStart: row.sourceSeqStart,
+            summaryCount: row.summaryCount,
+          },
+        ]);
         const details = buildTimelineTurnSummaryDetails(db, thread, {
           includeProviderUnhandledOperations: false,
           sourceSeqEnd: row.sourceSeqEnd,
@@ -738,10 +744,10 @@ describe("in-turn timeline windows", () => {
     expect(pages).toBeGreaterThan(2);
     expect(commandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
     expect(expandedCommandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
-    expect(turnRowIds.size).toBe(pages);
+    expect(turnRowIds.size).toBe(1);
   }, 15_000);
 
-  it("keeps byte-window timing and terminal responses local to their owning page", () => {
+  it("keeps one logical turn identity while only one byte page owns the terminal response", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
       assistantProgressCount: 3,
@@ -803,23 +809,16 @@ describe("in-turn timeline windows", () => {
     ]);
     expect(turnRows).not.toHaveLength(0);
     expect(
-      turnRows.some(
+      turnRows.every(
         (row) =>
           row.startedAt === turnStartedAt &&
           row.completedAt === turnCompletedAt,
       ),
-    ).toBe(false);
-    expect(
-      turnRows.some(
-        (row) => row.completedAt !== null && row.completedAt < turnCompletedAt,
-      ),
     ).toBe(true);
-    expect(
-      turnRows.some(
-        (row) =>
-          row.startedAt > turnStartedAt && row.completedAt === turnCompletedAt,
-      ),
-    ).toBe(true);
+    expect(new Set(turnRows.map((row) => row.id)).size).toBe(1);
+    expect(turnRows.every((row) => row.detailSegments?.length === 1)).toBe(
+      true,
+    );
   }, 15_000);
 
   it("keeps latest byte-page row identities stable while a turn grows", () => {
