@@ -280,7 +280,7 @@ describe("agent guidance", () => {
     expect(phaseOrganizerSkill).toContain("resolved next concrete action");
     expect(phaseOrganizerSkill).toContain("`update_plan`");
     expect(phaseOrganizerSkill).toMatch(
-      /Only `bb organizer phase` performs an\s+agent-driven stage transition\./u,
+      /Only `bb organizer phase` performs an\s+agent-driven stage update\./u,
     );
   });
 

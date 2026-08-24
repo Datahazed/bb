@@ -14,26 +14,28 @@ directly and does not vendor or relabel the released 0.4.10 package.
 - Idle unread threads appear in Inbox and stay there until work resumes.
 - Read and unread changes do not move a thread after it reaches Inbox.
 - A user move changes the remembered stage. `bb organizer phase <stage-key>`
-  changes it or confirms that substantially changed work remains in that stage.
+  moves it or refreshes substantially changed work that remains in that stage.
 - Inbox keeps that system behavior even when its visible title or icon changes.
 - Inbox starts expanded. Other configured sections start collapsed until the
   user changes their collapse state.
 - Reordering a non-Inbox stage in the native sidebar saves the same workflow
   order used by plugin settings and future agent instructions.
 - Automation-origin root threads follow the same workflow as ordinary roots.
-- Stage changes and same-stage confirmations enter one bounded title queue.
+- Stage changes and same-stage refreshes enter one bounded title queue.
   Thread Organizer batches queued threads into one invisible worker, which
-  reassesses whether each title still describes the active work. User title
-  changes made while that worker is running win.
+  reassesses whether each title still describes the active work. If you rename
+  a thread while that worker is running, its older proposal is discarded rather
+  than overwriting your newer title.
 - Every native section header gets a direct Focus Section action with a concise
   stateful tooltip; plain click toggles it, Show all Sections restores the
   sidebar, and the pressed state stays visible.
 
 The plugin does not classify prompts to choose stages. The first configured
 non-Inbox stage is remembered mechanically until an agent runs `bb organizer
-phase <stage-key>` or the user moves the thread. Agents confirm the resolved
-stage when substantial work changes, including changes that remain within the
-same stage; those checkpoints drive batched title reassessment.
+phase <stage-key>` or the user moves the thread. Agents autonomously apply the
+resolved stage when substantial work changes, including changes that remain
+within the same stage; those checkpoints drive batched title reassessment and
+never require user permission.
 
 ## Use
 
@@ -64,7 +66,7 @@ Inbox is system-managed and cannot be selected by the CLI. The bundled skill
 re-evaluates the resolved next concrete action at substantive task start,
 indirect kickoffs, scope changes, implementation, validation, failed
 validation, and handoff. Internal task plans and `update_plan` do not move the
-bb workflow stage; only `bb organizer phase` does. A same-stage confirmation
+bb workflow stage; only `bb organizer phase` does. A same-stage refresh
 does not move the row, but it does queue a title freshness check.
 
 ## Run from this repository
