@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "checkpoint": "plugin-guide-v1-final-native-desktop-evidence",
+  "base": {
+    "commit": "a5afd972a98ec1fd3d302370300fd4df7e9a7944",
+    "route": "/extensions/plugins",
+    "fixture": "fresh isolated bb-dev-app data directory",
+    "windowBoundsCssPx": { "x": 0, "y": 34, "width": 1710, "height": 1073 },
+    "screenshot": "plugin-guide-before-a5afd972a-native.png",
+    "result": "PASS",
+    "observed": "The base extension browser has no Plugin Guide entry or Guide surface. Later integrated main commits through f124986e8 change only runtime, provider, and desktop tests/test helpers; no captured UI source changed."
+  },
+  "candidate": {
+    "commit": "8999481af960cb472c9fc35c7024c839ab8baca3",
+    "route": "/plugins/plugin-api-docs/plugin-api",
+    "fixture": "fresh isolated bb-dev-app data directory",
+    "windowBoundsCssPx": { "x": 0, "y": 34, "width": 1710, "height": 1073 },
+    "result": "PASS"
+  },
+  "states": [
+    {
+      "name": "diff-tab",
+      "screenshot": "plugin-guide-after-8999481af-diff-tab-native.png",
+      "observed": "Annotation 11 switches to the Diff tab and reveals the code/diff renderer example; tab annotations render above chrome and remain unclipped. The timeline is taller and more loosely spaced, and the selection toolbar exposes Add to chat plus the plugin action."
+    },
+    {
+      "name": "composer-typeahead",
+      "screenshot": "plugin-guide-after-8999481af-composer-typeahead-native.png",
+      "observed": "The typeahead menu is nudged above its badges and targets, and the left-edge annotation remains inside its container."
+    }
+  ],
+  "additionalInteractionVerification": {
+    "result": "PASS",
+    "observed": "Annotations 9, 10, and 11 each switched their respective right-side tab and body; the app-window timeline used taller, looser loaded geometry aligned with its loading skeleton. Five large-to-narrow-to-large resize cycles on the same user-visible candidate code produced no clipping, stale frames, or layout lock."
+  },
+  "console": {
+    "result": "PASS",
+    "observed": "No Plugin Guide renderer, hydration, or console errors were emitted."
+  },
+  "overallResult": "PASS"
+}
