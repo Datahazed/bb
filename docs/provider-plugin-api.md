@@ -88,9 +88,10 @@ bb.providers.register({
 
 Still experimental on the declaration (see api_to_audit.md):
 `experimental_visibility` (`"installed"` hides the row until the bridge's
-health probe finds the agent; the server caches that installed-or-not answer
-per host for a few minutes and re-probes after a daemon reconnect, a plugin
-reload, a provider CLI install, or a forced CLI status check),
+health probe finds the agent; the server caches a "present" answer per host
+for a few minutes and a "not installed" answer for about 30 s, and re-probes
+after a daemon reconnect, a plugin reload, a provider CLI install, or a
+forced CLI status check),
 `experimental_bridgeOptions` (immutable JSON
 forwarded opaquely to the bridge), `experimental_nativeSkillRoots` and
 `experimental_nativeCommandRoots` (where the agent keeps its own skills and
