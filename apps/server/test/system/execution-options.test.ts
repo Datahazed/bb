@@ -1682,6 +1682,85 @@ describe("installed-only provider probe memo", () => {
     });
   });
 
+  it("holds an absent answer for 30 s while a present one keeps the full window", async () => {
+    // The dedupers capture their clock when the harness builds them, so the
+    // fake Date must be in place first.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      await withTestHarness({}, async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-installed-probe-memo-absent-window",
+        });
+        const installedOnly = installedOnlyProviderIds(harness);
+        // Every installed-only agent but opencode is present; opencode's
+        // first answer is the kind a failed `which` or a fallback PATH
+        // produces, and the host "installs" it right after.
+        let opencodeInstalled = false;
+        const responder = registerHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          handle: (request) => {
+            if (request.command.type !== "provider.health") {
+              throw new Error(`Unexpected RPC command ${request.command.type}`);
+            }
+            return {
+              ok: true,
+              result: providerDiscoveryHealth(
+                request.command.providerId === "acp-opencode"
+                  ? opencodeInstalled
+                  : true,
+              ),
+            };
+          },
+        });
+        const startedAt = Date.now();
+
+        const first = await listSystemProviderInfos(harness.deps, {
+          hostId: host.id,
+        });
+        expect(first.map((provider) => provider.id)).not.toContain(
+          "acp-opencode",
+        );
+        opencodeInstalled = true;
+
+        vi.setSystemTime(startedAt + 29_000);
+        const withinWindow = await listSystemProviderInfos(harness.deps, {
+          hostId: host.id,
+        });
+        expect(withinWindow.map((provider) => provider.id)).not.toContain(
+          "acp-opencode",
+        );
+        expect(
+          discoveryHealthRequests(responder.requests, installedOnly),
+        ).toHaveLength(installedOnly.length);
+
+        // Past the absent window only the absent answer is re-asked; the
+        // present ones are still served from the memo.
+        vi.setSystemTime(startedAt + 31_000);
+        const recovered = await listSystemProviderInfos(harness.deps, {
+          hostId: host.id,
+        });
+        expect(recovered.map((provider) => provider.id)).toContain(
+          "acp-opencode",
+        );
+        expect(
+          discoveryHealthRequests(responder.requests, installedOnly),
+        ).toHaveLength(installedOnly.length + 1);
+        expect(
+          discoveryHealthRequests(responder.requests, ["acp-opencode"]),
+        ).toHaveLength(2);
+
+        vi.setSystemTime(startedAt + 4 * 60_000);
+        await listSystemProviderInfos(harness.deps, { hostId: host.id });
+        expect(
+          discoveryHealthRequests(responder.requests, installedOnly),
+        ).toHaveLength(installedOnly.length + 1);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not memoize a failed discovery probe", async () => {
     await withTestHarness({}, async (harness) => {
       const warn = vi.fn();

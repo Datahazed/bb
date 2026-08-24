@@ -20,6 +20,31 @@ describe("createAsyncTtlMemo", () => {
     expect(task).toHaveBeenCalledTimes(2);
   });
 
+  it("holds each value for the window ttlMsForValue picks for it", async () => {
+    let currentTime = 0;
+    const memo = createAsyncTtlMemo<string, boolean>({
+      ttlMs: 5 * 60_000,
+      // An "absent" answer may be a failed lookup; keep it for much less
+      // time than a "present" one.
+      ttlMsForValue: (present) => (present ? 5 * 60_000 : 30_000),
+      now: () => currentTime,
+    });
+    const absent = vi.fn(async () => false);
+    const present = vi.fn(async () => true);
+    await expect(memo.run("absent", absent)).resolves.toBe(false);
+    await expect(memo.run("present", present)).resolves.toBe(true);
+
+    currentTime = 30_000;
+    await expect(memo.run("absent", absent)).resolves.toBe(false);
+    await expect(memo.run("present", present)).resolves.toBe(true);
+    expect(absent).toHaveBeenCalledTimes(2);
+    expect(present).toHaveBeenCalledTimes(1);
+
+    currentTime = 4 * 60_000;
+    await expect(memo.run("present", present)).resolves.toBe(true);
+    expect(present).toHaveBeenCalledTimes(1);
+  });
+
   it("shares one in-flight task and never stores a rejection", async () => {
     const memo = createAsyncTtlMemo<string, string>({ ttlMs: 60_000 });
     let reject: (error: Error) => void = () => {};

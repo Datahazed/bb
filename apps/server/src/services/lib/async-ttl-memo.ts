@@ -21,8 +21,16 @@ interface MemoizedFailuresOptions {
   shouldMemoize(error: unknown): boolean;
 }
 
-interface CreateAsyncTtlMemoOptions {
+interface CreateAsyncTtlMemoOptions<TValue> {
+  /** How long a settled value is served. */
   ttlMs: number;
+  /**
+   * Per-value window overriding `ttlMs`. Some answers are weaker evidence
+   * than others (a probe that reports "absent" can be a failed lookup,
+   * "present" cannot), and holding both for the same time would freeze the
+   * weak one for as long as the strong one.
+   */
+  ttlMsForValue?: (value: TValue) => number;
   failures?: MemoizedFailuresOptions;
   now?: () => number;
 }
@@ -38,9 +46,10 @@ interface MemoEntry<TValue> {
 
 export function createAsyncTtlMemo<TKey, TValue>({
   ttlMs,
+  ttlMsForValue,
   failures,
   now = Date.now,
-}: CreateAsyncTtlMemoOptions): AsyncTtlMemo<TKey, TValue> {
+}: CreateAsyncTtlMemoOptions<TValue>): AsyncTtlMemo<TKey, TValue> {
   const settledByKey = new Map<TKey, MemoEntry<TValue>>();
   const pendingByKey = new Map<TKey, Promise<TValue>>();
   // Bumped by clear(). A task that was already running when the memo was
@@ -91,7 +100,7 @@ export function createAsyncTtlMemo<TKey, TValue>({
         .then(
           (value) => {
             if (generation === startedGeneration) {
-              store(key, { ok: true, value }, ttlMs);
+              store(key, { ok: true, value }, ttlMsForValue?.(value) ?? ttlMs);
             }
             return value;
           },

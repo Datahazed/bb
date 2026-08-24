@@ -47,15 +47,31 @@ function isMemoizableProviderModelProbeFailure(error: unknown): boolean {
 }
 
 /**
- * How long an installed-only provider's "is the agent on this host" answer is
- * reused. It only flips when the user installs or removes the agent, and the
- * key carries the daemon session and registration revision, so reconnects and
- * plugin reloads re-probe regardless. The window must stay well above the
- * daemon's 60 s maintenance-bridge idle timeout: a shorter one would land most
- * expiries on a cold bridge, which is the 400 ms–1.3 s respawn this memo exists
- * to keep off the request path.
+ * How long an installed-only provider's "the agent is on this host" answer is
+ * reused. The key carries the daemon session and registration revision, so a
+ * reconnect or plugin reload re-probes regardless, and the provider-clis
+ * install route and `?force=true` clear the memo explicitly.
+ *
+ * 5 min trades probe count against staleness: an agent installed outside bb
+ * can stay hidden from the picker for up to this window. It does not buy a
+ * warm bridge. The daemon's maintenance bridge idles out after 60 s without
+ * maintenance traffic and a memo hit sends none, so any window above 60 s
+ * lands the expiry probe on a cold bridge unless other maintenance traffic
+ * (usage, model list, installation status) kept it warm; lengthening the
+ * window makes expiries rarer, not warmer.
  */
 const INSTALLED_PROVIDER_PROBE_MEMO_TTL_MS = 5 * 60_000;
+
+/**
+ * How long a "not installed" answer is held, much shorter than a "present"
+ * one because the daemon cannot tell absence from a failed lookup: its bridge
+ * reports `not_installed` for any `which` failure (spawn error, the 5 s probe
+ * timeout) and while the daemon runs on its fallback PATH during the first
+ * ~10 s after boot, when the login-shell env resolution timed out. Before the
+ * memo the next roster read corrected such a miss; 30 s keeps that
+ * self-healing while still collapsing the per-request bridge respawn.
+ */
+const INSTALLED_PROVIDER_ABSENT_MEMO_TTL_MS = 30_000;
 
 /**
  * How long one provider's `provider.installation.status` answer is reused.
@@ -116,6 +132,10 @@ export function createLifecycleDedupers(): LifecycleDedupers {
     environmentCleanupAdvance: createAsyncDeduper<string, void>(),
     installedProviderProbe: createAsyncTtlMemo<string, boolean>({
       ttlMs: INSTALLED_PROVIDER_PROBE_MEMO_TTL_MS,
+      ttlMsForValue: (installed) =>
+        installed
+          ? INSTALLED_PROVIDER_PROBE_MEMO_TTL_MS
+          : INSTALLED_PROVIDER_ABSENT_MEMO_TTL_MS,
     }),
     providerInstallationStatus: createAsyncTtlMemo<
       string,
