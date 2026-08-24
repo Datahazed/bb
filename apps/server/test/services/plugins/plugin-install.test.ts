@@ -1850,4 +1850,42 @@ describe("plugin install flows", () => {
       }),
     ).rejects.toThrowError(/already exists/);
   });
+
+  it("loads a persisted SDK 0.4.16 scaffold manifest after the host upgrades", async () => {
+    const targetDir = join(workDir, "bb-plugin-sdk-0-4-16-scaffold");
+    await scaffoldPlugin({
+      targetDir,
+      packageName: "bb-plugin-sdk-0-4-16-scaffold",
+      bbVersion: "0.9.0",
+    });
+
+    const manifestPath = join(targetDir, "package.json");
+    const currentManifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    const persistedManifest = {
+      ...currentManifest,
+      engines: {
+        ...currentManifest.engines,
+        bbPluginSdk: ">=0.4.16",
+      },
+      devDependencies: {
+        ...currentManifest.devDependencies,
+        "@get-bb/plugin-sdk": "0.4.16",
+      },
+    };
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify(persistedManifest, null, 2)}\n`,
+    );
+
+    const entry = await service.install(`path:${targetDir}`, { kind: "root" });
+    expect(entry).toMatchObject({
+      id: "sdk-0-4-16-scaffold",
+      status: "running",
+      statusDetail: null,
+    });
+    expect(JSON.parse(await readFile(manifestPath, "utf8"))).toMatchObject({
+      engines: { bbPluginSdk: ">=0.4.16" },
+      devDependencies: { "@get-bb/plugin-sdk": "0.4.16" },
+    });
+  });
 });
