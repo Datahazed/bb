@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ExperimentalChangesViewTargetState } from "@get-bb/plugin-sdk";
 import { useEnvironmentWorkStatus } from "../../../hooks/queries/environment-queries";
 import type { GitDiffSelectionOption } from "../GitDiffToolbar";
 import {
@@ -13,9 +14,7 @@ interface UseGitDiffPanelStateParams {
   environmentId?: string;
   isDiffPanelActive: boolean;
   requestedMergeBaseBranch?: string;
-  onClearPendingGitDiffIntent?: () => void;
-  pendingGitDiffCommitSha?: string | null;
-  pendingGitDiffScrollPath?: string | null;
+  experimental_target: ExperimentalChangesViewTargetState | null;
 }
 
 /**
@@ -24,19 +23,15 @@ interface UseGitDiffPanelStateParams {
  * a specific commit) — and the derived {@link buildGitDiffTarget} that the TOC +
  * patch fetches key on. The diff body ({@link GitDiffTabContent}) and the
  * per-file cards do all diff fetching, parsing, virtualization, and collapse
- * state themselves; this hook holds none of that. It reacts to the info-tab /
- * prompt-banner intents (`pendingGitDiffCommitSha` to scope to a commit,
- * `pendingGitDiffScrollPath` to reset the diff to all-changes so the opened file
- * is in the slice) and resets a stale selection when the workspace's commit list
- * changes.
+ * state themselves; this hook holds none of that. It reacts to the pane's
+ * target state, scopes commit targets, resets file targets to all changes, and
+ * resets a stale selection when the workspace's commit list changes.
  */
 export function useGitDiffPanelState({
   environmentId,
   isDiffPanelActive,
   requestedMergeBaseBranch,
-  onClearPendingGitDiffIntent,
-  pendingGitDiffCommitSha,
-  pendingGitDiffScrollPath,
+  experimental_target,
 }: UseGitDiffPanelStateParams) {
   const [selectedGitDiffSelection, setSelectedGitDiffSelection] =
     useState<GitDiffSelectionValue>(null);
@@ -69,24 +64,24 @@ export function useGitDiffPanelState({
 
   // --- Reset the diff to all-changes when an open-file intent arrives
   // (openDiffFile) so the opened file is in the slice. The scroll consumer
-  // (DiffFilesPanel) clears `pendingGitDiffScrollPath` once it scrolls the file
-  // into view. Clearing the intent also lets re-opening the same path re-fire
+  // (DiffFilesPanel) clears the target once it scrolls the file into view.
+  // Clearing the intent also lets re-opening the same path re-fire
   // this effect. ---
 
   useEffect(() => {
-    if (pendingGitDiffScrollPath) {
+    if (experimental_target?.target.kind === "file") {
       setSelectedGitDiffSelection(null);
     }
-  }, [pendingGitDiffScrollPath]);
+  }, [experimental_target?.sequence, experimental_target?.target.kind]);
 
   // --- Apply the commit selection requested from the info tab (openCommitDiff) ---
 
   useEffect(() => {
-    if (pendingGitDiffCommitSha) {
-      setSelectedGitDiffSelection(pendingGitDiffCommitSha);
-      onClearPendingGitDiffIntent?.();
+    if (experimental_target?.target.kind === "commit") {
+      setSelectedGitDiffSelection(experimental_target.target.sha);
+      experimental_target.clear();
     }
-  }, [onClearPendingGitDiffIntent, pendingGitDiffCommitSha]);
+  }, [experimental_target]);
 
   const hasUncommittedChanges =
     (workspaceStatus?.workingTree.files.length ?? 0) > 0;
