@@ -6,7 +6,19 @@
  * accepts for a separate (normally much shorter) window.
  */
 export interface AsyncTtlMemo<TKey, TValue> {
+  /**
+   * Forgets every entry and fences the outcomes of tasks still in flight out
+   * of the memo: for when the world changed (a CLI install), so a task that
+   * started before the change describes the old world.
+   */
   clear(): void;
+  /**
+   * Forgets settled entries only. A task still in flight can still be joined
+   * and still stores its outcome: for a forced read, which must never be
+   * served a settled answer but has no reason to duplicate a task that is
+   * already describing the world now.
+   */
+  forgetSettled(): void;
   run(key: TKey, task: () => Promise<TValue>): Promise<TValue>;
 }
 
@@ -52,10 +64,10 @@ export function createAsyncTtlMemo<TKey, TValue>({
 }: CreateAsyncTtlMemoOptions<TValue>): AsyncTtlMemo<TKey, TValue> {
   const settledByKey = new Map<TKey, MemoEntry<TValue>>();
   const pendingByKey = new Map<TKey, Promise<TValue>>();
-  // Bumped by clear(). A task that was already running when the memo was
-  // cleared still settles for its callers, but its outcome describes the
-  // world before whatever prompted the clear (a CLI install, a forced
-  // recheck) and must not be stored: nothing would evict it until the TTL.
+  // Bumped by clear(), not by forgetSettled(). A task that was already running
+  // when the memo was cleared still settles for its callers, but its outcome
+  // describes the world before whatever prompted the clear (a CLI install)
+  // and must not be stored: nothing would evict it until the TTL.
   let generation = 0;
 
   function pruneExpired(currentTime: number): void {
@@ -79,6 +91,9 @@ export function createAsyncTtlMemo<TKey, TValue>({
       generation += 1;
       settledByKey.clear();
       pendingByKey.clear();
+    },
+    forgetSettled() {
+      settledByKey.clear();
     },
     run(key, task) {
       const currentTime = now();

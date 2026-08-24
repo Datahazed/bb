@@ -70,17 +70,21 @@ function readProviderInstallationStatusMemoized(
 /**
  * Aggregate provider-owned installation state in registry order. `force` is
  * the manual "Check for updates" / "Recheck CLIs" path: it forgets every
- * memoized installation answer and installed-only discovery probe first, so
+ * settled installation answer and installed-only discovery probe first, so
  * the read that follows reflects the host right now rather than the last few
- * minutes.
+ * minutes. A probe already in flight is joined, not restarted: it describes
+ * the host now as well, and the app only cancels the plain read it belongs
+ * to client-side, so a clear() here would have the host run a second probe
+ * set concurrently and then fence the first set's answer out of the memo.
+ * The install route keeps clear(): there the in-flight probe is pre-install.
  */
 export async function getProviderInstallations(
   deps: AppDeps,
   args: { hostId: string; force: boolean },
 ): Promise<ProviderCliStatusResponse> {
   if (args.force) {
-    deps.lifecycleDedupers.providerInstallationStatus.clear();
-    deps.lifecycleDedupers.installedProviderProbe.clear();
+    deps.lifecycleDedupers.providerInstallationStatus.forgetSettled();
+    deps.lifecycleDedupers.installedProviderProbe.forgetSettled();
   }
   const deadline = Date.now() + PROVIDER_INSTALLATION_STATUS_TIMEOUT_MS;
   const providers = await listSystemProviderInfos(deps, {

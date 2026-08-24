@@ -145,9 +145,9 @@ describe("createAsyncTtlMemo", () => {
         }),
     );
 
-    // An install (or forced recheck) lands while the probe is running: the
-    // probe's answer describes the host before it and must not outlive the
-    // clear, even though its own caller still receives it.
+    // An install lands while the probe is running: the probe's answer
+    // describes the host before it and must not outlive the clear, even
+    // though its own caller still receives it.
     memo.clear();
     resolve("pre-install");
     await expect(stale).resolves.toBe("pre-install");
@@ -202,6 +202,36 @@ describe("createAsyncTtlMemo", () => {
     const task = vi.fn(async () => "unused");
     await expect(memo.run("k", task)).resolves.toBe("fresh");
     expect(task).not.toHaveBeenCalled();
+  });
+
+  it("forgetSettled() drops a settled value but joins, and keeps, a task still in flight", async () => {
+    const memo = createAsyncTtlMemo<string, string>({ ttlMs: 60_000 });
+    await expect(memo.run("k", async () => "settled")).resolves.toBe("settled");
+
+    // A forced read never gets the settled answer.
+    memo.forgetSettled();
+    let resolve: (value: string) => void = () => {};
+    const task = vi.fn(
+      () =>
+        new Promise<string>((resolveTask) => {
+          resolve = resolveTask;
+        }),
+    );
+    const first = memo.run("k", task);
+
+    // A second forced read lands while that task is still running. Unlike
+    // clear(), it neither restarts the task nor fences its outcome out: the
+    // task already describes the world now.
+    memo.forgetSettled();
+    const joined = memo.run("k", task);
+    expect(task).toHaveBeenCalledTimes(1);
+    resolve("fresh");
+    await expect(first).resolves.toBe("fresh");
+    await expect(joined).resolves.toBe("fresh");
+
+    const unused = vi.fn(async () => "unused");
+    await expect(memo.run("k", unused)).resolves.toBe("fresh");
+    expect(unused).not.toHaveBeenCalled();
   });
 
   it("keys entries independently and clears them on demand", async () => {

@@ -276,6 +276,107 @@ describe("public provider installation routes", () => {
     });
   });
 
+  it("joins a plain status probe still in flight when a forced read overlaps it", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-memo-overlap-host",
+      });
+      // Status probes answer only once the test releases them, like the 2-3 s
+      // they take on a real host.
+      let releaseStatusProbes: () => void = () => {};
+      const statusProbesReleased = new Promise<void>((resolve) => {
+        releaseStatusProbes = resolve;
+      });
+      let markFirstBatchInFlight: () => void = () => {};
+      const firstBatchInFlight = new Promise<void>((resolve) => {
+        markFirstBatchInFlight = resolve;
+      });
+      let statusProbesStarted = 0;
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          const { command } = request;
+          if (command.type !== "provider.installation.status") {
+            return handleProviderInstallationRpc(request);
+          }
+          statusProbesStarted += 1;
+          // The aggregate probes three providers at a time.
+          if (statusProbesStarted === 3) {
+            markFirstBatchInFlight();
+          }
+          const providerId = command.providerId;
+          return statusProbesReleased.then(() => ({
+            ok: true,
+            result: installationStatus(providerId),
+          }));
+        },
+      });
+      const statusProviderIds = () =>
+        responder.requests.flatMap((request) =>
+          request.command.type === "provider.installation.status"
+            ? [request.command.providerId]
+            : [],
+        );
+
+      const plain = harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status`,
+      );
+      await firstBatchInFlight;
+      expect(statusProviderIds()).toEqual(["codex", "claude-code", "pi"]);
+
+      // The app's recheck cancels the plain request client-side only, so its
+      // probes keep running on the host; the forced read that follows must
+      // join them rather than have the host run a second set concurrently.
+      const memoReads = vi.spyOn(
+        harness.deps.lifecycleDedupers.providerInstallationStatus,
+        "run",
+      );
+      const forced = harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status?force=true`,
+      );
+      await vi.waitFor(() => expect(memoReads).toHaveBeenCalledTimes(3));
+      expect(statusProviderIds()).toEqual(["codex", "claude-code", "pi"]);
+
+      releaseStatusProbes();
+      const [plainResponse, forcedResponse] = await Promise.all([
+        plain,
+        forced,
+      ]);
+      expect(plainResponse.status).toBe(200);
+      expect(forcedResponse.status).toBe(200);
+      const plainBody = (await readJson(
+        plainResponse,
+      )) as ProviderCliStatusResponse;
+      expect(Object.keys(plainBody)).toEqual([
+        "codex",
+        "claude-code",
+        "pi",
+        "acp-cursor",
+      ]);
+      expect(await readJson(forcedResponse)).toEqual(plainBody);
+      expect(statusProviderIds()).toEqual([
+        "codex",
+        "claude-code",
+        "pi",
+        "acp-cursor",
+      ]);
+
+      // Joining did not weaken force: the joined answers are memoized for a
+      // plain read, and a later forced read still refuses them.
+      const memoHit = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status`,
+      );
+      expect(memoHit.status).toBe(200);
+      expect(statusProviderIds()).toHaveLength(4);
+      const forcedAgain = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status?force=true`,
+      );
+      expect(forcedAgain.status).toBe(200);
+      expect(statusProviderIds()).toHaveLength(8);
+    });
+  });
+
   it("re-probes status after a provider CLI install", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
