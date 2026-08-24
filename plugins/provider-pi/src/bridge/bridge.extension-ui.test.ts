@@ -329,3 +329,51 @@ it("withdraws a dialog bb cannot answer in time on pi's own timeout", async () =
   await harness.waitForTurnBoundary(threadId);
   expect(assistantTexts(threadId).join("")).toMatch(/timedOut|cancelled/u);
 }, 90_000);
+
+it("answers turn/start before an extension command's dialog is answered, then ends the turn on pi's answer", async () => {
+  const threadId = "thr_ext_command_dialog";
+  await harness.startThread(threadId);
+  // Pi answers `prompt` only after the handler returns, and the handler is
+  // waiting on this dialog: a turn/start that waited on pi would wait on the
+  // answer it blocks.
+  await turnStart(threadId, '/ext {"method":"confirm","title":"Continue?","message":"Go on?"}');
+
+  const request = await harness.waitForMessage(
+    (message) => message.method === "interaction/request",
+    "the command's question",
+  );
+  expect(request.params).toMatchObject({ threadId, turnId: null, experimental_scope: "thread" });
+  expect(harness.deltasOf(threadId).some((delta) => delta.kind === "turn.boundary")).toBe(false);
+
+  const question = (
+    request.params as { payload: { questions: { id: string }[] } }
+  ).payload.questions[0]!;
+  handleLine(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: request.id,
+      result: { kind: "user_answer", answers: { [question.id]: { selected: ["yes"] } } },
+    }),
+  );
+  await harness.waitForTurnBoundary(threadId);
+  // No agent run: nothing was said, and the turn still closed cleanly.
+  expect(assistantTexts(threadId)).toEqual([]);
+  expect(harness.deltasOf(threadId).find((delta) => delta.kind === "turn.boundary")).toMatchObject({
+    status: "completed",
+  });
+}, 90_000);
+
+it("ends the turn of an extension command that asks nothing and starts no run", async () => {
+  const threadId = "thr_ext_command_plain";
+  await harness.startThread(threadId);
+  await turnStart(threadId, '/ext {"method":"notify","message":"done","notifyType":"info"}');
+  await harness.waitForTurnBoundary(threadId);
+  expect(assistantTexts(threadId)).toEqual([]);
+  expect(harness.messages.some((message) => message.method === "interaction/request")).toBe(false);
+
+  // The next prompt is an ordinary run again.
+  const since = harness.deltasOf(threadId).length;
+  await turnStart(threadId, "hello");
+  await harness.waitForTurnBoundary(threadId, since);
+  expect(assistantTexts(threadId).join("")).toBe("Response to: hello");
+}, 90_000);

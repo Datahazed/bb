@@ -43,3 +43,24 @@ export function toPiExtensionCommands(raw: unknown): ExperimentalProviderCommand
   }
   return commands;
 }
+
+/**
+ * The names pi would hand to an extension's command handler (`source:
+ * "extension"`, load-order suffixes included): the inputs pi executes to
+ * completion before it answers `prompt`, on no input queue and with no agent
+ * run of their own.
+ */
+export function toPiExtensionCommandNames(raw: unknown): Set<string> {
+  const names = new Set<string>();
+  const entries = z.array(z.unknown()).safeParse(raw);
+  if (!entries.success) {
+    return names;
+  }
+  for (const entry of entries.data) {
+    const parsed = piRpcCommandSchema.safeParse(entry);
+    if (parsed.success && parsed.data.source === "extension") {
+      names.add(parsed.data.name);
+    }
+  }
+  return names;
+}

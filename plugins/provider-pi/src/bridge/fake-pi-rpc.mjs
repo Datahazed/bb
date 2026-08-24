@@ -56,6 +56,10 @@
  * - `prompt` with `streamingBehavior: "steer"` during a `/hold` run is queued
  *   (`queue_update.steering`), consumed when the run resumes, and the run's
  *   reply names it.
+ * - `/ext [<json>]` is an extension command as pi runs one: the optional
+ *   `extension_ui_request` is raised (and a dialog awaited) before the prompt
+ *   is answered, with no agent run; `get_commands` lists `ext` as an
+ *   extension command
  * - `/ui <json>` emits one `extension_ui_request` line with the given fields
  *   (a fire-and-forget `ctx.ui` call: notify, setStatus, setWidget, setTitle,
  *   set_editor_text) and replies "ok". `/ask <json>` emits a dialog request
@@ -483,6 +487,24 @@ async function handle(command) {
       });
       return;
     case "prompt": {
+      const extMatch = command.message.match(/^\/ext(?: (.*))?$/su);
+      if (extMatch) {
+        // An extension command, as pi runs one: the handler (here, one
+        // `ctx.ui` call or nothing) completes before the prompt is answered,
+        // no queue moves, and no agent run starts.
+        if (extMatch[1]) {
+          const request = { type: "extension_ui_request", id: randomUUID(), ...JSON.parse(extMatch[1]) };
+          const isDialog = ["select", "confirm", "input", "editor"].includes(request.method);
+          const answered = new Promise((resolve) => {
+            if (isDialog) pendingDialogs.set(request.id, resolve);
+            else resolve(null);
+          });
+          event(request);
+          await answered;
+        }
+        respond(id, "prompt");
+        return;
+      }
       if (isStreaming && command.streamingBehavior === "steer") {
         // A steer into a live run: pi reports the queue BEFORE it answers the
         // preflight (recorded order), then hands it to the run (a held run
@@ -538,6 +560,12 @@ async function handle(command) {
                 description: "Global smoke command",
                 source: "extension",
                 sourceInfo: { path: "/home/user/.pi/agent/extensions/global.ts", source: "extension", scope: "global", origin: "local" },
+              },
+              {
+                name: "ext",
+                description: "Fake extension command: runs one ctx.ui call, or nothing",
+                source: "extension",
+                sourceInfo: { path: "/home/user/.pi/agent/extensions/ext.ts", source: "extension", scope: "global", origin: "local" },
               },
               {
                 name: "review",

@@ -2,6 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { experimental_buildBridgeToolCallContent as buildBridgeToolCallContent } from "@get-bb/plugin-sdk/provider-bridge";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import { toPiExtensionCommandNames } from "./command-list.js";
 import {
   NO_REQUEST_TIMEOUT,
   PiRpcChild,
@@ -152,6 +153,8 @@ export class PiRpcSession {
   private autoRetryInProgress = false;
   private terminalSteerSettlement: Promise<void> | null = null;
   private readonly pendingRunSettlements: PendingRunSettlement[] = [];
+  /** `agent_start` events seen: whether a dispatch started a run at all. */
+  private agentStartCount = 0;
   private readonly channelReplies = new Map<string, ChannelReply>();
   private nextChannelRequestId = 0;
   private lastKnownLeafId: string | null = null;
@@ -427,6 +430,66 @@ export class PiRpcSession {
       },
     );
     return { consumed: tracked.promise, settled };
+  }
+
+  /** The names of the commands this session's loaded extensions registered. */
+  async extensionCommandNames(): Promise<Set<string>> {
+    const data = (await this.requireChild().requestOk({ type: "get_commands" })) as
+      | { commands?: unknown }
+      | undefined;
+    return toPiExtensionCommandNames(data?.commands);
+  }
+
+  /**
+   * A slash command an extension registered. Pi runs its handler to
+   * completion before it answers `prompt` — dialogs included — and that
+   * handler moves no input queue and starts no agent run unless it asks for
+   * one. So `consumed` is immediate: the caller must be free to deliver the
+   * dialog answers the handler is waiting on. `settled` is pi's answer, or
+   * the run the handler started, whichever ends the command.
+   */
+  promptExtensionCommand(text: string, images?: ImageContent[]): PiInputDispatch {
+    const child = this.child;
+    if (!child || child.exited) {
+      const consumed = Promise.reject(new Error("No active Pi session"));
+      void consumed.catch(() => undefined);
+      return { consumed, settled: Promise.resolve(null) };
+    }
+    this.isProcessing = true;
+    const runsBefore = this.agentStartCount;
+    const settlement = new Promise<PiPromptRunOutcome>((resolve) => {
+      this.pendingRunSettlements.push({ resolve });
+    });
+    const settled = child
+      .requestOk(
+        {
+          type: "prompt",
+          message: text,
+          ...(images && images.length > 0 ? { images } : {}),
+          streamingBehavior: "followUp",
+        },
+        // The handler owns the wait: a dialog stays open as long as the user
+        // takes, and a dead child rejects every pending request.
+        NO_REQUEST_TIMEOUT,
+      )
+      .then(
+        async (): Promise<PiPromptRunOutcome> => {
+          if (this.agentStartCount === runsBefore) {
+            // Handled without a run: nothing else will settle the slot.
+            this.dropRunSettlement(settlement);
+            this.isProcessing = false;
+            return {};
+          }
+          return await settlement;
+        },
+        (error: unknown): PiPromptRunOutcome => {
+          this.isProcessing = false;
+          this.dropRunSettlement(settlement);
+          this.onDone(error);
+          return { error };
+        },
+      );
+    return { consumed: Promise.resolve(), settled };
   }
 
   async steer(text: string, images?: ImageContent[]): Promise<void> {
@@ -872,6 +935,9 @@ export class PiRpcSession {
   }
 
   private trackProcessingState(event: PiRpcEvent): void {
+    if (event.type === "agent_start") {
+      this.agentStartCount += 1;
+    }
     if (
       event.type === "agent_start" ||
       (event.type === "compaction_start" && event.reason === "manual")

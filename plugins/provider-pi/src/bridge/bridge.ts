@@ -233,6 +233,12 @@ interface ThreadSession {
   providerThreadId: string;
   /** The working directory pi runs this thread in. */
   cwd: string;
+  /**
+   * The commands this session's extensions registered, read from pi on the
+   * first slash input. Extensions load once per session: a reload is a new
+   * session.
+   */
+  extensionCommandNames: Set<string> | null;
 }
 
 let sessionSerialCounter = 0;
@@ -1045,6 +1051,7 @@ async function startPiThreadSession(
     ),
     lastExtensionState: null,
     pendingDialogs: [],
+    extensionCommandNames: null,
     announced: false,
     sessionSerial,
     closing: false,
@@ -1192,6 +1199,66 @@ function startPiPrompt(
   return dispatch.consumed;
 }
 
+/**
+ * Pi hands `/name args` to an extension's handler when `name` is a command an
+ * extension registered (`_tryExecuteExtensionCommand`: the text up to the
+ * first space, suffix and all). The session itself says which names those
+ * are.
+ */
+async function isPiExtensionCommand(threadSession: ThreadSession, text: string): Promise<boolean> {
+  if (!text.startsWith("/")) {
+    return false;
+  }
+  const spaceIndex = text.indexOf(" ");
+  const name = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
+  if (name.length === 0) {
+    return false;
+  }
+  try {
+    threadSession.extensionCommandNames ??= await threadSession.session.extensionCommandNames();
+    return threadSession.extensionCommandNames.has(name);
+  } catch (error) {
+    // Unknown is "a prompt": pi itself decides, and the turn waits on its
+    // answer as every prompt does.
+    process.stderr.write(
+      `pi bridge: could not list the session's extension commands: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+    return false;
+  }
+}
+
+/**
+ * An extension command is not a prompt to wait on. Pi answers `prompt` only
+ * after the handler returns, and a handler that opens a dialog returns only
+ * when bb answers it — an answer the runtime delivers on the same thread
+ * lane `turn/start` is holding. Answering `turn/start` first breaks the
+ * cycle; pi's answer (or the run the handler started) then ends the turn,
+ * which otherwise never closes: no agent run means no `agent_end`.
+ */
+function startPiExtensionCommand(
+  threadSession: ThreadSession,
+  threadId: string,
+  text: string,
+  images: ImageContent[],
+): void {
+  const dispatch = threadSession.session.promptExtensionCommand(
+    text,
+    images.length > 0 ? images : undefined,
+  );
+  void dispatch.settled.then((outcome) => {
+    if (outcome === null) {
+      return;
+    }
+    reportPromptSettled({
+      ...(outcome.error !== undefined ? { error: outcome.error } : {}),
+      sessionSerial: threadSession.sessionSerial,
+      threadId,
+    });
+  });
+}
+
 function startPiCompaction(threadSession: ThreadSession, threadId: string): void {
   void threadSession.session.compact().then(
     () => reportPromptSettled({ sessionSerial: threadSession.sessionSerial, threadId }),
@@ -1221,6 +1288,16 @@ async function handleTurnStart(id: string | number, params: TurnStartParams): Pr
   const { text, images } = extractInput(params.input);
   if (!text) {
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
+    return;
+  }
+  if (await isPiExtensionCommand(threadSession, text)) {
+    if (threadSession.closing || sessions.get(params.threadId) !== threadSession) {
+      sendError(id, -32000, "No active pi session");
+      return;
+    }
+    startPiExtensionCommand(threadSession, params.threadId, text, images);
+    recordAcceptedTurnInput(params);
+    sendResult(id, { threadId: params.threadId });
     return;
   }
   try {

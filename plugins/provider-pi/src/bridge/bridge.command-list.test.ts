@@ -42,6 +42,13 @@ it("lists pi's extension commands and prompt templates by origin, without skills
         description: "Global smoke command",
         argumentHint: null,
       },
+      {
+        name: "ext",
+        source: "command",
+        origin: "user",
+        description: "Fake extension command: runs one ctx.ui call, or nothing",
+        argumentHint: null,
+      },
       { name: "review", source: "command", origin: "user", description: "Review the diff", argumentHint: null },
     ],
   });
