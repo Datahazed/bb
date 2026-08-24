@@ -1,12 +1,18 @@
-import type { ThreadStatusChangeMetadata } from "@bb/domain";
+import type { ThreadListEntry, ThreadStatusChangeMetadata } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
-import { QueryClient, QueryObserver, hashKey } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryObserver,
+  hashKey,
+  type QueryKey,
+} from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   project,
   sidebarBootstrap,
   threadListEntry,
 } from "@/data/test/fixtures";
+import { getFetchingThreadListQueryKeys } from "@/data/threads/thread-list-cache";
 import { createFakeSocketFactory } from "../realtime/fake-socket";
 import { createMobileRealtime } from "../realtime/mobile-realtime";
 import {
@@ -85,40 +91,55 @@ function statusChangedFrame(
 }
 
 /**
- * A sidebar observer with a refetch in flight whose responses resolve on
- * demand and whose aborts are counted (`sdk.projects.sidebarBootstrap`
- * forwards the signal the same way).
+ * An observer of one list query with a refetch in flight whose responses
+ * resolve on demand and whose aborts are counted (the list query functions
+ * forward the signal the same way).
  */
-function sidebarRefetchInFlight(queryClient: QueryClient) {
-  const responses: ((body: SidebarBootstrapResponse) => void)[] = [];
+function refetchInFlight<TData>(queryClient: QueryClient, queryKey: QueryKey) {
+  const responses: ((body: TData) => void)[] = [];
   let aborts = 0;
   const queryFn = vi.fn(
     ({ signal }: { signal: AbortSignal }) =>
-      new Promise<SidebarBootstrapResponse>((resolve) => {
+      new Promise<TData>((resolve) => {
         signal.addEventListener("abort", () => {
           aborts += 1;
         });
         responses.push(resolve);
       }),
   );
-  const observer = new QueryObserver(queryClient, {
-    queryKey: sidebarNavigationQueryKey(),
-    queryFn,
-    staleTime: Infinity,
-  });
+  const options = { queryKey, queryFn, staleTime: Infinity };
+  const observer = new QueryObserver(queryClient, options);
   const unsubscribe = observer.subscribe(() => {});
   void observer.refetch();
-  expect(
-    queryClient.getQueryState(sidebarNavigationQueryKey())?.fetchStatus,
-  ).toBe("fetching");
-  return { queryFn, responses, aborts: () => aborts, unsubscribe };
+  expect(queryClient.getQueryState(queryKey)?.fetchStatus).toBe("fetching");
+  return {
+    queryFn,
+    responses,
+    aborts: () => aborts,
+    unsubscribe,
+    /** Flip `enabled` the way `useThreadsList({ enabled })` does. */
+    setEnabled: (enabled: boolean) =>
+      observer.setOptions({ ...options, enabled }),
+  };
 }
+
+const sidebarRefetchInFlight = (queryClient: QueryClient) =>
+  refetchInFlight<SidebarBootstrapResponse>(
+    queryClient,
+    sidebarNavigationQueryKey(),
+  );
 
 function sidebarRows(queryClient: QueryClient) {
   return queryClient.getQueryData<SidebarBootstrapResponse>(
     sidebarNavigationQueryKey(),
   )?.projects[0].threads;
 }
+
+/**
+ * query-core's default `gcTime` on a device; under node (no `window`) it is
+ * Infinity, which would hide a query that is never collected.
+ */
+const DEVICE_GC_TIME_MS = 5 * 60_000;
 
 function setup() {
   const factory = createFakeSocketFactory();
@@ -127,7 +148,9 @@ function setup() {
     socketFactory: factory,
     onInvalidMessage: () => {},
   });
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { gcTime: DEVICE_GC_TIME_MS } },
+  });
   const invalidated: string[] = [];
   const invalidateSpy = vi
     .spyOn(queryClient, "invalidateQueries")
@@ -380,13 +403,17 @@ describe("installRealtimeInvalidation", () => {
 
     factory.latest().receive(statusChangedFrame("t1", ACTIVE_STATUS_CHANGE));
     // The request that read the pre-transition row is aborted at once, the
-    // patch is kept (no revert, no error state), and the restart waits for
-    // the flush.
+    // patch is kept (the abort reverts to the patched write; no error state),
+    // the query is idle and stale, and the restart waits for the flush.
     expect(refetch.aborts()).toBe(1);
     expect(refetch.queryFn).toHaveBeenCalledTimes(1);
     expect(
       queryClient.getQueryState(sidebarNavigationQueryKey()),
-    ).toMatchObject({ status: "success", isInvalidated: true });
+    ).toMatchObject({
+      status: "success",
+      fetchStatus: "idle",
+      isInvalidated: true,
+    });
     expect(sidebarRows(queryClient)?.[0].status).toBe("active");
 
     vi.advanceTimersByTime(250);
@@ -499,6 +526,148 @@ describe("installRealtimeInvalidation", () => {
             filters.refetchType !== "none",
         ),
     ).toEqual([{ queryKey: sidebarNavigationQueryKey(), exact: false }]);
+    refetch.unsubscribe();
+  });
+
+  it("lets a ['threads'] prefix invalidation cover the exact restart of an aborted filtered list fetch", () => {
+    const { factory, queryClient, invalidateSpy } = setup();
+    invalidateSpy.mockRestore();
+    const invalidateCalls = vi.spyOn(queryClient, "invalidateQueries");
+    const listKey = threadListQueryKey({
+      archived: false,
+      projectId: "proj_1",
+    });
+    queryClient.setQueryData<ThreadListEntry[]>(listKey, [
+      threadListEntry({ id: "t1" }),
+    ]);
+    const refetch = refetchInFlight<ThreadListEntry[]>(queryClient, listKey);
+
+    const socket = factory.latest();
+    socket.receive(statusChangedFrame("t1", ACTIVE_STATUS_CHANGE));
+    expect(refetch.aborts()).toBe(1);
+    socket.receive(
+      JSON.stringify({
+        type: "changed",
+        entity: "thread",
+        id: "t2",
+        changes: ["title-changed"],
+      }),
+    );
+    vi.advanceTimersByTime(250);
+
+    const restartCallsFor = (key: QueryKey) =>
+      invalidateCalls.mock.calls
+        .map(([filters]) => filters)
+        .filter(
+          (filters) =>
+            filters?.queryKey !== undefined &&
+            hashKey(filters.queryKey) === hashKey(key) &&
+            filters.refetchType !== "none",
+        );
+    // The filtered key is a different hash from the ['threads'] prefix, so
+    // only the flush-time prefix check can subsume the exact restart: one
+    // restart through the prefix, not a start plus an abort-and-restart of
+    // the same fetch in one tick.
+    expect(refetch.queryFn).toHaveBeenCalledTimes(2);
+    expect(refetch.aborts()).toBe(1);
+    expect(restartCallsFor(listKey)).toEqual([]);
+    expect(restartCallsFor(threadsQueryKey())).toEqual([
+      { queryKey: threadsQueryKey(), exact: false },
+    ]);
+    refetch.unsubscribe();
+  });
+
+  it("returns an aborted sidebar refetch to idle, so a query whose observer leaves before the flush is collected instead of stranded fetching", () => {
+    const { factory, queryClient, invalidateSpy } = setup();
+    invalidateSpy.mockRestore();
+    const t1 = threadListEntry({ id: "t1" });
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      sidebarBootstrap({
+        projects: [project({ id: "proj_1", threads: [t1] })],
+      }),
+    );
+    const refetch = sidebarRefetchInFlight(queryClient);
+
+    factory.latest().receive(statusChangedFrame("t1", ACTIVE_STATUS_CHANGE));
+    expect(refetch.aborts()).toBe(1);
+    // The patch is kept and no request backs the query: idle and stale, not
+    // "fetching" with a rejected request behind it.
+    expect(
+      queryClient.getQueryState(sidebarNavigationQueryKey()),
+    ).toMatchObject({
+      fetchStatus: "idle",
+      isInvalidated: true,
+      status: "success",
+    });
+    expect(sidebarRows(queryClient)?.[0].status).toBe("active");
+
+    // The screen pops inside the debounce window.
+    refetch.unsubscribe();
+    vi.advanceTimersByTime(250);
+    expect(refetch.queryFn).toHaveBeenCalledTimes(1);
+    expect(getFetchingThreadListQueryKeys(queryClient)).toEqual([]);
+    // Nothing observes it: gcTime collects it instead of leaving a phantom
+    // fetch in the cache (query-core only removes an idle query).
+    vi.advanceTimersByTime(DEVICE_GC_TIME_MS);
+    expect(
+      queryClient
+        .getQueryCache()
+        .find({ queryKey: sidebarNavigationQueryKey(), exact: true }),
+    ).toBeUndefined();
+  });
+
+  it("leaves an aborted list fetch idle and stale when its observer is disabled before the flush, and refetches it on re-enable", () => {
+    const { factory, queryClient, invalidateSpy } = setup();
+    invalidateSpy.mockRestore();
+    const invalidateCalls = vi.spyOn(queryClient, "invalidateQueries");
+    const listKey = threadListQueryKey({
+      archived: false,
+      projectId: "proj_1",
+    });
+    queryClient.setQueryData<ThreadListEntry[]>(listKey, [
+      threadListEntry({ id: "t1" }),
+    ]);
+    const refetch = refetchInFlight<ThreadListEntry[]>(queryClient, listKey);
+
+    const socket = factory.latest();
+    socket.receive(statusChangedFrame("t1", ACTIVE_STATUS_CHANGE));
+    expect(refetch.aborts()).toBe(1);
+    // The typeahead is dismissed (`useThreadsList({ enabled: false })`)
+    // inside the debounce window: the flush restarts nothing and does not
+    // hand the restart to invalidateQueries' active-only refetch either.
+    refetch.setEnabled(false);
+    vi.advanceTimersByTime(250);
+    expect(refetch.queryFn).toHaveBeenCalledTimes(1);
+    expect(
+      invalidateCalls.mock.calls
+        .map(([filters]) => filters)
+        .filter(
+          (filters) =>
+            filters?.queryKey !== undefined &&
+            hashKey(filters.queryKey) === hashKey(listKey) &&
+            filters.refetchType !== "none",
+        ),
+    ).toEqual([]);
+    expect(queryClient.getQueryState(listKey)).toMatchObject({
+      fetchStatus: "idle",
+      isInvalidated: true,
+      status: "success",
+    });
+    expect(
+      queryClient.getQueryData<ThreadListEntry[]>(listKey)?.[0].status,
+    ).toBe("active");
+    // No phantom fetch for later pushes to abort and re-queue.
+    expect(getFetchingThreadListQueryKeys(queryClient)).toEqual([]);
+    socket.receive(statusChangedFrame("t9", ACTIVE_STATUS_CHANGE));
+    vi.advanceTimersByTime(250);
+    expect(refetch.queryFn).toHaveBeenCalledTimes(1);
+    expect(refetch.aborts()).toBe(1);
+
+    // Re-enabling refetches the stale list.
+    refetch.setEnabled(true);
+    expect(refetch.queryFn).toHaveBeenCalledTimes(2);
+    expect(queryClient.getQueryState(listKey)?.fetchStatus).toBe("fetching");
     refetch.unsubscribe();
   });
 

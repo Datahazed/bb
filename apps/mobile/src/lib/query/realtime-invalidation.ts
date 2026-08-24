@@ -450,13 +450,19 @@ export function threadPullRequestQueryKeysForCompletedTurn(
  * (~1 KB per unarchived thread) twice per turn. Applied synchronously, not
  * through the debounced map: a list fetch already in flight read the database
  * before this transition and would overwrite the patch when it lands, so it is
- * aborted right away — silently, so the query neither reverts the patch nor
- * enters an error state — and flagged stale. The restart is the caller's:
- * `installRealtimeInvalidation` coalesces it through the debounced map, so a
- * burst of pushes (a workflow fanning out children) restarts the fetch once
- * per flush rather than once per push. Returns the keys of the aborted
- * fetches; `exact`, because a partial match on the unfiltered list's key
- * would also restart every filtered list.
+ * aborted right away and flagged stale. The abort is silent (no error state)
+ * and reverts the query to its rollback point, which is the patch just
+ * written (query-core moves that point to the last `setQueryData`) or, for a
+ * list the patch left alone, the pre-fetch state: the patched rows survive
+ * and the query returns to `fetchStatus: "idle"`. It must not stay "fetching"
+ * with no request behind it: such a query is never garbage-collected, is
+ * re-selected by every later push, and reports a phantom fetch to the next
+ * observer. The restart is the caller's: `installRealtimeInvalidation`
+ * coalesces it through the debounced map, so a burst of pushes (a workflow
+ * fanning out children) restarts the fetch once per flush rather than once
+ * per push. Returns the keys of the aborted fetches; `exact`, because a
+ * partial match on the unfiltered list's key would also restart every
+ * filtered list.
  */
 export function applyThreadStatusChangeFromMessage(
   queryClient: QueryClient,
@@ -472,10 +478,12 @@ export function applyThreadStatusChangeFromMessage(
   );
   const abortedQueryKeys = getFetchingThreadListQueryKeys(queryClient);
   for (const queryKey of abortedQueryKeys) {
-    void queryClient.cancelQueries(
-      { exact: true, queryKey },
-      { revert: false, silent: true },
-    );
+    // `revert` (the default) is what returns the query to idle; a
+    // non-reverting silent cancel leaves `fetchStatus: "fetching"` with a
+    // rejected request behind it.
+    void queryClient.cancelQueries({ exact: true, queryKey }, { silent: true });
+    // A revert onto the patch write lands on a success state (`isInvalidated`
+    // false): flag the query stale again without restarting it.
     void queryClient.invalidateQueries({
       exact: true,
       queryKey,
@@ -620,11 +628,20 @@ export function installRealtimeInvalidation(
         .filter((entry) => !entry.exact)
         .map((entry) => entry.queryKey);
       for (const { queryKey, policy, exact } of entries) {
-        if (
-          exact &&
-          prefixes.some((prefix) => partialMatchKey(queryKey, prefix))
-        ) {
-          continue;
+        if (exact) {
+          // `invalidateQueries` restarts active queries only. The aborted
+          // fetch's observer may have left inside the debounce window (the
+          // screen popped, the typeahead was disabled): the query is already
+          // idle and stale from the abort, so the next mount, enable, or
+          // fetchQuery refetches it, and re-invalidating here would only mark
+          // stale a response that landed in between.
+          const query = queryClient
+            .getQueryCache()
+            .find({ queryKey, exact: true });
+          if (query === undefined || !query.isActive()) continue;
+          if (prefixes.some((prefix) => partialMatchKey(queryKey, prefix))) {
+            continue;
+          }
         }
         switch (policy) {
           case "timeline-paced":
