@@ -48,6 +48,8 @@ export interface PluginListItem {
   cliCommand: InstalledPlugin["cliCommand"];
   capabilities: InstalledPlugin["capabilities"];
   app: InstalledPlugin["app"];
+  /** The agent providers the plugin registered; a provider plugin has some. */
+  providerIds: InstalledPlugin["providerIds"];
   provenance: PluginProvenance;
   source: string;
   isOrphanedBuiltin: boolean;
@@ -105,6 +107,7 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     cliCommand: plugin.cliCommand,
     capabilities: plugin.capabilities,
     app: plugin.app,
+    providerIds: plugin.providerIds,
     provenance: plugin.provenance,
     source: plugin.source,
     isOrphanedBuiltin: plugin.isOrphanedBuiltin,

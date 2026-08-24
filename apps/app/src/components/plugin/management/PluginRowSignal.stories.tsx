@@ -29,6 +29,7 @@ const GIT_PLUGIN = {
   logoUrl: null,
   logoDarkUrl: null,
   hasSettings: false,
+  providerIds: [],
   handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
   services: [],
   schedules: [],

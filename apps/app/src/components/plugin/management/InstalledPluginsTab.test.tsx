@@ -26,6 +26,7 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,
+    providerIds: [],
     provenance: "direct",
     isOrphanedBuiltin: false,
     catalogEntryId: null,

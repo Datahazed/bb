@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { requestProviderPluginFrontend } from "@/lib/plugin-frontend-lazy";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { appToast } from "@/components/ui/app-toast.js";
 import { PluginSettingsSections } from "@/components/plugin/PluginSettingsSections";
@@ -414,6 +415,13 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
 /** Exported for tests (status gating of the settings form). */
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
   const { settingsSections } = usePluginSlots();
+  // A provider plugin's bundle is deferred until a thread of its provider
+  // opens; its settings page is the other place its sections are the point
+  // (the Pi model editor), and without the bundle there are no sections to
+  // show, so ask for it here. A no-op for every other plugin.
+  useEffect(() => {
+    requestProviderPluginFrontend(plugin.id);
+  }, [plugin.id]);
   const hasSettingsSections = settingsSections.some(
     (section) => section.pluginId === plugin.id,
   );

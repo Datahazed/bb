@@ -47,6 +47,7 @@ const GITHUB_PLUGIN = {
   logoUrl: null,
   logoDarkUrl: null,
   hasSettings: false,
+  providerIds: [],
   handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
   services: [],
   schedules: [],
@@ -577,6 +578,7 @@ describe("plugin removal confirmation", () => {
       cliCommand: null,
       capabilities: [],
       hasSettings: false,
+    providerIds: [],
       app: { hasApp: false, bundle: null },
       logoUrl: null,
       logoDarkUrl: null,
@@ -856,6 +858,7 @@ describe("PluginDetail runtime health", () => {
     renderRuntimeStatus("needs-configuration", {
       statusDetail: "An API token is required.",
       hasSettings: true,
+      providerIds: [],
     });
 
     const alert = screen.getByRole("alert");
@@ -870,6 +873,7 @@ describe("PluginDetail runtime health", () => {
     renderRuntimeStatus("needs-configuration", {
       statusDetail: "Set GITHUB_TOKEN in the server environment.",
       hasSettings: false,
+    providerIds: [],
     });
 
     const alert = screen.getByRole("alert");
@@ -963,6 +967,7 @@ describe("PluginDetail capability inventory", () => {
       publisherLabel: null,
       sourceDisplay: "Local path",
       hasSettings: true,
+      providerIds: [],
       cliCommand: {
         name: "capability",
         summary: "Inspect contributed capabilities.",

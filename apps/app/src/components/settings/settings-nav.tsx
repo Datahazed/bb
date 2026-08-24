@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { requestProviderPluginFrontend } from "@/lib/plugin-frontend-lazy";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
@@ -65,6 +67,18 @@ export function useSettingsNavState(): SettingsNavState {
   const { accessState } = useLocalHostDaemonAccess();
   const { fileOpeners, settingsSections } = usePluginSlots();
   const pluginListQuery = usePluginList({ enabled: true });
+  // A provider plugin's bundle is deferred until a thread of its provider
+  // opens, but a settingsSection it registers (the Pi model editor) is what
+  // earns it a row here: ask for every enabled provider plugin's bundle while
+  // Settings is open. A no-op for plugins without one.
+  const plugins = pluginListQuery.data?.plugins;
+  useEffect(() => {
+    for (const plugin of plugins ?? []) {
+      if (plugin.enabled && plugin.app.hasApp && plugin.providerIds.length > 0) {
+        requestProviderPluginFrontend(plugin.id);
+      }
+    }
+  }, [plugins]);
 
   const sectionMatch = matchPath(
     SETTINGS_SECTION_ROUTE_PATH,

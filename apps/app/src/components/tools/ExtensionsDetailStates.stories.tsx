@@ -391,6 +391,7 @@ const PLUGIN: PluginListItem = {
   logoUrl: null,
   logoDarkUrl: null,
   hasSettings: false,
+  providerIds: [],
   handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
   services: [],
   schedules: [],
@@ -976,6 +977,7 @@ export function PluginBannerStates() {
               status: "needs-configuration",
               statusDetail: "an API token is required",
               hasSettings: true,
+              providerIds: [],
             }}
           />
         </State>
@@ -990,6 +992,7 @@ export function PluginBannerStates() {
               status: "needs-configuration",
               statusDetail: "Set GITHUB_TOKEN in the server environment.",
               hasSettings: false,
+              providerIds: [],
             }}
           />
         </State>

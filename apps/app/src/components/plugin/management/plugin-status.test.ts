@@ -28,6 +28,7 @@ function plugin(
     logoUrl: null,
     logoDarkUrl: null,
     hasSettings: false,
+    providerIds: [],
     provenance: "catalog",
     isOrphanedBuiltin: false,
     catalogEntryId: "linear",

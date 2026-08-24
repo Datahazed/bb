@@ -135,6 +135,7 @@ const PLUGIN: PluginListItem = {
   logoUrl: null,
   logoDarkUrl: null,
   hasSettings: false,
+  providerIds: [],
   handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
   services: [],
   schedules: [],

@@ -218,6 +218,7 @@ function rowPlugin(
     logoUrl,
     logoDarkUrl: null,
     hasSettings: true,
+    providerIds: [],
     handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
     services: [],
     schedules: [],
@@ -362,6 +363,7 @@ describe("PluginSettingsDetail settings gating", () => {
           id: "connect",
           provenance: "builtin",
           hasSettings: false,
+          providerIds: [],
         }}
       />,
       { wrapper },
