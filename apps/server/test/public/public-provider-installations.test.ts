@@ -8,7 +8,10 @@ import { describe, expect, it, vi } from "vitest";
 import { COMMAND_TIMEOUT_MS } from "../../src/constants.js";
 import { ApiError } from "../../src/errors.js";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
-import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import {
+  type HostRpcHandlerResult,
+  registerHostRpcResponder,
+} from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession, seedSession } from "../helpers/seed.js";
 import { type TestAppHarness, withTestHarness } from "../helpers/test-app.js";
@@ -305,6 +308,101 @@ describe("public provider installation routes", () => {
       // clear is what makes the CLI it just installed show up.
       await harness.app.request(`${API}/hosts/${host.id}/provider-clis/status`);
       expect(statusRequests()).toHaveLength(8);
+    });
+  });
+
+  it("re-probes status after an install that finished while a status probe was in flight", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-memo-inflight-install-host",
+      });
+      // The first claude-code status probe answers only when the test says
+      // so; every later one reports the post-update version.
+      let resolvePreInstallStatus: (
+        result: HostRpcHandlerResult,
+      ) => void = () => {};
+      let markPreInstallProbeStarted: () => void = () => {};
+      const preInstallProbeStarted = new Promise<void>((resolve) => {
+        markPreInstallProbeStarted = resolve;
+      });
+      let claudeStatusProbes = 0;
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (
+            request.command.type === "provider.installation.status" &&
+            request.command.providerId === "claude-code"
+          ) {
+            claudeStatusProbes += 1;
+            if (claudeStatusProbes === 1) {
+              markPreInstallProbeStarted();
+              return new Promise<HostRpcHandlerResult>((resolve) => {
+                resolvePreInstallStatus = resolve;
+              });
+            }
+            return {
+              ok: true,
+              result: {
+                ...installationStatus("claude-code"),
+                currentVersion: "1.1.0",
+                installAction: null,
+                needsUpdate: false,
+              },
+            };
+          }
+          return handleProviderInstallationRpc(request);
+        },
+      });
+
+      const preInstallRead = harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status`,
+      );
+      await preInstallProbeStarted;
+
+      const install = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/install`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            provider: "claude-code",
+            actionKind: "update",
+          }),
+        },
+      );
+      expect(install.status).toBe(200);
+
+      // The probe that was running throughout the update settles after the
+      // route's memo clear, with the pre-update version. Its own reader gets
+      // that answer; the memo must not keep it.
+      resolvePreInstallStatus({
+        ok: true,
+        result: installationStatus("claude-code"),
+      });
+      const preInstallBody = (await readJson(
+        await preInstallRead,
+      )) as ProviderCliStatusResponse;
+      expect(preInstallBody["claude-code"]?.currentVersion).toBe("1.0.0");
+
+      // The app's post-install read carries no force.
+      const postInstall = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status`,
+      );
+      const postInstallBody = (await readJson(
+        postInstall,
+      )) as ProviderCliStatusResponse;
+      expect(postInstallBody["claude-code"]).toMatchObject({
+        currentVersion: "1.1.0",
+        needsUpdate: false,
+      });
+      expect(
+        responder.requests.filter(
+          (request) =>
+            request.command.type === "provider.installation.status" &&
+            request.command.providerId === "claude-code",
+        ),
+      ).toHaveLength(2);
     });
   });
 

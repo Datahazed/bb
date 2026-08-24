@@ -43,6 +43,11 @@ export function createAsyncTtlMemo<TKey, TValue>({
 }: CreateAsyncTtlMemoOptions): AsyncTtlMemo<TKey, TValue> {
   const settledByKey = new Map<TKey, MemoEntry<TValue>>();
   const pendingByKey = new Map<TKey, Promise<TValue>>();
+  // Bumped by clear(). A task that was already running when the memo was
+  // cleared still settles for its callers, but its outcome describes the
+  // world before whatever prompted the clear (a CLI install, a forced
+  // recheck) and must not be stored: nothing would evict it until the TTL.
+  let generation = 0;
 
   function pruneExpired(currentTime: number): void {
     for (const [key, entry] of settledByKey) {
@@ -62,6 +67,7 @@ export function createAsyncTtlMemo<TKey, TValue>({
 
   return {
     clear() {
+      generation += 1;
       settledByKey.clear();
       pendingByKey.clear();
     },
@@ -80,16 +86,23 @@ export function createAsyncTtlMemo<TKey, TValue>({
       if (pending !== undefined) {
         return pending;
       }
+      const startedGeneration = generation;
       const started = task()
         .then(
           (value) => {
-            store(key, { ok: true, value }, ttlMs);
+            if (generation === startedGeneration) {
+              store(key, { ok: true, value }, ttlMs);
+            }
             return value;
           },
           // Two-argument `then`: only the task's own rejection is a candidate
           // for the failure window, never an error thrown while storing.
           (error: unknown) => {
-            if (failures !== undefined && failures.shouldMemoize(error)) {
+            if (
+              generation === startedGeneration &&
+              failures !== undefined &&
+              failures.shouldMemoize(error)
+            ) {
               store(key, { ok: false, error }, failures.ttlMs);
             }
             throw error;

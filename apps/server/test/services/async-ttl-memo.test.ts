@@ -109,6 +109,76 @@ describe("createAsyncTtlMemo", () => {
     expect(recovered).toHaveBeenCalledTimes(1);
   });
 
+  it("clear() discards a success that was still in flight when it ran", async () => {
+    const memo = createAsyncTtlMemo<string, string>({ ttlMs: 60_000 });
+    let resolve: (value: string) => void = () => {};
+    const stale = memo.run(
+      "k",
+      () =>
+        new Promise<string>((resolveTask) => {
+          resolve = resolveTask;
+        }),
+    );
+
+    // An install (or forced recheck) lands while the probe is running: the
+    // probe's answer describes the host before it and must not outlive the
+    // clear, even though its own caller still receives it.
+    memo.clear();
+    resolve("pre-install");
+    await expect(stale).resolves.toBe("pre-install");
+
+    const fresh = vi.fn(async () => "post-install");
+    await expect(memo.run("k", fresh)).resolves.toBe("post-install");
+    expect(fresh).toHaveBeenCalledOnce();
+  });
+
+  it("clear() discards a memoizable failure that was still in flight when it ran", async () => {
+    const memo = createAsyncTtlMemo<string, string>({
+      ttlMs: 60_000,
+      failures: { ttlMs: 30_000, shouldMemoize: () => true },
+    });
+    let reject: (error: Error) => void = () => {};
+    const stale = memo.run(
+      "k",
+      () =>
+        new Promise<string>((_resolve, rejectTask) => {
+          reject = rejectTask;
+        }),
+    );
+
+    memo.clear();
+    const missing = new Error("missing_executable");
+    reject(missing);
+    await expect(stale).rejects.toBe(missing);
+
+    const fresh = vi.fn(async () => "ok");
+    await expect(memo.run("k", fresh)).resolves.toBe("ok");
+    expect(fresh).toHaveBeenCalledOnce();
+  });
+
+  it("keeps storing a task started after clear() while an older one is still in flight", async () => {
+    const memo = createAsyncTtlMemo<string, string>({ ttlMs: 60_000 });
+    let resolveStale: (value: string) => void = () => {};
+    const stale = memo.run(
+      "k",
+      () =>
+        new Promise<string>((resolveTask) => {
+          resolveStale = resolveTask;
+        }),
+    );
+    memo.clear();
+
+    // The post-clear probe settles first; the stale one settling later must
+    // not overwrite it.
+    await expect(memo.run("k", async () => "fresh")).resolves.toBe("fresh");
+    resolveStale("stale");
+    await stale;
+
+    const task = vi.fn(async () => "unused");
+    await expect(memo.run("k", task)).resolves.toBe("fresh");
+    expect(task).not.toHaveBeenCalled();
+  });
+
   it("keys entries independently and clears them on demand", async () => {
     const memo = createAsyncTtlMemo<string, string>({ ttlMs: 60_000 });
     await expect(memo.run("a", async () => "A")).resolves.toBe("A");
