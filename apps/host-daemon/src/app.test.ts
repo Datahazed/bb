@@ -240,12 +240,18 @@ function createFakeRuntime(): AgentRuntime {
     async resumeThread() {
       return { providerThreadId: "provider-thread-app-test" };
     },
+    async reloadThread(args) {
+      return { status: "reloaded", providerThreadId: args.providerThreadId };
+    },
     async runTurn() {},
     async steerTurn() {
       return { status: "steered" };
     },
     async stopThread() {
       return { providerCheckpointId: null };
+    },
+    async applyExtensionAction() {
+      return { applied: true };
     },
     async clearThreadGoal() {
       return { cleared: true };
@@ -258,6 +264,9 @@ function createFakeRuntime(): AgentRuntime {
         models: [],
         selectedOnlyModels: [],
       };
+    },
+    async listProviderCommands() {
+      return { supported: false as const };
     },
     async providerHealth() {
       return { supported: false as const };

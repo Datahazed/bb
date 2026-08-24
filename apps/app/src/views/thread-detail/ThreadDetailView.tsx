@@ -136,6 +136,7 @@ import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDif
 import {
   createGitDiffFixedTabDestination,
   GIT_DIFF_FIXED_TAB_REFERENCE,
+  handleGitDiffShortcut,
 } from "@/components/secondary-panel/git-diff/git-diff-fixed-tab-navigation";
 import {
   createThreadInfoFixedTabDestination,
@@ -514,7 +515,7 @@ export function ThreadDetailView(props: ThreadDetailViewProps) {
 
 function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const { projectId, threadId } = props;
-  const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
+  const { paneId, isFocused, navigateInPane, onRequestClose, isBoundedPane } =
     usePaneContext();
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance();
@@ -862,6 +863,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     activeWorkflows,
     activeBackgroundCommands,
     contextWindowUsage,
+    extensionStates,
     goal,
     hasOlderTimelineRows,
     isLoadingOlderTimelineRows,
@@ -1256,7 +1258,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   const environmentMergeBaseBranch =
     resolveEnvironmentMergeBaseBranch(environment);
   const {
-    clearPendingGitDiffIntent,
     closeThreadSecondaryPanel,
     isLoadingMergeBaseBranchOptions,
     mergeBaseBranchOptions,
@@ -1264,8 +1265,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     openCommitDiff: openPersistedCommitDiff,
     openDiffFile: openPersistedDiffFile,
     openThreadDiffPanel: openPersistedDiffPanel,
-    pendingGitDiffCommitSha,
-    pendingGitDiffScrollPath,
+    pendingGitDiffTarget,
     requestedMergeBaseBranch,
     selectedMergeBaseBranch,
     selectedMergeBaseBranchRef,
@@ -1736,17 +1736,16 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     if (!isFocused) return false;
     return handleCloseWindowRequest();
   });
-  useAppCommandHandler("diff.toggle", () => {
-    if (!isFocused || !canUseGitUi) {
-      return false;
-    }
-    if (isSecondaryPanelOpen && activeFixedSecondaryTab?.kind === "git-diff") {
-      closeSecondaryPanel();
-    } else {
-      openSecondaryPanelDiffPanel();
-    }
-    return true;
-  });
+  useAppCommandHandler("diff.toggle", () =>
+    handleGitDiffShortcut({
+      close: closeSecondaryPanel,
+      eligible: canUseGitUi,
+      isActive: activeFixedSecondaryTab?.kind === "git-diff",
+      isFocused,
+      isOpen: isSecondaryPanelOpen,
+      open: openSecondaryPanelDiffPanel,
+    }),
+  );
   useEffect(() => {
     if (!isFocused) {
       return;
@@ -2614,11 +2613,16 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
         systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
         defaultAppSettings.steerActiveThreadOnEnter
       }
+      composerEscapeBehavior={
+        systemConfigQuery.data?.generalSettings.composerEscapeBehavior ??
+        defaultAppSettings.composerEscapeBehavior
+      }
       pendingInteractions={pendingInteractions}
       pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
       pendingTodos={pendingTodos}
       activePromptMode={activePromptMode}
       goal={goal}
+      extensionStates={extensionStates}
       modelFallback={modelFallback}
       activeWorkflows={activeWorkflows}
       activeBackgroundCommands={activeBackgroundCommands}
@@ -2970,6 +2974,8 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               canUseGitUi,
               gitDiffTabStatus,
               environmentId: thread.environmentId ?? undefined,
+              threadId: thread.id,
+              changesViewInstanceId: paneId,
               workspaceRootPath: environment?.path,
               tabs: panelTabs,
               fixedTabs: secondaryPanelFixedTabs,
@@ -2978,7 +2984,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               isOpen: isSecondaryPanelOpen,
               onClose: closeSecondaryPanel,
               onCollapse: closeSecondaryPanel,
-              onClearPendingGitDiffIntent: clearPendingGitDiffIntent,
               onOpenFileInEditor: handleOpenFileInEditor,
               onTabReorder: reorderTab,
               onOpenNewTab: handleOpenNewTab,
@@ -2987,8 +2992,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               },
               onOpenFilePreview: handleOpenFilePreview,
               onSelectionAddToChat: handleSelectionAddToChat,
-              pendingGitDiffCommitSha,
-              pendingGitDiffScrollPath,
+              pendingGitDiffTarget,
               requestedMergeBaseBranch,
               onPanelFocus: touchFixedPanelTabsState,
             }}

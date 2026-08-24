@@ -12,6 +12,9 @@ import type {
 import type { AdapterCommand } from "./provider-adapter.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
+  experimental_extensionActionResultSchema,
+  experimental_providerCustomCallResultSchema,
+  experimental_providerCommandListResultSchema,
   providerHealthResultSchema,
   providerInstallationRunResultSchema,
   providerInstallationStatusSchema,
@@ -40,6 +43,7 @@ import {
 } from "./execution-options.js";
 import {
   handleRuntimeProviderRequest,
+  scopeProviderRequestId,
   type ResolveRuntimeProviderRequestThreadIdArgs,
   type RuntimeProviderRequestKind,
 } from "./runtime-provider-requests.js";
@@ -323,6 +327,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
    * joins this set — that restart waits for the thread's next turn by design.
    */
   const threadsRetryingBridgeRestartOnIdle = new Set<string>();
+  const interactiveRequestAbortControllers = new Map<string, AbortController>();
   const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
   // Accepted turn dispatches awaiting the provider's turn/started. The
   // watchdog makes a stalled entry visible instead of silently hung (#1156's
@@ -1411,6 +1416,21 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }
 
   function handleProviderNotification(args: RuntimeParsedMessageArgs): void {
+    const interactiveCancellation =
+      args.proc.adapter.decodeInteractiveCancellation(args.parsed);
+    if (interactiveCancellation) {
+      const key = scopeProviderRequestId(
+        args.proc.interactiveRequestScope,
+        interactiveCancellation.requestId,
+      );
+      const controller = interactiveRequestAbortControllers.get(key);
+      if (controller) {
+        interactiveRequestAbortControllers.delete(key);
+        controller.abort(new Error(interactiveCancellation.reason));
+      }
+      return;
+    }
+
     const sourceThreadId = getJsonRpcStringParam(args.parsed, "threadId");
     if (
       sourceThreadId !== undefined &&
@@ -1470,6 +1490,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
     if (parsedLine.kind === "request") {
       handleRuntimeProviderRequest({
+        interactiveRequestAbortControllers,
         getActiveTurnId: (threadId) => turnState.getActiveTurnId(threadId),
         getThreadExecutionOptions: (threadId) =>
           threadRuntimeConfigs.get(threadId)?.options,
@@ -2120,6 +2141,43 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
+    async reloadThread(args) {
+      return runThreadOperation({
+        threadId: args.threadId,
+        work: async () => {
+          if (turnState.getActiveTurnId(args.threadId) !== null) {
+            return { status: "rejected", reason: "active-turn" };
+          }
+          if (pendingTurnStarts.has(args.threadId)) {
+            return { status: "rejected", reason: "pending-turn-start" };
+          }
+          if (backgroundWorkState.hasOpenThreadWork(args.threadId)) {
+            return { status: "rejected", reason: "background-work" };
+          }
+
+          const currentSession = threadIdentityRegistry.getProviderSession(
+            args.threadId,
+          );
+          if (
+            currentSession !== null &&
+            (currentSession.providerId !== args.providerId ||
+              currentSession.providerThreadId !== args.providerThreadId)
+          ) {
+            return { status: "rejected", reason: "session-mismatch" };
+          }
+          if (currentSession !== null) {
+            await runtime.stopThread({ threadId: args.threadId });
+          }
+
+          const resumed = await runtime.resumeThread(args);
+          return {
+            status: "reloaded",
+            providerThreadId: resumed.providerThreadId,
+          };
+        },
+      });
+    },
+
     async runTurn({
       threadId,
       input,
@@ -2340,6 +2398,34 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
+    async applyExtensionAction({ threadId, extensionKind, action }) {
+      return runThreadOperation({
+        threadId,
+        work: async () => {
+          const providerId =
+            threadIdentityRegistry.resolveProviderForThread(threadId);
+          const proc = requireProviderProcessForThread(threadId);
+          const command: AdapterCommand = {
+            type: "extension/action",
+            threadId,
+            providerThreadId: requireProviderThreadId(threadId),
+            extensionKind,
+            action,
+          };
+          const plan = requireProviderRequestPlan({
+            commandType: command.type,
+            plan: proc.adapter.buildCommandPlan(command),
+            providerId,
+          });
+          return sendCommand({
+            proc,
+            message: plan,
+            resultSchema: experimental_extensionActionResultSchema,
+          });
+        },
+      });
+    },
+
     async clearThreadGoal({ threadId }) {
       return runThreadOperation({
         threadId,
@@ -2475,6 +2561,57 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         resultSchema: ignoredJsonRpcResultSchema,
       });
       return proc.adapter.parseModelListResult(result);
+    },
+
+    async providerCustomCall({ providerId, bridgeLaunch, method, input }) {
+      await runtime.ensureProvider({ providerId, bridgeLaunch });
+      const proc = providerProcesses.requireProviderProcess({
+        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
+        providerId,
+      });
+      const command = requireProviderRequestPlan({
+        commandType: "provider/custom",
+        plan: proc.adapter.buildCommandPlan({
+          type: "provider/custom",
+          method,
+          input,
+        }),
+        providerId,
+      });
+      const result = await sendCommand({
+        proc,
+        message: command,
+        resultSchema: experimental_providerCustomCallResultSchema,
+      });
+      return result.result;
+    },
+
+    async listProviderCommands({ providerId, bridgeLaunch, cwd }) {
+      await runtime.ensureProvider({ providerId, bridgeLaunch });
+      const proc = providerProcesses.requireProviderProcess({
+        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
+        providerId,
+      });
+      const plan = requireProviderRequestPlan({
+        commandType: "command/list",
+        plan: proc.adapter.buildCommandPlan({ type: "command/list", cwd }),
+        providerId,
+      });
+      try {
+        return await sendCommand({
+          proc,
+          message: plan,
+          resultSchema: experimental_providerCommandListResultSchema,
+        });
+      } catch (error) {
+        if (
+          error instanceof JsonRpcResponseError &&
+          error.code === BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND
+        ) {
+          return { supported: false };
+        }
+        throw error;
+      }
     },
 
     async providerHealth({ providerId, bridgeLaunch, cwd }) {

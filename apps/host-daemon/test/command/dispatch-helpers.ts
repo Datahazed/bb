@@ -51,6 +51,8 @@ export const unexpectedProjectAttachmentFetch: FetchProjectAttachment =
 export const unexpectedProviderMaintenance: Pick<
   CommandDispatchOptions,
   | "listModels"
+  | "providerCustomCall"
+  | "listProviderCommands"
   | "providerHealth"
   | "providerUsage"
   | "providerInstallationStatus"
@@ -58,6 +60,12 @@ export const unexpectedProviderMaintenance: Pick<
 > = {
   listModels: async () => {
     throw new Error("Unexpected provider.list_models call");
+  },
+  providerCustomCall: async () => {
+    throw new Error("Unexpected provider.custom_call call");
+  },
+  listProviderCommands: async () => {
+    throw new Error("Unexpected host.list_commands bridge call");
   },
   providerHealth: async () => {
     throw new Error("Unexpected provider.health call");
@@ -120,6 +128,10 @@ interface FakeRuntimeState {
   ranTurnInput: PromptInput[] | undefined;
   ranTurnText: string | undefined;
   renamedTitle: string | undefined;
+  reloadedDynamicTools: DynamicTool[] | undefined;
+  reloadedInstructions: string | undefined;
+  reloadedProviderThreadId: string | undefined;
+  reloadedThreadId: string | undefined;
   resumedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   resumedEnvironmentId: string | undefined;
   resumedProviderThreadId: string | undefined;
@@ -292,6 +304,10 @@ export function createFakeRuntime() {
     ranTurnInput: undefined,
     ranTurnText: undefined,
     renamedTitle: undefined,
+    reloadedDynamicTools: undefined,
+    reloadedInstructions: undefined,
+    reloadedProviderThreadId: undefined,
+    reloadedThreadId: undefined,
     resumedBridgeLaunch: undefined,
     resumedEnvironmentId: undefined,
     resumedProviderThreadId: undefined,
@@ -380,6 +396,23 @@ export function createFakeRuntime() {
       });
       return { providerThreadId };
     },
+    async reloadThread(args) {
+      state.reloadedDynamicTools = args.dynamicTools;
+      state.reloadedInstructions = args.instructions;
+      state.reloadedProviderThreadId = args.providerThreadId;
+      state.reloadedThreadId = args.threadId;
+      if (activeTurnsByThreadId.has(args.threadId)) {
+        return { status: "rejected", reason: "active-turn" };
+      }
+      providerSessionsByThreadId.set(args.threadId, {
+        providerId: args.providerId,
+        providerThreadId: args.providerThreadId,
+      });
+      return {
+        status: "reloaded",
+        providerThreadId: args.providerThreadId,
+      };
+    },
     async runTurn(args) {
       const firstInput = args.input[0];
       state.ranTurnText =
@@ -399,6 +432,9 @@ export function createFakeRuntime() {
       activeTurnsByThreadId.delete(args.threadId);
       providerSessionsByThreadId.delete(args.threadId);
       return { providerCheckpointId: null };
+    },
+    async applyExtensionAction() {
+      return { applied: true };
     },
     async clearThreadGoal() {
       return { cleared: true };
@@ -451,6 +487,9 @@ export function createFakeRuntime() {
         models: [] satisfies AvailableModel[],
         selectedOnlyModels: [] satisfies AvailableModel[],
       };
+    },
+    async listProviderCommands() {
+      return { supported: false as const };
     },
     async providerHealth() {
       return { supported: false as const };

@@ -10,10 +10,16 @@ import {
   type ThreadQueuedMessage,
   type ThreadStatus,
 } from "@bb/domain";
-import { threadTabsResponseSchema } from "@bb/server-contract";
+import {
+  experimental_threadReloadResponseSchema,
+  threadTabsResponseSchema,
+} from "@bb/server-contract";
 import type {
   CreateQueuedMessageRequest,
   CreateThreadRequest,
+  ExperimentalExtensionStateActionRequest,
+  ExperimentalExtensionStateActionResponse,
+  ExperimentalThreadReloadResponse,
   EditMessageRequest,
   EditMessageResponse,
   ForkThreadRequest,
@@ -121,6 +127,9 @@ export type ThreadDeleteResult = { ok: true };
 export type ThreadSendResult = { ok: true };
 export type ThreadEditMessageResult = EditMessageResponse;
 export type ThreadStopResult = { ok: true };
+export type ExperimentalThreadExtensionStateActionResult =
+  ExperimentalExtensionStateActionResponse;
+export type ExperimentalThreadReloadResult = ExperimentalThreadReloadResponse;
 export type ThreadCompactResult = { ok: true };
 export type ThreadBannerActionResult = { ok: true };
 export type ThreadUnarchiveResult = { ok: true };
@@ -427,6 +436,11 @@ export interface ThreadTabsArea {
   update(args: ThreadTabsUpdateArgs): Promise<ThreadTabsUpdateResult>;
 }
 
+export interface ExperimentalThreadExtensionStateActionArgs extends ExperimentalExtensionStateActionRequest {
+  threadId: string;
+  signal?: AbortSignal;
+}
+
 export interface ThreadsArea {
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
@@ -442,6 +456,14 @@ export interface ThreadsArea {
   ): Promise<ThreadDefaultExecutionOptionsResult>;
   delete(args: ThreadDeleteArgs): Promise<ThreadDeleteResult>;
   editMessage(args: ThreadEditMessageArgs): Promise<ThreadEditMessageResult>;
+  /** Experimental: dispatch one validated action to current provider state. */
+  experimental_applyExtensionStateAction(
+    args: ExperimentalThreadExtensionStateActionArgs,
+  ): Promise<ExperimentalThreadExtensionStateActionResult>;
+  /** Experimental: recreate an idle provider session from current config. */
+  experimental_reload(
+    args: ThreadStatusArgs,
+  ): Promise<ExperimentalThreadReloadResult>;
   events: ThreadEventsArea;
   fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
@@ -1066,6 +1088,24 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads.$post({
           json: spawnJson(input),
+        }),
+      );
+    },
+    async experimental_reload(input) {
+      const body = await transport.readJson(
+        transport.api.v1.threads[":id"].reload.$post(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return experimental_threadReloadResponseSchema.parse(body);
+    },
+    async experimental_applyExtensionStateAction(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["extension-state"].action.$post({
+          param: { id: input.threadId },
+          json: { kind: input.kind, action: input.action },
+          ...signalRequestArgs(input.signal),
         }),
       );
     },

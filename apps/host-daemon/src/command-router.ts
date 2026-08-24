@@ -72,6 +72,8 @@ export interface CommandRouterOptions {
   terminalManager?: CommandDispatchOptions["terminalManager"];
   eventSink: CommandDispatchOptions["eventSink"];
   listModels: CommandDispatchOptions["listModels"];
+  providerCustomCall: CommandDispatchOptions["providerCustomCall"];
+  listProviderCommands: CommandDispatchOptions["listProviderCommands"];
   providerHealth: CommandDispatchOptions["providerHealth"];
   providerUsage: CommandDispatchOptions["providerUsage"];
   providerInstallationStatus: CommandDispatchOptions["providerInstallationStatus"];
@@ -296,6 +298,8 @@ export class CommandRouter {
       dataDir: this.options.dataDir,
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,
+      providerCustomCall: this.options.providerCustomCall,
+      listProviderCommands: this.options.listProviderCommands,
       providerHealth: this.options.providerHealth,
       providerUsage: this.options.providerUsage,
       providerInstallationStatus: this.options.providerInstallationStatus,
@@ -470,6 +474,7 @@ export class CommandRouter {
       case "thread.archive":
       case "interactive.resolve":
       case "thread.stop":
+      case "thread.reload":
       case "thread.plan.cancel":
       case "thread.goal.clear":
         return `${command.environmentId}\0thread:${command.threadId}`;

@@ -2,6 +2,7 @@ import {
   availableModelSchema,
   discoveredWorkspacePropertiesSchema,
   dynamicToolSchema,
+  extensionKindSchema,
   instructionModeSchema,
   pendingInteractionResolutionSchema,
   permissionModeSchema,
@@ -315,6 +316,11 @@ const threadStartCommandSchema = hostDaemonThreadTargetSchema
     refineGroupedInputMatchesFlatInput(value, ctx);
   });
 
+const threadReloadCommandSchema = hostDaemonThreadTargetSchema
+  .merge(hostDaemonExistingThreadRuntimeContextSchema)
+  .extend({ type: z.literal("thread.reload") })
+  .strict();
+
 const threadRewindPrepareCommandSchema = hostDaemonThreadTargetSchema
   .merge(hostDaemonThreadRuntimeContextSchema)
   .extend({
@@ -386,6 +392,15 @@ export const threadStopCommandSchema = hostDaemonThreadTargetSchema
     intent: threadStopIntentSchema,
   })
   .strict();
+
+export const threadExtensionStateActionCommandSchema =
+  hostDaemonThreadTargetSchema
+    .extend({
+      type: z.literal("thread.extension-state.action"),
+      extensionKind: extensionKindSchema,
+      action: jsonValueSchema,
+    })
+    .strict();
 
 const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
   .extend({
@@ -728,6 +743,12 @@ const hostListCommandsCommandSchema = z
     providerId: z.string().min(1),
     cwd: z.string().min(1).nullable(),
     nativeRoots: providerNativeRootSetSchema,
+    /**
+     * Omission requests static skill/command scanning only. With a launch the
+     * daemon also asks the provider's bridge for its own commands (`command/list`)
+     * and merges them with the static scan.
+     */
+    bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
   })
   .strict();
 
@@ -944,6 +965,16 @@ const providerListModelsCommandSchema = z.object({
   bridgeLaunch: hostDaemonBridgeLaunchSchema,
   cwd: z.string().min(1).optional(),
 });
+
+const providerCustomCallCommandSchema = z
+  .object({
+    type: z.literal("provider.custom_call"),
+    providerId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    method: z.string().min(1),
+    input: jsonValueSchema,
+  })
+  .strict();
 
 const providerHealthCommandSchema = z
   .object({
@@ -1341,6 +1372,7 @@ const pluginHostDisposeResultSchema = z
 // full raw set across all roots and the server owns de-dup/sort/limit.
 const commandListResultSchema = z.object({
   commands: z.array(hostProviderCommandSchema),
+  diagnostics: z.array(z.string()),
 });
 
 // Like `commandListResultSchema`: the daemon returns the full raw set across
@@ -1408,9 +1440,16 @@ const providerListModelsResultSchema = z.object({
   selectedOnlyModels: z.array(availableModelSchema),
 });
 
+const providerCustomCallResultSchema = z
+  .object({ result: jsonValueSchema })
+  .strict();
+
 const threadStartResultSchema = z.object({
   providerThreadId: z.string().min(1),
 });
+const threadReloadResultSchema = z
+  .object({ status: z.literal("reloaded") })
+  .strict();
 const turnSubmitResultSchema = z.object({
   appliedAs: z.enum(["new-turn", "steer"]),
 });
@@ -1567,6 +1606,15 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: true,
     envLane: "read",
   }),
+  "thread.reload": defineHostDaemonCommandDescriptor({
+    type: "thread.reload",
+    schema: threadReloadCommandSchema,
+    resultSchema: threadReloadResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: "read",
+  }),
   "turn.submit": defineHostDaemonCommandDescriptor({
     type: "turn.submit",
     schema: turnSubmitCommandSchema,
@@ -1580,6 +1628,15 @@ export const hostDaemonCommandRegistry = {
     type: "thread.stop",
     schema: threadStopCommandSchema,
     resultSchema: threadStopResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: null,
+  }),
+  "thread.extension-state.action": defineHostDaemonCommandDescriptor({
+    type: "thread.extension-state.action",
+    schema: threadExtensionStateActionCommandSchema,
+    resultSchema: z.object({ applied: z.boolean() }).strict(),
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: true,
@@ -1954,6 +2011,15 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
+  "provider.custom_call": defineHostDaemonCommandDescriptor({
+    type: "provider.custom_call",
+    schema: providerCustomCallCommandSchema,
+    resultSchema: providerCustomCallResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "provider.health": defineHostDaemonCommandDescriptor({
     type: "provider.health",
     schema: providerHealthCommandSchema,
@@ -2059,7 +2125,9 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
+  [
+    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
+  ]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

@@ -76,8 +76,11 @@ import {
 } from "./browser-request-guard.js";
 import {
   callPluginHostRpc,
+  callPluginProviderBridgeRpc,
   disposePluginHostWorkers,
 } from "./services/plugins/plugin-host-rpc.js";
+import { requireBridgeLaunchForProviderId } from "./services/system/provider-bridge-launch.js";
+import { publishProviderModelsChanged } from "./services/system/provider-model-cache.js";
 
 /**
  * `/api/v1/plugins/<id>/http/...` — the plugin-owned wire, whose auth mode is
@@ -435,6 +438,30 @@ export function createApp(
         }),
       ),
     callPluginHost: (args) => callPluginHostRpc(deps, args),
+    callProviderBridge: (args) => {
+      const registration = deps.providerRegistry.get(args.providerId);
+      if (registration === null || registration.pluginId !== args.pluginId) {
+        throw new Error(
+          `plugin "${args.pluginId}" does not own provider "${args.providerId}"`,
+        );
+      }
+      return callPluginProviderBridgeRpc(deps, {
+        ...args,
+        bridgeLaunch: requireBridgeLaunchForProviderId(deps, args.providerId),
+      });
+    },
+    providerModelsChanged: ({ pluginId, providerId }) => {
+      const registration = deps.providerRegistry.get(providerId);
+      if (registration === null || registration.pluginId !== pluginId) {
+        throw new Error(
+          `plugin "${pluginId}" does not own provider "${providerId}"`,
+        );
+      }
+      publishProviderModelsChanged({
+        providerModelList: deps.lifecycleDedupers.providerModelList,
+        notifySystem: (changes) => deps.hub.notifySystem(changes),
+      });
+    },
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
     // A plugin resolves its providers' native roots from its settings, so a
     // settings save must reach the next listing, not the cached answer.
@@ -505,7 +532,7 @@ export function createApp(
   registerInternalSkillRoutes(internalApi, deps);
   registerInternalPluginHostArtifactRoutes(internalApi, deps);
   registerInternalEventRoutes(internalApi, deps);
-  registerInternalToolCallRoutes(internalApi, deps);
+  registerInternalToolCallRoutes(internalApi, deps, pluginService);
   registerInternalInteractiveRequestRoutes(internalApi, deps);
   app.route("/internal", internalApi);
 

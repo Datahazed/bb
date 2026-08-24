@@ -1,5 +1,8 @@
 import type {
   ComposerCustomization,
+  ExperimentalChangesViewRegistration,
+  ExperimentalProviderExtensionStateRegistration,
+  ExperimentalSidebarNavigationRegistration,
   PluginAppDefinition,
   PluginContentScriptRegistration,
   PluginDiffRendererRegistration,
@@ -80,6 +83,7 @@ function rejectStaleNavPanelKeys(kind: string, registration: object): void {
     }
   }
 }
+const PROVIDER_EXTENSION_STATE_NAME_PATTERN = /^[a-z0-9-]+$/u;
 
 /** Validated registrations produced by one plugin app setup execution. */
 export interface CollectedPluginAppRegistrations {
@@ -91,16 +95,19 @@ export interface CollectedPluginAppRegistrations {
   composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
+  experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
   diffRenderers: PluginDiffRendererRegistration[];
+  experimentalChangesViews: ExperimentalChangesViewRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
   commandPaletteActions: PluginCommandPaletteActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
+  providerExtensionStates: ExperimentalProviderExtensionStateRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -124,16 +131,19 @@ export function collectPluginAppRegistrations(
     composerCustomizations: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
+    experimentalSidebarNavigations: [],
     threadLists: [],
     threadHeaderActions: [],
     fileOpeners: [],
     sourceCodeRenderers: [],
     diffRenderers: [],
+    experimentalChangesViews: [],
     messageDirectives: [],
     messageActions: [],
     commandPaletteActions: [],
     providerIcons: [],
     timelineRenderers: [],
+    providerExtensionStates: [],
     contentScripts: [],
   };
   const seenIds = {
@@ -145,16 +155,19 @@ export function collectPluginAppRegistrations(
     composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
+    sidebarNavigation: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
     fileOpener: new Set<string>(),
     sourceCodeRenderer: new Set<string>(),
     diffRenderer: new Set<string>(),
+    changesView: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
     commandPaletteAction: new Set<string>(),
     providerIcon: new Set<string>(),
     timelineRenderer: new Set<string>(),
+    providerExtensionState: new Set<string>(),
     contentScript: new Set<string>(),
   };
 
@@ -385,6 +398,22 @@ export function collectPluginAppRegistrations(
           run: registration.run,
         });
       },
+      experimental_sidebarNavigation(registration) {
+        const kind = "slots.experimental_sidebarNavigation";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.sidebarNavigation, id);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
+        collected.experimentalSidebarNavigations.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(description !== undefined ? { description } : {}),
+          component: requireComponent(kind, registration.component),
+        });
+      },
       experimental_threadList(registration) {
         const kind = "slots.experimental_threadList";
         const id = requireSlotId(kind, registration?.id);
@@ -468,6 +497,22 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      experimental_changesView(registration) {
+        const kind = "slots.experimental_changesView";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.changesView, id);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
+        collected.experimentalChangesViews.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(description !== undefined ? { description } : {}),
+          component: requireComponent(kind, registration.component),
+        });
+      },
       messageDirective(registration) {
         const kind = "slots.messageDirective";
         const id = requireMessageDirectiveId(kind, registration?.id);
@@ -532,6 +577,20 @@ export function collectPluginAppRegistrations(
         requireUniqueId(kind, seenIds.timelineRenderer, itemKind);
         collected.timelineRenderers.push({
           kind: itemKind,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_providerExtensionState(registration) {
+        const kind = "slots.experimental_providerExtensionState";
+        const name = requireNonEmptyString(kind, "name", registration?.name);
+        if (!PROVIDER_EXTENSION_STATE_NAME_PATTERN.test(name)) {
+          throw new Error(
+            `${kind}: "name" must match ${String(PROVIDER_EXTENSION_STATE_NAME_PATTERN)}, got ${JSON.stringify(name)}`,
+          );
+        }
+        requireUniqueId(kind, seenIds.providerExtensionState, name);
+        collected.providerExtensionStates.push({
+          name,
           component: requireComponent(kind, registration.component),
         });
       },

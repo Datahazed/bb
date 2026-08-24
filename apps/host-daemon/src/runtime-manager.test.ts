@@ -42,6 +42,7 @@ type ProvisionWorkspaceMockArgs = Parameters<
 type EnsureProviderArgs = Parameters<AgentRuntime["ensureProvider"]>[0];
 type StartThreadArgs = Parameters<AgentRuntime["startThread"]>[0];
 type ResumeThreadArgs = Parameters<AgentRuntime["resumeThread"]>[0];
+type ReloadThreadArgs = Parameters<AgentRuntime["reloadThread"]>[0];
 type RunTurnArgs = Parameters<AgentRuntime["runTurn"]>[0];
 type SteerTurnArgs = Parameters<AgentRuntime["steerTurn"]>[0];
 type StopThreadArgs = Parameters<AgentRuntime["stopThread"]>[0];
@@ -258,6 +259,10 @@ function createFakeRuntime() {
     resumeThread: vi.fn(async (_args: ResumeThreadArgs) => ({
       providerThreadId: "provider-1",
     })),
+    reloadThread: vi.fn(async (args: ReloadThreadArgs) => ({
+      status: "reloaded" as const,
+      providerThreadId: args.providerThreadId,
+    })),
     runTurn: vi.fn(async (_args: RunTurnArgs) => undefined),
     steerTurn: vi.fn(async (_args: SteerTurnArgs) => ({
       status: "steered" as const,
@@ -265,6 +270,7 @@ function createFakeRuntime() {
     stopThread: vi.fn(async (_args: StopThreadArgs) => ({
       providerCheckpointId: null,
     })),
+    applyExtensionAction: vi.fn(async () => ({ applied: true })),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     renameThread: vi.fn(async (_args: RenameThreadArgs) => undefined),
     archiveThread: vi.fn(async () => undefined),
@@ -273,6 +279,7 @@ function createFakeRuntime() {
       models: [],
       selectedOnlyModels: [],
     })),
+    listProviderCommands: vi.fn(async () => ({ supported: false as const })),
     providerHealth: vi.fn(async () => ({ supported: false as const })),
     providerUsage: vi.fn(async () => ({ supported: false as const })),
     providerInstallationStatus: vi.fn(async () => {

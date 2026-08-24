@@ -1,6 +1,9 @@
 import { useSyncExternalStore } from "react";
 import type {
   ComposerCustomization,
+  ExperimentalChangesViewRegistration,
+  ExperimentalProviderExtensionStateRegistration,
+  ExperimentalSidebarNavigationRegistration,
   PluginDiffRendererRegistration,
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
@@ -38,6 +41,8 @@ export interface PluginRegistrationSet {
   composerCustomizations?: readonly ComposerCustomization[];
   pendingInteractions?: readonly PluginPendingInteractionRegistration[];
   sidebarFooterActions: readonly PluginSidebarFooterActionRegistration[];
+  /** Optional for bundles built before sidebar navigation replacement. */
+  experimentalSidebarNavigations?: readonly ExperimentalSidebarNavigationRegistration[];
   /**
    * Optional so a frontend bundle built against an older SDK — which never
    * calls `experimental_threadList` — still satisfies the set.
@@ -53,6 +58,8 @@ export interface PluginRegistrationSet {
   sourceCodeRenderers?: readonly PluginSourceCodeRendererRegistration[];
   /** Optional for the same reason as `sourceCodeRenderers`. */
   diffRenderers?: readonly PluginDiffRendererRegistration[];
+  /** Optional for bundles built before the whole Changes replacement. */
+  experimentalChangesViews?: readonly ExperimentalChangesViewRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
   /** Optional for the same reason as `threadLists`: bundles built earlier. */
@@ -61,6 +68,8 @@ export interface PluginRegistrationSet {
   providerIcons?: readonly PluginProviderIconRegistration[];
   /** Optional for the same reason as `threadLists`: bundles built earlier. */
   timelineRenderers?: readonly PluginTimelineRendererRegistration[];
+  /** Optional for bundles built before provider extension-state rendering. */
+  providerExtensionStates?: readonly ExperimentalProviderExtensionStateRegistration[];
 }
 
 interface PluginSlotBase {
@@ -90,6 +99,8 @@ export interface PluginPendingInteractionSlot
   extends PluginPendingInteractionRegistration, PluginSlotBase {}
 export interface PluginSidebarFooterActionSlot
   extends PluginSidebarFooterActionRegistration, PluginSlotBase {}
+export interface ExperimentalSidebarNavigationSlot
+  extends ExperimentalSidebarNavigationRegistration, PluginSlotBase {}
 export interface PluginThreadListSlot
   extends PluginThreadListRegistration, PluginSlotBase {}
 interface PluginThreadHeaderActionSlot
@@ -100,6 +111,8 @@ export interface PluginSourceCodeRendererSlot
   extends PluginSourceCodeRendererRegistration, PluginSlotBase {}
 export interface PluginDiffRendererSlot
   extends PluginDiffRendererRegistration, PluginSlotBase {}
+export interface ExperimentalChangesViewSlot
+  extends ExperimentalChangesViewRegistration, PluginSlotBase {}
 export interface PluginMessageDirectiveSlot
   extends PluginMessageDirectiveRegistration, PluginSlotBase {}
 export interface PluginMessageActionSlot
@@ -110,6 +123,8 @@ interface PluginProviderIconSlot
   extends PluginProviderIconRegistration, PluginSlotBase {}
 export interface PluginTimelineRendererSlot
   extends PluginTimelineRendererRegistration, PluginSlotBase {}
+export interface PluginProviderExtensionStateSlot
+  extends ExperimentalProviderExtensionStateRegistration, PluginSlotBase {}
 
 /** Flattened view across plugins, ordered by plugin id (deterministic). */
 export interface PluginSlotSnapshot {
@@ -121,16 +136,19 @@ export interface PluginSlotSnapshot {
   composerCustomizations: readonly PluginComposerCustomizationSlot[];
   pendingInteractions: readonly PluginPendingInteractionSlot[];
   sidebarFooterActions: readonly PluginSidebarFooterActionSlot[];
+  experimentalSidebarNavigations: readonly ExperimentalSidebarNavigationSlot[];
   threadLists: readonly PluginThreadListSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
   sourceCodeRenderers: readonly PluginSourceCodeRendererSlot[];
   diffRenderers: readonly PluginDiffRendererSlot[];
+  experimentalChangesViews: readonly ExperimentalChangesViewSlot[];
   messageDirectives: readonly PluginMessageDirectiveSlot[];
   messageActions: readonly PluginMessageActionSlot[];
   commandPaletteActions: readonly PluginCommandPaletteActionSlot[];
   providerIcons: readonly PluginProviderIconSlot[];
   timelineRenderers: readonly PluginTimelineRendererSlot[];
+  providerExtensionStates: readonly PluginProviderExtensionStateSlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
@@ -142,16 +160,19 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   composerCustomizations: [],
   pendingInteractions: [],
   sidebarFooterActions: [],
+  experimentalSidebarNavigations: [],
   threadLists: [],
   threadHeaderActions: [],
   fileOpeners: [],
   sourceCodeRenderers: [],
   diffRenderers: [],
+  experimentalChangesViews: [],
   messageDirectives: [],
   messageActions: [],
   commandPaletteActions: [],
   providerIcons: [],
   timelineRenderers: [],
+  providerExtensionStates: [],
 };
 
 const registrationsByPluginId = new Map<string, PluginRegistrationSet>();
@@ -170,16 +191,19 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "composerCustomizations",
   "pendingInteractions",
   "sidebarFooterActions",
+  "experimentalSidebarNavigations",
   "threadLists",
   "threadHeaderActions",
   "fileOpeners",
   "sourceCodeRenderers",
   "diffRenderers",
+  "experimentalChangesViews",
   "messageDirectives",
   "messageActions",
   "commandPaletteActions",
   "providerIcons",
   "timelineRenderers",
+  "providerExtensionStates",
 ];
 
 /**
@@ -219,16 +243,19 @@ function flattenRegistrations(
     composerCustomizations: stamp(set.composerCustomizations),
     pendingInteractions: stamp(set.pendingInteractions),
     sidebarFooterActions: stamp(set.sidebarFooterActions),
+    experimentalSidebarNavigations: stamp(set.experimentalSidebarNavigations),
     threadLists: stamp(set.threadLists),
     threadHeaderActions: stamp(set.threadHeaderActions),
     fileOpeners: stamp(set.fileOpeners),
     sourceCodeRenderers: stamp(set.sourceCodeRenderers),
     diffRenderers: stamp(set.diffRenderers),
+    experimentalChangesViews: stamp(set.experimentalChangesViews),
     messageDirectives: stamp(set.messageDirectives),
     messageActions: stamp(set.messageActions),
     commandPaletteActions: stamp(set.commandPaletteActions),
     providerIcons: stamp(set.providerIcons),
     timelineRenderers: stamp(set.timelineRenderers),
+    providerExtensionStates: stamp(set.providerExtensionStates),
   };
 }
 

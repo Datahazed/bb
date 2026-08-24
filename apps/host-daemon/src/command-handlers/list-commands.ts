@@ -10,6 +10,8 @@ import type {
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import {
   CommandDispatchError,
+  resolveRuntimeBridgeLaunch,
+  type CommandDispatchOptions,
   type CommandOf,
 } from "../command-dispatch-support.js";
 import {
@@ -437,6 +439,7 @@ export async function resolveDeclaredScanRoots(
 
 export async function listHostCommands(
   command: CommandOf<"host.list_commands">,
+  options: CommandDispatchOptions,
 ): Promise<HostDaemonOnlineRpcResult<"host.list_commands">> {
   if (command.cwd !== null && !path.isAbsolute(command.cwd)) {
     throw new CommandDispatchError("invalid_path", "cwd must be absolute");
@@ -448,5 +451,24 @@ export async function listHostCommands(
     nativeRoots: command.nativeRoots,
   });
   const commands = await discoverProviderCommands({ roots });
-  return { commands };
+  if (command.cwd === null || command.bridgeLaunch === undefined) {
+    return { commands, diagnostics: [] };
+  }
+
+  const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+    command.bridgeLaunch,
+    options,
+  );
+  const bridgeResult = await options.listProviderCommands({
+    providerId: command.providerId,
+    bridgeLaunch,
+    cwd: command.cwd,
+  });
+  if (!bridgeResult.supported) {
+    return { commands, diagnostics: [] };
+  }
+  return {
+    commands: [...commands, ...bridgeResult.commands],
+    diagnostics: bridgeResult.diagnostics,
+  };
 }

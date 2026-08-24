@@ -25,6 +25,7 @@ type ExpectedBbPluginApiKey =
 
 const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "BbPluginApi",
+  "ExperimentalProviderBridgeClient",
   "PluginAgents",
   "PluginAiServiceDeclaration",
   "PluginAiServiceKind",
@@ -39,6 +40,9 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginAgentToolResult",
   "PluginAgentToolSelection",
   "PluginBackground",
+  "PluginBeforeInvocationEvent",
+  "PluginBeforeInvocationHandler",
+  "PluginBeforeInvocationResult",
   "PluginCli",
   "PluginCliCommandInfo",
   "PluginCliContext",

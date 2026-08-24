@@ -44,6 +44,9 @@ function registerPendingInteraction(
   lifecycle: PendingInteractionLifecycle,
   interaction: PendingInteractionCreate,
 ) {
+  if (interaction.turnId === null) {
+    throw new Error("Test helper expected a turn-scoped interaction");
+  }
   seedTurnStarted(deps, {
     threadId: interaction.threadId,
     turnId: interaction.turnId,
@@ -947,9 +950,9 @@ describe("public thread interaction routes", () => {
         message:
           "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
       });
-      expect(listQueuedThreadMessages(harness.db, activeThread.id)).toHaveLength(
-        0,
-      );
+      expect(
+        listQueuedThreadMessages(harness.db, activeThread.id),
+      ).toHaveLength(0);
     });
   });
 

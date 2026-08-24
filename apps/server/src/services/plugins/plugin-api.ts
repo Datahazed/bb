@@ -24,6 +24,7 @@ import type {
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
+  PluginBeforeInvocationHandler,
   PluginCli,
   PluginCliCommandInfo,
   PluginCliContext,
@@ -244,6 +245,8 @@ export interface PluginApiHandle {
   databaseHandles: Database.Database[];
   /** Thread lifecycle handlers recorded by `bb.events.on`. */
   threadEventHandlers: PluginThreadEventHandlers;
+  /** Blocking invocation handlers recorded by `bb.events.on`. */
+  beforeInvocationHandlers: PluginBeforeInvocationHandler[];
   /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
   httpRoutes: PluginHttpRouteRecord[];
   /** RPC handlers recorded by `bb.rpc.register`; dropped with the handle. */
@@ -483,6 +486,15 @@ export function createPluginApi(options: {
     hostId: string;
     signal?: AbortSignal;
   }) => Promise<unknown>;
+  callProviderBridge: (args: {
+    providerId: string;
+    contract: PluginRpcContract;
+    method: string;
+    input: unknown;
+    hostId: string;
+    signal?: AbortSignal;
+  }) => Promise<unknown>;
+  providerModelsChanged: (args: { providerId: string; hostId: string }) => void;
   /** Registers one validated provider declaration with the server's provider
    * registry, bound to this plugin's id. Throws on a live id collision. */
   registerProvider: (declaration: NormalizedPluginProviderDeclaration) => {
@@ -540,6 +552,8 @@ export function createPluginApi(options: {
     declareSharedPorts,
     replaceDeclaredSharedPorts,
     callPluginHost,
+    callProviderBridge,
+    providerModelsChanged,
     registerProvider,
     registerAiService,
     isProviderIdTaken,
@@ -567,6 +581,7 @@ export function createPluginApi(options: {
     "thread.archived": [],
     "thread.deleted": [],
   };
+  const beforeInvocationHandlers: PluginBeforeInvocationHandler[] = [];
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
   const hostWorkerExitHandlers: PluginHostWorkerExitHandler[] = [];
@@ -1373,25 +1388,89 @@ export function createPluginApi(options: {
       }
     },
   };
-  const events: PluginEvents = {
-    on(event, handler) {
-      assertLive();
-      const handlers = threadEventHandlers[event];
-      if (handlers === undefined) {
-        // Plugin sources are untyped at runtime; fail loudly at registration
-        // instead of silently never firing.
-        throw new Error(
-          `unknown event "${String(event)}" — supported events: ${Object.keys(
-            threadEventHandlers,
-          ).join(", ")}`,
-        );
-      }
-      handlers.push(handler);
-    },
-  };
+  function onPluginEvent<E extends PluginThreadEventName>(
+    event: E,
+    handler: PluginThreadEventHandler<E>,
+  ): void;
+  function onPluginEvent(
+    event: "experimental_invocation.before",
+    handler: PluginBeforeInvocationHandler,
+  ): void;
+  function onPluginEvent(
+    event: PluginThreadEventName | "experimental_invocation.before",
+    handler:
+      | PluginThreadEventHandler<PluginThreadEventName>
+      | PluginBeforeInvocationHandler,
+  ): void {
+    assertLive();
+    if (event === "experimental_invocation.before") {
+      beforeInvocationHandlers.push(handler as PluginBeforeInvocationHandler);
+      return;
+    }
+    const handlers = threadEventHandlers[event];
+    if (handlers === undefined) {
+      // Plugin sources are untyped at runtime; fail loudly at registration
+      // instead of silently never firing.
+      throw new Error(
+        `unknown event "${String(event)}" — supported events: ${[
+          ...Object.keys(threadEventHandlers),
+          "experimental_invocation.before",
+        ].join(", ")}`,
+      );
+    }
+    handlers.push(handler as never);
+  }
+  const events: PluginEvents = { on: onPluginEvent };
 
   const providers: PluginProviders = {
     register: providerRegistrations.register,
+    experimental_client({ providerId, contract }) {
+      assertLive();
+      return {
+        async call(method, input, callOptions) {
+          assertLive();
+          if (!activated) {
+            throw new Error(
+              "provider bridge calls are unavailable during factory registration; call from a handler, service, or timer",
+            );
+          }
+          if (typeof method !== "string" || contract[method] === undefined) {
+            throw new Error(
+              `unknown provider bridge rpc method "${String(method)}"`,
+            );
+          }
+          if (
+            typeof callOptions !== "object" ||
+            callOptions === null ||
+            typeof callOptions.hostId !== "string" ||
+            callOptions.hostId.length === 0
+          ) {
+            throw new Error(
+              `provider bridge rpc method "${method}" requires a host id`,
+            );
+          }
+          return callProviderBridge({
+            providerId,
+            contract,
+            method,
+            input,
+            hostId: callOptions.hostId,
+            ...(callOptions.signal === undefined
+              ? {}
+              : { signal: callOptions.signal }),
+          });
+        },
+      };
+    },
+    experimental_modelsChanged(args) {
+      assertLive();
+      if (!activated) {
+        throw new Error(
+          "provider model invalidation is unavailable during factory registration",
+        );
+      }
+      providerModelsChanged(args);
+    },
   };
 
   /** AI-service registrations, staged like providers; each one binds to the
@@ -1452,6 +1531,7 @@ export function createPluginApi(options: {
     settings: settingsRecord,
     databaseHandles,
     threadEventHandlers,
+    beforeInvocationHandlers,
     httpRoutes,
     rpcHandlers,
     hostWorkerExitHandlers,

@@ -52,6 +52,9 @@ import type {
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
+  PluginBeforeInvocationEvent,
+  PluginBeforeInvocationHandler,
+  PluginBeforeInvocationResult,
   PluginCli,
   PluginCliCommandInfo,
   PluginCliContext,
@@ -220,6 +223,14 @@ export interface ExperimentalFakeHostRpcCall {
   signal?: AbortSignal;
 }
 
+export interface ExperimentalFakeProviderBridgeRpcCall extends ExperimentalFakeHostRpcCall {
+  providerId: string;
+}
+
+export type ExperimentalFakeInvocationDecision =
+  | { allowed: true }
+  | { allowed: false; reason: string };
+
 /** Everything the plugin registered, exposed raw for assertions. */
 export interface FakePluginRegistrations {
   settingsDescriptors: PluginSettingDescriptors;
@@ -238,6 +249,7 @@ export interface FakePluginRegistrations {
     | ((ctx: { threadId: string; projectId: string }) => string | null)
     | null;
   threadEventHandlers: Record<PluginThreadEventName, number>;
+  beforeInvocationHandlers: number;
   mentionProviders: FakeMentionProviderRecord[];
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
@@ -265,6 +277,12 @@ export interface FakePluginInspectionState {
   }>;
   /** Calls made through bb.hosts.experimental_client, after input validation. */
   readonly experimental_hostRpcCalls: readonly ExperimentalFakeHostRpcCall[];
+  /** Calls made through bb.providers.experimental_client. */
+  readonly experimental_providerBridgeRpcCalls: readonly ExperimentalFakeProviderBridgeRpcCall[];
+  readonly experimental_providerModelChanges: readonly {
+    providerId: string;
+    hostId: string;
+  }[];
   readonly pendingInteractions: readonly (PluginInteractionRequest & {
     id: string;
   })[];
@@ -280,6 +298,11 @@ export interface FakePluginBehaviorDrivers {
     signal: string,
     payload: unknown,
   ): Promise<void>;
+  /** Run this plugin's blocking invocation handlers with production ordering,
+   * validation, mutation isolation, and fail-closed behavior. */
+  experimental_evaluateInvocation(
+    event: PluginBeforeInvocationEvent,
+  ): Promise<ExperimentalFakeInvocationDecision>;
   submitInteraction(id: string, value: JsonValue): void;
   cancelInteraction(id: string): void;
   /**
@@ -439,6 +462,10 @@ export interface CreateFakePluginHostOptions {
   experimental_callHostRpc?: (
     call: ExperimentalFakeHostRpcCall,
   ) => unknown | Promise<unknown>;
+  /** Deterministic stand-in for a provider bridge on one host. */
+  experimental_callProviderBridgeRpc?: (
+    call: ExperimentalFakeProviderBridgeRpcCall,
+  ) => unknown | Promise<unknown>;
 }
 
 export interface FakePluginHost {
@@ -476,6 +503,33 @@ function isNeedsConfigurationError(error: unknown): error is Error {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeBeforeInvocationResult(
+  result: unknown,
+): PluginBeforeInvocationResult {
+  if (result === undefined) return undefined;
+  if (
+    result !== null &&
+    typeof result === "object" &&
+    !Array.isArray(result) &&
+    (result as { block?: unknown }).block === true &&
+    typeof (result as { reason?: unknown }).reason === "string" &&
+    (result as { reason: string }).reason.trim().length > 0
+  ) {
+    return { block: true, reason: (result as { reason: string }).reason };
+  }
+  throw new Error(
+    "invocation handler must return undefined or { block: true, reason: string }",
+  );
+}
+
+function cloneBeforeInvocationEvent(
+  event: PluginBeforeInvocationEvent,
+): PluginBeforeInvocationEvent {
+  return event.kind === "cli"
+    ? { ...event, argv: [...event.argv] }
+    : { ...event, input: structuredClone(event.input) };
 }
 
 function jsonRoundTrip(value: unknown, what: string): unknown {
@@ -1547,6 +1601,7 @@ function createFakePluginHostInternal(
     "thread.archived": [],
     "thread.deleted": [],
   };
+  const beforeInvocationHandlers: PluginBeforeInvocationHandler[] = [];
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
   let nextInteractionId = 1;
@@ -1643,6 +1698,9 @@ function createFakePluginHostInternal(
   const sharedPortDeclarations: FakePluginHarness["sharedPortDeclarations"] =
     [];
   const hostRpcCalls: ExperimentalFakeHostRpcCall[] = [];
+  const providerBridgeRpcCalls: ExperimentalFakeProviderBridgeRpcCall[] = [];
+  const providerModelChanges: Array<{ providerId: string; hostId: string }> =
+    [];
   const hostWorkerExitSubscriptions: FakeHostWorkerExitSubscription[] = [];
   const hostSignalSubscriptions: FakeHostSignalSubscription[] = [];
   const hosts: PluginHosts = {
@@ -1781,24 +1839,83 @@ function createFakePluginHostInternal(
     sharedPortDeclarations.length = 0;
   });
 
-  const events: PluginEvents = {
-    on(event, handler) {
-      assertLive();
-      const handlers = threadEventHandlers[event];
-      if (handlers === undefined) {
-        throw new Error(
-          `unknown event "${String(event)}" — supported events: ${Object.keys(
-            threadEventHandlers,
-          ).join(", ")}`,
-        );
-      }
-      handlers.push(handler);
-    },
-  };
+  function onPluginEvent<E extends PluginThreadEventName>(
+    event: E,
+    handler: PluginThreadEventHandler<E>,
+  ): void;
+  function onPluginEvent(
+    event: "experimental_invocation.before",
+    handler: PluginBeforeInvocationHandler,
+  ): void;
+  function onPluginEvent(
+    event: PluginThreadEventName | "experimental_invocation.before",
+    handler:
+      | PluginThreadEventHandler<PluginThreadEventName>
+      | PluginBeforeInvocationHandler,
+  ): void {
+    assertLive();
+    if (event === "experimental_invocation.before") {
+      beforeInvocationHandlers.push(handler as PluginBeforeInvocationHandler);
+      return;
+    }
+    const handlers = threadEventHandlers[event];
+    if (handlers === undefined) {
+      throw new Error(
+        `unknown event "${String(event)}" — supported events: ${[
+          ...Object.keys(threadEventHandlers),
+          "experimental_invocation.before",
+        ].join(", ")}`,
+      );
+    }
+    handlers.push(handler as never);
+  }
+  const events: PluginEvents = { on: onPluginEvent };
 
   const providers: PluginProviders = {
     register(declaration) {
       return registerProviderDeclaration(declaration);
+    },
+    experimental_client({ providerId, contract }) {
+      return {
+        async call(method, input, callOptions) {
+          assertLive();
+          const methodContract = contract[method];
+          if (methodContract === undefined) {
+            throw new Error(`unknown provider bridge rpc method "${method}"`);
+          }
+          const validatedInput = await validateRpcValue(
+            methodContract.input,
+            input,
+            "input",
+          );
+          const call = {
+            providerId,
+            method,
+            input: jsonRoundTrip(validatedInput, "provider bridge rpc input"),
+            hostId: callOptions.hostId,
+            ...(callOptions.signal === undefined
+              ? {}
+              : { signal: callOptions.signal }),
+          };
+          providerBridgeRpcCalls.push(call);
+          if (options.experimental_callProviderBridgeRpc === undefined) {
+            throw new Error(
+              `fake plugin host has no experimental_callProviderBridgeRpc stub for "${String(method)}"`,
+            );
+          }
+          const rawOutput =
+            await options.experimental_callProviderBridgeRpc(call);
+          return await validateRpcValue(
+            methodContract.output,
+            jsonRoundTrip(rawOutput, "provider bridge rpc output"),
+            "output",
+          );
+        },
+      };
+    },
+    experimental_modelsChanged(args) {
+      assertLive();
+      providerModelChanges.push({ ...args });
     },
   };
 
@@ -1879,6 +1996,8 @@ function createFakePluginHostInternal(
     needsConfigurationMessages,
     sharedPortDeclarations,
     experimental_hostRpcCalls: hostRpcCalls,
+    experimental_providerBridgeRpcCalls: providerBridgeRpcCalls,
+    experimental_providerModelChanges: providerModelChanges,
     sdk: sdkHarness,
     registrations: {
       settingsDescriptors,
@@ -1907,6 +2026,9 @@ function createFakePluginHostInternal(
           "thread.archived": threadEventHandlers["thread.archived"].length,
           "thread.deleted": threadEventHandlers["thread.deleted"].length,
         };
+      },
+      get beforeInvocationHandlers() {
+        return beforeInvocationHandlers.length;
       },
       mentionProviders,
       providerRegistrations,
@@ -1946,6 +2068,27 @@ function createFakePluginHostInternal(
         );
         await subscription.handler({ hostId, payload: parsed });
       }
+    },
+    async experimental_evaluateInvocation(event) {
+      assertLive();
+      for (const handler of [...beforeInvocationHandlers]) {
+        try {
+          const result = normalizeBeforeInvocationResult(
+            await handler(cloneBeforeInvocationEvent(event)),
+          );
+          if (result?.block === true) {
+            return { allowed: false, reason: result.reason };
+          }
+        } catch (error) {
+          const message = errorMessage(error);
+          emitLog("warn", `invocation handler failed: ${message}`);
+          return {
+            allowed: false,
+            reason: `Plugin "${pluginId}" invocation handler failed: ${message}`,
+          };
+        }
+      }
+      return { allowed: true };
     },
     submitInteraction(id, value) {
       const pending = pendingInteractions.get(id);

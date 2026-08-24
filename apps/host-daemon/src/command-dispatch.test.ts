@@ -175,6 +175,15 @@ function createRuntime(): FakeDispatchRuntime {
       hostedThreadIds.add(args.threadId);
       return { providerThreadId: "provider-thread-1" };
     }),
+    reloadThread: vi.fn(
+      async (args: { providerThreadId: string; threadId: string }) => {
+        hostedThreadIds.add(args.threadId);
+        return {
+          status: "reloaded" as const,
+          providerThreadId: args.providerThreadId,
+        };
+      },
+    ),
     runTurn: vi.fn(async () => undefined),
     steerTurn: vi.fn(async () => ({ status: "steered" as const })),
     stopThread: vi.fn(async (args: { threadId: string }) => {
@@ -182,6 +191,7 @@ function createRuntime(): FakeDispatchRuntime {
       hostedThreadIds.delete(args.threadId);
       return { providerCheckpointId: null };
     }),
+    applyExtensionAction: vi.fn(async () => ({ applied: true })),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     renameThread: vi.fn(async () => undefined),
     archiveThread: vi.fn(async () => undefined),
@@ -190,6 +200,7 @@ function createRuntime(): FakeDispatchRuntime {
       models: [],
       selectedOnlyModels: [],
     })),
+    listProviderCommands: vi.fn(async () => ({ supported: false as const })),
     providerHealth: vi.fn(async () => ({ supported: false as const })),
     providerUsage: vi.fn(async () => ({ supported: false as const })),
     providerInstallationStatus: vi.fn(async () => {

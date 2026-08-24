@@ -13,14 +13,17 @@ import {
   type RefObject,
 } from "react";
 import type {
+  ComposerEscapeBehavior,
   PromptTextMention,
   ThreadRuntimeDisplayStatus,
   ThreadTimelineActivePromptMode,
 } from "@bb/domain";
 import type { ComposerView, PluginComposerScope } from "@get-bb/plugin-sdk";
+import type { ThreadTimelineExtensionState } from "@bb/server-contract";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { isKeyboardFocusTarget } from "@/components/layout/useMobileVisualViewportHeight";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
+import { PluginProviderExtensionStates } from "@/components/plugin/PluginProviderExtensionStates";
 import {
   PluginComposerHostProvider,
   PluginComposerViewProvider,
@@ -161,6 +164,7 @@ export interface FollowUpComposerProps {
    * for queue. False preserves the default Enter-to-queue behavior.
    */
   steerActiveThreadOnEnter: boolean;
+  composerEscapeBehavior: ComposerEscapeBehavior;
   submitMode: FollowUpSubmitMode;
   /** Used by the scroll-to-bottom button to know whether the runtime is actively streaming. */
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
@@ -214,6 +218,12 @@ export interface FollowUpPromptBoxProps {
   suppressPluginComposerCustomizations?: boolean;
   /** Optional transient draft host exposed to plugin composer hooks. */
   pluginComposerHost?: PluginComposerHost | null;
+  /** Current provider-extension state rendered by its owning plugin. */
+  providerExtensionState?: {
+    extensionStates: readonly ThreadTimelineExtensionState[];
+    providerId: string;
+    threadId: string;
+  };
   /** Active scope used to filter and lifecycle-key plugin banner slots. */
   pluginComposerScope?: PluginComposerScope | null;
   textEffects?: readonly ComposerTextEffectSource[];
@@ -310,6 +320,7 @@ function FollowUpPromptBoxWithComposer({
   suppressPluginComposerCustomizations,
   pluginComposerHost,
   pluginComposerScope,
+  providerExtensionState,
   textEffects,
   collapseResetKey,
   focusEndKey,
@@ -749,6 +760,7 @@ function FollowUpPromptBoxWithComposer({
         mentionMenuPlacement="top"
         submission={{
           onStop: onStopRuntime,
+          escapeBehavior: composer.composerEscapeBehavior,
           isSubmitting: composer.isFollowUpSubmitting || isStopping,
           disabled:
             !canSubmit ||
@@ -816,6 +828,7 @@ function FollowUpPromptBoxWithComposer({
           hasPluginComposerScope={composerScope !== null}
           isPrimaryComposer={isPrimaryComposer}
           pendingInteraction={pendingInteraction}
+          providerExtensionState={providerExtensionState}
           showScrollToBottomButton={showScrollToBottomButton}
           stack={stack}
           stackRef={stackRef}
@@ -831,6 +844,7 @@ interface DefaultFollowUpComposerProps {
   hasPluginComposerScope: boolean;
   isPrimaryComposer: boolean;
   pendingInteraction?: ReactNode;
+  providerExtensionState?: FollowUpPromptBoxProps["providerExtensionState"];
   showScrollToBottomButton: boolean;
   stack: ReactNode | null;
   stackRef: RefObject<HTMLDivElement | null>;
@@ -843,6 +857,7 @@ function DefaultFollowUpComposer({
   hasPluginComposerScope,
   isPrimaryComposer,
   pendingInteraction = null,
+  providerExtensionState,
   showScrollToBottomButton,
   stack,
   stackRef,
@@ -864,9 +879,21 @@ function DefaultFollowUpComposer({
           ) : (
             stack
           )}
+          {providerExtensionState ? (
+            <PluginProviderExtensionStates
+              {...providerExtensionState}
+              placement="aboveEditor"
+            />
+          ) : null}
           {pendingInteraction}
         </div>
         <div data-follow-up-composer-anchor="">{composerElement}</div>
+        {providerExtensionState ? (
+          <PluginProviderExtensionStates
+            {...providerExtensionState}
+            placement="belowEditor"
+          />
+        ) : null}
       </div>
     </>
   );

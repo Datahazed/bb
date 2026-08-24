@@ -53,6 +53,11 @@ export interface PiRpcSessionOptions {
   extensionPath: string;
   recordThreadId: string;
   /**
+   * Where pi's `extension_ui_request` lines go (dialogs and state updates an
+   * extension raises through `ctx.ui`); without it every dialog is cancelled.
+   */
+  onExtensionUiRequest?: (request: Record<string, unknown>) => void;
+  /**
    * Spawn without a session file (`--no-session`): a helper that only needs
    * the extension's in-process SDK access (forks) and must not append to any
    * session on disk.
@@ -191,6 +196,18 @@ export class PiRpcSession {
   }
 
   /**
+   * Answer a dialog an extension raised (`extension_ui_request`). A child
+   * that is gone gets nothing: pi's own timeout or exit settled the dialog.
+   */
+  respondToExtensionUi(response: Record<string, unknown>): void {
+    const child = this.child;
+    if (!child || child.exited) {
+      return;
+    }
+    child.send({ type: "extension_ui_response", ...response });
+  }
+
+  /**
    * Spawn the child with the model and thinking level as flags, probe
    * readiness (`get_state` answered AND the extension's `ready`), and verify
    * pi runs the requested model. A mismatch right after start is the
@@ -282,6 +299,12 @@ export class PiRpcSession {
       onChannelMessage: (message) => {
         if (child === this.child) this.handleChannelMessage(message);
       },
+      onExtensionUiRequest:
+        this.options.onExtensionUiRequest === undefined
+          ? null
+          : (request) => {
+              if (child === this.child) this.options.onExtensionUiRequest?.(request);
+            },
       onExit: (info) => {
         for (const file of scratchFiles) rmSync(file, { force: true });
         if (child === this.child) this.handleExit(info);

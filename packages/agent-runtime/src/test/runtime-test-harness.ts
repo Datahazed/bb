@@ -177,7 +177,9 @@ type LaunchBearingMethod =
   | "resumeThread"
   | "archiveThread"
   | "unarchiveThread"
+  | "reloadThread"
   | "listModels"
+  | "listProviderCommands"
   | "providerHealth"
   | "providerUsage"
   | "providerInstallationStatus"
@@ -223,6 +225,7 @@ export function withBridgeLaunch(
     archiveThread: (args) => runtime.archiveThread({ bridgeLaunch, ...args }),
     unarchiveThread: (args) =>
       runtime.unarchiveThread({ bridgeLaunch, ...args }),
+    reloadThread: (args) => runtime.reloadThread({ bridgeLaunch, ...args }),
     listModels: (args) => runtime.listModels({ bridgeLaunch, ...args }),
     providerHealth: (args) => runtime.providerHealth({ bridgeLaunch, ...args }),
     providerUsage: (args) => runtime.providerUsage({ bridgeLaunch, ...args }),
@@ -230,6 +233,8 @@ export function withBridgeLaunch(
       runtime.providerInstallationStatus({ bridgeLaunch, ...args }),
     providerInstallationRun: (args) =>
       runtime.providerInstallationRun({ bridgeLaunch, ...args }),
+    listProviderCommands: (args) =>
+      runtime.listProviderCommands({ bridgeLaunch, ...args }),
   };
 }
 

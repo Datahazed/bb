@@ -222,7 +222,9 @@ function QuestionInputBlock({
           editable={!disabled}
           autoCapitalize="sentences"
           onChangeText={onFreeTextChange}
-          placeholder="Type your own answer…"
+          placeholder={
+            question.experimental_placeholder ?? "Type your own answer…"
+          }
           className="mt-2 max-h-40 bg-surface-raised"
           testID="question-free-text"
         />

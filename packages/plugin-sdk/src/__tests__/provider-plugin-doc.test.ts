@@ -98,9 +98,9 @@ const REGISTRATION_FIELDS = {
 } as const satisfies Record<string, DeclarationPath | Gap>;
 
 type DeclarationGapKeys = {
-  [K in keyof typeof REGISTRATION_FIELDS]: (typeof REGISTRATION_FIELDS)[K] extends Gap
-    ? K
-    : never;
+  [
+    K in keyof typeof REGISTRATION_FIELDS
+  ]: (typeof REGISTRATION_FIELDS)[K] extends Gap ? K : never;
 }[keyof typeof REGISTRATION_FIELDS];
 type DeclarationGapsNotLanded = Extract<
   DeclarationGapKeys,

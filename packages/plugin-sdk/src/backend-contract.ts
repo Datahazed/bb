@@ -12,7 +12,9 @@ import type { JsonValue } from "./json-value.js";
 import type {
   PluginRpcContract,
   PluginRpcHandlers,
+  PluginRpcResult,
   StandardSchemaV1,
+  StandardSchemaV1InferInput,
 } from "./rpc-contract.js";
 import type {
   ExperimentalHostClient,
@@ -175,6 +177,33 @@ export type PluginThreadEventName = keyof PluginThreadEventPayloads;
 export type PluginThreadEventHandler<E extends PluginThreadEventName> = (
   payload: PluginThreadEventPayloads[E],
 ) => void | Promise<void>;
+
+export type PluginBeforeInvocationEvent =
+  | {
+      kind: "cli";
+      argv: readonly string[];
+      cwd: string;
+      threadId: string | null;
+      projectId: string | null;
+      signal: AbortSignal;
+    }
+  | {
+      kind: "agent-tool";
+      name: string;
+      input: unknown;
+      threadId: string;
+      projectId: string;
+      signal: AbortSignal;
+    };
+
+export type PluginBeforeInvocationResult = void | {
+  block: true;
+  reason: string;
+};
+
+export type PluginBeforeInvocationHandler = (
+  event: PluginBeforeInvocationEvent,
+) => PluginBeforeInvocationResult | Promise<PluginBeforeInvocationResult>;
 
 // ---------------------------------------------------------------------------
 // Wire surfaces: HTTP, rpc, realtime (design §4.6/§4.7).
@@ -625,13 +654,16 @@ export interface PluginProviderOptionDescriptor {
  * Payload schemas for one extension kind this provider emits, keyed by the
  * kind's local name (the server prefixes the plugin id to form the
  * namespaced `"<pluginId>/<name>"`). `item` validates `item.open` payloads
- * with `type: "extension"`, `state` validates `extension.state` payloads;
- * each is optional so a kind can be item-only or state-only. Schemas are
- * Standard Schema v1 validators (zod 4 schemas qualify).
+ * with `type: "extension"`, `state` validates `extension.state` payloads,
+ * and `experimental_action` validates app-to-bridge actions for that state.
+ * Each is optional so a kind declares only the surfaces it supports. Schemas
+ * are Standard Schema v1 validators (zod 4 schemas qualify).
  */
 export interface PluginProviderExtensionKindDeclaration {
   item?: StandardSchemaV1;
   state?: StandardSchemaV1;
+  /** Experimental: see docs/api_to_audit.md. */
+  experimental_action?: StandardSchemaV1;
 }
 
 /**
@@ -960,6 +992,16 @@ export interface PluginAgents {
  * registration; `bb.agents` keeps `configure`, `registerTool`, and
  * `contributeInstructions`.
  */
+export interface ExperimentalProviderBridgeClient<
+  Contract extends PluginRpcContract,
+> {
+  call<MethodName extends keyof Contract & string>(
+    method: MethodName,
+    input: StandardSchemaV1InferInput<Contract[MethodName]["input"]>,
+    options: { readonly hostId: string; readonly signal?: AbortSignal },
+  ): Promise<PluginRpcResult<Contract[MethodName]>>;
+}
+
 export interface PluginProviders {
   /**
    * Register an agent provider this plugin contributes (see
@@ -977,6 +1019,25 @@ export interface PluginProviders {
   register(declaration: PluginProviderDeclaration): {
     dispose(): void;
   };
+  /**
+   * Create a typed client for one provider this plugin owns. Calls route to
+   * that provider's bridge on an explicit host; core validates JSON framing
+   * but never interprets the provider-owned method or payload.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_client<Contract extends PluginRpcContract>(args: {
+    providerId: string;
+    contract: Contract;
+  }): ExperimentalProviderBridgeClient<Contract>;
+  /**
+   * Clear cached model catalogs and notify clients after this plugin changes
+   * native model preferences on one host.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_modelsChanged(args: {
+    providerId: string;
+    hostId: string;
+  }): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -1057,6 +1118,17 @@ export interface PluginEvents {
   on<E extends PluginThreadEventName>(
     event: E,
     handler: PluginThreadEventHandler<E>,
+  ): void;
+  /**
+   * Run before any executable `bb` CLI command or BB-defined agent tool.
+   * Handlers run in plugin and registration order. Returning `{ block: true,
+   * reason }` stops the chain and blocks the invocation. A throwing or
+   * malformed handler also blocks it. Event values are inspection-only.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  on(
+    event: "experimental_invocation.before",
+    handler: PluginBeforeInvocationHandler,
   ): void;
 }
 

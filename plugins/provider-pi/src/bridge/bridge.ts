@@ -29,6 +29,8 @@ import {
   createPendingToolCallTracker,
   decodeBridgeJsonRpcResponse,
   experimental_defineProviderBridge,
+  experimental_providerCommandListParamsSchema,
+  experimental_providerCustomCallParamsSchema,
   initializeParamsSchema,
   providerInstallationRunParamsSchema,
   providerInstallationStatusParamsSchema,
@@ -57,6 +59,27 @@ import {
   type PiSessionParams,
 } from "../session-params.js";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
+import {
+  buildPiExtensionDialog,
+  isPiExtensionDialogRequest,
+  piExtensionUiRequestSchema,
+  type PiExtensionUiResponse,
+} from "./extension-dialogs.js";
+import {
+  PI_EXTENSION_UI_STATE_KIND,
+  createPiExtensionStateController,
+  type PiExtensionStateController,
+  type PiExtensionUIState,
+} from "./extension-state.js";
+import { readPiModelSettings, writePiEnabledModels } from "./model-settings.js";
+import { buildScopedPiAvailableModels, resolvePiEnabledModelIds } from "./model-scope.js";
+import {
+  createPiPendingInteractionTracker,
+  type PiBridgeInteractionCancelNotification,
+  type PiBridgeInteractionRequest,
+  type PiPendingInteractionTracker,
+} from "./pending-interaction-tracker.js";
+import { readPiEnabledModelPatterns } from "./settings-storage.js";
 import {
   getPiInstallGate,
   getPiProviderInstallationRun,
@@ -90,6 +113,14 @@ const piCommandSchema = z.discriminatedUnion("method", [
     params: initializeParamsSchema,
   }),
   z.object({ method: z.literal("model/list"), params: modelListParamsSchema }),
+  z.object({
+    method: z.literal("provider/custom"),
+    params: experimental_providerCustomCallParamsSchema,
+  }),
+  z.object({
+    method: z.literal("command/list"),
+    params: experimental_providerCommandListParamsSchema,
+  }),
   z.object({
     method: z.literal("provider/health"),
     params: providerMaintenanceParamsSchema,
@@ -181,6 +212,14 @@ interface CurrentThreadSessionArgs {
 
 interface ThreadSession {
   session: PiRpcSession;
+  /** The questions this session's extensions have open in bb. */
+  interactions: PiPendingInteractionTracker;
+  /** What this session's extensions put beside the composer. */
+  extensionState: PiExtensionStateController;
+  /** The last snapshot, replayed once identity is announced. */
+  lastExtensionState: PiExtensionUIState | null;
+  /** Identity announced: `thread/delta` may carry this session's state. */
+  announced: boolean;
   sessionSerial: number;
   closing: boolean;
   providerThreadId: string;
@@ -189,6 +228,7 @@ interface ThreadSession {
 }
 
 let sessionSerialCounter = 0;
+let interactionRequestCounter = 0;
 /**
  * The whole stop exchange (abort, in-process leaf read, EOF) fits here, well
  * under the runtime's 30 s request budget.
@@ -196,7 +236,10 @@ let sessionSerialCounter = 0;
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 8_000;
 
 const { send, sendResult, sendError } = createBridgeIo<
-  BridgeEventNotification | BridgeToolCallRequest
+  | BridgeEventNotification
+  | BridgeToolCallRequest
+  | PiBridgeInteractionRequest
+  | PiBridgeInteractionCancelNotification
 >();
 
 const sessions = new Map<string, ThreadSession>();
@@ -273,7 +316,12 @@ async function closeThreadSession(args: {
   if (!threadSession) {
     return;
   }
+  // The state belongs to this session: the null snapshot goes out while
+  // this generation is still current, so it reaches persistence; anything
+  // the child still emits after `closing` flips is fenced off below.
+  threadSession.extensionState.clear();
   threadSession.closing = true;
+  threadSession.interactions.cancel(args.message);
   resolvePendingToolCalls(threadSession, args.message);
   const closePromise = Promise.resolve()
     .then(() => threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS))
@@ -308,6 +356,102 @@ function sendThreadDeltas(threadId: string, deltas: readonly ThreadDelta[]): voi
     method: THREAD_DELTA_NOTIFICATION_METHOD,
     params: { threadId, deltas: [...deltas] },
   });
+}
+
+function sendPiExtensionState(threadId: string, state: PiExtensionUIState | null): void {
+  sendThreadDeltas(threadId, [
+    { kind: "extension.state", extensionKind: PI_EXTENSION_UI_STATE_KIND, payload: state },
+  ]);
+}
+
+function updatePiExtensionState(
+  args: CurrentThreadSessionArgs,
+  state: PiExtensionUIState | null,
+): void {
+  const threadSession = sessions.get(args.threadId);
+  // A clear runs while the session closes; later callbacks are fenced.
+  if (!threadSession || threadSession.sessionSerial !== args.sessionSerial) {
+    return;
+  }
+  threadSession.lastExtensionState = state;
+  if (threadSession.announced) {
+    sendPiExtensionState(args.threadId, state);
+  }
+}
+
+/**
+ * A dialog an extension raised: asked in bb as one thread-scoped user
+ * question, answered back to pi as the matching `extension_ui_response`.
+ * Pi's own timeout (`request.timeout`) settles the dialog on its side with
+ * the default answer, so bb's question is withdrawn at the same moment
+ * rather than left open for an answer nobody will read.
+ */
+function requestExtensionDialog(
+  args: CurrentThreadSessionArgs,
+  threadSession: ThreadSession,
+  request: Parameters<typeof buildPiExtensionDialog>[0],
+): void {
+  interactionRequestCounter += 1;
+  const dialog = buildPiExtensionDialog(request, `pi-extension-ui-${interactionRequestCounter}`);
+  const pending = threadSession.interactions.request(dialog.payload);
+  const timeout =
+    "timeout" in request && typeof request.timeout === "number" && request.timeout > 0
+      ? setTimeout(
+          () => pending.cancel("Pi extension dialog timed out"),
+          request.timeout,
+        )
+      : null;
+  timeout?.unref?.();
+  const answer = (response: PiExtensionUiResponse): void => {
+    if (timeout !== null) clearTimeout(timeout);
+    if (getCurrentThreadSession(args) !== threadSession) {
+      return;
+    }
+    threadSession.session.respondToExtensionUi(response);
+  };
+  void pending.response.then(
+    (resolution) => answer(dialog.toResponse(resolution)),
+    () => answer({ id: request.id, cancelled: true }),
+  );
+}
+
+function handleExtensionUiRequest(args: CurrentThreadSessionArgs, raw: unknown): void {
+  const threadSession = getCurrentThreadSession(args);
+  if (!threadSession) {
+    return;
+  }
+  const parsed = piExtensionUiRequestSchema.safeParse(raw);
+  if (!parsed.success) {
+    // A dialog bb does not know how to ask is cancelled, never left hanging.
+    const id = typeof (raw as { id?: unknown }).id === "string" ? (raw as { id: string }).id : null;
+    if (id !== null) {
+      threadSession.session.respondToExtensionUi({ id, cancelled: true });
+    }
+    return;
+  }
+  const request = parsed.data;
+  if (isPiExtensionDialogRequest(request)) {
+    requestExtensionDialog(args, threadSession, request);
+    return;
+  }
+  const ui = threadSession.extensionState.ui;
+  switch (request.method) {
+    case "notify":
+      ui.notify(request.message, request.notifyType);
+      return;
+    case "setStatus":
+      ui.setStatus(request.statusKey, request.statusText);
+      return;
+    case "setWidget":
+      ui.setWidget(request.widgetKey, request.widgetLines, request.widgetPlacement);
+      return;
+    case "setTitle":
+      ui.setTitle(request.title);
+      return;
+    case "set_editor_text":
+      ui.setEditorText(request.text);
+      return;
+  }
 }
 
 function emitForSession(
@@ -503,6 +647,12 @@ async function handleRequest(request: PiCommand & { id: string | number }): Prom
     case "model/list":
       await handleModelList(request.id, request.params);
       break;
+    case "provider/custom":
+      await handleCustomCall(request.id, request.params);
+      break;
+    case "command/list":
+      await handleCommandList(request.id, request.params);
+      break;
     case "provider/health":
       await handleProviderHealth(request.id, request.params);
       break;
@@ -598,9 +748,78 @@ async function handleModelList(id: string | number, params: { cwd?: string }): P
     return;
   }
   try {
-    const catalog = await getPiCatalog(params.cwd ?? process.cwd(), requireExtensionPath());
+    const cwd = params.cwd ?? process.cwd();
+    const catalog = await getPiCatalog(cwd, requireExtensionPath());
     contextWindows.learn(await catalog.rawModels());
-    sendResult(id, await catalog.listModels());
+    // Pi's own `enabledModels` scope: the picker leads with what pi cycles
+    // through, in pi's order; the rest stay selectable but out of the picker.
+    const models = await catalog.catalogModels();
+    sendResult(
+      id,
+      buildScopedPiAvailableModels({
+        models,
+        enabledModelIds: resolvePiEnabledModelIds(
+          readPiEnabledModelPatterns({ cwd: params.cwd ?? null }),
+          models,
+        ),
+      }),
+    );
+  } catch (error) {
+    sendError(id, -32000, error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * The plugin's own bridge RPC (`bb.providers.experimental_client`): Pi's
+ * host-local enabled-model preference, read and written on this host. The
+ * catalog is the process cwd's: the global settings file is what is edited,
+ * and the authenticated models do not depend on a workspace.
+ */
+async function handleCustomCall(
+  id: string | number,
+  params: z.infer<typeof experimental_providerCustomCallParamsSchema>,
+): Promise<void> {
+  try {
+    const catalog = await getPiCatalog(process.cwd(), requireExtensionPath());
+    const models = await catalog.catalogModels();
+    if (params.method === "model-settings/read") {
+      if (params.input !== null) {
+        throw new Error("model-settings/read input must be null");
+      }
+      sendResult(id, { result: readPiModelSettings(models) });
+      return;
+    }
+    if (params.method === "model-settings/write") {
+      const input = z
+        .object({ enabledModelIds: z.array(z.string().min(1)).nullable() })
+        .strict()
+        .parse(params.input);
+      sendResult(id, { result: writePiEnabledModels(models, input.enabledModelIds) });
+      return;
+    }
+    sendError(id, BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND, "Unknown Pi custom method");
+  } catch (error) {
+    sendError(id, -32000, error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Sessionless command discovery: the commands pi's resources register for
+ * the workspace, listed by the cwd's catalog child (`get_commands`). Partial
+ * answers are pi's: an extension that fails to load is reported on pi's
+ * stderr (the runtime logs it) and the healthy ones are listed.
+ */
+async function handleCommandList(
+  id: string | number,
+  params: z.infer<typeof experimental_providerCommandListParamsSchema>,
+): Promise<void> {
+  if (params.providerId !== "pi") {
+    sendResult(id, { supported: false });
+    return;
+  }
+  try {
+    const catalog = await getPiCatalog(params.cwd, requireExtensionPath());
+    sendResult(id, { supported: true, commands: await catalog.listCommands(), diagnostics: [] });
   } catch (error) {
     sendError(id, -32000, error instanceof Error ? error.message : String(error));
   }
@@ -732,14 +951,33 @@ async function startPiThreadSession(
     });
   }
   const sessionSerial = nextSessionSerial();
+  const sessionArgs: CurrentThreadSessionArgs = { sessionSerial, threadId };
   const session = new PiRpcSession(
-    await buildSessionOptions({ params, providerThreadId, threadId }),
+    {
+      ...(await buildSessionOptions({ params, providerThreadId, threadId })),
+      onExtensionUiRequest: (request) => handleExtensionUiRequest(sessionArgs, request),
+    },
     createForwardToolCall(() => threadId),
-    createOnPiEvent({ sessionSerial, threadId }),
-    createOnSessionDone({ sessionSerial, threadId }),
+    createOnPiEvent(sessionArgs),
+    createOnSessionDone(sessionArgs),
   );
   const threadSession: ThreadSession = {
     session,
+    interactions: createPiPendingInteractionTracker({
+      nextRequestId: () => {
+        interactionRequestCounter += 1;
+        return `pi-interaction-${interactionRequestCounter}`;
+      },
+      providerThreadId,
+      send,
+      sendCancel: send,
+      threadId,
+    }),
+    extensionState: createPiExtensionStateController((state) =>
+      updatePiExtensionState(sessionArgs, state),
+    ),
+    lastExtensionState: null,
+    announced: false,
     sessionSerial,
     closing: false,
     providerThreadId,
@@ -774,6 +1012,13 @@ function sendThreadSessionResult(
   sendThreadIdentity(threadId, providerThreadId);
   piDeltaTranslator.resetThread(threadId);
   sendThreadDeltas(threadId, [{ kind: "session.reset" }]);
+  const threadSession = sessions.get(threadId);
+  if (threadSession) {
+    threadSession.announced = true;
+    // One snapshot after the reset: it clears what an older session left
+    // and replays what this one's extensions set while identity was pending.
+    sendPiExtensionState(threadId, threadSession.lastExtensionState);
+  }
   sendResult(id, { providerThreadId, sessionRestorable: true });
 }
 
@@ -991,8 +1236,15 @@ function extractInput(input: TurnStartParams["input"]): ExtractedInput {
 
 function handleParsedMessage(parsed: unknown): void {
   const response = decodeBridgeJsonRpcResponse(parsed);
-  if (response && handleToolCallResponse(response)) {
-    return;
+  if (response) {
+    if (handleToolCallResponse(response)) {
+      return;
+    }
+    for (const threadSession of sessions.values()) {
+      if (threadSession.interactions.handleResponse(response)) {
+        return;
+      }
+    }
   }
   const decoded = decodePiJsonRpcRequest(parsed);
   if (decoded.kind === "ignored") {

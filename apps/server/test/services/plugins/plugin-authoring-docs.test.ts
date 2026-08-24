@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   type BbPluginApi,
+  type ExperimentalChangesViewProps,
+  type ExperimentalProviderExtensionStateProps,
+  type ExperimentalSidebarNavigationProps,
   type PluginAppBuilder,
   type PluginAppSlots,
   type PluginContentScriptContext,
@@ -137,7 +140,9 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.archived": ["thread"],
   "thread.deleted": ["thread"],
 } as const satisfies {
-  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [
+    E in keyof PluginThreadEventPayloads
+  ]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -166,11 +171,13 @@ type SlotPropsByName = {
   experimental_newThreadPanelAction: PluginNewThreadPanelProps;
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
+  experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   fileOpener: PluginFileOpenerProps;
   experimental_sourceCodeRenderer: PluginSourceCodeRendererProps;
   experimental_diffRenderer: PluginDiffRendererProps;
+  experimental_changesView: ExperimentalChangesViewProps;
   messageDirective: PluginMessageDirectiveProps;
   messageAction: PluginMessageActionContext;
   commandPaletteAction: PluginCommandPaletteActionContext;
@@ -178,6 +185,7 @@ type SlotPropsByName = {
   // registration type is the documented surface.
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
+  experimental_providerExtensionState: ExperimentalProviderExtensionStateProps;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -231,12 +239,19 @@ void _assertAllContentScriptRegistrationFieldsListed;
 
 const FRONTEND_SLOT_PROP_FIELDS = {
   homepageSection: ["projectId"],
-  settingsSection: [],
+  settingsSection: ["experimental_hostId"],
   navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
   experimental_newThreadPanelAction: ["projectId", "params"],
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
+  experimental_sidebarNavigation: [
+    "items",
+    "activeItemId",
+    "isCompactViewport",
+    "experimental_activate",
+    "experimental_Original",
+  ],
   experimental_threadList: [
     "activeThreadId",
     "activeProjectId",
@@ -270,6 +285,12 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "Original",
     "experimental_Original",
   ],
+  experimental_changesView: [
+    "threadId",
+    "environmentId",
+    "experimental_target",
+    "experimental_Original",
+  ],
   messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
   messageAction: ["threadId", "message", "selectedText", "openPanel"],
   commandPaletteAction: ["threadId", "projectId", "openPanel"],
@@ -280,6 +301,15 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "presentation",
     "thread",
     "Original",
+  ],
+  experimental_providerExtensionState: [
+    "threadId",
+    "providerId",
+    "kind",
+    "payload",
+    "sourceSeq",
+    "placement",
+    "experimental_dispatchAction",
   ],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
@@ -416,6 +446,13 @@ describe("bb-plugin-authoring skill", () => {
 
   it("has frontmatter naming the skill after its directory", () => {
     expect(skill).toMatch(/^---\nname: bb-plugin-authoring\n/);
+  });
+
+  it("documents blocking invocation events and their execution boundary", () => {
+    expect(skill).toContain("experimental_invocation.before");
+    expect(skill).toContain("The first `{ block: true, reason }` stops it");
+    expect(skill).toContain("CLI preflight asks the server once per command");
+    expect(skill).toContain("Provider-native tools");
   });
 
   it("documents every BbPluginApi property", () => {
