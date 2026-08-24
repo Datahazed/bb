@@ -3,7 +3,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import {
-  hostProviderCliStatusQueryKey,
   systemCliSkillsQueryKey,
   systemVersionQueryKey,
 } from "@/lib/query/query-keys";
@@ -12,6 +11,7 @@ import {
   useHostsProviderCliStatus,
   useServerProtocolVersion,
 } from "../hosts/host-queries";
+import { recheckHostProviderCliStatus } from "../hosts/recheck-provider-cli-status";
 import { useSystemConfig, useSystemVersion } from "../system/system-queries";
 import {
   buildUpdateInventory,
@@ -76,22 +76,20 @@ export function useUpdateInventory(
 /**
  * "Check for updates": bypass the server's npm cache
  * (`GET /system/version?force=true`), write the answer into the version
- * cache, and re-ask every connected machine for its provider CLIs and CLI
- * skills.
+ * cache, re-probe every connected machine's provider CLIs past the server's
+ * status memo (`?force=true`), and re-ask for CLI skills.
  */
 export function useCheckForUpdates() {
-  const { sdk } = useProfileClient();
+  const client = useProfileClient();
   const queryClient = useQueryClient();
   return useMutation<SystemVersionResponse, Error, readonly string[]>({
     meta: { errorMessage: "The update check did not complete." },
     mutationFn: async (connectedHostIds) => {
-      const version = await sdk.system.version({ force: true });
+      const version = await client.sdk.system.version({ force: true });
       queryClient.setQueryData(systemVersionQueryKey(), version);
       await Promise.all([
         ...connectedHostIds.map((hostId) =>
-          queryClient.invalidateQueries({
-            queryKey: hostProviderCliStatusQueryKey(hostId),
-          }),
+          recheckHostProviderCliStatus(client, queryClient, hostId),
         ),
         queryClient.invalidateQueries({ queryKey: systemCliSkillsQueryKey() }),
       ]);

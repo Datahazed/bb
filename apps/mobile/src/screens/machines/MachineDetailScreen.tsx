@@ -14,6 +14,7 @@ import {
   PRIMARY_HOST_REMOVE_DISABLED_REASON,
   providerCliIssues,
   useHostProviderCliStatus,
+  useRecheckHostProviderCliStatus,
   useHosts,
   useProviderCliInstallRunner,
   useRemoveHost,
@@ -81,6 +82,7 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
   const online = host?.status === "connected";
 
   const statusQuery = useHostProviderCliStatus(online ? hostId : null);
+  const recheckProviderClis = useRecheckHostProviderCliStatus();
   const serverProtocolVersion = useServerProtocolVersion();
   const runner = useProviderCliInstallRunner();
   const updateCeiling = useUpdateHostPermissionCeiling();
@@ -278,7 +280,7 @@ function ConnectedMachineDetailScreen({ hostId }: { hostId: string }) {
                 accessibilityLabel="Recheck provider CLIs"
                 hitSlop={8}
                 disabled={statusQuery.isFetching}
-                onPress={() => void statusQuery.refetch()}
+                onPress={() => void recheckProviderClis(hostId)}
                 testID="machine-provider-clis-refresh"
               >
                 {statusQuery.isFetching ? (

@@ -285,10 +285,13 @@ export function registerHostRoutes(
     return context.json(result);
   });
 
-  get(routes.providerCliStatus, async (context) => {
+  get(routes.providerCliStatus, async (context, query) => {
     const hostId = context.req.param("id");
     assertUsableHostId(deps, { hostId });
-    const result = await getProviderInstallations(deps, { hostId });
+    const result = await getProviderInstallations(deps, {
+      hostId,
+      force: query.force === "true",
+    });
     return context.json(result);
   });
 
@@ -325,11 +328,13 @@ export function registerHostRoutes(
         bridgeLaunch,
       },
     }).finally(() => {
-      // An install or update changes what the host has, so the next roster
-      // and model-list reads must probe again rather than replay the
-      // pre-install answer (for the model list, a memoized missing_executable
-      // failure). Also cleared on failure: a half-finished install costs only
-      // one re-probe.
+      // An install or update changes what the host has, so the next CLI
+      // status, roster, and model-list reads must probe again rather than
+      // replay the pre-install answer (for the model list, a memoized
+      // missing_executable failure). The app's post-install invalidation
+      // relies on this rather than passing force. Also cleared on failure: a
+      // half-finished install costs only one re-probe.
+      deps.lifecycleDedupers.providerInstallationStatus.clear();
       deps.lifecycleDedupers.installedProviderProbe.clear();
       deps.lifecycleDedupers.providerModelList.clear();
     });

@@ -67,6 +67,30 @@ describe("bb machine command output", () => {
     ]);
   });
 
+  it("bb machine provider-cli status serves the cached status unless --force re-probes", async () => {
+    const status = vi.fn(async () => ({}));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.provider-clis.status.$get": status,
+    });
+
+    await runCommand(["machine", "provider-cli", "status", "laptop"], register);
+    expect(status).toHaveBeenCalledWith({
+      param: { id: "host-remote" },
+      query: {},
+    });
+
+    status.mockClear();
+    await runCommand(
+      ["machine", "provider-cli", "status", "laptop", "--force"],
+      register,
+    );
+    expect(status).toHaveBeenCalledWith({
+      param: { id: "host-remote" },
+      query: { force: "true" },
+    });
+  });
+
   it("bb machine retry-update resolves the machine and requests a retry", async () => {
     const retryUpdate = vi.fn(async () => ({ ok: true as const }));
     stubServerApi({

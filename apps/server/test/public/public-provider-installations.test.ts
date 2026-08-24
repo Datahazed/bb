@@ -10,7 +10,7 @@ import { ApiError } from "../../src/errors.js";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
-import { seedHostSession } from "../helpers/seed.js";
+import { seedHostSession, seedSession } from "../helpers/seed.js";
 import { type TestAppHarness, withTestHarness } from "../helpers/test-app.js";
 
 const API = "/api/v1";
@@ -230,6 +230,175 @@ describe("public provider installation routes", () => {
         },
         "Failed to load provider installation status; omitting provider",
       );
+    });
+  });
+
+  it("serves repeat status reads from the memo until force re-probes", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-memo-host",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: handleProviderInstallationRpc,
+      });
+      const statusRequests = () =>
+        responder.requests.filter(
+          (request) => request.command.type === "provider.installation.status",
+        );
+
+      const first = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status`,
+      );
+      const second = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status`,
+      );
+      expect(first.status).toBe(200);
+      expect(await readJson(second)).toEqual(await readJson(first));
+      // Four installation-capable providers, probed once each.
+      expect(statusRequests()).toHaveLength(4);
+
+      const forced = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status?force=true`,
+      );
+      expect(forced.status).toBe(200);
+      expect(statusRequests()).toHaveLength(8);
+
+      const explicitlyUnforced = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status?force=false`,
+      );
+      expect(explicitlyUnforced.status).toBe(200);
+      expect(statusRequests()).toHaveLength(8);
+    });
+  });
+
+  it("re-probes status after a provider CLI install", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-memo-install-host",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: handleProviderInstallationRpc,
+      });
+      const statusRequests = () =>
+        responder.requests.filter(
+          (request) => request.command.type === "provider.installation.status",
+        );
+
+      await harness.app.request(`${API}/hosts/${host.id}/provider-clis/status`);
+      expect(statusRequests()).toHaveLength(4);
+
+      const install = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/install`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ provider: "codex", actionKind: "install" }),
+        },
+      );
+      expect(install.status).toBe(200);
+
+      // The app's post-install invalidation sends no force; the route's own
+      // clear is what makes the CLI it just installed show up.
+      await harness.app.request(`${API}/hosts/${host.id}/provider-clis/status`);
+      expect(statusRequests()).toHaveLength(8);
+    });
+  });
+
+  it("does not memoize a failed status probe", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-memo-failure-host",
+      });
+      let failClaude = true;
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (
+            failClaude &&
+            request.command.type === "provider.installation.status" &&
+            request.command.providerId === "claude-code"
+          ) {
+            return {
+              ok: false,
+              errorCode: "provider_status_failed",
+              errorMessage: "provider status failed",
+            };
+          }
+          return handleProviderInstallationRpc(request);
+        },
+      });
+
+      const failed = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status`,
+      );
+      const failedBody = (await readJson(failed)) as ProviderCliStatusResponse;
+      expect(Object.keys(failedBody)).toEqual(["codex", "pi", "acp-cursor"]);
+
+      failClaude = false;
+      const recovered = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status`,
+      );
+      const recoveredBody = (await readJson(
+        recovered,
+      )) as ProviderCliStatusResponse;
+      expect(Object.keys(recoveredBody)).toEqual([
+        "codex",
+        "claude-code",
+        "pi",
+        "acp-cursor",
+      ]);
+      // Only the failed provider was asked again; the others were memoized.
+      expect(
+        responder.requests
+          .filter(
+            (request) =>
+              request.command.type === "provider.installation.status",
+          )
+          .map((request) =>
+            request.command.type === "provider.installation.status"
+              ? request.command.providerId
+              : null,
+          ),
+      ).toEqual(["codex", "claude-code", "pi", "acp-cursor", "claude-code"]);
+    });
+  });
+
+  it("re-probes status after the daemon reconnects", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "provider-installation-memo-reconnect-host",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: handleProviderInstallationRpc,
+      });
+      await harness.app.request(`${API}/hosts/${host.id}/provider-clis/status`);
+
+      // A reconnected daemon may run a different CLI: its first status read
+      // must not be answered from the previous session's memo.
+      harness.hub.unregisterDaemon(session.id);
+      const nextSession = seedSession(harness.deps, host.id);
+      const nextResponder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: nextSession.id,
+        handle: handleProviderInstallationRpc,
+      });
+
+      const response = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/status`,
+      );
+      expect(response.status).toBe(200);
+      expect(
+        nextResponder.requests.filter(
+          (request) => request.command.type === "provider.installation.status",
+        ),
+      ).toHaveLength(4);
     });
   });
 

@@ -39,8 +39,15 @@ unless you pass `--auto-update` explicitly.
   bb machine retry-update <id-or-name>    Retry a pending daemon update now
   bb machine remove <id-or-name> [--yes]  Revoke and remove a machine
   bb machine provider-cli status <machine>
+    --force                               Re-probe the machine instead of
+                                          serving the server's cached status
   bb machine provider-cli install <machine> <claudeCode|codex|cursor>
     --action <install|update>
+
+Provider CLI status is cached on the server per machine for about ten minutes
+(each probe spawns several subprocesses on the machine, including an npm
+registry lookup). A finished `provider-cli install` refreshes it; pass
+`--force` to re-probe right now.
 
 Each machine has a permission limit: the highest permission mode any thread on
 that machine can run with. The default is Full Access. A thread that asks for
@@ -60,15 +67,20 @@ CLI counterpart of Settings → Updates and the sidebar Updates badge.
   bb updates [status]                     Show bb-app and provider CLI update
                                           status for every machine
     --machine <id-or-name>                Limit to one machine
+    --force                               Re-probe each machine's provider
+                                          CLIs instead of the cached status
     --json                                Print the aggregate as JSON
   bb updates apply                        Run every available provider CLI
                                           install/update, one at a time
     --machine <id-or-name>                Limit to one machine
+    --force                               Re-probe before deciding what to run
     --json                                Print per-target results as JSON
 
 `bb updates apply` covers provider CLIs only. Update bb-app itself with the
 printed upgrade command (`npx bb-app@latest`) or the desktop app's relaunch;
-connected daemons then follow the server version automatically.
+connected daemons then follow the server version automatically. Provider CLI
+status comes from the server's per-machine cache (about ten minutes); `--force`
+re-probes every selected machine, like Settings → Updates does on open.
 
 Machine selectors accept either an exact machine ID or an unambiguous machine
 name. `--host` is an alias for `--machine`.

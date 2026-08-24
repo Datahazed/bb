@@ -112,6 +112,19 @@ export type HostPickFolderRequest = z.infer<typeof hostPickFolderRequestSchema>;
 
 export type HostPickFolderResponse = PickFolderResponse;
 
+/**
+ * Query for `GET /hosts/:id/provider-clis/status`. The server memoizes each
+ * provider's installation probe per host for a few minutes because it spawns
+ * several subprocesses (including an npm registry lookup); `force: "true"` is
+ * the manual "Check for updates" / "Recheck CLIs" path that bypasses it.
+ */
+export const hostProviderCliStatusQuerySchema = z.object({
+  force: z.enum(["true", "false"]).optional(),
+});
+export type HostProviderCliStatusQuery = z.infer<
+  typeof hostProviderCliStatusQuerySchema
+>;
+
 export type HostProviderCliStatusResponse = ProviderCliStatusResponse;
 
 export const hostProviderCliInstallRequestSchema =

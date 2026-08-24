@@ -104,6 +104,7 @@ import type {
   HostPathsExistResponse,
   HostProviderCliInstallEvent,
   HostProviderCliInstallRequest,
+  HostProviderCliStatusQuery,
   HostProviderCliStatusResponse,
   HostRetryUpdateResponse,
   ProjectAttachmentContentQuery,
@@ -250,6 +251,7 @@ import {
   hostPickFolderRequestSchema,
   hostPathsExistRequestSchema,
   hostProviderCliInstallRequestSchema,
+  hostProviderCliStatusQuerySchema,
   projectAttachmentContentQuerySchema,
   projectBranchesQuerySchema,
   projectCommandsQuerySchema,
@@ -668,7 +670,9 @@ export const publicApiRoutes = {
     providerCliStatus: defineRoute({
       path: "/hosts/:id/provider-clis/status",
       method: "get",
-      request: noRequest<PathId>(),
+      request: optionalQueryRequest<PathId, HostProviderCliStatusQuery>(
+        hostProviderCliStatusQuerySchema,
+      ),
       response: jsonResponse<HostProviderCliStatusResponse>(),
     }),
     providerCliInstall: defineRoute({

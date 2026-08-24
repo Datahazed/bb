@@ -65,7 +65,7 @@ import {
   SettingsRowList,
   SettingsSection,
 } from "@/components/ui/settings-section";
-import { invalidateHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";
+import { recheckHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";
 import { hydrateSystemVersionCache } from "@/hooks/cache-owners/system-version-cache-owner";
 import { useRetryHostUpdate } from "@/hooks/mutations/host-mutations";
 import {
@@ -1460,7 +1460,7 @@ export function UpdatesSettingsSection({
       }
       await Promise.all(
         connectedHostIds.map((hostId) =>
-          invalidateHostProviderCliStatus({ queryClient, hostId }),
+          recheckHostProviderCliStatus({ queryClient, hostId }),
         ),
       );
     });
@@ -1650,10 +1650,7 @@ export function UpdatesSettingsSection({
                 <ProviderCliCheckRow
                   machine={machine}
                   onRecheckClis={(hostId) => {
-                    void invalidateHostProviderCliStatus({
-                      queryClient,
-                      hostId,
-                    });
+                    void recheckHostProviderCliStatus({ queryClient, hostId });
                   }}
                   onOpenMachine={(hostId) =>
                     navigate(getSettingsMachineRoutePath(hostId))
@@ -1668,7 +1665,9 @@ export function UpdatesSettingsSection({
                 onStartInstall={(hostId, issue) =>
                   startInstall({ hostId, issue })
                 }
-                onOpenProvider={() => navigate(getSettingsRoutePath("providers"))}
+                onOpenProvider={() =>
+                  navigate(getSettingsRoutePath("providers"))
+                }
               />
             </MachineUpdatesSection>
           );

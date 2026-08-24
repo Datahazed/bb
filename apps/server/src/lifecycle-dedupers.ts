@@ -1,4 +1,8 @@
 import type { AvailableModel } from "@bb/domain";
+import type {
+  HostDaemonRetryableOnlineRpcCommand,
+  HostDaemonRpcResultForCommand,
+} from "@bb/host-daemon-contract";
 import {
   createAsyncDeduper,
   type AsyncDeduper,
@@ -53,10 +57,28 @@ function isMemoizableProviderModelProbeFailure(error: unknown): boolean {
  */
 const INSTALLED_PROVIDER_PROBE_MEMO_TTL_MS = 5 * 60_000;
 
+/**
+ * How long one provider's `provider.installation.status` answer is reused.
+ * The probe runs `which`, `--version`, `npm view` (network), `npm list -g` and
+ * `claude doctor` on the host — 2-3 s per request — and the app asked for it
+ * on every boot. npm dist-tags move on release cadence, so the same window as
+ * the model list is fine; a manual "Check for updates" bypasses it with
+ * `?force=true`, and the install route clears it.
+ */
+const PROVIDER_INSTALLATION_STATUS_MEMO_TTL_MS = 10 * 60_000;
+
 export interface ProviderModelListMemoValue {
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }
+
+export type ProviderInstallationStatusCommand = Extract<
+  HostDaemonRetryableOnlineRpcCommand,
+  { type: "provider.installation.status" }
+>;
+
+export type ProviderInstallationStatusMemoValue =
+  HostDaemonRpcResultForCommand<ProviderInstallationStatusCommand>;
 
 export interface LifecycleDedupers {
   environmentCleanupAdvance: AsyncDeduper<string, void>;
@@ -69,6 +91,17 @@ export interface LifecycleDedupers {
    * in `getProviderState`.
    */
   installedProviderProbe: AsyncTtlMemo<string, boolean>;
+  /**
+   * Memo for per-provider CLI installation status (`GET
+   * /hosts/:id/provider-clis/status`): the sidebar Updates badge and the
+   * compose view both asked for it at boot, and each answer spawned six
+   * subprocesses on the host. Only the raw RPC result is stored; omission on
+   * a 502/504 or the aggregate deadline stays outside the memo.
+   */
+  providerInstallationStatus: AsyncTtlMemo<
+    string,
+    ProviderInstallationStatusMemoValue
+  >;
   /**
    * Memo for host model probes: every execution-options read (each thread
    * open, focus, and reconnect) used to spawn a provider CLI on the host.
@@ -83,6 +116,12 @@ export function createLifecycleDedupers(): LifecycleDedupers {
     environmentCleanupAdvance: createAsyncDeduper<string, void>(),
     installedProviderProbe: createAsyncTtlMemo<string, boolean>({
       ttlMs: INSTALLED_PROVIDER_PROBE_MEMO_TTL_MS,
+    }),
+    providerInstallationStatus: createAsyncTtlMemo<
+      string,
+      ProviderInstallationStatusMemoValue
+    >({
+      ttlMs: PROVIDER_INSTALLATION_STATUS_MEMO_TTL_MS,
     }),
     providerModelList: createAsyncTtlMemo<string, ProviderModelListMemoValue>({
       ttlMs: PROVIDER_MODEL_LIST_MEMO_TTL_MS,

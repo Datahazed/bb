@@ -16,6 +16,7 @@ type ProviderCliStatus = HostProviderCliStatusResponse[string];
 type ProviderCliStatusResponse = HostProviderCliStatusResponse;
 
 interface UpdatesCommandOptions {
+  force?: boolean;
   json?: boolean;
   machine?: string;
 }
@@ -74,6 +75,7 @@ function isActionableProviderStatus(status: ProviderCliStatus): boolean {
 async function collectMachineUpdates(
   sdk: ReturnType<typeof createCliBbSdk>,
   hosts: readonly Host[],
+  options: { force: boolean | undefined },
 ): Promise<MachineUpdatesEntry[]> {
   return Promise.all(
     hosts.map(async (host): Promise<MachineUpdatesEntry> => {
@@ -85,6 +87,7 @@ async function collectMachineUpdates(
           host,
           providerStatus: await sdk.hosts.providerCliStatus({
             hostId: host.id,
+            ...(options.force === undefined ? {} : { force: options.force }),
           }),
           statusError: null,
         };
@@ -167,6 +170,10 @@ export function registerUpdatesCommands(
     .command("status", { isDefault: true })
     .description("Show bb and provider CLI update status across machines")
     .option("--machine <id-or-name>", "Limit to one machine")
+    .option(
+      "--force",
+      "Re-probe each machine instead of serving the server's cached CLI status",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: UpdatesCommandOptions) => {
@@ -181,7 +188,9 @@ export function registerUpdatesCommands(
             : hosts.filter(
                 (host) => host.id === resolveMachineId(hosts, opts.machine!),
               );
-        const entries = await collectMachineUpdates(sdk, selectedHosts);
+        const entries = await collectMachineUpdates(sdk, selectedHosts, {
+          force: opts.force,
+        });
         if (
           outputJson(opts, {
             app: version,
@@ -216,6 +225,10 @@ export function registerUpdatesCommands(
     .command("apply")
     .description("Run every available provider CLI install/update")
     .option("--machine <id-or-name>", "Limit to one machine")
+    .option(
+      "--force",
+      "Re-probe each machine instead of serving the server's cached CLI status",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: UpdatesCommandOptions) => {
@@ -227,7 +240,9 @@ export function registerUpdatesCommands(
             : hosts.filter(
                 (host) => host.id === resolveMachineId(hosts, opts.machine!),
               );
-        const entries = await collectMachineUpdates(sdk, selectedHosts);
+        const entries = await collectMachineUpdates(sdk, selectedHosts, {
+          force: opts.force,
+        });
         const targets = actionableTargets(entries);
         if (targets.length === 0) {
           if (outputJson(opts, { results: [] })) return;

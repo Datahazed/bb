@@ -123,6 +123,39 @@ describe("bb updates command output", () => {
     expect(output).toContain("offline");
   });
 
+  it("bb updates serves the cached status unless --force re-probes", async () => {
+    const status = vi.fn(async () =>
+      providerStatus({ codexNeedsUpdate: false }),
+    );
+    stubServerApi({
+      "v1.system.version.$get": vi.fn(async () => version),
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.provider-clis.status.$get": status,
+    });
+
+    await runCommand(["updates"], register);
+    // Only the connected machine is asked, and without force.
+    expect(status).toHaveBeenCalledOnce();
+    expect(status).toHaveBeenCalledWith({
+      param: { id: "host-primary" },
+      query: {},
+    });
+
+    status.mockClear();
+    await runCommand(["updates", "--force"], register);
+    expect(status).toHaveBeenCalledWith({
+      param: { id: "host-primary" },
+      query: { force: "true" },
+    });
+
+    status.mockClear();
+    await runCommand(["updates", "apply", "--force"], register);
+    expect(status).toHaveBeenCalledWith({
+      param: { id: "host-primary" },
+      query: { force: "true" },
+    });
+  });
+
   it("bb updates --json prints the aggregate", async () => {
     const status = providerStatus({ codexNeedsUpdate: false });
     stubServerApi({

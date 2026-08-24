@@ -29,6 +29,7 @@ import {
   getProviderCliInstallSnapshot,
   resetProviderCliInstallStoreForTests,
 } from "@/components/provider-cli/provider-cli-install-store";
+import { appToast } from "@/components/ui/app-toast";
 import { sdk } from "@/lib/sdk";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
 import {
@@ -55,6 +56,7 @@ vi.mock("@/lib/sdk", async () => {
   return {
     sdk: {
       system: { version: vi.fn() },
+      hosts: { providerCliStatus: vi.fn(async () => ({})) },
       providers: {
         list: vi.fn(async () => [
           makeProviderInfo({ id: "codex", displayName: "Codex" }),
@@ -339,6 +341,50 @@ describe("UpdatesSettingsSection", () => {
     // Exactly one: re-renders must not re-fire it, and the store's own
     // single-flight guard must not be the only thing preventing a loop.
     expect(sdk.system.version).toHaveBeenCalledTimes(1);
+    // The server memoizes CLI status per host; a check must re-probe rather
+    // than re-read that memo, so the request carries force.
+    await waitFor(() => {
+      expect(sdk.hosts.providerCliStatus).toHaveBeenCalledWith({
+        hostId: "host_1",
+        force: true,
+        signal: expect.any(AbortSignal),
+      });
+    });
+    expect(sdk.hosts.providerCliStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("finishes the check when one machine's forced re-probe fails", async () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const hostA = makeHost({ id: "host_a", name: "workstation" });
+    const hostB = makeHost({ id: "host_b", name: "laptop" });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [makeMachine({ host: hostA }), makeMachine({ host: hostB })],
+      }),
+    );
+    vi.mocked(sdk.system.version).mockResolvedValue(
+      makeInventory({}).systemVersion!,
+    );
+    vi.mocked(sdk.hosts.providerCliStatus).mockRejectedValueOnce(
+      new Error("host_unavailable"),
+    );
+
+    renderSection();
+
+    await waitFor(() => {
+      expect(sdk.hosts.providerCliStatus).toHaveBeenCalledTimes(2);
+    });
+    // One unreachable machine is that machine's row problem, not the check's:
+    // invalidation never failed the whole check, and the forced fetch must not
+    // start to.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(appToast.error).not.toHaveBeenCalled();
   });
 
   it("aligns Update all with the first machine heading", () => {
@@ -1002,7 +1048,9 @@ The canonical release summary.
       return node;
     });
     expect(
-      providerIcon?.querySelector("[data-provider-logo]")?.getAttribute("class"),
+      providerIcon
+        ?.querySelector("[data-provider-logo]")
+        ?.getAttribute("class"),
     ).toContain("text-muted-foreground");
     // Icon-only. The accessible name is the state and the verb — the row
     // already prints the CLI, its versions, and the machine above it. Row and
@@ -1205,6 +1253,21 @@ The canonical release summary.
       name: /Check workstation's CLIs again/,
     });
     expect(retry.hasAttribute("disabled")).toBe(false);
+
+    // The page's own check already asked once (with force); Retry is a
+    // second forced re-probe of just this machine.
+    await waitFor(() => {
+      expect(sdk.hosts.providerCliStatus).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.click(retry);
+    await waitFor(() => {
+      expect(sdk.hosts.providerCliStatus).toHaveBeenCalledTimes(2);
+    });
+    expect(sdk.hosts.providerCliStatus).toHaveBeenLastCalledWith({
+      hostId: "host_1",
+      force: true,
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it("keeps error red on the reason and off the recovery", () => {

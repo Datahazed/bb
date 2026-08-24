@@ -59,6 +59,16 @@ export interface HostProviderCliInstallArgs extends HostProviderCliInstallReques
   hostId: string;
 }
 
+export interface HostProviderCliStatusArgs {
+  hostId: string;
+  /**
+   * Bypass the server's per-host memo of provider CLI installation state (a
+   * manual "Check for updates"). Omitted: serve the memoized answer.
+   */
+  force?: boolean;
+  signal?: AbortSignal;
+}
+
 export interface HostListArgs {
   signal?: AbortSignal;
 }
@@ -90,7 +100,9 @@ export interface HostsArea {
   list(args?: HostListArgs): Promise<HostListResult>;
   pathsExist(args: HostPathsExistArgs): Promise<HostPathsExistResult>;
   pickFolder(args: HostPickFolderArgs): Promise<HostPickFolderResult>;
-  providerCliStatus(args: HostGetArgs): Promise<HostProviderCliStatusResult>;
+  providerCliStatus(
+    args: HostProviderCliStatusArgs,
+  ): Promise<HostProviderCliStatusResult>;
   retryUpdate(args: HostRetryUpdateArgs): Promise<HostRetryUpdateResult>;
   update(args: HostUpdateArgs): Promise<HostUpdateResult>;
 }
@@ -193,6 +205,10 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
         transport.api.v1.hosts[":id"]["provider-clis"].status.$get(
           {
             param: { id: input.hostId },
+            query:
+              input.force === undefined
+                ? {}
+                : { force: input.force ? "true" : "false" },
           },
           ...signalRequestArgs(input.signal),
         ),

@@ -4,6 +4,7 @@ export {
   useHostProviderCliStatus,
   useHosts,
   usePrimaryHost,
+  useRecheckHostProviderCliStatus,
   useServerProtocolVersion,
 } from "./host-queries";
 export { selectPrimaryHost } from "./select-primary-host";

@@ -149,7 +149,12 @@ Conventions:
 - `hosts/` (Phase 7 additions) backs Settings → Machines and → Updates on
   top of the list/directory queries: `useHostProviderCliStatus` /
   `useHostsProviderCliStatus` (`GET /hosts/:id/provider-clis/status`,
-  session-static; the Updates check and a finished install invalidate it),
+  session-static; the server memoizes the answer per machine for minutes, so
+  the Updates check and the machine page's Recheck go through
+  `recheckHostProviderCliStatus` (`recheck-provider-cli-status.ts`, a
+  `fetchQuery` with `force: true`) / `useRecheckHostProviderCliStatus`, while
+  a finished install only invalidates — the install route clears the server
+  memo),
   `useRemoveHost`, `useRetryHostUpdate`, `useUpdateHostPermissionCeiling`
   (`PATCH /hosts/:id/permission-ceiling` through the profile fetch in
   `permission-ceiling.ts` — the route is owner-session-only and deliberately

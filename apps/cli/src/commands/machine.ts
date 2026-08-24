@@ -18,6 +18,10 @@ interface MachineProviderInstallOptions extends MachineListCommandOptions {
   action?: "install" | "update";
 }
 
+interface MachineProviderCliStatusOptions extends MachineListCommandOptions {
+  force?: boolean;
+}
+
 function parseProviderCliKey(value: string): string {
   const providerId = value.trim();
   if (providerId.length === 0)
@@ -227,12 +231,19 @@ export function registerMachineCommands(
   providerCli
     .command("status <id-or-name>")
     .description("Show registered provider CLI installation/update status")
+    .option(
+      "--force",
+      "Re-probe the machine instead of serving the server's cached status",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (target: string, opts: MachineListCommandOptions) => {
+      action(async (target: string, opts: MachineProviderCliStatusOptions) => {
         const sdk = createCliBbSdk(getUrl());
         const hostId = resolveMachineId(await sdk.hosts.list(), target);
-        const result = await sdk.hosts.providerCliStatus({ hostId });
+        const result = await sdk.hosts.providerCliStatus({
+          hostId,
+          ...(opts.force === undefined ? {} : { force: opts.force }),
+        });
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result, null, 2));
       }),

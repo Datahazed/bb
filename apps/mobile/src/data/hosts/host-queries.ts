@@ -8,8 +8,9 @@ import {
   skipToken,
   useQueries,
   useQuery,
+  useQueryClient,
 } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import {
   hostCloneDefaultPathQueryKey,
@@ -24,6 +25,7 @@ import {
 } from "../shared/query-policies";
 import { useHostListRealtimeSubscription } from "../shared/use-realtime-subscription";
 import { useSystemConfig } from "../system/system-queries";
+import { recheckHostProviderCliStatus } from "./recheck-provider-cli-status";
 import { selectPrimaryHost } from "./select-primary-host";
 import { fetchServerProtocolVersion } from "./server-protocol-version";
 
@@ -141,6 +143,19 @@ export function useHostProviderCliStatus(
     enabled,
     ...SESSION_STATIC_QUERY_POLICY,
   });
+}
+
+/** `recheckHostProviderCliStatus` bound to the active profile. */
+export function useRecheckHostProviderCliStatus(): (
+  hostId: string,
+) => Promise<void> {
+  const client = useProfileClient();
+  const queryClient = useQueryClient();
+  return useCallback(
+    (hostId: string) =>
+      recheckHostProviderCliStatus(client, queryClient, hostId),
+    [client, queryClient],
+  );
 }
 
 export interface HostProviderCliStatusEntry {
