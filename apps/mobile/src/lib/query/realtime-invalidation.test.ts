@@ -1,5 +1,12 @@
-import { QueryClient, hashKey } from "@tanstack/react-query";
+import type { ThreadStatusChangeMetadata } from "@bb/domain";
+import type { SidebarBootstrapResponse } from "@bb/server-contract";
+import { QueryClient, QueryObserver, hashKey } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  project,
+  sidebarBootstrap,
+  threadListEntry,
+} from "@/data/test/fixtures";
 import { createFakeSocketFactory } from "../realtime/fake-socket";
 import { createMobileRealtime } from "../realtime/mobile-realtime";
 import {
@@ -30,8 +37,10 @@ import {
   systemConfigQueryKey,
   threadDefaultExecutionOptionsQueryKey,
   threadDetailBootstrapQueryKey,
+  threadListQueryKey,
   threadPendingInteractionsQueryKey,
   threadQueryKey,
+  threadQueuedMessagesQueryKey,
   threadSearchQueryKeyPrefix,
   threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
@@ -44,6 +53,36 @@ import {
   pluginUpdatesQueryKey,
   themeCatalogQueryKey,
 } from "./query-keys";
+
+const ACTIVE_STATUS_CHANGE: ThreadStatusChangeMetadata = {
+  status: "active",
+  runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+  activity: {
+    activeWorkflowCount: 0,
+    activeBackgroundAgentCount: 0,
+    activeBackgroundCommandCount: 0,
+    activePlanModeCount: 1,
+    activeGoalCount: 0,
+  },
+  latestAttentionAt: 500,
+  updatedAt: 500,
+};
+
+/** The frame `buildThreadStatusChangeMetadata` attaches on the server. */
+function statusChangedFrame(
+  threadId: string,
+  statusChange?: ThreadStatusChangeMetadata,
+): string {
+  return JSON.stringify({
+    type: "changed",
+    entity: "thread",
+    id: threadId,
+    changes: ["status-changed"],
+    ...(statusChange
+      ? { metadata: { projectId: "proj_1", statusChange } }
+      : {}),
+  });
+}
 
 function setup() {
   const factory = createFakeSocketFactory();
@@ -230,6 +269,112 @@ describe("installRealtimeInvalidation", () => {
     vi.advanceTimersByTime(500);
     expect(invalidated).toEqual([]);
   });
+
+  it("patches cached list rows from a status-changed push that carries the row instead of refetching the lists", () => {
+    const { factory, queryClient, invalidated } = setup();
+    const t1 = threadListEntry({ id: "t1" });
+    const t2 = threadListEntry({ id: "t2", projectId: "proj_2" });
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      sidebarBootstrap({
+        projects: [
+          project({ id: "proj_1", threads: [t1] }),
+          project({ id: "proj_2", threads: [t2] }),
+        ],
+      }),
+    );
+    const listKey = threadListQueryKey({
+      archived: false,
+      projectId: "proj_1",
+    });
+    queryClient.setQueryData(listKey, [t1]);
+    const before = queryClient.getQueryData<SidebarBootstrapResponse>(
+      sidebarNavigationQueryKey(),
+    );
+
+    factory.latest().receive(statusChangedFrame("t1", ACTIVE_STATUS_CHANGE));
+
+    // Synchronous: the rows carry the five fields before any flush.
+    const patched = { ...t1, ...ACTIVE_STATUS_CHANGE };
+    const sidebar = queryClient.getQueryData<SidebarBootstrapResponse>(
+      sidebarNavigationQueryKey(),
+    );
+    expect(sidebar?.projects[0].threads).toEqual([patched]);
+    expect(sidebar?.projects[1].threads).toBe(before?.projects[1].threads);
+    expect(queryClient.getQueryData(listKey)).toEqual([patched]);
+    expect(invalidated).toEqual([]);
+
+    vi.advanceTimersByTime(250);
+    expect(invalidated).toEqual([
+      hashKey(threadQueryKey("t1")),
+      hashKey(threadSearchQueryKeyPrefix()),
+    ]);
+  });
+
+  it("leaves the caches untouched and schedules no list refetch for a row of a thread in no cached list", () => {
+    const { factory, queryClient, invalidated } = setup();
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      sidebarBootstrap({
+        projects: [
+          project({ id: "proj_1", threads: [threadListEntry({ id: "t1" })] }),
+        ],
+      }),
+    );
+    const before = queryClient.getQueryData(sidebarNavigationQueryKey());
+    factory.latest().receive(statusChangedFrame("t9", ACTIVE_STATUS_CHANGE));
+    expect(queryClient.getQueryData(sidebarNavigationQueryKey())).toBe(before);
+    vi.advanceTimersByTime(250);
+    expect(invalidated).toEqual([
+      hashKey(threadQueryKey("t9")),
+      hashKey(threadSearchQueryKeyPrefix()),
+    ]);
+  });
+
+  it("cancels and restarts exactly the list fetches in flight, synchronously, so their stale response cannot overwrite the patch", () => {
+    const { factory, queryClient, invalidateSpy } = setup();
+    queryClient.setQueryData(
+      threadListQueryKey({ archived: false, projectId: "proj_1" }),
+      [threadListEntry({ id: "t1" })],
+    );
+    const observer = new QueryObserver(queryClient, {
+      queryKey: sidebarNavigationQueryKey(),
+      queryFn: () => new Promise<SidebarBootstrapResponse>(() => {}),
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    expect(
+      queryClient.getQueryState(sidebarNavigationQueryKey())?.fetchStatus,
+    ).toBe("fetching");
+
+    factory.latest().receive(statusChangedFrame("t1", ACTIVE_STATUS_CHANGE));
+    // Not through the debounced map (which would wait and prefix-match).
+    expect(invalidateSpy.mock.calls.map(([filters]) => filters)).toEqual([
+      { exact: true, queryKey: sidebarNavigationQueryKey() },
+    ]);
+    unsubscribe();
+  });
+
+  it("still refetches the lists when a bare status-changed (stop, interrupt) follows a patched one in the same window", () => {
+    const { factory, queryClient, invalidated } = setup();
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      sidebarBootstrap({
+        projects: [
+          project({ id: "proj_1", threads: [threadListEntry({ id: "t1" })] }),
+        ],
+      }),
+    );
+    const socket = factory.latest();
+    socket.receive(statusChangedFrame("t1", ACTIVE_STATUS_CHANGE));
+    socket.receive(statusChangedFrame("t1"));
+    vi.advanceTimersByTime(250);
+    expect(invalidated).toEqual(
+      expect.arrayContaining([
+        hashKey(threadsQueryKey()),
+        hashKey(sidebarNavigationQueryKey()),
+      ]),
+    );
+  });
 });
 
 describe("queryKeysForChangedMessage", () => {
@@ -303,7 +448,53 @@ describe("queryKeysForChangedMessage", () => {
         id: "t1",
         changes: ["status-changed"],
       }),
-    ).toContainEqual(threadQueryKey("t1"));
+    ).toEqual([
+      threadQueryKey("t1"),
+      threadsQueryKey(),
+      sidebarNavigationQueryKey(),
+      threadSearchQueryKeyPrefix(),
+    ]);
+  });
+
+  it("skips the list refetch for a status-changed push that carries the row, unless another list kind rides along", () => {
+    expect(
+      queryKeysForChangedMessage({
+        type: "changed",
+        entity: "thread",
+        id: "t1",
+        changes: ["status-changed"],
+        metadata: { statusChange: ACTIVE_STATUS_CHANGE },
+      }),
+    ).toEqual([threadQueryKey("t1"), threadSearchQueryKeyPrefix()]);
+    // The queued-messages push pairs the row with a non-list kind.
+    expect(
+      queryKeysForChangedMessage({
+        type: "changed",
+        entity: "thread",
+        id: "t1",
+        changes: ["status-changed", "queue-changed"],
+        metadata: { statusChange: ACTIVE_STATUS_CHANGE },
+      }),
+    ).toEqual([
+      threadQueryKey("t1"),
+      threadQueuedMessagesQueryKey("t1"),
+      threadSearchQueryKeyPrefix(),
+    ]);
+    // Any other list kind still needs the refetch.
+    expect(
+      queryKeysForChangedMessage({
+        type: "changed",
+        entity: "thread",
+        id: "t1",
+        changes: ["status-changed", "title-changed"],
+        metadata: { statusChange: ACTIVE_STATUS_CHANGE },
+      }),
+    ).toEqual([
+      threadQueryKey("t1"),
+      threadsQueryKey(),
+      sidebarNavigationQueryKey(),
+      threadSearchQueryKeyPrefix(),
+    ]);
   });
 
   it("maps system changes to config plus provider/default keys for settings and plugin changes", () => {

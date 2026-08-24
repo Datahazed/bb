@@ -18,7 +18,11 @@ Conventions:
   `read-tracking.ts`) never import react-native and are vitest-tested (node
   env); RN adapters (MMKV storage) live in their own small files.
 - Query keys come from `@/lib/query/query-keys` and every key is mapped in
-  `@/lib/query/realtime-invalidation.ts`. Add both when adding a query.
+  `@/lib/query/realtime-invalidation.ts`. Add both when adding a query. A
+  `status-changed` push that carries `metadata.statusChange` patches the
+  cached list / sidebar rows in place
+  (`threads/thread-list-cache.ts` `updateCachedThreadListStatusState`) and
+  cancels list fetches in flight; a bare one refetches the lists.
 - Realtime subscriptions are held through `shared/use-realtime-subscription`
   (refcounted per target; the last unmount releases the server subscription).
 - `thread-detail/` mirrors the web thread-detail queries: the bootstrap

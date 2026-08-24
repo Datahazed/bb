@@ -1,4 +1,7 @@
-import { createDebouncedCallbackScheduler } from "@bb/domain";
+import {
+  createDebouncedCallbackScheduler,
+  type ThreadStatusChangeMetadata,
+} from "@bb/domain";
 import type {
   ChangedMessage,
   SidebarBootstrapResponse,
@@ -11,6 +14,10 @@ import {
   type QueryClient,
   type QueryKey,
 } from "@tanstack/react-query";
+import {
+  getFetchingThreadListQueryKeys,
+  updateCachedThreadListStatusState,
+} from "@/data/threads/thread-list-cache";
 import type { MobileRealtime } from "../realtime/mobile-realtime";
 import {
   disposeTrailingActiveRefetches,
@@ -85,7 +92,10 @@ const INVALIDATION_MAX_WAIT_MS = 200;
 
 /**
  * Thread change kinds that alter what a thread list / sidebar shows. Timeline
- * streaming (`events-appended`) deliberately is not one of them.
+ * streaming (`events-appended`) deliberately is not one of them. A
+ * `status-changed` push that carries the rewritten row
+ * (`metadata.statusChange`) patches the cached rows in place instead
+ * (`applyThreadStatusChangeFromMessage`); only a bare one refetches.
  */
 const THREAD_LIST_AFFECTING_KINDS: ReadonlySet<ThreadChangeKind> =
   new Set<ThreadChangeKind>([
@@ -109,6 +119,26 @@ function threadListQueryKeys(): QueryKey[] {
     sidebarNavigationQueryKey(),
     threadSearchQueryKeyPrefix(),
   ];
+}
+
+/**
+ * The row fields a `status-changed` push carries. Producers that cannot
+ * resolve the post-transition runtime (stop, interrupt, host loss, environment
+ * provisioning) push the bare kind, and the lenient parser drops a row whose
+ * status this build does not know; both fall back to the list refetch.
+ */
+function threadStatusChangePatch(
+  message: ThreadChangedMessage,
+): { threadId: string; statusChange: ThreadStatusChangeMetadata } | null {
+  const statusChange = message.metadata?.statusChange;
+  if (
+    message.id === undefined ||
+    statusChange === undefined ||
+    !message.changes.includes("status-changed")
+  ) {
+    return null;
+  }
+  return { threadId: message.id, statusChange };
 }
 
 /**
@@ -177,10 +207,20 @@ export function queryKeysForChangedMessage(
         // a rewrite replays the last accepted run's options.
         keys.push(threadDefaultExecutionOptionsQueryKey(id));
       }
-      if (
-        message.changes.some((kind) => THREAD_LIST_AFFECTING_KINDS.has(kind))
-      ) {
-        keys.push(...threadListQueryKeys());
+      const listKinds = message.changes.filter((kind) =>
+        THREAD_LIST_AFFECTING_KINDS.has(kind),
+      );
+      if (listKinds.length > 0) {
+        if (
+          threadStatusChangePatch(message) !== null &&
+          listKinds.every((kind) => kind === "status-changed")
+        ) {
+          // The rows were patched in place; search result rows render status
+          // but are not list-shaped, so they still refetch.
+          keys.push(threadSearchQueryKeyPrefix());
+        } else {
+          keys.push(...threadListQueryKeys());
+        }
       }
       return keys;
     }
@@ -403,6 +443,33 @@ export function threadPullRequestQueryKeysForCompletedTurn(
 }
 
 /**
+ * Patch the cached thread lists and the sidebar from a `status-changed` push
+ * that carries the rewritten row (mirrors the web registry's
+ * `patchThreadListStatusState`) instead of refetching the sidebar bootstrap
+ * (~1 KB per unarchived thread) twice per turn. Applied synchronously, not
+ * through the debounced map: a list fetch already in flight read the database
+ * before this transition and would overwrite the patch when it lands, so it is
+ * cancelled and restarted right away. `exact`, because a partial match on
+ * the unfiltered list's key would also restart every filtered list.
+ */
+export function applyThreadStatusChangeFromMessage(
+  queryClient: QueryClient,
+  message: ChangedMessage,
+): void {
+  if (message.entity !== "thread") return;
+  const patch = threadStatusChangePatch(message);
+  if (patch === null) return;
+  updateCachedThreadListStatusState(
+    queryClient,
+    patch.threadId,
+    patch.statusChange,
+  );
+  for (const queryKey of getFetchingThreadListQueryKeys(queryClient)) {
+    void queryClient.invalidateQueries({ exact: true, queryKey });
+  }
+}
+
+/**
  * How one queued invalidation is applied on flush. The timeline window is the
  * only query with a streaming producer, so it is the only one that gets the
  * non-cancelling paced path (see `timeline-refetch-pacing.ts`).
@@ -542,6 +609,7 @@ export function installRealtimeInvalidation(
   });
 
   const unsubscribeChanged = realtime.onChanged((message) => {
+    applyThreadStatusChangeFromMessage(queryClient, message);
     const eviction = diffPatchEvictionForChangedMessage(message);
     if (eviction === "all") {
       pendingPatchEvictions = "all";

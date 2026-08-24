@@ -1,4 +1,4 @@
-import type { ThreadListEntry } from "@bb/domain";
+import type { ThreadListEntry, ThreadStatusChangeMetadata } from "@bb/domain";
 import type {
   SidebarBootstrapResponse,
   ThreadResponse,
@@ -10,6 +10,7 @@ import type {
 } from "@tanstack/react-query";
 import {
   ARCHIVED_THREADS_LIST_KIND,
+  SIDEBAR_NAVIGATION_QUERY_KEY,
   THREADS_QUERY_KEY,
   sidebarNavigationQueryKey,
   threadsQueryKey,
@@ -141,6 +142,50 @@ export function applyToCachedThreadListsAndSidebar(
 ): void {
   applyToCachedThreadLists(queryClient, mapper);
   applyToCachedSidebarThreads(queryClient, mapper);
+}
+
+/**
+ * Write the row fields a lifecycle transition rewrites (status, runtime,
+ * activity, attention and update times) into every cached thread list and the
+ * sidebar bootstrap (mirrors the web's `updateCachedThreadListStatusState`).
+ * Status never changes list membership (lists filter on project, parent and
+ * archive state), so a list without the row is returned as is: the query that
+ * will load it reads the current status, and the untouched array identity is
+ * what the sidebar rows key on.
+ */
+export function updateCachedThreadListStatusState(
+  queryClient: QueryClient,
+  threadId: string,
+  statusChange: ThreadStatusChangeMetadata,
+): void {
+  applyToCachedThreadListsAndSidebar(queryClient, (list) =>
+    list.some((thread) => thread.id === threadId)
+      ? list.map((thread) =>
+          thread.id === threadId ? { ...thread, ...statusChange } : thread,
+        )
+      : list,
+  );
+}
+
+/**
+ * Thread list and sidebar queries with a fetch in flight. Such a fetch read
+ * the database before the change being patched in, so its response would
+ * overwrite the patch when it lands. `THREADS_QUERY_KEY` prefixes the flat
+ * and the archived (paginated) lists and nothing else (`thread` and
+ * `threadSearch` are distinct first segments).
+ */
+export function getFetchingThreadListQueryKeys(
+  queryClient: QueryClient,
+): QueryKey[] {
+  return queryClient
+    .getQueryCache()
+    .findAll({ fetchStatus: "fetching" })
+    .map((query) => query.queryKey)
+    .filter(
+      (queryKey) =>
+        queryKey[0] === THREADS_QUERY_KEY ||
+        queryKey[0] === SIDEBAR_NAVIGATION_QUERY_KEY,
+    );
 }
 
 /** Every thread the sidebar bootstrap knows about (projects + personal). */
