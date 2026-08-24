@@ -1,5 +1,8 @@
 import { execFile } from "node:child_process";
+import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -84,16 +87,32 @@ describe("packaged CLI plugin build", () => {
       ].join("\n"),
     );
 
-    const childEnv: NodeJS.ProcessEnv = {
-      ...process.env,
-      BB_CLI_REEXEC: "1",
-    };
-    delete childEnv.BB_CLI;
-    await execFileAsync(
-      process.execPath,
-      [cliEntry, "plugin", "build", pluginRoot],
-      { cwd: workspaceRoot, env: childEnv },
-    );
+    const preflightServer = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ allowed: true }));
+    });
+    preflightServer.listen(0, "127.0.0.1");
+    if (!preflightServer.listening) await once(preflightServer, "listening");
+    const address = preflightServer.address() as AddressInfo;
+    try {
+      const childEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        BB_CLI_REEXEC: "1",
+        BB_SERVER_URL: `http://127.0.0.1:${address.port}`,
+      };
+      delete childEnv.BB_CLI;
+      await execFileAsync(
+        process.execPath,
+        [cliEntry, "plugin", "build", pluginRoot],
+        { cwd: workspaceRoot, env: childEnv },
+      );
+    } finally {
+      await new Promise<void>((resolveClose, rejectClose) => {
+        preflightServer.close((error) =>
+          error ? rejectClose(error) : resolveClose(),
+        );
+      });
+    }
 
     const appBundle = await readFile(
       join(pluginRoot, "dist", "app.js"),

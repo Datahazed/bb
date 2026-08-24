@@ -25,6 +25,10 @@ import {
   type CliRuntimeContext,
 } from "./context-env.js";
 import {
+  assertCliInvocationAllowed,
+  registerCliInvocationPreflight,
+} from "./invocation-preflight.js";
+import {
   describeUnreachableServer,
   fetchPluginCliContributions,
   findDisabledPluginForCommand,
@@ -101,6 +105,10 @@ registerMarketplaceCommands(program, getUrl);
 registerSkillCommands(program, getUrl, getContext);
 registerGuideCommand(program);
 registerVoiceCommands(program, getUrl);
+registerCliInvocationPreflight(program, {
+  getUrl,
+  getContext,
+});
 
 /**
  * Unknown top-level commands may be plugin-contributed `bb` subcommands
@@ -149,6 +157,12 @@ async function tryPluginCommandProxy(): Promise<void> {
     }
     return;
   }
+  await assertCliInvocationAllowed({
+    baseUrl: getUrl(),
+    argv: process.argv.slice(2),
+    cwd: process.cwd(),
+    context: getContext(),
+  });
   process.exit(
     await runPluginCliCommand(getUrl(), match.pluginId, process.argv.slice(3)),
   );

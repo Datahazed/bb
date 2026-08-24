@@ -393,9 +393,13 @@ async function writePluginCliOutput(
  */
 export const PLUGIN_CLI_HEADERS_TIMEOUT_MS = 65 * 60 * 1000;
 let pluginCliDispatcher: Promise<Dispatcher> | undefined;
-function getPluginCliDispatcher(): Promise<Dispatcher> {
+export function getPluginCliDispatcher(): Promise<Dispatcher> {
   pluginCliDispatcher ??= import("undici").then(
-    ({ Agent }) => new Agent({ headersTimeout: PLUGIN_CLI_HEADERS_TIMEOUT_MS }),
+    ({ Agent }) =>
+      new Agent({
+        headersTimeout: PLUGIN_CLI_HEADERS_TIMEOUT_MS,
+        bodyTimeout: PLUGIN_CLI_HEADERS_TIMEOUT_MS,
+      }),
   );
   return pluginCliDispatcher;
 }
