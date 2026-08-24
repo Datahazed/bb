@@ -73,11 +73,34 @@ describe("CLI invocation preflight", () => {
       kind: "blocked",
       reason: "BB invocation preflight failed: policy store unavailable",
     });
+
+    fetchMock.mockResolvedValueOnce(new Response("Bad Gateway", { status: 502 }));
+    await expect(preflightCliInvocation(invocation)).resolves.toEqual({
+      kind: "blocked",
+      reason: "BB invocation preflight failed: server returned HTTP 502",
+    });
+
+    // The server accepted the connection and went quiet: it is up and will
+    // run the command, so its policy is not skipped.
+    const headersTimeout = new TypeError("fetch failed", {
+      cause: Object.assign(new Error("Headers Timeout Error"), {
+        code: "UND_ERR_HEADERS_TIMEOUT",
+      }),
+    });
+    fetchMock.mockRejectedValueOnce(headersTimeout);
+    await expect(preflightCliInvocation(invocation)).resolves.toMatchObject({
+      kind: "blocked",
+      reason: expect.stringContaining("did not answer"),
+    });
   });
 
   it("skips the policy when the server is unreachable or predates the route", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
-    fetchMock.mockRejectedValueOnce(new Error("connection refused"));
+    fetchMock.mockRejectedValueOnce(
+      new TypeError("fetch failed", {
+        cause: Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" }),
+      }),
+    );
     await expect(preflightCliInvocation(invocation)).resolves.toEqual({
       kind: "skipped",
       reason: "unreachable",

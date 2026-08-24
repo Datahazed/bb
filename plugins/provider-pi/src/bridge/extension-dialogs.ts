@@ -1,6 +1,5 @@
 import {
   isUserQuestionPendingInteractionResolution,
-  USER_QUESTION_MAX_FREE_TEXT_LENGTH,
   type PendingInteractionPayload,
   type PendingInteractionResolution,
 } from "@get-bb/plugin-sdk/provider-bridge";
@@ -225,14 +224,9 @@ export function buildPiExtensionDialog(
               multiSelect: false,
               allowFreeText: true,
               experimental_responseMode: "verbatim",
-              ...(request.prefill === undefined
-                ? {}
-                : {
-                    experimental_prefill: request.prefill.slice(
-                      0,
-                      USER_QUESTION_MAX_FREE_TEXT_LENGTH,
-                    ),
-                  }),
+              // Never shortened here: a prefill past bb's cap is cancelled
+              // by the bridge before it becomes a question.
+              ...(request.prefill === undefined ? {} : { experimental_prefill: request.prefill }),
             },
           ],
         },

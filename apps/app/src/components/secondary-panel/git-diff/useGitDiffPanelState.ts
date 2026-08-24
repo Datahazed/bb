@@ -10,6 +10,20 @@ import {
   type GitDiffSelectionValue,
 } from "./gitDiffPanelHelpers";
 
+/**
+ * The selection each environment's Changes tab last had. The tab unmounts
+ * whenever another right-panel view is active, so the choice lives here
+ * rather than in component state: leaving and coming back finds the same
+ * commit selected, and a different environment starts from all changes.
+ */
+const selectionByEnvironment = new Map<string, GitDiffSelectionValue>();
+
+function rememberedSelection(environmentId: string | undefined): GitDiffSelectionValue {
+  return environmentId === undefined
+    ? null
+    : (selectionByEnvironment.get(environmentId) ?? null);
+}
+
 interface UseGitDiffPanelStateParams {
   environmentId?: string;
   isDiffPanelActive: boolean;
@@ -33,8 +47,17 @@ export function useGitDiffPanelState({
   requestedMergeBaseBranch,
   experimental_target,
 }: UseGitDiffPanelStateParams) {
-  const [selectedGitDiffSelection, setSelectedGitDiffSelection] =
-    useState<GitDiffSelectionValue>(null);
+  const [selectedGitDiffSelection, setSelectedGitDiffSelectionState] =
+    useState<GitDiffSelectionValue>(() => rememberedSelection(environmentId));
+  const setSelectedGitDiffSelection = useCallback(
+    (value: GitDiffSelectionValue) => {
+      if (environmentId !== undefined) {
+        selectionByEnvironment.set(environmentId, value);
+      }
+      setSelectedGitDiffSelectionState(value);
+    },
+    [environmentId],
+  );
 
   const gitDiffTarget = useMemo(
     () =>
@@ -56,10 +79,10 @@ export function useGitDiffPanelState({
       ? gitDiffWorkspaceStatus.workspace
       : undefined;
 
-  // --- Reset on environment change ---
+  // --- Follow the environment: its own remembered selection, or all changes ---
 
   useEffect(() => {
-    setSelectedGitDiffSelection(null);
+    setSelectedGitDiffSelectionState(rememberedSelection(environmentId));
   }, [environmentId]);
 
   // --- Reset the diff to all-changes when an open-file intent arrives
@@ -72,7 +95,11 @@ export function useGitDiffPanelState({
     if (experimental_target?.target.kind === "file") {
       setSelectedGitDiffSelection(null);
     }
-  }, [experimental_target?.sequence, experimental_target?.target.kind]);
+  }, [
+    experimental_target?.sequence,
+    experimental_target?.target.kind,
+    setSelectedGitDiffSelection,
+  ]);
 
   // --- Apply the commit selection requested from the info tab (openCommitDiff) ---
 
@@ -81,7 +108,7 @@ export function useGitDiffPanelState({
       setSelectedGitDiffSelection(experimental_target.target.sha);
       experimental_target.clear();
     }
-  }, [experimental_target]);
+  }, [experimental_target, setSelectedGitDiffSelection]);
 
   const hasUncommittedChanges =
     (workspaceStatus?.workingTree.files.length ?? 0) > 0;
@@ -99,6 +126,7 @@ export function useGitDiffPanelState({
   }, [
     hasUncommittedChanges,
     selectedGitDiffSelection,
+    setSelectedGitDiffSelection,
     workspaceStatus?.mergeBase?.commits,
   ]);
 
@@ -114,11 +142,14 @@ export function useGitDiffPanelState({
     [diffCommits, hasUncommittedChanges],
   );
 
-  const onGitDiffSelectionChange = useCallback((value: string) => {
-    setSelectedGitDiffSelection(
-      value === ALL_GIT_DIFF_SELECTION ? null : value,
-    );
-  }, []);
+  const onGitDiffSelectionChange = useCallback(
+    (value: string) => {
+      setSelectedGitDiffSelection(
+        value === ALL_GIT_DIFF_SELECTION ? null : value,
+      );
+    },
+    [setSelectedGitDiffSelection],
+  );
 
   return {
     gitDiffTarget,

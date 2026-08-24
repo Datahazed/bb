@@ -40,52 +40,67 @@ function parseState(payload: unknown): PiExtensionUIState | null {
 }
 
 /**
+ * What each thread's renderer has already acted on, kept outside the
+ * component: a remount (navigating away and back, a second pane, a kind
+ * entry flickering) must not re-apply an editor request or re-toast a
+ * notification, and one thread's marks must not bleed into another's. A null
+ * snapshot is the session ending; the next session's counters restart, so
+ * the marks restart with them.
+ */
+interface ThreadMarks {
+  editorRevision: number | null;
+  notificationId: number;
+}
+const threadMarks = new Map<string, ThreadMarks>();
+
+/**
+ * The marks for a thread, seeded from the snapshot present when the thread
+ * is first seen: what a persisted snapshot already holds is history (the
+ * TUI showed it at the time, the composer draft may have moved on), not
+ * news to act on.
+ */
+function marksFor(threadId: string, state: PiExtensionUIState | null): ThreadMarks {
+  let marks = threadMarks.get(threadId);
+  if (marks === undefined) {
+    marks = {
+      editorRevision: state?.editor?.revision ?? null,
+      notificationId: Math.max(0, ...(state?.notifications ?? []).map(({ id }) => id)),
+    };
+    threadMarks.set(threadId, marks);
+  }
+  return marks;
+}
+
+/**
  * What Pi's extensions put beside the composer. Statuses, widgets and the
  * title render in place; a notification is transient, like pi's own, so it
- * goes to the app's toaster instead — once, when it arrives. The
- * notifications a persisted snapshot already holds when this mounts are
- * history (the TUI would have shown them at the time), not news.
+ * goes to the app's toaster instead — once, when it arrives.
  */
-function PiExtensionState({ payload, placement }: ExperimentalProviderExtensionStateProps) {
+function PiExtensionState({ payload, placement, threadId }: ExperimentalProviderExtensionStateProps) {
   const composer = useComposer();
-  const appliedEditorRevision = useRef<number | null>(null);
   const state = parseState(payload);
   const editor = state?.editor ?? null;
-  const title = state?.title ?? null;
   const notifications = state?.notifications ?? null;
-  const lastShownNotificationId = useRef<number | null>(null);
-  if (lastShownNotificationId.current === null) {
-    lastShownNotificationId.current = Math.max(0, ...(notifications ?? []).map(({ id }) => id));
-  }
+  const marks = marksFor(threadId, state);
 
   useEffect(() => {
     if (placement !== "aboveEditor") return;
-    if (editor === null) {
-      appliedEditorRevision.current = null;
+    if (state === null) {
+      // The session ended: its successor counts from 1 again.
+      marks.editorRevision = null;
+      marks.notificationId = 0;
       return;
     }
-    if (appliedEditorRevision.current === editor.revision) return;
-    appliedEditorRevision.current = editor.revision;
-    composer.setText(editor.text);
-  }, [composer, editor, placement]);
-
-  useEffect(() => {
-    if (placement !== "aboveEditor" || title === null) return;
-    const previousTitle = document.title;
-    document.title = title;
-    return () => {
-      if (document.title === title) document.title = previousTitle;
-    };
-  }, [placement, title]);
-
-  useEffect(() => {
-    if (placement !== "aboveEditor" || notifications === null) return;
-    for (const notification of notifications) {
-      if (notification.id <= (lastShownNotificationId.current ?? 0)) continue;
-      lastShownNotificationId.current = notification.id;
+    if (editor !== null && editor.revision !== marks.editorRevision) {
+      marks.editorRevision = editor.revision;
+      composer.setText(editor.text);
+    }
+    for (const notification of notifications ?? []) {
+      if (notification.id <= marks.notificationId) continue;
+      marks.notificationId = notification.id;
       showNotification(notification);
     }
-  }, [notifications, placement]);
+  }, [composer, editor, marks, notifications, placement, state]);
 
   if (state === null) return null;
   const widgets = state.widgets.filter((widget) => widget.placement === placement);

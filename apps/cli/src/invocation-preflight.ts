@@ -68,6 +68,34 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * A server that accepted the connection but did not answer in time is not
+ * "unreachable": it is up, and it will go on to run the command, so its
+ * policy must not be skipped. Only a connection that never came up is.
+ */
+const NOT_ANSWERING_CODES: ReadonlySet<string> = new Set([
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_SOCKET",
+  "ECONNRESET",
+  "EPIPE",
+]);
+
+function errorCode(error: unknown): string | null {
+  for (let current: unknown = error; current instanceof Error; current = current.cause) {
+    const code = Reflect.get(current, "code");
+    if (typeof code === "string") return code;
+  }
+  return null;
+}
+
+function isServerNotAnswering(error: unknown): boolean {
+  const code = errorCode(error);
+  if (code !== null) return NOT_ANSWERING_CODES.has(code);
+  const name = error instanceof Error ? error.name : "";
+  return name === "HeadersTimeoutError" || name === "BodyTimeoutError" || name === "AbortError";
+}
+
 function responseError(body: unknown, status: number): string {
   if (body !== null && typeof body === "object" && !Array.isArray(body)) {
     const error = Reflect.get(body, "error");
@@ -92,13 +120,27 @@ export async function preflightCliInvocation(
       }),
       dispatcher: await getPreflightDispatcher(),
     });
-  } catch {
+  } catch (error) {
+    if (isServerNotAnswering(error)) {
+      return {
+        kind: "blocked",
+        reason: `BB invocation preflight failed: the server did not answer (${errorMessage(error)})`,
+      };
+    }
     return { kind: "skipped", reason: "unreachable" };
   }
 
   if (response.status === 404) {
     await response.body?.cancel().catch(() => undefined);
     return { kind: "skipped", reason: "unsupported" };
+  }
+  if (!response.ok) {
+    // A relay or proxy error body is often not JSON; the status is the fact.
+    const body: unknown = await response.json().catch(() => null);
+    return {
+      kind: "blocked",
+      reason: `BB invocation preflight failed: ${responseError(body, response.status)}`,
+    };
   }
   let body: unknown;
   try {
@@ -107,12 +149,6 @@ export async function preflightCliInvocation(
     return {
       kind: "blocked",
       reason: `BB invocation preflight returned a malformed response: ${errorMessage(error)}`,
-    };
-  }
-  if (!response.ok) {
-    return {
-      kind: "blocked",
-      reason: `BB invocation preflight failed: ${responseError(body, response.status)}`,
     };
   }
   if (body === null || typeof body !== "object" || Array.isArray(body)) {

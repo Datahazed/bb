@@ -79,10 +79,16 @@ restart.
 ### Writes preserve the settings document
 
 The Pi bridge updates only global `enabledModels`. It takes the same
-host-local lock Pi uses, preserves unrelated JSON fields and file mode, writes
-a temporary file in the same directory, and atomically renames it over the
-settings file. Invalid settings or write failures fail the save rather than
-replacing unknown content.
+host-local lock Pi uses (`proper-lockfile` on the settings path), preserves
+unrelated JSON fields and file mode, writes a temporary file beside the real
+file (through a symlinked `settings.json`, not over the link), and atomically
+renames it over the settings file. Invalid settings or write failures fail the
+save rather than replacing unknown content; a settings file pi could not load
+is reported and read as empty for listings, so the picker keeps working.
+
+The bridge reads only the global file. A project's `.pi/settings.json`
+`enabledModels` applies in pi only once the project is trusted, a decision
+the bridge cannot see, and a repository must not be able to steer the picker.
 
 ## Ownership
 

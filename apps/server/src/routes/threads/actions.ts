@@ -138,11 +138,13 @@ function toQueuedMessageOrderResponse(
 
 function requireReloadableThread(deps: AppDeps, thread: Thread): string {
   ensureThreadIsWritable(thread);
-  if (thread.status !== "idle") {
+  // An errored thread has no work in flight either, and a fresh session is
+  // exactly what it needs; only a running or starting turn is in the way.
+  if (thread.status !== "idle" && thread.status !== "error") {
     throw new ApiError(
       409,
       "invalid_request",
-      "Provider sessions can only be reloaded while the thread is idle",
+      "Provider sessions can only be reloaded while the thread is idle or errored",
     );
   }
   if (listQueuedThreadMessages(deps.db, thread.id).length > 0) {

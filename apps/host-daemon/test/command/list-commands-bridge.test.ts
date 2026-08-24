@@ -62,6 +62,31 @@ describe("host.list_commands bridge merge", () => {
     });
   });
 
+  it("keeps the static scan and reports a bridge that fails to answer", async () => {
+    const cwd = await makeTempDir("bb-list-commands-failing-");
+    const harness = createHarness({ workspacePath: cwd });
+    const options = harness.dispatchOptions();
+    options.listProviderCommands = vi.fn(async () => {
+      throw new Error("pi exited before its extension reported ready");
+    });
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "host.list_commands",
+        providerId: "pi",
+        cwd,
+        nativeRoots: emptyRoots,
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+      },
+      options,
+    );
+
+    expect(result.commands).toEqual([]);
+    expect(result.diagnostics).toEqual([
+      "pi could not list its commands: pi exited before its extension reported ready",
+    ]);
+  });
+
   it("keeps the static scan alone without a launch, without a cwd, or for a bridge without the method", async () => {
     const cwd = await makeTempDir("bb-list-commands-static-");
     const harness = createHarness({ workspacePath: cwd });

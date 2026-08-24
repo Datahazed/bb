@@ -226,6 +226,54 @@ it("answers confirm with a boolean and input with the verbatim text", async () =
   expect(assistantTexts(threadId).join("")).toContain(JSON.stringify({ value: "  two\nlines " }));
 }, 90_000);
 
+it("asks an editor with its prefill and returns the edited text byte-for-byte", async () => {
+  const threadId = "thr_ext_editor";
+  await harness.startThread(threadId);
+  await turnStart(threadId, '/ask {"method":"editor","title":"Edit the body","prefill":"  line one\\n\\nline two  "}');
+  const request = await harness.waitForMessage(
+    (message) => message.method === "interaction/request",
+    "the editor question",
+  );
+  expect(request.params).toMatchObject({
+    payload: {
+      questions: [
+        {
+          prompt: "Edit the body",
+          allowFreeText: true,
+          experimental_responseMode: "verbatim",
+          experimental_prefill: "  line one\n\nline two  ",
+        },
+      ],
+    },
+  });
+  const question = (
+    request.params as { payload: { questions: { id: string }[] } }
+  ).payload.questions[0]!;
+  handleLine(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: request.id,
+      result: {
+        kind: "user_answer",
+        answers: { [question.id]: { selected: [], experimental_verbatimText: "  line one\n\nline 2  " } },
+      },
+    }),
+  );
+  await harness.waitForTurnBoundary(threadId);
+  expect(assistantTexts(threadId).join("")).toBe(JSON.stringify({ value: "  line one\n\nline 2  " }));
+}, 90_000);
+
+it("cancels an editor whose prefill exceeds bb's cap instead of shortening it", async () => {
+  const threadId = "thr_ext_editor_long";
+  await harness.startThread(threadId);
+  const prefill = "x".repeat(4097);
+  await turnStart(threadId, `/ask {"method":"editor","title":"Too long","prefill":"${prefill}"}`);
+  // No question reaches bb: pi is answered "cancelled" straight away.
+  await harness.waitForTurnBoundary(threadId);
+  expect(harness.messages.some((message) => message.method === "interaction/request")).toBe(false);
+  expect(assistantTexts(threadId).join("")).toBe(JSON.stringify({ cancelled: true }));
+}, 90_000);
+
 it("withdraws the question when the session stops, and pi sees a cancelled dialog", async () => {
   const threadId = "thr_ext_cancel";
   await harness.startThread(threadId);

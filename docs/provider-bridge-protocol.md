@@ -107,10 +107,15 @@ widen it.
 The optional sessionless `command/list` method loads cwd-bound provider
 resources and returns command metadata plus non-fatal diagnostics. Its explicit
 cwd prevents project resources from leaking across workspaces. Core currently
-uses it for Pi extension commands: the Pi bridge loads extensions under Pi's
-normal project-trust policy, while the daemon retains its static skill scan and
-never imports or initializes Pi extensions. Bridges that do not implement the
-method answer `METHOD_NOT_FOUND`; the runtime treats that as unsupported.
+uses it for Pi extension commands and prompt templates: the Pi bridge asks the
+`pi --mode rpc` catalog child it keeps per cwd (`get_commands`), so pi loads
+the resources under its own project-trust policy; the daemon retains its
+static skill scan and never imports Pi extensions itself. The diagnostics a
+bridge returns are its own failures to answer (pi not installed, the catalog
+child failing to start); a broken extension is pi's stderr, which the runtime
+logs. Bridges that do not implement the method answer `METHOD_NOT_FOUND`; the
+runtime treats that as unsupported, and the daemon keeps its static scan when
+the bridge errors, with the error as a diagnostic.
 
 The sessionless `provider/health`, `provider/usage`,
 `provider/installation/status`, and `provider/installation/run` methods are

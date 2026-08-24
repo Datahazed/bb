@@ -104,6 +104,33 @@ describe("public thread reload", () => {
     });
   });
 
+  it("reloads a thread whose last turn ended in a provider error", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, host, session, thread } = seedThreadFixture(harness, {
+        thread: { status: "error" },
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-reload-error",
+        threadId: thread.id,
+      });
+      const responder = registerReloadResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/reload`,
+        { method: "POST" },
+      );
+
+      expect(response.status, JSON.stringify(await readJson(response.clone()))).toBe(200);
+      expect(
+        responder.requests.filter(({ command }) => command.type === "thread.reload"),
+      ).toHaveLength(1);
+    });
+  });
+
   it("rejects active threads, queued messages, and pending interactions", async () => {
     await withTestHarness(async (harness) => {
       const active = seedThreadFixture(harness, {

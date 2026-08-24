@@ -450,7 +450,7 @@ export function createApp(
         bridgeLaunch: requireBridgeLaunchForProviderId(deps, args.providerId),
       });
     },
-    providerModelsChanged: ({ pluginId, providerId }) => {
+    providerModelsChanged: ({ pluginId, providerId, hostId }) => {
       const registration = deps.providerRegistry.get(providerId);
       if (registration === null || registration.pluginId !== pluginId) {
         throw new Error(
@@ -460,6 +460,7 @@ export function createApp(
       publishProviderModelsChanged({
         providerModelList: deps.lifecycleDedupers.providerModelList,
         notifySystem: (changes) => deps.hub.notifySystem(changes),
+        hostId,
       });
     },
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),

@@ -4,7 +4,6 @@ import {
   callerExecutionInputSourceSchema,
   environmentSchema,
   extensionKindSchema,
-  hostSchema,
   jsonValueSchema,
   pendingInteractionResolutionSchema,
   pendingInteractionSchema,
@@ -26,6 +25,7 @@ import {
   threadWithRuntimeSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
+import { hostResponseSchema } from "./hosts.js";
 import {
   timelineDeltaSchema,
   timelineRowSchema,
@@ -404,7 +404,9 @@ export type ThreadGetQuery = z.infer<typeof threadGetQuerySchema>;
 
 export const threadWithIncludesResponseSchema = threadResponseSchema.extend({
   environment: environmentSchema.nullable().optional(),
-  host: hostSchema.nullable().optional(),
+  // The host with its connection status, the same shape the hosts list
+  // serves, so a client can seed that list from a thread fetch.
+  host: hostResponseSchema.nullable().optional(),
 });
 export type ThreadWithIncludesResponse = z.infer<
   typeof threadWithIncludesResponseSchema

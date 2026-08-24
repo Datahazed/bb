@@ -1011,9 +1011,11 @@ describe("host-daemon command schemas", () => {
   // completeness over the host wire. Older daemons cannot safely enforce or
   // interpret those fields, so enrolled machines must update before serving
   // workspace status and diff requests.
-  // Version 154 lets host.list_commands carry a provider bridge launch and
-  // return non-fatal diagnostics. Older daemons neither recognize the launch
-  // field nor return the required diagnostic list.
+  // Version 165 lets host.list_commands carry a provider bridge launch and
+  // return non-fatal diagnostics (with thread.reload, provider.custom_call,
+  // thread.extension-state.action, and thread-scoped interactions). Older
+  // daemons neither recognize the launch field nor return the required
+  // diagnostic list.
   // Version 118 rejects successful provider update results when the daemon
   // cannot verify a version change. Older daemons can report a no-op Claude
   // update as successful, so enrolled machines must update for honest results.

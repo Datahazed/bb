@@ -974,9 +974,12 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   the injected `plugin-commands` skill lists what is available.
 - Before any executable core or plugin command runs, the CLI asks the server to
   run plugin invocation handlers. A policy plugin may block the command with a
-  reason. This check fails closed when the server or a handler fails, including
-  for locally implemented commands. `bb --help` and `bb --version` skip the
-  check because they execute no command action. There is no CLI bypass flag.
+  reason. A server that answers decides: a block, a handler failure, or an
+  unreadable answer stops the command. A server that cannot be reached, or
+  that predates the check, has no policy to apply and the command proceeds
+  (its server-side actions still land on that same server). `bb --help`,
+  `bb --version`, `bb guide`, and `bb manager` execute no bb action and skip
+  the check. There is no CLI bypass flag.
 - Plugin commands share a 1,048,576-byte combined stdout/stderr ceiling. An
   oversized result is rejected in full as `plugin_cli_output_too_large` (valid
   JSON for `--json` callers), never truncated. Use pagination or file/streaming

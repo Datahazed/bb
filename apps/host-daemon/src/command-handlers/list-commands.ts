@@ -455,15 +455,30 @@ export async function listHostCommands(
     return { commands, diagnostics: [] };
   }
 
-  const bridgeLaunch = await resolveRuntimeBridgeLaunch(
-    command.bridgeLaunch,
-    options,
-  );
-  const bridgeResult = await options.listProviderCommands({
-    providerId: command.providerId,
-    bridgeLaunch,
-    cwd: command.cwd,
-  });
+  // The bridge's own commands are an addition to the scan, never a
+  // condition of it: a bridge that cannot launch or answer leaves the static
+  // commands standing and says why in the diagnostics.
+  let bridgeResult;
+  try {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    bridgeResult = await options.listProviderCommands({
+      providerId: command.providerId,
+      bridgeLaunch,
+      cwd: command.cwd,
+    });
+  } catch (error) {
+    return {
+      commands,
+      diagnostics: [
+        `${command.providerId} could not list its commands: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      ],
+    };
+  }
   if (!bridgeResult.supported) {
     return { commands, diagnostics: [] };
   }

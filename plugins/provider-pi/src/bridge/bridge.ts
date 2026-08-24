@@ -32,6 +32,7 @@ import {
   experimental_providerCommandListParamsSchema,
   experimental_providerCustomCallParamsSchema,
   initializeParamsSchema,
+  USER_QUESTION_MAX_FREE_TEXT_LENGTH,
   providerInstallationRunParamsSchema,
   providerInstallationStatusParamsSchema,
   providerMaintenanceParamsSchema,
@@ -63,6 +64,7 @@ import {
   buildPiExtensionDialog,
   isPiExtensionDialogRequest,
   piExtensionUiRequestSchema,
+  type PiExtensionDialogRequest,
   type PiExtensionUiResponse,
 } from "./extension-dialogs.js";
 import {
@@ -218,6 +220,12 @@ interface ThreadSession {
   extensionState: PiExtensionStateController;
   /** The last snapshot, replayed once identity is announced. */
   lastExtensionState: PiExtensionUIState | null;
+  /**
+   * Dialogs raised before identity was announced (an extension asking in
+   * its session_start handler): the runtime cannot attach a question to a
+   * thread it has not been told about yet, so they wait for the announce.
+   */
+  pendingDialogs: PiExtensionDialogRequest[];
   /** Identity announced: `thread/delta` may carry this session's state. */
   announced: boolean;
   sessionSerial: number;
@@ -320,8 +328,11 @@ async function closeThreadSession(args: {
   // this generation is still current, so it reaches persistence; anything
   // the child still emits after `closing` flips is fenced off below.
   threadSession.extensionState.clear();
+  // Withdraw the open questions while this session is still current: each
+  // one answers pi "cancelled" on its way out, which unblocks the tool that
+  // was waiting on the dialog so pi's abort does not sit on it.
+  cancelPendingDialogs(threadSession, args.message);
   threadSession.closing = true;
-  threadSession.interactions.cancel(args.message);
   resolvePendingToolCalls(threadSession, args.message);
   const closePromise = Promise.resolve()
     .then(() => threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS))
@@ -404,15 +415,36 @@ function requestExtensionDialog(
   timeout?.unref?.();
   const answer = (response: PiExtensionUiResponse): void => {
     if (timeout !== null) clearTimeout(timeout);
-    if (getCurrentThreadSession(args) !== threadSession) {
+    // The session may be closing (stop withdraws its dialogs): pi's child is
+    // still there until the close completes, and the cancelled answer is
+    // what lets its waiting tool return. A replaced session gets nothing.
+    if (sessions.get(args.threadId) !== threadSession) {
       return;
     }
     threadSession.session.respondToExtensionUi(response);
   };
   void pending.response.then(
     (resolution) => answer(dialog.toResponse(resolution)),
-    () => answer({ id: request.id, cancelled: true }),
+    (error: unknown) => {
+      // bb could not ask (a question the runtime rejected, the session
+      // stopping, pi's own timeout): pi sees "cancelled" either way, and the
+      // reason goes where the runtime logs bridge stderr.
+      process.stderr.write(
+        `pi bridge: extension ${request.method} dialog "${request.title}" cancelled: ${
+          error instanceof Error ? error.message : String(error)
+        }\n`,
+      );
+      answer({ id: request.id, cancelled: true });
+    },
   );
+}
+
+/** Withdraw every open dialog of a session, queued or asked; pi sees each as cancelled. */
+function cancelPendingDialogs(threadSession: ThreadSession, message: string): void {
+  for (const request of threadSession.pendingDialogs.splice(0)) {
+    threadSession.session.respondToExtensionUi({ id: request.id, cancelled: true });
+  }
+  threadSession.interactions.cancel(message);
 }
 
 function handleExtensionUiRequest(args: CurrentThreadSessionArgs, raw: unknown): void {
@@ -431,6 +463,24 @@ function handleExtensionUiRequest(args: CurrentThreadSessionArgs, raw: unknown):
   }
   const request = parsed.data;
   if (isPiExtensionDialogRequest(request)) {
+    if (
+      request.method === "editor" &&
+      request.prefill !== undefined &&
+      request.prefill.length > USER_QUESTION_MAX_FREE_TEXT_LENGTH
+    ) {
+      // bb's verbatim editor caps the prefill and the answer alike; a
+      // shortened document must never round-trip back to the extension as
+      // if the user had edited it that way, so this is pi's "cancelled".
+      process.stderr.write(
+        `pi bridge: extension editor "${request.title}" prefill is ${request.prefill.length} characters; bb supports ${USER_QUESTION_MAX_FREE_TEXT_LENGTH}. Cancelled.\n`,
+      );
+      threadSession.session.respondToExtensionUi({ id: request.id, cancelled: true });
+      return;
+    }
+    if (!threadSession.announced) {
+      threadSession.pendingDialogs.push(request);
+      return;
+    }
     requestExtensionDialog(args, threadSession, request);
     return;
   }
@@ -738,13 +788,7 @@ async function handleModelList(id: string | number, params: { cwd?: string }): P
   if (!gate.ok) {
     // The same wording the other first-party bridges use for a missing CLI,
     // so callers that tolerate an uninstalled provider recognize it.
-    sendError(
-      id,
-      -32000,
-      gate.status === "not_installed"
-        ? "Could not find the pi CLI on this host. Install @earendil-works/pi-coding-agent and retry."
-        : (gate.statusMessage ?? "Pi is not supported on this host."),
-    );
+    sendError(id, -32000, piNotInstalledMessage(gate));
     return;
   }
   try {
@@ -758,10 +802,7 @@ async function handleModelList(id: string | number, params: { cwd?: string }): P
       id,
       buildScopedPiAvailableModels({
         models,
-        enabledModelIds: resolvePiEnabledModelIds(
-          readPiEnabledModelPatterns({ cwd: params.cwd ?? null }),
-          models,
-        ),
+        enabledModelIds: resolvePiEnabledModelIds(readPiEnabledModelPatterns(), models),
       }),
     );
   } catch (error) {
@@ -779,6 +820,11 @@ async function handleCustomCall(
   id: string | number,
   params: z.infer<typeof experimental_providerCustomCallParamsSchema>,
 ): Promise<void> {
+  const gate = await getPiInstallGate();
+  if (!gate.ok) {
+    sendError(id, -32000, piNotInstalledMessage(gate));
+    return;
+  }
   try {
     const catalog = await getPiCatalog(process.cwd(), requireExtensionPath());
     const models = await catalog.catalogModels();
@@ -817,12 +863,33 @@ async function handleCommandList(
     sendResult(id, { supported: false });
     return;
   }
+  // A host where pi cannot answer still has its static skills: the listing
+  // is supported, empty, and says why — never an error that would hide the
+  // daemon's own scan.
+  const gate = await getPiInstallGate();
+  if (!gate.ok) {
+    sendResult(id, { supported: true, commands: [], diagnostics: [piNotInstalledMessage(gate)] });
+    return;
+  }
   try {
     const catalog = await getPiCatalog(params.cwd, requireExtensionPath());
     sendResult(id, { supported: true, commands: await catalog.listCommands(), diagnostics: [] });
   } catch (error) {
-    sendError(id, -32000, error instanceof Error ? error.message : String(error));
+    sendResult(id, {
+      supported: true,
+      commands: [],
+      diagnostics: [
+        `Pi could not list its commands: ${error instanceof Error ? error.message : String(error)}`,
+      ],
+    });
   }
+}
+
+/** The wording the other first-party bridges use for a missing or unusable CLI. */
+function piNotInstalledMessage(gate: Awaited<ReturnType<typeof getPiInstallGate>> & { ok: false }): string {
+  return gate.status === "not_installed"
+    ? "Could not find the pi CLI on this host. Install @earendil-works/pi-coding-agent and retry."
+    : (gate.statusMessage ?? "Pi is not supported on this host.");
 }
 
 async function handleProviderHealth(
@@ -977,6 +1044,7 @@ async function startPiThreadSession(
       updatePiExtensionState(sessionArgs, state),
     ),
     lastExtensionState: null,
+    pendingDialogs: [],
     announced: false,
     sessionSerial,
     closing: false,
@@ -996,6 +1064,9 @@ async function startPiThreadSession(
       ]);
     }
   } catch (error) {
+    // A dialog an extension raised during startup has no session to answer
+    // it now: pi sees it cancelled, and nothing stays pending on bb's side.
+    cancelPendingDialogs(threadSession, "Pi session failed to start");
     if (sessions.get(threadId) === threadSession) {
       sessions.delete(threadId);
     }
@@ -1018,6 +1089,12 @@ function sendThreadSessionResult(
     // One snapshot after the reset: it clears what an older session left
     // and replays what this one's extensions set while identity was pending.
     sendPiExtensionState(threadId, threadSession.lastExtensionState);
+    // The questions its extensions asked while identity was pending go out
+    // now, in the order pi raised them.
+    const sessionArgs = { sessionSerial: threadSession.sessionSerial, threadId };
+    for (const request of threadSession.pendingDialogs.splice(0)) {
+      requestExtensionDialog(sessionArgs, threadSession, request);
+    }
   }
   sendResult(id, { providerThreadId, sessionRestorable: true });
 }

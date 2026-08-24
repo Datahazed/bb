@@ -574,9 +574,28 @@ multiplex several threads over one child; and settle the recording entry
 shape (`{ ts, run, seq, dir, line }`) as a documented fixture format.
 
 ## `experimental_BridgeRecoveryError`
+
+**Kept experimental (2026-08-22).** it is part of the provider-bridge authoring surface and stabilizes together with `experimental_defineProviderBridge` / `experimental_apiVersion` in the later bridge-kit audit.
+
+**What it does.** A request handler throws it to reject the request with a
+typed recovery hint: `runBridgeRequest` answers with the given JSON-RPC
+`code` and `error.data.recovery { kind, message, retryable }`, the same way a
+`ProviderRequestDecodeError` becomes `INVALID_PARAMS`. A handler that answers
+by hand passes the hint to `sendError(id, code, message, { recovery })`
+instead. The runtime reads the hint from the rejected request
+(`JsonRpcResponseError.recovery`) and acts on the kind; see
+[provider-bridge-protocol.md](provider-bridge-protocol.md), "Recovery hints".
+
+**Audit before stabilizing.** Confirm the five kinds cover what third-party
+bridges need to say about a rejection (a `notInstalled`/`needsUpdate` kind
+for installation was deliberately left to `provider/installation/*`). Decide
+whether `retryable` should be per kind (only `sessionArchived` and
+`rateLimited` read it today) and whether the runtime should bound the
+`rateLimited` ladder from the hint rather than from a constant.
+
 ## Provider bridge command discovery (`BRIDGE_REQUEST_METHODS.experimentalProviderCommandList` and the `experimental_providerCommand*` schemas/types)
 
-**What it does.** Adds the optional, sessionless `command/list` provider-bridge request. It carries an explicit cwd and the provider's static options so the bridge can load the same trusted, project-bound resources as a real session. A supported result returns command metadata and non-fatal diagnostics together: one broken resource must not hide commands from healthy resources. Core currently uses this for Pi extension commands while the daemon keeps its existing static skill scan; Pi extensions are imported and initialized only inside the Pi bridge process.
+**What it does.** Adds the optional, sessionless `command/list` provider-bridge request. It carries an explicit cwd and the provider's static options so the bridge can load the same trusted, project-bound resources as a real session. A supported result returns command metadata and non-fatal diagnostics together: one broken resource must not hide commands from healthy resources. Core currently uses this for Pi extension commands and prompt templates while the daemon keeps its existing static skill scan; Pi's resources load inside the `pi --mode rpc` catalog child the bridge spawns per cwd, never in the bridge process. The only diagnostics a bridge produces today are its own failures to answer (pi not installed, the catalog child failing to start); pi reports a broken extension on its stderr, which the runtime logs.
 
 **Audit before stabilizing.** Confirm which providers need executable command discovery rather than static files, whether providers should declare support before core starts a bridge, whether string diagnostics need structured severity and source fields, whether command argument completion metadata belongs on this boundary, and whether repeated sessionless loads need a provider-owned cache or disposal lifecycle.
 

@@ -137,7 +137,22 @@ export function registerInternalToolCallRoutes(
               ],
             };
           }
-          return invokeTool();
+          try {
+            return await invokeTool();
+          } catch (error) {
+            // The response head is already out: a throw here would tear the
+            // stream instead of reaching the daemon as an error. Report it
+            // as the tool's failure and keep the server's own log of it.
+            const message = error instanceof Error ? error.message : String(error);
+            deps.logger.error(
+              { err: error, tool: payload.tool, threadId: thread.id },
+              "agent tool call failed",
+            );
+            return {
+              success: false,
+              contentItems: [{ type: "inputText", text: `Tool failed: ${message}` }],
+            };
+          }
         })(),
       );
     },

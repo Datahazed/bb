@@ -23,6 +23,13 @@ import { useGitDiffPanelState } from "./useGitDiffPanelState";
 
 const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
 
+/**
+ * The wrap/scroll choice for diff lines. The view unmounts with its tab, so
+ * the choice is kept here: it is how the user reads diffs, not a property of
+ * one visit to the tab.
+ */
+let rememberedLineOverflowMode: CodeOverflowMode = DEFAULT_CODE_OVERFLOW_MODE;
+
 export interface ChangesViewProps {
   displayMode: GitDiffDisplayMode;
   environmentId?: string;
@@ -94,9 +101,13 @@ export function ChangesView({
   );
   const { areAllCollapsed, toggleAllCollapsed, hasFiles } =
     useDiffFilesCollapseControls(diffIdentity, diffFiles);
-  const [lineOverflowMode, setLineOverflowMode] = useState<CodeOverflowMode>(
-    DEFAULT_CODE_OVERFLOW_MODE,
+  const [lineOverflowMode, setLineOverflowModeState] = useState<CodeOverflowMode>(
+    rememberedLineOverflowMode,
   );
+  const setLineOverflowMode = (mode: CodeOverflowMode): void => {
+    rememberedLineOverflowMode = mode;
+    setLineOverflowModeState(mode);
+  };
   const presentation = useMemo<DiffPresentation>(
     () => ({
       view: displayMode,

@@ -1,4 +1,15 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -58,18 +69,32 @@ describe("pi settings files", () => {
     expect(readFileSync(path, "utf8")).toBe("{not json");
   });
 
-  it("lets the project file's enabledModels override the global file's", () => {
+  it("reads the global enabledModels, and reads a broken file as empty instead of failing", () => {
     const root = tempRoot();
     const agentDir = join(root, "agent");
-    const cwd = join(root, "project");
     mkdirSync(agentDir, { recursive: true });
-    mkdirSync(join(cwd, ".pi"), { recursive: true });
-    writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ enabledModels: ["global/*"] }));
     const env = { PI_CODING_AGENT_DIR: agentDir };
+    expect(readPiEnabledModelPatterns(env)).toBeUndefined();
+    writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ enabledModels: ["global/*"] }));
+    expect(readPiEnabledModelPatterns(env)).toEqual(["global/*"]);
+    writeFileSync(join(agentDir, "settings.json"), "{not json");
+    expect(readPiEnabledModelPatterns(env)).toBeUndefined();
+  });
 
-    expect(readPiEnabledModelPatterns({ cwd, env })).toEqual(["global/*"]);
-    expect(readPiEnabledModelPatterns({ cwd: null, env })).toEqual(["global/*"]);
-    writeFileSync(join(cwd, ".pi", "settings.json"), JSON.stringify({ enabledModels: ["project/*"] }));
-    expect(readPiEnabledModelPatterns({ cwd, env })).toEqual(["project/*"]);
+  it("writes through a symlink and leaves no lock behind", () => {
+    const root = tempRoot();
+    const real = join(root, "dotfiles", "settings.json");
+    mkdirSync(join(root, "dotfiles"), { recursive: true });
+    mkdirSync(join(root, "agent"), { recursive: true });
+    writeFileSync(real, JSON.stringify({ theme: "dark" }));
+    const link = join(root, "agent", "settings.json");
+    symlinkSync(real, link);
+
+    updatePiSettingsFile(link, (current) => ({ ...current, enabledModels: ["a/b"] }));
+
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(readFileSync(real, "utf8"))).toEqual({ theme: "dark", enabledModels: ["a/b"] });
+    expect(readdirSync(join(root, "agent"))).toEqual(["settings.json"]);
+    expect(readdirSync(join(root, "dotfiles"))).toEqual(["settings.json"]);
   });
 });

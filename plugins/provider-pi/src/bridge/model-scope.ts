@@ -205,6 +205,14 @@ export function buildScopedPiAvailableModels(args: {
   });
   const otherModels = args.models.filter((model) => !enabled.has(toCanonicalId(model)));
   const preferred = buildPiAvailableModels({ models: preferredModels });
+  if (preferred.models.length === 0 && preferred.selectedOnlyModels.length > 0) {
+    // The user enabled only dated ids (`-YYYYMMDD`): those are what pi
+    // cycles through, so they are the picker — the alias-only rule that
+    // hides dated versions behind their aliases has nothing to hide here.
+    const [first, ...rest] = preferred.selectedOnlyModels;
+    preferred.models = [{ ...first!, isDefault: true }, ...rest];
+    preferred.selectedOnlyModels = [];
+  }
   if (otherModels.length === 0) {
     return preferred;
   }

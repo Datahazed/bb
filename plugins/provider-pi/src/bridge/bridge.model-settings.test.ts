@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JsonValue } from "@get-bb/plugin-sdk/provider-bridge";
@@ -83,21 +83,47 @@ it("refuses an empty selection or a model this host does not serve", async () =>
   expect(method.error).toMatchObject({ message: expect.stringContaining("Unknown") });
 }, 90_000);
 
-it("honors pi's own patterns and the project file's override when listing", async () => {
+it("honors pi's own patterns from the global file and ignores a project file", async () => {
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ enabledModels: ["fake-provider/*mini*"] }));
   const fromGlobal = await harness.request((nextId += 1), "model/list", { cwd: harness.workspaceDir });
   expect((fromGlobal.result as { models: { id: string }[] }).models.map((m) => m.id)).toEqual([
     "fake-provider/fake-mini",
   ]);
 
+  // A repository's .pi/settings.json only applies in pi once the project is
+  // trusted, which the bridge cannot see: it must not steer the picker.
   mkdirSync(join(harness.workspaceDir, ".pi"), { recursive: true });
   writeFileSync(
     join(harness.workspaceDir, ".pi", "settings.json"),
-    JSON.stringify({ enabledModels: ["fake-model", "fake-mini"] }),
+    JSON.stringify({ enabledModels: ["fake-model"] }),
   );
-  const fromProject = await harness.request((nextId += 1), "model/list", { cwd: harness.workspaceDir });
-  expect((fromProject.result as { models: { id: string }[] }).models.map((m) => m.id)).toEqual([
+  const withProject = await harness.request((nextId += 1), "model/list", { cwd: harness.workspaceDir });
+  expect((withProject.result as { models: { id: string }[] }).models.map((m) => m.id)).toEqual([
+    "fake-provider/fake-mini",
+  ]);
+}, 90_000);
+
+it("keeps listing models when the settings file is not valid JSON, and refuses to write over it", async () => {
+  writeFileSync(join(agentDir, "settings.json"), "{not json");
+  const listed = await harness.request((nextId += 1), "model/list", { cwd: harness.workspaceDir });
+  expect((listed.result as { models: { id: string }[] }).models.map((m) => m.id)).toEqual([
     "fake-provider/fake-model",
     "fake-provider/fake-mini",
   ]);
+  const written = await customCall("model-settings/write", { enabledModelIds: ["fake-provider/fake-mini"] });
+  expect(written.error).toMatchObject({ message: expect.stringContaining("Failed to load Pi settings") });
+  expect(readFileSync(join(agentDir, "settings.json"), "utf8")).toBe("{not json");
+}, 90_000);
+
+it("writes through a symlinked settings.json instead of replacing the link", async () => {
+  const real = join(harness.workspaceDir, "dotfiles-settings.json");
+  writeFileSync(real, JSON.stringify({ theme: "dark" }));
+  symlinkSync(real, join(agentDir, "settings.json"));
+  const written = await customCall("model-settings/write", { enabledModelIds: ["fake-provider/fake-mini"] });
+  expect(written.result).toMatchObject({ result: { enabledModelIds: ["fake-provider/fake-mini"] } });
+  expect(lstatSync(join(agentDir, "settings.json")).isSymbolicLink()).toBe(true);
+  expect(JSON.parse(readFileSync(real, "utf8"))).toEqual({
+    theme: "dark",
+    enabledModels: ["fake-provider/fake-mini"],
+  });
 }, 90_000);

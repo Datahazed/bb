@@ -68,6 +68,21 @@ describe("the scoped picker", () => {
     expect(scoped.selectedOnlyModels.some((entry) => entry.isDefault)).toBe(false);
   });
 
+  it("keeps a picker when only dated ids are enabled, with a default", () => {
+    const scoped = buildScopedPiAvailableModels({
+      models: catalog,
+      enabledModelIds: ["anthropic/claude-opus-4-8-20260101"],
+    });
+    expect(scoped.models.map((entry) => entry.id)).toEqual(["anthropic/claude-opus-4-8-20260101"]);
+    expect(scoped.models[0]?.isDefault).toBe(true);
+    expect(scoped.selectedOnlyModels.map((entry) => entry.id)).toEqual([
+      "anthropic/claude-sonnet-5",
+      "anthropic/claude-opus-4-8",
+      "openai/gpt-5.5",
+      "openrouter/zai/glm-5.1",
+    ]);
+  });
+
   it("is the plain catalog without a scope", () => {
     const unscoped = buildScopedPiAvailableModels({ models: catalog, enabledModelIds: null });
     expect(unscoped.models.map((entry) => entry.id)).toEqual([

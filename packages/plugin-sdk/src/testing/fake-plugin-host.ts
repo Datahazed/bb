@@ -1883,6 +1883,18 @@ function createFakePluginHostInternal(
           if (methodContract === undefined) {
             throw new Error(`unknown provider bridge rpc method "${method}"`);
           }
+          // The same gates the real host applies: a plugin may only reach
+          // its own providers' bridges, and only on a named host.
+          if (!providerRegistrations.some((entry) => entry.id === providerId)) {
+            throw new Error(
+              `plugin "${pluginId}" does not own provider "${providerId}"`,
+            );
+          }
+          if (typeof callOptions?.hostId !== "string" || callOptions.hostId.length === 0) {
+            throw new Error(
+              `provider bridge rpc method "${method}" requires a host id`,
+            );
+          }
           const validatedInput = await validateRpcValue(
             methodContract.input,
             input,
@@ -1915,6 +1927,11 @@ function createFakePluginHostInternal(
     },
     experimental_modelsChanged(args) {
       assertLive();
+      if (!providerRegistrations.some((entry) => entry.id === args.providerId)) {
+        throw new Error(
+          `plugin "${pluginId}" does not own provider "${args.providerId}"`,
+        );
+      }
       providerModelChanges.push({ ...args });
     },
   };

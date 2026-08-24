@@ -17,6 +17,13 @@ export const PI_EXTENSION_UI_TEXT_MAX_BYTES = 1_024;
 export const PI_EXTENSION_WIDGET_LINE_MAX_BYTES = 1_024;
 export const PI_EXTENSION_WIDGET_TEXT_MAX_BYTES = 12_288;
 export const PI_EXTENSION_EDITOR_TEXT_MAX_BYTES = 16_384;
+/**
+ * The server caps an `extension.state` payload at 64 KiB of JSON. The
+ * per-field byte caps above bound the raw text, not its JSON encoding
+ * (quotes, backslashes and control characters escape to 2–6 bytes), so the
+ * whole snapshot is measured as it will be sent, with headroom.
+ */
+export const PI_EXTENSION_SNAPSHOT_MAX_BYTES = 60 * 1024;
 
 /**
  * Process-wide: an editor request must read as new even when its text
@@ -101,6 +108,18 @@ export function createPiExtensionStateController(
   let notificationId = 0;
   let state = emptyState();
   const publish = (): void => onChange(copyState(state));
+  /**
+   * Apply one mutation if the snapshot it produces still fits the wire; a
+   * snapshot that would be rejected downstream is not worth more than the
+   * one already showing, so the update is dropped whole.
+   */
+  const commit = (next: PiExtensionUIState): void => {
+    if (utf8Bytes(JSON.stringify(next)) > PI_EXTENSION_SNAPSHOT_MAX_BYTES) {
+      return;
+    }
+    state = next;
+    publish();
+  };
 
   return {
     clear() {
@@ -113,39 +132,40 @@ export function createPiExtensionStateController(
           return;
         }
         notificationId += 1;
-        state.notifications = [
-          ...state.notifications,
-          { id: notificationId, message, level },
-        ].slice(-PI_EXTENSION_NOTIFICATION_MAX);
-        publish();
+        commit({
+          ...state,
+          notifications: [
+            ...state.notifications,
+            { id: notificationId, message, level },
+          ].slice(-PI_EXTENSION_NOTIFICATION_MAX),
+        });
       },
       setEditorText(text) {
         if (!acceptsText(text, PI_EXTENSION_EDITOR_TEXT_MAX_BYTES)) return;
         editorRevisionCounter += 1;
-        state.editor = { revision: editorRevisionCounter, text };
-        publish();
+        commit({ ...state, editor: { revision: editorRevisionCounter, text } });
       },
       setStatus(key, text) {
         if (!acceptsText(key, PI_EXTENSION_KEY_MAX_BYTES)) return;
         if (text !== undefined && !acceptsText(text, PI_EXTENSION_STATUS_TEXT_MAX_BYTES)) {
           return;
         }
-        state.statuses =
-          text === undefined
-            ? removeByKey(state.statuses, key)
-            : upsertBoundedByKey(state.statuses, { key, text }, PI_EXTENSION_STATUS_MAX);
-        publish();
+        commit({
+          ...state,
+          statuses:
+            text === undefined
+              ? removeByKey(state.statuses, key)
+              : upsertBoundedByKey(state.statuses, { key, text }, PI_EXTENSION_STATUS_MAX),
+        });
       },
       setTitle(title) {
         if (!acceptsText(title, PI_EXTENSION_UI_TEXT_MAX_BYTES)) return;
-        state.title = title;
-        publish();
+        commit({ ...state, title });
       },
       setWidget(key, content, placement) {
         if (!acceptsText(key, PI_EXTENSION_KEY_MAX_BYTES)) return;
         if (content === undefined) {
-          state.widgets = removeByKey(state.widgets, key);
-          publish();
+          commit({ ...state, widgets: removeByKey(state.widgets, key) });
           return;
         }
         const lines = content.slice(0, PI_EXTENSION_WIDGET_LINE_MAX);
@@ -165,8 +185,7 @@ export function createPiExtensionStateController(
         if (widgetTextBytes(widgets) > PI_EXTENSION_WIDGET_TEXT_MAX_BYTES) {
           return;
         }
-        state.widgets = widgets;
-        publish();
+        commit({ ...state, widgets });
       },
     },
   };

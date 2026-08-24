@@ -617,10 +617,13 @@ commands; core command names always win. Inside agent threads the generated
 
 Before any executable core or plugin command runs, the CLI asks the server to
 run plugin invocation handlers. A policy plugin can block the command with a
-reason. The check fails closed when the server or a handler fails, including
-for commands implemented locally. `bb --help` and `bb --version` execute no
-command action and skip the check. Disable a broken policy plugin in the
-Extensions UI; there is no CLI bypass flag.
+reason. A server that answers decides: a block, a handler failure, or an
+unreadable answer stops the command. A server that cannot be reached, or that
+predates the check, has no policy to apply and the command proceeds (its
+server-side actions still land on that same server). `bb --help`,
+`bb --version`, `bb guide`, and `bb manager` execute no bb action and skip the
+check. Disable a broken policy plugin in the Extensions UI; there is no CLI
+bypass flag.
 
 Settings changes do not auto-reload a plugin — run `bb plugin reload <id>`
 after configuring. Add --json to plugin commands for machine-readable output.

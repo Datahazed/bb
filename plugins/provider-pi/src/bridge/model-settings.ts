@@ -1,7 +1,7 @@
 import type { PiCatalogModel } from "../model-list.js";
 import { resolvePiEnabledModelIds, toCanonicalId } from "./model-scope.js";
 import {
-  readPiSettingsFile,
+  readPiEnabledModelPatterns,
   resolvePiGlobalSettingsPath,
   updatePiSettingsFile,
 } from "./settings-storage.js";
@@ -26,7 +26,7 @@ export interface PiModelSettingsSnapshot {
 }
 
 export function readPiModelSettings(catalog: readonly PiCatalogModel[]): PiModelSettingsSnapshot {
-  const patterns = readPiSettingsFile(resolvePiGlobalSettingsPath()).enabledModels;
+  const patterns = readPiEnabledModelPatterns();
   return {
     models: catalog.map((model) => ({
       id: toCanonicalId(model),

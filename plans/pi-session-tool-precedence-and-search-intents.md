@@ -1,5 +1,12 @@
 # Handoff: pi-bubblewrap sandboxing is silently void under bb (bash), and "Searching for…" rows come from sniffed bash commands
 
+> **Status (2026-08-24):** historical. Bug A described the in-process Pi SDK
+> bridge (`packages/agent-runtime/src/pi/…`), which #2325 replaced with a
+> `pi --mode rpc` child that registers bb's tools through pi's own extension
+> API, so the `customTools` precedence it analyzes no longer exists. Bug B's
+> fix landed as "fix(thread-view): stop inferring shell searches". Kept for
+> the production analysis.
+
 Filed 2026-08-23 from live incident analysis on ryzen (bb 0.39.0-unstable-2026-08-23, pi 0.84.0).
 Author thread: nixos-config / thr_jycipttndr. Two independent bugs, two small patches, one verification pass.
 
