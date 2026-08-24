@@ -2,8 +2,9 @@ import type {
   ProviderCliStatus,
   ProviderCliStatusResponse,
 } from "@bb/host-daemon-contract/local";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
+import { SESSION_STATIC_QUERY_POLICY } from "@/data/shared/query-policies";
 import { hostProviderCliStatusQueryKey } from "@/lib/query/query-keys";
 import { recheckHostProviderCliStatus } from "./recheck-provider-cli-status";
 
@@ -52,6 +53,53 @@ describe("recheckHostProviderCliStatus", () => {
     expect(
       queryClient.getQueryData(hostProviderCliStatusQueryKey("host_1")),
     ).toEqual(fresh);
+  });
+
+  it("still sends force when a plain fetch for the host is in flight", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const queryKey = hostProviderCliStatusQueryKey("host_1");
+    const memoized: ProviderCliStatusResponse = { codex: status("Codex") };
+    const probed: ProviderCliStatusResponse = {
+      codex: status("Codex"),
+      pi: status("Pi"),
+    };
+    let answerPlainFetch: (value: ProviderCliStatusResponse) => void = () => {};
+    const providerCliStatus = vi.fn(
+      (args: { hostId: string; force?: boolean; signal?: AbortSignal }) =>
+        args.force === true
+          ? Promise.resolve(probed)
+          : new Promise<ProviderCliStatusResponse>((resolve) => {
+              answerPlainFetch = resolve;
+            }),
+    );
+    const client = { sdk: { hosts: { providerCliStatus } } };
+
+    // useHostsProviderCliStatus's observer: its plain fetch starts on
+    // subscribe and is still pending when the user taps Check for updates.
+    const observer = new QueryObserver(queryClient, {
+      queryKey,
+      queryFn: ({ signal }) => providerCliStatus({ hostId: "host_1", signal }),
+      ...SESSION_STATIC_QUERY_POLICY,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    expect(queryClient.getQueryState(queryKey)?.fetchStatus).toBe("fetching");
+
+    const recheck = recheckHostProviderCliStatus(client, queryClient, "host_1");
+    answerPlainFetch(memoized);
+    await recheck;
+
+    expect(providerCliStatus.mock.calls).toHaveLength(2);
+    // The plain request was abandoned, not joined.
+    expect(providerCliStatus.mock.calls[0]?.[0].signal?.aborted).toBe(true);
+    expect(providerCliStatus).toHaveBeenLastCalledWith({
+      hostId: "host_1",
+      force: true,
+      signal: expect.any(AbortSignal),
+    });
+    expect(queryClient.getQueryData(queryKey)).toEqual(probed);
+    unsubscribe();
   });
 
   it("resolves when the host is unreachable so a fleet-wide check finishes", async () => {

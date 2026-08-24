@@ -25,12 +25,19 @@ export function invalidateHostProviderCliStatus(
  * rejection is swallowed: one unreachable host must not fail the whole check,
  * which invalidation never did either.
  */
-export function recheckHostProviderCliStatus(
+export async function recheckHostProviderCliStatus(
   args: HostProviderCliStatusCacheArgs,
 ): Promise<void> {
+  const queryKey = hostProviderCliStatusQueryKey(args.hostId);
+  // fetchQuery joins a fetch already in flight instead of starting its own,
+  // so a check issued while the plain boot/mount fetch is pending would never
+  // send `force` and would report that fetch's memoized answer as a fresh
+  // probe. Cancel the plain fetch first (its request carries the abort
+  // signal); observers keep following the same Query.
+  await args.queryClient.cancelQueries({ queryKey });
   return args.queryClient
     .fetchQuery({
-      queryKey: hostProviderCliStatusQueryKey(args.hostId),
+      queryKey,
       queryFn: ({ signal }) =>
         sdk.hosts.providerCliStatus({
           hostId: args.hostId,

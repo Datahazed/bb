@@ -16,14 +16,22 @@ export interface ProviderCliStatusClient {
  * (spinner and error state follow), and swallows the rejection so one
  * unreachable host does not fail a fleet-wide check.
  */
-export function recheckHostProviderCliStatus(
+export async function recheckHostProviderCliStatus(
   client: ProviderCliStatusClient,
   queryClient: QueryClient,
   hostId: string,
 ): Promise<void> {
+  const queryKey = hostProviderCliStatusQueryKey(hostId);
+  // fetchQuery joins a fetch already in flight instead of starting its own,
+  // so a check tapped while the screen's plain fetch (or a realtime
+  // invalidation refetch) is pending would never send `force` and would
+  // report that fetch's memoized answer as a fresh probe. Cancel the plain
+  // fetch first (its request carries the abort signal); observers keep
+  // following the same Query.
+  await queryClient.cancelQueries({ queryKey });
   return queryClient
     .fetchQuery<HostProviderCliStatusResponse>({
-      queryKey: hostProviderCliStatusQueryKey(hostId),
+      queryKey,
       queryFn: ({ signal }) =>
         client.sdk.hosts.providerCliStatus({ hostId, force: true, signal }),
       staleTime: 0,

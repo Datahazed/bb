@@ -1,7 +1,7 @@
 import type { Host } from "@bb/domain";
 import type { SystemVersionResponse } from "@bb/server-contract";
 import * as Clipboard from "expo-clipboard";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import { useProfiles } from "@/app-shell";
 import {
@@ -364,6 +364,20 @@ function ConnectedUpdatesScreen() {
   const connectedHostIds = inventory.machines
     .filter((machine) => machine.host.status === "connected")
     .map((machine) => machine.host.id);
+
+  // Opening the screen is the request to check, as the web section does on
+  // open. Without it the first status read is answered from the server's
+  // memo and "Checked just now" would date that memo hit, not a probe. Waits
+  // for the host list: the check re-probes each connected machine, and on
+  // mount that list is still empty.
+  const hostsSettled = !inventory.isLoading;
+  const checkedOnLoad = useRef(false);
+  useEffect(() => {
+    if (checkedOnLoad.current || !hostsSettled) return;
+    checkedOnLoad.current = true;
+    check.mutate(connectedHostIds);
+    // oxlint-disable-next-line react/exhaustive-deps -- once per mount, with the host snapshot of that moment
+  }, [hostsSettled]);
 
   return (
     <>
