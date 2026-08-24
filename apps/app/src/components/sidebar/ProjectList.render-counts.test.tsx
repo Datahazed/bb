@@ -9,13 +9,7 @@
 // every tested helper (a fresh object threaded through `SortableProjectRow`,
 // say) still shows up as extra renders.
 
-import {
-  act,
-  cleanup,
-  render,
-  renderHook,
-  screen,
-} from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { Provider as JotaiProvider, createStore } from "jotai";
@@ -31,7 +25,6 @@ import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
 import { applyToCachedSidebarNavigationThreads } from "@/hooks/cache-owners/query-cache";
 import { ProjectList } from "./ProjectList";
 import type { ProjectRowProps } from "./ProjectRow";
-import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
 
 /** How many times each project's `ProjectRow` body ran, by project id. */
 const projectRowRenders = vi.hoisted(() => new Map<string, number>());
@@ -251,21 +244,5 @@ describe("ProjectList render counts", () => {
     });
     await settleRenders();
     expect(snapshotRenders()).toEqual({ ...afterPatch, b: afterPatch.b + 1 });
-  });
-});
-
-describe("useSidebarReorderDnd", () => {
-  it("keeps the dnd-kit sensors across re-renders with unchanged handlers", () => {
-    // dnd-kit memoizes the sensors on their option objects; a fresh `sensors`
-    // array makes DndContext rebuild every sortable's listeners, which is what
-    // the render-count test above catches one layer up.
-    const onDragEnd = vi.fn();
-    const { result, rerender } = renderHook(() =>
-      useSidebarReorderDnd({ onDragEnd }),
-    );
-    const first = result.current.dndContextProps;
-    rerender();
-    expect(result.current.dndContextProps.sensors).toBe(first.sensors);
-    expect(result.current.dndContextProps).toBe(first);
   });
 });

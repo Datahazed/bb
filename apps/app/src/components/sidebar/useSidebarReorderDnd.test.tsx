@@ -74,6 +74,23 @@ describe("useSidebarReorderDnd", () => {
     act(() => result.current.dndContextProps.onDragCancel?.(DRAG_CANCEL_EVENT));
     expect(onDragCancel).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps the dnd-kit sensors across re-renders with unchanged handlers", () => {
+    // dnd-kit memoizes each sensor on the options object it is handed, so an
+    // inline options literal in the hook yields a fresh `sensors` array per
+    // render and DndContext rebuilds every sortable's listeners. The sidebar
+    // rows are memoized on those listeners, which is why
+    // ProjectList.render-counts.test.tsx catches the same regression one layer
+    // up; this guard pins the cause at the hook.
+    const onDragEnd = vi.fn();
+    const { result, rerender } = renderHook(() =>
+      useSidebarReorderDnd({ onDragEnd }),
+    );
+    const first = result.current.dndContextProps;
+    rerender();
+    expect(result.current.dndContextProps.sensors).toBe(first.sensors);
+    expect(result.current.dndContextProps).toBe(first);
+  });
 });
 
 describe("SidebarTouchSensor", () => {
