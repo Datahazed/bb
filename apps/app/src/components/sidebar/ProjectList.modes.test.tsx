@@ -6,6 +6,7 @@ import {
   cleanup,
   fireEvent,
   render,
+  renderHook,
   screen,
   waitFor,
 } from "@testing-library/react";
@@ -17,7 +18,11 @@ import {
 } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@bb/domain";
-import { ActiveSidebarModeSections, MachineModeSections } from "./ProjectList";
+import {
+  ActiveSidebarModeSections,
+  MachineModeSections,
+  useSectionDisplayOptionsRenderer,
+} from "./ProjectList";
 import { buildMachineThreadGroups } from "@bb/client-core";
 import {
   collapsedSidebarSectionIdsAtom,
@@ -297,5 +302,41 @@ describe("sidebar organization mode sections", () => {
     expect(screen.queryByText("Machine activity")).toBeNull();
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Thread working")).toBeNull();
+  });
+});
+
+describe("useSectionDisplayOptionsRenderer", () => {
+  it("keeps each section's menu element until that section's open state changes", () => {
+    const setSidebarMenuOpen = vi.fn();
+    const initialProps: { open: `displayOptions:${string}` | null } = {
+      open: null,
+    };
+    const { result, rerender } = renderHook(
+      ({ open }) => useSectionDisplayOptionsRenderer(open, setSidebarMenuOpen),
+      { initialProps },
+    );
+    const projectA = result.current.render("project:a");
+    const projectB = result.current.render("project:b");
+
+    // A sidebar update re-renders the list with the same menu state; every
+    // header must get back the element it already has.
+    rerender({ open: null });
+    expect(result.current.render("project:a")).toBe(projectA);
+    expect(result.current.render("project:b")).toBe(projectB);
+
+    // Opening one section's menu replaces that section's element only.
+    rerender({ open: "displayOptions:project:a" });
+    const openedA = result.current.render("project:a");
+    expect(openedA).not.toBe(projectA);
+    expect(result.current.render("project:a")).toBe(openedA);
+    expect(result.current.render("project:b")).toBe(projectB);
+    expect(result.current.isOpen("project:a")).toBe(true);
+    expect(result.current.isOpen("project:b")).toBe(false);
+
+    rerender({ open: null });
+    const closedA = result.current.render("project:a");
+    expect(closedA).not.toBe(openedA);
+    expect(result.current.render("project:b")).toBe(projectB);
+    expect(result.current.isOpen("project:a")).toBe(false);
   });
 });

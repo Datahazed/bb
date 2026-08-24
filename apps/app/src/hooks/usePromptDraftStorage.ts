@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptDraftAttachment, PromptDraftState } from "@bb/client-core";
 import {
@@ -552,6 +552,24 @@ function createPromptDraftPresenceStore(
   };
 }
 
+const EMPTY_PROMPT_DRAFT_SUBSCRIPTIONS: PromptDraftThreadSubscription[] = [];
+
+function areSubscriptionListsEqual(
+  prev: readonly PromptDraftThreadSubscription[],
+  next: readonly PromptDraftThreadSubscription[],
+): boolean {
+  if (prev.length !== next.length) return false;
+  for (let index = 0; index < prev.length; index += 1) {
+    if (
+      prev[index].storageKey !== next[index].storageKey ||
+      prev[index].threadId !== next[index].threadId
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Subscribes to draft presence for a collection of threads without mounting a
  * hook per row. The primitive bit-string snapshot stays referentially stable
@@ -561,6 +579,13 @@ function createPromptDraftPresenceStore(
 export function usePromptDraftInputThreadIds(
   threads: readonly PromptDraftThreadRef[],
 ): ReadonlySet<string> {
+  // Render-time cache of the previous subscription list. The sidebar passes a
+  // freshly flattened thread array on every refetch; a new list rebuilds the
+  // presence store, resubscribes, and re-reads one localStorage key per
+  // thread, so the previous list is kept while its keys are unchanged. The
+  // memo reads and writes a ref during render as
+  // useSidebarThreadTitleMentionResources does.
+  const previousSubscriptionsRef = useRef(EMPTY_PROMPT_DRAFT_SUBSCRIPTIONS);
   const subscriptions = useMemo<PromptDraftThreadSubscription[]>(() => {
     const seenStorageKeys = new Set<string>();
     const next: PromptDraftThreadSubscription[] = [];
@@ -575,7 +600,14 @@ export function usePromptDraftInputThreadIds(
       seenStorageKeys.add(storageKey);
       next.push({ storageKey, threadId: thread.id });
     }
-    return next;
+    /* oxlint-disable react/refs -- render-time cache, see above */
+    const previous = previousSubscriptionsRef.current;
+    const retained = areSubscriptionListsEqual(previous, next)
+      ? previous
+      : next;
+    previousSubscriptionsRef.current = retained;
+    /* oxlint-enable react/refs */
+    return retained;
   }, [threads]);
 
   const presenceStore = useMemo(

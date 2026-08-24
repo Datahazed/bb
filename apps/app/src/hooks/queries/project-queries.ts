@@ -81,10 +81,25 @@ function requireProviderId(
 
 export type SidebarProject = Omit<ProjectWithThreadsResponse, "threads">;
 
+/**
+ * Per-payload-object memo. React Query structurally shares the sidebar
+ * payload, so a project whose fields and threads did not change keeps its
+ * `ProjectWithThreadsResponse` identity across refetches; stripping it again
+ * handed every consumer a fresh object per project per sidebar update, which
+ * each `memo` boundary below the project list read as a changed project.
+ */
+const sidebarProjectByPayload = new WeakMap<
+  ProjectWithThreadsResponse,
+  SidebarProject
+>();
+
 export function stripProjectThreads(
   project: ProjectWithThreadsResponse,
 ): SidebarProject {
+  const cached = sidebarProjectByPayload.get(project);
+  if (cached !== undefined) return cached;
   const { threads, ...rest } = project;
+  sidebarProjectByPayload.set(project, rest);
   return rest;
 }
 

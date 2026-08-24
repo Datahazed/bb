@@ -153,6 +153,38 @@ export type ProjectThreadListState =
       status: "unavailable";
     };
 
+/**
+ * Element-wise identity comparison of two thread lists. Identity is the right
+ * test: React Query structurally shares the sidebar payload, so an entry whose
+ * fields did not change keeps its object across refetches, a changed entry is
+ * always a new object, and nothing mutates cached entries in place. A list
+ * with the same entries in the same order renders the same rows, whichever
+ * array wraps it.
+ */
+export function areThreadListsEqual(
+  prev: readonly ThreadListEntry[],
+  next: readonly ThreadListEntry[],
+): boolean {
+  if (prev === next) return true;
+  if (prev.length !== next.length) return false;
+  for (let index = 0; index < prev.length; index += 1) {
+    if (prev[index] !== next[index]) return false;
+  }
+  return true;
+}
+
+/** Value equality for a project's thread-list state; see areThreadListsEqual. */
+export function areProjectThreadListStatesEqual(
+  prev: ProjectThreadListState,
+  next: ProjectThreadListState,
+): boolean {
+  if (prev === next) return true;
+  if (prev.status !== "ready" || next.status !== "ready") {
+    return prev.status === next.status;
+  }
+  return areThreadListsEqual(prev.threads, next.threads);
+}
+
 export interface ProjectRowProps {
   project: ProjectResponse;
   threadListState: ProjectThreadListState;
@@ -2501,13 +2533,37 @@ function hasCollapsedEnvironmentStateChanged({
   return false;
 }
 
-function areProjectRowPropsEqual(
+/**
+ * A project whose threads changed arrives as a new payload object even when
+ * none of its own fields did, so the row compares own properties rather than
+ * identity. Nested values such as `sources` keep their identity through React
+ * Query's structural sharing whenever their contents are unchanged, so a
+ * shallow pass is enough. Generic so `for...in` yields typed keys and the
+ * check covers every field the payload carries, not only the ones the
+ * `ProjectResponse` type names.
+ */
+function areSidebarProjectsEqual<T extends ProjectResponse>(
+  prev: T,
+  next: T,
+): boolean {
+  if (prev === next) return true;
+  if (Object.keys(prev).length !== Object.keys(next).length) return false;
+  for (const key in prev) {
+    if (!(key in next) || !Object.is(prev[key], next[key])) return false;
+  }
+  return true;
+}
+
+export function areProjectRowPropsEqual(
   prev: ProjectRowProps,
   next: ProjectRowProps,
 ): boolean {
   if (
-    prev.project !== next.project ||
-    prev.threadListState !== next.threadListState ||
+    !areSidebarProjectsEqual(prev.project, next.project) ||
+    !areProjectThreadListStatesEqual(
+      prev.threadListState,
+      next.threadListState,
+    ) ||
     prev.isActive !== next.isActive ||
     prev.isCollapsed !== next.isCollapsed ||
     prev.compareThreads !== next.compareThreads ||

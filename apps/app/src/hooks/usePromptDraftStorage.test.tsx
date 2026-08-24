@@ -219,6 +219,39 @@ describe("usePromptDraftStorage", () => {
     getItem.mockRestore();
   });
 
+  it("keeps the presence subscription when a new array lists the same threads", () => {
+    const projectId = "proj-batch-refetch";
+    const threadRefs = Array.from({ length: 30 }, (_, index) => ({
+      id: `thr-batch-${index}`,
+      projectId,
+    }));
+    const { result, rerender } = renderHook(
+      ({ threads }: { threads: { id: string; projectId: string }[] }) =>
+        usePromptDraftInputThreadIds(threads),
+      { initialProps: { threads: threadRefs } },
+    );
+    const initial = result.current;
+
+    const getItem = vi.spyOn(Storage.prototype, "getItem");
+    const presenceReadKeys = () =>
+      getItem.mock.calls
+        .map(([key]) => String(key))
+        .filter((key) => key.includes(projectId));
+    // Every sidebar refetch flattens a fresh thread array with the same
+    // entries; rebuilding the store for it resubscribed and re-read one
+    // localStorage key per sidebar thread, and handed out a new set.
+    rerender({ threads: [...threadRefs] });
+    expect(presenceReadKeys()).toEqual([]);
+    expect(result.current).toBe(initial);
+
+    // A thread that is actually new does rebuild the subscription set.
+    rerender({ threads: [...threadRefs, { id: "thr-batch-new", projectId }] });
+    expect(
+      presenceReadKeys().some((key) => key.includes("thr-batch-new")),
+    ).toBe(true);
+    getItem.mockRestore();
+  });
+
   it("uses project-agnostic storage for new-thread prompt contents", () => {
     window.localStorage.setItem(
       LEGACY_PROJECT_DRAFT_KEY,

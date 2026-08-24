@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import type { ProjectWithThreadsResponse } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
+import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useProjectSourceBranches } from "./project-queries";
+import {
+  stripProjectThreads,
+  useProjectSourceBranches,
+} from "./project-queries";
 import { projectSourceBranchesQueryKeyPrefix } from "./query-keys";
 
 vi.mock("@/lib/sdk", () => ({
@@ -54,5 +59,51 @@ describe("useProjectSourceBranches", () => {
         staleTime: 30_000,
       }),
     );
+  });
+});
+
+describe("stripProjectThreads", () => {
+  function makeProjectWithThreads(): ProjectWithThreadsResponse {
+    return {
+      id: "proj_1",
+      kind: "standard",
+      name: "One",
+      gitRemoteUrl: null,
+      sources: [],
+      createdAt: 0,
+      updatedAt: 0,
+      threads: [makeThreadListEntry({ id: "thr_1", projectId: "proj_1" })],
+      defaultExecutionOptions: null,
+    };
+  }
+
+  it("returns the same project for the same payload object", () => {
+    // React Query structurally shares the sidebar payload, so a project whose
+    // fields and threads did not change keeps its object across refetches;
+    // the stripped project has to keep its identity too, or every project
+    // row sees a new project on every sidebar update.
+    const payload = makeProjectWithThreads();
+    const stripped = stripProjectThreads(payload);
+
+    expect(stripProjectThreads(payload)).toBe(stripped);
+    expect("threads" in stripped).toBe(false);
+    expect(stripped).toEqual({
+      id: "proj_1",
+      kind: "standard",
+      name: "One",
+      gitRemoteUrl: null,
+      sources: [],
+      createdAt: 0,
+      updatedAt: 0,
+      defaultExecutionOptions: null,
+    });
+  });
+
+  it("returns a new project for a new payload object", () => {
+    const stripped = stripProjectThreads(makeProjectWithThreads());
+    const next = stripProjectThreads(makeProjectWithThreads());
+
+    expect(next).not.toBe(stripped);
+    expect(next).toEqual(stripped);
   });
 });

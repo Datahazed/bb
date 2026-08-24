@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEventHandler,
   type PointerEventHandler,
@@ -74,6 +75,8 @@ import {
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
+  areProjectThreadListStatesEqual,
+  areThreadListsEqual,
   ChronologicalSectionThreadSections,
   ProjectThreadTree,
 } from "./ProjectRow";
@@ -344,7 +347,9 @@ const EMPTY_PROJECT_THREAD_LIST_STATE: ProjectThreadListState = {
 };
 
 const EMPTY_PROJECTS: readonly ProjectResponse[] = [];
+const EMPTY_PROJECT_ROWS: readonly ProjectListRowModel[] = [];
 const EMPTY_SECTION_DEFINITIONS: readonly ThreadSectionResponse[] = [];
+const EMPTY_THREAD_LIST: ThreadListEntry[] = [];
 
 function getProjectThreadListState({
   status,
@@ -362,6 +367,42 @@ function getProjectThreadListState({
     case undefined:
       return EMPTY_PROJECT_THREAD_LIST_STATE;
   }
+}
+
+/**
+ * Reuse the previous row model for every project whose row would render the
+ * same thing: the same project object and flags, and a thread list with the
+ * same entries. A sidebar refetch regroups every thread into fresh per-project
+ * arrays, so without this every `ProjectRow` saw a new `threadListState` at
+ * each turn boundary of any running thread. Returns `previous` itself when
+ * every row was kept in the same position, so the section ids and lookups
+ * derived from the rows stay cached as well.
+ */
+export function retainProjectRows(
+  previous: readonly ProjectListRowModel[],
+  next: readonly ProjectListRowModel[],
+): readonly ProjectListRowModel[] {
+  const previousById = new Map(previous.map((row) => [row.project.id, row]));
+  let changed = previous.length !== next.length;
+  const rows = next.map((row, index) => {
+    const previousRow = previousById.get(row.project.id);
+    if (
+      previousRow === undefined ||
+      previousRow.project !== row.project ||
+      previousRow.isActive !== row.isActive ||
+      previousRow.isLocalPathInvalid !== row.isLocalPathInvalid ||
+      !areProjectThreadListStatesEqual(
+        previousRow.threadListState,
+        row.threadListState,
+      )
+    ) {
+      changed = true;
+      return row;
+    }
+    if (previous[index] !== previousRow) changed = true;
+    return previousRow;
+  });
+  return changed ? rows : previous;
 }
 
 function toggleCollapsedIdList({
@@ -722,6 +763,73 @@ export function SidebarDisplayOptionsMenu({
   );
 }
 
+type SetSidebarMenuOpen = (
+  menu: Exclude<OpenSidebarMenu, null>,
+  open: boolean,
+) => void;
+
+interface SectionDisplayOptionsRenderer {
+  render: (sectionId: SidebarSectionId) => ReactNode;
+  isOpen: (sectionId: SidebarSectionId) => boolean;
+}
+
+interface CachedSectionDisplayOptions {
+  open: boolean;
+  setSidebarMenuOpen: SetSidebarMenuOpen;
+  node: ReactNode;
+}
+
+/**
+ * Per-section `SidebarDisplayOptionsMenu` elements that keep their identity
+ * while the section's open state is unchanged. Every section header takes the
+ * element as a prop and every sidebar update re-renders the whole list, so a
+ * fresh element per call defeated the row and section memo boundaries even
+ * though at most the one open menu ever differs. Reusing an element is safe
+ * because the menu reads its atoms through hooks, not props. The cache is
+ * bounded by the sections seen, so it needs no pruning.
+ */
+export function useSectionDisplayOptionsRenderer(
+  openSidebarMenu: OpenSidebarMenu,
+  setSidebarMenuOpen: SetSidebarMenuOpen,
+): SectionDisplayOptionsRenderer {
+  const cacheRef = useRef<Map<
+    SidebarSectionId,
+    CachedSectionDisplayOptions
+  > | null>(null);
+  const render = useCallback(
+    (sectionId: SidebarSectionId): ReactNode => {
+      const menuId = `displayOptions:${sectionId}` as const;
+      const open = openSidebarMenu === menuId;
+      /* oxlint-disable react/refs -- render-time element cache, see above */
+      const cache = (cacheRef.current ??= new Map());
+      /* oxlint-enable react/refs */
+      const cached = cache.get(sectionId);
+      if (
+        cached !== undefined &&
+        cached.open === open &&
+        cached.setSidebarMenuOpen === setSidebarMenuOpen
+      ) {
+        return cached.node;
+      }
+      const node = (
+        <SidebarDisplayOptionsMenu
+          open={open}
+          onOpenChange={(nextOpen) => setSidebarMenuOpen(menuId, nextOpen)}
+        />
+      );
+      cache.set(sectionId, { open, setSidebarMenuOpen, node });
+      return node;
+    },
+    [openSidebarMenu, setSidebarMenuOpen],
+  );
+  const isOpen = useCallback(
+    (sectionId: SidebarSectionId) =>
+      openSidebarMenu === `displayOptions:${sectionId}`,
+    [openSidebarMenu],
+  );
+  return useMemo(() => ({ render, isOpen }), [isOpen, render]);
+}
+
 interface SidebarThreadsSectionActionsProps {
   displayOptionsOpen: boolean;
   onDisplayOptionsOpenChange: (open: boolean) => void;
@@ -1059,28 +1167,37 @@ function ProjectModeSections({
     }
     return grouped;
   }, [effectivePinnedThreadIds, threads]);
-  const projectRows = useMemo<ProjectListRowModel[]>(
-    () =>
-      projects.map((project) => ({
-        project,
-        threadListState: getProjectThreadListState({
-          status,
-          threads: threadsByProject.get(project.id),
-        }),
-        isActive: false,
-        isLocalPathInvalid: isHostPathMissing(
-          pathExistence,
-          localSourcePathsByProjectId.get(project.id),
-        ),
-      })),
-    [
-      localSourcePathsByProjectId,
-      pathExistence,
-      projects,
-      status,
-      threadsByProject,
-    ],
-  );
+  // Render-time cache of the previous rows: they are the input that decides
+  // which of the rebuilt rows can be kept (see retainProjectRows). The memo
+  // reads and writes a ref during render, following
+  // useSidebarThreadTitleMentionResources.
+  const previousProjectRowsRef =
+    useRef<readonly ProjectListRowModel[]>(EMPTY_PROJECT_ROWS);
+  const projectRows = useMemo<readonly ProjectListRowModel[]>(() => {
+    const nextRows = projects.map((project): ProjectListRowModel => ({
+      project,
+      threadListState: getProjectThreadListState({
+        status,
+        threads: threadsByProject.get(project.id),
+      }),
+      isActive: false,
+      isLocalPathInvalid: isHostPathMissing(
+        pathExistence,
+        localSourcePathsByProjectId.get(project.id),
+      ),
+    }));
+    /* oxlint-disable react/refs -- render-time cache, see above */
+    const rows = retainProjectRows(previousProjectRowsRef.current, nextRows);
+    previousProjectRowsRef.current = rows;
+    /* oxlint-enable react/refs */
+    return rows;
+  }, [
+    localSourcePathsByProjectId,
+    pathExistence,
+    projects,
+    status,
+    threadsByProject,
+  ]);
   const projectSectionIds = useMemo(
     () =>
       projectRows.map((row) =>
@@ -1102,22 +1219,45 @@ function ProjectModeSections({
     isReady,
   });
   const reorderDisabled = order.length < 2;
-  const personalThreads =
-    threadsByProject.get(PERSONAL_PROJECT_ID)?.filter(isSidebarProjectThread) ??
-    [];
+  const personalProjectThreads = threadsByProject.get(PERSONAL_PROJECT_ID);
+  // Same render-time retention as the project rows above: the regrouped
+  // personal list is a fresh array per refetch even when its entries are the
+  // same, and the Threads section's tree is memoized on the list state.
+  const previousPersonalThreadsRef =
+    useRef<ThreadListEntry[]>(EMPTY_THREAD_LIST);
+  const personalThreads = useMemo(() => {
+    const next =
+      personalProjectThreads?.filter(isSidebarProjectThread) ??
+      EMPTY_THREAD_LIST;
+    /* oxlint-disable react/refs -- render-time cache, see above */
+    const threads = areThreadListsEqual(
+      previousPersonalThreadsRef.current,
+      next,
+    )
+      ? previousPersonalThreadsRef.current
+      : next;
+    previousPersonalThreadsRef.current = threads;
+    /* oxlint-enable react/refs */
+    return threads;
+  }, [personalProjectThreads]);
+  const personalThreadListState = useMemo(
+    () => getProjectThreadListState({ status, threads: personalThreads }),
+    [personalThreads, status],
+  );
+  const personalActivity = useMemo(
+    () => getCollapsedChildActivity(personalThreads, draftThreadIds),
+    [draftThreadIds, personalThreads],
+  );
   const builtInSections: BuiltInSidebarSectionOptionsById = {
     pinned: pinnedSection,
     threads: {
       ...threadsSection,
-      activity: getCollapsedChildActivity(personalThreads, draftThreadIds),
+      activity: personalActivity,
       collapsedThreads: personalThreads,
       content: (
         <ProjectThreadTree
           projectId={PERSONAL_PROJECT_ID}
-          threadListState={getProjectThreadListState({
-            status,
-            threads: personalThreads,
-          })}
+          threadListState={personalThreadListState}
           selectedThreadId={selectedThreadId}
           collapsedThreadIds={collapsedThreadIds}
           collapsedEnvironmentIds={collapsedEnvironmentIds}
@@ -1688,31 +1828,21 @@ function ProjectListComponent({
   const [collapsedSidebarSectionIdList, setCollapsedSidebarSectionIdList] =
     useAtom(collapsedSidebarSectionIdsAtom);
   const [openSidebarMenu, setOpenSidebarMenu] = useState<OpenSidebarMenu>(null);
-  const setSidebarMenuOpen = useCallback(
-    (menu: Exclude<OpenSidebarMenu, null>, open: boolean) => {
-      setOpenSidebarMenu((current) =>
-        open ? menu : current === menu ? null : current,
-      );
-    },
-    [],
-  );
+  const setSidebarMenuOpen = useCallback<SetSidebarMenuOpen>((menu, open) => {
+    setOpenSidebarMenu((current) =>
+      open ? menu : current === menu ? null : current,
+    );
+  }, []);
   const handleThreadsDisplayOptionsMenuOpenChange = useCallback(
     (open: boolean) => setSidebarMenuOpen("threadsDisplayOptions", open),
     [setSidebarMenuOpen],
   );
   const threadsDisplayOptionsMenuOpen =
     openSidebarMenu === "threadsDisplayOptions";
-  const renderSectionDisplayOptions = (sectionId: SidebarSectionId) => {
-    const menuId = `displayOptions:${sectionId}` as const;
-    return (
-      <SidebarDisplayOptionsMenu
-        open={openSidebarMenu === menuId}
-        onOpenChange={(open) => setSidebarMenuOpen(menuId, open)}
-      />
-    );
-  };
-  const isSectionDisplayOptionsOpen = (sectionId: SidebarSectionId) =>
-    openSidebarMenu === `displayOptions:${sectionId}`;
+  const {
+    render: renderSectionDisplayOptions,
+    isOpen: isSectionDisplayOptionsOpen,
+  } = useSectionDisplayOptionsRenderer(openSidebarMenu, setSidebarMenuOpen);
   const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
