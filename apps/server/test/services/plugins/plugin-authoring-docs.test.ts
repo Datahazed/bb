@@ -244,7 +244,6 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   experimental_sidebarSectionAction: [
     "id",
     "placement",
-    "experimental_requiresPrimaryModifier",
     "presentation",
     "run",
   ],

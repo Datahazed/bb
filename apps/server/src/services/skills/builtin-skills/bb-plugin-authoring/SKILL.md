@@ -1556,13 +1556,12 @@ export default definePluginApp((app) => {
     run: ({ openSettings }) => openSettings(),
   });
   app.slots.experimental_sidebarSectionAction({
-    id: "fullscreen",
+    id: "focus-section",
     placement: "inline-preferred",
-    experimental_requiresPrimaryModifier: true,
     presentation: ({ section, sidebar }) => {
       const pressed = sidebar.experimental_fullscreenSectionId === section.id;
       return {
-        title: pressed ? "Exit Full Screen" : "Full Screen Section",
+        title: pressed ? "Show all Sections" : "Focus Section",
         icon: pressed ? "Minimize2" : "Maximize2",
         pressed,
       };
@@ -1590,13 +1589,10 @@ the current title, icon, pressed state, and optional disabled state; `run`
 receives the same live context. The host places a pressed action inline, then
 at most one inactive `inline-preferred` action, and puts remaining actions in
 the section's existing overflow menu. Unknown icon names are omitted while the
-accessible title remains. Set
-`experimental_requiresPrimaryModifier: true` when the action should run only
-while the user holds Command on macOS or Control elsewhere during click,
-Enter, or Space activation. Use
-`sidebar.experimental_setFullscreenSection(sectionId | null)` for section
-fullscreen behavior; this state is client-local and the host suspends it while
-search is active.
+accessible title remains. Use
+`sidebar.experimental_setFullscreenSection(sectionId | null)` to enter or leave
+the single-section sidebar view; this state is client-local and the host
+suspends it while search is active.
 
 ### A control in the thread header
 
@@ -1965,7 +1961,7 @@ target? })`. Inside the fixed-tab component,
   thread-section header. Registration:
   `{ id, placement?: "inline-preferred" | "menu", presentation, run }`.
   Both callbacks receive the current section and a sidebar view exposing the
-  active fullscreen section plus `experimental_setFullscreenSection`. The
+  active single-section view plus `experimental_setFullscreenSection`. The
   presentation returns `{ title, icon, pressed?, disabled? }`. Pressed actions
   stay inline; the host overflows additional actions into the existing menu.
   Experimental: see `docs/api_to_audit.md`.

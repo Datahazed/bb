@@ -185,7 +185,7 @@ describe("ProjectRow interactions", () => {
     vi.clearAllMocks();
   });
 
-  it("lets a plugin fullscreen one section with a pressed inline action", () => {
+  it("lets a plugin focus one section with a plain click and stateful tooltip", async () => {
     setPluginSlotRegistrations("thread-organizer", {
       homepageSections: [],
       settingsSections: [],
@@ -196,12 +196,11 @@ describe("ProjectRow interactions", () => {
         {
           id: "fullscreen",
           placement: "inline-preferred",
-          experimental_requiresPrimaryModifier: true,
           presentation: ({ section, sidebar }) => {
             const pressed =
               sidebar.experimental_fullscreenSectionId === section.id;
             return {
-              title: pressed ? "Exit Full Screen" : "Full Screen Section",
+              title: pressed ? "Show all Sections" : "Focus Section",
               icon: pressed ? "Minimize2" : "Maximize2",
               pressed,
             };
@@ -263,35 +262,37 @@ describe("ProjectRow interactions", () => {
       '[data-sidebar-section-id="sec_planning"]',
     )!;
     const enter = within(planning).getByRole("button", {
-      name: "Full Screen Section (Command/Ctrl-click)",
+      name: "Focus Section",
     });
+    fireEvent.focus(enter);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Focus Section",
+    );
     fireEvent.click(enter);
-    expect(
-      document.querySelector('[data-sidebar-section-id="sec_building"]'),
-    ).not.toBeNull();
-
-    fireEvent.click(enter, { metaKey: true });
-
     expect(
       document.querySelector('[data-sidebar-section-id="sec_building"]'),
     ).toBeNull();
     const exit = screen.getByRole("button", {
-      name: "Exit Full Screen (Command/Ctrl-click)",
+      name: "Show all Sections",
     });
     expect(exit.getAttribute("aria-pressed")).toBe("true");
     expect(exit.querySelector('[data-icon="Minimize2"]')).not.toBeNull();
+    fireEvent.focus(exit);
+    await waitFor(() => {
+      expect(
+        screen
+          .getAllByRole("tooltip")
+          .some((tooltip) => tooltip.textContent === "Show all Sections"),
+      ).toBe(true);
+    });
 
     fireEvent.click(exit);
-    expect(
-      document.querySelector('[data-sidebar-section-id="sec_building"]'),
-    ).toBeNull();
-    fireEvent.keyDown(exit, { ctrlKey: true, key: "Enter" });
     expect(
       document.querySelector('[data-sidebar-section-id="sec_building"]'),
     ).not.toBeNull();
   });
 
-  it("exits fullscreen if the plugin action that owns it disappears", async () => {
+  it("restores every section if the plugin action that owns focus disappears", async () => {
     setPluginSlotRegistrations("thread-organizer", {
       homepageSections: [],
       settingsSections: [],
@@ -305,8 +306,8 @@ describe("ProjectRow interactions", () => {
           presentation: ({ section, sidebar }) => ({
             title:
               sidebar.experimental_fullscreenSectionId === section.id
-                ? "Exit Full Screen"
-                : "Full Screen Section",
+                ? "Show all Sections"
+                : "Focus Section",
             icon:
               sidebar.experimental_fullscreenSectionId === section.id
                 ? "Minimize2"
@@ -365,7 +366,7 @@ describe("ProjectRow interactions", () => {
       '[data-sidebar-section-id="sec_planning"]',
     )!;
     fireEvent.click(
-      within(planning).getByRole("button", { name: "Full Screen Section" }),
+      within(planning).getByRole("button", { name: "Focus Section" }),
     );
     expect(store.get(sidebarFullscreenSectionIdAtom)).toBe("sec_planning");
 

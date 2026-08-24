@@ -1207,7 +1207,7 @@ describe("loadPluginApp", () => {
 
   it("captures and validates host-rendered sidebar section actions", async () => {
     const presentation = () => ({
-      title: "Full Screen Section",
+      title: "Focus Section",
       icon: "Maximize2",
     });
     const run = vi.fn();
@@ -1216,7 +1216,6 @@ describe("loadPluginApp", () => {
         builder.slots.experimental_sidebarSectionAction({
           id: "fullscreen",
           placement: "inline-preferred",
-          experimental_requiresPrimaryModifier: true,
           presentation,
           run,
         });
@@ -1226,7 +1225,6 @@ describe("loadPluginApp", () => {
       {
         id: "fullscreen",
         placement: "inline-preferred",
-        experimental_requiresPrimaryModifier: true,
         presentation,
         run,
       },
@@ -1246,22 +1244,6 @@ describe("loadPluginApp", () => {
       ),
     ).rejects.toThrow(
       'slots.experimental_sidebarSectionAction: "placement" must be "inline-preferred" or "menu"',
-    );
-
-    await expect(
-      loadPluginApp(
-        definePluginApp((builder) => {
-          builder.slots.experimental_sidebarSectionAction({
-            id: "invalid-modifier",
-            // @ts-expect-error deliberate host validation coverage
-            experimental_requiresPrimaryModifier: "yes",
-            presentation,
-            run,
-          });
-        }),
-      ),
-    ).rejects.toThrow(
-      'slots.experimental_sidebarSectionAction: "experimental_requiresPrimaryModifier" must be a boolean',
     );
 
     await expect(
