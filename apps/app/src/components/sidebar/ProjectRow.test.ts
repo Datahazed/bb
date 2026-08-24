@@ -203,6 +203,19 @@ describe("areProjectRowPropsEqual", () => {
     ).toBe(false);
   });
 
+  it("re-renders when a nested project value was replaced", () => {
+    // Nested identity is the contract: structural sharing keeps `sources`
+    // when it is unchanged and hands the row a new array when it changed, so
+    // the comparator must treat a fresh array with equal content as a change
+    // (the actions menu reads `project.sources` to decide what it offers).
+    expect(
+      areProjectRowPropsEqual(
+        makeProps(),
+        makeProps({ project: makeProject({ sources: [] }) }),
+      ),
+    ).toBe(false);
+  });
+
   it("re-renders when the thread list status changed", () => {
     expect(
       areProjectRowPropsEqual(

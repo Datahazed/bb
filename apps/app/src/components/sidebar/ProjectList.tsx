@@ -405,6 +405,43 @@ export function retainProjectRows(
   return changed ? rows : previous;
 }
 
+/**
+ * Render-time retention of the project rows (see {@link retainProjectRows}).
+ * The previous rows are the input that decides which rebuilt rows can be
+ * kept, so this reads and writes a ref during render (a state-based "adjust
+ * during render" would loop on a caller that rebuilds its rows per render).
+ * Kept in its own small hook, like useSidebarThreadTitleMentionResources, so
+ * the React Compiler bailout the ref access forces stays confined here
+ * instead of leaving the whole ProjectModeSections component uncompiled.
+ */
+function useRetainedProjectRows(
+  next: readonly ProjectListRowModel[],
+): readonly ProjectListRowModel[] {
+  const previousRef =
+    useRef<readonly ProjectListRowModel[]>(EMPTY_PROJECT_ROWS);
+  /* oxlint-disable react/refs -- render-time cache, see above */
+  const rows = retainProjectRows(previousRef.current, next);
+  previousRef.current = rows;
+  /* oxlint-enable react/refs */
+  return rows;
+}
+
+/**
+ * Keeps the previous thread list while `next` holds the same entries in the
+ * same order. Same render-time ref cache as {@link useRetainedProjectRows},
+ * isolated for the same reason.
+ */
+function useRetainedThreadList(next: ThreadListEntry[]): ThreadListEntry[] {
+  const previousRef = useRef<ThreadListEntry[]>(EMPTY_THREAD_LIST);
+  /* oxlint-disable react/refs -- render-time cache, see above */
+  const threads = areThreadListsEqual(previousRef.current, next)
+    ? previousRef.current
+    : next;
+  previousRef.current = threads;
+  /* oxlint-enable react/refs */
+  return threads;
+}
+
 function toggleCollapsedIdList({
   current,
   id,
@@ -801,7 +838,11 @@ export function useSectionDisplayOptionsRenderer(
       const menuId = `displayOptions:${sectionId}` as const;
       const open = openSidebarMenu === menuId;
       /* oxlint-disable react/refs -- render-time element cache, see above */
-      const cache = (cacheRef.current ??= new Map());
+      let cache = cacheRef.current;
+      if (cache === null) {
+        cache = new Map();
+        cacheRef.current = cache;
+      }
       /* oxlint-enable react/refs */
       const cached = cache.get(sectionId);
       if (
@@ -1167,37 +1208,29 @@ function ProjectModeSections({
     }
     return grouped;
   }, [effectivePinnedThreadIds, threads]);
-  // Render-time cache of the previous rows: they are the input that decides
-  // which of the rebuilt rows can be kept (see retainProjectRows). The memo
-  // reads and writes a ref during render, following
-  // useSidebarThreadTitleMentionResources.
-  const previousProjectRowsRef =
-    useRef<readonly ProjectListRowModel[]>(EMPTY_PROJECT_ROWS);
-  const projectRows = useMemo<readonly ProjectListRowModel[]>(() => {
-    const nextRows = projects.map((project): ProjectListRowModel => ({
-      project,
-      threadListState: getProjectThreadListState({
-        status,
-        threads: threadsByProject.get(project.id),
-      }),
-      isActive: false,
-      isLocalPathInvalid: isHostPathMissing(
-        pathExistence,
-        localSourcePathsByProjectId.get(project.id),
-      ),
-    }));
-    /* oxlint-disable react/refs -- render-time cache, see above */
-    const rows = retainProjectRows(previousProjectRowsRef.current, nextRows);
-    previousProjectRowsRef.current = rows;
-    /* oxlint-enable react/refs */
-    return rows;
-  }, [
-    localSourcePathsByProjectId,
-    pathExistence,
-    projects,
-    status,
-    threadsByProject,
-  ]);
+  const nextProjectRows = useMemo<readonly ProjectListRowModel[]>(
+    () =>
+      projects.map((project): ProjectListRowModel => ({
+        project,
+        threadListState: getProjectThreadListState({
+          status,
+          threads: threadsByProject.get(project.id),
+        }),
+        isActive: false,
+        isLocalPathInvalid: isHostPathMissing(
+          pathExistence,
+          localSourcePathsByProjectId.get(project.id),
+        ),
+      })),
+    [
+      localSourcePathsByProjectId,
+      pathExistence,
+      projects,
+      status,
+      threadsByProject,
+    ],
+  );
+  const projectRows = useRetainedProjectRows(nextProjectRows);
   const projectSectionIds = useMemo(
     () =>
       projectRows.map((row) =>
@@ -1220,26 +1253,16 @@ function ProjectModeSections({
   });
   const reorderDisabled = order.length < 2;
   const personalProjectThreads = threadsByProject.get(PERSONAL_PROJECT_ID);
-  // Same render-time retention as the project rows above: the regrouped
-  // personal list is a fresh array per refetch even when its entries are the
-  // same, and the Threads section's tree is memoized on the list state.
-  const previousPersonalThreadsRef =
-    useRef<ThreadListEntry[]>(EMPTY_THREAD_LIST);
-  const personalThreads = useMemo(() => {
-    const next =
+  const nextPersonalThreads = useMemo(
+    () =>
       personalProjectThreads?.filter(isSidebarProjectThread) ??
-      EMPTY_THREAD_LIST;
-    /* oxlint-disable react/refs -- render-time cache, see above */
-    const threads = areThreadListsEqual(
-      previousPersonalThreadsRef.current,
-      next,
-    )
-      ? previousPersonalThreadsRef.current
-      : next;
-    previousPersonalThreadsRef.current = threads;
-    /* oxlint-enable react/refs */
-    return threads;
-  }, [personalProjectThreads]);
+      EMPTY_THREAD_LIST,
+    [personalProjectThreads],
+  );
+  // The regrouped personal list is a fresh array per refetch even when its
+  // entries are the same, and the Threads section's tree is memoized on the
+  // list state, so it gets the same retention as the project rows.
+  const personalThreads = useRetainedThreadList(nextPersonalThreads);
   const personalThreadListState = useMemo(
     () => getProjectThreadListState({ status, threads: personalThreads }),
     [personalThreads, status],

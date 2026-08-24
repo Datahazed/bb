@@ -18,7 +18,10 @@ import {
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
+  type KeyboardSensorOptions,
   type Modifier,
+  type MouseSensorOptions,
+  type TouchSensorOptions,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -56,6 +59,25 @@ const restrictSidebarDragToVerticalAxis: Modifier = ({ transform }) => ({
 const SIDEBAR_REORDER_MODIFIERS: Modifier[] = [
   restrictSidebarDragToVerticalAxis,
 ];
+
+/**
+ * dnd-kit's `useSensor` memoizes on the options object it receives and
+ * `useSensors` on those descriptors, so inline option literals handed
+ * `DndContext` a new `sensors` array on every render of the hosting list.
+ * The context then rebuilt its activators, every `useSortable` produced fresh
+ * listeners, and each memoized row saw new drag bindings on every sidebar
+ * cache update even when nothing about the row had changed. Module constants
+ * keep the whole chain stable.
+ */
+const MOUSE_SENSOR_OPTIONS: MouseSensorOptions = {
+  activationConstraint: { distance: 4 },
+};
+const TOUCH_SENSOR_OPTIONS: TouchSensorOptions = {
+  activationConstraint: { delay: 200, tolerance: 6 },
+};
+const KEYBOARD_SENSOR_OPTIONS: KeyboardSensorOptions = {
+  coordinateGetter: sortableKeyboardCoordinates,
+};
 
 function setSidebarDraggingCursor(active: boolean): void {
   if (active) {
@@ -187,13 +209,9 @@ export function useSidebarReorderDnd({
   } = useDragClickSuppression();
   const isDraggingRef = useRef(false);
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(SidebarTouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+    useSensor(MouseSensor, MOUSE_SENSOR_OPTIONS),
+    useSensor(SidebarTouchSensor, TOUCH_SENSOR_OPTIONS),
+    useSensor(KeyboardSensor, KEYBOARD_SENSOR_OPTIONS),
   );
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
