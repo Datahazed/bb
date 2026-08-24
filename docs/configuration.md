@@ -184,6 +184,14 @@ defaults to off: Enter queues and Command+Enter steers. When enabled, Enter
 steers and Command+Enter queues. Set it with
 `bb settings general steerActiveThreadOnEnter <true|false>`.
 
+The "Escape in composer" preference in Settings → General defaults to
+`blur`, which moves focus out of the composer. Set it to
+`stop-running-thread` to make an unmodified, non-repeated Escape stop the
+running thread owned by the focused composer while retaining focus. An idle
+composer still blurs. Typeahead, dialogs, voice input, message editing, and
+composition keep priority and do not stop a thread. Set it with
+`bb settings general composerEscapeBehavior <blur|stop-running-thread>`.
+
 The "Streamer mode" toggle in Settings → General hides every `customModels`
 entry from `~/.bb/config.json` in all model lists: the web and mobile pickers,
 `bb provider models`, and `sdk.providers.models`. Turn it on before a screen
@@ -375,6 +383,35 @@ plugin-registered provider's icon is a host glyph or an asset the plugin ships,
 so a configured agent shows the generic tool glyph, and bb drops the field when
 it reads the old array. A setting entry wins over a config entry with the same
 `id`.
+
+## Pi enabled models
+
+Settings → Plugins → Pi provider → Models edits Pi's global `enabledModels` on
+the primary machine. The editor lists authenticated models, supports search
+and per-model switches, and updates BB's picker and model cycling immediately
+after Save. **Enable all** removes the native preference; **Reset** restores the
+last saved selection.
+
+For CLI use:
+
+```sh
+bb pi models list [--machine <id-or-name>] [--json]
+bb pi models set <model-id...> [--machine <id-or-name>] [--json]
+bb pi models enable-all [--machine <id-or-name>] [--json]
+```
+
+Without `--machine`, the command targets the primary machine. SDK clients call
+the Pi plugin through `sdk.plugins.callRpc` with plugin id `provider-pi` and
+method `readModelSettings` or `writeModelSettings`; each input carries
+`hostId`, writes also carry `enabledModelIds` (`string[]` or `null`), and the
+call supplies an `outputSchema` for the snapshot as required by
+`sdk.plugins.callRpc`. Neither CLI nor SDK accepts a cwd because this editor
+changes Pi's global
+preference, not a workspace settings file.
+
+This preference controls ordinary picker/cycling visibility, not execution
+authorization. A model already selected by a thread remains available as a
+selected-only model.
 
 ## Custom Models
 

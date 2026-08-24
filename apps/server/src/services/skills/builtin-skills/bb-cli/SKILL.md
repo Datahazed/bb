@@ -93,6 +93,12 @@ message agents, or inspect projects, providers, and environments.
   the software keyboard keeps Return as a newline; iPadOS WebKit preserves the
   Enter shortcuts for a connected Magic Keyboard. Update the preference with
   `bb settings general steerActiveThreadOnEnter <true|false>`.
+- The `composerEscapeBehavior` General preference defaults to `blur`. Set it
+  to `stop-running-thread` to make an unmodified, non-repeated Escape stop only
+  the running thread owned by the focused composer while retaining focus. An
+  idle composer still blurs. Typeahead, dialogs, voice input, message editing,
+  and composition take priority and do not stop a thread. Update it with
+  `bb settings general composerEscapeBehavior <blur|stop-running-thread>`.
 - The `streamerMode` General preference defaults to false. Enable it to hide
   every `customModels` entry from `~/.bb/config.json` in all model lists
   (pickers, `bb provider models`, and the SDK) during a screen share. Update it
@@ -237,13 +243,13 @@ message agents, or inspect projects, providers, and environments.
   that pairs the bb mobile app with this bb (it needs the `mobileApp`
   experiment: `bb settings experiment mobileApp true`): it prints the code, server URL,
   connect apex, and expiry; `--json` returns `{code, serverUrl, apex,
-  expiresAt}`. The phone enrolls as a connect machine with its own revocable
+expiresAt}`. The phone enrolls as a connect machine with its own revocable
   credential (visible in the getbb.app dashboard). Settings → Remote access →
   Add mobile device shows the same code as a QR. A machine-limit failure names
   the dashboard so the user can revoke an unused device. Remote
   access is owned by the builtin `connect` plugin: `bb plugin disable connect`
   cuts it off entirely; with bb connect still enabled, `bb plugin enable
-  connect` restores the command. Plugins → Connect shows the current URL, QR
+connect` restores the command. Plugins → Connect shows the current URL, QR
   code, mobile pairing, shared ports, re-pair form, and disconnect control.
 - Add remote execution machines from Settings → Machines. Its one-line
   installer stores the bb connect machine credential locally and configures
@@ -336,6 +342,11 @@ environment pull-request show <id>`. Diff commands require an explicit target
   (alias `--host`) or `--environment <id>` to inspect the machine where work
   will run; the selectors cannot be combined. With neither selector they
   intentionally inspect the primary machine.
+- Pi's native cycling preference is available through `bb pi models list`,
+  `bb pi models set <model-id...>`, and `bb pi models enable-all`. Each accepts
+  optional `--machine <id-or-name>` and `--json`; without a machine it targets
+  the primary host. These commands update Pi's global `enabledModels` and do
+  not accept a cwd.
 - Known ACP agents can appear automatically when their CLI is installed on the
   host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
   `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
@@ -508,6 +519,10 @@ For review or fix pipelines, get the environment ID from
   the retry.
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
+- Use `bb thread reload <id>` to recreate an idle provider session after its
+  extension or startup configuration changes. Reload keeps the provider
+  conversation id, starts no turn, and adds no timeline message. It rejects
+  active or pending work.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
 - `bb thread stop <id>` also releases an idle or stuck agent runtime. The
   command is idempotent and preserves thread history.
@@ -936,7 +951,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     required when stdin is not a terminal, where it otherwise prints the plan
     and exits non-zero having changed nothing. Run `npm install` afterwards.
     The vendored layout keeps working, so nothing migrates unless you ask.
-    Re-running on a migrated plugin is a no-op. Needs no server.
+    Re-running on a migrated plugin is a no-op. The migration work is local;
+    a reachable server is asked for its invocation policy first and skipped
+    when it is down.
   - `bb plugin dev [path]` — watch loop for an installed plugin (default:
     cwd): on every change it rebuilds the frontend bundle (when `bb.app` is
     declared; unminified, unlike `bb plugin build`) and reloads the plugin;
@@ -955,6 +972,11 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   them directly — unknown `bb` commands are resolved against installed plugins
   and proxied to the server. Core command names always win. In agent threads,
   the injected `plugin-commands` skill lists what is available.
+- Before any executable core or plugin command runs, the CLI asks the server to
+  run plugin invocation handlers. A policy plugin may block the command with a
+  reason. This check fails closed when the server or a handler fails, including
+  for locally implemented commands. `bb --help` and `bb --version` skip the
+  check because they execute no command action. There is no CLI bypass flag.
 - Plugin commands share a 1,048,576-byte combined stdout/stderr ceiling. An
   oversized result is rejected in full as `plugin_cli_output_too_large` (valid
   JSON for `--json` callers), never truncated. Use pagination or file/streaming

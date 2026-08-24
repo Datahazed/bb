@@ -44,7 +44,7 @@ own settings that produce registrations at runtime.
 
 ```ts
 bb.providers.register({
-  id: "claude-code",             // flat; first registration wins; no reservation
+  id: "claude-code", // flat; first registration wins; no reservation
   displayName: "Claude Code",
   family: undefined,             // optional grouping key (the ACP agents share one)
   icon: "./icons/claude.svg",    // a plugin SVG, served as logoUrl; a glyph name; or "<pluginId>/<name>"
@@ -52,9 +52,9 @@ bb.providers.register({
     signInHint: "Run `claude` on the machine to sign in.",
     expiredHint: "Your Claude session expired. Run `claude`, then reload.",
     installUrl: "https://docs.anthropic.com/claude-code",
-    brandPrefix: "Claude ",      // optional; stripped from model display names
-    planModeCopy: undefined,     // optional; plan-mode banner copy
-    iconTint: undefined,         // optional { light, dark }
+    brandPrefix: "Claude ", // optional; stripped from model display names
+    planModeCopy: undefined, // optional; plan-mode banner copy
+    iconTint: undefined, // optional { light, dark }
   },
   maintenance: { health: true, usage: true, installation: true }, // each defaults to false
   capabilities: {                // pre-session facts, one client shape: ProviderInfo
@@ -73,16 +73,17 @@ bb.providers.register({
   ],
   serviceTiers: undefined,       // optional; open list, model/list is precise
   composerActions: ["plan"],     // "plan" | "goal"
-  extensionKinds: {},            // "<name>": { item?: Schema, state?: Schema }
+  extensionKinds: {},            // "<name>": { item?: Schema, state?: Schema, experimental_action?: Schema }
   models: { fallback: [], scope: "host" }, // cold-cache placeholder; scope is
                                  // "host" | "workspace" (default): how far one
                                  // model/list answer travels
   env: { passthrough: ["BB_CLAUDE_CODE_EXECUTABLE"] },
-  deriveProviderOptions(ctx) {   // called on every command
+  deriveProviderOptions(ctx) {
+    // called on every command
     // ctx: { threadId, projectId, model, permissionMode, promptMode?, settings }
-    return {};                   // opaque JSON handed to this plugin's bridge
+    return {}; // opaque JSON handed to this plugin's bridge
   },
-})
+});
 // => { dispose(): void }
 ```
 

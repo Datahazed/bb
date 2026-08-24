@@ -218,6 +218,52 @@ clients fall back). Settle whether a row persisted with a namespaced glyph
 should ever be rewritten when the plugin renames or removes the icon; today
 rows are never rewritten and simply fall back.
 
+## Invocation interception (`bb.events.on("experimental_invocation.before", ...)` and `experimental_evaluateInvocation`)
+
+**What it does.** Lets a server plugin inspect and block every executable `bb`
+CLI command and each BB-defined agent tool before execution. CLI events carry
+exact arguments, working directory, nullable thread and project context, and an
+abort signal. Agent-tool events carry the globally unique tool name, raw input,
+thread and project ids, and an abort signal. Handlers run sequentially by plugin
+id and registration order. The first block wins. Throws and malformed results
+block the invocation, and so does a server that answers the CLI preflight
+with anything the CLI cannot read. A server the CLI cannot reach, or one that
+predates the preflight route (HTTP 404), has no policy to apply, so the CLI
+proceeds: every server-side action still lands on that same server, and
+agent tools are checked server-side regardless. Event mutation cannot alter
+the invocation. The tool boundary includes native plugin tools and core dynamic
+tools, but not provider-native tools that never reach the BB server. The fake
+plugin host's `experimental_evaluateInvocation` driver runs one plugin's
+handlers with the same ordering, result validation, mutation isolation, and
+fail-closed behavior.
+
+**Audit before stabilizing.** Confirm that every shipped CLI execution path
+preflights once, that `--help`, `--version`, and the local commands (`bb
+guide`, `bb manager`) should remain outside the event, and that skipping the
+policy for an unreachable or older server is the right failure mode (an
+earlier fail-closed draft bricked every `bb` command whenever the server was
+down or one release behind).
+Review recovery when a policy plugin blocks plugin management. Confirm
+first-block-wins remains preferable to running later logging handlers. Measure
+handler latency and long-lived user prompts. Decide whether a post-invocation
+observation event is needed instead of weakening short-circuit behavior. Audit
+whether raw tool input needs a size limit before plugins inspect it. Confirm
+that provider-native tools should remain a provider-extension concern.
+
+## Provider session reload (`bb.sdk.threads.experimental_reload`)
+
+**What it does.** Recreates an idle provider session from current startup
+configuration while retaining the provider conversation id. It starts no turn
+and adds no user or assistant timeline message. The operation rejects active
+turns, pending turn starts, background work, queued messages, and pending user
+interactions.
+
+**Audit before stabilizing.** Confirm reload remains one session-replacement
+operation across every provider; verify which idle provider-owned work must
+block replacement; review failure recovery after the old session closes but the
+new session fails to start; and confirm the `{ status: "reloaded" }` result is
+sufficient before dropping the prefix.
+
 ## `experimental_buildBridgeToolCallContent`
 
 **Kept experimental (2026-08-22).** it still accepts two input shapes (ordered `contentBlocks` and the legacy aggregate `{ content, images }`) though every first-party caller now passes the ordered form, and no image MIME/size policy exists at the server boundary; drop the legacy input and settle the policy, then stabilize.
@@ -491,6 +537,22 @@ stays, decide whether a bare path is the right shape or whether a plugin
 should get named, read-only accessors for the bb-managed files it may read —
 a path invites writes into bb's directory, which `bb.storage` exists to
 prevent.
+## Thread-scoped provider interactions (`experimental_interactionRequestParamsSchema` / `ExperimentalInteractionRequestParams.experimental_scope`, `BRIDGE_NOTIFICATION_METHODS.experimentalInteractionCancel`, `experimental_interactionCancelNotificationSchema`, `PendingInteractionUserQuestionQuestion.experimental_responseMode`, `PendingInteractionUserQuestionQuestion.experimental_placeholder`, and `PendingInteractionUserAnswer.experimental_verbatimText`)
+
+**What it does.** Lets a provider bridge raise a canonical `user_question`
+outside an active model turn and preserve a single text answer byte-for-byte.
+Pi uses it for extension-command `ctx.ui.select`, `ctx.ui.confirm`, and
+`ctx.ui.input` calls: option values remain internal canonical ids while the Pi
+bridge maps the selected id back to the exact extension option, and verbatim
+text retains whitespace and empty strings.
+
+**Audit before stabilizing.** Confirm which providers need thread-scoped
+questions; confirm per-dialog timeout and signal cancellation should keep using
+the same session-owned cancellation notification; verify option and text bounds
+against every client; and confirm verbatim input remains a question mode rather than earning
+a separate core interaction kind. Recheck that stop, reload, replacement,
+failed startup, and daemon/process loss interrupt persistence and reject late
+responses before removing the prefixes.
 
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
@@ -512,6 +574,13 @@ multiplex several threads over one child; and settle the recording entry
 shape (`{ ts, run, seq, dir, line }`) as a documented fixture format.
 
 ## `experimental_BridgeRecoveryError`
+## Provider bridge command discovery (`BRIDGE_REQUEST_METHODS.experimentalProviderCommandList` and the `experimental_providerCommand*` schemas/types)
+
+**What it does.** Adds the optional, sessionless `command/list` provider-bridge request. It carries an explicit cwd and the provider's static options so the bridge can load the same trusted, project-bound resources as a real session. A supported result returns command metadata and non-fatal diagnostics together: one broken resource must not hide commands from healthy resources. Core currently uses this for Pi extension commands while the daemon keeps its existing static skill scan; Pi extensions are imported and initialized only inside the Pi bridge process.
+
+**Audit before stabilizing.** Confirm which providers need executable command discovery rather than static files, whether providers should declare support before core starts a bridge, whether string diagnostics need structured severity and source fields, whether command argument completion metadata belongs on this boundary, and whether repeated sessionless loads need a provider-owned cache or disposal lifecycle.
+
+## Provider bridge maintenance (`PluginProviderCapabilities.experimental_providerHealth`, `PluginProviderCapabilities.experimental_providerUsage`, `PluginProviderCapabilities.experimental_providerInstallation`, `ProviderInfo.experimental_providerHealth`, `ProviderInfo.experimental_providerUsage`, `ProviderInfo.experimental_providerInstallation`, `BRIDGE_REQUEST_METHODS.experimentalProviderHealth`, `BRIDGE_REQUEST_METHODS.experimentalProviderUsage`, `BRIDGE_REQUEST_METHODS.experimentalProviderInstallationStatus`, `BRIDGE_REQUEST_METHODS.experimentalProviderInstallationRun`, `experimental_providerMaintenanceParamsSchema`, `experimental_providerHealthSchema`, `experimental_providerHealthResultSchema`, `experimental_providerUsageSchema`, `experimental_providerUsageWindowSchema`, `experimental_providerUsageResultSchema`, and the `experimental_providerInstallation*` schemas/types)
 
 **Kept experimental (2026-08-22).** it is part of the provider-bridge authoring surface and stabilizes together with `experimental_defineProviderBridge` / `experimental_apiVersion` in the later bridge-kit audit.
 
@@ -679,6 +748,42 @@ malformed runtime targets remain inert in both the app and SDK test runtime.
    target variants; do not weaken live-file guarantees to accommodate them.
 7. Confirm `PluginFileOpenerSource.experimental_hostId` can become a stable
    required `hostId` field without breaking older opener implementations.
+
+## Provider bridge RPC and model invalidation (`bb.providers.experimental_client` and `bb.providers.experimental_modelsChanged`)
+
+**What it does.** Lets a provider plugin call a typed, provider-owned method on
+its own bridge on an explicit host. Core validates the shared Standard Schema
+contract and JSON transport but does not interpret the method or payload.
+After a native preference write, the owning plugin can clear model-catalog
+memos and broadcast `provider-models-changed` so pickers refetch immediately.
+Pi's global model editor is the first consumer.
+
+**Audit before stabilizing.**
+
+1. Confirm custom bridge methods should remain one fixed `provider/custom`
+   envelope rather than joining the shared provider vocabulary.
+2. Confirm ownership checks, payload limits, timeouts, cancellation behavior,
+   and non-retryable writes against another provider plugin.
+3. Decide whether model invalidation should target one host/provider cache key
+   instead of clearing the small process-wide memo.
+4. Confirm SDK plugin RPC remains the right end-user typed extension point for
+   provider-native settings instead of adding provider fields to core SDK model
+   responses.
+
+## Settings host context (`PluginSettingsSectionProps.experimental_hostId`)
+
+**What it does.** Gives a plugin Settings section BB's selected primary host so
+host-local editors do not add their own machine picker. It is null while no
+host is available and never supplies a cwd or workspace path.
+
+**Audit before stabilizing.**
+
+1. Confirm primary-host selection is sufficient or replace it with one shared
+   Settings-level host picker before stabilizing the prop.
+2. Verify host changes remount or refetch every host-local Settings section and
+   that offline/no-host states remain explicit.
+3. Keep target selection in host chrome; do not let each plugin invent machine
+   selectors inside its editor.
 
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
@@ -974,6 +1079,130 @@ bridge as provider-scoped static options. Core does not interpret its keys.
    enough listing policy, that health failure should continue to hide an
    installed-only provider, and that targeted requests may continue resolving
    a registered provider even while discovery says it is absent.
+
+## Provider declaration target-state fields (`PluginProviderDeclaration.experimental_strings`, `experimental_serviceTiers`, `experimental_reasoningLevels`, `experimental_extensionKinds`, `experimental_family`, `experimental_models`, `experimental_env`, `experimental_deriveProviderOptions`; `ProviderInfo.strings`/`serviceTiers`/`reasoningLevels`/`extensionKinds`/`family`)
+
+**What it does.** The target-state declaration fields from
+[docs/provider-plugin-api.md](provider-plugin-api.md) §1 beside the existing
+`capabilities`: provider copy (`strings`: sign-in and expiry hints, install
+URL, brand prefix, plan-mode copy, icon tint), service tiers and reasoning
+levels as `{ id, label, description? }` picker options, the extension kinds
+the provider's bridge may emit (`{ item?, state? }` Standard Schema validators
+keyed by local name), an optional `family` grouping key, a cold-cache
+`models.fallback` list, the daemon `env.passthrough` variable names the
+bridge may read, and the per-command `deriveProviderOptions(ctx)` hook.
+`validatePluginProviderDeclaration` checks and deep-freezes them.
+
+WS2a projects them: `ProviderInfo` carries `strings`, `serviceTiers` (the
+declared list, or `default`/`fast` when only `supportsServiceTier` is set),
+`reasoningLevels` (the declared options, or the coarse ladder labelled),
+`extensionKinds` namespaced by the OWNING PLUGIN id, and `family`; the usage
+banners (web + mobile), the model picker's brand strip and install link, and
+the plan-mode permission display read `strings` instead of per-provider
+tables. The fallback list is served by the model-list route when a probe fails
+transiently (the app vendors no catalog). `env.passthrough` rides
+`bridgeLaunch.envPassthrough` and the daemon forwards exactly those variables
+past its `BB_*` spawn sanitization. The hook runs on every session and turn
+command with `{ threadId, projectId, model, permissionMode, promptMode?,
+settings }` — `settings` being the plugin's own non-secret `bb.settings`
+values — and its bounded-JSON result rides the command as
+`options.providerOptions`, merged over the static bridge options. The shared
+execution contract carries no provider-named field: `claudeCodePermissionMode`,
+`workflowsEnabled`, `memoryEnabled` and `providerSubagentsEnabled` are gone,
+replaced by `promptMode: "plan"` (set only when the prompt entered plan mode
+through the provider's declared `plan` composer action) and the bag. The
+server validates extension payloads against the declared schemas at ingest
+(`apps/server/src/internal/extension-payloads.ts`): the registry carries the
+validators on each registration and resolves a namespaced kind through its
+plugin-id prefix.
+
+**Audit before stabilizing.**
+
+1. **One reasoning-level source.** `capabilities.reasoningLevels` (an id
+   ladder) and `experimental_reasoningLevels` (labelled options) say the same
+   thing twice during the transition; the projection prefers the options and
+   labels the ladder from a fixed table otherwise. Delete the ladder once every
+   first-party plugin declares the option form, and decide whether the coarse
+   `capabilities.supportsServiceTier` boolean survives beside
+   `experimental_serviceTiers` or is implied by it. Likewise fold the three
+   `experimental_provider{Health,Usage,Installation}` booleans into the doc's
+   `maintenance` object when the prefixes drop (declaring both now would say
+   one fact twice).
+2. **Copy limits and markup.** `strings` values are capped at 512 characters
+   and rendered as plain text. Confirm that is enough for every surface that
+   reads them today (usage banners, the mobile picker, the guide) and that
+   none of them needs inline Markdown or links. The plan-mode permission
+   display keys on the PRESENCE of `planModeCopy`: a provider with a `plan`
+   action but no copy (Codex) keeps its ordinary permission display. Confirm
+   presence is the right switch rather than a separate boolean.
+3. **Extension-kind ceiling and schema cost.** 32 kinds per provider and
+   Standard Schema validators executed at server ingest are guesses. Confirm
+   the ceiling against real plugins and set the payload size limit the server
+   enforces before validating.
+4. **Hook contract.** The hook is synchronous and runs on the turn-submit
+   path; a throw fails the command with the plugin named. Confirm sync is
+   enough (no plugin has asked for I/O), that omitting secrets from
+   `ctx.settings` is the right rule, that the 64 KiB bound shared with bridge
+   options fits, and whether `ctx` should carry the reasoning level and
+   service tier too. The bag is persisted with the session and diffed
+   structurally by the runtime to decide session vs. live changes; confirm
+   that is the right granularity once bridges reconcile everything themselves.
+5. **Fallback models and env passthrough.** The fallback list (64 max, exactly
+   one default) is offered only on a transient probe failure; confirm the
+   cold-cache composer (which now waits for the first probe) does not want it
+   too, and that name-only env passthrough (no value validation, `BB_*` or
+   otherwise) is the right scope.
+6. **Provider settings migration.** Migration 0105 copies the five retired
+   `codex*`/`claudeCode*` app-settings rows into `plugin_settings` for
+   `provider-codex` / `provider-claude-code`. Confirm the plugin setting keys
+   (`memoryEnabled`, `subagentsDisabled`, `workflowsDisabled`) before plugins
+   outside this repo start reading them.
+
+## Provider extension-state rendering and actions (`app.slots.experimental_providerExtensionState`, `ExperimentalProviderExtensionStateRegistration`, `ExperimentalProviderExtensionStateProps.experimental_dispatchAction`, `PluginProviderExtensionKindDeclaration.experimental_action`, `ThreadsArea.experimental_applyExtensionStateAction`)
+
+**What it does.** A provider plugin registers a renderer for one local state
+kind. The host resolves the persisted namespaced kind through the owning plugin
+id and mounts that renderer above and below the active thread composer with the
+latest validated payload, source sequence, thread, provider, and placement.
+The renderer's `experimental_dispatchAction` callback sends a non-retried JSON
+action only to that same namespaced kind in the thread's current provider
+session; the backend declaration's `experimental_action` Standard Schema
+validates it before dispatch. The host never interprets provider payloads or
+actions; `provider-pi` owns their translation and rendering.
+
+**Audit before stabilizing.** Confirm that the two composer placements cover
+provider state that is not transcript content, that mounting one component at
+both placements is preferable to separate renderer members, and that title and
+editor side effects belong in the renderer rather than a narrower host action
+surface. Audit whether `{ applied: boolean }` is enough action feedback and
+whether every action should remain non-retryable. Confirm mobile's declarative
+fallback before dropping the prefix.
+
+## Persistent plugin responsive drawer (`experimental_ResponsiveDrawer`, `ExperimentalResponsiveDrawerProps`)
+
+**What it does.** Gives a plugin the host's persistent, non-modal bottom drawer.
+The transform begins before content realization; content mounts after two
+animation frames with a timeout fallback and remains mounted after first open.
+The backdrop and focus stack contain interaction without applying `inert` or
+`aria-hidden` to the app root.
+
+**Audit before stabilizing.** Confirm title-only labeling is sufficient, whether
+plugins need animation-end or realization callbacks, and whether arbitrary
+content-height control should remain a class-name escape hatch.
+
+## Verbatim interaction editor prefill (`PendingInteractionUserQuestionQuestion.experimental_prefill`)
+
+**What it does.** Seeds the existing verbatim user-question textarea with up to
+4,096 characters. It is accepted only with `experimental_responseMode:
+"verbatim"`; the submitted value continues through
+`experimental_verbatimText` unchanged, including empty strings, leading spaces,
+and newlines. Pi maps `ctx.ui.editor(title, prefill)` onto this existing
+interaction path.
+
+**Audit before stabilizing.** Confirm 4,096 characters is enough for extension
+editors, whether prefill and response limits should be UTF-8 bytes instead of
+JavaScript characters, and whether editor requests eventually deserve a core
+interaction kind distinct from a verbatim question.
 
 ## `@get-bb/plugin-sdk/provider-bridge` (the provider-bridge authoring surface)
 
@@ -1516,6 +1745,47 @@ Before stabilization, audit:
    re-litigate that in the stabilization audit; audit only whether the two
    _contexts_ should merge.
 
+## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Replaces only BB's bounded, inactive sidebar navigation
+controls: New thread, Search threads, Extensions, and current `navPanel`
+destinations. The plugin receives semantic items, split-drag bindings, and one
+host activation callback; it receives no routes, router, drawer control, or
+host React elements. BB retains the persistent responsive drawer, active search
+combobox and query, thread-list mount and lifecycle, footer, resize handle, and the
+rule that a retained hidden app body cannot claim thread shortcuts.
+
+Navigation uses the same Automatic, BB, or named-provider client preference as
+other replacements. `experimental_Original` bypasses replacement resolution.
+A crash swaps only the bounded controls back to BB and toasts once, leaving the
+retained thread list and footer mounted. Activating Search swaps in BB's field;
+the existing list receives the host query. Native search results preserve
+ordinary navigation, modifier-click splitting, and drag-to-split. Destination
+activation closes the compact drawer.
+
+**Audit before stabilizing.**
+
+1. **Boundary.** Verify external replacements can express useful navigation
+   without control of the drawer, search field, thread list, footer, resize
+   handle, or hidden-body shortcuts. Do not widen by passing those host nodes
+   through plugin props.
+2. **Semantic item schema.** Confirm the four action variants and semantic icon
+   identity are sufficient. Keep routes and host components private.
+3. **Split contract.** Audit `experimental_splitProps` plus
+   `experimental_activate(..., { openInSplit })` against pointer, keyboard,
+   modifier-click, pane-cap, already-open-pane, and compact fallback behavior.
+4. **Search lifecycle.** Confirm unmounting the replacement while the host
+   search field is active is acceptable, and that native and replaced thread
+   lists both filter from the same host query.
+5. **Crash and delegation.** Verify `experimental_Original` and crash fallback never
+   recurse through resolution or remount retained thread-list/footer state.
+6. **Arbitration.** Confirm Automatic remains the right default when several
+   navigation replacements are enabled and unavailable pinned providers should
+   continue to fall back without clearing preference.
+7. **Accessibility.** Validate third-party markup can preserve labels,
+   `aria-current`, shortcut metadata, disabled state, focus order, and the
+   host-owned combobox semantics.
+
 ## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** examples only; no shipped consumer has tested the arbitration/fallback model or the accessibility contract.
@@ -1730,6 +2000,64 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
    acceptable, or promote either capability before stabilization.
 5. **Two slots or one.** Confirm source and diff should stay separately
    replaceable rather than one "code renderer" registration.
+
+## `app.slots.experimental_changesView` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Replaces the complete fixed Changes toolbar and virtualized
+file body in each app pane. BB keeps ownership of the fixed tab, route,
+keyboard shortcut, split placement, and pane-local target state. The props
+identify the pane's thread and environment. `experimental_target` supplies a
+file path or commit SHA plus a sequence and `clear()` callback when core routing
+targets that pane.
+
+The slot uses the exclusive replacement selector. Automatic mode picks the
+first provider in deterministic slot order. Appearance settings can pin BB or
+a named provider on each client. A disabled, missing, or crashing provider
+falls back to BB without clearing the pin. Crash state includes the app pane's
+instance identity, so one pane can fall back while another keeps the plugin.
+`experimental_Original` renders BB's complete Changes owner without resolving
+this slot again. The global `experimental_diffRenderer` still resolves inside
+its file bodies.
+
+**Audit before stabilizing.**
+
+1. Confirm `threadId`, `environmentId`, and the routed target are enough for a
+   useful replacement. Plugins currently load their own change data through
+   backend RPC.
+2. Confirm target acknowledgement belongs in component props. In particular,
+   audit whether a plugin that never calls `clear()` needs a host timeout or a
+   default acknowledgement policy.
+3. Confirm the target union should remain limited to file and commit opens.
+   The native selection picker also represents all, committed, and uncommitted
+   slices, but those are owner-local choices rather than routed intents.
+4. Verify pane identity remains the correct crash boundary if BB later permits
+   the same pane to host multiple simultaneous Changes instances.
+5. Confirm the per-client Automatic, built-in, or named-provider selector is
+   appropriate for a whole product view.
+6. Audit whether `experimental_Original` should remain a bound no-props
+   component if plugins need to decorate the native toolbar or body separately.
+
+## `PluginSourceCodeRendererProps.experimental_Original` / `PluginDiffRendererProps.experimental_Original` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Supplies a renderer replacement with BB's renderer bound to
+the current render. Rendering it delegates without re-entering replacement
+resolution; the host renders the same component as the crash fallback. BB's
+renderers are behind `lazy()`, so a replacement that never delegates never
+downloads them.
+
+**Audit before stabilizing.**
+
+1. Confirm a no-props bound component stays the right delegation contract as
+   the host-only inputs (pre-parsed files, selection-to-chat) grow.
+2. Verify delegation preserves everything the owner path does on BB's own
+   surfaces — context expansion, line selection, highlighted-line scrolling —
+   when the replacement delegates from inside a first-party card.
+3. Confirm the lazy boundary stays lazy: a replacement that never delegates
+   must not pull BB's renderer chunk, and the Suspense fallback must not
+   flash on the owner path.
+4. Decide whether this field should stabilize together with the shared
+   replacement primitive that `PluginThreadListProps` and
+   `PluginFileOpenerProps` also use, rather than per surface.
 
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 
