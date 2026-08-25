@@ -923,6 +923,12 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     `host.meta.json` (its digest; host daemons download and verify the bundle
     by that digest, and run it as a host RPC worker, a provider bridge, or
     both). None of it needs the server.
+  - `bb plugin screenshot [path] [--fixture-thread <id>] [--capture <out-dir>] [--app-url <url>] [--json]` —
+    plan one marketplace-listing shot per visual surface the plugin registers.
+    `--capture` drives a hidden app window and writes the PNGs; pass a seeded
+    fixture thread for surfaces that only render inside a thread, composer, or
+    file. Use the `plugin-listing-screenshots` skill to seed realistic data and
+    reject empty, loading, thin, or sensitive shots.
   - `bb plugin types [path]` — sync the plugin's `@get-bb/plugin-sdk` surface
     to the running bb (default: cwd). For a plugin that depends on the npm
     package it rewrites the exact `devDependencies` pin to this bb's SDK

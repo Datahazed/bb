@@ -445,6 +445,17 @@ export function getPluginSlotSnapshot(): PluginSlotSnapshot {
   return snapshot;
 }
 
+// The listing-screenshot capture harness (`bb plugin screenshot --capture`)
+// drives a headless window at this app and needs to know which surfaces a
+// plugin actually registered — the one fact only the running renderer has.
+// Components carry functions, so the harness reads ids/paths, never this
+// object wholesale.
+if (typeof window !== "undefined") {
+  (
+    window as { __bbPluginSlotSnapshot?: () => PluginSlotSnapshot }
+  ).__bbPluginSlotSnapshot = getPluginSlotSnapshot;
+}
+
 /** All plugin slot registrations, re-rendering on store changes. */
 export function usePluginSlots(): PluginSlotSnapshot {
   return useSyncExternalStore(subscribePluginSlots, getPluginSlotSnapshot);

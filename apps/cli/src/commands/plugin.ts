@@ -27,6 +27,12 @@ import {
   syncPluginTypes,
   type PluginPackageLayoutMigration,
 } from "@bb/templates/plugin-scaffold";
+import {
+  planPluginScreenshots,
+  resolvePluginCaptureHarnessPath,
+  resolveElectronBinary,
+  runPluginCapture,
+} from "../plugin-screenshot.js";
 import { action } from "../action.js";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import {
@@ -1609,6 +1615,103 @@ export function registerPluginCommands(
           console.log(relative(process.cwd(), file));
         }
       }),
+    );
+
+  plugin
+    .command("screenshot [path]")
+    .description(
+      "Plan the listing screenshots for a plugin: reads the surfaces its frontend registers and reports one shot per surface. Surfaces that only exist inside a thread, composer, or open file need the shared capture fixture",
+    )
+    .option("--json", "Output JSON")
+    .option(
+      "--fixture-thread <id>",
+      "Thread the shared capture fixture seeded, enabling the surfaces that need one",
+    )
+    .option(
+      "--app-url <url>",
+      "Where the app shell is served when it differs from the server (a source dev instance serves the app from Vite's port); defaults to the server URL",
+    )
+    .option(
+      "--capture <outDir>",
+      "Take the screenshots: drives a headless window at this bb, reads which surfaces the plugin registered from the running app, and writes one PNG per surface into <outDir>",
+    )
+    .action(
+      action(
+        async (
+          path: string | undefined,
+          opts: JsonOutputOptions & {
+            fixtureThread?: string;
+            capture?: string;
+            appUrl?: string;
+          },
+        ) => {
+          const rootDir = resolve(process.cwd(), path ?? ".");
+          const raw: unknown = JSON.parse(
+            await readFile(join(rootDir, "package.json"), "utf8"),
+          );
+          const packageName = pluginPackageSummarySchema.parse(raw).name;
+          if (packageName === undefined) {
+            throw new Error(
+              `No plugin package name in ${rootDir}/package.json`,
+            );
+          }
+          const plan = await planPluginScreenshots({
+            rootDir,
+            pluginId: derivePluginId(packageName),
+            ...(opts.fixtureThread === undefined
+              ? {}
+              : { fixtureThreadId: opts.fixtureThread }),
+          });
+          if (opts.json) {
+            outputJson(opts, plan);
+            return;
+          }
+          if (plan.slots.length === 0) {
+            console.log(
+              `${plan.pluginId} registers no visual surface — no listing screenshots to take.`,
+            );
+            return;
+          }
+          for (const step of plan.steps) {
+            console.log(`${step.outputFile}  ${step.url}  (${step.slot})`);
+          }
+          for (const slot of plan.needsFixture) {
+            console.log(
+              `skipped ${slot} — needs the capture fixture; pass --fixture-thread <id>`,
+            );
+          }
+          if (opts.capture !== undefined) {
+            const harnessPath = resolvePluginCaptureHarnessPath(
+              import.meta.dirname,
+            );
+            const electronBinary = resolveElectronBinary(
+              process.env,
+              harnessPath,
+            );
+            if (electronBinary === null) {
+              throw new Error(
+                "No Electron found for the capture harness. Run from a bb checkout, or set BB_ELECTRON to an Electron binary.",
+              );
+            }
+            const report = await runPluginCapture({
+              appUrl: opts.appUrl ?? getUrl(),
+              pluginId: plan.pluginId,
+              outDir: resolve(process.cwd(), opts.capture),
+              harnessPath,
+              electronBinary,
+              ...(opts.fixtureThread === undefined
+                ? {}
+                : { fixtureThreadId: opts.fixtureThread }),
+            });
+            if (report.written.length === 0) {
+              console.log("Capture ran; the app reports no surfaces to shoot.");
+            }
+            for (const shot of report.written) {
+              console.log(`wrote ${shot.file}  (${shot.slot})`);
+            }
+          }
+        },
+      ),
     );
 
   plugin
