@@ -292,6 +292,48 @@ BB_DESKTOP_OPEN_DEVTOOLS=1 apps/desktop/release/mac-arm64/bb.app/Contents/MacOS/
 When the desktop app spawns `bb-app`, server and daemon logs land under
 `~/.bb/logs/` or `$BB_DATA_DIR/logs/` when `BB_DATA_DIR` is set.
 
+### PATH in packaged launches
+
+A packaged app started from the Dock, Finder, or a Linux desktop session
+inherits the launcher's bare PATH (`/usr/bin:/bin:/usr/sbin:/sbin` under
+launchd), not the user's shell PATH. Before it spawns `bb-app`, the desktop
+main process repairs `process.env.PATH` in `src/desktop-shell-path.ts`, and
+every child (bb-app, server, host daemon, in-process server plugins) inherits
+the result:
+
+1. `$SHELL -ilc '<print PATH between marker lines>'` with a 5 s budget, where
+   `$SHELL` is the login shell the launcher passed, taken verbatim (fallback
+   `/bin/zsh` on macOS, `/bin/bash` on Linux). The interactive login shell is
+   what sources `~/.zshrc`, where Homebrew, nvm, and Volta usually extend PATH.
+2. `$SHELL -lc ...` with a 3 s budget when the interactive stage fails or
+   times out. That shell skips the rc file, so the tool directories from step
+   4 that exist on disk are appended to its PATH as well.
+3. If `$SHELL` itself cannot be started (`ENOENT` or `EACCES`: an uninstalled
+   login shell, or an account record pointing at a stale path) and it is not
+   the platform default, steps 1 and 2 run once more with the platform default
+   shell. The warning names the retry.
+4. If every stage fails, well-known tool directories that exist on disk
+   (`~/.volta/bin`, nvm's default Node `bin` unless the default alias is
+   `system`, fnm's default alias, the mise, asdf, nodenv, and proto shims,
+   `~/.n/bin`, pnpm's home, `~/.bun/bin`, `~/.deno/bin`, `~/.cargo/bin`,
+   `~/go/bin`, `~/.local/bin`, `~/bin`, Homebrew, `/usr/local/bin`, and on
+   Linux `/snap/bin`) are appended to the inherited PATH. Nothing is executed
+   to discover them, and because they are appended, they never shadow a tool
+   the shell or the launcher already put on PATH.
+
+The shell prints its PATH between marker lines, so banners and version-manager
+hooks that write to stdout during login are ignored, and a complete block counts
+even when the shell then hangs or exits non-zero. The probe settles when the
+shell exits rather than when its pipes close, so a login file that leaves a
+background job attached to stdout does not hold it for the whole budget. A
+probed PATH is merged with the inherited one rather than replacing it: probed
+entries come first, then any inherited entries the shell did not report. Every
+fallback writes a warning with the failing stage and its reason to the main
+process stderr and to `desktop.log` in the log directory, so a silent success
+never hides a broken probe. Startup is bounded by the stage budgets; a shell
+that hangs costs at most 8 s before the window opens (a missing `$SHELL` fails
+immediately, so the retry does not add to that).
+
 To verify attach-if-found manually, start a compatible bb first, then launch the
 desktop app:
 

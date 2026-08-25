@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { accessSync, constants as fsConstants } from "node:fs";
+import { appendFile, mkdir } from "node:fs/promises";
 import { arch, homedir, release, type as osType } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -159,7 +160,10 @@ import {
 import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js";
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
 import { parseDesktopSystemConfig } from "./desktop-system-config.js";
-import { ensurePackagedUserShellPath } from "./desktop-shell-path.js";
+import {
+  ensurePackagedUserShellPath,
+  type DesktopShellPathLogger,
+} from "./desktop-shell-path.js";
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
 import {
   createLogTailer,
@@ -560,6 +564,39 @@ function createDesktopLogger(): DesktopAutoUpdateLogger {
       process.stderr.write(`${message}\n`);
     },
   };
+}
+
+const DESKTOP_MAIN_LOG_FILE_NAME = "desktop.log";
+
+/**
+ * Shell PATH probe warnings go to stderr for terminal launches and to
+ * `desktop.log` in the log directory, because a Dock or Finder launch has no
+ * stderr anyone can read and the probe is what decides whether bb-app and the
+ * plugins can find `node` at all.
+ */
+function createShellPathLogger(): DesktopShellPathLogger {
+  const stderrLogger = createDesktopLogger();
+  return {
+    warn(message) {
+      stderrLogger.warn(message);
+      void appendDesktopLogLine(message);
+    },
+  };
+}
+
+async function appendDesktopLogLine(message: string): Promise<void> {
+  const logDir = formatLogDirectory();
+  try {
+    await mkdir(logDir, { recursive: true });
+    await appendFile(
+      join(logDir, DESKTOP_MAIN_LOG_FILE_NAME),
+      `${new Date().toISOString()} ${message}\n`,
+      "utf8",
+    );
+  } catch {
+    // stderr already has the warning; an unwritable log directory must not
+    // block startup.
+  }
 }
 
 function resolveDataDirFromEnv(args: ResolveDataDirFromEnvArgs): string {
@@ -2075,13 +2112,6 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
 }
 
 async function runDesktopApp(): Promise<void> {
-  ensurePackagedUserShellPath({
-    env: process.env,
-    isPackaged: app.isPackaged,
-    logger: createDesktopLogger(),
-    platform: process.platform,
-  });
-
   const applicationName = app.isPackaged
     ? DESKTOP_RELEASE_INFO.applicationName
     : "bb-dev";
@@ -2145,6 +2175,19 @@ async function runDesktopApp(): Promise<void> {
       quitting = true;
       await stopOwnedRuntime();
     },
+  });
+
+  // bb-app, the server, the host daemon, and in-process server plugins inherit
+  // process.env.PATH through startOwnedRuntime -> startBbAppProcess, so the
+  // repair must land before initializeRuntime, the only path that spawns a
+  // child. It runs after the single-instance lock so a duplicate launch quits
+  // without paying for the shell probe.
+  await ensurePackagedUserShellPath({
+    env: process.env,
+    homeDir: homedir(),
+    isPackaged: app.isPackaged,
+    logger: createShellPathLogger(),
+    platform: process.platform,
   });
 
   await app.whenReady();

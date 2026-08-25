@@ -75,11 +75,13 @@ describe("bb app process", () => {
     const env = createBbAppProcessEnv({
       env: {
         ELECTRON_RUN_AS_NODE: "1",
+        PATH: "/fake/user/bin:/usr/bin",
       },
       runtimeMode: "node",
     });
 
     expect(env.ELECTRON_RUN_AS_NODE).toBeUndefined();
+    expect(env.PATH).toBe("/fake/user/bin:/usr/bin");
   });
 
   it("uses Electron node mode for packaged runtimes", () => {
@@ -93,12 +95,14 @@ describe("bb app process", () => {
       executablePath: "/Applications/bb.app/Contents/MacOS/bb",
       mode: "electron-node",
     });
+    // The packaged desktop repairs PATH before spawning bb-app; the child env
+    // carries it through unchanged alongside the node-mode flag.
     expect(
       createBbAppProcessEnv({
-        env: {},
+        env: { PATH: "/fake/user/bin:/usr/bin" },
         runtimeMode: runtime.mode,
-      }).ELECTRON_RUN_AS_NODE,
-    ).toBe("1");
+      }),
+    ).toEqual({ ELECTRON_RUN_AS_NODE: "1", PATH: "/fake/user/bin:/usr/bin" });
   });
 
   it("requires the host Node executable in desktop dev mode", () => {
