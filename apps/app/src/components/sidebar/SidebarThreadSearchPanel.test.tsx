@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
 
 import { createRef } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@bb/domain";
 import type {
   ThreadSearchMatch,
@@ -13,14 +19,23 @@ import {
   useThreadSearch,
   type UseThreadSearchResult,
 } from "@/hooks/queries/thread-queries";
+import {
+  useNewThreadDraftSlots,
+  type NewThreadDraftRow,
+} from "@/hooks/useNewThreadDraftSlots";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { ProjectListActionButtons } from "./ProjectList";
-import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
+import {
+  SidebarThreadSearchPanel,
+  SidebarThreadSearchShowMenu,
+} from "./SidebarThreadSearchPanel";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   getSidebarThreadSearchOptionId,
   haveSameSidebarThreadSearchNavigationItems,
   isThreadSearchKeyboardEventTarget,
   type SidebarThreadSearchNavigationItem,
+  useSidebarThreadSearchLifecycleFilter,
 } from "./sidebarThreadSearch";
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
@@ -28,8 +43,12 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
     value.replace(/\s/g, "").length >= 2,
   useThreadSearch: vi.fn(),
 }));
+vi.mock("@/hooks/useNewThreadDraftSlots", () => ({
+  useNewThreadDraftSlots: vi.fn(),
+}));
 
 const mockUseThreadSearch = vi.mocked(useThreadSearch);
+const mockUseNewThreadDraftSlots = vi.mocked(useNewThreadDraftSlots);
 
 function createThreadListEntry({
   sectionId = null,
@@ -105,6 +124,31 @@ function createSearchResponse(
 function mockThreadSearch(result: UseThreadSearchResult): void {
   mockUseThreadSearch.mockReturnValue(result);
 }
+
+function createDraftRow({
+  id,
+  lastEditedAt,
+  text,
+  title = text,
+}: {
+  id: string;
+  lastEditedAt: number;
+  text: string;
+  title?: string;
+}): NewThreadDraftRow {
+  return {
+    id,
+    lastEditedAt,
+    title,
+    destination: { projectId: "proj_search", sectionId: null },
+    draft: { attachments: [], mentions: [], text },
+    delete: vi.fn(),
+  };
+}
+
+beforeEach(() => {
+  mockUseNewThreadDraftSlots.mockReturnValue([]);
+});
 
 afterEach(() => {
   cleanup();
@@ -383,8 +427,222 @@ describe("SidebarThreadSearchPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Archived")).not.toBeNull();
-    expect(screen.getByText("1/3")).not.toBeNull();
+    expect(screen.getByText("Archived threads")).not.toBeNull();
+    expect(screen.getByText("3")).not.toBeNull();
+  });
+
+  it("renders Threads, Drafts, then Archived threads as one flat navigation sequence", () => {
+    const activeThread = createThreadListEntry({
+      id: "thr_active",
+      title: "Active needle",
+    });
+    const archivedThread = createThreadListEntry({
+      id: "thr_archived",
+      title: "Archived needle",
+    });
+    archivedThread.archivedAt = 2_000;
+    mockUseNewThreadDraftSlots.mockReturnValue([
+      createDraftRow({
+        id: "draft_middle",
+        lastEditedAt: 1_500,
+        text: "Draft needle",
+      }),
+    ]);
+    mockThreadSearch({
+      data: {
+        active: {
+          results: [{ matches: [], thread: activeThread }],
+          total: 1,
+        },
+        archived: {
+          results: [{ matches: [], thread: archivedThread }],
+          total: 1,
+        },
+      },
+      debouncedQuery: "needle",
+      hasSearchableQuery: true,
+      isDebouncing: false,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    });
+    const onNavigationItemsChange = vi.fn();
+
+    render(
+      <SidebarThreadSearchPanel
+        activeIndex={0}
+        isRecentsLoading={false}
+        onActiveIndexChange={vi.fn()}
+        onNavigationItemsChange={onNavigationItemsChange}
+        onSelect={vi.fn()}
+        projectNamesById={new Map([["proj_search", "Search project"]])}
+        query="needle"
+        recentThreads={[]}
+      />,
+    );
+
+    expect(
+      screen.getAllByRole("group").map((group) => group.ariaLabel),
+    ).toEqual(["Threads", "Drafts", "Archived threads"]);
+    expect(
+      screen.getAllByRole("option").map((option) => option.textContent),
+    ).toEqual([
+      expect.stringContaining("Active needle"),
+      expect.stringContaining("Draft needle"),
+      expect.stringContaining("Archived needle"),
+    ]);
+    expect(onNavigationItemsChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ kind: "thread", threadId: "thr_active" }),
+      expect.objectContaining({ kind: "draft", draftSlotId: "draft_middle" }),
+      expect.objectContaining({ kind: "thread", threadId: "thr_archived" }),
+    ]);
+  });
+
+  it("shows drafts and recently archived threads before a query exists", () => {
+    const activeThread = createThreadListEntry({
+      id: "thr_active_recent",
+      title: "Active recent",
+    });
+    const archivedThread = createThreadListEntry({
+      id: "thr_archived_recent",
+      title: "Archived recent",
+    });
+    archivedThread.archivedAt = 2_000;
+    mockUseNewThreadDraftSlots.mockReturnValue([
+      createDraftRow({
+        id: "draft_recent",
+        lastEditedAt: 3_000,
+        text: "Recent draft",
+      }),
+    ]);
+    mockThreadSearch({
+      data: undefined,
+      debouncedQuery: "",
+      hasSearchableQuery: false,
+      isDebouncing: false,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    });
+
+    render(
+      <SidebarThreadSearchPanel
+        activeIndex={0}
+        isRecentsLoading={false}
+        onActiveIndexChange={vi.fn()}
+        onNavigationItemsChange={vi.fn()}
+        onSelect={vi.fn()}
+        projectNamesById={new Map()}
+        query=""
+        recentArchivedThreads={[archivedThread]}
+        recentThreads={[activeThread]}
+      />,
+    );
+
+    expect(
+      screen.getAllByRole("group").map((group) => group.ariaLabel),
+    ).toEqual(["Threads", "Drafts", "Archived threads"]);
+  });
+});
+
+describe("SidebarThreadSearchShowMenu", () => {
+  it("keeps all counts visible while independently narrowing result groups", async () => {
+    const activeThread = createThreadListEntry({
+      id: "thr_active_filter",
+      title: "Active filter",
+    });
+    const archivedThread = createThreadListEntry({
+      id: "thr_archived_filter",
+      title: "Archived filter",
+    });
+    mockUseNewThreadDraftSlots.mockReturnValue([
+      createDraftRow({
+        id: "draft_filter",
+        lastEditedAt: 3_000,
+        text: "Draft filter",
+      }),
+    ]);
+    mockThreadSearch({
+      data: {
+        active: {
+          results: [{ matches: [], thread: activeThread }],
+          total: 4,
+        },
+        archived: {
+          results: [{ matches: [], thread: archivedThread }],
+          total: 7,
+        },
+      },
+      debouncedQuery: "filter",
+      hasSearchableQuery: true,
+      isDebouncing: false,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    });
+
+    function Harness() {
+      const lifecycleFilter = useSidebarThreadSearchLifecycleFilter();
+      return (
+        <TooltipProvider>
+          <SidebarThreadSearchShowMenu lifecycleFilter={lifecycleFilter} />
+          <SidebarThreadSearchPanel
+            activeIndex={0}
+            isRecentsLoading={false}
+            lifecycleFilter={lifecycleFilter}
+            onActiveIndexChange={vi.fn()}
+            onNavigationItemsChange={vi.fn()}
+            onSelect={vi.fn()}
+            projectNamesById={new Map()}
+            query="filter"
+            recentThreads={[]}
+          />
+        </TooltipProvider>
+      );
+    }
+
+    render(<Harness />);
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Search show options" }),
+      { button: 0 },
+    );
+    const showGroup = await screen.findByRole("group", {
+      name: "Show search results",
+    });
+    expect(within(showGroup).getByText("4")).not.toBeNull();
+    expect(within(showGroup).getByText("1")).not.toBeNull();
+    expect(within(showGroup).getByText("7")).not.toBeNull();
+
+    fireEvent.click(
+      within(showGroup).getByRole("menuitemcheckbox", {
+        name: /Archived threads/,
+      }),
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Search show options (filtered)",
+      }),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("group", { name: "Archived threads" }),
+    ).toBeNull();
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", {
+        name: "Search show options (filtered)",
+      }),
+      { button: 0 },
+    );
+    const reopenedGroup = await screen.findByRole("group", {
+      name: "Show search results",
+    });
+    expect(within(reopenedGroup).getByText("7")).not.toBeNull();
+    expect(
+      within(reopenedGroup)
+        .getByRole("menuitemcheckbox", { name: /Archived threads/ })
+        .getAttribute("data-state"),
+    ).toBe("unchecked");
   });
 });
 
@@ -392,6 +650,7 @@ describe("sidebar thread search navigation items", () => {
   it("treats rows with different message matches as different items", () => {
     const optionId = getSidebarThreadSearchOptionId("active:thr_search");
     const baseItem: SidebarThreadSearchNavigationItem = {
+      kind: "thread",
       id: "active:thr_search",
       optionId,
       projectId: "proj_search",
