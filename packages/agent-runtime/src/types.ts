@@ -315,6 +315,12 @@ export interface AgentRuntimeProviderSession {
 
 export interface WaitForActiveTurnArgs {
   timeoutMs: number;
+  /**
+   * Aborting it ends the wait early with `null` and drops the waiter, for a
+   * caller whose reason to wait is gone before the timeout (the host aborts a
+   * submit's wait when a stop for the thread queues behind it).
+   */
+  signal?: AbortSignal;
 }
 
 export interface ReapIdleProviderSessionsArgs {
@@ -439,8 +445,11 @@ export interface AgentRuntime {
   /**
    * Resolves with the active turn id as soon as one is known: immediately if
    * a turn is already active, on the next `turn/started` observation
-   * otherwise. Resolves `null` on timeout or when the thread goes idle
-   * (stopped, cleared, or its provider process exits) before a turn starts.
+   * otherwise. Resolves `null` on timeout, when `args.signal` aborts, when
+   * the thread goes idle (stopped, cleared, or its provider process exits)
+   * before a turn starts, and when a pending start ends without a turn (the
+   * bridge refused it, or the provider failed before the turn opened), so a
+   * caller never sits out the timeout on a start that already ended.
    */
   waitForActiveTurn(
     threadId: string,

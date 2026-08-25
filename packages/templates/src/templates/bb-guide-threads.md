@@ -197,10 +197,13 @@ Messaging:
   in the requested mode once the interaction settles. That outcome is not a
   failure, so do not resend. `--json` reports `delivery` as `sent`, `queued`,
   or `deferred`. A held message waits for a thread that failed while it was
-  held, and delivers when the thread is retried. A provider that cannot take
-  a message mid-run (for example while it compacts its context) does not fail
-  the thread: the message moves to the thread's queue and delivers after the
-  live turn.
+  held, and delivers when the thread is retried. A message sent while the turn
+  is still starting waits for the start and steers into it. A provider that
+  cannot take a message mid-run (for example while it compacts its context)
+  does not fail the thread: the message moves to the thread's queue and
+  delivers after the live turn; a message sent while the turn is starting
+  parks the same way only when the runtime reports that start as stuck or
+  the thread is stopped while the message waits.
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude

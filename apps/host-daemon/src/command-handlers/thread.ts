@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { DEFAULT_TURN_START_WATCHDOG_THRESHOLD_MS } from "@bb/agent-runtime";
 import type { PromptInput } from "@bb/domain";
 import {
   THREAD_TURN_BUSY_ERROR_CODE,
@@ -28,10 +29,26 @@ type ExistingThreadRuntimeCommand =
 // The server marks a thread active before the provider's turn/started reaches
 // it. An auto/steer submit created in that gap carries no expected turn id even
 // though the preceding command is already opening one. The daemon serializes
-// turn submissions, so give the runtime-owned turn state a bounded chance to
-// catch up. If it is still pending after that bound, fail closed rather than
-// launch a competing turn.
-const TURN_SUBMIT_ACTIVE_TURN_WAIT_MS = 5_000;
+// turn submissions, so the input waits for the runtime-owned turn state to
+// catch up and steers into the turn that start opens.
+//
+// The wait equals the runtime's turn-start watchdog threshold, so "still
+// starting" means one thing on both sides of the boundary. Claude Code starts
+// measured in production on 2026-08-25 (thread thr_3kxi4aczma) took 7-15 s
+// from client/turn/requested to turn/started; the 5 s bound this replaces
+// (#2242) refused the second of two sends 0.6 s apart as a competing turn. The
+// wait ends early when the start ends without a turn -- the runtime releases
+// its waiters when the bridge refuses the start, the provider fails before the
+// turn opens, the thread is released to another environment, or its process
+// exits -- and the re-check below then starts the input as a new turn. The
+// submit holds its thread lane while it waits, so a thread.stop for the thread
+// queues behind it; the router aborts `threadStopRequested` when that happens
+// and the wait ends early too, answered with thread_turn_busy so the stop
+// runs next. The full bound is reached only for a start the watchdog reports
+// as stuck on its next sweep; that residual is the same typed refusal, which
+// parks the input in the thread's queue instead of failing the run (#2370).
+const TURN_SUBMIT_PENDING_START_WAIT_MS =
+  DEFAULT_TURN_START_WATCHDOG_THRESHOLD_MS;
 const TURN_SUBMIT_STEER_ATTEMPTS = 2;
 
 interface ResumeThreadRuntimeIfMissingArgs {
@@ -382,10 +399,20 @@ async function steerSubmittedTurn(
   command: TurnSubmitCommand,
   entry: RuntimeEntry,
   expectedTurnId: string,
+  threadStopRequested: AbortSignal | undefined,
 ): Promise<HostDaemonCommandResult<"turn.submit">> {
   let targetTurnId = expectedTurnId;
   let activeTurnId: string | null = null;
   for (let attempt = 0; attempt < TURN_SUBMIT_STEER_ATTEMPTS; attempt += 1) {
+    // A stop queued behind this submit interrupts the turn next; steering
+    // into it would hand the input to a turn about to end. Park it instead:
+    // the stop settles the thread's status and the queue keeps the input.
+    if (threadStopRequested?.aborted) {
+      throw new ExpectedCommandDispatchError(
+        THREAD_TURN_BUSY_ERROR_CODE,
+        `Refusing to steer turn ${targetTurnId} of ${command.threadId} while a stop for it is queued`,
+      );
+    }
     const result = await entry.runtime.steerTurn({
       threadId: command.threadId,
       expectedTurnId: targetTurnId,
@@ -405,7 +432,11 @@ async function steerSubmittedTurn(
     if (attempt === TURN_SUBMIT_STEER_ATTEMPTS - 1) {
       break;
     }
-    const liveTurnId = await resolveLiveSubmittedTurnTarget(command, entry);
+    const liveTurnId = await resolveLiveSubmittedTurnTarget(
+      command,
+      entry,
+      threadStopRequested,
+    );
     if (liveTurnId === null) {
       return runSubmittedTurn(command, entry);
     }
@@ -424,6 +455,7 @@ async function steerSubmittedTurn(
 async function resolveLiveSubmittedTurnTarget(
   command: TurnSubmitCommand,
   entry: RuntimeEntry,
+  threadStopRequested: AbortSignal | undefined,
 ): Promise<string | null> {
   const activeTurnId = entry.runtime.getActiveTurnId(command.threadId);
   if (activeTurnId !== null) {
@@ -438,14 +470,19 @@ async function resolveLiveSubmittedTurnTarget(
   const awaitedTurnId = await entry.runtime.waitForActiveTurn(
     command.threadId,
     {
-      timeoutMs: TURN_SUBMIT_ACTIVE_TURN_WAIT_MS,
+      timeoutMs: TURN_SUBMIT_PENDING_START_WAIT_MS,
+      ...(threadStopRequested === undefined
+        ? {}
+        : { signal: threadStopRequested }),
     },
   );
   if (awaitedTurnId !== null) {
     return awaitedTurnId;
   }
-  // The timeout and provider event can race. Re-read both facts before
-  // deciding whether the previous start completed or remains unresolved.
+  // A null wait is a released start (it ended without a turn and the thread
+  // is idle now), a stop queued behind this submit, or the bound. The timeout
+  // and provider event can also race, so re-read both facts before deciding
+  // whether the previous start ended or remains unresolved.
   const refreshedTurnId = entry.runtime.getActiveTurnId(command.threadId);
   if (refreshedTurnId !== null) {
     return refreshedTurnId;
@@ -455,7 +492,9 @@ async function resolveLiveSubmittedTurnTarget(
     // instead of failing the run that is still starting (#2370).
     throw new ExpectedCommandDispatchError(
       THREAD_TURN_BUSY_ERROR_CODE,
-      `Refusing to start a competing turn while ${command.threadId} is still starting`,
+      threadStopRequested?.aborted
+        ? `Refusing to start a competing turn while ${command.threadId} is still starting and a stop for it is queued`
+        : `Refusing to start a competing turn while ${command.threadId} is still starting`,
     );
   }
   return null;
@@ -464,6 +503,7 @@ async function resolveLiveSubmittedTurnTarget(
 async function resolveSubmittedTurnTarget(
   command: TurnSubmitCommand,
   entry: RuntimeEntry,
+  threadStopRequested: AbortSignal | undefined,
 ): Promise<string | null> {
   if (command.target.mode === "start") {
     return null;
@@ -477,8 +517,11 @@ async function resolveSubmittedTurnTarget(
     return command.target.expectedTurnId;
   }
   return (
-    (await resolveLiveSubmittedTurnTarget(command, entry)) ??
-    command.target.expectedTurnId
+    (await resolveLiveSubmittedTurnTarget(
+      command,
+      entry,
+      threadStopRequested,
+    )) ?? command.target.expectedTurnId
   );
 }
 
@@ -509,20 +552,31 @@ export async function submitTurn(
     const resolvedTurnId = await resolveSubmittedTurnTarget(
       stagedCommand,
       entry,
+      options.threadStopRequested,
     );
     switch (command.target.mode) {
       case "start":
         return await runSubmittedTurn(stagedCommand, entry);
       case "auto":
         return resolvedTurnId
-          ? await steerSubmittedTurn(stagedCommand, entry, resolvedTurnId)
+          ? await steerSubmittedTurn(
+              stagedCommand,
+              entry,
+              resolvedTurnId,
+              options.threadStopRequested,
+            )
           : await runSubmittedTurn(stagedCommand, entry);
       case "steer":
         if (!resolvedTurnId) {
           // The server saw no active turn, but the user's intent is still "send".
           return await runSubmittedTurn(stagedCommand, entry);
         }
-        return await steerSubmittedTurn(stagedCommand, entry, resolvedTurnId);
+        return await steerSubmittedTurn(
+          stagedCommand,
+          entry,
+          resolvedTurnId,
+          options.threadStopRequested,
+        );
     }
   } catch (error) {
     await cleanupAfterPostStagingFailure(staged.cleanup);

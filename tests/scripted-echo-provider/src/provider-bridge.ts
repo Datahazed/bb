@@ -21,6 +21,10 @@
  * - `fail_turn:<text>` / `prestart_fail:<text>` — raise a provider error
  *   carrying the text (underscores read as spaces) and settle the turn as
  *   failed, after or before the turn opens.
+ * - `thread_scoped_fail:<text>` — accept the input, then raise a
+ *   thread-scoped provider error (`threadScoped: true`, `willRetry: false`)
+ *   that claims no turn and settles nothing: a codex-shaped error with no
+ *   native turn id, arriving before any turn opened.
  * - `recover:<kind>` — send an unsolicited `provider/recovery` notification
  *   of that kind (`retryable: false`) for the thread right after the plan's
  *   deltas: after the terminal delta of a failed or completed turn, after
@@ -395,9 +399,11 @@ interface TurnPlan {
   /**
    * `fail_turn:<text>`: open the turn, raise a provider error carrying the
    * text, and settle the turn as failed. `prestart_fail:<text>`: raise the
-   * error before the turn opens (a turnless, thread-scoped error).
+   * error before the turn opens (the assembler claims a turn for it through
+   * the accepted input). `thread_scoped_fail:<text>`: raise it before the
+   * turn opens pinned to thread scope, so no turn is claimed or settled.
    */
-  failure: { text: string; beforeTurn: boolean } | null;
+  failure: { text: string; beforeTurn: boolean; threadScoped: boolean } | null;
   /** `recover:<kind>`: an unsolicited recovery hint after the plan's deltas. */
   recoverKind: ProviderRecoveryHint["kind"] | null;
   /** `recover_now:<kind>`: the hint right after `turn.open`, mid-turn. */
@@ -434,7 +440,10 @@ function parseTurnPlan(inputText: string): TurnPlan {
   const prestartFailMatch = /(?:^|\s)prestart_fail:([^\s]+)(?:\s|$)/u.exec(
     inputText,
   );
-  const failureText = prestartFailMatch?.[1] ?? failMatch?.[1];
+  const threadScopedFailMatch =
+    /(?:^|\s)thread_scoped_fail:([^\s]+)(?:\s|$)/u.exec(inputText);
+  const failureText =
+    threadScopedFailMatch?.[1] ?? prestartFailMatch?.[1] ?? failMatch?.[1];
   const recoverMatch = /(?:^|\s)recover:([^\s]+)(?:\s|$)/u.exec(inputText);
   const recoverKind = providerRecoveryKindSchema.safeParse(recoverMatch?.[1]);
   const recoverNowMatch = /(?:^|\s)recover_now:([^\s]+)(?:\s|$)/u.exec(
@@ -462,7 +471,9 @@ function parseTurnPlan(inputText: string): TurnPlan {
         : {
             // Underscores stand in for spaces so the text rides one token.
             text: failureText.replaceAll("_", " "),
-            beforeTurn: prestartFailMatch !== null,
+            beforeTurn:
+              prestartFailMatch !== null || threadScopedFailMatch !== null,
+            threadScoped: threadScopedFailMatch !== null,
           },
   };
 }
@@ -702,7 +713,13 @@ function beginTurn(args: {
         message: "Provider error",
         detail: plan.failure.text,
         willRetry: false,
-        settlesTurn: true,
+        // A thread-scoped error claims no turn and settles nothing; the
+        // accepted input stays pending, as a codex error with no native
+        // turn id leaves it. The default claims a turn through that input
+        // and settles it as failed.
+        ...(plan.failure.threadScoped
+          ? { threadScoped: true }
+          : { settlesTurn: true }),
       },
     ]);
     emitRecoveryHint(session.threadId, plan.recoverKind);

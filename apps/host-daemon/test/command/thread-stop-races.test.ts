@@ -76,6 +76,8 @@ interface ThreadStartArgs {
 interface TurnSubmitArgs {
   threadId: string;
   inputText: string;
+  /** Defaults to an explicit start. */
+  target?: CommandOf<"turn.submit">["target"];
 }
 
 const managers: RuntimeManager[] = [];
@@ -166,7 +168,9 @@ async function scriptedEchoDispatchLaunch(
   };
 }
 
-async function createRaceHarness(): Promise<RaceHarness> {
+async function createRaceHarness(
+  options: { scripted?: ScriptedEchoLaunchScript } = {},
+): Promise<RaceHarness> {
   const workspacePath = await makeTempDir("bb-stop-race-workspace-");
   const events: ThreadEvent[] = [];
   const record = createScriptedEchoRequestRecord();
@@ -216,7 +220,9 @@ async function createRaceHarness(): Promise<RaceHarness> {
       },
     }),
     events,
-    launch: await scriptedEchoDispatchLaunch(),
+    launch: await scriptedEchoDispatchLaunch(
+      options.scripted === undefined ? {} : { scripted: options.scripted },
+    ),
     manager,
     record,
     requireRuntime: () => {
@@ -302,14 +308,17 @@ function turnSubmitCommand(
       injectedSkillSources: [],
       instructionMode: "append",
     },
-    target: { mode: "start" },
+    target: args.target ?? { mode: "start" },
   };
 }
 
-function threadStopCommand(threadId: string): CommandOf<"thread.stop"> {
+function threadStopCommand(
+  threadId: string,
+  intent: CommandOf<"thread.stop">["intent"] = "interrupt",
+): CommandOf<"thread.stop"> {
   return {
     type: "thread.stop",
-    intent: "interrupt",
+    intent,
     environmentId: ENVIRONMENT_ID,
     threadId,
   };
@@ -326,13 +335,40 @@ function recordedThreadStops(harness: RaceHarness): Record<string, unknown>[] {
 function routerStop(
   router: CommandRouter,
   threadId: string,
+  intent: CommandOf<"thread.stop">["intent"] = "interrupt",
 ): Promise<HostDaemonOnlineRpcResponseMessage> {
   const requestId = `stop-race-rpc-${nextRpcRequestIdValue}`;
   nextRpcRequestIdValue += 1;
   return router.handleOnlineRpcRequest({
     type: "host-rpc.request",
     requestId,
-    command: threadStopCommand(threadId),
+    command: threadStopCommand(threadId, intent),
+  });
+}
+
+function routerSubmit(
+  router: CommandRouter,
+  harness: RaceHarness,
+  args: TurnSubmitArgs,
+): Promise<HostDaemonOnlineRpcResponseMessage> {
+  const requestId = `stop-race-rpc-${nextRpcRequestIdValue}`;
+  nextRpcRequestIdValue += 1;
+  return router.handleOnlineRpcRequest({
+    type: "host-rpc.request",
+    requestId,
+    command: turnSubmitCommand(harness, args),
+  });
+}
+
+/**
+ * A router over the harness's own dispatch options, so commands it admits
+ * resolve the scripted echo artifact from the same cache the direct
+ * dispatches filled.
+ */
+function createRouter(harness: RaceHarness): CommandRouter {
+  return new CommandRouter({
+    ...harness.dispatchOptions,
+    logger: { debug: () => undefined, warn: () => undefined },
   });
 }
 
@@ -487,6 +523,167 @@ describe("thread.stop race semantics", () => {
     ).resolves.toEqual({ providerCheckpointId: null });
     // The stop never reached a provider: the crashed thread is unknown.
     expect(recordedThreadStops(harness)).toHaveLength(0);
+  });
+
+  it("runs a stop queued behind submits that wait for a pending start without waiting out their bound", async () => {
+    // The bridge accepts turn/start and never opens the turn: the case the
+    // runtime's turn-start watchdog exists for, and the one where a submit
+    // parks in its pending-start wait for the whole watchdog threshold.
+    const harness = await createRaceHarness({
+      scripted: { swallowTurnStart: true },
+    });
+    const router = createRouter(harness);
+    await dispatchCommand(
+      threadStartCommand(harness, { threadId: "t-pending" }),
+      harness.dispatchOptions,
+    );
+    const runtime = harness.requireRuntime();
+    const autoSend = { mode: "auto" as const, expectedTurnId: null };
+
+    await expect(
+      routerSubmit(router, harness, {
+        threadId: "t-pending",
+        inputText: "never opens",
+        target: autoSend,
+      }),
+    ).resolves.toMatchObject({ ok: true, result: { appliedAs: "new-turn" } });
+    expect(runtime.getLiveThreadIds()).toEqual(["t-pending"]);
+    expect(runtime.getActiveTurnId("t-pending")).toBeNull();
+
+    // Two more sends reach the router while that start is pending. The
+    // first parks in its pending-start wait and holds the thread lane; the
+    // second waits in the turn lane. Fake timers hold every bounded wait
+    // from here on, so neither the submit's watchdog-sized bound nor the
+    // stop's own wait spends test time.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const waitForActiveTurn = vi.spyOn(runtime, "waitForActiveTurn");
+    const secondSend = routerSubmit(router, harness, {
+      threadId: "t-pending",
+      inputText: "second",
+      target: autoSend,
+    });
+    const thirdSend = routerSubmit(router, harness, {
+      threadId: "t-pending",
+      inputText: "third",
+      target: autoSend,
+    });
+    await vi.waitFor(() => {
+      expect(waitForActiveTurn).toHaveBeenCalledWith(
+        "t-pending",
+        expect.objectContaining({ timeoutMs: 120_000 }),
+      );
+    });
+
+    // The user stops the thread. The stop shares the thread lane with the
+    // waiting submit, so it queues behind it; the router aborts the submit's
+    // wait on arrival and the submit answers thread_turn_busy (the server
+    // parks its input) instead of holding the stop for its bound.
+    const stop = routerStop(router, "t-pending");
+    await expect(secondSend).resolves.toMatchObject({
+      ok: false,
+      errorCode: "thread_turn_busy",
+      errorMessage: expect.stringMatching(/a stop for it is queued/),
+    });
+    // The stop holds the lane now. Its own bounded wait for the pending
+    // start is the only wait left; advance past it.
+    await vi.waitFor(() => {
+      expect(waitForActiveTurn).toHaveBeenCalledWith("t-pending", {
+        timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
+      });
+    });
+    await vi.advanceTimersByTimeAsync(THREAD_STOP_ACTIVE_TURN_WAIT_MS);
+    vi.useRealTimers();
+
+    await expect(stop).resolves.toMatchObject({
+      ok: true,
+      result: { providerCheckpointId: null },
+    });
+    // No turn ever opened, so the wire stop is a no-turn release.
+    expect(recordedThreadStops(harness)).toEqual([
+      expect.objectContaining({
+        threadId: "t-pending",
+        intent: "release",
+        activeTurnId: null,
+      }),
+    ]);
+    expect(runtime.hasThread("t-pending")).toBe(false);
+    // Only the first send's start reached the bridge ahead of the stop: no
+    // competing turn was opened on the stuck one.
+    expect(
+      harness.record
+        .read()
+        .filter((request) => request.method === "turn/start"),
+    ).toHaveLength(1);
+
+    // The third send was ordered after the stop by the turn lane, so it
+    // runs on the stopped thread as any send after a stop does: the thread
+    // is resumed and the input opens its own turn.
+    await expect(thirdSend).resolves.toMatchObject({
+      ok: true,
+      result: { appliedAs: "new-turn" },
+    });
+    waitForActiveTurn.mockRestore();
+  });
+
+  it("lets a release stop wait behind a submit in its pending-start wait instead of aborting it", async () => {
+    // Same stuck start as above, but the stop is a release: the server
+    // settled nothing for it and leaves lifecycle state alone, so a submit
+    // it aborted would park its input with no turn event left to settle the
+    // thread. The submit keeps its wait; the release queues behind it.
+    const harness = await createRaceHarness({
+      scripted: { swallowTurnStart: true },
+    });
+    const router = createRouter(harness);
+    await dispatchCommand(
+      threadStartCommand(harness, { threadId: "t-release" }),
+      harness.dispatchOptions,
+    );
+    const runtime = harness.requireRuntime();
+    const autoSend = { mode: "auto" as const, expectedTurnId: null };
+    await expect(
+      routerSubmit(router, harness, {
+        threadId: "t-release",
+        inputText: "never opens",
+        target: autoSend,
+      }),
+    ).resolves.toMatchObject({ ok: true, result: { appliedAs: "new-turn" } });
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const waitForActiveTurn = vi.spyOn(runtime, "waitForActiveTurn");
+    const secondSend = routerSubmit(router, harness, {
+      threadId: "t-release",
+      inputText: "second",
+      target: autoSend,
+    });
+    await vi.waitFor(() => {
+      expect(waitForActiveTurn).toHaveBeenCalledWith(
+        "t-release",
+        expect.objectContaining({ timeoutMs: 120_000 }),
+      );
+    });
+    let secondSettled = false;
+    void secondSend.finally(() => {
+      secondSettled = true;
+    });
+
+    const release = routerStop(router, "t-release", "release");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(secondSettled).toBe(false);
+
+    // Only the bound ends the wait; the refusal does not blame a stop.
+    await vi.advanceTimersByTimeAsync(120_000);
+    await expect(secondSend).resolves.toMatchObject({
+      ok: false,
+      errorCode: "thread_turn_busy",
+      errorMessage: expect.not.stringMatching(/a stop for it is queued/),
+    });
+    vi.useRealTimers();
+    await expect(release).resolves.toMatchObject({
+      ok: true,
+      result: { providerCheckpointId: null },
+    });
+    expect(runtime.hasThread("t-release")).toBe(false);
+    waitForActiveTurn.mockRestore();
   });
 
   it("treats the second of two racing stops as an idempotent no-op", async () => {

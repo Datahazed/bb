@@ -104,6 +104,17 @@ export class CommandRouter {
   // concurrently, so commands on different threads never wait on each other.
   private readonly threadLaneTails = new Map<string, Promise<void>>();
   private readonly threadTurnLaneTails = new Map<string, Promise<void>>();
+  // A turn.submit that waits in its thread lane for a pending start to open
+  // holds that lane for up to the runtime's turn-start watchdog threshold,
+  // and a thread.stop for the same thread queues behind it. Every admitted
+  // submit registers a controller under its lane key for as long as it runs;
+  // a stop aborts them on arrival, before it queues, so each submit admitted
+  // ahead of it gives the lane up (answering thread_turn_busy, which parks
+  // its input) and the stop runs next instead of after the whole wait.
+  private readonly queuedTurnSubmitsByThreadLane = new Map<
+    string,
+    Set<AbortController>
+  >();
 
   constructor(private readonly options: CommandRouterOptions) {
     this.logger = options.logger;
@@ -206,24 +217,49 @@ export class CommandRouter {
   ): Promise<HostDaemonCommandResultForCommand> {
     const environmentLaneMode = hostDaemonEnvironmentLaneForCommand(command);
     const threadLaneKey = this.resolveThreadLaneKey(command);
-    const task = this.runAfterThreadUnarchiveBarrier(command, () =>
-      this.runInThreadTurnLane(command, () =>
-        this.runInExecutionLanes(
-          command,
-          environmentLaneMode,
-          threadLaneKey,
-          () => this.executeLiveDaemonCommandBody(command),
+    // Only a user's interrupt aborts the submits waiting in this lane: the
+    // server settles the thread through stop.requested/stop.settled, so a
+    // parked input waits in the queue. A release stop leaves lifecycle state
+    // alone and skips a busy runtime, so a submit it aborted would strand the
+    // thread active with nothing to settle it; that submit keeps waiting and
+    // starts its turn if the release ends the pending start.
+    if (
+      command.type === "thread.stop" &&
+      command.intent === "interrupt" &&
+      threadLaneKey !== null
+    ) {
+      this.abortQueuedTurnSubmits(threadLaneKey);
+    }
+    const run = (
+      threadStopRequested?: AbortSignal,
+    ): Promise<HostDaemonCommandResultForCommand> =>
+      this.runAfterThreadUnarchiveBarrier(command, () =>
+        this.runInThreadTurnLane(command, () =>
+          this.runInExecutionLanes(
+            command,
+            environmentLaneMode,
+            threadLaneKey,
+            () =>
+              this.executeLiveDaemonCommandBody(command, threadStopRequested),
+          ),
         ),
-      ),
-    );
+      );
+    const task =
+      command.type === "turn.submit" && threadLaneKey !== null
+        ? this.runQueuedTurnSubmit(threadLaneKey, run)
+        : run();
     this.registerThreadUnarchiveBarrier(command, task);
     return task;
   }
 
   private async executeLiveDaemonCommandBody(
     command: HostDaemonCommand,
+    threadStopRequested: AbortSignal | undefined,
   ): Promise<HostDaemonCommandResultForCommand> {
-    const result = await dispatchCommand(command, this.createDispatchOptions());
+    const result = await dispatchCommand(
+      command,
+      this.createDispatchOptions(threadStopRequested),
+    );
     // Commands that emit thread events before completing preserve the previous
     // event-before-result ordering under live RPC.
     if (shouldFlushEventsBeforeReportingCommandResult(command)) {
@@ -287,8 +323,11 @@ export class CommandRouter {
     });
   }
 
-  private createDispatchOptions(): CommandDispatchOptions {
+  private createDispatchOptions(
+    threadStopRequested?: AbortSignal,
+  ): CommandDispatchOptions {
     return {
+      ...(threadStopRequested === undefined ? {} : { threadStopRequested }),
       fetchProjectAttachment: this.options.fetchProjectAttachment,
       fetchSkillTree: this.options.fetchSkillTree,
       fetchPluginHostArtifact: this.options.fetchPluginHostArtifact,
@@ -347,6 +386,47 @@ export class CommandRouter {
     };
     lanes.set(key, state);
     return state;
+  }
+
+  /**
+   * Runs a turn.submit with the signal an interrupt stop queued behind it in
+   * the thread lane aborts, registered for the life of the submit. Only a
+   * submit inside its pending-start wait answers the abort (thread_turn_busy,
+   * so the server parks its input); a submit the turn lane ordered behind the
+   * stop never reaches that wait and runs as any send after a stop does.
+   */
+  private runQueuedTurnSubmit(
+    threadLaneKey: string,
+    run: (threadStopRequested: AbortSignal) => CommandRouterTask,
+  ): CommandRouterTask {
+    const controller = new AbortController();
+    const controllers =
+      this.queuedTurnSubmitsByThreadLane.get(threadLaneKey) ??
+      new Set<AbortController>();
+    this.queuedTurnSubmitsByThreadLane.set(threadLaneKey, controllers);
+    controllers.add(controller);
+    const task = run(controller.signal);
+    const forget = (): void => {
+      controllers.delete(controller);
+      if (
+        controllers.size === 0 &&
+        this.queuedTurnSubmitsByThreadLane.get(threadLaneKey) === controllers
+      ) {
+        this.queuedTurnSubmitsByThreadLane.delete(threadLaneKey);
+      }
+    };
+    void task.then(forget, forget);
+    return task;
+  }
+
+  private abortQueuedTurnSubmits(threadLaneKey: string): void {
+    const controllers = this.queuedTurnSubmitsByThreadLane.get(threadLaneKey);
+    if (!controllers) {
+      return;
+    }
+    for (const controller of controllers) {
+      controller.abort();
+    }
   }
 
   /**

@@ -1050,6 +1050,154 @@ describe("createAgentRuntime lifecycle", () => {
       }
     });
 
+    it("releases a waitForActiveTurn waiter as soon as the bridge refuses the pending start", async () => {
+      const record = createScriptedEchoRequestRecord();
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          env: record.env,
+          onEvent: () => {},
+        },
+        launch: {
+          scripted: {
+            failMethods: [
+              { method: "turn/start", message: "provider unavailable" },
+            ],
+          },
+        },
+      });
+
+      try {
+        await runtime.startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+
+        const refusedStart = runtime.runTurn({
+          clientRequestId: "creq_222222225a",
+          threadId: "t1",
+          input: [promptTextInput({ text: "refused start" })],
+          options: fullRuntimeOptions,
+        });
+        // Registered while the start is in flight, as the host does for input
+        // that arrives behind a start it has not seen open. The timeout is far
+        // beyond the test's budget: only a release can resolve this in time.
+        const pendingTurnId = runtime.waitForActiveTurn("t1", {
+          timeoutMs: 60_000,
+        });
+
+        await expect(refusedStart).rejects.toThrow("provider unavailable");
+        await expect(pendingTurnId).resolves.toBeNull();
+        // The thread is idle again: the input behind the refused start can
+        // open its own turn.
+        expect(runtime.getLiveThreadIds()).toEqual([]);
+        expect(runtime.getActiveTurnId("t1")).toBeNull();
+        expect(
+          recordedMethods(record).filter((method) => method === "turn/start"),
+        ).toHaveLength(1);
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
+    it("releases a waitForActiveTurn waiter when an accepted start fails before its turn opens", async () => {
+      const events: ThreadEvent[] = [];
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          onEvent: (event) => events.push(event),
+        },
+      });
+
+      try {
+        await runtime.startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+
+        // The bridge accepts the dispatch and then reports a thread-scoped,
+        // non-retrying provider error instead of opening a turn: the shape
+        // of a codex error with no native turn id. No turn/started will
+        // ever follow, so the runtime drops the pending start.
+        const acceptedStart = runtime.runTurn({
+          clientRequestId: "creq_222222225b",
+          threadId: "t1",
+          input: [
+            promptTextInput({ text: "thread_scoped_fail:model_unavailable" }),
+          ],
+          options: fullRuntimeOptions,
+        });
+        const pendingTurnId = runtime.waitForActiveTurn("t1", {
+          timeoutMs: 60_000,
+        });
+
+        await acceptedStart;
+        await expect(pendingTurnId).resolves.toBeNull();
+        expect(events.some((event) => event.type === "turn/started")).toBe(
+          false,
+        );
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            type: "provider/error",
+            threadId: "t1",
+            scope: { kind: "thread" },
+            willRetry: false,
+          }),
+        );
+        // The start ended without a turn: the thread is idle, so the input
+        // behind it can open its own turn.
+        expect(runtime.getLiveThreadIds()).toEqual([]);
+        expect(runtime.getActiveTurnId("t1")).toBeNull();
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
+    it("releases a waitForActiveTurn waiter when the thread is stopped while its start is pending", async () => {
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          onEvent: () => {},
+        },
+        // The bridge accepts turn/start and never opens the turn.
+        launch: { scripted: { swallowTurnStart: true } },
+      });
+
+      try {
+        await runtime.startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+        await runtime.runTurn({
+          clientRequestId: "creq_222222225c",
+          threadId: "t1",
+          input: [promptTextInput({ text: "never opens" })],
+          options: fullRuntimeOptions,
+        });
+        expect(runtime.getLiveThreadIds()).toEqual(["t1"]);
+
+        const pendingTurnId = runtime.waitForActiveTurn("t1", {
+          timeoutMs: 60_000,
+        });
+        await runtime.stopThread({ threadId: "t1" });
+
+        await expect(pendingTurnId).resolves.toBeNull();
+        expect(runtime.getLiveThreadIds()).toEqual([]);
+        expect(runtime.hasThread("t1")).toBe(false);
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
     it("resolves pending waitForActiveTurn waiters with null when the provider crashes", async () => {
       const runtime = createScriptedEchoRuntime({
         runtime: {

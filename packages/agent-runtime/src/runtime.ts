@@ -176,6 +176,15 @@ export class AgentRuntimeRecoveryError extends Error {
 }
 
 /**
+ * How long an accepted turn dispatch may go without its `turn/started` before
+ * the turn-start watchdog reports it as stalled (`options.turnStartWatchdog`
+ * overrides it). The host daemon waits this long for a start it has not seen
+ * open before it refuses to steer into it, so "still starting" has one
+ * meaning on both sides of the runtime boundary.
+ */
+export const DEFAULT_TURN_START_WATCHDOG_THRESHOLD_MS = 120_000;
+
+/**
  * A turn submission the thread cannot take right now: the runtime already
  * has a turn active or starting on it, or the bridge answered `TURN_BUSY`
  * (its provider is mid-run and will not queue the input). The live turn is
@@ -356,7 +365,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     { sinceMs: number; watchdogFired: boolean }
   >();
   const turnStartWatchdogThresholdMs =
-    options.turnStartWatchdog?.thresholdMs ?? 120_000;
+    options.turnStartWatchdog?.thresholdMs ??
+    DEFAULT_TURN_START_WATCHDOG_THRESHOLD_MS;
   const turnStartWatchdogTimer = setInterval(() => {
     const nowMs = Date.now();
     for (const [threadId, entry] of pendingTurnStarts) {
@@ -1008,21 +1018,42 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
 
+  /**
+   * Drops the thread's pending start because the provider settled the thread
+   * without opening a turn. Anyone waiting on that start (a submit queued
+   * behind it on the host) is released now: the turn/started it waits for
+   * will never come, and only the timeout would otherwise end the wait.
+   *
+   * The drop is keyed on the thread, not on the start: a turn/completed or
+   * non-retrying provider/error carries no start id, so one that a provider
+   * emits while its start is in fact still opening ends the wait early. The
+   * released submit then dispatches its own turn/start, which a bridge that
+   * is mid-start answers with TURN_BUSY (docs/provider-bridge-protocol.md
+   * hygiene rules) so the host parks the input instead of opening a
+   * competing turn.
+   */
+  function dropPendingTurnStartWithoutTurn(threadId: string): void {
+    if (pendingTurnStarts.delete(threadId)) {
+      turnState.releaseWaiters(threadId);
+    }
+  }
+
   function observeProviderSessionIdleState(event: ThreadEvent): void {
     if (event.type === "turn/started") {
+      // turnState.observe already resolved the waiters with the turn id.
       pendingTurnStarts.delete(event.threadId);
       markProviderSessionNotIdle(event.threadId);
       return;
     }
 
     if (event.type === "turn/completed") {
-      pendingTurnStarts.delete(event.threadId);
+      dropPendingTurnStartWithoutTurn(event.threadId);
       markHostedProviderSessionIdle(event.threadId);
       return;
     }
 
     if (event.type === "provider/error" && event.willRetry !== true) {
-      pendingTurnStarts.delete(event.threadId);
+      dropPendingTurnStartWithoutTurn(event.threadId);
       markHostedProviderSessionIdle(event.threadId);
     }
   }
@@ -2222,7 +2253,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               },
             });
           } catch (error) {
-            pendingTurnStarts.delete(threadId);
+            // The refused start ends without a turn: drop it and release
+            // anyone waiting on its turn/started (a submit the host queued
+            // behind it re-reads the thread as idle and starts its own
+            // turn instead of sitting out the wait).
+            dropPendingTurnStartWithoutTurn(threadId);
             // The refused start left the session as it found it. For the
             // runtime that is idle (no turn, no pending start), so the idle
             // clock restarts here as after any other refusal; a provider
@@ -2639,6 +2674,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       return turnState.waitForActiveTurn({
         threadId,
         timeoutMs: args.timeoutMs,
+        ...(args.signal === undefined ? {} : { signal: args.signal }),
       });
     },
 

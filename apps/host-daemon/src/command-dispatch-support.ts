@@ -53,6 +53,13 @@ export const noopEventSink: EventSink = {
 export interface CommandDispatchOptions {
   dataDir: string;
   logger: Pick<HostDaemonLogger, "debug" | "warn">;
+  /**
+   * Set by the router on a turn.submit it admitted to a thread lane: aborted
+   * when a thread.stop for the same thread queues behind it. A submit waiting
+   * for a pending start to open ends its wait on it and answers
+   * `thread_turn_busy`, so the stop runs next instead of after the wait.
+   */
+  threadStopRequested?: AbortSignal;
   fetchProjectAttachment: FetchProjectAttachment;
   fetchSkillTree?: FetchSkillTree;
   fetchPluginHostArtifact?: FetchPluginHostArtifact;

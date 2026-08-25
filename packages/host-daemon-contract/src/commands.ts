@@ -364,12 +364,15 @@ export const THREAD_TURN_BUSY_ERROR_CODE = "thread_turn_busy" as const;
  * auto-targeted input steers the live active turn or starts a new turn. The
  * nullable expected id is the server's snapshot; the daemon rechecks its
  * runtime so input sent while turn/started is still in flight is not mistaken
- * for a competing turn, and rejects with `thread_turn_busy` instead of
- * starting another turn if the pending start does not produce an id within
- * its bounded wait. The same code answers a start the runtime refuses while
- * a turn is active and a submission the bridge refuses as `TURN_BUSY`: the
- * live turn is untouched, so the server keeps the thread active and
- * re-queues the input rather than failing the run.
+ * for a competing turn: it waits for that start and steers into the turn it
+ * opens. A start that ends without a turn (refused by the bridge, or failed
+ * before the turn opened) ends the wait early and the input starts a new
+ * turn. A thread.stop queued behind the waiting input ends the wait too, and
+ * so does a start the runtime's turn-start watchdog reports as stuck; both
+ * reject with `thread_turn_busy`. The same code answers a start the runtime
+ * refuses while a turn is active and a submission the bridge refuses as
+ * `TURN_BUSY`: the live turn is untouched, so the server keeps the thread
+ * active and re-queues the input rather than failing the run.
  */
 const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
   .extend({

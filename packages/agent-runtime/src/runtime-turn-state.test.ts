@@ -134,6 +134,91 @@ describe("RuntimeTurnState", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("releases a thread's waiters with null and leaves other threads waiting", async () => {
+    vi.useFakeTimers();
+    const state = new RuntimeTurnState();
+
+    const firstWaiter = state.waitForActiveTurn({
+      threadId: "t1",
+      timeoutMs: 5_000,
+    });
+    const secondWaiter = state.waitForActiveTurn({
+      threadId: "t1",
+      timeoutMs: 5_000,
+    });
+    const otherWaiter = state.waitForActiveTurn({
+      threadId: "t2",
+      timeoutMs: 5_000,
+    });
+    state.releaseWaiters("t1");
+
+    await expect(firstWaiter).resolves.toBeNull();
+    await expect(secondWaiter).resolves.toBeNull();
+    // Only the released thread's timers are gone; t2 still waits.
+    expect(vi.getTimerCount()).toBe(1);
+
+    state.observe({
+      type: "turn/started",
+      threadId: "t2",
+      providerThreadId: "p2",
+      scope: turnScope("turn-2"),
+    });
+    await expect(otherWaiter).resolves.toBe("turn-2");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("resolves a waiter with null and drops it when its signal aborts", async () => {
+    vi.useFakeTimers();
+    const state = new RuntimeTurnState();
+    const controller = new AbortController();
+
+    const abortable = state.waitForActiveTurn({
+      threadId: "t1",
+      timeoutMs: 5_000,
+      signal: controller.signal,
+    });
+    const other = state.waitForActiveTurn({
+      threadId: "t1",
+      timeoutMs: 5_000,
+    });
+    controller.abort();
+
+    await expect(abortable).resolves.toBeNull();
+    // Only the aborted waiter's timer is gone; the other waiter still waits.
+    expect(vi.getTimerCount()).toBe(1);
+
+    state.observe(turnStarted("turn-1"));
+    await expect(other).resolves.toBe("turn-1");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("answers an already-aborted signal without waiting", async () => {
+    vi.useFakeTimers();
+    const state = new RuntimeTurnState();
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      state.waitForActiveTurn({
+        threadId: "t1",
+        timeoutMs: 5_000,
+        signal: controller.signal,
+      }),
+    ).resolves.toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+
+    // An active turn still wins: the caller asked what is running, and the
+    // answer is known.
+    state.observe(turnStarted("turn-1"));
+    await expect(
+      state.waitForActiveTurn({
+        threadId: "t1",
+        timeoutMs: 5_000,
+        signal: controller.signal,
+      }),
+    ).resolves.toBe("turn-1");
+  });
+
   it("resolves all pending waiters with null on clear", async () => {
     vi.useFakeTimers();
     const state = new RuntimeTurnState();

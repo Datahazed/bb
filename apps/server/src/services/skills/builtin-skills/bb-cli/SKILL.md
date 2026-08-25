@@ -407,9 +407,14 @@ or artifacts, validation performed, and blockers.
   wrong direction, hard stop, or critical clarification.
   Example: `bb thread tell <thread-id> "Stop and use approach B" --mode steer`.
   `--mode auto` steers a live turn and starts a new one on an idle thread.
+  A message sent while the turn is still starting waits for the start and
+  steers into it.
 - If the provider cannot take a message mid-run (for example while it compacts
   its context), the message is not lost and the thread does not fail: it moves
-  to the thread's queue and delivers after the live turn. Do not resend.
+  to the thread's queue and delivers after the live turn. A message sent while
+  the turn is starting parks the same way only when the runtime reports that
+  start as stuck or the thread is stopped while the message waits. Do not
+  resend.
 - If the target thread is awaiting user interaction (an open question or
   approval), `bb thread tell` cannot interrupt it. The message is held and
   delivers in the requested mode once the interaction settles; the CLI prints

@@ -449,6 +449,9 @@ describe("dispatchCommand", () => {
       workspacePath: WORKSPACE_PATH,
     });
     runtime.setIdle("thread-1");
+    // The runtime accepted a start it has not seen open: no active id, but
+    // the thread is live. The input waits for that start and steers into the
+    // turn it publishes.
     vi.mocked(runtime.getLiveThreadIds).mockReturnValueOnce(["thread-1"]);
     vi.mocked(runtime.waitForActiveTurn).mockImplementationOnce(
       async (threadId) => {
@@ -473,8 +476,10 @@ describe("dispatchCommand", () => {
     );
 
     expect(result).toEqual({ appliedAs: "steer" });
+    // The wait is the runtime's turn-start watchdog threshold, not a bound of
+    // the daemon's own: measured Claude Code starts take 7-15 s (#2370).
     expect(runtime.waitForActiveTurn).toHaveBeenCalledWith("thread-1", {
-      timeoutMs: 5_000,
+      timeoutMs: 120_000,
     });
     expect(runtime.steerTurn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -483,6 +488,142 @@ describe("dispatchCommand", () => {
         threadId: "thread-1",
       }),
     );
+    expect(runtime.runTurn).not.toHaveBeenCalled();
+  });
+
+  it("starts auto input as a new turn when the pending start ends without a turn", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+    runtime.setIdle("thread-1");
+    // Live at the first read; the runtime then releases the waiter because
+    // the start ended without a turn, and the re-read finds the thread idle.
+    vi.mocked(runtime.getLiveThreadIds).mockReturnValueOnce(["thread-1"]);
+    vi.mocked(runtime.waitForActiveTurn).mockResolvedValueOnce(null);
+
+    const result = await dispatchCommand(
+      createTurnSubmitCommand({ mode: "auto", expectedTurnId: null }),
+      {
+        dataDir: "/tmp/bb-data",
+        logger: silentLogger,
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        ...unexpectedProviderMaintenance,
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(result).toEqual({ appliedAs: "new-turn" });
+    expect(runtime.waitForActiveTurn).toHaveBeenCalledOnce();
+    expect(runtime.runTurn).toHaveBeenCalledOnce();
+    expect(runtime.steerTurn).not.toHaveBeenCalled();
+  });
+
+  it("answers thread_turn_busy when a stop queues behind the pending-start wait", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+    runtime.setIdle("thread-1");
+    // The start stays pending at both reads: nothing ends it while the stop
+    // waits for the lane behind this submit.
+    vi.mocked(runtime.getLiveThreadIds).mockReturnValue(["thread-1"]);
+    const waitEntered = createDeferredPromise<void>();
+    vi.mocked(runtime.waitForActiveTurn).mockImplementationOnce(
+      (_threadId, args) =>
+        new Promise((resolve) => {
+          args.signal?.addEventListener("abort", () => resolve(null), {
+            once: true,
+          });
+          waitEntered.resolve();
+        }),
+    );
+    const threadStopRequested = new AbortController();
+
+    const submit = dispatchCommand(
+      createTurnSubmitCommand({ mode: "auto", expectedTurnId: null }),
+      {
+        dataDir: "/tmp/bb-data",
+        logger: silentLogger,
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        ...unexpectedProviderMaintenance,
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+        threadStopRequested: threadStopRequested.signal,
+      },
+    );
+    await waitEntered.promise;
+    // The router aborts the signal when a thread.stop queues behind the
+    // submit: the wait ends at once and the input is parked, not started.
+    threadStopRequested.abort();
+
+    await expect(submit).rejects.toMatchObject({
+      code: "thread_turn_busy",
+      message: expect.stringMatching(/a stop for it is queued/),
+    });
+    expect(runtime.waitForActiveTurn).toHaveBeenCalledWith("thread-1", {
+      timeoutMs: 120_000,
+      signal: threadStopRequested.signal,
+    });
+    expect(runtime.runTurn).not.toHaveBeenCalled();
+    expect(runtime.steerTurn).not.toHaveBeenCalled();
+  });
+
+  it("parks an explicit steer when a stop is already queued behind it", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+    runtime.setActiveTurn("thread-1", "turn-1");
+    // The stop arrived while this submit still waited for the lane: the
+    // router aborted the signal before the submit ran. The turn it would
+    // steer is the one the stop interrupts next.
+    const threadStopRequested = new AbortController();
+    threadStopRequested.abort();
+
+    await expect(
+      dispatchCommand(
+        createTurnSubmitCommand({ mode: "steer", expectedTurnId: "turn-1" }),
+        {
+          dataDir: "/tmp/bb-data",
+          logger: silentLogger,
+          eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+          fetchProjectAttachment: async () => {
+            throw new Error("Unexpected project attachment fetch");
+          },
+          ...unexpectedProviderMaintenance,
+          runtimeManager: manager,
+          threadStorageRootPath: "/tmp/bb-thread-storage",
+          threadStopRequested: threadStopRequested.signal,
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "thread_turn_busy",
+      message: expect.stringMatching(/a stop for it is queued/),
+    });
+    expect(runtime.steerTurn).not.toHaveBeenCalled();
     expect(runtime.runTurn).not.toHaveBeenCalled();
   });
 

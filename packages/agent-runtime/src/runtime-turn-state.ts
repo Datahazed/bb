@@ -9,14 +9,20 @@ interface PendingActiveTurnWaiter {
 interface WaitForActiveTurnStateArgs {
   threadId: string;
   timeoutMs: number;
+  /** Aborting it ends the wait with `null` and drops the waiter. */
+  signal?: AbortSignal;
 }
 
 /**
  * Tracks the active turn per thread from observed turn lifecycle events and
  * lets callers await the next `turn/started` observation. Waiters resolve with
  * the turn id in the same tick `observe()` records it, with `null` on timeout,
- * and with `null` when the thread goes idle (`clearThread`/`clear`), so no
- * caller ever has to poll this state.
+ * with `null` when the thread goes idle (`clearThread`/`clear`), with `null`
+ * when the runtime reports that the start they were waiting on ended without
+ * a turn (`releaseWaiters`), and with `null` when the caller's own signal
+ * aborts, so no caller ever has to poll this state, sit out its timeout on a
+ * start that already failed, or keep waiting after its reason to wait is
+ * gone.
  */
 export class RuntimeTurnState {
   private readonly activeTurnIdByThreadId = new Map<string, string>();
@@ -37,6 +43,17 @@ export class RuntimeTurnState {
     this.resolveWaiters(threadId, null);
   }
 
+  /**
+   * Resolves every pending waiter for the thread with `null` and clears
+   * their timers, leaving the active-turn record alone. The runtime calls
+   * this when a pending start ends without a `turn/started` (the bridge
+   * refused it, or reported a provider error before the turn opened): the
+   * waiter is waiting on that start, and nothing later will resolve it.
+   */
+  releaseWaiters(threadId: string): void {
+    this.resolveWaiters(threadId, null);
+  }
+
   getActiveTurnId(threadId: string): string | null {
     return this.activeTurnIdByThreadId.get(threadId) ?? null;
   }
@@ -50,6 +67,9 @@ export class RuntimeTurnState {
     if (activeTurnId !== undefined) {
       return Promise.resolve(activeTurnId);
     }
+    if (args.signal?.aborted) {
+      return Promise.resolve(null);
+    }
 
     return new Promise((resolve) => {
       const waiters =
@@ -57,15 +77,21 @@ export class RuntimeTurnState {
         new Set<PendingActiveTurnWaiter>();
       this.activeTurnWaitersByThreadId.set(args.threadId, waiters);
       const waiter: PendingActiveTurnWaiter = {
-        resolve,
+        resolve: (turnId) => {
+          args.signal?.removeEventListener("abort", abort);
+          resolve(turnId);
+        },
         timeout: setTimeout(() => {
-          waiters.delete(waiter);
-          if (waiters.size === 0) {
-            this.activeTurnWaitersByThreadId.delete(args.threadId);
-          }
-          resolve(null);
+          this.dropWaiter(args.threadId, waiter);
+          waiter.resolve(null);
         }, args.timeoutMs),
       };
+      const abort = (): void => {
+        clearTimeout(waiter.timeout);
+        this.dropWaiter(args.threadId, waiter);
+        waiter.resolve(null);
+      };
+      args.signal?.addEventListener("abort", abort, { once: true });
       waiters.add(waiter);
     });
   }
@@ -92,6 +118,17 @@ export class RuntimeTurnState {
       if (this.activeTurnIdByThreadId.get(event.threadId) === turnId) {
         this.activeTurnIdByThreadId.delete(event.threadId);
       }
+    }
+  }
+
+  private dropWaiter(threadId: string, waiter: PendingActiveTurnWaiter): void {
+    const waiters = this.activeTurnWaitersByThreadId.get(threadId);
+    if (!waiters) {
+      return;
+    }
+    waiters.delete(waiter);
+    if (waiters.size === 0) {
+      this.activeTurnWaitersByThreadId.delete(threadId);
     }
   }
 
