@@ -25,6 +25,7 @@ import {
 import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
   didThreadDetailBootstrapRefreshAfterMount,
+  useArchivedThreadCount,
   useArchivedThreads,
   useChildThreads,
   useThread,
@@ -47,6 +48,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
 vi.mock("@/lib/sdk", () => ({
   sdk: {
     threads: {
+      count: vi.fn(),
       get: vi.fn(),
       list: vi.fn(),
       queuedMessages: { list: vi.fn() },
@@ -145,6 +147,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  vi.mocked(sdk.threads.count).mockResolvedValue({ count: 0 });
   vi.mocked(sdk.threads.get).mockResolvedValue(THREAD_WITH_INCLUDES);
   vi.mocked(sdk.threads.list).mockResolvedValue([]);
   vi.mocked(sdk.threads.queuedMessages.list).mockResolvedValue([]);
@@ -417,6 +420,27 @@ describe("useArchivedThreads", () => {
       projectId: "proj_1",
       signal: expect.any(AbortSignal),
     });
+  });
+});
+
+describe("useArchivedThreadCount", () => {
+  it("fetches a row-free global archived count only when explicitly requested", async () => {
+    vi.mocked(sdk.threads.count).mockResolvedValue({ count: 4 });
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(() => useArchivedThreadCount(), { wrapper });
+    expect(sdk.threads.count).not.toHaveBeenCalled();
+
+    let fetchedCount: number | undefined;
+    await act(async () => {
+      fetchedCount = (await result.current.refetch()).data;
+    });
+
+    expect(sdk.threads.count).toHaveBeenCalledWith({
+      archived: true,
+      signal: expect.any(AbortSignal),
+    });
+    expect(fetchedCount).toBe(4);
   });
 });
 

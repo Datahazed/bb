@@ -23,6 +23,8 @@ import type {
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
   ThreadConversationOutlineResponse,
+  ThreadCountQuery,
+  ThreadCountResponse,
   ThreadListResponse,
   ThreadOpenResponse,
   ThreadPaneAction,
@@ -83,6 +85,11 @@ export interface ThreadListArgs {
   unsectioned?: boolean;
 }
 
+export interface ThreadCountArgs {
+  archived: boolean;
+  signal?: AbortSignal;
+}
+
 export interface ThreadSearchArgs extends ThreadSearchQuery {
   signal?: AbortSignal;
 }
@@ -99,6 +106,7 @@ export interface ThreadGetArgs {
 
 export type ThreadGetResult = ThreadResponse | ThreadWithIncludesResponse;
 export type ThreadListResult = ThreadListResponse;
+export type ThreadCountResult = ThreadCountResponse;
 export type ThreadSearchResult = ThreadSearchResponse;
 export type ThreadResolveMentionsResult = ResolveThreadMentionsResponse;
 export interface ThreadOutputResponse {
@@ -433,6 +441,7 @@ export interface ThreadsArea {
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
   compact(args: ThreadActionArgs): Promise<ThreadCompactResult>;
+  count(args: ThreadCountArgs): Promise<ThreadCountResult>;
   cancelPlan(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   clearGoal(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   conversationOutline(
@@ -507,6 +516,10 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
       ? {}
       : { hasParent: args.hasParent ? "true" : "false" }),
   };
+}
+
+function countQuery(args: ThreadCountArgs): ThreadCountQuery {
+  return { archived: args.archived ? "true" : "false" };
 }
 
 function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
@@ -917,6 +930,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"]["conversation-outline"].$get(
           { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async count(input) {
+      return transport.readJson(
+        transport.api.v1.threads.count.$get(
+          { query: countQuery(input) },
           ...signalRequestArgs(input.signal),
         ),
       );

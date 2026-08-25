@@ -654,6 +654,28 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("routes thread count calls without fetching list rows", async () => {
+    const queue = createFetchQueue([{ body: { count: 7 } }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(sdk.threads.count({ archived: true })).resolves.toEqual({
+      count: 7,
+    });
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/threads/count?archived=true",
+      },
+    ]);
+  });
+
   it("routes bounded thread mention resolution through one HTTP request", async () => {
     const resolved = [
       {

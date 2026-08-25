@@ -53,6 +53,7 @@ export {
 } from "./project-sources.js";
 export {
   createThread,
+  countThreads,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
   getThread,
@@ -91,6 +92,7 @@ export {
 export type {
   ApplyThreadLifecycleEventArgs,
   ApplyThreadLifecycleEventOutcome,
+  CountThreadsOptions,
   ReorderPinnedThreadResult,
   ThreadSearchHighlightRange,
   ThreadSearchMatch,

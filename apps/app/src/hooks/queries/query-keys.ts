@@ -98,6 +98,7 @@ export interface ArchivedThreadsListFilters {
 }
 
 export const ARCHIVED_THREADS_LIST_KIND = "archivedList";
+const ARCHIVED_THREAD_COUNT_KIND = "archivedCount";
 
 type HostsQueryKey = readonly [typeof HOSTS_QUERY_KEY];
 type HostQueryId = string | null | undefined;
@@ -179,6 +180,10 @@ type ArchivedThreadsListQueryKey = readonly [
   typeof THREADS_QUERY_KEY,
   typeof ARCHIVED_THREADS_LIST_KIND,
   ArchivedThreadsListFilters,
+];
+type ArchivedThreadCountQueryKey = readonly [
+  typeof THREADS_QUERY_KEY,
+  typeof ARCHIVED_THREAD_COUNT_KIND,
 ];
 type DisabledThreadListQueryKey = readonly [
   typeof THREADS_DISABLED_QUERY_KEY,
@@ -656,6 +661,10 @@ export function archivedThreadsListQueryKey(
   filters: ArchivedThreadsListFilters,
 ): ArchivedThreadsListQueryKey {
   return [THREADS_QUERY_KEY, ARCHIVED_THREADS_LIST_KIND, filters];
+}
+
+export function archivedThreadCountQueryKey(): ArchivedThreadCountQueryKey {
+  return [THREADS_QUERY_KEY, ARCHIVED_THREAD_COUNT_KIND];
 }
 
 export function disabledThreadListQueryKey(

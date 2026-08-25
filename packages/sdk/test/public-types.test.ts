@@ -356,6 +356,7 @@ type ExpectedThreadsKey =
   | "childSummary"
   | "clearGoal"
   | "compact"
+  | "count"
   | "conversationOutline"
   | "defaultExecutionOptions"
   | "delete"

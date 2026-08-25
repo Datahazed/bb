@@ -309,6 +309,13 @@ export type SendQueuedMessageResponse = z.infer<
 export const threadListResponseSchema = z.array(threadListEntrySchema);
 export type ThreadListResponse = z.infer<typeof threadListResponseSchema>;
 
+export const threadCountResponseSchema = z
+  .object({
+    count: z.number().int().nonnegative(),
+  })
+  .strict();
+export type ThreadCountResponse = z.infer<typeof threadCountResponseSchema>;
+
 export const THREAD_MENTION_RESOLVE_MAX_IDS = 32;
 
 export const resolveThreadMentionsRequestSchema = z
@@ -654,6 +661,13 @@ export const threadListQuerySchema = z.object({
   offset: z.string().regex(/^\d+$/).optional(),
 });
 export type ThreadListQuery = z.infer<typeof threadListQuerySchema>;
+
+export const threadCountQuerySchema = z
+  .object({
+    archived: z.enum(["true", "false"]),
+  })
+  .strict();
+export type ThreadCountQuery = z.infer<typeof threadCountQuerySchema>;
 
 export const threadSearchQuerySchema = z.object({
   query: z.string().trim().min(2),
