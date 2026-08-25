@@ -39,8 +39,10 @@ import { PluginLogo } from "./plugin-ui";
  */
 export function InstalledPluginsTab({
   plugins,
+  onOpenPlugin,
 }: {
   plugins: readonly PluginListItem[];
+  onOpenPlugin?: (pluginId: string) => void;
 }) {
   const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
   const updateTarget =
@@ -63,6 +65,7 @@ export function InstalledPluginsTab({
               key={plugin.id}
               plugin={plugin}
               onUpdateClick={() => setUpdateTargetId(plugin.id)}
+              onOpenPlugin={onOpenPlugin}
             />
           ))}
         </div>
@@ -84,9 +87,11 @@ export function InstalledPluginsTab({
 export function InstalledPluginRow({
   plugin,
   onUpdateClick,
+  onOpenPlugin,
 }: {
   plugin: PluginListItem;
   onUpdateClick: () => void;
+  onOpenPlugin?: (pluginId: string) => void;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -118,10 +123,15 @@ export function InstalledPluginRow({
       ? "text-destructive-text"
       : "text-warning-text";
 
-  const openDetail = () =>
+  const openDetail = () => {
+    if (onOpenPlugin !== undefined) {
+      onOpenPlugin(plugin.id);
+      return;
+    }
     navigate(
       getPluginDetailRoutePath({ pluginId: plugin.id, view: "installed" }),
     );
+  };
   return (
     <div data-testid={`plugin-row-${plugin.id}`}>
       <ResourceRow

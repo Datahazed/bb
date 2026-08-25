@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDebounceValue } from "usehooks-ts";
 import {
@@ -44,6 +44,7 @@ import {
 import { removePlugin } from "@/hooks/queries/plugin-settings-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { formatInstallCount } from "@/lib/skills-registry";
+import { getPluginAuthorRoutePath } from "@/lib/route-paths";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import {
   categoryShelves,
@@ -54,6 +55,7 @@ import {
   type PluginCategoryShelf,
 } from "./plugin-browse-discovery";
 import { CatalogEntryIcon } from "./plugin-ui";
+import { pluginMarketplaceAuthorId } from "./plugin-marketplace-author";
 
 const PLUGIN_BROWSE_SORTS = [
   "recently-added",
@@ -348,7 +350,7 @@ export function BrowsePluginsTab({
                     message="No plugins match these filters."
                   />
                 ) : (
-                  <BrowseGrid
+                  <PluginCatalogGrid
                     entries={flatEntries}
                     showCategory
                     onInstall={onInstall}
@@ -399,7 +401,7 @@ export function BrowsePluginsTab({
                       message="No plugins match this category and search."
                     />
                   ) : (
-                    <BrowseGrid
+                    <PluginCatalogGrid
                       entries={filteredEntries}
                       onInstall={onInstall}
                       onOpenPlugin={onOpenPlugin}
@@ -415,7 +417,7 @@ export function BrowsePluginsTab({
   );
 }
 
-function BrowseGrid({
+export function PluginCatalogGrid({
   entries,
   showCategory = false,
   onInstall,
@@ -429,7 +431,7 @@ function BrowseGrid({
   return (
     <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
       {entries.map((entry) => (
-        <BrowseCard
+        <PluginCatalogCard
           key={`${entry.marketplace}/${entry.entryId}`}
           entry={entry}
           installedPluginId={entry.installed ? entry.pluginId : null}
@@ -473,7 +475,7 @@ function BrowseShelf({
     >
       {entries.map((entry) => (
         <ResourceSourceItem key={`${entry.marketplace}/${entry.entryId}`}>
-          <BrowseCard
+          <PluginCatalogCard
             entry={entry}
             installedPluginId={entry.installed ? entry.pluginId : null}
             onInstall={onInstall}
@@ -672,7 +674,7 @@ function CategoryChips({
   );
 }
 
-function BrowseCard({
+export function PluginCatalogCard({
   entry,
   installedPluginId,
   showCategory = false,
@@ -713,13 +715,16 @@ function BrowseCard({
   const descriptionArea = (
     <span className="block min-h-[2lh]">{description}</span>
   );
-  // Why an entry cannot be installed outranks who wrote it.
+  const authorId = pluginMarketplaceAuthorId(entry);
   const authorByline =
-    !entry.compatible && entry.incompatibleReason !== null ? (
-      <span className="text-warning-text">{entry.incompatibleReason}</span>
-    ) : entry.author !== null ? (
-      <span>By: {entry.author.name}</span>
-    ) : undefined;
+    entry.author === null || authorId === null ? undefined : (
+      <Link
+        to={getPluginAuthorRoutePath({ authorId })}
+        className="pointer-events-auto relative rounded-sm underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        By: {entry.author.name}
+      </Link>
+    );
   const byline = showCategory ? (
     <span className="flex min-w-0 items-center gap-1.5">
       <span className="shrink-0 rounded bg-surface-recessed px-1.5 py-0.5 text-2xs text-muted-foreground">

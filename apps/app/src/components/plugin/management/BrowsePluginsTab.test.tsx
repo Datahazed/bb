@@ -231,7 +231,10 @@ describe("BrowsePluginsTab", () => {
 
     await screen.findAllByText("Acme Notes");
     expect(screen.getAllByText(/Acme Plugins/u).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("By: Acme").length).toBeGreaterThan(0);
+    const authorLink = screen.getAllByRole("link", { name: "By: Acme" })[0];
+    expect(authorLink?.getAttribute("href")).toBe(
+      "/extensions/plugins/authors/12%3Aacme-plugins%3Agithub%3Aacme",
+    );
     // The card links the repository; a bundled entry has none to link.
     const repositoryLink = screen.getAllByRole("link", {
       name: "Open Acme Notes repository",

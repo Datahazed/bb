@@ -48,7 +48,11 @@ function modeFromSearchParams(value: string | null): PluginsCollectionMode {
  * Modes are URL-backed projections of one collection, not separate settings
  * pages; plugin configuration and lifecycle depth remain on the detail route.
  */
-export function PluginsOverview() {
+export function PluginsOverview({
+  onOpenPlugin,
+}: {
+  onOpenPlugin?: (pluginId: string, view: PluginsCollectionMode) => void;
+}) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const listQuery = usePluginList({ enabled: true });
@@ -93,6 +97,15 @@ export function PluginsOverview() {
     open: boolean;
     initial: AddPluginInitial | null;
   }>({ open: false, initial: null });
+  const openPlugin =
+    onOpenPlugin ??
+    ((pluginId: string, view: PluginsCollectionMode) =>
+      navigate(
+        getPluginDetailRoutePath({
+          pluginId,
+          ...(view === "installed" ? { view } : {}),
+        }),
+      ));
 
   const visiblePlugins = useMemo(
     () =>
@@ -190,9 +203,7 @@ export function PluginsOverview() {
     content = (
       <BrowsePluginsTab
         onInstall={(initial) => setAddDialog({ open: true, initial })}
-        onOpenPlugin={(pluginId) =>
-          navigate(getPluginDetailRoutePath({ pluginId }))
-        }
+        onOpenPlugin={(pluginId) => openPlugin(pluginId, "browse")}
         onInstallFromSource={() => setAddDialog({ open: true, initial: null })}
       />
     );
@@ -256,7 +267,10 @@ export function PluginsOverview() {
             />
           ) : (
             <>
-              <InstalledPluginsTab plugins={installedList.items} />
+              <InstalledPluginsTab
+                plugins={installedList.items}
+                onOpenPlugin={(pluginId) => openPlugin(pluginId, "installed")}
+              />
               <ResourceInfiniteScrollSentinel
                 hasMore={installedList.hasMore}
                 onLoadMore={installedList.loadMore}
@@ -291,14 +305,7 @@ export function PluginsOverview() {
         onOpenChange={(open) =>
           setAddDialog((current) => ({ ...current, open }))
         }
-        onInstalled={(plugin) =>
-          navigate(
-            getPluginDetailRoutePath({
-              pluginId: plugin.id,
-              view: "installed",
-            }),
-          )
-        }
+        onInstalled={(plugin) => openPlugin(plugin.id, "installed")}
       />
     </>
   );

@@ -1,6 +1,15 @@
 import type { ReactNode } from "react";
 import type { SecondaryFileFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 
+/** Routed marketplace detail tabs reuse the shell without entering persistence. */
+export interface MarketplacePluginDetailPanelTab {
+  id: string;
+  kind: "marketplace-plugin-detail";
+}
+
+export type SecondaryPanelRenderableTabIdentity =
+  | SecondaryFileFixedPanelTab
+  | MarketplacePluginDetailPanelTab;
 export interface SecondaryPanelTabReorderRequest {
   activeTabId: string;
   overTabId: string;
@@ -30,5 +39,6 @@ export interface SecondaryPanelRenderableTab {
   onSelect: () => void;
   renderContent: (pane: SecondaryPanelPaneRenderContext) => ReactNode;
   statusLabel: string | null;
-  tab: SecondaryFileFixedPanelTab;
+  /** Persisted file tabs or the route-owned marketplace comparison tab. */
+  tab: SecondaryPanelRenderableTabIdentity;
 }

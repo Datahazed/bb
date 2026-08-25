@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
+  getPluginAuthorRoutePath,
   getPluginConfigurationRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
@@ -77,6 +78,11 @@ describe("route path helpers", () => {
       "/extensions/plugins/github",
     );
     expect(
+      getPluginAuthorRoutePath({
+        authorId: "12:bb-community:github:patlee",
+      }),
+    ).toBe("/extensions/plugins/authors/12%3Abb-community%3Agithub%3Apatlee");
+    expect(
       getPluginDetailRoutePath({ pluginId: "github", view: "installed" }),
     ).toBe("/extensions/plugins/github?view=installed");
     expect(getPluginConfigurationRoutePath({ pluginId: "github" })).toBe(
@@ -93,6 +99,7 @@ describe("route path helpers", () => {
       "/extensions/skills/registry/moss-skills%2Fmoss-notes",
       "/extensions/plugins",
       "/extensions/plugins/browse",
+      "/extensions/plugins/authors/12%3Abb-community%3Agithub%3Apatlee",
       "/extensions/plugins/github",
     ]) {
       expect(isRoutePath({ path })).toBe(true);

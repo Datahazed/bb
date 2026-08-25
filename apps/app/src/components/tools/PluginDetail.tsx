@@ -33,8 +33,11 @@ import {
   formatAbsoluteDate,
   PluginLogo,
 } from "@/components/plugin/management/plugin-ui";
+import {
+  PluginMarketplaceListingSections,
+  PluginMarketplaceMetadata,
+} from "@/components/plugin/management/PluginMarketplaceListing";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
-import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import {
   PluginHealthBanner,
   PluginIncludes,
@@ -127,10 +130,6 @@ function PluginPath({ path }: { path: string }) {
  * The repository link's text: the URL without its scheme, so a GitHub entry
  * reads as `github.com/owner/repo` and a reader knows the destination.
  */
-function repositoryLinkLabel(url: string): string {
-  return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
-}
-
 /**
  * Read-only detail for an uninstalled catalog entry.
  *
@@ -141,9 +140,13 @@ function repositoryLinkLabel(url: string): string {
 export function CatalogPluginDetail({
   entry,
   onInstall,
+  catalogEntries = [entry],
+  onOpenPlugin = () => {},
 }: {
   entry: PluginCatalogSearchEntry;
   onInstall: (entry: PluginCatalogSearchEntry) => void;
+  catalogEntries?: readonly PluginCatalogSearchEntry[];
+  onOpenPlugin?: (pluginId: string) => void;
 }) {
   return (
     <ResourceDetailPage
@@ -151,39 +154,7 @@ export function CatalogPluginDetail({
       leading={<CatalogEntryIcon entry={entry} className="size-full" />}
       title={entry.displayName}
       titleMeta={<ProvenancePill label={entry.publisherLabel} />}
-      metadata={
-        <>
-          <span>{entry.category}</span>
-          {entry.author === null ? null : (
-            <span>
-              {" · By: "}
-              {entry.author.url === null ? (
-                entry.author.name
-              ) : (
-                <PluginUrlLink
-                  href={entry.author.url}
-                  className="underline underline-offset-2"
-                >
-                  {entry.author.name}
-                </PluginUrlLink>
-              )}
-            </span>
-          )}
-          {entry.repositoryUrl === null ? null : (
-            <span>
-              {" · "}
-              <a
-                href={entry.repositoryUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-2"
-              >
-                {repositoryLinkLabel(entry.repositoryUrl)}
-              </a>
-            </span>
-          )}
-        </>
-      }
+      metadata={<PluginMarketplaceMetadata entry={entry} />}
       actions={
         <ResourceInstallControl
           accessibleLabel={`Install ${entry.displayName}`}
@@ -193,13 +164,11 @@ export function CatalogPluginDetail({
       }
     >
       <ResourceDetailStack>
-        <ResourceDetailOverviewSection label="About">
-          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-            {entry.description.length > 0
-              ? entry.description
-              : "This plugin does not describe itself."}
-          </p>
-        </ResourceDetailOverviewSection>
+        <PluginMarketplaceListingSections
+          entry={entry}
+          catalogEntries={catalogEntries}
+          onOpenPlugin={onOpenPlugin}
+        />
       </ResourceDetailStack>
     </ResourceDetailPage>
   );
@@ -276,6 +245,9 @@ export function PluginDetail({
   onEdit,
   onOpenSource,
   onDelete,
+  catalogEntry = null,
+  catalogEntries = [],
+  onOpenPlugin = () => {},
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
@@ -285,6 +257,9 @@ export function PluginDetail({
   onEdit: (plugin: PluginListItem) => void;
   onOpenSource: (plugin: PluginListItem) => void;
   onDelete: (plugin: PluginListItem) => void;
+  catalogEntry?: PluginCatalogSearchEntry | null;
+  catalogEntries?: readonly PluginCatalogSearchEntry[];
+  onOpenPlugin?: (pluginId: string) => void;
 }) {
   const { settingsSections } = usePluginSlots();
   // Hooks run before the loading and not-found returns below, so this has to
@@ -386,7 +361,16 @@ export function PluginDetail({
       // button that swapped to a red Uninstall on hover — a status that
       // deleted on click, at the same weight as the enable toggle.
       titleMeta={<PluginProvenancePill plugin={plugin} />}
-      metadata={<PluginPath path={plugin.rootDir} />}
+      metadata={
+        <span className="block space-y-1">
+          <PluginPath path={plugin.rootDir} />
+          {catalogEntry === null ? null : (
+            <span className="block">
+              <PluginMarketplaceMetadata entry={catalogEntry} />
+            </span>
+          )}
+        </span>
+      }
       lifecycleControl={
         <Switch
           checked={plugin.enabled}
@@ -403,11 +387,19 @@ export function PluginDetail({
       }
     >
       <ResourceDetailStack>
-        <ResourceDetailOverviewSection label="About">
-          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
-            {plugin.description ?? "This plugin does not describe itself."}
-          </p>
-        </ResourceDetailOverviewSection>
+        {catalogEntry === null ? (
+          <ResourceDetailOverviewSection label="About">
+            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
+              {plugin.description ?? "This plugin does not describe itself."}
+            </p>
+          </ResourceDetailOverviewSection>
+        ) : (
+          <PluginMarketplaceListingSections
+            entry={catalogEntry}
+            catalogEntries={catalogEntries}
+            onOpenPlugin={onOpenPlugin}
+          />
+        )}
         {hasConfiguration ? (
           <ResourceDetailConfigurationSection
             id="configuration"

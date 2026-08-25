@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -58,6 +58,28 @@ afterEach(() => {
 });
 
 describe("InstalledPluginRow", () => {
+  it("opens the shared detail panel through the collection callback", () => {
+    const onOpenPlugin = vi.fn();
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <InstalledPluginRow
+            plugin={plugin()}
+            onUpdateClick={vi.fn()}
+            onOpenPlugin={onOpenPlugin}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Notify plugin details" }),
+    );
+    expect(onOpenPlugin).toHaveBeenCalledOnce();
+    expect(onOpenPlugin).toHaveBeenCalledWith("notify");
+  });
+
   it("shows the status word and detail and marks the switch when a plugin is not running", () => {
     renderRow(
       plugin({
