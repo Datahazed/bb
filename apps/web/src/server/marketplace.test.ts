@@ -37,7 +37,13 @@ const bucket = bucketOf({
     etag: "v1",
     contentType: "application/json",
   },
+  "v2/marketplace.json": {
+    body: '{"schemaVersion":2}',
+    etag: "v2",
+    contentType: "application/json",
+  },
   "icons/widgets.svg": { body: "<svg/>", etag: "icon-1" },
+  "v2/screenshots/widgets.webp": { body: "image", etag: "screenshot-1" },
 });
 
 function request(path: string, headers: Record<string, string> = {}): Request {
@@ -52,10 +58,17 @@ describe("marketplaceObjectKey", () => {
     expect(marketplaceObjectKey("/marketplace/v1/icons/a.svg")).toBe(
       "icons/a.svg",
     );
+    expect(marketplaceObjectKey("/marketplace/v2/marketplace.json")).toBe(
+      "v2/marketplace.json",
+    );
+    expect(marketplaceObjectKey("/marketplace/v2/screenshots/a.webp")).toBe(
+      "v2/screenshots/a.webp",
+    );
   });
 
   it("refuses traversal, empty segments, and other paths", () => {
     expect(marketplaceObjectKey("/marketplace/v1/")).toBe(null);
+    expect(marketplaceObjectKey("/marketplace/v2/")).toBe(null);
     expect(marketplaceObjectKey("/marketplace/v1/../secrets")).toBe(null);
     expect(marketplaceObjectKey("/marketplace/v1/icons//a.svg")).toBe(null);
     expect(marketplaceObjectKey("/marketplace/v1/%2e%2e/secrets")).toBe(null);
@@ -89,6 +102,22 @@ describe("serveMarketplaceObject", () => {
     expect(response.headers.get("content-type")).toBe("image/svg+xml");
     expect(response.headers.get("cache-control")).toContain("immutable");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("serves v2 from its versioned R2 directory without changing v1", async () => {
+    const v1 = await serveMarketplaceObject({
+      bucket,
+      request: request("/marketplace/v1/marketplace.json"),
+    });
+    const v2 = await serveMarketplaceObject({
+      bucket,
+      request: request("/marketplace/v2/marketplace.json"),
+    });
+
+    await expect(v1.text()).resolves.toBe('{"schemaVersion":1}');
+    await expect(v2.text()).resolves.toBe('{"schemaVersion":2}');
+    expect(v1.headers.get("etag")).toBe('"v1"');
+    expect(v2.headers.get("etag")).toBe('"v2"');
   });
 
   it("answers 304 for a matching conditional request", async () => {

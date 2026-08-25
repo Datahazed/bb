@@ -20,8 +20,8 @@ export interface Env {
   RESEND_AUDIENCE_ID?: string;
   /**
    * bb-marketplace R2 bucket holding the bb-community plugin catalog. Optional:
-   * the bucket is provisioned outside this deploy, and /marketplace/v1/*
-   * answers 404 until it exists.
+   * the bucket is provisioned outside this deploy, and /marketplace/v1/* plus
+   * /marketplace/v2/* answer 404 until it exists.
    */
   MARKETPLACE?: R2Bucket;
   /**

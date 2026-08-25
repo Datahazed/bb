@@ -8,8 +8,15 @@
  * a site deploy.
  */
 
-/** Path prefix this route owns; everything after it is an R2 object key. */
-const MARKETPLACE_PATH_PREFIX = "/marketplace/v1/";
+/**
+ * Public URL prefixes and their R2 roots. V1 is intentionally rooted at the
+ * bucket root: released clients already fetch those object keys. V2 lives in
+ * its own directory so discovery assets can evolve without touching v1.
+ */
+const MARKETPLACE_PATHS = [
+  { prefix: "/marketplace/v1/", objectPrefix: "" },
+  { prefix: "/marketplace/v2/", objectPrefix: "v2/" },
+] as const;
 
 /** Manifest revalidates quickly; icons are immutable per URL. */
 const MANIFEST_CACHE_CONTROL = "public, max-age=300, must-revalidate";
@@ -28,10 +35,13 @@ const CONTENT_TYPES: Record<string, string> = {
  * keys are opaque strings, so a `..` segment would fetch a real, wrong object.
  */
 export function marketplaceObjectKey(pathname: string): string | null {
-  if (!pathname.startsWith(MARKETPLACE_PATH_PREFIX)) return null;
+  const route = MARKETPLACE_PATHS.find(({ prefix }) =>
+    pathname.startsWith(prefix),
+  );
+  if (route === undefined) return null;
   let key: string;
   try {
-    key = decodeURIComponent(pathname.slice(MARKETPLACE_PATH_PREFIX.length));
+    key = decodeURIComponent(pathname.slice(route.prefix.length));
   } catch {
     return null;
   }
@@ -41,7 +51,7 @@ export function marketplaceObjectKey(pathname: string): string | null {
   if (segments.some((segment) => segment.length === 0 || segment === "..")) {
     return null;
   }
-  return key;
+  return `${route.objectPrefix}${key}`;
 }
 
 function contentTypeFor(key: string): string {
