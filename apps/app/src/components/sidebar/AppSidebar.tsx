@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { Link, useNavigate } from "react-router-dom";
@@ -19,7 +28,10 @@ import {
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
-import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
+import {
+  ExtensionsNavSidebarItem,
+  PluginNavSidebarItems,
+} from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
@@ -53,6 +65,14 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
+import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
+import {
+  hiddenSidebarTopLevelSectionIdsAtom,
+  normalizeHiddenSidebarTopLevelSectionIds,
+  normalizeSidebarTopLevelSectionOrder,
+  sidebarTopLevelSectionOrderAtom,
+  type SidebarTopLevelSectionId,
+} from "./sidebarTopLevelSectionPreferences";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -61,6 +81,54 @@ const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
   "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
 );
+
+interface SidebarTopLevelSectionsProps {
+  order: readonly SidebarTopLevelSectionId[];
+  hiddenSectionIds: readonly SidebarTopLevelSectionId[];
+  sections: Readonly<Record<SidebarTopLevelSectionId, ReactNode>>;
+}
+
+/**
+ * Renders the three persistent sidebar regions and derives dividers from the
+ * regions that actually contribute content. The divider is structural only:
+ * it is absent beside an empty/hidden region and never joins keyboard order.
+ */
+export function SidebarTopLevelSections({
+  order,
+  hiddenSectionIds,
+  sections,
+}: SidebarTopLevelSectionsProps) {
+  const hidden = new Set(
+    normalizeHiddenSidebarTopLevelSectionIds(hiddenSectionIds),
+  );
+  const visibleSections = normalizeSidebarTopLevelSectionOrder(order).flatMap(
+    (id) => {
+      const content = sections[id];
+      return hidden.has(id) || content === null ? [] : [{ id, content }];
+    },
+  );
+
+  return visibleSections.map(({ id, content }, index) => (
+    <Fragment key={id}>
+      {index > 0 ? (
+        <div
+          aria-hidden="true"
+          data-sidebar-top-level-divider=""
+          className="mx-2 h-px shrink-0 bg-sidebar-border"
+        />
+      ) : null}
+      <div
+        data-sidebar-top-level-section={id}
+        className={cn(
+          "min-w-0",
+          id === "thread-list" ? "flex min-h-0 flex-1 flex-col" : "shrink-0",
+        )}
+      >
+        {content}
+      </div>
+    </Fragment>
+  ));
+}
 
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -114,6 +182,11 @@ export function AppSidebar({
   );
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
   const settingsShortcut = useAppCommandShortcut("settings.open");
+  const topLevelSectionOrder = useAtomValue(sidebarTopLevelSectionOrderAtom);
+  const hiddenTopLevelSectionIds = useAtomValue(
+    hiddenSidebarTopLevelSectionIdsAtom,
+  );
+  const pluginNavPanels = usePluginNavPanelChrome();
 
   const openSidebarForThreadSearch = useCallback(() => {
     if (isCompactViewport) {
@@ -329,38 +402,53 @@ export function AppSidebar({
           />
         </div>
       ) : null}
-      <div
-        data-testid="app-sidebar-primary-actions"
-        className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
-      >
-        <ProjectListActionButtons
-          splitEnabled
-          newThreadSplit={newThreadSplit}
-          onNewChat={handleNewChat}
-          threadSearch={{
-            activeDescendantId: threadSearch.activeDescendantId,
-            inputRef: threadSearch.inputRef,
-            isActive: threadSearch.isActive,
-            onActivate: threadSearch.onActivate,
-            onClose: threadSearch.onClose,
-            onQueryChange: threadSearch.onQueryChange,
-            query: threadSearch.query,
-          }}
-        />
-      </div>
-      <PluginNavSidebarItems
-        onNavigate={closeOnMobile}
-        splitEnabled
-        toolsRoutePath={toolsRoutePath}
+      <SidebarTopLevelSections
+        order={topLevelSectionOrder}
+        hiddenSectionIds={hiddenTopLevelSectionIds}
+        sections={{
+          "new-thread-extensions": (
+            <div
+              data-testid="app-sidebar-primary-actions"
+              className="space-y-1 px-2 py-2 group-data-[collapsible=icon]:hidden"
+            >
+              <ProjectListActionButtons
+                splitEnabled
+                newThreadSplit={newThreadSplit}
+                onNewChat={handleNewChat}
+                threadSearch={{
+                  activeDescendantId: threadSearch.activeDescendantId,
+                  inputRef: threadSearch.inputRef,
+                  isActive: threadSearch.isActive,
+                  onActivate: threadSearch.onActivate,
+                  onClose: threadSearch.onClose,
+                  onQueryChange: threadSearch.onQueryChange,
+                  query: threadSearch.query,
+                }}
+              />
+              {toolsRoutePath ? (
+                <ExtensionsNavSidebarItem
+                  routePath={toolsRoutePath}
+                  onNavigate={closeOnMobile}
+                />
+              ) : null}
+            </div>
+          ),
+          "plugin-pages":
+            pluginNavPanels.length > 0 ? (
+              <PluginNavSidebarItems onNavigate={closeOnMobile} splitEnabled />
+            ) : null,
+          "thread-list": (
+            <SidebarContent>
+              <PluginThreadList
+                replacement={threadListReplacement}
+                original={originalThreadList}
+                searchQuery={threadSearch.query}
+                onNavigate={threadSearch.onExternalThreadOpen}
+              />
+            </SidebarContent>
+          ),
+        }}
       />
-      <SidebarContent>
-        <PluginThreadList
-          replacement={threadListReplacement}
-          original={originalThreadList}
-          searchQuery={threadSearch.query}
-          onNavigate={threadSearch.onExternalThreadOpen}
-        />
-      </SidebarContent>
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
         {/* The footer holds a variable number of plugin action buttons, so a

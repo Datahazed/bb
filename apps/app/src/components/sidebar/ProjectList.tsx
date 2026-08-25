@@ -123,8 +123,12 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -156,6 +160,13 @@ import {
   resolveThreadTitleDisplayText,
   type ThreadTitleMentionResources,
 } from "@/components/thread/ThreadTitleMentions";
+import {
+  hiddenSidebarTopLevelSectionIdsAtom,
+  moveSidebarTopLevelSection,
+  sidebarTopLevelSectionOrderAtom,
+  setSidebarTopLevelSectionHidden,
+  SIDEBAR_TOP_LEVEL_SECTION_DEFINITIONS,
+} from "./sidebarTopLevelSectionPreferences";
 
 interface ProjectListProps {
   onNewProject?: () => void;
@@ -659,9 +670,9 @@ function SidebarDisplayMenuTrigger({
   );
 }
 
-// Single combined display-options menu (organize + sort) rendered on every
-// section header. Both the organization mode and the sort field are
-// global, so any header's menu drives the whole sidebar.
+// Single combined display-options menu rendered on every section header.
+// Organization, sorting, and top-level sidebar structure are global, so any
+// header's menu drives the whole sidebar and can restore a hidden region.
 export function SidebarDisplayOptionsMenu({
   open,
   onOpenChange,
@@ -671,6 +682,12 @@ export function SidebarDisplayOptionsMenu({
   );
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
+  );
+  const [topLevelSectionOrder, setTopLevelSectionOrder] = useAtom(
+    sidebarTopLevelSectionOrderAtom,
+  );
+  const [hiddenTopLevelSectionIds, setHiddenTopLevelSectionIds] = useAtom(
+    hiddenSidebarTopLevelSectionIdsAtom,
   );
   const selectedSort: SidebarChronologicalSort =
     chronologicalSort === "none" ? "updated" : chronologicalSort;
@@ -716,6 +733,67 @@ export function SidebarDisplayOptionsMenu({
               {option.label}
             </DropdownMenuCheckboxItem>
           ))}
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
+          Sidebar sections
+        </DropdownMenuLabel>
+        <DropdownMenuGroup aria-label="Sidebar sections">
+          {topLevelSectionOrder.map((sectionId, index) => {
+            const section = SIDEBAR_TOP_LEVEL_SECTION_DEFINITIONS.find(
+              (candidate) => candidate.id === sectionId,
+            );
+            if (!section) return null;
+            const isHidden = hiddenTopLevelSectionIds.includes(sectionId);
+            return (
+              <DropdownMenuSub key={sectionId}>
+                <DropdownMenuSubTrigger>{section.label}</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {section.hideable ? (
+                    <>
+                      <DropdownMenuCheckboxItem
+                        checked={!isHidden}
+                        onCheckedChange={(shown) =>
+                          setHiddenTopLevelSectionIds((current) =>
+                            setSidebarTopLevelSectionHidden(
+                              current,
+                              sectionId,
+                              !shown,
+                            ),
+                          )
+                        }
+                      >
+                        Show section
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  ) : null}
+                  <DropdownMenuItem
+                    disabled={index === 0}
+                    onSelect={() =>
+                      setTopLevelSectionOrder((current) =>
+                        moveSidebarTopLevelSection(current, sectionId, -1),
+                      )
+                    }
+                  >
+                    <Icon name="ArrowUp" aria-hidden="true" />
+                    Move up
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={index === topLevelSectionOrder.length - 1}
+                    onSelect={() =>
+                      setTopLevelSectionOrder((current) =>
+                        moveSidebarTopLevelSection(current, sectionId, 1),
+                      )
+                    }
+                  >
+                    <Icon name="ArrowDown" aria-hidden="true" />
+                    Move down
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            );
+          })}
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -1928,7 +2006,7 @@ function ProjectListComponent({
     actionsOpen: isSectionDisplayOptionsOpen("pinned"),
   };
   const threadsSection = {
-    label: organizationMode === "chronological" ? "Unorganized" : "Threads",
+    label: "Threads",
     actions: threadsSectionActions,
     actionsOpen: threadsDisplayOptionsMenuOpen,
   } satisfies Omit<BuiltInSidebarSectionOptions, "content">;
@@ -1958,7 +2036,7 @@ function ProjectListComponent({
       {sectionDeleteDialog.target ? (
         <ConfirmDeleteDialogContent
           title="Remove section?"
-          description="Threads in this section will move back to Unorganized."
+          description="Threads in this section will move back to Threads."
           confirmLabel="Remove section"
           pending={isDeleteThreadSectionPending}
           onConfirm={handleConfirmRemoveThreadSection}
