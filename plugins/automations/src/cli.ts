@@ -29,6 +29,7 @@ import {
   automationAgentExecutionRequestSchema,
   automationScriptInterpreterSchema,
   automationScriptRequestSchema,
+  automationTriggerRequestSchema,
 } from "./rpc-types.js";
 
 const DURATION_PATTERN =
@@ -139,7 +140,15 @@ function buildTrigger(args: ParsedArgs): CreateAutomationInput["trigger"] {
   if (cron !== undefined) {
     const timezone = flag(args, "timezone");
     if (!timezone) throw new Error("--cron requires --timezone.");
-    return { triggerType: "schedule", cron, timezone };
+    // argv is a system boundary: apply the same request policy (cron and
+    // timezone caps) as the RPC route before the service persists anything.
+    // Without this the CLI writes the row and only fails when the stored
+    // trigger is re-parsed, which is the #2166 defect on the trigger column.
+    return automationTriggerRequestSchema.parse({
+      triggerType: "schedule",
+      cron,
+      timezone,
+    });
   }
   if (flag(args, "timezone") !== undefined) {
     throw new Error("--timezone is only used with --cron.");

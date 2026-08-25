@@ -124,11 +124,19 @@ export type AutomationScriptInterpreter = z.infer<
   typeof automationScriptInterpreterSchema
 >;
 
+/**
+ * Stored/response trigger shape. Like the execution shape below, the cron and
+ * timezone length caps are request policy and live only on the request variant:
+ * this schema also parses the stored `trigger_config` column (list, show,
+ * update, pause/resume, and the sweep all go through `parseAutomationTrigger`),
+ * so a cap here would make an already-persisted over-cap row unreadable and
+ * unrepairable. See #2166.
+ */
 const automationScheduleTriggerSchema = z
   .object({
     triggerType: z.literal("schedule"),
-    cron: z.string().min(1).max(SCHEDULE_CRON_MAX_LENGTH),
-    timezone: z.string().min(1).max(SCHEDULE_TIMEZONE_MAX_LENGTH),
+    cron: z.string().min(1),
+    timezone: z.string().min(1),
   })
   .strict();
 const automationOnceTriggerSchema = z
@@ -142,6 +150,24 @@ export const automationTriggerSchema = z.discriminatedUnion("triggerType", [
   automationOnceTriggerSchema,
 ]);
 export type AutomationTrigger = z.infer<typeof automationTriggerSchema>;
+
+/**
+ * Request-side trigger schema: the stored shape plus the length caps. Every
+ * entry point that accepts trigger input (the RPC routes through
+ * `createAutomationInputSchema`/`updateAutomationInputSchema`, and the CLI argv
+ * boundary through `buildTrigger`) parses with this before anything is
+ * persisted. The one-shot variant carries no string, so it is unchanged.
+ */
+const automationScheduleTriggerRequestSchema = automationScheduleTriggerSchema
+  .extend({
+    cron: z.string().min(1).max(SCHEDULE_CRON_MAX_LENGTH),
+    timezone: z.string().min(1).max(SCHEDULE_TIMEZONE_MAX_LENGTH),
+  })
+  .strict();
+export const automationTriggerRequestSchema = z.discriminatedUnion(
+  "triggerType",
+  [automationScheduleTriggerRequestSchema, automationOnceTriggerSchema],
+);
 
 /**
  * Stored/response execution shape. Length caps are request policy and live
@@ -347,7 +373,7 @@ export const createAutomationInputSchema = z
     projectId: z.string().min(1),
     name: z.string().min(1).max(AUTOMATION_NAME_MAX_LENGTH),
     enabled: z.boolean().default(true),
-    trigger: automationTriggerSchema,
+    trigger: automationTriggerRequestSchema,
     execution: automationExecutionRequestSchema,
     origin: automationOriginSchema,
     createdByThreadId: z.string().min(1).optional(),
@@ -363,7 +389,7 @@ export const updateAutomationInputSchema = z
     projectId: z.string().min(1),
     automationId: z.string().min(1),
     name: z.string().min(1).max(AUTOMATION_NAME_MAX_LENGTH).optional(),
-    trigger: automationTriggerSchema.optional(),
+    trigger: automationTriggerRequestSchema.optional(),
     execution: automationExecutionRequestSchema.optional(),
     agent: agentExecutionUpdateSchema.optional(),
   })
