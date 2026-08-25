@@ -27,7 +27,6 @@ import {
   buildTimelineTurnSummaryDetails,
   buildThreadTimelineWithProfile,
   THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
-  THREAD_TIMELINE_TURN_DETAIL_EVENT_LIMIT,
 } from "../../../src/services/threads/timeline.js";
 
 /** Larger than any thread these tests build, so the budget never binds. */
@@ -845,6 +844,71 @@ describe("in-turn timeline windows", () => {
     );
   });
 
+  it("returns full outputs when the completed turn fits the exact-range limit", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: true,
+      itemsPerTurn: [1],
+      outputChars: 50_000,
+    });
+
+    const detail = buildTimelineTurnDetailsPage(db, thread, {
+      includeProviderUnhandledOperations: false,
+      turnId: "turn-1",
+    });
+    const command = detail.rows.find(
+      (row) => row.kind === "work" && row.workKind === "command",
+    );
+
+    expect(detail.nextCursor).toBeNull();
+    expect(command?.kind).toBe("work");
+    if (command?.kind !== "work" || command.workKind !== "command") {
+      throw new Error("expected a command detail row");
+    }
+    expect(command.output).toBe("o".repeat(50_000));
+  });
+
+  it("returns one exact page when more than 250 small events fit", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: true,
+      itemsPerTurn: [200],
+    });
+
+    const detail = buildTimelineTurnDetailsPage(db, thread, {
+      includeProviderUnhandledOperations: false,
+      turnId: "turn-1",
+    });
+
+    expect(detail.nextCursor).toBeNull();
+    expect(collectCommandCallIds(detail.rows, new Set())).toBe(200);
+  });
+
+  it("returns one preview page when only capped outputs fit", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: true,
+      itemsPerTurn: [125],
+      outputChars: 40_000,
+    });
+
+    const detail = buildTimelineTurnDetailsPage(db, thread, {
+      includeProviderUnhandledOperations: false,
+      turnId: "turn-1",
+    });
+    const commandOutputs = detail.rows.flatMap((row) =>
+      row.kind === "work" && row.workKind === "command" ? [row.output] : [],
+    );
+
+    expect(detail.nextCursor).toBeNull();
+    expect(commandOutputs).toHaveLength(125);
+    expect(
+      commandOutputs.every((output) =>
+        output.includes("more characters truncated"),
+      ),
+    ).toBe(true);
+  });
+
   it("pages through a finished turn that exceeds the event-data byte limit", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
@@ -853,6 +917,15 @@ describe("in-turn timeline windows", () => {
       completeLastTurn: true,
       itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
     });
+
+    expect(() =>
+      buildTimelineTurnSummaryDetails(db, thread, {
+        includeProviderUnhandledOperations: false,
+        sourceSeqEnd: getLatestThreadSequence(db, { threadId: thread.id }),
+        sourceSeqStart: 2,
+        turnId: "turn-1",
+      }),
+    ).toThrow("Timeline turn details exceed the safe response limit");
 
     const commandCallIds = new Set<string>();
     const turnRowIds = new Set<string>();
@@ -897,7 +970,6 @@ describe("in-turn timeline windows", () => {
     do {
       const detail = buildTimelineTurnDetailsPage(db, thread, {
         ...(detailCursor ? { cursor: detailCursor } : {}),
-        eventLimit: THREAD_TIMELINE_TURN_DETAIL_EVENT_LIMIT,
         includeProviderUnhandledOperations: false,
         turnId: "turn-1",
       });
@@ -1279,7 +1351,7 @@ describe("timeline segment anchors", () => {
 });
 
 describe("timeline window event exclusions", () => {
-  it("never reads non-projecting diff or rate-limit events into a window", () => {
+  it("never reads workspace diff events into a window", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, { completeLastTurn: true, itemsPerTurn: [5] });
     const withoutDiffs = buildPage(db, thread, LARGE_BUDGET, null);
@@ -1297,17 +1369,6 @@ describe("timeline window event exclusions", () => {
         itemKind: null,
         parentToolCallId: null,
         data: JSON.stringify({ diff: "x".repeat(50_000) }),
-      },
-      {
-        threadId: thread.id,
-        sequence: 501,
-        type: "provider/rateLimits/updated",
-        scope: threadScope(),
-        providerThreadId,
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        data: JSON.stringify({}),
       },
     ]);
 

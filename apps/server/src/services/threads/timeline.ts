@@ -167,7 +167,6 @@ interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySele
 
 interface BuildTimelineTurnDetailsPageOptions {
   cursor?: string;
-  eventLimit: number;
   includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
   turnId: string;
@@ -181,8 +180,6 @@ interface BuildTimelineTurnSummaryDetailsRangeOptions extends BuildTimelineTurnS
 export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
 
 export const THREAD_TIMELINE_SEGMENT_LIMIT_MAX = 100;
-
-export const THREAD_TIMELINE_TURN_DETAIL_EVENT_LIMIT = 250;
 
 /**
  * Driver rows and decoded events can use several times their stored JSON size.
@@ -2298,11 +2295,30 @@ export function buildTimelineTurnDetailsPage(
     throw new ApiError(400, "invalid_request", "Invalid turn details cursor");
   }
 
+  if (options.cursor === undefined) {
+    try {
+      const details = buildTimelineTurnSummaryDetailsRange(db, thread, {
+        includeProviderUnhandledOperations:
+          options.includeProviderUnhandledOperations,
+        providerDisplayName: options.providerDisplayName,
+        resourceKind: "exact-range",
+        ...bounds,
+      });
+      return { rows: details.rows, nextCursor: null };
+    } catch (error) {
+      if (
+        !(error instanceof ApiError) ||
+        error.body.code !== "timeline_window_too_large"
+      ) {
+        throw error;
+      }
+    }
+  }
+
   const page = readStoredTimelineWindowForwardPage(db, {
     beforeSequence: bounds.sourceSeqEnd + 1,
     excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
     maxDataBytes: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
-    maxEventCount: options.eventLimit,
     maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
     sequenceStart: sourceSeqStart,
     threadId: thread.id,

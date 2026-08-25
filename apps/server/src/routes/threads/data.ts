@@ -49,7 +49,6 @@ import {
   buildTimelineTurnSummaryDetails,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
-  THREAD_TIMELINE_TURN_DETAIL_EVENT_LIMIT,
 } from "../../services/threads/timeline.js";
 import type {
   ThreadTimelinePageKind,
@@ -478,7 +477,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       buildTimelineTurnDetailsPage(deps.db, thread, {
         ...(query.cursor ? { cursor: query.cursor } : {}),
-        eventLimit: THREAD_TIMELINE_TURN_DETAIL_EVENT_LIMIT,
         includeProviderUnhandledOperations,
         providerDisplayName: resolveThreadProviderDisplayName(
           deps,

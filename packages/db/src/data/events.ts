@@ -1238,7 +1238,6 @@ export interface ReadStoredTimelineWindowForwardPageArgs
   extends ListStoredTimelineWindowEventRowsArgs {
   beforeSequence: number;
   maxDataBytes: number;
-  maxEventCount: number;
 }
 
 export type StoredTimelineWindowForwardPage =
@@ -3137,55 +3136,55 @@ export function listStoredTimelineWindowEventRows(
     .all();
 }
 
-/**
- * Reads the oldest bounded prefix of a sequence range in one query. Completed
- * turn details use this instead of first measuring a range and then reading it.
- */
+/** Reads the oldest byte-bounded prefix of a sequence range. */
 export function readStoredTimelineWindowForwardPage(
   db: DbConnection,
   args: ReadStoredTimelineWindowForwardPageArgs,
 ): StoredTimelineWindowForwardPage {
-  const fields = storedEventRowFieldsWithInlineOutputLimit(
-    args.maxInlineOutputChars,
-  );
   const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
-  const candidates = db
+  // Walk only sequence + size until the byte boundary is known. Selecting the
+  // payload here would materialize the first excluded row (which may itself be
+  // enormous) and would retain every included row while the iterator is open.
+  const query = db
     .select({
-      ...fields,
       dataBytes: sql<number>`length(CAST(${data} AS BLOB))`.as("data_bytes"),
+      sequence: events.sequence,
     })
     .from(events)
     .where(and(...storedTimelineWindowConditions(args)))
     .orderBy(events.sequence)
-    .limit(args.maxEventCount + 1)
-    .all();
-
-  const rows: StoredEventRow[] = [];
+    .toSQL();
+  const statement = db.$client.prepare<
+    unknown[],
+    { data_bytes: number; sequence: number }
+  >(query.sql);
   let dataBytes = 0;
-  for (const candidate of candidates) {
-    if (
-      rows.length === args.maxEventCount ||
-      dataBytes + candidate.dataBytes > args.maxDataBytes
-    ) {
-      if (rows.length === 0) {
+  let hasRows = false;
+  let nextSequenceStart: number | null = null;
+  for (const row of statement.iterate(...query.params)) {
+    if (dataBytes + row.data_bytes > args.maxDataBytes) {
+      if (!hasRows) {
         return {
-          dataBytes: candidate.dataBytes,
+          dataBytes: row.data_bytes,
           kind: "single-event-too-large",
-          sequence: candidate.sequence,
+          sequence: row.sequence,
         };
       }
-      return {
-        kind: "page",
-        nextSequenceStart: candidate.sequence,
-        rows,
-      };
+      nextSequenceStart = row.sequence;
+      break;
     }
-    const { dataBytes: _dataBytes, ...row } = candidate;
-    rows.push(row);
-    dataBytes += candidate.dataBytes;
+    dataBytes += row.data_bytes;
+    hasRows = true;
   }
 
-  return { kind: "page", nextSequenceStart: null, rows };
+  const rows = listStoredTimelineWindowEventRows(db, {
+    beforeSequence: nextSequenceStart ?? args.beforeSequence,
+    excludedTypes: args.excludedTypes,
+    maxInlineOutputChars: args.maxInlineOutputChars,
+    sequenceStart: args.sequenceStart,
+    threadId: args.threadId,
+  });
+  return { kind: "page", nextSequenceStart, rows };
 }
 
 function listLatestRowsForContextWindowUsage(

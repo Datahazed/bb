@@ -54,6 +54,7 @@ import {
   pruneTokenUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
+  readStoredTimelineWindowForwardPage,
   listLatestOpenBackgroundTaskStateRowsForThread,
   STORED_TIMELINE_BYTE_PREFLIGHT_EVENT_LIMIT,
 } from "../../src/data/events.js";
@@ -4741,6 +4742,65 @@ describe("timeline read-boundary output truncation", () => {
       sequenceStart: 3,
       turnId: null,
     }));
+  });
+
+  it("reads the oldest byte-bounded prefix and resumes at the next row", () => {
+    const { db, thread } = setup();
+    insertEvents(
+      db,
+      noopNotifier,
+      [100, 200, 300].map((messageChars, index) => ({
+        threadId: thread.id,
+        sequence: index + 1,
+        type: "system/error" as const,
+        ...threadEventFields,
+        data: JSON.stringify({ message: "x".repeat(messageChars) }),
+      })),
+    );
+    const rows = listStoredTimelineWindowEventRows(db, {
+      beforeSequence: 4,
+      maxInlineOutputChars: null,
+      sequenceStart: 1,
+      threadId: thread.id,
+    });
+    const firstTwoBytes = rows
+      .slice(0, 2)
+      .reduce((total, row) => total + Buffer.byteLength(row.data), 0);
+
+    const first = readStoredTimelineWindowForwardPage(db, {
+      beforeSequence: 4,
+      maxDataBytes: firstTwoBytes,
+      maxInlineOutputChars: null,
+      sequenceStart: 1,
+      threadId: thread.id,
+    });
+    expect(first).toMatchObject({
+      kind: "page",
+      nextSequenceStart: 3,
+      rows: [{ sequence: 1 }, { sequence: 2 }],
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "system/error",
+        ...threadEventFields,
+        data: JSON.stringify({ message: "write after forward byte cut" }),
+      },
+    ]);
+
+    const second = readStoredTimelineWindowForwardPage(db, {
+      beforeSequence: 4,
+      maxDataBytes: firstTwoBytes,
+      maxInlineOutputChars: null,
+      sequenceStart: 3,
+      threadId: thread.id,
+    });
+    expect(second).toMatchObject({
+      kind: "page",
+      nextSequenceStart: null,
+      rows: [{ sequence: 3 }],
+    });
   });
 
   it("bounds the byte-total preflight before using the early-stopping iterator", () => {
