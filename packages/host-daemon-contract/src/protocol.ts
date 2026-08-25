@@ -330,10 +330,17 @@
 // Rapid later turn.submit input omits that context, while a thread.start that
 // replaces the owning turn retains it. The wire shape is unchanged, but the
 // server-to-daemon payload semantics differ.
+// Version 171 adds the `thread_turn_busy` turn.submit failure code. The daemon
+// answers it, instead of a generic failure, when the thread's live turn is
+// untouched: the runtime refused to start a competing turn, or the bridge
+// reported its provider mid-run (`TURN_BUSY`). The server keeps the thread
+// active and re-queues the input. An older daemon reports the same conditions
+// as `command_failed`, which the server still turns into `run.failed` and a
+// lost message (#2370).
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 170 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 171 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

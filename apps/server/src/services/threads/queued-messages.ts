@@ -58,6 +58,10 @@ import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
+  isThreadTurnBusyError,
+  restoreQueuedMessagesForBusyTurn,
+} from "./thread-turn-busy.js";
+import {
   ensureThreadIsWritable,
   formatAgentThreadInput,
   groupedInputForRuntime,
@@ -558,6 +562,19 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     command,
     hostId: environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    onExpectedError: ({ error }) => {
+      if (!isThreadTurnBusyError(error)) {
+        return;
+      }
+      // The rows were consumed at dispatch; the daemon still runs a turn on
+      // the thread (a start whose turn/started is pending, or a provider
+      // mid-run), so put the same rows back at the head for the drain that
+      // follows that turn (#2370).
+      restoreQueuedMessagesForBusyTurn(deps, {
+        queuedMessages: args.queuedMessages,
+        threadId: thread.id,
+      });
+    },
     onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: thread.id },
@@ -595,6 +612,7 @@ async function sendClaimedQueuedMessageForThread(
         throw createQueuedMessageClaimLostError();
       }
     },
+    consumedQueuedMessages: args.queuedMessages,
     environment,
     payload: {
       ...sendQueuedMessagePayload(
