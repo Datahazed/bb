@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  installedPluginSchema,
   pluginCatalogInstallRequestSchema,
   pluginCatalogSearchResultSchema,
   pluginCatalogStatusSchema,
+  pluginListingListResponseSchema,
+  pluginListingMutationResponseSchema,
+  pluginListingNoticeConsumeResponseSchema,
+  pluginListingRecordSubmissionRequestSchema,
+  pluginListingSaveDraftRequestSchema,
 } from "../src/index.js";
 
 describe("plugin catalog contracts", () => {
@@ -130,5 +136,81 @@ describe("plugin catalog contracts", () => {
         category: "Other",
       }),
     ).toThrow();
+  });
+
+  it("accepts additive listing response fields while requests stay strict", () => {
+    const lifecycle = {
+      status: "published" as const,
+      entryId: "notes",
+      publishedAt: 1,
+    };
+    const record = {
+      pluginId: "notes",
+      authorship: "path" as const,
+      lifecycle,
+    };
+    const notice = {
+      id: "notice-1",
+      pluginId: "notes",
+      pluginName: "Notes",
+      createdAt: 2,
+      kind: "published" as const,
+    };
+
+    expect(
+      pluginListingListResponseSchema.parse({
+        records: [
+          {
+            ...record,
+            lifecycle: { ...lifecycle, futureLifecycleField: true },
+            futureRecordField: true,
+          },
+        ],
+        notices: [{ ...notice, futureNoticeField: true }],
+        futureResponseField: true,
+      }),
+    ).toEqual({ records: [record], notices: [notice] });
+    expect(
+      pluginListingMutationResponseSchema.parse({
+        ok: true,
+        record: { ...record, futureRecordField: true },
+        futureResponseField: true,
+      }),
+    ).toEqual({ ok: true, record });
+    expect(
+      pluginListingNoticeConsumeResponseSchema.parse({
+        ok: true,
+        futureResponseField: true,
+      }),
+    ).toEqual({ ok: true });
+
+    expect(() =>
+      pluginListingSaveDraftRequestSchema.parse({
+        entry: {
+          id: "notes",
+          displayName: "Notes",
+          description: "Notes",
+          icon: "StickyNote",
+          author: { name: "BB" },
+          source: { npm: { package: "bb-plugin-notes" } },
+          category: "automation",
+          screenshots: [],
+        },
+        futureRequestField: true,
+      }),
+    ).toThrow(/Unrecognized key/u);
+    expect(() =>
+      pluginListingRecordSubmissionRequestSchema.parse({
+        pullRequestUrl: "https://github.com/get-bb/marketplace/pull/1",
+        openedAt: 1,
+        futureRequestField: true,
+      }),
+    ).toThrow(/Unrecognized key/u);
+  });
+
+  it("keeps installed plugin screenshots required on the shared contract", () => {
+    expect(
+      installedPluginSchema.shape.screenshots.safeParse(undefined).success,
+    ).toBe(false);
   });
 });
