@@ -313,9 +313,13 @@
 // daemons must update with the server even though the message schema is
 // unchanged.
 //
+// Version 168 carries deferred agent-only thread-start context in the first
+// provider-bound turn.submit input for an idle seeded fork. The wire shape is
+// unchanged, but the server-to-daemon payload semantics differ.
+//
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 167 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 168 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
