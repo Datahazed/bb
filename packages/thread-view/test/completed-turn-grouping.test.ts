@@ -234,13 +234,58 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 1,
         completedAt: 4,
-        segmentIndex: 0,
+        segmentIndex: null,
         sourceMessages: [{ id: "narration" }, { id: "command" }],
         summaryCount: 2,
       },
       { kind: "ungrouped-message", message: { id: "answer" } },
     ]);
     expect(groups.terminalMessages).toEqual([hookReply]);
+  });
+
+  it("does not treat the accepted request at the turn start as an internal exchange boundary", () => {
+    const seed = userMessage({ id: "seed", seq: 1 });
+    const narration = assistantMessage({ id: "narration", seq: 2 });
+    const command = commandMessage({ id: "command", seq: 3 });
+    const answer = assistantMessage({ id: "answer", seq: 4 });
+    const hookReply = assistantMessage({ id: "hook-reply", seq: 5 });
+    const groups = groupCompletedTurnMessages(
+      completedTurn(
+        [seed, narration, command, answer, hookReply],
+        hookReply,
+      ),
+    );
+
+    expect(groups.summaryItems).toMatchObject([
+      { kind: "ungrouped-message", message: { id: "seed" } },
+      {
+        kind: "summary",
+        segmentIndex: null,
+        sourceMessages: [{ id: "narration" }, { id: "command" }],
+      },
+      { kind: "ungrouped-message", message: { id: "answer" } },
+    ]);
+    expect(groups.terminalMessages).toEqual([hookReply]);
+  });
+
+  it("keeps a sole work summary segmented across a later human message", () => {
+    const seed = userMessage({ id: "seed", seq: 1 });
+    const command = commandMessage({ id: "command", seq: 2 });
+    const followUp = userMessage({ id: "follow-up", seq: 3 });
+    const terminal = assistantMessage({ id: "terminal", seq: 4 });
+    const groups = groupCompletedTurnMessages(
+      completedTurn([seed, command, followUp, terminal], terminal),
+    );
+
+    expect(groups.summaryItems).toMatchObject([
+      { kind: "ungrouped-message", message: { id: "seed" } },
+      {
+        kind: "summary",
+        segmentIndex: 0,
+        sourceMessages: [{ id: "command" }],
+      },
+      { kind: "ungrouped-message", message: { id: "follow-up" } },
+    ]);
   });
 
   it("keeps every response in a run of adjacent assistant texts", () => {

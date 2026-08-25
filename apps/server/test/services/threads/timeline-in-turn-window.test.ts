@@ -880,6 +880,48 @@ describe("in-turn timeline windows", () => {
     expect(new Set(turnRows.map((row) => row.id)).size).toBe(1);
   }, 15_000);
 
+  it("keeps a sole work summary canonical when completed responses stay visible", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      assistantProgressCount: 2,
+      commandChars: 25_000,
+      completeLastTurn: true,
+      itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
+      terminalAssistant: true,
+    });
+
+    const assistantTexts: string[] = [];
+    const turnRowIds = new Set<string>();
+    let cursor: TimelinePaginationCursor | null = null;
+    let pages = 0;
+    for (;;) {
+      const page = buildPage(db, thread, LARGE_BUDGET, cursor).response;
+      pages += 1;
+      for (const row of page.rows) {
+        if (row.kind === "conversation" && row.role === "assistant") {
+          assistantTexts.push(row.text);
+        }
+        if (row.kind === "turn") {
+          turnRowIds.add(row.id);
+        }
+      }
+      if (!page.timelinePage.hasOlderRows) {
+        break;
+      }
+      cursor = page.timelinePage.olderCursor;
+      expect(cursor).not.toBeNull();
+      expect(pages).toBeLessThan(10);
+    }
+
+    expect(pages).toBeGreaterThan(1);
+    expect(assistantTexts.sort()).toEqual([
+      "Progress 0",
+      "Progress 1",
+      "Terminal response",
+    ]);
+    expect([...turnRowIds]).toEqual([`${thread.id}:turn-1:turn`]);
+  }, 15_000);
+
   it("keeps latest byte-page row identities stable while a turn grows", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {

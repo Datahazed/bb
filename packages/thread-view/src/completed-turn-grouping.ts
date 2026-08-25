@@ -84,7 +84,7 @@ function getSummaryMessageBounds(
   return { startedAt };
 }
 
-function applySingleSummaryTurnBounds(
+function applySingleSummaryTurnIdentityAndBounds(
   turn: EventProjectionTurn,
   items: readonly CompletedTurnSummaryItem[],
 ): CompletedTurnSummaryItem[] {
@@ -92,6 +92,18 @@ function applySingleSummaryTurnBounds(
   if (summaryGroups.length !== 1) {
     return [...items];
   }
+  const canUseCanonicalIdentity =
+    (turn.externalUserBoundarySeqs?.length ?? 0) === 0 &&
+    !items.some(
+      (item) =>
+        item.kind === "ungrouped-message" &&
+        isTimelineUngroupableMessage(item.message) &&
+        // The accepted request that opened the turn is rendered beside its
+        // work summary, but it is the start of this exchange rather than a
+        // boundary inside it. Later human messages still keep their segment
+        // identity even when only one side contains collapsible work.
+        item.message.sourceSeqStart > turn.sourceSeqStart,
+    );
 
   const onlySummaryGroup = summaryGroups[0];
   return items.map((item) =>
@@ -100,6 +112,11 @@ function applySingleSummaryTurnBounds(
           ...item,
           startedAt: turn.startedAt,
           completedAt: turn.completedAt,
+          // Visible assistant responses may sit beside one collapsed work
+          // summary, but they do not create another user exchange. Keep that
+          // sole summary on the canonical turn identity so a byte-window page
+          // that cannot see the response assigns the same id.
+          segmentIndex: canUseCanonicalIdentity ? null : item.segmentIndex,
         }
       : item,
   );
@@ -326,7 +343,7 @@ function groupCompletedTurnSummaryMessages(
     externalBoundaryIndex += 1;
   }
   flushGroupedMessages();
-  return applySingleSummaryTurnBounds(turn, items);
+  return applySingleSummaryTurnIdentityAndBounds(turn, items);
 }
 
 export function groupCompletedTurnMessages(
