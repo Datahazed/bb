@@ -586,10 +586,7 @@ describe("PluginNavSidebarItems", () => {
 
     first.unmount();
     renderSidebarItems({ compactViewport: true, splitEnabled: true });
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Docs panel options" }),
-      { button: 0 },
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Docs panel options" }));
     expect(
       await screen.findByRole("menuitem", { name: "Plugin settings" }),
     ).not.toBeNull();

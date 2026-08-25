@@ -64,6 +64,7 @@ import { useSidebarSortable } from "@/components/sidebar/sortableMotion";
 import { usePaneContentSplitDrag } from "@/components/sidebar/usePaneContentSplitDrag";
 import { useSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
 import { appToast } from "@/components/ui/app-toast";
+import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
@@ -922,6 +923,7 @@ function SidebarNavRowChrome({
   rowRef,
   rowStyle,
 }: SidebarNavRowChromeProps) {
+  const isCompactViewport = useIsCompactViewport();
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const { onKeyDown: _keyboardDragActivator, ...pointerDragListeners } =
     dragBindings?.listeners ?? {};
@@ -944,8 +946,10 @@ function SidebarNavRowChrome({
         aria-current={isActive ? "page" : undefined}
         ref={dragBindings?.setActivatorNodeRef}
         {...dragBindings?.attributes}
-        {...pointerDragListeners}
-        onPointerDown={onPointerDown}
+        onPointerDown={(event) => {
+          pointerDragListeners.onPointerDown?.(event);
+          onPointerDown?.(event);
+        }}
         onClick={onSelect}
       >
         {icon}
@@ -1014,6 +1018,22 @@ function SidebarNavRowChrome({
   );
 
   if (menuDefinition === null) return rowContent;
+  if (isCompactViewport) {
+    return (
+      <CompactLongPressMenu
+        label={`${title} panel options`}
+        onOpenChange={setIsActionsOpen}
+        items={
+          <PluginNavRowMenuItems
+            definition={menuDefinition}
+            surface="dropdown"
+          />
+        }
+      >
+        {rowContent}
+      </CompactLongPressMenu>
+    );
+  }
   return (
     <ContextMenu onOpenChange={setIsActionsOpen}>
       <ContextMenuTrigger asChild>{rowContent}</ContextMenuTrigger>
