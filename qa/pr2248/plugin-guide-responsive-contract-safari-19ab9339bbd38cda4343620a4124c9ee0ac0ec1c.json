@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 1,
+  "candidate": "19ab9339bbd38cda4343620a4124c9ee0ac0ec1c",
+  "checkpoint": "plugin-guide-responsive-contract",
+  "browser": "Safari",
+  "viewports": [
+    {
+      "viewportClass": "normal-desktop",
+      "requestedWindow": {
+        "width": 1440,
+        "height": 1000
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 948,
+        "deviceScaleFactor": 2
+      },
+      "cycles": 5,
+      "states": [
+        {
+          "expected": "scroll-together",
+          "actual": "scroll-together",
+          "overflowX": "auto",
+          "badgeCount": 6,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 1064,
+          "scaledNodes": 0,
+          "contentMinWidth": "720px",
+          "badgesInsideScrollContent": true,
+          "groupId": "app-shell",
+          "rootScrollWidth": 1280
+        },
+        {
+          "expected": "scroll-together",
+          "actual": "scroll-together",
+          "overflowX": "auto",
+          "badgeCount": 1,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 1064,
+          "scaledNodes": 0,
+          "contentMinWidth": "720px",
+          "badgesInsideScrollContent": true,
+          "groupId": "command-palette",
+          "rootScrollWidth": 1064
+        },
+        {
+          "expected": "scroll-together",
+          "actual": "scroll-together",
+          "overflowX": "auto",
+          "badgeCount": 3,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 1064,
+          "scaledNodes": 0,
+          "contentMinWidth": "720px",
+          "badgesInsideScrollContent": true,
+          "groupId": "composer",
+          "rootScrollWidth": 1064
+        },
+        {
+          "expected": "scroll-together",
+          "actual": "scroll-together",
+          "overflowX": "auto",
+          "badgeCount": 0,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 1064,
+          "scaledNodes": 0,
+          "contentMinWidth": "720px",
+          "badgesInsideScrollContent": true,
+          "groupId": "home",
+          "rootScrollWidth": 1064
+        },
+        {
+          "expected": "scroll-together",
+          "actual": "scroll-together",
+          "overflowX": "auto",
+          "badgeCount": 0,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 1064,
+          "scaledNodes": 0,
+          "contentMinWidth": "720px",
+          "badgesInsideScrollContent": true,
+          "groupId": "settings",
+          "rootScrollWidth": 1064
+        },
+        {
+          "expected": "scroll-together",
+          "actual": "scroll-together",
+          "overflowX": "auto",
+          "badgeCount": 0,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 1064,
+          "scaledNodes": 0,
+          "contentMinWidth": "720px",
+          "badgesInsideScrollContent": true,
+          "groupId": "extensions",
+          "rootScrollWidth": 1064
+        },
+        {
+          "expected": "reflow",
+          "actual": "reflow",
+          "overflowX": "visible",
+          "badgeCount": 0,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 1024,
+          "scaledNodes": 0,
+          "contentMinWidth": "0px",
+          "badgesInsideScrollContent": true,
+          "groupId": "headless",
+          "rootScrollWidth": 1024
+        }
+      ],
+      "beforeScreenshot": "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/pr2248-final-19ab9339b/plugin-guide-responsive-normal-desktop-before-safari-19ab9339bbd38cda4343620a4124c9ee0ac0ec1c.png",
+      "afterScreenshot": "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/pr2248-final-19ab9339b/plugin-guide-responsive-normal-desktop-after-safari-19ab9339bbd38cda4343620a4124c9ee0ac0ec1c.png",
+      "result": "PASS"
+    },
+    {
+      "viewportClass": "small-narrow",
+      "requestedWindow": {
+        "width": 768,
+        "height": 900
+      },
+      "viewport": {
+        "width": 768,
+        "height": 848,
+        "deviceScaleFactor": 2
+      },
+      "cycles": 5,
+      "states": [
+        {
+          "expected": "scroll-together",
+          "actual": "scroll-together",
+          "overflowX": "auto",
+          "badgeCount": 6,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 392,
+          "scaledNodes": 0,
+          "contentMinWidth": "720px",
+          "badgesInsideScrollContent": true,
+          "groupId": "app-shell",
+          "rootScrollWidth": 1260
+        },
+        {
+          "expected": "scroll-together",
+          "actual": "scroll-together",
+          "overflowX": "auto",
+          "badgeCount": 1,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 392,
+          "scaledNodes": 0,
+          "contentMinWidth": "720px",
+          "badgesInsideScrollContent": true,
+          "groupId": "command-palette",
+          "rootScrollWidth": 720
+        },
+        {
+          "expected": "scroll-together",
+          "actual": "scroll-together",
+          "overflowX": "auto",
+          "badgeCount": 3,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 392,
+          "scaledNodes": 0,
+          "contentMinWidth": "720px",
+          "badgesInsideScrollContent": true,
+          "groupId": "composer",
+          "rootScrollWidth": 748
+        },
+        {
+          "expected": "scroll-together",
+          "actual": "scroll-together",
+          "overflowX": "auto",
+          "badgeCount": 0,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 392,
+          "scaledNodes": 0,
+          "contentMinWidth": "720px",
+          "badgesInsideScrollContent": true,
+          "groupId": "home",
+          "rootScrollWidth": 720
+        },
+        {
+          "expected": "scroll-together",
+          "actual": "scroll-together",
+          "overflowX": "auto",
+          "badgeCount": 0,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 392,
+          "scaledNodes": 0,
+          "contentMinWidth": "720px",
+          "badgesInsideScrollContent": true,
+          "groupId": "settings",
+          "rootScrollWidth": 720
+        },
+        {
+          "expected": "scroll-together",
+          "actual": "scroll-together",
+          "overflowX": "auto",
+          "badgeCount": 0,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 392,
+          "scaledNodes": 0,
+          "contentMinWidth": "720px",
+          "badgesInsideScrollContent": true,
+          "groupId": "extensions",
+          "rootScrollWidth": 720
+        },
+        {
+          "expected": "reflow",
+          "actual": "reflow",
+          "overflowX": "visible",
+          "badgeCount": 0,
+          "badgesOwnedByRoot": true,
+          "rootClientWidth": 392,
+          "scaledNodes": 0,
+          "contentMinWidth": "0px",
+          "badgesInsideScrollContent": true,
+          "groupId": "headless",
+          "rootScrollWidth": 392
+        }
+      ],
+      "beforeScreenshot": "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/pr2248-final-19ab9339b/plugin-guide-responsive-small-narrow-before-safari-19ab9339bbd38cda4343620a4124c9ee0ac0ec1c.png",
+      "afterScreenshot": "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/pr2248-final-19ab9339b/plugin-guide-responsive-small-narrow-after-safari-19ab9339bbd38cda4343620a4124c9ee0ac0ec1c.png",
+      "result": "PASS"
+    }
+  ],
+  "hardReload": "PASS",
+  "sustainedMotion": "PASS",
+  "result": "PASS"
+}

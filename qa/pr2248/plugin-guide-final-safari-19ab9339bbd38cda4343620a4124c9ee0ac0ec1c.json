@@ -1,0 +1,96 @@
+{
+  "browser": "Safari",
+  "version": "26.5.2",
+  "candidate": "19ab9339bbd38cda4343620a4124c9ee0ac0ec1c",
+  "result": "PASS",
+  "tabs": [
+    {
+      "text": "Your tab",
+      "id": "thread-panel",
+      "number": "9",
+      "badge": {
+        "right": 1086.734375,
+        "top": 231,
+        "left": 1066.734375,
+        "bottom": 251
+      },
+      "target": {
+        "right": 1117.484375,
+        "top": 259.5,
+        "left": 1036,
+        "bottom": 287.5
+      }
+    },
+    {
+      "text": "retry-notes.md",
+      "id": "file-opener",
+      "number": "10",
+      "badge": {
+        "right": 1192.71875,
+        "top": 231,
+        "left": 1172.71875,
+        "bottom": 251
+      },
+      "target": {
+        "right": 1241.96875,
+        "top": 259.5,
+        "left": 1123.484375,
+        "bottom": 287.5
+      }
+    },
+    {
+      "text": "Diff",
+      "id": "code-renderers",
+      "number": "11",
+      "badge": {
+        "right": 1284.953125,
+        "top": 231,
+        "left": 1264.953125,
+        "bottom": 251
+      },
+      "target": {
+        "right": 1301.953125,
+        "top": 259.5,
+        "left": 1247.96875,
+        "bottom": 287.5
+      }
+    }
+  ],
+  "annotationSequence": [
+    "Full-page panels",
+    "The thread list",
+    "Thread row status",
+    "Sidebar footer buttons",
+    "Thread header controls",
+    "Rich message embeds",
+    "Message actions",
+    "In-thread forms",
+    "Thread side-panel tabs",
+    "File viewers & editors",
+    "Code & diff renderers",
+    "Timeline row renderers",
+    "App-wide scripts"
+  ],
+  "paletteState": {
+    "marker": "1",
+    "searchLabel": "Search commands",
+    "text": "New thread\nSearch\nTHREADS\nShip release candidate\nFix flaky checkout tests\nUpdate onboarding copy\nSettings\nShip release candidate\n\nQuick palette\n⇧⌘P\nPrepare this branch for the release candidate.\nThe release build is ready for final checks. I verified the focused tests and collected the latest UI evidence.\n\nrelease/2026-08-25\nAsk for a follow-up…\n\nOpen release notes\nNavigation\n\nRun release checklist\nPlugins\nCopy thread link\nThread\n1\n"
+  },
+  "copyAction": "Copied",
+  "clipboardState": {
+    "status": "done",
+    "text": "Build a plugin capability like @Command palette actions using bb's Plugin Guide. ",
+    "hasStructuredMention": true
+  },
+  "composerState": {
+    "pills": [
+      "Command palette actions"
+    ],
+    "text": "Build a plugin capability like Command palette actions using bb's Plugin Guide. "
+  },
+  "screenshots": [
+    "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/pr2248-final-19ab9339b/plugin-guide-app-tabs-safari-19ab9339bbd38cda4343620a4124c9ee0ac0ec1c.png",
+    "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/pr2248-final-19ab9339b/plugin-guide-command-palette-safari-19ab9339bbd38cda4343620a4124c9ee0ac0ec1c.png",
+    "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/pr2248-final-19ab9339b/plugin-guide-framed-paste-safari-19ab9339bbd38cda4343620a4124c9ee0ac0ec1c.png"
+  ]
+}
