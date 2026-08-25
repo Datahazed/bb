@@ -25,17 +25,21 @@ import {
   type QueuedEditorTypeaheadLayout,
 } from "@/components/promptbox/queued-editor-typeahead-layout";
 
-const bottomAnchorMocks = vi.hoisted(() => ({
-  scrollElement: null as HTMLElement | null,
-}));
+const bottomAnchorMocks = vi.hoisted(() => {
+  const mocks = {
+    scrollElement: null as HTMLElement | null,
+    // Identity-stable like the real context value, so effects keyed on it do
+    // not re-run on every render.
+    getScrollElement: () => mocks.scrollElement,
+  };
+  return mocks;
+});
 
 vi.mock("@/components/ui/bottom-anchored-scroll-body", () => ({
   useBottomAnchoredScroll: () =>
     bottomAnchorMocks.scrollElement === null
       ? null
-      : {
-          getScrollElement: () => bottomAnchorMocks.scrollElement,
-        },
+      : { getScrollElement: bottomAnchorMocks.getScrollElement },
 }));
 
 const noop = () => {};
@@ -92,6 +96,58 @@ function makeGroupedQueuedMessages(): ThreadQueuedMessage[] {
 
 function rect({ top, bottom }: { top: number; bottom: number }) {
   return new DOMRect(0, top, 100, bottom - top);
+}
+
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
+/**
+ * Stubs ResizeObserver and returns a notifier that models one frame's
+ * delivery pass: every live observer gets a single callback carrying one entry
+ * per observed target, as if all of its targets changed size in that frame.
+ */
+function stubResizeObserver(): () => void {
+  const observers = new Set<ResizeObserverMock>();
+  class ResizeObserverMock {
+    private readonly targets = new Set<Element>();
+
+    constructor(private readonly callback: ResizeObserverCallback) {
+      observers.add(this);
+    }
+
+    observe(target: Element) {
+      this.targets.add(target);
+    }
+
+    unobserve(target: Element) {
+      this.targets.delete(target);
+    }
+
+    disconnect() {
+      this.targets.clear();
+      observers.delete(this);
+    }
+
+    notify() {
+      const entries: ResizeObserverEntry[] = [...this.targets].map(
+        (target) => ({
+          target,
+          contentRect: new DOMRect(),
+          borderBoxSize: [],
+          contentBoxSize: [],
+          devicePixelContentBoxSize: [],
+        }),
+      );
+      this.callback(entries, this as unknown as ResizeObserver);
+    }
+  }
+  vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+  return () => {
+    for (const observer of [...observers]) observer.notify();
+  };
 }
 
 function renderQueuedMessages(queuedMessages: readonly ThreadQueuedMessage[]) {
@@ -679,17 +735,7 @@ describe("QueuedMessagesList", () => {
   });
 
   it("realigns both neighbors as the edit surface finishes growing", async () => {
-    let notifyResize = noop;
-    class ResizeObserverMock {
-      constructor(callback: ResizeObserverCallback) {
-        notifyResize = () => callback([], this as unknown as ResizeObserver);
-      }
-
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    const notifyResize = stubResizeObserver();
 
     const viewport = document.createElement("div");
     Object.defineProperty(viewport, "clientHeight", { value: 500 });
@@ -765,10 +811,120 @@ describe("QueuedMessagesList", () => {
     scroll.scrollTop = 100;
 
     act(() => notifyResize());
+    await act(() => nextAnimationFrame());
     expect(scroll.scrollTop).toBe(100);
 
     queueViewportBottom = 300;
     act(() => notifyResize());
+    await act(() => nextAnimationFrame());
+    expect(scroll.scrollTop).toBe(60);
+  });
+
+  it("measures once, on the next frame, when the observer delivers and the window resizes together", async () => {
+    const notifyResize = stubResizeObserver();
+
+    // Every measurement reads the timeline viewport height exactly once, so
+    // the getter counts measurements.
+    let measurements = 0;
+    const viewport = document.createElement("div");
+    Object.defineProperty(viewport, "clientHeight", {
+      get: () => {
+        measurements += 1;
+        return 500;
+      },
+    });
+    bottomAnchorMocks.scrollElement = viewport;
+
+    let queueViewportBottom = 180;
+    const nativeGetBoundingClientRect =
+      HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.hasAttribute("data-queue-test-footer")) {
+          return new DOMRect(0, 0, 600, 340);
+        }
+        if (this.getAttribute("aria-label") === "Queued messages") {
+          return new DOMRect(0, 0, 600, 240);
+        }
+        if (this.hasAttribute("data-queued-messages-scroll")) {
+          return new DOMRect(0, 32, 600, queueViewportBottom - 32);
+        }
+        const queueScrollTop =
+          this.closest<HTMLElement>("[data-queued-messages-scroll]")
+            ?.scrollTop ?? 0;
+        if (this.hasAttribute("data-queued-message-inline-editor")) {
+          return new DOMRect(0, 132 - queueScrollTop, 600, 180);
+        }
+        if (this.hasAttribute("data-queued-message-row")) {
+          if (this.textContent?.includes("Previous queued message")) {
+            return new DOMRect(0, 92 - queueScrollTop, 600, 40);
+          }
+          if (this.textContent?.includes("Following queued message")) {
+            return new DOMRect(0, 312 - queueScrollTop, 600, 30);
+          }
+        }
+        return nativeGetBoundingClientRect.call(this);
+      },
+    );
+
+    const queuedMessages = [
+      makeQueuedMessage("q_previous", "Previous queued message"),
+      makeQueuedMessage("q_editing", "Edited queued message"),
+      makeQueuedMessage("q_following", "Following queued message"),
+    ];
+    const { container } = render(
+      <div data-queue-test-footer="">
+        <div data-app-composer="">
+          <QueuedMessagesList
+            queuedMessages={queuedMessages}
+            inlineEditor={{
+              queuedMessageId: "q_editing",
+              queuedMessageIndex: 1,
+              content: <div>Inline editor</div>,
+              onDismiss: noop,
+            }}
+            sendDisabled={false}
+            actionDisabled={false}
+            processingMessageId={null}
+            processingAction={null}
+            onSendImmediately={noop}
+            onReorder={noop}
+            onSetGroupBoundary={noop}
+            onEdit={noop}
+            onDelete={noop}
+          />
+          <div>Bottom composer</div>
+        </div>
+      </div>,
+    );
+    const scroll = container.querySelector<HTMLElement>(
+      "[data-queued-messages-scroll]",
+    );
+    expect(scroll).not.toBeNull();
+    if (!scroll) return;
+    // Let the mount-time measurement and its realignment settle.
+    await act(async () => {
+      await nextAnimationFrame();
+      await nextAnimationFrame();
+    });
+    scroll.scrollTop = 100;
+    measurements = 0;
+
+    // One frame of the 260ms surface transition: the window resize event
+    // fires first, then the observer delivers one callback for every observed
+    // box that changed (viewport, surface, list, editor, composer shell and
+    // container). Neither callback measures; the layout reads, state writes
+    // and scroll realignment run once, from the next animation frame.
+    queueViewportBottom = 300;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+      notifyResize();
+    });
+    expect(measurements).toBe(0);
+    expect(scroll.scrollTop).toBe(100);
+
+    await act(() => nextAnimationFrame());
+    expect(measurements).toBe(1);
     expect(scroll.scrollTop).toBe(60);
   });
 

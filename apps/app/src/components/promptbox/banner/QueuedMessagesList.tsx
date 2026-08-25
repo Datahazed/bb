@@ -905,6 +905,19 @@ function QueuedMessageInlineEditorSlot({
 }) {
   const [typeaheadLayout, setTypeaheadLayout] =
     useState<QueuedEditorTypeaheadLayout>({ height: 0, isOpen: false });
+  // The typeahead reports a fresh object from its ResizeObserver on every
+  // delivery; only a changed layout should re-render the slot, since the
+  // reservation padding below resizes the editor row.
+  const reportTypeaheadLayout = useCallback(
+    (layout: QueuedEditorTypeaheadLayout) => {
+      setTypeaheadLayout((current) =>
+        current.height === layout.height && current.isOpen === layout.isOpen
+          ? current
+          : layout,
+      );
+    },
+    [],
+  );
   const typeaheadReservation = typeaheadLayout.isOpen
     ? Math.ceil(typeaheadLayout.height) + TYPEAHEAD_MENU_GAP
     : 0;
@@ -919,7 +932,9 @@ function QueuedMessageInlineEditorSlot({
         label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
         onCancel={editor.onDismiss}
       >
-        <QueuedEditorTypeaheadLayoutContext.Provider value={setTypeaheadLayout}>
+        <QueuedEditorTypeaheadLayoutContext.Provider
+          value={reportTypeaheadLayout}
+        >
           <div
             data-queued-editor-typeahead-reservation=""
             style={{ paddingTop: typeaheadReservation }}
@@ -1095,9 +1110,10 @@ export function QueuedMessagesList({
     setInlineEditorDesiredHeight((currentHeight) =>
       currentHeight === desiredHeight ? currentHeight : desiredHeight,
     );
-    // The surface height is animated. ResizeObserver calls this throughout the
-    // transition, so re-align the neighborhood as usable space appears instead
-    // of leaving the editor pinned to the top based on the first, short frame.
+    // The surface height is animated. The observer below schedules this on
+    // each frame of the transition, so re-align the neighborhood as usable
+    // space appears instead of leaving the editor pinned to the top based on
+    // the first, short frame.
     scrollInlineEditorNeighborhoodIntoView();
   }, [
     getScrollElement,
@@ -1114,13 +1130,27 @@ export function QueuedMessagesList({
     const surface = surfaceRef.current;
     const composerShell = surface?.closest<HTMLElement>("[data-app-composer]");
     const container = composerShell?.parentElement;
-    const animationFrame = window.requestAnimationFrame(
-      measureInlineEditorMaxHeight,
-    );
+    // The surface height animates for 260ms while the editor mounts and the
+    // composer re-flows around it. The browser delivers one ResizeObserver
+    // callback per frame for every observed box that changed, and a window
+    // resize event can precede it in the same frame. Both callbacks only
+    // schedule: the layout reads, the two state writes and the scroll
+    // realignment run from one pending animation frame, so this effect
+    // measures at most once per frame and never from inside the observer
+    // callback, where a layout write would re-enter observer delivery.
+    let animationFrame: number | null = null;
+    const scheduleMeasure = () => {
+      if (animationFrame !== null) return;
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null;
+        measureInlineEditorMaxHeight();
+      });
+    };
+    scheduleMeasure();
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(measureInlineEditorMaxHeight);
+        : new ResizeObserver(scheduleMeasure);
     if (viewport) resizeObserver?.observe(viewport);
     if (surface) resizeObserver?.observe(surface);
     if (listRef.current) resizeObserver?.observe(listRef.current);
@@ -1130,11 +1160,13 @@ export function QueuedMessagesList({
     if (editorElement) resizeObserver?.observe(editorElement);
     if (composerShell) resizeObserver?.observe(composerShell);
     if (container) resizeObserver?.observe(container);
-    window.addEventListener("resize", measureInlineEditorMaxHeight);
+    window.addEventListener("resize", scheduleMeasure);
     return () => {
-      window.cancelAnimationFrame(animationFrame);
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
       resizeObserver?.disconnect();
-      window.removeEventListener("resize", measureInlineEditorMaxHeight);
+      window.removeEventListener("resize", scheduleMeasure);
     };
   }, [getScrollElement, inlineEditorActive, measureInlineEditorMaxHeight]);
 
