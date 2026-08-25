@@ -2345,6 +2345,31 @@ describe("acp bridge", () => {
       expect(threadEventsOfType("turn/started")).toHaveLength(2);
     }, 30_000);
 
+    it("interrupts, not completes, an agent turn a user turn cuts short mid-tool", async () => {
+      const { providerThreadId } = await promptThenAwaitRunningTool();
+      expect(threadEventsOfType("turn/completed")).toHaveLength(1);
+
+      // The real user path lands here: the server sees the thread active and
+      // steers, the bridge rejects the steer because the open turn is an
+      // agent one, and the daemon falls back to turn/start.
+      const nextId = sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hello there", mentions: [] }],
+      });
+      expect((await waitForResponse(nextId)).error).toBeUndefined();
+
+      // The agent turn ends because the user cut it off, not because the
+      // agent finished: neither it nor the command it left running may claim
+      // a result the agent never produced.
+      const settled = threadEventsOfType("turn/completed");
+      expect(settled).toHaveLength(2);
+      expect(settled[1]).toMatchObject({ status: "interrupted" });
+      expect(slowToolEvents("item/completed")[0]?.item).toMatchObject({
+        command: "sleep 7",
+        status: "interrupted",
+      });
+      expect(eventsCarryingSlowToolOutput("item/completed")).toHaveLength(0);
+    }, 20_000);
+
     it("does not open a turn for unprompted non-work updates", async () => {
       const { providerThreadId } = await startThread();
       const turnId = sendTurnRequest("turn/start", providerThreadId, {

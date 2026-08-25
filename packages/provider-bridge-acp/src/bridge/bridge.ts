@@ -2412,6 +2412,16 @@ function clearAgentTurnQuietTimer(session: AcpThreadSession): void {
   }
 }
 
+/**
+ * End the open agent turn.
+ *
+ * `end_turn` is a claim that the agent finished, and it is only bb's to make
+ * when the agent owes the turn nothing. A call the agent announced and never
+ * settled is work still running, so an `end_turn` over it would drain the
+ * row as `completed` with no output — a result the agent never reported.
+ * Cutting a turn short over running work is an interruption, and that is
+ * what the turn and its open rows settle as.
+ */
 function settleAgentTurn(
   session: AcpThreadSession,
   stopReason: z.infer<typeof acpStopReasonSchema>,
@@ -2419,11 +2429,16 @@ function settleAgentTurn(
   if (session.activePromptKind !== "agent") {
     return;
   }
+  const settledStopReason =
+    stopReason === "end_turn" &&
+    session.translator.hasOpenToolCalls(session.bbThreadId)
+      ? "cancelled"
+      : stopReason;
   clearAgentTurnQuietTimer(session);
   session.activePromptKind = null;
   emitForSession(session, ACP_TURN_COMPLETED_METHOD, {
     threadId: session.bbThreadId,
-    stopReason,
+    stopReason: settledStopReason,
   });
 }
 
@@ -2913,6 +2928,9 @@ async function handleRequest(
       }
       // User input ends agent-initiated work: that turn settles before the
       // requested one opens, so each reaches exactly one terminal state.
+      // `settleAgentTurn` picks the honest one — a turn cut short over a
+      // call the agent is still running settles as interrupted, not
+      // completed.
       settleAgentTurn(session, "end_turn");
       if (session.activePromptKind !== null) {
         sendError(request.id, -32000, "A turn is already active");
