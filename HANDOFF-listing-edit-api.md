@@ -10,6 +10,12 @@ An author who wants to fix a typo in their marketplace description currently has
 
 bb has no ownership primitive. Today "authored" means "installed from a local path on this machine" — that proves you have the code, not that you own the `usage` entry in the registry. A direct-edit path needs an identity bb doesn't currently have.
 
+## Scope of this handoff: the registry write API
+
+The colleague owns **piece 2 — the registry write API on getbb.app**. That is the load-bearing piece: it defines the contract the other two are written against, and it can be built and tested before either exists (a verified-owner fixture stands in for identity; the app keeps its PR path until the API is live).
+
+Pieces 1 and 3 are described below for context, not as this handoff's deliverables.
+
 ## The three pieces
 
 1. **Identity.** Authors sign in; ownership means the signed-in identity matches the entry's `author.github`, established at first submission. GitHub OAuth is the natural fit since the entry already carries the login. Implements `ListingOwnershipResolver` (currently `unverifiedOwnershipResolver`, which denies everything).
