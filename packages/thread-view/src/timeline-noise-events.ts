@@ -12,16 +12,11 @@ import type { ThreadEventType } from "@bb/domain";
  * `turn/plan/updated` is NOT here: persisted codex plan notifications decode
  * into `planSteps` items at read time (legacy-thread-events.ts), so a window
  * must read them to show old threads' plans.
- *
- * `provider/rateLimits/updated` feeds usage UI outside the timeline and has no
- * timeline projection. High-frequency provider updates must not consume a
- * completed-turn detail page's event budget.
  */
 export const THREAD_TIMELINE_EXCLUDED_EVENT_TYPES = [
   "thread/started",
   "thread/identity",
   "thread/contextWindowUsage/updated",
   "thread/tokenUsage/updated",
-  "provider/rateLimits/updated",
   "turn/diff/updated",
 ] as const satisfies readonly ThreadEventType[];
