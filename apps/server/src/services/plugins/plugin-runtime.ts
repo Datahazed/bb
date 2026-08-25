@@ -17,6 +17,7 @@ import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire, registerHooks } from "node:module";
 import { performance } from "node:perf_hooks";
+import { homedir } from "node:os";
 import { createJiti } from "jiti";
 import semver from "semver";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
@@ -387,6 +388,23 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   const { deps, nextCronRunAt, settledWithin } = context;
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
+  const persistedProblemPrivatePathPatterns = [deps.dataDir, homedir()]
+    .map((path) => path.replace(/[\\/]+$/u, ""))
+    .filter(
+      (path, index, paths) => path.length > 0 && paths.indexOf(path) === index,
+    )
+    .sort((left, right) =>
+      right.length === left.length
+        ? left.localeCompare(right)
+        : right.length - left.length,
+    )
+    .map(
+      (path) =>
+        new RegExp(
+          `${path.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?=$|[\\\\/])`,
+          "gu",
+        ),
+    );
   const loadTimeoutMs = deps.loadTimeoutMs ?? DEFAULT_LOAD_TIMEOUT_MS;
   const serviceStopTimeoutMs =
     deps.serviceStopTimeoutMs ?? DEFAULT_SERVICE_STOP_TIMEOUT_MS;
@@ -554,6 +572,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return message.split(/\r?\n/u, 1)[0]?.trim() || "Unknown plugin error";
   }
 
+  function sanitizePersistedProblemMessage(message: string): string {
+    return persistedProblemPrivatePathPatterns.reduce(
+      (sanitized, pattern) => sanitized.replace(pattern, "~"),
+      message,
+    );
+  }
+
   function recordProblem(
     id: string,
     problemClass: PluginRuntimeStatus,
@@ -561,7 +586,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   ): void {
     setInstalledPluginLastProblem(deps.db, id, {
       class: problemClass,
-      message: firstProblemLine(message),
+      message: sanitizePersistedProblemMessage(firstProblemLine(message)),
       at: now(),
     });
   }
