@@ -19,19 +19,18 @@ function TurnChildrenLoader({
   identity,
   onChange,
 }: TurnChildrenLoaderProps) {
-  const query = useTimelineTurnDetails(identity);
-  const data = query.data;
-  const isError = query.isError;
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isError,
+    isFetchingNextPage,
+  } = useTimelineTurnDetails(identity);
   useEffect(() => {
-    if (query.hasNextPage && !query.isFetchingNextPage && !query.isError) {
-      void query.fetchNextPage();
+    if (hasNextPage && !isFetchingNextPage && !isError) {
+      void fetchNextPage();
     }
-  }, [
-    query.fetchNextPage,
-    query.hasNextPage,
-    query.isError,
-    query.isFetchingNextPage,
-  ]);
+  }, [fetchNextPage, hasNextPage, isError, isFetchingNextPage]);
   useEffect(() => {
     if (data) {
       onChange(itemKey, { status: "loaded", rows: data.rows });
