@@ -116,7 +116,11 @@ const marketplaceGitSourceSchema = z.union([
         .object({
           ...gitSourceBase,
           range: semverRangeSchema,
-          tagPrefix: z.string().regex(GIT_TAG_PREFIX_PATTERN).optional(),
+          tagPrefix: z
+            .string()
+            .max(128)
+            .regex(GIT_TAG_PREFIX_PATTERN)
+            .optional(),
         })
         .strict(),
     })

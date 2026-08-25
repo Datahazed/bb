@@ -92,6 +92,40 @@ const generatedSchemaShape = z
   })
   .passthrough();
 
+const unknownRecordSchema = z.record(z.string(), z.unknown());
+const stringLengthConstraintsSchema = z
+  .object({
+    minLength: z.number().optional(),
+    maxLength: z.number().optional(),
+  })
+  .strip();
+
+function findStringPropertyConstraints(
+  schema: unknown,
+  propertyName: string,
+): z.infer<typeof stringLengthConstraintsSchema> {
+  const pending: unknown[] = [schema];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (Array.isArray(current)) {
+      pending.push(...current);
+      continue;
+    }
+    const record = unknownRecordSchema.safeParse(current);
+    if (!record.success) continue;
+    const properties = unknownRecordSchema.safeParse(
+      record.data["properties"],
+    );
+    if (properties.success && propertyName in properties.data) {
+      return stringLengthConstraintsSchema.parse(
+        properties.data[propertyName],
+      );
+    }
+    pending.push(...Object.values(record.data));
+  }
+  throw new Error(`No JSON Schema property named ${propertyName}`);
+}
+
 function manifestWithOnlyPlugin(plugin: unknown): unknown {
   return {
     ...MARKETPLACE_V2_FIXTURE,
@@ -325,5 +359,16 @@ describe("marketplace v2 public-contract drift gate", () => {
     expect(publicSchema.$defs.semverRange.pattern).toBe(
       MARKETPLACE_SEMVER_RANGE_PATTERN.source,
     );
+    const publicTagPrefix = findStringPropertyConstraints(
+      publicSchema,
+      "tagPrefix",
+    );
+    const parserTagPrefix = findStringPropertyConstraints(
+      parserSchema,
+      "tagPrefix",
+    );
+    expect(publicTagPrefix.maxLength).toBe(128);
+    expect(parserTagPrefix.minLength).toBe(publicTagPrefix.minLength);
+    expect(parserTagPrefix.maxLength).toBe(publicTagPrefix.maxLength);
   });
 });
