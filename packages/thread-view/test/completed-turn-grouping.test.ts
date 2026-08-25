@@ -198,7 +198,8 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 1,
         completedAt: 2,
-        segmentIndex: null,
+        rowIdSegmentIndex: null,
+        sourceBounds: "turn",
         summaryCount: 2,
       },
     ]);
@@ -234,7 +235,8 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 1,
         completedAt: 4,
-        segmentIndex: null,
+        rowIdSegmentIndex: null,
+        sourceBounds: "messages",
         sourceMessages: [{ id: "narration" }, { id: "command" }],
         summaryCount: 2,
       },
@@ -260,7 +262,8 @@ describe("groupCompletedTurnMessages", () => {
       { kind: "ungrouped-message", message: { id: "seed" } },
       {
         kind: "summary",
-        segmentIndex: null,
+        rowIdSegmentIndex: null,
+        sourceBounds: "messages",
         sourceMessages: [{ id: "narration" }, { id: "command" }],
       },
       { kind: "ungrouped-message", message: { id: "answer" } },
@@ -281,7 +284,8 @@ describe("groupCompletedTurnMessages", () => {
       { kind: "ungrouped-message", message: { id: "seed" } },
       {
         kind: "summary",
-        segmentIndex: 0,
+        rowIdSegmentIndex: 0,
+        sourceBounds: "messages",
         sourceMessages: [{ id: "command" }],
       },
       { kind: "ungrouped-message", message: { id: "follow-up" } },
@@ -323,7 +327,8 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 1,
         completedAt: 7,
-        segmentIndex: null,
+        rowIdSegmentIndex: null,
+        sourceBounds: "turn",
       },
     ]);
     expect(summarySourceMessageIds(groups)).toEqual([
@@ -394,7 +399,8 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 1,
         completedAt: 4,
-        segmentIndex: null,
+        rowIdSegmentIndex: null,
+        sourceBounds: "turn",
         summaryCount: 4,
       },
     ]);
@@ -419,7 +425,8 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 1,
         completedAt: null,
-        segmentIndex: 0,
+        rowIdSegmentIndex: 0,
+        sourceBounds: "messages",
         summaryCount: 1,
       },
       {
@@ -432,7 +439,8 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 3,
         completedAt: null,
-        segmentIndex: 1,
+        rowIdSegmentIndex: 1,
+        sourceBounds: "messages",
         summaryCount: 1,
       },
     ]);

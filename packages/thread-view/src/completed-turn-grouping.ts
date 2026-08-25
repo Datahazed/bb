@@ -14,7 +14,8 @@ interface CompletedTurnSummaryGroup {
   kind: "summary";
   startedAt: number;
   completedAt: number | null;
-  segmentIndex: number | null;
+  rowIdSegmentIndex: number | null;
+  sourceBounds: "messages" | "turn";
   sourceMessages: EventProjectionMessage[];
   summaryCount: number;
 }
@@ -116,7 +117,9 @@ function applySingleSummaryTurnIdentityAndBounds(
           // summary, but they do not create another user exchange. Keep that
           // sole summary on the canonical turn identity so a byte-window page
           // that cannot see the response assigns the same id.
-          segmentIndex: canUseCanonicalIdentity ? null : item.segmentIndex,
+          rowIdSegmentIndex: canUseCanonicalIdentity
+            ? null
+            : item.rowIdSegmentIndex,
         }
       : item,
   );
@@ -246,7 +249,8 @@ function groupCompletedTurnSummaryMessages(
         kind: "summary",
         startedAt: turn.startedAt,
         completedAt: turn.completedAt,
-        segmentIndex: null,
+        rowIdSegmentIndex: null,
+        sourceBounds: "turn",
         sourceMessages: summaryMessages,
         summaryCount: turn.summaryCount,
       },
@@ -268,7 +272,8 @@ function groupCompletedTurnSummaryMessages(
       kind: "summary",
       startedAt: bounds.startedAt,
       completedAt: null,
-      segmentIndex,
+      rowIdSegmentIndex: segmentIndex,
+      sourceBounds: "messages",
       sourceMessages,
       summaryCount: getProjectionSummaryCount(sourceMessages, undefined),
     });

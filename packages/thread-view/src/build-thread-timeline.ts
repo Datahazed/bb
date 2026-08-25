@@ -197,7 +197,8 @@ interface BuildTurnSummaryRowArgs {
   completedAt: number | null;
   includeNestedRows: boolean;
   rowIdPrefix: string;
-  segmentIndex: number | null;
+  rowIdSegmentIndex: number | null;
+  sourceBounds: "messages" | "turn";
   sourceMessages: EventProjectionMessage[];
   sourceRows: TimelineRow[];
   startedAt: number;
@@ -1148,7 +1149,8 @@ function buildTurnSummaryRow({
   completedAt,
   includeNestedRows,
   rowIdPrefix,
-  segmentIndex,
+  rowIdSegmentIndex,
+  sourceBounds,
   sourceMessages,
   sourceRows,
   startedAt,
@@ -1160,13 +1162,13 @@ function buildTurnSummaryRow({
   }
 
   const bounds =
-    segmentIndex === null || sourceMessages.length === 0
+    sourceBounds === "turn" || sourceMessages.length === 0
       ? getTurnBounds(turn)
       : getTimelineMessageBounds(sourceMessages);
   const rowId =
-    segmentIndex === null
+    rowIdSegmentIndex === null
       ? `${rowIdPrefix}${turn.threadId}:${turn.turnId}:turn`
-      : `${rowIdPrefix}${turn.threadId}:${turn.turnId}:turn:${segmentIndex}`;
+      : `${rowIdPrefix}${turn.threadId}:${turn.turnId}:turn:${rowIdSegmentIndex}`;
   const resolvedCompletedAt =
     completedAt ?? getTimelineMessageCompletedAt(sourceMessages);
 
@@ -1219,7 +1221,8 @@ function buildCompletedTurnSummaryRows({
       completedAt: item.completedAt,
       includeNestedRows,
       rowIdPrefix,
-      segmentIndex: item.segmentIndex,
+      rowIdSegmentIndex: item.rowIdSegmentIndex,
+      sourceBounds: item.sourceBounds,
       sourceMessages: item.sourceMessages,
       sourceRows,
       startedAt: item.startedAt,
