@@ -646,7 +646,6 @@ export function ToolsView() {
       resizablePanelId?: string;
     }) => (
       <ThreadSecondaryPanel
-        key={pluginId === undefined ? "closed" : "open"}
         activeTab={activePanelTab}
         canUseGitUi={false}
         metadataContent={null}

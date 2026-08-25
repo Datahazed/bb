@@ -14,6 +14,22 @@ import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-qu
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ToolsView } from "./ToolsView";
 
+// The package's Node export creates an imperative Panel handle without its
+// browser-only group registration. The resize hook has its own transition
+// contract test; this route suite exercises panel identity and rendered state.
+vi.mock("@/components/secondary-panel/useSecondaryPanelResize", async () => {
+  const { createRef } = await import("react");
+  return {
+    useSecondaryPanelResize: () => ({
+      handleSecondaryPanelDragging: () => {},
+      handleSecondaryPanelResize: () => {},
+      persistedWidthPercent: 38,
+      secondaryPanelRef: createRef<HTMLElement>(),
+      secondaryResizablePanelRef: createRef(),
+    }),
+  };
+});
+
 function catalogEntry(
   pluginId: string,
   displayName: string,
@@ -162,6 +178,14 @@ describe("plugin discovery detail panel", () => {
       );
     });
     expect(screen.queryByRole("button", { name: "GitHub" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Memory" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/extensions/plugins?sort=name",
+      );
+    });
+    expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
   });
 
   it("restores a copied detail URL over Browse", async () => {
