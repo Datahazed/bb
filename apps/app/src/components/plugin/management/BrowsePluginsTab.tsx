@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDebounceValue } from "usehooks-ts";
@@ -51,11 +51,10 @@ import {
   newAndNotableEntries,
   publisherGroups,
   sortPluginEntries,
-  visibleCategoryChipCount,
   type PluginBrowseSort,
-  type PluginCategoryShelf,
   type PluginPublisherGroup,
 } from "./plugin-browse-discovery";
+import { PluginCategoryChips } from "./PluginCategoryChips";
 import { CatalogEntryIcon } from "./plugin-ui";
 import { pluginMarketplaceAuthorId } from "./plugin-marketplace-author";
 
@@ -278,7 +277,7 @@ export function BrowsePluginsTab({
           <BrowseArchetypeCards onCreate={openComposer} />
         ) : (
           <section>
-            <div className="w-full">
+            <div className="w-full px-[var(--resource-source-shelf-inset)]">
               <ResourceToolbar
                 searchValue={query}
                 searchPlaceholder="Search plugins"
@@ -329,10 +328,11 @@ export function BrowsePluginsTab({
                   </Button>
                 </div>
                 {hasCategoryDiscovery ? (
-                  <CategoryChips
-                    shelves={catalogShelves}
-                    selectedCategoryId={selectedCategoryId}
-                    onSelect={(categoryId) =>
+                  <PluginCategoryChips
+                    options={catalogShelves}
+                    value={selectedCategoryId}
+                    ariaLabel="Filter plugins by category"
+                    onChange={(categoryId) =>
                       setDiscoveryParam("category", categoryId)
                     }
                   />
@@ -508,6 +508,14 @@ function BrowseShelf({
     <ResourceSourceShelf
       label={label}
       attribution={count === undefined ? undefined : `· ${count}`}
+      scrollOverlay={
+        entries.length > 3 ? (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 right-0 w-[var(--resource-source-shelf-fade-ramp)] bg-gradient-to-r from-transparent to-surface-recessed-solid"
+          />
+        ) : undefined
+      }
       browseAction={
         onViewAll === undefined ? undefined : (
           <ResourceShelfAction type="button" onClick={onViewAll}>
@@ -518,7 +526,12 @@ function BrowseShelf({
       }
     >
       {entries.map((entry) => (
-        <ResourceSourceItem key={`${entry.marketplace}/${entry.entryId}`}>
+        <ResourceSourceItem
+          key={`${entry.marketplace}/${entry.entryId}`}
+          className={
+            entries.length < 3 ? "w-auto min-w-0 flex-1 md:w-auto" : undefined
+          }
+        >
           <PluginCatalogCard
             entry={entry}
             installedPluginId={entry.installed ? entry.pluginId : null}
@@ -564,193 +577,6 @@ function LegacyPublisherGroups({
           />
         </section>
       ))}
-    </div>
-  );
-}
-
-function CategoryChips({
-  shelves,
-  selectedCategoryId,
-  onSelect,
-}: {
-  shelves: readonly PluginCategoryShelf[];
-  selectedCategoryId: string | null;
-  onSelect: (categoryId: string | null) => void;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const allMeasureRef = useRef<HTMLButtonElement>(null);
-  const categoryMeasureRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const overflowMeasureRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const [visibleCount, setVisibleCount] = useState(shelves.length);
-
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    const all = allMeasureRef.current;
-    if (container === null || all === null) return;
-
-    const measure = () => {
-      const categoryWidths = shelves.map(
-        (_shelf, index) => categoryMeasureRefs.current[index]?.offsetWidth ?? 0,
-      );
-      if (
-        container.clientWidth === 0 ||
-        categoryWidths.some((width) => width === 0)
-      ) {
-        return;
-      }
-      setVisibleCount(
-        visibleCategoryChipCount({
-          containerWidth: container.clientWidth,
-          allWidth: all.offsetWidth,
-          categoryWidths,
-          overflowWidthsByHiddenCount: overflowMeasureRefs.current.map(
-            (element) => element?.offsetWidth ?? 0,
-          ),
-          gap: 8,
-        }),
-      );
-    };
-
-    measure();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", measure);
-      return () => window.removeEventListener("resize", measure);
-    }
-    const observer = new ResizeObserver(measure);
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [shelves]);
-
-  const visibleShelves = shelves.slice(0, visibleCount);
-  const hiddenShelves = shelves.slice(visibleCount);
-  const chipClassName =
-    "h-7 shrink-0 rounded-full px-3 font-normal aria-pressed:bg-state-active aria-pressed:text-foreground";
-
-  return (
-    <div className="relative min-w-0">
-      <div
-        ref={containerRef}
-        role="radiogroup"
-        aria-label="Filter plugins by category"
-        className="flex min-w-0 items-center gap-2 overflow-hidden"
-      >
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={chipClassName}
-          role="radio"
-          aria-checked={selectedCategoryId === null}
-          aria-pressed={selectedCategoryId === null}
-          onClick={() => onSelect(null)}
-        >
-          All
-        </Button>
-        {visibleShelves.map((shelf) => (
-          <Button
-            key={shelf.id}
-            type="button"
-            variant="outline"
-            size="sm"
-            className={chipClassName}
-            role="radio"
-            aria-checked={selectedCategoryId === shelf.id}
-            aria-pressed={selectedCategoryId === shelf.id}
-            onClick={() => onSelect(shelf.id)}
-          >
-            {shelf.label}
-          </Button>
-        ))}
-        {hiddenShelves.length > 0 ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={chipClassName}
-                aria-label={`Show ${hiddenShelves.length} more categories`}
-                aria-pressed={hiddenShelves.some(
-                  (shelf) => shelf.id === selectedCategoryId,
-                )}
-              >
-                +{hiddenShelves.length} more
-                <Icon name="ChevronDown" className="size-3" aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-48">
-              {hiddenShelves.map((shelf) => (
-                <DropdownMenuItem
-                  key={shelf.id}
-                  onSelect={() => onSelect(shelf.id)}
-                  className="flex items-center justify-between gap-3"
-                >
-                  {shelf.label}
-                  <Icon
-                    name="Check"
-                    aria-hidden
-                    className={cn(
-                      "size-4",
-                      shelf.id === selectedCategoryId
-                        ? "opacity-100"
-                        : "opacity-0",
-                    )}
-                  />
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-      </div>
-
-      <div
-        aria-hidden
-        className="pointer-events-none invisible absolute left-0 top-0 flex w-full items-center gap-2 overflow-hidden"
-      >
-        <Button
-          ref={allMeasureRef}
-          type="button"
-          variant="outline"
-          size="sm"
-          className={chipClassName}
-          tabIndex={-1}
-        >
-          All
-        </Button>
-        {shelves.map((shelf, index) => (
-          <Button
-            key={shelf.id}
-            ref={(element) => {
-              categoryMeasureRefs.current[index] = element;
-            }}
-            type="button"
-            variant="outline"
-            size="sm"
-            className={chipClassName}
-            tabIndex={-1}
-          >
-            {shelf.label}
-          </Button>
-        ))}
-        {Array.from({ length: shelves.length + 1 }, (_unused, hiddenCount) =>
-          hiddenCount === 0 ? null : (
-            <Button
-              key={hiddenCount}
-              ref={(element) => {
-                overflowMeasureRefs.current[hiddenCount] = element;
-              }}
-              type="button"
-              variant="outline"
-              size="sm"
-              className={chipClassName}
-              tabIndex={-1}
-            >
-              +{hiddenCount} more
-              <Icon name="ChevronDown" className="size-3" aria-hidden />
-            </Button>
-          ),
-        )}
-      </div>
     </div>
   );
 }
@@ -933,7 +759,11 @@ export function PluginCatalogCard({
       <ResourceBrowseCard
         className="min-h-20 grid-cols-[minmax(0,1fr)_fit-content(10rem)] gap-x-2 gap-y-1.5 p-2.5"
         leading={leading}
-        title={entry.displayName}
+        title={
+          <span className="line-clamp-2 whitespace-normal break-words leading-tight">
+            {entry.displayName}
+          </span>
+        }
         description={descriptionArea}
         byline={byline}
         footerMeta={footerMeta}

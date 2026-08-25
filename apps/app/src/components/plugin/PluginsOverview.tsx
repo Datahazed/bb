@@ -29,6 +29,7 @@ import {
   type AddPluginInitial,
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
+import { PluginCategoryChips } from "@/components/plugin/management/PluginCategoryChips";
 import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
 import { MyPluginsTab } from "@/components/plugin/management/MyPluginsTab";
@@ -291,10 +292,11 @@ export function PluginsOverview({
             />
           ) : (
             <>
-              <InstalledPluginCategoryChips
-                total={plugins.length}
+              <PluginCategoryChips
                 options={categoryOptions}
                 value={activeCategoryFilter}
+                allLabel={`All · ${plugins.length}`}
+                ariaLabel="Filter installed plugins by category"
                 onChange={setCategoryFilter}
               />
               <InstalledPluginsTab
@@ -407,56 +409,5 @@ function InstalledPluginSourceFilter({
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function InstalledPluginCategoryChips({
-  total,
-  options,
-  value,
-  onChange,
-}: {
-  total: number;
-  options: readonly { id: string; label: string }[];
-  value: string | null;
-  onChange: (value: string | null) => void;
-}) {
-  if (options.length === 0) return null;
-  const chipClassName =
-    "h-7 shrink-0 rounded-full px-3 font-normal aria-pressed:bg-state-active aria-pressed:text-foreground";
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Filter installed plugins by category"
-      className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1"
-    >
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className={chipClassName}
-        role="radio"
-        aria-checked={value === null}
-        aria-pressed={value === null}
-        onClick={() => onChange(null)}
-      >
-        All · {total}
-      </Button>
-      {options.map((option) => (
-        <Button
-          key={option.id}
-          type="button"
-          variant="outline"
-          size="sm"
-          className={chipClassName}
-          role="radio"
-          aria-checked={value === option.id}
-          aria-pressed={value === option.id}
-          onClick={() => onChange(option.id)}
-        >
-          {option.label}
-        </Button>
-      ))}
-    </div>
   );
 }
