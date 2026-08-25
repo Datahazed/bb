@@ -85,48 +85,25 @@ function getSummaryMessageBounds(
   return { startedAt };
 }
 
-function combineSummaryGroupsWithoutLaterHumanBoundary(
+function applySingleSummaryTurnBounds(
   turn: EventProjectionTurn,
   items: readonly CompletedTurnSummaryItem[],
 ): CompletedTurnSummaryItem[] {
   const summaryGroups = items.filter(isCompletedTurnSummaryGroup);
-  if (summaryGroups.length === 0) {
-    return [...items];
-  }
-  const canUseCanonicalIdentity =
-    (turn.externalUserBoundarySeqs?.length ?? 0) === 0 &&
-    !items.some(
-      (item) =>
-        item.kind === "ungrouped-message" &&
-        isTimelineUngroupableMessage(item.message) &&
-        item.message.sourceSeqStart > turn.sourceSeqStart,
-    );
-
-  if (!canUseCanonicalIdentity) {
+  if (summaryGroups.length !== 1) {
     return [...items];
   }
 
-  const firstSummaryGroup = summaryGroups[0];
-  if (!firstSummaryGroup) {
-    return [...items];
-  }
-  const combinedSummaryGroup: CompletedTurnSummaryGroup = {
-    ...firstSummaryGroup,
-    startedAt: turn.startedAt,
-    completedAt: turn.completedAt,
-    rowIdSegmentIndex: null,
-    sourceBounds:
-      summaryGroups.length === 1 ? firstSummaryGroup.sourceBounds : "messages",
-    sourceMessages: summaryGroups.flatMap((group) => group.sourceMessages),
-    summaryCount: summaryGroups.reduce(
-      (count, group) => count + group.summaryCount,
-      0,
-    ),
-  };
-  return items.flatMap((item): CompletedTurnSummaryItem[] => {
-    if (item === firstSummaryGroup) return [combinedSummaryGroup];
-    return isCompletedTurnSummaryGroup(item) ? [] : [item];
-  });
+  const onlySummaryGroup = summaryGroups[0];
+  return items.map((item) =>
+    item === onlySummaryGroup
+      ? {
+          ...item,
+          startedAt: turn.startedAt,
+          completedAt: turn.completedAt,
+        }
+      : item,
+  );
 }
 
 function splitCompletedTurnMessages(
@@ -206,16 +183,26 @@ function groupCompletedTurnSummaryMessages(
   turn: EventProjectionTurn,
   summaryMessages: EventProjectionMessage[],
   terminalMessage: EventProjectionMessage | undefined,
+  useTurnBounds: boolean,
+  contextOnlyMessageSeqs?: ReadonlySet<number>,
 ): CompletedTurnSummaryItem[] {
   const externalBoundarySeqs = turn.externalUserBoundarySeqs ?? [];
   const visibleResponseIds = findVisibleResponseMessageIds(
     summaryMessages,
     terminalMessage,
   );
+  const selectedSummaryMessages = contextOnlyMessageSeqs
+    ? summaryMessages.filter(
+        (message) =>
+          !contextOnlyMessageSeqs.has(message.sourceSeqStart) &&
+          !contextOnlyMessageSeqs.has(message.sourceSeqEnd),
+      )
+    : summaryMessages;
   if (
+    useTurnBounds &&
     externalBoundarySeqs.length === 0 &&
     visibleResponseIds.size === 0 &&
-    !summaryMessages.some(isTimelineUngroupableMessage)
+    !selectedSummaryMessages.some(isTimelineUngroupableMessage)
   ) {
     return [
       {
@@ -224,8 +211,10 @@ function groupCompletedTurnSummaryMessages(
         completedAt: turn.completedAt,
         rowIdSegmentIndex: null,
         sourceBounds: "turn",
-        sourceMessages: summaryMessages,
-        summaryCount: turn.summaryCount,
+        sourceMessages: selectedSummaryMessages,
+        summaryCount: contextOnlyMessageSeqs
+          ? getProjectionSummaryCount(selectedSummaryMessages, undefined)
+          : turn.summaryCount,
       },
     ];
   }
@@ -293,7 +282,7 @@ function groupCompletedTurnSummaryMessages(
     }
   }
 
-  for (const message of summaryMessages) {
+  for (const message of selectedSummaryMessages) {
     flushExternalBoundariesBefore(message);
     if (visibleResponseIds.has(message.id)) {
       flushGroupedMessages();
@@ -321,12 +310,13 @@ function groupCompletedTurnSummaryMessages(
     externalBoundaryIndex += 1;
   }
   flushGroupedMessages();
-  return combineSummaryGroupsWithoutLaterHumanBoundary(turn, items);
+  return useTurnBounds ? applySingleSummaryTurnBounds(turn, items) : items;
 }
 
 export function groupCompletedTurnMessages(
   turn: EventProjectionTurn,
   completionIsContextOnly = false,
+  contextOnlyMessageSeqs?: ReadonlySet<number>,
 ): CompletedTurnMessageGroups {
   const messages = turn.messages ?? [];
   const { summaryMessages, terminalMessages, trailingMessages } =
@@ -340,6 +330,8 @@ export function groupCompletedTurnMessages(
         turn,
         summaryMessages,
         terminalMessages[0],
+        !completionIsContextOnly,
+        contextOnlyMessageSeqs,
       ),
     ),
     terminalMessages,

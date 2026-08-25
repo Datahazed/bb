@@ -237,6 +237,7 @@ export {
   deleteThreadEventSuffixInTransaction,
   getHighWaterMarks,
   findStoredEventRow,
+  findStoredTurnAssistantMessageContextRows,
   getActiveStoredTurnId,
   hasRootStoredTurnStarted,
   hasStoredTurnStarted,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   ThreadTimelineResponse,
   TimelineCommandWorkRow,
+  TimelineConversationRow,
   TimelineDelegationWorkRow,
   TimelinePaginationCursor,
   TimelineRow,
@@ -83,6 +84,23 @@ function commandRow(args: TimelineTestRowArgs): TimelineCommandWorkRow {
     completedAt: args.sequence,
     approvalStatus: null,
     activityIntents: [],
+  };
+}
+
+function assistantRow(args: TimelineTestRowArgs): TimelineConversationRow {
+  return {
+    id: args.id,
+    threadId: "thread-1",
+    turnId: "turn-1",
+    sourceSeqStart: args.sequence,
+    sourceSeqEnd: args.endSequence ?? args.sequence,
+    startedAt: args.sequence,
+    createdAt: args.sequence,
+    kind: "conversation",
+    role: "assistant",
+    text: args.id,
+    attachments: null,
+    turnRequest: null,
   };
 }
 
@@ -223,13 +241,13 @@ describe("timeline page row merging", () => {
       commandRow({ id: "command-4", sequence: 21 }),
     ];
     const olderSlice = turnSummaryRow({
-      id: "turn-1",
+      id: "turn-1:0:sequence-page:10",
       sequence: 10,
       endSequence: 11,
       children: olderCommands,
     });
     const latestSlice = turnSummaryRow({
-      id: "turn-1",
+      id: "turn-1:0:sequence-page:20",
       sequence: 20,
       endSequence: 21,
       children: latestCommands,
@@ -240,7 +258,7 @@ describe("timeline page row merging", () => {
       loadedRows: [latestSlice],
     });
 
-    expect(rows.map((row) => row.id)).toEqual(["turn-1"]);
+    expect(rows.map((row) => row.id)).toEqual([olderSlice.id]);
     expect(rows[0]).toEqual(
       expect.objectContaining({
         completedAt: 20,
@@ -258,6 +276,31 @@ describe("timeline page row merging", () => {
           : [],
       ),
     ).toEqual(["command-1", "command-2", "command-3", "command-4"]);
+  });
+
+  it("does not coalesce work across a visible assistant reply", () => {
+    const firstSlice = turnSummaryRow({
+      id: "turn-1:0:sequence-page:10",
+      sequence: 10,
+      endSequence: 11,
+    });
+    const visibleReply = assistantRow({ id: "assistant-1", sequence: 20 });
+    const secondSlice = turnSummaryRow({
+      id: "turn-1:1:sequence-page:20",
+      sequence: 21,
+      endSequence: 22,
+    });
+
+    const rows = prependOlderTimelineRows({
+      olderRows: [firstSlice],
+      loadedRows: [visibleReply, secondSlice],
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([
+      firstSlice.id,
+      visibleReply.id,
+      secondSlice.id,
+    ]);
   });
 
   it("merges a delegation shell repeated across forward detail pages", () => {

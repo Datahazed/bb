@@ -1493,15 +1493,20 @@ function LazyTurnRowBody({
   showAssistantMessageActions,
 }: LazyTurnRowBodyProps) {
   const { getViewRows, threadId } = useTimelineRendererStaticContext();
-  const { threadId: rowThreadId, turnId: rowTurnId } = row;
+  const {
+    sourceSeqEnd,
+    sourceSeqStart,
+    threadId: rowThreadId,
+    turnId: rowTurnId,
+  } = row;
   const identity = useMemo<ThreadTimelineTurnDetailsQueryIdentity>(
     () => ({
-      sourceSeqEnd: row.sourceSeqEnd,
-      sourceSeqStart: row.sourceSeqStart,
+      sourceSeqEnd,
+      sourceSeqStart,
       threadId: threadId ?? rowThreadId,
       turnId: rowTurnId,
     }),
-    [row.sourceSeqEnd, row.sourceSeqStart, rowThreadId, rowTurnId, threadId],
+    [rowThreadId, rowTurnId, sourceSeqEnd, sourceSeqStart, threadId],
   );
   const {
     data: detail,

@@ -143,6 +143,9 @@ interface ThreadTimelineSourceSeqRange {
 }
 
 interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
+  allowContextExpandedMatch?: boolean;
+  contextOnlyCompletedTurnIds?: ReadonlySet<string>;
+  contextOnlyMessageSeqs?: ReadonlySet<number>;
   includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
   threadStatus: Thread["status"];
@@ -172,6 +175,7 @@ type ThreadTimelineTurnDetailsFromEventsResult =
 
 interface BuildTurnRowsArgs {
   contextOnlyCompletedTurnIds?: ReadonlySet<string>;
+  contextOnlyMessageSeqs?: ReadonlySet<number>;
   includeNestedRows: boolean;
   rowIdPrefix: string;
   turn: EventProjectionTurn;
@@ -208,6 +212,7 @@ interface BuildCompletedTurnSummaryRowsArgs {
 
 interface BuildTimelineRowsOptions {
   contextOnlyCompletedTurnIds?: ReadonlySet<string>;
+  contextOnlyMessageSeqs?: ReadonlySet<number>;
   includeNestedRows: boolean;
   rowIdPrefix: string;
   workspaceRoot: string | null;
@@ -1231,6 +1236,7 @@ function buildCompletedTurnSummaryRows({
 
 function buildTurnRows({
   contextOnlyCompletedTurnIds,
+  contextOnlyMessageSeqs,
   includeNestedRows,
   rowIdPrefix,
   turn,
@@ -1254,6 +1260,7 @@ function buildTurnRows({
     groupCompletedTurnMessages(
       turn,
       contextOnlyCompletedTurnIds?.has(turn.turnId) === true,
+      contextOnlyMessageSeqs,
     );
   const terminalRows = terminalMessages.flatMap((message) =>
     convertMessage(message, { includeNestedRows, rowIdPrefix, workspaceRoot }),
@@ -1275,15 +1282,52 @@ type TimelineTurnSummaryRow = Extract<TimelineRow, { kind: "turn" }>;
 
 function findMatchingTurnSummaryRow(
   rows: TimelineRow[],
-  range: ThreadTimelineSourceSeqRange,
+  range: ThreadTimelineSourceSeqRange & { allowContextExpandedMatch?: boolean },
 ): TimelineTurnSummaryRow | null {
+  const turnRows = rows.filter(
+    (row): row is TimelineTurnSummaryRow => row.kind === "turn",
+  );
+  const exact = turnRows.find(
+    (row) =>
+      row.sourceSeqStart === range.sourceSeqStart &&
+      row.sourceSeqEnd === range.sourceSeqEnd,
+  );
+  if (exact || !range.allowContextExpandedMatch) {
+    return exact ?? null;
+  }
+
+  // Lifecycle closure and context-only rows can shift a semantic group's
+  // projected bounds in either direction. A parent shell can widen them,
+  // while removing a boundary message can narrow them. Prefer the group with
+  // the greatest overlap with the server-validated selection, then the least
+  // total boundary movement.
   return (
-    rows.find(
-      (row): row is TimelineTurnSummaryRow =>
-        row.kind === "turn" &&
-        row.sourceSeqStart === range.sourceSeqStart &&
-        row.sourceSeqEnd === range.sourceSeqEnd,
-    ) ?? null
+    turnRows
+      .filter(
+        (row) =>
+          row.sourceSeqEnd >= range.sourceSeqStart &&
+          row.sourceSeqStart <= range.sourceSeqEnd,
+      )
+      .sort((left, right) => {
+        const leftOverlap =
+          Math.min(left.sourceSeqEnd, range.sourceSeqEnd) -
+          Math.max(left.sourceSeqStart, range.sourceSeqStart) +
+          1;
+        const rightOverlap =
+          Math.min(right.sourceSeqEnd, range.sourceSeqEnd) -
+          Math.max(right.sourceSeqStart, range.sourceSeqStart) +
+          1;
+        if (leftOverlap !== rightOverlap) {
+          return rightOverlap - leftOverlap;
+        }
+        const leftMovement =
+          Math.abs(left.sourceSeqStart - range.sourceSeqStart) +
+          Math.abs(left.sourceSeqEnd - range.sourceSeqEnd);
+        const rightMovement =
+          Math.abs(right.sourceSeqStart - range.sourceSeqStart) +
+          Math.abs(right.sourceSeqEnd - range.sourceSeqEnd);
+        return leftMovement - rightMovement;
+      })[0] ?? null
   );
 }
 
@@ -1376,6 +1420,7 @@ function buildTimelineRows(
           rows,
           buildTurnRows({
             contextOnlyCompletedTurnIds: options.contextOnlyCompletedTurnIds,
+            contextOnlyMessageSeqs: options.contextOnlyMessageSeqs,
             turn: entry.turn,
             includeNestedRows,
             rowIdPrefix: options.rowIdPrefix,
@@ -1474,6 +1519,8 @@ function buildThreadTimelineTurnDetailRows(
     turnMessageDetail: "full",
   });
   return buildTimelineRows(projection, {
+    contextOnlyCompletedTurnIds: args.options.contextOnlyCompletedTurnIds,
+    contextOnlyMessageSeqs: args.options.contextOnlyMessageSeqs,
     includeNestedRows: true,
     rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
     workspaceRoot: args.options.workspaceRoot,

@@ -88,6 +88,10 @@ function backgroundTaskData(status: "pending" | "completed"): string {
 interface SeedOptions {
   /** Emit an assistant message before this item in the last turn. */
   assistantBeforeItem?: number;
+  /** Emit an assistant response while deferred items are still running. */
+  assistantBeforeDeferredCompletion?: boolean;
+  /** Emit a second, consecutive assistant narration before this item. */
+  assistantNarrationBeforeItem?: number;
   /**
    * Start a workflow background task at the top of the last turn, and complete
    * it there too when `"completed"`. Its rows sit far below any in-turn cut.
@@ -100,6 +104,8 @@ interface SeedOptions {
   delegateLastTurn?: boolean;
   /** Emit `turn/completed` for the last turn. */
   completeLastTurn: boolean;
+  /** Emit the last turn's terminal assistant response. */
+  finalAssistant?: boolean;
   /** Character count for each seeded command, when testing byte limits. */
   commandChars?: number;
   /**
@@ -245,6 +251,24 @@ function seedTurns(
           }),
         });
       }
+      if (isLastTurn && options.assistantNarrationBeforeItem === item) {
+        const itemId = `${turnId}-narration`;
+        push({
+          type: "item/completed",
+          scope: turnScope(turnId),
+          providerThreadId,
+          itemId,
+          itemKind: "agentMessage",
+          parentToolCallId: null,
+          data: JSON.stringify({
+            item: {
+              type: "agentMessage",
+              id: itemId,
+              text: "Continuing with more work.",
+            },
+          }),
+        });
+      }
       const itemId = `${turnId}-item-${item}`;
       const command =
         options.commandChars === undefined
@@ -320,6 +344,24 @@ function seedTurns(
         }),
       });
     }
+    if (isLastTurn && options.assistantBeforeDeferredCompletion) {
+      const itemId = `${turnId}-deferred-assistant`;
+      push({
+        type: "item/completed",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId,
+        itemKind: "agentMessage",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "agentMessage",
+            id: itemId,
+            text: "Intermediate update while work is running.",
+          },
+        }),
+      });
+    }
     for (const item of deferred) {
       const itemId = `${turnId}-item-${item}`;
       push({
@@ -367,6 +409,25 @@ function seedTurns(
             arguments: { prompt: "Do the long task." },
             result: "",
             status: "completed",
+          },
+        }),
+      });
+    }
+
+    if (isLastTurn && options.finalAssistant) {
+      const itemId = `${turnId}-final`;
+      push({
+        type: "item/completed",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId,
+        itemKind: "agentMessage",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "agentMessage",
+            id: itemId,
+            text: "Finished.",
           },
         }),
       });
@@ -499,6 +560,21 @@ function collectCommandCallIds(
     }
   }
   return count;
+}
+
+function collectAssistantTexts(rows: readonly TimelineRow[]): string[] {
+  return rows.flatMap((row): string[] => {
+    if (row.kind === "conversation" && row.role === "assistant") {
+      return [row.text];
+    }
+    if (row.kind === "work" && row.workKind === "delegation") {
+      return collectAssistantTexts(row.childRows);
+    }
+    if (row.kind === "turn" && row.children !== null) {
+      return collectAssistantTexts(row.children);
+    }
+    return [];
+  });
 }
 
 interface WalkResult {
@@ -943,6 +1019,102 @@ describe("in-turn timeline windows", () => {
     ]);
   });
 
+  it("keeps row expansion inside work segments split by visible assistant replies", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      assistantBeforeItem: 1,
+      assistantNarrationBeforeItem: 1,
+      completeLastTurn: true,
+      finalAssistant: true,
+      itemsPerTurn: [3],
+      longRunningItemIndexes: [0],
+    });
+
+    const timelineRows = buildPage(db, thread, LARGE_BUDGET, null).response
+      .rows;
+    expect(
+      timelineRows.map((row) =>
+        row.kind === "conversation" ? `${row.kind}:${row.role}` : row.kind,
+      ),
+    ).toEqual([
+      "conversation:user",
+      "turn",
+      "conversation:assistant",
+      "turn",
+      "conversation:assistant",
+    ]);
+
+    const turnRows = timelineRows.filter((row) => row.kind === "turn");
+    expect(turnRows).toHaveLength(2);
+    const detailGroups = turnRows.map((row) => {
+      const detail = buildTimelineTurnDetailsPage(db, thread, {
+        includeProviderUnhandledOperations: false,
+        sourceSeqEnd: row.sourceSeqEnd,
+        sourceSeqStart: row.sourceSeqStart,
+        turnId: row.turnId,
+      });
+      expect(detail.nextCursor).toBeNull();
+      const ids = new Set<string>();
+      collectCommandCallIds(detail.rows, ids);
+      return {
+        assistantTexts: detail.rows.flatMap((detailRow) =>
+          detailRow.kind === "conversation" && detailRow.role === "assistant"
+            ? [detailRow.text]
+            : [],
+        ),
+        commandIds: [...ids],
+      };
+    });
+
+    expect(detailGroups).toEqual([
+      { assistantTexts: [], commandIds: ["turn-1-item-0"] },
+      {
+        assistantTexts: ["Continuing with more work."],
+        commandIds: ["turn-1-item-1", "turn-1-item-2"],
+      },
+    ]);
+  });
+
+  it("uses following assistant context beyond an overlapping work range", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      assistantBeforeDeferredCompletion: true,
+      completeLastTurn: true,
+      finalAssistant: true,
+      itemsPerTurn: [1],
+      longRunningItemIndexes: [0],
+    });
+
+    const timelineRows = buildPage(db, thread, LARGE_BUDGET, null).response
+      .rows;
+    expect(
+      timelineRows.map((row) =>
+        row.kind === "conversation" ? `${row.kind}:${row.role}` : row.kind,
+      ),
+    ).toEqual([
+      "conversation:user",
+      "turn",
+      "conversation:assistant",
+      "conversation:assistant",
+    ]);
+
+    const turnRow = timelineRows.find((row) => row.kind === "turn");
+    expect(turnRow).toBeDefined();
+    if (!turnRow || turnRow.kind !== "turn") return;
+
+    const detail = buildTimelineTurnDetailsPage(db, thread, {
+      includeProviderUnhandledOperations: false,
+      sourceSeqEnd: turnRow.sourceSeqEnd,
+      sourceSeqStart: turnRow.sourceSeqStart,
+      turnId: turnRow.turnId,
+    });
+    const assistantTexts = collectAssistantTexts(detail.rows);
+    expect(assistantTexts).toEqual([]);
+    const commandIds = new Set<string>();
+    collectCommandCallIds(detail.rows, commandIds);
+    expect([...commandIds]).toEqual(["turn-1-item-0"]);
+  });
+
   it("pages through a finished turn that exceeds the event-data byte limit", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
@@ -963,6 +1135,7 @@ describe("in-turn timeline windows", () => {
 
     const commandCallIds = new Set<string>();
     const turnRowIds = new Set<string>();
+    let turnRowCount = 0;
     let cursor: TimelinePaginationCursor | null = null;
     let pages = 0;
     for (;;) {
@@ -978,6 +1151,7 @@ describe("in-turn timeline windows", () => {
         if (row.kind !== "turn") {
           continue;
         }
+        turnRowCount += 1;
         expect(row.status).toBe("completed");
         turnRowIds.add(row.id);
       }
@@ -995,7 +1169,7 @@ describe("in-turn timeline windows", () => {
 
     expect(pages).toBeGreaterThan(2);
     expect(commandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
-    expect(turnRowIds.size).toBe(1);
+    expect(turnRowIds.size).toBe(turnRowCount);
 
     const expandedCommandCallIds = new Set<string>();
     let expandedCommandRowCount = 0;

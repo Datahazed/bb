@@ -239,7 +239,11 @@ describe("useThreadTimelineTurnDetails", () => {
 
     expect(sdk.threads.timelineTurnDetails).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ cursor: "cursor-2" }),
+      expect.objectContaining({
+        cursor: "cursor-2",
+        sourceSeqEnd: "2",
+        sourceSeqStart: "1",
+      }),
     );
     await waitFor(() =>
       expect(
