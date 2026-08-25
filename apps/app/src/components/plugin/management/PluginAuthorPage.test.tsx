@@ -47,6 +47,17 @@ function catalogEntry(
   };
 }
 
+function withoutCategory(
+  entry: PluginCatalogSearchEntry,
+): PluginCatalogSearchEntry {
+  const {
+    categoryId: _categoryId,
+    category: _category,
+    ...categoryless
+  } = entry;
+  return categoryless;
+}
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -67,8 +78,11 @@ describe("PluginAuthorPage", () => {
         "Thread Messages & Timelines",
       ),
       catalogEntry("council", "agent-tools", "Agent Tools"),
+      withoutCategory(
+        catalogEntry("legacy-notes", "agent-tools", "Agent Tools"),
+      ),
       {
-        ...catalogEntry("other-author", "agent-tools", "Agent Tools"),
+        ...catalogEntry("rival-author", "agent-tools", "Agent Tools"),
         author: { name: "Someone Else", url: "https://github.com/else" },
       },
     ];
@@ -105,7 +119,7 @@ describe("PluginAuthorPage", () => {
       screen.getByText(
         (_content, element) =>
           element?.tagName === "P" &&
-          element.textContent?.startsWith("3 plugins ") === true,
+          element.textContent?.startsWith("4 plugins ") === true,
       ),
     ).toBeTruthy();
     const messages = screen.getByRole("heading", {
@@ -122,10 +136,15 @@ describe("PluginAuthorPage", () => {
         name: "Open Checklists details",
       }),
     ).toBeTruthy();
-    expect(screen.queryByText("OtherAuthor")).toBeNull();
+    expect(screen.queryByText("RivalAuthor")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Open LegacyNotes details" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /BB Community/u })).toBeTruthy();
+    expect(document.body.textContent).not.toContain("Other");
 
     const bylines = screen.getAllByRole("link", { name: "By: Pat Lee" });
-    expect(bylines).toHaveLength(3);
+    expect(bylines).toHaveLength(4);
     expect(bylines[0]?.getAttribute("href")).toBe(
       "/extensions/plugins/authors/12%3Abb-community%3Agithub%3Apatlee",
     );

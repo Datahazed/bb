@@ -258,8 +258,8 @@ const v2Fixtures: readonly Fixture[] = [
     manifest: manifestV2With({ updatedAt: "2026-02-30T09:30:00Z" }),
   },
   {
-    label: "omitted discovery fields",
-    valid: true,
+    label: "omitted required category",
+    valid: false,
     manifest: {
       ...manifestV2With({}),
       plugins: [(manifestWith({}).plugins as unknown[])[0]],

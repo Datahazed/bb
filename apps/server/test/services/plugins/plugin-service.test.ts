@@ -156,7 +156,7 @@ describe("plugin service", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  it("projects catalog category and screenshots onto an installed plugin", () => {
+  it("projects v2 listing discovery and preserves v1 category absence", () => {
     upsertPluginMarketplace(db, {
       name: "acme",
       sourceKind: "https",
@@ -226,6 +226,40 @@ describe("plugin service", () => {
       category: "Agent Tools",
       screenshots: ["https://plugins.example/screenshots/listed.png"],
     });
+
+    upsertPluginMarketplace(db, {
+      name: "acme",
+      sourceKind: "https",
+      manifestUrl: "https://plugins.example/marketplace.json",
+      sourceGitRef: null,
+      sourceGitCommit: null,
+      manifestJson: JSON.stringify({
+        schemaVersion: 1,
+        name: "acme",
+        displayName: "Acme",
+        plugins: [
+          {
+            id: "listed",
+            displayName: "Listed",
+            description: "A listed plugin.",
+            icon: "Zap",
+            author: { name: "Acme" },
+            source: { npm: { package: "bb-plugin-listed", range: "^1" } },
+          },
+        ],
+      }),
+      etag: null,
+      lastModified: null,
+      lastSuccessfulRefreshAt: 2,
+      lastAttemptedRefreshAt: 2,
+      lastError: null,
+    });
+    const legacyListing = service
+      .list()
+      .find((plugin) => plugin.id === "listed");
+    expect(legacyListing).not.toHaveProperty("categoryId");
+    expect(legacyListing).not.toHaveProperty("category");
+    expect(legacyListing?.screenshots).toEqual([]);
   });
 
   it("installs a path plugin, runs its factory, and reports running", async () => {

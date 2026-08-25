@@ -19,6 +19,7 @@ const EXPECTED_REVIEWED_ENTRY_IDS_BY_CATEGORY = {
     "pets",
     "theme-toggle",
     "tokyo-night",
+    "ui-tweaks",
   ],
   "thread-lists-and-navigation": [
     "arc-switcher",
@@ -27,6 +28,10 @@ const EXPECTED_REVIEWED_ENTRY_IDS_BY_CATEGORY = {
     "t3sidebar",
     "thread-namer",
     "tinted-threads",
+    "bb-sidebar",
+    "copy-session-id",
+    "sidebar-filter",
+    "thread-provider-icons",
   ],
   "thread-messages-and-timelines": [
     "bb-better-latex",
@@ -46,7 +51,14 @@ const EXPECTED_REVIEWED_ENTRY_IDS_BY_CATEGORY = {
   "memory-and-context": ["noema", "progressive-skill", "project-instructions"],
   "agent-tools": ["advisor", "noisegate", "perspectives", "rtk", "unslop"],
   security: ["security-guidance"],
-  "agents-and-providers": ["agent-proxy", "amp", "handoff"],
+  "agents-and-providers": [
+    "agent-proxy",
+    "amp",
+    "handoff",
+    "autorouter",
+    "bots",
+    "provider-authentication",
+  ],
   "token-usage-and-cost": [
     "context-meter",
     "headroom",
@@ -54,6 +66,8 @@ const EXPECTED_REVIEWED_ENTRY_IDS_BY_CATEGORY = {
     "usage-page",
     "usage-tracker",
     "usage",
+    "provider-usage",
+    "usage-meter",
   ],
   "notifications-and-attention": [
     "chime",
@@ -68,13 +82,18 @@ const EXPECTED_REVIEWED_ENTRY_IDS_BY_CATEGORY = {
     "gh-stack",
     "gitlab",
     "slopcop",
+    "git-history",
+    "repo-watch",
   ],
-  "files-and-viewers": ["monaco"],
+  "files-and-viewers": ["monaco", "audio-preview", "pdf-viewer"],
   "machines-and-hosts": [
     "disk-usage",
     "floating-terminal",
     "worktree-setup",
     "wterm-terminal-preview",
+    "file-manager",
+    "ports",
+    "server-status",
   ],
   "plugin-development": [
     "agentation",
@@ -83,7 +102,7 @@ const EXPECTED_REVIEWED_ENTRY_IDS_BY_CATEGORY = {
     "traces",
   ],
   "task-tracking": ["agent-checklists", "taskboard"],
-  automation: ["global-workflows"],
+  automation: ["global-workflows", "auto-archive"],
 } as const satisfies Record<PluginCatalogCategoryId, readonly string[]>;
 
 const REVIEWED_ENTRY_IDS = Object.values(
@@ -132,12 +151,12 @@ describe("plugin category registry", () => {
     ]);
   });
 
-  it("seeds exactly the reviewed 63-entry community snapshot", () => {
+  it("records the confirmed 81-entry community publisher handoff", () => {
     expect(Object.keys(REVIEWED_COMMUNITY_ENTRY_CATEGORIES).sort()).toEqual(
       [...REVIEWED_ENTRY_IDS].sort(),
     );
-    expect(REVIEWED_ENTRY_IDS).toHaveLength(63);
-    expect(new Set(REVIEWED_ENTRY_IDS).size).toBe(63);
+    expect(REVIEWED_ENTRY_IDS).toHaveLength(81);
+    expect(new Set(REVIEWED_ENTRY_IDS).size).toBe(81);
     for (const [category, ids] of Object.entries(
       EXPECTED_REVIEWED_ENTRY_IDS_BY_CATEGORY,
     )) {
@@ -147,7 +166,7 @@ describe("plugin category registry", () => {
     }
   });
 
-  it("uses v2 declarations and sends every v1 entry to Other", () => {
+  it("uses v2 declarations and preserves category absence for v1", () => {
     expect(
       marketplaceEntryCategoryId({
         schemaVersion: 2,
@@ -159,13 +178,13 @@ describe("plugin category registry", () => {
         schemaVersion: 1,
         entry: entry("later-entry"),
       }),
-    ).toBe("other");
+    ).toBeUndefined();
     expect(
       marketplaceEntryCategoryId({
         schemaVersion: 1,
         entry: entry("advisor", "agent-tools"),
       }),
-    ).toBe("other");
+    ).toBeUndefined();
   });
 
   it("files every bundled plugin under one reviewed category", () => {

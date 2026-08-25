@@ -39,7 +39,7 @@ function entry(
 }
 
 describe("plugin browse discovery projections", () => {
-  it("orders shelves by count, registry ties, and Other last", () => {
+  it("orders categorized shelves by count and registry ties", () => {
     const shelves = categoryShelves([
       entry("security", {
         categoryId: "security",
@@ -55,18 +55,17 @@ describe("plugin browse discovery projections", () => {
         categoryId: "themes-and-appearance",
         category: "Themes & Appearance",
       }),
-      entry("uncategorized", { categoryId: "other", category: "Other" }),
+      entry("legacy-v1", { categoryId: undefined, category: undefined }),
     ]);
 
     expect(shelves.map((shelf) => [shelf.id, shelf.entries.length])).toEqual([
       ["themes-and-appearance", 2],
       ["agent-tools", 2],
       ["security", 1],
-      ["other", 1],
     ]);
   });
 
-  it("uses curated order, then publishedAt for the v1 fallback", () => {
+  it("uses curated order, then publishedAt when the v2 list is empty", () => {
     expect(
       newAndNotableEntries([
         entry("second", { newAndNotableRank: 1 }),

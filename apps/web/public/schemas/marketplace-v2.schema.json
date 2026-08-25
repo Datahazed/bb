@@ -61,6 +61,7 @@
         "displayName",
         "description",
         "icon",
+        "category",
         "author",
         "source"
       ],

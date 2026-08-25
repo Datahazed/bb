@@ -370,7 +370,7 @@ describe("plugin catalog service", () => {
                     }),
                     remoteEntry({
                       id: "later-entry",
-                      category: undefined,
+                      category: "security",
                       screenshots: undefined,
                       icon: "Zap",
                     }),
@@ -402,8 +402,8 @@ describe("plugin catalog service", () => {
       });
       const [laterEntry] = await catalog.search("later-entry");
       expect(laterEntry).toMatchObject({
-        categoryId: "other",
-        category: "Other",
+        categoryId: "security",
+        category: "Security",
         screenshots: [],
         newAndNotableRank: null,
       });
@@ -427,13 +427,15 @@ describe("plugin catalog service", () => {
 
       await catalog.refresh(1_000);
       expect(requests).toEqual([MANIFEST_URL, V1_MANIFEST_URL]);
+      const results = await catalog.search("");
+      expect(results.some((entry) => entry.entryId === "widgets")).toBe(true);
+      for (const entry of results) {
+        expect(entry).not.toHaveProperty("categoryId");
+        expect(entry).not.toHaveProperty("category");
+      }
+      expect(JSON.stringify(results)).not.toContain('"other"');
       expect(await catalog.search("widgets")).toMatchObject([
-        {
-          categoryId: "other",
-          category: "Other",
-          screenshots: [],
-          newAndNotableRank: null,
-        },
+        { screenshots: [], newAndNotableRank: null },
       ]);
       expect(getPluginMarketplace(db, "bb-community")).toMatchObject({
         manifestUrl: V1_MANIFEST_URL,

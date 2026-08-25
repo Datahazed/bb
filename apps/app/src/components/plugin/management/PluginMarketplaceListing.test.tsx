@@ -33,6 +33,17 @@ function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
   };
 }
 
+function withoutCategory(
+  entry: PluginCatalogSearchEntry,
+): PluginCatalogSearchEntry {
+  const {
+    categoryId: _categoryId,
+    category: _category,
+    ...categoryless
+  } = entry;
+  return categoryless;
+}
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -73,11 +84,10 @@ describe("PluginMarketplaceListing", () => {
         ?.getAttribute("href"),
     ).toBe("/extensions/plugins/authors/12%3Abb-community%3Agithub%3Apatlee");
 
-    const withoutEvidence = {
+    const withoutEvidence = withoutCategory({
       ...catalogEntry("usage"),
       repositoryUrl: null,
-      author: null,
-    };
+    });
     rerender(
       <MemoryRouter>
         <CatalogPluginDetail entry={withoutEvidence} onInstall={() => {}} />
@@ -87,5 +97,8 @@ describe("PluginMarketplaceListing", () => {
     expect(screen.queryByText(/^updated /u)).toBeNull();
     expect(screen.queryByRole("img", { name: /screenshot/u })).toBeNull();
     expect(screen.queryByText("More from this author")).toBeNull();
+    expect(screen.getByText("Pat Lee")).toBeTruthy();
+    expect(screen.queryByText("Token Usage & Cost")).toBeNull();
+    expect(document.body.textContent).not.toContain("Other");
   });
 });

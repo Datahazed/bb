@@ -49,10 +49,12 @@ import type { AddPluginInitial } from "./AddPluginDialog";
 import {
   categoryShelves,
   newAndNotableEntries,
+  publisherGroups,
   sortPluginEntries,
   visibleCategoryChipCount,
   type PluginBrowseSort,
   type PluginCategoryShelf,
+  type PluginPublisherGroup,
 } from "./plugin-browse-discovery";
 import { CatalogEntryIcon } from "./plugin-ui";
 import { pluginMarketplaceAuthorId } from "./plugin-marketplace-author";
@@ -139,15 +141,22 @@ export function BrowsePluginsTab({
   // Browse offers installs, so an entry this BB cannot install is noise here.
   // The search API still returns incompatible entries with their reasons for
   // the CLI, where the "requires newer bb" status is the useful signal.
+  const catalogEntries = (catalogQuery.data ?? []).filter(
+    (entry) => entry.compatible,
+  );
   const entries = (searchQuery.data ?? []).filter((entry) => entry.compatible);
   const shelves = categoryShelves(entries);
-  const selectedCategoryId = searchParams.get("category");
-  const selectedCategory = shelves.find(
+  const catalogShelves = categoryShelves(catalogEntries);
+  const hasCategoryDiscovery = catalogShelves.length > 0;
+  const selectedCategoryId = hasCategoryDiscovery
+    ? searchParams.get("category")
+    : null;
+  const selectedCategory = catalogShelves.find(
     (shelf) => shelf.id === selectedCategoryId,
   );
   const selectedCategoryLabel =
     selectedCategory?.label ?? selectedCategoryId ?? "All categories";
-  const hasInstallCounts = (catalogQuery.data ?? []).some(
+  const hasInstallCounts = catalogEntries.some(
     (entry) => entry.installCount !== undefined,
   );
   const requestedSort = browseSort(searchParams.get("sort"));
@@ -160,7 +169,7 @@ export function BrowsePluginsTab({
   ).map((sort) => ({ id: sort, label: PLUGIN_BROWSE_SORT_LABELS[sort] }));
   const categoryOptions = [
     { id: "all", label: "All categories" },
-    ...shelves.map((shelf) => ({ id: shelf.id, label: shelf.label })),
+    ...catalogShelves.map((shelf) => ({ id: shelf.id, label: shelf.label })),
   ];
   if (selectedCategoryId !== null && selectedCategory === undefined) {
     // Keep a URL-addressed category active while a search has no matches in
@@ -170,15 +179,27 @@ export function BrowsePluginsTab({
       label: selectedCategoryLabel,
     });
   }
-  const filteredEntries =
+  const categorizedEntries = shelves.flatMap((shelf) => shelf.entries);
+  const legacyEntries = entries.filter(
+    (entry) => entry.categoryId === undefined || entry.category === undefined,
+  );
+  const filteredCategoryEntries =
     selectedCategoryId === null
-      ? entries
-      : entries.filter((entry) => entry.categoryId === selectedCategoryId);
+      ? categorizedEntries
+      : categorizedEntries.filter(
+          (entry) => entry.categoryId === selectedCategoryId,
+        );
   const flatEntries =
     activeSort === null
-      ? filteredEntries
-      : sortPluginEntries(filteredEntries, activeSort);
-  const notableEntries = newAndNotableEntries(entries);
+      ? filteredCategoryEntries
+      : sortPluginEntries(filteredCategoryEntries, activeSort);
+  const notableEntries = newAndNotableEntries(categorizedEntries);
+  const legacyGroups = publisherGroups(legacyEntries).map((group) => ({
+    ...group,
+    entries: sortPluginEntries(group.entries, activeSort ?? "name"),
+  }));
+  const showLegacyPublisherHeadings =
+    hasCategoryDiscovery || legacyGroups.length > 1;
 
   function setDiscoveryParam(name: "category" | "sort", value: string | null) {
     const nextSearchParams = new URLSearchParams(searchParams);
@@ -307,13 +328,15 @@ export function BrowsePluginsTab({
                     <Icon name="X" className="size-3" aria-hidden />
                   </Button>
                 </div>
-                <CategoryChips
-                  shelves={shelves}
-                  selectedCategoryId={selectedCategoryId}
-                  onSelect={(categoryId) =>
-                    setDiscoveryParam("category", categoryId)
-                  }
-                />
+                {hasCategoryDiscovery ? (
+                  <CategoryChips
+                    shelves={catalogShelves}
+                    selectedCategoryId={selectedCategoryId}
+                    onSelect={(categoryId) =>
+                      setDiscoveryParam("category", categoryId)
+                    }
+                  />
+                ) : null}
               </div>
             )}
 
@@ -344,27 +367,42 @@ export function BrowsePluginsTab({
                   }
                 />
               ) : activeSort !== null ? (
-                flatEntries.length === 0 ? (
+                flatEntries.length === 0 &&
+                (selectedCategoryId !== null || legacyEntries.length === 0) ? (
                   <ResourceListState
                     state="empty"
                     message="No plugins match these filters."
                   />
                 ) : (
-                  <PluginCatalogGrid
-                    entries={flatEntries}
-                    showCategory
-                    onInstall={onInstall}
-                    onOpenPlugin={onOpenPlugin}
-                  />
+                  <div className="space-y-5">
+                    {flatEntries.length === 0 ? null : (
+                      <PluginCatalogGrid
+                        entries={flatEntries}
+                        showCategory
+                        onInstall={onInstall}
+                        onOpenPlugin={onOpenPlugin}
+                      />
+                    )}
+                    {selectedCategoryId === null ? (
+                      <LegacyPublisherGroups
+                        groups={legacyGroups}
+                        showHeadings={showLegacyPublisherHeadings}
+                        onInstall={onInstall}
+                        onOpenPlugin={onOpenPlugin}
+                      />
+                    ) : null}
+                  </div>
                 )
               ) : selectedCategoryId === null ? (
                 <div className="space-y-5">
-                  <BrowseShelf
-                    label="New & notable"
-                    entries={notableEntries}
-                    onInstall={onInstall}
-                    onOpenPlugin={onOpenPlugin}
-                  />
+                  {hasCategoryDiscovery ? (
+                    <BrowseShelf
+                      label="New & notable"
+                      entries={notableEntries}
+                      onInstall={onInstall}
+                      onOpenPlugin={onOpenPlugin}
+                    />
+                  ) : null}
                   {shelves.map((shelf) => (
                     <BrowseShelf
                       key={shelf.id}
@@ -376,6 +414,12 @@ export function BrowsePluginsTab({
                       onOpenPlugin={onOpenPlugin}
                     />
                   ))}
+                  <LegacyPublisherGroups
+                    groups={legacyGroups}
+                    showHeadings={showLegacyPublisherHeadings}
+                    onInstall={onInstall}
+                    onOpenPlugin={onOpenPlugin}
+                  />
                 </div>
               ) : (
                 <section className="space-y-3">
@@ -391,18 +435,18 @@ export function BrowsePluginsTab({
                     <h2 className="text-base font-semibold text-foreground">
                       {selectedCategoryLabel}
                       <span className="ml-1.5 text-xs font-normal text-subtle-foreground">
-                        · {filteredEntries.length} plugins
+                        · {filteredCategoryEntries.length} plugins
                       </span>
                     </h2>
                   </div>
-                  {filteredEntries.length === 0 ? (
+                  {filteredCategoryEntries.length === 0 ? (
                     <ResourceListState
                       state="empty"
                       message="No plugins match this category and search."
                     />
                   ) : (
                     <PluginCatalogGrid
-                      entries={filteredEntries}
+                      entries={filteredCategoryEntries}
                       onInstall={onInstall}
                       onOpenPlugin={onOpenPlugin}
                     />
@@ -484,6 +528,43 @@ function BrowseShelf({
         </ResourceSourceItem>
       ))}
     </ResourceSourceShelf>
+  );
+}
+
+function LegacyPublisherGroups({
+  groups,
+  showHeadings,
+  onInstall,
+  onOpenPlugin,
+}: {
+  groups: readonly PluginPublisherGroup[];
+  showHeadings: boolean;
+  onInstall: (initial: AddPluginInitial) => void;
+  onOpenPlugin: (pluginId: string) => void;
+}) {
+  if (groups.length === 0) return null;
+  return (
+    <div className="space-y-5">
+      {groups.map((group) => (
+        <section key={group.key} className="space-y-3">
+          {showHeadings ? (
+            <h2 className="flex items-baseline gap-2 text-sm font-medium text-foreground">
+              {group.label}
+              {group.thirdParty ? (
+                <span className="text-2xs font-normal text-subtle-foreground">
+                  third-party marketplace
+                </span>
+              ) : null}
+            </h2>
+          ) : null}
+          <PluginCatalogGrid
+            entries={group.entries}
+            onInstall={onInstall}
+            onOpenPlugin={onOpenPlugin}
+          />
+        </section>
+      ))}
+    </div>
   );
 }
 
@@ -725,16 +806,17 @@ export function PluginCatalogCard({
         By: {entry.author.name}
       </Link>
     );
-  const byline = showCategory ? (
-    <span className="flex min-w-0 items-center gap-1.5">
-      <span className="shrink-0 rounded bg-surface-recessed px-1.5 py-0.5 text-2xs text-muted-foreground">
-        {entry.category}
+  const byline =
+    showCategory && entry.category !== undefined ? (
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="shrink-0 rounded bg-surface-recessed px-1.5 py-0.5 text-2xs text-muted-foreground">
+          {entry.category}
+        </span>
+        {authorByline}
       </span>
-      {authorByline}
-    </span>
-  ) : (
-    authorByline
-  );
+    ) : (
+      authorByline
+    );
   // The publisher label, not the marketplace's raw display name: a third-party
   // manifest names itself, and the raw name would print a reserved BB label on
   // the card that the server already refused to grant.

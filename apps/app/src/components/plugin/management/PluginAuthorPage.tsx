@@ -9,7 +9,11 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 import { usePluginCatalogSearch } from "@/hooks/queries/plugin-catalog-queries";
 import { getPluginsRoutePath } from "@/lib/route-paths";
-import { categoryShelves } from "./plugin-browse-discovery";
+import {
+  categoryShelves,
+  publisherGroups,
+  sortPluginEntries,
+} from "./plugin-browse-discovery";
 import { entriesByMarketplaceAuthor } from "./plugin-marketplace-author";
 import { AddPluginDialog, type AddPluginInitial } from "./AddPluginDialog";
 import { PluginCatalogGrid } from "./BrowsePluginsTab";
@@ -28,6 +32,15 @@ export function PluginAuthorPage({
   );
   const author = entries[0]?.author ?? null;
   const shelves = categoryShelves(entries);
+  const categorylessGroups = publisherGroups(
+    sortPluginEntries(
+      entries.filter(
+        (entry) =>
+          entry.categoryId === undefined || entry.category === undefined,
+      ),
+      "name",
+    ),
+  );
   const [installTarget, setInstallTarget] = useState<AddPluginInitial | null>(
     null,
   );
@@ -102,6 +115,26 @@ export function PluginAuthorPage({
                   </h2>
                   <PluginCatalogGrid
                     entries={shelf.entries}
+                    onInstall={setInstallTarget}
+                    onOpenPlugin={onOpenPlugin}
+                  />
+                </section>
+              ))}
+              {categorylessGroups.map((group) => (
+                <section key={group.key} className="space-y-2.5">
+                  <h2 className="flex items-baseline gap-2 text-sm font-semibold text-foreground">
+                    {group.label}
+                    {group.thirdParty ? (
+                      <span className="text-2xs font-normal text-subtle-foreground">
+                        third-party marketplace
+                      </span>
+                    ) : null}
+                    <span className="text-xs font-normal text-subtle-foreground">
+                      · {group.entries.length}
+                    </span>
+                  </h2>
+                  <PluginCatalogGrid
+                    entries={group.entries}
                     onInstall={setInstallTarget}
                     onOpenPlugin={onOpenPlugin}
                   />

@@ -3,10 +3,28 @@ import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-qu
 
 export type PluginBrowseSort = "recently-added" | "most-installed" | "name";
 
+export type CategorizedPluginCatalogEntry = PluginCatalogSearchEntry & {
+  categoryId: NonNullable<PluginCatalogSearchEntry["categoryId"]>;
+  category: string;
+};
+
 export interface PluginCategoryShelf {
-  id: PluginCatalogSearchEntry["categoryId"];
+  id: CategorizedPluginCatalogEntry["categoryId"];
   label: string;
+  entries: CategorizedPluginCatalogEntry[];
+}
+
+export interface PluginPublisherGroup {
+  key: string;
+  label: string;
+  thirdParty: boolean;
   entries: PluginCatalogSearchEntry[];
+}
+
+export function hasPluginCatalogCategory(
+  entry: PluginCatalogSearchEntry,
+): entry is CategorizedPluginCatalogEntry {
+  return entry.categoryId !== undefined && entry.category !== undefined;
 }
 
 const CATEGORY_ORDER = new Map<string, number>(
@@ -14,14 +32,15 @@ const CATEGORY_ORDER = new Map<string, number>(
 );
 
 /**
- * Groups every entry exactly once. Shelf size is the primary order; the
- * registry's stable order breaks ties, and uncategorized entries stay last.
+ * Groups each categorized entry exactly once. Shelf size is the primary
+ * order, and the registry's stable order breaks ties.
  */
 export function categoryShelves(
   entries: readonly PluginCatalogSearchEntry[],
 ): PluginCategoryShelf[] {
   const groups = new Map<string, PluginCategoryShelf>();
   for (const entry of entries) {
+    if (!hasPluginCatalogCategory(entry)) continue;
     const group = groups.get(entry.categoryId);
     if (group === undefined) {
       groups.set(entry.categoryId, {
@@ -39,8 +58,6 @@ export function categoryShelves(
   }
 
   return [...groups.values()].sort((left, right) => {
-    if (left.id === "other") return right.id === "other" ? 0 : 1;
-    if (right.id === "other") return -1;
     return (
       right.entries.length - left.entries.length ||
       (CATEGORY_ORDER.get(left.id) ?? CATEGORY_ORDER.size) -
@@ -49,11 +66,12 @@ export function categoryShelves(
   });
 }
 
-/** Curated order wins; v1 and an empty curated list fall back to newest. */
+/** Curated order wins; a categorized catalog without one falls back to newest. */
 export function newAndNotableEntries(
   entries: readonly PluginCatalogSearchEntry[],
-): PluginCatalogSearchEntry[] {
-  const curated = entries
+): CategorizedPluginCatalogEntry[] {
+  const categorized = entries.filter(hasPluginCatalogCategory);
+  const curated = categorized
     .filter((entry) => entry.official && entry.newAndNotableRank !== null)
     .sort(
       (left, right) =>
@@ -62,7 +80,30 @@ export function newAndNotableEntries(
     );
   if (curated.length > 0) return curated;
 
-  return [...entries].sort(comparePublishedAt).slice(0, 6);
+  return [...categorized].sort(comparePublishedAt).slice(0, 6);
+}
+
+/** Publisher groups preserve the caller's entry order within each group. */
+export function publisherGroups(
+  entries: readonly PluginCatalogSearchEntry[],
+): PluginPublisherGroup[] {
+  const groups: PluginPublisherGroup[] = [];
+  for (const entry of entries) {
+    let group = groups.find(
+      (candidate) => candidate.key === entry.publisherKey,
+    );
+    if (group === undefined) {
+      group = {
+        key: entry.publisherKey,
+        label: entry.publisherLabel,
+        thirdParty: !entry.official,
+        entries: [],
+      };
+      groups.push(group);
+    }
+    group.entries.push(entry);
+  }
+  return groups;
 }
 
 export function sortPluginEntries(

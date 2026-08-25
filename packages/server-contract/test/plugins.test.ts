@@ -60,7 +60,6 @@ describe("plugin catalog contracts", () => {
       description: "Notes",
       icon: null,
       iconUrl: null,
-      category: "Other",
       source: "builtin:notes",
       marketplace: "bb-community",
       marketplaceDisplayName: "BB Community",
@@ -73,12 +72,9 @@ describe("plugin catalog contracts", () => {
       incompatibleReason: null,
     });
 
-    expect(parsed).toMatchObject({
-      categoryId: "other",
-      category: "Other",
-      screenshots: [],
-      newAndNotableRank: null,
-    });
+    expect(parsed).toMatchObject({ screenshots: [], newAndNotableRank: null });
+    expect(parsed).not.toHaveProperty("categoryId");
+    expect(parsed).not.toHaveProperty("category");
     expect(parsed).not.toHaveProperty("installCount");
     expect(parsed).not.toHaveProperty("publishedAt");
     expect(parsed).not.toHaveProperty("updatedAt");
@@ -125,6 +121,13 @@ describe("plugin catalog contracts", () => {
       pluginCatalogSearchResultSchema.parse({
         ...requiredFields,
         publishedAt: "not-a-date",
+      }),
+    ).toThrow();
+    expect(() =>
+      pluginCatalogSearchResultSchema.parse({
+        ...requiredFields,
+        categoryId: "other",
+        category: "Other",
       }),
     ).toThrow();
   });

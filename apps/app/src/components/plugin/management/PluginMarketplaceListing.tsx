@@ -34,6 +34,10 @@ export function PluginMarketplaceMetadata({
   entry: PluginCatalogSearchEntry;
 }) {
   const authorId = pluginMarketplaceAuthorId(entry);
+  const author =
+    entry.author === null || authorId === null
+      ? null
+      : { id: authorId, name: entry.author.name };
   const updatedRelativeTime =
     entry.updatedAt === undefined
       ? null
@@ -43,36 +47,47 @@ export function PluginMarketplaceMetadata({
         });
   return (
     <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1">
-      <span>{entry.category}</span>
-      {entry.author === null || authorId === null ? null : (
+      {entry.category === undefined ? null : <span>{entry.category}</span>}
+      {author === null ? null : (
         <>
-          <span aria-hidden>·</span>
+          {entry.category === undefined ? null : <span aria-hidden>·</span>}
           <span>
             By{" "}
             <Link
-              to={getPluginAuthorRoutePath({ authorId })}
+              to={getPluginAuthorRoutePath({ authorId: author.id })}
               className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
-              {entry.author.name}
+              {author.name}
             </Link>
           </span>
         </>
       )}
       {entry.installCount === undefined ? null : (
         <>
-          <span aria-hidden>·</span>
+          {entry.category === undefined && author === null ? null : (
+            <span aria-hidden>·</span>
+          )}
           <span>{entry.installCount.toLocaleString()} installs</span>
         </>
       )}
       {updatedRelativeTime === null ? null : (
         <>
-          <span aria-hidden>·</span>
+          {entry.category === undefined &&
+          author === null &&
+          entry.installCount === undefined ? null : (
+            <span aria-hidden>·</span>
+          )}
           <span>updated {updatedRelativeTime}</span>
         </>
       )}
       {entry.repositoryUrl === null ? null : (
         <>
-          <span aria-hidden>·</span>
+          {entry.category === undefined &&
+          author === null &&
+          entry.installCount === undefined &&
+          updatedRelativeTime === null ? null : (
+            <span aria-hidden>·</span>
+          )}
           <a
             href={entry.repositoryUrl}
             target="_blank"

@@ -434,12 +434,15 @@ export function createPluginCatalogService(deps: {
     },
     manifest: PluginManifest,
     iconHash: string | null,
+    discoveryEnabled: boolean,
   ): PluginCatalogSearchResult {
     const problem = compatibilityProblem({
       bbRange: manifest.bbEngineRange,
       sdkRange: manifest.bbPluginSdkRange,
     });
-    const category = pluginCatalogCategory(entry.category);
+    const category = discoveryEnabled
+      ? pluginCatalogCategory(entry.category)
+      : undefined;
     return {
       entryId: entry.name,
       pluginId: entry.pluginId,
@@ -453,8 +456,9 @@ export function createPluginCatalogService(deps: {
       // A bundled icon is the plugin's own compact SVG, authored to take the
       // surrounding text color.
       iconTinted: iconHash !== null,
-      categoryId: category.id,
-      category: category.displayName,
+      ...(category === undefined
+        ? {}
+        : { categoryId: category.id, category: category.displayName }),
       screenshots: [],
       newAndNotableRank: null,
       source: builtinPluginSource(entry.name),
@@ -508,12 +512,12 @@ export function createPluginCatalogService(deps: {
   }): PluginCatalogSearchResult {
     const { entry, row, catalog } = args;
     const official = row.name === CURATED_MARKETPLACE_NAME;
-    const category = pluginCatalogCategory(
-      marketplaceEntryCategoryId({
-        schemaVersion: catalog.schemaVersion,
-        entry,
-      }),
-    );
+    const categoryId = marketplaceEntryCategoryId({
+      schemaVersion: catalog.schemaVersion,
+      entry,
+    });
+    const category =
+      categoryId === undefined ? undefined : pluginCatalogCategory(categoryId);
     const screenshotBase =
       row.sourceKind === "https"
         ? ({ kind: "url", manifestUrl: row.manifestUrl } as const)
@@ -528,8 +532,9 @@ export function createPluginCatalogService(deps: {
       description: entry.description,
       icon: entryIconName(entry),
       ...entryIconAsset(row.name, entry.id),
-      categoryId: category.id,
-      category: category.displayName,
+      ...(category === undefined
+        ? {}
+        : { categoryId: category.id, category: category.displayName }),
       screenshots: entryScreenshotUrls(entry, screenshotBase),
       newAndNotableRank: notableIndex < 0 ? null : notableIndex,
       ...(entry.installCount === undefined
@@ -1213,6 +1218,8 @@ export function createPluginCatalogService(deps: {
 
     async search(rawQuery) {
       const query = rawQuery.trim().toLowerCase();
+      const officialCatalog = catalogOf(requireRow(CURATED_MARKETPLACE_NAME));
+      const officialDiscoveryEnabled = officialCatalog?.schemaVersion === 2;
       const bundledEntries = await Promise.all(
         officialPlugins.map(async (entry) => {
           const manifest = await entryManifest(entry);
@@ -1222,7 +1229,12 @@ export function createPluginCatalogService(deps: {
             pluginId: entry.pluginId,
             tags: [] as string[],
             marketplaceRank: 0,
-            result: bundledSearchResult(entry, manifest, icon?.hash ?? null),
+            result: bundledSearchResult(
+              entry,
+              manifest,
+              icon?.hash ?? null,
+              officialDiscoveryEnabled,
+            ),
           };
         }),
       );
@@ -1267,7 +1279,7 @@ export function createPluginCatalogService(deps: {
               entry.pluginId,
               entry.result.displayName,
               entry.result.description,
-              entry.result.category,
+              entry.result.category ?? "",
               entry.result.marketplaceDisplayName,
               ...entry.tags,
             ]
@@ -1282,11 +1294,19 @@ export function createPluginCatalogService(deps: {
             left.marketplaceRank - right.marketplaceRank;
           if (marketplaceDifference !== 0) return marketplaceDifference;
           const categoryDifference =
-            (categoryOrder.get(left.result.categoryId) ?? categoryOrder.size) -
-            (categoryOrder.get(right.result.categoryId) ?? categoryOrder.size);
+            (left.result.categoryId === undefined
+              ? categoryOrder.size
+              : (categoryOrder.get(left.result.categoryId) ??
+                categoryOrder.size)) -
+            (right.result.categoryId === undefined
+              ? categoryOrder.size
+              : (categoryOrder.get(right.result.categoryId) ??
+                categoryOrder.size));
           return (
             categoryDifference ||
-            left.result.category.localeCompare(right.result.category) ||
+            (left.result.category ?? "").localeCompare(
+              right.result.category ?? "",
+            ) ||
             left.result.displayName.localeCompare(right.result.displayName)
           );
         })

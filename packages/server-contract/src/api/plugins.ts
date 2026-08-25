@@ -15,8 +15,7 @@ export type PluginRuntimeStatus = z.infer<typeof pluginRuntimeStatusSchema>;
 /**
  * Stable discovery identities for the reviewed marketplace categories. Display
  * names live in the server-owned registry, so copy changes never re-file an
- * entry. `other` is deliberately absent: entries reach Other only by omitting
- * a category.
+ * entry. Marketplace v2 requires exactly one of these IDs; v1 has no category.
  */
 export const PLUGIN_CATALOG_CATEGORY_IDS = [
   "themes-and-appearance",
@@ -42,15 +41,6 @@ export const pluginCatalogCategoryIdSchema = z.enum(
 );
 export type PluginCatalogCategoryId = z.infer<
   typeof pluginCatalogCategoryIdSchema
->;
-
-/** Category identity returned by discovery APIs after omission is resolved. */
-export const pluginCatalogResolvedCategoryIdSchema = z.enum([
-  ...PLUGIN_CATALOG_CATEGORY_IDS,
-  "other",
-]);
-export type PluginCatalogResolvedCategoryId = z.infer<
-  typeof pluginCatalogResolvedCategoryIdSchema
 >;
 
 export const pluginUpdateOutcomeSchema = z.enum([
@@ -229,10 +219,10 @@ export const installedPluginSchema = z.object({
   enabled: z.boolean(),
   description: z.string().nullable(),
   name: z.string().nullable(),
-  /** Stable marketplace category identity; direct and uncategorized installs use `other`. */
-  categoryId: pluginCatalogResolvedCategoryIdSchema.default("other"),
-  /** Current display name for `categoryId`; kept separate so renames do not re-file plugins. */
-  category: z.string().default("Other"),
+  /** Stable marketplace category identity; absent for v1 and direct installs. */
+  categoryId: pluginCatalogCategoryIdSchema.optional(),
+  /** Current display name for `categoryId`; absent whenever `categoryId` is absent. */
+  category: z.string().optional(),
   /** Listing screenshots, empty when this install has no catalog listing. */
   screenshots: z.array(z.string()).default([]),
   icon: z.string().nullable(),
@@ -457,10 +447,10 @@ export const pluginCatalogSearchResultSchema = z.object({
    * those icons render untinted.
    */
   iconTinted: z.boolean().default(false),
-  /** Stable category identity. Older servers map to Other on response parsing. */
-  categoryId: pluginCatalogResolvedCategoryIdSchema.default("other"),
-  /** Shipped display field retained for compatibility; it is never a stable identity. */
-  category: z.string().default("Other"),
+  /** Stable category identity; absent for immutable marketplace v1 entries. */
+  categoryId: pluginCatalogCategoryIdSchema.optional(),
+  /** Display name paired with `categoryId`; absent for marketplace v1 entries. */
+  category: z.string().optional(),
   /** Listing screenshots, in author-declared order. */
   screenshots: z.array(z.string()).default([]),
   /** Zero-based position in the manifest's curated shelf, or null when absent. */

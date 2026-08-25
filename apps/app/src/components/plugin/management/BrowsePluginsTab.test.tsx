@@ -85,6 +85,17 @@ const GITHUB_ENTRY: PluginCatalogSearchEntry = {
   source: "builtin:github",
 };
 
+function withoutCategory(
+  entry: PluginCatalogSearchEntry,
+): PluginCatalogSearchEntry {
+  const {
+    categoryId: _categoryId,
+    category: _category,
+    ...categoryless
+  } = entry;
+  return categoryless;
+}
+
 const INSTALLED_MEMORY_PLUGIN = {
   id: "memory",
   source: "builtin:memory",
@@ -120,6 +131,134 @@ afterEach(() => {
 });
 
 describe("BrowsePluginsTab", () => {
+  it("restores publisher grouping with no category UI for an all-v1 catalog", async () => {
+    const entries = [
+      withoutCategory({ ...MEMORY_ENTRY, displayName: "Zulu Memory" }),
+      withoutCategory({
+        ...MEMORY_ENTRY,
+        entryId: "alpha-memory",
+        pluginId: "alpha-memory",
+        displayName: "Alpha Memory",
+      }),
+      withoutCategory({
+        ...GITHUB_ENTRY,
+        marketplace: "acme-plugins",
+        marketplaceDisplayName: "Acme Plugins",
+        publisherKey: "acme-plugins",
+        publisherLabel: "Acme Plugins",
+        official: false,
+      }),
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({ results: entries });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/?category=memory-and-context"]}>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    await screen.findByRole("button", { name: "Open Alpha Memory details" });
+    const officialHeading = screen.getByText("BB Official");
+    const officialGroup = officialHeading.closest("section");
+    if (officialGroup === null) throw new Error("Official group missing");
+    expect(
+      within(officialGroup)
+        .getAllByRole("button", { name: /^Open .* details$/u })
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Open Alpha Memory details", "Open Zulu Memory details"]);
+    expect(screen.getAllByText("Acme Plugins").length).toBeGreaterThan(0);
+    expect(screen.getByText("third-party marketplace")).toBeTruthy();
+    expect(screen.queryByText("New & notable")).toBeNull();
+    expect(screen.queryByText("Memory & Context")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Filter plugins by category" }),
+    ).toBeNull();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(document.body.textContent).not.toContain("Other");
+  });
+
+  it("keeps v1 publishers visible beside v2 shelves and excludes them from a category page", async () => {
+    const legacy = withoutCategory({
+      ...GITHUB_ENTRY,
+      entryId: "legacy-reviewer",
+      pluginId: "legacy-reviewer",
+      displayName: "Legacy Reviewer",
+      marketplace: "acme-plugins",
+      marketplaceDisplayName: "Acme Plugins",
+      publisherKey: "acme-plugins",
+      publisherLabel: "Acme Plugins",
+      official: false,
+    });
+    const entries = [
+      { ...MEMORY_ENTRY, newAndNotableRank: 0 },
+      GITHUB_ENTRY,
+      legacy,
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({ results: entries });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    await screen.findByRole("button", { name: "Open Legacy Reviewer details" });
+    expect(screen.getByText("New & notable")).toBeTruthy();
+    expect(screen.getAllByText("Acme Plugins").length).toBeGreaterThan(0);
+    const memoryShelf = screen.getByText("Memory & Context").closest("section");
+    if (memoryShelf === null) throw new Error("Memory shelf missing");
+    fireEvent.click(
+      within(memoryShelf).getByRole("button", { name: /View all/u }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Open Memory details" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Open Legacy Reviewer details" }),
+    ).toBeNull();
+    expect(document.body.textContent).not.toContain("Other");
+  });
+
   it("flattens shelves for a sort and clearing the pill restores them", async () => {
     const entries = [
       { ...MEMORY_ENTRY, displayName: "Zulu" },
@@ -452,12 +591,12 @@ describe("BrowsePluginsTab", () => {
         if (url === "/api/v1/plugin-catalog/search?q=unknown") {
           return jsonResponse({
             results: [
-              {
+              withoutCategory({
                 ...GITHUB_ENTRY,
                 entryId: "unknown-count",
                 pluginId: "unknown-count",
                 displayName: "Unknown search result",
-              },
+              }),
             ],
           });
         }
@@ -484,6 +623,9 @@ describe("BrowsePluginsTab", () => {
       target: { value: "unknown" },
     });
     await screen.findAllByText("Unknown search result");
+    expect(
+      screen.getByRole("button", { name: "Filter plugins by category" }),
+    ).toBeTruthy();
     fireEvent.pointerDown(screen.getByRole("button", { name: "Sort plugins" }));
     expect(
       screen.getByRole("menuitem", { name: "Most installed" }),

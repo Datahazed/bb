@@ -191,6 +191,12 @@ describe("marketplace manifest schema", () => {
     ).toThrow();
   });
 
+  it("requires one reviewed category on every v2 entry", () => {
+    expect(() =>
+      parseMarketplaceManifest(manifestV2([entry()]), "manifest"),
+    ).toThrow(/category/iu);
+  });
+
   it("keeps registry statistics optional and validates every supplied value", () => {
     const parseV2 = (overrides: Record<string, unknown>) =>
       parseMarketplaceManifest(manifestV2([entryV2(overrides)]), "manifest");

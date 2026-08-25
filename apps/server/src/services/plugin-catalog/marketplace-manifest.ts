@@ -318,7 +318,7 @@ const marketplaceEntryV1Schema = z.object(entryShape).strict();
 const marketplaceEntryV2Schema = z
   .object({
     ...entryShape,
-    category: pluginCatalogCategoryIdSchema.optional(),
+    category: pluginCatalogCategoryIdSchema,
     screenshots: z
       .array(screenshotUrlSchema)
       .max(MARKETPLACE_MAX_SCREENSHOTS)

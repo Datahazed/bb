@@ -1469,8 +1469,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             identity?.manifest.description ??
             null,
           name: loadedPlugin?.manifest.name ?? identity?.manifest.name ?? null,
-          categoryId: listing?.categoryId ?? "other",
-          category: listing?.category ?? "Other",
+          ...(listing?.categoryId === undefined ||
+          listing.category === undefined
+            ? {}
+            : {
+                categoryId: listing.categoryId,
+                category: listing.category,
+              }),
           screenshots: listing?.screenshots ?? [],
           icon:
             loadedPlugin?.manifest.branding.icon ??

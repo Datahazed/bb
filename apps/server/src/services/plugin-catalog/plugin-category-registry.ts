@@ -1,7 +1,6 @@
 import {
   PLUGIN_CATALOG_CATEGORY_IDS,
   type PluginCatalogCategoryId,
-  type PluginCatalogResolvedCategoryId,
 } from "@bb/server-contract";
 import { listPluginMarketplaces, type DbQueryConnection } from "@bb/db";
 import {
@@ -56,27 +55,18 @@ if (
   throw new Error("plugin category registry does not match the public IDs");
 }
 
-export const OTHER_PLUGIN_CATALOG_CATEGORY = {
-  id: "other",
-  displayName: "Other",
-} as const;
-
-const categoryById = new Map<
-  PluginCatalogResolvedCategoryId,
-  { id: PluginCatalogResolvedCategoryId; displayName: string }
->([
-  ...PLUGIN_CATALOG_CATEGORIES.map(
-    (category) => [category.id, category] as const,
-  ),
-  [OTHER_PLUGIN_CATALOG_CATEGORY.id, OTHER_PLUGIN_CATALOG_CATEGORY],
-]);
+const categoryById = new Map<PluginCatalogCategoryId, PluginCatalogCategory>(
+  PLUGIN_CATALOG_CATEGORIES.map((category) => [category.id, category]),
+);
 
 /**
- * Reviewed taxonomy for the 63 BB Community entries at get-bb/marketplace
- * commit 410621e9d0190a1711623dac8a02db1a8a2a83b2. The marketplace repository
+ * Reviewed taxonomy handoff for all 81 BB Community entries. The first 63
+ * were reviewed at get-bb/marketplace commit
+ * 410621e9d0190a1711623dac8a02db1a8a2a83b2; the remaining 18 assignments
+ * were confirmed before publisher integration. The marketplace repository
  * uses this map to seed its single source-entry model before projecting v1
  * and v2. Runtime v1 fallback never applies it: v1 remains untouched and its
- * entries resolve to Other.
+ * entries retain genuine category absence.
  */
 export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES = {
   ayu: "themes-and-appearance",
@@ -85,6 +75,7 @@ export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES = {
   pets: "themes-and-appearance",
   "theme-toggle": "themes-and-appearance",
   "tokyo-night": "themes-and-appearance",
+  "ui-tweaks": "themes-and-appearance",
 
   "arc-switcher": "thread-lists-and-navigation",
   cascade: "thread-lists-and-navigation",
@@ -92,6 +83,10 @@ export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES = {
   t3sidebar: "thread-lists-and-navigation",
   "thread-namer": "thread-lists-and-navigation",
   "tinted-threads": "thread-lists-and-navigation",
+  "bb-sidebar": "thread-lists-and-navigation",
+  "copy-session-id": "thread-lists-and-navigation",
+  "sidebar-filter": "thread-lists-and-navigation",
+  "thread-provider-icons": "thread-lists-and-navigation",
 
   "bb-better-latex": "thread-messages-and-timelines",
   "emoji-react": "thread-messages-and-timelines",
@@ -121,6 +116,9 @@ export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES = {
   "agent-proxy": "agents-and-providers",
   amp: "agents-and-providers",
   handoff: "agents-and-providers",
+  autorouter: "agents-and-providers",
+  bots: "agents-and-providers",
+  "provider-authentication": "agents-and-providers",
 
   "context-meter": "token-usage-and-cost",
   headroom: "token-usage-and-cost",
@@ -128,6 +126,8 @@ export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES = {
   "usage-page": "token-usage-and-cost",
   "usage-tracker": "token-usage-and-cost",
   usage: "token-usage-and-cost",
+  "provider-usage": "token-usage-and-cost",
+  "usage-meter": "token-usage-and-cost",
 
   chime: "notifications-and-attention",
   attention: "notifications-and-attention",
@@ -140,13 +140,20 @@ export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES = {
   "gh-stack": "code-and-reviews",
   gitlab: "code-and-reviews",
   slopcop: "code-and-reviews",
+  "git-history": "code-and-reviews",
+  "repo-watch": "code-and-reviews",
 
   monaco: "files-and-viewers",
+  "audio-preview": "files-and-viewers",
+  "pdf-viewer": "files-and-viewers",
 
   "disk-usage": "machines-and-hosts",
   "floating-terminal": "machines-and-hosts",
   "worktree-setup": "machines-and-hosts",
   "wterm-terminal-preview": "machines-and-hosts",
+  "file-manager": "machines-and-hosts",
+  ports: "machines-and-hosts",
+  "server-status": "machines-and-hosts",
 
   agentation: "plugin-development",
   "agentation-mentions": "plugin-development",
@@ -157,12 +164,13 @@ export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES = {
   taskboard: "task-tracking",
 
   "global-workflows": "automation",
+  "auto-archive": "automation",
 } as const satisfies Record<string, PluginCatalogCategoryId>;
 
 /** Resolve a stable category ID to the current display record. */
 export function pluginCatalogCategory(
-  categoryId: PluginCatalogResolvedCategoryId,
-): { id: PluginCatalogResolvedCategoryId; displayName: string } {
+  categoryId: PluginCatalogCategoryId,
+): PluginCatalogCategory {
   const category = categoryById.get(categoryId);
   if (category === undefined) {
     throw new Error(`unknown plugin category ${JSON.stringify(categoryId)}`);
@@ -172,19 +180,22 @@ export function pluginCatalogCategory(
 
 /**
  * Resolve discovery metadata without interpreting tags. V1 is the immutable
- * legacy contract and always maps to Other; v2 carries the stable category.
+ * legacy contract and has no category; every parsed v2 entry carries one.
  */
 export function marketplaceEntryCategoryId(args: {
   schemaVersion: 1 | 2;
   entry: MarketplaceEntry;
-}): PluginCatalogResolvedCategoryId {
-  if (args.schemaVersion === 1) return "other";
-  return args.entry.category ?? "other";
+}): PluginCatalogCategoryId | undefined {
+  if (args.schemaVersion === 1) return undefined;
+  if (args.entry.category === undefined) {
+    throw new Error("marketplace v2 entry is missing its parsed category");
+  }
+  return args.entry.category;
 }
 
 export interface PluginCatalogListingMetadata {
-  categoryId: PluginCatalogResolvedCategoryId;
-  category: string;
+  categoryId?: PluginCatalogCategoryId;
+  category?: string;
   screenshots: string[];
 }
 
@@ -199,7 +210,7 @@ export function marketplaceEntryKey(
 /**
  * Listing metadata projected onto installed catalog plugins. Corrupt stored
  * documents are omitted here; the catalog service reports them and Installed
- * keeps the explicit Other/empty defaults.
+ * keeps category absence explicit.
  */
 export function marketplaceListingMetadata(
   db: DbQueryConnection,
@@ -216,15 +227,21 @@ export function marketplaceListingMetadata(
           ? ({ kind: "url", manifestUrl: row.manifestUrl } as const)
           : ({ kind: "dir", root: "" } as const);
       for (const entry of catalog.plugins) {
-        const category = pluginCatalogCategory(
-          marketplaceEntryCategoryId({
-            schemaVersion: catalog.schemaVersion,
-            entry,
-          }),
-        );
+        const categoryId = marketplaceEntryCategoryId({
+          schemaVersion: catalog.schemaVersion,
+          entry,
+        });
+        const category =
+          categoryId === undefined
+            ? undefined
+            : pluginCatalogCategory(categoryId);
         metadata.set(marketplaceEntryKey(row.name, entry.id), {
-          categoryId: category.id,
-          category: category.displayName,
+          ...(category === undefined
+            ? {}
+            : {
+                categoryId: category.id,
+                category: category.displayName,
+              }),
           screenshots: entryScreenshotUrls(entry, screenshotBase),
         });
       }
