@@ -79,7 +79,9 @@ function providerFilterLabel(
   return provider === "bb" ? "bb" : providerLabel(provider, providerRoster);
 }
 
-function skillSourceFilterId(skill: SkillSummary): ResourceSkillSourceFilter {
+export function skillSourceFilterId(
+  skill: SkillSummary,
+): ResourceSkillSourceFilter {
   if (skill.scope === "bb-builtin") return "bb-official";
   if (skill.scope === "plugin") return "included";
   // Every remaining scope is authored by the user, so the bucket is total and
@@ -256,6 +258,8 @@ const SKILLS_BROWSE_DESCRIPTION = (
 );
 const SKILLS_LIBRARY_DESCRIPTION =
   "The skills on this bb host — yours, your providers', and those bundled with plugins. They work with every agent you use in bb.";
+const SKILLS_MY_DESCRIPTION =
+  "Skills you author on this bb host. Open one to read or change it, or create a skill from a prompt.";
 
 /**
  * How long the pointer (or focus) must rest on a row before its detail
@@ -357,7 +361,7 @@ interface SkillsOverviewProps {
   onRetry?: () => void;
 }
 
-type SkillsCollectionMode = "library" | "browse";
+type SkillsCollectionMode = "installed" | "my" | "browse";
 
 /**
  * Presentational Skills list: provider-grouped, searchable, typeahead-style
@@ -369,7 +373,7 @@ export function SkillsOverview({
   isLoading,
   hasError,
   query = "",
-  activeMode = "library",
+  activeMode = "installed",
   browseContent,
   onCreateSkill,
   onSelectSkill,
@@ -574,7 +578,9 @@ export function SkillsOverview({
       description={
         activeMode === "browse"
           ? SKILLS_BROWSE_DESCRIPTION
-          : SKILLS_LIBRARY_DESCRIPTION
+          : activeMode === "my"
+            ? SKILLS_MY_DESCRIPTION
+            : SKILLS_LIBRARY_DESCRIPTION
       }
       bandClassName={TOOLS_PAGE_BAND_CLASSES}
     >

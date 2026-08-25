@@ -15,6 +15,7 @@ import type {
   PluginCatalogSearchResult,
   PluginUpdateCheckEntry as PluginUpdateResult,
 } from "@bb/server-contract";
+import { pluginListingDraftEntrySchema } from "@bb/server-contract";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { BbHttpError, pluginMutationResponseSchema } from "@bb/sdk";
 import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
@@ -957,6 +958,81 @@ export function registerPluginCommands(
           printPlugin(entry);
         }
       }),
+    );
+
+  const listing = plugin
+    .command("listing")
+    .description("Read and explicitly advance authored plugin listing state");
+
+  listing
+    .command("list")
+    .description("List path-authored plugins and their persisted listing state")
+    .option("--json", "Output JSON")
+    .action(
+      action(async (opts: JsonOutputOptions) => {
+        const result = await createCliBbSdk(getUrl()).plugins.listings.list();
+        if (opts.json) {
+          outputJson(opts, result);
+          return;
+        }
+        if (result.records.length === 0) {
+          console.log("No authored plugins installed from a path.");
+          return;
+        }
+        for (const record of result.records) {
+          console.log(`${record.pluginId}  ${record.lifecycle.status}`);
+        }
+      }),
+    );
+
+  listing
+    .command("save-draft <id> <entry-file>")
+    .description("Validate and save a marketplace v2 entry draft from JSON")
+    .option("--json", "Output JSON")
+    .action(
+      action(async (id: string, entryFile: string, opts: JsonOutputOptions) => {
+        const entry: unknown = JSON.parse(
+          await readFile(resolve(entryFile), "utf8"),
+        );
+        const record = await createCliBbSdk(
+          getUrl(),
+        ).plugins.listings.saveDraft({
+          pluginId: id,
+          entry: pluginListingDraftEntrySchema.parse(entry),
+        });
+        if (opts.json) outputJson(opts, record);
+        else console.log(`${record.pluginId}  ${record.lifecycle.status}`);
+      }),
+    );
+
+  listing
+    .command("record-submission <id> <pull-request-url>")
+    .description("Record the one opened get-bb/marketplace pull request")
+    .option("--opened-at <milliseconds>", "Submission time")
+    .option("--json", "Output JSON")
+    .action(
+      action(
+        async (
+          id: string,
+          pullRequestUrl: string,
+          opts: JsonOutputOptions & { openedAt?: string },
+        ) => {
+          const openedAt =
+            opts.openedAt === undefined ? Date.now() : Number(opts.openedAt);
+          if (!Number.isSafeInteger(openedAt) || openedAt < 0) {
+            throw new Error("--opened-at must be a non-negative integer");
+          }
+          const record = await createCliBbSdk(
+            getUrl(),
+          ).plugins.listings.recordSubmission({
+            pluginId: id,
+            pullRequestUrl,
+            openedAt,
+          });
+          if (opts.json) outputJson(opts, record);
+          else console.log(`${record.pluginId}  ${record.lifecycle.status}`);
+        },
+      ),
     );
 
   plugin

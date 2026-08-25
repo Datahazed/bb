@@ -31,6 +31,7 @@ import {
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
 import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
+import { MyPluginsTab } from "@/components/plugin/management/MyPluginsTab";
 import {
   PLUGIN_SOURCE_FILTER_OPTIONS,
   pluginSourceFilterId,
@@ -44,10 +45,11 @@ import {
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
 
-type PluginsCollectionMode = "installed" | "browse";
+type PluginsCollectionMode = "installed" | "browse" | "my";
 
 function modeFromSearchParams(value: string | null): PluginsCollectionMode {
   if (value === "installed") return value;
+  if (value === "my") return value;
   return "browse";
 }
 
@@ -114,10 +116,12 @@ export function PluginsOverview({
     onOpenPlugin ??
     ((pluginId: string, view: PluginsCollectionMode) =>
       navigate(
-        getPluginDetailRoutePath({
-          pluginId,
-          ...(view === "installed" ? { view } : {}),
-        }),
+        view === "my"
+          ? `${getPluginDetailRoutePath({ pluginId })}?view=my`
+          : getPluginDetailRoutePath({
+              pluginId,
+              ...(view === "installed" ? { view } : {}),
+            }),
       ));
 
   const visiblePlugins = useMemo(
@@ -227,7 +231,7 @@ export function PluginsOverview({
         onInstallFromSource={() => setAddDialog({ open: true, initial: null })}
       />
     );
-  } else {
+  } else if (activeMode === "installed") {
     content = (
       <ResourceCollectionViewport
         scrollId="plugins-installed-results"
@@ -306,6 +310,20 @@ export function PluginsOverview({
         </div>
       </ResourceCollectionViewport>
     );
+  } else {
+    content = (
+      <ResourceCollectionViewport
+        scrollId="my-plugins-results"
+        bandClassName={TOOLS_PAGE_BAND_CLASSES}
+      >
+        <div className={cn("space-y-3", TOOLS_PAGE_BAND_CLASSES)}>
+          <MyPluginsTab
+            plugins={plugins}
+            onOpenPlugin={(pluginId) => openPlugin(pluginId, "my")}
+          />
+        </div>
+      </ResourceCollectionViewport>
+    );
   }
 
   // Browse and Installed are separate top-nav destinations now, not tabs:
@@ -319,7 +337,11 @@ export function PluginsOverview({
       ) : (
         <ResourceCollectionPage
           id="plugins-collection"
-          description={PLUGINS_INSTALLED_DESCRIPTION}
+          description={
+            activeMode === "my"
+              ? "Plugins authored from local paths, grouped by their marketplace listing category."
+              : PLUGINS_INSTALLED_DESCRIPTION
+          }
           bandClassName={TOOLS_PAGE_BAND_CLASSES}
         >
           {content}

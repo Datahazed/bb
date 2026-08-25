@@ -351,7 +351,7 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
       return segments.at(-2) === capabilityId || skill.name === capabilityId;
     });
     return installedSkill === undefined
-      ? `${getSkillsRoutePath()}?view=library`
+      ? `${getSkillsRoutePath()}?view=installed`
       : getSkillDetailRoutePath({ skillId: installedSkill.id });
   };
 

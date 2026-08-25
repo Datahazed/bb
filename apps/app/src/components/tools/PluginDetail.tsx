@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { PluginListingLifecycle } from "@bb/server-contract";
 import {
   ResourceActivitySection,
   ResourceDetailConfigurationSection,
@@ -55,6 +56,7 @@ import {
 } from "@/components/tools/plugin-detail-table";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
+import { PluginListingStatusPill } from "@/components/plugin/management/MyPluginsTab";
 import {
   usePluginSource,
   type PluginCatalogSearchEntry,
@@ -71,6 +73,10 @@ import {
   buildPluginReportToAuthorPrompt,
   installedPluginRepositoryUrl,
 } from "@/lib/plugin-report-prompt";
+import {
+  pluginListingActions,
+  pluginListingCategoryLabel,
+} from "@/lib/plugin-listing-prompts";
 
 /**
  * Passive publisher shown beside an installed plugin's name: `BB Official` for
@@ -257,6 +263,7 @@ export function PluginDetail({
   catalogEntry = null,
   catalogEntries = [],
   onOpenPlugin = () => {},
+  listingLifecycle = null,
 }: {
   isLoading: boolean;
   plugin: PluginListItem | null;
@@ -269,6 +276,7 @@ export function PluginDetail({
   catalogEntry?: PluginCatalogSearchEntry | null;
   catalogEntries?: readonly PluginCatalogSearchEntry[];
   onOpenPlugin?: (pluginId: string) => void;
+  listingLifecycle?: PluginListingLifecycle | null;
 }) {
   const navigate = useNavigate();
   const { settingsSections } = usePluginSlots();
@@ -333,6 +341,23 @@ export function PluginDetail({
     repositoryUrl === null
       ? null
       : buildPluginReportToAuthorPrompt({ plugin, repositoryUrl });
+  const listingActions =
+    listingLifecycle === null
+      ? []
+      : pluginListingActions({
+          lifecycle: listingLifecycle,
+          name: pluginName,
+          path: plugin.rootDir,
+          publishedSource: catalogEntry?.source ?? null,
+        });
+  const openComposer = (prompt: string) =>
+    navigate(getRootComposeRoutePath(), {
+      state: {
+        focusPrompt: true,
+        initialPrompt: prompt,
+        replaceInitialPrompt: true,
+      },
+    });
   // Uninstall is destructive and irreversible-ish, so it belongs with the other
   // ownership actions rather than beside the reversible enable toggle.
   const overflowItems: ResourceOverflowMenuItem[] = [
@@ -378,7 +403,17 @@ export function PluginDetail({
       // "Installed"/"BB Official"
       // button that swapped to a red Uninstall on hover — a status that
       // deleted on click, at the same weight as the enable toggle.
-      titleMeta={<PluginProvenancePill plugin={plugin} />}
+      titleMeta={
+        <span className="inline-flex items-center gap-1.5">
+          <PluginProvenancePill plugin={plugin} />
+          {listingLifecycle === null ? null : (
+            <PluginListingStatusPill
+              lifecycle={listingLifecycle}
+              includePublished
+            />
+          )}
+        </span>
+      }
       metadata={
         <span className="block space-y-1">
           <PluginPath path={plugin.rootDir} />
@@ -390,20 +425,26 @@ export function PluginDetail({
         </span>
       }
       actions={
-        reportPrompt === null ? undefined : (
+        listingLifecycle !== null ? (
+          <>
+            {listingActions.map((action) => (
+              <Button
+                key={action.id}
+                type="button"
+                variant={action.variant}
+                size="sm"
+                onClick={() => openComposer(action.prompt)}
+              >
+                {action.label}
+              </Button>
+            ))}
+          </>
+        ) : reportPrompt === null ? undefined : (
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={() =>
-              navigate(getRootComposeRoutePath(), {
-                state: {
-                  focusPrompt: true,
-                  initialPrompt: reportPrompt,
-                  replaceInitialPrompt: true,
-                },
-              })
-            }
+            onClick={() => openComposer(reportPrompt)}
           >
             <Icon name="MessageSquarePlus" className="size-3.5" aria-hidden />
             Report to author
@@ -426,6 +467,40 @@ export function PluginDetail({
       }
     >
       <ResourceDetailStack>
+        {listingLifecycle?.status === "draft" ||
+        listingLifecycle?.status === "in-review" ? (
+          <ResourceDetailOverviewSection label="Listing preview">
+            {listingLifecycle.entry.screenshots.length === 0 ? null : (
+              <div className="grid grid-cols-2 gap-2">
+                {listingLifecycle.entry.screenshots.map((screenshot) => (
+                  <div
+                    key={screenshot}
+                    className="aspect-video overflow-hidden rounded-md border border-border bg-surface-recessed"
+                  >
+                    {screenshot.startsWith("https:") ? (
+                      <img
+                        src={screenshot}
+                        alt=""
+                        className="size-full object-cover"
+                      />
+                    ) : (
+                      <span className="flex size-full items-center justify-center px-3 text-center text-xs text-subtle-foreground">
+                        {screenshot.split("/").at(-1)}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
+              {listingLifecycle.entry.description}
+            </p>
+            <p className="text-xs text-subtle-foreground">
+              Category:{" "}
+              {pluginListingCategoryLabel(listingLifecycle.entry.category)}
+            </p>
+          </ResourceDetailOverviewSection>
+        ) : null}
         {catalogEntry === null ? (
           <ResourceDetailOverviewSection label="About">
             <p className="max-w-none text-sm leading-relaxed text-muted-foreground">

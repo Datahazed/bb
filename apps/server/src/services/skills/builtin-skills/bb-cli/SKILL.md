@@ -881,6 +881,14 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     to move it; both keep its configuration.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
+  - `bb plugin listing list [--json]` — list only local path-authored plugins
+    and their explicit `not-published`, `draft`, `in-review`, or `published`
+    marketplace state.
+  - `bb plugin listing save-draft <id> <entry-file> [--json]` — validate and
+    persist a complete marketplace v2 entry draft. It writes no tag or PR.
+  - `bb plugin listing record-submission <id> <pull-request-url> [--opened-at <milliseconds>] [--json]` —
+    record the one canonical `get-bb/marketplace` PR after an agent opens it;
+    it never opens a PR itself.
   - `bb plugin source <id> [--json]` — requested and resolved source, the
     repository subdirectory for a nested plugin, the semver range with its tag
     prefix and resolved tag for a Git range install, engine ranges, install

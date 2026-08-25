@@ -486,7 +486,7 @@ describe("Plugin detail recipe", () => {
 
     expect(
       screen.getByRole("link", { name: "review" }).getAttribute("href"),
-    ).toBe("/extensions/skills?view=library");
+    ).toBe("/extensions/skills?view=installed");
     expect(listSkills).not.toHaveBeenCalled();
   });
 

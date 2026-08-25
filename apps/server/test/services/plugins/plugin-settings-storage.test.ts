@@ -12,7 +12,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
   getPluginSettingsValues,
@@ -258,7 +258,11 @@ describe("plugin settings + storage", () => {
     it("serves schema+values over the routes; PUT validates with 400s", async () => {
       await installConfigurable();
       const app = new Hono();
-      registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
+      registerPluginRoutes(
+        app,
+        { config: { serverPort: 3334 }, db, hub: { notifySystem: vi.fn() } },
+        service,
+      );
 
       const got = await app.request("/plugins/configurable/settings");
       expect(got.status).toBe(200);

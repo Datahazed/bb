@@ -12,6 +12,11 @@ import {
   pluginMarketplaceRefreshRequestSchema,
   pluginMarketplaceRefreshResponseSchema,
   pluginMarketplaceRemoveResponseSchema,
+  pluginListingListResponseSchema,
+  pluginListingMutationResponseSchema,
+  pluginListingNoticeConsumeResponseSchema,
+  pluginListingRecordSubmissionRequestSchema,
+  pluginListingSaveDraftRequestSchema,
   pluginApplyUpdateRequestSchema,
   pluginApplyUpdateResultSchema,
   pluginInstallSourceRequestSchema,
@@ -29,6 +34,9 @@ import {
   type PluginCatalogSearchResult as PluginCatalogSearchContract,
   type PluginMarketplace as PluginMarketplaceContract,
   type PluginMarketplaceRefreshResult as PluginMarketplaceRefreshContract,
+  type PluginListingDraftEntry,
+  type PluginListingListResponse,
+  type PluginListingRecord,
   type PluginCatalogStatus as PluginCatalogStatusContract,
   type PluginApplyUpdateResult as PluginApplyUpdateContract,
   type PluginListResponse,
@@ -202,6 +210,28 @@ export interface PluginListUpdateResultsArgs {
   signal?: AbortSignal;
 }
 
+export interface PluginListingSaveDraftArgs extends PluginIdArgs {
+  entry: PluginListingDraftEntry;
+}
+
+export interface PluginListingRecordSubmissionArgs extends PluginIdArgs {
+  pullRequestUrl: string;
+  openedAt: number;
+}
+
+export interface PluginListingConsumeNoticeArgs {
+  noticeId: string;
+}
+
+export interface PluginListingsArea {
+  list(args?: { signal?: AbortSignal }): Promise<PluginListingListResponse>;
+  saveDraft(args: PluginListingSaveDraftArgs): Promise<PluginListingRecord>;
+  recordSubmission(
+    args: PluginListingRecordSubmissionArgs,
+  ): Promise<PluginListingRecord>;
+  consumeNotice(args: PluginListingConsumeNoticeArgs): Promise<void>;
+}
+
 export type PluginDisableResult = InstalledPlugin;
 export type PluginEnableResult = InstalledPlugin;
 export type PluginGetSettingsResult = PluginSettingsResponse;
@@ -257,6 +287,7 @@ export interface PluginsArea {
   ): Promise<PluginCheckUpdatesResult>;
   catalog: PluginCatalogArea;
   marketplaces: PluginMarketplacesArea;
+  listings: PluginListingsArea;
   disable(args: PluginIdArgs): Promise<PluginDisableResult>;
   enable(args: PluginIdArgs): Promise<PluginEnableResult>;
   getSettings(args: PluginGetSettingsArgs): Promise<PluginGetSettingsResult>;
@@ -405,6 +436,47 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
     },
   };
 
+  const listings: PluginListingsArea = {
+    async list(input = {}) {
+      return requestParsed(
+        "/api/v1/plugin-listings",
+        pluginListingListResponseSchema,
+        { signal: input.signal },
+      );
+    },
+    async saveDraft(input) {
+      const body = pluginListingSaveDraftRequestSchema.parse({
+        entry: input.entry,
+      });
+      const response = await requestParsed(
+        pluginPath(input.pluginId, "/listing/draft"),
+        pluginListingMutationResponseSchema,
+        jsonInit("POST", body),
+      );
+      return response.record;
+    },
+    async recordSubmission(input) {
+      const body = pluginListingRecordSubmissionRequestSchema.parse({
+        pullRequestUrl: input.pullRequestUrl,
+        openedAt: input.openedAt,
+      });
+      const response = await requestParsed(
+        pluginPath(input.pluginId, "/listing/submission"),
+        pluginListingMutationResponseSchema,
+        jsonInit("POST", body),
+      );
+      return response.record;
+    },
+    async consumeNotice(input) {
+      const noticeId = z.string().min(1).parse(input.noticeId);
+      await requestParsed(
+        `/api/v1/plugin-listings/notices/${encodeURIComponent(noticeId)}/consume`,
+        pluginListingNoticeConsumeResponseSchema,
+        jsonInit("POST", {}),
+      );
+    },
+  };
+
   return {
     async applyUpdate(input) {
       const body = pluginApplyUpdateRequestSchema.parse({});
@@ -434,6 +506,7 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       return response.results;
     },
     catalog,
+    listings,
     marketplaces,
     async disable(input) {
       const response = await requestParsed(

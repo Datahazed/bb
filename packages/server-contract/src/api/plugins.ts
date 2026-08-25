@@ -278,6 +278,218 @@ export const pluginListResponseSchema = z.object({
 });
 export type PluginListResponse = z.infer<typeof pluginListResponseSchema>;
 
+/** The author-prepared portion of a marketplace v2 entry. */
+export const pluginListingDraftEntrySchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/u),
+    displayName: z.string().trim().min(1),
+    description: z.string().trim().min(1),
+    icon: z.union([
+      z.string().regex(/^[A-Za-z][A-Za-z0-9]*$/u),
+      z
+        .object({
+          url: z
+            .string()
+            .trim()
+            .min(1)
+            .refine(
+              (value) =>
+                !/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value) ||
+                value.startsWith("https:"),
+              "must be an https URL or a relative marketplace asset",
+            )
+            .refine(
+              (value) => /\.(?:svg|png|webp)(?:[?#].*)?$/iu.test(value),
+              "must point at an .svg, .png, or .webp file",
+            ),
+        })
+        .strict(),
+    ]),
+    author: z
+      .object({
+        name: z.string().trim().min(1),
+        github: z
+          .string()
+          .regex(/^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u)
+          .optional(),
+        url: z
+          .url()
+          .refine((value) => new URL(value).protocol === "https:")
+          .optional(),
+      })
+      .strict(),
+    source: z.union([
+      z
+        .object({
+          npm: z
+            .object({
+              package: z.string().trim().min(1),
+              range: z.string().trim().min(1).optional(),
+              tag: z.string().trim().min(1).optional(),
+              registry: z
+                .url()
+                .refine((value) => new URL(value).protocol === "https:")
+                .optional(),
+            })
+            .strict()
+            .refine(
+              (value) => value.range === undefined || value.tag === undefined,
+              "range and tag are mutually exclusive",
+            ),
+        })
+        .strict(),
+      z
+        .object({
+          git: z
+            .object({
+              url: z
+                .url()
+                .refine((value) => new URL(value).protocol === "https:"),
+              subdir: z.string().trim().min(1).optional(),
+              ref: z.string().trim().min(1),
+            })
+            .strict(),
+        })
+        .strict(),
+      z
+        .object({
+          git: z
+            .object({
+              url: z
+                .url()
+                .refine((value) => new URL(value).protocol === "https:"),
+              subdir: z.string().trim().min(1).optional(),
+              range: z.string().trim().min(1),
+              tagPrefix: z.string().trim().min(1).optional(),
+            })
+            .strict(),
+        })
+        .strict(),
+    ]),
+    tags: z.array(z.string().trim().min(1)).max(10).optional(),
+    category: pluginCatalogCategoryIdSchema,
+    screenshots: z
+      .array(
+        z
+          .string()
+          .trim()
+          .min(1)
+          .refine(
+            (value) =>
+              !/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value) ||
+              value.startsWith("https:"),
+            "must be an https URL or a relative marketplace asset",
+          )
+          .refine(
+            (value) => /\.(?:png|jpe?g|webp)(?:[?#].*)?$/iu.test(value),
+            "must point at a .png, .jpg, .jpeg, or .webp file",
+          ),
+      )
+      .max(6),
+  })
+  .strict();
+export type PluginListingDraftEntry = z.infer<
+  typeof pluginListingDraftEntrySchema
+>;
+
+const marketplacePullRequestUrlSchema = z.url().refine((value) => {
+  const url = new URL(value);
+  return (
+    url.protocol === "https:" &&
+    url.hostname === "github.com" &&
+    url.port === "" &&
+    url.username === "" &&
+    url.password === "" &&
+    url.search === "" &&
+    url.hash === "" &&
+    /^\/get-bb\/marketplace\/pull\/[1-9]\d*\/?$/u.test(url.pathname)
+  );
+}, "must be a canonical https://github.com/get-bb/marketplace/pull/<number> URL");
+
+export const pluginListingLifecycleSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("not-published") }).strict(),
+  z
+    .object({
+      status: z.literal("draft"),
+      entry: pluginListingDraftEntrySchema,
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal("in-review"),
+      entry: pluginListingDraftEntrySchema,
+      pullRequest: z
+        .object({
+          url: marketplacePullRequestUrlSchema,
+          openedAt: z.number().int().nonnegative(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal("published"),
+      entryId: z.string().min(1),
+      publishedAt: z.number().int().nonnegative(),
+    })
+    .strict(),
+]);
+export type PluginListingLifecycle = z.infer<
+  typeof pluginListingLifecycleSchema
+>;
+
+export const pluginListingRecordSchema = z
+  .object({
+    pluginId: z.string().min(1),
+    authorship: z.literal("path"),
+    lifecycle: pluginListingLifecycleSchema,
+  })
+  .strict();
+export type PluginListingRecord = z.infer<typeof pluginListingRecordSchema>;
+
+const listingNoticeBase = {
+  id: z.string().min(1),
+  pluginId: z.string().min(1),
+  pluginName: z.string().min(1),
+  createdAt: z.number().int().nonnegative(),
+};
+export const pluginListingNoticeSchema = z.discriminatedUnion("kind", [
+  z.object({ ...listingNoticeBase, kind: z.literal("published") }).strict(),
+  z
+    .object({
+      ...listingNoticeBase,
+      kind: z.literal("returned"),
+      pullRequestUrl: z.url(),
+    })
+    .strict(),
+]);
+export type PluginListingNotice = z.infer<typeof pluginListingNoticeSchema>;
+
+export const pluginListingListResponseSchema = z
+  .object({
+    records: z.array(pluginListingRecordSchema),
+    notices: z.array(pluginListingNoticeSchema),
+  })
+  .strict();
+export type PluginListingListResponse = z.infer<
+  typeof pluginListingListResponseSchema
+>;
+export const pluginListingSaveDraftRequestSchema = z
+  .object({ entry: pluginListingDraftEntrySchema })
+  .strict();
+export const pluginListingRecordSubmissionRequestSchema = z
+  .object({
+    pullRequestUrl: marketplacePullRequestUrlSchema,
+    openedAt: z.number().int().nonnegative(),
+  })
+  .strict();
+export const pluginListingMutationResponseSchema = z
+  .object({ ok: z.literal(true), record: pluginListingRecordSchema })
+  .strict();
+export const pluginListingNoticeConsumeResponseSchema = z
+  .object({ ok: z.literal(true) })
+  .strict();
+
 /**
  * Which plugin of a source an install selects. A repository can hold several
  * plugins, indexed by a `.bb/plugins.json` collection manifest: "subdirectory"

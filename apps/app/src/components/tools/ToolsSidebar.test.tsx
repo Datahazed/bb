@@ -11,7 +11,9 @@ afterEach(cleanup);
 const PAGE_ROWS = [
   "Browse plugins",
   "Installed plugins",
+  "My plugins",
   "Browse skills",
+  "Installed skills",
   "My skills",
 ];
 
@@ -44,11 +46,17 @@ describe("ToolsSidebar", () => {
     expect(row("Installed plugins").getAttribute("href")).toBe(
       "/extensions/plugins?view=installed",
     );
+    expect(row("My plugins").getAttribute("href")).toBe(
+      "/extensions/plugins?view=my",
+    );
     expect(row("Browse skills").getAttribute("href")).toBe(
       "/extensions/skills",
     );
+    expect(row("Installed skills").getAttribute("href")).toBe(
+      "/extensions/skills?view=installed",
+    );
     expect(row("My skills").getAttribute("href")).toBe(
-      "/extensions/skills?view=library",
+      "/extensions/skills?view=my",
     );
     // The back row must point at the remembered app route, not merely exist.
     expect(row("Back to app").getAttribute("href")).toBe("/projects/proj_one");
@@ -57,14 +65,18 @@ describe("ToolsSidebar", () => {
   it.each([
     ["/extensions/plugins", "Browse plugins"],
     ["/extensions/plugins?view=installed", "Installed plugins"],
+    ["/extensions/plugins?view=my", "My plugins"],
     ["/extensions/plugins/github", "Browse plugins"],
     ["/extensions/plugins/github?view=installed", "Installed plugins"],
     ["/extensions/skills", "Browse skills"],
     ["/extensions/skills/registry", "Browse skills"],
-    ["/extensions/skills?view=library", "My skills"],
-    ["/extensions/skills/library/my-skill", "My skills"],
+    ["/extensions/skills?view=installed", "Installed skills"],
+    ["/extensions/skills?view=my", "My skills"],
+    ["/extensions/skills?view=library", "Installed skills"],
+    ["/extensions/skills/library/my-skill", "Installed skills"],
+    ["/extensions/skills/library/my-skill?view=my", "My skills"],
     // The pre-Library detail path still resolves during its redirect window.
-    ["/extensions/skills/installed/my-skill", "My skills"],
+    ["/extensions/skills/installed/my-skill", "Installed skills"],
     ["/extensions/skills/registry/owner%2Frepo%2Fskill", "Browse skills"],
   ])("marks exactly one active page for %s", (path, expected) => {
     renderAt(path);

@@ -29,6 +29,7 @@ import {
   pluginFrontendDiagnosticRequiresFailureBanner,
 } from "@/components/tools/PluginDetail";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import type { PluginListingLifecycle } from "@bb/server-contract";
 import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
 import type { PluginFrontendDiagnostic } from "@/lib/plugin-frontend";
 
@@ -106,6 +107,123 @@ afterEach(() => {
 });
 
 describe("PluginDetail official catalog lifecycle", () => {
+  it.each<{
+    lifecycle: PluginListingLifecycle;
+    status: string;
+    actions: string[];
+  }>([
+    {
+      lifecycle: { status: "not-published" },
+      status: "Not published",
+      actions: ["Submit"],
+    },
+    {
+      lifecycle: {
+        status: "draft",
+        entry: {
+          id: "github",
+          displayName: "GitHub",
+          description: "Draft listing description.",
+          icon: "Github",
+          author: { name: "Author" },
+          source: {
+            git: {
+              url: "https://github.com/author/github.git",
+              range: "^0.1.0",
+            },
+          },
+          category: "code-and-reviews",
+          screenshots: ["./assets/github.png"],
+        },
+      },
+      status: "Not published",
+      actions: ["Submit"],
+    },
+    {
+      lifecycle: {
+        status: "in-review",
+        entry: {
+          id: "github",
+          displayName: "GitHub",
+          description: "Draft listing description.",
+          icon: "Github",
+          author: { name: "Author" },
+          source: {
+            git: {
+              url: "https://github.com/author/github.git",
+              range: "^0.1.0",
+            },
+          },
+          category: "code-and-reviews",
+          screenshots: [],
+        },
+        pullRequest: {
+          url: "https://github.com/get-bb/marketplace/pull/214",
+          openedAt: 1,
+        },
+      },
+      status: "In review",
+      actions: ["Update submission"],
+    },
+    {
+      lifecycle: {
+        status: "published",
+        entryId: "github",
+        publishedAt: 1,
+      },
+      status: "Published",
+      actions: ["Publish update", "Edit listing"],
+    },
+  ])(
+    "shows only authored listing actions for $lifecycle.status",
+    ({ lifecycle, status, actions }) => {
+      const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+      render(
+        <MemoryRouter>
+          <QueryClientWrapper>
+            <PluginDetail
+              isLoading={false}
+              plugin={{
+                ...GITHUB_PLUGIN,
+                source: "path:/Users/you/Code/github",
+                rootDir: "/Users/you/Code/github",
+                provenance: "direct",
+                publisherLabel: null,
+              }}
+              pending={false}
+              openSourceDisabled
+              onToggle={() => {}}
+              onEdit={() => {}}
+              onOpenSource={() => {}}
+              onDelete={() => {}}
+              catalogEntry={GITHUB_CATALOG_ENTRY}
+              listingLifecycle={lifecycle}
+            />
+          </QueryClientWrapper>
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByText(status)).toBeTruthy();
+      for (const action of actions) {
+        expect(screen.getByRole("button", { name: action })).toBeTruthy();
+      }
+      for (const absent of [
+        "Submit",
+        "Update submission",
+        "Publish update",
+        "Edit listing",
+      ].filter((candidate) => !actions.includes(candidate))) {
+        expect(screen.queryByRole("button", { name: absent })).toBeNull();
+      }
+      if (lifecycle.status === "draft") {
+        expect(screen.getByText("Listing preview")).toBeTruthy();
+        expect(screen.getByText("Draft listing description.")).toBeTruthy();
+        expect(screen.getByText("Category: Code & Reviews")).toBeTruthy();
+        expect(screen.getByText("github.png")).toBeTruthy();
+      }
+    },
+  );
+
   it("offers Install from an unowned BB Official plugin detail page", () => {
     const onInstall = vi.fn();
     const { container } = render(

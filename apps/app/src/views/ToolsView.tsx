@@ -51,6 +51,7 @@ import {
   removePlugin,
   setPluginEnabled,
   usePluginList,
+  usePluginListings,
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
@@ -151,7 +152,10 @@ function ToolsSectionBody({
   activeSection: ToolsSectionId;
   authorId: string | null;
   pathname: string;
-  onOpenPlugin: (pluginId: string, view?: "browse" | "installed") => void;
+  onOpenPlugin: (
+    pluginId: string,
+    view?: "browse" | "installed" | "my",
+  ) => void;
 }) {
   if (activeSection === "skills") {
     const isCollection =
@@ -171,7 +175,10 @@ function PluginsToolView({
   onOpenPlugin,
 }: {
   authorId: string | null;
-  onOpenPlugin: (pluginId: string, view?: "browse" | "installed") => void;
+  onOpenPlugin: (
+    pluginId: string,
+    view?: "browse" | "installed" | "my",
+  ) => void;
 }) {
   return authorId === null ? (
     <ToolsScrollPage fillViewport>
@@ -210,6 +217,7 @@ function PluginDetailToolView({
   const [installTarget, setInstallTarget] =
     useState<PluginCatalogSearchEntry | null>(null);
   const listQuery = usePluginList({ enabled: true });
+  const listingsQuery = usePluginListings({ enabled: true });
   const catalogQuery = usePluginCatalogSearch(pluginId, { enabled: true });
   const allCatalogQuery = usePluginCatalogSearch("", { enabled: true });
   const plugins = useMemo(
@@ -267,6 +275,9 @@ function PluginDetailToolView({
     catalogQuery.data?.find((entry) => entry.pluginId === pluginId) ??
     allCatalogQuery.data?.find((entry) => entry.pluginId === pluginId) ??
     null;
+  const selectedListingLifecycle =
+    listingsQuery.data?.records.find((record) => record.pluginId === pluginId)
+      ?.lifecycle ?? null;
   const catalogEntries = allCatalogQuery.data ?? catalogQuery.data ?? [];
   useResourceRouteLabel(
     selectedPlugin?.name ??
@@ -340,6 +351,7 @@ function PluginDetailToolView({
         catalogEntry={selectedCatalogEntry}
         catalogEntries={catalogEntries}
         onOpenPlugin={onOpenPlugin}
+        listingLifecycle={selectedListingLifecycle}
       />
     );
   } else if (catalogQuery.isError) {
@@ -487,11 +499,12 @@ export function ToolsView() {
       : [...openedPluginIds, pluginId];
 
   const navigateToPlugin = useCallback(
-    (nextPluginId: string, view?: "browse" | "installed") => {
+    (nextPluginId: string, view?: "browse" | "installed" | "my") => {
       const nextSearch = new URLSearchParams(searchParams);
       if (panelAuthorId === null) nextSearch.delete("author");
       else nextSearch.set("author", panelAuthorId);
       if (view === "installed") nextSearch.set("view", "installed");
+      if (view === "my") nextSearch.set("view", "my");
       if (view === "browse") nextSearch.delete("view");
       const query = nextSearch.toString();
       navigate({

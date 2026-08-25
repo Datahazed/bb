@@ -82,6 +82,7 @@ import {
 } from "./marketplace-source.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "./curated-marketplace.js";
 import { marketplacePublisherLabel } from "./marketplace-publishers.js";
+import { reconcilePluginListingLifecycles } from "../plugins/plugin-listing-lifecycle.js";
 
 const MARKETPLACE_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1_000;
 
@@ -715,6 +716,15 @@ export function createPluginCatalogService(deps: {
         });
         replacePluginMarketplaceIcons(tx, row.name, icons);
       });
+      if (row.name === CURATED_MARKETPLACE_NAME) {
+        await reconcilePluginListingLifecycles({
+          db: deps.db,
+          acceptedEntryIds: new Set(catalog.plugins.map((entry) => entry.id)),
+          fetch: fetchMarketplace,
+          now,
+          ...(deps.warn === undefined ? {} : { warn: deps.warn }),
+        });
+      }
       deps.notifyCatalogChanged?.();
     } finally {
       await materialized.dispose();

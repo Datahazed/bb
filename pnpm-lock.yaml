@@ -1663,6 +1663,9 @@ importers:
       '@bb/domain':
         specifier: workspace:*
         version: link:../domain
+      '@bb/server-contract':
+        specifier: workspace:*
+        version: link:../server-contract
       better-sqlite3:
         specifier: 12.10.0
         version: 12.10.0

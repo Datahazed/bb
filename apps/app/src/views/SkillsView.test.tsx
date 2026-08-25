@@ -92,6 +92,16 @@ function LocationStateProbe() {
   );
 }
 
+function LocationPathProbe() {
+  const location = useLocation();
+  return (
+    <output data-testid="location-path">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+}
+
 function renderLibrarySkillRoute() {
   // The library names providers from the roster; stub it so the fetch spy below
   // only ever sees requests this route made for its own data.
@@ -928,6 +938,51 @@ describe("SkillsLibrary library detail routing", () => {
 });
 
 describe("SkillsLibrary registry detail lifecycle", () => {
+  it("gives Browse, Installed, and My distinct projections and preserves My on detail", async () => {
+    const userSkill = makeSkill({
+      id: `skill_${"b".repeat(64)}`,
+      name: "my-skill",
+      provider: null,
+      scope: "bb-user",
+    });
+    const bundledSkill = makeSkill({
+      id: `skill_${"c".repeat(64)}`,
+      name: "bundled-skill",
+      provider: null,
+      scope: "bb-builtin",
+      manageable: false,
+    });
+    vi.spyOn(sdk.skills, "list").mockResolvedValue({
+      skills: [userSkill, bundledSkill],
+    });
+    vi.spyOn(sdk.providers, "list").mockResolvedValue([]);
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    renderDom(
+      <MemoryRouter initialEntries={["/extensions/skills?view=installed"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route path="/extensions/skills" element={<SkillsLibrary />} />
+            <Route
+              path="/extensions/skills/library/:skillId"
+              element={<SkillsLibrary />}
+            />
+          </Routes>
+          <NavigateButton to="/extensions/skills?view=my" label="go-my" />
+          <LocationPathProbe />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("my-skill")).toBeTruthy();
+    expect(screen.getByText("bundled-skill")).toBeTruthy();
+    fireEvent.click(screen.getByText("go-my"));
+    await waitFor(() => expect(screen.queryByText("bundled-skill")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "my-skill" }));
+    expect(screen.getByTestId("location-path").textContent).toBe(
+      `/extensions/skills/library/${userSkill.id}?view=my`,
+    );
+  });
+
   it("does not offer installation when a direct registry source is unavailable", async () => {
     const registrySkill = makeRegistrySkill();
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });

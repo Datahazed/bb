@@ -17,10 +17,14 @@ import {
   RegistrySkillDetailView,
   RegistrySkillsBrowsePage,
 } from "@/components/tools/SkillsBrowse";
-import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
+import {
+  getToolsMyCollectionRoutePath,
+  getToolsOwnedCollectionRoutePath,
+} from "@/components/tools/tools-navigation";
 import {
   SkillDetailDialogView,
   SkillsOverview,
+  skillSourceFilterId,
   type ProviderRoster,
 } from "@/components/tools/SkillsCollection";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
@@ -162,10 +166,22 @@ export function SkillsLibrary() {
   const hasError = skillsQuery.isError && skillsQuery.data === undefined;
   const isLoading =
     skillsQuery.isFetching && skillsQuery.data === undefined && !hasError;
+  const collectionView = new URLSearchParams(location.search).get("view");
   const isRegistryBrowseRoute =
     location.pathname === getRegistrySkillsRoutePath() ||
     (location.pathname === getSkillsRoutePath() &&
-      new URLSearchParams(location.search).get("view") !== "library");
+      collectionView !== "library" &&
+      collectionView !== "installed" &&
+      collectionView !== "my");
+  const collectionMode = isRegistryBrowseRoute
+    ? "browse"
+    : collectionView === "my"
+      ? "my"
+      : "installed";
+  const collectionSkills =
+    collectionMode === "my"
+      ? skills.filter((skill) => skillSourceFilterId(skill) === "user")
+      : skills;
   const registryRequestPage =
     isRegistryBrowseRoute || routeRegistrySkillId !== undefined
       ? registryPage
@@ -442,13 +458,10 @@ export function SkillsLibrary() {
   );
   const openSkill = useCallback(
     (skill: SkillSummary) => {
-      navigate(
-        getSkillDetailRoutePath({
-          skillId: skill.id,
-        }),
-      );
+      const path = getSkillDetailRoutePath({ skillId: skill.id });
+      navigate(collectionMode === "my" ? `${path}?view=my` : path);
     },
-    [navigate],
+    [collectionMode, navigate],
   );
   const editSkillViaThread = useCallback(
     (skill: SkillSummary) => {
@@ -487,8 +500,12 @@ export function SkillsLibrary() {
     setRegistryPage(0);
   }, []);
   const closeSkillDetail = useCallback(() => {
-    navigate(getToolsOwnedCollectionRoutePath("skills"));
-  }, [navigate]);
+    navigate(
+      collectionView === "my"
+        ? getToolsMyCollectionRoutePath("skills")
+        : getToolsOwnedCollectionRoutePath("skills"),
+    );
+  }, [collectionView, navigate]);
   // Create via prompt: open the composer seeded with the bb-skill prompt; the
   // spawned thread authors the SKILL.md.
   const handleCreateSkill = useCallback(
@@ -587,12 +604,12 @@ export function SkillsLibrary() {
         />
       ) : (
         <SkillsOverview
-          skills={skills}
+          skills={collectionSkills}
           providerRoster={providerRoster}
           isLoading={isLoading}
           hasError={hasError}
           query={libraryQuery}
-          activeMode={isRegistryBrowseRoute ? "browse" : "library"}
+          activeMode={collectionMode}
           browseContent={
             <RegistrySkillsBrowsePage
               skills={registrySkills}

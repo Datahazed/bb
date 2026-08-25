@@ -136,6 +136,19 @@ export {
   type PluginProblemClass,
 } from "./plugins.js";
 export {
+  consumePluginListingNotice,
+  ensurePathPluginListingLifecycles,
+  getPluginListingLifecycle,
+  listInReviewPluginListingLifecycles,
+  listPathPluginListingLifecycles,
+  listPluginListingNotices,
+  publishPluginListing,
+  recordPluginListingSubmission,
+  returnPluginListingToDraft,
+  savePluginListingDraft,
+} from "./plugin-listing-lifecycles.js";
+export type { PluginListingLifecycleRow } from "./plugin-listing-lifecycles.js";
+export {
   createPluginArtifact,
   deletePluginArtifact,
   getPluginArtifactByResolution,

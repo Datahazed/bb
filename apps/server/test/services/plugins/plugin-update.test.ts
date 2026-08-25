@@ -161,7 +161,11 @@ describe("plugin update service and routes", () => {
     });
     await service.install(`git:${repo}@main`, { kind: "root" });
     app = new Hono();
-    registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
+    registerPluginRoutes(
+      app,
+      { config: { serverPort: 3334 }, db, hub: { notifySystem: vi.fn() } },
+      service,
+    );
   });
 
   afterEach(async () => {
@@ -888,7 +892,7 @@ describe("plugin update service and routes", () => {
     let clock = Date.now();
     const makeService = () =>
       createPluginService({
-      aiServices: createAiServiceRegistry(),
+        aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
         hub: {

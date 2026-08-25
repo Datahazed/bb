@@ -21,17 +21,32 @@ import {
 import { rankAcceptedAssetEncodings } from "../asset-content-encoding.js";
 import { pluginImageResponse } from "./plugin-image-response.js";
 import {
+  pluginListingRecordSubmissionRequestSchema,
+  pluginListingSaveDraftRequestSchema,
   pluginApplyUpdateRequestSchema,
   pluginInstallRequestSchema,
   pluginSettingsUpdateRequestSchema,
   pluginTokenRequestSchema,
   pluginUpdateCheckRequestSchema,
 } from "@bb/server-contract";
+import {
+  consumePluginListingNotice,
+  ensurePathPluginListingLifecycles,
+  getPluginListingLifecycle,
+  getInstalledPlugin,
+  listPathPluginListingLifecycles,
+  listPluginListingNotices,
+  recordPluginListingSubmission,
+  savePluginListingDraft,
+} from "@bb/db";
+import { parseMarketplaceManifest } from "../services/plugin-catalog/marketplace-manifest.js";
+import { parseGithubPullRequestUrl } from "../services/plugins/plugin-listing-lifecycle.js";
 
 /** The slice of server deps the "local" auth checks need (origin allowlist). */
-interface PluginRoutesDeps {
+export interface PluginRoutesDeps {
   config: Pick<ServerRuntimeConfig, "serverPort" | "appUrl" | "devAppPort">;
   db: import("@bb/db").DbConnection;
+  hub: Pick<import("../ws/hub.js").NotificationHub, "notifySystem">;
 }
 
 type WireAuthProblem = BrowserRequestProblem | { status: 401; error: string };
@@ -178,6 +193,132 @@ function notRunningError(
   return `plugin "${id}" is not running (status: ${lookup.status}${detail})`;
 }
 
+/** Typed listing boundary, split out so its authorization is testable alone. */
+export function registerPluginListingRoutes(
+  app: Hono,
+  deps: PluginRoutesDeps,
+): void {
+  const listingRecord = (pluginId: string) => {
+    const lifecycle = getPluginListingLifecycle(deps.db, pluginId);
+    if (lifecycle === undefined) return null;
+    return { pluginId, authorship: "path" as const, lifecycle };
+  };
+
+  app.get("/plugin-listings", (context) => {
+    ensurePathPluginListingLifecycles(deps.db);
+    return context.json({
+      records: listPathPluginListingLifecycles(deps.db).map((record) => ({
+        ...record,
+        authorship: "path" as const,
+      })),
+      notices: listPluginListingNotices(deps.db),
+    });
+  });
+
+  app.post("/plugin-listings/notices/:noticeId/consume", (context) => {
+    const problem = localAuthProblem(context, deps);
+    if (problem) return context.json({ error: problem.error }, problem.status);
+    consumePluginListingNotice(deps.db, context.req.param("noticeId"));
+    return context.json({ ok: true as const });
+  });
+
+  app.post("/plugins/:id/listing/draft", async (context) => {
+    const problem = localAuthProblem(context, deps);
+    if (problem) return context.json({ error: problem.error }, problem.status);
+    const pluginId = context.req.param("id");
+    const installed = getInstalledPlugin(deps.db, pluginId);
+    if (installed?.sourceKind !== "path") {
+      return context.json(
+        { error: "listing drafts require a path-installed authored plugin" },
+        403,
+      );
+    }
+    const parsed = pluginListingSaveDraftRequestSchema.safeParse(
+      await context.req.json().catch(() => null),
+    );
+    if (!parsed.success || parsed.data.entry.id !== pluginId) {
+      return context.json(
+        { error: "invalid v2 listing draft or mismatched entry id" },
+        422,
+      );
+    }
+    try {
+      parseMarketplaceManifest(
+        {
+          schemaVersion: 2,
+          name: "bb-community",
+          displayName: "BB Community",
+          newAndNotable: [],
+          plugins: [parsed.data.entry],
+        },
+        "listing draft",
+      );
+      savePluginListingDraft(deps.db, pluginId, parsed.data.entry);
+      deps.hub.notifySystem(["plugins-changed"]);
+      return context.json({
+        ok: true as const,
+        record: listingRecord(pluginId)!,
+      });
+    } catch (error) {
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        422,
+      );
+    }
+  });
+
+  app.post("/plugins/:id/listing/submission", async (context) => {
+    const problem = localAuthProblem(context, deps);
+    if (problem) return context.json({ error: problem.error }, problem.status);
+    const pluginId = context.req.param("id");
+    const installed = getInstalledPlugin(deps.db, pluginId);
+    if (installed?.sourceKind !== "path") {
+      return context.json(
+        {
+          error: "listing submissions require a path-installed authored plugin",
+        },
+        403,
+      );
+    }
+    const parsed = pluginListingRecordSubmissionRequestSchema.safeParse(
+      await context.req.json().catch(() => null),
+    );
+    const pull = parsed.success
+      ? parseGithubPullRequestUrl(parsed.data.pullRequestUrl)
+      : null;
+    if (
+      !parsed.success ||
+      pull === null ||
+      pull.owner !== "get-bb" ||
+      pull.repository !== "marketplace"
+    ) {
+      return context.json(
+        {
+          error:
+            "expected a canonical https://github.com/get-bb/marketplace/pull/<number> URL",
+        },
+        422,
+      );
+    }
+    try {
+      recordPluginListingSubmission(deps.db, pluginId, {
+        url: parsed.data.pullRequestUrl,
+        openedAt: parsed.data.openedAt,
+      });
+      deps.hub.notifySystem(["plugins-changed"]);
+      return context.json({
+        ok: true as const,
+        record: listingRecord(pluginId)!,
+      });
+    } catch (error) {
+      return context.json(
+        { error: error instanceof Error ? error.message : String(error) },
+        409,
+      );
+    }
+  });
+}
+
 /**
  * Plugin management routes plus the boot-time wire dispatchers
  * (/plugins/:id/http/* and /plugins/:id/rpc/:method). Mounted under /api/v1
@@ -193,6 +334,8 @@ export function registerPluginRoutes(
   const appAssetCompressionCache = createAppAssetCompressionCache(
     MAX_CACHED_APP_ASSETS,
   );
+
+  registerPluginListingRoutes(app, deps);
 
   app.get("/plugins", (context) => context.json({ plugins: plugins.list() }));
 

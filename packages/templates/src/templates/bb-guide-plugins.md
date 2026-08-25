@@ -213,6 +213,16 @@ added/updated/unchanged counts.
   bb plugin list                 Status, services, schedules, handler timings.
                                  `bb status` also names enabled plugins that
                                  are incompatible, failed, or missing
+  bb plugin listing list [--json]
+                                 List local path-authored plugins and their
+                                 explicit marketplace listing state
+  bb plugin listing save-draft <id> <entry-file> [--json]
+                                 Validate and persist one marketplace v2 entry
+                                 draft; this performs no marketplace write
+  bb plugin listing record-submission <id> <pull-request-url>
+                                 [--opened-at <milliseconds>] [--json]
+                                 Record the one canonical get-bb/marketplace
+                                 PR opened by the submission thread
   bb plugin source <id> [--json] Show requested/resolved source, subdirectory,
                                  semver range with its tag prefix and resolved
                                  tag, engine ranges, install time, and recent

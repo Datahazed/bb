@@ -12,6 +12,7 @@ import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { AppNavigationUrlHost } from "./lib/url-open-routing";
 import { AppFileExternalNavigationHost } from "./components/plugin/AppFileExternalNavigationHost";
+import { PluginListingNoticeHost } from "./components/plugin/PluginListingNoticeHost";
 import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
@@ -377,6 +378,7 @@ export function App() {
         <RouteNavigationProvider>
           <AppNavigationUrlHost>
             <AppFileExternalNavigationHost>
+              <PluginListingNoticeHost />
               <HashNavigationScroll />
               <Routes>
                 <Route
@@ -388,8 +390,8 @@ export function App() {
               {/* Outside <Routes>: a provider CLI install outlives the page that
                 started it, so its failure toast can be clicked from any route —
                 including auth callback, which renders no app shell. */}
-               <ProviderCliInstallLogDialogHost />
-             </AppFileExternalNavigationHost>
+              <ProviderCliInstallLogDialogHost />
+            </AppFileExternalNavigationHost>
           </AppNavigationUrlHost>
         </RouteNavigationProvider>
       </AppCommandProvider>

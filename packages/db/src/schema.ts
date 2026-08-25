@@ -385,6 +385,29 @@ export const pluginMarketplaceIcons = sqliteTable(
   (table) => [primaryKey({ columns: [table.marketplaceName, table.entryId] })],
 );
 
+/** Explicit authored-plugin listing state; JSON is a parsed discriminated union. */
+export const pluginListingLifecycles = sqliteTable(
+  "plugin_listing_lifecycles",
+  {
+    pluginId: text("plugin_id")
+      .primaryKey()
+      .references(() => installedPlugins.id, { onDelete: "cascade" }),
+    status: text("status", {
+      enum: ["not-published", "draft", "in-review", "published"],
+    }).notNull(),
+    lifecycleJson: text("lifecycle_json").notNull(),
+    noticeKind: text("notice_kind", {
+      enum: ["none", "published", "returned"],
+    })
+      .notNull()
+      .default("none"),
+    noticeId: text("notice_id").notNull().default(""),
+    noticeJson: text("notice_json").notNull().default('{"kind":"none"}'),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+);
+
 export const pluginStateSnapshots = sqliteTable(
   "plugin_state_snapshots",
   {

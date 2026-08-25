@@ -70,6 +70,7 @@ import {
   allPluginCatalogSearchQueryKeyPrefix,
   allPluginContributionsQueryKeyPrefix,
   allPluginListQueryKeyPrefix,
+  allPluginListingsQueryKeyPrefix,
   allPluginSettingsQueryKeyPrefix,
   allPluginSettingsViewQueryKeyPrefix,
   allPluginSourceQueryKeyPrefix,
@@ -1272,6 +1273,7 @@ function dirtyProjectCommandCatalogQueries(): QueryKey[] {
 function dirtyPluginManagementQueries(): QueryKey[] {
   return [
     allPluginListQueryKeyPrefix(),
+    allPluginListingsQueryKeyPrefix(),
     allPluginSettingsViewQueryKeyPrefix(),
     allPluginSettingsQueryKeyPrefix(),
     // Update/install operations change source detail and catalog search rows

@@ -214,8 +214,10 @@ Include these required fields:
 - `icon`
 - `author`
 - `source`
+- `category`
+- `screenshots` (an empty array is honest for a plugin with no visual surface)
 
-Use `tags` and `engines` when they provide useful search or compatibility data.
+Use `tags` when they provide useful search data.
 
 The `id` must match the filename and the plugin manifest ID.
 
@@ -227,7 +229,13 @@ Do not use claims such as "best," "powerful," or "easy." Describe observed behav
 
 Use up to ten specific lowercase tags. Use hyphens in tags with multiple words.
 
-Copy honest engine ranges from the plugin manifest. A marketplace entry can narrow those ranges but cannot widen them.
+Choose exactly one current marketplace category id. The category vocabulary is
+closed: never invent a category and never use `Other`. Run the marketplace
+validation before submission so a missing or stale category fails loudly.
+
+Capture listing screenshots for a visual plugin and vendor them with the
+marketplace entry. Use an empty `screenshots` array only when the plugin has no
+visual surface to show. Do not fabricate screenshots or remote image URLs.
 
 Set `author.github` to the GitHub account that opens the pull request.
 
@@ -253,16 +261,14 @@ Use this shape as a guide. Confirm every field against the current schema.
     "github": "acme",
     "url": "https://acme.example"
   },
-  "engines": {
-    "bb": ">=0.40.0",
-    "bbPluginSdk": ">=0.5.0"
-  },
   "source": {
     "git": {
       "url": "https://github.com/acme/bb-plugin-notes.git",
       "range": "^1.2.3"
     }
-  }
+  },
+  "category": "memory-and-context",
+  "screenshots": ["./screenshots/notes-overview.png"]
 }
 ```
 
@@ -370,7 +376,7 @@ Inspect the result before you commit:
 ```sh
 git status --short
 git diff --check
-git diff -- entries/PLUGIN_ID.json icons/
+git diff -- entries/PLUGIN_ID.json icons/ screenshots/
 ```
 
 Confirm these facts:
@@ -379,19 +385,36 @@ Confirm these facts:
 - The public source contains the selected release.
 - The release contains the reviewed plugin code.
 - The source subdirectory is correct.
-- The engine ranges do not exceed the plugin manifest ranges.
 - The author GitHub name matches the pull request account.
 - The description states the real user value.
+- The entry has exactly one accepted category and never uses `Other`.
+- Every screenshot is honest, vendored, and uses a supported image format; an
+  empty screenshot array means the plugin genuinely has no visual surface.
 - The icon is clear and follows the size and format rules.
 - The icon file is vendored in `icons/`, and the entry does not reference a remote icon URL.
 - `npm run build` and `npm run check` succeed.
 
+If `bb plugin listing list --json` includes this plugin id, persist the
+validated preview before opening the PR:
+
+```sh
+bb plugin listing save-draft PLUGIN_ID entries/PLUGIN_ID.json --json
+```
+
+This is the explicit `draft` event that makes the plugin's own detail page the
+listing preview. If it fails, show the reason and stop before opening the PR.
+For a plugin absent from the listing command (for example a remote install bb
+cannot positively identify as authored), continue without claiming lifecycle
+ownership.
+
 ## Open the pull request
 
-Commit only the new entry and its icon. Do not commit `dist/` or unrelated files.
+Commit only the new entry and its listing assets. Do not commit `dist/` or unrelated files.
 
 ```sh
 git add entries/PLUGIN_ID.json icons/PLUGIN_ICON
+# When the entry lists screenshots, add each exact screenshot file too:
+git add screenshots/PLUGIN_SCREENSHOTS
 git commit -m "Add plugin entry: PLUGIN_ID"
 git push -u origin submit-PLUGIN_ID
 ```
@@ -406,6 +429,17 @@ gh pr create \
   --title "Add plugin entry: PLUGIN_ID" \
   --body-file /SAFE/PATH/pr-body.md
 ```
+
+For a plugin whose draft was saved through `bb plugin listing`, immediately
+record the URL returned by `gh pr create`:
+
+```sh
+bb plugin listing record-submission PLUGIN_ID PULL_REQUEST_URL --json
+```
+
+This is the explicit `in-review` event. It records the existing PR only; it
+does not create, update, or merge one. If recording fails after the PR opened,
+return both the PR URL and the exact failure so the user can retry the command.
 
 Use only the validated plugin ID in shell arguments. Keep display names and descriptions in data files.
 

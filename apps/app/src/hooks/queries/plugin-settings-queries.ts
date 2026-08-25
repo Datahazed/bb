@@ -1,12 +1,17 @@
 import type {
   InstalledPlugin,
+  PluginListingListResponse,
   PluginSettingDescriptor,
   PluginSettingsResponse,
 } from "@bb/server-contract";
 import { pluginSettingsUpdateRequestSchema } from "@bb/server-contract";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPluginsClient } from "./plugin-client";
-import { pluginListQueryKey, pluginSettingsViewQueryKey } from "./query-keys";
+import {
+  pluginListQueryKey,
+  pluginListingsQueryKey,
+  pluginSettingsViewQueryKey,
+} from "./query-keys";
 
 type FetchLike = typeof fetch;
 
@@ -207,6 +212,31 @@ export function usePluginList(args: { enabled: boolean }) {
     queryFn: () => fetchPluginList(fetch),
     enabled: args.enabled,
     staleTime: 30_000,
+  });
+}
+
+export async function fetchPluginListings(
+  fetchImpl: FetchLike,
+): Promise<PluginListingListResponse> {
+  return createPluginsClient(fetchImpl).listings.list();
+}
+
+export function usePluginListings(args: { enabled: boolean }) {
+  return useQuery({
+    queryKey: pluginListingsQueryKey(),
+    queryFn: () => fetchPluginListings(fetch),
+    enabled: args.enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useConsumePluginListingNotice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (noticeId: string) =>
+      createPluginsClient(fetch).listings.consumeNotice({ noticeId }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: pluginListingsQueryKey() }),
   });
 }
 
