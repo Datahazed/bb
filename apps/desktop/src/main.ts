@@ -161,6 +161,7 @@ import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
 import { parseDesktopSystemConfig } from "./desktop-system-config.js";
 import { ensurePackagedUserShellPath } from "./desktop-shell-path.js";
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
+import { registerRendererHangDiagnostic } from "./desktop-renderer-hang-diagnostic.js";
 import {
   createLogTailer,
   createLogLineBuffer,
@@ -2355,9 +2356,17 @@ async function runDesktopApp(): Promise<void> {
     );
   }
 
+  const buildFacts = readDesktopAboutFacts(applicationName);
   const browserWindowCreator: DesktopBrowserWindowCreator = {
     create(options) {
-      return new BrowserWindow(options);
+      const browserWindow = new BrowserWindow(options);
+      registerRendererHangDiagnostic({
+        browserWindow,
+        build: buildFacts,
+        logDirectory: formatLogDirectory(),
+        logger,
+      });
+      return browserWindow;
     },
   };
   logViewerPreloadPath = resolvedLogViewerPreloadPath;

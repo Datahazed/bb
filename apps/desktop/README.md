@@ -292,6 +292,21 @@ BB_DESKTOP_OPEN_DEVTOOLS=1 apps/desktop/release/mac-arm64/bb.app/Contents/MacOS/
 When the desktop app spawns `bb-app`, server and daemon logs land under
 `~/.bb/logs/` or `$BB_DATA_DIR/logs/` when `BB_DATA_DIR` is set.
 
+When an application window's renderer stops responding, the main process asks
+V8 to break through the DevTools protocol and writes a
+`renderer-hang-window-<id>-<timestamp>.json` report to that same logs directory,
+then resumes the renderer and detaches. Attach the file when reporting a desktop
+hang; the `commit` field maps the minified frame locations back to source.
+
+The break lands only when the renderer next yields, so a long-but-yielding hang
+gets the top JavaScript call frames plus heap usage, working set and build
+identity. A renderer pinned in one never-returning loop (the 100%-CPU,
+Cmd+R-dead case) never reaches a break point; that report instead records a
+`timed-out` capture -- confirming a fully pinned main thread -- with the working
+set and build identity but no stack. The report path is also printed to the
+main process's stderr, so it is visible when the app is launched from a
+terminal; otherwise find the file in the logs directory.
+
 To verify attach-if-found manually, start a compatible bb first, then launch the
 desktop app:
 
