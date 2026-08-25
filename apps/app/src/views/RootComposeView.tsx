@@ -175,6 +175,7 @@ import {
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
 import { useOptionalPaneContext } from "./thread-detail/PaneContext";
+import { useNewThreadDraftLeaveToast } from "@/hooks/useNewThreadDraftLeaveToast";
 import { RootComposePanelCommandHandlers } from "./RootComposePanelCommandHandlers";
 import {
   ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
@@ -739,6 +740,10 @@ function RootComposeSurface({
     setServiceTier,
     renderPromptBox,
   } = composer;
+  useNewThreadDraftLeaveToast({
+    getCurrentDraft: promptDraft.getCurrent,
+    isSplitPane: paneContext?.isSplitPane === true,
+  });
   const rootPanelEnvironmentId =
     parsedEnvironment?.type === "reuse"
       ? parsedEnvironment.environmentId
