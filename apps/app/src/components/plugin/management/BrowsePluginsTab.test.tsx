@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { BrowsePluginsTab } from "./BrowsePluginsTab";
@@ -32,7 +38,10 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   icon: "Brain",
   iconUrl: null,
   iconTinted: false,
-  category: "Context & knowledge",
+  categoryId: "memory-and-context",
+  category: "Memory & Context",
+  screenshots: [],
+  newAndNotableRank: null,
   source: "builtin:memory",
   repositoryUrl: null,
   marketplaceDisplayName: "BB Community",
@@ -71,7 +80,8 @@ const GITHUB_ENTRY: PluginCatalogSearchEntry = {
   icon: "Github",
   iconUrl: null,
   iconTinted: false,
-  category: "Developer tools",
+  categoryId: "code-and-reviews",
+  category: "Code & Reviews",
   source: "builtin:github",
 };
 
@@ -110,9 +120,7 @@ afterEach(() => {
 });
 
 describe("BrowsePluginsTab", () => {
-  // Browse groups by marketplace only; entries render as one flat grid per
-  // marketplace, so the sort direction orders the whole group.
-  it("sorts by plugin name across the grid and reverses direction", async () => {
+  it("flattens shelves for a sort and clearing the pill restores them", async () => {
     const entries = [
       { ...MEMORY_ENTRY, displayName: "Zulu" },
       { ...GITHUB_ENTRY, displayName: "Alpha" },
@@ -148,29 +156,33 @@ describe("BrowsePluginsTab", () => {
       },
     );
 
-    expect(await screen.findByText("Alpha")).toBeTruthy();
+    expect((await screen.findAllByText("Alpha")).length).toBeGreaterThan(0);
     const cardOrder = () =>
       [
         ...document.querySelectorAll<HTMLButtonElement>(
           'button[aria-label^="Open "][aria-label$=" details"]',
         ),
       ].map((button) => button.getAttribute("aria-label"));
-    // "Middle" is the incompatible entry: hidden from Browse entirely.
-    expect(cardOrder()).toEqual(["Open Alpha details", "Open Zulu details"]);
-
-    const sortTrigger = screen.getByRole("button", {
-      name: "Sort: Plugin name, ascending",
-    });
+    const sortTrigger = screen.getByRole("button", { name: "Sort plugins" });
     expect(sortTrigger.querySelector('[data-icon="ArrowUpDown"]')).toBeTruthy();
     fireEvent.pointerDown(sortTrigger);
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Plugin name" }));
-    expect(cardOrder()).toEqual(["Open Zulu details", "Open Alpha details"]);
-    // Category never renders as a heading; it stays a filter only.
-    expect(screen.queryByText("Context & knowledge")).toBeNull();
-    expect(screen.queryByText("Developer tools")).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Name" }));
+
+    // The flat result contains each compatible plugin exactly once, in name
+    // order. The incompatible result remains hidden as before.
+    expect(cardOrder()).toEqual(["Open Alpha details", "Open Zulu details"]);
+    expect(
+      screen.getByRole("radiogroup", {
+        name: "Filter plugins by category",
+      }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Clear Name sort" }));
+    expect(screen.getByText("New & notable")).toBeTruthy();
+    expect(screen.getByText("Memory & Context")).toBeTruthy();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
   });
 
-  it("groups entries by marketplace and names third-party origins on cards", async () => {
+  it("keeps third-party origin, author, and repository facts on shelf cards", async () => {
     const entries = [
       { ...MEMORY_ENTRY, displayName: "Memory" },
       {
@@ -178,7 +190,8 @@ describe("BrowsePluginsTab", () => {
         entryId: "notes",
         pluginId: "notes",
         displayName: "Acme Notes",
-        category: "Git Tools",
+        categoryId: "code-and-reviews" as const,
+        category: "Code & Reviews",
         marketplace: "acme-plugins",
         marketplaceDisplayName: "Acme Plugins",
         publisherKey: "acme-plugins",
@@ -216,18 +229,13 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    await screen.findByText("Acme Notes");
-    // Two marketplaces, so each group names itself and the third-party one
-    // says what it is.
-    expect(screen.getByText("BB Official")).toBeTruthy();
-    expect(screen.getAllByText("Acme Plugins").length).toBeGreaterThan(0);
-    expect(screen.getByText("third-party marketplace")).toBeTruthy();
-    // Cards carry the author with the "By:" prefix.
-    expect(screen.getByText("By: Acme")).toBeTruthy();
+    await screen.findAllByText("Acme Notes");
+    expect(screen.getAllByText(/Acme Plugins/u).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("By: Acme").length).toBeGreaterThan(0);
     // The card links the repository; a bundled entry has none to link.
-    const repositoryLink = screen.getByRole("link", {
+    const repositoryLink = screen.getAllByRole("link", {
       name: "Open Acme Notes repository",
-    });
+    })[0]!;
     expect(repositoryLink.getAttribute("href")).toBe(
       "https://github.com/acme/notes",
     );
@@ -236,23 +244,101 @@ describe("BrowsePluginsTab", () => {
     ).toBeNull();
   });
 
-  it("keeps a marketplace that copies a publisher label in its own group", async () => {
+  it("orders shelves by count, shows real counts, and View all owns a URL", async () => {
+    const entries = Array.from(
+      { length: CATALOG_STATUS.pluginCount },
+      (_, index) => ({
+        ...MEMORY_ENTRY,
+        entryId: `official-${index + 1}`,
+        pluginId: `official-${index + 1}`,
+        displayName: `Official ${index + 1}`,
+        categoryId:
+          index < 8
+            ? ("memory-and-context" as const)
+            : ("code-and-reviews" as const),
+        category: index < 8 ? "Memory & Context" : "Code & Reviews",
+      }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({ results: entries });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    function LocationProbe() {
+      return <span data-testid="location">{useLocation().search}</span>;
+    }
+    render(
+      <MemoryRouter>
+        <LocationProbe />
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    await screen.findAllByText("Official 1");
+    const memoryHeading = screen.getByText("Memory & Context");
+    const codeHeading = screen.getByText("Code & Reviews");
+    expect(
+      memoryHeading.compareDocumentPosition(codeHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText("· 8")).toBeTruthy();
+    expect(screen.getByText("· 5")).toBeTruthy();
+
+    const memoryShelf = memoryHeading.closest("section");
+    if (memoryShelf === null) throw new Error("Memory shelf missing");
+    fireEvent.click(
+      within(memoryShelf).getByRole("button", { name: /View all/ }),
+    );
+    expect(screen.getByTestId("location").textContent).toBe(
+      "?category=memory-and-context",
+    );
+    expect(screen.getByText("· 8 plugins")).toBeTruthy();
+    expect(
+      screen.getAllByRole("button", { name: /^Open Official .* details$/u }),
+    ).toHaveLength(8);
+  });
+
+  it("sorts and filters the flat grid while hiding absent card statistics", async () => {
     const entries = [
-      { ...MEMORY_ENTRY, displayName: "Memory" },
       {
         ...MEMORY_ENTRY,
-        entryId: "notes",
-        pluginId: "notes",
-        displayName: "Acme Notes",
-        marketplace: "acme-plugins",
-        marketplaceDisplayName: "BB Official",
-        // The manifest names itself, so a third-party marketplace can claim a
-        // BB label. The server refuses it; grouping must not restore it by
-        // keying on the label the entry carries.
-        publisherKey: "acme-plugins",
-        publisherLabel: "acme-plugins",
-        official: false,
-        author: { name: "Acme", url: "https://github.com/acme" },
+        entryId: "unknown",
+        pluginId: "unknown",
+        displayName: "Unknown metrics",
+      },
+      {
+        ...MEMORY_ENTRY,
+        entryId: "popular",
+        pluginId: "popular",
+        displayName: "Popular",
+        installCount: 1_204,
+        publishedAt: "2026-08-20T09:30:00Z",
+        updatedAt: "2026-08-24T09:30:00Z",
+      },
+      {
+        ...GITHUB_ENTRY,
+        entryId: "reviewer",
+        pluginId: "reviewer",
+        displayName: "Reviewer",
+        installCount: 40,
+        publishedAt: "2026-08-24T09:30:00Z",
       },
     ];
     vi.stubGlobal(
@@ -272,6 +358,60 @@ describe("BrowsePluginsTab", () => {
     );
 
     const { wrapper } = createQueryClientTestHarness();
+    const { container } = render(
+      <MemoryRouter initialEntries={["/?sort=most-installed"]}>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    await screen.findByText("Popular");
+    const cardOrder = () =>
+      [
+        ...container.querySelectorAll<HTMLButtonElement>(
+          'button[aria-label^="Open "][aria-label$=" details"]',
+        ),
+      ].map((button) => button.getAttribute("aria-label"));
+    expect(cardOrder()).toEqual([
+      "Open Popular details",
+      "Open Reviewer details",
+      "Open Unknown metrics details",
+    ]);
+    expect(screen.getByLabelText("1,204 installs")).toBeTruthy();
+    expect(container.querySelector('[aria-label^="Updated "]')).not.toBeNull();
+    const unknownCard = screen
+      .getByRole("button", { name: "Open Unknown metrics details" })
+      .closest("div");
+    expect(unknownCard?.querySelector('[aria-label$=" installs"]')).toBeNull();
+    expect(unknownCard?.querySelector('[aria-label^="Updated "]')).toBeNull();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Code & Reviews" }));
+    expect(cardOrder()).toEqual(["Open Reviewer details"]);
+    fireEvent.click(screen.getByRole("radio", { name: "All" }));
+    expect(cardOrder()).toHaveLength(3);
+  });
+
+  it("only offers Most installed when the catalog supplies a count", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({ results: [MEMORY_ENTRY] });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>
         <BrowsePluginsTab
@@ -283,24 +423,18 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    await screen.findByText("Acme Notes");
-    // Two groups, and the third-party one keeps its note. Merging would have
-    // hidden that note and lent the entry BB's badge.
-    expect(screen.getByText("BB Official")).toBeTruthy();
-    expect(screen.getByText("third-party marketplace")).toBeTruthy();
+    await screen.findAllByText("Memory");
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Sort plugins" }));
+    expect(
+      screen.getByRole("menuitem", { name: "Recently added" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Name" })).toBeTruthy();
+    expect(
+      screen.queryByRole("menuitem", { name: "Most installed" }),
+    ).toBeNull();
   });
 
-  it("renders every catalog entry once and filters the grid by category", async () => {
-    const entries = Array.from(
-      { length: CATALOG_STATUS.pluginCount },
-      (_, index) => ({
-        ...MEMORY_ENTRY,
-        entryId: `official-${index + 1}`,
-        pluginId: `official-${index + 1}`,
-        displayName: `Official ${index + 1}`,
-        category: index % 2 === 0 ? "Context & knowledge" : "Developer tools",
-      }),
-    );
+  it("keeps Most installed available when filtered results omit counts", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
@@ -308,7 +442,21 @@ describe("BrowsePluginsTab", () => {
           return jsonResponse({ catalog: CATALOG_STATUS });
         }
         if (url === "/api/v1/plugin-catalog/search?q=") {
-          return jsonResponse({ results: entries });
+          return jsonResponse({
+            results: [{ ...MEMORY_ENTRY, installCount: 12 }],
+          });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=unknown") {
+          return jsonResponse({
+            results: [
+              {
+                ...GITHUB_ENTRY,
+                entryId: "unknown-count",
+                pluginId: "unknown-count",
+                displayName: "Unknown search result",
+              },
+            ],
+          });
         }
         if (url === "/api/v1/plugins") {
           return jsonResponse({ enabled: true, plugins: [] });
@@ -316,9 +464,8 @@ describe("BrowsePluginsTab", () => {
         return jsonResponse({ error: "not found" }, 404);
       }),
     );
-
     const { wrapper } = createQueryClientTestHarness();
-    const { container } = render(
+    render(
       <MemoryRouter>
         <BrowsePluginsTab
           onInstall={() => {}}
@@ -329,45 +476,15 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    // An open Radix menu marks the grid aria-hidden, so count cards in the DOM.
-    const cardCount = () =>
-      container.querySelectorAll('[aria-label^="Open Official "]').length;
-
-    expect(await screen.findByText("Official 1")).toBeTruthy();
-    expect(cardCount()).toBe(CATALOG_STATUS.pluginCount);
-    // Category is a toolbar multi-select, not a pill row, so the browse page
-    // keeps one flush content band.
+    await screen.findAllByText("Memory");
+    fireEvent.change(screen.getByRole("textbox", { name: "Search plugins" }), {
+      target: { value: "unknown" },
+    });
+    await screen.findAllByText("Unknown search result");
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Sort plugins" }));
     expect(
-      screen.queryByRole("radiogroup", { name: "Filter plugins by category" }),
-    ).toBeNull();
-    const categoryTrigger = screen.getByRole("button", { name: "Category" });
-    fireEvent.pointerDown(categoryTrigger);
-    // No explicit "All" row: an empty selection already means every category.
-    expect(screen.queryByRole("menuitemcheckbox", { name: "All" })).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "Developer tools" }),
-    );
-    expect(cardCount()).toBe(6);
-    expect(
-      container.querySelector('[aria-label="Open Official 1 details"]'),
-    ).toBeNull();
-
-    // Selections accumulate rather than replace.
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "Context & knowledge" }),
-    );
-    expect(cardCount()).toBe(CATALOG_STATUS.pluginCount);
-
-    // Clearing every category returns to unfiltered, not empty.
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "Developer tools" }),
-    );
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "Context & knowledge" }),
-    );
-    expect(cardCount()).toBe(CATALOG_STATUS.pluginCount);
-    expect(screen.queryByText("BB Official plugins")).toBeNull();
+      screen.getByRole("menuitem", { name: "Most installed" }),
+    ).toBeTruthy();
   });
 
   it("shows the official plugins and entries", async () => {
@@ -403,8 +520,10 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    expect(await screen.findByText("Memory")).toBeTruthy();
-    const memoryCard = (await screen.findByText("Memory")).closest("div");
+    expect((await screen.findAllByText("Memory")).length).toBeGreaterThan(0);
+    const memoryCard = (await screen.findAllByText("Memory"))[0]!.closest(
+      "div",
+    );
     expect(memoryCard).not.toBeNull();
     // Scoped to the card on purpose: INCOMPATIBLE_ENTRY spreads MEMORY_ENTRY
     // and inherits its Brain icon, so a document-wide lookup passes even when
@@ -418,17 +537,19 @@ describe("BrowsePluginsTab", () => {
     expect(
       screen.getAllByText(MEMORY_ENTRY.description).length,
     ).toBeGreaterThan(0);
-    expect(screen.getByText(GITHUB_ENTRY.description)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Category" })).toBeTruthy();
-    // The catalog grid stays flat — no per-source section heading above it.
-    // The discovery hero's own heading sits above the results and is expected.
+    expect(
+      screen.getAllByText(GITHUB_ENTRY.description).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("button", { name: "Filter plugins by category" }),
+    ).toBeTruthy();
     expect(
       screen.queryByRole("heading", { name: /BB Official plugins/i }),
     ).toBeNull();
-    expect(screen.getByRole("heading", { level: 2 }).textContent).toContain(
-      "Turn bb into",
-    );
-    expect(screen.getByRole("button", { name: "Install Memory" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /Turn bb into/u })).toBeTruthy();
+    expect(
+      screen.getAllByRole("button", { name: "Install Memory" }).length,
+    ).toBeGreaterThan(0);
     expect(screen.queryByText("BB Official plugins")).toBeNull();
 
     expect(screen.queryByText(MEMORY_ENTRY.source)).toBeNull();
@@ -443,7 +564,9 @@ describe("BrowsePluginsTab", () => {
     // The remote-catalog Refresh action is gone: plugins ship with the app.
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
 
-    const install = screen.getByRole("button", { name: "Install Memory" });
+    const install = screen.getAllByRole("button", {
+      name: "Install Memory",
+    })[0]!;
     expect(install.querySelector('[data-icon="Download"]')).not.toBeNull();
     fireEvent.pointerMove(install);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
@@ -461,7 +584,7 @@ describe("BrowsePluginsTab", () => {
       source: "builtin:memory",
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Open Memory details" }),
+      screen.getAllByRole("button", { name: "Open Memory details" })[0]!,
     );
     expect(onOpenPlugin).toHaveBeenCalledWith("memory");
   });
@@ -506,7 +629,7 @@ describe("BrowsePluginsTab", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    expect(await screen.findByText("Memory")).toBeTruthy();
+    expect((await screen.findAllByText("Memory")).length).toBeGreaterThan(0);
     expect(searchAttempts).toBe(2);
   });
 
@@ -545,9 +668,9 @@ describe("BrowsePluginsTab", () => {
       { wrapper },
     );
 
-    const installed = await screen.findByRole("button", {
-      name: "Uninstall Memory",
-    });
+    const installed = (
+      await screen.findAllByRole("button", { name: "Uninstall Memory" })
+    )[0]!;
     fireEvent.pointerMove(installed);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Installed — uninstall Memory",
@@ -590,7 +713,7 @@ describe("BrowsePluginsTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Open Memory details" }),
+      screen.getAllByRole("button", { name: "Open Memory details" })[0]!,
     );
     expect(onOpenPlugin).toHaveBeenCalledWith("memory");
   });
@@ -648,10 +771,12 @@ describe("BrowsePluginsTab", () => {
     );
 
     expect(
-      await screen.findByRole("button", { name: "Uninstall Docs" }),
-    ).toBeTruthy();
+      (await screen.findAllByRole("button", { name: "Uninstall Docs" })).length,
+    ).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Docs details" }));
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Open Docs details" })[0]!,
+    );
     expect(onOpenPlugin).toHaveBeenCalledWith("simple-notes");
   });
 
@@ -686,8 +811,9 @@ describe("BrowsePluginsTab", () => {
 
     // Default state: search + catalog, no example cards anywhere.
     expect(
-      await screen.findByRole("button", { name: "Open Memory details" }),
-    ).toBeTruthy();
+      (await screen.findAllByRole("button", { name: "Open Memory details" }))
+        .length,
+    ).toBeGreaterThan(0);
     expect(
       screen.getByRole("textbox", { name: "Search plugins" }),
     ).toBeTruthy();

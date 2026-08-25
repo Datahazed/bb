@@ -574,7 +574,7 @@ export function ResourceBrowseCard({
         </span>
       ) : null}
       {footerMeta ? (
-        <span className="pointer-events-none relative col-start-2 row-start-3 flex min-h-4 items-center justify-end text-right">
+        <span className="pointer-events-none relative col-start-2 row-start-3 flex min-h-4 min-w-0 items-center justify-end text-right">
           {footerMeta}
         </span>
       ) : null}

@@ -323,6 +323,9 @@ const marketplaceEntryV2Schema = z
       .array(screenshotUrlSchema)
       .max(MARKETPLACE_MAX_SCREENSHOTS)
       .optional(),
+    installCount: z.number().int().nonnegative().optional(),
+    publishedAt: z.iso.datetime({ offset: true }).optional(),
+    updatedAt: z.iso.datetime({ offset: true }).optional(),
   })
   .strict();
 
@@ -405,7 +408,12 @@ export type MarketplaceEntryV1 = MarketplaceManifestV1["plugins"][number];
 export type MarketplaceEntryV2 = MarketplaceManifestV2["plugins"][number];
 /** Common internal view; v1 entries have no discovery fields. */
 export type MarketplaceEntry = MarketplaceEntryV1 &
-  Partial<Pick<MarketplaceEntryV2, "category" | "screenshots">>;
+  Partial<
+    Pick<
+      MarketplaceEntryV2,
+      "category" | "screenshots" | "installCount" | "publishedAt" | "updatedAt"
+    >
+  >;
 
 /** V1 has no curated discovery shelf. */
 export function marketplaceNewAndNotable(

@@ -79,5 +79,53 @@ describe("plugin catalog contracts", () => {
       screenshots: [],
       newAndNotableRank: null,
     });
+    expect(parsed).not.toHaveProperty("installCount");
+    expect(parsed).not.toHaveProperty("publishedAt");
+    expect(parsed).not.toHaveProperty("updatedAt");
+  });
+
+  it("preserves only valid supplied catalog discovery statistics", () => {
+    const requiredFields = {
+      entryId: "notes",
+      pluginId: "notes",
+      displayName: "Notes",
+      description: "Notes",
+      icon: null,
+      iconUrl: null,
+      source: "builtin:notes",
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      publisherKey: "builtin",
+      publisherLabel: "BB Official",
+      official: true,
+      author: null,
+      installed: false,
+      compatible: true,
+      incompatibleReason: null,
+    };
+    expect(
+      pluginCatalogSearchResultSchema.parse({
+        ...requiredFields,
+        installCount: 0,
+        publishedAt: "2026-08-20T09:30:00Z",
+        updatedAt: "2026-08-24T16:45:00+02:00",
+      }),
+    ).toMatchObject({
+      installCount: 0,
+      publishedAt: "2026-08-20T09:30:00Z",
+      updatedAt: "2026-08-24T16:45:00+02:00",
+    });
+    expect(() =>
+      pluginCatalogSearchResultSchema.parse({
+        ...requiredFields,
+        installCount: -1,
+      }),
+    ).toThrow();
+    expect(() =>
+      pluginCatalogSearchResultSchema.parse({
+        ...requiredFields,
+        publishedAt: "not-a-date",
+      }),
+    ).toThrow();
   });
 });

@@ -364,6 +364,9 @@ describe("plugin catalog service", () => {
                   [
                     remoteEntry({
                       screenshots: ["./screenshots/widgets.png"],
+                      installCount: 1_204,
+                      publishedAt: "2026-08-20T09:30:00Z",
+                      updatedAt: "2026-08-24T16:45:00+02:00",
                     }),
                     remoteEntry({
                       id: "later-entry",
@@ -393,15 +396,20 @@ describe("plugin catalog service", () => {
           "https://marketplace.test/marketplace/v2/screenshots/widgets.png",
         ],
         newAndNotableRank: 0,
+        installCount: 1_204,
+        publishedAt: "2026-08-20T09:30:00Z",
+        updatedAt: "2026-08-24T16:45:00+02:00",
       });
-      expect(await catalog.search("later-entry")).toMatchObject([
-        {
-          categoryId: "other",
-          category: "Other",
-          screenshots: [],
-          newAndNotableRank: null,
-        },
-      ]);
+      const [laterEntry] = await catalog.search("later-entry");
+      expect(laterEntry).toMatchObject({
+        categoryId: "other",
+        category: "Other",
+        screenshots: [],
+        newAndNotableRank: null,
+      });
+      expect(laterEntry).not.toHaveProperty("installCount");
+      expect(laterEntry).not.toHaveProperty("publishedAt");
+      expect(laterEntry).not.toHaveProperty("updatedAt");
     });
 
     it("falls back to immutable v1 only when v2 is missing", async () => {

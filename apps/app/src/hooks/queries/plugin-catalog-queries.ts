@@ -233,7 +233,13 @@ export interface PluginCatalogSearchEntry {
   iconUrl: string | null;
   /** Mask `iconUrl` with the text color instead of showing its own colors. */
   iconTinted: boolean;
+  categoryId: SdkPluginCatalogSearchResult["categoryId"];
   category: string;
+  screenshots: string[];
+  newAndNotableRank: number | null;
+  installCount?: number;
+  publishedAt?: string;
+  updatedAt?: string;
   source: string;
   /** Public repository or package page of the entry's code; null when none. */
   repositoryUrl: string | null;
@@ -262,7 +268,17 @@ function toPluginCatalogSearchEntry(
     icon: data.icon,
     iconUrl: data.iconUrl,
     iconTinted: data.iconTinted,
+    categoryId: data.categoryId,
     category: data.category,
+    screenshots: data.screenshots,
+    newAndNotableRank: data.newAndNotableRank,
+    ...(data.installCount === undefined
+      ? {}
+      : { installCount: data.installCount }),
+    ...(data.publishedAt === undefined
+      ? {}
+      : { publishedAt: data.publishedAt }),
+    ...(data.updatedAt === undefined ? {} : { updatedAt: data.updatedAt }),
     source: data.source,
     repositoryUrl: data.repositoryUrl,
     marketplace: data.marketplace,

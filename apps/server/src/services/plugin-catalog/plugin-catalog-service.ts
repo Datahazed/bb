@@ -532,6 +532,13 @@ export function createPluginCatalogService(deps: {
       category: category.displayName,
       screenshots: entryScreenshotUrls(entry, screenshotBase),
       newAndNotableRank: notableIndex < 0 ? null : notableIndex,
+      ...(entry.installCount === undefined
+        ? {}
+        : { installCount: entry.installCount }),
+      ...(entry.publishedAt === undefined
+        ? {}
+        : { publishedAt: entry.publishedAt }),
+      ...(entry.updatedAt === undefined ? {} : { updatedAt: entry.updatedAt }),
       source: entrySourceDisplay(entry),
       repositoryUrl: entryRepositoryUrl(entry),
       marketplace: row.name,

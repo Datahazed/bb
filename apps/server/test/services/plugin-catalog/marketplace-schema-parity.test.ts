@@ -33,7 +33,13 @@ async function compilePublishedSchema(
   const schema = publishedSchemaSchema.parse(
     JSON.parse(await readFile(path, "utf8")),
   );
-  return new Ajv2020({ strict: false }).compile(schema);
+  const ajv = new Ajv2020({ strict: false });
+  ajv.addFormat("date-time", {
+    type: "string",
+    validate: (value: string) =>
+      z.iso.datetime({ offset: true }).safeParse(value).success,
+  });
+  return ajv.compile(schema);
 }
 
 function manifestV2With(
@@ -221,6 +227,35 @@ const v2Fixtures: readonly Fixture[] = [
         "https://cdn.example.com/acme-dark.webp",
       ],
     }),
+  },
+  {
+    label: "registry discovery statistics",
+    valid: true,
+    manifest: manifestV2With({
+      installCount: 1_204,
+      publishedAt: "2026-08-20T09:30:00Z",
+      updatedAt: "2026-08-24T16:45:00+02:00",
+    }),
+  },
+  {
+    label: "negative install count",
+    valid: false,
+    manifest: manifestV2With({ installCount: -1 }),
+  },
+  {
+    label: "fractional install count",
+    valid: false,
+    manifest: manifestV2With({ installCount: 1.5 }),
+  },
+  {
+    label: "invalid published timestamp",
+    valid: false,
+    manifest: manifestV2With({ publishedAt: "yesterday" }),
+  },
+  {
+    label: "invalid updated timestamp",
+    valid: false,
+    manifest: manifestV2With({ updatedAt: "2026-02-30T09:30:00Z" }),
   },
   {
     label: "omitted discovery fields",

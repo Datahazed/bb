@@ -465,6 +465,12 @@ export const pluginCatalogSearchResultSchema = z.object({
   screenshots: z.array(z.string()).default([]),
   /** Zero-based position in the manifest's curated shelf, or null when absent. */
   newAndNotableRank: z.number().int().nonnegative().nullable().default(null),
+  /** Registry-supplied lifetime installs. Omitted when the registry has no count. */
+  installCount: z.number().int().nonnegative().optional(),
+  /** First publication time supplied by marketplace v2. */
+  publishedAt: z.iso.datetime({ offset: true }).optional(),
+  /** Latest matching release time supplied by marketplace v2. */
+  updatedAt: z.iso.datetime({ offset: true }).optional(),
   source: z.string(),
   /**
    * Where a person can read the plugin's code before an install: the git

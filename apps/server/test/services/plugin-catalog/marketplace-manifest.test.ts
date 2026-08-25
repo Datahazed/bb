@@ -103,6 +103,9 @@ describe("marketplace manifest schema", () => {
               "./screenshots/widgets.png",
               "https://cdn.example/widgets-dark.webp",
             ],
+            installCount: 1_204,
+            publishedAt: "2026-08-20T09:30:00Z",
+            updatedAt: "2026-08-24T16:45:00+02:00",
             tags: ["interface", "threads"],
             author: {
               name: "Acme",
@@ -116,7 +119,16 @@ describe("marketplace manifest schema", () => {
       "manifest",
     );
     expect(parsed.plugins).toHaveLength(1);
-    expect(parsed).toMatchObject({ newAndNotable: ["widgets"] });
+    expect(parsed).toMatchObject({
+      newAndNotable: ["widgets"],
+      plugins: [
+        {
+          installCount: 1_204,
+          publishedAt: "2026-08-20T09:30:00Z",
+          updatedAt: "2026-08-24T16:45:00+02:00",
+        },
+      ],
+    });
   });
 
   it("keeps old schemaVersion 1 entries valid without discovery fields", () => {
@@ -177,6 +189,17 @@ describe("marketplace manifest schema", () => {
         ),
       }),
     ).toThrow();
+  });
+
+  it("keeps registry statistics optional and validates every supplied value", () => {
+    const parseV2 = (overrides: Record<string, unknown>) =>
+      parseMarketplaceManifest(manifestV2([entryV2(overrides)]), "manifest");
+
+    expect(parseV2({}).plugins[0]).not.toHaveProperty("installCount");
+    expect(() => parseV2({ installCount: -1 })).toThrow();
+    expect(() => parseV2({ installCount: 1.5 })).toThrow();
+    expect(() => parseV2({ publishedAt: "yesterday" })).toThrow();
+    expect(() => parseV2({ updatedAt: "2026-02-30T09:30:00Z" })).toThrow();
   });
 
   it("validates New & notable ids and order", () => {
