@@ -1,0 +1,83 @@
+{
+  "candidate": "bc30d52cc3688b062876679bf7e34ca27d04d65f",
+  "browser": "Safari 26.5.2",
+  "highlightChecks": [
+    {
+      "id": "composer-plus-menu",
+      "target": {
+        "right": 436.1554260253906,
+        "top": 614.8911743164062,
+        "left": 398.6424865722656,
+        "bottom": 652.4041748046875
+      },
+      "highlight": {
+        "right": 436.1554260253906,
+        "top": 614.8911743164062,
+        "left": 398.6424865722656,
+        "bottom": 652.4041748046875
+      },
+      "box": {
+        "right": 1033.5491943359375,
+        "top": 542.6787719726562,
+        "left": 390.20208740234375,
+        "bottom": 660.8445434570312
+      }
+    },
+    {
+      "id": "provider-picker",
+      "target": {
+        "right": 587.1450805664062,
+        "top": 587.8911743164062,
+        "left": 439.90673828125,
+        "bottom": 625.4041748046875
+      },
+      "highlight": {
+        "right": 587.1450805664062,
+        "top": 587.8911743164062,
+        "left": 439.90673828125,
+        "bottom": 625.4041748046875
+      },
+      "box": {
+        "right": 1033.5491943359375,
+        "top": 515.6787719726562,
+        "left": 390.20208740234375,
+        "bottom": 633.8445434570312
+      }
+    },
+    {
+      "id": "composer-actions",
+      "target": {
+        "right": 950.0828857421875,
+        "top": 547.766845703125,
+        "left": 916.3212280273438,
+        "bottom": 581.5285034179688
+      },
+      "highlight": {
+        "right": 950.0828857421875,
+        "top": 547.766845703125,
+        "left": 916.3212280273438,
+        "bottom": 581.5285034179688
+      },
+      "box": {
+        "right": 1033.5491943359375,
+        "top": 473.6787414550781,
+        "left": 390.20208740234375,
+        "bottom": 591.8445434570312
+      }
+    }
+  ],
+  "fit": {
+    "innerWidth": 1100,
+    "innerHeight": 928,
+    "documentClientWidth": 1100,
+    "documentScrollWidth": 1100
+  },
+  "pluginDetail": {
+    "heading": "bb Plugin Guide",
+    "href": "http://localhost:17867/extensions/plugins/plugin-api-docs",
+    "detailSections": 3
+  },
+  "highlightScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-composer-highlights-safari-bc30d52cc3688b062876679bf7e34ca27d04d65f.png",
+  "pluginDetailScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-fullwindow-plugin-detail-safari-bc30d52cc3688b062876679bf7e34ca27d04d65f.png",
+  "result": "PASS"
+}

@@ -1,0 +1,449 @@
+{
+  "candidate": "bc30d52cc3688b062876679bf7e34ca27d04d65f",
+  "browser": "Safari 26.5.2",
+  "checkpoint": "plugin-guide-tab-overlay",
+  "states": [
+    {
+      "label": "normal-desktop",
+      "requestedWindow": {
+        "width": 1440,
+        "height": 1000
+      },
+      "cycles": 5,
+      "elapsedMs": 4292,
+      "before": {
+        "stripAlignItems": "center",
+        "annotations": {
+          "code-renderers": {
+            "intersects": false,
+            "clearance": 13.933334350585938,
+            "placement": "outside-before",
+            "hitTest": true,
+            "target": {
+              "left": 1094.4888916015625,
+              "right": 1140.07568359375,
+              "top": 231.8222198486328,
+              "height": 23.644439697265625,
+              "width": 45.5867919921875,
+              "bottom": 255.46665954589844
+            },
+            "badge": {
+              "left": 1108.831298828125,
+              "right": 1125.7200927734375,
+              "top": 201,
+              "height": 16.888885498046875,
+              "width": 16.8887939453125,
+              "bottom": 217.88888549804688
+            }
+          },
+          "thread-panel": {
+            "intersects": false,
+            "clearance": 13.933334350585938,
+            "placement": "outside-before",
+            "hitTest": true,
+            "target": {
+              "left": 1145.142333984375,
+              "right": 1213.951416015625,
+              "top": 231.8222198486328,
+              "height": 23.644439697265625,
+              "width": 68.80908203125,
+              "bottom": 255.46665954589844
+            },
+            "badge": {
+              "left": 1171.0958251953125,
+              "right": 1187.9847412109375,
+              "top": 201,
+              "height": 16.888885498046875,
+              "width": 16.888916015625,
+              "bottom": 217.88888549804688
+            }
+          },
+          "file-opener": {
+            "intersects": false,
+            "clearance": 13.933334350585938,
+            "placement": "outside-before",
+            "hitTest": true,
+            "target": {
+              "left": 1219.01806640625,
+              "right": 1319.071533203125,
+              "top": 231.8222198486328,
+              "height": 23.644439697265625,
+              "width": 100.053466796875,
+              "bottom": 255.46665954589844
+            },
+            "badge": {
+              "left": 1260.59375,
+              "right": 1277.482666015625,
+              "top": 201,
+              "height": 16.888885498046875,
+              "width": 16.888916015625,
+              "bottom": 217.88888549804688
+            }
+          }
+        },
+        "strip": {
+          "left": 1057.3333740234375,
+          "right": 1377.3778076171875,
+          "top": 223.8000030517578,
+          "height": 40.53334045410156,
+          "width": 320.04443359375,
+          "bottom": 264.3333435058594
+        },
+        "viewport": {
+          "width": 1440,
+          "height": 948
+        },
+        "scale": 0.8444
+      },
+      "after": {
+        "stripAlignItems": "center",
+        "annotations": {
+          "code-renderers": {
+            "intersects": false,
+            "clearance": 13.933334350585938,
+            "placement": "outside-before",
+            "hitTest": true,
+            "target": {
+              "left": 1094.4888916015625,
+              "right": 1140.07568359375,
+              "top": 231.8222198486328,
+              "height": 23.644439697265625,
+              "width": 45.5867919921875,
+              "bottom": 255.46665954589844
+            },
+            "badge": {
+              "left": 1108.831298828125,
+              "right": 1125.7200927734375,
+              "top": 201,
+              "height": 16.888885498046875,
+              "width": 16.8887939453125,
+              "bottom": 217.88888549804688
+            }
+          },
+          "thread-panel": {
+            "intersects": false,
+            "clearance": 13.933334350585938,
+            "placement": "outside-before",
+            "hitTest": true,
+            "target": {
+              "left": 1145.142333984375,
+              "right": 1213.951416015625,
+              "top": 231.8222198486328,
+              "height": 23.644439697265625,
+              "width": 68.80908203125,
+              "bottom": 255.46665954589844
+            },
+            "badge": {
+              "left": 1171.0958251953125,
+              "right": 1187.9847412109375,
+              "top": 201,
+              "height": 16.888885498046875,
+              "width": 16.888916015625,
+              "bottom": 217.88888549804688
+            }
+          },
+          "file-opener": {
+            "intersects": false,
+            "clearance": 13.933334350585938,
+            "placement": "outside-before",
+            "hitTest": true,
+            "target": {
+              "left": 1219.01806640625,
+              "right": 1319.071533203125,
+              "top": 231.8222198486328,
+              "height": 23.644439697265625,
+              "width": 100.053466796875,
+              "bottom": 255.46665954589844
+            },
+            "badge": {
+              "left": 1260.59375,
+              "right": 1277.482666015625,
+              "top": 201,
+              "height": 16.888885498046875,
+              "width": 16.888916015625,
+              "bottom": 217.88888549804688
+            }
+          }
+        },
+        "strip": {
+          "left": 1057.3333740234375,
+          "right": 1377.3778076171875,
+          "top": 223.8000030517578,
+          "height": 40.53334045410156,
+          "width": 320.04443359375,
+          "bottom": 264.3333435058594
+        },
+        "viewport": {
+          "width": 1440,
+          "height": 948
+        },
+        "scale": 0.8444
+      },
+      "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-tab-overlay-normal-desktop-safari-bc30d52cc3688b062876679bf7e34ca27d04d65f.png"
+    },
+    {
+      "label": "small-narrow",
+      "requestedWindow": {
+        "width": 900,
+        "height": 900
+      },
+      "cycles": 5,
+      "elapsedMs": 4477,
+      "before": {
+        "stripAlignItems": "center",
+        "annotations": {
+          "code-renderers": {
+            "intersects": false,
+            "clearance": 6.861907958984375,
+            "placement": "outside-before",
+            "hitTest": true,
+            "target": {
+              "left": 715.6317749023438,
+              "right": 738.0823974609375,
+              "top": 241.1793670654297,
+              "height": 11.644439697265625,
+              "width": 22.45062255859375,
+              "bottom": 252.8238067626953
+            },
+            "badge": {
+              "left": 722.695068359375,
+              "right": 731.0125732421875,
+              "top": 226,
+              "height": 8.317459106445312,
+              "width": 8.3175048828125,
+              "bottom": 234.3174591064453
+            }
+          },
+          "thread-panel": {
+            "intersects": false,
+            "clearance": 6.861907958984375,
+            "placement": "outside-before",
+            "hitTest": true,
+            "target": {
+              "left": 740.57763671875,
+              "right": 774.4647827148438,
+              "top": 241.1793670654297,
+              "height": 11.644439697265625,
+              "width": 33.88714599609375,
+              "bottom": 252.8238067626953
+            },
+            "badge": {
+              "left": 753.3592529296875,
+              "right": 761.6766967773438,
+              "top": 226,
+              "height": 8.317459106445312,
+              "width": 8.31744384765625,
+              "bottom": 234.3174591064453
+            }
+          },
+          "file-opener": {
+            "intersects": false,
+            "clearance": 6.861907958984375,
+            "placement": "outside-before",
+            "hitTest": true,
+            "target": {
+              "left": 776.9600219726562,
+              "right": 826.2344970703125,
+              "top": 241.1793670654297,
+              "height": 11.644439697265625,
+              "width": 49.27447509765625,
+              "bottom": 252.8238067626953
+            },
+            "badge": {
+              "left": 797.4352416992188,
+              "right": 805.7527465820312,
+              "top": 226,
+              "height": 8.317459106445312,
+              "width": 8.3175048828125,
+              "bottom": 234.3174591064453
+            }
+          }
+        },
+        "strip": {
+          "left": 697.3333129882812,
+          "right": 854.94921875,
+          "top": 237.22857666015625,
+          "height": 19.9619140625,
+          "width": 157.61590576171875,
+          "bottom": 257.19049072265625
+        },
+        "viewport": {
+          "width": 900,
+          "height": 848
+        },
+        "scale": 0.4159
+      },
+      "after": {
+        "stripAlignItems": "center",
+        "annotations": {
+          "code-renderers": {
+            "intersects": false,
+            "clearance": 6.861907958984375,
+            "placement": "outside-before",
+            "hitTest": true,
+            "target": {
+              "left": 715.6317749023438,
+              "right": 738.0823974609375,
+              "top": 241.1793670654297,
+              "height": 11.644439697265625,
+              "width": 22.45062255859375,
+              "bottom": 252.8238067626953
+            },
+            "badge": {
+              "left": 722.695068359375,
+              "right": 731.0125732421875,
+              "top": 226,
+              "height": 8.317459106445312,
+              "width": 8.3175048828125,
+              "bottom": 234.3174591064453
+            }
+          },
+          "thread-panel": {
+            "intersects": false,
+            "clearance": 6.861907958984375,
+            "placement": "outside-before",
+            "hitTest": true,
+            "target": {
+              "left": 740.57763671875,
+              "right": 774.4647827148438,
+              "top": 241.1793670654297,
+              "height": 11.644439697265625,
+              "width": 33.88714599609375,
+              "bottom": 252.8238067626953
+            },
+            "badge": {
+              "left": 753.3592529296875,
+              "right": 761.6766967773438,
+              "top": 226,
+              "height": 8.317459106445312,
+              "width": 8.31744384765625,
+              "bottom": 234.3174591064453
+            }
+          },
+          "file-opener": {
+            "intersects": false,
+            "clearance": 6.861907958984375,
+            "placement": "outside-before",
+            "hitTest": true,
+            "target": {
+              "left": 776.9600219726562,
+              "right": 826.2344970703125,
+              "top": 241.1793670654297,
+              "height": 11.644439697265625,
+              "width": 49.27447509765625,
+              "bottom": 252.8238067626953
+            },
+            "badge": {
+              "left": 797.4352416992188,
+              "right": 805.7527465820312,
+              "top": 226,
+              "height": 8.317459106445312,
+              "width": 8.3175048828125,
+              "bottom": 234.3174591064453
+            }
+          }
+        },
+        "strip": {
+          "left": 697.3333129882812,
+          "right": 854.94921875,
+          "top": 237.22857666015625,
+          "height": 19.9619140625,
+          "width": 157.61590576171875,
+          "bottom": 257.19049072265625
+        },
+        "viewport": {
+          "width": 900,
+          "height": 848
+        },
+        "scale": 0.4159
+      },
+      "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-tab-overlay-small-narrow-safari-bc30d52cc3688b062876679bf7e34ca27d04d65f.png"
+    }
+  ],
+  "hardReload": {
+    "stripAlignItems": "center",
+    "annotations": {
+      "code-renderers": {
+        "intersects": false,
+        "clearance": 6.861907958984375,
+        "placement": "outside-before",
+        "hitTest": true,
+        "target": {
+          "left": 715.6317749023438,
+          "right": 738.0823974609375,
+          "top": 241.1793670654297,
+          "height": 11.644439697265625,
+          "width": 22.45062255859375,
+          "bottom": 252.8238067626953
+        },
+        "badge": {
+          "left": 722.695068359375,
+          "right": 731.0125732421875,
+          "top": 226,
+          "height": 8.317459106445312,
+          "width": 8.3175048828125,
+          "bottom": 234.3174591064453
+        }
+      },
+      "thread-panel": {
+        "intersects": false,
+        "clearance": 6.861907958984375,
+        "placement": "outside-before",
+        "hitTest": true,
+        "target": {
+          "left": 740.57763671875,
+          "right": 774.4647827148438,
+          "top": 241.1793670654297,
+          "height": 11.644439697265625,
+          "width": 33.88714599609375,
+          "bottom": 252.8238067626953
+        },
+        "badge": {
+          "left": 753.3592529296875,
+          "right": 761.6766967773438,
+          "top": 226,
+          "height": 8.317459106445312,
+          "width": 8.31744384765625,
+          "bottom": 234.3174591064453
+        }
+      },
+      "file-opener": {
+        "intersects": false,
+        "clearance": 6.861907958984375,
+        "placement": "outside-before",
+        "hitTest": true,
+        "target": {
+          "left": 776.9600219726562,
+          "right": 826.2344970703125,
+          "top": 241.1793670654297,
+          "height": 11.644439697265625,
+          "width": 49.27447509765625,
+          "bottom": 252.8238067626953
+        },
+        "badge": {
+          "left": 797.4352416992188,
+          "right": 805.7527465820312,
+          "top": 226,
+          "height": 8.317459106445312,
+          "width": 8.3175048828125,
+          "bottom": 234.3174591064453
+        }
+      }
+    },
+    "strip": {
+      "left": 697.3333129882812,
+      "right": 854.94921875,
+      "top": 237.22857666015625,
+      "height": 19.9619140625,
+      "width": 157.61590576171875,
+      "bottom": 257.19049072265625
+    },
+    "viewport": {
+      "width": 900,
+      "height": 848
+    },
+    "scale": 0.4159
+  },
+  "sustainedInteraction": "PASS",
+  "result": "PASS"
+}
