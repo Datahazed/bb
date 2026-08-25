@@ -93,6 +93,10 @@ describe("issue #1662: plugin install against a pre-0.38.0 server", () => {
     ).resolves.toEqual({
       ...legacyInstalledPlugin,
       publisherLabel: null,
+      // Persisted plugin health was added later and defaults only while
+      // parsing an older server response.
+      lastProblem: null,
+      screenshots: [],
       // Absent from a pre-0.39 response: tolerated on the SDK's response
       // schema only, so the request body above stays `{ source }`.
       providerIds: [],

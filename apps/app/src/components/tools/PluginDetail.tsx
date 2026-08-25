@@ -12,6 +12,8 @@ import {
   type ResourceOverflowMenuItem,
 } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
+import { Button } from "@bb/shared-ui/button";
+import { Pill } from "@bb/shared-ui/pill";
 import {
   Tooltip,
   TooltipContent,
@@ -20,8 +22,11 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
-import { Link } from "react-router-dom";
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  getPluginConfigurationRoutePath,
+  getRootComposeRoutePath,
+} from "@/lib/route-paths";
 import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import {
   PluginDetailReleaseControl,
@@ -62,6 +67,10 @@ import {
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useClipboardCopy } from "@/lib/clipboard";
+import {
+  buildPluginReportToAuthorPrompt,
+  installedPluginRepositoryUrl,
+} from "@/lib/plugin-report-prompt";
 
 /**
  * Passive publisher shown beside an installed plugin's name: `BB Official` for
@@ -261,6 +270,7 @@ export function PluginDetail({
   catalogEntries?: readonly PluginCatalogSearchEntry[];
   onOpenPlugin?: (pluginId: string) => void;
 }) {
+  const navigate = useNavigate();
   const { settingsSections } = usePluginSlots();
   // Hooks run before the loading and not-found returns below, so this has to
   // tolerate a null plugin rather than read `plugin.id` unconditionally.
@@ -315,6 +325,14 @@ export function PluginDetail({
     settingsSections.some((section) => section.pluginId === plugin.id);
 
   const pluginName = plugin.name ?? plugin.id;
+  const repositoryUrl = installedPluginRepositoryUrl({
+    plugin,
+    catalogRepositoryUrl: catalogEntry?.repositoryUrl,
+  });
+  const reportPrompt =
+    repositoryUrl === null
+      ? null
+      : buildPluginReportToAuthorPrompt({ plugin, repositoryUrl });
   // Uninstall is destructive and irreversible-ish, so it belongs with the other
   // ownership actions rather than beside the reversible enable toggle.
   const overflowItems: ResourceOverflowMenuItem[] = [
@@ -370,6 +388,27 @@ export function PluginDetail({
             </span>
           )}
         </span>
+      }
+      actions={
+        reportPrompt === null ? undefined : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              navigate(getRootComposeRoutePath(), {
+                state: {
+                  focusPrompt: true,
+                  initialPrompt: reportPrompt,
+                  replaceInitialPrompt: true,
+                },
+              })
+            }
+          >
+            <Icon name="MessageSquarePlus" className="size-3.5" aria-hidden />
+            Report to author
+          </Button>
+        )
       }
       lifecycleControl={
         <Switch
@@ -455,6 +494,29 @@ export function PluginDetail({
           </PluginDetailTable>
         </ResourceDetailReleaseSection>
         <PluginIncludes plugin={plugin} />
+        {plugin.lastProblem === null ? null : (
+          <ResourceActivitySection label="Recent errors">
+            <div className="space-y-2 rounded-md border border-border bg-background p-3 text-sm">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                {plugin.handlerStats.errorCount > 0 ? (
+                  <Pill
+                    variant="outline"
+                    className="border-transparent bg-surface-attention text-warning-text"
+                  >
+                    {plugin.handlerStats.errorCount}{" "}
+                    {plugin.handlerStats.errorCount === 1 ? "error" : "errors"}
+                  </Pill>
+                ) : null}
+                <span className="text-xs text-subtle-foreground">
+                  {formatAbsoluteDate(plugin.lastProblem.at)}
+                </span>
+              </div>
+              <p className="break-words text-sm text-destructive-text">
+                {plugin.lastProblem.message}
+              </p>
+            </div>
+          </ResourceActivitySection>
+        )}
         {/*
           Services and schedules are two different objects with two different
           status vocabularies, so they stay under their own names and use

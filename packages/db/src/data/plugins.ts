@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { installedPlugins, pluginArtifacts } from "../schema.js";
 
@@ -88,6 +88,10 @@ export interface InstalledPluginRow {
   lastFailureVersion: string | null;
   lastFailureAt: number | null;
   lastFailureDetail: string | null;
+  handlerErrorCount: number;
+  lastProblemClass: PluginProblemClass | null;
+  lastProblemMessage: string | null;
+  lastProblemAt: number | null;
   activeArtifactId: string | null;
   normalizationVersion: number;
   rootDir: string;
@@ -96,6 +100,21 @@ export interface InstalledPluginRow {
   removedAt: number | null;
   installedAt: number;
   updatedAt: number;
+}
+
+export type PluginProblemClass =
+  | "running"
+  | "error"
+  | "incompatible"
+  | "missing"
+  | "disabled"
+  | "degraded"
+  | "needs-configuration";
+
+export interface PluginLastProblem {
+  class: PluginProblemClass;
+  message: string;
+  at: number;
 }
 
 export interface UpsertInstalledPluginInput {
@@ -200,9 +219,7 @@ function normalizedColumns(
         ? plugin.sourceIntent.requestedSpec
         : null,
     sourceNpmSpecKind:
-      plugin.sourceIntent.kind === "npm"
-        ? plugin.sourceIntent.specKind
-        : null,
+      plugin.sourceIntent.kind === "npm" ? plugin.sourceIntent.specKind : null,
     sourceGitUrl:
       plugin.sourceIntent.kind === "git" ? plugin.sourceIntent.url : null,
     sourceGitSubdirectory:
@@ -282,7 +299,11 @@ export function getInstalledPluginRegistration(
   db: DbConnection,
   id: string,
 ): InstalledPluginRow | undefined {
-  return db.select().from(installedPlugins).where(eq(installedPlugins.id, id)).get();
+  return db
+    .select()
+    .from(installedPlugins)
+    .where(eq(installedPlugins.id, id))
+    .get();
 }
 
 export function listUnnormalizedPluginRegistrations(
@@ -442,6 +463,47 @@ export function setInstalledPluginLastFailure(
       lastFailureAt: failure.at,
       lastFailureDetail: failure.detail,
       updatedAt: failure.at,
+    })
+    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
+    .run();
+  return result.changes > 0;
+}
+
+/**
+ * Store the one compact runtime problem exposed by the installed inventory.
+ * Callers normalize the message before this boundary so persistence never
+ * acquires stack traces or multiline exception text.
+ */
+export function setInstalledPluginLastProblem(
+  db: DbConnection,
+  id: string,
+  problem: PluginLastProblem,
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({
+      lastProblemClass: problem.class,
+      lastProblemMessage: problem.message,
+      lastProblemAt: problem.at,
+    })
+    .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
+    .run();
+  return result.changes > 0;
+}
+
+/** A handler failure updates the compact problem and its durable counter once. */
+export function recordInstalledPluginHandlerError(
+  db: DbConnection,
+  id: string,
+  problem: PluginLastProblem,
+): boolean {
+  const result = db
+    .update(installedPlugins)
+    .set({
+      handlerErrorCount: sql`${installedPlugins.handlerErrorCount} + 1`,
+      lastProblemClass: problem.class,
+      lastProblemMessage: problem.message,
+      lastProblemAt: problem.at,
     })
     .where(and(eq(installedPlugins.id, id), isNull(installedPlugins.removedAt)))
     .run();

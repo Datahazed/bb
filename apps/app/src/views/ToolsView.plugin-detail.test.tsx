@@ -8,7 +8,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EMPTY_PLUGIN_UPDATE_STATE,
@@ -40,6 +40,9 @@ const GITHUB_PLUGIN = {
   enabled: true,
   status: "running",
   statusDetail: null,
+  lastProblem: null,
+  categoryId: null,
+  category: null,
   description: "Browse GitHub issues and pull requests in BB.",
   name: "GitHub",
   icon: "Github",
@@ -85,6 +88,15 @@ const GITHUB_CATALOG_ENTRY = {
   compatible: true,
   incompatibleReason: null,
 } satisfies PluginCatalogSearchEntry;
+
+function ComposeRouteState() {
+  const location = useLocation();
+  return (
+    <pre data-testid="compose-route-state">
+      {JSON.stringify(location.state)}
+    </pre>
+  );
+}
 
 afterEach(() => {
   cleanup();
@@ -132,6 +144,140 @@ describe("PluginDetail official catalog lifecycle", () => {
     });
     expect(link.getAttribute("href")).toBe("https://github.com/acme/bb-github");
     expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  it("shows compact health evidence and opens a user-reviewed report composer", () => {
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    const problemPlugin: PluginListItem = {
+      ...GITHUB_PLUGIN,
+      handlerStats: {
+        ...GITHUB_PLUGIN.handlerStats,
+        errorCount: 4,
+      },
+      lastProblem: {
+        class: "error",
+        message: "request handler failed",
+        at: Date.UTC(2026, 7, 25, 12, 0, 0),
+      },
+    };
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+        <QueryClientWrapper>
+          <Routes>
+            <Route
+              path="/extensions/plugins/github"
+              element={
+                <PluginDetail
+                  isLoading={false}
+                  plugin={problemPlugin}
+                  pending={false}
+                  openSourceDisabled
+                  onToggle={() => {}}
+                  onEdit={() => {}}
+                  onOpenSource={() => {}}
+                  onDelete={() => {}}
+                  catalogEntry={{
+                    ...GITHUB_CATALOG_ENTRY,
+                    repositoryUrl: "https://github.com/acme/bb-github",
+                  }}
+                />
+              }
+            />
+            <Route path="/" element={<ComposeRouteState />} />
+          </Routes>
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Recent errors")).toBeTruthy();
+    expect(screen.getByText("4 errors")).toBeTruthy();
+    expect(screen.getByText("request handler failed")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Report to author" }));
+
+    const state = screen.getByTestId("compose-route-state").textContent ?? "";
+    expect(state).toContain('"focusPrompt":true');
+    expect(state).toContain('"replaceInitialPrompt":true');
+    expect(state).toContain("https://github.com/acme/bb-github");
+    expect(state).toContain("request handler failed");
+    expect(state).toContain("Reproduce the failure and verify the cause");
+    expect(state).toContain(
+      "If it is a plugin issue, file a concise repository issue",
+    );
+  });
+
+  it("does not describe a load failure as zero handler errors", () => {
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={{
+              ...GITHUB_PLUGIN,
+              status: "error",
+              statusDetail: "Cannot initialize plugin",
+              lastProblem: {
+                class: "error",
+                message: "Cannot initialize plugin",
+                at: Date.UTC(2026, 7, 25, 12, 0, 0),
+              },
+            }}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Cannot initialize plugin")).toBeTruthy();
+    expect(screen.queryByText("0 errors")).toBeNull();
+  });
+
+  it.each([
+    {
+      name: "the plugin is healthy",
+      plugin: GITHUB_PLUGIN,
+      repositoryUrl: "https://github.com/acme/bb-github",
+    },
+    {
+      name: "no repository URL is available",
+      plugin: {
+        ...GITHUB_PLUGIN,
+        lastProblem: {
+          class: "error" as const,
+          message: "request handler failed",
+          at: Date.UTC(2026, 7, 25, 12, 0, 0),
+        },
+      },
+      repositoryUrl: null,
+    },
+  ])("hides Report to author when $name", ({ plugin, repositoryUrl }) => {
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <QueryClientWrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={plugin}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+            catalogEntry={{ ...GITHUB_CATALOG_ENTRY, repositoryUrl }}
+          />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Report to author" }),
+    ).toBeNull();
   });
 
   it("explains why an incompatible official plugin cannot be installed", () => {

@@ -941,7 +941,10 @@ describe("thread runtime config", () => {
         pluginId,
         iconNames: new Set<string>(),
       });
-      harness.deps.pluginHostArtifacts.set(pluginId, stubHostArtifact(pluginId));
+      harness.deps.pluginHostArtifacts.set(
+        pluginId,
+        stubHostArtifact(pluginId),
+      );
 
       const { host } = seedHostSession(harness.deps, {
         id: "host-provider-hook",
@@ -1598,7 +1601,14 @@ describe("thread runtime config", () => {
       setPluginAgentContributions({
         listSkillRootContributions: () => [],
         listAgentTools: () => args.tools ?? [],
-        listInstructionContributions: () => args.instructions ?? [],
+        listInstructionContributions: () =>
+          (args.instructions ?? []).map((contribution) => ({
+            ...contribution,
+            provider: async (context: {
+              threadId: string;
+              projectId: string;
+            }) => contribution.provider(context),
+          })),
         findAgentTool: () => undefined,
         invokeAgentTool: async () => ({
           success: false,

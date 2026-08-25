@@ -269,6 +269,22 @@ export const installedPlugins = sqliteTable("plugins", {
   lastFailureVersion: text("last_failure_version"),
   lastFailureAt: integer("last_failure_at"),
   lastFailureDetail: text("last_failure_detail"),
+  /** Cumulative failures from plugin-owned handlers; survives server restarts. */
+  handlerErrorCount: integer("handler_error_count").notNull().default(0),
+  /** Most recent compact runtime problem; message is normalized to one line. */
+  lastProblemClass: text("last_problem_class", {
+    enum: [
+      "running",
+      "error",
+      "incompatible",
+      "missing",
+      "disabled",
+      "degraded",
+      "needs-configuration",
+    ],
+  }),
+  lastProblemMessage: text("last_problem_message"),
+  lastProblemAt: integer("last_problem_at"),
   // deletePluginArtifact clears this before deleting in the same transaction.
   // NO ACTION is intentional: drizzle-kit cannot faithfully emit SET NULL
   // when adding this circular FK to the pre-existing plugins table.

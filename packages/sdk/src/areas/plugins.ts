@@ -51,6 +51,8 @@ import type { CreateSdkAreaArgs } from "./common.js";
  * and a default on the contract would leak into request bodies.
  */
 const installedPluginResponseSchema = installedPluginSchema.extend({
+  // Servers before persisted plugin health omit this response-only field.
+  lastProblem: installedPluginSchema.shape.lastProblem.default(null),
   providerIds: z.array(z.string()).default([]),
   icons: z.record(z.string(), z.string()).default({}),
 });
@@ -78,7 +80,9 @@ export const pluginMutationResponseSchema = z.object({
   plugin: installedPluginResponseSchema.optional(),
   plugins: z.array(installedPluginResponseSchema).optional(),
 });
-export type PluginMutationResponse = z.infer<typeof pluginMutationResponseSchema>;
+export type PluginMutationResponse = z.infer<
+  typeof pluginMutationResponseSchema
+>;
 
 export interface PluginIdArgs {
   pluginId: string;

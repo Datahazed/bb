@@ -1493,9 +1493,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             : row.enabled
               ? "not loaded"
               : null,
+          lastProblem:
+            row.lastProblemClass === null ||
+            row.lastProblemMessage === null ||
+            row.lastProblemAt === null
+              ? null
+              : {
+                  class: row.lastProblemClass,
+                  message: row.lastProblemMessage,
+                  at: row.lastProblemAt,
+                },
           handlerStats: stats
             ? { ...stats }
-            : { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
+            : {
+                count: 0,
+                totalMs: 0,
+                maxMs: 0,
+                errorCount: row.handlerErrorCount,
+              },
           services: (loadedPlugin?.services ?? []).map((service) => ({
             name: service.record.name,
             state: service.state,
@@ -2078,13 +2093,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const next = await readPluginSettingsValues(storeArgs);
       if (JSON.stringify(next) !== JSON.stringify(prev)) {
         for (const listener of plugin.handle.settings.listeners) {
-          try {
-            listener(next, prev);
-          } catch (error) {
-            logger.warn(
-              `plugin ${id} settings onChange listener failed: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
+          await invokeWrapped(id, "settings onChange listener", () =>
+            listener(next, prev),
+          );
         }
         deps.onSettingsChanged?.(id);
         // Effective values changed: broadcast so every open page's settings
@@ -2322,7 +2333,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       )) {
         const provider = plugin.handle.instructionProvider;
         if (provider === null) continue;
-        out.push({ pluginId: id, provider });
+        out.push({
+          pluginId: id,
+          provider: async (context) => {
+            const outcome = await invokeWrapped(
+              id,
+              "instruction contribution",
+              () => provider(context),
+            );
+            return outcome.ok ? outcome.value : null;
+          },
+        });
       }
       return out;
     },

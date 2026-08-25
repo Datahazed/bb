@@ -93,6 +93,7 @@ const GITHUB_CATALOG_ENTRY = {
   description: "Browse GitHub issues and pull requests in BB.",
   icon: "Github",
   iconUrl: null,
+  categoryId: "code-and-reviews",
   category: "Developer tools",
   source: "github-release:ymichael/bb/bb-plugin-github-{version}.tgz@^0.1.0",
   marketplace: "bb-community",
@@ -113,6 +114,7 @@ const AUTOMATIONS_CATALOG_ENTRY = {
   displayName: "Automations",
   description: AUTOMATIONS_PLUGIN.description,
   icon: AUTOMATIONS_PLUGIN.icon,
+  categoryId: "automation",
   category: "Workflow management",
   source: AUTOMATIONS_PLUGIN.source,
   installed: true,
@@ -125,6 +127,7 @@ const DOCS_CATALOG_ENTRY = {
   displayName: "Docs",
   description: "Create and edit Markdown documents.",
   icon: "NotebookText",
+  categoryId: "memory-and-context",
   category: "Context & knowledge",
   source: "builtin:docs",
   installed: true,
@@ -213,7 +216,7 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("GitHub")).toBeTruthy();
+    expect((await screen.findAllByText("GitHub")).length).toBeGreaterThan(0);
     // Browse and Installed are top-nav destinations now; the only tabs left
     // are the hero carousel's slide dots, never a mode row.
     expect(screen.queryByRole("tab", { name: "Browse" })).toBeNull();
@@ -265,7 +268,7 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("GitHub");
+    await screen.findAllByText("GitHub");
     const createPlugin = screen.getByRole("button", {
       name: "Create a plugin",
     });
@@ -317,13 +320,15 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("GitHub")).toBeTruthy();
+    expect((await screen.findAllByText("GitHub")).length).toBeGreaterThan(0);
     // Wait for the catalog so the Category menu has options to offer.
-    const categoryTrigger = screen.getByRole("button", { name: "Category" });
+    const categoryTrigger = screen.getByRole("button", {
+      name: "Filter plugins by category",
+    });
     expect(screen.queryByRole("button", { name: "Type" })).toBeNull();
     fireEvent.pointerDown(categoryTrigger);
     fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "Context & knowledge" }),
+      screen.getByRole("menuitem", { name: "Context & knowledge" }),
     );
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByText("Docs")).toBeTruthy();
@@ -350,7 +355,7 @@ describe("PluginsOverview", () => {
     expect(screen.getByTestId("location-path").textContent).toBe("/");
   });
 
-  it("shows the Type filter on Installed instead of Category", async () => {
+  it("uses one Installed Source filter with the shared provenance labels", async () => {
     installFetch([AUTOMATIONS_PLUGIN]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
@@ -364,8 +369,10 @@ describe("PluginsOverview", () => {
     );
 
     expect(await screen.findByText("Automations")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Category" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Type" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Source: All sources" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Type" })).toBeNull();
     expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
   });
 
@@ -380,7 +387,7 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("GitHub");
+    await screen.findAllByText("GitHub");
     // The old pill row is gone, so Browse keeps one flush content band.
     expect(
       screen.queryByRole("radiogroup", {
@@ -397,11 +404,16 @@ describe("PluginsOverview", () => {
     ).toBeNull();
     const search = screen.getByRole("textbox", { name: "Search plugins" });
     const toolbar = search.parentElement?.parentElement as HTMLElement;
-    const category = screen.getByRole("button", { name: "Category" });
-    const sort = screen.getByRole("button", { name: /^Sort:/ });
+    const category = screen.getByRole("button", {
+      name: "Filter plugins by category",
+    });
+    const sort = screen.getByRole("button", { name: "Sort plugins" });
     expect(toolbar.contains(category)).toBe(true);
     expect(toolbar.contains(sort)).toBe(true);
-    const heroHeading = screen.getByRole("heading", { level: 2 });
+    const heroHeading = screen.getByRole("heading", {
+      level: 2,
+      name: /^Turn bb into/u,
+    });
     expect(
       heroHeading.compareDocumentPosition(toolbar) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -447,12 +459,15 @@ describe("PluginsOverview", () => {
     );
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Install GitHub" }),
+      (await screen.findAllByRole("button", { name: "Install GitHub" }))[0]!,
     );
     expect(
       await screen.findByRole("heading", { name: "Install GitHub?" }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Install GitHub" }));
+    const installButtons = screen.getAllByRole("button", {
+      name: "Install GitHub",
+    });
+    fireEvent.click(installButtons[installButtons.length - 1]!);
 
     expect((await screen.findByTestId("location-path")).textContent).toBe(
       "/extensions/plugins/github",
@@ -666,11 +681,12 @@ describe("PluginsOverview", () => {
       "plugin-row-inactive-local",
       "plugin-row-inactive-official",
     ]);
-    // Publisher, not one shared "official" badge: the two bundled plugins say
-    // BB Official and the catalog install names the marketplace it came from.
-    const officialPills = screen.getAllByText("BB Official");
-    expect(officialPills).toHaveLength(2);
-    expect(screen.getAllByText("BB Community")).toHaveLength(1);
+    // Source is filter state, never a repeated row badge.
+    for (const row of rows) {
+      expect(row.textContent).not.toContain("BB Official");
+      expect(row.textContent).not.toContain("BB Community");
+      expect(row.textContent).not.toContain("Direct install");
+    }
 
     const sortTrigger = screen.getByRole("button", {
       name: "Sort: Plugin name, ascending",
@@ -697,7 +713,7 @@ describe("PluginsOverview", () => {
       { key: "Escape" },
     );
     fireEvent.click(screen.getByText("switch-to-browse"));
-    await screen.findByText("GitHub");
+    await screen.findAllByText("GitHub");
     fireEvent.click(screen.getByText("switch-to-installed"));
     expect(
       [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
@@ -712,7 +728,7 @@ describe("PluginsOverview", () => {
     ]);
   });
 
-  it("gives each publisher its own Type facet, separate from User", async () => {
+  it("filters Installed by one provenance-backed Source selection", async () => {
     installFetch([
       { ...AUTOMATIONS_PLUGIN, id: "builtin-one", name: "Builtin One" },
       {
@@ -749,49 +765,48 @@ describe("PluginsOverview", () => {
         (row) => row.getAttribute("data-testid"),
       );
 
-    // Nothing selected is the default and shows every type.
-    const typeTrigger = screen.getByRole("button", { name: "Type" });
+    // All sources is explicit and shows every provenance.
+    let sourceTrigger = screen.getByRole("button", {
+      name: "Source: All sources",
+    });
     expect(rowIds()).toEqual([
       "plugin-row-builtin-one",
       "plugin-row-catalog-one",
       "plugin-row-direct-one",
     ]);
-    fireEvent.pointerDown(typeTrigger);
-    // There is no explicit "All" row: an empty selection means all types.
-    expect(screen.queryByRole("menuitemcheckbox", { name: "All" })).toBeNull();
-
-    // Facets follow the installed plugins, so the marketplace appears on its
-    // own rather than being folded into BB Official.
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
-    );
-    await waitFor(() => {
-      expect(rowIds()).toEqual(["plugin-row-builtin-one"]);
-    });
-
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "BB Community" }),
-    );
-    await waitFor(() => {
-      expect(rowIds()).toEqual([
-        "plugin-row-builtin-one",
-        "plugin-row-catalog-one",
-      ]);
-    });
-
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "BB Official" }),
-    );
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "BB Community" }),
-    );
+    fireEvent.pointerDown(sourceTrigger);
+    for (const label of [
+      "All sources",
+      "BB Official",
+      "BB Community",
+      "Direct install",
+    ]) {
+      expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
+    }
+    expect(
+      screen
+        .getByRole("menuitem", { name: "All sources" })
+        .querySelector('[data-icon="Check"]')
+        ?.classList.contains("opacity-100"),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Direct install" }));
     await waitFor(() => {
       expect(rowIds()).toEqual(["plugin-row-direct-one"]);
     });
+    sourceTrigger = screen.getByRole("button", {
+      name: "Source: Direct install",
+    });
+    expect(sourceTrigger.textContent).toContain("Direct install");
 
-    // Clearing the last selection returns to unfiltered, not to empty.
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+    // All sources is the one clear action.
+    fireEvent.pointerDown(sourceTrigger);
+    expect(
+      screen
+        .getByRole("menuitem", { name: "Direct install" })
+        .querySelector('[data-icon="Check"]')
+        ?.classList.contains("opacity-100"),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("menuitem", { name: "All sources" }));
     await waitFor(() => {
       expect(rowIds()).toEqual([
         "plugin-row-builtin-one",
@@ -802,21 +817,38 @@ describe("PluginsOverview", () => {
     expect(screen.queryByText("No plugins match these filters.")).toBeNull();
   });
 
-  it("drops a Type selection whose facet no longer has any plugin", async () => {
+  it("filters by declared categories while categoryless installs stay only under All", async () => {
     installFetch([
-      { ...AUTOMATIONS_PLUGIN, id: "builtin-one", name: "Builtin One" },
       {
         ...AUTOMATIONS_PLUGIN,
-        id: "acme-one",
-        name: "Acme One",
+        id: "builtin-one",
+        name: "Builtin One",
+        categoryId: "automation",
+        category: "Automation",
+      },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "catalog-one",
+        name: "Catalog One",
         provenance: "catalog",
-        publisherKey: "acme-plugins",
-        publisherLabel: "Acme Plugins",
-        catalogEntryId: "acme-one",
+        publisherKey: "bb-community",
+        publisherLabel: "BB Community",
+        catalogEntryId: "catalog-one",
+        categoryId: "security",
+        category: "Security",
+      },
+      {
+        ...AUTOMATIONS_PLUGIN,
+        id: "direct-one",
+        name: "Direct One",
+        provenance: "direct",
+        publisherKey: null,
+        publisherLabel: null,
+        categoryId: undefined,
+        category: undefined,
       },
     ]);
-    const { wrapper: QueryClientWrapper, queryClient } =
-      createQueryClientTestHarness();
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter initialEntries={["/extensions/plugins?view=installed"]}>
         <QueryClientWrapper>
@@ -825,36 +857,39 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("Acme One");
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Type" }));
-    fireEvent.click(
-      screen.getByRole("menuitemcheckbox", { name: "Acme Plugins" }),
-    );
-    await waitFor(() => {
-      expect(
-        [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
-          (row) => row.getAttribute("data-testid"),
-        ),
-      ).toEqual(["plugin-row-acme-one"]);
-    });
-
-    // Uninstalling the last Acme plugin removes its facet. The selection has to
-    // go with it, or the list stays empty with no menu row left to clear.
-    installFetch([
-      { ...AUTOMATIONS_PLUGIN, id: "builtin-one", name: "Builtin One" },
+    await screen.findByText("Direct One");
+    const rowIds = () =>
+      [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
+        (row) => row.getAttribute("data-testid"),
+      );
+    expect(rowIds()).toEqual([
+      "plugin-row-builtin-one",
+      "plugin-row-catalog-one",
+      "plugin-row-direct-one",
     ]);
-    await act(async () => {
-      await queryClient.invalidateQueries();
-    });
+    expect(screen.getByRole("radio", { name: "All · 3" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Automation" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Security" })).toBeTruthy();
+    expect(screen.queryByText("Other")).toBeNull();
 
+    fireEvent.click(screen.getByRole("radio", { name: "Automation" }));
     await waitFor(() => {
-      expect(
-        [...document.querySelectorAll('[data-testid^="plugin-row-"]')].map(
-          (row) => row.getAttribute("data-testid"),
-        ),
-      ).toEqual(["plugin-row-builtin-one"]);
+      expect(rowIds()).toEqual(["plugin-row-builtin-one"]);
     });
-    expect(screen.queryByText("No plugins match these filters.")).toBeNull();
+    expect(screen.queryByText("Direct One")).toBeNull();
+    // Category is a collection filter only, never a row pill.
+    expect(
+      screen.getByTestId("plugin-row-builtin-one").textContent,
+    ).not.toContain("Automation");
+
+    fireEvent.click(screen.getByRole("radio", { name: "All · 3" }));
+    await waitFor(() => {
+      expect(rowIds()).toEqual([
+        "plugin-row-builtin-one",
+        "plugin-row-catalog-one",
+        "plugin-row-direct-one",
+      ]);
+    });
   });
 
   it("keeps disabled plugins installed regardless of provenance", async () => {
@@ -913,7 +948,7 @@ describe("PluginsOverview", () => {
     expect(screen.getByText("Inactive Local Plugin")).toBeTruthy();
   });
 
-  it("badges a built-in plugin BB Official and a catalog install by its marketplace", async () => {
+  it("does not repeat source provenance as Installed row badges", async () => {
     installFetch([
       AUTOMATIONS_PLUGIN,
       {
@@ -939,13 +974,12 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    const official = await screen.findAllByText("BB Official");
-    expect(official).toHaveLength(1);
-    const community = screen.getAllByText("BB Community");
-    expect(community).toHaveLength(1);
-    // One badge treatment for both: only the publisher name differs.
-    expect(official[0]?.parentElement?.className).toBe(
-      community[0]?.parentElement?.className,
+    await screen.findByText("GitHub");
+    expect(
+      screen.getByTestId("plugin-row-automations").textContent,
+    ).not.toContain("BB Official");
+    expect(screen.getByTestId("plugin-row-github").textContent).not.toContain(
+      "BB Community",
     );
   });
 });

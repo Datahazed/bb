@@ -71,6 +71,7 @@ function connectPlugin(
     icon: null,
     iconUrl: null,
     statusDetail: null,
+    lastProblem: null,
     handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
     services: [],
     schedules: [],

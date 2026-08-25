@@ -9,10 +9,17 @@ import {
   ResourceCollectionPage,
   ResourceCollectionViewport,
   ResourceListState,
-  ResourceMultiSelectMenu,
   ResourceSortMenu,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
+import { Button } from "@bb/shared-ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
 import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
@@ -25,8 +32,10 @@ import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTa
 import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
 import {
-  pluginPublisherFilterId,
-  pluginPublisherFilterOptions,
+  PLUGIN_SOURCE_FILTER_OPTIONS,
+  pluginSourceFilterId,
+  pluginSourceFilterLabel,
+  type PluginSourceFilter,
 } from "@/components/plugin/plugin-provenance";
 import { PLUGINS_INSTALLED_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
@@ -67,28 +76,32 @@ export function PluginsOverview({
   const [installedSortDirection, setInstalledSortDirection] = useState<
     "asc" | "desc"
   >("asc");
-  // Empty means unfiltered: the menu has no explicit "All" row.
-  const [typeFilters, setTypeFilters] = useState<string[]>([]);
-  // Facets follow the installed plugins, so adding a marketplace adds its
-  // facet. Uninstalling the last plugin of one removes its facet too, and the
-  // selection is intersected with what is on offer rather than kept: a
-  // vanished facet would otherwise filter the list to nothing with no row left
-  // in the menu to switch it back off.
-  const typeFilterOptions = useMemo(
-    () => pluginPublisherFilterOptions(plugins),
-    [plugins],
-  );
-  const activeTypeFilters = useMemo(() => {
-    const offered = new Set(typeFilterOptions.map((option) => option.id));
-    return typeFilters.filter((value) => offered.has(value));
-  }, [typeFilterOptions, typeFilters]);
+  const [sourceFilter, setSourceFilter] = useState<PluginSourceFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const categoryOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const plugin of plugins) {
+      if (plugin.categoryId != null && plugin.category != null) {
+        byId.set(plugin.categoryId, plugin.category);
+      }
+    }
+    return [...byId.entries()]
+      .map(([id, label]) => ({ id, label }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [plugins]);
+  const activeCategoryFilter = categoryOptions.some(
+    (option) => option.id === categoryFilter,
+  )
+    ? categoryFilter
+    : null;
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
   // One projection identity resets both the accumulated rows and their
   // viewport measurement when search, filters, or sorting changes.
   const installedResetKey = [
     normalizedInstalledQuery,
     installedSortDirection,
-    [...activeTypeFilters].sort().join(","),
+    sourceFilter,
+    activeCategoryFilter ?? "",
   ].join("\u0000");
   const installedPageSize = useResourceViewportPageSize(installedViewport, {
     resetKey: installedResetKey,
@@ -112,8 +125,14 @@ export function PluginsOverview({
       plugins
         .filter((plugin) => {
           if (
-            activeTypeFilters.length > 0 &&
-            !activeTypeFilters.includes(pluginPublisherFilterId(plugin))
+            sourceFilter !== "all" &&
+            pluginSourceFilterId(plugin) !== sourceFilter
+          ) {
+            return false;
+          }
+          if (
+            activeCategoryFilter !== null &&
+            plugin.categoryId !== activeCategoryFilter
           ) {
             return false;
           }
@@ -151,10 +170,11 @@ export function PluginsOverview({
           return left.id.localeCompare(right.id);
         }),
     [
-      activeTypeFilters,
+      activeCategoryFilter,
       installedSortDirection,
       normalizedInstalledQuery,
       plugins,
+      sourceFilter,
     ],
   );
   // Pages load as the sentinel scrolls into view; the page machinery stays
@@ -213,6 +233,10 @@ export function PluginsOverview({
         scrollId="plugins-installed-results"
         viewportRef={setInstalledViewport}
         bandClassName={TOOLS_PAGE_BAND_CLASSES}
+        // Like Browse, Installed is vertical-only. Radix's generated
+        // display:table wrapper otherwise takes the rows' desktop max-content
+        // width on compact screens and clips their persistent switches.
+        contentClassName="[&>div]:!block [&>div]:!min-w-0 [&>div]:!w-full"
         toolbar={
           <ResourceToolbar
             searchValue={installedQuery}
@@ -221,13 +245,9 @@ export function PluginsOverview({
             action={installedActions}
             controls={
               <>
-                <ResourceMultiSelectMenu
-                  label="Type"
-                  icon="SlidersHorizontal"
-                  compact
-                  selectedValues={activeTypeFilters}
-                  options={typeFilterOptions}
-                  onChange={setTypeFilters}
+                <InstalledPluginSourceFilter
+                  value={sourceFilter}
+                  onChange={setSourceFilter}
                 />
                 <ResourceSortMenu
                   value="alpha"
@@ -260,13 +280,19 @@ export function PluginsOverview({
               message={
                 normalizedInstalledQuery === ""
                   ? "No plugins match these filters."
-                  : activeTypeFilters.length > 0
+                  : sourceFilter !== "all" || activeCategoryFilter !== null
                     ? `No plugins match "${installedQuery}" with these filters.`
                     : `No plugins match "${installedQuery}"`
               }
             />
           ) : (
             <>
+              <InstalledPluginCategoryChips
+                total={plugins.length}
+                options={categoryOptions}
+                value={activeCategoryFilter}
+                onChange={setCategoryFilter}
+              />
               <InstalledPluginsTab
                 plugins={installedList.items}
                 onOpenPlugin={(pluginId) => openPlugin(pluginId, "installed")}
@@ -308,5 +334,107 @@ export function PluginsOverview({
         onInstalled={(plugin) => openPlugin(plugin.id, "installed")}
       />
     </>
+  );
+}
+
+function InstalledPluginSourceFilter({
+  value,
+  onChange,
+}: {
+  value: PluginSourceFilter;
+  onChange: (value: PluginSourceFilter) => void;
+}) {
+  const label = pluginSourceFilterLabel(value);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-8 min-w-36 justify-between gap-2 px-3 text-xs font-normal"
+          aria-label={`Source: ${label}`}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <Icon
+              name="SlidersHorizontal"
+              className="size-3.5 shrink-0"
+              aria-hidden
+            />
+            <span className="truncate">{label}</span>
+          </span>
+          <Icon name="ChevronDown" className="size-3.5 shrink-0" aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-44">
+        {PLUGIN_SOURCE_FILTER_OPTIONS.map((option) => (
+          <DropdownMenuItem
+            key={option.id}
+            onSelect={() => onChange(option.id)}
+            className="flex items-center justify-between gap-3"
+          >
+            <span className="min-w-0 flex-1 truncate">{option.label}</span>
+            <Icon
+              name="Check"
+              className={cn(
+                "size-3.5",
+                option.id === value ? "opacity-100" : "opacity-0",
+              )}
+              aria-hidden
+            />
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function InstalledPluginCategoryChips({
+  total,
+  options,
+  value,
+  onChange,
+}: {
+  total: number;
+  options: readonly { id: string; label: string }[];
+  value: string | null;
+  onChange: (value: string | null) => void;
+}) {
+  if (options.length === 0) return null;
+  const chipClassName =
+    "h-7 shrink-0 rounded-full px-3 font-normal aria-pressed:bg-state-active aria-pressed:text-foreground";
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Filter installed plugins by category"
+      className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1"
+    >
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className={chipClassName}
+        role="radio"
+        aria-checked={value === null}
+        aria-pressed={value === null}
+        onClick={() => onChange(null)}
+      >
+        All · {total}
+      </Button>
+      {options.map((option) => (
+        <Button
+          key={option.id}
+          type="button"
+          variant="outline"
+          size="sm"
+          className={chipClassName}
+          role="radio"
+          aria-checked={value === option.id}
+          aria-pressed={value === option.id}
+          onClick={() => onChange(option.id)}
+        >
+          {option.label}
+        </Button>
+      ))}
+    </div>
   );
 }

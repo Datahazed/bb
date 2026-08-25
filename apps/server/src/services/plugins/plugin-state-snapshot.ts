@@ -77,6 +77,23 @@ const installedPluginRowFields = {
   lastFailureVersion: z.string().nullable(),
   lastFailureAt: z.number().int().nullable(),
   lastFailureDetail: z.string().nullable(),
+  // Older rollback snapshots predate runtime-health persistence. Defaults are
+  // applied only while reading that stored boundary; current rows stay total.
+  handlerErrorCount: z.number().int().nonnegative().default(0),
+  lastProblemClass: z
+    .enum([
+      "running",
+      "error",
+      "incompatible",
+      "missing",
+      "disabled",
+      "degraded",
+      "needs-configuration",
+    ])
+    .nullable()
+    .default(null),
+  lastProblemMessage: z.string().nullable().default(null),
+  lastProblemAt: z.number().int().nullable().default(null),
   activeArtifactId: z.string().nullable(),
   normalizationVersion: z.number().int(),
   rootDir: z.string(),

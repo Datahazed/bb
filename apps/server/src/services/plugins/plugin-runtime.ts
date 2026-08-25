@@ -40,6 +40,8 @@ import {
   getInstalledPlugin,
   listInstalledPlugins,
   prunePluginSchedules,
+  recordInstalledPluginHandlerError,
+  setInstalledPluginLastProblem,
   upsertPluginSchedule,
   type InstalledPluginRow,
 } from "@bb/db";
@@ -384,6 +386,7 @@ function createKeyedLock() {
 export function createPluginRuntime(context: PluginRuntimeContext) {
   const { deps, nextCronRunAt, settledWithin } = context;
   const logger = deps.logger;
+  const now = deps.now ?? Date.now;
   const loadTimeoutMs = deps.loadTimeoutMs ?? DEFAULT_LOAD_TIMEOUT_MS;
   const serviceStopTimeoutMs =
     deps.serviceStopTimeoutMs ?? DEFAULT_SERVICE_STOP_TIMEOUT_MS;
@@ -494,6 +497,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     detail: string | null = null,
   ): void {
     baseStatuses.set(id, { status, detail });
+    if (
+      detail !== null &&
+      status !== "disabled" &&
+      (status !== "running" || detail.startsWith("reload failed:"))
+    ) {
+      recordProblem(
+        id,
+        status === "running" ? "error" : status,
+        detail.replace(/^reload failed:\s*/u, ""),
+      );
+    }
     const buildProblems = devBuildProblems.get(id);
     publishStatus(
       id,
@@ -525,10 +539,31 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   function statsFor(id: string): PluginHandlerStats {
     let stats = handlerStats.get(id);
     if (!stats) {
-      stats = { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 };
+      stats = {
+        count: 0,
+        totalMs: 0,
+        maxMs: 0,
+        errorCount: getInstalledPlugin(deps.db, id)?.handlerErrorCount ?? 0,
+      };
       handlerStats.set(id, stats);
     }
     return stats;
+  }
+
+  function firstProblemLine(message: string): string {
+    return message.split(/\r?\n/u, 1)[0]?.trim() || "Unknown plugin error";
+  }
+
+  function recordProblem(
+    id: string,
+    problemClass: PluginRuntimeStatus,
+    message: string,
+  ): void {
+    setInstalledPluginLastProblem(deps.db, id, {
+      class: problemClass,
+      message: firstProblemLine(message),
+      at: now(),
+    });
   }
 
   function reportNeedsConfiguration(id: string, message: string): void {
@@ -803,6 +838,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       stats.errorCount += 1;
+      recordInstalledPluginHandlerError(deps.db, id, {
+        class: "error",
+        message: firstProblemLine(message),
+        at: now(),
+      });
       logger.warn(`[plugin:${id}] ${label} failed: ${message}`);
       if (statuses.get(id)?.status === "running") {
         setStatus(id, "running", `${label} failed: ${message}`);
@@ -1421,6 +1461,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       status: PluginRuntimeStatus,
       detail: string,
     ): string {
+      detail = firstProblemLine(detail);
       // Every non-running outcome must leave a log line: without one, an
       // engines mismatch after a host upgrade leaves the plugin gone with
       // no trace outside the in-memory status (#1915).
@@ -1603,13 +1644,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ...declaration,
           pluginId: row.id,
           completeInference: async (input, options) =>
-            experimental_aiServicesHostContract["ai.inference.complete"].output.parse(
-              await call("ai.inference.complete", input, options),
-            ),
+            experimental_aiServicesHostContract[
+              "ai.inference.complete"
+            ].output.parse(await call("ai.inference.complete", input, options)),
           transcribeVoice: async (input, options) =>
-            experimental_aiServicesHostContract["ai.voice.transcribe"].output.parse(
-              await call("ai.voice.transcribe", input, options),
-            ),
+            experimental_aiServicesHostContract[
+              "ai.voice.transcribe"
+            ].output.parse(await call("ai.voice.transcribe", input, options)),
         });
       },
       registerProvider: (declaration) => {
@@ -1712,7 +1753,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
       }
       handle.invalidate();
-      let message = error instanceof Error ? error.message : String(error);
+      let message = firstProblemLine(
+        error instanceof Error ? error.message : String(error),
+      );
       // --ignore-scripts already prevents gyp builds at install; a .node
       // addon that slipped through dies here under Electron's ABI.
       if (/ERR_DLOPEN_FAILED|\.node/.test(message)) {

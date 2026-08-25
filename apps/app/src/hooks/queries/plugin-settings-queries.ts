@@ -35,6 +35,7 @@ export interface PluginListItem {
   enabled: boolean;
   status: InstalledPlugin["status"];
   statusDetail: string | null;
+  lastProblem: InstalledPlugin["lastProblem"];
   description: string | null;
   name: string | null;
   icon: string | null;
@@ -55,6 +56,8 @@ export interface PluginListItem {
   /** Publisher badge, or null for a plugin the user installed from a source. */
   publisherLabel: string | null;
   sourceDisplay: string;
+  categoryId: InstalledPlugin["categoryId"] | null;
+  category: string | null;
   updateState: PluginUpdateState;
 }
 
@@ -92,6 +95,7 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     enabled: plugin.enabled,
     status: plugin.status,
     statusDetail: plugin.statusDetail,
+    lastProblem: plugin.lastProblem,
     description: plugin.description,
     name: plugin.name,
     icon: plugin.icon,
@@ -111,6 +115,8 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     catalogEntryId: plugin.catalogEntryId ?? null,
     publisherLabel: plugin.publisherLabel,
     sourceDisplay: plugin.sourceDisplay,
+    categoryId: plugin.categoryId ?? null,
+    category: plugin.category ?? null,
     updateState: {
       outcome: state.outcome ?? null,
       detail: state.detail ?? null,

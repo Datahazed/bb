@@ -274,7 +274,7 @@ export async function resolveThreadRuntimeCommandConfig(
   for (const contribution of listPluginInstructionContributions()) {
     let text: string | null;
     try {
-      text = contribution.provider({
+      text = await contribution.provider({
         threadId: args.thread.id,
         projectId: args.thread.projectId,
       });

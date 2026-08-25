@@ -3,12 +3,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Switch } from "@bb/shared-ui/switch";
+import { Pill } from "@bb/shared-ui/pill";
 import {
   ResourceListPanel,
   ResourceRow,
   ResourceRowDetailChevron,
 } from "@bb/shared-ui/resource-list";
-import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { appToast } from "@/components/ui/app-toast.js";
 import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
@@ -16,26 +16,19 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { pluginNeedsAttention } from "@/hooks/usePluginAttention";
-import { cn } from "@bb/shared-ui/lib/utils";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
-import {
-  pluginRowSignal,
-  pluginRuntimeStatusPresentation,
-} from "./plugin-status";
-import { PluginRowSignalView, PluginSignalLogo } from "./PluginRowSignal";
+import { pluginRowSignal, installedPluginProblemLine } from "./plugin-status";
+import { PluginRowSignalView } from "./PluginRowSignal";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 import { PluginLogo } from "./plugin-ui";
 
 /**
- * Layer 1 (sketch v2 A): rows at rest are logo, name, description, switch —
- * no versions, no source strings, no menus. A row earns at most one signal:
- * the "Update x.y.z" pill IS the action (opens the confirmation directly),
- * while abnormal runtime health is an icon action that opens plugin details.
- * Newer-incompatible and pinned never badge. Hover reveals the chevron; the
- * row navigates to the plugin's detail page where depth lives.
- * An enabled plugin that is not running shows its status word beside the
- * name, its status detail instead of the description, and a "not running"
- * marker on the switch, so an "on" switch never claims the plugin works (#1915).
+ * Every row keeps the same logo, name, description, and switch shape. Runtime
+ * trouble replaces the description with one compact problem line; fatal
+ * states tint the row and running handler failures use the attention pill.
+ * Source and category belong to the list filters, never repeated row badges.
+ * An available update remains the row's one action pill and opens the existing
+ * confirmation directly.
  */
 export function InstalledPluginsTab({
   plugins,
@@ -111,17 +104,12 @@ export function InstalledPluginRow({
   // Reflect the in-flight target immediately; the invalidated list settles it.
   const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
   const signal = pluginRowSignal(plugin);
-  const statusSignal = signal?.kind === "status" ? signal : null;
   const updateSignal = signal?.kind === "update" ? signal : null;
-  const runtimeStatus = pluginRuntimeStatusPresentation(plugin);
+  const problemLine = installedPluginProblemLine(plugin);
   const notRunning = pluginNeedsAttention({
     enabled: enabled === true,
     status: plugin.status,
   });
-  const runtimeStatusToneClass =
-    runtimeStatus?.tone === "error"
-      ? "text-destructive-text"
-      : "text-warning-text";
 
   const openDetail = () => {
     if (onOpenPlugin !== undefined) {
@@ -135,34 +123,38 @@ export function InstalledPluginRow({
   return (
     <div data-testid={`plugin-row-${plugin.id}`}>
       <ResourceRow
-        leading={
-          <PluginSignalLogo signal={statusSignal} onStatusClick={openDetail}>
-            <PluginLogo plugin={plugin} className="size-6 shrink-0" />
-          </PluginSignalLogo>
+        className={
+          problemLine?.tone === "error"
+            ? "-mx-2 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 text-destructive-text"
+            : undefined
         }
+        leading={<PluginLogo plugin={plugin} className="size-6 shrink-0" />}
         title={plugin.name ?? plugin.id}
-        titleMeta={
-          plugin.publisherLabel === null ? undefined : (
-            <ProvenancePill label={plugin.publisherLabel} />
-          )
-        }
-        status={
-          runtimeStatus === null ? undefined : (
+        description={
+          problemLine === null ? (
+            plugin.description
+          ) : (
             <span
-              data-testid={`plugin-runtime-status-${plugin.id}`}
-              className={cn(
-                "shrink-0 text-xs font-medium",
-                runtimeStatusToneClass,
-              )}
+              data-testid={`plugin-problem-line-${plugin.id}`}
+              className={`inline-flex min-w-0 items-center gap-1 ${
+                problemLine.tone === "error"
+                  ? "text-destructive-text"
+                  : "text-warning-text"
+              }`}
             >
-              {runtimeStatus.label}
+              {problemLine.attentionCount === null ? null : (
+                <Pill
+                  variant="outline"
+                  className="border-transparent bg-surface-attention text-warning-text"
+                >
+                  {problemLine.attentionCount}
+                </Pill>
+              )}
+              {problemLine.text === "" ? null : (
+                <span className="min-w-0 truncate">{problemLine.text}</span>
+              )}
             </span>
           )
-        }
-        description={
-          runtimeStatus === null
-            ? plugin.description
-            : (plugin.statusDetail ?? runtimeStatus.condition)
         }
         openLabel={`${plugin.name ?? plugin.id} plugin details`}
         onOpen={openDetail}
@@ -179,17 +171,6 @@ export function InstalledPluginRow({
         }
         persistentActions={
           <>
-            {notRunning ? (
-              <span
-                data-testid={`plugin-not-running-${plugin.id}`}
-                className={cn(
-                  "mr-1 text-2xs font-medium",
-                  runtimeStatusToneClass,
-                )}
-              >
-                not running
-              </span>
-            ) : null}
             <Switch
               checked={enabled}
               disabled={toggle.isPending}

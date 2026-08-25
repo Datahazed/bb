@@ -986,6 +986,61 @@ describe("plugin service", () => {
     }
   });
 
+  it("wraps settings listeners and restores their compact failure count", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-health-listener",
+      serverSource: `
+        export default function plugin(bb) {
+          const settings = bb.settings.define({
+            token: { type: "string", label: "Token", default: "before" },
+          });
+          settings.onChange(() => {
+            throw new Error("listener boom" + String.fromCharCode(10) + "private detail");
+          });
+        }`,
+    });
+    await service.installPath(rootDir);
+
+    await service.updateSettings("health-listener", { token: "after" });
+    expect(
+      service.list().find((entry) => entry.id === "health-listener"),
+    ).toMatchObject({
+      handlerStats: { errorCount: 1 },
+      lastProblem: {
+        class: "error",
+        message: "listener boom",
+        at: expect.any(Number),
+      },
+    });
+
+    await service.stop();
+    service = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      loadTimeoutMs: 2000,
+    });
+    await service.start();
+
+    expect(
+      service.list().find((entry) => entry.id === "health-listener"),
+    ).toMatchObject({
+      handlerStats: { count: 0, errorCount: 1 },
+      lastProblem: {
+        class: "error",
+        message: "listener boom",
+      },
+    });
+  }, 15_000);
+
   it("re-points a path plugin at a new checkout and keeps its settings, secrets, and schedules", async () => {
     // Two checkouts of the same plugin (same package name, so same id).
     const serverSource = (marker: string) => `

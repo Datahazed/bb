@@ -789,10 +789,15 @@ function printPlugin(plugin: PluginEntry): void {
   console.log(`${plugin.id}@${plugin.version}  ${state}${detail}`);
   console.log(`  source: ${plugin.source}`);
   const stats = plugin.handlerStats;
-  if (stats && stats.count > 0) {
+  if (stats && (stats.count > 0 || stats.errorCount > 0)) {
     const errors = stats.errorCount > 0 ? `, ${stats.errorCount} errors` : "";
     console.log(
       `  handlers: ${stats.count} calls / ${formatMs(stats.totalMs)} total / ${formatMs(stats.maxMs)} max${errors}`,
+    );
+  }
+  if (plugin.lastProblem !== null) {
+    console.log(
+      `  last problem: ${plugin.lastProblem.class} at ${formatAbsoluteDate(plugin.lastProblem.at)} — ${plugin.lastProblem.message}`,
     );
   }
   for (const service of plugin.services ?? []) {
@@ -1079,9 +1084,8 @@ export function registerPluginCommands(
                 // moved, not refused; name the install being replaced so
                 // the confirmation is about the move, not a fresh install.
                 const pluginId = derivePluginId(pkg.name);
-                const { plugins } = await createCliBbSdk(
-                  getUrl(),
-                ).plugins.list();
+                const { plugins } =
+                  await createCliBbSdk(getUrl()).plugins.list();
                 const installed = plugins.find((p) => p.id === pluginId);
                 if (
                   installed !== undefined &&

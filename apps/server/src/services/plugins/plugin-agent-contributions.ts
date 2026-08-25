@@ -69,7 +69,10 @@ export async function resolvePluginAgentConfiguration(args: {
  */
 export function listPluginInstructionContributions(): Array<{
   pluginId: string;
-  provider: (ctx: { threadId: string; projectId: string }) => string | null;
+  provider: (ctx: {
+    threadId: string;
+    projectId: string;
+  }) => Promise<string | null>;
 }> {
   return contributions?.listInstructionContributions() ?? [];
 }

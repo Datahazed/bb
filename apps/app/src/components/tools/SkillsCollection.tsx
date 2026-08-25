@@ -76,9 +76,7 @@ function providerFilterLabel(
   provider: ResourceProviderFilter,
   providerRoster: ProviderRoster,
 ): string {
-  return provider === "bb"
-    ? "bb"
-    : providerLabel(provider, providerRoster);
+  return provider === "bb" ? "bb" : providerLabel(provider, providerRoster);
 }
 
 function skillSourceFilterId(skill: SkillSummary): ResourceSkillSourceFilter {
@@ -96,7 +94,7 @@ function skillSourceFilterLabel(source: ResourceSkillSourceFilter): string {
     case "included":
       return "Included in plugin";
     case "user":
-      return "User";
+      return "Direct install";
   }
 }
 
@@ -135,7 +133,11 @@ export function ProviderLogo({
     return <LogoIcon className={className} />;
   }
   return (
-    <ProviderIconMark provider={provider} icon={info.icon} className={className} />
+    <ProviderIconMark
+      provider={provider}
+      icon={info.icon}
+      className={className}
+    />
   );
 }
 
@@ -468,10 +470,7 @@ export function SkillsOverview({
           skill.name,
           skill.description ?? "",
           providerLabel(skill.provider, providerRoster),
-          skillScopeLabel(
-            skill,
-            providerLabelForScope(skill, providerRoster),
-          ),
+          skillScopeLabel(skill, providerLabelForScope(skill, providerRoster)),
         ]
           .join(" ")
           .toLowerCase()

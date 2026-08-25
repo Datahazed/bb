@@ -185,7 +185,10 @@ export interface PluginAgentToolContribution {
 /** One dynamic instructions provider from a running plugin. */
 export interface PluginInstructionContribution {
   pluginId: string;
-  provider: (ctx: { threadId: string; projectId: string }) => string | null;
+  provider: (ctx: {
+    threadId: string;
+    projectId: string;
+  }) => Promise<string | null>;
 }
 
 /** Fully validated conditional selections for one thread/session resolution. */

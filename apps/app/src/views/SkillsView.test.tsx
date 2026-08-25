@@ -369,7 +369,11 @@ describe("SkillsOverview", () => {
     expect(screen.getByText("Type")).toBeTruthy();
     // The explicit "All" row is gone; an empty selection carries that meaning.
     expect(screen.queryByRole("menuitemcheckbox", { name: "All" })).toBeNull();
-    for (const name of ["BB Official", "Included in plugin", "User"]) {
+    for (const name of [
+      "BB Official",
+      "Included in plugin",
+      "Direct install",
+    ]) {
       expect(
         screen
           .getByRole("menuitemcheckbox", { name })
@@ -390,9 +394,13 @@ describe("SkillsOverview", () => {
     // A user-authored skill has its own bucket, so it is narrowed out here
     // rather than being silently unreachable through the filter.
     expect(screen.queryByText("user-skill")).toBeNull();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Direct install" }),
+    );
     expect(await screen.findByText("user-skill")).toBeTruthy();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Direct install" }),
+    );
     fireEvent.click(
       screen.getByRole("menuitemcheckbox", { name: "Included in plugin" }),
     );
@@ -405,7 +413,7 @@ describe("SkillsOverview", () => {
   // claim untested for the claude-*/codex-* scopes, which is exactly where the
   // old code returned null and let skills bypass the Type filter entirely.
   // This also covers AND-across-groups, which no other test does.
-  it("puts every non-builtin, non-plugin scope in the User bucket", async () => {
+  it("puts every non-builtin, non-plugin scope in the Direct install bucket", async () => {
     renderDom(
       <SkillsOverview
         providerRoster={DEFAULT_PROVIDER_ROSTER}
@@ -439,15 +447,17 @@ describe("SkillsOverview", () => {
     // Provider defaults to `bb`, which would hide both fixtures before the
     // Type filter is reached — clear it so this test observes Type alone.
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Direct install" }),
+    );
 
-    // Both provider-scoped skills reach the User bucket; the builtin does not.
+    // Both provider-scoped skills reach Direct install; the builtin does not.
     expect(await screen.findByText("claude-authored")).toBeTruthy();
     expect(screen.getByText("codex-authored")).toBeTruthy();
     expect(screen.queryByText("official-skill")).toBeNull();
 
     // Groups combine as AND: narrowing Provider to Claude Code drops the
-    // codex-scoped skill while the User type selection still holds.
+    // codex-scoped skill while the Direct install type selection still holds.
     fireEvent.click(
       screen.getByRole("menuitemcheckbox", { name: "Claude Code" }),
     );
@@ -456,7 +466,9 @@ describe("SkillsOverview", () => {
     expect(screen.queryByText("official-skill")).toBeNull();
 
     // Clearing Type leaves the Provider selection filtering on its own.
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Direct install" }),
+    );
     expect(await screen.findByText("claude-authored")).toBeTruthy();
     expect(screen.queryByText("codex-authored")).toBeNull();
   });
@@ -591,8 +603,14 @@ describe("SkillsOverview", () => {
       <SkillsOverview
         providerRoster={
           new Map([
-            ["acp-foo", makeProviderInfo({ id: "acp-foo", displayName: "Foo Agent" })],
-            ["acp-bar", makeProviderInfo({ id: "acp-bar", displayName: "Bar Agent" })],
+            [
+              "acp-foo",
+              makeProviderInfo({ id: "acp-foo", displayName: "Foo Agent" }),
+            ],
+            [
+              "acp-bar",
+              makeProviderInfo({ id: "acp-bar", displayName: "Bar Agent" }),
+            ],
           ])
         }
         skills={[

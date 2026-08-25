@@ -19,6 +19,9 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     enabled: true,
     status: "running",
     statusDetail: null,
+    lastProblem: null,
+    categoryId: null,
+    category: null,
     description: "Desktop notifications when a thread needs you.",
     name: "Notify",
     icon: null,
@@ -80,20 +83,34 @@ describe("InstalledPluginRow", () => {
     expect(onOpenPlugin).toHaveBeenCalledWith("notify");
   });
 
-  it("shows the status word and detail and marks the switch when a plugin is not running", () => {
+  it("replaces the description with one compact problem line", () => {
     renderRow(
       plugin({
         status: "incompatible",
         statusDetail: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+        lastProblem: {
+          class: "incompatible",
+          message: "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+          at: Date.now(),
+        },
       }),
     );
 
-    expect(screen.getByTestId("plugin-runtime-status-notify").textContent).toBe(
-      "Incompatible",
+    expect(screen.queryByText(plugin().description ?? "")).toBeNull();
+    expect(screen.getByTestId("plugin-problem-line-notify").textContent).toBe(
+      "Not running — requires bb >=0.38.0 <0.39.0, this is 0.39.0 · just now",
+    );
+    expect(screen.queryByText("Incompatible")).toBeNull();
+    const resourceRow = screen
+      .getByTestId("plugin-row-notify")
+      .querySelector("[data-resource-row]");
+    expect(resourceRow?.classList.contains("bg-surface-destructive")).toBe(
+      true,
     );
     expect(
-      screen.getByText("requires bb >=0.38.0 <0.39.0, this is 0.39.0"),
-    ).toBeTruthy();
+      resourceRow?.classList.contains("border-surface-destructive-border"),
+    ).toBe(true);
+    expect(resourceRow?.classList.contains("text-destructive-text")).toBe(true);
     // The switch stays "on" (the user enabled it) but says so honestly.
     expect(
       screen
@@ -104,15 +121,46 @@ describe("InstalledPluginRow", () => {
     ).toBe("true");
   });
 
-  it("does not call a needs-configuration plugin not running", () => {
+  it("renders a running plugin's durable error count as one attention pill", () => {
     renderRow(
       plugin({
-        status: "needs-configuration",
-        statusDetail: "Set an API token.",
+        handlerStats: {
+          count: 5,
+          totalMs: 10,
+          maxMs: 4,
+          errorCount: 2,
+        },
+        lastProblem: {
+          class: "error",
+          message: "notification handler failed",
+          at: Date.now(),
+        },
       }),
     );
 
-    expect(screen.getByText("Set an API token.")).toBeTruthy();
-    expect(screen.queryByTestId("plugin-not-running-notify")).toBeNull();
+    const count = screen
+      .getByText("2 errors")
+      .closest("span.bg-surface-attention");
+    expect(count?.classList.contains("bg-surface-attention")).toBe(true);
+    expect(count?.classList.contains("text-warning-text")).toBe(true);
+    expect(screen.getAllByText("2 errors")).toHaveLength(1);
+    expect(screen.getByTestId("plugin-problem-line-notify").textContent).toBe(
+      "2 errors, last just now — notification handler failed",
+    );
+  });
+
+  it("does not repeat provenance or category as row pills", () => {
+    renderRow(
+      plugin({
+        provenance: "catalog",
+        publisherLabel: "BB Community",
+        categoryId: "security",
+        category: "Security",
+      }),
+    );
+
+    const row = screen.getByTestId("plugin-row-notify");
+    expect(row.textContent).not.toContain("BB Community");
+    expect(row.textContent).not.toContain("Security");
   });
 });
