@@ -32,15 +32,21 @@ import {
 import {
   consumePluginListingNotice,
   ensurePathPluginListingLifecycles,
-  getPluginListingLifecycle,
   getInstalledPlugin,
+  getPluginListingLifecycle,
+  getPluginMarketplace,
   listPathPluginListingLifecycles,
   listPluginListingNotices,
+  PluginListingDraftConflictError,
   recordPluginListingSubmission,
   savePluginListingDraft,
-  PluginListingDraftConflictError,
+  type DbConnection,
 } from "@bb/db";
-import { parseMarketplaceManifest } from "../services/plugin-catalog/marketplace-manifest.js";
+import {
+  CURATED_MARKETPLACE_NAME,
+  parseMarketplaceManifest,
+  parseMarketplaceManifestJson,
+} from "../services/plugin-catalog/marketplace-manifest.js";
 import { parseGithubPullRequestUrl } from "../services/plugins/plugin-listing-lifecycle.js";
 
 /** The slice of server deps the "local" auth checks need (origin allowlist). */
@@ -194,6 +200,24 @@ function notRunningError(
   return `plugin "${id}" is not running (status: ${lookup.status}${detail})`;
 }
 
+function assertListingDraftIdAvailable(
+  db: DbConnection,
+  pluginId: string,
+): void {
+  const curated = getPluginMarketplace(db, CURATED_MARKETPLACE_NAME);
+  if (curated === undefined) return;
+  const catalog = parseMarketplaceManifestJson(
+    curated.manifestJson,
+    `stored marketplace ${JSON.stringify(CURATED_MARKETPLACE_NAME)}`,
+  );
+  if (!catalog.plugins.some((entry) => entry.id === pluginId)) return;
+  const current = getPluginListingLifecycle(db, pluginId);
+  if (current?.status === "published" && current.entryId === pluginId) return;
+  throw new PluginListingDraftConflictError(
+    `plugin ${JSON.stringify(pluginId)} is already listed in the curated marketplace`,
+  );
+}
+
 /** Typed listing boundary, split out so its authorization is testable alone. */
 export function registerPluginListingRoutes(
   app: Hono,
@@ -254,6 +278,7 @@ export function registerPluginListingRoutes(
         },
         "listing draft",
       );
+      assertListingDraftIdAvailable(deps.db, pluginId);
       savePluginListingDraft(deps.db, pluginId, parsed.data.entry);
       deps.hub.notifySystem(["plugins-changed"]);
       return context.json({

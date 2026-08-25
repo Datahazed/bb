@@ -2,10 +2,16 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
+  getPluginListingLifecycle,
   migrate,
+  publishPluginListing,
+  recordPluginListingSubmission,
+  savePluginListingDraft,
+  upsertPluginMarketplace,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
+import type { PluginListingDraftEntry } from "@bb/server-contract";
 import { registerPluginListingRoutes } from "../../../src/routes/plugins.js";
 
 const entry = {
@@ -22,7 +28,7 @@ const entry = {
   },
   category: "plugin-development",
   screenshots: [],
-};
+} satisfies PluginListingDraftEntry;
 
 const updateState = {
   lastCheckAt: null,
@@ -40,6 +46,28 @@ function jsonPost(body: unknown, origin?: string): RequestInit {
     },
     body: JSON.stringify(body),
   };
+}
+
+function storeCuratedCatalog(db: DbConnection): void {
+  upsertPluginMarketplace(db, {
+    name: "bb-community",
+    sourceKind: "https",
+    manifestUrl: "https://getbb.app/marketplace/v2/marketplace.json",
+    sourceGitRef: null,
+    sourceGitCommit: null,
+    manifestJson: JSON.stringify({
+      schemaVersion: 2,
+      name: "bb-community",
+      displayName: "BB Community",
+      newAndNotable: [],
+      plugins: [entry],
+    }),
+    etag: null,
+    lastModified: null,
+    lastSuccessfulRefreshAt: 1_000,
+    lastAttemptedRefreshAt: 1_000,
+    lastError: null,
+  });
 }
 
 describe("plugin listing routes", () => {
@@ -257,6 +285,73 @@ describe("plugin listing routes", () => {
           },
         },
       ],
+    });
+  });
+
+  it("refuses a fresh draft whose id already exists in the curated catalog", async () => {
+    upsertInstalledPlugin(db, {
+      id: entry.id,
+      source: "path:/plugins/author-tools",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "path",
+        canonicalPath: "/plugins/author-tools",
+      },
+      exactResolution: { kind: "path" },
+      updateState,
+      activeArtifactId: null,
+      rootDir: "/plugins/author-tools",
+      version: "1.0.0",
+      enabled: true,
+    });
+    storeCuratedCatalog(db);
+
+    const response = await app.request(
+      `/plugins/${entry.id}/listing/draft`,
+      jsonPost({ entry }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: `plugin ${JSON.stringify(entry.id)} is already listed in the curated marketplace`,
+    });
+    expect(getPluginListingLifecycle(db, entry.id)).toBeUndefined();
+  });
+
+  it("allows the owner of a published listing to start an edit draft", async () => {
+    upsertInstalledPlugin(db, {
+      id: entry.id,
+      source: "path:/plugins/author-tools",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "path",
+        canonicalPath: "/plugins/author-tools",
+      },
+      exactResolution: { kind: "path" },
+      updateState,
+      activeArtifactId: null,
+      rootDir: "/plugins/author-tools",
+      version: "1.0.0",
+      enabled: true,
+    });
+    savePluginListingDraft(db, entry.id, entry);
+    recordPluginListingSubmission(db, entry.id, {
+      url: "https://github.com/get-bb/marketplace/pull/42",
+      openedAt: 1_000,
+    });
+    publishPluginListing(db, entry.id, 2_000);
+    storeCuratedCatalog(db);
+
+    const updatedEntry = { ...entry, displayName: "Updated author tools" };
+    const response = await app.request(
+      `/plugins/${entry.id}/listing/draft`,
+      jsonPost({ entry: updatedEntry }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(getPluginListingLifecycle(db, entry.id)).toEqual({
+      status: "draft",
+      entry: updatedEntry,
     });
   });
 });

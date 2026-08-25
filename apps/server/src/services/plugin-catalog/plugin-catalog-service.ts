@@ -721,8 +721,8 @@ export function createPluginCatalogService(deps: {
         try {
           await reconcilePluginListingLifecycles({
             db: deps.db,
-            acceptedEntryIds: new Set(
-              catalog.plugins.map((entry) => entry.id),
+            acceptedEntries: new Map(
+              catalog.plugins.map((entry) => [entry.id, entry.source]),
             ),
             fetch: fetchMarketplace,
             now,

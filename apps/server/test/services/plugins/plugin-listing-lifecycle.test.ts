@@ -5,6 +5,7 @@ import {
   getPluginListingLifecycle,
   listPluginListingNotices,
   recordPluginListingSubmission,
+  returnPluginListingToDraft,
   savePluginListingDraft,
   upsertInstalledPlugin,
   type DbConnection,
@@ -94,7 +95,7 @@ describe("plugin listing lifecycle reconciliation", () => {
     await expect(
       reconcilePluginListingLifecycles({
         db,
-        acceptedEntryIds: new Set([entry.id]),
+        acceptedEntries: new Map([[entry.id, entry.source]]),
         fetch,
         now: () => 2_000,
       }),
@@ -115,6 +116,60 @@ describe("plugin listing lifecycle reconciliation", () => {
     ]);
   });
 
+  it("does not publish a catalog entry with the same id and a different source", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ state: "open", merged: false }), {
+        status: 200,
+      }),
+    );
+
+    await expect(
+      reconcilePluginListingLifecycles({
+        db,
+        acceptedEntries: new Map([
+          [
+            entry.id,
+            {
+              git: {
+                url: "https://github.com/someone-else/author-tools.git",
+                range: "^1.0.0",
+              },
+            },
+          ],
+        ]),
+        fetch,
+        now: () => 2_000,
+      }),
+    ).resolves.toBe(false);
+
+    expect(getPluginListingLifecycle(db, entry.id)?.status).toBe("in-review");
+    expect(listPluginListingNotices(db)).toEqual([]);
+  });
+
+  it("warns instead of rejecting reconciliation when persisted state changed", async () => {
+    const warn = vi.fn();
+    const acceptedEntries = new Map([[entry.id, entry.source]]);
+    vi.spyOn(acceptedEntries, "get").mockImplementationOnce(() => {
+      returnPluginListingToDraft(db, entry.id, 1_500);
+      return entry.source;
+    });
+
+    await expect(
+      reconcilePluginListingLifecycles({
+        db,
+        acceptedEntries,
+        fetch: vi.fn<typeof globalThis.fetch>(),
+        now: () => 2_000,
+        warn,
+      }),
+    ).resolves.toBe(false);
+
+    expect(warn).toHaveBeenCalledWith(
+      `listing publication failed for ${entry.id}: plugin ${JSON.stringify(entry.id)} is not in review`,
+    );
+    expect(getPluginListingLifecycle(db, entry.id)?.status).toBe("draft");
+  });
+
   it("returns a closed-unmerged PR to draft and creates a one-shot notice", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
       new Response(JSON.stringify({ state: "closed", merged: false }), {
@@ -123,7 +178,7 @@ describe("plugin listing lifecycle reconciliation", () => {
     );
     await reconcilePluginListingLifecycles({
       db,
-      acceptedEntryIds: new Set(),
+      acceptedEntries: new Map(),
       fetch,
       now: () => 2_000,
     });
@@ -157,7 +212,7 @@ describe("plugin listing lifecycle reconciliation", () => {
       await expect(
         reconcilePluginListingLifecycles({
           db,
-          acceptedEntryIds: new Set(),
+          acceptedEntries: new Map(),
           fetch,
           now: () => 2_000,
         }),

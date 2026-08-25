@@ -4,7 +4,9 @@ import {
   returnPluginListingToDraft,
   type DbConnection,
 } from "@bb/db";
+import type { PluginListingDraftEntry } from "@bb/server-contract";
 import { z } from "zod";
+import { normalizePluginSubdirectory } from "./install-sources.js";
 
 const githubPullResponseSchema = z
   .object({ state: z.enum(["open", "closed"]), merged: z.boolean() })
@@ -14,6 +16,34 @@ export interface GithubPullRequestIdentity {
   owner: string;
   repository: string;
   number: number;
+}
+
+type PluginListingEntrySource = PluginListingDraftEntry["source"];
+
+/** Stable identity for every install-affecting field in a listing source. */
+function pluginListingSourceIdentity(
+  source: PluginListingEntrySource,
+): string {
+  if ("npm" in source) {
+    return JSON.stringify([
+      "npm",
+      source.npm.package,
+      source.npm.range ?? null,
+      source.npm.tag ?? null,
+      source.npm.registry === undefined
+        ? null
+        : new URL(source.npm.registry).href,
+    ]);
+  }
+  const git = source.git;
+  return JSON.stringify([
+    "git",
+    new URL(git.url).href,
+    git.subdir === undefined ? null : normalizePluginSubdirectory(git.subdir),
+    "ref" in git ? "ref" : "range",
+    "ref" in git ? git.ref : git.range,
+    "ref" in git ? null : (git.tagPrefix ?? null),
+  ]);
 }
 
 /** Accept only canonical, credential-free github.com pull request URLs. */
@@ -50,7 +80,7 @@ export function parseGithubPullRequestUrl(
 
 export async function reconcilePluginListingLifecycles(args: {
   db: DbConnection;
-  acceptedEntryIds: ReadonlySet<string>;
+  acceptedEntries: ReadonlyMap<string, PluginListingEntrySource>;
   fetch: (input: string, init: RequestInit) => Promise<Response>;
   now: () => number;
   warn?: (message: string) => void;
@@ -58,9 +88,20 @@ export async function reconcilePluginListingLifecycles(args: {
   let changed = false;
   for (const record of listInReviewPluginListingLifecycles(args.db)) {
     if (record.lifecycle.status !== "in-review") continue;
-    if (args.acceptedEntryIds.has(record.lifecycle.entry.id)) {
-      publishPluginListing(args.db, record.pluginId, args.now());
-      changed = true;
+    const acceptedSource = args.acceptedEntries.get(record.lifecycle.entry.id);
+    if (
+      acceptedSource !== undefined &&
+      pluginListingSourceIdentity(acceptedSource) ===
+        pluginListingSourceIdentity(record.lifecycle.entry.source)
+    ) {
+      try {
+        publishPluginListing(args.db, record.pluginId, args.now());
+        changed = true;
+      } catch (error) {
+        args.warn?.(
+          `listing publication failed for ${record.pluginId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
       continue;
     }
     const pull = parseGithubPullRequestUrl(record.lifecycle.pullRequest.url);
