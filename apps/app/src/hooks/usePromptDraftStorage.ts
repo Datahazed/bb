@@ -14,6 +14,8 @@ import {
   getNewThreadDraftSlotStorageKey,
   parseNewThreadDraftSlot,
   persistNewThreadDraftSlot,
+  readNewThreadDraftSlots,
+  type NewThreadDraftSlot,
   type NewThreadDraftDestination,
 } from "@/lib/prompt-draft-slots";
 
@@ -52,7 +54,11 @@ const promptDraftCache = new Map<string, PromptDraftCacheEntry>();
 const promptDraftSubscribers = new Map<string, Set<PromptDraftListener>>();
 const pendingPromptDraftStorageKeys = new Set<string>();
 const promptDraftPersistTimers = new Map<string, number>();
+const newThreadDraftSlotSubscribers = new Set<PromptDraftListener>();
+let newThreadDraftSlotsSnapshot: readonly NewThreadDraftSlot[] | null = null;
 let promptDraftStorageObserverInitialized = false;
+
+const EMPTY_NEW_THREAD_DRAFT_SLOTS: readonly NewThreadDraftSlot[] = [];
 
 function normalizeStorageSegment(value: string): string {
   return encodeURIComponent(value.trim());
@@ -133,6 +139,7 @@ function updatePromptDraftDestination(
   // its destination into the same JSON record without changing recency.
   if (!isPromptDraftEmpty(draft)) {
     persistPromptDraftCache(storageKey);
+    emitNewThreadDraftSlotsChange();
   }
 }
 
@@ -141,6 +148,13 @@ function emitPromptDraftChange(storageKey: string): void {
   if (!listeners || listeners.size === 0) return;
 
   for (const listener of listeners) {
+    listener();
+  }
+}
+
+function emitNewThreadDraftSlotsChange(): void {
+  newThreadDraftSlotsSnapshot = null;
+  for (const listener of newThreadDraftSlotSubscribers) {
     listener();
   }
 }
@@ -238,11 +252,17 @@ function ensurePromptDraftStorageObserver(): void {
 
   promptDraftStorageObserverInitialized = true;
   window.addEventListener("storage", (event) => {
-    if (!event.key) return;
+    if (event.key === null) {
+      emitNewThreadDraftSlotsChange();
+      return;
+    }
     // While a local deferred write is pending, ignore stale cross-tab storage for this key so it cannot clobber the in-progress draft.
     if (pendingPromptDraftStorageKeys.has(event.key)) return;
     promptDraftCache.delete(event.key);
     emitPromptDraftChange(event.key);
+    if (getNewThreadDraftSlotIdFromStorageKey(event.key) !== null) {
+      emitNewThreadDraftSlotsChange();
+    }
   });
   window.addEventListener("pagehide", flushPendingPromptDraftPersists);
   document.addEventListener("visibilitychange", () => {
@@ -314,6 +334,75 @@ function writePromptDraft(
     persistPromptDraftCache(storageKey);
   }
   emitPromptDraftChange(storageKey);
+  if (slotId !== null) {
+    emitNewThreadDraftSlotsChange();
+  }
+}
+
+function readLiveNewThreadDraftSlots(): readonly NewThreadDraftSlot[] {
+  if (typeof window === "undefined") return EMPTY_NEW_THREAD_DRAFT_SLOTS;
+
+  const slotsById = new Map(
+    readNewThreadDraftSlots().map((slot) => [slot.id, slot]),
+  );
+  for (const [storageKey, cachedEntry] of promptDraftCache) {
+    const slotId = getNewThreadDraftSlotIdFromStorageKey(storageKey);
+    if (slotId === null) continue;
+
+    // A deferred local edit is authoritative until its timer flushes. For a
+    // settled cache entry, overlay it only while it still describes storage;
+    // this keeps a cross-window clear from resurrecting stale cached rows.
+    const isAuthoritative =
+      pendingPromptDraftStorageKeys.has(storageKey) ||
+      cachedEntry.rawValue === readStoredPromptDraftValue(storageKey);
+    if (!isAuthoritative) continue;
+
+    if (
+      isPromptDraftEmpty(cachedEntry.draft) ||
+      cachedEntry.lastEditedAt === null ||
+      cachedEntry.destination === null
+    ) {
+      slotsById.delete(slotId);
+      continue;
+    }
+    slotsById.set(slotId, {
+      id: slotId,
+      draft: cachedEntry.draft,
+      lastEditedAt: cachedEntry.lastEditedAt,
+      destination: cachedEntry.destination,
+    });
+  }
+
+  return [...slotsById.values()].sort(
+    (left, right) =>
+      right.lastEditedAt - left.lastEditedAt || left.id.localeCompare(right.id),
+  );
+}
+
+/** A referentially stable snapshot for the synthesized New-thread rows. */
+export function getNewThreadDraftSlotsSnapshot(): readonly NewThreadDraftSlot[] {
+  if (newThreadDraftSlotsSnapshot === null) {
+    newThreadDraftSlotsSnapshot = readLiveNewThreadDraftSlots();
+  }
+  return newThreadDraftSlotsSnapshot;
+}
+
+export function subscribeNewThreadDraftSlots(
+  listener: PromptDraftListener,
+): () => void {
+  ensurePromptDraftStorageObserver();
+  newThreadDraftSlotSubscribers.add(listener);
+  return () => {
+    newThreadDraftSlotSubscribers.delete(listener);
+  };
+}
+
+/**
+ * Deletes a phantom row through the composer store rather than raw storage so
+ * any mounted composer bound to the slot receives the empty draft immediately.
+ */
+export function deleteNewThreadDraftSlot(slotId: string): void {
+  writePromptDraft(getNewThreadDraftSlotStorageKey(slotId), EMPTY_PROMPT_DRAFT);
 }
 
 function restorePromptDraftIfEmpty(
