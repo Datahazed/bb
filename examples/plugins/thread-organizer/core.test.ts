@@ -173,11 +173,11 @@ describe("workflow configuration", () => {
     );
   });
 
-  it("migrates the previous protected Inbox rule without resetting custom stages", () => {
+  it("migrates the previous sticky Inbox rule without resetting custom stages", () => {
     const stored = core.cloneWorkflowConfig(core.DEFAULT_WORKFLOW_CONFIG);
     stored.stages[0] = {
       ...stored.stages[0]!,
-      rule: "Idle unread threads that need your attention appear here automatically. This behavior can’t be customized.",
+      rule: "Idle unread threads that need your attention appear here automatically and stay until work resumes. This behavior can’t be customized.",
     };
     stored.stages[1] = { ...stored.stages[1]!, title: "Shaping" };
 
@@ -248,6 +248,9 @@ describe("agent guidance", () => {
     );
     expect(instructions).toContain(
       "| on-hold | On Hold | Work intentionally paused until a later time or external condition. |",
+    );
+    expect(instructions).toContain(
+      "the user moves a read thread to another workflow section",
     );
     expect(instructions).not.toContain("Agent policy");
     expect(instructions).not.toContain("user direction");

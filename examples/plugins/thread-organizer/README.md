@@ -11,8 +11,10 @@ directly and does not vendor or relabel the released 0.4.10 package.
 ## Behavior
 
 - Running threads appear in their remembered workflow stage.
-- Idle unread threads appear in Inbox and stay there until work resumes.
-- Read and unread changes do not move a thread after it reaches Inbox.
+- Idle unread threads appear in Inbox and stay there after being marked read.
+- After reading one, drag it to any workflow section to clear it from Inbox
+  without starting another agent turn.
+- Other read and unread changes do not move a thread after it reaches Inbox.
 - A user move changes the remembered stage. `bb organizer phase <stage-key>`
   moves it or refreshes substantially changed work that remains in that stage.
 - Inbox keeps that system behavior even when its visible title or icon changes.
