@@ -62,8 +62,8 @@ export function findPaneByThread(
 
 /** Finds the pane representing the same routable page as `content`. Plugin
  * subpaths belong to one panel identity, so navigating within a panel updates
- * that pane instead of opening duplicates. The compose page is a singleton in
- * this prototype, matching its existing shared draft/project state. */
+ * that pane instead of opening duplicates. New-thread panes are keyed by their
+ * draft slot so independent composers can coexist. */
 export function findPaneByContent(
   root: LayoutNode,
   content: PaneContent,
@@ -72,7 +72,12 @@ export function findPaneByContent(
     listPanes(root).find((pane) => {
       const candidate = pane.content;
       if (candidate.kind !== content.kind) return false;
-      if (content.kind === "new-thread") return true;
+      if (content.kind === "new-thread") {
+        return (
+          candidate.kind === "new-thread" &&
+          candidate.draftSlotId === content.draftSlotId
+        );
+      }
       if (content.kind === "thread") {
         return (
           candidate.kind === "thread" &&

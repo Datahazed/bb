@@ -145,7 +145,7 @@ import {
   type SidebarThreadSearchPanelController,
 } from "./sidebarThreadSearch";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
-import { usePaneContentSplitIndicator } from "./paneContentSplitIndicator";
+import { useNewThreadSplitIndicator } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import {
   renderBuiltInSidebarSection,
@@ -883,10 +883,7 @@ export function ProjectListActionButtons({
   const isNewChatDisabled = !onNewChat;
   const newThreadShortcut = useAppCommandShortcut("thread.new");
   const threadSearchShortcut = useAppCommandShortcut("thread.search");
-  const newThreadSplitIndicator = usePaneContentSplitIndicator(
-    { kind: "new-thread" },
-    splitEnabled,
-  );
+  const newThreadSplitIndicator = useNewThreadSplitIndicator(splitEnabled);
   // One click on the X fully dismisses search — it clears the query and closes
   // the input in a single step (onClose resets the query too). Previously this
   // was a two-step clear-then-close, which felt like the X "needed two presses".

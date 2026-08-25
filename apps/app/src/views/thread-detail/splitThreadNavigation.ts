@@ -17,6 +17,7 @@ import {
   getRootComposeRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
+import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
 
 const FIRST_PANE_ID = "pane-1";
 
@@ -62,6 +63,26 @@ export function paneContentRoute(content: PaneContent): string {
   });
 }
 
+export interface PaneContentNavigationTarget {
+  state: Record<string, unknown> | null;
+  to: string;
+}
+
+/** Internal pane navigation carries compose identity in location state. A
+ * public navigation to `/` omits it and is therefore allocated a fresh slot by
+ * SplitWorkspaceRoute. */
+export function paneContentNavigationTarget(
+  content: PaneContent,
+): PaneContentNavigationTarget {
+  return {
+    to: paneContentRoute(content),
+    state:
+      content.kind === "new-thread"
+        ? withRootComposeDraftSlotId(null, content.draftSlotId)
+        : null,
+  };
+}
+
 /** Reconciles any splittable page route into the focused pane. */
 export function reconcileLayoutForContent(
   layout: SplitLayout | null,
@@ -88,6 +109,13 @@ export function reconcileLayoutForContent(
 export function focusedPaneRoute(layout: SplitLayout): string | null {
   const focused = findPane(layout.root, layout.focusedPaneId);
   return focused === null ? null : paneContentRoute(focused.content);
+}
+
+export function focusedPaneNavigationTarget(
+  layout: SplitLayout,
+): PaneContentNavigationTarget | null {
+  const focused = findPane(layout.root, layout.focusedPaneId);
+  return focused === null ? null : paneContentNavigationTarget(focused.content);
 }
 
 function threadOpenSplitZone(split: ThreadOpenSplit): SplitZone {

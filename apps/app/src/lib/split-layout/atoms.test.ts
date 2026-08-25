@@ -8,8 +8,12 @@ import {
   MAXIMIZED_PANE_STORAGE_KEY,
   splitLayoutAtom,
 } from "./atoms";
-import { countPanes, findPaneByThread, splitPane } from "./ops";
-import { serializeSplitLayout, SPLIT_LAYOUT_STORAGE_KEY } from "./persistence";
+import { countPanes, findPaneByThread, listPanes, splitPane } from "./ops";
+import {
+  serializeSplitLayout,
+  SPLIT_LAYOUT_SCHEMA_VERSION,
+  SPLIT_LAYOUT_STORAGE_KEY,
+} from "./persistence";
 import type { SplitLayout } from "./types";
 
 function singlePane(threadId: string): SplitLayout {
@@ -64,6 +68,56 @@ function hydrateLayoutOnLoad(): SplitLayout | null {
 }
 
 describe("tab-scoped workspace state", () => {
+  it("durably upgrades v1 new-thread pane bindings on first hydrate", () => {
+    const legacy = JSON.stringify({
+      version: 1,
+      layout: {
+        root: {
+          type: "split",
+          dir: "row",
+          sizes: [0.5, 0.5],
+          children: [
+            {
+              type: "pane",
+              paneId: "pane-1",
+              content: { kind: "new-thread" },
+            },
+            {
+              type: "pane",
+              paneId: "pane-2",
+              content: { kind: "new-thread" },
+            },
+          ],
+        },
+        focusedPaneId: "pane-2",
+      },
+    });
+    window.sessionStorage.setItem(SPLIT_LAYOUT_STORAGE_KEY, legacy);
+
+    const firstHydrate = hydrateLayoutOnLoad();
+    const firstSlotIds =
+      firstHydrate === null
+        ? []
+        : listPanes(firstHydrate.root).flatMap((pane) =>
+            pane.content.kind === "new-thread"
+              ? [pane.content.draftSlotId]
+              : [],
+          );
+    const upgradedSessionValue = window.sessionStorage.getItem(
+      SPLIT_LAYOUT_STORAGE_KEY,
+    );
+
+    expect(firstSlotIds).toHaveLength(2);
+    expect(new Set(firstSlotIds).size).toBe(2);
+    expect(JSON.parse(upgradedSessionValue ?? "null")).toMatchObject({
+      version: SPLIT_LAYOUT_SCHEMA_VERSION,
+    });
+    expect(window.localStorage.getItem(SPLIT_LAYOUT_STORAGE_KEY)).toBe(
+      upgradedSessionValue,
+    );
+    expect(hydrateLayoutOnLoad()).toEqual(firstHydrate);
+  });
+
   it("keeps this tab's panes when another tab opens a different thread", () => {
     const store = createStore();
     // Mounting is what would install a cross-tab subscription.

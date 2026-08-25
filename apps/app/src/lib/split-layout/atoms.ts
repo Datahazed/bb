@@ -15,12 +15,32 @@ import {
 import type { SplitLayout } from "./types";
 
 function createSplitLayoutStorage(): SyncStorage<SplitLayout | null> {
-  return createTabScopedStorage<SplitLayout | null>({
+  let needsWriteBack = false;
+  const storage = createTabScopedStorage<SplitLayout | null>({
     // A malformed or stale value deserializes to null, which the split area
     // reads as "seed a single pane from the current route".
-    parse: (storedValue) => deserializeSplitLayout(storedValue),
+    parse: (storedValue) => {
+      const layout = deserializeSplitLayout(storedValue);
+      needsWriteBack =
+        layout !== null && storedValue !== serializeSplitLayout(layout);
+      return layout;
+    },
     serialize: (value) => (value === null ? "" : serializeSplitLayout(value)),
   });
+  return {
+    ...storage,
+    getItem: (key, initialValue) => {
+      needsWriteBack = false;
+      const layout = storage.getItem(key, initialValue);
+      if (layout !== null && needsWriteBack) {
+        // Persist migrations immediately. atomWithStorage does not write a
+        // parsed value back on hydrate, so deferring this until the next layout
+        // action would give legacy compose panes new slot ids on every reload.
+        storage.setItem(key, layout);
+      }
+      return layout;
+    },
+  };
 }
 
 /**

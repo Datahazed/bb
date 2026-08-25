@@ -65,21 +65,26 @@ describe("split layout persistence", () => {
     expect(deserializeSplitLayout(serialized)).toEqual(layout);
   });
 
-  it("round-trips mixed new-thread and plugin panel content", () => {
+  it("round-trips two independent new-thread slots and plugin panel content", () => {
     const mixed: SplitLayout = {
       root: {
         type: "split",
         dir: "row",
-        sizes: [0.5, 0.5],
+        sizes: [0.3, 0.3, 0.4],
         children: [
           {
             type: "pane",
             paneId: "pane-1",
-            content: { kind: "new-thread" },
+            content: { kind: "new-thread", draftSlotId: "draft-slot-1" },
           },
           {
             type: "pane",
             paneId: "pane-2",
+            content: { kind: "new-thread", draftSlotId: "draft-slot-2" },
+          },
+          {
+            type: "pane",
+            paneId: "pane-3",
             content: {
               kind: "plugin-panel",
               pluginId: "notes",
@@ -93,6 +98,52 @@ describe("split layout persistence", () => {
     };
 
     expect(deserializeSplitLayout(serializeSplitLayout(mixed))).toEqual(mixed);
+  });
+
+  it("migrates v1 new-thread panes to distinct blank slot bindings", () => {
+    const legacy = JSON.stringify({
+      version: 1,
+      layout: {
+        root: {
+          type: "split",
+          dir: "row",
+          sizes: [0.5, 0.5],
+          children: [
+            {
+              type: "pane",
+              paneId: "pane-1",
+              content: { kind: "new-thread" },
+            },
+            {
+              type: "pane",
+              paneId: "pane-2",
+              content: { kind: "new-thread" },
+            },
+          ],
+        },
+        focusedPaneId: "pane-2",
+      },
+    });
+
+    const migrated = deserializeSplitLayout(legacy);
+    expect(migrated).not.toBeNull();
+    const contents =
+      migrated?.root.type === "split"
+        ? migrated.root.children.map((child) =>
+            child.type === "pane" ? child.content : null,
+          )
+        : [];
+    const slotIds = contents.flatMap((content) =>
+      content?.kind === "new-thread" ? [content.draftSlotId] : [],
+    );
+    expect(slotIds).toHaveLength(2);
+    expect(slotIds.every((slotId) => slotId.length > 0)).toBe(true);
+    expect(new Set(slotIds).size).toBe(2);
+    expect(
+      migrated === null
+        ? null
+        : deserializeSplitLayout(serializeSplitLayout(migrated)),
+    ).toEqual(migrated);
   });
 
   it("round-trips and restores all eight panes with focus and sizes intact", () => {

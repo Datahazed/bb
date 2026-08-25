@@ -31,10 +31,13 @@ import {
   readSectionIdFromLocationState,
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
+  resolveRootComposeInitialDestination,
+  resolveRootComposeSelectionScope,
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
+import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
 import { resolveRootComposeProjectFileRouting } from "./RootComposePanelTabContent";
 import {
   resolveProjectSourceWorktreeDisabledReason,
@@ -501,6 +504,51 @@ describe("readRootComposeSectionTargetFromLocationState", () => {
   it("returns null when no section target instruction is present", () => {
     expect(readRootComposeSectionTargetFromLocationState(null)).toBeNull();
     expect(readRootComposeSectionTargetFromLocationState({})).toBeNull();
+  });
+});
+
+describe("root compose draft slot context", () => {
+  it("restores the stored submit destination instead of the current root default", () => {
+    expect(
+      resolveRootComposeInitialDestination({
+        currentProjectId: "project-current-default",
+        routeSectionId: "section-route",
+        storedDestination: {
+          projectId: "project-stored",
+          sectionId: "section-stored",
+        },
+      }),
+    ).toEqual({
+      projectId: "project-stored",
+      sectionId: "section-stored",
+    });
+  });
+
+  it("seeds a fresh slot from the current project and route section", () => {
+    expect(
+      resolveRootComposeInitialDestination({
+        currentProjectId: "project-current-default",
+        routeSectionId: "section-route",
+        storedDestination: null,
+      }),
+    ).toEqual({
+      projectId: "project-current-default",
+      sectionId: "section-route",
+    });
+  });
+
+  it("retains slot identity while clearing single-use route state", () => {
+    expect(withRootComposeDraftSlotId(null, "slot-1")).toEqual({
+      draftSlotId: "slot-1",
+    });
+    expect(withRootComposeDraftSlotId({ focusPrompt: true }, "slot-1")).toEqual(
+      { draftSlotId: "slot-1", focusPrompt: true },
+    );
+  });
+
+  it("isolates model selection only inside an actual split", () => {
+    expect(resolveRootComposeSelectionScope(true)).toBe("component-local");
+    expect(resolveRootComposeSelectionScope(false)).toBe("new-thread");
   });
 });
 

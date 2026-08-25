@@ -35,6 +35,7 @@ import type { PaneContent, SplitLayout } from "@/lib/split-layout";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { resourceRouteLabelAtom } from "@/components/layout/resourceRouteLabelAtom";
+import { readRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -89,26 +90,28 @@ function HostedComposerScopeProbe({ threadId }: { threadId: string }) {
   );
 }
 
-function RootComposeFixture() {
+function RootComposeFixture({ draftSlotId }: { draftSlotId: string }) {
   const pane = useContext(PaneContext);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const panelModel = useMemo(
     () => ({
       composerHost: null,
-      contentKey: "new-thread",
+      contentKey: `new-thread:${draftSlotId}`,
       isMainCollapsed: false,
       isOpen: isPanelOpen,
       panel: <div data-testid="hosted-new-thread-panel" />,
       onToggle: () => setIsPanelOpen((open) => !open),
       transitionsReady: true,
     }),
-    [isPanelOpen],
+    [draftSlotId, isPanelOpen],
   );
   usePaneSecondaryPanelRegistration(
     pane?.secondaryPanelHost ?? null,
     panelModel,
   );
-  return <div data-testid="root-compose-view" />;
+  return (
+    <div data-testid="root-compose-view" data-draft-slot-id={draftSlotId} />
+  );
 }
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
@@ -435,7 +438,11 @@ const docsContent: PaneContent = {
   subPath: "",
 };
 
-const newThreadContent: PaneContent = { kind: "new-thread" };
+function newThreadContentFor(draftSlotId: string): PaneContent {
+  return { kind: "new-thread", draftSlotId };
+}
+
+const newThreadContent = newThreadContentFor("draft-slot-default");
 
 function pluginContent(panelPath: string): PaneContent {
   return {
@@ -533,7 +540,16 @@ function threadPath(threadId: string): string {
 
 function LocationProbe() {
   const location = useLocation();
-  return <div data-testid="location">{location.pathname}</div>;
+  return (
+    <div
+      data-testid="location"
+      data-draft-slot-id={
+        readRootComposeDraftSlotId(location.state) ?? undefined
+      }
+    >
+      {location.pathname}
+    </div>
+  );
 }
 
 function ExternalNav({ to }: { to: string }) {
@@ -1288,6 +1304,103 @@ describe("SplitThreadArea", () => {
         .getByRole("button", { name: "Hide right panel" })
         .getAttribute("aria-expanded"),
     ).toBe("true");
+  });
+
+  it("keeps each compose pane bound through focus, maximize, restore, and close", async () => {
+    const leftContent = newThreadContentFor("draft-slot-left");
+    const rightContent = newThreadContentFor("draft-slot-right");
+    renderSplitArea({
+      path: "/",
+      layout: {
+        root: {
+          type: "split",
+          dir: "row",
+          sizes: [0.5, 0.5],
+          children: [
+            { type: "pane", paneId: "pane-left", content: leftContent },
+            { type: "pane", paneId: "pane-right", content: rightContent },
+          ],
+        },
+        focusedPaneId: "pane-right",
+      },
+      routeContent: rightContent,
+    });
+
+    expect(
+      screen
+        .getAllByTestId("root-compose-view")
+        .map((view) => view.dataset.draftSlotId),
+    ).toEqual(["draft-slot-left", "draft-slot-right"]);
+
+    const leftPane = document.querySelector<HTMLElement>(
+      '[data-split-pane-id="pane-left"]',
+    );
+    const rightPane = document.querySelector<HTMLElement>(
+      '[data-split-pane-id="pane-right"]',
+    );
+    expect(leftPane).not.toBeNull();
+    expect(rightPane).not.toBeNull();
+    if (leftPane === null || rightPane === null) return;
+
+    fireEvent.pointerDown(leftPane);
+    await waitFor(() =>
+      expect(screen.getByTestId("location").dataset.draftSlotId).toBe(
+        "draft-slot-left",
+      ),
+    );
+
+    fireEvent.click(
+      within(rightPane).getByRole("button", { name: /Full Screen/ }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("location").dataset.draftSlotId).toBe(
+        "draft-slot-right",
+      ),
+    );
+    fireEvent.click(
+      within(rightPane).getByRole("button", { name: "Exit Full Screen" }),
+    );
+    expect(screen.getByTestId("location").dataset.draftSlotId).toBe(
+      "draft-slot-right",
+    );
+
+    fireEvent.pointerDown(leftPane);
+    fireEvent.click(
+      within(leftPane).getByRole("button", { name: "Close pane" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("location").dataset.draftSlotId).toBe(
+        "draft-slot-right",
+      ),
+    );
+    expect(screen.getByTestId("root-compose-view").dataset.draftSlotId).toBe(
+      "draft-slot-right",
+    );
+  });
+
+  it("passes the route slot to the standalone compose surface", () => {
+    viewportState.compact = true;
+    const routeContent = newThreadContentFor("draft-slot-standalone");
+    renderSplitArea({
+      path: "/",
+      layout: {
+        root: {
+          type: "split",
+          dir: "row",
+          sizes: [0.5, 0.5],
+          children: [
+            { type: "pane", paneId: "pane-1", content: threadContent("thr-a") },
+            { type: "pane", paneId: "pane-2", content: routeContent },
+          ],
+        },
+        focusedPaneId: "pane-2",
+      },
+      routeContent,
+    });
+
+    expect(screen.getByTestId("root-compose-view").dataset.draftSlotId).toBe(
+      "draft-slot-standalone",
+    );
   });
 
   it("hosts the app panel while a plugin pane is focused", async () => {

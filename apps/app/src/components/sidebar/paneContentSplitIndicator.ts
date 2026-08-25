@@ -114,6 +114,35 @@ export function usePaneContentSplitIndicator(
 }
 
 /**
+ * Split-membership state for the New thread action. Unlike a draft row, the
+ * action does not represent one slot: every invocation creates another one.
+ * Mark every open root-composer pane so the existing mini-map remains an
+ * accurate summary without collapsing those panes back into one identity.
+ */
+export function useNewThreadSplitIndicator(
+  enabled: boolean,
+): PaneContentSplitIndicator {
+  const { layout, isCompact } = useSplitLayoutForIndicator(enabled);
+
+  return useMemo<PaneContentSplitIndicator>(() => {
+    if (
+      !enabled ||
+      layout === null ||
+      isCompact ||
+      countPanes(layout.root) < 2
+    ) {
+      return NO_INDICATOR;
+    }
+    const matchingPaneIds = new Set(
+      listPanes(layout.root)
+        .filter((pane) => pane.content.kind === "new-thread")
+        .map((pane) => pane.paneId),
+    );
+    return buildSplitIndicator(layout, matchingPaneIds);
+  }, [enabled, isCompact, layout]);
+}
+
+/**
  * Split-membership state for a collapsed sidebar area. Every pane occupied by
  * one of the area's hidden threads is filled, so one rollup remains accurate
  * when more than one descendant is open in the split layout.

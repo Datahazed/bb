@@ -46,6 +46,7 @@ import {
 } from "@/lib/bb-desktop";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
+import { createNewThreadDraftSlotId } from "@/lib/prompt-draft-slots";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import type { SidebarThreadSearchNavigationItem } from "./sidebarThreadSearch";
 import { useSidebarThreadSearch } from "./useSidebarThreadSearch";
@@ -73,8 +74,6 @@ import {
   sidebarTopLevelSectionOrderAtom,
   type SidebarTopLevelSectionId,
 } from "./sidebarTopLevelSectionPreferences";
-
-const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
@@ -160,8 +159,15 @@ export function AppSidebar({
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
+  const createNewThreadPaneContent = useCallback(
+    () => ({
+      kind: "new-thread" as const,
+      draftSlotId: createNewThreadDraftSlotId(),
+    }),
+    [],
+  );
   const newThreadSplit = usePaneContentSplitDrag({
-    content: NEW_THREAD_PANE_CONTENT,
+    createContent: createNewThreadPaneContent,
     enabled: true,
     label: "New thread",
   });

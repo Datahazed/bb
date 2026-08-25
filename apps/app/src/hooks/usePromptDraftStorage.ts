@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptDraftAttachment, PromptDraftState } from "@bb/client-core";
 import {
@@ -9,6 +9,13 @@ import {
   parsePromptDraftStorage,
   serializePromptDraftStorage,
 } from "@bb/client-core";
+import {
+  getNewThreadDraftSlotIdFromStorageKey,
+  getNewThreadDraftSlotStorageKey,
+  parseNewThreadDraftSlot,
+  persistNewThreadDraftSlot,
+  type NewThreadDraftDestination,
+} from "@/lib/prompt-draft-slots";
 
 const PROMPT_DRAFT_STORAGE_PREFIX = "bb.promptbox.contents";
 const PROMPT_DRAFT_STORAGE_VERSION = "3";
@@ -16,7 +23,12 @@ const PROMPT_DRAFT_PERSIST_DEBOUNCE_MS = 250;
 
 export type PromptDraftScope =
   | { kind: "automation-edit"; automationId: string }
-  | { kind: "new-thread" }
+  | { kind: "new-thread"; slotId?: undefined }
+  | {
+      kind: "new-thread";
+      slotId: string;
+      destination: NewThreadDraftDestination;
+    }
   // A plugin-rendered new-thread composer. `key` keeps its draft out of the
   // root composer's, and lets one plugin run several independent composers.
   | { kind: "plugin-new-thread"; key: string }
@@ -25,6 +37,8 @@ export type PromptDraftScope =
 interface PromptDraftCacheEntry {
   rawValue: string | null;
   draft: PromptDraftState;
+  lastEditedAt: number | null;
+  destination: NewThreadDraftDestination | null;
 }
 
 type PromptDraftListener = () => void;
@@ -59,12 +73,67 @@ function readPromptDraft(storageKey: string | null): PromptDraftState {
     return cachedEntry.draft;
   }
 
-  const draft = parsePromptDraftStorage(rawValue);
+  const slotId = getNewThreadDraftSlotIdFromStorageKey(storageKey);
+  const slot =
+    slotId === null ? null : parseNewThreadDraftSlot(slotId, rawValue);
+  const draft = slot?.draft ?? parsePromptDraftStorage(rawValue);
   promptDraftCache.set(storageKey, {
     rawValue,
     draft,
+    lastEditedAt: slot?.lastEditedAt ?? null,
+    destination: slot?.destination ?? null,
   });
   return draft;
+}
+
+function areDraftDestinationsEqual(
+  left: NewThreadDraftDestination | null,
+  right: NewThreadDraftDestination,
+): boolean {
+  return (
+    left?.projectId === right.projectId && left.sectionId === right.sectionId
+  );
+}
+
+/**
+ * A fresh slot has no storage row yet, but its first content write still needs
+ * a destination. Seed only the empty in-memory entry here; an existing slot's
+ * persisted destination remains authoritative until the caller explicitly
+ * updates it after a project or section change.
+ */
+function seedPromptDraftDestination(
+  storageKey: string,
+  destination: NewThreadDraftDestination,
+): void {
+  readPromptDraft(storageKey);
+  const cachedEntry = promptDraftCache.get(storageKey);
+  if (
+    cachedEntry !== undefined &&
+    cachedEntry.rawValue === null &&
+    cachedEntry.destination === null
+  ) {
+    cachedEntry.destination = destination;
+  }
+}
+
+function updatePromptDraftDestination(
+  storageKey: string,
+  destination: NewThreadDraftDestination,
+): void {
+  const draft = readPromptDraft(storageKey);
+  const cachedEntry = promptDraftCache.get(storageKey);
+  if (
+    cachedEntry === undefined ||
+    areDraftDestinationsEqual(cachedEntry.destination, destination)
+  ) {
+    return;
+  }
+  cachedEntry.destination = destination;
+  // Empty slots intentionally have no storage row. Once content exists, write
+  // its destination into the same JSON record without changing recency.
+  if (!isPromptDraftEmpty(draft)) {
+    persistPromptDraftCache(storageKey);
+  }
 }
 
 function emitPromptDraftChange(storageKey: string): void {
@@ -99,15 +168,31 @@ function persistPromptDraftCache(storageKey: string): void {
   // Serialization happens here, at persist time, not on every write: a write
   // per keystroke with a large draft (e.g. a pasted 1 MB minified bundle)
   // would otherwise JSON.stringify the full text on each character typed.
-  const serialized = serializePromptDraftStorage(cachedEntry.draft);
-  cachedEntry.rawValue = serialized;
-  if (serialized === null) {
-    window.localStorage.removeItem(storageKey);
-    return;
-  }
-
   try {
-    window.localStorage.setItem(storageKey, serialized);
+    const slotId = getNewThreadDraftSlotIdFromStorageKey(storageKey);
+    let serialized: string | null;
+    if (slotId === null) {
+      serialized = serializePromptDraftStorage(cachedEntry.draft);
+    } else {
+      const destination = cachedEntry.destination;
+      if (destination === null) {
+        throw new Error(`Draft slot ${slotId} has no submit destination.`);
+      }
+      serialized = persistNewThreadDraftSlot(
+        slotId,
+        cachedEntry.draft,
+        cachedEntry.lastEditedAt ?? Date.now(),
+        destination,
+      );
+    }
+    cachedEntry.rawValue = serialized;
+    if (slotId === null) {
+      if (serialized === null) {
+        window.localStorage.removeItem(storageKey);
+      } else {
+        window.localStorage.setItem(storageKey, serialized);
+      }
+    }
   } catch (error) {
     // Quota exceeded (a multi-megabyte paste) or storage disabled. Keep the
     // in-memory draft authoritative: point rawValue at what storage actually
@@ -202,6 +287,14 @@ function writePromptDraft(
 ): void {
   if (!storageKey || typeof window === "undefined") return;
 
+  const slotId = getNewThreadDraftSlotIdFromStorageKey(storageKey);
+  if (slotId !== null) {
+    // Preserve metadata already loaded or seeded for this slot before replacing
+    // the cache entry with the new content snapshot.
+    readPromptDraft(storageKey);
+  }
+  const existingSlotEntry = promptDraftCache.get(storageKey);
+
   // Keep all prompt composer mounts in sync, including late async completions from
   // a previously unmounted thread view. `rawValue` stays unset until
   // persistPromptDraftCache serializes the draft; while a write is pending the
@@ -210,6 +303,10 @@ function writePromptDraft(
   promptDraftCache.set(storageKey, {
     rawValue: null,
     draft: isPromptDraftEmpty(value) ? EMPTY_PROMPT_DRAFT : value,
+    lastEditedAt:
+      slotId === null || isPromptDraftEmpty(value) ? null : Date.now(),
+    destination:
+      slotId === null ? null : (existingSlotEntry?.destination ?? null),
   });
   if (options.persist === "deferred") {
     schedulePromptDraftPersist(storageKey);
@@ -265,7 +362,9 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
     return `${PROMPT_DRAFT_STORAGE_PREFIX}-automation-edit-${normalizedAutomationId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
   }
   if (scope.kind === "new-thread") {
-    return `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
+    return scope.slotId === undefined
+      ? `${PROMPT_DRAFT_STORAGE_PREFIX}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`
+      : getNewThreadDraftSlotStorageKey(scope.slotId);
   }
   if (scope.kind === "plugin-new-thread") {
     const normalizedKey = normalizeStorageSegment(scope.key);
@@ -274,6 +373,14 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
   const normalizedProjectId = normalizeStorageSegment(scope.projectId);
   const normalizedThreadId = normalizeStorageSegment(scope.threadId);
   return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-${normalizedThreadId}-${PROMPT_DRAFT_STORAGE_VERSION}`;
+}
+
+function preparePromptDraftStorage(scope: PromptDraftScope): string {
+  const storageKey = getPromptDraftStorageKey(scope);
+  if (scope.kind === "new-thread" && scope.slotId !== undefined) {
+    seedPromptDraftDestination(storageKey, scope.destination);
+  }
+  return storageKey;
 }
 
 /**
@@ -296,7 +403,7 @@ export function getPromptDraftAccessor(scope: PromptDraftScope): {
     attachments?: readonly PromptDraftAttachment[],
   ) => void;
 } {
-  const storageKey = getPromptDraftStorageKey(scope);
+  const storageKey = preparePromptDraftStorage(scope);
   return {
     storageKey,
     getCurrent: () => readPromptDraft(storageKey),
@@ -308,7 +415,22 @@ export function getPromptDraftAccessor(scope: PromptDraftScope): {
 }
 
 export function usePromptDraftStorage(scope: PromptDraftScope) {
-  const storageKey = getPromptDraftStorageKey(scope);
+  const storageKey = preparePromptDraftStorage(scope);
+  const destinationProjectId =
+    scope.kind === "new-thread" && scope.slotId !== undefined
+      ? scope.destination.projectId
+      : null;
+  const destinationSectionId =
+    scope.kind === "new-thread" && scope.slotId !== undefined
+      ? scope.destination.sectionId
+      : null;
+  useEffect(() => {
+    if (destinationProjectId === null) return;
+    updatePromptDraftDestination(storageKey, {
+      projectId: destinationProjectId,
+      sectionId: destinationSectionId,
+    });
+  }, [destinationProjectId, destinationSectionId, storageKey]);
   const draft = useSyncExternalStore(
     useCallback(
       (listener) => subscribePromptDraft(storageKey, listener),
@@ -466,7 +588,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
 }
 
 export function usePromptDraftHasInput(scope: PromptDraftScope): boolean {
-  const storageKey = getPromptDraftStorageKey(scope);
+  const storageKey = preparePromptDraftStorage(scope);
 
   return useSyncExternalStore(
     useCallback(

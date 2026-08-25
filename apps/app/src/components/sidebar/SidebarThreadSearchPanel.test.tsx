@@ -426,7 +426,7 @@ describe("ProjectListActionButtons", () => {
           {
             type: "pane",
             paneId: "pane-compose",
-            content: { kind: "new-thread" },
+            content: { kind: "new-thread", draftSlotId: "draft-compose" },
           },
           {
             type: "pane",
