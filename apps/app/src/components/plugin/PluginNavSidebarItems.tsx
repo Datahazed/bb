@@ -1021,17 +1021,19 @@ function SidebarNavRowChrome({
     </div>
   );
 
-  if (menuDefinition === null) return rowContent;
   if (isCompactViewport) {
     return (
       <CompactLongPressMenu
+        disabled={menuDefinition === null}
         label={`${title} panel options`}
         onOpenChange={setIsActionsOpen}
         items={
-          <PluginNavRowMenuItems
-            definition={menuDefinition}
-            surface="dropdown"
-          />
+          menuDefinition ? (
+            <PluginNavRowMenuItems
+              definition={menuDefinition}
+              surface="dropdown"
+            />
+          ) : null
         }
       >
         {rowContent}
@@ -1040,10 +1042,17 @@ function SidebarNavRowChrome({
   }
   return (
     <ContextMenu onOpenChange={setIsActionsOpen}>
-      <ContextMenuTrigger asChild>{rowContent}</ContextMenuTrigger>
-      <ContextMenuContent aria-label={`${title} panel options`}>
-        <PluginNavRowMenuItems definition={menuDefinition} surface="context" />
-      </ContextMenuContent>
+      <ContextMenuTrigger disabled={menuDefinition === null} asChild>
+        {rowContent}
+      </ContextMenuTrigger>
+      {menuDefinition ? (
+        <ContextMenuContent aria-label={`${title} panel options`}>
+          <PluginNavRowMenuItems
+            definition={menuDefinition}
+            surface="context"
+          />
+        </ContextMenuContent>
+      ) : null}
     </ContextMenu>
   );
 }
