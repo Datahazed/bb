@@ -1,0 +1,2462 @@
+{
+  "candidate": "6a2dd5f70eb64125351b9c04834e9dac691bec73",
+  "checkpoint": "plugin-guide-viewport-fit",
+  "url": "http://localhost:17867/plugins/plugin-api-docs/plugin-api/app-shell",
+  "closed": {
+    "viewport": {
+      "width": 2048,
+      "height": 1028
+    },
+    "document": {
+      "clientWidth": 2048,
+      "scrollWidth": 2048,
+      "clientHeight": 1028,
+      "scrollHeight": 1028
+    },
+    "page": {
+      "clientWidth": 1728,
+      "scrollWidth": 1728,
+      "clientHeight": 980,
+      "scrollHeight": 980,
+      "scrollTop": 0,
+      "rect": {
+        "left": 320,
+        "top": 48,
+        "right": 2048,
+        "bottom": 1028,
+        "width": 1728,
+        "height": 980
+      }
+    },
+    "carousel": {
+      "className": "mt-2",
+      "rect": {
+        "left": 544,
+        "top": 72,
+        "right": 1824,
+        "bottom": 748.25,
+        "width": 1280,
+        "height": 676.25
+      }
+    },
+    "scrollOwner": {
+      "clientWidth": 1272,
+      "scrollWidth": 1272,
+      "scrollLeft": 0,
+      "rect": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "overflowX": "auto"
+    },
+    "fixture": {
+      "left": 548,
+      "top": 201.25,
+      "right": 1820,
+      "bottom": 740.25,
+      "width": 1272,
+      "height": 539
+    },
+    "frame": {
+      "left": 889,
+      "top": 270.25,
+      "right": 1399,
+      "bottom": 620.25,
+      "width": 510,
+      "height": 350
+    },
+    "card": null,
+    "cardTitle": null,
+    "contributors": [
+      {
+        "tag": "SPAN",
+        "cls": "invisible contents",
+        "data": [],
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      },
+      {
+        "tag": "SPAN",
+        "cls": "invisible contents",
+        "data": [],
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      },
+      {
+        "tag": "SPAN",
+        "cls": "invisible contents",
+        "data": [],
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      },
+      {
+        "tag": "SPAN",
+        "cls": "contents",
+        "data": [
+          "data-guide-tab=thread-panel"
+        ],
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      },
+      {
+        "tag": "SPAN",
+        "cls": "contents",
+        "data": [
+          "data-guide-tab=file-opener"
+        ],
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      },
+      {
+        "tag": "SPAN",
+        "cls": "contents",
+        "data": [
+          "data-guide-tab=code-renderers"
+        ],
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    ],
+    "errors": []
+  },
+  "open": {
+    "viewport": {
+      "width": 2048,
+      "height": 1028
+    },
+    "document": {
+      "clientWidth": 2048,
+      "scrollWidth": 2048,
+      "clientHeight": 1028,
+      "scrollHeight": 1028
+    },
+    "page": {
+      "clientWidth": 1728,
+      "scrollWidth": 1728,
+      "clientHeight": 980,
+      "scrollHeight": 980,
+      "scrollTop": 0,
+      "rect": {
+        "left": 320,
+        "top": 48,
+        "right": 2048,
+        "bottom": 1028,
+        "width": 1728,
+        "height": 980
+      }
+    },
+    "carousel": {
+      "className": "mt-2",
+      "rect": {
+        "left": 544,
+        "top": 72,
+        "right": 1824,
+        "bottom": 971.75,
+        "width": 1280,
+        "height": 899.75
+      }
+    },
+    "scrollOwner": {
+      "clientWidth": 1272,
+      "scrollWidth": 1272,
+      "scrollLeft": 0,
+      "rect": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "overflowX": "auto"
+    },
+    "fixture": {
+      "left": 548,
+      "top": 201.25,
+      "right": 1820,
+      "bottom": 740.25,
+      "width": 1272,
+      "height": 539
+    },
+    "frame": {
+      "left": 889,
+      "top": 270.25,
+      "right": 1399,
+      "bottom": 620.25,
+      "width": 510,
+      "height": 350
+    },
+    "card": {
+      "left": 672,
+      "top": 756.25,
+      "right": 1696,
+      "bottom": 971.75,
+      "width": 1024,
+      "height": 215.5
+    },
+    "cardTitle": "Full-page panels",
+    "contributors": [
+      {
+        "tag": "SPAN",
+        "cls": "invisible contents",
+        "data": [],
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      },
+      {
+        "tag": "SPAN",
+        "cls": "invisible contents",
+        "data": [],
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      },
+      {
+        "tag": "SPAN",
+        "cls": "invisible contents",
+        "data": [],
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      },
+      {
+        "tag": "SPAN",
+        "cls": "contents",
+        "data": [
+          "data-guide-tab=thread-panel"
+        ],
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      },
+      {
+        "tag": "SPAN",
+        "cls": "contents",
+        "data": [
+          "data-guide-tab=file-opener"
+        ],
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      },
+      {
+        "tag": "SPAN",
+        "cls": "contents",
+        "data": [
+          "data-guide-tab=code-renderers"
+        ],
+        "rect": {
+          "left": 0,
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "width": 0,
+          "height": 0
+        }
+      }
+    ],
+    "errors": []
+  },
+  "cardVariants": [
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 971.75,
+          "width": 1280,
+          "height": 899.75
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 740.25,
+          "width": 1272,
+          "height": 539
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 620.25,
+        "width": 510,
+        "height": 350
+      },
+      "card": {
+        "left": 672,
+        "top": 756.25,
+        "right": 1696,
+        "bottom": 971.75,
+        "width": 1024,
+        "height": 215.5
+      },
+      "cardTitle": "Full-page panels",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 971.75,
+          "width": 1280,
+          "height": 899.75
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 740.25,
+          "width": 1272,
+          "height": 539
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 620.25,
+        "width": 510,
+        "height": 350
+      },
+      "card": {
+        "left": 672,
+        "top": 756.25,
+        "right": 1696,
+        "bottom": 971.75,
+        "width": 1024,
+        "height": 215.5
+      },
+      "cardTitle": "The thread list",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 1026,
+          "width": 1280,
+          "height": 954
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 740.25,
+          "width": 1272,
+          "height": 539
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 620.25,
+        "width": 510,
+        "height": 350
+      },
+      "card": {
+        "left": 672,
+        "top": 756.25,
+        "right": 1696,
+        "bottom": 1026,
+        "width": 1024,
+        "height": 269.75
+      },
+      "cardTitle": "Thread row status",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 971.75,
+          "width": 1280,
+          "height": 899.75
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 740.25,
+          "width": 1272,
+          "height": 539
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 620.25,
+        "width": 510,
+        "height": 350
+      },
+      "card": {
+        "left": 672,
+        "top": 756.25,
+        "right": 1696,
+        "bottom": 971.75,
+        "width": 1024,
+        "height": 215.5
+      },
+      "cardTitle": "Sidebar footer buttons",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 971.75,
+          "width": 1280,
+          "height": 899.75
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 740.25,
+          "width": 1272,
+          "height": 539
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 620.25,
+        "width": 510,
+        "height": 350
+      },
+      "card": {
+        "left": 672,
+        "top": 756.25,
+        "right": 1696,
+        "bottom": 971.75,
+        "width": 1024,
+        "height": 215.5
+      },
+      "cardTitle": "Thread header controls",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 971.75,
+          "width": 1280,
+          "height": 899.75
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 740.25,
+          "width": 1272,
+          "height": 539
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 620.25,
+        "width": 510,
+        "height": 350
+      },
+      "card": {
+        "left": 672,
+        "top": 756.25,
+        "right": 1696,
+        "bottom": 971.75,
+        "width": 1024,
+        "height": 215.5
+      },
+      "cardTitle": "Rich message embeds",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 993.25,
+          "width": 1280,
+          "height": 921.25
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 761.75,
+          "width": 1272,
+          "height": 560.5
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 761.75,
+        "width": 1272,
+        "height": 560.5
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 641.75,
+        "width": 510,
+        "height": 371.5
+      },
+      "card": {
+        "left": 672,
+        "top": 777.75,
+        "right": 1696,
+        "bottom": 993.25,
+        "width": 1024,
+        "height": 215.5
+      },
+      "cardTitle": "Message actions",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 971.75,
+          "width": 1280,
+          "height": 899.75
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 740.25,
+          "width": 1272,
+          "height": 539
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 620.25,
+        "width": 510,
+        "height": 350
+      },
+      "card": {
+        "left": 672,
+        "top": 756.25,
+        "right": 1696,
+        "bottom": 971.75,
+        "width": 1024,
+        "height": 215.5
+      },
+      "cardTitle": "In-thread forms",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 944.625,
+          "width": 1280,
+          "height": 872.625
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 740.25,
+          "width": 1272,
+          "height": 539
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 620.25,
+        "width": 510,
+        "height": 350
+      },
+      "card": {
+        "left": 672,
+        "top": 756.25,
+        "right": 1696,
+        "bottom": 944.625,
+        "width": 1024,
+        "height": 188.375
+      },
+      "cardTitle": "Thread side-panel tabs",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 971.75,
+          "width": 1280,
+          "height": 899.75
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 740.25,
+          "width": 1272,
+          "height": 539
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 620.25,
+        "width": 510,
+        "height": 350
+      },
+      "card": {
+        "left": 672,
+        "top": 756.25,
+        "right": 1696,
+        "bottom": 971.75,
+        "width": 1024,
+        "height": 215.5
+      },
+      "cardTitle": "File viewers & editors",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 971.75,
+          "width": 1280,
+          "height": 899.75
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 740.25,
+          "width": 1272,
+          "height": 539
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 620.25,
+        "width": 510,
+        "height": 350
+      },
+      "card": {
+        "left": 672,
+        "top": 756.25,
+        "right": 1696,
+        "bottom": 971.75,
+        "width": 1024,
+        "height": 215.5
+      },
+      "cardTitle": "Code & diff renderers",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 971.75,
+          "width": 1280,
+          "height": 899.75
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 740.25,
+          "width": 1272,
+          "height": 539
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 620.25,
+        "width": 510,
+        "height": 350
+      },
+      "card": {
+        "left": 672,
+        "top": 756.25,
+        "right": 1696,
+        "bottom": 971.75,
+        "width": 1024,
+        "height": 215.5
+      },
+      "cardTitle": "Timeline row renderers",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 2048,
+        "height": 1028
+      },
+      "document": {
+        "clientWidth": 2048,
+        "scrollWidth": 2048,
+        "clientHeight": 1028,
+        "scrollHeight": 1028
+      },
+      "page": {
+        "clientWidth": 1728,
+        "scrollWidth": 1728,
+        "clientHeight": 980,
+        "scrollHeight": 980,
+        "scrollTop": 0,
+        "rect": {
+          "left": 320,
+          "top": 48,
+          "right": 2048,
+          "bottom": 1028,
+          "width": 1728,
+          "height": 980
+        }
+      },
+      "carousel": {
+        "className": "mt-2",
+        "rect": {
+          "left": 544,
+          "top": 72,
+          "right": 1824,
+          "bottom": 1026,
+          "width": 1280,
+          "height": 954
+        }
+      },
+      "scrollOwner": {
+        "clientWidth": 1272,
+        "scrollWidth": 1272,
+        "scrollLeft": 0,
+        "rect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 740.25,
+          "width": 1272,
+          "height": 539
+        },
+        "overflowX": "auto"
+      },
+      "fixture": {
+        "left": 548,
+        "top": 201.25,
+        "right": 1820,
+        "bottom": 740.25,
+        "width": 1272,
+        "height": 539
+      },
+      "frame": {
+        "left": 889,
+        "top": 270.25,
+        "right": 1399,
+        "bottom": 620.25,
+        "width": 510,
+        "height": 350
+      },
+      "card": {
+        "left": 672,
+        "top": 756.25,
+        "right": 1696,
+        "bottom": 1026,
+        "width": 1024,
+        "height": 269.75
+      },
+      "cardTitle": "App-wide scripts",
+      "contributors": [
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "invisible contents",
+          "data": [],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=thread-panel"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=file-opener"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        },
+        {
+          "tag": "SPAN",
+          "cls": "contents",
+          "data": [
+            "data-guide-tab=code-renderers"
+          ],
+          "rect": {
+            "left": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "width": 0,
+            "height": 0
+          }
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "screenshot": "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/pr2248-final-6a2dd5f70e/plugin-guide-viewport-fit-6a2dd5f70eb64125351b9c04834e9dac691bec73.png",
+  "errors": []
+}
