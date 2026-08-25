@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { refreshNewThreadDraftSlots } from "@/hooks/usePromptDraftStorage";
 import { initializeNewThreadDraftSlots } from "@/lib/prompt-draft-slots";
 import { readRootComposeProjectId } from "@/lib/root-compose-selection";
 
@@ -13,6 +14,7 @@ export function AppLocalStateInitialization() {
     if (didInitializeDraftSlots.current) return;
     didInitializeDraftSlots.current = true;
     initializeNewThreadDraftSlots(readRootComposeProjectId());
+    refreshNewThreadDraftSlots();
   }, []);
 
   return null;

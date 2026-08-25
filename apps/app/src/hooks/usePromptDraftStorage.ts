@@ -159,6 +159,11 @@ function emitNewThreadDraftSlotsChange(): void {
   }
 }
 
+/** Refreshes synthesized draft rows after same-window storage migrations. */
+export function refreshNewThreadDraftSlots(): void {
+  emitNewThreadDraftSlotsChange();
+}
+
 function clearPromptDraftPersistTimer(storageKey: string): void {
   const timerId = promptDraftPersistTimers.get(storageKey);
   if (timerId === undefined || typeof window === "undefined") return;
