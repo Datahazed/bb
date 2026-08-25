@@ -1273,7 +1273,10 @@ export function createPluginCatalogService(deps: {
           ),
       );
       const catalogEntries = orderedMarketplaces().flatMap((row, index) => {
-        const catalog = catalogOf(row);
+        const catalog =
+          row.name === CURATED_MARKETPLACE_NAME
+            ? officialCatalog
+            : catalogOf(row);
         if (catalog === null) return [];
         return catalog.plugins.map((entry) => ({
           pluginId: entry.id,

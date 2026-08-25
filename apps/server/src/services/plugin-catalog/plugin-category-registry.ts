@@ -2,12 +2,19 @@ import {
   PLUGIN_CATALOG_CATEGORY_IDS,
   type PluginCatalogCategoryId,
 } from "@bb/server-contract";
-import { listPluginMarketplaces, type DbQueryConnection } from "@bb/db";
+import {
+  listPluginMarketplaces,
+  type DbQueryConnection,
+  type PluginMarketplaceRow,
+} from "@bb/db";
 import {
   entryScreenshotUrls,
   parseMarketplaceManifestJson,
 } from "./marketplace-manifest.js";
-import type { MarketplaceEntry } from "./marketplace-manifest.js";
+import type {
+  MarketplaceEntry,
+  MarketplaceManifest,
+} from "./marketplace-manifest.js";
 
 export interface PluginCatalogCategory {
   id: PluginCatalogCategoryId;
@@ -207,6 +214,60 @@ export function marketplaceEntryKey(
   return `${marketplaceName}\u0000${entryId}`;
 }
 
+type StoredMarketplaceCatalogParser = (
+  raw: string,
+  location: string,
+) => MarketplaceManifest;
+
+interface StoredMarketplaceCatalogCacheEntry {
+  lastSuccessfulRefreshAt: number | null;
+  manifestJson: string;
+  catalog: MarketplaceManifest;
+}
+
+/**
+ * Parse each stored snapshot once per database and successful refresh. The DB
+ * weak key prevents one server or test connection from retaining another's
+ * rows; manifest identity is an extra guard for same-timestamp replacements.
+ */
+export function createStoredMarketplaceCatalogReader(
+  parse: StoredMarketplaceCatalogParser = parseMarketplaceManifestJson,
+): (
+  db: DbQueryConnection,
+  row: PluginMarketplaceRow,
+) => MarketplaceManifest {
+  const cacheByDb = new WeakMap<
+    DbQueryConnection,
+    Map<string, StoredMarketplaceCatalogCacheEntry>
+  >();
+  return (db, row) => {
+    let cache = cacheByDb.get(db);
+    if (cache === undefined) {
+      cache = new Map();
+      cacheByDb.set(db, cache);
+    }
+    const cached = cache.get(row.name);
+    if (
+      cached?.lastSuccessfulRefreshAt === row.lastSuccessfulRefreshAt &&
+      cached.manifestJson === row.manifestJson
+    ) {
+      return cached.catalog;
+    }
+    const catalog = parse(
+      row.manifestJson,
+      `stored "${row.name}" marketplace catalog`,
+    );
+    cache.set(row.name, {
+      lastSuccessfulRefreshAt: row.lastSuccessfulRefreshAt,
+      manifestJson: row.manifestJson,
+      catalog,
+    });
+    return catalog;
+  };
+}
+
+const readStoredMarketplaceCatalog = createStoredMarketplaceCatalogReader();
+
 /**
  * Listing metadata projected onto installed catalog plugins. Corrupt stored
  * documents are omitted here; the catalog service reports them and Installed
@@ -214,19 +275,30 @@ export function marketplaceEntryKey(
  */
 export function marketplaceListingMetadata(
   db: DbQueryConnection,
+  entryKeys: ReadonlySet<string>,
 ): Map<string, PluginCatalogListingMetadata> {
   const metadata = new Map<string, PluginCatalogListingMetadata>();
+  const requestedEntries = new Map<string, Set<string>>();
+  for (const key of entryKeys) {
+    const separator = key.indexOf("\u0000");
+    if (separator < 0) continue;
+    const marketplaceName = key.slice(0, separator);
+    const entryId = key.slice(separator + 1);
+    const entryIds = requestedEntries.get(marketplaceName) ?? new Set<string>();
+    entryIds.add(entryId);
+    requestedEntries.set(marketplaceName, entryIds);
+  }
   for (const row of listPluginMarketplaces(db)) {
+    const requestedEntryIds = requestedEntries.get(row.name);
+    if (requestedEntryIds === undefined) continue;
     try {
-      const catalog = parseMarketplaceManifestJson(
-        row.manifestJson,
-        `stored "${row.name}" marketplace catalog`,
-      );
+      const catalog = readStoredMarketplaceCatalog(db, row);
       const screenshotBase =
         row.sourceKind === "https"
           ? ({ kind: "url", manifestUrl: row.manifestUrl } as const)
           : ({ kind: "dir", root: "" } as const);
       for (const entry of catalog.plugins) {
+        if (!requestedEntryIds.has(entry.id)) continue;
         const categoryId = marketplaceEntryCategoryId({
           schemaVersion: catalog.schemaVersion,
           entry,

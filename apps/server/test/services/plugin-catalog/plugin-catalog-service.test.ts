@@ -9,6 +9,7 @@ import {
   recordPluginListingSubmission,
   savePluginListingDraft,
   upsertInstalledPlugin,
+  upsertPluginMarketplace,
   type DbConnection,
 } from "@bb/db";
 import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
@@ -271,6 +272,30 @@ describe("plugin catalog service", () => {
       (await catalog.search("sidebar")).map((entry) => entry.entryId),
     ).toContain("thread-hover-cards");
     expect(await catalog.search("no-such-plugin")).toEqual([]);
+  });
+
+  it("parses each stored marketplace only once per search", async () => {
+    const warnings: string[] = [];
+    const catalog = service({
+      bundledPlugins: [],
+      warn: (message) => warnings.push(message),
+    });
+    upsertPluginMarketplace(db, {
+      name: "bb-community",
+      sourceKind: "https",
+      manifestUrl: MANIFEST_URL,
+      sourceGitRef: null,
+      sourceGitCommit: null,
+      manifestJson: "not json",
+      etag: null,
+      lastModified: null,
+      lastSuccessfulRefreshAt: 1,
+      lastAttemptedRefreshAt: 1,
+      lastError: null,
+    });
+
+    await expect(catalog.search("")).resolves.toEqual([]);
+    expect(warnings).toHaveLength(1);
   });
 
   it("reflects install and remove in the installed flag", async () => {

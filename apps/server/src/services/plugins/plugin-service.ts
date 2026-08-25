@@ -1397,9 +1397,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     const publisherLabels = rows.some((row) => row.provenance === "catalog")
       ? marketplacePublisherLabels(deps.db)
       : new Map<string, string>();
-    const catalogMetadata = rows.some((row) => row.provenance === "catalog")
-      ? marketplaceListingMetadata(deps.db)
-      : new Map<string, PluginCatalogListingMetadata>();
+    const installedCatalogEntryKeys = new Set(
+      rows.flatMap((row) =>
+        row.catalogMarketplaceName === null || row.catalogEntryId === null
+          ? []
+          : [
+              marketplaceEntryKey(
+                row.catalogMarketplaceName,
+                row.catalogEntryId,
+              ),
+            ],
+      ),
+    );
+    const catalogMetadata =
+      installedCatalogEntryKeys.size > 0
+        ? marketplaceListingMetadata(deps.db, installedCatalogEntryKeys)
+        : new Map<string, PluginCatalogListingMetadata>();
     const bundledByName = new Map(
       bundledPlugins.map((plugin) => [plugin.name, plugin]),
     );

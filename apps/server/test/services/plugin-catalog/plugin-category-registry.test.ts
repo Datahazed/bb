@@ -1,14 +1,26 @@
 import {
+  createConnection,
+  getPluginMarketplace,
+  migrate,
+  upsertPluginMarketplace,
+} from "@bb/db";
+import {
   PLUGIN_CATALOG_CATEGORY_IDS,
   type PluginCatalogCategoryId,
 } from "@bb/server-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  createStoredMarketplaceCatalogReader,
   marketplaceEntryCategoryId,
+  marketplaceEntryKey,
+  marketplaceListingMetadata,
   PLUGIN_CATALOG_CATEGORIES,
   REVIEWED_COMMUNITY_ENTRY_CATEGORIES,
 } from "../../../src/services/plugin-catalog/plugin-category-registry.js";
-import type { MarketplaceEntry } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
+import {
+  parseMarketplaceManifestJson,
+  type MarketplaceEntry,
+} from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 import { BUNDLED_PLUGINS } from "../../../src/services/plugins/builtin-registry.js";
 
 const EXPECTED_REVIEWED_ENTRY_IDS_BY_CATEGORY = {
@@ -193,5 +205,101 @@ describe("plugin category registry", () => {
     for (const plugin of BUNDLED_PLUGINS) {
       expect(validIds.has(plugin.category)).toBe(true);
     }
+  });
+
+  it("keys parsed catalogs by database, row identity, and successful refresh", () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    const store = (
+      connection: typeof db,
+      name: string,
+      lastSuccessfulRefreshAt: number,
+    ) => {
+      upsertPluginMarketplace(connection, {
+        name,
+        sourceKind: "https",
+        manifestUrl: "https://plugins.example/marketplace.json",
+        sourceGitRef: null,
+        sourceGitCommit: null,
+        manifestJson: JSON.stringify({
+          schemaVersion: 2,
+          name,
+          displayName: name === "acme" ? "Acme" : "Other",
+          newAndNotable: [],
+          plugins: [entry("listed", "agent-tools")],
+        }),
+        etag: null,
+        lastModified: null,
+        lastSuccessfulRefreshAt,
+        lastAttemptedRefreshAt: lastSuccessfulRefreshAt,
+        lastError: null,
+      });
+      const row = getPluginMarketplace(connection, name);
+      if (row === undefined) throw new Error("missing marketplace fixture");
+      return row;
+    };
+    const parse = vi.fn(parseMarketplaceManifestJson);
+    const read = createStoredMarketplaceCatalogReader(parse);
+
+    expect(read(db, store(db, "acme", 1)).displayName).toBe("Acme");
+    expect(read(db, store(db, "acme", 1)).displayName).toBe("Acme");
+    expect(parse).toHaveBeenCalledTimes(1);
+
+    expect(read(db, store(db, "other", 1)).displayName).toBe("Other");
+    expect(parse).toHaveBeenCalledTimes(2);
+
+    const otherDb = createConnection(":memory:");
+    migrate(otherDb);
+    expect(read(otherDb, store(otherDb, "acme", 1)).displayName).toBe("Acme");
+    expect(parse).toHaveBeenCalledTimes(3);
+
+    expect(read(db, store(db, "acme", 2)).displayName).toBe("Acme");
+    expect(parse).toHaveBeenCalledTimes(4);
+    otherDb.$client.close();
+    db.$client.close();
+  });
+
+  it("projects listing metadata only for requested installed entry keys", () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    upsertPluginMarketplace(db, {
+      name: "acme",
+      sourceKind: "https",
+      manifestUrl: "https://plugins.example/marketplace.json",
+      sourceGitRef: null,
+      sourceGitCommit: null,
+      manifestJson: JSON.stringify({
+        schemaVersion: 2,
+        name: "acme",
+        displayName: "Acme",
+        newAndNotable: [],
+        plugins: [
+          entry("installed", "agent-tools"),
+          entry("not-installed", "security"),
+        ],
+      }),
+      etag: null,
+      lastModified: null,
+      lastSuccessfulRefreshAt: 1,
+      lastAttemptedRefreshAt: 1,
+      lastError: null,
+    });
+
+    const installedKey = marketplaceEntryKey("acme", "installed");
+    expect(
+      marketplaceListingMetadata(db, new Set([installedKey])),
+    ).toEqual(
+      new Map([
+        [
+          installedKey,
+          {
+            categoryId: "agent-tools",
+            category: "Agent Tools",
+            screenshots: [],
+          },
+        ],
+      ]),
+    );
+    db.$client.close();
   });
 });
