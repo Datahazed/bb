@@ -509,9 +509,11 @@ describe("PluginNavSidebarItems", () => {
     ).not.toBeNull();
     expect(lazyItems).not.toHaveBeenCalled();
 
-    fireEvent.pointerMove(
-      screen.getByRole("menuitem", { name: "API surfaces" }),
-    );
+    const submenuTrigger = screen.getByRole("menuitem", {
+      name: "API surfaces",
+    });
+    submenuTrigger.focus();
+    fireEvent.keyDown(submenuTrigger, { key: "ArrowRight" });
     expect(
       await screen.findByRole("menuitem", { name: "API reference" }),
     ).not.toBeNull();
@@ -560,9 +562,11 @@ describe("PluginNavSidebarItems", () => {
       screen.getByRole("button", { name: "Docs panel options" }),
       { button: 0 },
     );
-    fireEvent.pointerMove(
-      await screen.findByRole("menuitem", { name: "Broken submenu" }),
-    );
+    const submenuTrigger = await screen.findByRole("menuitem", {
+      name: "Broken submenu",
+    });
+    submenuTrigger.focus();
+    fireEvent.keyDown(submenuTrigger, { key: "ArrowRight" });
     expect(await screen.findByText("Could not load")).not.toBeNull();
   });
 
