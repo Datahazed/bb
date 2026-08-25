@@ -22,6 +22,7 @@ function createNavigationItem(
   threadId: string,
 ): SidebarThreadSearchNavigationItem {
   return {
+    kind: "thread",
     id: `active:${threadId}`,
     optionId: getSidebarThreadSearchOptionId(`active:${threadId}`),
     projectId: "proj_search",

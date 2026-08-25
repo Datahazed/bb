@@ -3,11 +3,13 @@ import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
+  archivedThreadsListQueryKey,
   sidebarNavigationQueryKey,
   threadListQueryKey,
   threadQueryKey,
 } from "../queries/query-keys";
 import {
+  beginUnarchiveThreadTransaction,
   beginThreadReadStateTransaction,
   beginThreadMetadataTransaction,
   rollbackThreadListMutationTransaction,
@@ -100,6 +102,49 @@ function makeSidebarNavigation(
 }
 
 describe("thread state cache owner", () => {
+  it("optimistically removes an unarchived thread from paged archive rows", async () => {
+    const { queryClient } = createQueryClientTestHarness();
+    const threadId = "thread-1";
+    const archivedThread = makeThreadWithRuntime({
+      id: threadId,
+      archivedAt: 100,
+    });
+    const archivedListEntry = makeThreadListEntry({
+      id: threadId,
+      archivedAt: 100,
+    });
+    const archivedListKey = archivedThreadsListQueryKey({});
+    queryClient.setQueryData(threadQueryKey(threadId), archivedThread);
+    queryClient.setQueryData(archivedListKey, {
+      pageParams: [0],
+      pages: [[archivedListEntry]],
+    });
+
+    const transaction = await beginUnarchiveThreadTransaction({
+      queryClient,
+      threadId,
+    });
+
+    expect(
+      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
+        ?.archivedAt,
+    ).toBeNull();
+    expect(
+      queryClient.getQueryData<{ pages: ThreadListEntry[][] }>(archivedListKey)
+        ?.pages,
+    ).toEqual([[]]);
+
+    rollbackThreadListMutationTransaction({
+      queryClient,
+      threadId,
+      transaction,
+    });
+    expect(
+      queryClient.getQueryData<{ pages: ThreadListEntry[][] }>(archivedListKey)
+        ?.pages,
+    ).toEqual([[archivedListEntry]]);
+  });
+
   it("optimistically renames thread in thread, list, and sidebar caches", async () => {
     const { queryClient } = createQueryClientTestHarness();
     const threadId = "thread-1";
