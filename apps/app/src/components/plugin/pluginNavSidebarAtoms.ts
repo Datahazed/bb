@@ -1,30 +1,61 @@
 import { atomWithStorage } from "jotai/utils";
-import { createJsonLocalStorage } from "@/lib/browser-storage";
+import {
+  createBooleanPreferenceAtom,
+  createJsonLocalStorage,
+  type SyncStorage,
+} from "@/lib/browser-storage";
+import { normalizePluginNavPanelOrder } from "./pluginNavSidebarOrder";
 
-const PLUGIN_NAV_PANEL_ORDER_STORAGE_KEY = "bb.sidebar.pluginPanelOrder";
-const HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY = "bb.sidebar.hiddenPluginPanels";
+export const PLUGIN_NAV_PANEL_ORDER_STORAGE_KEY = "bb.sidebar.pluginPanelOrder";
+export const HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY =
+  "bb.sidebar.hiddenPluginPanels";
+export const PLUGIN_NAV_PANEL_OVERFLOW_EXPANDED_STORAGE_KEY =
+  "bb.sidebar.pluginPanelOverflowExpanded";
+
+const jsonStringArrayStorage = createJsonLocalStorage<unknown>();
+const normalizedStringArrayStorage: SyncStorage<string[]> = {
+  getItem: (key, initialValue) =>
+    normalizePluginNavPanelOrder(
+      jsonStringArrayStorage.getItem(key, initialValue),
+    ),
+  setItem: (key, value) => {
+    jsonStringArrayStorage.setItem(key, normalizePluginNavPanelOrder(value));
+  },
+  removeItem: (key) => {
+    jsonStringArrayStorage.removeItem(key);
+  },
+  subscribe: (key, callback, initialValue) =>
+    jsonStringArrayStorage.subscribe?.(
+      key,
+      (value) => callback(normalizePluginNavPanelOrder(value)),
+      initialValue,
+    ),
+};
 
 /**
- * User-chosen order of the sidebar's plugin panel rows, as
- * `<pluginId>/<panelId>` keys. Includes hidden panels so unhiding restores a
- * panel to its old slot. Empty until the first drag, which means "registry
- * order". Client-local, like the other sidebar layout preferences.
+ * User-chosen order of every sidebar plugin panel row, as
+ * `<pluginId>/<panelId>` keys. Reads dedupe malformed stored values so two
+ * windows cannot make one panel render twice. Empty means registry order.
  */
 export const pluginNavPanelOrderAtom = atomWithStorage<string[]>(
   PLUGIN_NAV_PANEL_ORDER_STORAGE_KEY,
   [],
-  createJsonLocalStorage<string[]>(),
+  normalizedStringArrayStorage,
   { getOnInit: true },
 );
 
 /**
- * Plugin panel keys the user moved into the sidebar's "More" disclosure. The
- * panel and its route stay fully available — this only affects sidebar
- * placement.
+ * Legacy hidden page keys. Phase 3 reads this atom only to migrate those pages
+ * to the end of the one order, then clears it.
  */
 export const hiddenPluginNavPanelsAtom = atomWithStorage<string[]>(
   HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
   [],
-  createJsonLocalStorage<string[]>(),
+  normalizedStringArrayStorage,
   { getOnInit: true },
+);
+
+export const pluginNavPanelOverflowExpandedAtom = createBooleanPreferenceAtom(
+  PLUGIN_NAV_PANEL_OVERFLOW_EXPANDED_STORAGE_KEY,
+  false,
 );
