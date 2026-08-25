@@ -2431,9 +2431,19 @@ function armAgentTurnQuietTimer(session: AcpThreadSession): void {
   clearAgentTurnQuietTimer(session);
   session.agentTurnQuietTimer = setTimeout(() => {
     session.agentTurnQuietTimer = undefined;
-    // A permission the user has not answered is not quiet: the agent is
-    // waiting on bb, and its answer belongs to this turn.
-    if (session.pendingPermissions.size > 0) {
+    // Silence is not idleness. The window measures the gap between updates,
+    // but an agent running a tool it already announced owes this turn a
+    // result and sends nothing until it has one — a build, a test run, an
+    // install all outlast the window with no traffic. Settling over the call
+    // would drain it as completed with no output, hide the real result
+    // behind the assembler's settled-key dedup, and flip the thread idle
+    // mid-work. So a permission bb has not answered and a call the agent has
+    // not settled both re-arm instead: the same exits still bound the turn
+    // (`thread/stop`, an agent exit, the next `turn/start`).
+    if (
+      session.pendingPermissions.size > 0 ||
+      session.translator.hasOpenToolCalls(session.bbThreadId)
+    ) {
       armAgentTurnQuietTimer(session);
       return;
     }

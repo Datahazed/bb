@@ -1188,9 +1188,24 @@ export function createAcpDeltaTranslator(
     return injectedToolBindings.get(callKey({ threadId }, toolCallId));
   }
 
+  /**
+   * Whether the thread has a call the agent announced and never settled.
+   *
+   * The merge cache is the single record of that: an entry lives from the
+   * `tool_call` until the terminal `tool_call_update`, which is exactly the
+   * span in which the agent is running the call. The bridge asks before it
+   * closes a turn it opened itself, because closing over an unsettled call
+   * drains it with the turn's own status (`drainOpenToolCalls`) — a terminal
+   * state the agent never reported.
+   */
+  function hasOpenToolCalls(threadId: string): boolean {
+    return threadCallEntries({ threadId }).length > 0;
+  }
+
   return {
     configureInjectedTools,
     getInjectedToolBinding,
+    hasOpenToolCalls,
     noteDelegationReport,
     noteInjectedToolCall,
     notePermissionToolCall,

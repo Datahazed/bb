@@ -2260,6 +2260,91 @@ describe("acp bridge", () => {
       expect(completed).toMatchObject({ status: "completed" });
     }, 20_000);
 
+    /**
+     * The bridge's agent-turn quiet window (`AGENT_TURN_QUIET_WINDOW_MS`).
+     * Mirrored here so a test can step over it deliberately.
+     */
+    const QUIET_WINDOW_MS = 5_000;
+
+    /** Assembled events that carry the slow tool call's real output. */
+    function eventsCarryingSlowToolOutput(
+      type: string,
+    ): Record<string, unknown>[] {
+      return threadEventsOfType(type).filter((event) =>
+        JSON.stringify(event).includes("SLOW-TOOL-REAL-OUTPUT"),
+      );
+    }
+
+    /** Assembled events for the slow tool call's row, by event type. */
+    function slowToolEvents(type: string): Record<string, unknown>[] {
+      return threadEventsOfType(type).filter((event) =>
+        JSON.stringify(event).includes("sleep 7"),
+      );
+    }
+
+    /**
+     * Opens an agent turn whose tool call keeps running past the quiet
+     * window, and returns once the tool row is on the timeline.
+     */
+    async function promptThenAwaitRunningTool(): Promise<{
+      bbThreadId: string;
+      providerThreadId: string;
+    }> {
+      const thread = await startThread();
+      const turnId = sendTurnRequest("turn/start", thread.providerThreadId, {
+        input: [
+          { type: "text", text: "agent-initiated:slowtool", mentions: [] },
+        ],
+      });
+      await waitForResponse(turnId);
+      await waitForTurnCompleted();
+      await waitFor(
+        () => (slowToolEvents("item/started").length > 0 ? true : undefined),
+        "the agent-initiated tool call to open",
+      );
+      return thread;
+    }
+
+    it("keeps the agent turn open while an announced tool call still runs", async () => {
+      await promptThenAwaitRunningTool();
+      expect(threadEventsOfType("turn/started")).toHaveLength(2);
+
+      // Past the quiet window with the call still running. A busy agent
+      // streams nothing until its tool finishes, so silence alone must not
+      // end the turn: settling here would close the row as completed with no
+      // output and flip the thread idle while the agent works.
+      await new Promise((resolveTick) =>
+        realSetTimeout(resolveTick, QUIET_WINDOW_MS + 1_000),
+      );
+      expect(threadEventsOfType("turn/completed")).toHaveLength(1);
+      expect(slowToolEvents("item/completed")).toHaveLength(0);
+
+      // The agent's own result settles the row, inside the turn that opened
+      // it — no second bracket, and the real output is not lost.
+      await waitFor(
+        () =>
+          eventsCarryingSlowToolOutput("item/completed").length > 0
+            ? true
+            : undefined,
+        "the tool call's real result",
+      );
+      expect(slowToolEvents("item/completed")[0]?.item).toMatchObject({
+        type: "commandExecution",
+        command: "sleep 7",
+        status: "completed",
+        aggregatedOutput: "SLOW-TOOL-REAL-OUTPUT",
+      });
+      expect(threadEventsOfType("turn/started")).toHaveLength(2);
+
+      // Only now is the agent quiet, so the window closes the one turn.
+      const completed = await waitFor(() => {
+        const events = threadEventsOfType("turn/completed");
+        return events.length === 2 ? events[1] : undefined;
+      }, "agent turn to close once the tool finished");
+      expect(completed).toMatchObject({ status: "completed" });
+      expect(threadEventsOfType("turn/started")).toHaveLength(2);
+    }, 30_000);
+
     it("does not open a turn for unprompted non-work updates", async () => {
       const { providerThreadId } = await startThread();
       const turnId = sendTurnRequest("turn/start", providerThreadId, {

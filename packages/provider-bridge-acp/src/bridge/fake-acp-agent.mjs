@@ -307,7 +307,41 @@ function captureMcpServers(message) {
     : [];
 }
 
+/**
+ * How long the `slowtool` variant keeps its tool call running. Longer than
+ * the bridge's 5 s agent-turn quiet window on purpose: the point of the
+ * variant is a call the agent is still executing when the window elapses.
+ */
+const SLOW_TOOL_RUN_MS = 6_500;
+
 async function streamAgentInitiatedWork(variant) {
+  if (variant === "slowtool") {
+    notifyUpdate(messageChunk("agent-initiated:job bg_4 finished, "));
+    notifyUpdate({
+      sessionUpdate: "tool_call",
+      toolCallId: "agent-initiated-slow-tool",
+      title: "sleep 7",
+      kind: "execute",
+      status: "in_progress",
+      rawInput: { command: "sleep 7" },
+    });
+    // The silent stretch: a real build or test run streams nothing until it
+    // finishes, so no update reaches the bridge for longer than its window.
+    await sleep(SLOW_TOOL_RUN_MS);
+    notifyUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "agent-initiated-slow-tool",
+      status: "completed",
+      content: [
+        {
+          type: "content",
+          content: { type: "text", text: "SLOW-TOOL-REAL-OUTPUT" },
+        },
+      ],
+    });
+    notifyUpdate(messageChunk("the answer is 42."));
+    return;
+  }
   if (variant === "noise") {
     notifyUpdate({ sessionUpdate: "available_commands_update", commands: [] });
     notifyUpdate({
@@ -487,6 +521,7 @@ async function handlePrompt(message) {
     //   agent-initiated:permission  ask for permission mid-stream
     //   agent-initiated:exit        exit(3) right after the stream
     //   agent-initiated:noise       only non-work updates (must not open a turn)
+    //   agent-initiated:slowtool    a tool call that runs past the quiet window
     const variant = text.match(/agent-initiated:(\w+)/)?.[1] ?? "";
     setTimeout(() => void streamAgentInitiatedWork(variant), 40);
   } else if (text.includes("hang")) {
