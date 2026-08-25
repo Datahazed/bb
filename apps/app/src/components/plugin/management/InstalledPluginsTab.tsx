@@ -18,7 +18,7 @@ import {
 import { pluginNeedsAttention } from "@/hooks/usePluginAttention";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
 import { pluginRowSignal, installedPluginProblemLine } from "./plugin-status";
-import { PluginRowSignalView } from "./PluginRowSignal";
+import { PluginRowSignalView, PluginSignalLogo } from "./PluginRowSignal";
 import { UpdatePluginDialog } from "./UpdatePluginDialog";
 import { PluginLogo } from "./plugin-ui";
 
@@ -104,7 +104,17 @@ export function InstalledPluginRow({
   // Reflect the in-flight target immediately; the invalidated list settles it.
   const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
   const signal = pluginRowSignal(plugin);
-  const updateSignal = signal?.kind === "update" ? signal : null;
+  const statusSignal = signal?.kind === "status" ? signal : null;
+  // Update health and an available candidate are independent facts. A failed
+  // attempt can roll back successfully while the same candidate remains
+  // available, so the badge and action must be allowed to coexist.
+  const updateSignal =
+    plugin.updateState.availableVersion === null
+      ? null
+      : {
+          kind: "update" as const,
+          version: plugin.updateState.availableVersion,
+        };
   const problemLine = installedPluginProblemLine(plugin);
   const notRunning = pluginNeedsAttention({
     enabled: enabled === true,
@@ -128,7 +138,11 @@ export function InstalledPluginRow({
             ? "-mx-2 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 text-destructive-text"
             : undefined
         }
-        leading={<PluginLogo plugin={plugin} className="size-6 shrink-0" />}
+        leading={
+          <PluginSignalLogo signal={statusSignal} onStatusClick={openDetail}>
+            <PluginLogo plugin={plugin} className="size-6 shrink-0" />
+          </PluginSignalLogo>
+        }
         title={plugin.name ?? plugin.id}
         description={
           problemLine === null ? (

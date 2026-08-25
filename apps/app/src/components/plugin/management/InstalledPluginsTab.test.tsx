@@ -163,4 +163,50 @@ describe("InstalledPluginRow", () => {
     expect(row.textContent).not.toContain("BB Community");
     expect(row.textContent).not.toContain("Security");
   });
+
+  it("shows a rolled-back update beside a still-available update", () => {
+    renderRow(
+      plugin({
+        updateState: {
+          ...EMPTY_PLUGIN_UPDATE_STATE,
+          availableVersion: "0.3.0",
+          lastFailure: {
+            version: "0.3.0",
+            at: Date.now(),
+            detail: "Reload failed; restored 0.2.1.",
+          },
+        },
+      }),
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Update failed: Reload failed; restored 0.2.1.",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Update to 0.3.0" }),
+    ).toBeTruthy();
+  });
+
+  it("shows when update checks need attention", () => {
+    renderRow(
+      plugin({
+        updateState: {
+          ...EMPTY_PLUGIN_UPDATE_STATE,
+          outcome: "unavailable",
+          detail: "The source ref could not be verified.",
+        },
+      }),
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Needs attention: The source ref could not be verified.",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /^Update(?: to| available)/u }),
+    ).toBeNull();
+  });
 });
