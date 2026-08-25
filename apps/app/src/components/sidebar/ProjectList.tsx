@@ -120,8 +120,12 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -150,6 +154,13 @@ import {
   resolveThreadTitleDisplayText,
   type ThreadTitleMentionResources,
 } from "@/components/thread/ThreadTitleMentions";
+import {
+  hiddenSidebarTopLevelSectionIdsAtom,
+  moveSidebarTopLevelSection,
+  sidebarTopLevelSectionOrderAtom,
+  setSidebarTopLevelSectionHidden,
+  SIDEBAR_TOP_LEVEL_SECTION_DEFINITIONS,
+} from "./sidebarTopLevelSectionPreferences";
 
 interface ProjectListProps {
   onNewProject?: () => void;
@@ -635,6 +646,12 @@ export function SidebarDisplayOptionsMenu({
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
   );
+  const [topLevelSectionOrder, setTopLevelSectionOrder] = useAtom(
+    sidebarTopLevelSectionOrderAtom,
+  );
+  const [hiddenTopLevelSectionIds, setHiddenTopLevelSectionIds] = useAtom(
+    hiddenSidebarTopLevelSectionIdsAtom,
+  );
   const selectedSort: SidebarChronologicalSort =
     chronologicalSort === "none" ? "updated" : chronologicalSort;
 
@@ -677,6 +694,67 @@ export function SidebarDisplayOptionsMenu({
               {option.label}
             </DropdownMenuCheckboxItem>
           ))}
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
+          Sidebar sections
+        </DropdownMenuLabel>
+        <DropdownMenuGroup aria-label="Sidebar sections">
+          {topLevelSectionOrder.map((sectionId, index) => {
+            const section = SIDEBAR_TOP_LEVEL_SECTION_DEFINITIONS.find(
+              (candidate) => candidate.id === sectionId,
+            );
+            if (!section) return null;
+            const isHidden = hiddenTopLevelSectionIds.includes(sectionId);
+            return (
+              <DropdownMenuSub key={sectionId}>
+                <DropdownMenuSubTrigger>{section.label}</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {section.hideable ? (
+                    <>
+                      <DropdownMenuCheckboxItem
+                        checked={!isHidden}
+                        onCheckedChange={(shown) =>
+                          setHiddenTopLevelSectionIds((current) =>
+                            setSidebarTopLevelSectionHidden(
+                              current,
+                              sectionId,
+                              !shown,
+                            ),
+                          )
+                        }
+                      >
+                        Show section
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  ) : null}
+                  <DropdownMenuItem
+                    disabled={index === 0}
+                    onSelect={() =>
+                      setTopLevelSectionOrder((current) =>
+                        moveSidebarTopLevelSection(current, sectionId, -1),
+                      )
+                    }
+                  >
+                    <Icon name="ArrowUp" aria-hidden="true" />
+                    Move up
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={index === topLevelSectionOrder.length - 1}
+                    onSelect={() =>
+                      setTopLevelSectionOrder((current) =>
+                        moveSidebarTopLevelSection(current, sectionId, 1),
+                      )
+                    }
+                  >
+                    <Icon name="ArrowDown" aria-hidden="true" />
+                    Move down
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            );
+          })}
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
