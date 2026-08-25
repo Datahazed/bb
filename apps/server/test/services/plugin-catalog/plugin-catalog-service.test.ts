@@ -6,6 +6,8 @@ import {
   getPluginMarketplace,
   markInstalledPluginRemoved,
   migrate,
+  recordPluginListingSubmission,
+  savePluginListingDraft,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
@@ -138,6 +140,7 @@ describe("plugin catalog service", () => {
       typeof createPluginCatalogService
     >[0]["bundledPlugins"];
     fetch?: MarketplaceFetch;
+    notifyCatalogChanged?: () => void;
     warn?: (message: string) => void;
   }) {
     return createPluginCatalogService({
@@ -163,6 +166,9 @@ describe("plugin catalog service", () => {
         ? {}
         : { bundledPlugins: options.bundledPlugins }),
       ...(options?.fetch === undefined ? {} : { fetch: options.fetch }),
+      ...(options?.notifyCatalogChanged === undefined
+        ? {}
+        : { notifyCatalogChanged: options.notifyCatalogChanged }),
       ...(options?.warn === undefined ? {} : { warn: options.warn }),
     });
   }
@@ -756,6 +762,81 @@ describe("plugin catalog service", () => {
         lastSuccessfulRefreshAt: null,
         lastAttemptedRefreshAt: 3_000,
         lastError: expect.stringContaining("icon write failed"),
+      });
+    });
+
+    it("keeps a committed refresh successful when listing reconciliation fails", async () => {
+      upsertInstalledPlugin(db, {
+        id: "author-tools",
+        source: "path:/plugins/author-tools",
+        provenance: { kind: "direct" },
+        sourceIntent: {
+          kind: "path",
+          canonicalPath: "/plugins/author-tools",
+        },
+        exactResolution: { kind: "path" },
+        updateState: {
+          lastCheckAt: null,
+          availableCompatibleVersion: null,
+          newestIncompatibleVersion: null,
+          statusDetail: null,
+        },
+        activeArtifactId: null,
+        rootDir: "/plugins/author-tools",
+        version: "1.0.0",
+        enabled: true,
+      });
+      savePluginListingDraft(db, "author-tools", {
+        id: "author-tools",
+        displayName: "Author tools",
+        description: "Tools for maintaining authored plugins.",
+        icon: "Puzzle",
+        author: { name: "Author", github: "author" },
+        source: {
+          git: {
+            url: "https://github.com/author/bb-plugin-author-tools.git",
+            range: "^1.0.0",
+          },
+        },
+        category: "plugin-development",
+        screenshots: [],
+      });
+      recordPluginListingSubmission(db, "author-tools", {
+        url: "https://github.com/get-bb/marketplace/pull/42",
+        openedAt: 1_000,
+      });
+      // Reconciliation parses persisted lifecycle state before checking PRs.
+      // Corrupt state makes that post-refresh maintenance step throw.
+      db.$client
+        .prepare(
+          "UPDATE plugin_listing_lifecycles SET lifecycle_json = ? WHERE plugin_id = ?",
+        )
+        .run("{not json", "author-tools");
+
+      const events: string[] = [];
+      const catalog = service({
+        fetch: async (url) =>
+          url === MANIFEST_URL
+            ? jsonResponse(manifest([remoteEntry()]))
+            : new Response(VALID_SVG, { status: 200 }),
+        notifyCatalogChanged: () => {
+          events.push(
+            `notified:${getPluginMarketplace(db, "bb-community")?.lastSuccessfulRefreshAt}`,
+          );
+        },
+        warn: (message) => events.push(`warned:${message}`),
+      });
+
+      await expect(catalog.refresh(4_000)).resolves.toBeUndefined();
+      expect(events[0]).toBe("notified:4000");
+      expect(events[1]).toMatch(
+        /^warned:marketplace bb-community listing lifecycle reconciliation failed:/u,
+      );
+      expect(await catalog.search("widgets")).toHaveLength(1);
+      expect(getPluginMarketplace(db, "bb-community")).toMatchObject({
+        lastSuccessfulRefreshAt: 4_000,
+        lastAttemptedRefreshAt: 4_000,
+        lastError: null,
       });
     });
   });

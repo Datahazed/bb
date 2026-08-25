@@ -716,16 +716,24 @@ export function createPluginCatalogService(deps: {
         });
         replacePluginMarketplaceIcons(tx, row.name, icons);
       });
-      if (row.name === CURATED_MARKETPLACE_NAME) {
-        await reconcilePluginListingLifecycles({
-          db: deps.db,
-          acceptedEntryIds: new Set(catalog.plugins.map((entry) => entry.id)),
-          fetch: fetchMarketplace,
-          now,
-          ...(deps.warn === undefined ? {} : { warn: deps.warn }),
-        });
-      }
       deps.notifyCatalogChanged?.();
+      if (row.name === CURATED_MARKETPLACE_NAME) {
+        try {
+          await reconcilePluginListingLifecycles({
+            db: deps.db,
+            acceptedEntryIds: new Set(
+              catalog.plugins.map((entry) => entry.id),
+            ),
+            fetch: fetchMarketplace,
+            now,
+            ...(deps.warn === undefined ? {} : { warn: deps.warn }),
+          });
+        } catch (error) {
+          deps.warn?.(
+            `marketplace ${row.name} listing lifecycle reconciliation failed: ${marketplaceErrorMessage(error)}`,
+          );
+        }
+      }
     } finally {
       await materialized.dispose();
     }
