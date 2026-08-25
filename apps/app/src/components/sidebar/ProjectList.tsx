@@ -84,10 +84,7 @@ import {
   ChronologicalSectionThreadSections,
   ProjectThreadTree,
 } from "./ProjectRow";
-import {
-  SidebarThreadSearchPanel,
-  SidebarThreadSearchShowMenu,
-} from "./SidebarThreadSearchPanel";
+import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import {
   SidebarArchivedThreadGroup,
   SidebarDraftRows,
@@ -157,7 +154,6 @@ export { TopLevelSidebarSection };
 import {
   SIDEBAR_THREAD_SEARCH_LISTBOX_ID,
   type SidebarThreadSearchInputController,
-  type SidebarThreadSearchLifecycleFilterController,
   type SidebarThreadSearchPanelController,
 } from "./sidebarThreadSearch";
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
@@ -197,7 +193,6 @@ interface ProjectListProps {
   onProjectSelect?: () => void;
   isCreatingProject?: boolean;
   threadSearch?: SidebarThreadSearchPanelController;
-  searchLifecycleFilter?: SidebarThreadSearchLifecycleFilterController;
 }
 
 interface ProjectListActionButtonsProps {
@@ -208,7 +203,6 @@ interface ProjectListActionButtonsProps {
   };
   onNewChat?: () => void;
   threadSearch?: SidebarThreadSearchInputController;
-  searchLifecycleFilter?: SidebarThreadSearchLifecycleFilterController;
 }
 
 interface ProjectListShellProps {
@@ -994,7 +988,6 @@ export function ProjectListActionButtons({
   newThreadSplit,
   onNewChat,
   threadSearch,
-  searchLifecycleFilter,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
   const newThreadShortcut = useAppCommandShortcut("thread.new");
@@ -1033,11 +1026,6 @@ export function ProjectListActionButtons({
               threadSearch.onQueryChange(event.currentTarget.value)
             }
           />
-          {searchLifecycleFilter ? (
-            <SidebarThreadSearchShowMenu
-              lifecycleFilter={searchLifecycleFilter}
-            />
-          ) : null}
           <Button
             type="button"
             size="icon"
@@ -1670,7 +1658,6 @@ function ProjectListComponent({
   onProjectSelect,
   isCreatingProject = false,
   threadSearch,
-  searchLifecycleFilter,
 }: ProjectListProps) {
   const navigate = useNavigate();
   const setRootComposeProjectId = useSetRootComposeProjectId();
@@ -1704,10 +1691,7 @@ function ProjectListComponent({
   const archivedThreadsQuery = useArchivedThreads(
     {},
     {
-      enabled:
-        showArchivedThreads ||
-        (threadSearch?.isActive === true &&
-          searchLifecycleFilter !== undefined),
+      enabled: showArchivedThreads,
     },
   );
   const archivedThreads = useMemo(
@@ -2240,9 +2224,7 @@ function ProjectListComponent({
           sectionNamesById={sectionNamesById}
           projectNamesById={projectNamesById}
           query={threadSearch.query}
-          recentArchivedThreads={archivedThreads}
           recentThreads={threads}
-          lifecycleFilter={searchLifecycleFilter}
           showSectionLabels={isSectionOrganizationMode}
         />
       </ProjectListShell>

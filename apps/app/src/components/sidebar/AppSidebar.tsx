@@ -47,12 +47,8 @@ import {
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { createNewThreadDraftSlotId } from "@/lib/prompt-draft-slots";
-import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
-import {
-  useSidebarThreadSearchLifecycleFilter,
-  type SidebarThreadSearchNavigationItem,
-} from "./sidebarThreadSearch";
+import type { SidebarThreadSearchNavigationItem } from "./sidebarThreadSearch";
 import { useSidebarThreadSearch } from "./useSidebarThreadSearch";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
@@ -197,8 +193,6 @@ export function AppSidebar({
     hiddenSidebarTopLevelSectionIdsAtom,
   );
   const pluginNavPanels = usePluginNavPanelChrome();
-  const searchLifecycleFilter = useSidebarThreadSearchLifecycleFilter();
-  const usesBuiltInThreadList = threadListReplacement.kind === "owner";
 
   const openSidebarForThreadSearch = useCallback(() => {
     if (isCompactViewport) {
@@ -210,15 +204,6 @@ export function AppSidebar({
 
   const openSearchedThread = useCallback(
     (item: SidebarThreadSearchNavigationItem) => {
-      if (item.kind === "draft") {
-        void navigate(getRootComposeRoutePath(), {
-          state: withRootComposeDraftSlotId(
-            { focusPrompt: true },
-            item.draftSlotId,
-          ),
-        });
-        return;
-      }
       void navigate(
         getThreadRoutePath({
           projectId: item.projectId,
@@ -387,7 +372,6 @@ export function AppSidebar({
       onProjectSelect={closeOnMobile}
       isCreatingProject={quickCreateProject.isCreating}
       threadSearch={threadSearchPanelController}
-      searchLifecycleFilter={searchLifecycleFilter}
     />
   );
 
@@ -446,9 +430,6 @@ export function AppSidebar({
                   onQueryChange: threadSearch.onQueryChange,
                   query: threadSearch.query,
                 }}
-                searchLifecycleFilter={
-                  usesBuiltInThreadList ? searchLifecycleFilter : undefined
-                }
               />
               {toolsRoutePath ? (
                 <ExtensionsNavSidebarItem

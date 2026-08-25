@@ -2,16 +2,14 @@ import {
   memo,
   useCallback,
   useEffect,
-  useLayoutEffect,
-  useMemo,
   useRef,
-  useState,
   type MouseEventHandler,
   type ReactNode,
 } from "react";
 import type { ThreadListEntry } from "@bb/domain";
 import type { ThreadSearchMatch } from "@bb/server-contract";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { Icon } from "@bb/shared-ui/icon";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
   hasActiveBackgroundAgentActivity,
@@ -27,10 +25,7 @@ import {
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadStatusGlyph } from "./ThreadRow";
-import {
-  getSidebarThreadSearchMatchWindow,
-  isSidebarThreadTitleMatch,
-} from "./sidebarThreadSearch";
+import { isSidebarThreadTitleMatch } from "./sidebarThreadSearch";
 import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 import {
   SIDEBAR_ROW_BASE_CLASS,
@@ -59,31 +54,6 @@ interface HighlightedTextProps {
   text: string;
 }
 
-interface SearchResultRowLayoutProps {
-  id: string;
-  isActive: boolean;
-  metadataText: string;
-  onActive: () => void;
-  onSelect: () => void;
-  primaryHighlightRanges: ThreadSearchMatch["highlightRanges"];
-  primaryText: string;
-  trailingIndicator?: ReactNode;
-}
-
-export interface DraftSearchResultRowProps {
-  id: string;
-  isActive: boolean;
-  matches: ThreadSearchMatch["highlightRanges"];
-  onActive: () => void;
-  onSelect: () => void;
-  primaryText: string;
-  projectId: string;
-  projectName: string | undefined;
-  sectionLabel?: string | null;
-  title: string;
-  updatedAt: number;
-}
-
 function clampRange(
   range: ThreadSearchMatch["highlightRanges"][number],
   textLength: number,
@@ -105,7 +75,7 @@ function HighlightedText({ ranges, text }: HighlightedTextProps) {
     .filter((range): range is NonNullable<typeof range> => range !== null)
     .sort((left, right) => left.start - right.start || left.end - right.end);
 
-  for (const [rangeIndex, range] of sortedRanges.entries()) {
+  for (const range of sortedRanges) {
     if (range.start < cursor) {
       continue;
     }
@@ -115,8 +85,7 @@ function HighlightedText({ ranges, text }: HighlightedTextProps) {
     nodes.push(
       <mark
         key={`${range.start}:${range.end}`}
-        data-sidebar-search-first-match={rangeIndex === 0 ? "true" : undefined}
-        className="mx-0.5 rounded-sm bg-[var(--sidebar-search-match)] px-px text-sidebar-accent-foreground shadow-[0_0_0_1px_var(--sidebar-search-match-border)]"
+        className="rounded-sm bg-[var(--sidebar-search-match)] px-0 text-sidebar-accent-foreground shadow-[0_0_0_1px_var(--sidebar-search-match-border)]"
       >
         {text.slice(range.start, range.end)}
       </mark>,
@@ -149,168 +118,6 @@ function isNonEmptyMetadataPart(value: string | null): value is string {
   return value !== null && value.length > 0;
 }
 
-function SearchResultRowLayout({
-  id,
-  isActive,
-  metadataText,
-  onActive,
-  onSelect,
-  primaryHighlightRanges,
-  primaryText,
-  trailingIndicator,
-}: SearchResultRowLayoutProps) {
-  const rowRef = useRef<HTMLButtonElement | null>(null);
-  const matchProbeRef = useRef<HTMLSpanElement | null>(null);
-  const [matchIsHidden, setMatchIsHidden] = useState(false);
-  const displayMatch = useMemo(
-    () =>
-      getSidebarThreadSearchMatchWindow({
-        highlightRanges: primaryHighlightRanges,
-        matchIsHidden,
-        text: primaryText,
-      }),
-    [matchIsHidden, primaryHighlightRanges, primaryText],
-  );
-  const handleMouseEnter = useCallback<
-    MouseEventHandler<HTMLButtonElement>
-  >(() => {
-    onActive();
-  }, [onActive]);
-
-  useLayoutEffect(() => {
-    const probe = matchProbeRef.current;
-    if (probe === null || primaryHighlightRanges.length === 0) {
-      setMatchIsHidden(false);
-      return;
-    }
-
-    const measure = () => {
-      const firstMatch = probe.querySelector<HTMLElement>(
-        '[data-sidebar-search-first-match="true"]',
-      );
-      const firstMatchRect = firstMatch?.getClientRects()[0];
-      if (firstMatchRect === undefined) {
-        // jsdom and display:none surfaces have no measurable line boxes. Keep
-        // the ordinary clamp until the row enters a measurable layout.
-        setMatchIsHidden(false);
-        return;
-      }
-      const probeRect = probe.getBoundingClientRect();
-      setMatchIsHidden(
-        firstMatchRect.top >= probeRect.bottom - 0.5 ||
-          firstMatchRect.bottom > probeRect.bottom + 0.5,
-      );
-    };
-
-    measure();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", measure);
-      return () => window.removeEventListener("resize", measure);
-    }
-    const observer = new ResizeObserver(measure);
-    observer.observe(probe);
-    return () => observer.disconnect();
-  }, [primaryHighlightRanges, primaryText]);
-
-  useEffect(() => {
-    if (!isActive) {
-      return;
-    }
-    rowRef.current?.scrollIntoView({ block: "nearest" });
-  }, [isActive]);
-
-  return (
-    <button
-      ref={rowRef}
-      id={id}
-      type="button"
-      role="option"
-      aria-selected={isActive}
-      className={cn(
-        SIDEBAR_ROW_BASE_CLASS,
-        SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-        SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
-        "min-h-10 py-1.5 pr-2 text-left outline-none ring-sidebar-ring focus-visible:ring-2",
-        isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
-      )}
-      onMouseEnter={handleMouseEnter}
-      onFocus={onActive}
-      onClick={onSelect}
-    >
-      <span className="min-w-0 flex-1 space-y-0.5">
-        <span className="relative block min-w-0">
-          {primaryHighlightRanges.length > 0 ? (
-            <span
-              ref={matchProbeRef}
-              aria-hidden="true"
-              className="pointer-events-none invisible absolute inset-x-0 top-0 block min-w-0 line-clamp-2 break-words"
-            >
-              <HighlightedText
-                text={primaryText}
-                ranges={primaryHighlightRanges}
-              />
-            </span>
-          ) : null}
-          <span className="block min-w-0 line-clamp-2 break-words">
-            <HighlightedText
-              text={displayMatch.text}
-              ranges={displayMatch.highlightRanges}
-            />
-          </span>
-        </span>
-        <span
-          className="block min-w-0 truncate text-xs leading-4 text-muted-foreground"
-          title={metadataText}
-        >
-          {metadataText}
-        </span>
-      </span>
-      {trailingIndicator}
-    </button>
-  );
-}
-
-export function DraftSearchResultRow({
-  id,
-  isActive,
-  matches,
-  onActive,
-  onSelect,
-  primaryText,
-  projectId,
-  projectName,
-  sectionLabel,
-  title,
-  updatedAt,
-}: DraftSearchResultRowProps) {
-  const projectMetadata =
-    projectId !== PERSONAL_PROJECT_ID && projectName ? projectName : null;
-  const contextLabel = sectionLabel ?? projectMetadata;
-  const relativeTime = formatRelativeTime({
-    timestamp: updatedAt,
-    now: Date.now(),
-  });
-  const metadataText = [
-    primaryText === title ? null : title,
-    contextLabel,
-    relativeTime,
-  ]
-    .filter(isNonEmptyMetadataPart)
-    .join(" · ");
-
-  return (
-    <SearchResultRowLayout
-      id={id}
-      isActive={isActive}
-      metadataText={metadataText}
-      onActive={onActive}
-      onSelect={onSelect}
-      primaryHighlightRanges={matches}
-      primaryText={primaryText}
-    />
-  );
-}
-
 function ThreadSearchResultRowComponent({
   id,
   isActive,
@@ -321,6 +128,7 @@ function ThreadSearchResultRowComponent({
   sectionLabel,
   thread,
 }: ThreadSearchResultRowProps) {
+  const rowRef = useRef<HTMLButtonElement | null>(null);
   const title = getThreadDisplayTitle(thread);
   const titleMatch = getTitleMatch(title, matches);
   const snippetMatch = getSnippetMatch(matches);
@@ -363,23 +171,63 @@ function ThreadSearchResultRowComponent({
   const metadataText = [snippetMatch ? title : null, contextLabel, relativeTime]
     .filter(isNonEmptyMetadataPart)
     .join(" · ");
+  const handleMouseEnter = useCallback<
+    MouseEventHandler<HTMLButtonElement>
+  >(() => {
+    onActive();
+  }, [onActive]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+    rowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [isActive]);
+
   return (
-    <SearchResultRowLayout
+    <button
+      ref={rowRef}
       id={id}
-      isActive={isActive}
-      metadataText={metadataText}
-      onActive={onActive}
-      onSelect={onSelect}
-      primaryHighlightRanges={primaryHighlightRanges}
-      primaryText={primaryText}
-      trailingIndicator={
-        indicatorKind !== "none" ? (
-          <span className="inline-flex size-4 shrink-0 items-center justify-center">
-            <ThreadStatusGlyph {...indicatorState} />
-          </span>
-        ) : null
-      }
-    />
+      type="button"
+      role="option"
+      aria-selected={isActive}
+      className={cn(
+        SIDEBAR_ROW_BASE_CLASS,
+        SIDEBAR_STANDARD_ROW_PADDING_CLASS,
+        SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
+        "min-h-10 py-1.5 pr-2 text-left outline-none ring-sidebar-ring focus-visible:ring-2",
+        isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
+      )}
+      onMouseEnter={handleMouseEnter}
+      onFocus={onActive}
+      onClick={onSelect}
+    >
+      <span className="min-w-0 flex-1 space-y-0.5">
+        <span className="block min-w-0 truncate">
+          <HighlightedText text={primaryText} ranges={primaryHighlightRanges} />
+        </span>
+        <span
+          className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+          title={metadataText}
+        >
+          {snippetMatch ? (
+            <Icon
+              name="MessageSquare"
+              className="size-3 shrink-0 text-subtle-foreground"
+              aria-hidden="true"
+            />
+          ) : contextLabel ? (
+            <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
+          ) : null}
+          <span className="min-w-0 truncate">{metadataText}</span>
+        </span>
+      </span>
+      {indicatorKind !== "none" ? (
+        <span className="inline-flex size-4 shrink-0 items-center justify-center">
+          <ThreadStatusGlyph {...indicatorState} />
+        </span>
+      ) : null}
+    </button>
   );
 }
 
