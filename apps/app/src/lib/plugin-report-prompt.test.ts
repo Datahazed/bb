@@ -100,7 +100,7 @@ describe("plugin report-to-author prompt", () => {
     expect(prompt).toContain('Plugin ID: "notify"');
     expect(prompt).toContain('Plugin version: "1.2.0"');
     expect(prompt).toContain("notification handler failed");
-    expect(prompt).toContain("Handler errors recorded: 2");
+    expect(prompt).toContain('Handler errors recorded: "2"');
     expect(prompt).toContain("Reproduce the failure and verify the cause");
     expect(prompt).toContain("If it is a plugin issue, file");
   });
