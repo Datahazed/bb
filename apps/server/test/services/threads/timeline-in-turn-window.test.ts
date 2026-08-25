@@ -895,7 +895,12 @@ describe("in-turn timeline windows", () => {
     let cursor: TimelinePaginationCursor | null = null;
     let pages = 0;
     for (;;) {
-      const page = buildPage(db, thread, LARGE_BUDGET, cursor).response;
+      const page: ThreadTimelineResponse = buildPage(
+        db,
+        thread,
+        LARGE_BUDGET,
+        cursor,
+      ).response;
       pages += 1;
       for (const row of page.rows) {
         if (row.kind === "conversation" && row.role === "assistant") {
