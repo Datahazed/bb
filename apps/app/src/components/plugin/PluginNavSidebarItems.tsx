@@ -727,12 +727,16 @@ function PluginNavSidebarItem({
   const pluginDisplayName = usePluginDisplayName(chrome.pluginId);
   const isCompactViewport = useIsCompactViewport();
   const path = routePathForRow(row);
-  const content = {
-    kind: "plugin-panel",
-    pluginId: chrome.pluginId,
-    panelPath: chrome.path,
-    subPath: "",
-  } as const;
+  const content = useMemo(
+    () =>
+      ({
+        kind: "plugin-panel",
+        pluginId: chrome.pluginId,
+        panelPath: chrome.path,
+        subPath: "",
+      }) as const,
+    [chrome.path, chrome.pluginId],
+  );
   const { onPointerDown, openInSplit } = usePaneContentSplitDrag({
     content,
     enabled: splitEnabled,
