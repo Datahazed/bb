@@ -141,7 +141,19 @@ describe("theme.css neutral ramp", () => {
     expect(rule).toContain(
       "background-image: linear-gradient(var(--sidebar), var(--sidebar));",
     );
-    expect(rule).toContain("backdrop-filter: blur(16px);");
+    expect(rule).not.toContain("backdrop-filter");
+
+    const shieldRule = css.match(
+      /\[data-sidebar-sticky-stack\] \[data-sidebar-sticky-tier\]::before,\s*\[data-sidebar-sticky-stack\] \[data-sidebar-sticky-tier\]::after\s*\{([^}]*)\}/s,
+    )?.[1];
+    expect(shieldRule).toContain("backdrop-filter: blur(16px);");
+
+    const topShieldRule = css.match(
+      /\[data-sidebar-sticky-stack\] \[data-sidebar-sticky-tier\]::before\s*\{([^}]*)\}/s,
+    )?.[1];
+    expect(topShieldRule).toContain(
+      "100% + var(--bb-sidebar-sticky-tier-shield-top-height, 0)",
+    );
   });
 
   it("backs selected sticky sidebar rows with an opaque sidebar layer", () => {
