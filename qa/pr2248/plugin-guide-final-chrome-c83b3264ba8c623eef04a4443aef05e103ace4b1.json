@@ -1,0 +1,90 @@
+{
+  "candidate": "c83b3264ba8c623eef04a4443aef05e103ace4b1",
+  "browser": "Google Chrome for Testing 151.0.7922.71",
+  "appBundleSdkVersion": "0.4.17",
+  "result": "PASS",
+  "tabs": [
+    {
+      "id": "thread-panel",
+      "number": "9",
+      "text": "Your tab",
+      "target": {
+        "left": 641,
+        "top": 277.25,
+        "right": 722.484375,
+        "bottom": 305.25
+      },
+      "badge": {
+        "left": 671.734375,
+        "top": 253.25,
+        "right": 691.734375,
+        "bottom": 273.25
+      }
+    },
+    {
+      "id": "file-opener",
+      "number": "10",
+      "text": "retry-notes.md",
+      "target": {
+        "left": 728.484375,
+        "top": 277.25,
+        "right": 846.96875,
+        "bottom": 305.25
+      },
+      "badge": {
+        "left": 777.71875,
+        "top": 253.25,
+        "right": 797.71875,
+        "bottom": 273.25
+      }
+    },
+    {
+      "id": "code-renderers",
+      "number": "11",
+      "text": "Diff",
+      "target": {
+        "left": 852.96875,
+        "top": 277.25,
+        "right": 906.953125,
+        "bottom": 305.25
+      },
+      "badge": {
+        "left": 869.953125,
+        "top": 253.25,
+        "right": 889.953125,
+        "bottom": 273.25
+      }
+    }
+  ],
+  "annotationSequence": [
+    "Full-page panels",
+    "The thread list",
+    "Thread row status",
+    "Sidebar footer buttons",
+    "Thread header controls",
+    "Rich message embeds",
+    "Message actions",
+    "In-thread forms",
+    "Thread side-panel tabs",
+    "File viewers & editors",
+    "Code & diff renderers",
+    "Timeline row renderers",
+    "App-wide scripts"
+  ],
+  "paletteState": {
+    "title": "Open release notes\nNavigation\n1\nRun release checklist\nPlugins\nCopy thread link\nThread",
+    "marker": "1",
+    "searchLabel": "Search commands"
+  },
+  "composerPills": [
+    "Command palette actions",
+    "File viewers & editors"
+  ],
+  "screenshots": [
+    "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/plugin-guide-app-tabs-c83b3264ba8c623eef04a4443aef05e103ace4b1.png",
+    "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/plugin-guide-file-opener-tab-c83b3264ba8c623eef04a4443aef05e103ace4b1.png",
+    "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/plugin-guide-code-renderers-tab-c83b3264ba8c623eef04a4443aef05e103ace4b1.png",
+    "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/plugin-guide-command-palette-c83b3264ba8c623eef04a4443aef05e103ace4b1.png",
+    "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/plugin-guide-two-composer-pills-c83b3264ba8c623eef04a4443aef05e103ace4b1.png"
+  ]
+}

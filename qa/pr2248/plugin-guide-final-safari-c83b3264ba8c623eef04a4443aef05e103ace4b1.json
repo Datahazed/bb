@@ -1,0 +1,84 @@
+{
+  "browser": "Safari",
+  "version": "26.5.2",
+  "candidate": "c83b3264ba8c623eef04a4443aef05e103ace4b1",
+  "result": "PASS",
+  "tabs": [
+    {
+      "text": "Your tab",
+      "id": "thread-panel",
+      "number": "9",
+      "badge": {
+        "right": 1086.734375,
+        "top": 253,
+        "left": 1066.734375,
+        "bottom": 273
+      },
+      "target": {
+        "right": 1117.484375,
+        "top": 277,
+        "left": 1036,
+        "bottom": 305
+      }
+    },
+    {
+      "text": "retry-notes.md",
+      "id": "file-opener",
+      "number": "10",
+      "badge": {
+        "right": 1192.71875,
+        "top": 253,
+        "left": 1172.71875,
+        "bottom": 273
+      },
+      "target": {
+        "right": 1241.96875,
+        "top": 277,
+        "left": 1123.484375,
+        "bottom": 305
+      }
+    },
+    {
+      "text": "Diff",
+      "id": "code-renderers",
+      "number": "11",
+      "badge": {
+        "right": 1284.953125,
+        "top": 253,
+        "left": 1264.953125,
+        "bottom": 273
+      },
+      "target": {
+        "right": 1301.953125,
+        "top": 277,
+        "left": 1247.96875,
+        "bottom": 305
+      }
+    }
+  ],
+  "annotationSequence": [
+    "Full-page panels",
+    "The thread list",
+    "Thread row status",
+    "Sidebar footer buttons",
+    "Thread header controls",
+    "Rich message embeds",
+    "Message actions",
+    "In-thread forms",
+    "Thread side-panel tabs",
+    "File viewers & editors",
+    "Code & diff renderers",
+    "Timeline row renderers",
+    "App-wide scripts"
+  ],
+  "paletteState": {
+    "marker": "1",
+    "searchLabel": "Search commands",
+    "text": "\nOpen release notes\nNavigation\n1\nRun release checklist\nPlugins\nCopy thread link\nThread\n"
+  },
+  "copyAction": "Copied",
+  "screenshots": [
+    "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/plugin-guide-app-tabs-safari-c83b3264ba8c623eef04a4443aef05e103ace4b1.png",
+    "/Users/brsbl/.bb/thread-storage/thr_6n85axkwev/qa/plugin-guide-command-palette-safari-c83b3264ba8c623eef04a4443aef05e103ace4b1.png"
+  ]
+}
