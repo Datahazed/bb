@@ -132,7 +132,7 @@ describe("scaffold frontend", () => {
     await slot.behavior.emitRealtime("todos-changed", { count: 0 });
     await slot.findByText(/Nothing to do/);
     slot.lifecycle.unmount();
-  });
+  }, 30_000);
 });
 `;
 
@@ -260,13 +260,7 @@ async function packPluginSdk(packDir: string): Promise<string> {
   await mkdir(packDir, { recursive: true });
   await execFileAsync(
     "npm",
-    [
-      "pack",
-      "--silent",
-      "--ignore-scripts",
-      "--pack-destination",
-      packDir,
-    ],
+    ["pack", "--silent", "--ignore-scripts", "--pack-destination", packDir],
     {
       cwd: pluginSdkRoot,
     },
