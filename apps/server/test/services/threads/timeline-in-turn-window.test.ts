@@ -799,6 +799,7 @@ describe("in-turn timeline windows", () => {
 
     const details = buildTimelineTurnSummaryDetails(db, thread, {
       includeProviderUnhandledOperations: false,
+      mode: "range",
       sourceSeqEnd: turnRow.sourceSeqEnd,
       sourceSeqStart: turnRow.sourceSeqStart,
       turnId: turnRow.turnId,
