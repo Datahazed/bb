@@ -35,7 +35,10 @@ import {
   sidebarNavigationQueryKey,
 } from "@/hooks/queries/query-keys";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
-import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
+import {
+  ExtensionsNavSidebarItem,
+  PluginNavSidebarItems,
+} from "@/components/plugin/PluginNavSidebarItems";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
@@ -261,11 +264,12 @@ function SidebarFrame({ children }: SidebarFrameProps) {
     <ProjectActionsProvider>
       <ThreadActionsProvider>
         <div className="flex h-[680px] w-full max-w-[320px] min-w-0 flex-col overflow-hidden rounded-md border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm">
-          <div className="shrink-0 px-2 py-2">
+          <div className="shrink-0 space-y-1 px-2 py-2">
             <ProjectListActionButtons onNewChat={noop} />
+            <ExtensionsNavSidebarItem routePath={getSkillsRoutePath()} />
           </div>
-          {}
-          <PluginNavSidebarItems toolsRoutePath={getSkillsRoutePath()} />
+          <div aria-hidden="true" className="mx-2 h-px bg-sidebar-border" />
+          <PluginNavSidebarItems />
           <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
           <div className="shrink-0 border-t border-sidebar-border/70 px-2 py-2">
             <button

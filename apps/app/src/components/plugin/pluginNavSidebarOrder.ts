@@ -84,16 +84,6 @@ export function reorderPluginNavPanels({
   );
 }
 
-export function seedLeadingNavPanelKeys(
-  order: readonly string[],
-  leadingKeys: readonly string[],
-): string[] {
-  const next = [...order];
-  if (next.length === 0) return next;
-  const missing = leadingKeys.filter((key) => !next.includes(key));
-  return missing.length === 0 ? next : [...missing, ...next];
-}
-
 export function hidePluginNavPanel(
   hiddenKeys: readonly string[],
   key: string,

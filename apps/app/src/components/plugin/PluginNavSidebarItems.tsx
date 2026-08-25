@@ -65,64 +65,33 @@ import {
   havePluginNavPanelOrdersDiverged,
   hidePluginNavPanel,
   reorderPluginNavPanels,
-  seedLeadingNavPanelKeys,
   showPluginNavPanel,
 } from "./pluginNavSidebarOrder";
 
-const BUILTIN_NAV_ROW_PLUGIN_ID = "__builtin__";
+type SidebarNavRow = {
+  pluginId: string;
+  id: string;
+  title: string;
+  chrome: PluginNavPanelChrome;
+  panel: PluginNavPanelSlot | null;
+};
 
-const TOOLS_NAV_ROW_KEY = getPluginNavPanelKey({
-  pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
-  id: "tools",
-});
-
-type SidebarNavRow =
-  | {
-      kind: "tools";
-      pluginId: string;
-      id: string;
-      title: string;
-      routePath: string;
-    }
-  | {
-      kind: "plugin";
-      pluginId: string;
-      id: string;
-      title: string;
-      chrome: PluginNavPanelChrome;
-      panel: PluginNavPanelSlot | null;
-    };
-
-export function PluginNavSidebarItems({
-  toolsRoutePath,
-  ...props
-}: {
+export function PluginNavSidebarItems(props: {
   onNavigate?: () => void;
   splitEnabled?: boolean;
-  toolsRoutePath?: string;
 }) {
   const navPanels = usePluginNavPanelChrome();
-  const rows = useMemo<SidebarNavRow[]>(() => {
-    const pluginRows = navPanels.map<SidebarNavRow>(({ chrome, panel }) => ({
-      kind: "plugin",
-      pluginId: chrome.pluginId,
-      id: chrome.id,
-      title: chrome.title,
-      chrome,
-      panel,
-    }));
-    if (toolsRoutePath === undefined) return pluginRows;
-    return [
-      {
-        kind: "tools",
-        pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
-        id: "tools",
-        title: "Extensions",
-        routePath: toolsRoutePath,
-      },
-      ...pluginRows,
-    ];
-  }, [navPanels, toolsRoutePath]);
+  const rows = useMemo<SidebarNavRow[]>(
+    () =>
+      navPanels.map(({ chrome, panel }) => ({
+        pluginId: chrome.pluginId,
+        id: chrome.id,
+        title: chrome.title,
+        chrome,
+        panel,
+      })),
+    [navPanels],
+  );
   if (rows.length === 0) return null;
   return <PluginNavSidebarItemList {...props} rows={rows} />;
 }
@@ -142,12 +111,9 @@ function PluginNavSidebarItemList({
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
 
   const { visible, hidden, normalizedOrder } = useMemo(() => {
-    const leadingKeys = rows.some((row) => row.kind === "tools")
-      ? [TOOLS_NAV_ROW_KEY]
-      : [];
     return arrangePluginNavPanels({
       panels: rows,
-      storedOrder: seedLeadingNavPanelKeys(storedOrder, leadingKeys),
+      storedOrder,
       hiddenKeys,
     });
   }, [hiddenKeys, rows, storedOrder]);
@@ -207,7 +173,7 @@ function PluginNavSidebarItemList({
 
   return (
     <div
-      className="-mt-1.5 shrink-0 space-y-0.5 px-2 pb-2 group-data-[collapsible=icon]:hidden"
+      className="shrink-0 space-y-0.5 px-2 py-2 group-data-[collapsible=icon]:hidden"
       data-testid="plugin-nav-sidebar-items"
       onClickCapture={onClickCapture}
     >
@@ -324,9 +290,7 @@ function SidebarNavRowItem({
   splitEnabled,
   ...props
 }: SidebarNavRowItemProps) {
-  return row.kind === "tools" ? (
-    <ToolsNavSidebarItem {...props} row={row} />
-  ) : (
+  return (
     <PluginNavSidebarItem {...props} row={row} splitEnabled={splitEnabled} />
   );
 }
@@ -364,27 +328,28 @@ function ToolsNavSidebarItemIcon() {
   );
 }
 
-function ToolsNavSidebarItem({
-  row,
-  pathname: _pathname,
+export function ExtensionsNavSidebarItem({
+  routePath,
   onNavigate,
-  ...props
-}: Omit<SidebarNavRowItemProps, "row" | "splitEnabled"> & {
-  row: Extract<SidebarNavRow, { kind: "tools" }>;
+}: {
+  routePath: string;
+  onNavigate?: () => void;
 }) {
   const navigate = useNavigate();
   return (
-    <SidebarNavRowChrome
-      {...props}
-      rowKey={getPluginNavPanelKey(row)}
-      title={row.title}
-      icon={<ToolsNavSidebarItemIcon />}
-      isActive={false}
-      onSelect={() => {
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
+      onClick={() => {
         onNavigate?.();
-        void navigate(row.routePath);
+        void navigate(routePath);
       }}
-    />
+    >
+      <ToolsNavSidebarItemIcon />
+      <span className="min-w-0 flex-1 truncate text-left">Extensions</span>
+    </Button>
   );
 }
 
@@ -395,7 +360,7 @@ function PluginNavSidebarItem({
   splitEnabled,
   ...props
 }: Omit<SidebarNavRowItemProps, "row"> & {
-  row: Extract<SidebarNavRow, { kind: "plugin" }>;
+  row: SidebarNavRow;
 }) {
   const { chrome, panel } = row;
   const navigate = useNavigate();
