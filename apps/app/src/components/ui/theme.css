@@ -191,10 +191,11 @@
     min-height: var(--bb-sidebar-sticky-tier-height);
     z-index: var(--bb-sidebar-sticky-tier-z-index);
     isolation: isolate;
-    /* A native-vibrancy compositor can treat background-color as translucent.
-       An opaque image layer preserves the same sidebar color outside vibrancy
-       while preventing scrolled rows from painting through a pinned tier. */
+    /* Native vibrancy can make a sidebar paint translucent. The image keeps
+       opaque themes unchanged, and the blur makes rows beneath a translucent
+       tier unreadable instead of colliding with its label. */
     background-image: linear-gradient(var(--sidebar), var(--sidebar));
+    backdrop-filter: blur(16px);
   }
 
   [data-sidebar-sticky-stack] [data-sidebar-sticky-tier]::before,
@@ -207,6 +208,7 @@
     pointer-events: none;
     background-color: var(--sidebar);
     background-image: linear-gradient(var(--sidebar), var(--sidebar));
+    backdrop-filter: blur(16px);
   }
 
   [data-sidebar-sticky-stack] [data-sidebar-sticky-tier]::before {
