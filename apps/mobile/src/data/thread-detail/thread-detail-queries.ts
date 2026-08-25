@@ -5,9 +5,13 @@ import type {
   ThreadQueuedMessageListResponse,
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
-  TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { coalesceTimelineTurnDetailPageRows } from "@bb/thread-view";
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import {
   shouldRetryTransientReadQuery,
@@ -20,8 +24,8 @@ import {
   threadPendingInteractionsQueryKey,
   threadQueuedMessagesQueryKey,
   threadTimelineQueryKey,
-  threadTimelineTurnSummaryDetailsQueryKey,
-  type ThreadTimelineTurnSummaryDetailsQueryIdentity,
+  threadTimelineTurnDetailsQueryKey,
+  type ThreadTimelineTurnDetailsQueryIdentity,
 } from "@/lib/query/query-keys";
 import { requireEnabledQueryArg } from "../shared/query-helpers";
 import { SESSION_STATIC_QUERY_POLICY } from "../shared/query-policies";
@@ -218,75 +222,45 @@ export function useThreadQueuedMessages(
   });
 }
 
-/**
- * Lazy children of one completed-turn summary row
- * (`GET /threads/:id/timeline/turn-summary-details`). Immutable for the
- * identity (turn + source sequence span), so it never goes stale; a history
- * rewrite invalidates every window of the thread.
- */
-export function useTimelineTurnSummaryDetails(
-  identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
-  options?: QueryOptions,
+/** Load a completed turn's details forward, one bounded server page at a time. */
+export function useTimelineTurnDetails(
+  identity: ThreadTimelineTurnDetailsQueryIdentity,
 ) {
   const { sdk } = useProfileClient();
-  return useQuery<TimelineTurnSummaryDetailsResponse>(
-    timelineTurnSummaryDetailsQueryOptions(sdk, identity, options),
-  );
-}
-
-function timelineTurnSummaryDetailsQueryOptions(
-  sdk: ReturnType<typeof useProfileClient>["sdk"],
-  identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
-  options?: QueryOptions,
-) {
-  const enabled =
-    (options?.enabled ?? true) &&
-    Boolean(identity.threadId) &&
-    Boolean(identity.turnId);
-
-  return {
-    queryKey: threadTimelineTurnSummaryDetailsQueryKey(identity),
-    queryFn: ({ signal }: { signal: AbortSignal }) =>
+  const query = useInfiniteQuery({
+    queryKey: threadTimelineTurnDetailsQueryKey(identity),
+    queryFn: ({ pageParam, signal }) =>
       sdk.threads.timelineTurnSummaryDetails({
+        ...(pageParam ? { cursor: pageParam } : {}),
+        mode: "page",
+        signal,
         threadId: requireEnabledQueryArg({
           value: identity.threadId,
-          hookName: "useTimelineTurnSummaryDetails",
-          argName: "thread id",
+          hookName: "useTimelineTurnDetails",
+          argName: "threadId",
         }),
-        sourceSeqEnd: String(identity.sourceSeqEnd),
-        sourceSeqStart: String(identity.sourceSeqStart),
-        turnId: identity.turnId,
-        signal,
+        turnId: requireEnabledQueryArg({
+          value: identity.turnId,
+          hookName: "useTimelineTurnDetails",
+          argName: "turnId",
+        }),
       }),
-    enabled,
-    meta: {
-      errorMessage: "Failed to load turn summary details.",
-      showErrorToast: false,
-    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.page?.nextCursor ?? undefined,
+    enabled: Boolean(identity.threadId) && Boolean(identity.turnId),
     refetchOnMount: true,
     staleTime: Infinity,
-  };
-}
-
-/** Load and join every bounded detail segment of one logical turn summary. */
-export function useTimelineTurnSummaryDetailSegments(
-  identities: readonly ThreadTimelineTurnSummaryDetailsQueryIdentity[],
-) {
-  const { sdk } = useProfileClient();
-  const queries = useQueries({
-    queries: identities.map((identity) =>
-      timelineTurnSummaryDetailsQueryOptions(sdk, identity),
-    ),
-    combine: (results) => ({
-      data: results.every((result) => result.data !== undefined)
-        ? {
-            rows: results.flatMap((result) => result.data?.rows ?? []),
-          }
-        : undefined,
-      isError: results.some((result) => result.isError),
-    }),
   });
-  return queries;
+  return {
+    ...query,
+    data: query.data
+      ? {
+          rows: coalesceTimelineTurnDetailPageRows(
+            query.data.pages.map((page) => page.rows),
+          ),
+        }
+      : undefined,
+  };
 }
 
 /**

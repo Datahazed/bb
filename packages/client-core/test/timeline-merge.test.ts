@@ -25,6 +25,7 @@ interface TimelineTestRowArgs {
 interface TimelineTurnTestRowArgs extends TimelineTestRowArgs {
   children?: TimelineRow[];
   endSequence?: number;
+  summaryCount?: number;
 }
 
 function timelineCursor(args: TimelineTestRowArgs): TimelinePaginationCursor {
@@ -95,7 +96,7 @@ function turnSummaryRow(args: TimelineTurnTestRowArgs): TimelineTurnRow {
     createdAt: args.sequence,
     kind: "turn",
     status: "completed",
-    summaryCount: 1,
+    summaryCount: args.summaryCount ?? 1,
     completedAt: args.sequence,
     children: args.children ?? null,
   };
@@ -195,19 +196,17 @@ describe("timeline page row merging", () => {
     const olderSlice = turnSummaryRow({
       id: "turn-1",
       sequence: 10,
+      endSequence: 11,
+      summaryCount: 2,
       children: olderCommands,
     });
-    olderSlice.detailSegments = [
-      { sourceSeqStart: 10, sourceSeqEnd: 11, summaryCount: 2 },
-    ];
     const latestSlice = turnSummaryRow({
       id: "turn-1",
       sequence: 20,
+      endSequence: 21,
+      summaryCount: 2,
       children: latestCommands,
     });
-    latestSlice.detailSegments = [
-      { sourceSeqStart: 20, sourceSeqEnd: 21, summaryCount: 2 },
-    ];
 
     const rows = prependOlderTimelineRows({
       olderRows: [olderSlice],
@@ -216,10 +215,6 @@ describe("timeline page row merging", () => {
 
     expect(rows.map((row) => row.id)).toEqual(["turn-1"]);
     expect(rows[0]).toMatchObject({
-      detailSegments: [
-        { sourceSeqStart: 10, sourceSeqEnd: 11, summaryCount: 2 },
-        { sourceSeqStart: 20, sourceSeqEnd: 21, summaryCount: 2 },
-      ],
       sourceSeqStart: 10,
       sourceSeqEnd: 21,
       summaryCount: 4,

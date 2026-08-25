@@ -481,9 +481,6 @@ describe("bb thread log command output", () => {
       summaryCount: 1,
       completedAt: 9_000,
       children: null,
-      detailSegments: [
-        { sourceSeqStart: start, sourceSeqEnd: end, summaryCount: 1 },
-      ],
     });
     const getTimeline = vi.fn(
       async (input: { query: { beforeAnchorSeq?: string } }) => {

@@ -67,6 +67,7 @@ afterEach(() => {
 describe("previewed command output", () => {
   it("loads the full output for an expanded finished row through row-scoped turn details", async () => {
     timelineTurnSummaryDetails.mockResolvedValue({
+      page: null,
       rows: [
         commandRow({
           id: "cmd_big",

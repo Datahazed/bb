@@ -1234,6 +1234,28 @@ export interface FindStoredTimelineWindowByteBudgetFloorArgs
   maxDataBytes: number;
 }
 
+export interface FindStoredTimelineWindowForwardBudgetCeilingArgs
+  extends Omit<ListStoredTimelineWindowEventRowsArgs, "beforeSequence"> {
+  /** Exclusive upper bound of the logical resource being paginated. */
+  beforeSequence: number;
+  maxDataBytes: number;
+  maxEventCount: number;
+}
+
+export type StoredTimelineWindowForwardBudgetCeiling =
+  | { eventCount: number; eventDataBytes: number; kind: "fits" }
+  | {
+      eventCount: number;
+      eventDataBytes: number;
+      kind: "ceiling";
+      nextSequenceStart: number;
+    }
+  | {
+      eventDataBytes: number;
+      kind: "single-event-too-large";
+      sequence: number;
+    };
+
 export type StoredTimelineWindowByteBudgetFloor =
   | { eventDataBytes: number; kind: "fits" }
   | { eventDataBytes: number; kind: "floor"; sequenceStart: number }
@@ -3102,6 +3124,56 @@ export function findStoredTimelineWindowByteBudgetFloor(
     return oversizedEvent;
   }
   return { eventDataBytes: includedDataBytes, kind: "fits" };
+}
+
+/**
+ * Finds the exclusive upper bound of the oldest prefix that fits both the
+ * event-count and stored-byte budgets. Unlike the main timeline's newest-first
+ * floor, completed-turn details page forward so clients can render them in
+ * chronological order as pages arrive.
+ */
+export function findStoredTimelineWindowForwardBudgetCeiling(
+  db: DbConnection,
+  args: FindStoredTimelineWindowForwardBudgetCeilingArgs,
+): StoredTimelineWindowForwardBudgetCeiling {
+  const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
+  const candidates = db
+    .select({
+      dataBytes: sql<number>`length(CAST(${data} AS BLOB))`.as("data_bytes"),
+      sequence: events.sequence,
+    })
+    .from(events)
+    .where(and(...storedTimelineWindowConditions(args)))
+    .orderBy(events.sequence)
+    .limit(args.maxEventCount + 1)
+    .all();
+
+  let eventCount = 0;
+  let eventDataBytes = 0;
+  for (const row of candidates) {
+    if (
+      eventCount >= args.maxEventCount ||
+      eventDataBytes + row.dataBytes > args.maxDataBytes
+    ) {
+      if (eventCount === 0) {
+        return {
+          eventDataBytes: row.dataBytes,
+          kind: "single-event-too-large",
+          sequence: row.sequence,
+        };
+      }
+      return {
+        eventCount,
+        eventDataBytes,
+        kind: "ceiling",
+        nextSequenceStart: row.sequence,
+      };
+    }
+    eventCount += 1;
+    eventDataBytes += row.dataBytes;
+  }
+
+  return { eventCount, eventDataBytes, kind: "fits" };
 }
 
 export function listStoredTimelineWindowEventRows(

@@ -143,19 +143,15 @@ type ThreadTimelineQueryKey = readonly [
   typeof THREAD_TIMELINE_QUERY_KEY,
   string,
 ];
-/** Identity of one lazily loaded completed-turn detail window. */
-export interface ThreadTimelineTurnSummaryDetailsQueryIdentity {
-  sourceSeqEnd: number;
-  sourceSeqStart: number;
+export interface ThreadTimelineTurnDetailsQueryIdentity {
   threadId: string;
   turnId: string;
 }
-type ThreadTimelineTurnSummaryDetailsQueryKey = readonly [
+type ThreadTimelineTurnDetailsQueryKey = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
   string,
   string,
-  number,
-  number,
+  "pages",
 ];
 type ThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
@@ -386,18 +382,15 @@ export function threadTimelineQueryKey(
   return [THREAD_TIMELINE_QUERY_KEY, threadId];
 }
 
-export function threadTimelineTurnSummaryDetailsQueryKey({
-  sourceSeqEnd,
-  sourceSeqStart,
+export function threadTimelineTurnDetailsQueryKey({
   threadId,
   turnId,
-}: ThreadTimelineTurnSummaryDetailsQueryIdentity): ThreadTimelineTurnSummaryDetailsQueryKey {
+}: ThreadTimelineTurnDetailsQueryIdentity): ThreadTimelineTurnDetailsQueryKey {
   return [
     THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
     threadId,
     turnId,
-    sourceSeqStart,
-    sourceSeqEnd,
+    "pages",
   ];
 }
 

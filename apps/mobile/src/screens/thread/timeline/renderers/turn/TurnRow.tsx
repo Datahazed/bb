@@ -13,7 +13,7 @@ import { isPastTimelineRow } from "../shared/row-dim";
  * `turn` renderer: a completed turn's recap header ("Worked for 8m 14s") or
  * the live "Working" row. Expanding reveals the turn's rows as flattened
  * children one level in; turns outside the loaded window fetch them lazily
- * (`useTimelineTurnSummaryDetails` through the list's loaders), so the row
+ * (`useTimelineTurnDetails` through the list's loaders), so the row
  * shows the load state under its header until they arrive.
  */
 export function TurnRow({

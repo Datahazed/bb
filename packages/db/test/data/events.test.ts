@@ -17,6 +17,7 @@ import {
   appendStoredThreadEventsInTransaction,
   findStoredEventRow,
   findStoredTimelineWindowByteBudgetFloor,
+  findStoredTimelineWindowForwardBudgetCeiling,
   findTimelineWindowBudgetFloorSequence,
   getActiveStoredTurnId,
   getHighWaterMarks,
@@ -4741,6 +4742,82 @@ describe("timeline read-boundary output truncation", () => {
       sequenceStart: 3,
       turnId: null,
     }));
+  });
+
+  it("finds the oldest forward page that fits both event and byte budgets", () => {
+    const { db, thread } = setup();
+    insertEvents(
+      db,
+      noopNotifier,
+      [100, 200, 300].map((messageChars, index) => ({
+        threadId: thread.id,
+        sequence: index + 1,
+        type: "system/error" as const,
+        ...threadEventFields,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ message: "x".repeat(messageChars) }),
+      })),
+    );
+    const window = {
+      beforeSequence: 4,
+      maxInlineOutputChars: null,
+      sequenceStart: 1,
+      threadId: thread.id,
+    } as const;
+    const rows = listStoredTimelineWindowEventRows(db, window);
+    const rowBytes = new Map(
+      rows.map((row) => [row.sequence, Buffer.byteLength(row.data)]),
+    );
+    const firstTwoBytes = (rowBytes.get(1) ?? 0) + (rowBytes.get(2) ?? 0);
+
+    expect(
+      findStoredTimelineWindowForwardBudgetCeiling(db, {
+        ...window,
+        maxDataBytes: Number.MAX_SAFE_INTEGER,
+        maxEventCount: 2,
+      }),
+    ).toEqual({
+      eventCount: 2,
+      eventDataBytes: firstTwoBytes,
+      kind: "ceiling",
+      nextSequenceStart: 3,
+    });
+    expect(
+      findStoredTimelineWindowForwardBudgetCeiling(db, {
+        ...window,
+        maxDataBytes: firstTwoBytes,
+        maxEventCount: 3,
+      }),
+    ).toEqual({
+      eventCount: 2,
+      eventDataBytes: firstTwoBytes,
+      kind: "ceiling",
+      nextSequenceStart: 3,
+    });
+    expect(
+      findStoredTimelineWindowForwardBudgetCeiling(db, {
+        ...window,
+        maxDataBytes: getStoredTimelineWindowEventDataBytes(db, window),
+        maxEventCount: 3,
+      }),
+    ).toEqual({
+      eventCount: 3,
+      eventDataBytes: getStoredTimelineWindowEventDataBytes(db, window),
+      kind: "fits",
+    });
+    expect(
+      findStoredTimelineWindowForwardBudgetCeiling(db, {
+        ...window,
+        maxDataBytes: (rowBytes.get(1) ?? 0) - 1,
+        maxEventCount: 3,
+      }),
+    ).toEqual({
+      eventDataBytes: rowBytes.get(1),
+      kind: "single-event-too-large",
+      sequence: 1,
+    });
   });
 
   it("bounds the byte-total preflight before using the early-stopping iterator", () => {

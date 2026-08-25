@@ -67,7 +67,7 @@ async function getTurnDetails(
   turnRow: Extract<TimelineRow, { kind: "turn" }>,
 ): Promise<TimelineTurnSummaryDetailsResponse> {
   const response = await harness.app.request(
-    `/api/v1/threads/${threadId}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
+    `/api/v1/threads/${threadId}/timeline/turn-summary-details?mode=range&turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
   );
   expect(response.status).toBe(200);
   return timelineTurnSummaryDetailsResponseSchema.parse(

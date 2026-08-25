@@ -247,10 +247,22 @@ export interface ThreadStoragePathsArgs extends ThreadStoragePathsQuery {
   threadId: string;
 }
 
-export interface ThreadTimelineTurnSummaryDetailsArgs extends TimelineTurnSummaryDetailsQuery {
-  signal?: AbortSignal;
-  threadId: string;
-}
+type ThreadTimelineTurnSummaryDetailsPageArgs = Extract<
+  TimelineTurnSummaryDetailsQuery,
+  { mode: "page" }
+>;
+type ThreadTimelineTurnSummaryDetailsRangeArgs = Omit<
+  Extract<TimelineTurnSummaryDetailsQuery, { mode: "range" }>,
+  "mode"
+> & { mode?: "range" };
+
+export type ThreadTimelineTurnSummaryDetailsArgs = (
+  | ThreadTimelineTurnSummaryDetailsPageArgs
+  | ThreadTimelineTurnSummaryDetailsRangeArgs
+) & {
+    signal?: AbortSignal;
+    threadId: string;
+  };
 
 export interface ThreadTabsUpdateArgs extends UpdateThreadTabsRequest {
   threadId: string;
@@ -1118,11 +1130,19 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads[":id"].timeline["turn-summary-details"].$get(
           {
             param: { id: input.threadId },
-            query: {
-              turnId: input.turnId,
-              sourceSeqStart: input.sourceSeqStart,
-              sourceSeqEnd: input.sourceSeqEnd,
-            },
+            query:
+              input.mode === "page"
+                ? {
+                    ...(input.cursor ? { cursor: input.cursor } : {}),
+                    mode: "page",
+                    turnId: input.turnId,
+                  }
+                : {
+                    mode: "range",
+                    turnId: input.turnId,
+                    sourceSeqStart: input.sourceSeqStart,
+                    sourceSeqEnd: input.sourceSeqEnd,
+                  },
           },
           ...signalRequestArgs(input.signal),
         ),

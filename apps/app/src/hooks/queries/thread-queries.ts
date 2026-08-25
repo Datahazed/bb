@@ -1,6 +1,5 @@
 import {
   useInfiniteQuery,
-  useQueries,
   useQuery,
   useQueryClient,
   type QueryClient,
@@ -26,6 +25,7 @@ import type {
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
 import { applyTimelineDelta } from "@bb/server-contract";
+import { coalesceTimelineTurnDetailPageRows } from "@bb/thread-view";
 import type { ThreadListFilters } from "@bb/client-core";
 import type { FilePreview } from "@bb/client-core";
 import type { PathListOptions } from "@/lib/path-list-options";
@@ -79,8 +79,10 @@ import {
   threadHostFilePreviewQueryKey,
   threadConversationOutlineQueryKey,
   threadTimelineQueryKey,
+  threadTimelineTurnDetailsQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
   threadsQueryKey,
+  type ThreadTimelineTurnDetailsQueryIdentity,
   type ThreadTimelineTurnSummaryDetailsQueryIdentity,
 } from "./query-keys";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
@@ -1054,6 +1056,7 @@ function threadTimelineTurnSummaryDetailsQueryOptions(
     queryKey: threadTimelineTurnSummaryDetailsQueryKey(identity),
     queryFn: ({ signal }: { signal: AbortSignal }) =>
       sdk.threads.timelineTurnSummaryDetails({
+        mode: "range",
         threadId: requireThreadId(
           identity.threadId,
           "useThreadTimelineTurnSummaryDetails",
@@ -1077,30 +1080,43 @@ function threadTimelineTurnSummaryDetailsQueryOptions(
   };
 }
 
-/** Load and join every bounded detail segment of one logical turn summary. */
-export function useThreadTimelineTurnSummaryDetailSegments(
-  identities: readonly ThreadTimelineTurnSummaryDetailsQueryIdentity[],
+/** Load a completed turn's details forward, one bounded server page at a time. */
+export function useThreadTimelineTurnDetails(
+  identity: ThreadTimelineTurnDetailsQueryIdentity,
 ) {
-  const queries = useQueries({
-    queries: identities.map((identity) =>
-      threadTimelineTurnSummaryDetailsQueryOptions(identity),
-    ),
-    combine: (results) => ({
-      data: results.every((result) => result.data !== undefined)
-        ? {
-            rows: results.flatMap((result) => result.data?.rows ?? []),
-          }
-        : undefined,
-      isError: results.some((result) => result.isError),
-      refetches: results.map((result) => result.refetch),
-    }),
+  const query = useInfiniteQuery({
+    queryKey: threadTimelineTurnDetailsQueryKey(identity),
+    queryFn: ({ pageParam, signal }) =>
+      sdk.threads.timelineTurnSummaryDetails({
+        ...(pageParam ? { cursor: pageParam } : {}),
+        mode: "page",
+        signal,
+        threadId: requireThreadId(
+          identity.threadId,
+          "useThreadTimelineTurnDetails",
+        ),
+        turnId: identity.turnId,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.page?.nextCursor ?? undefined,
+    enabled: Boolean(identity.threadId) && Boolean(identity.turnId),
+    meta: {
+      errorMessage: "Failed to load turn details.",
+      showErrorToast: false,
+    },
+    refetchOnMount: true,
+    staleTime: Infinity,
+    ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
   return {
-    data: queries.data,
-    isError: queries.isError,
-    refetch: async () => {
-      await Promise.all(queries.refetches.map((refetch) => refetch()));
-    },
+    ...query,
+    data: query.data
+      ? {
+          rows: coalesceTimelineTurnDetailPageRows(
+            query.data.pages.map((page) => page.rows),
+          ),
+        }
+      : undefined,
   };
 }
 

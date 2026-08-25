@@ -1,5 +1,6 @@
 export { formatThreadTimelineText } from "./format-timeline-text.js";
 export {
+  coalesceTimelineTurnDetailPageRows,
   coalesceTimelineTurnPageRows,
   mergeTimelineTurnPageRows,
 } from "./merge-timeline-turn-page-rows.js";

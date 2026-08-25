@@ -269,6 +269,16 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "Turn-detail page requests omit the opaque cursor on the first page; legacy range requests omit mode and normalize to explicit range mode at the boundary.",
+    fields: [
+      "timelineTurnSummaryDetailsQuerySchema.cursor",
+      "timelineTurnSummaryDetailsQuerySchema.mode",
+      "timelineTurnSummaryDetailsRequestSchema.cursor",
+      "timelineTurnSummaryDetailsRequestSchema.mode",
+    ],
+  },
+  {
+    reason:
       "Uploaded attachments may omit mime type when the client could not determine one.",
     fields: ["uploadedPromptAttachmentSchema.mimeType"],
   },
@@ -1067,9 +1077,22 @@ describe("server-contract canonical schemas", () => {
     ).toThrow("Project path must be an absolute path.");
 
     expect(
-      timelineTurnSummaryDetailsResponseSchema.parse({ rows: [] }),
+      timelineTurnSummaryDetailsResponseSchema.parse({ page: null, rows: [] }),
     ).toEqual({
+      page: null,
       rows: [],
+    });
+    expect(
+      contract.timelineTurnSummaryDetailsQuerySchema.parse({
+        turnId: "turn_123",
+        sourceSeqStart: "10",
+        sourceSeqEnd: "20",
+      }),
+    ).toEqual({
+      mode: "range",
+      turnId: "turn_123",
+      sourceSeqStart: "10",
+      sourceSeqEnd: "20",
     });
   });
 
@@ -1603,6 +1626,7 @@ describe("server-contract clients", () => {
       publicClient.threads[":id"].timeline["turn-summary-details"].$url({
         param: { id: "thr_123" },
         query: {
+          mode: "range",
           turnId: "turn_123",
           sourceSeqStart: "1",
           sourceSeqEnd: "2",

@@ -104,12 +104,7 @@ function appendTimelineRowsPreservingOrder(
     const existingIndex = rowIndexById.get(row.id);
     if (existingIndex !== undefined) {
       const existing = target[existingIndex];
-      if (
-        existing?.kind === "turn" &&
-        row.kind === "turn" &&
-        (existing.detailSegments !== undefined ||
-          row.detailSegments !== undefined)
-      ) {
+      if (existing?.kind === "turn" && row.kind === "turn") {
         target[existingIndex] = mergeTimelineTurnPageRows(existing, row);
       }
       continue;
@@ -267,10 +262,7 @@ export function mergeLatestTimelineRows({
     }
     const latestRow = latestRowsById.get(row.id);
     rows.push(
-      row.kind === "turn" &&
-        latestRow?.kind === "turn" &&
-        (row.detailSegments !== undefined ||
-          latestRow.detailSegments !== undefined)
+      row.kind === "turn" && latestRow?.kind === "turn"
         ? mergeTimelineTurnPageRows(row, latestRow, {
             newerWindowStartSequence: latestWindowStartSequence,
           })

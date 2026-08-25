@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
-import { useTimelineTurnSummaryDetailSegments } from "@/data/thread-detail";
-import type { ThreadTimelineTurnSummaryDetailsQueryIdentity } from "@/lib/query/query-keys";
+import { useTimelineTurnDetails } from "@/data/thread-detail";
+import type { ThreadTimelineTurnDetailsQueryIdentity } from "@/lib/query/query-keys";
 import type { TimelineListItem, TimelineTurnChildrenState } from "./rows";
 
 interface TurnChildrenLoaderProps {
   itemKey: string;
-  identities: ThreadTimelineTurnSummaryDetailsQueryIdentity[];
+  identity: ThreadTimelineTurnDetailsQueryIdentity;
   onChange: (itemKey: string, state: TimelineTurnChildrenState | null) => void;
 }
 
@@ -16,12 +16,22 @@ interface TurnChildrenLoaderProps {
  */
 function TurnChildrenLoader({
   itemKey,
-  identities,
+  identity,
   onChange,
 }: TurnChildrenLoaderProps) {
-  const query = useTimelineTurnSummaryDetailSegments(identities);
+  const query = useTimelineTurnDetails(identity);
   const data = query.data;
   const isError = query.isError;
+  useEffect(() => {
+    if (query.hasNextPage && !query.isFetchingNextPage && !query.isError) {
+      void query.fetchNextPage();
+    }
+  }, [
+    query.fetchNextPage,
+    query.hasNextPage,
+    query.isError,
+    query.isFetchingNextPage,
+  ]);
   useEffect(() => {
     if (data) {
       onChange(itemKey, { status: "loaded", rows: data.rows });
@@ -89,12 +99,10 @@ export function renderTurnChildrenLoaders(
       <TurnChildrenLoader
         key={item.key}
         itemKey={item.key}
-        identities={(row.detailSegments ?? [row]).map((segment) => ({
-          sourceSeqEnd: segment.sourceSeqEnd,
-          sourceSeqStart: segment.sourceSeqStart,
+        identity={{
           threadId: threadId || row.threadId,
           turnId: row.turnId,
-        }))}
+        }}
         onChange={onChange}
       />,
     ];

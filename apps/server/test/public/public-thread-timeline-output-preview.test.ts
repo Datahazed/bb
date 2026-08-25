@@ -152,7 +152,7 @@ describe("GET /threads/:id/timeline inline output preview", () => {
       expect(big.turnId).toBe("turn-1");
 
       const response = await harness.app.request(
-        `/api/v1/threads/${threadId}/timeline/turn-summary-details?turnId=${big.turnId}&sourceSeqStart=${big.sourceSeqStart}&sourceSeqEnd=${big.sourceSeqEnd}`,
+        `/api/v1/threads/${threadId}/timeline/turn-summary-details?mode=range&turnId=${big.turnId}&sourceSeqStart=${big.sourceSeqStart}&sourceSeqEnd=${big.sourceSeqEnd}`,
       );
       expect(response.status).toBe(200);
       const details = timelineTurnSummaryDetailsResponseSchema.parse(
@@ -183,7 +183,7 @@ describe("GET /threads/:id/timeline inline output preview", () => {
       });
 
       const response = await harness.app.request(
-        `/api/v1/threads/${threadId}/timeline/turn-summary-details?turnId=${big.turnId}&sourceSeqStart=${big.sourceSeqStart}&sourceSeqEnd=${big.sourceSeqEnd}`,
+        `/api/v1/threads/${threadId}/timeline/turn-summary-details?mode=range&turnId=${big.turnId}&sourceSeqStart=${big.sourceSeqStart}&sourceSeqEnd=${big.sourceSeqEnd}`,
       );
       expect(response.status).toBe(200);
       const details = timelineTurnSummaryDetailsResponseSchema.parse(
@@ -244,7 +244,7 @@ describe("GET /threads/:id/timeline inline output preview (tool rows)", () => {
       );
 
       const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${row.turnId}&sourceSeqStart=${row.sourceSeqStart}&sourceSeqEnd=${row.sourceSeqEnd}`,
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?mode=range&turnId=${row.turnId}&sourceSeqStart=${row.sourceSeqStart}&sourceSeqEnd=${row.sourceSeqEnd}`,
       );
       expect(response.status).toBe(200);
       const details = timelineTurnSummaryDetailsResponseSchema.parse(

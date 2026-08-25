@@ -455,16 +455,36 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps.config.isDevelopment ||
       getAppSettings(deps.db).showUnhandledProviderEvents;
     return context.json(
-      buildTimelineTurnSummaryDetails(deps.db, thread, {
-        includeProviderUnhandledOperations,
-        providerDisplayName: resolveThreadProviderDisplayName(
-          deps,
-          thread.providerId,
-        ),
-        turnId: query.turnId,
-        sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
-        sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
-      }),
+      buildTimelineTurnSummaryDetails(
+        deps.db,
+        thread,
+        query.mode === "page"
+          ? {
+              ...(query.cursor ? { cursor: query.cursor } : {}),
+              eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
+              includeProviderUnhandledOperations,
+              mode: "page",
+              providerDisplayName: resolveThreadProviderDisplayName(
+                deps,
+                thread.providerId,
+              ),
+              turnId: query.turnId,
+            }
+          : {
+              includeProviderUnhandledOperations,
+              mode: "range",
+              providerDisplayName: resolveThreadProviderDisplayName(
+                deps,
+                thread.providerId,
+              ),
+              turnId: query.turnId,
+              sourceSeqStart: parseInteger(
+                query.sourceSeqStart,
+                "sourceSeqStart",
+              ),
+              sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+            },
+      ),
     );
   });
 

@@ -711,11 +711,36 @@ export const threadTimelineQuerySchema = z
   });
 export type ThreadTimelineQuery = z.infer<typeof threadTimelineQuerySchema>;
 
-export const timelineTurnSummaryDetailsQuerySchema = z.object({
-  turnId: z.string().min(1),
-  sourceSeqStart: z.string().regex(/^\d+$/),
-  sourceSeqEnd: z.string().regex(/^\d+$/),
-});
+const timelineTurnSummaryDetailsTurnIdSchema = z.string().min(1);
+const timelineTurnSummaryDetailsSequenceQuerySchema = z.string().regex(/^\d+$/);
+const timelineTurnSummaryDetailsRangeQueryFields = {
+  turnId: timelineTurnSummaryDetailsTurnIdSchema,
+  sourceSeqStart: timelineTurnSummaryDetailsSequenceQuerySchema,
+  sourceSeqEnd: timelineTurnSummaryDetailsSequenceQuerySchema,
+} as const;
+
+export const timelineTurnSummaryDetailsQuerySchema = z.union([
+  z.object({
+    mode: z.literal("page"),
+    turnId: timelineTurnSummaryDetailsTurnIdSchema,
+    cursor: z.string().min(1).optional(),
+  }),
+  z.object({
+    mode: z.literal("range"),
+    ...timelineTurnSummaryDetailsRangeQueryFields,
+  }),
+  z
+    .object({
+      mode: z.never().optional(),
+      ...timelineTurnSummaryDetailsRangeQueryFields,
+    })
+    .transform((value) => ({
+      mode: "range" as const,
+      turnId: value.turnId,
+      sourceSeqStart: value.sourceSeqStart,
+      sourceSeqEnd: value.sourceSeqEnd,
+    })),
+]);
 export type TimelineTurnSummaryDetailsQuery = z.infer<
   typeof timelineTurnSummaryDetailsQuerySchema
 >;
@@ -794,14 +819,42 @@ export const threadFilesRawQuerySchema = z.object({
 });
 export type ThreadFilesRawQuery = z.infer<typeof threadFilesRawQuerySchema>;
 
-export const timelineTurnSummaryDetailsRequestSchema = z.object({
-  turnId: z.string().min(1),
+const timelineTurnSummaryDetailsRangeRequestFields = {
+  turnId: timelineTurnSummaryDetailsTurnIdSchema,
   sourceSeqStart: z.number().int().nonnegative(),
   sourceSeqEnd: z.number().int().nonnegative(),
-});
+} as const;
+
+export const timelineTurnSummaryDetailsRequestSchema = z.union([
+  z.object({
+    mode: z.literal("page"),
+    turnId: timelineTurnSummaryDetailsTurnIdSchema,
+    cursor: z.string().min(1).optional(),
+  }),
+  z.object({
+    mode: z.literal("range"),
+    ...timelineTurnSummaryDetailsRangeRequestFields,
+  }),
+  z
+    .object({
+      mode: z.never().optional(),
+      ...timelineTurnSummaryDetailsRangeRequestFields,
+    })
+    .transform((value) => ({
+      mode: "range" as const,
+      turnId: value.turnId,
+      sourceSeqStart: value.sourceSeqStart,
+      sourceSeqEnd: value.sourceSeqEnd,
+    })),
+]);
 
 export const timelineTurnSummaryDetailsResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
+  page: z
+    .object({
+      nextCursor: z.string().min(1).nullable(),
+    })
+    .nullable(),
 });
 export type TimelineTurnSummaryDetailsResponse = z.infer<
   typeof timelineTurnSummaryDetailsResponseSchema

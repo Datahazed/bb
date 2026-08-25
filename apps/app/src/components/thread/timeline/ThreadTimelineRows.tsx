@@ -113,8 +113,8 @@ import {
 } from "./timeline-row-containment.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { useThreadTimelineTurnSummaryDetailSegments } from "@/hooks/queries/thread-queries";
-import { type ThreadTimelineTurnSummaryDetailsQueryIdentity } from "@/hooks/queries/query-keys";
+import { useThreadTimelineTurnDetails } from "@/hooks/queries/thread-queries";
+import { type ThreadTimelineTurnDetailsQueryIdentity } from "@/hooks/queries/query-keys";
 import {
   useSenderThreadMetadataById,
   type SenderThreadMetadata,
@@ -378,14 +378,6 @@ interface TimelineRowTitleRenderStateCache {
   state: TimelineRowTitleRenderState;
 }
 
-interface BuildTurnSummaryDetailsIdentityArgs {
-  rowSourceSeqEnd: TimelineViewTurnRow["sourceSeqEnd"];
-  rowSourceSeqStart: TimelineViewTurnRow["sourceSeqStart"];
-  rowThreadId: TimelineViewTurnRow["threadId"];
-  rowTurnId: TimelineViewTurnRow["turnId"];
-  threadId: string | undefined;
-}
-
 interface TimelineRowsOwnerKeyArgs {
   threadId: string | undefined;
   timelineRows: readonly TimelineRow[];
@@ -644,21 +636,6 @@ function useTimelineSearchExpansionRowIds(
     }
     return combinedRowIds;
   }, [inheritedRowIds, location.state, rows, threadId]);
-}
-
-function buildTurnSummaryDetailsIdentity({
-  rowSourceSeqEnd,
-  rowSourceSeqStart,
-  rowThreadId,
-  rowTurnId,
-  threadId,
-}: BuildTurnSummaryDetailsIdentityArgs): ThreadTimelineTurnSummaryDetailsQueryIdentity {
-  return {
-    sourceSeqEnd: rowSourceSeqEnd,
-    sourceSeqStart: rowSourceSeqStart,
-    threadId: threadId ?? rowThreadId,
-    turnId: rowTurnId,
-  };
 }
 
 function timelineRowsOwnerKey({
@@ -1511,45 +1488,27 @@ function LazyTurnRowBody({
   showAssistantMessageActions,
 }: LazyTurnRowBodyProps) {
   const { getViewRows, threadId } = useTimelineRendererStaticContext();
-  const {
-    sourceSeqEnd: rowSourceSeqEnd,
-    sourceSeqStart: rowSourceSeqStart,
-    detailSegments,
-    threadId: rowThreadId,
-    turnId: rowTurnId,
-  } = row;
-  const identities = useMemo<ThreadTimelineTurnSummaryDetailsQueryIdentity[]>(
-    () =>
-      (
-        detailSegments ?? [
-          {
-            sourceSeqEnd: rowSourceSeqEnd,
-            sourceSeqStart: rowSourceSeqStart,
-          },
-        ]
-      ).map((segment) =>
-        buildTurnSummaryDetailsIdentity({
-          rowSourceSeqEnd: segment.sourceSeqEnd,
-          rowSourceSeqStart: segment.sourceSeqStart,
-          rowThreadId,
-          rowTurnId,
-          threadId,
-        }),
-      ),
-    [
-      detailSegments,
-      rowSourceSeqEnd,
-      rowSourceSeqStart,
-      rowThreadId,
-      rowTurnId,
-      threadId,
-    ],
+  const { threadId: rowThreadId, turnId: rowTurnId } = row;
+  const identity = useMemo<ThreadTimelineTurnDetailsQueryIdentity>(
+    () => ({
+      threadId: threadId ?? rowThreadId,
+      turnId: rowTurnId,
+    }),
+    [rowThreadId, rowTurnId, threadId],
   );
   const {
     data: detail,
+    fetchNextPage,
+    hasNextPage,
     isError,
+    isFetchingNextPage,
     refetch,
-  } = useThreadTimelineTurnSummaryDetailSegments(identities);
+  } = useThreadTimelineTurnDetails(identity);
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage && !isError) {
+      void fetchNextPage();
+    }
+  }, [fetchNextPage, hasNextPage, isError, isFetchingNextPage]);
   const handleRetry = useCallback((): void => {
     void refetch();
   }, [refetch]);

@@ -990,7 +990,7 @@ describe("public thread data routes", () => {
     });
   });
 
-  it("hydrates timeline turn-summary details from the summary row identity and range", async () => {
+  it("hydrates timeline turn-summary details through range and paginated reads", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
 
@@ -1064,7 +1064,7 @@ describe("public thread data routes", () => {
       expect(turnRow.children).toBeNull();
 
       const toolDetailsResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?mode=range&turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
       );
       expect(toolDetailsResponse.status).toBe(200);
       const toolDetails = timelineTurnSummaryDetailsResponseSchema.parse(
@@ -1078,6 +1078,18 @@ describe("public thread data routes", () => {
         expect(detailRow.workKind).toBe("tool");
         expect(detailRow.callId).toBe("tool-1");
       }
+
+      const paginatedDetailsResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?mode=page&turnId=${turnRow.turnId}`,
+      );
+      expect(paginatedDetailsResponse.status).toBe(200);
+      const paginatedDetails = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(paginatedDetailsResponse),
+      );
+      expect(paginatedDetails).toEqual({
+        page: { nextCursor: null },
+        rows: toolDetails.rows,
+      });
     });
   });
 
@@ -1171,7 +1183,7 @@ describe("public thread data routes", () => {
       }
 
       const detailsResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?mode=range&turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
       );
       expect(detailsResponse.status).toBe(200);
       const details = timelineTurnSummaryDetailsResponseSchema.parse(
@@ -1492,7 +1504,7 @@ describe("public thread data routes", () => {
       }
 
       const detailsResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${childTurnRow.turnId}&sourceSeqStart=${childTurnRow.sourceSeqStart}&sourceSeqEnd=${childTurnRow.sourceSeqEnd}`,
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?mode=range&turnId=${childTurnRow.turnId}&sourceSeqStart=${childTurnRow.sourceSeqStart}&sourceSeqEnd=${childTurnRow.sourceSeqEnd}`,
       );
       expect(detailsResponse.status).toBe(200);
       const details = timelineTurnSummaryDetailsResponseSchema.parse(
@@ -1628,7 +1640,7 @@ describe("public thread data routes", () => {
       }
 
       const detailsResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${parentTurnRow.turnId}&sourceSeqStart=${parentTurnRow.sourceSeqStart}&sourceSeqEnd=${parentTurnRow.sourceSeqEnd}`,
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?mode=range&turnId=${parentTurnRow.turnId}&sourceSeqStart=${parentTurnRow.sourceSeqStart}&sourceSeqEnd=${parentTurnRow.sourceSeqEnd}`,
       );
       expect(detailsResponse.status).toBe(200);
       const details = timelineTurnSummaryDetailsResponseSchema.parse(
@@ -1793,7 +1805,7 @@ describe("public thread data routes", () => {
         expect(turnRow.sourceSeqStart).toBeGreaterThan(2);
 
         const detailsResponse = await harness.app.request(
-          `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
+          `/api/v1/threads/${thread.id}/timeline/turn-summary-details?mode=range&turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
         );
         expect(detailsResponse.status).toBe(200);
       });
@@ -1924,7 +1936,7 @@ describe("public thread data routes", () => {
       });
 
       const detailsResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=requested-turn&sourceSeqStart=1&sourceSeqEnd=5`,
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?mode=range&turnId=requested-turn&sourceSeqStart=1&sourceSeqEnd=5`,
       );
       expect(detailsResponse.status).toBe(200);
       const details = timelineTurnSummaryDetailsResponseSchema.parse(
@@ -1979,7 +1991,7 @@ describe("public thread data routes", () => {
       });
 
       const detailsResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=turn-1&sourceSeqStart=2&sourceSeqEnd=2`,
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?mode=range&turnId=turn-1&sourceSeqStart=2&sourceSeqEnd=2`,
       );
       expect(detailsResponse.status).toBe(200);
       const details = timelineTurnSummaryDetailsResponseSchema.parse(
@@ -2002,7 +2014,7 @@ describe("public thread data routes", () => {
       const { thread } = seedThreadFixture(harness);
 
       const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=turn-1&sourceSeqStart=oops&sourceSeqEnd=2`,
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?mode=range&turnId=turn-1&sourceSeqStart=oops&sourceSeqEnd=2`,
       );
       expect(response.status).toBe(400);
       await expect(readJson(response)).resolves.toMatchObject({

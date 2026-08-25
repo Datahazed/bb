@@ -26,6 +26,7 @@ import type {
 } from "@bb/server-contract";
 import {
   findStoredTimelineWindowByteBudgetFloor,
+  findStoredTimelineWindowForwardBudgetCeiling,
   findTimelineWindowBudgetFloorSequence,
   getStoredEventRowsByParentToolCallIdsDataBytes,
   getEnvironment,
@@ -61,6 +62,7 @@ import type {
   StandardTimelineSegmentAnchorRow,
   StoredEventRow,
 } from "@bb/db";
+import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import { roundDurationMs } from "../lib/duration.js";
 import { runEventLoopWorkSync } from "../system/event-loop-work.js";
@@ -157,10 +159,28 @@ interface BuildThreadTimelineOptions {
   planCommand?: ProviderComposerCommand | null;
 }
 
-interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
+interface BuildTimelineTurnSummaryDetailsBaseOptions {
   includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
 }
+
+interface BuildTimelineTurnSummaryDetailsRangeOptions
+  extends
+    BuildTimelineTurnSummaryDetailsBaseOptions,
+    TimelineTurnSummarySelection {
+  mode: "range";
+}
+
+interface BuildTimelineTurnSummaryDetailsPageOptions extends BuildTimelineTurnSummaryDetailsBaseOptions {
+  cursor?: string;
+  eventBudget: number;
+  mode: "page";
+  turnId: string;
+}
+
+type BuildTimelineTurnSummaryDetailsOptions =
+  | BuildTimelineTurnSummaryDetailsPageOptions
+  | BuildTimelineTurnSummaryDetailsRangeOptions;
 
 export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
 
@@ -1571,6 +1591,7 @@ function buildSequencePageTimelineRows(
   return rowsWithPlaceholder.flatMap((row): TimelineRow[] => {
     if (
       row.kind !== "turn" ||
+      row.status === "pending" ||
       selection.byteWindowSequenceEnd === null ||
       selection.byteWindowSequenceStart === null
     ) {
@@ -1600,14 +1621,8 @@ function buildSequencePageTimelineRows(
         ...row,
         // Byte windows are transport slices of one logical completed turn.
         // Keep its canonical identity so clients can coalesce the slices into
-        // one "Worked for" row while retaining bounded expansion ranges.
-        detailSegments: [
-          {
-            sourceSeqEnd,
-            sourceSeqStart,
-            summaryCount: row.summaryCount,
-          },
-        ],
+        // one "Worked for" row. Detail pagination is a separate resource and
+        // does not depend on these transport boundaries.
         sourceSeqEnd,
         sourceSeqStart,
       },
@@ -1989,10 +2004,10 @@ export function buildThreadConversationOutline(
   });
 }
 
-export function buildTimelineTurnSummaryDetails(
+function buildTimelineTurnSummaryDetailsRange(
   db: DbConnection,
   thread: Thread,
-  options: BuildTimelineTurnSummaryDetailsOptions,
+  options: BuildTimelineTurnSummaryDetailsRangeOptions,
 ): TimelineTurnSummaryDetailsResponse {
   if (options.sourceSeqStart > options.sourceSeqEnd) {
     throw new ApiError(
@@ -2171,6 +2186,7 @@ export function buildTimelineTurnSummaryDetails(
 
   if (children.kind !== "missing-match") {
     return {
+      page: null,
       rows: children.rows,
     };
   }
@@ -2178,4 +2194,157 @@ export function buildTimelineTurnSummaryDetails(
   throw new Error(
     `Timeline turn summary details could not match range ${options.sourceSeqStart}-${options.sourceSeqEnd}`,
   );
+}
+
+const TURN_DETAILS_CURSOR_PREFIX = "turn-details-v1:";
+const turnDetailsCursorPayloadSchema = z.object({
+  sequenceStart: z.number().int(),
+  threadId: z.string().min(1),
+  turnId: z.string().min(1),
+});
+
+function encodeTurnDetailsCursor(args: {
+  sequenceStart: number;
+  threadId: string;
+  turnId: string;
+}): string {
+  const payload = Buffer.from(JSON.stringify(args), "utf8").toString(
+    "base64url",
+  );
+  return `${TURN_DETAILS_CURSOR_PREFIX}${payload}`;
+}
+
+function parseTurnDetailsCursor(
+  cursor: string,
+  resource: { threadId: string; turnId: string },
+  bounds: { sourceSeqEnd: number; sourceSeqStart: number },
+): number {
+  let decoded: unknown;
+  try {
+    const encoded = cursor.slice(TURN_DETAILS_CURSOR_PREFIX.length);
+    decoded = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+  } catch {
+    decoded = null;
+  }
+  const parsed = cursor.startsWith(TURN_DETAILS_CURSOR_PREFIX)
+    ? turnDetailsCursorPayloadSchema.safeParse(decoded)
+    : null;
+  if (
+    parsed === null ||
+    !parsed.success ||
+    parsed.data.threadId !== resource.threadId ||
+    parsed.data.turnId !== resource.turnId ||
+    !Number.isSafeInteger(parsed.data.sequenceStart) ||
+    parsed.data.sequenceStart <= bounds.sourceSeqStart ||
+    parsed.data.sequenceStart > bounds.sourceSeqEnd
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "Turn details cursor is no longer available",
+    );
+  }
+  return parsed.data.sequenceStart;
+}
+
+function resolveCompletedTurnDetailBounds(
+  db: DbConnection,
+  threadId: string,
+  turnId: string,
+): TimelineTurnSummarySelection {
+  const startedRow = listStoredTurnStartedRowsByTurnIdsUpToSequence(db, {
+    sequenceCutoff: Number.MAX_SAFE_INTEGER,
+    threadId,
+    turnIds: [turnId],
+  })[0];
+  const completedRow = listStoredTurnCompletedRowsByTurnIds(db, {
+    threadId,
+    turnIds: [turnId],
+  }).at(-1);
+  if (
+    !startedRow ||
+    !completedRow ||
+    startedRow.sequence > completedRow.sequence
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Cannot paginate details for incomplete turn ${turnId}`,
+    );
+  }
+  return {
+    sourceSeqEnd: completedRow.sequence,
+    sourceSeqStart: startedRow.sequence,
+    turnId,
+  };
+}
+
+function buildTimelineTurnSummaryDetailsPage(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildTimelineTurnSummaryDetailsPageOptions,
+): TimelineTurnSummaryDetailsResponse {
+  const bounds = resolveCompletedTurnDetailBounds(
+    db,
+    thread.id,
+    options.turnId,
+  );
+  const sourceSeqStart = options.cursor
+    ? parseTurnDetailsCursor(
+        options.cursor,
+        { threadId: thread.id, turnId: options.turnId },
+        bounds,
+      )
+    : bounds.sourceSeqStart;
+  const ceiling = findStoredTimelineWindowForwardBudgetCeiling(db, {
+    beforeSequence: bounds.sourceSeqEnd + 1,
+    excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+    maxDataBytes: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+    maxEventCount: options.eventBudget,
+    maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+    sequenceStart: sourceSeqStart,
+    threadId: thread.id,
+  });
+  if (ceiling.kind === "single-event-too-large") {
+    throw new ApiError(
+      413,
+      "timeline_window_too_large",
+      `Timeline turn detail event ${ceiling.sequence} exceeds the safe response limit`,
+    );
+  }
+  const nextCursor =
+    ceiling.kind === "ceiling"
+      ? encodeTurnDetailsCursor({
+          sequenceStart: ceiling.nextSequenceStart,
+          threadId: thread.id,
+          turnId: options.turnId,
+        })
+      : null;
+  const sourceSeqEnd =
+    ceiling.kind === "ceiling"
+      ? ceiling.nextSequenceStart - 1
+      : bounds.sourceSeqEnd;
+  const detail = buildTimelineTurnSummaryDetailsRange(db, thread, {
+    includeProviderUnhandledOperations:
+      options.includeProviderUnhandledOperations,
+    mode: "range",
+    providerDisplayName: options.providerDisplayName,
+    sourceSeqEnd,
+    sourceSeqStart,
+    turnId: options.turnId,
+  });
+  return {
+    page: { nextCursor },
+    rows: detail.rows,
+  };
+}
+
+export function buildTimelineTurnSummaryDetails(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildTimelineTurnSummaryDetailsOptions,
+): TimelineTurnSummaryDetailsResponse {
+  return options.mode === "page"
+    ? buildTimelineTurnSummaryDetailsPage(db, thread, options)
+    : buildTimelineTurnSummaryDetailsRange(db, thread, options);
 }

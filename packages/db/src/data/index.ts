@@ -256,6 +256,7 @@ export {
   listTimelineSegmentAnchorsDescending,
   findTimelineWindowBudgetFloorSequence,
   findStoredTimelineWindowByteBudgetFloor,
+  findStoredTimelineWindowForwardBudgetCeiling,
   getStoredEventRowsByParentToolCallIdsDataBytes,
   findUnfinishedTurnCoveringSequence,
   hasParentedEventCrossingSequence,

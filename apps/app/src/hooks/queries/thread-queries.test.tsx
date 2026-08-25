@@ -35,7 +35,7 @@ import {
   useThreadQueuedMessages,
   useThreadStorageLocation,
   useThreadTimeline,
-  useThreadTimelineTurnSummaryDetailSegments,
+  useThreadTimelineTurnDetails,
 } from "./thread-queries";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -182,50 +182,53 @@ beforeEach(() => {
   });
 });
 
-describe("useThreadTimelineTurnSummaryDetailSegments", () => {
-  it("loads every bounded segment and joins the rows in source order", async () => {
+describe("useThreadTimelineTurnDetails", () => {
+  it("loads opaque forward pages sequentially and joins their rows", async () => {
     vi.mocked(sdk.threads.timelineTurnSummaryDetails).mockImplementation(
-      async ({ sourceSeqStart }) =>
-        ({
+      async (input) => {
+        const isFirstPage = input.mode === "page" && input.cursor === undefined;
+        return {
+          page: {
+            nextCursor: isFirstPage ? "cursor-2" : null,
+          },
           rows: [
             {
-              id: `work-${sourceSeqStart}`,
+              id: isFirstPage ? "work-1" : "work-5",
               threadId: "thread-1",
               turnId: "turn-1",
-              sourceSeqStart: Number(sourceSeqStart),
-              sourceSeqEnd: Number(sourceSeqStart),
-              startedAt: Number(sourceSeqStart),
-              createdAt: Number(sourceSeqStart),
+              sourceSeqStart: isFirstPage ? 1 : 5,
+              sourceSeqEnd: isFirstPage ? 1 : 5,
+              startedAt: isFirstPage ? 1 : 5,
+              createdAt: isFirstPage ? 1 : 5,
               kind: "system",
               systemKind: "debug",
-              title: `Work ${sourceSeqStart}`,
+              title: "Work",
               detail: null,
               status: null,
             },
           ],
-        }) satisfies TimelineTurnSummaryDetailsResponse,
+        } satisfies TimelineTurnSummaryDetailsResponse;
+      },
     );
     const { wrapper } = createQueryClientTestHarness();
 
     const result = renderHook(
       () =>
-        useThreadTimelineTurnSummaryDetailSegments([
-          {
-            sourceSeqStart: 1,
-            sourceSeqEnd: 4,
-            threadId: "thread-1",
-            turnId: "turn-1",
-          },
-          {
-            sourceSeqStart: 5,
-            sourceSeqEnd: 9,
-            threadId: "thread-1",
-            turnId: "turn-1",
-          },
-        ]),
+        useThreadTimelineTurnDetails({
+          threadId: "thread-1",
+          turnId: "turn-1",
+        }),
       { wrapper },
     );
 
+    await waitFor(() => {
+      expect(result.result.current.data?.rows.map((row) => row.id)).toEqual([
+        "work-1",
+      ]);
+    });
+    await act(async () => {
+      await result.result.current.fetchNextPage();
+    });
     await waitFor(() => {
       expect(result.result.current.data?.rows.map((row) => row.id)).toEqual([
         "work-1",
@@ -233,6 +236,14 @@ describe("useThreadTimelineTurnSummaryDetailSegments", () => {
       ]);
     });
     expect(sdk.threads.timelineTurnSummaryDetails).toHaveBeenCalledTimes(2);
+    const firstInput = vi.mocked(sdk.threads.timelineTurnSummaryDetails).mock
+      .calls[0]?.[0];
+    expect(firstInput).toMatchObject({ mode: "page", turnId: "turn-1" });
+    expect(firstInput && "cursor" in firstInput).toBe(false);
+    expect(sdk.threads.timelineTurnSummaryDetails).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ mode: "page", cursor: "cursor-2" }),
+    );
   });
 });
 
