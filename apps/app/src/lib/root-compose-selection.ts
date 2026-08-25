@@ -26,6 +26,13 @@ const rootComposeProjectIdAtom = atomWithStorage<string>(
 
 const rootComposeReuseEnvironmentAtom = atom<string | null>(null);
 
+export function readRootComposeProjectId(): string {
+  return rootComposeProjectIdStorage.getItem(
+    ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY,
+    PERSONAL_PROJECT_ID,
+  );
+}
+
 export function useRootComposeProjectId() {
   return useAtom(rootComposeProjectIdAtom);
 }

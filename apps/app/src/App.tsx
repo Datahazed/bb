@@ -57,6 +57,7 @@ import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
+import { AppLocalStateInitialization } from "./components/AppLocalStateInitialization";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -375,6 +376,7 @@ export function App() {
 
   return (
     <QuickCreateProjectProvider>
+      <AppLocalStateInitialization />
       <AppCommandProvider>
         <RouteNavigationProvider>
           <AppNavigationUrlHost>
@@ -390,8 +392,8 @@ export function App() {
               {/* Outside <Routes>: a provider CLI install outlives the page that
                 started it, so its failure toast can be clicked from any route —
                 including auth callback, which renders no app shell. */}
-               <ProviderCliInstallLogDialogHost />
-             </AppFileExternalNavigationHost>
+              <ProviderCliInstallLogDialogHost />
+            </AppFileExternalNavigationHost>
           </AppNavigationUrlHost>
         </RouteNavigationProvider>
       </AppCommandProvider>

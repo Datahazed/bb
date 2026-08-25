@@ -35,6 +35,42 @@ describe("sidebar draft search matching", () => {
       text: "New thread",
     });
   });
+
+  it("matches every query token across draft text like server thread search", () => {
+    expect(
+      getSidebarDraftSearchMatch({
+        query: "alpha beta",
+        text: "Alpha begins here; beta finishes later.",
+        title: "Alpha begins here; beta finishes later.",
+      }),
+    ).toEqual({
+      highlightRanges: [
+        { start: 0, end: 5 },
+        { start: 19, end: 23 },
+      ],
+      text: "Alpha begins here; beta finishes later.",
+    });
+    expect(
+      getSidebarDraftSearchMatch({
+        query: "alpha missing",
+        text: "Alpha begins here; beta finishes later.",
+        title: "Alpha begins here; beta finishes later.",
+      }),
+    ).toBeNull();
+  });
+
+  it("folds accents and keeps highlight offsets in the original draft", () => {
+    expect(
+      getSidebarDraftSearchMatch({
+        query: "cafe",
+        text: "Café planning",
+        title: "Café planning",
+      }),
+    ).toEqual({
+      highlightRanges: [{ start: 0, end: 4 }],
+      text: "Café planning",
+    });
+  });
 });
 
 describe("sidebar search match window", () => {

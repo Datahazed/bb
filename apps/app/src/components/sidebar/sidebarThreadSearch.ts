@@ -135,11 +135,88 @@ export interface SidebarDraftSearchMatch {
   text: string;
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const SIDEBAR_SEARCH_TOKEN_PATTERN = /[\p{L}\p{N}_]+/gu;
+const SIDEBAR_SEARCH_HIGHLIGHT_RANGE_LIMIT = 8;
+
+function normalizeSidebarSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Mark}/gu, "")
+    .toLocaleLowerCase();
 }
 
-/** Client-side draft matching mirrors the visible phrase the user typed. */
+function listSidebarSearchTokens(value: string): string[] {
+  return [...value.matchAll(SIDEBAR_SEARCH_TOKEN_PATTERN)]
+    .map((match) => normalizeSidebarSearchText(match[0]))
+    .filter((token) => token.length > 0);
+}
+
+function getNormalizedPrefixOriginalEnd(
+  value: string,
+  normalizedPrefixLength: number,
+): number {
+  let normalizedLength = 0;
+  for (let index = 0; index < value.length; ) {
+    const codePoint = value.codePointAt(index);
+    if (codePoint === undefined) break;
+    const originalValue = String.fromCodePoint(codePoint);
+    const end = index + originalValue.length;
+    normalizedLength += normalizeSidebarSearchText(originalValue).length;
+    if (normalizedLength >= normalizedPrefixLength) return end;
+    index = end;
+  }
+  return value.length;
+}
+
+function getSidebarSearchCandidateMatch(
+  value: string,
+  queryTokens: readonly string[],
+): SidebarDraftSearchMatch | null {
+  const rangesByToken = new Map<string, ThreadSearchMatch["highlightRanges"]>();
+  for (const token of queryTokens) rangesByToken.set(token, []);
+
+  for (const match of value.matchAll(SIDEBAR_SEARCH_TOKEN_PATTERN)) {
+    const originalToken = match[0];
+    const normalizedToken = normalizeSidebarSearchText(originalToken);
+    for (const queryToken of queryTokens) {
+      if (!normalizedToken.startsWith(queryToken)) continue;
+      const start = match.index;
+      rangesByToken.get(queryToken)?.push({
+        start,
+        end:
+          start +
+          getNormalizedPrefixOriginalEnd(originalToken, queryToken.length),
+      });
+    }
+  }
+
+  if ([...rangesByToken.values()].some((ranges) => ranges.length === 0)) {
+    return null;
+  }
+
+  const ranges = [...rangesByToken.values()]
+    .flat()
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+  const mergedRanges: ThreadSearchMatch["highlightRanges"] = [];
+  for (const range of ranges) {
+    const previous = mergedRanges.at(-1);
+    if (previous === undefined || range.start > previous.end) {
+      mergedRanges.push({ ...range });
+      continue;
+    }
+    previous.end = Math.max(previous.end, range.end);
+  }
+
+  return {
+    highlightRanges: mergedRanges.slice(
+      0,
+      SIDEBAR_SEARCH_HIGHLIGHT_RANGE_LIMIT,
+    ),
+    text: value,
+  };
+}
+
+/** Client-side draft matching mirrors server thread-search token semantics. */
 export function getSidebarDraftSearchMatch({
   query,
   text,
@@ -149,29 +226,12 @@ export function getSidebarDraftSearchMatch({
   text: string;
   title: string;
 }): SidebarDraftSearchMatch | null {
-  const trimmedQuery = query.trim();
-  if (trimmedQuery.length === 0) return null;
-  const matcher = new RegExp(escapeRegExp(trimmedQuery), "iu");
-  const textMatch = matcher.exec(text);
-  if (textMatch !== null) {
-    return {
-      highlightRanges: [
-        { start: textMatch.index, end: textMatch.index + textMatch[0].length },
-      ],
-      text,
-    };
-  }
-  const titleMatch = matcher.exec(title);
-  if (titleMatch === null) return null;
-  return {
-    highlightRanges: [
-      {
-        start: titleMatch.index,
-        end: titleMatch.index + titleMatch[0].length,
-      },
-    ],
-    text: title,
-  };
+  const queryTokens = [...new Set(listSidebarSearchTokens(query))];
+  if (queryTokens.length === 0) return null;
+  return (
+    getSidebarSearchCandidateMatch(text, queryTokens) ??
+    getSidebarSearchCandidateMatch(title, queryTokens)
+  );
 }
 
 function isHighSurrogate(value: number): boolean {
