@@ -182,6 +182,7 @@ import {
 import {
   isDefaultSidebarThreadLifecycleSelection,
   builtInSidebarDraftRowsVisibleAtom,
+  getBuiltInSidebarLifecycleRenderState,
   sidebarThreadLifecycleSelectionAtom,
   SIDEBAR_THREAD_LIFECYCLE_STATES,
   toggleSidebarThreadLifecycleState,
@@ -1126,6 +1127,29 @@ interface ActiveSidebarModeSectionsProps {
   renderProject: () => ReactNode;
 }
 
+interface BuiltInSidebarLifecycleSectionsProps {
+  activeModeSections: ReactNode;
+  archivedRows: ReactNode;
+  draftRows: ReactNode;
+  emptyState: ReactNode;
+}
+
+export function BuiltInSidebarLifecycleSections({
+  activeModeSections,
+  archivedRows,
+  draftRows,
+  emptyState,
+}: BuiltInSidebarLifecycleSectionsProps) {
+  return (
+    <>
+      {draftRows}
+      {activeModeSections}
+      {archivedRows}
+      {emptyState}
+    </>
+  );
+}
+
 export function ActiveSidebarModeSections({
   mode,
   renderChronological,
@@ -1685,7 +1709,6 @@ function ProjectListComponent({
   const setBuiltInDraftRowsVisible = useSetAtom(
     builtInSidebarDraftRowsVisibleAtom,
   );
-  const showActiveThreads = lifecycleSelection.has("active");
   const showDrafts = lifecycleSelection.has("drafts");
   const showArchivedThreads = lifecycleSelection.has("archived");
   const archivedThreadsQuery = useArchivedThreads(
@@ -2187,30 +2210,20 @@ function ProjectListComponent({
       ) : null}
     </ConfirmDeleteDialog>
   );
-  const lifecycleSelectionIsDefault =
-    isDefaultSidebarThreadLifecycleSelection(lifecycleSelection);
-  const archivedRowsAreLoading =
-    showArchivedThreads && archivedThreadsQuery.isPending;
-  const hasLifecycleMatches =
-    (showActiveThreads && threads.length > 0) ||
-    (showDrafts && newThreadDrafts.length > 0) ||
-    (showArchivedThreads && archivedThreads.length > 0);
-  const showFilteredEmptyState =
-    !lifecycleSelectionIsDefault &&
-    projectsState.status === "ready" &&
-    !archivedRowsAreLoading &&
-    !hasLifecycleMatches;
-  const showActiveModeSections =
-    showActiveThreads &&
-    (lifecycleSelectionIsDefault ||
-      threads.length > 0 ||
-      projectsState.status !== "ready");
-  const showLifecycleControlOnlySection =
-    !showActiveModeSections &&
-    archivedThreads.length === 0 &&
-    !archivedThreadsQuery.hasNextPage;
-  const showArchivedOnlyControl =
-    lifecycleSelection.size === 1 && showArchivedThreads;
+  const {
+    showActiveModeSections,
+    showArchivedOnlyControl,
+    showFilteredEmptyState,
+    showLifecycleControlOnlySection,
+  } = getBuiltInSidebarLifecycleRenderState({
+    activeCount: threads.length,
+    archivedCount: archivedThreads.length,
+    archivedHasNextPage: archivedThreadsQuery.hasNextPage,
+    archivedIsPending: archivedThreadsQuery.isPending,
+    draftCount: newThreadDrafts.length,
+    isReady: projectsState.status === "ready",
+    selection: lifecycleSelection,
+  });
 
   if (threadSearch?.isActive) {
     return (
@@ -2241,150 +2254,163 @@ function ProjectListComponent({
 
   return (
     <ProjectListShell>
-      {showDrafts ? (
-        <SidebarDraftRows
-          drafts={newThreadDrafts}
-          onOpenDraft={handleOpenDraft}
-        />
-      ) : null}
-      {showActiveModeSections ? (
-        <ActiveSidebarModeSections
-          mode={organizationMode}
-          renderMachine={() => (
-            <MachineModeSections
-              threads={threads}
-              draftThreadIds={draftThreadIds}
-              effectivePinnedThreadIds={
-                pinnedSidebarState.effectivePinnedThreadIds
-              }
-              status={projectsState.status}
-              isReady={Boolean(sidebarNavigation)}
-              showPinnedSection={hasPinnedSection}
-              pinnedSection={pinnedSection}
-              threadsSection={threadsSection}
-              selectedThreadId={selectedThreadId}
-              collapsedSectionIds={collapsedSidebarSectionIds}
-              collapsedThreadIds={collapsedThreadIds}
-              collapsedEnvironmentIds={collapsedEnvironmentIds}
-              compareThreads={sidebarThreadComparator}
-              renderSectionDisplayOptions={renderSectionDisplayOptions}
-              isSectionDisplayOptionsOpen={isSectionDisplayOptionsOpen}
-              onProjectSelect={onProjectSelect}
-              onToggleCollapsed={toggleSidebarSectionCollapsed}
-              onToggleThreadCollapsed={toggleThreadCollapsed}
-              onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
+      <BuiltInSidebarLifecycleSections
+        draftRows={
+          showDrafts ? (
+            <SidebarDraftRows
+              drafts={newThreadDrafts}
+              onOpenDraft={handleOpenDraft}
             />
-          )}
-          renderChronological={() => (
-            <SectionModeSections
-              threads={threads}
-              effectivePinnedThreadIds={
-                pinnedSidebarState.effectivePinnedThreadIds
-              }
-              status={projectsState.status}
-              isReady={Boolean(sidebarNavigation)}
-              showPinnedSection={hasPinnedSection}
-              sections={sections}
-              pinnedSection={pinnedSection}
-              pinnedReorderPending={isPinnedReorderPending}
-              pinnedThreads={pinnedRootThreads}
-              onReorderPinnedThread={handleReorderPinnedRoot}
-              threadsSection={threadsSection}
-              selectedThreadId={selectedThreadId}
-              collapsedSectionIds={collapsedSidebarSectionIds}
-              collapsedThreadIds={collapsedThreadIds}
-              collapsedEnvironmentIds={collapsedEnvironmentIds}
-              compareThreads={sidebarThreadComparator}
-              onProjectSelect={onProjectSelect}
-              onCreateThreadInSection={handleCreateThreadInSection}
-              onRenameSection={handleOpenRenameThreadSection}
-              onRemoveSection={handleRemoveThreadSection}
-              renderTopLevelSectionHeaderActions={(section) => {
-                const sectionId = buildSidebarEntitySectionId(
-                  "section",
-                  section.id,
-                );
-                return {
-                  actions: renderSectionDisplayOptions(sectionId),
-                  actionsOpen: isSectionDisplayOptionsOpen(sectionId),
-                };
+          ) : null
+        }
+        activeModeSections={
+          showActiveModeSections ? (
+            <ActiveSidebarModeSections
+              mode={organizationMode}
+              renderMachine={() => (
+                <MachineModeSections
+                  threads={threads}
+                  draftThreadIds={draftThreadIds}
+                  effectivePinnedThreadIds={
+                    pinnedSidebarState.effectivePinnedThreadIds
+                  }
+                  status={projectsState.status}
+                  isReady={Boolean(sidebarNavigation)}
+                  showPinnedSection={hasPinnedSection}
+                  pinnedSection={pinnedSection}
+                  threadsSection={threadsSection}
+                  selectedThreadId={selectedThreadId}
+                  collapsedSectionIds={collapsedSidebarSectionIds}
+                  collapsedThreadIds={collapsedThreadIds}
+                  collapsedEnvironmentIds={collapsedEnvironmentIds}
+                  compareThreads={sidebarThreadComparator}
+                  renderSectionDisplayOptions={renderSectionDisplayOptions}
+                  isSectionDisplayOptionsOpen={isSectionDisplayOptionsOpen}
+                  onProjectSelect={onProjectSelect}
+                  onToggleCollapsed={toggleSidebarSectionCollapsed}
+                  onToggleThreadCollapsed={toggleThreadCollapsed}
+                  onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
+                />
+              )}
+              renderChronological={() => (
+                <SectionModeSections
+                  threads={threads}
+                  effectivePinnedThreadIds={
+                    pinnedSidebarState.effectivePinnedThreadIds
+                  }
+                  status={projectsState.status}
+                  isReady={Boolean(sidebarNavigation)}
+                  showPinnedSection={hasPinnedSection}
+                  sections={sections}
+                  pinnedSection={pinnedSection}
+                  pinnedReorderPending={isPinnedReorderPending}
+                  pinnedThreads={pinnedRootThreads}
+                  onReorderPinnedThread={handleReorderPinnedRoot}
+                  threadsSection={threadsSection}
+                  selectedThreadId={selectedThreadId}
+                  collapsedSectionIds={collapsedSidebarSectionIds}
+                  collapsedThreadIds={collapsedThreadIds}
+                  collapsedEnvironmentIds={collapsedEnvironmentIds}
+                  compareThreads={sidebarThreadComparator}
+                  onProjectSelect={onProjectSelect}
+                  onCreateThreadInSection={handleCreateThreadInSection}
+                  onRenameSection={handleOpenRenameThreadSection}
+                  onRemoveSection={handleRemoveThreadSection}
+                  renderTopLevelSectionHeaderActions={(section) => {
+                    const sectionId = buildSidebarEntitySectionId(
+                      "section",
+                      section.id,
+                    );
+                    return {
+                      actions: renderSectionDisplayOptions(sectionId),
+                      actionsOpen: isSectionDisplayOptionsOpen(sectionId),
+                    };
+                  }}
+                  onToggleCollapsed={toggleSidebarSectionCollapsed}
+                  onToggleThreadCollapsed={toggleThreadCollapsed}
+                  onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
+                />
+              )}
+              renderProject={() => (
+                <ProjectModeSections
+                  projects={projects ?? EMPTY_PROJECTS}
+                  threads={threads}
+                  draftThreadIds={draftThreadIds}
+                  effectivePinnedThreadIds={
+                    pinnedSidebarState.effectivePinnedThreadIds
+                  }
+                  status={projectsState.status}
+                  isReady={Boolean(sidebarNavigation)}
+                  showPinnedSection={hasPinnedSection}
+                  pinnedSection={pinnedSection}
+                  threadsSection={threadsSection}
+                  selectedThreadId={selectedThreadId}
+                  collapsedSectionIds={collapsedSidebarSectionIds}
+                  collapsedThreadIds={collapsedThreadIds}
+                  collapsedEnvironmentIds={collapsedEnvironmentIds}
+                  compareThreads={sidebarThreadComparator}
+                  renderSectionDisplayOptions={renderSectionDisplayOptions}
+                  isSectionDisplayOptionsOpen={isSectionDisplayOptionsOpen}
+                  onProjectSelect={onProjectSelect}
+                  onCreateProjectThread={handleCreateProjectThread}
+                  onToggleCollapsed={toggleSidebarSectionCollapsed}
+                  onToggleThreadCollapsed={toggleThreadCollapsed}
+                  onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
+                />
+              )}
+            />
+          ) : null
+        }
+        archivedRows={
+          showArchivedThreads ? (
+            <SidebarArchivedThreadGroup
+              threads={archivedThreads}
+              activeThreadId={selectedThreadId}
+              actions={renderSectionDisplayOptions("archived")}
+              actionsOpen={openSidebarMenu === "displayOptions:archived"}
+              hasNextPage={archivedThreadsQuery.hasNextPage}
+              isFetchingNextPage={archivedThreadsQuery.isFetchingNextPage}
+              onLoadMore={() => {
+                void archivedThreadsQuery.fetchNextPage();
               }}
-              onToggleCollapsed={toggleSidebarSectionCollapsed}
-              onToggleThreadCollapsed={toggleThreadCollapsed}
-              onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
+              onNavigate={onProjectSelect}
             />
-          )}
-          renderProject={() => (
-            <ProjectModeSections
-              projects={projects ?? EMPTY_PROJECTS}
-              threads={threads}
-              draftThreadIds={draftThreadIds}
-              effectivePinnedThreadIds={
-                pinnedSidebarState.effectivePinnedThreadIds
+          ) : null
+        }
+        emptyState={
+          showLifecycleControlOnlySection ? (
+            <TopLevelSidebarSection
+              label={showArchivedOnlyControl ? "Archived" : "Threads"}
+              actions={
+                showArchivedOnlyControl
+                  ? renderSectionDisplayOptions("archived")
+                  : threadsSectionActions
               }
-              status={projectsState.status}
-              isReady={Boolean(sidebarNavigation)}
-              showPinnedSection={hasPinnedSection}
-              pinnedSection={pinnedSection}
-              threadsSection={threadsSection}
-              selectedThreadId={selectedThreadId}
-              collapsedSectionIds={collapsedSidebarSectionIds}
-              collapsedThreadIds={collapsedThreadIds}
-              collapsedEnvironmentIds={collapsedEnvironmentIds}
-              compareThreads={sidebarThreadComparator}
-              renderSectionDisplayOptions={renderSectionDisplayOptions}
-              isSectionDisplayOptionsOpen={isSectionDisplayOptionsOpen}
-              onProjectSelect={onProjectSelect}
-              onCreateProjectThread={handleCreateProjectThread}
-              onToggleCollapsed={toggleSidebarSectionCollapsed}
-              onToggleThreadCollapsed={toggleThreadCollapsed}
-              onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
-            />
-          )}
-        />
-      ) : null}
-      {showArchivedThreads ? (
-        <SidebarArchivedThreadGroup
-          threads={archivedThreads}
-          activeThreadId={selectedThreadId}
-          actions={renderSectionDisplayOptions("archived")}
-          actionsOpen={openSidebarMenu === "displayOptions:archived"}
-          hasNextPage={archivedThreadsQuery.hasNextPage}
-          isFetchingNextPage={archivedThreadsQuery.isFetchingNextPage}
-          onLoadMore={() => {
-            void archivedThreadsQuery.fetchNextPage();
-          }}
-          onNavigate={onProjectSelect}
-        />
-      ) : null}
-      {showLifecycleControlOnlySection ? (
-        <TopLevelSidebarSection
-          label={showArchivedOnlyControl ? "Archived" : "Threads"}
-          actions={
-            showArchivedOnlyControl
-              ? renderSectionDisplayOptions("archived")
-              : threadsSectionActions
-          }
-          actionsOpen={
-            showArchivedOnlyControl
-              ? openSidebarMenu === "displayOptions:archived"
-              : threadsDisplayOptionsMenuOpen
-          }
-        >
-          {showFilteredEmptyState ? (
+              actionsOpen={
+                showArchivedOnlyControl
+                  ? openSidebarMenu === "displayOptions:archived"
+                  : threadsDisplayOptionsMenuOpen
+              }
+            >
+              {showFilteredEmptyState ? (
+                <p
+                  role="status"
+                  className="px-3 py-2 text-xs text-muted-foreground"
+                >
+                  No threads match this filter.
+                </p>
+              ) : null}
+            </TopLevelSidebarSection>
+          ) : showFilteredEmptyState ? (
             <p
               role="status"
               className="px-3 py-2 text-xs text-muted-foreground"
             >
               No threads match this filter.
             </p>
-          ) : null}
-        </TopLevelSidebarSection>
-      ) : showFilteredEmptyState ? (
-        <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
-          No threads match this filter.
-        </p>
-      ) : null}
+          ) : null
+        }
+      />
       {sectionCreateDialog}
       {sectionRenameDialogContent}
       {sectionDeleteDialogContent}
