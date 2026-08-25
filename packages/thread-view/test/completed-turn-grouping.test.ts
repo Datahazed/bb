@@ -189,7 +189,8 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 1,
         completedAt: 2,
-        segmentIndex: null,
+        rowIdSegmentIndex: null,
+        sourceBounds: "turn",
         summaryCount: 2,
       },
     ]);
@@ -225,13 +226,115 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 1,
         completedAt: 4,
-        segmentIndex: 0,
+        rowIdSegmentIndex: null,
+        sourceBounds: "messages",
         sourceMessages: [{ id: "narration" }, { id: "command" }],
         summaryCount: 2,
       },
       { kind: "ungrouped-message", message: { id: "answer" } },
     ]);
     expect(groups.terminalMessages).toEqual([hookReply]);
+  });
+
+  it("uses the canonical row identity when the accepted request starts the turn", () => {
+    const seed = userMessage({ id: "seed", seq: 1 });
+    const narration = assistantMessage({ id: "narration", seq: 2 });
+    const command = commandMessage({ id: "command", seq: 3 });
+    const answer = assistantMessage({ id: "answer", seq: 4 });
+    const terminal = assistantMessage({ id: "terminal", seq: 5 });
+
+    const groups = groupCompletedTurnMessages(
+      completedTurn([seed, narration, command, answer, terminal], terminal),
+    );
+
+    expect(groups.summaryItems).toMatchObject([
+      { kind: "ungrouped-message", message: { id: "seed" } },
+      {
+        kind: "summary",
+        rowIdSegmentIndex: null,
+        sourceBounds: "messages",
+        sourceMessages: [{ id: "narration" }, { id: "command" }],
+      },
+      { kind: "ungrouped-message", message: { id: "answer" } },
+    ]);
+  });
+
+  it("combines work around visible assistant replies without a later human boundary", () => {
+    const firstNarration = assistantMessage({ id: "narration-1", seq: 1 });
+    const firstCommand = commandMessage({ id: "command-1", seq: 2 });
+    const visibleReply = assistantMessage({ id: "visible-reply", seq: 3 });
+    const secondNarration = assistantMessage({ id: "narration-2", seq: 4 });
+    const secondCommand = commandMessage({ id: "command-2", seq: 5 });
+    const terminal = assistantMessage({ id: "terminal", seq: 6 });
+
+    const groups = groupCompletedTurnMessages(
+      completedTurn(
+        [
+          firstNarration,
+          firstCommand,
+          visibleReply,
+          secondNarration,
+          secondCommand,
+          terminal,
+        ],
+        terminal,
+      ),
+    );
+
+    expect(groups.summaryItems).toMatchObject([
+      {
+        kind: "summary",
+        rowIdSegmentIndex: null,
+        sourceMessages: [
+          { id: "narration-1" },
+          { id: "command-1" },
+          { id: "narration-2" },
+          { id: "command-2" },
+        ],
+      },
+      { kind: "ungrouped-message", message: { id: "visible-reply" } },
+    ]);
+  });
+
+  it("does not treat a slice-local assistant as terminal when completion is context", () => {
+    const assistant = assistantMessage({ id: "assistant", seq: 1 });
+    const command = commandMessage({ id: "command", seq: 2 });
+    const groups = groupCompletedTurnMessages(
+      completedTurn([assistant, command], assistant),
+      true,
+    );
+
+    expect(groups.summaryItems).toMatchObject([
+      {
+        kind: "summary",
+        rowIdSegmentIndex: null,
+        sourceMessages: [{ id: "assistant" }, { id: "command" }],
+      },
+    ]);
+    expect(groups.terminalMessages).toEqual([]);
+    expect(groups.trailingMessages).toEqual([]);
+  });
+
+  it("keeps a summary segmented after a later human boundary", () => {
+    const seed = userMessage({ id: "seed", seq: 1 });
+    const command = commandMessage({ id: "command", seq: 2 });
+    const followUp = userMessage({ id: "follow-up", seq: 3 });
+    const terminal = assistantMessage({ id: "terminal", seq: 4 });
+
+    const groups = groupCompletedTurnMessages(
+      completedTurn([seed, command, followUp, terminal], terminal),
+    );
+
+    expect(groups.summaryItems).toMatchObject([
+      { kind: "ungrouped-message", message: { id: "seed" } },
+      {
+        kind: "summary",
+        rowIdSegmentIndex: 0,
+        sourceBounds: "messages",
+        sourceMessages: [{ id: "command" }],
+      },
+      { kind: "ungrouped-message", message: { id: "follow-up" } },
+    ]);
   });
 
   it("keeps every response in a run of adjacent assistant texts", () => {
@@ -315,7 +418,8 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 1,
         completedAt: 4,
-        segmentIndex: null,
+        rowIdSegmentIndex: null,
+        sourceBounds: "turn",
         summaryCount: 4,
       },
     ]);
@@ -340,7 +444,8 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 1,
         completedAt: null,
-        segmentIndex: 0,
+        rowIdSegmentIndex: 0,
+        sourceBounds: "messages",
         summaryCount: 1,
       },
       {
@@ -353,7 +458,8 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 3,
         completedAt: null,
-        segmentIndex: 1,
+        rowIdSegmentIndex: 1,
+        sourceBounds: "messages",
         summaryCount: 1,
       },
     ]);

@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useState, type ReactElement } from "react";
-import { useTimelineTurnSummaryDetails } from "@/data/thread-detail";
-import type { ThreadTimelineTurnSummaryDetailsQueryIdentity } from "@/lib/query/query-keys";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactElement,
+} from "react";
+import { mergeTimelineTurnDetailPages } from "@bb/client-core";
+import { useTimelineTurnDetails } from "@/data/thread-detail";
+import type { ThreadTimelineTurnDetailsQueryIdentity } from "@/lib/query/query-keys";
 import type { TimelineListItem, TimelineTurnChildrenState } from "./rows";
 
 interface TurnChildrenLoaderProps {
   itemKey: string;
-  identity: ThreadTimelineTurnSummaryDetailsQueryIdentity;
+  identity: ThreadTimelineTurnDetailsQueryIdentity;
   onChange: (itemKey: string, state: TimelineTurnChildrenState | null) => void;
 }
 
@@ -19,18 +26,43 @@ function TurnChildrenLoader({
   identity,
   onChange,
 }: TurnChildrenLoaderProps) {
-  const query = useTimelineTurnSummaryDetails(identity);
-  const data = query.data;
-  const isError = query.isError;
+  const query = useTimelineTurnDetails(identity);
+  const fetchNextPage = query.fetchNextPage;
+  const rows = useMemo(
+    () =>
+      query.data
+        ? mergeTimelineTurnDetailPages(
+            query.data.pages.map((page) => page.rows),
+          )
+        : undefined,
+    [query.data],
+  );
+  const loadMore = useCallback(() => {
+    void fetchNextPage();
+  }, [fetchNextPage]);
   useEffect(() => {
-    if (data) {
-      onChange(itemKey, { status: "loaded", rows: data.rows });
-    } else if (isError) {
+    if (rows) {
+      onChange(itemKey, {
+        status: "loaded",
+        rows,
+        hasMore: query.hasNextPage,
+        loadingMore: query.isFetchingNextPage,
+        loadMore,
+      });
+    } else if (query.isError) {
       onChange(itemKey, { status: "error" });
     } else {
       onChange(itemKey, { status: "loading" });
     }
-  }, [data, isError, itemKey, onChange]);
+  }, [
+    itemKey,
+    loadMore,
+    onChange,
+    query.hasNextPage,
+    query.isError,
+    query.isFetchingNextPage,
+    rows,
+  ]);
   useEffect(() => () => onChange(itemKey, null), [itemKey, onChange]);
   return null;
 }
@@ -58,7 +90,11 @@ export function useTurnChildrenMap(): {
           existing !== undefined &&
           existing.status === state.status &&
           (state.status !== "loaded" ||
-            (existing.status === "loaded" && existing.rows === state.rows))
+            (existing.status === "loaded" &&
+              existing.rows === state.rows &&
+              existing.hasMore === state.hasMore &&
+              existing.loadingMore === state.loadingMore &&
+              existing.loadMore === state.loadMore))
         ) {
           return current;
         }
@@ -90,8 +126,6 @@ export function renderTurnChildrenLoaders(
         key={item.key}
         itemKey={item.key}
         identity={{
-          sourceSeqEnd: row.sourceSeqEnd,
-          sourceSeqStart: row.sourceSeqStart,
           threadId: threadId || row.threadId,
           turnId: row.turnId,
         }}

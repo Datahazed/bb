@@ -256,6 +256,7 @@ export {
   listTimelineSegmentAnchorsDescending,
   findTimelineWindowBudgetFloorSequence,
   findStoredTimelineWindowByteBudgetFloor,
+  readStoredTimelineWindowForwardPage,
   getStoredEventRowsByParentToolCallIdsDataBytes,
   findUnfinishedTurnCoveringSequence,
   hasParentedEventCrossingSequence,
@@ -304,6 +305,7 @@ export type {
   ScopedItemRef,
   StoredEventRow,
   StandardTimelineSegmentAnchorRow,
+  StoredTimelineWindowForwardPage,
   ThreadClientTurnRequestKey,
   StoredTurnRequestEventRow,
 } from "./events.js";

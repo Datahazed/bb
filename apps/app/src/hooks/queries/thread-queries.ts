@@ -78,8 +78,10 @@ import {
   threadHostFilePreviewQueryKey,
   threadConversationOutlineQueryKey,
   threadTimelineQueryKey,
+  threadTimelineTurnDetailsQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
   threadsQueryKey,
+  type ThreadTimelineTurnDetailsQueryIdentity,
   type ThreadTimelineTurnSummaryDetailsQueryIdentity,
 } from "./query-keys";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
@@ -1063,6 +1065,34 @@ export function useThreadTimelineTurnSummaryDetails(
     },
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? Infinity,
+    ...HEAVY_PAYLOAD_QUERY_POLICY,
+  });
+}
+
+export function useThreadTimelineTurnDetails(
+  identity: ThreadTimelineTurnDetailsQueryIdentity,
+) {
+  return useInfiniteQuery({
+    queryKey: threadTimelineTurnDetailsQueryKey(identity),
+    queryFn: ({ pageParam, signal }) =>
+      sdk.threads.timelineTurnDetails({
+        ...(pageParam ? { cursor: pageParam } : {}),
+        signal,
+        threadId: requireThreadId(
+          identity.threadId,
+          "useThreadTimelineTurnDetails",
+        ),
+        turnId: identity.turnId,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    enabled: Boolean(identity.threadId) && Boolean(identity.turnId),
+    meta: {
+      errorMessage: "Failed to load turn details.",
+      showErrorToast: false,
+    },
+    refetchOnMount: true,
+    staleTime: Infinity,
     ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }

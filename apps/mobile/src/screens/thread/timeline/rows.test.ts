@@ -170,6 +170,9 @@ describe("buildTimelineListItems", () => {
           "t1",
           {
             status: "loaded",
+            hasMore: true,
+            loadingMore: false,
+            loadMore: () => undefined,
             rows: [
               commandRow("t1c1", "pnpm build"),
               commandRow("t1c2", "pnpm test"),
@@ -180,6 +183,7 @@ describe("buildTimelineListItems", () => {
       ]),
     });
     expect(loaded[1]?.lazyChildren).toBe("loaded");
+    expect(loaded[1]?.lazyChildrenHasMore).toBe(true);
     // Lazy children are a closed scope: trailing work collapses into a
     // step-summary like the web's lazy turn body.
     expect(loaded.slice(2).map((item) => [item.kind, item.depth])).toEqual([

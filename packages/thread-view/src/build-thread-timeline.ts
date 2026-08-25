@@ -73,6 +73,7 @@ import { buildTimelineErrorDisplay } from "./error-display.js";
 type ThreadTimelineTurnMessageDetail = "summary" | "full";
 
 interface ThreadTimelineFromEventsBaseOptions {
+  contextOnlyCompletedTurnIds?: ReadonlySet<string>;
   contextOnlyToolCallIds?: ReadonlySet<string>;
   includeProviderUnhandledOperations: boolean;
   /**
@@ -170,6 +171,7 @@ type ThreadTimelineTurnDetailsFromEventsResult =
     };
 
 interface BuildTurnRowsArgs {
+  contextOnlyCompletedTurnIds?: ReadonlySet<string>;
   includeNestedRows: boolean;
   rowIdPrefix: string;
   turn: EventProjectionTurn;
@@ -187,7 +189,8 @@ interface BuildTurnSummaryRowArgs {
   completedAt: number | null;
   includeNestedRows: boolean;
   rowIdPrefix: string;
-  segmentIndex: number | null;
+  rowIdSegmentIndex: number | null;
+  sourceBounds: "messages" | "turn";
   sourceMessages: EventProjectionMessage[];
   sourceRows: TimelineRow[];
   startedAt: number;
@@ -204,6 +207,7 @@ interface BuildCompletedTurnSummaryRowsArgs {
 }
 
 interface BuildTimelineRowsOptions {
+  contextOnlyCompletedTurnIds?: ReadonlySet<string>;
   includeNestedRows: boolean;
   rowIdPrefix: string;
   workspaceRoot: string | null;
@@ -1138,7 +1142,8 @@ function buildTurnSummaryRow({
   completedAt,
   includeNestedRows,
   rowIdPrefix,
-  segmentIndex,
+  rowIdSegmentIndex,
+  sourceBounds,
   sourceMessages,
   sourceRows,
   startedAt,
@@ -1150,13 +1155,13 @@ function buildTurnSummaryRow({
   }
 
   const bounds =
-    segmentIndex === null || sourceMessages.length === 0
+    sourceBounds === "turn" || sourceMessages.length === 0
       ? getTurnBounds(turn)
       : getTimelineMessageBounds(sourceMessages);
   const rowId =
-    segmentIndex === null
+    rowIdSegmentIndex === null
       ? `${rowIdPrefix}${turn.threadId}:${turn.turnId}:turn`
-      : `${rowIdPrefix}${turn.threadId}:${turn.turnId}:turn:${segmentIndex}`;
+      : `${rowIdPrefix}${turn.threadId}:${turn.turnId}:turn:${rowIdSegmentIndex}`;
   const resolvedCompletedAt =
     completedAt ?? getTimelineMessageCompletedAt(sourceMessages);
 
@@ -1209,7 +1214,8 @@ function buildCompletedTurnSummaryRows({
       completedAt: item.completedAt,
       includeNestedRows,
       rowIdPrefix,
-      segmentIndex: item.segmentIndex,
+      rowIdSegmentIndex: item.rowIdSegmentIndex,
+      sourceBounds: item.sourceBounds,
       sourceMessages: item.sourceMessages,
       sourceRows,
       startedAt: item.startedAt,
@@ -1224,6 +1230,7 @@ function buildCompletedTurnSummaryRows({
 }
 
 function buildTurnRows({
+  contextOnlyCompletedTurnIds,
   includeNestedRows,
   rowIdPrefix,
   turn,
@@ -1244,7 +1251,10 @@ function buildTurnRows({
   }
 
   const { summaryItems, terminalMessages, trailingMessages } =
-    groupCompletedTurnMessages(turn);
+    groupCompletedTurnMessages(
+      turn,
+      contextOnlyCompletedTurnIds?.has(turn.turnId) === true,
+    );
   const terminalRows = terminalMessages.flatMap((message) =>
     convertMessage(message, { includeNestedRows, rowIdPrefix, workspaceRoot }),
   );
@@ -1365,6 +1375,7 @@ function buildTimelineRows(
         appendRows(
           rows,
           buildTurnRows({
+            contextOnlyCompletedTurnIds: options.contextOnlyCompletedTurnIds,
             turn: entry.turn,
             includeNestedRows,
             rowIdPrefix: options.rowIdPrefix,
@@ -1400,6 +1411,7 @@ export function buildThreadTimelineFromEvents(
 
   const rows = [
     ...buildTimelineRows(projection, {
+      contextOnlyCompletedTurnIds: args.options.contextOnlyCompletedTurnIds,
       includeNestedRows: args.options.includeNestedRows,
       rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
       workspaceRoot: args.options.workspaceRoot,
@@ -1450,9 +1462,9 @@ export function buildThreadTimelineFromEvents(
   };
 }
 
-export function buildThreadTimelineTurnDetailsFromEvents(
+function buildThreadTimelineTurnDetailRows(
   args: BuildThreadTimelineTurnDetailsFromEventsArgs,
-): ThreadTimelineTurnDetailsFromEventsResult {
+): TimelineRow[] {
   const projection = buildEventProjectionEntries(args.events, {
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
@@ -1461,11 +1473,17 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     threadName: args.options.threadName,
     turnMessageDetail: "full",
   });
-  const nestedRows = buildTimelineRows(projection, {
+  return buildTimelineRows(projection, {
     includeNestedRows: true,
     rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
     workspaceRoot: args.options.workspaceRoot,
   });
+}
+
+export function buildThreadTimelineTurnDetailsFromEvents(
+  args: BuildThreadTimelineTurnDetailsFromEventsArgs,
+): ThreadTimelineTurnDetailsFromEventsResult {
+  const nestedRows = buildThreadTimelineTurnDetailRows(args);
   const matchingTurnSummary = findMatchingTurnSummaryRow(
     nestedRows,
     args.options,
@@ -1494,4 +1512,23 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     // outside the summary.
     rows: nestedRows.filter((row) => !isRootOwnedHumanSteerRow(row)),
   };
+}
+
+/**
+ * Projects one server-selected detail page. Unlike exact-range hydration, a
+ * page need not coincide with the source bounds of a summary row.
+ */
+export function buildThreadTimelineTurnDetailPageFromEvents(
+  args: BuildThreadTimelineTurnDetailsFromEventsArgs,
+): TimelineRow[] {
+  const nestedRows = buildThreadTimelineTurnDetailRows(args);
+  const turnChildren = nestedRows.flatMap((row) =>
+    row.kind === "turn" ? (row.children ?? []) : [],
+  );
+  if (nestedRows.some((row) => row.kind === "turn")) {
+    // Terminal assistant replies and human steers are root-owned siblings of
+    // a completed summary, not children of the expanded “Worked for…” row.
+    return turnChildren;
+  }
+  return nestedRows.filter((row) => !isRootOwnedHumanSteerRow(row));
 }

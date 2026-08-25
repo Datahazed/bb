@@ -5,9 +5,12 @@ import type {
   ThreadQueuedMessageListResponse,
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
-  TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import {
   shouldRetryTransientReadQuery,
@@ -20,8 +23,8 @@ import {
   threadPendingInteractionsQueryKey,
   threadQueuedMessagesQueryKey,
   threadTimelineQueryKey,
-  threadTimelineTurnSummaryDetailsQueryKey,
-  type ThreadTimelineTurnSummaryDetailsQueryIdentity,
+  threadTimelineTurnDetailsQueryKey,
+  type ThreadTimelineTurnDetailsQueryIdentity,
 } from "@/lib/query/query-keys";
 import { requireEnabledQueryArg } from "../shared/query-helpers";
 import { SESSION_STATIC_QUERY_POLICY } from "../shared/query-policies";
@@ -219,40 +222,30 @@ export function useThreadQueuedMessages(
 }
 
 /**
- * Lazy children of one completed-turn summary row
- * (`GET /threads/:id/timeline/turn-summary-details`). Immutable for the
- * identity (turn + source sequence span), so it never goes stale; a history
- * rewrite invalidates every window of the thread.
+ * Lazy children of one completed-turn summary row. The server owns page
+ * boundaries; the client cache identifies only the turn.
+ * A history rewrite invalidates every detail page for the thread.
  */
-export function useTimelineTurnSummaryDetails(
-  identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
-  options?: QueryOptions,
+export function useTimelineTurnDetails(
+  identity: ThreadTimelineTurnDetailsQueryIdentity,
 ) {
   const { sdk } = useProfileClient();
-  const enabled =
-    (options?.enabled ?? true) &&
-    Boolean(identity.threadId) &&
-    Boolean(identity.turnId);
-
-  return useQuery<TimelineTurnSummaryDetailsResponse>({
-    queryKey: threadTimelineTurnSummaryDetailsQueryKey(identity),
-    queryFn: ({ signal }) =>
-      sdk.threads.timelineTurnSummaryDetails({
+  return useInfiniteQuery({
+    queryKey: threadTimelineTurnDetailsQueryKey(identity),
+    queryFn: ({ pageParam, signal }) =>
+      sdk.threads.timelineTurnDetails({
+        ...(pageParam ? { cursor: pageParam } : {}),
         threadId: requireEnabledQueryArg({
           value: identity.threadId,
-          hookName: "useTimelineTurnSummaryDetails",
+          hookName: "useTimelineTurnDetails",
           argName: "thread id",
         }),
-        sourceSeqEnd: String(identity.sourceSeqEnd),
-        sourceSeqStart: String(identity.sourceSeqStart),
         turnId: identity.turnId,
         signal,
       }),
-    enabled,
-    meta: {
-      errorMessage: "Failed to load turn summary details.",
-      showErrorToast: false,
-    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    enabled: Boolean(identity.threadId) && Boolean(identity.turnId),
     refetchOnMount: true,
     staleTime: Infinity,
   });

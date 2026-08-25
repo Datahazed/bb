@@ -14,7 +14,8 @@ interface CompletedTurnSummaryGroup {
   kind: "summary";
   startedAt: number;
   completedAt: number | null;
-  segmentIndex: number | null;
+  rowIdSegmentIndex: number | null;
+  sourceBounds: "messages" | "turn";
   sourceMessages: EventProjectionMessage[];
   summaryCount: number;
 }
@@ -84,25 +85,48 @@ function getSummaryMessageBounds(
   return { startedAt };
 }
 
-function applySingleSummaryTurnBounds(
+function combineSummaryGroupsWithoutLaterHumanBoundary(
   turn: EventProjectionTurn,
   items: readonly CompletedTurnSummaryItem[],
 ): CompletedTurnSummaryItem[] {
   const summaryGroups = items.filter(isCompletedTurnSummaryGroup);
-  if (summaryGroups.length !== 1) {
+  if (summaryGroups.length === 0) {
+    return [...items];
+  }
+  const canUseCanonicalIdentity =
+    (turn.externalUserBoundarySeqs?.length ?? 0) === 0 &&
+    !items.some(
+      (item) =>
+        item.kind === "ungrouped-message" &&
+        isTimelineUngroupableMessage(item.message) &&
+        item.message.sourceSeqStart > turn.sourceSeqStart,
+    );
+
+  if (!canUseCanonicalIdentity) {
     return [...items];
   }
 
-  const onlySummaryGroup = summaryGroups[0];
-  return items.map((item) =>
-    item === onlySummaryGroup
-      ? {
-          ...item,
-          startedAt: turn.startedAt,
-          completedAt: turn.completedAt,
-        }
-      : item,
-  );
+  const firstSummaryGroup = summaryGroups[0];
+  if (!firstSummaryGroup) {
+    return [...items];
+  }
+  const combinedSummaryGroup: CompletedTurnSummaryGroup = {
+    ...firstSummaryGroup,
+    startedAt: turn.startedAt,
+    completedAt: turn.completedAt,
+    rowIdSegmentIndex: null,
+    sourceBounds:
+      summaryGroups.length === 1 ? firstSummaryGroup.sourceBounds : "messages",
+    sourceMessages: summaryGroups.flatMap((group) => group.sourceMessages),
+    summaryCount: summaryGroups.reduce(
+      (count, group) => count + group.summaryCount,
+      0,
+    ),
+  };
+  return items.flatMap((item): CompletedTurnSummaryItem[] => {
+    if (item === firstSummaryGroup) return [combinedSummaryGroup];
+    return isCompletedTurnSummaryGroup(item) ? [] : [item];
+  });
 }
 
 function splitCompletedTurnMessages(
@@ -198,7 +222,8 @@ function groupCompletedTurnSummaryMessages(
         kind: "summary",
         startedAt: turn.startedAt,
         completedAt: turn.completedAt,
-        segmentIndex: null,
+        rowIdSegmentIndex: null,
+        sourceBounds: "turn",
         sourceMessages: summaryMessages,
         summaryCount: turn.summaryCount,
       },
@@ -220,7 +245,8 @@ function groupCompletedTurnSummaryMessages(
       kind: "summary",
       startedAt: bounds.startedAt,
       completedAt: null,
-      segmentIndex,
+      rowIdSegmentIndex: segmentIndex,
+      sourceBounds: "messages",
       sourceMessages,
       summaryCount: getProjectionSummaryCount(sourceMessages, undefined),
     });
@@ -295,15 +321,19 @@ function groupCompletedTurnSummaryMessages(
     externalBoundaryIndex += 1;
   }
   flushGroupedMessages();
-  return applySingleSummaryTurnBounds(turn, items);
+  return combineSummaryGroupsWithoutLaterHumanBoundary(turn, items);
 }
 
 export function groupCompletedTurnMessages(
   turn: EventProjectionTurn,
+  completionIsContextOnly = false,
 ): CompletedTurnMessageGroups {
   const messages = turn.messages ?? [];
   const { summaryMessages, terminalMessages, trailingMessages } =
-    splitCompletedTurnMessages(messages, turn.terminalMessage);
+    splitCompletedTurnMessages(
+      messages,
+      completionIsContextOnly ? undefined : turn.terminalMessage,
+    );
   return {
     summaryItems: unwrapSingletonContextManagementGroups(
       groupCompletedTurnSummaryMessages(

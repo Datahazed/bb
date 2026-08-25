@@ -127,6 +127,9 @@ interface TimelineListItemOfKind<K extends TimelineRowKind> {
   expanded: boolean;
   /** Set on expanded turn rows whose children come from the lazy endpoint. */
   lazyChildren: TimelineLazyChildrenStatus | null;
+  lazyChildrenHasMore: boolean;
+  lazyChildrenLoadingMore: boolean;
+  onLoadMoreLazyChildren: (() => void) | null;
 }
 
 export type TimelineListItem = {
@@ -137,7 +140,13 @@ export type TimelineListItem = {
 export type TimelineTurnChildrenState =
   | { status: "loading" }
   | { status: "error" }
-  | { status: "loaded"; rows: readonly TimelineRow[] };
+  | {
+      status: "loaded";
+      rows: readonly TimelineRow[];
+      hasMore: boolean;
+      loadingMore: boolean;
+      loadMore: () => void;
+    };
 
 interface BuildTimelineListItemsArgs {
   rows: readonly TimelineRow[];
@@ -253,7 +262,10 @@ function isSameListItem(a: TimelineListItem, b: TimelineListItem): boolean {
     a.scopeActive === b.scopeActive &&
     a.expandable === b.expandable &&
     a.expanded === b.expanded &&
-    a.lazyChildren === b.lazyChildren
+    a.lazyChildren === b.lazyChildren &&
+    a.lazyChildrenHasMore === b.lazyChildrenHasMore &&
+    a.lazyChildrenLoadingMore === b.lazyChildrenLoadingMore &&
+    a.onLoadMoreLazyChildren === b.onLoadMoreLazyChildren
   );
 }
 
@@ -302,6 +314,9 @@ export function buildTimelineListItems({
       );
       const expanded = isExpanded(row.id);
       let lazyChildren: TimelineLazyChildrenStatus | null = null;
+      let lazyChildrenHasMore = false;
+      let lazyChildrenLoadingMore = false;
+      let onLoadMoreLazyChildren: (() => void) | null = null;
       let children: readonly ThreadTimelineViewRow[] | null = null;
       let childScopeActive = false;
       if (expanded) {
@@ -327,6 +342,9 @@ export function buildTimelineListItems({
                 lazyChildren = "error";
               } else {
                 lazyChildren = "loaded";
+                lazyChildrenHasMore = lazy.hasMore;
+                lazyChildrenLoadingMore = lazy.loadingMore;
+                onLoadMoreLazyChildren = lazy.loadMore;
                 // Lazy turn children belong to a completed turn: a closed
                 // scope, so trailing work collapses into a step-summary.
                 children = buildTimelineViewRows(lazy.rows, {
@@ -358,6 +376,9 @@ export function buildTimelineListItems({
         expandable: isRowExpandable(row),
         expanded,
         lazyChildren,
+        lazyChildrenHasMore,
+        lazyChildrenLoadingMore,
+        onLoadMoreLazyChildren,
       } as TimelineListItem;
       const previous = previousItems?.get(key);
       const item =

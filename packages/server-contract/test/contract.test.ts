@@ -33,6 +33,7 @@ import {
   terminalWebSocketQuerySchema,
   threadListResponseSchema,
   threadPendingInteractionsResponseSchema,
+  timelineTurnDetailsResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
   updateQueuedMessageRequestSchema,
   updateEnvironmentRequestSchema,
@@ -253,6 +254,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineQuerySchema.summaryOnly",
       "threadTimelineQuerySchema.afterSequence",
     ],
+  },
+  {
+    reason:
+      "The initial completed-turn detail request omits a cursor; continuation requests carry the opaque cursor returned by the server.",
+    fields: ["timelineTurnDetailsQuerySchema.cursor"],
   },
   {
     reason:
@@ -1071,6 +1077,12 @@ describe("server-contract canonical schemas", () => {
     ).toEqual({
       rows: [],
     });
+    expect(
+      timelineTurnDetailsResponseSchema.parse({
+        rows: [],
+        nextCursor: "cursor-2",
+      }),
+    ).toEqual({ rows: [], nextCursor: "cursor-2" });
   });
 
   it("normalizes the deprecated writable alias without widening readonly", () => {
@@ -1610,6 +1622,12 @@ describe("server-contract clients", () => {
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/timeline/turn-summary-details");
     expect(
+      publicClient.threads[":id"].timeline["turn-details"].$url({
+        param: { id: "thr_123" },
+        query: { turnId: "turn_123" },
+      }).pathname,
+    ).toBe("/api/v1/threads/thr_123/timeline/turn-details");
+    expect(
       publicClient.threads[":id"]["thread-storage"].files.$url({
         param: { id: "thr_123" },
       }).pathname,
@@ -1819,6 +1837,9 @@ describe("server-contract clients", () => {
         contract.threadPendingInteractionsResponseSchema,
       threadTimelineQuerySchema: contract.threadTimelineQuerySchema,
       threadTimelineResponseSchema: contract.threadTimelineResponseSchema,
+      timelineTurnDetailsQuerySchema: contract.timelineTurnDetailsQuerySchema,
+      timelineTurnDetailsResponseSchema:
+        contract.timelineTurnDetailsResponseSchema,
       timelineTurnSummaryDetailsQuerySchema:
         contract.timelineTurnSummaryDetailsQuerySchema,
       timelineTurnSummaryDetailsRequestSchema:

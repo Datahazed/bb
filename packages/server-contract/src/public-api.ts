@@ -195,6 +195,8 @@ import type {
   ThreadTimelineQuery,
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
+  TimelineTurnDetailsQuery,
+  TimelineTurnDetailsResponse,
   TimelineTurnSummaryDetailsQuery,
   TimelineTurnSummaryDetailsResponse,
   UpdateEnvironmentRequest,
@@ -295,6 +297,7 @@ import {
   terminalOutputQuerySchema,
   terminalResizeRequestSchema,
   threadTimelineQuerySchema,
+  timelineTurnDetailsQuerySchema,
   systemCliSkillsStatusQuerySchema,
   systemInstallCliSkillsRequestSchema,
   timelineTurnSummaryDetailsQuerySchema,
@@ -1230,6 +1233,14 @@ export const publicApiRoutes = {
         timelineTurnSummaryDetailsQuerySchema,
       ),
       response: jsonResponse<TimelineTurnSummaryDetailsResponse>(),
+    }),
+    timelineTurnDetails: defineRoute({
+      path: "/threads/:id/timeline/turn-details",
+      method: "get",
+      request: queryRequest<PathId, TimelineTurnDetailsQuery>(
+        timelineTurnDetailsQuerySchema,
+      ),
+      response: jsonResponse<TimelineTurnDetailsResponse>(),
     }),
     output: defineRoute({
       path: "/threads/:id/output",

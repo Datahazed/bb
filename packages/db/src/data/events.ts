@@ -1234,6 +1234,25 @@ export interface FindStoredTimelineWindowByteBudgetFloorArgs
   maxDataBytes: number;
 }
 
+export interface ReadStoredTimelineWindowForwardPageArgs
+  extends ListStoredTimelineWindowEventRowsArgs {
+  beforeSequence: number;
+  maxDataBytes: number;
+  maxEventCount: number;
+}
+
+export type StoredTimelineWindowForwardPage =
+  | {
+      kind: "page";
+      nextSequenceStart: number | null;
+      rows: StoredEventRow[];
+    }
+  | {
+      dataBytes: number;
+      kind: "single-event-too-large";
+      sequence: number;
+    };
+
 export type StoredTimelineWindowByteBudgetFloor =
   | { eventDataBytes: number; kind: "fits" }
   | { eventDataBytes: number; kind: "floor"; sequenceStart: number }
@@ -3109,11 +3128,64 @@ export function listStoredTimelineWindowEventRows(
   args: ListStoredTimelineWindowEventRowsArgs,
 ): StoredEventRow[] {
   return db
-    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+    .select(
+      storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
+    )
     .from(events)
     .where(and(...storedTimelineWindowConditions(args)))
     .orderBy(events.sequence)
     .all();
+}
+
+/**
+ * Reads the oldest bounded prefix of a sequence range in one query. Completed
+ * turn details use this instead of first measuring a range and then reading it.
+ */
+export function readStoredTimelineWindowForwardPage(
+  db: DbConnection,
+  args: ReadStoredTimelineWindowForwardPageArgs,
+): StoredTimelineWindowForwardPage {
+  const fields = storedEventRowFieldsWithInlineOutputLimit(
+    args.maxInlineOutputChars,
+  );
+  const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
+  const candidates = db
+    .select({
+      ...fields,
+      dataBytes: sql<number>`length(CAST(${data} AS BLOB))`.as("data_bytes"),
+    })
+    .from(events)
+    .where(and(...storedTimelineWindowConditions(args)))
+    .orderBy(events.sequence)
+    .limit(args.maxEventCount + 1)
+    .all();
+
+  const rows: StoredEventRow[] = [];
+  let dataBytes = 0;
+  for (const candidate of candidates) {
+    if (
+      rows.length === args.maxEventCount ||
+      dataBytes + candidate.dataBytes > args.maxDataBytes
+    ) {
+      if (rows.length === 0) {
+        return {
+          dataBytes: candidate.dataBytes,
+          kind: "single-event-too-large",
+          sequence: candidate.sequence,
+        };
+      }
+      return {
+        kind: "page",
+        nextSequenceStart: candidate.sequence,
+        rows,
+      };
+    }
+    const { dataBytes: _dataBytes, ...row } = candidate;
+    rows.push(row);
+    dataBytes += candidate.dataBytes;
+  }
+
+  return { kind: "page", nextSequenceStart: null, rows };
 }
 
 function listLatestRowsForContextWindowUsage(
