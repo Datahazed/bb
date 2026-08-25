@@ -164,4 +164,44 @@ describe("plugin listing lifecycle persistence", () => {
       }),
     ).toThrow("has no listing draft");
   });
+
+  it("keeps an in-review submission intact when a draft save is attempted", () => {
+    upsertInstalledPlugin(db, plugin);
+    savePluginListingDraft(db, plugin.id, draft);
+    const inReview = recordPluginListingSubmission(db, plugin.id, {
+      url: "https://github.com/get-bb/marketplace/pull/42",
+      openedAt: 1_000,
+    });
+
+    expect(() =>
+      savePluginListingDraft(db, plugin.id, {
+        ...draft,
+        displayName: "Updated author tools",
+      }),
+    ).toThrow("already has a listing in review");
+    expect(getPluginListingLifecycle(db, plugin.id)).toEqual(inReview);
+  });
+
+  it("starts a fresh draft when editing a published listing", () => {
+    upsertInstalledPlugin(db, plugin);
+    savePluginListingDraft(db, plugin.id, draft);
+    recordPluginListingSubmission(db, plugin.id, {
+      url: "https://github.com/get-bb/marketplace/pull/42",
+      openedAt: 1_000,
+    });
+    publishPluginListing(db, plugin.id, 2_000);
+    const updatedDraft = {
+      ...draft,
+      displayName: "Updated author tools",
+    };
+
+    expect(savePluginListingDraft(db, plugin.id, updatedDraft)).toEqual({
+      status: "draft",
+      entry: updatedDraft,
+    });
+    expect(getPluginListingLifecycle(db, plugin.id)).toEqual({
+      status: "draft",
+      entry: updatedDraft,
+    });
+  });
 });

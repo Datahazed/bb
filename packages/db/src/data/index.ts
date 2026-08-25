@@ -146,6 +146,7 @@ export {
   recordPluginListingSubmission,
   returnPluginListingToDraft,
   savePluginListingDraft,
+  PluginListingDraftConflictError,
 } from "./plugin-listing-lifecycles.js";
 export type { PluginListingLifecycleRow } from "./plugin-listing-lifecycles.js";
 export {

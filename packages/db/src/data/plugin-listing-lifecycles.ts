@@ -15,6 +15,10 @@ export interface PluginListingLifecycleRow {
   lifecycle: PluginListingLifecycle;
 }
 
+export class PluginListingDraftConflictError extends Error {
+  override readonly name = "PluginListingDraftConflictError";
+}
+
 function parseLifecycle(json: string): PluginListingLifecycle {
   return pluginListingLifecycleSchema.parse(JSON.parse(json));
 }
@@ -149,6 +153,13 @@ export function savePluginListingDraft(
   pluginId: string,
   entry: PluginListingDraftEntry,
 ): PluginListingLifecycle {
+  const current = getPluginListingLifecycle(db, pluginId);
+  if (current?.status === "in-review") {
+    throw new PluginListingDraftConflictError(
+      `plugin ${JSON.stringify(pluginId)} already has a listing in review`,
+    );
+  }
+  // A published listing deliberately starts a fresh draft for Edit listing.
   const lifecycle = pluginListingLifecycleSchema.parse({
     status: "draft",
     entry,

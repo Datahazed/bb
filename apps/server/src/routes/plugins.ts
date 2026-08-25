@@ -38,6 +38,7 @@ import {
   listPluginListingNotices,
   recordPluginListingSubmission,
   savePluginListingDraft,
+  PluginListingDraftConflictError,
 } from "@bb/db";
 import { parseMarketplaceManifest } from "../services/plugin-catalog/marketplace-manifest.js";
 import { parseGithubPullRequestUrl } from "../services/plugins/plugin-listing-lifecycle.js";
@@ -262,7 +263,7 @@ export function registerPluginListingRoutes(
     } catch (error) {
       return context.json(
         { error: error instanceof Error ? error.message : String(error) },
-        422,
+        error instanceof PluginListingDraftConflictError ? 409 : 422,
       );
     }
   });

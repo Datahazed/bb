@@ -230,5 +230,33 @@ describe("plugin listing routes", () => {
         },
       },
     });
+
+    const attemptedDraft = await app.request(
+      `/plugins/${entry.id}/listing/draft`,
+      jsonPost({
+        entry: { ...entry, displayName: "Updated author tools" },
+      }),
+    );
+    expect(attemptedDraft.status).toBe(409);
+    expect(await attemptedDraft.json()).toEqual({
+      error: `plugin ${JSON.stringify(entry.id)} already has a listing in review`,
+    });
+
+    const record = await app.request("/plugin-listings");
+    expect(await record.json()).toMatchObject({
+      records: [
+        {
+          pluginId: entry.id,
+          lifecycle: {
+            status: "in-review",
+            entry,
+            pullRequest: {
+              url: "https://github.com/get-bb/marketplace/pull/42",
+              openedAt: 1,
+            },
+          },
+        },
+      ],
+    });
   });
 });
