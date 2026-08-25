@@ -223,7 +223,7 @@ export function useThreadQueuedMessages(
 
 /**
  * Lazy children of one completed-turn summary row. The server owns page
- * boundaries; the client cache identifies only the turn.
+ * boundaries; the client cache identifies the row's semantic source range.
  * A history rewrite invalidates every detail page for the thread.
  */
 export function useTimelineTurnDetails(
@@ -240,6 +240,8 @@ export function useTimelineTurnDetails(
           hookName: "useTimelineTurnDetails",
           argName: "thread id",
         }),
+        sourceSeqEnd: String(identity.sourceSeqEnd),
+        sourceSeqStart: String(identity.sourceSeqStart),
         turnId: identity.turnId,
         signal,
       }),

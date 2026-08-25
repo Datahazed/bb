@@ -1082,6 +1082,8 @@ export function useThreadTimelineTurnDetails(
           identity.threadId,
           "useThreadTimelineTurnDetails",
         ),
+        sourceSeqEnd: String(identity.sourceSeqEnd),
+        sourceSeqStart: String(identity.sourceSeqStart),
         turnId: identity.turnId,
       }),
     initialPageParam: null as string | null,

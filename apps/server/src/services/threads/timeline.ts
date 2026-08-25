@@ -26,6 +26,7 @@ import type {
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
 import {
+  findStoredTurnAssistantMessageContextRows,
   findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
   getStoredEventRowsByParentToolCallIdsDataBytes,
@@ -165,16 +166,16 @@ interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySele
   providerDisplayName?: string;
 }
 
-interface BuildTimelineTurnDetailsPageOptions {
+interface BuildTimelineTurnDetailsPageOptions extends TimelineTurnSummarySelection {
   cursor?: string;
   includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
-  turnId: string;
 }
 
 interface BuildTimelineTurnSummaryDetailsRangeOptions extends BuildTimelineTurnSummaryDetailsOptions {
   preloadedEventRows?: readonly StoredEventRow[];
-  resourceKind: "exact-range" | "page";
+  resourceKind: "legacy-exact-range" | "logical-exact-range" | "page";
+  semanticSourceSeqStart?: number;
 }
 
 export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
@@ -824,6 +825,11 @@ interface SequenceWindowItemRowsArgs extends TimelineWindowRowsArgs {
   beforeSequence: number | undefined;
   /** See {@link InlineOutputCharLimit}. */
   maxInlineOutputChars: InlineOutputCharLimit;
+  /**
+   * Earliest sequence whose items belong to this semantic resource. Items
+   * starting before it are neighboring-group context, not page-owned items.
+   */
+  itemOwnershipSequenceStart?: number;
   /** Inclusive lower bound of the window. */
   sequenceStart: number;
 }
@@ -891,6 +897,7 @@ function ensureSequenceWindowWholeItemRows(
     threadId: args.threadId,
   });
   const itemKeysOwnedByNewerWindow = new Set<string>();
+  const itemKeysOwnedBeforeSemanticSelection = new Set<string>();
   const itemsStartingBeforeWindow = new Map<string, ScopedItemRef>();
   for (const span of spans) {
     const key = scopedItemRefKey(span);
@@ -899,6 +906,13 @@ function ensureSequenceWindowWholeItemRows(
       span.maxSequence >= args.beforeSequence
     ) {
       itemKeysOwnedByNewerWindow.add(key);
+      continue;
+    }
+    if (
+      args.itemOwnershipSequenceStart !== undefined &&
+      span.minSequence < args.itemOwnershipSequenceStart
+    ) {
+      itemKeysOwnedBeforeSemanticSelection.add(key);
       continue;
     }
     if (span.minSequence < args.sequenceStart) {
@@ -913,9 +927,12 @@ function ensureSequenceWindowWholeItemRows(
   const rows = args.rows.filter(
     (row) =>
       row.itemId === null ||
-      !itemKeysOwnedByNewerWindow.has(
+      (!itemKeysOwnedByNewerWindow.has(
         scopedItemRefKey(storedEventRowItemRef(row)),
-      ),
+      ) &&
+        !itemKeysOwnedBeforeSemanticSelection.has(
+          scopedItemRefKey(storedEventRowItemRef(row)),
+        )),
   );
   if (itemsStartingBeforeWindow.size === 0) {
     return rows;
@@ -1582,14 +1599,10 @@ function buildSequencePageTimelineRows(
     return [
       {
         ...row,
-        // A finished turn summary is one logical row even when transport
-        // budgets split its source events across pages. Other row kinds keep
-        // page-local identities because equal ids can represent closure
-        // context rather than disjoint pieces of one row.
-        id:
-          row.completedAt === null || row.status === "pending"
-            ? `${row.id}${suffix}`
-            : row.id,
+        // Every transport fragment keeps a page-local identity. The client
+        // coalesces only adjacent completed-turn fragments at a page seam;
+        // visible conversation rows therefore remain semantic boundaries.
+        id: `${row.id}${suffix}`,
         sourceSeqEnd,
         sourceSeqStart,
       },
@@ -1998,6 +2011,8 @@ function buildTimelineTurnSummaryDetailsRange(
 
   const includeProviderUnhandledOperations =
     options.includeProviderUnhandledOperations;
+  const useSemanticSelectionContext =
+    options.resourceKind !== "legacy-exact-range";
   const detailsWindow = {
     beforeSequence: options.sourceSeqEnd + 1,
     excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
@@ -2111,6 +2126,15 @@ function buildTimelineTurnSummaryDetailsRange(
     },
     useExactEventRowBounds: exactEventRowsForRequestedTurn.removedRows,
   });
+  const assistantContextRows = useSemanticSelectionContext
+    ? findStoredTurnAssistantMessageContextRows(db, {
+        afterSequence: sourceRange.sourceSeqEnd,
+        beforeSequence: sourceRange.sourceSeqStart,
+        maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+        threadId: thread.id,
+        turnId: options.turnId,
+      })
+    : { after: null, before: null };
   // The same whole-item ownership rule the timeline window applies, for the
   // same reason. A byte cut can fall between an item's `item/started` and its
   // `item/completed`, and the timeline gives such an item to the newest slice.
@@ -2118,18 +2142,27 @@ function buildTimelineTurnSummaryDetailsRange(
   // `item/started` row alone and render it "pending" after the turn finished.
   const wholeItemEventRows = ensureSequenceWindowWholeItemRows(db, {
     beforeSequence: detailsWindow.beforeSequence,
+    itemOwnershipSequenceStart:
+      options.resourceKind === "legacy-exact-range"
+        ? undefined
+        : (options.semanticSourceSeqStart ?? sourceRange.sourceSeqStart),
     maxInlineOutputChars: detailsInlineOutputLimit,
     rows: mergeStoredEventRowsById([...requestedTurnStartedRows, ...eventRows]),
     sequenceStart: detailsWindow.sequenceStart,
     threadId: thread.id,
   });
+  const eventRowsWithSemanticContext = mergeStoredEventRowsById([
+    ...(assistantContextRows.before ? [assistantContextRows.before] : []),
+    ...wholeItemEventRows,
+    ...(assistantContextRows.after ? [assistantContextRows.after] : []),
+  ]);
   // The floor queries measured the slice before closure, and closure backfills
   // the earlier lifecycle rows of the items this slice owns. Measure what the
   // route actually holds, so the parent expansion spends what is left rather
   // than a pre-closure estimate of it. The subtraction may go negative, which
   // is the safe direction: the parent fetch then stays inside its bounds.
   const detailsEventDataBytes =
-    byteLengthOfStoredEventRows(wholeItemEventRows);
+    byteLengthOfStoredEventRows(eventRowsWithSemanticContext);
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     maxInlineOutputChars: detailsInlineOutputLimit,
     outOfBoundsChildDataByteLimit:
@@ -2139,29 +2172,55 @@ function buildTimelineTurnSummaryDetailsRange(
       sequenceStart: detailsWindow.sequenceStart,
     },
     threadId: thread.id,
-    rows: wholeItemEventRows,
+    rows: eventRowsWithSemanticContext,
   }).rows;
   const eventRowsWithTurnStarts = ensureTimelineWindowTurnStartedRows(db, {
     threadId: thread.id,
     rows: eventRowsWithParentedChildren,
   });
+  const eventRowsWithTurnLifecycle = useSemanticSelectionContext
+    ? ensureSequenceWindowTurnCompletedRows(db, {
+        threadId: thread.id,
+        rows: eventRowsWithTurnStarts,
+      })
+    : eventRowsWithTurnStarts;
   const eventRowsWithBackgroundTaskState =
     ensureTimelineWindowBackgroundTaskStateRows(db, {
       threadId: thread.id,
-      rows: eventRowsWithTurnStarts,
+      rows: eventRowsWithTurnLifecycle,
     });
-  const projectionSourceSeqStart = eventRowsWithTurnStarts.reduce(
-    (sourceSeqStart, row) =>
-      row.type === "turn/started" && row.turnId === options.turnId
-        ? Math.min(sourceSeqStart, row.sequence)
-        : sourceSeqStart,
-    sourceRange.sourceSeqStart,
+  const contextOnlyMessageSeqs = new Set(
+    [assistantContextRows.before, assistantContextRows.after].flatMap((row) =>
+      row ? [row.sequence] : [],
+    ),
   );
+  const projectionSourceSeqStart = useSemanticSelectionContext
+    ? sourceRange.sourceSeqStart
+    : eventRowsWithTurnStarts.reduce(
+        (sourceSeqStart, row) =>
+          row.type === "turn/started" && row.turnId === options.turnId
+            ? Math.min(sourceSeqStart, row.sequence)
+            : sourceSeqStart,
+        sourceRange.sourceSeqStart,
+      );
   const projectionArgs = {
     events: eventRowsWithBackgroundTaskState.map((row) =>
       toThreadEventWithMeta(row),
     ),
     options: {
+      allowContextExpandedMatch: useSemanticSelectionContext,
+      contextOnlyCompletedTurnIds:
+        useSemanticSelectionContext &&
+        eventRowsWithTurnLifecycle.some(
+          (row) =>
+            row.type === "turn/completed" &&
+            row.turnId === options.turnId &&
+            row.sequence > sourceRange.sourceSeqEnd,
+        )
+          ? new Set([options.turnId])
+          : undefined,
+      contextOnlyMessageSeqs:
+        contextOnlyMessageSeqs.size === 0 ? undefined : contextOnlyMessageSeqs,
       includeProviderUnhandledOperations,
       sourceSeqEnd: sourceRange.sourceSeqEnd,
       sourceSeqStart: projectionSourceSeqStart,
@@ -2198,12 +2257,14 @@ export function buildTimelineTurnSummaryDetails(
 ): TimelineTurnSummaryDetailsResponse {
   return buildTimelineTurnSummaryDetailsRange(db, thread, {
     ...options,
-    resourceKind: "exact-range",
+    resourceKind: "legacy-exact-range",
   });
 }
 
 interface TurnDetailsCursorPayload {
   sequenceStart: number;
+  sourceSeqEnd: number;
+  sourceSeqStart: number;
   threadId: string;
   turnId: string;
   version: 1;
@@ -2211,6 +2272,8 @@ interface TurnDetailsCursorPayload {
 
 const turnDetailsCursorPayloadSchema = z.object({
   sequenceStart: z.number().int().nonnegative(),
+  sourceSeqEnd: z.number().int().nonnegative(),
+  sourceSeqStart: z.number().int().nonnegative(),
   threadId: z.string().min(1),
   turnId: z.string().min(1),
   version: z.literal(1),
@@ -2235,7 +2298,9 @@ function parseTurnDetailsCursor(
     !parsed.success ||
     parsed.data.version !== expected.version ||
     parsed.data.threadId !== expected.threadId ||
-    parsed.data.turnId !== expected.turnId
+    parsed.data.turnId !== expected.turnId ||
+    parsed.data.sourceSeqStart !== expected.sourceSeqStart ||
+    parsed.data.sourceSeqEnd !== expected.sourceSeqEnd
   ) {
     throw new ApiError(400, "invalid_request", "Invalid turn details cursor");
   }
@@ -2245,29 +2310,36 @@ function parseTurnDetailsCursor(
 function resolveCompletedTurnDetailBounds(
   db: DbConnection,
   threadId: string,
-  turnId: string,
+  selection: TimelineTurnSummarySelection,
 ): TimelineTurnSummarySelection {
   const started = listStoredTurnStartedRowsByTurnIdsUpToSequence(db, {
     sequenceCutoff: Number.MAX_SAFE_INTEGER,
     threadId,
-    turnIds: [turnId],
+    turnIds: [selection.turnId],
   })[0];
   const completed = listStoredTurnCompletedRowsByTurnIds(db, {
     threadId,
-    turnIds: [turnId],
+    turnIds: [selection.turnId],
   }).at(-1);
   if (!started || !completed || started.sequence > completed.sequence) {
     throw new ApiError(
       400,
       "invalid_request",
-      `Cannot paginate details for incomplete turn ${turnId}`,
+      `Cannot paginate details for incomplete turn ${selection.turnId}`,
     );
   }
-  return {
-    sourceSeqEnd: completed.sequence,
-    sourceSeqStart: started.sequence,
-    turnId,
-  };
+  if (
+    selection.sourceSeqStart > selection.sourceSeqEnd ||
+    selection.sourceSeqStart < started.sequence ||
+    selection.sourceSeqEnd > completed.sequence
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Invalid detail range for completed turn ${selection.turnId}`,
+    );
+  }
+  return selection;
 }
 
 export function buildTimelineTurnDetailsPage(
@@ -2275,12 +2347,10 @@ export function buildTimelineTurnDetailsPage(
   thread: Thread,
   options: BuildTimelineTurnDetailsPageOptions,
 ): TimelineTurnDetailsResponse {
-  const bounds = resolveCompletedTurnDetailBounds(
-    db,
-    thread.id,
-    options.turnId,
-  );
+  const bounds = resolveCompletedTurnDetailBounds(db, thread.id, options);
   const cursorIdentity = {
+    sourceSeqEnd: bounds.sourceSeqEnd,
+    sourceSeqStart: bounds.sourceSeqStart,
     threadId: thread.id,
     turnId: options.turnId,
     version: 1 as const,
@@ -2301,7 +2371,7 @@ export function buildTimelineTurnDetailsPage(
         includeProviderUnhandledOperations:
           options.includeProviderUnhandledOperations,
         providerDisplayName: options.providerDisplayName,
-        resourceKind: "exact-range",
+        resourceKind: "logical-exact-range",
         ...bounds,
       });
       return { rows: details.rows, nextCursor: null };
@@ -2340,6 +2410,7 @@ export function buildTimelineTurnDetailsPage(
     preloadedEventRows: page.rows,
     providerDisplayName: options.providerDisplayName,
     resourceKind: "page",
+    semanticSourceSeqStart: bounds.sourceSeqStart,
     sourceSeqEnd,
     sourceSeqStart,
     turnId: options.turnId,

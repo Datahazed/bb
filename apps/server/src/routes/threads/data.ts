@@ -482,6 +482,8 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           deps,
           thread.providerId,
         ),
+        sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
+        sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
         turnId: query.turnId,
       }),
     );

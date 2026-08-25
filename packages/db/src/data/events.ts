@@ -1,5 +1,6 @@
 import {
   and,
+  asc,
   desc,
   eq,
   gt,
@@ -1226,6 +1227,15 @@ export interface ListStoredTimelineWindowEventRowsArgs {
   threadId: string;
 }
 
+export interface FindStoredTurnAssistantMessageContextRowsArgs {
+  afterSequence: number;
+  beforeSequence: number;
+  /** See {@link InlineOutputCharLimit}. */
+  maxInlineOutputChars: InlineOutputCharLimit;
+  threadId: string;
+  turnId: string;
+}
+
 export type GetStoredTimelineWindowEventDataBytesArgs =
   ListStoredTimelineWindowEventRowsArgs;
 
@@ -1576,6 +1586,38 @@ export function findStoredEventRow(
       .limit(1)
       .get() ?? null
   );
+}
+
+export function findStoredTurnAssistantMessageContextRows(
+  db: DbConnection,
+  args: FindStoredTurnAssistantMessageContextRowsArgs,
+): { after: StoredEventRow | null; before: StoredEventRow | null } {
+  const fields = storedEventRowFieldsWithInlineOutputLimit(
+    args.maxInlineOutputChars,
+  );
+  const scope = [
+    eq(events.threadId, args.threadId),
+    eq(events.turnId, args.turnId),
+    eq(events.type, "item/completed"),
+    eq(events.itemKind, "agentMessage"),
+  ];
+  const before =
+    db
+      .select(fields)
+      .from(events)
+      .where(and(...scope, lt(events.sequence, args.beforeSequence)))
+      .orderBy(desc(events.sequence))
+      .limit(1)
+      .get() ?? null;
+  const after =
+    db
+      .select(fields)
+      .from(events)
+      .where(and(...scope, gt(events.sequence, args.afterSequence)))
+      .orderBy(asc(events.sequence))
+      .limit(1)
+      .get() ?? null;
+  return { after, before };
 }
 
 export function listStoredEventRowsByParentToolCallIds(

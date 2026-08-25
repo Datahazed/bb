@@ -212,6 +212,8 @@ describe("useThreadTimelineTurnDetails", () => {
     const result = renderHook(
       () =>
         useThreadTimelineTurnDetails({
+          sourceSeqEnd: 2,
+          sourceSeqStart: 1,
           threadId: "thread-1",
           turnId: "turn-1",
         }),
@@ -230,7 +232,11 @@ describe("useThreadTimelineTurnDetails", () => {
 
     expect(sdk.threads.timelineTurnDetails).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ cursor: "cursor-2" }),
+      expect.objectContaining({
+        cursor: "cursor-2",
+        sourceSeqEnd: "2",
+        sourceSeqStart: "1",
+      }),
     );
     await waitFor(() =>
       expect(

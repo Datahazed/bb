@@ -739,6 +739,8 @@ export type TimelineTurnSummaryDetailsQuery = z.infer<
 
 export const timelineTurnDetailsQuerySchema = z.object({
   turnId: z.string().min(1),
+  sourceSeqStart: z.string().regex(/^\d+$/),
+  sourceSeqEnd: z.string().regex(/^\d+$/),
   cursor: z.string().min(1).optional(),
 });
 export type TimelineTurnDetailsQuery = z.infer<

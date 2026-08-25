@@ -144,6 +144,8 @@ type ThreadTimelineQueryKey = readonly [
   string,
 ];
 export interface ThreadTimelineTurnDetailsQueryIdentity {
+  sourceSeqEnd: number;
+  sourceSeqStart: number;
   threadId: string;
   turnId: string;
 }
@@ -151,6 +153,8 @@ type ThreadTimelineTurnDetailsQueryKey = readonly [
   typeof THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
   string,
   string,
+  number,
+  number,
   "pages",
 ];
 type ThreadTimelineTurnSummaryDetailsQueryKeyPrefix = readonly [
@@ -383,6 +387,8 @@ export function threadTimelineQueryKey(
 }
 
 export function threadTimelineTurnDetailsQueryKey({
+  sourceSeqEnd,
+  sourceSeqStart,
   threadId,
   turnId,
 }: ThreadTimelineTurnDetailsQueryIdentity): ThreadTimelineTurnDetailsQueryKey {
@@ -390,6 +396,8 @@ export function threadTimelineTurnDetailsQueryKey({
     THREAD_TIMELINE_TURN_SUMMARY_DETAILS_QUERY_KEY,
     threadId,
     turnId,
+    sourceSeqStart,
+    sourceSeqEnd,
     "pages",
   ];
 }

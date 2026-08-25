@@ -1131,6 +1131,8 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             param: { id: input.threadId },
             query: {
               turnId: input.turnId,
+              sourceSeqStart: input.sourceSeqStart,
+              sourceSeqEnd: input.sourceSeqEnd,
               ...(input.cursor ? { cursor: input.cursor } : {}),
             },
           },

@@ -98,49 +98,60 @@ function appendTimelineRowsPreservingOrder(
   target: TimelineRow[],
   rows: readonly TimelineRow[],
 ): void {
-  const indexById = new Map(target.map((row, index) => [row.id, index]));
+  const seenIds = new Set(target.map((row) => row.id));
   for (const row of rows) {
-    const existingIndex = indexById.get(row.id);
-    if (existingIndex !== undefined) {
-      const existing = target[existingIndex];
-      if (
-        existing?.kind === "turn" &&
-        row.kind === "turn" &&
-        existing.completedAt !== null &&
-        row.completedAt !== null &&
-        (existing.sourceSeqEnd < row.sourceSeqStart ||
-          row.sourceSeqEnd < existing.sourceSeqStart)
-      ) {
-        const ordered =
-          existing.sourceSeqStart <= row.sourceSeqStart
-            ? [existing, row]
-            : [row, existing];
-        const children = [
-          ...new Map(
-            ordered
-              .flatMap((part) => part.children ?? [])
-              .map((child) => [child.id, child]),
-          ).values(),
-        ];
-        target[existingIndex] = {
-          ...ordered[1],
-          children:
-            existing.children === null && row.children === null
-              ? null
-              : children,
-          completedAt: Math.max(existing.completedAt, row.completedAt),
-          createdAt: Math.min(existing.createdAt, row.createdAt),
-          sourceSeqEnd: Math.max(existing.sourceSeqEnd, row.sourceSeqEnd),
-          sourceSeqStart: Math.min(existing.sourceSeqStart, row.sourceSeqStart),
-          startedAt: Math.min(existing.startedAt, row.startedAt),
-          summaryCount: existing.summaryCount + row.summaryCount,
-        };
-      }
+    if (seenIds.has(row.id)) {
       continue;
     }
-    indexById.set(row.id, target.length);
+    seenIds.add(row.id);
     target.push(row);
   }
+}
+
+function canCoalesceCompletedTurnPageSeam(
+  older: TimelineRow | undefined,
+  newer: TimelineRow | undefined,
+): older is Extract<TimelineRow, { kind: "turn" }> {
+  return (
+    older?.kind === "turn" &&
+    newer?.kind === "turn" &&
+    older.threadId === newer.threadId &&
+    older.turnId === newer.turnId &&
+    older.completedAt !== null &&
+    newer.completedAt !== null &&
+    older.sourceSeqEnd < newer.sourceSeqStart
+  );
+}
+
+function coalesceCompletedTurnPageSeam(
+  older: Extract<TimelineRow, { kind: "turn" }>,
+  newer: Extract<TimelineRow, { kind: "turn" }>,
+): Extract<TimelineRow, { kind: "turn" }> {
+  if (older.completedAt === null || newer.completedAt === null) {
+    throw new Error("Cannot coalesce unfinished turn rows");
+  }
+  const children = [
+    ...new Map(
+      [older, newer]
+        .flatMap((part) => part.children ?? [])
+        .map((child) => [child.id, child]),
+    ).values(),
+  ];
+  return {
+    ...newer,
+    // The older page owns the stable position of the combined transport
+    // fragment. Visible rows at either side of the seam prevent this helper
+    // from running, so a semantic conversation boundary is never crossed.
+    id: older.id,
+    children:
+      older.children === null && newer.children === null ? null : children,
+    completedAt: Math.max(older.completedAt, newer.completedAt),
+    createdAt: Math.min(older.createdAt, newer.createdAt),
+    sourceSeqEnd: newer.sourceSeqEnd,
+    sourceSeqStart: older.sourceSeqStart,
+    startedAt: Math.min(older.startedAt, newer.startedAt),
+    summaryCount: older.summaryCount + newer.summaryCount,
+  };
 }
 
 function timelineRowIdentitySignature(row: TimelineRow): string {
@@ -205,7 +216,17 @@ export function prependOlderTimelineRows({
 }: PrependOlderTimelineRowsArgs): TimelineRow[] {
   const rows: TimelineRow[] = [];
   appendTimelineRowsPreservingOrder(rows, olderRows);
-  appendTimelineRowsPreservingOrder(rows, loadedRows);
+  const older = rows.at(-1);
+  const newer = loadedRows[0];
+  if (
+    canCoalesceCompletedTurnPageSeam(older, newer) &&
+    newer?.kind === "turn"
+  ) {
+    rows[rows.length - 1] = coalesceCompletedTurnPageSeam(older, newer);
+    appendTimelineRowsPreservingOrder(rows, loadedRows.slice(1));
+  } else {
+    appendTimelineRowsPreservingOrder(rows, loadedRows);
+  }
   return rows;
 }
 

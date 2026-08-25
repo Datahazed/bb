@@ -126,6 +126,8 @@ export function renderTurnChildrenLoaders(
         key={item.key}
         itemKey={item.key}
         identity={{
+          sourceSeqEnd: row.sourceSeqEnd,
+          sourceSeqStart: row.sourceSeqStart,
           threadId: threadId || row.threadId,
           turnId: row.turnId,
         }}

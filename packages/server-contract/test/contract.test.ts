@@ -1624,7 +1624,11 @@ describe("server-contract clients", () => {
     expect(
       publicClient.threads[":id"].timeline["turn-details"].$url({
         param: { id: "thr_123" },
-        query: { turnId: "turn_123" },
+        query: {
+          turnId: "turn_123",
+          sourceSeqStart: "1",
+          sourceSeqEnd: "2",
+        },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/timeline/turn-details");
     expect(

@@ -226,7 +226,7 @@ describe("groupCompletedTurnMessages", () => {
         kind: "summary",
         startedAt: 1,
         completedAt: 4,
-        rowIdSegmentIndex: null,
+        rowIdSegmentIndex: 0,
         sourceBounds: "messages",
         sourceMessages: [{ id: "narration" }, { id: "command" }],
         summaryCount: 2,
@@ -236,7 +236,7 @@ describe("groupCompletedTurnMessages", () => {
     expect(groups.terminalMessages).toEqual([hookReply]);
   });
 
-  it("uses the canonical row identity when the accepted request starts the turn", () => {
+  it("keeps segmented row identity when the accepted request starts the turn", () => {
     const seed = userMessage({ id: "seed", seq: 1 });
     const narration = assistantMessage({ id: "narration", seq: 2 });
     const command = commandMessage({ id: "command", seq: 3 });
@@ -251,7 +251,7 @@ describe("groupCompletedTurnMessages", () => {
       { kind: "ungrouped-message", message: { id: "seed" } },
       {
         kind: "summary",
-        rowIdSegmentIndex: null,
+        rowIdSegmentIndex: 0,
         sourceBounds: "messages",
         sourceMessages: [{ id: "narration" }, { id: "command" }],
       },
@@ -259,7 +259,7 @@ describe("groupCompletedTurnMessages", () => {
     ]);
   });
 
-  it("combines work around visible assistant replies without a later human boundary", () => {
+  it("keeps work segmented around visible assistant replies", () => {
     const firstNarration = assistantMessage({ id: "narration-1", seq: 1 });
     const firstCommand = commandMessage({ id: "command-1", seq: 2 });
     const visibleReply = assistantMessage({ id: "visible-reply", seq: 3 });
@@ -284,15 +284,15 @@ describe("groupCompletedTurnMessages", () => {
     expect(groups.summaryItems).toMatchObject([
       {
         kind: "summary",
-        rowIdSegmentIndex: null,
-        sourceMessages: [
-          { id: "narration-1" },
-          { id: "command-1" },
-          { id: "narration-2" },
-          { id: "command-2" },
-        ],
+        rowIdSegmentIndex: 0,
+        sourceMessages: [{ id: "narration-1" }, { id: "command-1" }],
       },
       { kind: "ungrouped-message", message: { id: "visible-reply" } },
+      {
+        kind: "summary",
+        rowIdSegmentIndex: 1,
+        sourceMessages: [{ id: "narration-2" }, { id: "command-2" }],
+      },
     ]);
   });
 
@@ -307,7 +307,7 @@ describe("groupCompletedTurnMessages", () => {
     expect(groups.summaryItems).toMatchObject([
       {
         kind: "summary",
-        rowIdSegmentIndex: null,
+        rowIdSegmentIndex: 0,
         sourceMessages: [{ id: "assistant" }, { id: "command" }],
       },
     ]);
