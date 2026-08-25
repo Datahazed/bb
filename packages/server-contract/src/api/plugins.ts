@@ -12,6 +12,47 @@ export const pluginRuntimeStatusSchema = z.enum([
 ]);
 export type PluginRuntimeStatus = z.infer<typeof pluginRuntimeStatusSchema>;
 
+/**
+ * Stable discovery identities for the reviewed marketplace categories. Display
+ * names live in the server-owned registry, so copy changes never re-file an
+ * entry. `other` is deliberately absent: entries reach Other only by omitting
+ * a category.
+ */
+export const PLUGIN_CATALOG_CATEGORY_IDS = [
+  "themes-and-appearance",
+  "thread-lists-and-navigation",
+  "thread-messages-and-timelines",
+  "composer-and-prompts",
+  "memory-and-context",
+  "agent-tools",
+  "security",
+  "agents-and-providers",
+  "token-usage-and-cost",
+  "notifications-and-attention",
+  "code-and-reviews",
+  "files-and-viewers",
+  "machines-and-hosts",
+  "plugin-development",
+  "task-tracking",
+  "automation",
+] as const;
+
+export const pluginCatalogCategoryIdSchema = z.enum(
+  PLUGIN_CATALOG_CATEGORY_IDS,
+);
+export type PluginCatalogCategoryId = z.infer<
+  typeof pluginCatalogCategoryIdSchema
+>;
+
+/** Category identity returned by discovery APIs after omission is resolved. */
+export const pluginCatalogResolvedCategoryIdSchema = z.enum([
+  ...PLUGIN_CATALOG_CATEGORY_IDS,
+  "other",
+]);
+export type PluginCatalogResolvedCategoryId = z.infer<
+  typeof pluginCatalogResolvedCategoryIdSchema
+>;
+
 export const pluginUpdateOutcomeSchema = z.enum([
   "current",
   "update-available",
@@ -188,6 +229,12 @@ export const installedPluginSchema = z.object({
   enabled: z.boolean(),
   description: z.string().nullable(),
   name: z.string().nullable(),
+  /** Stable marketplace category identity; direct and uncategorized installs use `other`. */
+  categoryId: pluginCatalogResolvedCategoryIdSchema.default("other"),
+  /** Current display name for `categoryId`; kept separate so renames do not re-file plugins. */
+  category: z.string().default("Other"),
+  /** Listing screenshots, empty when this install has no catalog listing. */
+  screenshots: z.array(z.string()).default([]),
   icon: z.string().nullable(),
   /** Hashed URL when branding.icon declares a plugin-owned compact SVG. */
   iconUrl: z.string().nullable(),
@@ -410,7 +457,14 @@ export const pluginCatalogSearchResultSchema = z.object({
    * those icons render untinted.
    */
   iconTinted: z.boolean().default(false),
-  category: z.string(),
+  /** Stable category identity. Older servers map to Other on response parsing. */
+  categoryId: pluginCatalogResolvedCategoryIdSchema.default("other"),
+  /** Shipped display field retained for compatibility; it is never a stable identity. */
+  category: z.string().default("Other"),
+  /** Listing screenshots, in author-declared order. */
+  screenshots: z.array(z.string()).default([]),
+  /** Zero-based position in the manifest's curated shelf, or null when absent. */
+  newAndNotableRank: z.number().int().nonnegative().nullable().default(null),
   source: z.string(),
   /**
    * Where a person can read the plugin's code before an install: the git

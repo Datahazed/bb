@@ -14,6 +14,7 @@ import {
   getInstalledPlugin,
   migrate,
   upsertInstalledPlugin,
+  upsertPluginMarketplace,
   type DbConnection,
 } from "@bb/db";
 import type { SystemChangeKind } from "@bb/domain";
@@ -153,6 +154,78 @@ describe("plugin service", () => {
   afterEach(async () => {
     await service.stop();
     await rm(workDir, { recursive: true, force: true });
+  });
+
+  it("projects catalog category and screenshots onto an installed plugin", () => {
+    upsertPluginMarketplace(db, {
+      name: "acme",
+      sourceKind: "https",
+      manifestUrl: "https://plugins.example/marketplace.json",
+      sourceGitRef: null,
+      sourceGitCommit: null,
+      manifestJson: JSON.stringify({
+        schemaVersion: 2,
+        name: "acme",
+        displayName: "Acme",
+        newAndNotable: [],
+        plugins: [
+          {
+            id: "listed",
+            displayName: "Listed",
+            description: "A listed plugin.",
+            icon: "Zap",
+            category: "agent-tools",
+            screenshots: ["./screenshots/listed.png"],
+            author: { name: "Acme" },
+            source: { npm: { package: "bb-plugin-listed", range: "^1" } },
+          },
+        ],
+      }),
+      etag: null,
+      lastModified: null,
+      lastSuccessfulRefreshAt: 1,
+      lastAttemptedRefreshAt: 1,
+      lastError: null,
+    });
+    upsertInstalledPlugin(db, {
+      id: "listed",
+      source: "npm:bb-plugin-listed@^1",
+      provenance: {
+        kind: "catalog",
+        marketplace: "acme",
+        entryId: "listed",
+      },
+      sourceIntent: {
+        kind: "npm",
+        packageName: "bb-plugin-listed",
+        registry: "https://registry.npmjs.org",
+        requestedSpec: "^1",
+        specKind: "range",
+      },
+      exactResolution: {
+        kind: "npm",
+        version: "1.2.3",
+        integrity: "sha512-listed",
+      },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/plugins/listed",
+      version: "1.2.3",
+      enabled: false,
+    });
+
+    expect(
+      service.list().find((plugin) => plugin.id === "listed"),
+    ).toMatchObject({
+      categoryId: "agent-tools",
+      category: "Agent Tools",
+      screenshots: ["https://plugins.example/screenshots/listed.png"],
+    });
   });
 
   it("installs a path plugin, runs its factory, and reports running", async () => {
@@ -592,7 +665,7 @@ describe("plugin service", () => {
     } as unknown as Logger;
     const makeService = (appVersion: string) =>
       createPluginService({
-      aiServices: createAiServiceRegistry(),
+        aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
         hub: {
@@ -1034,9 +1107,7 @@ describe("plugin service", () => {
       version: "0.2.0",
       status: "running",
     });
-    expect((globalThis as Record<string, unknown>).__brittleCheckout).toBe(
-      "a",
-    );
+    expect((globalThis as Record<string, unknown>).__brittleCheckout).toBe("a");
     expect(service.getApi("brittle")).toBeDefined();
     expect((await service.getSettings("brittle"))?.values).toEqual({
       token: { set: true },

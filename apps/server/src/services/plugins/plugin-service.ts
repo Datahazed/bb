@@ -47,6 +47,12 @@ import {
   marketplacePublisherLabels,
   pluginPublisherLabel,
 } from "../plugin-catalog/marketplace-publishers.js";
+import {
+  marketplaceEntryKey,
+  marketplaceListingMetadata,
+  pluginCatalogCategory,
+  type PluginCatalogListingMetadata,
+} from "../plugin-catalog/plugin-category-registry.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
 import {
   ROOT_PLUGIN_SOURCE_SELECTION,
@@ -1391,6 +1397,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     const publisherLabels = rows.some((row) => row.provenance === "catalog")
       ? marketplacePublisherLabels(deps.db)
       : new Map<string, string>();
+    const catalogMetadata = rows.some((row) => row.provenance === "catalog")
+      ? marketplaceListingMetadata(deps.db)
+      : new Map<string, PluginCatalogListingMetadata>();
+    const bundledByName = new Map(
+      bundledPlugins.map((plugin) => [plugin.name, plugin]),
+    );
     return rows
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((row) => {
@@ -1403,6 +1415,29 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         // name, icon, and logo instead of falling back to the raw id + glyph.
         const identity =
           loadedPlugin === undefined ? identities.get(row.id) : undefined;
+        const bundled =
+          row.sourceBuiltinName === null
+            ? undefined
+            : bundledByName.get(row.sourceBuiltinName);
+        const category =
+          bundled === undefined
+            ? null
+            : pluginCatalogCategory(bundled.category);
+        const listing =
+          category === null
+            ? row.catalogMarketplaceName === null || row.catalogEntryId === null
+              ? undefined
+              : catalogMetadata.get(
+                  marketplaceEntryKey(
+                    row.catalogMarketplaceName,
+                    row.catalogEntryId,
+                  ),
+                )
+            : {
+                categoryId: category.id,
+                category: category.displayName,
+                screenshots: [],
+              };
         return {
           id: row.id,
           source: row.source,
@@ -1434,6 +1469,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             identity?.manifest.description ??
             null,
           name: loadedPlugin?.manifest.name ?? identity?.manifest.name ?? null,
+          categoryId: listing?.categoryId ?? "other",
+          category: listing?.category ?? "Other",
+          screenshots: listing?.screenshots ?? [],
           icon:
             loadedPlugin?.manifest.branding.icon ??
             identity?.manifest.branding.icon ??

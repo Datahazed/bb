@@ -51,4 +51,33 @@ describe("plugin catalog contracts", () => {
       }),
     ).toThrow();
   });
+
+  it("adds discovery fields without breaking older search responses", () => {
+    const parsed = pluginCatalogSearchResultSchema.parse({
+      entryId: "notes",
+      pluginId: "notes",
+      displayName: "Notes",
+      description: "Notes",
+      icon: null,
+      iconUrl: null,
+      category: "Other",
+      source: "builtin:notes",
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      publisherKey: "builtin",
+      publisherLabel: "BB Official",
+      official: true,
+      author: null,
+      installed: false,
+      compatible: true,
+      incompatibleReason: null,
+    });
+
+    expect(parsed).toMatchObject({
+      categoryId: "other",
+      category: "Other",
+      screenshots: [],
+      newAndNotableRank: null,
+    });
+  });
 });

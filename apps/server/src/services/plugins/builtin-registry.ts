@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { PluginCatalogCategoryId } from "@bb/server-contract";
 
 export interface BundledPluginDefinition {
   /**
@@ -14,8 +15,8 @@ export interface BundledPluginDefinition {
   autoInstall: boolean;
   /** enabled value on first install (auto or store). */
   defaultEnabled: boolean;
-  /** Browse-tab grouping; only meaningful for store entries. */
-  category?: string;
+  /** Stable Browse category identity. */
+  category: PluginCatalogCategoryId;
 }
 
 export interface BundledPluginRegistration extends BundledPluginDefinition {
@@ -32,57 +33,48 @@ export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 /** Every bundled plugin's source lives under `<repoRoot>/plugins/<name>`. */
 const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
-export const PLUGIN_CATALOG_CATEGORIES = [
-  "Workflow management",
-  "Agent interaction",
-  "Context & knowledge",
-  "Developer tools",
-  "Host access",
-  "Interface",
-] as const;
-
-export const BUILTIN_PLUGINS = [
+const BUILTIN_PLUGIN_DEFINITIONS = [
   {
     name: "ask-user-question",
     pluginId: "ask-user-question",
     defaultEnabled: false,
-    category: "Agent interaction",
+    category: "composer-and-prompts",
   },
   {
     name: "automations",
     pluginId: "automations",
     defaultEnabled: true,
-    category: "Workflow management",
+    category: "automation",
   },
   {
     name: "connect",
     pluginId: "connect",
     defaultEnabled: true,
-    category: "Host access",
+    category: "machines-and-hosts",
   },
   {
     name: "custom-instructions",
     pluginId: "custom-instructions",
     defaultEnabled: true,
-    category: "Context & knowledge",
+    category: "memory-and-context",
   },
   {
     name: "plugin-api-tester",
     pluginId: "plugin-api-tester",
     defaultEnabled: false,
-    category: "Developer tools",
+    category: "plugin-development",
   },
   {
     name: "inline-vis",
     pluginId: "inline-vis",
     defaultEnabled: true,
-    category: "Interface",
+    category: "thread-messages-and-timelines",
   },
   {
     name: "pdf-preview",
     pluginId: "pdf-preview",
     defaultEnabled: true,
-    category: "Interface",
+    category: "files-and-viewers",
   },
   // First-party agent provider plugins: each declares one of the providers
   // the core catalog used to seed. With the seed deleted these declarations
@@ -94,57 +86,59 @@ export const BUILTIN_PLUGINS = [
     name: "provider-codex",
     pluginId: "provider-codex",
     defaultEnabled: true,
-    category: "Agent interaction",
+    category: "agents-and-providers",
   },
   {
     name: "provider-claude-code",
     pluginId: "provider-claude-code",
     defaultEnabled: true,
-    category: "Agent interaction",
+    category: "agents-and-providers",
   },
   {
     name: "provider-pi",
     pluginId: "provider-pi",
     defaultEnabled: true,
-    category: "Agent interaction",
+    category: "agents-and-providers",
   },
   {
     name: "provider-acp",
     pluginId: "provider-acp",
     defaultEnabled: true,
-    category: "Agent interaction",
+    category: "agents-and-providers",
   },
   {
     name: "keep-awake",
     pluginId: "keep-awake",
     defaultEnabled: true,
-    category: "Host access",
+    category: "machines-and-hosts",
   },
   {
     name: "provider-retry",
     pluginId: "provider-retry",
     defaultEnabled: true,
-    category: "Agent interaction",
+    category: "agents-and-providers",
   },
   {
     name: "secrets",
     pluginId: "secrets",
     defaultEnabled: true,
-    category: "Developer tools",
+    category: "security",
   },
   {
     name: "side-chat",
     pluginId: "side-chat",
     defaultEnabled: true,
-    category: "Agent interaction",
+    category: "thread-messages-and-timelines",
   },
   {
     name: "workflows",
     pluginId: "workflows",
     defaultEnabled: false,
-    category: "Workflow management",
+    category: "automation",
   },
-].map(
+] satisfies Omit<BundledPluginDefinition, "autoInstall">[];
+
+export const BUILTIN_PLUGINS = BUILTIN_PLUGIN_DEFINITIONS.map(
   (plugin): BundledPluginDefinition => ({
     ...plugin,
     autoInstall: true,
@@ -155,32 +149,34 @@ export const BUILTIN_PLUGINS = [
  * Official plugins ship bundled with the app like builtins, but are not
  * auto-installed: they appear in the plugin store and install on demand.
  */
-export const OFFICIAL_PLUGINS = [
+const OFFICIAL_PLUGIN_DEFINITIONS = [
   {
     name: "github",
     pluginId: "github",
     defaultEnabled: true,
-    category: "Developer tools",
+    category: "code-and-reviews",
   },
   {
     name: "docs",
     pluginId: "simple-notes",
     defaultEnabled: true,
-    category: "Context & knowledge",
+    category: "memory-and-context",
   },
   {
     name: "memory",
     pluginId: "memory",
     defaultEnabled: true,
-    category: "Context & knowledge",
+    category: "memory-and-context",
   },
   {
     name: "tasks",
     pluginId: "tasks",
     defaultEnabled: true,
-    category: "Workflow management",
+    category: "task-tracking",
   },
-].map(
+] satisfies Omit<BundledPluginDefinition, "autoInstall">[];
+
+export const OFFICIAL_PLUGINS = OFFICIAL_PLUGIN_DEFINITIONS.map(
   (plugin): BundledPluginDefinition => ({
     ...plugin,
     autoInstall: false,

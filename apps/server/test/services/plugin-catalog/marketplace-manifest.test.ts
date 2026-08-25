@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   entryRepositoryUrl,
+  entryScreenshotUrls,
   entrySourceDisplay,
   parseMarketplaceManifest,
   resolveEntryIcon,
@@ -12,6 +13,7 @@ import {
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 
 const MANIFEST_URL = "https://getbb.app/marketplace/v1/marketplace.json";
+const MANIFEST_V2_URL = "https://getbb.app/marketplace/v2/marketplace.json";
 
 const publishedSchemaShape = z.object({
   $defs: z.object({
@@ -65,6 +67,20 @@ function manifest(plugins: unknown[]): unknown {
   };
 }
 
+function entryV2(overrides: Record<string, unknown> = {}): unknown {
+  return entry({ category: "agent-tools", screenshots: [], ...overrides });
+}
+
+function manifestV2(plugins: unknown[], newAndNotable: string[] = []): unknown {
+  return {
+    schemaVersion: 2,
+    name: "bb-community",
+    displayName: "BB Community",
+    newAndNotable,
+    plugins,
+  };
+}
+
 function parse(plugins: unknown[]) {
   return parseMarketplaceManifest(manifest(plugins), "manifest");
 }
@@ -77,31 +93,62 @@ function firstEntry(plugins: unknown[]): MarketplaceEntry {
 
 describe("marketplace manifest schema", () => {
   it("accepts a fully populated entry", () => {
-    const parsed = parse([
-      entry({
-        icon: { url: "./icons/widgets.svg" },
-        tags: ["interface", "threads"],
-        author: {
-          name: "Acme",
-          github: "acme-co",
-          url: "https://acme.example",
-        },
-      }),
-    ]);
+    const parsed = parseMarketplaceManifest(
+      manifestV2(
+        [
+          entryV2({
+            icon: { url: "./icons/widgets.svg" },
+            category: "thread-lists-and-navigation",
+            screenshots: [
+              "./screenshots/widgets.png",
+              "https://cdn.example/widgets-dark.webp",
+            ],
+            tags: ["interface", "threads"],
+            author: {
+              name: "Acme",
+              github: "acme-co",
+              url: "https://acme.example",
+            },
+          }),
+        ],
+        ["widgets"],
+      ),
+      "manifest",
+    );
     expect(parsed.plugins).toHaveLength(1);
+    expect(parsed).toMatchObject({ newAndNotable: ["widgets"] });
+  });
+
+  it("keeps old schemaVersion 1 entries valid without discovery fields", () => {
+    expect(parse([entry()])).toMatchObject({
+      schemaVersion: 1,
+      plugins: [{ id: "widgets" }],
+    });
   });
 
   it("rejects a schemaVersion it does not implement", () => {
     expect(() =>
       parseMarketplaceManifest(
-        { ...(manifest([entry()]) as object), schemaVersion: 2 },
+        { ...(manifest([entry()]) as object), schemaVersion: 3 },
         "manifest",
       ),
-    ).toThrow(/unknown schemaVersion 2/);
+    ).toThrow(/unknown schemaVersion 3/);
+  });
+
+  it("keeps v1 strict and reserves discovery fields for v2", () => {
+    expect(() => parse([entry({ category: "agent-tools" })])).toThrow(
+      /unrecognized key/iu,
+    );
+    expect(() =>
+      parseMarketplaceManifest(
+        { ...(manifest([entry()]) as object), newAndNotable: [] },
+        "manifest",
+      ),
+    ).toThrow(/unrecognized key/iu);
   });
 
   it("rejects unknown fields anywhere in the document", () => {
-    expect(() => parse([entry({ category: "Interface" })])).toThrow(
+    expect(() => parse([entry({ surprise: "Interface" })])).toThrow(
       /unrecognized key/iu,
     );
     expect(() =>
@@ -110,6 +157,68 @@ describe("marketplace manifest schema", () => {
         "manifest",
       ),
     ).toThrow(/unrecognized key/iu);
+  });
+
+  it("rejects unknown categories and invalid screenshots", () => {
+    const parseV2 = (overrides: Record<string, unknown>) =>
+      parseMarketplaceManifest(manifestV2([entryV2(overrides)]), "manifest");
+    expect(() => parseV2({ category: "interface" })).toThrow();
+    expect(() =>
+      parseV2({ screenshots: ["http://cdn.example/screen.png"] }),
+    ).toThrow(/https/);
+    expect(() =>
+      parseV2({ screenshots: ["./screenshots/screen.gif"] }),
+    ).toThrow(/\.png/);
+    expect(() =>
+      parseV2({
+        screenshots: Array.from(
+          { length: 7 },
+          (_unused, index) => `./screenshots/${index}.png`,
+        ),
+      }),
+    ).toThrow();
+  });
+
+  it("validates New & notable ids and order", () => {
+    const withNotable = (newAndNotable: string[]) =>
+      manifestV2([entryV2()], newAndNotable);
+    expect(
+      parseMarketplaceManifest(withNotable(["widgets"]), "manifest"),
+    ).toMatchObject({ newAndNotable: ["widgets"] });
+    expect(() =>
+      parseMarketplaceManifest(withNotable(["widgets", "widgets"]), "manifest"),
+    ).toThrow(/duplicate plugin id/);
+    expect(() =>
+      parseMarketplaceManifest(withNotable(["missing"]), "manifest"),
+    ).toThrow(/unknown plugin id/);
+  });
+
+  it("resolves relative screenshots beside an https manifest", () => {
+    const parsed = parseMarketplaceManifest(
+      manifestV2([
+        entryV2({
+          screenshots: [
+            "./screenshots/widgets.png",
+            "https://cdn.example/widgets.webp",
+          ],
+        }),
+      ]),
+      "manifest",
+    );
+    const listed = parsed.plugins[0];
+    if (listed === undefined) throw new Error("entry missing");
+    expect(
+      entryScreenshotUrls(listed, {
+        kind: "url",
+        manifestUrl: MANIFEST_V2_URL,
+      }),
+    ).toEqual([
+      "https://getbb.app/marketplace/v2/screenshots/widgets.png",
+      "https://cdn.example/widgets.webp",
+    ]);
+    expect(() =>
+      entryScreenshotUrls(listed, { kind: "dir", root: "/checkout" }),
+    ).toThrow(/requires an https marketplace/);
   });
 
   it("rejects duplicate entry ids", () => {

@@ -11,9 +11,15 @@ import { parseMarketplaceManifest } from "../../../src/services/plugin-catalog/m
  * the whole catalog, so both must answer the same way for every fixture here.
  * Add a fixture with each rule either side gains.
  */
-const SCHEMA_PATH = fileURLToPath(
+const V1_SCHEMA_PATH = fileURLToPath(
   new URL(
     "../../../../web/public/schemas/marketplace.schema.json",
+    import.meta.url,
+  ),
+);
+const V2_SCHEMA_PATH = fileURLToPath(
+  new URL(
+    "../../../../web/public/schemas/marketplace-v2.schema.json",
     import.meta.url,
   ),
 );
@@ -21,11 +27,30 @@ const SCHEMA_PATH = fileURLToPath(
 /** The published document is a file on disk: parse it before Ajv sees it. */
 const publishedSchemaSchema = z.record(z.string(), z.unknown());
 
-async function compilePublishedSchema(): Promise<(value: unknown) => boolean> {
+async function compilePublishedSchema(
+  path: string,
+): Promise<(value: unknown) => boolean> {
   const schema = publishedSchemaSchema.parse(
-    JSON.parse(await readFile(SCHEMA_PATH, "utf8")),
+    JSON.parse(await readFile(path, "utf8")),
   );
   return new Ajv2020({ strict: false }).compile(schema);
+}
+
+function manifestV2With(
+  entry: Record<string, unknown>,
+  newAndNotable: string[] = [],
+): Record<string, unknown> {
+  const v1 = manifestWith(entry);
+  return {
+    ...v1,
+    schemaVersion: 2,
+    newAndNotable,
+    plugins: (v1.plugins as Record<string, unknown>[]).map((plugin) => ({
+      category: "agent-tools",
+      screenshots: [],
+      ...plugin,
+    })),
+  };
 }
 
 interface Fixture {
@@ -180,30 +205,104 @@ const fixtures: readonly Fixture[] = [
   },
 ];
 
+const v2Fixtures: readonly Fixture[] = [
+  {
+    label: "required discovery fields",
+    valid: true,
+    manifest: manifestV2With({}),
+  },
+  {
+    label: "category and relative screenshots",
+    valid: true,
+    manifest: manifestV2With({
+      category: "thread-messages-and-timelines",
+      screenshots: [
+        "./screenshots/acme.png",
+        "https://cdn.example.com/acme-dark.webp",
+      ],
+    }),
+  },
+  {
+    label: "omitted discovery fields",
+    valid: true,
+    manifest: {
+      ...manifestV2With({}),
+      plugins: [(manifestWith({}).plugins as unknown[])[0]],
+    },
+  },
+  {
+    label: "unknown category",
+    valid: false,
+    manifest: manifestV2With({ category: "interface" }),
+  },
+  {
+    label: "plain http screenshot",
+    valid: false,
+    manifest: manifestV2With({
+      screenshots: ["http://cdn.example.com/acme.png"],
+    }),
+  },
+  {
+    label: "unsupported screenshot format",
+    valid: false,
+    manifest: manifestV2With({ screenshots: ["./screenshots/acme.gif"] }),
+  },
+  {
+    label: "too many screenshots",
+    valid: false,
+    manifest: manifestV2With({
+      screenshots: Array.from(
+        { length: 7 },
+        (_unused, index) => `./screenshots/${index}.png`,
+      ),
+    }),
+  },
+  {
+    label: "ordered New & notable ids",
+    valid: true,
+    manifest: manifestV2With({}, ["acme-plugin"]),
+  },
+  {
+    label: "duplicate New & notable ids",
+    valid: false,
+    manifest: manifestV2With({}, ["acme-plugin", "acme-plugin"]),
+  },
+];
+
+async function expectParity(
+  path: string,
+  parityFixtures: readonly Fixture[],
+): Promise<void> {
+  const validate = await compilePublishedSchema(path);
+  const disagreements = parityFixtures.flatMap((fixture) => {
+    const published = validate(fixture.manifest);
+    let runtime = true;
+    try {
+      parseMarketplaceManifest(fixture.manifest, "fixture");
+    } catch {
+      runtime = false;
+    }
+    return published === fixture.valid && runtime === fixture.valid
+      ? []
+      : [
+          `${fixture.label}: expected ${fixture.valid ? "valid" : "invalid"}, published schema said ${published}, runtime parser said ${runtime}`,
+        ];
+  });
+  expect(disagreements).toEqual([]);
+}
+
 describe("published marketplace schema parity", () => {
-  it("agrees with the runtime parser on every fixture", async () => {
-    const validate = await compilePublishedSchema();
+  it("agrees with the runtime parser for immutable v1 fixtures", async () => {
+    await expectParity(V1_SCHEMA_PATH, fixtures);
+  });
 
-    const disagreements = fixtures.flatMap((fixture) => {
-      const published = validate(fixture.manifest);
-      let runtime = true;
-      try {
-        parseMarketplaceManifest(fixture.manifest, "fixture");
-      } catch {
-        runtime = false;
-      }
-      return published === fixture.valid && runtime === fixture.valid
-        ? []
-        : [
-            `${fixture.label}: expected ${fixture.valid ? "valid" : "invalid"}, published schema said ${published}, runtime parser said ${runtime}`,
-          ];
-    });
-
-    expect(disagreements).toEqual([]);
+  it("agrees with the runtime parser for discovery v2 fixtures", async () => {
+    await expectParity(V2_SCHEMA_PATH, v2Fixtures);
   });
 
   it("caps the entry count in both contracts", async () => {
-    const validate = await compilePublishedSchema();
+    const validateV1 = await compilePublishedSchema(V1_SCHEMA_PATH);
+    const validateV2 = await compilePublishedSchema(V2_SCHEMA_PATH);
     const oversize = {
       schemaVersion: 1,
       name: "acme",
@@ -218,8 +317,22 @@ describe("published marketplace schema parity", () => {
       })),
     };
 
-    expect(validate(oversize)).toBe(false);
+    expect(validateV1(oversize)).toBe(false);
     expect(() => parseMarketplaceManifest(oversize, "fixture")).toThrow(
+      /at most 256 plugins/u,
+    );
+    const oversizeV2 = {
+      ...oversize,
+      schemaVersion: 2,
+      newAndNotable: [],
+      plugins: oversize.plugins.map((plugin) => ({
+        ...plugin,
+        category: "agent-tools",
+        screenshots: [],
+      })),
+    };
+    expect(validateV2(oversizeV2)).toBe(false);
+    expect(() => parseMarketplaceManifest(oversizeV2, "fixture")).toThrow(
       /at most 256 plugins/u,
     );
   });

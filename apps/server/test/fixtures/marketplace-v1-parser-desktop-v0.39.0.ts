@@ -1,28 +1,31 @@
+/**
+ * Vendored compatibility parser from the released desktop-v0.39.0 tag.
+ * Source commit: b33abbff098ac4c857578e7350d492dcaa65d489
+ * Source URL: https://github.com/get-bb/bb/blob/b33abbff098ac4c857578e7350d492dcaa65d489/apps/server/src/services/plugin-catalog/marketplace-manifest.ts
+ *
+ * Keep this copy frozen. It proves the generated v1 projection remains
+ * readable by the strict parser that shipped before marketplace v2 existed.
+ */
 import { join } from "node:path";
 import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
-  pluginCatalogCategoryIdSchema,
   pluginMarketplaceNameSchema,
   ROOT_PLUGIN_SOURCE_SELECTION,
   type PluginSourceSelection,
 } from "@bb/server-contract";
 import semver from "semver";
 import { z } from "zod";
-import { formatIssues } from "../plugins/collection-manifest.js";
 import {
   gitRangeSourceSpec,
   gitSemverTagName,
   normalizeGitTagPrefix,
   normalizePluginSubdirectory,
   parsePluginSource,
-} from "../plugins/install-sources.js";
+} from "../../src/services/plugins/install-sources.js";
 
-/** Immutable contract consumed by released v1 clients and registry CI. */
-export const MARKETPLACE_V1_SCHEMA_URL =
+/** Published contract, consumed by the registry repository's CI. */
+const MARKETPLACE_SCHEMA_URL =
   "https://getbb.app/schemas/marketplace.schema.json";
-/** Discovery contract consumed by clients that fetch marketplace v2. */
-export const MARKETPLACE_V2_SCHEMA_URL =
-  "https://getbb.app/schemas/marketplace-v2.schema.json";
 
 /** Reserved name of the marketplace BB itself curates. */
 export const CURATED_MARKETPLACE_NAME = CURATED_PLUGIN_MARKETPLACE_NAME;
@@ -44,7 +47,7 @@ export const BUILTIN_PUBLISHER_KEY = "builtin";
  * Entries one manifest may list. The 1 MiB document limit alone still allows
  * thousands of entries, and each entry costs an icon request and an icon row.
  */
-const MARKETPLACE_MAX_ENTRIES = 256;
+export const MARKETPLACE_MAX_ENTRIES = 256;
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 /**
@@ -60,8 +63,6 @@ const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u;
 /** A host icon name such as `ZoomIn`; never a path or a URL. */
 const ICON_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/u;
 const ICON_EXTENSIONS = [".svg", ".png", ".webp"] as const;
-const SCREENSHOT_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp"] as const;
-const MARKETPLACE_MAX_SCREENSHOTS = 6;
 
 const semverRange = z
   .string()
@@ -118,49 +119,10 @@ const iconUrlSchema = z
     if (problem !== null) ctx.addIssue({ code: "custom", message: problem });
   });
 
-/**
- * An SVG icon is single-color artwork: BB masks it with the surrounding text
- * color, the same way it renders a plugin's own compact `branding.icon`, so a
- * black-on-transparent glyph stays visible on a dark theme. Raster icons
- * (PNG, WebP) keep their own colors: a mask reads alpha only and would
- * flatten an opaque image into a solid block, and a raster is the form for
- * multi-color artwork. The object stays strict: an older desktop rejects the
- * whole manifest on an unknown field, so a per-entry opt-out needs a new
- * schemaVersion.
- */
 const iconSchema = z.union([
   z.string().regex(ICON_NAME_PATTERN, "must be a host icon name"),
   z.object({ url: iconUrlSchema }).strict(),
 ]);
-
-const screenshotUrlSchema = z
-  .string()
-  .min(1)
-  .superRefine((value, ctx) => {
-    const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value);
-    if (absolute && !value.toLowerCase().startsWith("https:")) {
-      ctx.addIssue({ code: "custom", message: "must be an https URL" });
-      return;
-    }
-    let pathname: string;
-    try {
-      pathname = new URL(
-        value,
-        "https://marketplace.invalid/base/",
-      ).pathname.toLowerCase();
-    } catch {
-      ctx.addIssue({ code: "custom", message: "is not a valid URL" });
-      return;
-    }
-    if (
-      !SCREENSHOT_EXTENSIONS.some((extension) => pathname.endsWith(extension))
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: `must point at a ${SCREENSHOT_EXTENSIONS.join(", ")} file`,
-      });
-    }
-  });
 
 const authorSchema = z
   .object({
@@ -301,117 +263,57 @@ const gitSourceSchema = z.union([
  * `engines.bb` and `engines.bbPluginSdk` from the fetched plugin's own
  * package.json and refuses the install there instead.
  */
-const entryShape = {
-  id: z.string().regex(NAME_PATTERN),
-  displayName: z.string().min(1),
-  description: z.string().min(1),
-  icon: iconSchema,
-  tags: z.array(z.string().max(32).regex(TAG_PATTERN)).max(10).optional(),
-  author: authorSchema,
-  source: z.union([npmSourceSchema, gitSourceSchema]),
-};
-
-/** Exact immutable entry accepted by marketplace/v1. Never add fields. */
-const marketplaceEntryV1Schema = z.object(entryShape).strict();
-
-/** Discovery fields exist only in marketplace/v2. */
-const marketplaceEntryV2Schema = z
+const entrySchema = z
   .object({
-    ...entryShape,
-    category: pluginCatalogCategoryIdSchema.optional(),
-    screenshots: z
-      .array(screenshotUrlSchema)
-      .max(MARKETPLACE_MAX_SCREENSHOTS)
-      .optional(),
+    id: z.string().regex(NAME_PATTERN),
+    displayName: z.string().min(1),
+    description: z.string().min(1),
+    icon: iconSchema,
+    tags: z.array(z.string().max(32).regex(TAG_PATTERN)).max(10).optional(),
+    author: authorSchema,
+    source: z.union([npmSourceSchema, gitSourceSchema]),
   })
   .strict();
 
-function uniqueMarketplaceEntries<T extends { id: string }>(
-  entries: T[],
-  ctx: z.RefinementCtx,
-): void {
-  const seen = new Set<string>();
-  entries.forEach((entry, index) => {
-    if (seen.has(entry.id)) {
-      ctx.addIssue({
-        code: "custom",
-        path: [index, "id"],
-        message: `duplicate plugin id "${entry.id}"`,
-      });
-    }
-    seen.add(entry.id);
-  });
-}
-
-const marketplaceManifestV1Schema = z
+const marketplaceManifestSchema = z
   .object({
-    $schema: z.literal(MARKETPLACE_V1_SCHEMA_URL).optional(),
+    $schema: z.literal(MARKETPLACE_SCHEMA_URL).optional(),
     schemaVersion: z.literal(1),
     name: manifestNameSchema,
     displayName: z.string().min(1),
     description: z.string().min(1).optional(),
     plugins: z
-      .array(marketplaceEntryV1Schema)
+      .array(entrySchema)
       .max(
         MARKETPLACE_MAX_ENTRIES,
         `a marketplace may list at most ${MARKETPLACE_MAX_ENTRIES} plugins`,
       )
-      .superRefine(uniqueMarketplaceEntries),
+      .superRefine((entries, ctx) => {
+        const seen = new Set<string>();
+        entries.forEach((entry, index) => {
+          if (seen.has(entry.id)) {
+            ctx.addIssue({
+              code: "custom",
+              path: [index, "id"],
+              message: `duplicate plugin id "${entry.id}"`,
+            });
+          }
+          seen.add(entry.id);
+        });
+      }),
   })
   .strict();
 
-const marketplaceManifestV2Schema = z
-  .object({
-    $schema: z.literal(MARKETPLACE_V2_SCHEMA_URL).optional(),
-    schemaVersion: z.literal(2),
-    name: manifestNameSchema,
-    displayName: z.string().min(1),
-    description: z.string().min(1).optional(),
-    newAndNotable: z.array(z.string().regex(NAME_PATTERN)),
-    plugins: z
-      .array(marketplaceEntryV2Schema)
-      .max(
-        MARKETPLACE_MAX_ENTRIES,
-        `a marketplace may list at most ${MARKETPLACE_MAX_ENTRIES} plugins`,
-      )
-      .superRefine(uniqueMarketplaceEntries),
-  })
-  .strict()
-  .superRefine((manifest, ctx) => {
-    const seen = new Set<string>();
-    const entryIds = new Set(manifest.plugins.map((entry) => entry.id));
-    manifest.newAndNotable.forEach((entryId, index) => {
-      if (seen.has(entryId)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["newAndNotable", index],
-          message: `duplicate plugin id ${JSON.stringify(entryId)}`,
-        });
-      } else if (!entryIds.has(entryId)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["newAndNotable", index],
-          message: `unknown plugin id ${JSON.stringify(entryId)}`,
-        });
-      }
-      seen.add(entryId);
-    });
-  });
+export type MarketplaceManifest = z.infer<typeof marketplaceManifestSchema>;
+export type MarketplaceEntry = MarketplaceManifest["plugins"][number];
 
-export type MarketplaceManifestV1 = z.infer<typeof marketplaceManifestV1Schema>;
-export type MarketplaceManifestV2 = z.infer<typeof marketplaceManifestV2Schema>;
-export type MarketplaceManifest = MarketplaceManifestV1 | MarketplaceManifestV2;
-export type MarketplaceEntryV1 = MarketplaceManifestV1["plugins"][number];
-export type MarketplaceEntryV2 = MarketplaceManifestV2["plugins"][number];
-/** Common internal view; v1 entries have no discovery fields. */
-export type MarketplaceEntry = MarketplaceEntryV1 &
-  Partial<Pick<MarketplaceEntryV2, "category" | "screenshots">>;
-
-/** V1 has no curated discovery shelf. */
-export function marketplaceNewAndNotable(
-  manifest: MarketplaceManifest,
-): readonly string[] {
-  return manifest.schemaVersion === 2 ? manifest.newAndNotable : [];
+function formatIssues(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.join(".");
+      return path.length === 0 ? issue.message : `${path}: ${issue.message}`;
+    })
+    .join("; ");
 }
 
 /**
@@ -426,21 +328,13 @@ export function parseMarketplaceManifest(
     typeof input === "object" &&
     input !== null &&
     "schemaVersion" in input &&
-    input.schemaVersion !== 1 &&
-    input.schemaVersion !== 2
+    input.schemaVersion !== 1
   ) {
     throw new Error(
-      `invalid ${location}: unknown schemaVersion ${JSON.stringify(input.schemaVersion)}; supported values are 1 and 2`,
+      `invalid ${location}: unknown schemaVersion ${JSON.stringify(input.schemaVersion)}; supported value is 1`,
     );
   }
-  const schema =
-    typeof input === "object" &&
-    input !== null &&
-    "schemaVersion" in input &&
-    input.schemaVersion === 2
-      ? marketplaceManifestV2Schema
-      : marketplaceManifestV1Schema;
-  const parsed = schema.safeParse(input);
+  const parsed = marketplaceManifestSchema.safeParse(input);
   if (!parsed.success) {
     throw new Error(`invalid ${location}: ${formatIssues(parsed.error)}`);
   }
@@ -465,37 +359,6 @@ export function parseMarketplaceManifestJson(
 /** The entry's declared host icon name, or null when it ships an image. */
 export function entryIconName(entry: MarketplaceEntry): string | null {
   return typeof entry.icon === "string" ? entry.icon : null;
-}
-
-/**
- * Browser-usable screenshot URLs. Relative assets resolve beside an HTTPS
- * manifest, matching the registry's icon convention. Git/path marketplaces
- * must publish absolute HTTPS screenshot URLs because their local checkout is
- * discarded after refresh and no browser can read it.
- */
-export function entryScreenshotUrls(
-  entry: MarketplaceEntry,
-  base: MarketplaceIconBase,
-): string[] {
-  return (entry.screenshots ?? []).map((declared) => {
-    const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(declared);
-    if (absolute) return new URL(declared).toString();
-    if (base.kind !== "url") {
-      throw new Error(
-        `relative screenshot URL ${JSON.stringify(declared)} requires an https marketplace manifest`,
-      );
-    }
-    return new URL(declared, base.manifestUrl).toString();
-  });
-}
-
-/**
- * Whether BB masks a cached image icon with the surrounding text color. Only
- * an SVG is tinted; see {@link iconSchema}. `contentType` is the validated
- * type BB serves the cached bytes as.
- */
-export function entryIconTinted(contentType: string): boolean {
-  return contentType === "image/svg+xml";
 }
 
 /**
@@ -548,30 +411,6 @@ export function resolveEntryIcon(
     path: join(base.root, ...relativePath.split("/")),
     relativePath,
   };
-}
-
-/**
- * Where a person can read an entry's code before an install. A git entry
- * links its repository; a subdirectory links the directory on GitHub, and the
- * repository root elsewhere, because only GitHub's tree URL shape is known. An
- * npm entry on the default registry links its public package page. A private
- * registry has no public page bb can name, so that entry gets null.
- */
-export function entryRepositoryUrl(entry: MarketplaceEntry): string | null {
-  if ("npm" in entry.source) {
-    return entry.source.npm.registry === undefined
-      ? `https://www.npmjs.com/package/${entry.source.npm.package}`
-      : null;
-  }
-  const git = entry.source.git;
-  const repository = git.url.replace(/\.git$/u, "");
-  if (git.subdir === undefined) return repository;
-  // The schema accepts `#` and `?` in a subdirectory; raw interpolation would
-  // turn them into a fragment or a query, so each segment is encoded.
-  const path = git.subdir.split("/").map(encodeURIComponent).join("/");
-  return new URL(repository).host === "github.com"
-    ? `${repository}/tree/HEAD/${path}`
-    : repository;
 }
 
 /** Human-readable source of an entry, shown before anything is installed. */

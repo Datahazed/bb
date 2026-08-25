@@ -406,7 +406,7 @@ describe("third-party marketplaces", () => {
           rootDir: join(dataDir, "missing-bundled-plugin"),
           autoInstall: false,
           defaultEnabled: true,
-          category: "Context & knowledge",
+          category: "memory-and-context",
         },
       ],
       plugins: {
@@ -677,11 +677,10 @@ describe("third-party marketplaces", () => {
         result.entryId,
       ]),
     ).toEqual([
-      ["bb-community", "Interface", "official-notes"],
-      // A third-party marketplace has no curated vocabulary, so its first tag
-      // becomes the section label.
-      ["acme-plugins", "Git Tools", "notes"],
-      ["acme-plugins", "Git Tools", "zebra"],
+      ["bb-community", "Other", "official-notes"],
+      // Tags remain searchable metadata; an omitted category is always Other.
+      ["acme-plugins", "Other", "notes"],
+      ["acme-plugins", "Other", "zebra"],
     ]);
     expect(results[1]).toMatchObject({
       official: false,

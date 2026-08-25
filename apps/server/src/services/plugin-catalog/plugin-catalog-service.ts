@@ -26,11 +26,11 @@ import type {
   PluginCatalogStatus,
   PluginMarketplace,
   PluginMarketplaceRefreshResult,
+  PluginCatalogCategoryId,
 } from "@bb/server-contract";
 import {
   builtinPluginSource,
   listBundledPluginRegistrations,
-  PLUGIN_CATALOG_CATEGORIES,
   type BundledPluginRegistration,
 } from "../plugins/builtin-registry.js";
 import {
@@ -56,19 +56,29 @@ import {
   entryIconName,
   entryIconTinted,
   entryRepositoryUrl,
+  entryScreenshotUrls,
   entrySourceDisplay,
   CURATED_MARKETPLACE_NAME,
+  marketplaceNewAndNotable,
   parseMarketplaceManifestJson,
   resolvedEntrySource,
   type MarketplaceEntry,
   type MarketplaceManifest,
 } from "./marketplace-manifest.js";
 import {
+  marketplaceEntryCategoryId,
+  pluginCatalogCategory,
+  PLUGIN_CATALOG_CATEGORIES,
+} from "./plugin-category-registry.js";
+import {
   marketplaceSourceColumns,
   marketplaceSourceDisplay,
   marketplaceSourceFromRow,
   materializeMarketplace,
+  MarketplaceManifestMissingError,
   parseMarketplaceSource,
+  type MarketplaceSource,
+  type MaterializedMarketplace,
 } from "./marketplace-source.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "./curated-marketplace.js";
 import { marketplacePublisherLabel } from "./marketplace-publishers.js";
@@ -82,6 +92,37 @@ interface PluginCatalogIcon {
   bytes: Buffer;
   contentType: string;
   hash: string;
+}
+
+export interface OfficialMarketplaceManifestUrls {
+  /** Discovery manifest requested first. */
+  v2: string;
+  /** Immutable fallback, null for a non-versioned development override. */
+  v1: string | null;
+}
+
+/**
+ * The shipped URL is v1. Current clients derive its v2 sibling and retain v1
+ * only as a 404 fallback. A custom non-versioned BB_MARKETPLACE_URL remains a
+ * direct development override rather than guessing a second endpoint.
+ */
+export function officialMarketplaceManifestUrls(
+  configuredUrl: string,
+): OfficialMarketplaceManifestUrls {
+  const url = new URL(configuredUrl);
+  const match = /\/v[12]\/marketplace\.json$/u.exec(url.pathname);
+  if (match === null) return { v2: configuredUrl, v1: null };
+  const v1 = new URL(url);
+  v1.pathname = url.pathname.replace(
+    /\/v[12]\/marketplace\.json$/u,
+    "/v1/marketplace.json",
+  );
+  const v2 = new URL(url);
+  v2.pathname = url.pathname.replace(
+    /\/v[12]\/marketplace\.json$/u,
+    "/v2/marketplace.json",
+  );
+  return { v2: v2.toString(), v1: v1.toString() };
 }
 
 export interface PluginCatalogEntrySelector {
@@ -145,7 +186,7 @@ type ResolvedCatalogEntry =
   | { kind: "marketplace"; row: PluginMarketplaceRow; entry: MarketplaceEntry }
   | {
       kind: "bundled";
-      entry: BundledPluginRegistration & { category: string };
+      entry: BundledPluginRegistration & { category: PluginCatalogCategoryId };
     };
 
 /**
@@ -176,24 +217,12 @@ export function createPluginCatalogService(deps: {
 }): PluginCatalogService {
   const bundledPlugins =
     deps.bundledPlugins ?? listBundledPluginRegistrations();
-  const officialPlugins = bundledPlugins.map((plugin) => ({
-    ...plugin,
-    category: plugin.category ?? "Other",
-  }));
-  const categoryOrder = new Map<string, number>(
-    PLUGIN_CATALOG_CATEGORIES.map((category, index) => [category, index]),
+  const officialManifestUrls = officialMarketplaceManifestUrls(
+    deps.marketplaceUrl,
   );
-  // The Browse tab groups by the curated tag vocabulary: the catalog's own
-  // categories, lowercased and kebab-cased. Other tags stay searchable but do
-  // not create sections.
-  const categoryByTag = new Map<string, string>(
-    PLUGIN_CATALOG_CATEGORIES.map((category) => [
-      category
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/gu, "-")
-        .replace(/^-+|-+$/gu, ""),
-      category,
-    ]),
+  const officialPlugins = bundledPlugins;
+  const categoryOrder = new Map<string, number>(
+    PLUGIN_CATALOG_CATEGORIES.map((category, index) => [category.id, index]),
   );
   const now = deps.now ?? Date.now;
   // Manifests and entry icons share one guarded socket: https on port 443, no
@@ -255,7 +284,8 @@ export function createPluginCatalogService(deps: {
     if (
       existing !== undefined &&
       existing.sourceKind === "https" &&
-      existing.manifestUrl === deps.marketplaceUrl
+      (existing.manifestUrl === officialManifestUrls.v2 ||
+        existing.manifestUrl === officialManifestUrls.v1)
     ) {
       try {
         parseMarketplaceManifestJson(
@@ -272,7 +302,7 @@ export function createPluginCatalogService(deps: {
     upsertPluginMarketplace(deps.db, {
       name: CURATED_MARKETPLACE_NAME,
       sourceKind: "https",
-      manifestUrl: deps.marketplaceUrl,
+      manifestUrl: officialManifestUrls.v2,
       sourceGitRef: null,
       sourceGitCommit: null,
       manifestJson: JSON.stringify(BUNDLED_CURATED_MARKETPLACE),
@@ -397,7 +427,11 @@ export function createPluginCatalogService(deps: {
   }
 
   function bundledSearchResult(
-    entry: { name: string; pluginId: string; category: string },
+    entry: {
+      name: string;
+      pluginId: string;
+      category: PluginCatalogCategoryId;
+    },
     manifest: PluginManifest,
     iconHash: string | null,
   ): PluginCatalogSearchResult {
@@ -405,6 +439,7 @@ export function createPluginCatalogService(deps: {
       bbRange: manifest.bbEngineRange,
       sdkRange: manifest.bbPluginSdkRange,
     });
+    const category = pluginCatalogCategory(entry.category);
     return {
       entryId: entry.name,
       pluginId: entry.pluginId,
@@ -418,7 +453,10 @@ export function createPluginCatalogService(deps: {
       // A bundled icon is the plugin's own compact SVG, authored to take the
       // surrounding text color.
       iconTinted: iconHash !== null,
-      category: entry.category,
+      categoryId: category.id,
+      category: category.displayName,
+      screenshots: [],
+      newAndNotableRank: null,
       source: builtinPluginSource(entry.name),
       // The build ships the code; there is no separate repository to open.
       repositoryUrl: null,
@@ -437,24 +475,6 @@ export function createPluginCatalogService(deps: {
       compatible: problem === null,
       incompatibleReason: problem,
     };
-  }
-
-  /**
-   * Section an entry belongs to. The official marketplace uses BB's curated
-   * vocabulary so its sections stay stable; a third-party marketplace has no
-   * such vocabulary, so its first tag becomes the section label.
-   */
-  function entryCategory(entry: MarketplaceEntry, official: boolean): string {
-    const tags = entry.tags ?? [];
-    if (official) {
-      for (const tag of tags) {
-        const category = categoryByTag.get(tag);
-        if (category !== undefined) return category;
-      }
-      return "Other";
-    }
-    const first = tags[0];
-    return first === undefined ? "Other" : titleCaseTag(first);
   }
 
   /** Same-origin URL of the bytes `icon(marketplace, entryId)` serves. */
@@ -488,6 +508,17 @@ export function createPluginCatalogService(deps: {
   }): PluginCatalogSearchResult {
     const { entry, row, catalog } = args;
     const official = row.name === CURATED_MARKETPLACE_NAME;
+    const category = pluginCatalogCategory(
+      marketplaceEntryCategoryId({
+        schemaVersion: catalog.schemaVersion,
+        entry,
+      }),
+    );
+    const screenshotBase =
+      row.sourceKind === "https"
+        ? ({ kind: "url", manifestUrl: row.manifestUrl } as const)
+        : ({ kind: "dir", root: "" } as const);
+    const notableIndex = marketplaceNewAndNotable(catalog).indexOf(entry.id);
     return {
       entryId: entry.id,
       // An entry id is the plugin id it installs; the install aborts when the
@@ -497,7 +528,10 @@ export function createPluginCatalogService(deps: {
       description: entry.description,
       icon: entryIconName(entry),
       ...entryIconAsset(row.name, entry.id),
-      category: entryCategory(entry, official),
+      categoryId: category.id,
+      category: category.displayName,
+      screenshots: entryScreenshotUrls(entry, screenshotBase),
+      newAndNotableRank: notableIndex < 0 ? null : notableIndex,
       source: entrySourceDisplay(entry),
       repositoryUrl: entryRepositoryUrl(entry),
       marketplace: row.name,
@@ -536,11 +570,25 @@ export function createPluginCatalogService(deps: {
     );
     if (colliding.length === 0) return { catalog, error: null };
     const ids = colliding.map((entry) => entry.id).join(", ");
+    const filteredCatalog: MarketplaceManifest =
+      catalog.schemaVersion === 1
+        ? {
+            ...catalog,
+            plugins: catalog.plugins.filter(
+              (entry) => !bundledIds.has(entry.id),
+            ),
+          }
+        : {
+            ...catalog,
+            plugins: catalog.plugins.filter(
+              (entry) => !bundledIds.has(entry.id),
+            ),
+            newAndNotable: catalog.newAndNotable.filter(
+              (entryId) => !bundledIds.has(entryId),
+            ),
+          };
     return {
-      catalog: {
-        ...catalog,
-        plugins: catalog.plugins.filter((entry) => !bundledIds.has(entry.id)),
-      },
+      catalog: filteredCatalog,
       error: `dropped ${colliding.length} catalog ${colliding.length === 1 ? "entry" : "entries"} whose id matches a bundled plugin: ${ids}`,
     };
   }
@@ -550,18 +598,68 @@ export function createPluginCatalogService(deps: {
     attemptedAt: number,
   ): Promise<void> {
     let collisionError: string | null = null;
-    const source = marketplaceSourceFromRow(row);
-    if (source.kind === "git") await prepareMarketplaceStaging();
-    const materialized = await materializeMarketplace({
-      source,
-      cached: {
+    const cachedForVersion = (
+      schemaVersion: 1 | 2 | null,
+    ): {
+      manifestJson: string;
+      etag: string | null;
+      lastModified: string | null;
+    } | null => {
+      const stored = catalogOf(row);
+      if (
+        stored === null ||
+        (schemaVersion !== null && stored.schemaVersion !== schemaVersion)
+      ) {
+        return null;
+      }
+      return {
         manifestJson: row.manifestJson,
         etag: row.etag,
         lastModified: row.lastModified,
-      },
-      stagingDir,
-      fetch: fetchMarketplace,
-    });
+      };
+    };
+    const materialize = async (args: {
+      source: MarketplaceSource;
+      expectedVersion: 1 | 2 | null;
+    }): Promise<MaterializedMarketplace> => {
+      if (args.source.kind === "git") await prepareMarketplaceStaging();
+      const result = await materializeMarketplace({
+        source: args.source,
+        cached: cachedForVersion(args.expectedVersion),
+        stagingDir,
+        fetch: fetchMarketplace,
+      });
+      if (
+        args.expectedVersion !== null &&
+        result.catalog.schemaVersion !== args.expectedVersion
+      ) {
+        await result.dispose();
+        throw new Error(
+          `invalid marketplace manifest: expected schemaVersion ${args.expectedVersion}, got ${result.catalog.schemaVersion}`,
+        );
+      }
+      return result;
+    };
+    let source = marketplaceSourceFromRow(row);
+    let materialized: MaterializedMarketplace;
+    if (
+      row.name === CURATED_MARKETPLACE_NAME &&
+      officialManifestUrls.v1 !== null
+    ) {
+      source = { kind: "https", manifestUrl: officialManifestUrls.v2 };
+      try {
+        materialized = await materialize({ source, expectedVersion: 2 });
+      } catch (error) {
+        if (!(error instanceof MarketplaceManifestMissingError)) throw error;
+        source = {
+          kind: "https",
+          manifestUrl: officialManifestUrls.v1,
+        };
+        materialized = await materialize({ source, expectedVersion: 1 });
+      }
+    } else {
+      materialized = await materialize({ source, expectedVersion: null });
+    }
     try {
       if (materialized.catalog.name !== row.name) {
         throw new Error(
@@ -1177,8 +1275,8 @@ export function createPluginCatalogService(deps: {
             left.marketplaceRank - right.marketplaceRank;
           if (marketplaceDifference !== 0) return marketplaceDifference;
           const categoryDifference =
-            (categoryOrder.get(left.result.category) ?? categoryOrder.size) -
-            (categoryOrder.get(right.result.category) ?? categoryOrder.size);
+            (categoryOrder.get(left.result.categoryId) ?? categoryOrder.size) -
+            (categoryOrder.get(right.result.categoryId) ?? categoryOrder.size);
           return (
             categoryDifference ||
             left.result.category.localeCompare(right.result.category) ||
@@ -1309,13 +1407,4 @@ function entryAuthor(entry: MarketplaceEntry): PluginCatalogAuthor {
       ? null
       : `https://github.com/${entry.author.github}`);
   return { name: entry.author.name, url };
-}
-
-/** `git-tools` reads as "Git Tools" in a section heading. */
-function titleCaseTag(tag: string): string {
-  return tag
-    .split("-")
-    .filter((word) => word.length > 0)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 }
