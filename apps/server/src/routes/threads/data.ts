@@ -45,9 +45,11 @@ import { toThreadQueuedMessage } from "../../services/threads/thread-queued-mess
 import {
   buildThreadConversationOutline,
   buildThreadTimelineWithProfile,
+  buildTimelineTurnDetailsPage,
   buildTimelineTurnSummaryDetails,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
+  THREAD_TIMELINE_TURN_DETAIL_EVENT_LIMIT,
 } from "../../services/threads/timeline.js";
 import type {
   ThreadTimelinePageKind,
@@ -464,6 +466,25 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         turnId: query.turnId,
         sourceSeqStart: parseInteger(query.sourceSeqStart, "sourceSeqStart"),
         sourceSeqEnd: parseInteger(query.sourceSeqEnd, "sourceSeqEnd"),
+      }),
+    );
+  });
+
+  get(routes.timelineTurnDetails, (context, query) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const includeProviderUnhandledOperations =
+      deps.config.isDevelopment ||
+      getAppSettings(deps.db).showUnhandledProviderEvents;
+    return context.json(
+      buildTimelineTurnDetailsPage(deps.db, thread, {
+        ...(query.cursor ? { cursor: query.cursor } : {}),
+        eventLimit: THREAD_TIMELINE_TURN_DETAIL_EVENT_LIMIT,
+        includeProviderUnhandledOperations,
+        providerDisplayName: resolveThreadProviderDisplayName(
+          deps,
+          thread.providerId,
+        ),
+        turnId: query.turnId,
       }),
     );
   });

@@ -7,6 +7,7 @@ import type {
   SidebarBootstrapResponse,
   ThreadTimelineResponse,
   ThreadWithIncludesResponse,
+  TimelineTurnDetailsResponse,
 } from "@bb/server-contract";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import * as api from "@/lib/api";
@@ -34,6 +35,7 @@ import {
   useThreadQueuedMessages,
   useThreadStorageLocation,
   useThreadTimeline,
+  useThreadTimelineTurnDetails,
 } from "./thread-queries";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -52,6 +54,7 @@ vi.mock("@/lib/sdk", () => ({
       queuedMessages: { list: vi.fn() },
       storageLocation: vi.fn(),
       timeline: vi.fn(),
+      timelineTurnDetails: vi.fn(),
     },
   },
 }));
@@ -176,6 +179,64 @@ beforeEach(() => {
     url: "/api/v1/threads/thread-1/host-files/content?path=%2Ftmp%2Flog.txt",
     mimeType: "text/plain",
     content: "preview",
+  });
+});
+
+describe("useThreadTimelineTurnDetails", () => {
+  it("stops after the first page until the caller requests the next one", async () => {
+    vi.mocked(sdk.threads.timelineTurnDetails).mockImplementation(
+      async (input) => {
+        const firstPage = input.cursor === undefined;
+        return {
+          nextCursor: firstPage ? "cursor-2" : null,
+          rows: [
+            {
+              id: firstPage ? "work-1" : "work-2",
+              threadId: "thread-1",
+              turnId: "turn-1",
+              sourceSeqStart: firstPage ? 1 : 2,
+              sourceSeqEnd: firstPage ? 1 : 2,
+              startedAt: firstPage ? 1 : 2,
+              createdAt: firstPage ? 1 : 2,
+              kind: "system",
+              systemKind: "debug",
+              title: "Work",
+              detail: null,
+              status: null,
+            },
+          ],
+        } satisfies TimelineTurnDetailsResponse;
+      },
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const result = renderHook(
+      () =>
+        useThreadTimelineTurnDetails({
+          threadId: "thread-1",
+          turnId: "turn-1",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.result.current.isSuccess).toBe(true));
+    expect(sdk.threads.timelineTurnDetails).toHaveBeenCalledTimes(1);
+    expect(
+      result.result.current.data?.pages.flatMap((page) => page.rows),
+    ).toHaveLength(1);
+
+    await act(async () => {
+      await result.result.current.fetchNextPage();
+    });
+
+    expect(sdk.threads.timelineTurnDetails).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: "cursor-2" }),
+    );
+    await waitFor(() =>
+      expect(
+        result.result.current.data?.pages.flatMap((page) => page.rows),
+      ).toHaveLength(2),
+    );
   });
 });
 

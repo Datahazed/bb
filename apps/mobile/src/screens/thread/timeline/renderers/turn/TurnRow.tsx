@@ -1,6 +1,6 @@
 import { View } from "react-native";
 import { useTheme } from "@/theme";
-import { Spinner, Text } from "@/ui";
+import { Button, Spinner, Text } from "@/ui";
 import { TIMELINE_ROW_DEPTH_INDENT_PX } from "../../FallbackTimelineRow";
 import type { TimelineRowRendererProps } from "../../renderers";
 import {
@@ -13,7 +13,7 @@ import { isPastTimelineRow } from "../shared/row-dim";
  * `turn` renderer: a completed turn's recap header ("Worked for 8m 14s") or
  * the live "Working" row. Expanding reveals the turn's rows as flattened
  * children one level in; turns outside the loaded window fetch them lazily
- * (`useTimelineTurnSummaryDetails` through the list's loaders), so the row
+ * (`useTimelineTurnDetails` through the list's loaders), so the row
  * shows the load state under its header until they arrive.
  */
 export function TurnRow({
@@ -53,6 +53,22 @@ export function TurnRow({
         >
           Failed to load turn details. Collapse and expand to retry.
         </Text>
+      ) : null}
+      {expanded && item.lazyChildrenHasMore ? (
+        <View
+          className="items-start pb-2"
+          style={{ paddingLeft: TIMELINE_ROW_DEPTH_INDENT_PX }}
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            loading={item.lazyChildrenLoadingMore}
+            onPress={item.onLoadMoreLazyChildren ?? undefined}
+            testID="timeline-turn-children-load-more"
+          >
+            Load more work
+          </Button>
+        </View>
       ) : null}
     </TimelineRowShell>
   );

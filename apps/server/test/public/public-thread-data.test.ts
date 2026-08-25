@@ -33,6 +33,7 @@ import {
   threadStorageLocationResponseSchema,
   threadTimelineResponseSchema,
   threadWithIncludesResponseSchema,
+  timelineTurnDetailsResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
   uploadedPromptAttachmentSchema,
 } from "@bb/server-contract";
@@ -1078,6 +1079,18 @@ describe("public thread data routes", () => {
         expect(detailRow.workKind).toBe("tool");
         expect(detailRow.callId).toBe("tool-1");
       }
+
+      const pageResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-details?turnId=${turnRow.turnId}`,
+      );
+      expect(pageResponse.status).toBe(200);
+      const page = timelineTurnDetailsResponseSchema.parse(
+        await readJson(pageResponse),
+      );
+      expect(page.nextCursor).toBeNull();
+      expect(page.rows.map((row) => row.id)).toEqual(
+        toolDetails.rows.map((row) => row.id),
+      );
     });
   });
 

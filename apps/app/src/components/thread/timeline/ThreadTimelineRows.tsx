@@ -48,6 +48,7 @@ import {
   collectTimelineAutoExpansionRowIds,
   isNonExpandableSummary,
   isRowExpandable,
+  mergeTimelineTurnDetailPages,
 } from "@bb/client-core";
 import { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";
 import type {
@@ -117,8 +118,8 @@ import {
 } from "./timeline-row-containment.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
 import { getThreadRoutePath } from "@/lib/route-paths";
-import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
-import { type ThreadTimelineTurnSummaryDetailsQueryIdentity } from "@/hooks/queries/query-keys";
+import { useThreadTimelineTurnDetails } from "@/hooks/queries/thread-queries";
+import { type ThreadTimelineTurnDetailsQueryIdentity } from "@/hooks/queries/query-keys";
 import {
   useSenderThreadMetadataById,
   type SenderThreadMetadata,
@@ -382,14 +383,6 @@ interface TimelineRowTitleRenderStateCache {
   state: TimelineRowTitleRenderState;
 }
 
-interface BuildTurnSummaryDetailsIdentityArgs {
-  rowSourceSeqEnd: TimelineViewTurnRow["sourceSeqEnd"];
-  rowSourceSeqStart: TimelineViewTurnRow["sourceSeqStart"];
-  rowThreadId: TimelineViewTurnRow["threadId"];
-  rowTurnId: TimelineViewTurnRow["turnId"];
-  threadId: string | undefined;
-}
-
 interface TimelineRowsOwnerKeyArgs {
   threadId: string | undefined;
   timelineRows: readonly TimelineRow[];
@@ -648,21 +641,6 @@ function useTimelineSearchExpansionRowIds(
     }
     return combinedRowIds;
   }, [inheritedRowIds, location.state, rows, threadId]);
-}
-
-function buildTurnSummaryDetailsIdentity({
-  rowSourceSeqEnd,
-  rowSourceSeqStart,
-  rowThreadId,
-  rowTurnId,
-  threadId,
-}: BuildTurnSummaryDetailsIdentityArgs): ThreadTimelineTurnSummaryDetailsQueryIdentity {
-  return {
-    sourceSeqEnd: rowSourceSeqEnd,
-    sourceSeqStart: rowSourceSeqStart,
-    threadId: threadId ?? rowThreadId,
-    turnId: rowTurnId,
-  };
 }
 
 function timelineRowsOwnerKey({
@@ -1515,36 +1493,33 @@ function LazyTurnRowBody({
   showAssistantMessageActions,
 }: LazyTurnRowBodyProps) {
   const { getViewRows, threadId } = useTimelineRendererStaticContext();
-  const {
-    sourceSeqEnd: rowSourceSeqEnd,
-    sourceSeqStart: rowSourceSeqStart,
-    threadId: rowThreadId,
-    turnId: rowTurnId,
-  } = row;
-  const identity = useMemo<ThreadTimelineTurnSummaryDetailsQueryIdentity>(
-    () =>
-      buildTurnSummaryDetailsIdentity({
-        rowSourceSeqEnd,
-        rowSourceSeqStart,
-        rowThreadId,
-        rowTurnId,
-        threadId,
-      }),
-    [rowSourceSeqEnd, rowSourceSeqStart, rowThreadId, rowTurnId, threadId],
+  const { threadId: rowThreadId, turnId: rowTurnId } = row;
+  const identity = useMemo<ThreadTimelineTurnDetailsQueryIdentity>(
+    () => ({ threadId: threadId ?? rowThreadId, turnId: rowTurnId }),
+    [rowThreadId, rowTurnId, threadId],
   );
   const {
     data: detail,
+    fetchNextPage,
+    hasNextPage,
     isError,
+    isFetchingNextPage,
     refetch,
-  } = useThreadTimelineTurnSummaryDetails(identity);
+  } = useThreadTimelineTurnDetails(identity);
   const handleRetry = useCallback((): void => {
     void refetch();
   }, [refetch]);
+  const handleLoadMore = useCallback((): void => {
+    void fetchNextPage();
+  }, [fetchNextPage]);
   const rows = detail
     ? // Lazy turn-detail children belong to a completed turn — flag the
       // scope as closed so trailing work in the children collapses into a
       // step-summary at end-of-input, matching the inline-children path.
-      getViewRows(detail.rows, { closedScope: true })
+      getViewRows(
+        mergeTimelineTurnDetailPages(detail.pages.map((page) => page.rows)),
+        { closedScope: true },
+      )
     : null;
 
   if (!rows && isError) {
@@ -1566,16 +1541,29 @@ function LazyTurnRowBody({
   }
   if (rows) {
     return (
-      <TimelineRowsList
-        rows={rows}
-        scopeActive={false}
-        showAssistantMessageActions={showAssistantMessageActions}
-        compactActivityIntents={compactActivityIntents}
-        spacing="nested"
-        className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
-        unreadDividerAutoScroll={false}
-        unreadDividerPlacement={null}
-      />
+      <div className="space-y-2">
+        <TimelineRowsList
+          rows={rows}
+          scopeActive={false}
+          showAssistantMessageActions={showAssistantMessageActions}
+          compactActivityIntents={compactActivityIntents}
+          spacing="nested"
+          className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
+          unreadDividerAutoScroll={false}
+          unreadDividerPlacement={null}
+        />
+        {hasNextPage ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={isFetchingNextPage}
+            onClick={handleLoadMore}
+          >
+            {isFetchingNextPage ? "Loading…" : "Load more work"}
+          </Button>
+        ) : null}
+      </div>
     );
   }
   return (

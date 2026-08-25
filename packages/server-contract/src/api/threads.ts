@@ -737,6 +737,14 @@ export type TimelineTurnSummaryDetailsQuery = z.infer<
   typeof timelineTurnSummaryDetailsQuerySchema
 >;
 
+export const timelineTurnDetailsQuerySchema = z.object({
+  turnId: z.string().min(1),
+  cursor: z.string().min(1).optional(),
+});
+export type TimelineTurnDetailsQuery = z.infer<
+  typeof timelineTurnDetailsQuerySchema
+>;
+
 export const threadEventsQuerySchema = z
   .object({
     afterSeq: z.string().regex(/^\d+$/),
@@ -822,6 +830,14 @@ export const timelineTurnSummaryDetailsResponseSchema = z.object({
 });
 export type TimelineTurnSummaryDetailsResponse = z.infer<
   typeof timelineTurnSummaryDetailsResponseSchema
+>;
+
+export const timelineTurnDetailsResponseSchema = z.object({
+  rows: z.array(timelineRowSchema),
+  nextCursor: z.string().min(1).nullable(),
+});
+export type TimelineTurnDetailsResponse = z.infer<
+  typeof timelineTurnDetailsResponseSchema
 >;
 
 export const threadTimelineResponseSchema = z.object({

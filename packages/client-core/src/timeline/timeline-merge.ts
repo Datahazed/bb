@@ -98,12 +98,47 @@ function appendTimelineRowsPreservingOrder(
   target: TimelineRow[],
   rows: readonly TimelineRow[],
 ): void {
-  const seenIds = new Set(target.map((row) => row.id));
+  const indexById = new Map(target.map((row, index) => [row.id, index]));
   for (const row of rows) {
-    if (seenIds.has(row.id)) {
+    const existingIndex = indexById.get(row.id);
+    if (existingIndex !== undefined) {
+      const existing = target[existingIndex];
+      if (
+        existing?.kind === "turn" &&
+        row.kind === "turn" &&
+        existing.completedAt !== null &&
+        row.completedAt !== null &&
+        (existing.sourceSeqEnd < row.sourceSeqStart ||
+          row.sourceSeqEnd < existing.sourceSeqStart)
+      ) {
+        const ordered =
+          existing.sourceSeqStart <= row.sourceSeqStart
+            ? [existing, row]
+            : [row, existing];
+        const children = [
+          ...new Map(
+            ordered
+              .flatMap((part) => part.children ?? [])
+              .map((child) => [child.id, child]),
+          ).values(),
+        ];
+        target[existingIndex] = {
+          ...ordered[1],
+          children:
+            existing.children === null && row.children === null
+              ? null
+              : children,
+          completedAt: Math.max(existing.completedAt, row.completedAt),
+          createdAt: Math.min(existing.createdAt, row.createdAt),
+          sourceSeqEnd: Math.max(existing.sourceSeqEnd, row.sourceSeqEnd),
+          sourceSeqStart: Math.min(existing.sourceSeqStart, row.sourceSeqStart),
+          startedAt: Math.min(existing.startedAt, row.startedAt),
+          summaryCount: existing.summaryCount + row.summaryCount,
+        };
+      }
       continue;
     }
-    seenIds.add(row.id);
+    indexById.set(row.id, target.length);
     target.push(row);
   }
 }
@@ -171,6 +206,61 @@ export function prependOlderTimelineRows({
   const rows: TimelineRow[] = [];
   appendTimelineRowsPreservingOrder(rows, olderRows);
   appendTimelineRowsPreservingOrder(rows, loadedRows);
+  return rows;
+}
+
+/**
+ * Combines forward detail pages into the logical rows they represent. A
+ * delegation can span page boundaries, so each page may project the same
+ * delegation shell with a different bounded set of children.
+ */
+export function mergeTimelineTurnDetailPages(
+  pages: readonly (readonly TimelineRow[])[],
+): TimelineRow[] {
+  const rows: TimelineRow[] = [];
+  const indexById = new Map<string, number>();
+  for (const page of pages) {
+    for (const row of page) {
+      const existingIndex = indexById.get(row.id);
+      if (existingIndex === undefined) {
+        indexById.set(row.id, rows.length);
+        rows.push(row);
+        continue;
+      }
+      const existing = rows[existingIndex];
+      if (
+        existing?.kind === "work" &&
+        existing.workKind === "delegation" &&
+        row.kind === "work" &&
+        row.workKind === "delegation"
+      ) {
+        rows[existingIndex] = {
+          ...row,
+          childRows: mergeTimelineTurnDetailPages([
+            existing.childRows,
+            row.childRows,
+          ]),
+          completedAt:
+            existing.completedAt === null
+              ? row.completedAt
+              : row.completedAt === null
+                ? existing.completedAt
+                : Math.max(existing.completedAt, row.completedAt),
+          createdAt: Math.min(existing.createdAt, row.createdAt),
+          sourceSeqEnd: Math.max(existing.sourceSeqEnd, row.sourceSeqEnd),
+          sourceSeqStart: Math.min(
+            existing.sourceSeqStart,
+            row.sourceSeqStart,
+          ),
+          startedAt: Math.min(existing.startedAt, row.startedAt),
+        };
+        continue;
+      }
+      // Whole-item ownership makes the later page authoritative for ordinary
+      // rows whose lifecycle context caused the same id to appear twice.
+      rows[existingIndex] = row;
+    }
+  }
   return rows;
 }
 
