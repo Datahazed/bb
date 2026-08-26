@@ -213,4 +213,52 @@ describe("plugin catalog contracts", () => {
       installedPluginSchema.shape.screenshots.safeParse(undefined).success,
     ).toBe(false);
   });
+
+  it("preserves the author-only listing draft boundary", () => {
+    const entry = {
+      id: "author-tools",
+      displayName: "  Author tools  ",
+      description: "  Tools for authors.  ",
+      icon: "Toolbox",
+      author: { name: "  Author  " },
+      source: {
+        git: {
+          url: "https://github.com/author/author-tools.git",
+          range: "  ^1.0.0  ",
+        },
+      },
+      category: "plugin-development",
+      screenshots: [],
+    };
+    expect(pluginListingSaveDraftRequestSchema.parse({ entry })).toMatchObject({
+      entry: {
+        displayName: "Author tools",
+        description: "Tools for authors.",
+        author: { name: "Author" },
+        source: { git: { range: "^1.0.0" } },
+      },
+    });
+
+    const { screenshots: _screenshots, ...withoutScreenshots } = entry;
+    for (const invalidEntry of [
+      withoutScreenshots,
+      { ...entry, installCount: 0 },
+      { ...entry, author: { name: "Author", url: "https://" } },
+      {
+        ...entry,
+        source: {
+          npm: { package: "bb-plugin-author-tools", registry: "https://" },
+        },
+      },
+      {
+        ...entry,
+        source: { git: { url: "https://", range: "^1.0.0" } },
+      },
+    ]) {
+      expect(
+        pluginListingSaveDraftRequestSchema.safeParse({ entry: invalidEntry })
+          .success,
+      ).toBe(false);
+    }
+  });
 });

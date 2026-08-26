@@ -137,6 +137,32 @@ const fixtures: readonly Fixture[] = [
     }),
   },
   {
+    label: "git tag prefix at the public limit",
+    valid: true,
+    manifest: manifestWith({
+      source: {
+        git: {
+          url: "https://example.com/acme/plugin.git",
+          range: "^1.2.3",
+          tagPrefix: "a".repeat(128),
+        },
+      },
+    }),
+  },
+  {
+    label: "git tag prefix past the public limit",
+    valid: false,
+    manifest: manifestWith({
+      source: {
+        git: {
+          url: "https://example.com/acme/plugin.git",
+          range: "^1.2.3",
+          tagPrefix: "a".repeat(129),
+        },
+      },
+    }),
+  },
+  {
     label: "invalid git semver range",
     valid: false,
     manifest: manifestWith({

@@ -44,7 +44,6 @@ import {
 } from "@bb/db";
 import {
   CURATED_MARKETPLACE_NAME,
-  parseMarketplaceManifest,
   parseMarketplaceManifestJson,
 } from "../services/plugin-catalog/marketplace-manifest.js";
 import { parseGithubPullRequestUrl } from "../services/plugins/plugin-listing-lifecycle.js";
@@ -268,16 +267,6 @@ export function registerPluginListingRoutes(
       );
     }
     try {
-      parseMarketplaceManifest(
-        {
-          schemaVersion: 2,
-          name: "bb-community",
-          displayName: "BB Community",
-          newAndNotable: [],
-          plugins: [parsed.data.entry],
-        },
-        "listing draft",
-      );
       assertListingDraftIdAvailable(deps.db, pluginId);
       savePluginListingDraft(deps.db, pluginId, parsed.data.entry);
       deps.hub.notifySystem(["plugins-changed"]);

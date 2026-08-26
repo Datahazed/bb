@@ -1,7 +1,9 @@
 import {
   jsonValueSchema,
+  marketplaceAuthorEntrySchema,
   PLUGIN_CATALOG_CATEGORY_IDS,
   pluginCatalogCategoryIdSchema,
+  type MarketplaceAuthorEntry,
   type PluginCatalogCategoryId,
 } from "@bb/domain";
 import { z } from "zod";
@@ -259,118 +261,8 @@ export const pluginListResponseSchema = z.object({
 export type PluginListResponse = z.infer<typeof pluginListResponseSchema>;
 
 /** The author-prepared portion of a marketplace v2 entry. */
-export const pluginListingDraftEntrySchema = z
-  .object({
-    id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/u),
-    displayName: z.string().trim().min(1),
-    description: z.string().trim().min(1),
-    icon: z.union([
-      z.string().regex(/^[A-Za-z][A-Za-z0-9]*$/u),
-      z
-        .object({
-          url: z
-            .string()
-            .trim()
-            .min(1)
-            .refine(
-              (value) =>
-                !/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value) ||
-                value.startsWith("https:"),
-              "must be an https URL or a relative marketplace asset",
-            )
-            .refine(
-              (value) => /\.(?:svg|png|webp)(?:[?#].*)?$/iu.test(value),
-              "must point at an .svg, .png, or .webp file",
-            ),
-        })
-        .strict(),
-    ]),
-    author: z
-      .object({
-        name: z.string().trim().min(1),
-        github: z
-          .string()
-          .regex(/^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u)
-          .optional(),
-        url: z
-          .url()
-          .refine((value) => new URL(value).protocol === "https:")
-          .optional(),
-      })
-      .strict(),
-    source: z.union([
-      z
-        .object({
-          npm: z
-            .object({
-              package: z.string().trim().min(1),
-              range: z.string().trim().min(1).optional(),
-              tag: z.string().trim().min(1).optional(),
-              registry: z
-                .url()
-                .refine((value) => new URL(value).protocol === "https:")
-                .optional(),
-            })
-            .strict()
-            .refine(
-              (value) => value.range === undefined || value.tag === undefined,
-              "range and tag are mutually exclusive",
-            ),
-        })
-        .strict(),
-      z
-        .object({
-          git: z
-            .object({
-              url: z
-                .url()
-                .refine((value) => new URL(value).protocol === "https:"),
-              subdir: z.string().trim().min(1).optional(),
-              ref: z.string().trim().min(1),
-            })
-            .strict(),
-        })
-        .strict(),
-      z
-        .object({
-          git: z
-            .object({
-              url: z
-                .url()
-                .refine((value) => new URL(value).protocol === "https:"),
-              subdir: z.string().trim().min(1).optional(),
-              range: z.string().trim().min(1),
-              tagPrefix: z.string().trim().min(1).optional(),
-            })
-            .strict(),
-        })
-        .strict(),
-    ]),
-    tags: z.array(z.string().trim().min(1)).max(10).optional(),
-    category: pluginCatalogCategoryIdSchema,
-    screenshots: z
-      .array(
-        z
-          .string()
-          .trim()
-          .min(1)
-          .refine(
-            (value) =>
-              !/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value) ||
-              value.startsWith("https:"),
-            "must be an https URL or a relative marketplace asset",
-          )
-          .refine(
-            (value) => /\.(?:png|jpe?g|webp)(?:[?#].*)?$/iu.test(value),
-            "must point at a .png, .jpg, .jpeg, or .webp file",
-          ),
-      )
-      .max(6),
-  })
-  .strict();
-export type PluginListingDraftEntry = z.infer<
-  typeof pluginListingDraftEntrySchema
->;
+export const pluginListingDraftEntrySchema = marketplaceAuthorEntrySchema;
+export type PluginListingDraftEntry = MarketplaceAuthorEntry;
 
 const marketplacePullRequestUrlSchema = z.url().refine((value) => {
   const url = new URL(value);

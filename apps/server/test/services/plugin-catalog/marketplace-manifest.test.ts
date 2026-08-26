@@ -512,6 +512,23 @@ describe("marketplace manifest schema", () => {
         npmRegistry: "https://npm.acme.test",
       });
     });
+
+    it("applies server-only source validation when translating an entry", () => {
+      const parsed = parseMarketplaceManifest(
+        manifest([
+          entry({
+            source: { git: { url: "https://", ref: "v1.0.0" } },
+          }),
+        ]),
+        "manifest",
+      );
+      const invalid = parsed.plugins[0];
+      if (invalid === undefined) throw new Error("entry missing");
+
+      expect(() => resolvedEntrySource(invalid)).toThrow(
+        /must be an https URL/u,
+      );
+    });
   });
 
   describe("repository url", () => {

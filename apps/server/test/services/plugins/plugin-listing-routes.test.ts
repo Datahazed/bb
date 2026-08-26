@@ -187,6 +187,31 @@ describe("plugin listing routes", () => {
         )
       ).status,
     ).toBe(422);
+    const { screenshots: _screenshots, ...entryWithoutScreenshots } = entry;
+    for (const invalidEntry of [
+      entryWithoutScreenshots,
+      { ...entry, installCount: 0 },
+      { ...entry, author: { name: "Author", url: "https://" } },
+      {
+        ...entry,
+        source: {
+          npm: { package: "bb-plugin-author-tools", registry: "https://" },
+        },
+      },
+      {
+        ...entry,
+        source: { git: { url: "https://", range: "^1.0.0" } },
+      },
+    ]) {
+      expect(
+        (
+          await app.request(
+            `/plugins/${entry.id}/listing/draft`,
+            jsonPost({ entry: invalidEntry }),
+          )
+        ).status,
+      ).toBe(422);
+    }
     expect(
       (
         await app.request(

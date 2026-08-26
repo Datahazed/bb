@@ -1,7 +1,12 @@
 import { join } from "node:path";
 import {
+  marketplaceEntryV1Schema,
+  marketplaceEntryV2Schema,
+  type MarketplaceEntryV1 as DomainMarketplaceEntryV1,
+  type MarketplaceEntryV2 as DomainMarketplaceEntryV2,
+} from "@bb/domain";
+import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
-  pluginCatalogCategoryIdSchema,
   pluginMarketplaceNameSchema,
   ROOT_PLUGIN_SOURCE_SELECTION,
   type PluginSourceSelection,
@@ -53,281 +58,6 @@ const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
  * bb stored but could not refresh or remove by name would be unmanageable.
  */
 const manifestNameSchema = pluginMarketplaceNameSchema;
-/** Lowercase kebab-case, the store's grouping vocabulary. */
-const TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-/** A GitHub login or organization, as GitHub itself accepts them. */
-const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$/u;
-/** A host icon name such as `ZoomIn`; never a path or a URL. */
-const ICON_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/u;
-const ICON_EXTENSIONS = [".svg", ".png", ".webp"] as const;
-const SCREENSHOT_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp"] as const;
-const MARKETPLACE_MAX_SCREENSHOTS = 6;
-
-const semverRange = z
-  .string()
-  .min(1)
-  .refine((value) => semver.validRange(value) !== null, {
-    message: "must be a valid semver range",
-  });
-
-const httpsUrl = z
-  .string()
-  .min(1)
-  .refine(
-    (value) => {
-      try {
-        return new URL(value).protocol === "https:";
-      } catch {
-        return false;
-      }
-    },
-    { message: "must be an https URL" },
-  );
-
-function iconExtensionProblem(pathname: string): string | null {
-  const lower = pathname.toLowerCase();
-  return ICON_EXTENSIONS.some((extension) => lower.endsWith(extension))
-    ? null
-    : `must point at a ${ICON_EXTENSIONS.join(", ")} file`;
-}
-
-/**
- * An icon URL is absolute `https:` or relative to the manifest's own URL, so a
- * git-hosted marketplace can keep icons beside its manifest. Plain `http:` is
- * rejected; the relative form is only checkable once a base URL is known, so
- * the schema enforces shape here and {@link resolveEntryIcon} enforces the
- * resolved protocol.
- */
-const iconUrlSchema = z
-  .string()
-  .min(1)
-  .superRefine((value, ctx) => {
-    const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value);
-    if (absolute && !value.toLowerCase().startsWith("https:")) {
-      ctx.addIssue({ code: "custom", message: "must be an https URL" });
-      return;
-    }
-    let pathname: string;
-    try {
-      pathname = new URL(value, "https://marketplace.invalid/base/").pathname;
-    } catch {
-      ctx.addIssue({ code: "custom", message: "is not a valid URL" });
-      return;
-    }
-    const problem = iconExtensionProblem(pathname);
-    if (problem !== null) ctx.addIssue({ code: "custom", message: problem });
-  });
-
-/**
- * An SVG icon is single-color artwork: BB masks it with the surrounding text
- * color, the same way it renders a plugin's own compact `branding.icon`, so a
- * black-on-transparent glyph stays visible on a dark theme. Raster icons
- * (PNG, WebP) keep their own colors: a mask reads alpha only and would
- * flatten an opaque image into a solid block, and a raster is the form for
- * multi-color artwork. The object stays strict: an older desktop rejects the
- * whole manifest on an unknown field, so a per-entry opt-out needs a new
- * schemaVersion.
- */
-const iconSchema = z.union([
-  z.string().regex(ICON_NAME_PATTERN, "must be a host icon name"),
-  z.object({ url: iconUrlSchema }).strict(),
-]);
-
-const screenshotUrlSchema = z
-  .string()
-  .min(1)
-  .superRefine((value, ctx) => {
-    const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value);
-    if (absolute && !value.toLowerCase().startsWith("https:")) {
-      ctx.addIssue({ code: "custom", message: "must be an https URL" });
-      return;
-    }
-    let pathname: string;
-    try {
-      pathname = new URL(
-        value,
-        "https://marketplace.invalid/base/",
-      ).pathname.toLowerCase();
-    } catch {
-      ctx.addIssue({ code: "custom", message: "is not a valid URL" });
-      return;
-    }
-    if (
-      !SCREENSHOT_EXTENSIONS.some((extension) => pathname.endsWith(extension))
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: `must point at a ${SCREENSHOT_EXTENSIONS.join(", ")} file`,
-      });
-    }
-  });
-
-const authorSchema = z
-  .object({
-    name: z.string().min(1),
-    github: z.string().regex(GITHUB_LOGIN_PATTERN).optional(),
-    url: httpsUrl.optional(),
-  })
-  .strict();
-
-const npmSourceSchema = z
-  .object({
-    npm: z
-      .object({
-        package: z
-          .string()
-          .min(1)
-          .superRefine((value, ctx) => {
-            try {
-              const parsed = parsePluginSource(`npm:${value}`);
-              if (
-                parsed.kind !== "npm" ||
-                parsed.name !== value ||
-                parsed.spec.length !== 0
-              ) {
-                throw new Error("package name is ambiguous");
-              }
-            } catch (error) {
-              ctx.addIssue({
-                code: "custom",
-                message: error instanceof Error ? error.message : String(error),
-              });
-            }
-          }),
-        range: semverRange.optional(),
-        /** An npm dist-tag such as `beta`; mutually exclusive with `range`. */
-        tag: z
-          .string()
-          .min(1)
-          .regex(/^[A-Za-z][A-Za-z0-9._-]*$/u)
-          .optional(),
-        registry: httpsUrl.optional(),
-      })
-      .strict()
-      .refine((npm) => npm.range === undefined || npm.tag === undefined, {
-        message: "range and tag are mutually exclusive",
-      }),
-  })
-  .strict();
-
-const gitSubdirSchema = z
-  .string()
-  .min(1)
-  .superRefine((value, ctx) => {
-    try {
-      normalizePluginSubdirectory(value);
-    } catch (error) {
-      ctx.addIssue({
-        code: "custom",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-
-/**
- * A ref must survive BB's `git:<url>@<ref>` syntax unchanged, so a listing
- * cannot smuggle a range, a `semver:` selector, or a second `@` past it.
- */
-const gitRefSchema = z
-  .string()
-  .min(1)
-  .superRefine((value, ctx) => {
-    try {
-      const parsed = parsePluginSource(
-        `git:https://marketplace.invalid/plugin.git@${value}`,
-      );
-      if (
-        parsed.kind !== "git" ||
-        parsed.selector.kind !== "ref" ||
-        parsed.selector.ref !== value
-      ) {
-        throw new Error("git ref is ambiguous");
-      }
-    } catch (error) {
-      ctx.addIssue({
-        code: "custom",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-
-const gitTagPrefixSchema = z
-  .string()
-  .min(1)
-  .superRefine((value, ctx) => {
-    try {
-      normalizeGitTagPrefix(value);
-    } catch (error) {
-      ctx.addIssue({
-        code: "custom",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-
-/** `ref` and `range` are mutually exclusive; strict objects enforce the XOR. */
-const gitSourceSchema = z.union([
-  z
-    .object({
-      git: z
-        .object({
-          url: httpsUrl,
-          subdir: gitSubdirSchema.optional(),
-          ref: gitRefSchema,
-        })
-        .strict(),
-    })
-    .strict(),
-  z
-    .object({
-      git: z
-        .object({
-          url: httpsUrl,
-          subdir: gitSubdirSchema.optional(),
-          range: semverRange,
-          /** Monorepo tagging: `notes/` matches `notes/vX.Y.Z` tags. */
-          tagPrefix: gitTagPrefixSchema.optional(),
-        })
-        .strict(),
-    })
-    .strict(),
-]);
-
-/**
- * A listing describes a plugin and where to get it; it does not declare
- * compatibility. A listing's copy of an `engines` range is a second source of
- * truth that goes stale the moment the plugin publishes a new version, and it
- * hid a compatible plugin behind an out-of-date manifest. BB reads
- * `engines.bb` and `engines.bbPluginSdk` from the fetched plugin's own
- * package.json and refuses the install there instead.
- */
-const entryShape = {
-  id: z.string().regex(NAME_PATTERN),
-  displayName: z.string().min(1),
-  description: z.string().min(1),
-  icon: iconSchema,
-  tags: z.array(z.string().max(32).regex(TAG_PATTERN)).max(10).optional(),
-  author: authorSchema,
-  source: z.union([npmSourceSchema, gitSourceSchema]),
-};
-
-/** Exact immutable entry accepted by marketplace/v1. Never add fields. */
-const marketplaceEntryV1Schema = z.object(entryShape).strict();
-
-/** Discovery fields exist only in marketplace/v2. */
-const marketplaceEntryV2Schema = z
-  .object({
-    ...entryShape,
-    category: pluginCatalogCategoryIdSchema,
-    screenshots: z
-      .array(screenshotUrlSchema)
-      .max(MARKETPLACE_MAX_SCREENSHOTS)
-      .optional(),
-    installCount: z.number().int().nonnegative().optional(),
-    publishedAt: z.iso.datetime({ offset: true }).optional(),
-    updatedAt: z.iso.datetime({ offset: true }).optional(),
-  })
-  .strict();
 
 function uniqueMarketplaceEntries<T extends { id: string }>(
   entries: T[],
@@ -404,8 +134,8 @@ const marketplaceManifestV2Schema = z
 export type MarketplaceManifestV1 = z.infer<typeof marketplaceManifestV1Schema>;
 export type MarketplaceManifestV2 = z.infer<typeof marketplaceManifestV2Schema>;
 export type MarketplaceManifest = MarketplaceManifestV1 | MarketplaceManifestV2;
-export type MarketplaceEntryV1 = MarketplaceManifestV1["plugins"][number];
-export type MarketplaceEntryV2 = MarketplaceManifestV2["plugins"][number];
+export type MarketplaceEntryV1 = DomainMarketplaceEntryV1;
+export type MarketplaceEntryV2 = DomainMarketplaceEntryV2;
 /** Common internal view; v1 entries have no discovery fields. */
 export type MarketplaceEntry = MarketplaceEntryV1 &
   Partial<
@@ -610,10 +340,67 @@ interface ResolvedEntrySource {
   npmRegistry?: string;
 }
 
+function assertHttpsUrl(value: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("must be an https URL");
+  }
+  if (parsed.protocol !== "https:") throw new Error("must be an https URL");
+}
+
+/**
+ * The shared entry schemas own the public manifest grammar. Translation into
+ * install-pipeline inputs adds the deeper parser and normalization safeguards
+ * that depend on server-only source machinery.
+ */
+function assertTranslatableEntrySource(entry: MarketplaceEntry): void {
+  if ("npm" in entry.source) {
+    const npm = entry.source.npm;
+    const parsed = parsePluginSource(`npm:${npm.package}`);
+    if (
+      parsed.kind !== "npm" ||
+      parsed.name !== npm.package ||
+      parsed.spec.length !== 0
+    ) {
+      throw new Error("package name is ambiguous");
+    }
+    if (npm.range !== undefined && semver.validRange(npm.range) === null) {
+      throw new Error("must be a valid semver range");
+    }
+    if (npm.registry !== undefined) assertHttpsUrl(npm.registry);
+    return;
+  }
+
+  const git = entry.source.git;
+  assertHttpsUrl(git.url);
+  if (git.subdir !== undefined) normalizePluginSubdirectory(git.subdir);
+  if ("ref" in git) {
+    const parsed = parsePluginSource(
+      `git:https://marketplace.invalid/plugin.git@${git.ref}`,
+    );
+    if (
+      parsed.kind !== "git" ||
+      parsed.selector.kind !== "ref" ||
+      parsed.selector.ref !== git.ref
+    ) {
+      throw new Error("git ref is ambiguous");
+    }
+    return;
+  }
+
+  if (semver.validRange(git.range) === null) {
+    throw new Error("must be a valid semver range");
+  }
+  if (git.tagPrefix !== undefined) normalizeGitTagPrefix(git.tagPrefix);
+}
+
 /** Translate an entry's source into install-pipeline inputs. */
 export function resolvedEntrySource(
   entry: MarketplaceEntry,
 ): ResolvedEntrySource {
+  assertTranslatableEntrySource(entry);
   if ("npm" in entry.source) {
     const spec = entry.source.npm.range ?? entry.source.npm.tag ?? "";
     return {
