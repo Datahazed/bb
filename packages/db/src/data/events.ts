@@ -1148,6 +1148,25 @@ export interface ListStoredClientTurnRequestIdsInRangeArgs {
   threadId: string;
 }
 
+export interface HasStoredRootTimelineRowsBetweenArgs {
+  afterSequence: number;
+  beforeSequence: number;
+  excludedTypes: readonly ThreadEventType[];
+  threadId: string;
+}
+
+export interface HasStoredRootNonAssistantItemBetweenArgs {
+  afterSequence: number;
+  beforeSequence: number;
+  threadId: string;
+}
+
+export interface HasStoredUserClientTurnRequestBetweenArgs {
+  afterSequence: number;
+  beforeSequence: number;
+  threadId: string;
+}
+
 export interface GetStoredTurnRequestEventForTurnArgs {
   threadId: string;
   turnId: string;
@@ -1186,6 +1205,16 @@ export interface ListStoredTurnStartedRowsByTurnIdsUpToSequenceArgs {
 }
 
 export interface ListStoredTurnCompletedRowsByTurnIdsArgs {
+  threadId: string;
+  turnIds: readonly string[];
+}
+
+export interface ListStoredThreadCompactedRowsByTurnIdsArgs {
+  threadId: string;
+  turnIds: readonly string[];
+}
+
+export interface ListStoredContextCompactionStartedRowsByTurnIdsArgs {
   threadId: string;
   turnIds: readonly string[];
 }
@@ -1588,19 +1617,23 @@ export function findStoredEventRow(
   );
 }
 
-export function findStoredTurnAssistantMessageContextRows(
+function findStoredTurnAssistantMessageContextRowsInternal(
   db: DbConnection,
   args: FindStoredTurnAssistantMessageContextRowsArgs,
+  rootOnly: boolean,
 ): { after: StoredEventRow | null; before: StoredEventRow | null } {
   const fields = storedEventRowFieldsWithInlineOutputLimit(
     args.maxInlineOutputChars,
   );
-  const scope = [
+  const scope: SQL[] = [
     eq(events.threadId, args.threadId),
     eq(events.turnId, args.turnId),
     eq(events.type, "item/completed"),
     eq(events.itemKind, "agentMessage"),
   ];
+  if (rootOnly) {
+    scope.push(isNull(events.parentToolCallId));
+  }
   const before =
     db
       .select(fields)
@@ -1618,6 +1651,21 @@ export function findStoredTurnAssistantMessageContextRows(
       .limit(1)
       .get() ?? null;
   return { after, before };
+}
+
+export function findStoredTurnAssistantMessageContextRows(
+  db: DbConnection,
+  args: FindStoredTurnAssistantMessageContextRowsArgs,
+): { after: StoredEventRow | null; before: StoredEventRow | null } {
+  return findStoredTurnAssistantMessageContextRowsInternal(db, args, false);
+}
+
+/** Nearest root assistant messages on either side of a sequence range. */
+export function findStoredRootTurnAssistantMessageContextRows(
+  db: DbConnection,
+  args: FindStoredTurnAssistantMessageContextRowsArgs,
+): { after: StoredEventRow | null; before: StoredEventRow | null } {
+  return findStoredTurnAssistantMessageContextRowsInternal(db, args, true);
 }
 
 export function listStoredEventRowsByParentToolCallIds(
@@ -1869,6 +1917,40 @@ export interface ListStoredItemLifecycleRowsByItemsArgs {
   threadId: string;
 }
 
+export interface ListStoredEventRowsAtSequencesArgs {
+  /** See {@link InlineOutputCharLimit}. */
+  maxInlineOutputChars: InlineOutputCharLimit;
+  sequences: readonly number[];
+  threadId: string;
+}
+
+/** Reads exact event rows by their thread-unique sequence numbers. */
+export function listStoredEventRowsAtSequences(
+  db: DbConnection,
+  args: ListStoredEventRowsAtSequencesArgs,
+): StoredEventRow[] {
+  return queryInSqliteVariableBatches({
+    dedupeKey: String,
+    fixedVariableCount: 1,
+    queryBatch: (sequences) =>
+      db
+        .select(
+          storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars),
+        )
+        .from(events)
+        .where(
+          and(
+            eq(events.threadId, args.threadId),
+            inArray(events.sequence, [...sequences]),
+          ),
+        )
+        .orderBy(events.sequence)
+        .all(),
+    values: args.sequences,
+    variableCountPerValue: 1,
+  });
+}
+
 /**
  * Every `item/started` and `item/completed` row for the given items, wherever
  * they sit in the thread.
@@ -1966,6 +2048,89 @@ export function listStoredClientTurnRequestIdsInRange(
     .all();
 
   return rows.map((row) => clientTurnRequestIdSchema.parse(row.requestId));
+}
+
+/**
+ * Whether a sequence gap contains an event that can contribute to the root
+ * timeline projection. This deliberately selects only an id and stops at the
+ * first match: callers use it to validate boundary context without reading the
+ * potentially large event payloads between two transport windows.
+ */
+export function hasStoredRootTimelineRowsBetween(
+  db: DbConnection,
+  args: HasStoredRootTimelineRowsBetweenArgs,
+): boolean {
+  const conditions: SQL[] = [
+    eq(events.threadId, args.threadId),
+    gt(events.sequence, args.afterSequence),
+    lt(events.sequence, args.beforeSequence),
+    isNull(events.parentToolCallId),
+    isNotNestedTurnUsageEvent,
+  ];
+  if (args.excludedTypes.length > 0) {
+    conditions.push(notInArray(events.type, [...args.excludedTypes]));
+  }
+
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(and(...conditions))
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+/**
+ * Whether a sequence gap contains root work that separates two assistant
+ * messages in the completed-turn projection. Reasoning is projection state,
+ * not a timeline message, and agent messages are the boundary being tested.
+ */
+export function hasStoredRootNonAssistantItemBetween(
+  db: DbConnection,
+  args: HasStoredRootNonAssistantItemBetweenArgs,
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          gt(events.sequence, args.afterSequence),
+          lt(events.sequence, args.beforeSequence),
+          isNull(events.parentToolCallId),
+          isNotNestedTurnUsageEvent,
+          isNotNull(events.itemKind),
+          notInArray(events.itemKind, ["agentMessage", "reasoning"]),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+/** Whether a user-authored client request occurs strictly inside a range. */
+export function hasStoredUserClientTurnRequestBetween(
+  db: DbConnection,
+  args: HasStoredUserClientTurnRequestBetweenArgs,
+): boolean {
+  return (
+    db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, args.threadId),
+          eq(events.type, "client/turn/requested"),
+          gt(events.sequence, args.afterSequence),
+          lt(events.sequence, args.beforeSequence),
+          sql`json_extract(${events.data}, '$.initiator') = 'user'`,
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
 }
 
 export function getStoredTurnRequestEventForTurn(
@@ -2152,6 +2317,51 @@ export function listStoredTurnCompletedRowsByTurnIds(
       and(
         eq(events.threadId, args.threadId),
         eq(events.type, "turn/completed"),
+        inArray(events.turnId, [...args.turnIds]),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+export function listStoredThreadCompactedRowsByTurnIds(
+  db: DbConnection,
+  args: ListStoredThreadCompactedRowsByTurnIdsArgs,
+): StoredEventRow[] {
+  if (args.turnIds.length === 0) {
+    return [];
+  }
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "thread/compacted"),
+        inArray(events.turnId, [...args.turnIds]),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+export function listStoredContextCompactionStartedRowsByTurnIds(
+  db: DbConnection,
+  args: ListStoredContextCompactionStartedRowsByTurnIdsArgs,
+): StoredEventRow[] {
+  if (args.turnIds.length === 0) {
+    return [];
+  }
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "item/started"),
+        eq(events.itemKind, "contextCompaction"),
         inArray(events.turnId, [...args.turnIds]),
       ),
     )

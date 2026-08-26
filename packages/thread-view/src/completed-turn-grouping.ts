@@ -191,13 +191,14 @@ function groupCompletedTurnSummaryMessages(
     summaryMessages,
     terminalMessage,
   );
-  const selectedSummaryMessages = contextOnlyMessageSeqs
-    ? summaryMessages.filter(
-        (message) =>
-          !contextOnlyMessageSeqs.has(message.sourceSeqStart) &&
-          !contextOnlyMessageSeqs.has(message.sourceSeqEnd),
-      )
-    : summaryMessages;
+  const isContextOnlyMessage = (message: EventProjectionMessage): boolean =>
+    contextOnlyMessageSeqs?.has(message.sourceSeqStart) === true ||
+    contextOnlyMessageSeqs?.has(message.sourceSeqEnd) === true;
+  const selectedSummaryMessages = summaryMessages.filter(
+    (message) => !isContextOnlyMessage(message),
+  );
+  const removedContextOnlyMessage =
+    selectedSummaryMessages.length !== summaryMessages.length;
   if (
     useTurnBounds &&
     externalBoundarySeqs.length === 0 &&
@@ -212,7 +213,7 @@ function groupCompletedTurnSummaryMessages(
         rowIdSegmentIndex: null,
         sourceBounds: "turn",
         sourceMessages: selectedSummaryMessages,
-        summaryCount: contextOnlyMessageSeqs
+        summaryCount: removedContextOnlyMessage
           ? getProjectionSummaryCount(selectedSummaryMessages, undefined)
           : turn.summaryCount,
       },
@@ -282,8 +283,14 @@ function groupCompletedTurnSummaryMessages(
     }
   }
 
-  for (const message of selectedSummaryMessages) {
+  for (const message of summaryMessages) {
     flushExternalBoundariesBefore(message);
+    if (isContextOnlyMessage(message)) {
+      if (message.kind === "user" && message.initiator === "user") {
+        flushGroupedMessages(true);
+      }
+      continue;
+    }
     if (visibleResponseIds.has(message.id)) {
       flushGroupedMessages();
       items.push({
@@ -317,6 +324,7 @@ export function groupCompletedTurnMessages(
   turn: EventProjectionTurn,
   completionIsContextOnly = false,
   contextOnlyMessageSeqs?: ReadonlySet<number>,
+  messageBoundsOnly = false,
 ): CompletedTurnMessageGroups {
   const messages = turn.messages ?? [];
   const { summaryMessages, terminalMessages, trailingMessages } =
@@ -330,7 +338,7 @@ export function groupCompletedTurnMessages(
         turn,
         summaryMessages,
         terminalMessages[0],
-        !completionIsContextOnly,
+        !completionIsContextOnly && !messageBoundsOnly,
         contextOnlyMessageSeqs,
       ),
     ),

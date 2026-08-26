@@ -199,6 +199,28 @@ describe("groupCompletedTurnMessages", () => {
     ]);
   });
 
+  it("uses message bounds without hiding the terminal response", () => {
+    const command = commandMessage({ id: "command", seq: 2 });
+    const response = assistantMessage({ id: "response", seq: 3 });
+    const groups = groupCompletedTurnMessages(
+      completedTurn([command, response], response),
+      false,
+      undefined,
+      true,
+    );
+
+    expect(groups.summaryItems).toMatchObject([
+      {
+        kind: "summary",
+        startedAt: 2,
+        completedAt: null,
+        sourceBounds: "messages",
+        sourceMessages: [command],
+      },
+    ]);
+    expect(groups.terminalMessages).toEqual([response]);
+  });
+
   it("keeps an assistant response visible when more assistant text follows it directly", () => {
     const answer = assistantMessage({ id: "answer", seq: 1 });
     const hookReply = assistantMessage({ id: "hook-reply", seq: 2 });

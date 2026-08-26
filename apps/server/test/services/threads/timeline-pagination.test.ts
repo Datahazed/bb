@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   TimelineRow,
+  TimelineSystemRow,
   TimelineUserConversationRow,
 } from "@bb/server-contract";
 import { paginateTimelineRows } from "../../../src/services/threads/timeline-pagination.js";
@@ -31,7 +32,50 @@ function userRow(args: {
   };
 }
 
+function interruptedRow(args: { id: string; seq: number }): TimelineSystemRow {
+  return {
+    id: args.id,
+    kind: "system",
+    systemKind: "operation",
+    operationKind: "thread-interrupted",
+    threadId: "thread-1",
+    turnId: null,
+    sourceSeqStart: args.seq,
+    sourceSeqEnd: args.seq,
+    startedAt: args.seq,
+    createdAt: args.seq,
+    completedAt: args.seq,
+    title: "Thread stopped by user request",
+    detail: null,
+    status: "interrupted",
+  };
+}
+
 describe("paginateTimelineRows", () => {
+  it("keeps an out-of-order thread row with the user segment it follows", () => {
+    const rows: TimelineRow[] = [
+      userRow({ id: "older-user", seq: 1, text: "older" }),
+      interruptedRow({ id: "interrupted", seq: 3 }),
+      userRow({ id: "newer-user", seq: 2, text: "newer" }),
+    ];
+
+    const page = paginateTimelineRows({
+      sequenceWindowStart: null,
+      knownHasOlderSegments: null,
+      page: { kind: "latest", segmentLimit: 1 },
+      rows,
+    });
+
+    expect(page.rows.map((row) => row.id)).toEqual([
+      "newer-user",
+      "interrupted",
+    ]);
+    expect(page.olderCursor).toEqual({
+      anchorId: "newer-user",
+      anchorSeq: 2,
+    });
+  });
+
   it("keeps grouped user rows from one request in the same segment", () => {
     const rows: TimelineRow[] = [
       userRow({

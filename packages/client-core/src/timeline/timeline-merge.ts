@@ -118,8 +118,7 @@ function canCoalesceCompletedTurnPageSeam(
     older.threadId === newer.threadId &&
     older.turnId === newer.turnId &&
     older.completedAt !== null &&
-    newer.completedAt !== null &&
-    older.sourceSeqEnd < newer.sourceSeqStart
+    newer.completedAt !== null
   );
 }
 
@@ -147,7 +146,7 @@ function coalesceCompletedTurnPageSeam(
       older.children === null && newer.children === null ? null : children,
     completedAt: Math.max(older.completedAt, newer.completedAt),
     createdAt: Math.min(older.createdAt, newer.createdAt),
-    sourceSeqEnd: newer.sourceSeqEnd,
+    sourceSeqEnd: Math.max(older.sourceSeqEnd, newer.sourceSeqEnd),
     sourceSeqStart: older.sourceSeqStart,
     startedAt: Math.min(older.startedAt, newer.startedAt),
     summaryCount: older.summaryCount + newer.summaryCount,
@@ -269,10 +268,7 @@ export function mergeTimelineTurnDetailPages(
                 : Math.max(existing.completedAt, row.completedAt),
           createdAt: Math.min(existing.createdAt, row.createdAt),
           sourceSeqEnd: Math.max(existing.sourceSeqEnd, row.sourceSeqEnd),
-          sourceSeqStart: Math.min(
-            existing.sourceSeqStart,
-            row.sourceSeqStart,
-          ),
+          sourceSeqStart: Math.min(existing.sourceSeqStart, row.sourceSeqStart),
           startedAt: Math.min(existing.startedAt, row.startedAt),
         };
         continue;

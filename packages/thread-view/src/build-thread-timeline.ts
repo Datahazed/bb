@@ -74,6 +74,7 @@ type ThreadTimelineTurnMessageDetail = "summary" | "full";
 
 interface ThreadTimelineFromEventsBaseOptions {
   contextOnlyCompletedTurnIds?: ReadonlySet<string>;
+  contextOnlyMessageSeqs?: ReadonlySet<number>;
   contextOnlyToolCallIds?: ReadonlySet<string>;
   includeProviderUnhandledOperations: boolean;
   /**
@@ -115,6 +116,7 @@ interface ThreadTimelineFromEventsBaseOptions {
 
 interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOptions {
   includeNestedRows: boolean;
+  messageBoundsOnlyTurnIds?: ReadonlySet<string>;
   turnMessageDetail: ThreadTimelineTurnMessageDetail;
 }
 
@@ -146,7 +148,9 @@ interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimeline
   allowContextExpandedMatch?: boolean;
   contextOnlyCompletedTurnIds?: ReadonlySet<string>;
   contextOnlyMessageSeqs?: ReadonlySet<number>;
+  contextOnlyToolCallIds?: ReadonlySet<string>;
   includeProviderUnhandledOperations: boolean;
+  messageBoundsOnlyTurnIds?: ReadonlySet<string>;
   providerDisplayName?: string;
   threadStatus: Thread["status"];
   /** See {@link ThreadTimelineFromEventsBaseOptions.threadName}. */
@@ -177,6 +181,7 @@ interface BuildTurnRowsArgs {
   contextOnlyCompletedTurnIds?: ReadonlySet<string>;
   contextOnlyMessageSeqs?: ReadonlySet<number>;
   includeNestedRows: boolean;
+  messageBoundsOnlyTurnIds?: ReadonlySet<string>;
   rowIdPrefix: string;
   turn: EventProjectionTurn;
   workspaceRoot: string | null;
@@ -214,6 +219,7 @@ interface BuildTimelineRowsOptions {
   contextOnlyCompletedTurnIds?: ReadonlySet<string>;
   contextOnlyMessageSeqs?: ReadonlySet<number>;
   includeNestedRows: boolean;
+  messageBoundsOnlyTurnIds?: ReadonlySet<string>;
   rowIdPrefix: string;
   workspaceRoot: string | null;
 }
@@ -1238,6 +1244,7 @@ function buildTurnRows({
   contextOnlyCompletedTurnIds,
   contextOnlyMessageSeqs,
   includeNestedRows,
+  messageBoundsOnlyTurnIds,
   rowIdPrefix,
   turn,
   workspaceRoot,
@@ -1261,6 +1268,7 @@ function buildTurnRows({
       turn,
       contextOnlyCompletedTurnIds?.has(turn.turnId) === true,
       contextOnlyMessageSeqs,
+      messageBoundsOnlyTurnIds?.has(turn.turnId) === true,
     );
   const terminalRows = terminalMessages.flatMap((message) =>
     convertMessage(message, { includeNestedRows, rowIdPrefix, workspaceRoot }),
@@ -1294,6 +1302,13 @@ function findMatchingTurnSummaryRow(
   );
   if (exact || !range.allowContextExpandedMatch) {
     return exact ?? null;
+  }
+
+  const matchingStart = turnRows.find(
+    (row) => row.sourceSeqStart === range.sourceSeqStart,
+  );
+  if (matchingStart) {
+    return matchingStart;
   }
 
   // Lifecycle closure and context-only rows can shift a semantic group's
@@ -1403,6 +1418,33 @@ function orderRowsAfterExternalUserBoundary(
   return [...rows.slice(0, suffixStartIndex), ...orderedSuffix];
 }
 
+/**
+ * Thread-scoped system events are separate projection entries, so an event
+ * emitted during a turn is initially appended after all rows from that turn.
+ * Move only such late system rows back before the first source-newer row. This
+ * leaves established semantic ordering intact (notably provisioning before an
+ * initial turn summary) because a system row that is already early never
+ * moves.
+ */
+function restoreLateSystemRowSourceOrder(rows: TimelineRow[]): TimelineRow[] {
+  const orderedRows: TimelineRow[] = [];
+  for (const row of rows) {
+    if (row.kind !== "system") {
+      orderedRows.push(row);
+      continue;
+    }
+    const insertionIndex = orderedRows.findIndex(
+      (candidate) => candidate.sourceSeqStart > row.sourceSeqStart,
+    );
+    if (insertionIndex === -1) {
+      orderedRows.push(row);
+    } else {
+      orderedRows.splice(insertionIndex, 0, row);
+    }
+  }
+  return orderedRows;
+}
+
 function buildTimelineRows(
   projection: EventProjection,
   options: BuildTimelineRowsOptions,
@@ -1421,6 +1463,7 @@ function buildTimelineRows(
           buildTurnRows({
             contextOnlyCompletedTurnIds: options.contextOnlyCompletedTurnIds,
             contextOnlyMessageSeqs: options.contextOnlyMessageSeqs,
+            messageBoundsOnlyTurnIds: options.messageBoundsOnlyTurnIds,
             turn: entry.turn,
             includeNestedRows,
             rowIdPrefix: options.rowIdPrefix,
@@ -1433,9 +1476,11 @@ function buildTimelineRows(
     }
   }
 
-  return orderRowsAfterExternalUserBoundary(
-    rows,
-    collectExternalUserBoundarySeqs(projection),
+  return restoreLateSystemRowSourceOrder(
+    orderRowsAfterExternalUserBoundary(
+      rows,
+      collectExternalUserBoundarySeqs(projection),
+    ),
   );
 }
 
@@ -1457,7 +1502,9 @@ export function buildThreadTimelineFromEvents(
   const rows = [
     ...buildTimelineRows(projection, {
       contextOnlyCompletedTurnIds: args.options.contextOnlyCompletedTurnIds,
+      contextOnlyMessageSeqs: args.options.contextOnlyMessageSeqs,
       includeNestedRows: args.options.includeNestedRows,
+      messageBoundsOnlyTurnIds: args.options.messageBoundsOnlyTurnIds,
       rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
       workspaceRoot: args.options.workspaceRoot,
     }),
@@ -1466,7 +1513,14 @@ export function buildThreadTimelineFromEvents(
       args.events,
       args.options,
     ),
-  ];
+  ].filter(
+    (row) =>
+      !(
+        row.kind === "conversation" &&
+        row.role === "user" &&
+        args.options.contextOnlyMessageSeqs?.has(row.sourceSeqStart) === true
+      ),
+  );
 
   return {
     activePromptMode: !args.options.isLatestPage
@@ -1511,6 +1565,7 @@ function buildThreadTimelineTurnDetailRows(
   args: BuildThreadTimelineTurnDetailsFromEventsArgs,
 ): TimelineRow[] {
   const projection = buildEventProjectionEntries(args.events, {
+    contextOnlyToolCallIds: args.options.contextOnlyToolCallIds,
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
     providerDisplayName: args.options.providerDisplayName,
@@ -1522,9 +1577,16 @@ function buildThreadTimelineTurnDetailRows(
     contextOnlyCompletedTurnIds: args.options.contextOnlyCompletedTurnIds,
     contextOnlyMessageSeqs: args.options.contextOnlyMessageSeqs,
     includeNestedRows: true,
+    messageBoundsOnlyTurnIds: args.options.messageBoundsOnlyTurnIds,
     rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
     workspaceRoot: args.options.workspaceRoot,
-  });
+  }).filter(
+    (row) =>
+      !(
+        row.kind === "conversation" &&
+        args.options.contextOnlyMessageSeqs?.has(row.sourceSeqStart) === true
+      ),
+  );
 }
 
 export function buildThreadTimelineTurnDetailsFromEvents(

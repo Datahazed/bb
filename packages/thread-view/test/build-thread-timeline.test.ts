@@ -2083,6 +2083,48 @@ describe("buildThreadTimelineFromEvents", () => {
     ]);
   });
 
+  it("orders a thread error emitted during a turn before source-newer turn rows", () => {
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 1 }),
+      toolCallItemEvent({
+        seq: 2,
+        tool: "read_status",
+        type: "item/completed",
+      }),
+      systemErrorEvent({
+        code: "provider_turn_start_timeout",
+        message: "The provider accepted a turn but did not start it",
+        seq: 3,
+      }),
+      {
+        event: {
+          type: "item/completed",
+          threadId: "thread-1",
+          providerThreadId: "provider-thread-1",
+          scope: turnScope("turn-1"),
+          item: {
+            type: "agentMessage",
+            id: "assistant-1",
+            text: "Still working",
+          },
+        },
+        meta: { id: "event-4", seq: 4, createdAt: 4 },
+      },
+      turnCompletedEvent({ seq: 5 }),
+    ]);
+
+    expect(
+      rows.map((row) => ({
+        kind: row.kind,
+        sourceSeqStart: row.sourceSeqStart,
+      })),
+    ).toEqual([
+      { kind: "turn", sourceSeqStart: 1 },
+      { kind: "system", sourceSeqStart: 3 },
+      { kind: "conversation", sourceSeqStart: 4 },
+    ]);
+  });
+
   it("uses legacy provider error detail as the title for generic provider errors", () => {
     const rows = buildTimelineRows([
       turnStartedEvent({ seq: 1 }),

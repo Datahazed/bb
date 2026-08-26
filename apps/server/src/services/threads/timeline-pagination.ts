@@ -107,17 +107,23 @@ function isTimelineSegmentAnchorRow(row: TimelineRow): boolean {
 
 function buildTimelineLogicalSegment(
   rows: TimelineRow[],
+  cursorRow: TimelineRow | null = null,
 ): TimelineLogicalSegment {
-  const anchorRow = rows[0];
-  if (!anchorRow) {
+  const firstRow = rows[0];
+  if (!firstRow) {
     throw new Error("Cannot build a timeline segment without rows");
   }
+  const segmentCursorRow = cursorRow ?? firstRow;
 
   return {
     cursor: {
-      anchorSeq: anchorRow.sourceSeqStart,
-      anchorId: anchorRow.id,
+      anchorSeq: segmentCursorRow.sourceSeqStart,
+      anchorId: segmentCursorRow.id,
     },
+    // Projection order is semantic, not always source order: completed-turn
+    // summaries precede their terminal assistant message even when the
+    // summary's derived source bounds begin later. Sorting a segment by source
+    // here moves that assistant to the wrong side of "Worked for...".
     rows,
   };
 }
@@ -127,23 +133,54 @@ function buildTimelineLogicalSegments(
 ): TimelineLogicalSegment[] {
   const segments: TimelineLogicalSegment[] = [];
   let currentRows: TimelineRow[] = [];
+  let currentCursorRow: TimelineRow | null = null;
 
   for (const row of rows) {
     if (
       isTimelineSegmentAnchorRow(row) &&
       currentRows.length > 0 &&
-      currentRows[0]?.sourceSeqStart !== row.sourceSeqStart
+      (currentCursorRow?.sourceSeqStart ?? currentRows[0]?.sourceSeqStart) !==
+        row.sourceSeqStart
     ) {
-      segments.push(buildTimelineLogicalSegment(currentRows));
-      currentRows = [row];
+      // Projection groups thread-scoped messages separately from turn rows.
+      // A thread event can therefore appear immediately before the accepted
+      // user row that precedes it in source order. Do not leave that trailing
+      // event in the older segment: a one-segment page would trim it away.
+      // Move the anchor ahead of every source-newer trailing row so the
+      // segment also has the user row as its cursor. A row that starts before
+      // the anchor stays with that earlier segment even if its lifecycle ends
+      // after the anchor; the server closes that row with targeted context.
+      const trailingRowIndex = currentRows.findIndex(
+        (currentRow) => currentRow.sourceSeqStart >= row.sourceSeqStart,
+      );
+      if (trailingRowIndex === -1) {
+        segments.push(
+          buildTimelineLogicalSegment(currentRows, currentCursorRow),
+        );
+        currentRows = [row];
+      } else {
+        const olderRows = currentRows.slice(0, trailingRowIndex);
+        if (olderRows.length > 0) {
+          segments.push(
+            buildTimelineLogicalSegment(olderRows, currentCursorRow),
+          );
+        }
+        currentRows = [...currentRows.slice(trailingRowIndex), row].sort(
+          (left, right) => left.sourceSeqStart - right.sourceSeqStart,
+        );
+      }
+      currentCursorRow = row;
       continue;
     }
 
+    if (isTimelineSegmentAnchorRow(row) && currentCursorRow === null) {
+      currentCursorRow = row;
+    }
     currentRows.push(row);
   }
 
   if (currentRows.length > 0) {
-    segments.push(buildTimelineLogicalSegment(currentRows));
+    segments.push(buildTimelineLogicalSegment(currentRows, currentCursorRow));
   }
 
   return segments;
@@ -188,7 +225,7 @@ export function paginateTimelineRows(
   // cursor was read and none has to be trimmed off here.
   const selectedSegments = segments.slice(-page.segmentLimit);
   const hasOlderRows =
-    knownHasOlderSegments ?? segments.length > selectedSegments.length;
+    knownHasOlderSegments === true || segments.length > selectedSegments.length;
   const oldestSelectedSegment = selectedSegments[0];
 
   return {

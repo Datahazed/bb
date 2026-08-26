@@ -18,6 +18,7 @@ import {
 import { LOCAL_WORKFLOW_TASK_TYPE } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type {
+  ThreadTimelineResponse,
   TimelinePaginationCursor,
   TimelineRow,
 } from "@bb/server-contract";
@@ -115,6 +116,8 @@ interface SeedOptions {
   longRunningItemIndexes?: readonly number[];
   /** Character count for each completed command output. */
   outputChars?: number;
+  /** Emit one root command before this nested item in the last turn. */
+  rootCommandBeforeItem?: number;
   /**
    * Emit an output delta for each long-running item after every other item, so
    * the item's presence in a mid-turn window is deltas rather than lifecycle
@@ -265,6 +268,47 @@ function seedTurns(
               type: "agentMessage",
               id: itemId,
               text: "Continuing with more work.",
+            },
+          }),
+        });
+      }
+      if (isLastTurn && options.rootCommandBeforeItem === item) {
+        const itemId = `${turnId}-root-command`;
+        push({
+          type: "item/started",
+          scope: turnScope(turnId),
+          providerThreadId,
+          itemId,
+          itemKind: "commandExecution",
+          parentToolCallId: null,
+          data: JSON.stringify({
+            item: {
+              type: "commandExecution",
+              id: itemId,
+              command: "echo root",
+              cwd: "/tmp/test",
+              status: "pending",
+              approvalStatus: null,
+            },
+          }),
+        });
+        push({
+          type: "item/completed",
+          scope: turnScope(turnId),
+          providerThreadId,
+          itemId,
+          itemKind: "commandExecution",
+          parentToolCallId: null,
+          data: JSON.stringify({
+            item: {
+              type: "commandExecution",
+              id: itemId,
+              command: "echo root",
+              cwd: "/tmp/test",
+              status: "completed",
+              approvalStatus: null,
+              exitCode: 0,
+              aggregatedOutput: "root output",
             },
           }),
         });
@@ -1309,7 +1353,8 @@ describe("in-turn timeline windows", () => {
     });
 
     const commandCallIds = new Set<string>();
-    const expandedCommandCallIds = new Set<string>();
+    let logicalSourceSeqStart = Number.POSITIVE_INFINITY;
+    let logicalSourceSeqEnd = 0;
     let cursor: TimelinePaginationCursor | null = null;
     let pages = 0;
     for (;;) {
@@ -1326,18 +1371,11 @@ describe("in-turn timeline windows", () => {
           // range below the byte floor.
           expect(row.sourceSeqStart).toBeGreaterThan(4);
         }
-        const details = buildTimelineTurnSummaryDetails(db, thread, {
-          includeProviderUnhandledOperations: false,
-          sourceSeqEnd: row.sourceSeqEnd,
-          sourceSeqStart: row.sourceSeqStart,
-          turnId: row.turnId,
-        });
-        const pageDetailCallIds = new Set<string>();
-        collectCommandCallIds(details.rows, pageDetailCallIds);
-        expect(pageDetailCallIds.size).toBeLessThan(BYTE_WINDOW_ITEM_COUNT);
-        for (const callId of pageDetailCallIds) {
-          expandedCommandCallIds.add(callId);
-        }
+        logicalSourceSeqStart = Math.min(
+          logicalSourceSeqStart,
+          row.sourceSeqStart,
+        );
+        logicalSourceSeqEnd = Math.max(logicalSourceSeqEnd, row.sourceSeqEnd);
       }
       expect(page.profile.eventDataBytes, `page ${pages}`).toBeLessThanOrEqual(
         THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
@@ -1352,7 +1390,68 @@ describe("in-turn timeline windows", () => {
 
     expect(pages).toBeGreaterThan(2);
     expect(commandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
+
+    const expandedCommandCallIds = new Set<string>();
+    let detailCursor: string | undefined;
+    let detailPages = 0;
+    do {
+      const details = buildTimelineTurnDetailsPage(db, thread, {
+        ...(detailCursor ? { cursor: detailCursor } : {}),
+        includeProviderUnhandledOperations: false,
+        sourceSeqEnd: logicalSourceSeqEnd,
+        sourceSeqStart: logicalSourceSeqStart,
+        turnId: "turn-1",
+      });
+      detailPages += 1;
+      collectCommandCallIds(details.rows, expandedCommandCallIds);
+      detailCursor = details.nextCursor ?? undefined;
+      expect(detailPages).toBeLessThan(10);
+    } while (detailCursor);
+
+    expect(detailPages).toBeGreaterThan(1);
     expect(expandedCommandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
+  }, 15_000);
+
+  it("does not fold an older delegation into a newer collapsed byte page", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      assistantBeforeItem: 100,
+      commandChars: 25_000,
+      completeLastTurn: true,
+      delegateLastTurn: true,
+      finalAssistant: true,
+      itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
+      rootCommandBeforeItem: 150,
+    });
+
+    const turnRows: TimelineRow[] = [];
+    let cursor: TimelinePaginationCursor | null = null;
+    let pages = 0;
+    for (;;) {
+      const page: ThreadTimelineResponse = buildPage(
+        db,
+        thread,
+        LARGE_BUDGET,
+        cursor,
+      ).response;
+      pages += 1;
+      turnRows.push(...page.rows.filter((row) => row.kind === "turn"));
+      if (!page.timelinePage.hasOlderRows) {
+        break;
+      }
+      cursor = page.timelinePage.olderCursor;
+      expect(cursor).not.toBeNull();
+      expect(pages).toBeLessThan(10);
+    }
+
+    expect(pages).toBeGreaterThan(2);
+    expect(turnRows).toContainEqual(
+      expect.objectContaining({
+        sourceSeqEnd: 307,
+        sourceSeqStart: 205,
+        summaryCount: 2,
+      }),
+    );
   }, 15_000);
 
   it("returns a placeholder when one event exceeds the byte limit", () => {
