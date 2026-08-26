@@ -2199,7 +2199,7 @@ export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "sceneseed",
     title: "SceneSeed",
-    icon: "Sparkles",
+    icon: "AiContentGenerator01",
     path: PANEL_PATH,
     component: SceneSeedPanel,
   });

@@ -31,7 +31,7 @@
     "name": "SceneSeed",
     "description": "Grow prompt cards into playful, skill-guided 3D scenes.",
     "branding": {
-      "icon": "Sparkles"
+      "icon": "AiContentGenerator01"
     },
     "server": "./server.ts",
     "app": "./app.tsx",
