@@ -675,6 +675,8 @@ describe("ThreadRow", () => {
     );
     expect(marker?.getAttribute("aria-label")).toBe("In project Web App");
     expect(marker?.querySelector('[data-icon="FolderExport"]')).not.toBeNull();
+    expect(marker?.classList.contains("text-muted-foreground/75")).toBe(true);
+    expect(marker?.classList.contains("text-muted-foreground")).toBe(false);
     // The marker hugs the title; it never sits in the trailing status slot.
     expect(
       marker?.closest("[data-sidebar-thread-trailing-indicator]"),
@@ -813,11 +815,19 @@ describe("ThreadRow", () => {
       },
     });
 
+    const disclosure = screen.getByRole("button", {
+      name: "Collapse Parent thread threads",
+    });
+    expect(disclosure.getAttribute("data-sidebar-hover-actions-mobile")).toBe(
+      "always",
+    );
+    expect(disclosure.classList.contains("text-subtle-foreground/75")).toBe(
+      true,
+    );
+    expect(disclosure.classList.contains("text-subtle-foreground")).toBe(false);
     expect(
-      screen
-        .getByRole("button", { name: "Collapse Parent thread threads" })
-        .getAttribute("data-sidebar-hover-actions-mobile"),
-    ).toBe("always");
+      disclosure.classList.contains("hover:text-sidebar-accent-foreground"),
+    ).toBe(true);
   });
 
   it("shows its Command shortcut in place of an active indicator", () => {

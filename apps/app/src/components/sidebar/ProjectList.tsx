@@ -229,6 +229,12 @@ interface ProjectListThreadsSectionActionsProps {
   onNewThread: () => void;
 }
 
+interface ProjectListManualPinnedSectionActionsProps {
+  displayOptions: ReactNode;
+  isCreatingSection: boolean;
+  onNewSection?: () => void;
+}
+
 interface SidebarDisplayOptionsMenuProps {
   activeCount?: number;
   draftCount?: number;
@@ -590,20 +596,10 @@ function ProjectListThreadsSectionActions({
 }: ProjectListThreadsSectionActionsProps) {
   return (
     <>
-      {onNewSection ? (
-        <ProjectListSectionIconButton
-          ariaLabel="New section"
-          title="New section"
-          disabled={isCreatingSection}
-          icon={
-            <Icon
-              name="SectionAdd"
-              className={COARSE_POINTER_ICON_SIZE_CLASS}
-            />
-          }
-          onClick={onNewSection}
-        />
-      ) : null}
+      <ProjectListNewSectionAction
+        isCreatingSection={isCreatingSection}
+        onNewSection={onNewSection}
+      />
       <ProjectListSectionIconButton
         ariaLabel="New thread"
         title="New thread"
@@ -614,6 +610,42 @@ function ProjectListThreadsSectionActions({
           />
         }
         onClick={onNewThread}
+      />
+    </>
+  );
+}
+
+function ProjectListNewSectionAction({
+  isCreatingSection,
+  onNewSection,
+}: Pick<
+  ProjectListThreadsSectionActionsProps,
+  "isCreatingSection" | "onNewSection"
+>) {
+  return onNewSection ? (
+    <ProjectListSectionIconButton
+      ariaLabel="New section"
+      title="New section"
+      disabled={isCreatingSection}
+      icon={
+        <Icon name="SectionAdd" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+      }
+      onClick={onNewSection}
+    />
+  ) : null;
+}
+
+export function ProjectListManualPinnedSectionActions({
+  displayOptions,
+  isCreatingSection,
+  onNewSection,
+}: ProjectListManualPinnedSectionActionsProps) {
+  return (
+    <>
+      {displayOptions}
+      <ProjectListNewSectionAction
+        isCreatingSection={isCreatingSection}
+        onNewSection={onNewSection}
       />
     </>
   );
@@ -1375,6 +1407,7 @@ interface SectionModeSectionsProps extends BuiltInSectionRenderState {
   compareThreads: ThreadComparator;
   sections: readonly SidebarSectionDefinition[];
   isReady: boolean;
+  onCreateSection: () => void;
   onCreateThreadInSection: (sectionId: string) => void;
   onProjectSelect?: () => void;
   onRemoveSection: (section: SidebarSectionDefinition) => void;
@@ -1406,6 +1439,7 @@ function SectionModeSections({
   effectivePinnedThreadIds,
   sections,
   isReady,
+  onCreateSection,
   onCreateThreadInSection,
   onProjectSelect,
   onRemoveSection,
@@ -1455,6 +1489,7 @@ function SectionModeSections({
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
       onProjectSelect={onProjectSelect}
+      onCreateSection={onCreateSection}
       onCreateThreadInSection={onCreateThreadInSection}
       onRenameSection={onRenameSection}
       onRemoveSection={onRemoveSection}
@@ -2146,7 +2181,15 @@ function ProjectListComponent({
     collapsedThreads: pinnedSectionThreads,
     label: "Pinned",
     content: pinnedSectionContent,
-    actions: renderSectionDisplayOptions("pinned"),
+    actions: (
+      <ProjectListManualPinnedSectionActions
+        displayOptions={renderSectionDisplayOptions("pinned")}
+        isCreatingSection={isCreateThreadSectionPending}
+        onNewSection={
+          isSectionOrganizationMode ? handleOpenCreateSectionDialog : undefined
+        }
+      />
+    ),
     actionsOpen: isSectionDisplayOptionsOpen("pinned"),
   };
   const threadsSection = {
@@ -2273,6 +2316,7 @@ function ProjectListComponent({
                   collapsedEnvironmentIds={collapsedEnvironmentIds}
                   compareThreads={sidebarThreadComparator}
                   onProjectSelect={onProjectSelect}
+                  onCreateSection={handleOpenCreateSectionDialog}
                   onCreateThreadInSection={handleCreateThreadInSection}
                   onRenameSection={handleOpenRenameThreadSection}
                   onRemoveSection={handleRemoveThreadSection}

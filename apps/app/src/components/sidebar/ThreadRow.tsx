@@ -751,7 +751,7 @@ function ThreadRowComponent({
                 // Sits above the row's full-size link so it can take hover;
                 // nudged 1px down so the glyph reads centered on the text.
                 // A click still opens the thread by forwarding to the link.
-                className="relative top-px z-10 flex shrink-0 items-center text-muted-foreground"
+                className="relative top-px z-10 flex shrink-0 items-center text-muted-foreground/75"
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
