@@ -24,9 +24,13 @@ import type {
   MarketplaceV2Manifest,
 } from "./marketplace-v2.js";
 import {
+  marketplaceEntryInstalls,
+  type MarketplaceStats,
+} from "./marketplace-stats.js";
+import {
   attemptMarketplaceInstall,
   filterMarketplaceEntries,
-  formatInstallCount,
+  formatInstalls,
   formatMarketplaceDate,
   marketplaceAssetUrl,
   marketplaceCategory,
@@ -82,16 +86,21 @@ function PluginArtwork({ entry }: { entry: MarketplaceV2Entry }) {
   );
 }
 
-function PluginStats({ entry }: { entry: MarketplaceV2Entry }) {
-  const installs = formatInstallCount(entry.installCount);
+function PluginStats({
+  entry,
+  stats,
+}: {
+  entry: MarketplaceV2Entry;
+  stats: MarketplaceStats | null;
+}) {
+  const installTotal = marketplaceEntryInstalls(entry, stats);
+  const installs = formatInstalls(installTotal);
   const updated = formatMarketplaceDate(entry.updatedAt);
   if (installs === null && updated === null) return null;
   return (
     <span className="marketplace-card-stats">
       {installs === null ? null : (
-        <span
-          aria-label={`${entry.installCount!.toLocaleString("en-US")} installs`}
-        >
+        <span aria-label={`${installTotal!.toLocaleString("en-US")} installs`}>
           <HugeiconsIcon icon={Download01Icon} aria-hidden />
           {installs}
         </span>
@@ -108,9 +117,11 @@ function PluginStats({ entry }: { entry: MarketplaceV2Entry }) {
 
 function PluginCard({
   entry,
+  stats,
   showCategory = false,
 }: {
   entry: MarketplaceV2Entry;
+  stats: MarketplaceStats | null;
   showCategory?: boolean;
 }) {
   return (
@@ -137,28 +148,41 @@ function PluginCard({
         ) : null}
         <span>By {entry.author.name}</span>
       </span>
-      <PluginStats entry={entry} />
+      <PluginStats entry={entry} stats={stats} />
     </article>
   );
 }
 
 function PluginGrid({
   entries,
+  stats,
   showCategory = false,
 }: {
   entries: readonly MarketplaceV2Entry[];
+  stats: MarketplaceStats | null;
   showCategory?: boolean;
 }) {
   return (
     <div className="marketplace-grid">
       {entries.map((entry) => (
-        <PluginCard key={entry.id} entry={entry} showCategory={showCategory} />
+        <PluginCard
+          key={entry.id}
+          entry={entry}
+          stats={stats}
+          showCategory={showCategory}
+        />
       ))}
     </div>
   );
 }
 
-function Shelf({ shelf }: { shelf: MarketplaceShelf }) {
+function Shelf({
+  shelf,
+  stats,
+}: {
+  shelf: MarketplaceShelf;
+  stats: MarketplaceStats | null;
+}) {
   return (
     <section className="marketplace-shelf">
       <div className="marketplace-section-head">
@@ -175,7 +199,7 @@ function Shelf({ shelf }: { shelf: MarketplaceShelf }) {
           <HugeiconsIcon icon={ArrowRight01Icon} aria-hidden />
         </Link>
       </div>
-      <PluginGrid entries={shelf.entries.slice(0, 3)} />
+      <PluginGrid entries={shelf.entries.slice(0, 3)} stats={stats} />
     </section>
   );
 }
@@ -339,17 +363,19 @@ function CategoryChips({
 
 export function PublicMarketplacePage({
   manifest,
+  stats,
   state,
   onStateChange,
 }: {
   manifest: MarketplaceV2Manifest;
+  stats: MarketplaceStats | null;
   state: MarketplaceIndexState;
   onStateChange: (state: MarketplaceIndexState) => void;
 }) {
   const [query, setQuery] = useState("");
   const allShelves = marketplaceShelves(manifest.plugins);
   const hasInstallCounts = manifest.plugins.some(
-    (entry) => entry.installCount !== undefined,
+    (entry) => marketplaceEntryInstalls(entry, stats) !== undefined,
   );
   const activeSort =
     state.sort === "most-installed" && !hasInstallCounts
@@ -369,7 +395,7 @@ export function PublicMarketplacePage({
   const sorted =
     activeSort === undefined
       ? filtered
-      : sortMarketplaceEntries(filtered, activeSort);
+      : sortMarketplaceEntries(filtered, activeSort, stats);
 
   return (
     <div className="wrap marketplace-wrap">
@@ -456,6 +482,7 @@ export function PublicMarketplacePage({
                 </div>
                 <PluginGrid
                   entries={activeSort === undefined ? filtered : sorted}
+                  stats={stats}
                   showCategory
                 />
               </section>
@@ -478,6 +505,7 @@ export function PublicMarketplacePage({
                 </div>
                 <PluginGrid
                   entries={sorted}
+                  stats={stats}
                   showCategory={category === undefined}
                 />
               </section>
@@ -492,7 +520,7 @@ export function PublicMarketplacePage({
                   </h2>
                   <p>{category.description}</p>
                 </div>
-                <PluginGrid entries={filtered} />
+                <PluginGrid entries={filtered} stats={stats} />
               </section>
             ) : (
               <>
@@ -502,10 +530,11 @@ export function PublicMarketplacePage({
                   </div>
                   <PluginGrid
                     entries={newAndNotableEntries(manifest).slice(0, 3)}
+                    stats={stats}
                   />
                 </section>
                 {searchedShelves.map((shelf) => (
-                  <Shelf key={shelf.category.id} shelf={shelf} />
+                  <Shelf key={shelf.category.id} shelf={shelf} stats={stats} />
                 ))}
               </>
             )}
@@ -571,12 +600,15 @@ function InstallAction({ entry }: { entry: MarketplaceV2Entry }) {
 export function PublicMarketplaceDetailPage({
   manifest,
   entry,
+  stats,
 }: {
   manifest: MarketplaceV2Manifest;
   entry: MarketplaceV2Entry;
+  stats: MarketplaceStats | null;
 }) {
   const category = marketplaceCategory(entry.category);
-  const installs = formatInstallCount(entry.installCount);
+  const installTotal = marketplaceEntryInstalls(entry, stats);
+  const installs = formatInstalls(installTotal);
   const published = formatMarketplaceDate(entry.publishedAt);
   const updated = formatMarketplaceDate(entry.updatedAt);
   const repository = marketplaceRepositoryUrl(entry);
@@ -640,7 +672,11 @@ export function PublicMarketplaceDetailPage({
             {moreFromAuthor.length === 0 ? null : (
               <section className="marketplace-detail-section">
                 <h2>More from {entry.author.name}</h2>
-                <PluginGrid entries={moreFromAuthor} showCategory />
+                <PluginGrid
+                  entries={moreFromAuthor}
+                  stats={stats}
+                  showCategory
+                />
               </section>
             )}
           </article>
@@ -655,7 +691,7 @@ export function PublicMarketplaceDetailPage({
               {installs === null ? null : (
                 <div>
                   <dt>Installs</dt>
-                  <dd>{entry.installCount!.toLocaleString("en-US")}</dd>
+                  <dd>{installTotal!.toLocaleString("en-US")}</dd>
                 </div>
               )}
               {published === null ? null : (

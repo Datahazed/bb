@@ -48,7 +48,7 @@ describe("marketplace entry schemas", () => {
     }
   });
 
-  it("requires a v2 category and keeps omitted registry metrics absent", () => {
+  it("requires a v2 category and keeps omitted registry dates absent", () => {
     const { category: _category, ...withoutCategory } = v2Entry();
     expect(marketplaceEntryV2Schema.safeParse(withoutCategory).success).toBe(
       false,
@@ -58,6 +58,10 @@ describe("marketplace entry schemas", () => {
     expect(parsed).not.toHaveProperty("installCount");
     expect(parsed).not.toHaveProperty("publishedAt");
     expect(parsed).not.toHaveProperty("updatedAt");
+    expect(
+      marketplaceEntryV2Schema.safeParse({ ...v2Entry(), installCount: 1 })
+        .success,
+    ).toBe(false);
   });
 
   it("enforces the public tag-prefix length constraint", () => {

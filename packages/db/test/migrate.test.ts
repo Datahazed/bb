@@ -413,6 +413,7 @@ const pendingInteractionsMigrationWhen = 1783626227375;
 const permissionModesMigrationWhen = 1784311522462;
 const branchLocalThreadTabsMigrationWhen = 1783633750817;
 const eventParentToolCallMigrationWhen = 1787181956957;
+const marketplaceInstallStatsMigrationWhen = 1787680413251;
 const eventParentToolCallPreJsonValidMigrationHash =
   "79d39e7b68d1db8ba02614fe4cc227cc0c154d77c7183f2e37ed2d8475412993";
 const eventLargeValuesPreOptimizationHash =
@@ -663,6 +664,7 @@ function resetMigrationsAfterThreadSearch(db: DbConnection): void {
  * migrate() replays the CREATE/ADD against a DB that has them.
  */
 function dropMarketplaceCatalogSchema(db: DbConnection): void {
+  dropPluginDiscoveryStackSchema(db);
   db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplace_icons").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_marketplaces").run();
   const columns = new Set(
@@ -676,6 +678,29 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
     "source_git_range",
     "source_git_tag_prefix",
     "source_git_resolved_tag",
+  ]) {
+    if (columns.has(column)) {
+      db.$client.prepare(`ALTER TABLE plugins DROP COLUMN ${column}`).run();
+    }
+  }
+}
+
+/** Rewind the two stack migrations that now follow main's 0109 migration. */
+function dropPluginDiscoveryStackSchema(db: DbConnection): void {
+  db.$client
+    .prepare("DROP TABLE IF EXISTS plugin_listing_lifecycles")
+    .run();
+  const columns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(plugins)")
+      .all()
+      .map((column) => column.name),
+  );
+  for (const column of [
+    "handler_error_count",
+    "last_problem_class",
+    "last_problem_message",
+    "last_problem_at",
   ]) {
     if (columns.has(column)) {
       db.$client.prepare(`ALTER TABLE plugins DROP COLUMN ${column}`).run();
@@ -715,6 +740,22 @@ function dropEventParentToolCallIdColumn(db: DbConnection): void {
     );
     db.$client
       .prepare("ALTER TABLE events DROP COLUMN parent_tool_call_id")
+      .run();
+  }
+}
+
+/**
+ * Migration 0109 adds the marketplace install-count sidecar column. A rewind
+ * that clears journal rows from before it must drop the column, or migrate()
+ * replays the ADD against a table that already has it.
+ */
+function dropMarketplaceStatsColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(plugin_marketplaces)")
+    .all();
+  if (columns.some((column) => column.name === "stats_json")) {
+    db.$client
+      .prepare("ALTER TABLE plugin_marketplaces DROP COLUMN stats_json")
       .run();
   }
 }
@@ -811,6 +852,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
+  dropPluginDiscoveryStackSchema(db);
   dropEventParentToolCallIdColumn(db);
   dropEnvironmentRetireRequestedAtColumn(db);
   dropPluginArtifactGitCheckoutRootColumn(db);
@@ -1435,6 +1477,50 @@ function deleteDeferredCleanupMigrationRows(db: DbConnection): void {
 }
 
 describe("migrate", () => {
+  it("migrates a database at main's 0109 through the renumbered stack migrations", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      // Begin from an empty database, then rewind only the two stack migrations
+      // so the remaining schema and ledger are exactly main's 0109 state.
+      migrate(db);
+      dropPluginDiscoveryStackSchema(db);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at > ?",
+        )
+        .run(marketplaceInstallStatsMigrationWhen);
+
+      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(
+        marketplaceInstallStatsMigrationWhen,
+      );
+      expect(() => migrate(db)).not.toThrow();
+
+      const pluginColumns = db.$client
+        .prepare<[], TableInfoRow>("PRAGMA table_info(plugins)")
+        .all()
+        .map((column) => column.name);
+      expect(pluginColumns).toEqual(
+        expect.arrayContaining([
+          "handler_error_count",
+          "last_problem_class",
+          "last_problem_message",
+          "last_problem_at",
+        ]),
+      );
+      expect(
+        db.$client
+          .prepare<[], TableNameRow>(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'plugin_listing_lifecycles'",
+          )
+          .get(),
+      ).toEqual({ name: "plugin_listing_lifecycles" });
+      expect(readLatestAppliedMigrationCreatedAt(db)).toBe(latestMigrationWhen);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("backfills the first checkout commit component for every artifact shape", () => {
     const db = createConnection(":memory:");
     const commit = "d".repeat(40);
@@ -5117,6 +5203,8 @@ describe("migrate", () => {
       });
 
       dropEventParentToolCallIdColumn(db);
+      dropMarketplaceStatsColumn(db);
+      dropPluginDiscoveryStackSchema(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",

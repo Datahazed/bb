@@ -23,6 +23,7 @@ function entry(
     category: "Agent Tools",
     screenshots: [],
     newAndNotableRank: null,
+    installs: null,
     source: `builtin:${id}`,
     repositoryUrl: null,
     marketplace: "bb-community",

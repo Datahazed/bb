@@ -55,13 +55,14 @@ export const Route = createFileRoute("/marketplace_")({
 
 function MarketplaceRoute() {
   const path = useRouterState({ select: (state) => state.location.pathname });
-  const manifest = Route.useLoaderData();
+  const { manifest, stats } = Route.useLoaderData();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   if (path !== "/marketplace" && path !== "/marketplace/") return <Outlet />;
   return (
     <PublicMarketplacePage
       manifest={manifest}
+      stats={stats}
       state={search}
       onStateChange={(next) => void navigate({ search: next })}
     />

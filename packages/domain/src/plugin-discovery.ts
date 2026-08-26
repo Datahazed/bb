@@ -11,7 +11,7 @@ export interface PluginDiscoveryEntryAccessors<Entry, Category> {
   displayName: (entry: Entry) => string;
   category: (entry: Entry) => Category | undefined;
   categoryId: (category: Category) => PluginCatalogCategoryId;
-  installCount: (entry: Entry) => number | undefined;
+  installs: (entry: Entry) => number | undefined;
   publishedAt: (entry: Entry) => string | undefined;
 }
 
@@ -79,8 +79,8 @@ export function sortPluginDiscoveryEntries<Entry, Category>(
     if (sort === "most-installed") {
       return (
         compareOptionalNumbers(
-          accessors.installCount(left),
-          accessors.installCount(right),
+          accessors.installs(left),
+          accessors.installs(right),
           direction,
         ) || compareNames(left, right, accessors)
       );

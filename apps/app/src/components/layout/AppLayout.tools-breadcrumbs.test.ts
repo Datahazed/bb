@@ -35,7 +35,7 @@ describe("resolveToolsBreadcrumbs", () => {
       resolveToolsBreadcrumbs("/extensions/skills", "?view=library"),
     ).toEqual([
       { label: "Skills", to: "/extensions/skills" },
-      { label: "My skills" },
+      { label: "Installed" },
     ]);
     expect(resolveToolsBreadcrumbs("/extensions/plugins")).toEqual([
       { label: "Plugins", to: "/extensions/plugins" },
@@ -78,7 +78,7 @@ describe("resolveToolsBreadcrumbs", () => {
       ),
     ).toEqual([
       { label: "Skills", to: "/extensions/skills" },
-      { label: "My skills", to: "/extensions/skills?view=library" },
+      { label: "Installed", to: "/extensions/skills?view=installed" },
       { label: "Example Skill" },
     ]);
     expect(

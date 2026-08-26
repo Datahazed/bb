@@ -2,10 +2,11 @@ import {
   MARKETPLACE_V2_SCHEMA_URL,
   type MarketplaceV2Manifest,
 } from "./marketplace-v2.js";
+import type { MarketplaceStats } from "./marketplace-stats.js";
 
 /**
  * Representative page-boundary input: both source and icon forms, curated
- * order, screenshots, and known versus unknown registry metrics.
+ * order, screenshots, and publication dates.
  */
 export const MARKETPLACE_V2_FIXTURE: MarketplaceV2Manifest = {
   $schema: MARKETPLACE_V2_SCHEMA_URL,
@@ -25,7 +26,6 @@ export const MARKETPLACE_V2_FIXTURE: MarketplaceV2Manifest = {
         "screenshots/prompt-library.png",
         "https://cdn.getbb.app/prompt-library-dark.webp?v=2",
       ],
-      installCount: 1_204,
       publishedAt: "2026-07-14T09:30:00Z",
       updatedAt: "2026-08-24T16:45:00+02:00",
       tags: ["prompts", "templates"],
@@ -63,4 +63,12 @@ export const MARKETPLACE_V2_FIXTURE: MarketplaceV2Manifest = {
       },
     },
   ],
+};
+
+export const MARKETPLACE_STATS_FIXTURE: MarketplaceStats = {
+  schemaVersion: 1,
+  generatedAt: "2026-08-25T06:17:00.000Z",
+  plugins: {
+    "prompt-library": { installs: 1_204 },
+  },
 };

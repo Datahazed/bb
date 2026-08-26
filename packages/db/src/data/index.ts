@@ -61,6 +61,7 @@ export {
   hasPendingThreadShutdownInEnvironment,
   hasRevivableArchivedThreadInEnvironment,
   listHostThreadIds,
+  listActiveHostThreads,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   listLiveThreadsInEnvironment,
   listThreadMentionRowsByIds,

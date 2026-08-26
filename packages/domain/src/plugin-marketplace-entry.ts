@@ -162,7 +162,6 @@ export const marketplaceEntryV2Schema = z
       )
       .max(MARKETPLACE_MAX_SCREENSHOTS)
       .optional(),
-    installCount: z.number().int().nonnegative().optional(),
     publishedAt: z.iso.datetime({ offset: true }).optional(),
     updatedAt: z.iso.datetime({ offset: true }).optional(),
     ...marketplaceEntryMetadataShape,
@@ -175,7 +174,6 @@ export type MarketplaceEntrySource = MarketplaceEntryV1["source"];
 
 const marketplaceAuthorEntryProjectionSchema = marketplaceEntryV2Schema
   .omit({
-    installCount: true,
     publishedAt: true,
     updatedAt: true,
   })

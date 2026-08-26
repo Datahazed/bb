@@ -9,12 +9,12 @@ import { PublicMarketplaceDetailPage } from "../marketplace/public-marketplace.j
 
 export const Route = createFileRoute("/marketplace_/$pluginId")({
   loader: async ({ params }) => {
-    const manifest = await getPublicMarketplace();
-    const entry = manifest.plugins.find(
+    const marketplace = await getPublicMarketplace();
+    const entry = marketplace.manifest.plugins.find(
       (candidate) => candidate.id === params.pluginId,
     );
     if (entry === undefined) throw notFound();
-    return { manifest, entry };
+    return { ...marketplace, entry };
   },
   head: ({ loaderData, params }) => {
     const title = loaderData
@@ -49,6 +49,12 @@ export const Route = createFileRoute("/marketplace_/$pluginId")({
 });
 
 function MarketplaceDetailRoute() {
-  const { manifest, entry } = Route.useLoaderData();
-  return <PublicMarketplaceDetailPage manifest={manifest} entry={entry} />;
+  const { manifest, entry, stats } = Route.useLoaderData();
+  return (
+    <PublicMarketplaceDetailPage
+      manifest={manifest}
+      entry={entry}
+      stats={stats}
+    />
+  );
 }

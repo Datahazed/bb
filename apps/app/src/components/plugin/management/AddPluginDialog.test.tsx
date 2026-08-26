@@ -376,7 +376,11 @@ describe("AddPluginDialog", () => {
 
     await vi.waitFor(() => {
       expect(onInstalled).toHaveBeenCalledWith(
-        INSTALLED_PLUGIN_RESPONSE.plugin,
+        expect.objectContaining({
+          ...INSTALLED_PLUGIN_RESPONSE.plugin,
+          lastProblem: null,
+          screenshots: [],
+        }),
       );
     });
   });

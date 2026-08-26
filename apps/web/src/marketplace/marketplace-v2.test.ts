@@ -32,9 +32,6 @@ const jsonSchemaShape = z
               .object({
                 category: z.object({ enum: z.array(z.string()) }).passthrough(),
                 screenshots: z.object({ maxItems: z.number() }).passthrough(),
-                installCount: z
-                  .object({ type: z.string(), minimum: z.number() })
-                  .passthrough(),
                 publishedAt: z
                   .object({ type: z.string(), format: z.string() })
                   .passthrough(),
@@ -71,9 +68,6 @@ const generatedSchemaShape = z
                       .passthrough(),
                     screenshots: z
                       .object({ maxItems: z.number() })
-                      .passthrough(),
-                    installCount: z
-                      .object({ type: z.string(), minimum: z.number() })
                       .passthrough(),
                     publishedAt: z
                       .object({ type: z.string(), format: z.string() })
@@ -113,13 +107,9 @@ function findStringPropertyConstraints(
     }
     const record = unknownRecordSchema.safeParse(current);
     if (!record.success) continue;
-    const properties = unknownRecordSchema.safeParse(
-      record.data["properties"],
-    );
+    const properties = unknownRecordSchema.safeParse(record.data["properties"]);
     if (properties.success && propertyName in properties.data) {
-      return stringLengthConstraintsSchema.parse(
-        properties.data[propertyName],
-      );
+      return stringLengthConstraintsSchema.parse(properties.data[propertyName]);
     }
     pending.push(...Object.values(record.data));
   }
@@ -153,14 +143,12 @@ describe("parseMarketplaceV2Manifest", () => {
     expect(parsed.plugins[1]?.source).toHaveProperty("git");
   });
 
-  it("keeps omitted registry metrics absent instead of defaulting to zero", () => {
+  it("keeps omitted registry dates absent", () => {
     const parsed = parseMarketplaceV2Manifest(MARKETPLACE_V2_FIXTURE);
     const entryWithoutMetrics = parsed.plugins[1];
 
-    expect(entryWithoutMetrics?.installCount).toBeUndefined();
     expect(entryWithoutMetrics?.publishedAt).toBeUndefined();
     expect(entryWithoutMetrics?.updatedAt).toBeUndefined();
-    expect(entryWithoutMetrics).not.toHaveProperty("installCount");
     expect(entryWithoutMetrics).not.toHaveProperty("publishedAt");
     expect(entryWithoutMetrics).not.toHaveProperty("updatedAt");
   });
@@ -259,6 +247,15 @@ describe("parseMarketplaceV2Manifest", () => {
         }),
       ),
     ).toThrow(/Unrecognized key.*compatibility/u);
+
+    expect(() =>
+      parseMarketplaceV2Manifest(
+        manifestWithOnlyPlugin({
+          ...MARKETPLACE_V2_FIXTURE.plugins[0],
+          installCount: 1,
+        }),
+      ),
+    ).toThrow(/Unrecognized key.*installCount/u);
   });
 });
 
@@ -309,7 +306,6 @@ describe("marketplace v2 public-contract drift gate", () => {
         "icon",
         "category",
         "screenshots",
-        "installCount",
         "publishedAt",
         "updatedAt",
         "tags",
@@ -330,14 +326,6 @@ describe("marketplace v2 public-contract drift gate", () => {
     expect(parserEntry.properties.screenshots.maxItems).toBe(
       publicEntry.properties.screenshots.maxItems,
     );
-    expect(publicEntry.properties.installCount).toMatchObject({
-      type: "integer",
-      minimum: 0,
-    });
-    expect(parserEntry.properties.installCount).toMatchObject({
-      type: "integer",
-      minimum: 0,
-    });
     expect(publicEntry.properties.publishedAt).toMatchObject({
       type: "string",
       format: "date-time",

@@ -71,6 +71,12 @@ const BUILTIN_PLUGIN_DEFINITIONS = [
     category: "thread-messages-and-timelines",
   },
   {
+    name: "monaco-editor",
+    pluginId: "monaco-editor",
+    defaultEnabled: false,
+    category: "files-and-viewers",
+  },
+  {
     name: "pdf-preview",
     pluginId: "pdf-preview",
     defaultEnabled: true,
@@ -111,6 +117,12 @@ const BUILTIN_PLUGIN_DEFINITIONS = [
     pluginId: "keep-awake",
     defaultEnabled: true,
     category: "machines-and-hosts",
+  },
+  {
+    name: "plugin-api-docs",
+    pluginId: "plugin-api-docs",
+    defaultEnabled: true,
+    category: "plugin-development",
   },
   {
     name: "provider-retry",

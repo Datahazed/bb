@@ -52,6 +52,13 @@ export function hasPluginCatalogCategory(
   return entry.categoryId !== undefined && entry.category !== undefined;
 }
 
+/** Normalizes the authoritative marketplace stats field for discovery helpers. */
+export function pluginInstalls(
+  entry: PluginCatalogSearchEntry,
+): number | undefined {
+  return entry.installs ?? undefined;
+}
+
 const DISCOVERY_ACCESSORS = {
   entryId: (entry: PluginCatalogSearchEntry) => entry.entryId,
   displayName: (entry: PluginCatalogSearchEntry) => entry.displayName,
@@ -60,7 +67,7 @@ const DISCOVERY_ACCESSORS = {
       ? { id: entry.categoryId, label: entry.category }
       : undefined,
   categoryId: (category: AppPluginCategory) => category.id,
-  installCount: (entry: PluginCatalogSearchEntry) => entry.installCount,
+  installs: pluginInstalls,
   publishedAt: (entry: PluginCatalogSearchEntry) => entry.publishedAt,
 } satisfies PluginDiscoveryEntryAccessors<
   PluginCatalogSearchEntry,

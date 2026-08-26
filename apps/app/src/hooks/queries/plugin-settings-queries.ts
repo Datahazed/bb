@@ -6,6 +6,7 @@ import type {
 } from "@bb/server-contract";
 import { pluginSettingsUpdateRequestSchema } from "@bb/server-contract";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { invalidatePluginListings } from "../cache-owners/plugin-listings-cache-owner";
 import { createPluginsClient } from "./plugin-client";
 import {
   pluginListQueryKey,
@@ -235,8 +236,7 @@ export function useConsumePluginListingNotice() {
   return useMutation({
     mutationFn: (noticeId: string) =>
       createPluginsClient(fetch).listings.consumeNotice({ noticeId }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: pluginListingsQueryKey() }),
+    onSuccess: () => invalidatePluginListings({ queryClient }),
   });
 }
 

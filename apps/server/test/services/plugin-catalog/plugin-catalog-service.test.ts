@@ -32,6 +32,8 @@ const MANIFEST_URL = "https://marketplace.test/marketplace/v2/marketplace.json";
 const V1_MANIFEST_URL =
   "https://marketplace.test/marketplace/v1/marketplace.json";
 const ICON_URL = "https://marketplace.test/marketplace/v2/icons/widgets.svg";
+/** Install-count sidecar beside the manifest; most tests do not publish one. */
+const STATS_URL = "https://marketplace.test/marketplace/v2/stats.json";
 const SEED_ENTRY_COUNT = BUNDLED_CURATED_MARKETPLACE.plugins.length;
 
 const VALID_SVG = Buffer.from(
@@ -289,6 +291,7 @@ describe("plugin catalog service", () => {
       sourceGitRef: null,
       sourceGitCommit: null,
       manifestJson: "not json",
+      statsJson: null,
       etag: null,
       lastModified: null,
       lastSuccessfulRefreshAt: 1,
@@ -390,31 +393,39 @@ describe("plugin catalog service", () => {
   describe("refresh", () => {
     it("returns discovery metadata declared by v2", async () => {
       const catalog = service({
-        fetch: async (url) =>
-          url === MANIFEST_URL
-            ? jsonResponse(
-                manifest(
-                  [
-                    remoteEntry({
-                      screenshots: ["./screenshots/widgets.png"],
-                      installCount: 1_204,
-                      publishedAt: "2026-08-20T09:30:00Z",
-                      updatedAt: "2026-08-24T16:45:00+02:00",
-                    }),
-                    remoteEntry({
-                      id: "later-entry",
-                      category: "security",
-                      screenshots: undefined,
-                      icon: "Zap",
-                    }),
-                  ],
-                  { newAndNotable: ["widgets"] },
-                ),
-              )
-            : new Response(VALID_SVG, {
-                status: 200,
-                headers: { "content-type": "image/svg+xml" },
-              }),
+        fetch: async (url) => {
+          if (url === MANIFEST_URL) {
+            return jsonResponse(
+              manifest(
+                [
+                  remoteEntry({
+                    screenshots: ["./screenshots/widgets.png"],
+                    publishedAt: "2026-08-20T09:30:00Z",
+                    updatedAt: "2026-08-24T16:45:00+02:00",
+                  }),
+                  remoteEntry({
+                    id: "later-entry",
+                    category: "security",
+                    screenshots: undefined,
+                    icon: "Zap",
+                  }),
+                ],
+                { newAndNotable: ["widgets"] },
+              ),
+            );
+          }
+          if (url === STATS_URL) {
+            return jsonResponse({
+              schemaVersion: 1,
+              generatedAt: "2026-08-21T00:00:00.000Z",
+              plugins: { widgets: { installs: 1_204 } },
+            });
+          }
+          return new Response(VALID_SVG, {
+            status: 200,
+            headers: { "content-type": "image/svg+xml" },
+          });
+        },
       });
 
       await catalog.refresh(1_000);
@@ -429,7 +440,7 @@ describe("plugin catalog service", () => {
           "https://marketplace.test/marketplace/v2/screenshots/widgets.png",
         ],
         newAndNotableRank: 0,
-        installCount: 1_204,
+        installs: 1_204,
         publishedAt: "2026-08-20T09:30:00Z",
         updatedAt: "2026-08-24T16:45:00+02:00",
       });
@@ -439,17 +450,15 @@ describe("plugin catalog service", () => {
         category: "Security",
         screenshots: [],
         newAndNotableRank: null,
+        installs: null,
       });
-      expect(laterEntry).not.toHaveProperty("installCount");
       expect(laterEntry).not.toHaveProperty("publishedAt");
       expect(laterEntry).not.toHaveProperty("updatedAt");
     });
 
     it("falls back to immutable v1 only when v2 is missing", async () => {
       const requests: string[] = [];
-      const fallbackManifest = manifestV1([
-        remoteEntryV1({ icon: "Zap" }),
-      ]);
+      const fallbackManifest = manifestV1([remoteEntryV1({ icon: "Zap" })]);
       const catalog = service({
         fetch: async (url) => {
           requests.push(url);
@@ -462,7 +471,7 @@ describe("plugin catalog service", () => {
       });
 
       await catalog.refresh(1_000);
-      expect(requests).toEqual([MANIFEST_URL, V1_MANIFEST_URL]);
+      expect(requests).toEqual([MANIFEST_URL, V1_MANIFEST_URL, STATS_URL]);
       const results = await catalog.search("");
       expect(results.some((entry) => entry.entryId === "widgets")).toBe(true);
       for (const entry of results) {
@@ -520,7 +529,7 @@ describe("plugin catalog service", () => {
 
       await catalog.refresh(1_000);
 
-      expect(requests).toEqual([MANIFEST_URL, V1_MANIFEST_URL]);
+      expect(requests).toEqual([MANIFEST_URL, V1_MANIFEST_URL, STATS_URL]);
       expect(await catalog.search("")).toMatchObject([
         {
           entryId: "advisor",
@@ -942,10 +951,19 @@ describe("plugin catalog service", () => {
 
       const events: string[] = [];
       const catalog = service({
-        fetch: async (url) =>
-          url === MANIFEST_URL
-            ? jsonResponse(manifest([remoteEntry()]))
-            : new Response(VALID_SVG, { status: 200 }),
+        fetch: async (url) => {
+          if (url === MANIFEST_URL) {
+            return jsonResponse(manifest([remoteEntry()]));
+          }
+          if (url === STATS_URL) {
+            return jsonResponse({
+              schemaVersion: 1,
+              generatedAt: "2026-08-21T00:00:00.000Z",
+              plugins: {},
+            });
+          }
+          return new Response(VALID_SVG, { status: 200 });
+        },
         notifyCatalogChanged: () => {
           events.push(
             `notified:${getPluginMarketplace(db, "bb-community")?.lastSuccessfulRefreshAt}`,
@@ -965,6 +983,160 @@ describe("plugin catalog service", () => {
         lastAttemptedRefreshAt: 4_000,
         lastError: null,
       });
+    });
+  });
+
+  describe("install counts", () => {
+    function statsResponse(
+      plugins: Record<string, { installs: number }>,
+      generatedAt = "2026-08-21T00:00:00.000Z",
+    ): Response {
+      return jsonResponse({ schemaVersion: 1, generatedAt, plugins });
+    }
+
+    /** Serve a manifest, a sidecar, and an icon for anything else. */
+    function fetchWith(
+      stats: () => Response,
+      entries: unknown[] = [remoteEntry()],
+    ): MarketplaceFetch {
+      return async (url) => {
+        if (url === MANIFEST_URL) return jsonResponse(manifest(entries));
+        if (url === STATS_URL) return stats();
+        return new Response(VALID_SVG, {
+          status: 200,
+          headers: { "content-type": "image/svg+xml" },
+        });
+      };
+    }
+
+    it("reports counts for curated entries and bundled plugins", async () => {
+      const bundled = listBundledPluginRegistrations().find(
+        (plugin) =>
+          plugin.name === "docs" && plugin.pluginId === "simple-notes",
+      );
+      if (bundled === undefined) throw new Error("docs registration missing");
+      const catalog = service({
+        fetch: fetchWith(() =>
+          statsResponse({
+            widgets: { installs: 4_210 },
+            [bundled.pluginId]: { installs: 12 },
+          }),
+        ),
+      });
+
+      await catalog.refresh(1_000);
+      const byId = new Map(
+        (await catalog.search("")).map((entry) => [entry.entryId, entry]),
+      );
+      expect(byId.get("widgets")?.installs).toBe(4_210);
+      expect(byId.get(bundled.name)?.installs).toBe(12);
+    });
+
+    it("leaves an entry the sidecar does not name uncounted", async () => {
+      const catalog = service({
+        fetch: fetchWith(() => statsResponse({ other: { installs: 9 } })),
+      });
+
+      await catalog.refresh(1_000);
+      expect((await catalog.search("widgets"))[0]?.installs).toBeNull();
+    });
+
+    it("re-reads the sidecar when the manifest is unchanged", async () => {
+      // The whole point of a separate document: counts move behind a 304.
+      let manifestReads = 0;
+      let installs = 5;
+      const catalog = service({
+        fetch: async (url) => {
+          if (url === MANIFEST_URL) {
+            manifestReads += 1;
+            return manifestReads === 1
+              ? jsonResponse(manifest([remoteEntry()]), { etag: '"v1"' })
+              : new Response(null, { status: 304 });
+          }
+          if (url === STATS_URL) {
+            return statsResponse({ widgets: { installs } });
+          }
+          return new Response(VALID_SVG, {
+            status: 200,
+            headers: { "content-type": "image/svg+xml" },
+          });
+        },
+      });
+
+      await catalog.refresh(1_000);
+      expect((await catalog.search("widgets"))[0]?.installs).toBe(5);
+      installs = 40;
+      await catalog.refresh(2_000);
+      expect((await catalog.search("widgets"))[0]?.installs).toBe(40);
+    });
+
+    it("keeps the stored counts when the sidecar fails, and the refresh still succeeds", async () => {
+      const warnings: string[] = [];
+      let sidecarBroken = false;
+      const catalog = service({
+        warn: (message) => warnings.push(message),
+        fetch: fetchWith(() =>
+          sidecarBroken
+            ? new Response("nope", { status: 500 })
+            : statsResponse({ widgets: { installs: 7 } }),
+        ),
+      });
+
+      await catalog.refresh(1_000);
+      sidecarBroken = true;
+      await catalog.refresh(2_000);
+      expect((await catalog.search("widgets"))[0]?.installs).toBe(7);
+      expect(getPluginMarketplace(db, "bb-community")).toMatchObject({
+        lastSuccessfulRefreshAt: 2_000,
+        lastError: null,
+      });
+      expect(warnings.join("\n")).toMatch(/install counts were not refreshed/u);
+    });
+
+    it("rejects a malformed sidecar whole rather than counting part of it", async () => {
+      const catalog = service({
+        fetch: fetchWith(() =>
+          jsonResponse({
+            schemaVersion: 1,
+            generatedAt: "2026-08-21T00:00:00.000Z",
+            plugins: { widgets: { installs: -1 } },
+          }),
+        ),
+      });
+
+      await catalog.refresh(1_000);
+      expect((await catalog.search("widgets"))[0]?.installs).toBeNull();
+    });
+
+    it("does not count entries of a third-party marketplace", async () => {
+      const thirdPartyManifest =
+        "https://acme.test/marketplace/marketplace.json";
+      const statsRequests: string[] = [];
+      const catalog = service({
+        fetch: async (url) => {
+          if (url === MANIFEST_URL) return jsonResponse(manifest([]));
+          if (url.endsWith("/stats.json")) {
+            statsRequests.push(url);
+            return statsResponse({ widgets: { installs: 999 } });
+          }
+          if (url === thirdPartyManifest) {
+            return jsonResponse({
+              schemaVersion: 1,
+              name: "acme",
+              displayName: "Acme",
+              plugins: [remoteEntryV1({ icon: "ZoomIn" })],
+            });
+          }
+          return new Response(null, { status: 404 });
+        },
+      });
+
+      await catalog.addMarketplace(thirdPartyManifest);
+      await catalog.refreshMarketplaces({ attemptedAt: 2_000 });
+      expect((await catalog.search("widgets"))[0]?.installs).toBeNull();
+      // A publisher's own count wearing BB's label is never fetched at all:
+      // the only sidecar request in the whole run is the curated one.
+      expect(statsRequests).toEqual([STATS_URL]);
     });
   });
 
@@ -1173,6 +1345,7 @@ describe("plugin catalog service", () => {
               ]),
             );
           }
+          if (url === STATS_URL) return new Response(null, { status: 404 });
           iconRequests.push(url);
           return new Response(VALID_SVG, {
             status: 200,

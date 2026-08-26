@@ -77,7 +77,6 @@ function marketplaceEntryV1(entry: MarketplaceEntryV2): MarketplaceEntryV1 {
   const {
     category: _category,
     screenshots: _screenshots,
-    installCount: _installCount,
     publishedAt: _publishedAt,
     updatedAt: _updatedAt,
     ...v1Entry

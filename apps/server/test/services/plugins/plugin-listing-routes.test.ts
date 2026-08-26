@@ -62,6 +62,7 @@ function storeCuratedCatalog(db: DbConnection): void {
       newAndNotable: [],
       plugins: [entry],
     }),
+    statsJson: null,
     etag: null,
     lastModified: null,
     lastSuccessfulRefreshAt: 1_000,

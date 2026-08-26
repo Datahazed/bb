@@ -464,14 +464,39 @@ function PluginDetailToolView({
   );
 }
 
-export function ToolsView() {
+/** Renders a plugin detail directly when a split workspace owns the pane. */
+export function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
+  const navigate = useNavigate();
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <Suspense fallback={<ToolsBodyFallback />}>
+          <PluginDetailToolView
+            pluginId={pluginId}
+            onOpenPlugin={(nextPluginId) =>
+              navigate(getPluginDetailRoutePath({ pluginId: nextPluginId }))
+            }
+          />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
+export function ToolsView({
+  pluginId: explicitPluginId,
+}: {
+  pluginId?: string;
+} = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const pluginId = decodedRouteParam(
-    matchPath(TOOLS_PLUGIN_DETAIL_ROUTE_PATH, location.pathname)?.params
-      .pluginId,
-  );
+  const pluginId =
+    explicitPluginId ??
+    decodedRouteParam(
+      matchPath(TOOLS_PLUGIN_DETAIL_ROUTE_PATH, location.pathname)?.params
+        .pluginId,
+    );
   const routeAuthorId = decodedRouteParam(
     matchPath(TOOLS_PLUGIN_AUTHOR_ROUTE_PATH, location.pathname)?.params
       .authorId,

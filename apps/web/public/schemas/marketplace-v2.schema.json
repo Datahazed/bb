@@ -133,11 +133,6 @@
             "pattern": "^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:))[^\\s]*\\.(?:[Pp][Nn][Gg]|[Jj][Pp][Ee]?[Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\\s]*)?$"
           }
         },
-        "installCount": {
-          "type": "integer",
-          "minimum": 0,
-          "$comment": "Registry-supplied lifetime install count. Omission means unknown; publishers must not substitute zero."
-        },
         "publishedAt": {
           "type": "string",
           "format": "date-time",

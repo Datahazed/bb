@@ -128,6 +128,20 @@ const LazyPluginPanelRightPanelHost = lazy(() =>
   ),
 );
 
+const LazyPluginDetailPaneView = lazy(() =>
+  import("@/views/ToolsView").then(({ PluginDetailPaneView }) => ({
+    default: PluginDetailPaneView,
+  })),
+);
+
+function PluginDetailPaneView({ pluginId }: { pluginId: string }) {
+  return (
+    <Suspense fallback={null}>
+      <LazyPluginDetailPaneView pluginId={pluginId} />
+    </Suspense>
+  );
+}
+
 function PluginPagePanelHost({
   children,
   ...props
@@ -215,30 +229,44 @@ function usePreservedSplitScrollPositions(maximizedPaneId: string | null) {
     }
     previousMaximizedPaneIdRef.current = maximizedPaneId;
 
-    const restore = () => {
+    /** Reapplies saved positions; true when any element needed correction. */
+    const restore = (): boolean => {
       const workspace = workspaceRef.current;
+      let corrected = false;
       for (const [element, position] of positionsRef.current) {
         if (workspace === null || !workspace.contains(element)) {
           positionsRef.current.delete(element);
           continue;
         }
+        if (
+          element.scrollLeft === position.left &&
+          element.scrollTop === position.top
+        ) {
+          continue;
+        }
         element.scrollLeft = position.left;
         element.scrollTop = position.top;
+        corrected = true;
       }
+      return corrected;
     };
 
     // Restore before paint, then briefly across animation frames so passive
     // timeline effects, virtualization, and browser scroll anchoring cannot
-    // overwrite the saved position while pane visibility settles.
+    // overwrite the saved position while pane visibility settles. Each frame
+    // forces layout on every tracked scroller, so the loop ends after the
+    // first frame with nothing to correct; the frame cap bounds the
+    // pathological case where something keeps fighting the restore.
     restore();
     let frame: number | null = null;
-    let framesRemaining = 30;
+    let framesRemaining = 5;
     const restoreUntilSettled = () => {
-      restore();
+      const corrected = restore();
       framesRemaining -= 1;
-      if (framesRemaining > 0) {
-        frame = window.requestAnimationFrame(restoreUntilSettled);
-      }
+      frame =
+        corrected && framesRemaining > 0
+          ? window.requestAnimationFrame(restoreUntilSettled)
+          : null;
     };
     frame = window.requestAnimationFrame(restoreUntilSettled);
     return () => {
@@ -1037,6 +1065,9 @@ function StandalonePaneContent({
   if (content.kind === "new-thread") {
     return <RootComposeView />;
   }
+  if (content.kind === "plugin-detail") {
+    return <PluginDetailPaneView pluginId={content.pluginId} />;
+  }
   const panelEntry = navPanelChrome.find(
     (candidate) =>
       candidate.chrome.pluginId === content.pluginId &&
@@ -1126,7 +1157,9 @@ function NonThreadPaneContent({
           isFocused ? resourceRouteLabel : null,
         )
       : null;
-  const label = panelChrome?.title ?? "New thread";
+  const label =
+    panelChrome?.title ??
+    (content.kind === "plugin-detail" ? "Extension" : "New thread");
   const handlePointerDown = (event: ReactPointerEvent) => {
     if (
       event.target instanceof Element &&
@@ -1231,7 +1264,9 @@ function NonThreadPaneContent({
                       CONTEXT_INACTIVE_TEXT_CLASS,
                   )}
                 >
-                  New thread
+                  {content.kind === "plugin-detail"
+                    ? "Extension"
+                    : "New thread"}
                 </p>
               )}
             </div>
@@ -1250,6 +1285,8 @@ function NonThreadPaneContent({
       >
         {content.kind === "new-thread" ? (
           <RootComposeView />
+        ) : content.kind === "plugin-detail" ? (
+          <PluginDetailPaneView pluginId={content.pluginId} />
         ) : (
           <PluginPanelView
             pluginId={content.pluginId}

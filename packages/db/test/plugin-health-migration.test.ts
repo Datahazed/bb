@@ -18,7 +18,7 @@ describe("plugin health migration", () => {
         INSERT INTO plugins (id) VALUES ('legacy-plugin');
       `);
       const sql = readFileSync(
-        resolve(packageRoot, "drizzle/0109_broken_ultimo.sql"),
+        resolve(packageRoot, "drizzle/0110_broken_ultimo.sql"),
         "utf8",
       ).replaceAll("--> statement-breakpoint", "");
       db.$client.exec(sql);

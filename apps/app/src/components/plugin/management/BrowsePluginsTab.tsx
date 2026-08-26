@@ -197,7 +197,7 @@ export function BrowsePluginsTab({
     (group) => group.id === selectedShelfId,
   );
   const hasInstallCounts = catalogEntries.some(
-    (entry) => entry.installCount !== undefined,
+    (entry) => entry.installs !== null,
   );
   const requestedSort = browseSort(searchParams.get("sort"));
   const activeSort =
@@ -803,7 +803,7 @@ export function PluginCatalogCard({
       </a>
     );
   const hasStats =
-    entry.installCount !== undefined || entry.updatedAt !== undefined;
+    entry.installs !== null || entry.updatedAt !== undefined;
   // Compact cards prioritize the two registry trust signals when they exist.
   // Keep the actionable repository link beside them; the marketplace label
   // remains on cards with no stats (or when there is no link to show).
@@ -826,12 +826,12 @@ export function PluginCatalogCard({
         });
   const stats = (
     <>
-      {entry.installCount === undefined ? null : (
+      {entry.installs === null ? null : (
         <ResourceCardStat
           icon="Download"
-          accessibleLabel={`${entry.installCount.toLocaleString()} installs`}
+          accessibleLabel={`${entry.installs.toLocaleString()} installs`}
         >
-          {formatInstallCount(entry.installCount)}
+          {formatInstallCount(entry.installs)}
         </ResourceCardStat>
       )}
       {updatedRelativeTime === null ? null : (

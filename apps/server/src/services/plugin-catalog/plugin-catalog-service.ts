@@ -46,6 +46,10 @@ import {
 } from "../plugins/update-resolver.js";
 import { fetchMarketplaceIcons } from "./marketplace-icons.js";
 import {
+  fetchMarketplaceStats,
+  installCountsFromStatsJson,
+} from "./marketplace-stats.js";
+import {
   marketplaceErrorMessage,
   publicMarketplaceFetch,
   type MarketplaceFetch,
@@ -312,6 +316,8 @@ export function createPluginCatalogService(deps: {
       sourceGitRef: null,
       sourceGitCommit: null,
       manifestJson: JSON.stringify(BUNDLED_CURATED_MARKETPLACE),
+      // Counts are keyed by entry id, so they survive a manifest fallback.
+      statsJson: existing?.statsJson ?? null,
       etag: null,
       lastModified: null,
       lastSuccessfulRefreshAt: null,
@@ -441,6 +447,7 @@ export function createPluginCatalogService(deps: {
     manifest: PluginManifest,
     iconHash: string | null,
     discoveryEnabled: boolean,
+    installs: number | null,
   ): PluginCatalogSearchResult {
     const problem = compatibilityProblem({
       bbRange: manifest.bbEngineRange,
@@ -482,6 +489,10 @@ export function createPluginCatalogService(deps: {
       // Bundled plugins are BB's own; attribute them like the seed entries.
       author: { name: "BB Team", url: "https://getbb.app" },
       installed: getInstalledPlugin(deps.db, entry.pluginId) !== undefined,
+      // Bundled plugins are counted under their canonical plugin id: telemetry
+      // sends that id too, so the curated sidecar names them alongside the
+      // entries it lists.
+      installs,
       compatible: problem === null,
       incompatibleReason: problem,
     };
@@ -515,6 +526,8 @@ export function createPluginCatalogService(deps: {
     row: PluginMarketplaceRow;
     catalog: MarketplaceManifest;
     installedEntryIds: ReadonlySet<string>;
+    /** Null for every third-party listing, which publishes no counts. */
+    installs: number | null;
   }): PluginCatalogSearchResult {
     const { entry, row, catalog } = args;
     const official = row.name === CURATED_MARKETPLACE_NAME;
@@ -543,9 +556,6 @@ export function createPluginCatalogService(deps: {
         : { categoryId: category.id, category: category.displayName }),
       screenshots: entryScreenshotUrls(entry, screenshotBase),
       newAndNotableRank: notableIndex < 0 ? null : notableIndex,
-      ...(entry.installCount === undefined
-        ? {}
-        : { installCount: entry.installCount }),
       ...(entry.publishedAt === undefined
         ? {}
         : { publishedAt: entry.publishedAt }),
@@ -564,6 +574,7 @@ export function createPluginCatalogService(deps: {
       installed:
         args.installedEntryIds.has(catalogEntryKey(row.name, entry.id)) ||
         getInstalledPlugin(deps.db, entry.id) !== undefined,
+      installs: args.installs,
       // The listing declares no ranges, so bb cannot judge a marketplace
       // entry until it has fetched the plugin's own manifest.
       compatible: true,
@@ -633,6 +644,36 @@ export function createPluginCatalogService(deps: {
         return category === undefined ? [] : [{ ...entry, category }];
       }),
     };
+  }
+
+  /**
+   * The install-count sidecar to store for this refresh.
+   *
+   * Only the curated marketplace publishes counts: BB measures them from its
+   * own telemetry, so a number beside a third-party listing would be that
+   * publisher's claim wearing BB's label. A fetch failure keeps the counts
+   * already stored — a cosmetic number must never fail a catalog refresh.
+   */
+  async function refreshedStatsJson(
+    row: PluginMarketplaceRow,
+  ): Promise<string | null> {
+    if (row.name !== CURATED_MARKETPLACE_NAME || row.sourceKind !== "https") {
+      return null;
+    }
+    try {
+      const stats = await fetchMarketplaceStats({
+        manifestUrl: row.manifestUrl,
+        fetch: fetchMarketplace,
+      });
+      // A published-then-withdrawn sidecar clears the counts; a 404 that was
+      // never there to begin with leaves the (already null) column alone.
+      return stats === null ? null : JSON.stringify(stats);
+    } catch (error) {
+      deps.warn?.(
+        `${row.name} install counts were not refreshed: ${marketplaceErrorMessage(error)}`,
+      );
+      return row.statsJson;
+    }
   }
 
   async function performRefresh(
@@ -752,6 +793,7 @@ export function createPluginCatalogService(deps: {
         fetch: fetchMarketplace,
         ...(deps.warn === undefined ? {} : { warn: deps.warn }),
       });
+      const statsJson = await refreshedStatsJson(row);
       // The catalog and all icon rows form one snapshot. Network work happens
       // first, then SQLite publishes the complete snapshot in one commit.
       deps.db.transaction((tx) => {
@@ -760,6 +802,7 @@ export function createPluginCatalogService(deps: {
           ...marketplaceSourceColumns(source),
           sourceGitCommit: materialized.commit,
           manifestJson,
+          statsJson,
           etag: materialized.etag,
           lastModified: materialized.lastModified,
           lastSuccessfulRefreshAt: attemptedAt,
@@ -1244,6 +1287,9 @@ export function createPluginCatalogService(deps: {
               ...marketplaceSourceColumns(source),
               sourceGitCommit: materialized.commit,
               manifestJson: materialized.manifestJson,
+              // Only the curated marketplace publishes install counts, and it
+              // can never be added here — its name is reserved above.
+              statsJson: null,
               etag: materialized.etag,
               lastModified: materialized.lastModified,
               lastSuccessfulRefreshAt: addedAt,
@@ -1288,8 +1334,15 @@ export function createPluginCatalogService(deps: {
 
     async search(rawQuery) {
       const query = rawQuery.trim().toLowerCase();
-      const officialCatalog = catalogOf(requireRow(CURATED_MARKETPLACE_NAME));
+      const curatedRow = requireRow(CURATED_MARKETPLACE_NAME);
+      const officialCatalog = catalogOf(curatedRow);
       const officialDiscoveryEnabled = officialCatalog?.schemaVersion === 2;
+      // Bundled plugins are listed under the curated marketplace, so they read
+      // their counts from that marketplace's sidecar too.
+      const curatedInstalls = installCountsFromStatsJson(
+        curatedRow.statsJson,
+        (message) => deps.warn?.(message),
+      );
       const bundledEntries = await Promise.all(
         officialPlugins.map(async (entry) => {
           const manifest = await entryManifest(entry);
@@ -1304,6 +1357,7 @@ export function createPluginCatalogService(deps: {
               manifest,
               icon?.hash ?? null,
               officialDiscoveryEnabled,
+              curatedInstalls.get(entry.pluginId) ?? null,
             ),
           };
         }),
@@ -1330,6 +1384,7 @@ export function createPluginCatalogService(deps: {
             ? officialCatalog
             : catalogOf(row);
         if (catalog === null) return [];
+        const official = row.name === CURATED_MARKETPLACE_NAME;
         return catalog.plugins.map((entry) => ({
           pluginId: entry.id,
           tags: entry.tags ?? [],
@@ -1339,6 +1394,7 @@ export function createPluginCatalogService(deps: {
             row,
             catalog,
             installedEntryIds,
+            installs: official ? (curatedInstalls.get(entry.id) ?? null) : null,
           }),
         }));
       });

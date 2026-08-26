@@ -17,7 +17,7 @@ interface TestEntry {
   id: string;
   name: string;
   category?: TestCategory;
-  installCount?: number;
+  installs?: number;
   publishedAt?: string;
   notableRank?: number;
 }
@@ -27,7 +27,7 @@ const accessors = {
   displayName: (entry: TestEntry) => entry.name,
   category: (entry: TestEntry) => entry.category,
   categoryId: (category: TestCategory) => category.id,
-  installCount: (entry: TestEntry) => entry.installCount,
+  installs: (entry: TestEntry) => entry.installs,
   publishedAt: (entry: TestEntry) => entry.publishedAt,
 } satisfies PluginDiscoveryEntryAccessors<TestEntry, TestCategory>;
 
@@ -105,8 +105,8 @@ describe("plugin discovery projections", () => {
       sortPluginDiscoveryEntries(
         [
           entry("unknown"),
-          entry("smaller", { installCount: 2 }),
-          entry("larger", { installCount: 10 }),
+          entry("smaller", { installs: 2 }),
+          entry("larger", { installs: 10 }),
         ],
         "most-installed",
         accessors,
@@ -131,12 +131,12 @@ describe("plugin discovery projections", () => {
       entry("unknown", { name: "Middle" }),
       entry("older", {
         name: "Alpha",
-        installCount: 2,
+        installs: 2,
         publishedAt: "2026-08-20T09:30:00Z",
       }),
       entry("newer", {
         name: "Zulu",
-        installCount: 10,
+        installs: 10,
         publishedAt: "2026-08-24T09:30:00Z",
       }),
     ];

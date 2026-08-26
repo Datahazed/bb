@@ -141,7 +141,7 @@ export type MarketplaceEntry = MarketplaceEntryV1 &
   Partial<
     Pick<
       MarketplaceEntryV2,
-      "category" | "screenshots" | "installCount" | "publishedAt" | "updatedAt"
+      "category" | "screenshots" | "publishedAt" | "updatedAt"
     >
   >;
 

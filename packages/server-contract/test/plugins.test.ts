@@ -81,12 +81,13 @@ describe("plugin catalog contracts", () => {
     expect(parsed).toMatchObject({ screenshots: [], newAndNotableRank: null });
     expect(parsed).not.toHaveProperty("categoryId");
     expect(parsed).not.toHaveProperty("category");
+    expect(parsed).toMatchObject({ installs: null });
     expect(parsed).not.toHaveProperty("installCount");
     expect(parsed).not.toHaveProperty("publishedAt");
     expect(parsed).not.toHaveProperty("updatedAt");
   });
 
-  it("preserves only valid supplied catalog discovery statistics", () => {
+  it("preserves only authoritative catalog discovery statistics", () => {
     const requiredFields = {
       entryId: "notes",
       pluginId: "notes",
@@ -108,19 +109,19 @@ describe("plugin catalog contracts", () => {
     expect(
       pluginCatalogSearchResultSchema.parse({
         ...requiredFields,
-        installCount: 0,
+        installs: 0,
         publishedAt: "2026-08-20T09:30:00Z",
         updatedAt: "2026-08-24T16:45:00+02:00",
       }),
     ).toMatchObject({
-      installCount: 0,
+      installs: 0,
       publishedAt: "2026-08-20T09:30:00Z",
       updatedAt: "2026-08-24T16:45:00+02:00",
     });
     expect(() =>
       pluginCatalogSearchResultSchema.parse({
         ...requiredFields,
-        installCount: -1,
+        installs: -1,
       }),
     ).toThrow();
     expect(() =>

@@ -255,23 +255,12 @@ const v2Fixtures: readonly Fixture[] = [
     }),
   },
   {
-    label: "registry discovery statistics",
+    label: "registry publication timestamps",
     valid: true,
     manifest: manifestV2With({
-      installCount: 1_204,
       publishedAt: "2026-08-20T09:30:00Z",
       updatedAt: "2026-08-24T16:45:00+02:00",
     }),
-  },
-  {
-    label: "negative install count",
-    valid: false,
-    manifest: manifestV2With({ installCount: -1 }),
-  },
-  {
-    label: "fractional install count",
-    valid: false,
-    manifest: manifestV2With({ installCount: 1.5 }),
   },
   {
     label: "invalid published timestamp",

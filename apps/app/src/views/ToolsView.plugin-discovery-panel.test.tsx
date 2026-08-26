@@ -55,6 +55,7 @@ function catalogEntry(
     official: true,
     author: { name: "Pat Lee", url: "https://github.com/patlee" },
     installed: false,
+    installs: null,
     compatible: true,
     incompatibleReason: null,
   };

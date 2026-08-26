@@ -28,6 +28,7 @@ function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
     official: true,
     author: { name: "Pat Lee", url: "https://github.com/patlee" },
     installed: false,
+    installs: null,
     compatible: true,
     incompatibleReason: null,
   };
@@ -56,7 +57,7 @@ describe("PluginMarketplaceListing", () => {
     const usage = {
       ...catalogEntry("usage"),
       screenshots: ["/screenshots/usage-one.png", "/screenshots/usage-two.png"],
-      installCount: 0,
+      installs: 0,
       updatedAt: "2026-08-24T12:00:00.000Z",
     };
     const headroom = catalogEntry("headroom");

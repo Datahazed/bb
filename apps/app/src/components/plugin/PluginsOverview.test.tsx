@@ -323,14 +323,13 @@ describe("PluginsOverview", () => {
     expect((await screen.findAllByText("GitHub")).length).toBeGreaterThan(0);
     // Wait for the catalog so the Category menu has options to offer.
     const categoryTrigger = screen.getByRole("button", {
-      name: "Filter plugins by category",
+      name: "Filter plugins by category: All categories",
     });
     expect(screen.queryByRole("button", { name: "Type" })).toBeNull();
-    fireEvent.pointerDown(categoryTrigger);
+    fireEvent.click(categoryTrigger);
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Context & knowledge" }),
+      screen.getByRole("option", { name: /Memory & Context/u }),
     );
-    fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByText("Docs")).toBeTruthy();
     expect(screen.queryByText("GitHub")).toBeNull();
   });
@@ -405,7 +404,7 @@ describe("PluginsOverview", () => {
     const search = screen.getByRole("textbox", { name: "Search plugins" });
     const toolbar = search.parentElement?.parentElement as HTMLElement;
     const category = screen.getByRole("button", {
-      name: "Filter plugins by category",
+      name: "Filter plugins by category: All categories",
     });
     const sort = screen.getByRole("button", { name: "Sort plugins" });
     expect(toolbar.contains(category)).toBe(true);

@@ -239,9 +239,8 @@ export const installedPluginSchema = z.object({
   logoDarkUrl: z.string().nullable(),
   /**
    * The agent providers this plugin registered (`bb.providers.register`),
-   * empty for every other plugin. The app defers a provider plugin's frontend
-   * bundle until the first thread of one of its providers opens, so the boot
-   * payload never carries provider code (docs/provider-plugin-api.md §5).
+   * empty for every other plugin. An inventory field: which providers a
+   * plugin owns, for clients that group or label plugins by provider.
    * The server fills it for every plugin; a client that reads a response
    * from a server older than this field tolerates its absence on its own
    * response schema (see @bb/sdk), never by defaulting it here, where the
@@ -488,8 +487,6 @@ export const pluginCatalogSearchResultSchema = z.object({
   screenshots: z.array(z.string()).default([]),
   /** Zero-based position in the manifest's curated shelf, or null when absent. */
   newAndNotableRank: z.number().int().nonnegative().nullable().default(null),
-  /** Registry-supplied lifetime installs. Omitted when the registry has no count. */
-  installCount: z.number().int().nonnegative().optional(),
   /** First publication time supplied by marketplace v2. */
   publishedAt: z.iso.datetime({ offset: true }).optional(),
   /** Latest matching release time supplied by marketplace v2. */
@@ -525,6 +522,14 @@ export const pluginCatalogSearchResultSchema = z.object({
   /** Null for plugins bundled with the app, which list no separate author. */
   author: pluginCatalogAuthorSchema.nullable(),
   installed: z.boolean(),
+  /**
+   * How many distinct BB installations reported installing this plugin, from
+   * the curated marketplace's published `stats.json`. Null when the count is
+   * unknown: every third-party listing, any entry the sidecar does not name,
+   * and every server that has not fetched a sidecar yet. Older servers do not
+   * send it, so those entries show no count.
+   */
+  installs: z.number().int().nonnegative().nullable().default(null),
   compatible: z.boolean(),
   incompatibleReason: z.string().nullable(),
 });

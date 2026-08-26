@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0702d4a4-9f5d-4377-872a-99448a55e7ca",
+  "id": "e66624da-3e23-42f0-9760-275442c0d59b",
   "prevId": "6e7bcf0b-8ad1-473a-b856-292027ad2441",
   "tables": {
     "app_settings": {
@@ -1424,35 +1424,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "handler_error_count": {
-          "name": "handler_error_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "last_problem_class": {
-          "name": "last_problem_class",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_problem_message": {
-          "name": "last_problem_message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_problem_at": {
-          "name": "last_problem_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "active_artifact_id": {
           "name": "active_artifact_id",
           "type": "text",
@@ -2072,6 +2043,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "stats_json": {
+          "name": "stats_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "etag": {

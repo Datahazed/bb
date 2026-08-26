@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { MARKETPLACE_V2_FIXTURE } from "./marketplace-v2.fixture.js";
+import {
+  MARKETPLACE_STATS_FIXTURE,
+  MARKETPLACE_V2_FIXTURE,
+} from "./marketplace-v2.fixture.js";
 import {
   attemptMarketplaceInstall,
   filterMarketplaceEntries,
@@ -34,12 +37,12 @@ describe("public marketplace view model", () => {
 
   it("sorts missing metrics after known values rather than treating them as zero", () => {
     const [known, unknown] = MARKETPLACE_V2_FIXTURE.plugins;
-    expect(known?.installCount).toBeTypeOf("number");
-    expect(unknown?.installCount).toBeUndefined();
     expect(
-      sortMarketplaceEntries([unknown!, known!], "most-installed").map(
-        ({ id }) => id,
-      ),
+      sortMarketplaceEntries(
+        [unknown!, known!],
+        "most-installed",
+        MARKETPLACE_STATS_FIXTURE,
+      ).map(({ id }) => id),
     ).toEqual([known!.id, unknown!.id]);
   });
 

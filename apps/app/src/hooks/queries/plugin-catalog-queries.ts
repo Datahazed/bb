@@ -238,7 +238,6 @@ export interface PluginCatalogSearchEntry {
   category?: string;
   screenshots: string[];
   newAndNotableRank: number | null;
-  installCount?: number;
   publishedAt?: string;
   updatedAt?: string;
   source: string;
@@ -254,6 +253,8 @@ export interface PluginCatalogSearchEntry {
   official: boolean;
   author: PluginCatalogAuthor | null;
   installed: boolean;
+  /** Distinct BB installations that reported installing it; null when unknown. */
+  installs: number | null;
   compatible: boolean;
   incompatibleReason: string | null;
 }
@@ -274,9 +275,6 @@ function toPluginCatalogSearchEntry(
       : { categoryId: data.categoryId, category: data.category }),
     screenshots: data.screenshots,
     newAndNotableRank: data.newAndNotableRank,
-    ...(data.installCount === undefined
-      ? {}
-      : { installCount: data.installCount }),
     ...(data.publishedAt === undefined
       ? {}
       : { publishedAt: data.publishedAt }),
@@ -290,6 +288,7 @@ function toPluginCatalogSearchEntry(
     official: data.official,
     author: data.author,
     installed: data.installed,
+    installs: data.installs,
     compatible: data.compatible,
     incompatibleReason: data.incompatibleReason ?? null,
   };

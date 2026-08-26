@@ -11,6 +11,10 @@ import type {
   MarketplaceV2Entry,
   MarketplaceV2Manifest,
 } from "./marketplace-v2.js";
+import {
+  marketplaceEntryInstalls,
+  type MarketplaceStats,
+} from "./marketplace-stats.js";
 
 export type MarketplaceSort = PluginDiscoverySort;
 
@@ -45,22 +49,26 @@ export function marketplaceCategory(
   return category;
 }
 
-const DISCOVERY_ACCESSORS = {
-  entryId: (entry: MarketplaceV2Entry) => entry.id,
-  displayName: (entry: MarketplaceV2Entry) => entry.displayName,
-  category: (entry: MarketplaceV2Entry) => marketplaceCategory(entry.category),
-  categoryId: (category: MarketplaceCategory) => category.id,
-  installCount: (entry: MarketplaceV2Entry) => entry.installCount,
-  publishedAt: (entry: MarketplaceV2Entry) => entry.publishedAt,
-} satisfies PluginDiscoveryEntryAccessors<
-  MarketplaceV2Entry,
-  MarketplaceCategory
->;
+function discoveryAccessors(stats: MarketplaceStats | null) {
+  return {
+    entryId: (entry: MarketplaceV2Entry) => entry.id,
+    displayName: (entry: MarketplaceV2Entry) => entry.displayName,
+    category: (entry: MarketplaceV2Entry) =>
+      marketplaceCategory(entry.category),
+    categoryId: (category: MarketplaceCategory) => category.id,
+    installs: (entry: MarketplaceV2Entry) =>
+      marketplaceEntryInstalls(entry, stats),
+    publishedAt: (entry: MarketplaceV2Entry) => entry.publishedAt,
+  } satisfies PluginDiscoveryEntryAccessors<
+    MarketplaceV2Entry,
+    MarketplaceCategory
+  >;
+}
 
 export function marketplaceShelves(
   entries: readonly MarketplaceV2Entry[],
 ): MarketplaceShelf[] {
-  return pluginDiscoveryShelves(entries, DISCOVERY_ACCESSORS);
+  return pluginDiscoveryShelves(entries, discoveryAccessors(null));
 }
 
 export function newAndNotableEntries(
@@ -70,7 +78,7 @@ export function newAndNotableEntries(
     manifest.newAndNotable.map((entryId, index) => [entryId, index]),
   );
   return pluginDiscoveryNewAndNotableEntries(manifest.plugins, {
-    ...DISCOVERY_ACCESSORS,
+    ...discoveryAccessors(null),
     newAndNotableRank: (entry) => curatedOrder.get(entry.id),
   });
 }
@@ -101,8 +109,9 @@ export function filterMarketplaceEntries(
 export function sortMarketplaceEntries(
   entries: readonly MarketplaceV2Entry[],
   sort: MarketplaceSort,
+  stats: MarketplaceStats | null,
 ): MarketplaceV2Entry[] {
-  return sortPluginDiscoveryEntries(entries, sort, DISCOVERY_ACCESSORS);
+  return sortPluginDiscoveryEntries(entries, sort, discoveryAccessors(stats));
 }
 
 export function marketplaceDetailPath(entryId: string): string {
@@ -148,7 +157,7 @@ export function attemptMarketplaceInstall(args: {
   args.revealFallback(marketplaceInstallCommand(args.entryId));
 }
 
-export function formatInstallCount(value: number | undefined): string | null {
+export function formatInstalls(value: number | undefined): string | null {
   if (value === undefined) return null;
   return new Intl.NumberFormat("en-US", { notation: "compact" }).format(value);
 }

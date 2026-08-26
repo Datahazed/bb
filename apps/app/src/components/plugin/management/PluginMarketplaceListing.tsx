@@ -23,6 +23,7 @@ import {
   entriesByMarketplaceAuthor,
   pluginMarketplaceAuthorId,
 } from "./plugin-marketplace-author";
+import { pluginInstalls } from "./plugin-browse-discovery";
 
 function repositoryLinkLabel(url: string): string {
   return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
@@ -45,6 +46,7 @@ export function PluginMarketplaceMetadata({
           timestamp: Date.parse(entry.updatedAt),
           now: Date.now(),
         });
+  const installs = pluginInstalls(entry);
   return (
     <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1">
       {entry.category === undefined ? null : <span>{entry.category}</span>}
@@ -62,19 +64,19 @@ export function PluginMarketplaceMetadata({
           </span>
         </>
       )}
-      {entry.installCount === undefined ? null : (
+      {installs === undefined ? null : (
         <>
           {entry.category === undefined && author === null ? null : (
             <span aria-hidden>·</span>
           )}
-          <span>{entry.installCount.toLocaleString()} installs</span>
+          <span>{installs.toLocaleString()} installs</span>
         </>
       )}
       {updatedRelativeTime === null ? null : (
         <>
           {entry.category === undefined &&
           author === null &&
-          entry.installCount === undefined ? null : (
+          installs === undefined ? null : (
             <span aria-hidden>·</span>
           )}
           <span>updated {updatedRelativeTime}</span>
@@ -84,7 +86,7 @@ export function PluginMarketplaceMetadata({
         <>
           {entry.category === undefined &&
           author === null &&
-          entry.installCount === undefined &&
+          installs === undefined &&
           updatedRelativeTime === null ? null : (
             <span aria-hidden>·</span>
           )}

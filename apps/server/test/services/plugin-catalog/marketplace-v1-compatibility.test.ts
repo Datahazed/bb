@@ -33,7 +33,6 @@ describe("marketplace v1 released-client compatibility", () => {
     for (const entry of v1.plugins) {
       expect(entry).not.toHaveProperty("category");
       expect(entry).not.toHaveProperty("screenshots");
-      expect(entry).not.toHaveProperty("installCount");
       expect(entry).not.toHaveProperty("publishedAt");
       expect(entry).not.toHaveProperty("updatedAt");
     }

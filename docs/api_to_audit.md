@@ -272,6 +272,7 @@ ever needs two configured differently. For `acpLaunchSpecSchema`: the shape
 is stored in the ACP plugin's `customAgents` setting and in registrations'
 bridge options, so a change is a migration of stored agents — decide what a
 plugin is owed when the spec grows a field.
+
 ## `PluginProviderDeclaration.experimental_nativeSkillRoots`
 
 **Kept experimental (2026-08-22).** every first-party provider declares it now (stabilization S5 moved the daemon's per-provider scan table here), but no third-party agent has validated the relative-path / 32-root rule or the per-root options, and the split between a global declaration and the per-workspace resolver (`experimental_resolvesNativeRoots`) is one release old.
@@ -882,7 +883,13 @@ Before stabilization, audit:
   statuses;
 - persistence expectations across full app reloads and multiple windows;
 - validation, accessibility labels, reduced motion, and cleanup on plugin
-  reload/disable/removal.
+  reload/disable/removal;
+- the name of `PluginComposerThreadRowStatus.tone`. The field is a state the
+  plugin reports (`default | running | success | error`), not a tone: the host
+  maps it to both a color and an animation (`running` pulses in the success
+  color; `success` and `error` are static; omitted is muted). `state` is the
+  candidate rename. Nothing under `plugins/*` sets a status today, so the
+  rename is free until the prefix drops.
 
 ## `bb.providers.register` (`experimental_bridgeOptions`, `experimental_visibility`, and the `experimental_providerBridge` artifact export)
 
@@ -1212,6 +1219,37 @@ provider-retry) stops vendoring provider names, icons, and copy.
    (monochrome by construction) is the contract or a full-color logo path is
    owed.
 
+## `app.experimental_useCodeTheme` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Returns `{ mode, name, theme }`: the app's active light/dark
+mode, the registered name of the code theme bb renders that mode with, and the
+resolved VS Code theme document behind it (`type`, `fg`, `bg`, `colors`,
+`tokenColors`) — the same document bb's own highlighter paints from. It exists
+for plugins that render code with an engine of their own (the Monaco file
+editor is the first): without it, an embedded editor can only follow
+light/dark and strands its syntax colors on a palette bb is not using.
+`theme` is null only before the first resolve, and holds the previous document
+while a palette switch resolves, so a consumer never paints an unthemed frame.
+
+**Audit before stabilizing.**
+
+1. **Shape of the document.** `PluginCodeThemeData` mirrors Shiki's
+   `ThemeRegistrationResolved` minus the fields bb does not promise
+   (`semanticTokenColors`, `include`, `displayName`). Decide whether freezing a
+   Shiki-shaped payload is right, or whether the contract should be bb's own
+   normalized token model — a Shiki major that changes `settings` normalization
+   changes what plugins receive.
+2. **Both modes at once.** The hook serves only the active mode. An editor that
+   wants to prebuild its light and dark themes has to toggle to see the other.
+   Decide whether the state should carry the pair.
+3. **Where the resolve happens.** Resolution runs in the app window through a
+   dynamic `@pierre/diffs` import and caches per theme name for the window's
+   lifetime; a custom palette edited on disk keeps its old document until
+   reload, because the versioned wire name only changes when the server
+   re-resolves. Confirm that matches what the built-in surfaces do.
+4. **Consumer count.** One consumer today. Confirm a second engine (CodeMirror,
+   xterm) needs the same payload before the prefix drops.
+
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** zero consumers — every provider bb ships declares an SVG asset and `ProviderInfo.icon.glyph` / `logoUrl` cover both declared forms without a frontend bundle; the open questions are id squatting and whether the slot should exist at all (deleting it is the owner's call).
@@ -1367,9 +1405,8 @@ the host's declarative base for the body. The row header (the presentation's
 label, glyph, tint and headline) stays host-rendered. The host drops a kind
 outside the plugin's namespace with a warning, scopes `"tool"` to the plugin
 that owns the thread's provider (`ProviderInfo.pluginId`), contains a crash
-to the row (the declarative base renders instead), and loads a provider
-plugin's bundle only on the first thread of one of its providers, never at
-boot (`InstalledPlugin.providerIds` marks the candidates the loader defers).
+to the row (the declarative base renders instead). A provider plugin's
+bundle loads in the same deferred boot pass as every other plugin's.
 
 **Audit before stabilizing.**
 

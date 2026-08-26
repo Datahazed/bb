@@ -42,6 +42,7 @@ const MEMORY_ENTRY: PluginCatalogSearchEntry = {
   category: "Memory & Context",
   screenshots: [],
   newAndNotableRank: null,
+  installs: null,
   source: "builtin:memory",
   repositoryUrl: null,
   marketplaceDisplayName: "BB Community",
@@ -498,7 +499,7 @@ describe("BrowsePluginsTab", () => {
         entryId: "popular",
         pluginId: "popular",
         displayName: "Popular",
-        installCount: 1_204,
+        installs: 1_204,
         publishedAt: "2026-08-20T09:30:00Z",
         updatedAt: "2026-08-24T09:30:00Z",
       },
@@ -507,7 +508,7 @@ describe("BrowsePluginsTab", () => {
         entryId: "reviewer",
         pluginId: "reviewer",
         displayName: "Reviewer",
-        installCount: 40,
+        installs: 40,
         publishedAt: "2026-08-24T09:30:00Z",
       },
     ];
@@ -700,7 +701,7 @@ describe("BrowsePluginsTab", () => {
         }
         if (url === "/api/v1/plugin-catalog/search?q=") {
           return jsonResponse({
-            results: [{ ...MEMORY_ENTRY, installCount: 12 }],
+            results: [{ ...MEMORY_ENTRY, installs: 12 }],
           });
         }
         if (url === "/api/v1/plugin-catalog/search?q=unknown") {
