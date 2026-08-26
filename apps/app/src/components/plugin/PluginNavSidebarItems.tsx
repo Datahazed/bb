@@ -213,28 +213,24 @@ function PluginNavSidebarItemList({
   const pendingStoredHiddenKeys = migrationPending
     ? readStoredPluginNavPanelKeys(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY)
     : [];
-  const legacyPluginHiddenKeys = useMemo(
-    () =>
-      normalizePluginNavPanelOrder([
-        ...legacyHiddenKeys,
-        ...pendingStoredHiddenKeys,
-      ]).filter(isPluginNavPanelKey),
-    [legacyHiddenKeys, pendingStoredHiddenKeys],
-  );
-  const pendingVisibleLimit = useMemo(() => {
+  const legacyPluginHiddenKeys = normalizePluginNavPanelOrder([
+    ...legacyHiddenKeys,
+    ...pendingStoredHiddenKeys,
+  ]).filter(isPluginNavPanelKey);
+  const pendingVisibleLimit = (() => {
     if (!migrationPending || legacyPluginHiddenKeys.length === 0) return null;
     const hiddenSet = new Set(legacyPluginHiddenKeys);
     return Math.min(
       registrationOrder.filter((key) => !hiddenSet.has(key)).length,
       PLUGIN_NAV_PANEL_VISIBLE_LIMIT,
     );
-  }, [legacyPluginHiddenKeys, migrationPending, registrationOrder]);
+  })();
   const visibleLimit =
     pendingVisibleLimit ??
     migratedVisibleLimit ??
     readStoredMigratedVisibleLimit() ??
     PLUGIN_NAV_PANEL_VISIBLE_LIMIT;
-  const displayOrder = useMemo(() => {
+  const displayOrder = (() => {
     const pluginOrder = normalizePluginNavPanelOrder([
       ...storedOrder.filter(isPluginNavPanelKey),
       ...registrationOrder,
@@ -251,26 +247,15 @@ function PluginNavSidebarItemList({
       ...completeOrder.filter((key) => !hiddenSet.has(key)),
       ...completeOrder.filter((key) => hiddenSet.has(key)),
     ];
-  }, [
-    legacyPluginHiddenKeys,
-    migrationPending,
-    registrationOrder,
-    storedOrder,
-  ]);
-  const { visible, overflow, ordered, normalizedOrder } = useMemo(
-    () =>
-      arrangePluginNavPanels({
-        panels: rows,
-        storedOrder: displayOrder,
-        visibleLimit,
-        ...(activeKey === undefined ? {} : { activeKey }),
-      }),
-    [activeKey, displayOrder, rows, visibleLimit],
-  );
-  const registeredKeys = useMemo(
-    () => ordered.map(getPluginNavPanelKey),
-    [ordered],
-  );
+  })();
+  const { visible, overflow, ordered, normalizedOrder } =
+    arrangePluginNavPanels({
+      panels: rows,
+      storedOrder: displayOrder,
+      visibleLimit,
+      ...(activeKey === undefined ? {} : { activeKey }),
+    });
+  const registeredKeys = ordered.map(getPluginNavPanelKey);
 
   useEffect(() => {
     if (!bootComplete) return;
