@@ -109,6 +109,7 @@ import {
   type DesktopBrowserWindowCreator,
   type DesktopWindowFactory,
 } from "./desktop-window-factory.js";
+import { shouldUseLinuxFramelessWindow } from "./desktop-window-frame.js";
 import {
   createDesktopAboutDialogOptions,
   createDesktopAboutPanelOptions,
@@ -1808,6 +1809,7 @@ async function startOwnedRuntime(
     runtime: resolveBbAppProcessRuntime({
       env: process.env,
       isPackaged: app.isPackaged,
+      platform: process.platform,
       processExecPath: process.execPath,
     }),
   });
@@ -2371,6 +2373,10 @@ async function runDesktopApp(): Promise<void> {
     displayWorkAreas: null,
     icon: nativeImage.createFromPath(iconPath),
     isMac: process.platform === "darwin",
+    isLinuxFrameless: shouldUseLinuxFramelessWindow({
+      argv: process.argv,
+      platform: process.platform,
+    }),
     isQuitting() {
       return quitting;
     },
