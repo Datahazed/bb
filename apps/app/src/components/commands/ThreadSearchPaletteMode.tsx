@@ -19,6 +19,7 @@ import { useNewThreadDraftSlots } from "@/hooks/useNewThreadDraftSlots";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   hasThreadSearchableQuery,
+  useArchivedThreads,
   useThreadSearch,
 } from "@/hooks/queries/thread-queries";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
@@ -53,6 +54,7 @@ export function ThreadSearchPaletteMode({
   const [now] = useState(() => Date.now());
   const drafts = useNewThreadDraftSlots();
   const navigation = useSidebarNavigation();
+  const archivedThreads = useArchivedThreads({});
   const threadSearch = useThreadSearch({ active: true, query });
   const trimmedQuery = query.trim();
   const searchable = hasThreadSearchableQuery(trimmedQuery);
@@ -76,6 +78,10 @@ export function ThreadSearchPaletteMode({
     ],
     [navigation.data],
   );
+  const recentArchivedThreads = useMemo(
+    () => archivedThreads.data?.pages.flatMap((page) => page) ?? [],
+    [archivedThreads.data],
+  );
   const result = useMemo(
     () =>
       buildPaletteThreadSearchRows({
@@ -83,6 +89,7 @@ export function ThreadSearchPaletteMode({
         now,
         projectNamesById,
         query,
+        recentArchivedThreads,
         recentThreads,
         scope,
         searchResponse: threadSearch.data,
@@ -93,6 +100,7 @@ export function ThreadSearchPaletteMode({
       now,
       projectNamesById,
       query,
+      recentArchivedThreads,
       recentThreads,
       scope,
       searchResultsAreCurrent,
@@ -206,7 +214,8 @@ export function ThreadSearchPaletteMode({
       ? "Searching threads"
       : trimmedQuery.length === 1
         ? "Type at least 2 characters"
-        : navigation.isLoading && result.isRecent
+        : (navigation.isLoading || archivedThreads.isLoading) &&
+            result.isRecent
           ? "Loading recent threads"
           : result.isRecent
             ? "No recent threads"
@@ -243,7 +252,7 @@ export function ThreadSearchPaletteMode({
       placeholder={presentation.placeholder}
       value={query}
     >
-      {result.isRecent ? (
+      {result.isRecent && result.rows.length === 0 ? (
         <div className={cn(CHROME_SECTION_LABEL_CLASS, "px-2 pb-1 pt-1")}>
           Recent
         </div>

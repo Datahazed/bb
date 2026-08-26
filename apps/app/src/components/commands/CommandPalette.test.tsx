@@ -90,6 +90,8 @@ function defaults(...commands: AppCommandId[]): AppDefaultKeybinding[] {
 
 const testState = vi.hoisted(() => ({ calls: [] as string[] }));
 const modeState = vi.hoisted(() => ({
+  activeRecents: [] as ThreadListEntry[],
+  archivedRecents: [] as ThreadListEntry[],
   drafts: [] as NewThreadDraftRow[],
   searchResponse: undefined as ThreadSearchResponse | undefined,
 }));
@@ -139,7 +141,19 @@ vi.mock("@/hooks/useNewThreadDraftSlots", () => ({
 }));
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useSidebarNavigation: () => ({ data: undefined, isLoading: false }),
+  useSidebarNavigation: () => ({
+    data: {
+      projects: [
+        {
+          id: "project-1",
+          name: "Palette project",
+          threads: modeState.activeRecents,
+        },
+      ],
+      personalProject: { id: "proj_personal", name: "Personal", threads: [] },
+    },
+    isLoading: false,
+  }),
 }));
 
 vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
@@ -147,6 +161,10 @@ vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
     await importOriginal<typeof import("@/hooks/queries/thread-queries")>();
   return {
     ...actual,
+    useArchivedThreads: () => ({
+      data: { pages: [modeState.archivedRecents] },
+      isLoading: false,
+    }),
     useThreadSearch: ({ query }: { query: string }) => ({
       data: modeState.searchResponse,
       debouncedQuery: query.trim(),
@@ -269,6 +287,8 @@ afterEach(() => {
   removePluginSlotRegistrations("linear");
   resetPluginLogoStoreForTest();
   testState.calls.length = 0;
+  modeState.activeRecents = [];
+  modeState.archivedRecents = [];
   modeState.drafts = [];
   modeState.searchResponse = undefined;
   openThreadInSplitMock.mockReset();
@@ -504,6 +524,44 @@ describe("CommandPalette", () => {
         screen.getByRole("button", { name: "Thread scope" }).textContent,
       ).toContain("All"),
     );
+  });
+
+  it("renders the resting thread mode as one unlabelled active, draft, archived list", async () => {
+    modeState.activeRecents = [makeThread("recent-active")];
+    modeState.archivedRecents = [
+      makeThread("recent-archived", { archivedAt: Date.now() }),
+    ];
+    modeState.drafts = [
+      {
+        id: "recent-draft",
+        title: "recent draft",
+        draft: { ...emptyPromptDraftState(), text: "recent draft" },
+        lastEditedAt: Date.now(),
+        destination: { projectId: "project-1", sectionId: null },
+        delete: vi.fn(),
+      },
+    ];
+    renderPalette();
+    openThreadSearch();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Search threads" }),
+      ).toBeTruthy(),
+    );
+
+    const results = screen.getByRole("listbox", { name: "Threads" });
+    await waitFor(() =>
+      expect(within(results).getAllByRole("option")).toHaveLength(3),
+    );
+    const rows = within(results).getAllByRole("option");
+    expect(rows[0]?.textContent).toContain("Title recent-active");
+    expect(rows[0]?.textContent).not.toContain("Active");
+    expect(rows[1]?.textContent).toContain("recent draft");
+    expect(rows[1]?.textContent).toContain("Draft");
+    expect(rows[2]?.textContent).toContain("Title recent-archived");
+    expect(rows[2]?.textContent).toContain("Archived");
+    expect(within(results).queryAllByRole("group")).toHaveLength(0);
+    expect(within(results).queryByText("Recent")).toBeNull();
   });
 
   it("renders search matches as one unlabelled active, draft, archived list", async () => {
