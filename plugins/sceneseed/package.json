@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-sceneseed",
   "version": "0.1.0",
-  "description": "Grow prompt cards into playful, skill-guided 3D scenes.",
+  "description": "Turn short prompts into playful, skill-guided 3D scenes.",
   "private": true,
   "license": "MIT",
   "homepage": "https://github.com/get-bb/bb#readme",
@@ -29,7 +29,7 @@
   },
   "bb": {
     "name": "SceneSeed",
-    "description": "Grow prompt cards into playful, skill-guided 3D scenes.",
+    "description": "Turn short prompts into playful, skill-guided 3D scenes.",
     "branding": {
       "icon": "AiContentGenerator01"
     },

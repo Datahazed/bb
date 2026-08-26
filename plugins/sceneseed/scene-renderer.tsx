@@ -160,6 +160,36 @@ function sameThemePalette(
   );
 }
 
+function mixColor(left: string, right: string, amount: number): string {
+  return `#${new THREE.Color(left)
+    .lerp(new THREE.Color(right), amount)
+    .getHexString(THREE.SRGBColorSpace)}`;
+}
+
+function brighterAnchor(palette: SceneThemePalette): string {
+  const ink = new THREE.Color(palette["theme:ink"]);
+  const canvas = new THREE.Color(palette["theme:canvas"]);
+  return ink.getStyle().length > 0 &&
+    ink.getHSL({ h: 0, s: 0, l: 0 }).l > canvas.getHSL({ h: 0, s: 0, l: 0 }).l
+    ? palette["theme:ink"]
+    : palette["theme:canvas"];
+}
+
+function stageColors(palette: SceneThemePalette) {
+  const bright = brighterAnchor(palette);
+  return {
+    background: mixColor(
+      palette["theme:canvas"],
+      palette["theme:warning"],
+      0.07,
+    ),
+    ground: mixColor(palette["theme:canvas"], palette["theme:success"], 0.14),
+    key: mixColor(bright, palette["theme:warning"], 0.12),
+    sky: mixColor(bright, palette["theme:accent"], 0.18),
+    bounce: mixColor(bright, palette["theme:success"], 0.18),
+  };
+}
+
 function useHostThemePalette(): SceneThemePalette {
   const [palette, setPalette] = useState<SceneThemePalette>(() =>
     readHostThemePalette(),
@@ -632,32 +662,30 @@ function createSelectionOutline(
   scene: SceneObjectV1,
   color: string,
   registry: RendererResourceRegistry,
-): THREE.LineSegments {
-  const padding = Math.max(
-    0.08,
-    Math.max(scene.bounds.width, scene.bounds.height, scene.bounds.depth) *
-      0.025,
+): THREE.Mesh {
+  const radius = Math.max(
+    0.45,
+    Math.max(scene.bounds.width, scene.bounds.depth) * 0.58,
   );
-  const boxGeometry = new THREE.BoxGeometry(
-    scene.bounds.width + padding * 2,
-    scene.bounds.height + padding * 2,
-    scene.bounds.depth + padding * 2,
+  const geometry = register(
+    registry,
+    new THREE.RingGeometry(radius, radius + Math.max(0.05, radius * 0.045), 64),
   );
-  const geometry = register(registry, new THREE.EdgesGeometry(boxGeometry));
-  boxGeometry.dispose();
   const material = register(
     registry,
-    new THREE.LineBasicMaterial({
+    new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: 0.38,
+      opacity: 0.58,
+      side: THREE.DoubleSide,
       depthTest: false,
       depthWrite: false,
       toneMapped: false,
     }),
   );
-  const outline = new THREE.LineSegments(geometry, material);
-  outline.position.y = scene.bounds.height / 2;
+  const outline = new THREE.Mesh(geometry, material);
+  outline.position.y = 0.025;
+  outline.rotation.x = -Math.PI / 2;
   outline.renderOrder = 10;
   outline.raycast = () => undefined;
   return outline;
@@ -800,9 +828,14 @@ export function SceneRenderer({
     }
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     rendererRef.current = renderer;
 
     const scene = new THREE.Scene();
+    const initialStageColors = stageColors(themePalette);
+    scene.background = new THREE.Color(initialStageColors.background);
+    scene.fog = new THREE.Fog(initialStageColors.background, 24, 58);
     sceneRef.current = scene;
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 240);
     camera.position.set(11, 8.5, 13);
@@ -814,21 +847,36 @@ export function SceneRenderer({
     scene.add(objectContainer);
     objectContainerRef.current = objectContainer;
 
-    const ambient = new THREE.AmbientLight(themePalette["theme:canvas"], 1.05);
+    const ambient = new THREE.AmbientLight(initialStageColors.key, 0.72);
     ambient.userData.sceneseedHostAmbient = true;
     scene.add(ambient);
+    const hemisphere = new THREE.HemisphereLight(
+      initialStageColors.sky,
+      initialStageColors.bounce,
+      1.05,
+    );
+    hemisphere.userData.sceneseedHostHemisphere = true;
+    scene.add(hemisphere);
     const directional = new THREE.DirectionalLight(
-      themePalette["theme:ink"],
-      1.7,
+      initialStageColors.key,
+      2.25,
     );
     directional.position.set(8, 12, 7);
-    directional.castShadow = false;
+    directional.castShadow = true;
+    directional.shadow.mapSize.set(1024, 1024);
+    directional.shadow.camera.left = -18;
+    directional.shadow.camera.right = 18;
+    directional.shadow.camera.top = 18;
+    directional.shadow.camera.bottom = -18;
+    directional.shadow.camera.near = 0.5;
+    directional.shadow.camera.far = 45;
+    directional.shadow.bias = -0.00045;
     directional.userData.sceneseedHostDirectional = true;
     scene.add(directional);
 
     const groundGeometry = new THREE.PlaneGeometry(160, 160, 1, 1);
     const groundMaterial = new THREE.MeshStandardMaterial({
-      color: themePalette["theme:canvas"],
+      color: initialStageColors.ground,
       roughness: 1,
       metalness: 0,
       depthWrite: true,
@@ -994,18 +1042,24 @@ export function SceneRenderer({
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    scene.background = new THREE.Color(themePalette["theme:canvas"]);
+    const colors = stageColors(themePalette);
+    scene.background = new THREE.Color(colors.background);
+    if (scene.fog instanceof THREE.Fog) scene.fog.color.set(colors.background);
     scene.traverse((object) => {
       if (object.userData.sceneseedHostAmbient === true) {
-        (object as THREE.AmbientLight).color.set(themePalette["theme:canvas"]);
+        (object as THREE.AmbientLight).color.set(colors.key);
+      } else if (object.userData.sceneseedHostHemisphere === true) {
+        const hemisphere = object as THREE.HemisphereLight;
+        hemisphere.color.set(colors.sky);
+        hemisphere.groundColor.set(colors.bounce);
       } else if (object.userData.sceneseedHostDirectional === true) {
-        (object as THREE.DirectionalLight).color.set(themePalette["theme:ink"]);
+        (object as THREE.DirectionalLight).color.set(colors.key);
       } else if (object.userData.sceneseedHostGround === true) {
         const ground = object as THREE.Mesh<
           THREE.BufferGeometry,
           THREE.MeshStandardMaterial
         >;
-        ground.material.color.set(themePalette["theme:canvas"]);
+        ground.material.color.set(colors.ground);
       }
     });
   }, [themePalette]);
@@ -1065,7 +1119,7 @@ export function SceneRenderer({
           animated.add(
             createSelectionOutline(
               scene,
-              themePalette["theme:ink"],
+              themePalette["theme:warning"],
               objectRegistry,
             ),
           );

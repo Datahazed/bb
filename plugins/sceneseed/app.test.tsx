@@ -214,7 +214,7 @@ describe("SceneSeed app", () => {
     );
   });
 
-  it("keeps an offline draft in memory and disables placement", () => {
+  it("keeps an offline draft in the BB composer and names the paused send state", () => {
     const slot = track(
       renderSlot(
         app.navPanels[0]!,
@@ -223,16 +223,19 @@ describe("SceneSeed app", () => {
       ),
     );
 
-    const draft = slot.getByPlaceholderText("Write a prompt…");
+    const draft = slot.getByPlaceholderText(
+      "Describe something for the scene…",
+    );
     fireEvent.change(draft, { target: { value: "a warm clock under snow" } });
-    expect(slot.getByText("Unsaved")).toBeDefined();
-    const place = slot
-      .getAllByRole("button", { name: "Place on canvas" })
-      .find((button) => !button.hasAttribute("disabled"));
-    expect(place).toBeUndefined();
+    expect(draft).toHaveProperty("value", "a warm clock under snow");
+    expect(
+      slot.getByText(
+        "Reconnecting — keep composing if you like. Sending and scene edits are paused.",
+      ),
+    ).toBeDefined();
   });
 
-  it("supports the keyboard placement path and persists before queuing", async () => {
+  it("submits the BB composer prompt directly into the durable queue", async () => {
     let current = createSceneSeedUiFixture();
     const slot = track(
       renderSlot(
@@ -277,16 +280,13 @@ describe("SceneSeed app", () => {
       ),
     );
 
-    const draft = await slot.findByPlaceholderText("Write a prompt…");
+    const draft = await slot.findByPlaceholderText(
+      "Describe something for the scene…",
+    );
     fireEvent.change(draft, {
       target: { value: "a silver memory with roots" },
     });
-    fireEvent.keyDown(draft, { key: "Enter", metaKey: true });
-    const target = await slot.findByRole("button", {
-      name: /Place “a silver memory with roots”/,
-    });
-    fireEvent.keyDown(target, { key: "ArrowRight" });
-    fireEvent.keyDown(target, { key: "Enter" });
+    fireEvent.click(slot.getByTestId("bb-new-thread-composer-submit"));
 
     await waitFor(() =>
       expect(slot.rpcCalls).toContainEqual({
@@ -294,7 +294,7 @@ describe("SceneSeed app", () => {
         input: {
           canvasId: "canvas_fixture",
           cardId: "card_keyboard",
-          placement: { x: 0.5, y: 0 },
+          placement: { x: 0, y: 0 },
           expectedRevision: 8,
         },
       }),

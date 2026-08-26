@@ -20,10 +20,11 @@ function rainyThoughtScene(): SceneObjectV1 {
     jobId: "job_rainy",
     objectId: "object_rainy",
     name: "Rainy thought",
-    altText: "A blue rain cloud held inside a clear glass jar.",
+    altText:
+      "A blue rain cloud and warm halo suspended inside a clear glass jar.",
     bounds: { width: 3.5, height: 4.2, depth: 3.5 },
     cameraHint: "three-quarter",
-    palette: ["#7cb9e8", "#d9f1ff", "theme:ink"],
+    palette: ["#55a8e8", "#d9f1ff", "#ff9b68", "theme:ink"],
     material: { preset: "glass", opacity: 0.76 },
     nodes: [
       {
@@ -58,6 +59,17 @@ function rainyThoughtScene(): SceneObjectV1 {
         scale: [1, 0.7, 0.84],
         paletteIndex: 0,
         size: { width: 1.6, height: 1.3, depth: 1.2 },
+      },
+      {
+        id: "thought_halo",
+        parentId: null,
+        kind: "mesh",
+        geometry: "torus",
+        position: [0, 2.12, 0],
+        rotation: [Math.PI / 2, 0, 0],
+        scale: [1, 1, 1],
+        paletteIndex: 2,
+        size: { width: 2.25, height: 0.18, depth: 2.25 },
       },
       {
         id: "rain",

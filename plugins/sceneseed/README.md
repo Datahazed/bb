@@ -1,7 +1,7 @@
 # SceneSeed
 
-SceneSeed is bb's playful prompt-to-object canvas. Write a short prompt on a
-card, place it on the stage, and a hidden bb agent interprets it as a bounded,
+SceneSeed is bb's playful prompt-to-object canvas. Describe an idea in bb's
+composer, send it, and a hidden bb agent interprets it as a bounded,
 dimensional Three.js scene.
 
 ## Install
@@ -13,8 +13,9 @@ bb plugin install sceneseed
 ```
 
 Open **SceneSeed** in bb's navigation, acknowledge the first-run disclosure,
-create a canvas, and place a prompt card. Dragging is optional: every ready card
-also has a keyboard-accessible **Place on canvas** action.
+create a canvas, and send a prompt from the composer. SceneSeed finds an open
+position automatically and keeps progress, cancellation, retry, and object
+editing in the canvas where the result will appear.
 
 ## Agent access
 
@@ -44,7 +45,7 @@ bb sceneseed remove-object <canvas-id> <object-id>
 
 ## MVP limits
 
-A canvas accepts at most 12 cards in flight, 25 active objects, and 100 active
+A canvas accepts at most 12 prompts in flight, 25 active objects, and 100 active
 scene-cost units. Jobs run serially per canvas. Sharing, export, collaboration,
 raw mesh editing, remote model loading, and image generation are intentionally
 out of scope.

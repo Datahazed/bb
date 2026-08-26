@@ -41,6 +41,24 @@ remote assets.
 7. Write concise alt text that names the interpretation and its visible major
    forms. Do not claim detail the scene does not contain.
 
+## Use one SceneSeed visual language
+
+- **Color:** use 3–5 purposeful colors when the prompt allows it. Establish one
+  dominant family, one clear focal accent, and enough warm/cool or light/dark
+  contrast for the silhouette to read. Reuse a nearby accent or neutral to
+  connect the canvas, but do not make every object the same color.
+- **Shape:** favor bold rounded masses, clean extrusions, and one contrasting
+  shape family. Build a recognizable silhouette before adding small accents;
+  avoid generic stacks of boxes or evenly sized parts.
+- **Depth:** compose across foreground, middle, and rear offsets when that
+  clarifies the idea. Use overlap and staggered height instead of a flat row,
+  and keep the main mass visibly grounded by its contact shadow.
+- **Motion:** choose at most one motion thesis for the whole object. Keep it
+  slow and low-amplitude so motion adds life without making the scene restless.
+- **Restraint:** one surprising relationship is more playful than ornamental
+  clutter. Spend scene cost on the focal idea, material contrast, and readable
+  depth before particles or extra lights.
+
 For interpretation patterns across literal, metaphorical, spatial, and
 abstract prompts, consult
 [`references/interpretation-examples.md`](references/interpretation-examples.md)

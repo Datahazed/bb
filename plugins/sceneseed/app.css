@@ -1016,3 +1016,437 @@
     animation: none;
   }
 }
+
+/* Composer-led canvas ----------------------------------------------------- */
+
+.sceneseed-editor-header {
+  grid-template-columns: minmax(7rem, 1fr) minmax(0, auto) minmax(7rem, 1fr);
+  min-height: 3.25rem;
+  padding: 0.45rem 0.65rem;
+}
+
+.sceneseed-header-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.15rem;
+}
+
+.sceneseed-canvas-menu summary svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.sceneseed-offline-banner,
+.sceneseed-editor-error {
+  position: absolute;
+  z-index: 40;
+  top: 3.25rem;
+  right: 0;
+  left: 0;
+  border-bottom: 0;
+  background: color-mix(in oklab, var(--canvas) 88%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.sceneseed-editor-error {
+  color: var(--destructive, var(--ink));
+}
+
+.sceneseed-workspace {
+  position: relative;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--accent) 8%, var(--canvas));
+}
+
+.sceneseed-stage {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+}
+
+.sceneseed-webgl {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sceneseed-stage-empty {
+  position: absolute;
+  inset: 0 0 7.5rem;
+  z-index: 2;
+  display: flex;
+  min-height: 16rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 2rem;
+  pointer-events: none;
+  text-align: center;
+}
+
+.sceneseed-stage-empty .sceneseed-seed-mark {
+  margin-bottom: 0.7rem;
+  border-color: color-mix(in oklch, var(--accent) 55%, var(--canvas));
+  background: color-mix(in oklch, var(--accent) 48%, var(--canvas));
+  box-shadow:
+    0 0.55rem 1.5rem color-mix(in oklab, var(--accent) 24%, transparent),
+    0 0.25rem 0 color-mix(in oklab, var(--ink) 11%, transparent);
+}
+
+.sceneseed-stage-empty strong {
+  font-size: clamp(1.15rem, 2vw, 1.5rem);
+  font-weight: 620;
+  letter-spacing: -0.025em;
+}
+
+.sceneseed-stage-empty span {
+  color: var(--sceneseed-muted);
+  font-size: 0.82rem;
+}
+
+.sceneseed-stage-status {
+  position: absolute;
+  z-index: 12;
+  top: 1rem;
+  left: 50%;
+  width: min(32rem, calc(100% - 2rem));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.sceneseed-activity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.65rem;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0.45rem 0.55rem 0.45rem 0.65rem;
+  border: 1px solid var(--sceneseed-line);
+  border-radius: 0.65rem;
+  background: color-mix(in oklab, var(--canvas) 88%, transparent);
+  box-shadow: 0 0.65rem 2rem color-mix(in oklab, var(--ink) 10%, transparent);
+  backdrop-filter: blur(16px);
+  pointer-events: auto;
+}
+
+.sceneseed-activity[data-tone="error"] {
+  border-color: color-mix(
+    in oklch,
+    var(--destructive, var(--ink)) 28%,
+    var(--canvas)
+  );
+}
+
+.sceneseed-activity > svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  color: var(--sceneseed-muted);
+}
+
+.sceneseed-activity[data-tone="error"] > svg {
+  color: var(--destructive, var(--ink));
+}
+
+.sceneseed-spin {
+  animation: sceneseed-spin 1.1s linear infinite;
+}
+
+.sceneseed-activity > div {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.sceneseed-activity strong {
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sceneseed-activity span,
+.sceneseed-activity small {
+  overflow: hidden;
+  color: var(--sceneseed-muted);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sceneseed-stage-seed {
+  z-index: 7;
+  gap: 0.25rem;
+  color: var(--ink);
+  transform: translate(-50%, -50%);
+}
+
+.sceneseed-stage-seed > span {
+  width: 0.9rem;
+  height: 1.1rem;
+  border: 1px solid color-mix(in oklch, var(--accent) 62%, var(--canvas));
+  background: color-mix(in oklch, var(--accent) 48%, var(--canvas));
+  box-shadow: 0 0.4rem 1.2rem
+    color-mix(in oklab, var(--accent) 24%, transparent);
+}
+
+.sceneseed-stage-seed small {
+  padding: 0.16rem 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--canvas) 82%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.sceneseed-compose-stack {
+  position: absolute;
+  z-index: 14;
+  right: 1rem;
+  bottom: 1rem;
+  left: 1rem;
+  display: flex;
+  width: min(48rem, calc(100% - 2rem));
+  max-height: calc(100% - 4.75rem);
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0 auto;
+  pointer-events: none;
+}
+
+.sceneseed-compose-stack > * {
+  pointer-events: auto;
+}
+
+.sceneseed-object-controls {
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  min-height: 2.25rem;
+  grid-template-columns: none;
+  align-items: center;
+  align-self: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.3rem 0.25rem 0.55rem;
+  border: 1px solid var(--sceneseed-line);
+  border-radius: 0.65rem;
+  background: color-mix(in oklab, var(--canvas) 88%, transparent);
+  box-shadow: 0 0.5rem 1.75rem color-mix(in oklab, var(--ink) 9%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+.sceneseed-selection-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 0.15rem color-mix(in oklab, var(--accent) 16%, transparent);
+}
+
+.sceneseed-object-controls h3 {
+  max-width: min(22rem, 44vw);
+  margin: 0 0.35rem 0 0;
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-weight: 570;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sceneseed-composer-shell {
+  width: 100%;
+}
+
+.sceneseed-composer {
+  width: 100%;
+}
+
+.sceneseed-composer-error {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  align-self: center;
+  max-width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid
+    color-mix(in oklch, var(--destructive, var(--ink)) 25%, var(--canvas));
+  border-radius: 0.55rem;
+  color: var(--destructive, var(--ink));
+  background: color-mix(in oklab, var(--canvas) 92%, transparent);
+  box-shadow: 0 0.5rem 1.5rem color-mix(in oklab, var(--ink) 8%, transparent);
+  font-size: 0.72rem;
+  backdrop-filter: blur(14px);
+}
+
+.sceneseed-composer-error svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: 0 0 auto;
+}
+
+.sceneseed-composer-error button {
+  margin-left: auto;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+  cursor: pointer;
+}
+
+.sceneseed-contents-menu {
+  width: min(19rem, calc(100vw - 1rem));
+}
+
+.sceneseed-contents-menu [role^="menuitem"] {
+  align-items: flex-start;
+}
+
+.sceneseed-contents-status {
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: 0 0 auto;
+  margin-top: 0.28rem;
+  border: 1px solid var(--sceneseed-line-strong);
+  border-radius: 999px;
+}
+
+.sceneseed-contents-status[data-state="complete"] {
+  border-color: var(--success, var(--accent));
+  background: var(--success, var(--accent));
+}
+
+.sceneseed-contents-status[data-state="queued"],
+.sceneseed-contents-status[data-state="interpreting"],
+.sceneseed-contents-status[data-state="realizing"] {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.sceneseed-contents-status[data-state="failed"] {
+  border-color: var(--destructive, var(--ink));
+  background: var(--destructive, var(--ink));
+}
+
+.sceneseed-contents-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.sceneseed-contents-copy strong,
+.sceneseed-contents-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sceneseed-contents-copy strong {
+  font-weight: 570;
+}
+
+.sceneseed-contents-copy small {
+  color: var(--sceneseed-muted);
+  font-size: 0.65rem;
+}
+
+.sceneseed-contents-check {
+  width: 0.8rem;
+  height: 0.8rem;
+  margin: 0.2rem 0 0 0.25rem;
+}
+
+.sceneseed-loading-stage {
+  position: relative;
+}
+
+.sceneseed-loading-composer {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  left: 1rem;
+  width: min(48rem, calc(100% - 2rem));
+  height: 7.5rem;
+  margin: 0 auto;
+  border-radius: 0.85rem;
+}
+
+@keyframes sceneseed-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .sceneseed-editor-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .sceneseed-editor-header > :first-child {
+    display: none;
+  }
+
+  .sceneseed-editor-title {
+    justify-content: flex-start;
+  }
+
+  .sceneseed-fixture-badge {
+    display: none;
+  }
+
+  .sceneseed-header-actions {
+    justify-self: end;
+  }
+
+  .sceneseed-compose-stack {
+    right: 0.5rem;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    width: calc(100% - 1rem);
+  }
+
+  .sceneseed-stage-status {
+    top: 0.6rem;
+    width: calc(100% - 1rem);
+  }
+
+  .sceneseed-activity {
+    width: 100%;
+  }
+
+  .sceneseed-object-controls {
+    align-self: stretch;
+  }
+
+  .sceneseed-object-controls h3 {
+    max-width: none;
+    flex: 1;
+  }
+
+  .sceneseed-stage-empty {
+    bottom: 8.5rem;
+  }
+
+  .sceneseed-rename {
+    inset: 0.35rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sceneseed-spin {
+    animation-duration: 2s;
+  }
+}

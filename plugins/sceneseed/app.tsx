@@ -6,24 +6,42 @@ import {
   useRef,
   useState,
   type ErrorInfo,
-  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import {
   UrlLink,
   definePluginApp,
+  experimental_NewThreadComposer as NewThreadComposer,
   useBbNavigate,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
+  type NewThreadRequest,
   type PluginNavPanelProps,
   type PluginSettingsSectionProps,
 } from "@get-bb/plugin-sdk/app";
 import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Skeleton } from "@bb/shared-ui/skeleton";
-import { Textarea } from "@bb/shared-ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 
 import type { rpcContract } from "./server";
 import {
@@ -56,19 +74,11 @@ const ACTIVE_CARD_STATES = new Set<CardDto["state"]>([
 
 type ConnectionState = ReturnType<typeof useRealtimeConnectionState>;
 
-interface DraftCard {
-  id: string;
-  prompt: string;
-}
-
-type PlacementSource =
-  | { kind: "draft"; id: string; prompt: string }
-  | { kind: "card"; id: string; prompt: string };
-
 interface WorkspaceActions {
   rename(name: string): Promise<void>;
   deleteCanvas(): Promise<void>;
-  place(source: PlacementSource, placement: Placement): Promise<void>;
+  submit(prompt: string, placement: Placement): Promise<void>;
+  retry(card: CardDto): Promise<void>;
   cancel(jobId: string): Promise<void>;
   transform(object: ObjectDto, transform: Transform3D): Promise<void>;
   remix(objectId: string): Promise<void>;
@@ -512,253 +522,223 @@ function buildRenderObjects(
   return objects;
 }
 
-function PromptCard({
-  card,
-  snapshot,
-  readOnly,
-  selected,
-  now,
-  setRef,
-  onSelect,
-  onPlace,
-  onCancel,
-  onDragStart,
-}: {
-  card: CardDto;
-  snapshot: CanvasSnapshotDto;
-  readOnly: boolean;
-  selected: boolean;
-  now: number;
-  setRef: (element: HTMLButtonElement | null) => void;
-  onSelect: () => void;
-  onPlace: () => void;
-  onCancel: (jobId: string) => void;
-  onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
-}) {
-  const job = activeJobForCard(snapshot, card);
-  const placeable =
-    card.state === "ready" ||
-    card.state === "cancelled" ||
-    card.state === "failed";
-  const cancellable = card.state === "queued" || card.state === "interpreting";
-  const object = objectForCard(snapshot, card.id);
-  const startedAt = job?.startedAt ?? job?.createdAt ?? card.updatedAt;
-  return (
-    <article
-      className="sceneseed-prompt-card"
-      data-state={card.state}
-      data-selected={selected ? "true" : "false"}
-      draggable={placeable && !readOnly}
-      onDragStart={onDragStart}
-    >
-      <button
-        ref={setRef}
-        type="button"
-        className="sceneseed-card-prompt"
-        onClick={onSelect}
-        disabled={object === null}
-        aria-pressed={selected}
-      >
-        {card.prompt}
-      </button>
-      <div className="sceneseed-card-footer">
-        <span className="sceneseed-status" data-state={card.state}>
-          <span aria-hidden="true" />
-          {cardStateLabel(card)}
-        </span>
-        {(card.state === "interpreting" || card.state === "realizing") &&
-        job ? (
-          <span>{Math.max(1, Math.floor((now - startedAt) / 1_000))}s</span>
-        ) : null}
-        {placeable ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={readOnly}
-            onClick={onPlace}
-          >
-            {card.state === "ready" ? "Place" : "Retry"}
-          </Button>
-        ) : null}
-        {cancellable && job ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            disabled={readOnly}
-            onClick={() => onCancel(job.id)}
-          >
-            Cancel
-          </Button>
-        ) : null}
-      </div>
-      {card.state === "failed" && job?.errorMessage ? (
-        <p className="sceneseed-card-error">{job.errorMessage}</p>
-      ) : null}
-    </article>
-  );
+function promptFromComposerRequest(request: NewThreadRequest): string {
+  if (request.input.some((entry) => entry.type !== "text")) {
+    throw new Error(
+      "SceneSeed can draw from text only. Remove attachments and send again.",
+    );
+  }
+  const visibleText: string[] = [];
+  for (const entry of request.input) {
+    if (entry.type === "text" && entry.visibility !== "agent-only") {
+      visibleText.push(entry.text);
+    }
+  }
+  const prompt = visibleText.join("\n").trim();
+  if (!prompt)
+    throw new Error("Write a prompt before sending it to the scene.");
+  if (prompt.length > 500) {
+    throw new Error("Keep the SceneSeed prompt to 500 characters or fewer.");
+  }
+  return prompt;
 }
 
-function DraftPromptCard({
-  draft,
+const AUTO_PLACEMENTS: readonly Placement[] = [
+  { x: 0, y: 0 },
+  { x: -3.2, y: 1.2 },
+  { x: 3.2, y: -0.9 },
+  { x: 0.7, y: 3.2 },
+  { x: -1.1, y: -3.4 },
+  { x: 5.4, y: 2.4 },
+  { x: -5.2, y: -2.2 },
+  { x: 5.7, y: -3.4 },
+  { x: -5.8, y: 3.5 },
+];
+
+function automaticPlacement(snapshot: CanvasSnapshotDto): Placement {
+  const occupied = snapshot.cards.flatMap((card) =>
+    card.placement === null ? [] : [card.placement],
+  );
+  const open = AUTO_PLACEMENTS.find(
+    (candidate) =>
+      !occupied.some(
+        (placement) =>
+          Math.hypot(candidate.x - placement.x, candidate.y - placement.y) <
+          1.75,
+      ),
+  );
+  if (open) return open;
+  const index = occupied.length;
+  const angle = index * 2.399963229728653;
+  const radius = Math.min(7, 2.4 + Math.sqrt(index) * 0.8);
+  return {
+    x: Math.cos(angle) * radius,
+    y: Math.sin(angle) * Math.min(radius, 5.2),
+  };
+}
+
+function CanvasActivity({
+  snapshot,
+  now,
   readOnly,
-  atCapacity,
-  setRef,
-  onChange,
-  onPlace,
-  onDragStart,
+  onCancel,
+  onRetry,
 }: {
-  draft: DraftCard;
+  snapshot: CanvasSnapshotDto;
+  now: number;
   readOnly: boolean;
-  atCapacity: boolean;
-  setRef: (element: HTMLTextAreaElement | null) => void;
-  onChange: (value: string) => void;
-  onPlace: () => void;
-  onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
+  onCancel: (jobId: string) => void;
+  onRetry: (card: CardDto) => void;
 }) {
-  const valid = draft.prompt.trim().length > 0;
-  return (
-    <article
-      className="sceneseed-prompt-card sceneseed-draft-card"
-      draggable={valid && !readOnly && !atCapacity}
-      onDragStart={onDragStart}
-    >
-      <label className="sceneseed-sr-only" htmlFor={`draft-${draft.id}`}>
-        Prompt for a new SceneSeed object
-      </label>
-      <Textarea
-        ref={setRef}
-        id={`draft-${draft.id}`}
-        value={draft.prompt}
-        maxLength={500}
-        rows={3}
-        placeholder="Write a prompt…"
-        onChange={(event) => onChange(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (
-            (event.metaKey || event.ctrlKey) &&
-            event.key === "Enter" &&
-            valid
-          ) {
-            event.preventDefault();
-            onPlace();
-          }
-        }}
-      />
-      <div className="sceneseed-card-footer">
-        <span>{draft.prompt.length}/500</span>
-        {readOnly && valid ? (
-          <span className="sceneseed-unsaved">Unsaved</span>
-        ) : null}
-        {atCapacity ? <span>12 in flight</span> : null}
+  const active = [...snapshot.cards]
+    .reverse()
+    .find(
+      (card) =>
+        card.state === "queued" ||
+        card.state === "interpreting" ||
+        card.state === "realizing",
+    );
+  const newest = [...snapshot.cards].sort(
+    (left, right) => right.updatedAt - left.updatedAt,
+  )[0];
+  const failed = newest?.state === "failed" ? newest : undefined;
+  const card = active ?? failed;
+  if (!card) return null;
+  const job = activeJobForCard(snapshot, card);
+  if (card.state === "failed") {
+    return (
+      <section className="sceneseed-activity" data-tone="error" role="alert">
+        <Icon name="AlertCircle" aria-hidden="true" />
+        <div>
+          <strong>That idea didn’t make it onto the canvas</strong>
+          <span>{job?.errorMessage ?? card.prompt}</span>
+        </div>
         <Button
           type="button"
           size="sm"
           variant="outline"
-          disabled={!valid || readOnly || atCapacity}
-          onClick={onPlace}
+          disabled={readOnly}
+          onClick={() => onRetry(card)}
         >
-          Place on canvas
+          Retry
         </Button>
+      </section>
+    );
+  }
+  const startedAt = job?.startedAt ?? job?.createdAt ?? card.updatedAt;
+  const label =
+    card.state === "queued"
+      ? "Waiting to draw"
+      : card.state === "interpreting"
+        ? "Drawing your idea"
+        : "Building the scene";
+  return (
+    <section className="sceneseed-activity" role="status" aria-live="polite">
+      <Icon name="Spinner" className="sceneseed-spin" aria-hidden="true" />
+      <div>
+        <strong>{label}</strong>
+        <span>{card.prompt}</span>
       </div>
-    </article>
+      {card.state !== "queued" ? (
+        <small>{Math.max(1, Math.floor((now - startedAt) / 1_000))}s</small>
+      ) : null}
+      {(card.state === "queued" || card.state === "interpreting") && job ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={readOnly}
+          onClick={() => onCancel(job.id)}
+        >
+          Cancel
+        </Button>
+      ) : null}
+    </section>
   );
 }
 
-function PlacementLayer({
-  cursor,
-  prompt,
-  stageRef,
-  onMove,
-  onCommit,
+function SceneContentsMenu({
+  snapshot,
+  selectedObjectId,
+  readOnly,
+  onSelectObject,
   onCancel,
+  onRetry,
 }: {
-  cursor: Placement;
-  prompt: string;
-  stageRef: React.RefObject<HTMLDivElement | null>;
-  onMove: (placement: Placement) => void;
-  onCommit: (placement: Placement) => void;
-  onCancel: () => void;
+  snapshot: CanvasSnapshotDto;
+  selectedObjectId: string | null;
+  readOnly: boolean;
+  onSelectObject: (objectId: string) => void;
+  onCancel: (jobId: string) => void;
+  onRetry: (card: CardDto) => void;
 }) {
-  const pointFromPointer = (clientX: number, clientY: number): Placement => {
-    const rect = stageRef.current?.getBoundingClientRect();
-    if (!rect || rect.width === 0 || rect.height === 0) return cursor;
-    return {
-      x: Math.max(
-        -8,
-        Math.min(8, ((clientX - rect.left) / rect.width - 0.5) * 16),
-      ),
-      y: Math.max(
-        -6,
-        Math.min(6, (0.5 - (clientY - rect.top) / rect.height) * 12),
-      ),
-    };
-  };
-  const keyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const step = event.shiftKey ? 1 : 0.5;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onCancel();
-      return;
-    }
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onCommit(cursor);
-      return;
-    }
-    const delta: Placement | null =
-      event.key === "ArrowLeft"
-        ? { x: -step, y: 0 }
-        : event.key === "ArrowRight"
-          ? { x: step, y: 0 }
-          : event.key === "ArrowUp"
-            ? { x: 0, y: step }
-            : event.key === "ArrowDown"
-              ? { x: 0, y: -step }
-              : null;
-    if (!delta) return;
-    event.preventDefault();
-    onMove({
-      x: Math.max(-8, Math.min(8, cursor.x + delta.x)),
-      y: Math.max(-6, Math.min(6, cursor.y + delta.y)),
-    });
-  };
+  const visibleObjects = snapshot.objects.filter(
+    (object) => object.removedAt === null,
+  );
   return (
-    <div
-      className="sceneseed-placement-layer"
-      role="button"
-      tabIndex={0}
-      aria-label={`Place “${prompt}”. Move with arrow keys, press Enter to place, or Escape to cancel.`}
-      onPointerMove={(event) =>
-        onMove(pointFromPointer(event.clientX, event.clientY))
-      }
-      onClick={(event) =>
-        onCommit(pointFromPointer(event.clientX, event.clientY))
-      }
-      onKeyDown={keyboard}
-    >
-      <span
-        className="sceneseed-placement-cursor"
-        style={{
-          left: `${((cursor.x + 8) / 16) * 100}%`,
-          top: `${((6 - cursor.y) / 12) * 100}%`,
-        }}
-      >
-        <span aria-hidden="true" />
-        <strong>Plant here</strong>
-      </span>
-      <button
-        type="button"
-        className="sceneseed-placement-cancel"
-        onClick={(event) => {
-          event.stopPropagation();
-          onCancel();
-        }}
-      >
-        Cancel placement
-      </button>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" size="sm" variant="ghost">
+          <Icon name="Layers" aria-hidden="true" />
+          {visibleObjects.length}{" "}
+          {visibleObjects.length === 1 ? "object" : "objects"}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="sceneseed-contents-menu">
+        <DropdownMenuLabel>Scene contents</DropdownMenuLabel>
+        {snapshot.cards.length === 0 ? (
+          <DropdownMenuItem disabled>No objects yet</DropdownMenuItem>
+        ) : (
+          snapshot.cards.map((card) => {
+            const object = objectForCard(snapshot, card.id);
+            const job = activeJobForCard(snapshot, card);
+            const canRetry =
+              card.state === "ready" ||
+              card.state === "cancelled" ||
+              card.state === "failed";
+            const canCancel =
+              (card.state === "queued" || card.state === "interpreting") &&
+              job !== null;
+            const canSelect = object !== null;
+            return (
+              <DropdownMenuItem
+                key={card.id}
+                disabled={!canSelect && !canRetry && !canCancel}
+                aria-checked={object?.id === selectedObjectId}
+                role={canSelect ? "menuitemradio" : "menuitem"}
+                onSelect={() => {
+                  if (object) onSelectObject(object.id);
+                  else if (canRetry) onRetry(card);
+                  else if (canCancel && job) onCancel(job.id);
+                }}
+              >
+                <span
+                  className="sceneseed-contents-status"
+                  data-state={card.state}
+                />
+                <span className="sceneseed-contents-copy">
+                  <strong>{card.prompt}</strong>
+                  <small>
+                    {canRetry
+                      ? "Retry"
+                      : canCancel
+                        ? "Cancel generation"
+                        : cardStateLabel(card)}
+                  </small>
+                </span>
+                {object?.id === selectedObjectId ? (
+                  <Icon
+                    name="Check"
+                    className="sceneseed-contents-check"
+                    aria-hidden="true"
+                  />
+                ) : null}
+              </DropdownMenuItem>
+            );
+          })
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -812,131 +792,87 @@ function ObjectControls({
       className="sceneseed-object-controls"
       aria-labelledby="sceneseed-selected-heading"
     >
-      <div className="sceneseed-selected-copy">
-        <p className="sceneseed-eyebrow">Selected object</p>
-        <h3 id="sceneseed-selected-heading">{card.prompt}</h3>
-      </div>
-      <div className="sceneseed-transform-groups">
-        <div className="sceneseed-control-group" aria-label="Move object">
-          <span>Move</span>
-          <Button
-            ref={actionRef}
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={readOnly}
-            aria-label="Move object left"
-            onClick={() => move(-0.5, 0)}
-          >
-            ←
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={readOnly}
-            aria-label="Move object forward"
-            onClick={() => move(0, -0.5)}
-          >
-            ↑
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={readOnly}
-            aria-label="Move object back"
-            onClick={() => move(0, 0.5)}
-          >
-            ↓
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={readOnly}
-            aria-label="Move object right"
-            onClick={() => move(0.5, 0)}
-          >
-            →
-          </Button>
-        </div>
-        <div className="sceneseed-control-group" aria-label="Rotate object">
-          <span>Rotate</span>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={readOnly}
-            aria-label="Rotate object counterclockwise"
-            onClick={() => rotate(-Math.PI / 12)}
-          >
-            ↶
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={readOnly}
-            aria-label="Rotate object clockwise"
-            onClick={() => rotate(Math.PI / 12)}
-          >
-            ↷
-          </Button>
-        </div>
-        <div className="sceneseed-control-group" aria-label="Scale object">
-          <span>Scale</span>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={readOnly}
-            aria-label="Make object smaller"
-            onClick={() => scale(0.9)}
-          >
-            −
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={readOnly}
-            aria-label="Make object larger"
-            onClick={() => scale(1.1)}
-          >
-            +
-          </Button>
-        </div>
-      </div>
-      <div className="sceneseed-object-actions">
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          disabled={readOnly}
-          onClick={onRemix}
-        >
-          Remix
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={readOnly}
-          onClick={onDuplicate}
-        >
-          Duplicate
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          disabled={readOnly}
-          onClick={onRemove}
-        >
-          Remove
-        </Button>
-      </div>
+      <span className="sceneseed-selection-dot" aria-hidden="true" />
+      <h3 id="sceneseed-selected-heading">{card.prompt}</h3>
+      <Button
+        ref={actionRef}
+        type="button"
+        size="sm"
+        variant="secondary"
+        disabled={readOnly}
+        onClick={onRemix}
+      >
+        Remix
+      </Button>
+      <DropdownMenu>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  disabled={readOnly}
+                  aria-label="More object actions"
+                >
+                  <Icon name="MoreHorizontal" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>More object actions</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Arrange object</DropdownMenuLabel>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Move</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem onSelect={() => move(-0.5, 0)}>
+                Left
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => move(0.5, 0)}>
+                Right
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => move(0, -0.5)}>
+                Forward
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => move(0, 0.5)}>
+                Back
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Rotate</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem onSelect={() => rotate(-Math.PI / 12)}>
+                Counterclockwise
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => rotate(Math.PI / 12)}>
+                Clockwise
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Scale</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem onSelect={() => scale(0.9)}>
+                Smaller
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => scale(1.1)}>
+                Larger
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={onDuplicate}>
+            <Icon name="Copy" aria-hidden="true" /> Duplicate
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onSelect={onRemove}>
+            <Icon name="Trash2" aria-hidden="true" /> Remove
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </section>
   );
 }
@@ -948,6 +884,8 @@ function CanvasWorkspace({
   actions,
   renderObjects,
   fixture = false,
+  initialPrompt,
+  composerDraftKey,
   error,
   onRenderProbe,
   onRevealComplete,
@@ -958,21 +896,14 @@ function CanvasWorkspace({
   actions: WorkspaceActions;
   renderObjects: SceneRenderObject[];
   fixture?: boolean;
+  initialPrompt?: string;
+  composerDraftKey?: string;
   error: string | null;
   onRenderProbe?: (event: SceneRenderProbeEvent) => void;
   onRevealComplete?: (objectId: string) => void;
 }) {
   const navigate = useBbNavigate();
   const readOnly = connection !== "connected" || !disclosureAcknowledged;
-  const [drafts, setDrafts] = useState<DraftCard[]>(() => [
-    { id: nextClientId("draft"), prompt: "" },
-  ]);
-  const [placementSource, setPlacementSource] =
-    useState<PlacementSource | null>(null);
-  const [placementCursor, setPlacementCursor] = useState<Placement>({
-    x: 0,
-    y: 0,
-  });
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(
     snapshot.objects.find((object) => object.removedAt === null)?.id ?? null,
   );
@@ -983,10 +914,8 @@ function CanvasWorkspace({
   const [rendererLost, setRendererLost] = useState(false);
   const [announcement, setAnnouncement] = useState("Canvas restored.");
   const [busy, setBusy] = useState(false);
-  const stageRef = useRef<HTMLDivElement>(null);
-  const cardRefs = useRef(new Map<string, HTMLButtonElement>());
+  const [composerError, setComposerError] = useState<string | null>(null);
   const objectActionRefs = useRef(new Map<string, HTMLButtonElement>());
-  const draftRefs = useRef(new Map<string, HTMLTextAreaElement>());
   const hasLiveStatus = snapshot.cards.some(
     (card) => card.state === "interpreting" || card.state === "realizing",
   );
@@ -1007,77 +936,14 @@ function CanvasWorkspace({
     }
   }, [selectedObjectId, snapshot.objects]);
 
-  const updateDraft = (id: string, prompt: string) => {
-    setDrafts((current) => {
-      let next = current.map((draft) =>
-        draft.id === id ? { ...draft, prompt } : draft,
-      );
-      next = next.filter(
-        (draft, index) => draft.prompt.trim() || index === next.length - 1,
-      );
-      if (next.at(-1)?.prompt.trim())
-        next = [...next, { id: nextClientId("draft"), prompt: "" }];
-      return next;
-    });
-  };
-
-  const startPlacement = (source: PlacementSource) => {
-    if (readOnly || busy) return;
-    setPlacementSource(source);
-    setPlacementCursor({ x: 0, y: 0 });
-    window.requestAnimationFrame(() =>
-      stageRef.current
-        ?.querySelector<HTMLElement>(".sceneseed-placement-layer")
-        ?.focus(),
-    );
-    setAnnouncement(`Placement active for ${source.prompt}.`);
-  };
-
-  const commitPlacement = async (
-    source: PlacementSource,
-    placement: Placement,
-  ) => {
-    if (readOnly || busy) return;
-    setBusy(true);
-    try {
-      await actions.place(source, placement);
-      if (source.kind === "draft") {
-        setDrafts((current) => {
-          const next = current.filter((draft) => draft.id !== source.id);
-          return next.some((draft) => !draft.prompt.trim())
-            ? next
-            : [...next, { id: nextClientId("draft"), prompt: "" }];
-        });
-      }
-      setPlacementSource(null);
-      setAnnouncement(`${source.prompt} is queued.`);
-    } catch {
-      setAnnouncement("Placement failed. Your prompt is still here.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const selectFromCard = (cardId: string) => {
-    const object = objectForCard(snapshot, cardId);
-    if (!object) return;
-    setSelectedObjectId(object.id);
-    setAnnouncement(
-      `${snapshot.cards.find((card) => card.id === cardId)?.prompt ?? "Object"} selected.`,
-    );
-    window.requestAnimationFrame(() =>
-      objectActionRefs.current.get(object.id)?.focus(),
-    );
-  };
-
   const selectFromRenderer = (objectId: string | null) => {
     setSelectedObjectId(objectId);
     if (!objectId) return;
     const object = snapshot.objects.find((entry) => entry.id === objectId);
-    if (!object) return;
-    window.requestAnimationFrame(() =>
-      cardRefs.current.get(object.sourceCardId)?.focus(),
-    );
+    const card = object
+      ? snapshot.cards.find((entry) => entry.id === object.sourceCardId)
+      : null;
+    setAnnouncement(`${card?.prompt ?? "Object"} selected.`);
   };
 
   const selectedObject = selectedObjectId
@@ -1103,49 +969,34 @@ function CanvasWorkspace({
     }
   };
 
-  const dragSource = (
-    event: React.DragEvent<HTMLDivElement>,
-    source: PlacementSource,
-  ) => {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData(
-      "application/x-sceneseed-card",
-      `${source.kind}|${source.id}`,
-    );
-  };
-
-  const sourceFromDrop = (
-    event: React.DragEvent<HTMLDivElement>,
-  ): PlacementSource | null => {
-    const [kind, id] = event.dataTransfer
-      .getData("application/x-sceneseed-card")
-      .split("|");
-    if (kind === "draft") {
-      const draft = drafts.find((entry) => entry.id === id);
-      return draft?.prompt.trim()
-        ? { kind: "draft", id: draft.id, prompt: draft.prompt.trim() }
-        : null;
+  const submitPrompt = async (request: NewThreadRequest) => {
+    setComposerError(null);
+    try {
+      const prompt = promptFromComposerRequest(request);
+      if (connection !== "connected") {
+        throw new Error("Reconnect before sending this idea to the scene.");
+      }
+      if (!disclosureAcknowledged) {
+        throw new Error(
+          "Acknowledge the SceneSeed privacy note before sending.",
+        );
+      }
+      if (inFlightCount >= 12) {
+        throw new Error(
+          "This canvas already has 12 ideas in progress. Wait for one to finish.",
+        );
+      }
+      setBusy(true);
+      await actions.submit(prompt, automaticPlacement(snapshot));
+      setAnnouncement(`${prompt} was sent to the canvas interpreter.`);
+    } catch (reason) {
+      const message = errorMessage(reason);
+      setComposerError(message);
+      setAnnouncement(`Send failed. ${message}`);
+      throw reason;
+    } finally {
+      setBusy(false);
     }
-    if (kind === "card") {
-      const card = snapshot.cards.find((entry) => entry.id === id);
-      return card ? { kind: "card", id: card.id, prompt: card.prompt } : null;
-    }
-    return null;
-  };
-
-  const pointFromDrop = (event: React.DragEvent<HTMLDivElement>): Placement => {
-    const rect = stageRef.current?.getBoundingClientRect();
-    if (!rect || rect.width === 0 || rect.height === 0) return { x: 0, y: 0 };
-    return {
-      x: Math.max(
-        -8,
-        Math.min(8, ((event.clientX - rect.left) / rect.width - 0.5) * 16),
-      ),
-      y: Math.max(
-        -6,
-        Math.min(6, (0.5 - (event.clientY - rect.top) / rect.height) * 12),
-      ),
-    };
   };
 
   return (
@@ -1198,54 +1049,77 @@ function CanvasWorkspace({
           <div className="sceneseed-editor-title">
             <h1>{snapshot.canvas.name}</h1>
             {fixture ? (
-              <Badge variant="secondary">Visual QA fixture</Badge>
+              <Badge className="sceneseed-fixture-badge" variant="secondary">
+                Visual QA fixture
+              </Badge>
             ) : null}
           </div>
         )}
-        <details className="sceneseed-canvas-menu">
-          <summary aria-label="Canvas options">•••</summary>
-          <div>
-            <button
-              type="button"
-              disabled={readOnly}
-              onClick={() => setRenaming(true)}
-            >
-              Rename
-            </button>
-            {confirmDelete ? (
-              <>
-                <p>Delete this canvas and archive its hidden thread?</p>
-                <button
-                  type="button"
-                  className="sceneseed-danger-action"
-                  disabled={readOnly}
-                  onClick={() =>
-                    void runAction("Canvas deleted.", actions.deleteCanvas)
-                  }
-                >
-                  Delete canvas
-                </button>
-                <button type="button" onClick={() => setConfirmDelete(false)}>
-                  Keep canvas
-                </button>
-              </>
-            ) : (
+        <div className="sceneseed-header-actions">
+          <SceneContentsMenu
+            snapshot={snapshot}
+            selectedObjectId={selectedObjectId}
+            readOnly={readOnly || busy}
+            onSelectObject={(objectId) => selectFromRenderer(objectId)}
+            onCancel={(jobId) =>
+              void runAction(
+                "Generation cancelled. The prompt is ready to retry.",
+                () => actions.cancel(jobId),
+              )
+            }
+            onRetry={(card) =>
+              void runAction(`${card.prompt} was sent again.`, () =>
+                actions.retry(card),
+              )
+            }
+          />
+          <details className="sceneseed-canvas-menu">
+            <summary aria-label="Canvas options">
+              <Icon name="MoreHorizontal" aria-hidden="true" />
+            </summary>
+            <div>
               <button
                 type="button"
                 disabled={readOnly}
-                onClick={() => setConfirmDelete(true)}
+                onClick={() => setRenaming(true)}
               >
-                Delete canvas…
+                Rename
               </button>
-            )}
-          </div>
-        </details>
+              {confirmDelete ? (
+                <>
+                  <p>Delete this canvas and archive its hidden thread?</p>
+                  <button
+                    type="button"
+                    className="sceneseed-danger-action"
+                    disabled={readOnly}
+                    onClick={() =>
+                      void runAction("Canvas deleted.", actions.deleteCanvas)
+                    }
+                  >
+                    Delete canvas
+                  </button>
+                  <button type="button" onClick={() => setConfirmDelete(false)}>
+                    Keep canvas
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled={readOnly}
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  Delete canvas…
+                </button>
+              )}
+            </div>
+          </details>
+        </div>
       </header>
 
       {connection !== "connected" ? (
         <div className="sceneseed-offline-banner" role="status">
-          Reconnecting — this canvas is read-only. Draft text is unsaved and may
-          be lost.
+          Reconnecting — keep composing if you like. Sending and scene edits are
+          paused.
         </div>
       ) : null}
       {error ? (
@@ -1254,297 +1128,163 @@ function CanvasWorkspace({
         </div>
       ) : null}
 
-      <div className="sceneseed-workspace">
-        <aside className="sceneseed-card-rail" aria-label="Prompt cards">
-          <div className="sceneseed-rail-heading">
-            <div>
-              <p className="sceneseed-eyebrow">Prompt cards</p>
-              <h2>Plant an idea</h2>
-            </div>
-            <span>{inFlightCount}/12 in flight</span>
-          </div>
-          <p className="sceneseed-rail-instruction">
-            Drag a ready card onto the stage, or choose Place for a click and
-            keyboard path.
-          </p>
-          <div className="sceneseed-card-stack">
-            {snapshot.cards.map((card) => {
-              const object = objectForCard(snapshot, card.id);
+      <section className="sceneseed-workspace" aria-label="Scene canvas">
+        <div className="sceneseed-stage">
+          <RendererBoundary
+            resetKey={rendererReset}
+            fallback={
+              <RendererUnavailable
+                onReload={() => {
+                  setRendererLost(false);
+                  setRendererReset((value) => value + 1);
+                }}
+              />
+            }
+          >
+            {rendererLost ? (
+              <RendererUnavailable
+                onReload={() => {
+                  setRendererLost(false);
+                  setRendererReset((value) => value + 1);
+                }}
+              />
+            ) : (
+              <SceneRenderer
+                key={rendererReset}
+                className="sceneseed-webgl"
+                objects={renderObjects}
+                selectedObjectId={selectedObjectId}
+                enableOrbitControls={!busy}
+                onSelectObject={selectFromRenderer}
+                onRenderProbe={onRenderProbe}
+                onRevealComplete={(objectId) => {
+                  setAnnouncement("Interpretation complete.");
+                  onRevealComplete?.(objectId);
+                }}
+                onContextLost={() => setRendererLost(true)}
+                onContextRestored={() => setRendererLost(false)}
+                fallback={
+                  <RendererUnavailable
+                    onReload={() => setRendererReset((value) => value + 1)}
+                  />
+                }
+              />
+            )}
+          </RendererBoundary>
+          {snapshot.objects
+            .filter(
+              (object) =>
+                object.activeSceneId === null && object.removedAt === null,
+            )
+            .map((object) => {
+              const card = snapshot.cards.find(
+                (entry) => entry.id === object.sourceCardId,
+              );
+              if (!card?.placement) return null;
               return (
-                <PromptCard
-                  key={card.id}
-                  card={card}
-                  snapshot={snapshot}
-                  readOnly={readOnly || busy}
-                  selected={object?.id === selectedObjectId}
-                  now={now}
-                  setRef={(element) => {
-                    if (element) cardRefs.current.set(card.id, element);
-                    else cardRefs.current.delete(card.id);
+                <div
+                  key={object.id}
+                  className="sceneseed-stage-seed"
+                  data-state={card.state}
+                  style={{
+                    left: `${((card.placement.x + 8) / 16) * 100}%`,
+                    top: `${((6 - card.placement.y) / 12) * 100}%`,
                   }}
-                  onSelect={() => selectFromCard(card.id)}
-                  onPlace={() =>
-                    startPlacement({
-                      kind: "card",
-                      id: card.id,
-                      prompt: card.prompt,
-                    })
-                  }
-                  onCancel={(jobId) =>
-                    void runAction(
-                      "Generation cancelled. The prompt is ready to retry.",
-                      () => actions.cancel(jobId),
-                    )
-                  }
-                  onDragStart={(event) =>
-                    dragSource(event, {
-                      kind: "card",
-                      id: card.id,
-                      prompt: card.prompt,
-                    })
-                  }
-                />
+                  aria-label={`${cardStateLabel(card)} seed for ${card.prompt}`}
+                >
+                  <span aria-hidden="true" />
+                  <small>{cardStateLabel(card)}</small>
+                </div>
               );
             })}
-            {drafts.map((draft) => (
-              <DraftPromptCard
-                key={draft.id}
-                draft={draft}
-                readOnly={
-                  connection !== "connected" || busy || !disclosureAcknowledged
-                }
-                atCapacity={inFlightCount >= 12}
-                setRef={(element) => {
-                  if (element) draftRefs.current.set(draft.id, element);
-                  else draftRefs.current.delete(draft.id);
-                }}
-                onChange={(value) => updateDraft(draft.id, value)}
-                onPlace={() =>
-                  startPlacement({
-                    kind: "draft",
-                    id: draft.id,
-                    prompt: draft.prompt.trim(),
-                  })
-                }
-                onDragStart={(event) =>
-                  dragSource(event, {
-                    kind: "draft",
-                    id: draft.id,
-                    prompt: draft.prompt.trim(),
-                  })
-                }
-              />
-            ))}
-          </div>
-        </aside>
-
-        <section className="sceneseed-stage-column" aria-label="Scene canvas">
-          <div
-            ref={stageRef}
-            className="sceneseed-stage"
-            onDragOver={(event) => {
-              if (!readOnly) {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-              }
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              const source = sourceFromDrop(event);
-              if (source) void commitPlacement(source, pointFromDrop(event));
-            }}
-          >
-            <RendererBoundary
-              resetKey={rendererReset}
-              fallback={
-                <RendererUnavailable
-                  onReload={() => {
-                    setRendererLost(false);
-                    setRendererReset((value) => value + 1);
-                  }}
-                />
-              }
-            >
-              {rendererLost ? (
-                <RendererUnavailable
-                  onReload={() => {
-                    setRendererLost(false);
-                    setRendererReset((value) => value + 1);
-                  }}
-                />
-              ) : (
-                <SceneRenderer
-                  key={rendererReset}
-                  className="sceneseed-webgl"
-                  objects={renderObjects}
-                  selectedObjectId={selectedObjectId}
-                  onSelectObject={selectFromRenderer}
-                  onRenderProbe={onRenderProbe}
-                  onRevealComplete={(objectId) => {
-                    setAnnouncement("Interpretation complete.");
-                    onRevealComplete?.(objectId);
-                    window.requestAnimationFrame(() =>
-                      objectActionRefs.current.get(objectId)?.focus(),
-                    );
-                  }}
-                  onContextLost={() => setRendererLost(true)}
-                  onContextRestored={() => setRendererLost(false)}
-                  fallback={
-                    <RendererUnavailable
-                      onReload={() => setRendererReset((value) => value + 1)}
-                    />
-                  }
-                />
-              )}
-            </RendererBoundary>
-            {snapshot.objects
-              .filter(
-                (object) =>
-                  object.activeSceneId === null && object.removedAt === null,
-              )
-              .map((object) => {
-                const card = snapshot.cards.find(
-                  (entry) => entry.id === object.sourceCardId,
-                );
-                if (!card?.placement) return null;
-                return (
-                  <div
-                    key={object.id}
-                    className="sceneseed-stage-seed"
-                    data-state={card.state}
-                    style={{
-                      left: `${((card.placement.x + 8) / 16) * 100}%`,
-                      top: `${((6 - card.placement.y) / 12) * 100}%`,
-                    }}
-                    aria-label={`${cardStateLabel(card)} seed for ${card.prompt}`}
-                  >
-                    <span aria-hidden="true" />
-                    <small>{cardStateLabel(card)}</small>
-                  </div>
-                );
-              })}
-            {placementSource ? (
-              <PlacementLayer
-                cursor={placementCursor}
-                prompt={placementSource.prompt}
-                stageRef={stageRef}
-                onMove={setPlacementCursor}
-                onCommit={(placement) =>
-                  void commitPlacement(placementSource, placement)
-                }
-                onCancel={() => {
-                  setPlacementSource(null);
-                  setAnnouncement("Placement cancelled.");
-                }}
-              />
-            ) : null}
-            {renderObjects.length === 0 &&
-            snapshot.objects.every(
-              (object) =>
-                object.activeSceneId === null || object.removedAt !== null,
-            ) ? (
-              <div className="sceneseed-stage-empty">
-                <div className="sceneseed-seed-mark" aria-hidden="true" />
-                <strong>Drop a prompt here.</strong>
-                <span>Its interpretation will take root at that point.</span>
-              </div>
-            ) : null}
-          </div>
-
-          {selectedObject && selectedCard ? (
-            <ObjectControls
-              object={selectedObject}
-              card={selectedCard}
+          {renderObjects.length === 0 &&
+          snapshot.objects.every(
+            (object) =>
+              object.activeSceneId === null || object.removedAt !== null,
+          ) ? (
+            <div className="sceneseed-stage-empty">
+              <div className="sceneseed-seed-mark" aria-hidden="true" />
+              <strong>Describe something impossible.</strong>
+              <span>SceneSeed will draw it here.</span>
+            </div>
+          ) : null}
+          <div className="sceneseed-stage-status">
+            <CanvasActivity
+              snapshot={snapshot}
+              now={now}
               readOnly={readOnly || busy}
-              actionRef={(element) => {
-                if (element)
-                  objectActionRefs.current.set(selectedObject.id, element);
-                else objectActionRefs.current.delete(selectedObject.id);
-              }}
-              onTransform={(transform) =>
-                void runAction("Object moved.", () =>
-                  actions.transform(selectedObject, transform),
-                )
-              }
-              onRemix={() =>
+              onCancel={(jobId) =>
                 void runAction(
-                  "Remix queued. The current object stays until the new one renders.",
-                  () => actions.remix(selectedObject.id),
+                  "Generation cancelled. The prompt is ready to retry.",
+                  () => actions.cancel(jobId),
                 )
               }
-              onDuplicate={() =>
-                void runAction("Object duplicated.", () =>
-                  actions.duplicate(selectedObject),
-                )
-              }
-              onRemove={() =>
-                void runAction(
-                  "Object removed. Its prompt remains in the card stack.",
-                  async () => {
-                    await actions.remove(selectedObject);
-                    window.requestAnimationFrame(() =>
-                      cardRefs.current
-                        .get(selectedObject.sourceCardId)
-                        ?.focus(),
-                    );
-                  },
+              onRetry={(card) =>
+                void runAction(`${card.prompt} was sent again.`, () =>
+                  actions.retry(card),
                 )
               }
             />
-          ) : (
-            <div className="sceneseed-no-selection">
-              Select a completed prompt card or object to arrange it.
-            </div>
-          )}
+          </div>
 
-          <section
-            className="sceneseed-object-list"
-            aria-labelledby="sceneseed-object-list-heading"
-          >
-            <div>
-              <p className="sceneseed-eyebrow">Accessible scene</p>
-              <h2 id="sceneseed-object-list-heading">Objects</h2>
+          <div className="sceneseed-compose-stack">
+            {selectedObject && selectedCard ? (
+              <ObjectControls
+                object={selectedObject}
+                card={selectedCard}
+                readOnly={readOnly || busy}
+                actionRef={(element) => {
+                  if (element)
+                    objectActionRefs.current.set(selectedObject.id, element);
+                  else objectActionRefs.current.delete(selectedObject.id);
+                }}
+                onTransform={(transform) =>
+                  void runAction("Object moved.", () =>
+                    actions.transform(selectedObject, transform),
+                  )
+                }
+                onRemix={() =>
+                  void runAction(
+                    "Remix queued. The current object stays until the new one renders.",
+                    () => actions.remix(selectedObject.id),
+                  )
+                }
+                onDuplicate={() =>
+                  void runAction("Object duplicated.", () =>
+                    actions.duplicate(selectedObject),
+                  )
+                }
+                onRemove={() =>
+                  void runAction("Object removed from the scene.", () =>
+                    actions.remove(selectedObject),
+                  )
+                }
+              />
+            ) : null}
+            {composerError ? (
+              <div className="sceneseed-composer-error" role="alert">
+                <Icon name="AlertCircle" aria-hidden="true" />
+                <span>{composerError}</span>
+                <button type="button" onClick={() => setComposerError(null)}>
+                  Dismiss
+                </button>
+              </div>
+            ) : null}
+            <div className="sceneseed-composer-shell">
+              <NewThreadComposer
+                layout="document"
+                className="sceneseed-composer"
+                draftKey={
+                  composerDraftKey ?? `sceneseed-canvas-${snapshot.canvas.id}`
+                }
+                initialPrompt={initialPrompt}
+                placeholder="Describe something for the scene…"
+                onSubmit={submitPrompt}
+              />
             </div>
-            {snapshot.objects.filter((object) => object.removedAt === null)
-              .length === 0 ? (
-              <p>No objects yet.</p>
-            ) : (
-              <ol>
-                {snapshot.objects
-                  .filter((object) => object.removedAt === null)
-                  .map((object) => {
-                    const card = snapshot.cards.find(
-                      (entry) => entry.id === object.sourceCardId,
-                    );
-                    const scene = snapshot.candidates.find(
-                      (candidate) => candidate.id === object.activeSceneId,
-                    )?.normalizedScene;
-                    if (!card) return null;
-                    return (
-                      <li
-                        key={object.id}
-                        data-selected={
-                          selectedObjectId === object.id ? "true" : "false"
-                        }
-                      >
-                        <button
-                          type="button"
-                          onClick={() => selectFromRenderer(object.id)}
-                        >
-                          <strong>
-                            {scene?.name ?? "Pending interpretation"}
-                          </strong>
-                          <span>{card.prompt}</span>
-                          <small>{cardStateLabel(card)}</small>
-                        </button>
-                      </li>
-                    );
-                  })}
-              </ol>
-            )}
-          </section>
-        </section>
-      </div>
+          </div>
+        </div>
+      </section>
       <div className="sceneseed-sr-only" aria-live="polite" aria-atomic="true">
         {announcement}
       </div>
@@ -1558,14 +1298,9 @@ function LoadingCanvas() {
       <header className="sceneseed-editor-header">
         <Skeleton className="h-8 w-48" />
       </header>
-      <div className="sceneseed-workspace">
-        <aside className="sceneseed-card-rail">
-          <Skeleton className="h-28 w-full" />
-          <Skeleton className="h-28 w-full" />
-        </aside>
-        <section className="sceneseed-stage-column">
-          <Skeleton className="sceneseed-stage" />
-        </section>
+      <div className="sceneseed-workspace sceneseed-loading-stage">
+        <Skeleton className="sceneseed-stage" />
+        <Skeleton className="sceneseed-loading-composer" />
       </div>
     </main>
   );
@@ -1835,24 +1570,31 @@ function CanvasEditor({ canvasId }: { canvasId: string }) {
         throw reason;
       }
     },
-    place: async (source, placement) => {
+    submit: async (prompt, placement) => {
       let current = latestSnapshot.current!;
-      let cardId = source.id;
-      if (source.kind === "draft") {
-        const created = await rpc.call("createCard", {
-          canvasId,
-          prompt: source.prompt,
-          expectedRevision: current.canvas.revision,
-        });
-        applySnapshot(created.snapshot);
-        current = created.snapshot;
-        cardId = created.cardId;
-      }
+      const created = await rpc.call("createCard", {
+        canvasId,
+        prompt,
+        expectedRevision: current.canvas.revision,
+      });
+      applySnapshot(created.snapshot);
+      current = created.snapshot;
       await mutate(
         rpc.call("placeCard", {
           canvasId,
-          cardId,
+          cardId: created.cardId,
           placement,
+          expectedRevision: current.canvas.revision,
+        }),
+      );
+    },
+    retry: async (card) => {
+      const current = latestSnapshot.current!;
+      await mutate(
+        rpc.call("placeCard", {
+          canvasId,
+          cardId: card.id,
+          placement: card.placement ?? automaticPlacement(current),
           expectedRevision: current.canvas.revision,
         }),
       );
@@ -1925,10 +1667,64 @@ function CanvasEditor({ canvasId }: { canvasId: string }) {
   );
 }
 
-function FixtureCanvasEditor() {
+type SceneSeedFixtureState =
+  | "mixed"
+  | "empty"
+  | "composing"
+  | "processing"
+  | "success"
+  | "error";
+
+function fixtureSnapshot(state: SceneSeedFixtureState): CanvasSnapshotDto {
+  const snapshot = createSceneSeedUiFixture();
+  if (state === "mixed") return snapshot;
+  if (state === "empty" || state === "composing") {
+    return {
+      ...snapshot,
+      cards: [],
+      objects: [],
+      jobs: [],
+      candidates: [],
+    };
+  }
+  const wantedCardStates =
+    state === "success"
+      ? new Set<CardDto["state"]>(["complete"])
+      : state === "processing"
+        ? new Set<CardDto["state"]>([
+            "complete",
+            "queued",
+            "interpreting",
+            "realizing",
+          ])
+        : new Set<CardDto["state"]>(["complete", "failed"]);
+  const cards = snapshot.cards.filter((card) =>
+    wantedCardStates.has(card.state),
+  );
+  const cardIds = new Set(cards.map((card) => card.id));
+  const objects = snapshot.objects.filter((object) =>
+    cardIds.has(object.sourceCardId),
+  );
+  const objectIds = new Set(objects.map((object) => object.id));
+  return {
+    ...snapshot,
+    cards,
+    objects,
+    jobs: snapshot.jobs.filter((job) => objectIds.has(job.objectId)),
+    candidates: snapshot.candidates.filter((candidate) =>
+      objectIds.has(candidate.objectId),
+    ),
+  };
+}
+
+function FixtureCanvasEditor({
+  state = "mixed",
+}: {
+  state?: SceneSeedFixtureState;
+}) {
   const navigate = useBbNavigate();
   const connection = useRealtimeConnectionState();
-  const [snapshot, setSnapshot] = useState(createSceneSeedUiFixture);
+  const [snapshot, setSnapshot] = useState(() => fixtureSnapshot(state));
   const [revealing, setRevealing] = useState<Set<string>>(() => new Set());
   const update = (
     change: (current: CanvasSnapshotDto) => CanvasSnapshotDto,
@@ -1952,23 +1748,80 @@ function FixtureCanvasEditor() {
         canvas: { ...current.canvas, name },
       })),
     deleteCanvas: async () => navigate.toPluginPanel(PANEL_PATH),
-    place: async (source, placement) =>
+    submit: async (prompt, placement) =>
+      update((current) => {
+        const cardId = nextClientId("fixture_card");
+        const jobId = nextClientId("fixture_job");
+        const objectId = nextClientId("fixture_object");
+        const timestamp = Date.now();
+        return {
+          ...current,
+          cards: [
+            ...current.cards,
+            {
+              id: cardId,
+              canvasId: current.canvas.id,
+              prompt,
+              state: "queued",
+              order: current.cards.length,
+              placement,
+              activeJobId: jobId,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+          objects: [
+            ...current.objects,
+            {
+              id: objectId,
+              canvasId: current.canvas.id,
+              sourceCardId: cardId,
+              activeSceneId: null,
+              activeJobId: jobId,
+              transform: {
+                position: [placement.x, 0, -placement.y],
+                rotation: [0, 0, 0],
+                scale: [1, 1, 1],
+              },
+              order: current.objects.length,
+              removedAt: null,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+          jobs: [
+            ...current.jobs,
+            {
+              id: jobId,
+              canvasId: current.canvas.id,
+              cardId,
+              objectId,
+              generation: 1,
+              state: "queued",
+              agentThreadId: current.canvas.agentThreadId ?? "thr_fixture",
+              invalidSubmissionAttempts: 0,
+              errorCode: null,
+              errorMessage: null,
+              startedAt: null,
+              finishedAt: null,
+              threadSettledAt: null,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+        };
+      }),
+    retry: async (wanted) =>
       update((current) => ({
         ...current,
-        cards: [
-          ...current.cards,
-          {
-            id: source.id,
-            canvasId: current.canvas.id,
-            prompt: source.prompt,
-            state: "queued",
-            order: current.cards.length,
-            placement,
-            activeJobId: null,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          },
-        ],
+        cards: current.cards.map((card) =>
+          card.id === wanted.id ? { ...card, state: "queued" } : card,
+        ),
+        jobs: current.jobs.map((job) =>
+          job.id === wanted.activeJobId
+            ? { ...job, state: "queued", errorCode: null, errorMessage: null }
+            : job,
+        ),
       })),
     cancel: async (jobId) =>
       update((current) => ({
@@ -2068,6 +1921,10 @@ function FixtureCanvasEditor() {
       actions={actions}
       renderObjects={buildRenderObjects(snapshot, revealing)}
       fixture
+      initialPrompt={
+        state === "composing" ? "a melody folded into blue glass" : undefined
+      }
+      composerDraftKey={`sceneseed-qa-v2-${state}`}
       error={null}
       onRevealComplete={(objectId) =>
         setRevealing((current) => {
@@ -2083,6 +1940,18 @@ function FixtureCanvasEditor() {
 function SceneSeedPanel({ subPath }: PluginNavPanelProps) {
   if (subPath === "" || subPath === "library") return <LibraryPanel />;
   if (subPath === SCENESEED_QA_SUBPATH) return <FixtureCanvasEditor />;
+  if (subPath.startsWith(`${SCENESEED_QA_SUBPATH}/`)) {
+    const state = subPath.slice(SCENESEED_QA_SUBPATH.length + 1);
+    if (
+      state === "empty" ||
+      state === "composing" ||
+      state === "processing" ||
+      state === "success" ||
+      state === "error"
+    ) {
+      return <FixtureCanvasEditor key={state} state={state} />;
+    }
+  }
   const canvasId = parseCanvasId(subPath);
   if (canvasId) return <CanvasEditor canvasId={canvasId} />;
   return (
