@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -123,6 +123,60 @@ describe("bb plugin screenshot", () => {
       "01-panel.png  /plugins/showcase/showcase  (navPanel)",
       "skipped messageDirective — needs the capture fixture; pass --fixture-thread <id>",
     ]);
+  });
+
+  it("runs capture and emits its report when JSON output is requested", async () => {
+    const pluginDir = await makeTempDir("bb-plugin-screenshot-command-");
+    const harnessDir = await makeTempDir("bb-plugin-screenshot-harness-");
+    const electronBinary = join(harnessDir, "electron-stub");
+    const invocationPath = join(harnessDir, "invocation.json");
+    const outDir = join(harnessDir, "shots");
+    await writeFile(
+      join(pluginDir, "package.json"),
+      JSON.stringify({ name: "@acme/bb-plugin-showcase" }),
+    );
+    await writeFile(
+      join(pluginDir, "app.tsx"),
+      `app.slots.navPanel({ path: "showcase", component: Showcase });\n`,
+    );
+    await writeFile(
+      electronBinary,
+      `#!/usr/bin/env node\n` +
+        `const { readFileSync, writeFileSync } = require("node:fs");\n` +
+        `const harnessPath = process.argv[2];\n` +
+        `const plan = JSON.parse(readFileSync(process.argv[3], "utf8"));\n` +
+        `writeFileSync(${JSON.stringify(invocationPath)}, JSON.stringify({ harnessPath, plan }));\n` +
+        `process.stdout.write(JSON.stringify({ pluginId: plan.pluginId, written: [{ slot: "navPanel", url: plan.appUrl + "/plugins/showcase/showcase", file: plan.outDir + "/01-panel.png" }] }));\n`,
+    );
+    await chmod(electronBinary, 0o755);
+    vi.stubEnv("BB_ELECTRON", electronBinary);
+
+    await runCommand(
+      ["plugin", "screenshot", pluginDir, "--json", "--capture", outDir],
+      register,
+    );
+
+    const invocation = JSON.parse(await readFile(invocationPath, "utf8")) as {
+      harnessPath: string;
+      plan: { pluginId: string; outDir: string };
+    };
+    expect(invocation.harnessPath).toMatch(/plugin-capture\.cjs$/u);
+    expect(invocation.plan).toMatchObject({
+      pluginId: "showcase",
+      outDir,
+    });
+    expect(
+      JSON.parse(collectLogPayloads(vi.mocked(console.log))[0] ?? ""),
+    ).toEqual({
+      pluginId: "showcase",
+      written: [
+        {
+          slot: "navPanel",
+          url: "http://server/plugins/showcase/showcase",
+          file: `${outDir}/01-panel.png`,
+        },
+      ],
+    });
   });
 
   it("passes the app origin and output directory to the capture process", async () => {

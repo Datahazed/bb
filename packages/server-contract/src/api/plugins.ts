@@ -231,7 +231,7 @@ export const installedPluginSchema = z.object({
   /** Current display name for `categoryId`; absent whenever `categoryId` is absent. */
   category: z.string().optional(),
   /** Listing screenshots, empty when this install has no catalog listing. */
-  screenshots: z.array(z.string()).default([]),
+  screenshots: z.array(z.string()),
   icon: z.string().nullable(),
   /** Hashed URL when branding.icon declares a plugin-owned compact SVG. */
   iconUrl: z.string().nullable(),
@@ -407,13 +407,11 @@ const marketplacePullRequestUrlSchema = z.url().refine((value) => {
 }, "must be a canonical https://github.com/get-bb/marketplace/pull/<number> URL");
 
 export const pluginListingLifecycleSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("not-published") }).strict(),
-  z
-    .object({
-      status: z.literal("draft"),
-      entry: pluginListingDraftEntrySchema,
-    })
-    .strict(),
+  z.object({ status: z.literal("not-published") }),
+  z.object({
+    status: z.literal("draft"),
+    entry: pluginListingDraftEntrySchema,
+  }),
   z
     .object({
       status: z.literal("in-review"),
@@ -422,29 +420,23 @@ export const pluginListingLifecycleSchema = z.discriminatedUnion("status", [
         .object({
           url: marketplacePullRequestUrlSchema,
           openedAt: z.number().int().nonnegative(),
-        })
-        .strict(),
-    })
-    .strict(),
-  z
-    .object({
-      status: z.literal("published"),
-      entryId: z.string().min(1),
-      publishedAt: z.number().int().nonnegative(),
-    })
-    .strict(),
+        }),
+    }),
+  z.object({
+    status: z.literal("published"),
+    entryId: z.string().min(1),
+    publishedAt: z.number().int().nonnegative(),
+  }),
 ]);
 export type PluginListingLifecycle = z.infer<
   typeof pluginListingLifecycleSchema
 >;
 
-export const pluginListingRecordSchema = z
-  .object({
-    pluginId: z.string().min(1),
-    authorship: z.literal("path"),
-    lifecycle: pluginListingLifecycleSchema,
-  })
-  .strict();
+export const pluginListingRecordSchema = z.object({
+  pluginId: z.string().min(1),
+  authorship: z.literal("path"),
+  lifecycle: pluginListingLifecycleSchema,
+});
 export type PluginListingRecord = z.infer<typeof pluginListingRecordSchema>;
 
 const listingNoticeBase = {
@@ -454,23 +446,19 @@ const listingNoticeBase = {
   createdAt: z.number().int().nonnegative(),
 };
 export const pluginListingNoticeSchema = z.discriminatedUnion("kind", [
-  z.object({ ...listingNoticeBase, kind: z.literal("published") }).strict(),
-  z
-    .object({
-      ...listingNoticeBase,
-      kind: z.literal("returned"),
-      pullRequestUrl: z.url(),
-    })
-    .strict(),
+  z.object({ ...listingNoticeBase, kind: z.literal("published") }),
+  z.object({
+    ...listingNoticeBase,
+    kind: z.literal("returned"),
+    pullRequestUrl: z.url(),
+  }),
 ]);
 export type PluginListingNotice = z.infer<typeof pluginListingNoticeSchema>;
 
-export const pluginListingListResponseSchema = z
-  .object({
-    records: z.array(pluginListingRecordSchema),
-    notices: z.array(pluginListingNoticeSchema),
-  })
-  .strict();
+export const pluginListingListResponseSchema = z.object({
+  records: z.array(pluginListingRecordSchema),
+  notices: z.array(pluginListingNoticeSchema),
+});
 export type PluginListingListResponse = z.infer<
   typeof pluginListingListResponseSchema
 >;
@@ -483,12 +471,13 @@ export const pluginListingRecordSubmissionRequestSchema = z
     openedAt: z.number().int().nonnegative(),
   })
   .strict();
-export const pluginListingMutationResponseSchema = z
-  .object({ ok: z.literal(true), record: pluginListingRecordSchema })
-  .strict();
-export const pluginListingNoticeConsumeResponseSchema = z
-  .object({ ok: z.literal(true) })
-  .strict();
+export const pluginListingMutationResponseSchema = z.object({
+  ok: z.literal(true),
+  record: pluginListingRecordSchema,
+});
+export const pluginListingNoticeConsumeResponseSchema = z.object({
+  ok: z.literal(true),
+});
 
 /**
  * Which plugin of a source an install selects. A repository can hold several

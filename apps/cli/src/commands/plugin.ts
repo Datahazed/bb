@@ -1662,23 +1662,24 @@ export function registerPluginCommands(
               ? {}
               : { fixtureThreadId: opts.fixtureThread }),
           });
-          if (opts.json) {
-            outputJson(opts, plan);
+          if (opts.capture === undefined && outputJson(opts, plan)) {
             return;
           }
-          if (plan.slots.length === 0) {
+          if (plan.slots.length === 0 && opts.capture === undefined) {
             console.log(
               `${plan.pluginId} registers no visual surface — no listing screenshots to take.`,
             );
             return;
           }
-          for (const step of plan.steps) {
-            console.log(`${step.outputFile}  ${step.url}  (${step.slot})`);
-          }
-          for (const slot of plan.needsFixture) {
-            console.log(
-              `skipped ${slot} — needs the capture fixture; pass --fixture-thread <id>`,
-            );
+          if (!opts.json) {
+            for (const step of plan.steps) {
+              console.log(`${step.outputFile}  ${step.url}  (${step.slot})`);
+            }
+            for (const slot of plan.needsFixture) {
+              console.log(
+                `skipped ${slot} — needs the capture fixture; pass --fixture-thread <id>`,
+              );
+            }
           }
           if (opts.capture !== undefined) {
             const harnessPath = resolvePluginCaptureHarnessPath(
@@ -1703,6 +1704,7 @@ export function registerPluginCommands(
                 ? {}
                 : { fixtureThreadId: opts.fixtureThread }),
             });
+            if (outputJson(opts, report)) return;
             if (report.written.length === 0) {
               console.log("Capture ran; the app reports no surfaces to shoot.");
             }
