@@ -38,30 +38,11 @@ function entry(
 }
 
 describe("plugin category registry", () => {
-  it("keeps the sixteen reviewed stable ids and display names together", () => {
+  it("uses the canonical category records in stable id order", () => {
     expect(PLUGIN_CATALOG_CATEGORIES.map((category) => category.id)).toEqual(
       PLUGIN_CATALOG_CATEGORY_IDS,
     );
-    expect(
-      PLUGIN_CATALOG_CATEGORIES.map((category) => category.displayName),
-    ).toEqual([
-      "Themes & Appearance",
-      "Thread Lists & Navigation",
-      "Thread Messages & Timelines",
-      "Composer & Prompts",
-      "Memory & Context",
-      "Agent Tools",
-      "Security",
-      "Agents & Providers",
-      "Token Usage & Cost",
-      "Notifications & Attention",
-      "Code & Reviews",
-      "Files & Viewers",
-      "Machines & Hosts",
-      "Plugin Development",
-      "Task Tracking",
-      "Automation",
-    ]);
+    expect(PLUGIN_CATALOG_CATEGORIES).toHaveLength(16);
   });
 
   it("keeps reviewed community entry ids unique and categories valid", () => {

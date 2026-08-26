@@ -1,26 +1,13 @@
+import {
+  PLUGIN_CATALOG_CATEGORY_IDS,
+  type PluginCatalogCategoryId,
+} from "@bb/domain";
 import { z } from "zod";
 
 export const MARKETPLACE_V2_SCHEMA_URL =
   "https://getbb.app/schemas/marketplace-v2.schema.json";
 
-export const MARKETPLACE_CATEGORY_IDS = [
-  "themes-and-appearance",
-  "thread-lists-and-navigation",
-  "thread-messages-and-timelines",
-  "composer-and-prompts",
-  "memory-and-context",
-  "agent-tools",
-  "security",
-  "agents-and-providers",
-  "token-usage-and-cost",
-  "notifications-and-attention",
-  "code-and-reviews",
-  "files-and-viewers",
-  "machines-and-hosts",
-  "plugin-development",
-  "task-tracking",
-  "automation",
-] as const;
+export const MARKETPLACE_CATEGORY_IDS = PLUGIN_CATALOG_CATEGORY_IDS;
 
 const MARKETPLACE_MAX_ENTRIES = 256;
 const MARKETPLACE_MAX_SCREENSHOTS = 6;
@@ -199,7 +186,7 @@ export const marketplaceV2ManifestSchema = z
     });
   });
 
-export type MarketplaceCategoryId = z.infer<typeof marketplaceCategoryIdSchema>;
+export type MarketplaceCategoryId = PluginCatalogCategoryId;
 export type MarketplaceV2Entry = z.infer<typeof marketplaceV2EntrySchema>;
 export type MarketplaceV2Source = MarketplaceV2Entry["source"];
 export type MarketplaceV2Manifest = z.infer<typeof marketplaceV2ManifestSchema>;

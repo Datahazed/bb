@@ -1,3 +1,4 @@
+import { PLUGIN_CATALOG_CATEGORIES } from "@bb/domain";
 import type {
   MarketplaceCategoryId,
   MarketplaceV2Entry,
@@ -10,88 +11,11 @@ export const MARKETPLACE_CATEGORIES: ReadonlyArray<{
   id: MarketplaceCategoryId;
   label: string;
   description: string;
-}> = [
-  {
-    id: "themes-and-appearance",
-    label: "Themes & Appearance",
-    description: "Palettes, typography, and visual customization for bb.",
-  },
-  {
-    id: "thread-lists-and-navigation",
-    label: "Thread Lists & Navigation",
-    description: "Organize thread lists and move through your work.",
-  },
-  {
-    id: "thread-messages-and-timelines",
-    label: "Thread Messages & Timelines",
-    description: "Render and augment what appears inside a thread.",
-  },
-  {
-    id: "composer-and-prompts",
-    label: "Composer & Prompts",
-    description: "Change what you type and how prompts are sent.",
-  },
-  {
-    id: "memory-and-context",
-    label: "Memory & Context",
-    description: "Shape what agents know before they start.",
-  },
-  {
-    id: "agent-tools",
-    label: "Agent Tools",
-    description: "Give agents new capabilities and focused helpers.",
-  },
-  {
-    id: "security",
-    label: "Security",
-    description: "Protect credentials, code, and sensitive workflows.",
-  },
-  {
-    id: "agents-and-providers",
-    label: "Agents & Providers",
-    description: "Add agents, providers, and session handoffs.",
-  },
-  {
-    id: "token-usage-and-cost",
-    label: "Token Usage & Cost",
-    description: "Understand model spend, limits, and context budget.",
-  },
-  {
-    id: "notifications-and-attention",
-    label: "Notifications & Attention",
-    description: "Know when work finishes or needs your attention.",
-  },
-  {
-    id: "code-and-reviews",
-    label: "Code & Reviews",
-    description: "Work with repositories, pull requests, checks, and reviews.",
-  },
-  {
-    id: "files-and-viewers",
-    label: "Files & Viewers",
-    description: "Open, preview, and edit files inside bb.",
-  },
-  {
-    id: "machines-and-hosts",
-    label: "Machines & Hosts",
-    description: "Work with terminals, remote machines, and storage.",
-  },
-  {
-    id: "plugin-development",
-    label: "Plugin Development",
-    description: "Inspect bb and build plugins against its public surfaces.",
-  },
-  {
-    id: "task-tracking",
-    label: "Task Tracking",
-    description: "Track work with boards, lists, and checklists.",
-  },
-  {
-    id: "automation",
-    label: "Automation",
-    description: "Run schedules, triggers, and agent pipelines.",
-  },
-];
+}> = PLUGIN_CATALOG_CATEGORIES.map((category) => ({
+  id: category.id,
+  label: category.displayName,
+  description: category.description,
+}));
 
 const CATEGORY_BY_ID = new Map(
   MARKETPLACE_CATEGORIES.map((category) => [category.id, category]),

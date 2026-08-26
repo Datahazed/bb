@@ -1,5 +1,16 @@
-import { jsonValueSchema } from "@bb/domain";
+import {
+  jsonValueSchema,
+  PLUGIN_CATALOG_CATEGORY_IDS,
+  pluginCatalogCategoryIdSchema,
+  type PluginCatalogCategoryId,
+} from "@bb/domain";
 import { z } from "zod";
+
+export {
+  PLUGIN_CATALOG_CATEGORY_IDS,
+  pluginCatalogCategoryIdSchema,
+  type PluginCatalogCategoryId,
+};
 
 export const pluginRuntimeStatusSchema = z.enum([
   "running",
@@ -11,37 +22,6 @@ export const pluginRuntimeStatusSchema = z.enum([
   "needs-configuration",
 ]);
 export type PluginRuntimeStatus = z.infer<typeof pluginRuntimeStatusSchema>;
-
-/**
- * Stable discovery identities for the reviewed marketplace categories. Display
- * names live in the server-owned registry, so copy changes never re-file an
- * entry. Marketplace v2 requires exactly one of these IDs; v1 has no category.
- */
-export const PLUGIN_CATALOG_CATEGORY_IDS = [
-  "themes-and-appearance",
-  "thread-lists-and-navigation",
-  "thread-messages-and-timelines",
-  "composer-and-prompts",
-  "memory-and-context",
-  "agent-tools",
-  "security",
-  "agents-and-providers",
-  "token-usage-and-cost",
-  "notifications-and-attention",
-  "code-and-reviews",
-  "files-and-viewers",
-  "machines-and-hosts",
-  "plugin-development",
-  "task-tracking",
-  "automation",
-] as const;
-
-export const pluginCatalogCategoryIdSchema = z.enum(
-  PLUGIN_CATALOG_CATEGORY_IDS,
-);
-export type PluginCatalogCategoryId = z.infer<
-  typeof pluginCatalogCategoryIdSchema
->;
 
 export const pluginUpdateOutcomeSchema = z.enum([
   "current",

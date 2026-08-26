@@ -1,7 +1,10 @@
 import {
+  PLUGIN_CATALOG_CATEGORIES,
   PLUGIN_CATALOG_CATEGORY_IDS,
+  pluginCatalogCategory,
+  type PluginCatalogCategory,
   type PluginCatalogCategoryId,
-} from "@bb/server-contract";
+} from "@bb/domain";
 import {
   listPluginMarketplaces,
   type DbQueryConnection,
@@ -16,55 +19,12 @@ import type {
   MarketplaceManifest,
 } from "./marketplace-manifest.js";
 
-export interface PluginCatalogCategory {
-  id: PluginCatalogCategoryId;
-  displayName: string;
-}
-
-/**
- * The one editable category registry. IDs are persisted in marketplace
- * entries; display names may change without re-filing a plugin.
- */
-export const PLUGIN_CATALOG_CATEGORIES = [
-  { id: "themes-and-appearance", displayName: "Themes & Appearance" },
-  {
-    id: "thread-lists-and-navigation",
-    displayName: "Thread Lists & Navigation",
-  },
-  {
-    id: "thread-messages-and-timelines",
-    displayName: "Thread Messages & Timelines",
-  },
-  { id: "composer-and-prompts", displayName: "Composer & Prompts" },
-  { id: "memory-and-context", displayName: "Memory & Context" },
-  { id: "agent-tools", displayName: "Agent Tools" },
-  { id: "security", displayName: "Security" },
-  { id: "agents-and-providers", displayName: "Agents & Providers" },
-  { id: "token-usage-and-cost", displayName: "Token Usage & Cost" },
-  {
-    id: "notifications-and-attention",
-    displayName: "Notifications & Attention",
-  },
-  { id: "code-and-reviews", displayName: "Code & Reviews" },
-  { id: "files-and-viewers", displayName: "Files & Viewers" },
-  { id: "machines-and-hosts", displayName: "Machines & Hosts" },
-  { id: "plugin-development", displayName: "Plugin Development" },
-  { id: "task-tracking", displayName: "Task Tracking" },
-  { id: "automation", displayName: "Automation" },
-] as const satisfies readonly PluginCatalogCategory[];
-
-if (
-  PLUGIN_CATALOG_CATEGORIES.length !== PLUGIN_CATALOG_CATEGORY_IDS.length ||
-  PLUGIN_CATALOG_CATEGORIES.some(
-    (category, index) => category.id !== PLUGIN_CATALOG_CATEGORY_IDS[index],
-  )
-) {
-  throw new Error("plugin category registry does not match the public IDs");
-}
-
-const categoryById = new Map<PluginCatalogCategoryId, PluginCatalogCategory>(
-  PLUGIN_CATALOG_CATEGORIES.map((category) => [category.id, category]),
-);
+export {
+  PLUGIN_CATALOG_CATEGORIES,
+  PLUGIN_CATALOG_CATEGORY_IDS,
+  pluginCatalogCategory,
+  type PluginCatalogCategory,
+};
 
 /**
  * Reviewed taxonomy handoff for all 81 BB Community entries. The first 63
@@ -177,17 +137,6 @@ export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES: Readonly<
   "global-workflows": "automation",
   "auto-archive": "automation",
 };
-
-/** Resolve a stable category ID to the current display record. */
-export function pluginCatalogCategory(
-  categoryId: PluginCatalogCategoryId,
-): PluginCatalogCategory {
-  const category = categoryById.get(categoryId);
-  if (category === undefined) {
-    throw new Error(`unknown plugin category ${JSON.stringify(categoryId)}`);
-  }
-  return category;
-}
 
 /**
  * Resolve discovery metadata without interpreting tags. V1 is the immutable

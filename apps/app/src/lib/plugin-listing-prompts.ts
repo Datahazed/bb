@@ -1,3 +1,4 @@
+import { pluginCatalogCategory } from "@bb/domain";
 import type {
   PluginCatalogCategoryId,
   PluginListingLifecycle,
@@ -15,27 +16,8 @@ function pluginDataBlock(fields: readonly UntrustedPromptField[]): string[] {
   });
 }
 
-const CATEGORY_LABELS: Record<PluginCatalogCategoryId, string> = {
-  "themes-and-appearance": "Themes & Appearance",
-  "thread-lists-and-navigation": "Thread Lists & Navigation",
-  "thread-messages-and-timelines": "Thread Messages & Timelines",
-  "composer-and-prompts": "Composer & Prompts",
-  "memory-and-context": "Memory & Context",
-  "agent-tools": "Agent Tools",
-  security: "Security",
-  "agents-and-providers": "Agents & Providers",
-  "token-usage-and-cost": "Token Usage & Cost",
-  "notifications-and-attention": "Notifications & Attention",
-  "code-and-reviews": "Code & Reviews",
-  "files-and-viewers": "Files & Viewers",
-  "machines-and-hosts": "Machines & Hosts",
-  "plugin-development": "Plugin Development",
-  "task-tracking": "Task Tracking",
-  automation: "Automation",
-};
-
 export function pluginListingCategoryLabel(id: PluginCatalogCategoryId) {
-  return CATEGORY_LABELS[id];
+  return pluginCatalogCategory(id).displayName;
 }
 
 function pullRequestNumber(url: string): number {

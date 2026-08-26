@@ -9,6 +9,7 @@ import {
   buildPublishPluginUpdatePrompt,
   buildSubmitPluginListingPrompt,
   buildUpdatePluginSubmissionPrompt,
+  pluginListingCategoryLabel,
   pluginListingActions,
 } from "./plugin-listing-prompts";
 
@@ -56,6 +57,12 @@ const lifecycleCases: Array<{
 ];
 
 describe("authored plugin listing prompts", () => {
+  it("uses the canonical category display name", () => {
+    expect(pluginListingCategoryLabel("token-usage-and-cost")).toBe(
+      "Token Usage & Cost",
+    );
+  });
+
   it("keeps the Submit skill workflow and honest category slot exact", () => {
     const prompt = buildSubmitPluginListingPrompt({
       name: "Provider Usage",
