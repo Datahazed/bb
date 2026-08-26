@@ -74,6 +74,11 @@ import {
   SidebarStickyStack,
 } from "@/components/ui/sidebar.js";
 import {
+  SIDEBAR_HOVER_ACTIONS_CLASS,
+  SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+  SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+} from "@/components/ui/sidebar-hover-actions";
+import {
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
@@ -193,6 +198,7 @@ interface ProjectListActionButtonsProps {
     openInSplit(): void;
   };
   onNewChat?: () => void;
+  onSplit?: () => void;
 }
 
 interface ProjectListShellProps {
@@ -242,6 +248,11 @@ export const PROJECT_LIST_ACTION_BUTTON_CLASS = cn(
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
   "min-w-0 cursor-pointer justify-start overflow-hidden font-normal ring-sidebar-ring focus-visible:ring-2 disabled:cursor-default disabled:opacity-70 max-md:pointer-coarse:[&_svg]:size-5",
+);
+
+const PROJECT_LIST_ACTION_ICON_BUTTON_CLASS = cn(
+  "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-foreground/85 outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 disabled:cursor-default disabled:opacity-50",
+  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 );
 
 const PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS = cn(
@@ -957,6 +968,7 @@ export function ProjectListActionButtons({
   splitEnabled = false,
   newThreadSplit,
   onNewChat,
+  onSplit,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
   const newThreadShortcut = useAppCommandShortcut("thread.new");
@@ -964,39 +976,75 @@ export function ProjectListActionButtons({
 
   return (
     <div className="space-y-1">
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
-        onPointerDown={newThreadSplit?.onPointerDown}
-        onClick={(event) => {
-          if (event.metaKey || event.ctrlKey) {
-            newThreadSplit?.openInSplit();
-            return;
-          }
-          onNewChat?.();
-        }}
-        disabled={isNewChatDisabled}
-        aria-label={
-          newThreadShortcut
-            ? `New thread (${newThreadShortcut.label})`
-            : "New thread"
-        }
-        aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
-      >
-        <Icon name="MessageSquarePlus" />
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          <span className="min-w-0 truncate text-left">New thread</span>
-          {newThreadSplitIndicator.miniMap ? (
-            <SplitPaneMiniMap
-              slots={newThreadSplitIndicator.miniMap}
-              label="New thread — open in split"
-            />
+      <div className="flex min-w-0 items-center gap-0.5">
+        <div
+          className={cn(
+            "relative min-w-0 flex-1",
+            SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+          )}
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
+            onPointerDown={newThreadSplit?.onPointerDown}
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey) {
+                newThreadSplit?.openInSplit();
+                return;
+              }
+              onNewChat?.();
+            }}
+            disabled={isNewChatDisabled}
+            aria-label={
+              newThreadShortcut
+                ? `New thread (${newThreadShortcut.label})`
+                : "New thread"
+            }
+            aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
+          >
+            <Icon name="MessageSquarePlus" />
+            <span
+              className={cn(
+                "flex min-w-0 flex-1 items-center gap-1.5",
+                onSplit && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+              )}
+            >
+              <span className="min-w-0 truncate text-left">New thread</span>
+              {newThreadSplitIndicator.miniMap ? (
+                <SplitPaneMiniMap
+                  slots={newThreadSplitIndicator.miniMap}
+                  label="New thread — open in split"
+                />
+              ) : null}
+              <AppCommandShortcutHint shortcut={newThreadShortcut} />
+            </span>
+          </Button>
+          {onSplit ? (
+            <div
+              className={cn(
+                SIDEBAR_HOVER_ACTIONS_CLASS,
+                "absolute inset-y-0 right-0 flex items-center",
+              )}
+            >
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="Split"
+                className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
+                onClick={onSplit}
+              >
+                <Icon
+                  name="Columns2"
+                  className={COARSE_POINTER_ICON_SIZE_CLASS}
+                />
+              </Button>
+            </div>
           ) : null}
-          <AppCommandShortcutHint shortcut={newThreadShortcut} />
-        </span>
-      </Button>
+        </div>
+      </div>
     </div>
   );
 }

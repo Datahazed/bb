@@ -36,7 +36,6 @@ describe("new-thread draft leave toast", () => {
       () =>
         useNewThreadDraftLeaveToast({
           getCurrentDraft: () => draft,
-          isSplitPane: false,
         }),
       { wrapper: StrictModeWrapper },
     );
@@ -56,32 +55,60 @@ describe("new-thread draft leave toast", () => {
       shouldAnnounceNewThreadDraftLeave({
         draft,
         draftRowsVisible: false,
-        isSplitPane: false,
       }),
     ).toBe(true);
     expect(
       shouldAnnounceNewThreadDraftLeave({
         draft,
         draftRowsVisible: true,
-        isSplitPane: false,
       }),
     ).toBe(false);
   });
 
-  it("does not announce empty or split-pane drafts in Phase 2", () => {
+  it("does not announce empty drafts", () => {
     expect(
       shouldAnnounceNewThreadDraftLeave({
         draft: EMPTY_DRAFT,
         draftRowsVisible: false,
-        isSplitPane: false,
       }),
     ).toBe(false);
+  });
+
+  it("announces split-pane drafts when their built-in row is hidden", () => {
     expect(
       shouldAnnounceNewThreadDraftLeave({
         draft: { ...EMPTY_DRAFT, text: "Split work" },
         draftRowsVisible: false,
-        isSplitPane: true,
       }),
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("coalesces composers removed by the same leave event into one toast", async () => {
+    const leftDraft = { ...EMPTY_DRAFT, text: "Left work" };
+    const rightDraft = { ...EMPTY_DRAFT, text: "Right work" };
+    const left = renderHook(
+      () =>
+        useNewThreadDraftLeaveToast({
+          getCurrentDraft: () => leftDraft,
+        }),
+      { wrapper: StrictModeWrapper },
+    );
+    const right = renderHook(
+      () =>
+        useNewThreadDraftLeaveToast({
+          getCurrentDraft: () => rightDraft,
+        }),
+      { wrapper: StrictModeWrapper },
+    );
+
+    await act(async () => {
+      left.unmount();
+      right.unmount();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockToastMessage).toHaveBeenCalledTimes(1);
+    expect(mockToastMessage).toHaveBeenCalledWith("Saved to Drafts");
   });
 });

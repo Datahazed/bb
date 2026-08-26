@@ -7,36 +7,41 @@ import { builtInSidebarDraftRowsVisibleAtom } from "@/components/sidebar/sidebar
 export function shouldAnnounceNewThreadDraftLeave({
   draft,
   draftRowsVisible,
-  isSplitPane,
 }: {
   draft: PromptDraftState;
   draftRowsVisible: boolean;
-  isSplitPane: boolean;
 }): boolean {
-  return !isSplitPane && !draftRowsVisible && !isPromptDraftEmpty(draft);
+  return !draftRowsVisible && !isPromptDraftEmpty(draft);
+}
+
+let savedDraftToastScheduled = false;
+
+function scheduleSavedDraftToast(): void {
+  if (savedDraftToastScheduled) return;
+  savedDraftToastScheduled = true;
+  queueMicrotask(() => {
+    savedDraftToastScheduled = false;
+    appToast.message("Saved to Drafts");
+  });
 }
 
 /**
- * Announces a persisted page-composer draft when navigation removes it from
- * view. Split-pane replacement/close owns the same rule in Phase 4, so this
- * hook intentionally ignores composers currently hosted in a split pane.
+ * Announces a persisted composer draft when navigation, split replacement, or
+ * pane close removes it from view. Toasts scheduled in the same leave event
+ * coalesce so replacing several composers announces the save once.
  */
 export function useNewThreadDraftLeaveToast({
   getCurrentDraft,
-  isSplitPane,
 }: {
   getCurrentDraft: () => PromptDraftState;
-  isSplitPane: boolean;
 }): void {
   const draftRowsVisible = useAtomValue(builtInSidebarDraftRowsVisibleAtom);
   const draftRowsVisibleRef = useRef(draftRowsVisible);
   const getCurrentDraftRef = useRef(getCurrentDraft);
-  const isSplitPaneRef = useRef(isSplitPane);
   const mountedRef = useRef(false);
 
   draftRowsVisibleRef.current = draftRowsVisible;
   getCurrentDraftRef.current = getCurrentDraft;
-  isSplitPaneRef.current = isSplitPane;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -45,7 +50,6 @@ export function useNewThreadDraftLeaveToast({
       const shouldAnnounce = shouldAnnounceNewThreadDraftLeave({
         draft: getCurrentDraftRef.current(),
         draftRowsVisible: draftRowsVisibleRef.current,
-        isSplitPane: isSplitPaneRef.current,
       });
       if (!shouldAnnounce) return;
 
@@ -54,7 +58,7 @@ export function useNewThreadDraftLeaveToast({
       // instance mounted again before an informational toast is emitted.
       queueMicrotask(() => {
         if (!mountedRef.current) {
-          appToast.message("Saved to Drafts");
+          scheduleSavedDraftToast();
         }
       });
     };

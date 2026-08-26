@@ -66,6 +66,10 @@ export interface PaneContextValue {
    */
   ownsWindowTopLeft: boolean;
   navigateInPane: (thread: ThreadRoutePathArgs) => void;
+  /** Replaces this composer with a fresh empty draft slot after a successful
+   * create when the user keeps new threads in place. Split panes provide it;
+   * page and thread surfaces omit it. */
+  resetNewThreadPane?: () => void;
   /**
    * Starts a pane-reorder drag from the pane header via the shared split-drag
    * layer (move to an edge / swap on center). Only provided when the layout is

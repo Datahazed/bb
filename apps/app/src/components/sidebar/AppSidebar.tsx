@@ -21,6 +21,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useCloseMobileSidebar,
+  useSidebar,
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
@@ -55,6 +56,7 @@ import {
 } from "./sidebarThreadShortcuts";
 import {
   useAppCommandHandler,
+  useAppCommandRunner,
   useAppCommandShortcut,
   useAppCommandShortcuts,
   useIsAppCommandModifierHeld,
@@ -167,6 +169,8 @@ export function AppSidebar({
     label: "New thread",
   });
   const closeOnMobile = useCloseMobileSidebar();
+  const { isCompactViewport } = useSidebar();
+  const appCommandRunner = useAppCommandRunner();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
     ReadonlyMap<string, SidebarThreadShortcutPresentation>
@@ -193,6 +197,12 @@ export function AppSidebar({
       state: { focusPrompt: true },
     });
   }, [closeOnMobile, navigate]);
+  const handleSplit = useCallback(() => {
+    appCommandRunner.dispatch(
+      "thread.split",
+      typeof document === "undefined" ? null : document.activeElement,
+    );
+  }, [appCommandRunner]);
 
   const showThreadShortcuts = useCallback(() => {
     const targets = getSidebarThreadShortcutTargets(sidebarRef.current);
@@ -346,6 +356,7 @@ export function AppSidebar({
                 splitEnabled
                 newThreadSplit={newThreadSplit}
                 onNewChat={handleNewChat}
+                onSplit={isCompactViewport ? undefined : handleSplit}
               />
               {toolsRoutePath ? (
                 <ExtensionsNavSidebarItem
