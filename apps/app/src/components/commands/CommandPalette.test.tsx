@@ -93,6 +93,8 @@ const modeState = vi.hoisted(() => ({
   drafts: [] as NewThreadDraftRow[],
   searchResponse: undefined as ThreadSearchResponse | undefined,
 }));
+const openThreadInSplitMock = vi.hoisted(() => vi.fn());
+const routeNavigateMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
@@ -122,6 +124,14 @@ vi.mock("@/lib/bb-desktop", () => ({
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => false,
+}));
+
+vi.mock("@/lib/split-layout/openThreadInSplit", () => ({
+  openThreadInSplit: openThreadInSplitMock,
+}));
+
+vi.mock("@/components/ui/app-route-anchor", () => ({
+  useRouteNavigate: () => routeNavigateMock,
 }));
 
 vi.mock("@/hooks/useNewThreadDraftSlots", () => ({
@@ -261,6 +271,8 @@ afterEach(() => {
   testState.calls.length = 0;
   modeState.drafts = [];
   modeState.searchResponse = undefined;
+  openThreadInSplitMock.mockReset();
+  routeNavigateMock.mockReset();
   window.localStorage.clear();
 });
 
@@ -401,6 +413,99 @@ describe("CommandPalette", () => {
     );
   });
 
+  it("makes scope the input's only sibling tab stop and applies every keyboard choice immediately", async () => {
+    modeState.searchResponse = {
+      active: {
+        total: 1,
+        results: [{ thread: makeThread("matching-active"), matches: [] }],
+      },
+      archived: {
+        total: 1,
+        results: [
+          {
+            thread: makeThread("matching-archived", {
+              archivedAt: Date.now(),
+            }),
+            matches: [],
+          },
+        ],
+      },
+    };
+    modeState.drafts = [
+      {
+        id: "matching-draft",
+        title: "matching draft",
+        draft: { ...emptyPromptDraftState(), text: "matching draft" },
+        lastEditedAt: Date.now(),
+        destination: { projectId: "project-1", sectionId: null },
+        delete: vi.fn(),
+      },
+    ];
+    renderPalette();
+    openThreadSearch();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Search threads" }),
+      ).toBeTruthy(),
+    );
+    const input = screen.getByRole("combobox", { name: "Search threads" });
+    const scope = screen.getByRole("button", { name: "Thread scope" });
+    const palette = screen.getByTestId("command-palette");
+    expect(
+      Array.from(
+        palette.querySelectorAll<HTMLElement>(
+          'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ),
+    ).toEqual([input, scope]);
+
+    fireEvent.change(input, { target: { value: "match" } });
+    const results = screen.getByRole("listbox", { name: "Threads" });
+    await waitFor(() =>
+      expect(within(results).getAllByRole("option")).toHaveLength(3),
+    );
+
+    scope.focus();
+    fireEvent.keyDown(scope, { key: "ArrowDown" });
+    expect(scope.textContent).toContain("Active");
+    const scopeOptions = screen.getByRole("listbox", {
+      name: "Thread scope options",
+    });
+    expect(
+      within(scopeOptions)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["All", "Active", "Drafts", "Archived"]);
+    expect(within(results).getAllByRole("option")).toHaveLength(1);
+    expect(within(results).getByRole("option").textContent).toContain(
+      "matching-active",
+    );
+    fireEvent.keyDown(scope, { key: "Enter" });
+    expect(document.activeElement).toBe(input);
+    expect(
+      screen.queryByRole("listbox", { name: "Thread scope options" }),
+    ).toBeNull();
+
+    scope.focus();
+    fireEvent.keyDown(scope, { key: "ArrowDown" });
+    expect(scope.textContent).toContain("Drafts");
+    expect(within(results).getAllByRole("option")).toHaveLength(1);
+    expect(within(results).getByRole("option").textContent).toContain(
+      "matching draft",
+    );
+    fireEvent.keyDown(scope, { key: "Escape" });
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.click(within(results).getByRole("option"));
+    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+    openThreadSearch();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Thread scope" }).textContent,
+      ).toContain("All"),
+    );
+  });
+
   it("renders search matches as one unlabelled active, draft, archived list", async () => {
     const active = makeThread("active");
     const archived = makeThread("archived", { archivedAt: Date.now() });
@@ -446,6 +551,37 @@ describe("CommandPalette", () => {
     expect(
       screen.getByTestId("command-palette").querySelectorAll("svg"),
     ).toHaveLength(1);
+  });
+
+  it("opens a persisted thread result in a split with Command-Enter", async () => {
+    modeState.searchResponse = {
+      active: {
+        total: 1,
+        results: [{ thread: makeThread("matching-split"), matches: [] }],
+      },
+      archived: { total: 0, results: [] },
+    };
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    fireEvent.change(input, { target: { value: "match" } });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("option").textContent,
+      ).toContain("matching-split"),
+    );
+
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+
+    await waitFor(() => expect(openThreadInSplitMock).toHaveBeenCalledTimes(1));
+    expect(openThreadInSplitMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project-1",
+        threadId: "matching-split",
+      }),
+    );
   });
 
   it("filters as the user types and keeps the selection on a live row", async () => {
