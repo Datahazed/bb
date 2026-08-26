@@ -1,0 +1,42 @@
+{
+  "candidate": "68658c7d765bce8a2c6177b3fc62ccb6371f1b77",
+  "checkpoint": "sceneseed-canvas",
+  "viewports": [
+    {
+      "viewportClass": "mobile",
+      "captures": [
+        { "elapsedMs": 0, "file": "qa/final-head-mobile-before.png" },
+        { "elapsedMs": 100, "file": "qa/final-head-mobile-cycle-1-start.png" },
+        { "elapsedMs": 275, "file": "qa/final-head-mobile-cycle-1-mid.png" },
+        { "elapsedMs": 4515, "file": "qa/final-head-mobile-after.png" }
+      ]
+    },
+    {
+      "viewportClass": "small/narrow",
+      "captures": [
+        { "elapsedMs": 0, "file": "qa/final-head-small-narrow-before.png" },
+        { "elapsedMs": 100, "file": "qa/final-head-small-narrow-cycle-1-start.png" },
+        { "elapsedMs": 275, "file": "qa/final-head-small-narrow-cycle-1-mid.png" },
+        { "elapsedMs": 4462, "file": "qa/final-head-small-narrow-after.png" }
+      ]
+    },
+    {
+      "viewportClass": "normal desktop",
+      "captures": [
+        { "elapsedMs": 0, "file": "qa/final-head-normal-desktop-before.png" },
+        { "elapsedMs": 100, "file": "qa/final-head-normal-desktop-cycle-1-start.png" },
+        { "elapsedMs": 275, "file": "qa/final-head-normal-desktop-cycle-1-mid.png" },
+        { "elapsedMs": 4595, "file": "qa/final-head-normal-desktop-after.png" }
+      ]
+    },
+    {
+      "viewportClass": "very large desktop",
+      "captures": [
+        { "elapsedMs": 0, "file": "qa/final-head-very-large-desktop-before.png" },
+        { "elapsedMs": 100, "file": "qa/final-head-very-large-desktop-cycle-1-start.png" },
+        { "elapsedMs": 275, "file": "qa/final-head-very-large-desktop-cycle-1-mid.png" },
+        { "elapsedMs": 4517, "file": "qa/final-head-very-large-desktop-after.png" }
+      ]
+    }
+  ]
+}
