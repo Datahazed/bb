@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { createRef } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@bb/domain";
@@ -414,6 +414,29 @@ describe("sidebar thread search navigation items", () => {
 });
 
 describe("ProjectListActionButtons", () => {
+  it("reveals a keyboard-reachable Columns2 Split row action", () => {
+    const onSplit = vi.fn();
+
+    render(<ProjectListActionButtons onNewChat={vi.fn()} onSplit={onSplit} />);
+
+    const splitButton = screen.getByRole("button", { name: "Split" });
+    expect(splitButton.tabIndex).toBe(0);
+    expect(splitButton.querySelector("svg")).not.toBeNull();
+    expect(splitButton.parentElement?.classList).toContain(
+      "bb-sidebar-hover-actions",
+    );
+    expect(splitButton.closest(".bb-sidebar-hover-actions-row")).not.toBeNull();
+
+    fireEvent.click(splitButton);
+    expect(onSplit).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits the Split action when the caller marks it unavailable", () => {
+    render(<ProjectListActionButtons onNewChat={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: "Split" })).toBeNull();
+  });
+
   it("shows the compose pane position when New thread is open in a split", () => {
     const store = createStore();
     store.set(splitLayoutAtom, {

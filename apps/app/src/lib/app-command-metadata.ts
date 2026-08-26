@@ -86,6 +86,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Open quick palette",
         "Search and run bb commands from the keyboard.",
       ),
+      command(
+        "thread.split",
+        "Split",
+        "Open two blank thread composers side by side.",
+      ),
       command("window.new", "New window", "Open another bb desktop window."),
       command("settings.open", "Open settings", "Open bb settings."),
       command(

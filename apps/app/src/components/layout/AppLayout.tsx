@@ -95,11 +95,13 @@ import {
   useMobileVisualViewportHeight,
 } from "./useMobileVisualViewportHeight";
 import { wsManager } from "@/lib/ws";
-import { splitLayoutAtom } from "@/lib/split-layout/atoms";
-import { findPaneByThread } from "@/lib/split-layout";
+import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { findPaneByThread, replaceWithTwoPaneLayout } from "@/lib/split-layout";
 import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
+import { createNewThreadDraftSlotId } from "@/lib/prompt-draft-slots";
+import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
 
 const SIDEBAR_WIDTH_KEY = "bb.sidebar.width";
 const SIDEBAR_OPEN_KEY = "bb.sidebar.open";
@@ -489,6 +491,31 @@ export function AppLayout({ children }: AppLayoutProps) {
     });
     return true;
   });
+  useAppCommandHandler(
+    "thread.split",
+    () => {
+      if (projectId !== undefined) {
+        setRootComposeProjectId(projectId);
+      }
+      const leftDraftSlotId = createNewThreadDraftSlotId();
+      const rightDraftSlotId = createNewThreadDraftSlotId();
+      store.set(
+        splitLayoutAtom,
+        replaceWithTwoPaneLayout(
+          store.get(splitLayoutAtom),
+          { kind: "new-thread", draftSlotId: leftDraftSlotId },
+          { kind: "new-thread", draftSlotId: rightDraftSlotId },
+        ),
+      );
+      store.set(maximizedPaneIdAtom, null);
+      void navigate(getRootComposeRoutePath(), {
+        state: withRootComposeDraftSlotId(null, leftDraftSlotId),
+      });
+      return true;
+    },
+    0,
+    !isCompactViewport,
+  );
   useAppCommandHandler("settings.open", () => {
     void navigate(settingsRoutePath);
     return true;
