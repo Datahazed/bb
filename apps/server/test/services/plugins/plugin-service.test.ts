@@ -650,7 +650,7 @@ describe("plugin service", () => {
     await after.stop();
   });
 
-  it("keeps a persisted 0.4.17 scaffold plugin running after the 0.4.18 SDK upgrade", async () => {
+  it("keeps a persisted 0.4.17 scaffold plugin running after the 0.4.24 SDK upgrade", async () => {
     // Frozen output from the last released scaffold proves an existing user
     // install still clears the compatibility gate after the additive bump.
     // In-repo plugins built against the new SDK would not exercise an upgrade.
@@ -668,7 +668,7 @@ describe("plugin service", () => {
     };
     expect(manifest.engines.bbPluginSdk).toBe(">=0.4.17");
     expect(manifest.devDependencies["@get-bb/plugin-sdk"]).toBe("0.4.17");
-    expect(PLUGIN_SDK_VERSION).toBe("0.4.18");
+    expect(PLUGIN_SDK_VERSION).toBe("0.4.24");
 
     upsertInstalledPlugin(db, {
       id: "sdk-upgrade-fixture",
