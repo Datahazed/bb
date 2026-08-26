@@ -1,6 +1,10 @@
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import type { ShowcaseArchetype, ShowcaseScenes } from "./showcase-archetype";
+import type {
+  ShowcaseArchetype,
+  ShowcaseIconRenderer,
+  ShowcaseScenes,
+} from "./showcase-archetype";
 import { accentInk, accentTint, neutral } from "./showcase-tokens";
 
 /**
@@ -28,6 +32,7 @@ export function ShowcaseFrame({
   badge,
   rail,
   reducedMotion = false,
+  renderIcon = (name, className) => <Icon name={name} className={className} />,
   className,
 }: {
   archetypes: readonly ShowcaseArchetype[];
@@ -40,6 +45,7 @@ export function ShowcaseFrame({
   /** Static rail glyphs. Omit to render the window without a nav rail. */
   rail?: readonly IconName[];
   reducedMotion?: boolean;
+  renderIcon?: ShowcaseIconRenderer;
   className?: string;
 }) {
   const active = archetypes[activeIndex] ?? archetypes[0];
@@ -101,7 +107,7 @@ export function ShowcaseFrame({
                 className="flex size-5 items-center justify-center rounded-md"
                 style={{ color: neutral(30) }}
               >
-                <Icon name={name} className="size-3" />
+                {renderIcon(name, "size-3")}
               </span>
             ))}
             <span
@@ -120,7 +126,7 @@ export function ShowcaseFrame({
                 color: accentInk(accent, 62),
               }}
             >
-              <Icon name={active.icon} className="size-3" />
+              {renderIcon(active.icon, "size-3")}
             </span>
           </div>
         ) : null}

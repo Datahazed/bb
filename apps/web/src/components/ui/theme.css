@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @source "../..";
+/* Tailwind v4 does not auto-scan symlinked workspace packages. Keep the
+ * public Guide, its portable hero, and the hero's shared primitives visible
+ * to the site's utility build. */
+@source "../../../../../packages/plugin-api-map/src";
+@source "../../../../../packages/showcase-hero/src";
+@source "../../../../../packages/shared-ui/src";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -49,6 +55,7 @@
   --color-surface-recessed: var(--surface-recessed);
   --color-surface-recessed-solid: var(--surface-recessed-solid);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-raised-solid: var(--surface-raised-solid);
   --color-surface-scrim: var(--surface-scrim);
   --color-surface-destructive: var(--surface-destructive);
   --color-surface-destructive-border: var(--surface-destructive-border);
@@ -383,6 +390,7 @@
      queued-list scroll fades) that must not double the translucent tint. */
   --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
   --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-raised-solid: color-mix(in oklab, var(--ink) 2.5%, var(--canvas));
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
     in oklab,
@@ -578,6 +586,7 @@
      queued-list scroll fades) that must not double the translucent tint. */
   --surface-recessed-solid: color-mix(in oklab, var(--ink) 6%, var(--canvas));
   --surface-raised: color-mix(in oklab, var(--ink) 2.5%, transparent);
+  --surface-raised-solid: color-mix(in oklab, var(--ink) 2.5%, var(--canvas));
   --surface-scrim: color-mix(in oklab, var(--canvas) 92%, transparent);
   --surface-destructive: color-mix(
     in oklab,

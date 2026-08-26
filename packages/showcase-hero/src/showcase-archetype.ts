@@ -1,13 +1,12 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { IconName } from "@bb/shared-ui/icon";
 
 /**
  * One "here is what you could build" example in a showcase hero.
  *
- * Both the Plugins and Skills browse surfaces answer the same two questions for
- * a newcomer — what can this thing do, and what would mine be — so they share
- * this shape and the engine that renders it. Everything surface-specific (the
- * nouns, the scenes, the prompt prefix) is supplied as content, not forked.
+ * Product surfaces answer the same two questions for a newcomer — what can
+ * this thing do, and what would mine be — so they share this shape and the
+ * engine that renders it. Surface-specific nouns and scenes stay data.
  */
 export interface ShowcaseArchetype {
   id: string;
@@ -28,6 +27,12 @@ export interface ShowcaseArchetype {
   /** Completes the surface's prompt prefix; seeds the composer. */
   brief: string;
 }
+
+/** Host-supplied icon rendering for deterministic SSR or custom icon sets. */
+export type ShowcaseIconRenderer = (
+  name: IconName,
+  className: string,
+) => ReactNode;
 
 /** A mini-window interior. Scenes are components, never image assets. */
 type ShowcaseScene = (props: { accentToken: string }) => ReactElement;
