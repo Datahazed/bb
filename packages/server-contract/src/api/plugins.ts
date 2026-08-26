@@ -1,9 +1,16 @@
 import {
   jsonValueSchema,
-  marketplaceAuthorEntrySchema,
   PLUGIN_CATALOG_CATEGORY_IDS,
   pluginCatalogCategoryIdSchema,
-  type MarketplaceAuthorEntry,
+  pluginListingDraftEntrySchema,
+  pluginListingLifecycleSchema,
+  pluginListingMarketplacePullRequestUrlSchema,
+  pluginListingNoticeSchema,
+  pluginListingRecordSchema,
+  type PluginListingDraftEntry,
+  type PluginListingLifecycle,
+  type PluginListingNotice,
+  type PluginListingRecord,
   type PluginCatalogCategoryId,
 } from "@bb/domain";
 import { z } from "zod";
@@ -260,72 +267,16 @@ export const pluginListResponseSchema = z.object({
 });
 export type PluginListResponse = z.infer<typeof pluginListResponseSchema>;
 
-/** The author-prepared portion of a marketplace v2 entry. */
-export const pluginListingDraftEntrySchema = marketplaceAuthorEntrySchema;
-export type PluginListingDraftEntry = MarketplaceAuthorEntry;
-
-const marketplacePullRequestUrlSchema = z.url().refine((value) => {
-  const url = new URL(value);
-  return (
-    url.protocol === "https:" &&
-    url.hostname === "github.com" &&
-    url.port === "" &&
-    url.username === "" &&
-    url.password === "" &&
-    url.search === "" &&
-    url.hash === "" &&
-    /^\/get-bb\/marketplace\/pull\/[1-9]\d*\/?$/u.test(url.pathname)
-  );
-}, "must be a canonical https://github.com/get-bb/marketplace/pull/<number> URL");
-
-export const pluginListingLifecycleSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("not-published") }),
-  z.object({
-    status: z.literal("draft"),
-    entry: pluginListingDraftEntrySchema,
-  }),
-  z
-    .object({
-      status: z.literal("in-review"),
-      entry: pluginListingDraftEntrySchema,
-      pullRequest: z
-        .object({
-          url: marketplacePullRequestUrlSchema,
-          openedAt: z.number().int().nonnegative(),
-        }),
-    }),
-  z.object({
-    status: z.literal("published"),
-    entryId: z.string().min(1),
-    publishedAt: z.number().int().nonnegative(),
-  }),
-]);
-export type PluginListingLifecycle = z.infer<
-  typeof pluginListingLifecycleSchema
->;
-
-export const pluginListingRecordSchema = z.object({
-  pluginId: z.string().min(1),
-  authorship: z.literal("path"),
-  lifecycle: pluginListingLifecycleSchema,
-});
-export type PluginListingRecord = z.infer<typeof pluginListingRecordSchema>;
-
-const listingNoticeBase = {
-  id: z.string().min(1),
-  pluginId: z.string().min(1),
-  pluginName: z.string().min(1),
-  createdAt: z.number().int().nonnegative(),
+export {
+  pluginListingDraftEntrySchema,
+  pluginListingLifecycleSchema,
+  pluginListingNoticeSchema,
+  pluginListingRecordSchema,
+  type PluginListingDraftEntry,
+  type PluginListingLifecycle,
+  type PluginListingNotice,
+  type PluginListingRecord,
 };
-export const pluginListingNoticeSchema = z.discriminatedUnion("kind", [
-  z.object({ ...listingNoticeBase, kind: z.literal("published") }),
-  z.object({
-    ...listingNoticeBase,
-    kind: z.literal("returned"),
-    pullRequestUrl: z.url(),
-  }),
-]);
-export type PluginListingNotice = z.infer<typeof pluginListingNoticeSchema>;
 
 export const pluginListingListResponseSchema = z.object({
   records: z.array(pluginListingRecordSchema),
@@ -339,7 +290,7 @@ export const pluginListingSaveDraftRequestSchema = z
   .strict();
 export const pluginListingRecordSubmissionRequestSchema = z
   .object({
-    pullRequestUrl: marketplacePullRequestUrlSchema,
+    pullRequestUrl: pluginListingMarketplacePullRequestUrlSchema,
     openedAt: z.number().int().nonnegative(),
   })
   .strict();

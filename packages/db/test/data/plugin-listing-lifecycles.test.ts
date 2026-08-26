@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { PluginListingDraftEntry } from "@bb/server-contract";
+import type { PluginListingDraftEntry } from "@bb/domain";
+import { eq } from "drizzle-orm";
 import {
   consumePluginListingNotice,
   ensurePathPluginListingLifecycles,
@@ -14,6 +15,7 @@ import {
   type DbConnection,
 } from "../../src/index.js";
 import type { UpsertInstalledPluginInput } from "../../src/data/plugins.js";
+import { pluginListingLifecycles } from "../../src/schema.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 const plugin: UpsertInstalledPluginInput = {
@@ -203,5 +205,30 @@ describe("plugin listing lifecycle persistence", () => {
       status: "draft",
       entry: updatedDraft,
     });
+  });
+
+  it("fails clearly when persisted lifecycle or notice JSON is malformed", () => {
+    upsertInstalledPlugin(db, plugin);
+    savePluginListingDraft(db, plugin.id, draft);
+    recordPluginListingSubmission(db, plugin.id, {
+      url: "https://github.com/get-bb/marketplace/pull/42",
+      openedAt: 1_000,
+    });
+    publishPluginListing(db, plugin.id, 2_000);
+
+    db.update(pluginListingLifecycles)
+      .set({
+        lifecycleJson: '{"status":"unknown"}',
+        noticeJson: '{"kind":"unknown"}',
+      })
+      .where(eq(pluginListingLifecycles.pluginId, plugin.id))
+      .run();
+
+    expect(() => getPluginListingLifecycle(db, plugin.id)).toThrow(
+      "invalid persisted plugin listing lifecycle",
+    );
+    expect(() => listPluginListingNotices(db)).toThrow(
+      "invalid persisted plugin listing notice",
+    );
   });
 });

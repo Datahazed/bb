@@ -1,26 +1,59 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
+  PluginListingDraftConflictError,
   pluginListingLifecycleSchema,
   pluginListingNoticeSchema,
+  transitionPluginListingClosedUnmerged,
+  transitionPluginListingDraftSave,
+  transitionPluginListingPublication,
+  transitionPluginListingSubmission,
   type PluginListingDraftEntry,
   type PluginListingLifecycle,
   type PluginListingNotice,
-} from "@bb/server-contract";
+} from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import { installedPlugins, pluginListingLifecycles } from "../schema.js";
+
+export { PluginListingDraftConflictError };
 
 export interface PluginListingLifecycleRow {
   pluginId: string;
   lifecycle: PluginListingLifecycle;
 }
 
-export class PluginListingDraftConflictError extends Error {
-  override readonly name = "PluginListingDraftConflictError";
+function parseStoredJson(json: string, description: string): unknown {
+  try {
+    return JSON.parse(json) as unknown;
+  } catch (error) {
+    throw new Error(`invalid persisted ${description} JSON`, { cause: error });
+  }
 }
 
 function parseLifecycle(json: string): PluginListingLifecycle {
-  return pluginListingLifecycleSchema.parse(JSON.parse(json));
+  const parsed = pluginListingLifecycleSchema.safeParse(
+    parseStoredJson(json, "plugin listing lifecycle"),
+  );
+  if (!parsed.success) {
+    throw new Error(
+      `invalid persisted plugin listing lifecycle: ${parsed.error.message}`,
+      { cause: parsed.error },
+    );
+  }
+  return parsed.data;
+}
+
+function parseNotice(json: string): PluginListingNotice {
+  const parsed = pluginListingNoticeSchema.safeParse(
+    parseStoredJson(json, "plugin listing notice"),
+  );
+  if (!parsed.success) {
+    throw new Error(
+      `invalid persisted plugin listing notice: ${parsed.error.message}`,
+      { cause: parsed.error },
+    );
+  }
+  return parsed.data;
 }
 
 function currentNotice(
@@ -37,7 +70,7 @@ function currentNotice(
     .get();
   return row === undefined || row.kind === "none"
     ? null
-    : pluginListingNoticeSchema.parse(JSON.parse(row.json));
+    : parseNotice(row.json);
 }
 
 function write(
@@ -154,14 +187,9 @@ export function savePluginListingDraft(
   entry: PluginListingDraftEntry,
 ): PluginListingLifecycle {
   const current = getPluginListingLifecycle(db, pluginId);
-  if (current?.status === "in-review") {
-    throw new PluginListingDraftConflictError(
-      `plugin ${JSON.stringify(pluginId)} already has a listing in review`,
-    );
-  }
-  // A published listing deliberately starts a fresh draft for Edit listing.
-  const lifecycle = pluginListingLifecycleSchema.parse({
-    status: "draft",
+  const lifecycle = transitionPluginListingDraftSave({
+    current,
+    pluginId,
     entry,
   });
   write(db, pluginId, lifecycle, currentNotice(db, pluginId));
@@ -174,12 +202,9 @@ export function recordPluginListingSubmission(
   pullRequest: { url: string; openedAt: number },
 ): PluginListingLifecycle {
   const current = getPluginListingLifecycle(db, pluginId);
-  if (current?.status !== "draft") {
-    throw new Error(`plugin ${JSON.stringify(pluginId)} has no listing draft`);
-  }
-  const lifecycle = pluginListingLifecycleSchema.parse({
-    status: "in-review",
-    entry: current.entry,
+  const lifecycle = transitionPluginListingSubmission({
+    current,
+    pluginId,
     pullRequest,
   });
   write(db, pluginId, lifecycle, currentNotice(db, pluginId));
@@ -192,20 +217,11 @@ export function publishPluginListing(
   at: number,
 ): PluginListingLifecycle {
   const current = getPluginListingLifecycle(db, pluginId);
-  if (current?.status !== "in-review") {
-    throw new Error(`plugin ${JSON.stringify(pluginId)} is not in review`);
-  }
-  const lifecycle = pluginListingLifecycleSchema.parse({
-    status: "published",
-    entryId: current.entry.id,
-    publishedAt: at,
-  });
-  const notice = pluginListingNoticeSchema.parse({
-    id: `pln_${nanoid()}`,
-    kind: "published",
+  const { lifecycle, notice } = transitionPluginListingPublication({
+    current,
     pluginId,
-    pluginName: current.entry.displayName,
-    createdAt: at,
+    at,
+    noticeId: `pln_${nanoid()}`,
   });
   write(db, pluginId, lifecycle, notice);
   return lifecycle;
@@ -217,20 +233,11 @@ export function returnPluginListingToDraft(
   at: number,
 ): PluginListingLifecycle {
   const current = getPluginListingLifecycle(db, pluginId);
-  if (current?.status !== "in-review") {
-    throw new Error(`plugin ${JSON.stringify(pluginId)} is not in review`);
-  }
-  const lifecycle = pluginListingLifecycleSchema.parse({
-    status: "draft",
-    entry: current.entry,
-  });
-  const notice = pluginListingNoticeSchema.parse({
-    id: `pln_${nanoid()}`,
-    kind: "returned",
+  const { lifecycle, notice } = transitionPluginListingClosedUnmerged({
+    current,
     pluginId,
-    pluginName: current.entry.displayName,
-    pullRequestUrl: current.pullRequest.url,
-    createdAt: at,
+    at,
+    noticeId: `pln_${nanoid()}`,
   });
   write(db, pluginId, lifecycle, notice);
   return lifecycle;
@@ -244,7 +251,7 @@ export function listPluginListingNotices(
     .from(pluginListingLifecycles)
     .where(ne(pluginListingLifecycles.noticeKind, "none"))
     .all()
-    .map((row) => pluginListingNoticeSchema.parse(JSON.parse(row.json)));
+    .map((row) => parseNotice(row.json));
 }
 
 export function consumePluginListingNotice(
