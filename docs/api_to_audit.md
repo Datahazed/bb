@@ -272,6 +272,7 @@ ever needs two configured differently. For `acpLaunchSpecSchema`: the shape
 is stored in the ACP plugin's `customAgents` setting and in registrations'
 bridge options, so a change is a migration of stored agents — decide what a
 plugin is owed when the spec grows a field.
+
 ## `PluginProviderDeclaration.experimental_nativeSkillRoots`
 
 **Kept experimental (2026-08-22).** every first-party provider declares it now (stabilization S5 moved the daemon's per-provider scan table here), but no third-party agent has validated the relative-path / 32-root rule or the per-root options, and the split between a global declaration and the per-workspace resolver (`experimental_resolvesNativeRoots`) is one release old.
@@ -882,7 +883,13 @@ Before stabilization, audit:
   statuses;
 - persistence expectations across full app reloads and multiple windows;
 - validation, accessibility labels, reduced motion, and cleanup on plugin
-  reload/disable/removal.
+  reload/disable/removal;
+- the name of `PluginComposerThreadRowStatus.tone`. The field is a state the
+  plugin reports (`default | running | success | error`), not a tone: the host
+  maps it to both a color and an animation (`running` pulses in the success
+  color; `success` and `error` are static; omitted is muted). `state` is the
+  candidate rename. Nothing under `plugins/*` sets a status today, so the
+  rename is free until the prefix drops.
 
 ## `bb.providers.register` (`experimental_bridgeOptions`, `experimental_visibility`, and the `experimental_providerBridge` artifact export)
 
