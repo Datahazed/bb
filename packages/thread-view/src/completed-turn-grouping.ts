@@ -332,16 +332,33 @@ export function groupCompletedTurnMessages(
       messages,
       completionIsContextOnly ? undefined : turn.terminalMessage,
     );
+  const messageBoundSummaryItems = groupCompletedTurnSummaryMessages(
+    turn,
+    summaryMessages,
+    terminalMessages[0],
+    !completionIsContextOnly && !messageBoundsOnly,
+    contextOnlyMessageSeqs,
+  );
+  // A byte slice can contain only nested delegation children while the root
+  // parent starts before the slice. The projection still records that work in
+  // `summaryCount`, but there is no root message from which message bounds can
+  // be derived. Fall back to the turn bounds for exactly that empty-message
+  // case; the server clamps those bounds to the byte slice afterward.
+  const summaryItems =
+    messageBoundsOnly &&
+    summaryMessages.length === 0 &&
+    messageBoundSummaryItems.length === 0 &&
+    turn.summaryCount > 0
+      ? groupCompletedTurnSummaryMessages(
+          turn,
+          summaryMessages,
+          terminalMessages[0],
+          !completionIsContextOnly,
+          contextOnlyMessageSeqs,
+        )
+      : messageBoundSummaryItems;
   return {
-    summaryItems: unwrapSingletonContextManagementGroups(
-      groupCompletedTurnSummaryMessages(
-        turn,
-        summaryMessages,
-        terminalMessages[0],
-        !completionIsContextOnly && !messageBoundsOnly,
-        contextOnlyMessageSeqs,
-      ),
-    ),
+    summaryItems: unwrapSingletonContextManagementGroups(summaryItems),
     terminalMessages,
     trailingMessages,
   };

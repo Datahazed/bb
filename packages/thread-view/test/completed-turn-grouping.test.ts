@@ -221,6 +221,25 @@ describe("groupCompletedTurnMessages", () => {
     expect(groups.terminalMessages).toEqual([response]);
   });
 
+  it("falls back to turn bounds when a byte slice contains only nested work", () => {
+    const turn = completedTurn([], undefined, 650);
+    turn.sourceSeqEnd = 1_304;
+    turn.createdAt = 1_304;
+    turn.completedAt = 1_304;
+
+    const groups = groupCompletedTurnMessages(turn, false, undefined, true);
+
+    expect(groups.summaryItems).toMatchObject([
+      {
+        kind: "summary",
+        startedAt: 1,
+        completedAt: 1_304,
+        sourceBounds: "turn",
+        summaryCount: 650,
+      },
+    ]);
+  });
+
   it("keeps an assistant response visible when more assistant text follows it directly", () => {
     const answer = assistantMessage({ id: "answer", seq: 1 });
     const hookReply = assistantMessage({ id: "hook-reply", seq: 2 });
