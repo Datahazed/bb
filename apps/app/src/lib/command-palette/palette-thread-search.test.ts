@@ -69,6 +69,7 @@ function build(
     now: NOW,
     projectNamesById: new Map([["project-1", "Palette project"]]),
     query: "match",
+    recentArchivedThreads: [],
     recentThreads: [],
     scope: "all",
     searchResponse: {
@@ -155,13 +156,24 @@ describe("buildPaletteThreadSearchRows", () => {
     });
   });
 
-  it("labels only an empty query as recent and does not reuse recents for a one-character query", () => {
-    const recent = makeThread("recent");
-    expect(build({ query: "", recentThreads: [recent] })).toMatchObject({
-      isRecent: true,
-      rows: [{ id: "active:recent" }],
+  it("orders active, draft, and archived recents and does not reuse them for a one-character query", () => {
+    const active = makeThread("recent-active");
+    const archived = makeThread("recent-archived", { archivedAt: NOW - 1 });
+    const recents = build({
+      drafts: [makeDraft("recent-draft", "Recent draft")],
+      query: "",
+      recentArchivedThreads: [archived],
+      recentThreads: [active],
     });
-    expect(build({ query: "m", recentThreads: [recent] })).toMatchObject({
+    expect(recents).toMatchObject({
+      isRecent: true,
+      rows: [
+        { id: "active:recent-active" },
+        { id: "draft:recent-draft" },
+        { id: "archived:recent-archived" },
+      ],
+    });
+    expect(build({ query: "m", recentThreads: [active] })).toMatchObject({
       isRecent: false,
       rows: [],
     });

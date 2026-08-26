@@ -37,6 +37,7 @@ interface BuildPaletteThreadSearchRowsArgs {
   now: number;
   projectNamesById: ReadonlyMap<string, string>;
   query: string;
+  recentArchivedThreads: readonly ThreadListEntry[];
   recentThreads: readonly ThreadListEntry[];
   scope: PaletteThreadSearchScope;
   searchResponse: ThreadSearchResponse | undefined;
@@ -137,6 +138,7 @@ export function buildPaletteThreadSearchRows({
   now,
   projectNamesById,
   query,
+  recentArchivedThreads,
   recentThreads,
   scope,
   searchResponse,
@@ -184,8 +186,13 @@ export function buildPaletteThreadSearchRows({
     draftSlotId: item.id,
     messageSeq: null,
   }));
-  const archivedRows =
-    isSearchable && searchResultsAreCurrent
+  const archivedRows = isRecent
+    ? recentArchivedThreads
+        .slice(0, RECENT_THREAD_LIMIT)
+        .map((thread) =>
+          serverRow(thread, [], "archived", projectNamesById, now),
+        )
+    : isSearchable && searchResultsAreCurrent
       ? (searchResponse?.archived.results ?? []).map((result) =>
           serverRow(
             result.thread,
