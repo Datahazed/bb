@@ -90,6 +90,7 @@ import {
   getProjectComposeRoutePath,
   getRootComposeRoutePath,
   isRoutePath,
+  type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import { getBrowserUrlHost } from "@/lib/browser-url";
 import {
@@ -174,7 +175,10 @@ import {
   useAppCommandHandler,
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
-import { useOptionalPaneContext } from "./thread-detail/PaneContext";
+import {
+  useOptionalPaneContext,
+  type PaneContextValue,
+} from "./thread-detail/PaneContext";
 import { useNewThreadDraftLeaveToast } from "@/hooks/useNewThreadDraftLeaveToast";
 import { RootComposePanelCommandHandlers } from "./RootComposePanelCommandHandlers";
 import {
@@ -334,6 +338,39 @@ export function shouldNavigateAfterThreadCreate({
   navigateToThreadAfterCreate,
 }: ShouldNavigateAfterThreadCreateArgs): boolean {
   return isForkDraft || navigateToThreadAfterCreate;
+}
+
+interface FinishRootComposeThreadCreateArgs {
+  navigate: (path: string) => void;
+  paneContext: Pick<
+    PaneContextValue,
+    "navigateInPane" | "paneId" | "resetNewThreadPane"
+  > | null;
+  shouldNavigateToCreatedThread: boolean;
+  thread: ThreadRoutePathArgs;
+}
+
+export function finishRootComposeThreadCreate({
+  navigate,
+  paneContext,
+  shouldNavigateToCreatedThread,
+  thread,
+}: FinishRootComposeThreadCreateArgs): void {
+  const isWorkspacePane =
+    paneContext !== null && paneContext.paneId !== "main";
+
+  if (shouldNavigateToCreatedThread) {
+    if (isWorkspacePane) {
+      paneContext.navigateInPane(thread);
+    } else {
+      navigate(getThreadRoutePath(thread));
+    }
+    return;
+  }
+
+  if (isWorkspacePane) {
+    paneContext.resetNewThreadPane?.();
+  }
 }
 
 function readForkThreadCreateSeedFromLocationState(
@@ -608,14 +645,15 @@ function RootComposeSlotView({ draftSlotId }: RootComposeViewProps) {
       setLastCreatedThreadId(thread.id);
       setForkSeed(null);
       setRootComposeSectionId(null);
-      if (shouldNavigateToCreatedThread) {
-        navigate(
-          getThreadRoutePath({
-            projectId: thread.projectId,
-            threadId: thread.id,
-          }),
-        );
-      }
+      finishRootComposeThreadCreate({
+        navigate,
+        paneContext,
+        shouldNavigateToCreatedThread,
+        thread: {
+          projectId: thread.projectId,
+          threadId: thread.id,
+        },
+      });
     },
     [
       createThread,
@@ -623,6 +661,7 @@ function RootComposeSlotView({ draftSlotId }: RootComposeViewProps) {
       queryClient,
       navigate,
       navigateToThreadAfterCreate,
+      paneContext,
       rootComposeSectionId,
     ],
   );
@@ -742,7 +781,6 @@ function RootComposeSurface({
   } = composer;
   useNewThreadDraftLeaveToast({
     getCurrentDraft: promptDraft.getCurrent,
-    isSplitPane: paneContext?.isSplitPane === true,
   });
   const rootPanelEnvironmentId =
     parsedEnvironment?.type === "reuse"
@@ -889,12 +927,18 @@ function RootComposeSurface({
     "focusPrompt" in location.state &&
     location.state.focusPrompt === true;
   useEffect(() => {
-    if (!shouldFocusPrompt || isPointerCoarse) return;
+    if (!shouldFocusPrompt || !isFocusedPane || isPointerCoarse) return;
     const handle = window.requestAnimationFrame(() => {
       promptBoxRef.current?.focusEnd();
     });
     return () => window.cancelAnimationFrame(handle);
-  }, [isPointerCoarse, location.key, promptBoxRef, shouldFocusPrompt]);
+  }, [
+    isFocusedPane,
+    isPointerCoarse,
+    location.key,
+    promptBoxRef,
+    shouldFocusPrompt,
+  ]);
 
   const mobileRecentThreads = useMemo(
     () => buildMobileRecentThreads({ sidebarNavigation }),
@@ -1999,7 +2043,7 @@ function RootComposeSurface({
 
   const promptBox = renderPromptBox({
     id: "root-compose-prompt",
-    autoFocus: !isProviderCliVersionBlocked,
+    autoFocus: isFocusedPane && !isProviderCliVersionBlocked,
     banner: promptBanner,
     header: promptHeader,
     blockedReason: isProviderCliVersionBlocked

@@ -19,6 +19,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useRouteState } from "@/hooks/useRouteState";
 import {
+  getRootComposeRoutePath,
   getThreadRoutePath,
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
@@ -122,6 +123,8 @@ import {
 } from "@/components/ui/context-selection";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
 import { wsManager } from "@/lib/ws";
+import { createNewThreadDraftSlotId } from "@/lib/prompt-draft-slots";
+import { withRootComposeDraftSlotId } from "@/lib/root-compose-location-state";
 
 const LazyPluginPanelRightPanelHost = lazy(() =>
   import("@/components/plugin/PluginPanelRightPanelHost").then(
@@ -161,6 +164,7 @@ type BeginPaneDrag = (
 const EMPTY_PATH: SplitPath = [];
 
 type NavigateInPane = (paneId: string, thread: ThreadRoutePathArgs) => void;
+type ResetNewThreadPane = (paneId: string) => void;
 
 /**
  * Renders the 1–8 thread panes that live in the main content area. It bridges
@@ -406,6 +410,30 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       navigate(getThreadRoutePath(thread));
     },
     [navigate, setLayout],
+  );
+
+  const resetNewThreadPane = useCallback<ResetNewThreadPane>(
+    (paneId) => {
+      const current = store.get(splitLayoutAtom);
+      if (current === null || findPane(current.root, paneId) === null) return;
+      const draftSlotId = createNewThreadDraftSlotId();
+      const replaced = replacePaneContent(current, paneId, {
+        kind: "new-thread",
+        draftSlotId,
+      });
+      const next =
+        current.focusedPaneId === paneId
+          ? replaced
+          : setFocus(replaced, current.focusedPaneId);
+      store.set(splitLayoutAtom, next);
+      if (current.focusedPaneId === paneId) {
+        void navigate(getRootComposeRoutePath(), {
+          replace: true,
+          state: withRootComposeDraftSlotId(null, draftSlotId),
+        });
+      }
+    },
+    [navigate, store],
   );
 
   // Focusing a pane rewrites the URL with replace (focus changes shouldn't spam
@@ -670,6 +698,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
           isTopRow
           ownsWindowTopLeft
           onNavigateInPane={navigateInPane}
+          onResetNewThreadPane={resetNewThreadPane}
         />
       </>
     );
@@ -708,6 +737,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
             onMovePaneToSide={movePaneToSide}
             onResize={resize}
             onNavigateInPane={navigateInPane}
+            onResetNewThreadPane={resetNewThreadPane}
             onBeginPaneDrag={beginPaneDrag}
             onPruneStalePane={pruneStalePane}
           />
@@ -792,6 +822,7 @@ interface SplitTreeProps {
     fraction: number,
   ) => void;
   onNavigateInPane: NavigateInPane;
+  onResetNewThreadPane: ResetNewThreadPane;
   onBeginPaneDrag: BeginPaneDrag;
   onPruneStalePane: (paneId: string) => void;
 }
@@ -855,6 +886,7 @@ function SplitTree(props: SplitTreeProps) {
               : isTopRow && isLeftEdge
           }
           onNavigateInPane={props.onNavigateInPane}
+          onResetNewThreadPane={props.onResetNewThreadPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
         />
         {/* Recede inactive pane bodies without adding another boundary. Pane
@@ -934,6 +966,7 @@ interface WorkspacePaneContentProps {
   isTopRow: boolean;
   ownsWindowTopLeft: boolean;
   onNavigateInPane: NavigateInPane;
+  onResetNewThreadPane?: ResetNewThreadPane;
   // Absent for the single-pane surface — a lone pane has nothing to reorder.
   onBeginPaneDrag?: BeginPaneDrag;
 }
@@ -953,6 +986,7 @@ function WorkspacePaneContent({
   isTopRow,
   ownsWindowTopLeft,
   onNavigateInPane,
+  onResetNewThreadPane,
   onBeginPaneDrag,
 }: WorkspacePaneContentProps) {
   const navigateInPane = useCallback(
@@ -966,6 +1000,13 @@ function WorkspacePaneContent({
             onBeginPaneDrag(paneId, event, label)
         : undefined,
     [onBeginPaneDrag, paneId],
+  );
+  const resetNewThreadPane = useMemo(
+    () =>
+      onResetNewThreadPane
+        ? () => onResetNewThreadPane(paneId)
+        : undefined,
+    [onResetNewThreadPane, paneId],
   );
   const secondaryPanelHost = useMemo<PaneSecondaryPanelRegistration | null>(
     () =>
@@ -992,6 +1033,7 @@ function WorkspacePaneContent({
       isTopRow,
       ownsWindowTopLeft,
       navigateInPane,
+      resetNewThreadPane,
       beginPaneDrag,
     }),
     [
@@ -1002,6 +1044,7 @@ function WorkspacePaneContent({
       isTopRow,
       ownsWindowTopLeft,
       navigateInPane,
+      resetNewThreadPane,
       onRequestClose,
       isMaximized,
       onToggleMaximize,
