@@ -965,6 +965,10 @@ function ensureTimelineWindowWholeItemRows(
   // turns (a resumed ACP session restarts its synthetic id counter), and a
   // thread-wide span for such an id makes every window disown the item.
   const windowItems = new Map<string, ScopedItemRef>();
+  const itemLifecycle = new Map<
+    string,
+    { hasCompleted: boolean; hasStarted: boolean }
+  >();
   for (const row of args.rows) {
     if (
       row.itemId !== null &&
@@ -972,19 +976,43 @@ function ensureTimelineWindowWholeItemRows(
       row.sequence >= args.sequenceStart
     ) {
       const ref = storedEventRowItemRef(row);
-      windowItems.set(scopedItemRefKey(ref), ref);
+      const key = scopedItemRefKey(ref);
+      windowItems.set(key, ref);
+      const lifecycle = itemLifecycle.get(key) ?? {
+        hasCompleted: false,
+        hasStarted: false,
+      };
+      if (row.type === "item/started") {
+        lifecycle.hasStarted = true;
+      }
+      if (row.type === "item/completed") {
+        lifecycle.hasCompleted = true;
+      }
+      itemLifecycle.set(key, lifecycle);
     }
   }
   if (windowItems.size === 0) {
     return { rows: [...args.rows], sourceEndExtensions: [] };
   }
 
-  // Spans, not lifecycle rows. An item emits between its start and its end —
-  // output deltas, reasoning text, tool progress — and an unfinished item has
-  // no end at all, so "does this item reach past the cut" cannot be answered
-  // from `item/started` and `item/completed`.
+  // Fully contained lifecycle pairs cannot cross either edge. Ask SQLite for
+  // global spans only when the selected window is missing an endpoint. This
+  // keeps ordinary completed commands on the bounded window read instead of
+  // putting every item id from every older page into another GROUP BY query.
+  // Delta-only provider items remain ambiguous and therefore stay in this set.
+  const ambiguousItems = [...windowItems].flatMap(([key, ref]) => {
+    const lifecycle = itemLifecycle.get(key);
+    return lifecycle?.hasStarted && lifecycle.hasCompleted ? [] : [ref];
+  });
+  if (ambiguousItems.length === 0) {
+    return { rows: [...args.rows], sourceEndExtensions: [] };
+  }
+
+  // Spans, not only lifecycle rows. An ambiguous item can emit output deltas,
+  // reasoning text, or tool progress between its endpoints, and an unfinished
+  // item has no end at all.
   const spans = listItemEventSpansByItems(db, {
-    items: [...windowItems.values()],
+    items: ambiguousItems,
     threadId: args.threadId,
   });
   const itemKeysOwnedByNewerWindow = new Set<string>();
@@ -1887,10 +1915,27 @@ function selectStandardTimelineEventRows(
     })
       ? byteBoundaryContextRowCandidate
       : null;
+  // Only a turn whose lifecycle crosses the byte window's upper edge can
+  // contribute a root assistant message beyond that edge. Querying every turn
+  // merely present in the page repeats two nearest-message lookups per turn,
+  // even though completed in-window turns cannot possibly supply this
+  // boundary context.
+  const byteBoundaryTurnIds =
+    byteWindowSequenceEnd === null
+      ? []
+      : [...windowTurnIds].filter((turnId) => {
+          const completedRow = selectedRowsWithParentedTurnLifecycle.find(
+            (row) => row.type === "turn/completed" && row.turnId === turnId,
+          );
+          return (
+            completedRow === undefined ||
+            completedRow.sequence > byteWindowSequenceEnd
+          );
+        });
   const futureAssistantContextRows =
     byteWindowSequenceEnd === null
       ? []
-      : [...windowTurnIds].flatMap((turnId) => {
+      : byteBoundaryTurnIds.flatMap((turnId) => {
           const context = findStoredRootTurnAssistantMessageContextRows(db, {
             afterSequence: byteWindowSequenceEnd,
             beforeSequence: byteWindowSequenceEnd + 1,
