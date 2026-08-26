@@ -186,6 +186,12 @@ export const OFFICIAL_PLUGINS = [
     defaultEnabled: true,
     category: "Workflow management",
   },
+  {
+    name: "sceneseed",
+    pluginId: "sceneseed",
+    defaultEnabled: true,
+    category: "Interface",
+  },
 ].map(
   (plugin): BundledPluginDefinition => ({
     ...plugin,

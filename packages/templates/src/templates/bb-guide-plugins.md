@@ -159,6 +159,22 @@ label-link/name change, active-thread change, or project-prefix change invalidat
 outstanding cursor; restart without `--cursor` instead of accepting a mixed
 snapshot.
 
+The SceneSeed plugin is an opt-in official plugin bundled with the app:
+`bb plugin install sceneseed`. It turns prompt cards into bounded, dimensional
+scenes and exposes the same durable canvases to agents through its CLI:
+
+  bb sceneseed list
+  bb sceneseed show <canvas-id> --json
+  bb sceneseed add <canvas-id> --prompt <text> [--x <number>] [--y <number>]
+  bb sceneseed wait <job-id>
+  bb sceneseed cancel <job-id>
+  bb sceneseed remove-object <canvas-id> <object-id>
+
+SceneSeed stores prompts, scene graphs, transforms, and job state in its
+private plugin database. Generated scenes cannot contain executable code,
+URLs, files, remote assets, or shaders. Use **Delete all canvas data** in its
+settings to archive its hidden canvas threads and erase the stored canvases.
+
 The builtin Secrets plugin provides a secure credential form and guarded
 dotenv reconciliation:
 
@@ -174,7 +190,7 @@ added/updated/unchanged counts.
                                  the app plus every registered marketplace
                                  catalog
   bb plugin install <entry>      Install a bundled official plugin by name
-                                 (github, docs, memory, tasks),
+                                 (github, docs, memory, tasks, sceneseed),
                                  <entry-id>@<marketplace>, a Git repository
                                  URL, local path, builtin:<name>,
                                  git:<url>[@<ref|semver-range>], or
@@ -331,13 +347,14 @@ rollback, and remove keep working per plugin.
 
 BB Official plugins
 
-BB's official plugins — GitHub, Docs, Memory, and Tasks — ship bundled inside
-the app itself. They appear in Extensions → Plugins → Browse
+BB's official plugins — GitHub, Docs, Memory, Tasks, and SceneSeed — ship
+bundled inside the app itself. They appear in Extensions → Plugins → Browse
 and install with one click from the local bundled copy: no network, no
 download, no separate release. Install from the CLI by bare name
 (`bb plugin install github`, `bb plugin install docs`, `bb plugin install
-memory`, or `bb plugin install tasks`). Installed official plugins are pinned
-to the bundled copy and update automatically when the BB app updates.
+memory`, `bb plugin install tasks`, or `bb plugin install sceneseed`). Installed
+official plugins are pinned to the bundled copy and update automatically when
+the BB app updates.
 
 The BB Community marketplace (reserved name `bb-community`) lists reviewed
 plugins that live outside the app bundle. bb reads its manifest from
@@ -776,9 +793,9 @@ in a checkout). The builtin `inline-vis` plugin renders
 path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
 Its card header includes an open-in-sidebar action for the source HTML file.
 The `plugins/` directory contains every bundled plugin: the auto-installed
-builtins and the store-only BB Official GitHub, Docs, Memory, and Tasks
-plugins. The `examples/plugins/` reference plugins cover slack-bot (webhook
-bot), agent-enrichment (agent surfaces), and composer-customization (all
+builtins and the store-only BB Official GitHub, Docs, Memory, Tasks, and
+SceneSeed plugins. The `examples/plugins/` reference plugins cover slack-bot
+(webhook bot), agent-enrichment (agent surfaces), and composer-customization (all
 composer regions). Thread Hover
 Cards installs from the BB Community marketplace (source: the bb-plugins
 repo).
