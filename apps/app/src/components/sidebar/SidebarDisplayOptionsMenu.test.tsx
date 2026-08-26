@@ -18,6 +18,10 @@ import {
   sidebarTopLevelSectionOrderAtom,
 } from "./sidebarTopLevelSectionPreferences";
 import { sidebarThreadLifecycleSelectionAtom } from "./sidebarThreadLifecycle";
+import {
+  sidebarExtensionsVisibleAtom,
+  sidebarNewThreadVisibleAtom,
+} from "./sidebarTopRegionItemPreferences";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
@@ -49,6 +53,8 @@ function renderMenu({
     "thread-list",
   ]);
   store.set(hiddenSidebarTopLevelSectionIdsAtom, []);
+  store.set(sidebarNewThreadVisibleAtom, true);
+  store.set(sidebarExtensionsVisibleAtom, true);
   render(
     <QueryClientProvider client={queryClient}>
       <Provider store={store}>
@@ -96,7 +102,13 @@ describe("SidebarDisplayOptionsMenu lifecycle filter", () => {
         .getAllByRole("group")
         .map((group) => group.getAttribute("aria-label"))
         .filter(Boolean),
-    ).toEqual(["Organize", "Sort by", "Show", "Sidebar sections"]);
+    ).toEqual([
+      "Organize",
+      "Sort by",
+      "Show",
+      "Sidebar sections",
+      "Sidebar items",
+    ]);
     expect(getShowItem("Active").textContent).toContain("8");
     expect(getShowItem("Drafts").textContent).toContain("4");
     expect(getShowItem("Archived").textContent).toContain("17");
@@ -152,6 +164,42 @@ describe("SidebarDisplayOptionsMenu lifecycle filter", () => {
     expect(getShowItem("Archived").textContent).toContain("—");
     expect(await screen.findByText("9")).toBeDefined();
     expect(sdk.threads.count).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("SidebarDisplayOptionsMenu fixed sidebar items", () => {
+  it("renders the item toggles last, defaults both on, and keeps the menu open while toggling", async () => {
+    const store = renderMenu();
+    openMenu();
+
+    await screen.findByRole("group", { name: "Sidebar items" });
+    expect(
+      screen
+        .getAllByRole("group")
+        .map((group) => group.getAttribute("aria-label"))
+        .filter(Boolean),
+    ).toEqual([
+      "Organize",
+      "Sort by",
+      "Show",
+      "Sidebar sections",
+      "Sidebar items",
+    ]);
+
+    const group = screen.getByRole("group", { name: "Sidebar items" });
+    const newThread = within(group).getByRole("menuitemcheckbox", {
+      name: "New thread",
+    });
+    const extensions = within(group).getByRole("menuitemcheckbox", {
+      name: "Extensions",
+    });
+    expect(newThread.getAttribute("data-state")).toBe("checked");
+    expect(extensions.getAttribute("data-state")).toBe("checked");
+
+    fireEvent.click(extensions);
+    expect(store.get(sidebarExtensionsVisibleAtom)).toBe(false);
+    expect(store.get(sidebarNewThreadVisibleAtom)).toBe(true);
+    expect(screen.getByRole("group", { name: "Sidebar items" })).toBeDefined();
   });
 });
 

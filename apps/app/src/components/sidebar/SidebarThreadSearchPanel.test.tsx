@@ -437,6 +437,32 @@ describe("ProjectListActionButtons", () => {
     expect(screen.queryByRole("button", { name: "Split" })).toBeNull();
   });
 
+  it("removes only the New thread row while preserving the search escape hatch", () => {
+    const inputRef = createRef<HTMLInputElement>();
+
+    render(
+      <ProjectListActionButtons
+        onNewChat={vi.fn()}
+        showNewThread={false}
+        threadSearch={{
+          activeDescendantId: undefined,
+          inputRef,
+          isActive: false,
+          onActivate: vi.fn(),
+          onClose: vi.fn(),
+          onQueryChange: vi.fn(),
+          query: "",
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /^New thread/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Split" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /^Search threads/ }),
+    ).toBeDefined();
+  });
+
   it("shows the compose pane position when New thread is open in a split", () => {
     const store = createStore();
     store.set(splitLayoutAtom, {

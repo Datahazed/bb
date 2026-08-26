@@ -75,6 +75,10 @@ import {
   sidebarTopLevelSectionOrderAtom,
   type SidebarTopLevelSectionId,
 } from "./sidebarTopLevelSectionPreferences";
+import {
+  sidebarExtensionsVisibleAtom,
+  sidebarNewThreadVisibleAtom,
+} from "./sidebarTopRegionItemPreferences";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
@@ -194,6 +198,8 @@ export function AppSidebar({
   const hiddenTopLevelSectionIds = useAtomValue(
     hiddenSidebarTopLevelSectionIdsAtom,
   );
+  const showNewThread = useAtomValue(sidebarNewThreadVisibleAtom);
+  const showExtensions = useAtomValue(sidebarExtensionsVisibleAtom);
   const pluginNavPanels = usePluginNavPanelChrome();
 
   const openSidebarForThreadSearch = useCallback(() => {
@@ -430,6 +436,7 @@ export function AppSidebar({
                 newThreadSplit={newThreadSplit}
                 onNewChat={handleNewChat}
                 onSplit={isCompactViewport ? undefined : handleSplit}
+                showNewThread={showNewThread}
                 threadSearch={{
                   activeDescendantId: threadSearch.activeDescendantId,
                   inputRef: threadSearch.inputRef,
@@ -440,7 +447,7 @@ export function AppSidebar({
                   query: threadSearch.query,
                 }}
               />
-              {toolsRoutePath ? (
+              {toolsRoutePath && showExtensions ? (
                 <ExtensionsNavSidebarItem
                   routePath={toolsRoutePath}
                   onNavigate={closeOnMobile}

@@ -185,6 +185,10 @@ import {
   SIDEBAR_TOP_LEVEL_SECTION_DEFINITIONS,
 } from "./sidebarTopLevelSectionPreferences";
 import {
+  sidebarExtensionsVisibleAtom,
+  sidebarNewThreadVisibleAtom,
+} from "./sidebarTopRegionItemPreferences";
+import {
   isDefaultSidebarThreadLifecycleSelection,
   builtInSidebarDraftRowsVisibleAtom,
   getBuiltInSidebarLifecycleRenderState,
@@ -209,6 +213,7 @@ interface ProjectListActionButtonsProps {
   };
   onNewChat?: () => void;
   onSplit?: () => void;
+  showNewThread?: boolean;
   threadSearch?: SidebarThreadSearchInputController;
 }
 
@@ -729,6 +734,12 @@ export function SidebarDisplayOptionsMenu({
   const [hiddenTopLevelSectionIds, setHiddenTopLevelSectionIds] = useAtom(
     hiddenSidebarTopLevelSectionIdsAtom,
   );
+  const [showNewThread, setShowNewThread] = useAtom(
+    sidebarNewThreadVisibleAtom,
+  );
+  const [showExtensions, setShowExtensions] = useAtom(
+    sidebarExtensionsVisibleAtom,
+  );
   const [lifecycleSelection, setLifecycleSelection] = useAtom(
     sidebarThreadLifecycleSelectionAtom,
   );
@@ -905,6 +916,26 @@ export function SidebarDisplayOptionsMenu({
             );
           })}
         </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
+          Sidebar items
+        </DropdownMenuLabel>
+        <DropdownMenuGroup aria-label="Sidebar items">
+          <DropdownMenuCheckboxItem
+            checked={showNewThread}
+            onSelect={(event) => event.preventDefault()}
+            onCheckedChange={(shown) => setShowNewThread(shown === true)}
+          >
+            New thread
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={showExtensions}
+            onSelect={(event) => event.preventDefault()}
+            onCheckedChange={(shown) => setShowExtensions(shown === true)}
+          >
+            Extensions
+          </DropdownMenuCheckboxItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -995,6 +1026,7 @@ export function ProjectListActionButtons({
   newThreadSplit,
   onNewChat,
   onSplit,
+  showNewThread = true,
   threadSearch,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
@@ -1050,74 +1082,81 @@ export function ProjectListActionButtons({
           </Button>
         </div>
       ) : (
-        <div className="flex min-w-0 items-center gap-0.5">
-          <div
-            className={cn(
-              "relative min-w-0 flex-1",
-              SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-            )}
-          >
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
-              onPointerDown={newThreadSplit?.onPointerDown}
-              onClick={(event) => {
-                if (event.metaKey || event.ctrlKey) {
-                  newThreadSplit?.openInSplit();
-                  return;
-                }
-                onNewChat?.();
-              }}
-              disabled={isNewChatDisabled}
-              aria-label={
-                newThreadShortcut
-                  ? `New thread (${newThreadShortcut.label})`
-                  : "New thread"
-              }
-              aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
+        <div
+          className={cn(
+            "flex min-w-0 items-center gap-0.5",
+            !showNewThread && "justify-end",
+          )}
+        >
+          {showNewThread ? (
+            <div
+              className={cn(
+                "relative min-w-0 flex-1",
+                SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+              )}
             >
-              <Icon name="MessageSquarePlus" />
-              <span
-                className={cn(
-                  "flex min-w-0 flex-1 items-center gap-1.5",
-                  onSplit && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
-                )}
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
+                onPointerDown={newThreadSplit?.onPointerDown}
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey) {
+                    newThreadSplit?.openInSplit();
+                    return;
+                  }
+                  onNewChat?.();
+                }}
+                disabled={isNewChatDisabled}
+                aria-label={
+                  newThreadShortcut
+                    ? `New thread (${newThreadShortcut.label})`
+                    : "New thread"
+                }
+                aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
               >
-                <span className="min-w-0 truncate text-left">New thread</span>
-                {newThreadSplitIndicator.miniMap ? (
-                  <SplitPaneMiniMap
-                    slots={newThreadSplitIndicator.miniMap}
-                    label="New thread — open in split"
-                  />
-                ) : null}
-                <AppCommandShortcutHint shortcut={newThreadShortcut} />
-              </span>
-            </Button>
-            {onSplit ? (
-              <div
-                className={cn(
-                  SIDEBAR_HOVER_ACTIONS_CLASS,
-                  "absolute inset-y-0 right-0 flex items-center",
-                )}
-              >
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  aria-label="Split"
-                  className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
-                  onClick={onSplit}
+                <Icon name="MessageSquarePlus" />
+                <span
+                  className={cn(
+                    "flex min-w-0 flex-1 items-center gap-1.5",
+                    onSplit && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+                  )}
                 >
-                  <Icon
-                    name="Columns2"
-                    className={COARSE_POINTER_ICON_SIZE_CLASS}
-                  />
-                </Button>
-              </div>
-            ) : null}
-          </div>
+                  <span className="min-w-0 truncate text-left">New thread</span>
+                  {newThreadSplitIndicator.miniMap ? (
+                    <SplitPaneMiniMap
+                      slots={newThreadSplitIndicator.miniMap}
+                      label="New thread — open in split"
+                    />
+                  ) : null}
+                  <AppCommandShortcutHint shortcut={newThreadShortcut} />
+                </span>
+              </Button>
+              {onSplit ? (
+                <div
+                  className={cn(
+                    SIDEBAR_HOVER_ACTIONS_CLASS,
+                    "absolute inset-y-0 right-0 flex items-center",
+                  )}
+                >
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    aria-label="Split"
+                    className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
+                    onClick={onSplit}
+                  >
+                    <Icon
+                      name="Columns2"
+                      className={COARSE_POINTER_ICON_SIZE_CLASS}
+                    />
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {threadSearch ? (
             <span className="flex shrink-0 items-center gap-1">
               <AppCommandShortcutHint shortcut={threadSearchShortcut} />
