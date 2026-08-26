@@ -1081,7 +1081,7 @@ describe("public thread data routes", () => {
       }
 
       const pageResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline/turn-details?turnId=${turnRow.turnId}`,
+        `/api/v1/threads/${thread.id}/timeline/turn-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
       );
       expect(pageResponse.status).toBe(200);
       const page = timelineTurnDetailsResponseSchema.parse(

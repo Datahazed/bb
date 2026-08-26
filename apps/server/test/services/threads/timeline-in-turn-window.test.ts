@@ -854,6 +854,8 @@ describe("in-turn timeline windows", () => {
 
     const detail = buildTimelineTurnDetailsPage(db, thread, {
       includeProviderUnhandledOperations: false,
+      sourceSeqEnd: getLatestThreadSequence(db, { threadId: thread.id }),
+      sourceSeqStart: 2,
       turnId: "turn-1",
     });
     const command = detail.rows.find(
@@ -877,6 +879,8 @@ describe("in-turn timeline windows", () => {
 
     const detail = buildTimelineTurnDetailsPage(db, thread, {
       includeProviderUnhandledOperations: false,
+      sourceSeqEnd: getLatestThreadSequence(db, { threadId: thread.id }),
+      sourceSeqStart: 2,
       turnId: "turn-1",
     });
 
@@ -894,6 +898,8 @@ describe("in-turn timeline windows", () => {
 
     const detail = buildTimelineTurnDetailsPage(db, thread, {
       includeProviderUnhandledOperations: false,
+      sourceSeqEnd: getLatestThreadSequence(db, { threadId: thread.id }),
+      sourceSeqStart: 2,
       turnId: "turn-1",
     });
     const commandOutputs = detail.rows.flatMap((row) =>
@@ -907,6 +913,34 @@ describe("in-turn timeline windows", () => {
         output.includes("more characters truncated"),
       ),
     ).toBe(true);
+  });
+
+  it("keeps paginated detail requests scoped to the requested work range", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: true,
+      itemsPerTurn: [3],
+    });
+
+    const expandedCommandGroups = [
+      { sourceSeqStart: 4, sourceSeqEnd: 5 },
+      { sourceSeqStart: 6, sourceSeqEnd: 9 },
+    ].map((range) => {
+      const detail = buildTimelineTurnDetailsPage(db, thread, {
+        includeProviderUnhandledOperations: false,
+        ...range,
+        turnId: "turn-1",
+      });
+      expect(detail.nextCursor).toBeNull();
+      const commandIds = new Set<string>();
+      collectCommandCallIds(detail.rows, commandIds);
+      return [...commandIds];
+    });
+
+    expect(expandedCommandGroups).toEqual([
+      ["turn-1-item-0"],
+      ["turn-1-item-1", "turn-1-item-2"],
+    ]);
   });
 
   it("pages through a finished turn that exceeds the event-data byte limit", () => {
@@ -966,11 +1000,14 @@ describe("in-turn timeline windows", () => {
     const expandedCommandCallIds = new Set<string>();
     let expandedCommandRowCount = 0;
     let detailCursor: string | undefined;
+    let firstDetailCursor: string | undefined;
     let detailPages = 0;
     do {
       const detail = buildTimelineTurnDetailsPage(db, thread, {
         ...(detailCursor ? { cursor: detailCursor } : {}),
         includeProviderUnhandledOperations: false,
+        sourceSeqEnd: getLatestThreadSequence(db, { threadId: thread.id }),
+        sourceSeqStart: 2,
         turnId: "turn-1",
       });
       detailPages += 1;
@@ -979,12 +1016,24 @@ describe("in-turn timeline windows", () => {
         expandedCommandCallIds,
       );
       detailCursor = detail.nextCursor ?? undefined;
+      firstDetailCursor ??= detailCursor;
       expect(detailPages).toBeLessThan(10);
     } while (detailCursor);
 
     expect(detailPages).toBeGreaterThan(1);
     expect(expandedCommandRowCount).toBe(BYTE_WINDOW_ITEM_COUNT);
     expect(expandedCommandCallIds.size).toBe(BYTE_WINDOW_ITEM_COUNT);
+    expect(firstDetailCursor).toBeDefined();
+    if (!firstDetailCursor) throw new Error("expected a detail cursor");
+    expect(() =>
+      buildTimelineTurnDetailsPage(db, thread, {
+        cursor: firstDetailCursor,
+        includeProviderUnhandledOperations: false,
+        sourceSeqEnd: getLatestThreadSequence(db, { threadId: thread.id }),
+        sourceSeqStart: 3,
+        turnId: "turn-1",
+      }),
+    ).toThrow("Invalid turn details cursor");
   }, 15_000);
 
   it("keeps latest byte-page row identities stable while a turn grows", () => {

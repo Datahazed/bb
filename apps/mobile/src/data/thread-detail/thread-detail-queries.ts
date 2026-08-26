@@ -240,6 +240,8 @@ export function useTimelineTurnDetails(
           hookName: "useTimelineTurnDetails",
           argName: "thread id",
         }),
+        sourceSeqEnd: String(identity.sourceSeqEnd),
+        sourceSeqStart: String(identity.sourceSeqStart),
         turnId: identity.turnId,
         signal,
       }),

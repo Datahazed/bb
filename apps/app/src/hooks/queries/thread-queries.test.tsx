@@ -212,6 +212,8 @@ describe("useThreadTimelineTurnDetails", () => {
     const result = renderHook(
       () =>
         useThreadTimelineTurnDetails({
+          sourceSeqEnd: 2,
+          sourceSeqStart: 1,
           threadId: "thread-1",
           turnId: "turn-1",
         }),
@@ -220,6 +222,13 @@ describe("useThreadTimelineTurnDetails", () => {
 
     await waitFor(() => expect(result.result.current.isSuccess).toBe(true));
     expect(sdk.threads.timelineTurnDetails).toHaveBeenCalledTimes(1);
+    expect(sdk.threads.timelineTurnDetails).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        sourceSeqEnd: "2",
+        sourceSeqStart: "1",
+      }),
+    );
     expect(
       result.result.current.data?.pages.flatMap((page) => page.rows),
     ).toHaveLength(1);

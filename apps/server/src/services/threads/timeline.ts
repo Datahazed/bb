@@ -165,11 +165,10 @@ interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySele
   providerDisplayName?: string;
 }
 
-interface BuildTimelineTurnDetailsPageOptions {
+interface BuildTimelineTurnDetailsPageOptions extends TimelineTurnSummarySelection {
   cursor?: string;
   includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
-  turnId: string;
 }
 
 interface BuildTimelineTurnSummaryDetailsRangeOptions extends BuildTimelineTurnSummaryDetailsOptions {
@@ -2204,6 +2203,8 @@ export function buildTimelineTurnSummaryDetails(
 
 interface TurnDetailsCursorPayload {
   sequenceStart: number;
+  sourceSeqEnd: number;
+  sourceSeqStart: number;
   threadId: string;
   turnId: string;
   version: 1;
@@ -2211,6 +2212,8 @@ interface TurnDetailsCursorPayload {
 
 const turnDetailsCursorPayloadSchema = z.object({
   sequenceStart: z.number().int().nonnegative(),
+  sourceSeqEnd: z.number().int().nonnegative(),
+  sourceSeqStart: z.number().int().nonnegative(),
   threadId: z.string().min(1),
   turnId: z.string().min(1),
   version: z.literal(1),
@@ -2235,7 +2238,9 @@ function parseTurnDetailsCursor(
     !parsed.success ||
     parsed.data.version !== expected.version ||
     parsed.data.threadId !== expected.threadId ||
-    parsed.data.turnId !== expected.turnId
+    parsed.data.turnId !== expected.turnId ||
+    parsed.data.sourceSeqStart !== expected.sourceSeqStart ||
+    parsed.data.sourceSeqEnd !== expected.sourceSeqEnd
   ) {
     throw new ApiError(400, "invalid_request", "Invalid turn details cursor");
   }
@@ -2245,29 +2250,32 @@ function parseTurnDetailsCursor(
 function resolveCompletedTurnDetailBounds(
   db: DbConnection,
   threadId: string,
-  turnId: string,
+  selection: TimelineTurnSummarySelection,
 ): TimelineTurnSummarySelection {
   const started = listStoredTurnStartedRowsByTurnIdsUpToSequence(db, {
     sequenceCutoff: Number.MAX_SAFE_INTEGER,
     threadId,
-    turnIds: [turnId],
+    turnIds: [selection.turnId],
   })[0];
   const completed = listStoredTurnCompletedRowsByTurnIds(db, {
     threadId,
-    turnIds: [turnId],
+    turnIds: [selection.turnId],
   }).at(-1);
   if (!started || !completed || started.sequence > completed.sequence) {
     throw new ApiError(
       400,
       "invalid_request",
-      `Cannot paginate details for incomplete turn ${turnId}`,
+      `Cannot paginate details for incomplete turn ${selection.turnId}`,
     );
   }
-  return {
-    sourceSeqEnd: completed.sequence,
-    sourceSeqStart: started.sequence,
-    turnId,
-  };
+  if (selection.sourceSeqStart > selection.sourceSeqEnd) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Invalid detail range for completed turn ${selection.turnId}`,
+    );
+  }
+  return selection;
 }
 
 export function buildTimelineTurnDetailsPage(
@@ -2275,12 +2283,10 @@ export function buildTimelineTurnDetailsPage(
   thread: Thread,
   options: BuildTimelineTurnDetailsPageOptions,
 ): TimelineTurnDetailsResponse {
-  const bounds = resolveCompletedTurnDetailBounds(
-    db,
-    thread.id,
-    options.turnId,
-  );
+  const bounds = resolveCompletedTurnDetailBounds(db, thread.id, options);
   const cursorIdentity = {
+    sourceSeqEnd: bounds.sourceSeqEnd,
+    sourceSeqStart: bounds.sourceSeqStart,
     threadId: thread.id,
     turnId: options.turnId,
     version: 1 as const,
