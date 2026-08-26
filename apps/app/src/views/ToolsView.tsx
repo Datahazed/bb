@@ -518,10 +518,15 @@ export function ToolsView({
     );
   }, [pluginId]);
 
-  const visiblePluginIds =
-    pluginId === undefined || openedPluginIds.includes(pluginId)
-      ? openedPluginIds
-      : [...openedPluginIds, pluginId];
+  // Memoized because three hooks below depend on it; an inline array would be a
+  // new identity every render and defeat their dependency checks.
+  const visiblePluginIds = useMemo(
+    () =>
+      pluginId === undefined || openedPluginIds.includes(pluginId)
+        ? openedPluginIds
+        : [...openedPluginIds, pluginId],
+    [openedPluginIds, pluginId],
+  );
 
   const navigateToPlugin = useCallback(
     (nextPluginId: string, view?: "browse" | "installed" | "my") => {
