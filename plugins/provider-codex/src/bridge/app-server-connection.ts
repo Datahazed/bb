@@ -132,16 +132,9 @@ export function createCodexAppServerConnection(
     code: number | null;
     signal: NodeJS.Signals | null;
   } | null = null;
+  let killStarted = false;
   let closeGraceTimer: NodeJS.Timeout | null = null;
   let stdoutLines: Interface | null = null;
-
-  function writeLine(message: object): void {
-    const stdin = child.stdin;
-    if (!stdin || stdin.destroyed || !stdin.writable) {
-      return;
-    }
-    stdin.write(JSON.stringify(message) + "\n");
-  }
 
   function rejectAllPending(error: Error): void {
     for (const [, request] of pending) {
@@ -151,6 +144,40 @@ export function createCodexAppServerConnection(
       request.reject(error);
     }
     pending.clear();
+  }
+
+  function killChild(): void {
+    if (finalized || killStarted) {
+      return;
+    }
+    killStarted = true;
+    const escalation = setTimeout(() => {
+      if (!finalized) {
+        child.kill("SIGKILL");
+      }
+    }, KILL_ESCALATION_MS);
+    escalation.unref?.();
+    child.kill("SIGTERM");
+  }
+
+  function handleBrokenStdin(error: Error): void {
+    if (finalized) {
+      return;
+    }
+    const connectionError = new CodexAppServerExitedError(
+      `codex app-server stdin failed: ${error.message}`,
+    );
+    rejectAllPending(connectionError);
+    killChild();
+  }
+
+  function writeLine(message: object): void {
+    const stdin = child.stdin;
+    if (!stdin || stdin.destroyed || !stdin.writable) {
+      handleBrokenStdin(new Error("stdin is not writable"));
+      return;
+    }
+    stdin.write(JSON.stringify(message) + "\n");
   }
 
   function finalizeExit(status: {
@@ -268,6 +295,8 @@ export function createCodexAppServerConnection(
     finalizeExit({ code: null, signal: null });
   });
 
+  child.stdin?.on("error", handleBrokenStdin);
+
   child.on("exit", (code, signal) => {
     exitStatus = { code: code ?? null, signal: signal ?? null };
     // Prefer `close` (stdio fully drained) so the child's final protocol
@@ -339,16 +368,7 @@ export function createCodexAppServerConnection(
     },
 
     kill() {
-      if (finalized) {
-        return;
-      }
-      const escalation = setTimeout(() => {
-        if (!finalized) {
-          child.kill("SIGKILL");
-        }
-      }, KILL_ESCALATION_MS);
-      escalation.unref?.();
-      child.kill("SIGTERM");
+      killChild();
     },
   };
 }

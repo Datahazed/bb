@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { createAgentRuntime } from "./runtime.js";
 import {
@@ -131,11 +131,11 @@ describe("codex process topology", () => {
     return {
       events,
       runtime,
-      childPids: () =>
-        spawnLines().map((line) => Number(line.split(":")[1])),
+      childPids: () => spawnLines().map((line) => Number(line.split(":")[1])),
       spawned: () => spawnLines().length,
       exited: () => readLog().filter((line) => line.startsWith("exit:")).length,
-      bridges: () => new Set(spawnLines().map((line) => line.split(":")[2])).size,
+      bridges: () =>
+        new Set(spawnLines().map((line) => line.split(":")[2])).size,
       bridgeExits,
       launch,
     };
@@ -316,21 +316,62 @@ describe("codex process topology", () => {
   }, 30_000);
 
   it("releases the thread on the bridge when a construction times out on the runtime's side", async () => {
-    // The fake answers thread/start after 800 ms; the runtime gives up at
-    // 200 ms. The bridge still constructs the session (and its child) when
-    // the answer lands — and must be told to drop it.
+    // Keep the runtime's request clock still until the real child is running,
+    // then cross its existing 200 ms deadline deterministically. Starting the
+    // wall clock before a subprocess is scheduled does not prove that a child
+    // was ever under construction — under contention it can be released
+    // before executing its first line, making a spawn/exit assertion
+    // impossible by construction.
+    const realSetTimeout = setTimeout;
+    const sleepReal = (ms: number): Promise<void> =>
+      new Promise((resolve) => {
+        realSetTimeout(resolve, ms);
+      });
     const topology = createCodexTopologyRuntime({
-      fakeScript: { startDelayMs: 800 },
+      fakeScript: { stallThreadStart: true },
       threadCreationTimeoutMs: 200,
     });
     const { runtime } = topology;
-    await expect(startCodexThread(runtime, "t1")).rejects.toThrow(/timed out/i);
+    vi.useFakeTimers();
+    try {
+      const startOutcome = startCodexThread(runtime, "t1").then(
+        (providerThreadId) => ({
+          status: "resolved" as const,
+          providerThreadId,
+        }),
+        (error: unknown) => ({ status: "rejected" as const, error }),
+      );
+      for (let attempt = 0; topology.spawned() === 0; attempt += 1) {
+        if (attempt >= 1_000) {
+          throw new Error("The fake app-server child never started");
+        }
+        await sleepReal(10);
+      }
+
+      await vi.advanceTimersByTimeAsync(201);
+      const outcome = await startOutcome;
+      if (outcome.status === "resolved") {
+        throw new Error(
+          `Expected thread construction to time out, but it resolved as ${outcome.providerThreadId}`,
+        );
+      }
+      expect(outcome.error).toBeInstanceOf(Error);
+      expect(String(outcome.error)).toMatch(/timed out/i);
+    } finally {
+      vi.useRealTimers();
+    }
+
     expect(runtime.hasThread("t1")).toBe(false);
+    const [childPid] = topology.childPids();
+    if (childPid === undefined) {
+      throw new Error("Expected the stalled construction to spawn a child");
+    }
     await waitForRuntimeState({
       label: "the late-constructed child was released",
-      predicate: () => topology.spawned() === 1 && topology.exited() === 1,
+      predicate: () => !isAlive(childPid),
       timeoutMs: 10_000,
     });
+    expect(topology.spawned()).toBe(1);
     expect(runtime.listRunningProviders()).toEqual(["codex"]);
   }, 30_000);
 

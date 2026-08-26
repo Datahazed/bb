@@ -166,6 +166,8 @@ const archivedThreadIds = new Set();
 const processLogPath = script?.processLogPath ?? null;
 /** `startDelayMs`: answer `thread/start` only after this many milliseconds. */
 const startDelayMs = script?.startDelayMs ?? 0;
+/** `stallThreadStart`: leave `thread/start` pending until this process dies. */
+const stallThreadStart = script?.stallThreadStart ?? false;
 
 function logProcessStep(step) {
   if (processLogPath === null) {
@@ -341,6 +343,9 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "thread/start": {
+      if (stallThreadStart) {
+        await new Promise(() => undefined);
+      }
       if (startDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, startDelayMs));
       }
