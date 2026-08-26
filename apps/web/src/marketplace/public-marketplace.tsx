@@ -1,3 +1,4 @@
+import { visiblePluginCategoryChipCount } from "@bb/domain";
 import {
   ArrowDown01Icon,
   ArrowRight01Icon,
@@ -179,33 +180,6 @@ function Shelf({ shelf }: { shelf: MarketplaceShelf }) {
   );
 }
 
-function visibleChipCount(args: {
-  containerWidth: number;
-  allWidth: number;
-  chipWidths: readonly number[];
-  overflowWidths: readonly number[];
-  gap: number;
-}): number {
-  const allWidth =
-    args.allWidth +
-    args.chipWidths.reduce((sum, width) => sum + width, 0) +
-    args.gap * args.chipWidths.length;
-  if (allWidth <= args.containerWidth) return args.chipWidths.length;
-  let used = args.allWidth;
-  for (let visible = 0; visible < args.chipWidths.length; visible += 1) {
-    const next = visible + 1;
-    const hidden = args.chipWidths.length - next;
-    const width =
-      used +
-      args.gap +
-      args.chipWidths[visible]! +
-      (hidden > 0 ? args.gap + (args.overflowWidths[hidden] ?? 0) : 0);
-    if (width > args.containerWidth) return visible;
-    used += args.gap + args.chipWidths[visible]!;
-  }
-  return args.chipWidths.length;
-}
-
 function CategoryChips({
   shelves,
   selected,
@@ -236,11 +210,11 @@ function CategoryChips({
         return;
       }
       setVisibleCount(
-        visibleChipCount({
+        visiblePluginCategoryChipCount({
           containerWidth: container.clientWidth,
           allWidth: all.offsetWidth,
-          chipWidths,
-          overflowWidths: overflowRefs.current.map(
+          categoryWidths: chipWidths,
+          overflowWidthsByHiddenCount: overflowRefs.current.map(
             (element) => element?.offsetWidth ?? 0,
           ),
           gap: 8,

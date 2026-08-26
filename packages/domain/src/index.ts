@@ -28,6 +28,7 @@ export * from "./pending-interactions.js";
 export * from "./legacy-thread-events.js";
 export * from "./plugin-capture.js";
 export * from "./plugin-catalog-category.js";
+export * from "./plugin-discovery.js";
 export * from "./plugin-icon.js";
 export * from "./plugin-id.js";
 export * from "./plugin-manifest.js";

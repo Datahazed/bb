@@ -3,8 +3,6 @@ import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-qu
 import {
   categoryShelves,
   newAndNotableEntries,
-  sortPluginEntries,
-  visibleCategoryChipCount,
 } from "./plugin-browse-discovery";
 
 function entry(
@@ -39,82 +37,51 @@ function entry(
 }
 
 describe("plugin browse discovery projections", () => {
-  it("orders categorized shelves by count and registry ties", () => {
+  it("maps server category labels while excluding v1 fallback entries", () => {
     const shelves = categoryShelves([
-      entry("security", {
-        categoryId: "security",
-        category: "Security",
-      }),
-      entry("agent-a"),
       entry("agent-b"),
+      entry("agent-a"),
       entry("theme-a", {
-        categoryId: "themes-and-appearance",
-        category: "Themes & Appearance",
-      }),
-      entry("theme-b", {
         categoryId: "themes-and-appearance",
         category: "Themes & Appearance",
       }),
       entry("legacy-v1", { categoryId: undefined, category: undefined }),
     ]);
 
-    expect(shelves.map((shelf) => [shelf.id, shelf.entries.length])).toEqual([
-      ["themes-and-appearance", 2],
-      ["agent-tools", 2],
-      ["security", 1],
+    expect(
+      shelves.map((shelf) => [
+        shelf.id,
+        shelf.label,
+        shelf.entries.map(({ entryId }) => entryId),
+      ]),
+    ).toEqual([
+      ["agent-tools", "Agent Tools", ["agent-a", "agent-b"]],
+      ["themes-and-appearance", "Themes & Appearance", ["theme-a"]],
     ]);
   });
 
-  it("uses curated order, then publishedAt when the v2 list is empty", () => {
+  it("uses only categorized official entries for curated app ranks", () => {
     expect(
       newAndNotableEntries([
-        entry("second", { newAndNotableRank: 1 }),
-        entry("first", { newAndNotableRank: 0 }),
+        entry("third-party", { newAndNotableRank: 0, official: false }),
+        entry("official", { newAndNotableRank: 1 }),
+        entry("legacy-v1", {
+          categoryId: undefined,
+          category: undefined,
+          newAndNotableRank: 0,
+        }),
       ]).map((item) => item.entryId),
-    ).toEqual(["first", "second"]);
+    ).toEqual(["official"]);
 
     expect(
       newAndNotableEntries([
-        entry("unknown"),
         entry("older", { publishedAt: "2026-08-20T09:30:00Z" }),
-        entry("newer", { publishedAt: "2026-08-24T09:30:00Z" }),
+        entry("legacy-newer", {
+          categoryId: undefined,
+          category: undefined,
+          publishedAt: "2026-08-24T09:30:00Z",
+        }),
       ]).map((item) => item.entryId),
-    ).toEqual(["newer", "older", "unknown"]);
-  });
-
-  it("keeps unknown metrics after known values instead of fabricating zeros", () => {
-    const entries = [
-      entry("unknown"),
-      entry("smaller", { installCount: 2 }),
-      entry("larger", { installCount: 10 }),
-    ];
-    expect(
-      sortPluginEntries(entries, "most-installed").map((item) => item.entryId),
-    ).toEqual(["larger", "smaller", "unknown"]);
-    expect(
-      sortPluginEntries(
-        [
-          entry("unknown-date"),
-          entry("older", { publishedAt: "2026-08-20T09:30:00Z" }),
-          entry("newer", { publishedAt: "2026-08-24T09:30:00Z" }),
-        ],
-        "recently-added",
-      ).map((item) => item.entryId),
-    ).toEqual(["newer", "older", "unknown-date"]);
-  });
-
-  it("adds overflow only once the exact chip row no longer fits", () => {
-    const widths = {
-      allWidth: 40,
-      categoryWidths: [70, 70, 70],
-      overflowWidthsByHiddenCount: [0, 60, 60, 60],
-      gap: 8,
-    };
-    expect(visibleCategoryChipCount({ ...widths, containerWidth: 274 })).toBe(
-      3,
-    );
-    expect(visibleCategoryChipCount({ ...widths, containerWidth: 273 })).toBe(
-      2,
-    );
+    ).toEqual(["older"]);
   });
 });
