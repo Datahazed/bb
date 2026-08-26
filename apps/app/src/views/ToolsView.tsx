@@ -17,7 +17,6 @@ import {
 // so those icons never flash blank waiting for an on-demand load.
 import "@bb/shared-ui/icon-extended";
 import { useMutation } from "@tanstack/react-query";
-import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
 import { appToast } from "@/components/ui/app-toast";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
@@ -65,6 +64,7 @@ import {
   getPluginsRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
+import { buildEditInstalledPluginPrompt } from "@/lib/plugin-listing-prompts";
 import {
   getToolsOwnedCollectionRoutePath,
   resolveToolsSection,
@@ -296,7 +296,7 @@ function PluginDetailToolView({
       navigate(getRootComposeRoutePath(), {
         state: {
           focusPrompt: true,
-          initialPrompt: buildPluginEditThreadPrompt({
+          initialPrompt: buildEditInstalledPluginPrompt({
             name: plugin.name ?? plugin.id,
             path: plugin.rootDir,
           }),
@@ -646,7 +646,6 @@ export function ToolsView() {
       resizablePanelId?: string;
     }) => (
       <ThreadSecondaryPanel
-        key={pluginId === undefined ? "closed" : "open"}
         activeTab={activePanelTab}
         canUseGitUi={false}
         metadataContent={null}

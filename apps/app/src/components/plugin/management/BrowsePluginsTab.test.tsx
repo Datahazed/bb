@@ -243,7 +243,12 @@ describe("BrowsePluginsTab", () => {
     );
 
     await screen.findByRole("button", { name: "Open Legacy Reviewer details" });
-    expect(screen.getByText("New & notable")).toBeTruthy();
+    const notableShelf = screen.getByText("New & notable").closest("section");
+    if (notableShelf === null) throw new Error("Notable shelf missing");
+    const notableCard = within(notableShelf).getByRole("button", {
+      name: "Open Memory details",
+    }).parentElement;
+    expect(notableCard?.parentElement?.classList.contains("flex-1")).toBe(true);
     expect(screen.getAllByText("Acme Plugins").length).toBeGreaterThan(0);
     const memoryShelf = screen.getByText("Memory & Context").closest("section");
     if (memoryShelf === null) throw new Error("Memory shelf missing");
@@ -445,6 +450,7 @@ describe("BrowsePluginsTab", () => {
 
     const memoryShelf = memoryHeading.closest("section");
     if (memoryShelf === null) throw new Error("Memory shelf missing");
+    expect(memoryShelf.querySelector(".bg-gradient-to-r")).not.toBeNull();
     fireEvent.click(
       within(memoryShelf).getByRole("button", { name: /View all/ }),
     );
@@ -680,11 +686,22 @@ describe("BrowsePluginsTab", () => {
       screen.getByRole("textbox", { name: "Search plugins" }),
     ).toBeTruthy();
     expect(
+      screen
+        .getByRole("textbox", { name: "Search plugins" })
+        .closest("div.w-full")
+        ?.classList.contains("px-[var(--resource-source-shelf-inset)]"),
+    ).toBe(true);
+    expect(
       screen.getAllByText(MEMORY_ENTRY.description).length,
     ).toBeGreaterThan(0);
     expect(
       screen.getAllByText(GITHUB_ENTRY.description).length,
     ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Memory").some((title) =>
+        title.classList.contains("line-clamp-2"),
+      ),
+    ).toBe(true);
     expect(
       screen.getByRole("button", { name: "Filter plugins by category" }),
     ).toBeTruthy();

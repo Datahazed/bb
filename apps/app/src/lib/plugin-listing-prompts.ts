@@ -2,6 +2,18 @@ import type {
   PluginCatalogCategoryId,
   PluginListingLifecycle,
 } from "@bb/server-contract";
+import {
+  type UntrustedPromptField,
+  untrustedPromptDataBlock,
+} from "./untrusted-prompt-data";
+
+function pluginDataBlock(fields: readonly UntrustedPromptField[]): string[] {
+  return untrustedPromptDataBlock({
+    delimiterLabel: "PLUGIN DATA",
+    sourceDescription: "a plugin or registry",
+    fields,
+  });
+}
 
 const CATEGORY_LABELS: Record<PluginCatalogCategoryId, string> = {
   "themes-and-appearance": "Themes & Appearance",
@@ -51,20 +63,34 @@ export function buildSubmitPluginListingPrompt(args: {
   path: string;
   category: string | null;
 }) {
-  const category =
-    args.category === null
-      ? "category [choose category] unless a better fit exists"
-      : `category ${args.category} unless a better fit exists`;
-  return `Submit my plugin ${args.name} (${args.path}) to the BB Community marketplace.
-
-Run the submit-a-plugin skill: confirm it builds and loads on this bb, tag the release, then write the entry — a description that says what it does and when you'd use it, ${category}, icon — and capture listing screenshots with bb plugin screenshot. Show me the entry and screenshots, then open the PR on get-bb/marketplace.`;
+  return [
+    "Submit my plugin identified below to the BB Community marketplace.",
+    ...pluginDataBlock([
+      { label: "Plugin name", value: args.name, maxLength: 200 },
+      { label: "Plugin path", value: args.path, maxLength: 1_024 },
+      {
+        label: "Suggested category",
+        value: args.category ?? "[choose category]",
+        maxLength: 200,
+      },
+    ]),
+    "",
+    "Run the submit-a-plugin skill: confirm it builds and loads on this bb, tag the release, then write the entry — a description that says what it does and when you'd use it, the suggested category unless a better fit exists, icon — and capture listing screenshots with bb plugin screenshot. Show me the entry and screenshots, then open the PR on get-bb/marketplace.",
+  ].join("\n");
 }
 
 export function buildUpdatePluginSubmissionPrompt(args: {
   name: string;
   pullRequestUrl: string;
 }) {
-  return `My ${args.name} submission is in review — get-bb/marketplace PR #${pullRequestNumber(args.pullRequestUrl)}. Bring it up to date with my local plugin: retag if the version moved, refresh the entry and screenshots to match, and fold in this change if I name one: [optional — what to change]. Push to the existing PR branch — no new PR — and leave a PR comment summarizing what changed for the reviewer.`;
+  return [
+    `My plugin submission is in review — get-bb/marketplace PR #${pullRequestNumber(args.pullRequestUrl)}.`,
+    ...pluginDataBlock([
+      { label: "Plugin name", value: args.name, maxLength: 200 },
+    ]),
+    "",
+    "Bring it up to date with my local plugin: retag if the version moved, refresh the entry and screenshots to match, and fold in this change if I name one: [optional — what to change]. Push to the existing PR branch — no new PR — and leave a PR comment summarizing what changed for the reviewer.",
+  ].join("\n");
 }
 
 export function buildPublishPluginUpdatePrompt(args: {
@@ -72,11 +98,42 @@ export function buildPublishPluginUpdatePrompt(args: {
   path: string;
   range: string;
 }) {
-  return `Publish an update to ${args.name} (${args.path}). Confirm it builds and loads, then tag and push the release — the listing covers ${args.range}, so anything in range reaches users automatically. If this version leaves the range, also open a small PR on get-bb/marketplace bumping the entry's range and tell me — that part is reviewed.`;
+  return [
+    "Publish an update to the plugin identified below.",
+    ...pluginDataBlock([
+      { label: "Plugin name", value: args.name, maxLength: 200 },
+      { label: "Plugin path", value: args.path, maxLength: 1_024 },
+      { label: "Published source range", value: args.range, maxLength: 500 },
+    ]),
+    "",
+    "Confirm it builds and loads, then tag and push the release. Anything inside the published source range reaches users automatically. If this version leaves the range, also open a small PR on get-bb/marketplace bumping the entry's range and tell me — that part is reviewed.",
+  ].join("\n");
 }
 
 export function buildEditPluginListingPrompt(name: string) {
-  return `${name} is listed in the BB Community marketplace. Update the listing, not the code: [what to change — description, screenshots, category]. Open a PR on get-bb/marketplace editing only my entry and its assets. No new tag, no version change.`;
+  return [
+    "The plugin identified below is listed in the BB Community marketplace.",
+    ...pluginDataBlock([
+      { label: "Plugin name", value: name, maxLength: 200 },
+    ]),
+    "",
+    "Update the listing, not the code: [what to change — description, screenshots, category]. Open a PR on get-bb/marketplace editing only my entry and its assets. No new tag, no version change.",
+  ].join("\n");
+}
+
+export function buildEditInstalledPluginPrompt(args: {
+  name: string;
+  path: string;
+}) {
+  return [
+    "Edit the installed bb plugin identified below.",
+    ...pluginDataBlock([
+      { label: "Plugin name", value: args.name, maxLength: 200 },
+      { label: "Plugin path", value: args.path, maxLength: 1_024 },
+    ]),
+    "",
+    "I want to ",
+  ].join("\n");
 }
 
 export type PluginListingAction =

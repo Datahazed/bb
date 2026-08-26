@@ -927,11 +927,11 @@ export function ThreadSecondaryPanel({
             <div className="flex min-h-0 flex-1 flex-col">
               {metadataContent}
             </div>
-          ) : (
+          ) : isLayoutOpen ? (
             <EmptyStatePanel className="m-4 rounded-lg">
               This panel view is unavailable.
             </EmptyStatePanel>
-          )}
+          ) : null}
         </div>
       </>
     );

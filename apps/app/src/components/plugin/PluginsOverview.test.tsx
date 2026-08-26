@@ -870,6 +870,11 @@ describe("PluginsOverview", () => {
     expect(screen.getByRole("radio", { name: "All · 3" })).toBeTruthy();
     expect(screen.getByRole("radio", { name: "Automation" })).toBeTruthy();
     expect(screen.getByRole("radio", { name: "Security" })).toBeTruthy();
+    const categoryRow = screen.getByRole("radiogroup", {
+      name: "Filter installed plugins by category",
+    });
+    expect(categoryRow.classList.contains("overflow-hidden")).toBe(true);
+    expect(categoryRow.classList.contains("overflow-x-auto")).toBe(false);
     expect(screen.queryByText("Other")).toBeNull();
 
     fireEvent.click(screen.getByRole("radio", { name: "Automation" }));
