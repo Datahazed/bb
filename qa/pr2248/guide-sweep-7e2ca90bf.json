@@ -1,0 +1,1840 @@
+{
+  "candidate": "7e2ca90bf",
+  "viewports": [
+    {
+      "tag": "mobile",
+      "width": 390,
+      "height": 844,
+      "pages": [
+        {
+          "groupId": "app-shell",
+          "scale": 0.2651,
+          "overflow": {
+            "document": 0,
+            "scroller": 594,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 24,
+            "top": 239.5,
+            "right": 366,
+            "bottom": 430.125,
+            "width": 342,
+            "height": 190.625
+          },
+          "badges": [
+            {
+              "id": "nav-panel",
+              "rect": {
+                "left": 31.180952072143555,
+                "top": 285.67144775390625,
+                "right": 36.482540130615234,
+                "bottom": 290.9730224609375,
+                "width": 5.30158805847168,
+                "height": 5.30157470703125
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-list",
+              "rect": {
+                "left": 31.180952072143555,
+                "top": 354.98968505859375,
+                "right": 36.482540130615234,
+                "bottom": 360.291259765625,
+                "width": 5.30158805847168,
+                "height": 5.30157470703125
+              },
+              "hit": true
+            },
+            {
+              "id": "content-scripts",
+              "rect": {
+                "left": 353.5174865722656,
+                "top": 424.8381042480469,
+                "right": 358.8190612792969,
+                "bottom": 430.13970947265625,
+                "width": 5.30157470703125,
+                "height": 5.301605224609375
+              },
+              "hit": true
+            },
+            {
+              "id": "code-renderers",
+              "rect": {
+                "left": 266.8323974609375,
+                "top": 248.2952423095703,
+                "right": 272.13397216796875,
+                "bottom": 253.59683227539062,
+                "width": 5.30157470703125,
+                "height": 5.3015899658203125
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-panel",
+              "rect": {
+                "left": 286.3778381347656,
+                "top": 248.2952423095703,
+                "right": 291.679443359375,
+                "bottom": 253.59683227539062,
+                "width": 5.301605224609375,
+                "height": 5.3015899658203125
+              },
+              "hit": true
+            },
+            {
+              "id": "file-opener",
+              "rect": {
+                "left": 314.47210693359375,
+                "top": 248.2952423095703,
+                "right": 319.7737121582031,
+                "bottom": 253.59683227539062,
+                "width": 5.301605224609375,
+                "height": 5.3015899658203125
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-row-status",
+              "rect": {
+                "left": 109.64444732666016,
+                "top": 304.22698974609375,
+                "right": 114.94603729248047,
+                "bottom": 309.528564453125,
+                "width": 5.3015899658203125,
+                "height": 5.30157470703125
+              },
+              "hit": true
+            },
+            {
+              "id": "sidebar-footer",
+              "rect": {
+                "left": 61.13492202758789,
+                "top": 416.0904846191406,
+                "right": 66.43650817871094,
+                "bottom": 421.39208984375,
+                "width": 5.301586151123047,
+                "height": 5.301605224609375
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-header",
+              "rect": {
+                "left": 242.9793701171875,
+                "top": 255.31983947753906,
+                "right": 248.2809600830078,
+                "bottom": 260.6214294433594,
+                "width": 5.3015899658203125,
+                "height": 5.3015899658203125
+              },
+              "hit": true
+            },
+            {
+              "id": "timeline-renderers",
+              "rect": {
+                "left": 215.2081756591797,
+                "top": 294.8166809082031,
+                "right": 220.50975036621094,
+                "bottom": 300.1182556152344,
+                "width": 5.30157470703125,
+                "height": 5.30157470703125
+              },
+              "hit": true
+            },
+            {
+              "id": "message-directives",
+              "rect": {
+                "left": 184.61221313476562,
+                "top": 313.5047607421875,
+                "right": 189.91380310058594,
+                "bottom": 318.80633544921875,
+                "width": 5.3015899658203125,
+                "height": 5.30157470703125
+              },
+              "hit": true
+            },
+            {
+              "id": "message-actions",
+              "rect": {
+                "left": 157.62380981445312,
+                "top": 342.00079345703125,
+                "right": 162.92539978027344,
+                "bottom": 347.3023681640625,
+                "width": 5.3015899658203125,
+                "height": 5.30157470703125
+              },
+              "hit": true
+            },
+            {
+              "id": "pending-interaction",
+              "rect": {
+                "left": 242.71429443359375,
+                "top": 405.22222900390625,
+                "right": 248.01588439941406,
+                "bottom": 410.5238037109375,
+                "width": 5.3015899658203125,
+                "height": 5.30157470703125
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "command-palette",
+          "scale": 0.6703,
+          "overflow": {
+            "document": 0,
+            "scroller": 594,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 24,
+            "top": 218.375,
+            "right": 366,
+            "bottom": 814.875,
+            "width": 342,
+            "height": 596.5
+          },
+          "badges": [
+            {
+              "id": "command-palette-actions",
+              "rect": {
+                "left": 105.1815185546875,
+                "top": 364.503662109375,
+                "right": 118.58699035644531,
+                "bottom": 377.9091491699219,
+                "width": 13.405471801757812,
+                "height": 13.405487060546875
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "composer",
+          "scale": 0.4304,
+          "overflow": {
+            "document": 0,
+            "scroller": 594,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 24,
+            "top": 260.625,
+            "right": 366,
+            "bottom": 497.59375,
+            "width": 342,
+            "height": 236.96875
+          },
+          "badges": [
+            {
+              "id": "composer-banners",
+              "rect": {
+                "left": 353.3917541503906,
+                "top": 404.9446716308594,
+                "right": 362,
+                "bottom": 413.55291748046875,
+                "width": 8.608245849609375,
+                "height": 8.608245849609375
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-state",
+              "rect": {
+                "left": 28,
+                "top": 430.4600524902344,
+                "right": 36.608245849609375,
+                "bottom": 439.06829833984375,
+                "width": 8.608245849609375,
+                "height": 8.608245849609375
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-plus-menu",
+              "rect": {
+                "left": 28,
+                "top": 460.58892822265625,
+                "right": 36.608245849609375,
+                "bottom": 469.1971740722656,
+                "width": 8.608245849609375,
+                "height": 8.608245849609375
+              },
+              "hit": true
+            },
+            {
+              "id": "provider-picker",
+              "rect": {
+                "left": 89.45481872558594,
+                "top": 445.95489501953125,
+                "right": 98.06306457519531,
+                "bottom": 454.56317138671875,
+                "width": 8.608245849609375,
+                "height": 8.6082763671875
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-actions",
+              "rect": {
+                "left": 292.273193359375,
+                "top": 446.81573486328125,
+                "right": 300.8814392089844,
+                "bottom": 455.4239807128906,
+                "width": 8.608245849609375,
+                "height": 8.608245849609375
+              },
+              "hit": true
+            },
+            {
+              "id": "mention-provider",
+              "rect": {
+                "left": 105.5683822631836,
+                "top": 420.1301574707031,
+                "right": 114.17662811279297,
+                "bottom": 428.7384033203125,
+                "width": 8.608245849609375,
+                "height": 8.608245849609375
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-rich-text",
+              "rect": {
+                "left": 170.3521728515625,
+                "top": 419.69976806640625,
+                "right": 178.96041870117188,
+                "bottom": 428.3079833984375,
+                "width": 8.608245849609375,
+                "height": 8.60821533203125
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "home",
+          "scale": 0.5422,
+          "overflow": {
+            "document": 0,
+            "scroller": 594,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 24,
+            "top": 239.5,
+            "right": 366,
+            "bottom": 538.109375,
+            "width": 342,
+            "height": 298.609375
+          },
+          "badges": [
+            {
+              "id": "new-thread-panel",
+              "rect": {
+                "left": 351.15582275390625,
+                "top": 318.52923583984375,
+                "right": 362,
+                "bottom": 329.3733825683594,
+                "width": 10.84417724609375,
+                "height": 10.844146728515625
+              },
+              "hit": true
+            },
+            {
+              "id": "homepage-section",
+              "rect": {
+                "left": 212.89285278320312,
+                "top": 368.4123229980469,
+                "right": 223.7370147705078,
+                "bottom": 379.2564697265625,
+                "width": 10.844161987304688,
+                "height": 10.844146728515625
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "settings",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 594,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 24,
+            "top": 218.375,
+            "right": 366,
+            "bottom": 786.875,
+            "width": 342,
+            "height": 568.5
+          },
+          "badges": [
+            {
+              "id": "declarative-settings",
+              "rect": {
+                "left": 333,
+                "top": 340.375,
+                "right": 353,
+                "bottom": 360.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "settings-section",
+              "rect": {
+                "left": 333,
+                "top": 567.875,
+                "right": 353,
+                "bottom": 587.875,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "extensions",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 594,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 24,
+            "top": 239.5,
+            "right": 366,
+            "bottom": 759.5,
+            "width": 342,
+            "height": 520
+          },
+          "badges": [
+            {
+              "id": "plugin-status",
+              "rect": {
+                "left": 333,
+                "top": 280.5,
+                "right": 353,
+                "bottom": 300.5,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "headless",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 594,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 24,
+            "top": 197.25,
+            "right": 366,
+            "bottom": 1070.15625,
+            "width": 342,
+            "height": 872.90625
+          },
+          "badges": []
+        }
+      ]
+    },
+    {
+      "tag": "narrow",
+      "width": 768,
+      "height": 900,
+      "pages": [
+        {
+          "groupId": "app-shell",
+          "scale": 0.3111,
+          "overflow": {
+            "document": 0,
+            "scroller": 536,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 344,
+            "top": 218.375,
+            "right": 744,
+            "bottom": 440.71875,
+            "width": 400,
+            "height": 222.34375
+          },
+          "badges": [
+            {
+              "id": "nav-panel",
+              "rect": {
+                "left": 351.73333740234375,
+                "top": 271.17498779296875,
+                "right": 357.95556640625,
+                "bottom": 277.397216796875,
+                "width": 6.22222900390625,
+                "height": 6.22222900390625
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-list",
+              "rect": {
+                "left": 351.73333740234375,
+                "top": 352.53057861328125,
+                "right": 357.95556640625,
+                "bottom": 358.7527770996094,
+                "width": 6.22222900390625,
+                "height": 6.222198486328125
+              },
+              "hit": true
+            },
+            {
+              "id": "content-scripts",
+              "rect": {
+                "left": 730.04443359375,
+                "top": 434.50836181640625,
+                "right": 736.2667236328125,
+                "bottom": 440.7305603027344,
+                "width": 6.2222900390625,
+                "height": 6.222198486328125
+              },
+              "hit": true
+            },
+            {
+              "id": "code-renderers",
+              "rect": {
+                "left": 628.3062744140625,
+                "top": 227.30833435058594,
+                "right": 634.5284423828125,
+                "bottom": 233.53054809570312,
+                "width": 6.22216796875,
+                "height": 6.2222137451171875
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-panel",
+              "rect": {
+                "left": 651.245849609375,
+                "top": 227.30833435058594,
+                "right": 657.4680786132812,
+                "bottom": 233.53054809570312,
+                "width": 6.22222900390625,
+                "height": 6.2222137451171875
+              },
+              "hit": true
+            },
+            {
+              "id": "file-opener",
+              "rect": {
+                "left": 684.21875,
+                "top": 227.30833435058594,
+                "right": 690.4409790039062,
+                "bottom": 233.53054809570312,
+                "width": 6.22222900390625,
+                "height": 6.2222137451171875
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-row-status",
+              "rect": {
+                "left": 443.8222351074219,
+                "top": 292.9527893066406,
+                "right": 450.04443359375,
+                "bottom": 299.17498779296875,
+                "width": 6.222198486328125,
+                "height": 6.222198486328125
+              },
+              "hit": true
+            },
+            {
+              "id": "sidebar-footer",
+              "rect": {
+                "left": 386.8888854980469,
+                "top": 424.2416687011719,
+                "right": 393.1111145019531,
+                "bottom": 430.4638977050781,
+                "width": 6.22222900390625,
+                "height": 6.22222900390625
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-header",
+              "rect": {
+                "left": 600.3111572265625,
+                "top": 235.5527801513672,
+                "right": 606.5333251953125,
+                "bottom": 241.77499389648438,
+                "width": 6.22216796875,
+                "height": 6.2222137451171875
+              },
+              "hit": true
+            },
+            {
+              "id": "timeline-renderers",
+              "rect": {
+                "left": 567.7173461914062,
+                "top": 281.9083251953125,
+                "right": 573.9395751953125,
+                "bottom": 288.13055419921875,
+                "width": 6.22222900390625,
+                "height": 6.22222900390625
+              },
+              "hit": true
+            },
+            {
+              "id": "message-directives",
+              "rect": {
+                "left": 531.808349609375,
+                "top": 303.8416748046875,
+                "right": 538.0305786132812,
+                "bottom": 310.06390380859375,
+                "width": 6.22222900390625,
+                "height": 6.22222900390625
+              },
+              "hit": true
+            },
+            {
+              "id": "message-actions",
+              "rect": {
+                "left": 500.1333312988281,
+                "top": 337.2861328125,
+                "right": 506.3555603027344,
+                "bottom": 343.5083312988281,
+                "width": 6.22222900390625,
+                "height": 6.222198486328125
+              },
+              "hit": true
+            },
+            {
+              "id": "pending-interaction",
+              "rect": {
+                "left": 600,
+                "top": 411.4861145019531,
+                "right": 606.2222290039062,
+                "bottom": 417.7083435058594,
+                "width": 6.22222900390625,
+                "height": 6.22222900390625
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "command-palette",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 536,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 344,
+            "top": 197.25,
+            "right": 744,
+            "bottom": 832.75,
+            "width": 400,
+            "height": 635.5
+          },
+          "badges": [
+            {
+              "id": "command-palette-actions",
+              "rect": {
+                "left": 381,
+                "top": 381.265625,
+                "right": 401,
+                "bottom": 401.265625,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "composer",
+          "scale": 0.5052,
+          "overflow": {
+            "document": 0,
+            "scroller": 536,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 344,
+            "top": 239.5,
+            "right": 744,
+            "bottom": 516.234375,
+            "width": 400,
+            "height": 276.734375
+          },
+          "badges": [
+            {
+              "id": "composer-banners",
+              "rect": {
+                "left": 729.8968505859375,
+                "top": 407.491943359375,
+                "right": 740,
+                "bottom": 417.59503173828125,
+                "width": 10.1031494140625,
+                "height": 10.10308837890625
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-state",
+              "rect": {
+                "left": 348,
+                "top": 437.4381408691406,
+                "right": 358.10308837890625,
+                "bottom": 447.5412292480469,
+                "width": 10.10308837890625,
+                "height": 10.10308837890625
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-plus-menu",
+              "rect": {
+                "left": 348,
+                "top": 472.7989501953125,
+                "right": 358.10308837890625,
+                "bottom": 482.90203857421875,
+                "width": 10.10308837890625,
+                "height": 10.10308837890625
+              },
+              "hit": true
+            },
+            {
+              "id": "provider-picker",
+              "rect": {
+                "left": 420.1266174316406,
+                "top": 455.62371826171875,
+                "right": 430.2297058105469,
+                "bottom": 465.726806640625,
+                "width": 10.10308837890625,
+                "height": 10.10308837890625
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-actions",
+              "rect": {
+                "left": 658.1649169921875,
+                "top": 456.6340026855469,
+                "right": 668.26806640625,
+                "bottom": 466.73712158203125,
+                "width": 10.1031494140625,
+                "height": 10.103118896484375
+              },
+              "hit": true
+            },
+            {
+              "id": "mention-provider",
+              "rect": {
+                "left": 439.038330078125,
+                "top": 425.3144226074219,
+                "right": 449.14141845703125,
+                "bottom": 435.4175109863281,
+                "width": 10.10308837890625,
+                "height": 10.10308837890625
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-rich-text",
+              "rect": {
+                "left": 515.072021484375,
+                "top": 424.80926513671875,
+                "right": 525.175048828125,
+                "bottom": 434.912353515625,
+                "width": 10.10302734375,
+                "height": 10.10308837890625
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "home",
+          "scale": 0.6364,
+          "overflow": {
+            "document": 0,
+            "scroller": 536,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 344,
+            "top": 218.375,
+            "right": 744,
+            "bottom": 567.453125,
+            "width": 400,
+            "height": 349.078125
+          },
+          "badges": [
+            {
+              "id": "new-thread-panel",
+              "rect": {
+                "left": 727.272705078125,
+                "top": 309.7386474609375,
+                "right": 740,
+                "bottom": 322.4659118652344,
+                "width": 12.727294921875,
+                "height": 12.727264404296875
+              },
+              "hit": true
+            },
+            {
+              "id": "homepage-section",
+              "rect": {
+                "left": 565,
+                "top": 368.2840881347656,
+                "right": 577.727294921875,
+                "bottom": 381.0113525390625,
+                "width": 12.727294921875,
+                "height": 12.727264404296875
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "settings",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 536,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 344,
+            "top": 218.375,
+            "right": 744,
+            "bottom": 731.375,
+            "width": 400,
+            "height": 513
+          },
+          "badges": [
+            {
+              "id": "declarative-settings",
+              "rect": {
+                "left": 711,
+                "top": 340.375,
+                "right": 731,
+                "bottom": 360.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "settings-section",
+              "rect": {
+                "left": 711,
+                "top": 528.875,
+                "right": 731,
+                "bottom": 548.875,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "extensions",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 536,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 344,
+            "top": 239.5,
+            "right": 744,
+            "bottom": 759.5,
+            "width": 400,
+            "height": 520
+          },
+          "badges": [
+            {
+              "id": "plugin-status",
+              "rect": {
+                "left": 711,
+                "top": 280.5,
+                "right": 731,
+                "bottom": 300.5,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "headless",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 536,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": null,
+          "slide": {
+            "left": 344,
+            "top": 176.125,
+            "right": 744,
+            "bottom": 740.53125,
+            "width": 400,
+            "height": 564.40625
+          },
+          "badges": []
+        }
+      ]
+    },
+    {
+      "tag": "desktop",
+      "width": 1440,
+      "height": 900,
+      "pages": [
+        {
+          "groupId": "app-shell",
+          "scale": 0.8444,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 344,
+            "top": 193.25,
+            "right": 1416,
+            "bottom": 783.0625,
+            "width": 1072,
+            "height": 589.8125
+          },
+          "badges": [
+            {
+              "id": "nav-panel",
+              "rect": {
+                "left": 358.1333312988281,
+                "top": 322.8500061035156,
+                "right": 375.022216796875,
+                "bottom": 339.7388916015625,
+                "width": 16.888885498046875,
+                "height": 16.888885498046875
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-list",
+              "rect": {
+                "left": 358.1333312988281,
+                "top": 543.6722412109375,
+                "right": 375.022216796875,
+                "bottom": 560.5611572265625,
+                "width": 16.888885498046875,
+                "height": 16.888916015625
+              },
+              "hit": true
+            },
+            {
+              "id": "content-scripts",
+              "rect": {
+                "left": 1384.977783203125,
+                "top": 766.183349609375,
+                "right": 1401.86669921875,
+                "bottom": 783.0722045898438,
+                "width": 16.888916015625,
+                "height": 16.88885498046875
+              },
+              "hit": true
+            },
+            {
+              "id": "code-renderers",
+              "rect": {
+                "left": 1108.831298828125,
+                "top": 203.78334045410156,
+                "right": 1125.72021484375,
+                "bottom": 220.67222595214844,
+                "width": 16.888916015625,
+                "height": 16.888885498046875
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-panel",
+              "rect": {
+                "left": 1171.0958251953125,
+                "top": 203.78334045410156,
+                "right": 1187.9847412109375,
+                "bottom": 220.67222595214844,
+                "width": 16.888916015625,
+                "height": 16.888885498046875
+              },
+              "hit": true
+            },
+            {
+              "id": "file-opener",
+              "rect": {
+                "left": 1260.59375,
+                "top": 203.78334045410156,
+                "right": 1277.482666015625,
+                "bottom": 220.67222595214844,
+                "width": 16.888916015625,
+                "height": 16.888885498046875
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-row-status",
+              "rect": {
+                "left": 608.0888671875,
+                "top": 381.96112060546875,
+                "right": 624.977783203125,
+                "bottom": 398.8500061035156,
+                "width": 16.888916015625,
+                "height": 16.888885498046875
+              },
+              "hit": true
+            },
+            {
+              "id": "sidebar-footer",
+              "rect": {
+                "left": 453.5555419921875,
+                "top": 738.316650390625,
+                "right": 470.4444580078125,
+                "bottom": 755.20556640625,
+                "width": 16.888916015625,
+                "height": 16.888916015625
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-header",
+              "rect": {
+                "left": 1032.844482421875,
+                "top": 226.16111755371094,
+                "right": 1049.7333984375,
+                "bottom": 243.0500030517578,
+                "width": 16.888916015625,
+                "height": 16.888885498046875
+              },
+              "hit": true
+            },
+            {
+              "id": "timeline-renderers",
+              "rect": {
+                "left": 944.3756713867188,
+                "top": 351.98333740234375,
+                "right": 961.2645874023438,
+                "bottom": 368.8722229003906,
+                "width": 16.888916015625,
+                "height": 16.888885498046875
+              },
+              "hit": true
+            },
+            {
+              "id": "message-directives",
+              "rect": {
+                "left": 846.9083251953125,
+                "top": 411.51666259765625,
+                "right": 863.7972412109375,
+                "bottom": 428.40557861328125,
+                "width": 16.888916015625,
+                "height": 16.888916015625
+              },
+              "hit": true
+            },
+            {
+              "id": "message-actions",
+              "rect": {
+                "left": 760.933349609375,
+                "top": 502.29443359375,
+                "right": 777.822265625,
+                "bottom": 519.183349609375,
+                "width": 16.888916015625,
+                "height": 16.888916015625
+              },
+              "hit": true
+            },
+            {
+              "id": "pending-interaction",
+              "rect": {
+                "left": 1032,
+                "top": 703.6944580078125,
+                "right": 1048.888916015625,
+                "bottom": 720.5833129882812,
+                "width": 16.888916015625,
+                "height": 16.88885498046875
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "command-palette",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 344,
+            "top": 193.25,
+            "right": 1416,
+            "bottom": 727.25,
+            "width": 1072,
+            "height": 534
+          },
+          "badges": [
+            {
+              "id": "command-palette-actions",
+              "rect": {
+                "left": 565,
+                "top": 365.09375,
+                "right": 585,
+                "bottom": 385.09375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "composer",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 344,
+            "top": 214.375,
+            "right": 1416,
+            "bottom": 754.375,
+            "width": 1072,
+            "height": 540
+          },
+          "badges": [
+            {
+              "id": "composer-banners",
+              "rect": {
+                "left": 1272,
+                "top": 539.09375,
+                "right": 1292,
+                "bottom": 559.09375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-state",
+              "rect": {
+                "left": 468,
+                "top": 598.375,
+                "right": 488,
+                "bottom": 618.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-plus-menu",
+              "rect": {
+                "left": 468,
+                "top": 668.375,
+                "right": 488,
+                "bottom": 688.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "provider-picker",
+              "rect": {
+                "left": 610.78125,
+                "top": 634.375,
+                "right": 630.78125,
+                "bottom": 654.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-actions",
+              "rect": {
+                "left": 1130,
+                "top": 636.375,
+                "right": 1150,
+                "bottom": 656.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "mention-provider",
+              "rect": {
+                "left": 648.21875,
+                "top": 574.375,
+                "right": 668.21875,
+                "bottom": 594.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-rich-text",
+              "rect": {
+                "left": 798.734375,
+                "top": 573.375,
+                "right": 818.734375,
+                "bottom": 593.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "home",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 344,
+            "top": 193.25,
+            "right": 1416,
+            "bottom": 737.25,
+            "width": 1072,
+            "height": 544
+          },
+          "badges": [
+            {
+              "id": "new-thread-panel",
+              "rect": {
+                "left": 1392,
+                "top": 332.25,
+                "right": 1412,
+                "bottom": 352.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "homepage-section",
+              "rect": {
+                "left": 1043,
+                "top": 404.75,
+                "right": 1063,
+                "bottom": 424.75,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "settings",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 344,
+            "top": 193.25,
+            "right": 1416,
+            "bottom": 706.25,
+            "width": 1072,
+            "height": 513
+          },
+          "badges": [
+            {
+              "id": "declarative-settings",
+              "rect": {
+                "left": 1112,
+                "top": 315.25,
+                "right": 1132,
+                "bottom": 335.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "settings-section",
+              "rect": {
+                "left": 1112,
+                "top": 484.25,
+                "right": 1132,
+                "bottom": 504.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "extensions",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 344,
+            "top": 193.25,
+            "right": 1416,
+            "bottom": 713.25,
+            "width": 1072,
+            "height": 520
+          },
+          "badges": [
+            {
+              "id": "plugin-status",
+              "rect": {
+                "left": 1383,
+                "top": 234.25,
+                "right": 1403,
+                "bottom": 254.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "headless",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 344,
+            "top": 172.125,
+            "right": 1416,
+            "bottom": 736.53125,
+            "width": 1072,
+            "height": 564.40625
+          },
+          "badges": []
+        }
+      ]
+    },
+    {
+      "tag": "wide",
+      "width": 2030,
+      "height": 1100,
+      "pages": [
+        {
+          "groupId": "app-shell",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 375,
+            "top": 193.25,
+            "right": 1975,
+            "bottom": 890.25,
+            "width": 1600,
+            "height": 697
+          },
+          "badges": [
+            {
+              "id": "nav-panel",
+              "rect": {
+                "left": 391,
+                "top": 345.25,
+                "right": 411,
+                "bottom": 365.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-list",
+              "rect": {
+                "left": 391,
+                "top": 606.75,
+                "right": 411,
+                "bottom": 626.75,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "content-scripts",
+              "rect": {
+                "left": 1939,
+                "top": 870.25,
+                "right": 1959,
+                "bottom": 890.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "code-renderers",
+              "rect": {
+                "left": 1611.984375,
+                "top": 204.25,
+                "right": 1631.984375,
+                "bottom": 224.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-panel",
+              "rect": {
+                "left": 1685.71875,
+                "top": 204.25,
+                "right": 1705.71875,
+                "bottom": 224.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "file-opener",
+              "rect": {
+                "left": 1791.703125,
+                "top": 204.25,
+                "right": 1811.703125,
+                "bottom": 224.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-row-status",
+              "rect": {
+                "left": 687,
+                "top": 415.25,
+                "right": 707,
+                "bottom": 435.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "sidebar-footer",
+              "rect": {
+                "left": 504,
+                "top": 837.25,
+                "right": 524,
+                "bottom": 857.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "thread-header",
+              "rect": {
+                "left": 1522,
+                "top": 230.75,
+                "right": 1542,
+                "bottom": 250.75,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "timeline-renderers",
+              "rect": {
+                "left": 1344.1875,
+                "top": 379.75,
+                "right": 1364.1875,
+                "bottom": 399.75,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "message-directives",
+              "rect": {
+                "left": 1145.109375,
+                "top": 450.25,
+                "right": 1165.109375,
+                "bottom": 470.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "message-actions",
+              "rect": {
+                "left": 868,
+                "top": 557.75,
+                "right": 888,
+                "bottom": 577.75,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "pending-interaction",
+              "rect": {
+                "left": 1521,
+                "top": 796.25,
+                "right": 1541,
+                "bottom": 816.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "command-palette",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 375,
+            "top": 193.25,
+            "right": 1975,
+            "bottom": 727.25,
+            "width": 1600,
+            "height": 534
+          },
+          "badges": [
+            {
+              "id": "command-palette-actions",
+              "rect": {
+                "left": 860,
+                "top": 365.09375,
+                "right": 880,
+                "bottom": 385.09375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "composer",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 375,
+            "top": 214.375,
+            "right": 1975,
+            "bottom": 754.375,
+            "width": 1600,
+            "height": 540
+          },
+          "badges": [
+            {
+              "id": "composer-banners",
+              "rect": {
+                "left": 1567,
+                "top": 539.09375,
+                "right": 1587,
+                "bottom": 559.09375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-state",
+              "rect": {
+                "left": 763,
+                "top": 598.375,
+                "right": 783,
+                "bottom": 618.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-plus-menu",
+              "rect": {
+                "left": 763,
+                "top": 668.375,
+                "right": 783,
+                "bottom": 688.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "provider-picker",
+              "rect": {
+                "left": 905.78125,
+                "top": 634.375,
+                "right": 925.78125,
+                "bottom": 654.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-actions",
+              "rect": {
+                "left": 1425,
+                "top": 636.375,
+                "right": 1445,
+                "bottom": 656.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "mention-provider",
+              "rect": {
+                "left": 943.21875,
+                "top": 574.375,
+                "right": 963.21875,
+                "bottom": 594.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "composer-rich-text",
+              "rect": {
+                "left": 1093.734375,
+                "top": 573.375,
+                "right": 1113.734375,
+                "bottom": 593.375,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "home",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 375,
+            "top": 193.25,
+            "right": 1975,
+            "bottom": 737.25,
+            "width": 1600,
+            "height": 544
+          },
+          "badges": [
+            {
+              "id": "new-thread-panel",
+              "rect": {
+                "left": 1951,
+                "top": 332.25,
+                "right": 1971,
+                "bottom": 352.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "homepage-section",
+              "rect": {
+                "left": 1338,
+                "top": 404.75,
+                "right": 1358,
+                "bottom": 424.75,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "settings",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 375,
+            "top": 193.25,
+            "right": 1975,
+            "bottom": 706.25,
+            "width": 1600,
+            "height": 513
+          },
+          "badges": [
+            {
+              "id": "declarative-settings",
+              "rect": {
+                "left": 1407,
+                "top": 315.25,
+                "right": 1427,
+                "bottom": 335.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            },
+            {
+              "id": "settings-section",
+              "rect": {
+                "left": 1407,
+                "top": 484.25,
+                "right": 1427,
+                "bottom": 504.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "extensions",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 375,
+            "top": 193.25,
+            "right": 1975,
+            "bottom": 713.25,
+            "width": 1600,
+            "height": 520
+          },
+          "badges": [
+            {
+              "id": "plugin-status",
+              "rect": {
+                "left": 1942,
+                "top": 234.25,
+                "right": 1962,
+                "bottom": 254.25,
+                "width": 20,
+                "height": 20
+              },
+              "hit": true
+            }
+          ]
+        },
+        {
+          "groupId": "headless",
+          "scale": 1,
+          "overflow": {
+            "document": 0,
+            "scroller": 0,
+            "scrollerIsOnlyOwner": true
+          },
+          "caretAdjacency": 4,
+          "slide": {
+            "left": 375,
+            "top": 172.125,
+            "right": 1975,
+            "bottom": 736.53125,
+            "width": 1600,
+            "height": 564.40625
+          },
+          "badges": []
+        }
+      ]
+    }
+  ],
+  "result": "PASS",
+  "failures": [],
+  "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/sweep/guide-sweep-final-7e2ca90bf.png"
+}
