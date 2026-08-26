@@ -88,6 +88,27 @@ describe("arrangePluginNavPanels", () => {
     ]);
     expect(arranged.normalizedOrder).toEqual(keys);
   });
+
+  it("preserves a migrated fold below five and promotes an active page from zero", () => {
+    const folded = arrangePluginNavPanels({
+      panels: panels.slice(0, 4),
+      storedOrder: keys.slice(0, 4),
+      visibleLimit: 2,
+    });
+    expect(folded.visible.map(getPluginNavPanelKey)).toEqual(keys.slice(0, 2));
+    expect(folded.overflow.map(getPluginNavPanelKey)).toEqual(keys.slice(2, 4));
+
+    const allHidden = arrangePluginNavPanels({
+      panels: panels.slice(0, 4),
+      storedOrder: keys.slice(0, 4),
+      visibleLimit: 0,
+      activeKey: keys[3],
+    });
+    expect(allHidden.visible.map(getPluginNavPanelKey)).toEqual([keys[3]]);
+    expect(allHidden.overflow.map(getPluginNavPanelKey)).toEqual(
+      keys.slice(0, 3),
+    );
+  });
 });
 
 describe("plugin panel order mutations", () => {
@@ -123,6 +144,17 @@ describe("plugin panel order mutations", () => {
     expect(
       movePluginNavPanelToOverflow(order, keys.slice(0, 6), keys[0]),
     ).toEqual(["missing/main", ...keys.slice(1, 6), keys[0]]);
+  });
+
+  it("moves a page below a migrated fold", () => {
+    expect(
+      movePluginNavPanelToOverflow(
+        keys.slice(0, 4),
+        keys.slice(0, 4),
+        keys[0],
+        2,
+      ),
+    ).toEqual([keys[1], keys[2], keys[0], keys[3]]);
   });
 });
 

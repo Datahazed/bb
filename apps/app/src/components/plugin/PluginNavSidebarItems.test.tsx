@@ -34,6 +34,8 @@ import {
   PluginNavSidebarItems,
 } from "./PluginNavSidebarItems";
 import {
+  hiddenPluginNavPanelsAtom,
+  pluginNavPanelMigratedVisibleLimitAtom,
   pluginNavPanelOrderAtom,
   pluginNavPanelOverflowExpandedAtom,
 } from "./pluginNavSidebarAtoms";
@@ -89,6 +91,8 @@ function renderSidebarItems(
     compactViewport?: boolean;
     initialEntry?: string;
     overflowExpanded?: boolean;
+    hiddenKeys?: string[];
+    migratedVisibleLimit?: number | null;
     splitEnabled?: boolean;
     bootComplete?: boolean;
   } = {},
@@ -98,9 +102,36 @@ function renderSidebarItems(
   // initial value when this module was imported, before the test could write.
   if (options.storedOrder) {
     store.set(pluginNavPanelOrderAtom, options.storedOrder);
+    window.localStorage.setItem(
+      "bb.sidebar.pluginPanelOrder",
+      JSON.stringify(options.storedOrder),
+    );
   }
   if (options.overflowExpanded !== undefined) {
     store.set(pluginNavPanelOverflowExpandedAtom, options.overflowExpanded);
+  }
+  if (options.hiddenKeys !== undefined) {
+    store.set(hiddenPluginNavPanelsAtom, options.hiddenKeys);
+    window.localStorage.setItem(
+      "bb.sidebar.hiddenPluginPanels",
+      JSON.stringify(options.hiddenKeys),
+    );
+  }
+  if (options.migratedVisibleLimit !== undefined) {
+    store.set(
+      pluginNavPanelMigratedVisibleLimitAtom,
+      options.migratedVisibleLimit,
+    );
+    if (options.migratedVisibleLimit === null) {
+      window.localStorage.removeItem(
+        "bb.sidebar.pluginPanelMigratedVisibleLimit",
+      );
+    } else {
+      window.localStorage.setItem(
+        "bb.sidebar.pluginPanelMigratedVisibleLimit",
+        JSON.stringify(options.migratedVisibleLimit),
+      );
+    }
   }
   if (options.bootComplete !== false) markPluginFrontendsSettled();
   return render(
@@ -369,6 +400,7 @@ describe("PluginNavSidebarItems", () => {
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Move to top" }),
     );
+    fireEvent.click(screen.getByTestId("plugin-nav-sidebar-overflow-toggle"));
     await waitFor(() => {
       expect(panelRowNames().slice(0, 5)).toEqual([
         "Plugin 1",
@@ -455,6 +487,149 @@ describe("PluginNavSidebarItems", () => {
         window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "[]",
       ).slice(-2),
     ).toEqual(["plugin-2/main", "plugin-4/main"]);
+  });
+
+  it("preserves the felt state for four pages with two hidden", async () => {
+    for (let index = 1; index <= 4; index += 1) {
+      registerPanel(`plugin-${index}`, `Plugin ${index}`);
+    }
+
+    renderSidebarItems({
+      storedOrder: [
+        "plugin-3/main",
+        "plugin-1/main",
+        "plugin-4/main",
+        "plugin-2/main",
+      ],
+      hiddenKeys: ["plugin-4/main", "plugin-2/main"],
+    });
+
+    expect(panelRowNames()).toEqual(["Plugin 3", "Plugin 1"]);
+    expect(screen.queryByTestId("plugin-nav-sidebar-heading")).toBeNull();
+    expect(
+      screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
+    ).toContain("Show 2 more");
+    await waitFor(() => {
+      expect(window.localStorage.getItem("bb.sidebar.hiddenPluginPanels")).toBe(
+        "[]",
+      );
+    });
+  });
+
+  it("keeps an all-hidden list collapsed while temporarily surfacing the active page", async () => {
+    for (let index = 1; index <= 4; index += 1) {
+      registerPanel(`plugin-${index}`, `Plugin ${index}`);
+    }
+    const hiddenKeys = Array.from(
+      { length: 4 },
+      (_, index) => `plugin-${index + 1}/main`,
+    );
+
+    const first = renderSidebarItems({ hiddenKeys });
+    expect(panelRowNames()).toEqual([]);
+    expect(screen.queryByTestId("plugin-nav-sidebar-heading")).toBeNull();
+    expect(
+      screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
+    ).toContain("Show 4 more");
+    await waitFor(() => {
+      expect(
+        window.localStorage.getItem(
+          "bb.sidebar.pluginPanelMigratedVisibleLimit",
+        ),
+      ).toBe("0");
+    });
+
+    first.unmount();
+    renderSidebarItems({
+      initialEntry: "/plugins/plugin-4/main",
+      migratedVisibleLimit: 0,
+    });
+    expect(panelRowNames()).toEqual(["Plugin 4"]);
+    expect(
+      screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
+    ).toContain("Show 3 more");
+  });
+
+  it("returns to the plain list after the migrated overflow is emptied", async () => {
+    for (let index = 1; index <= 4; index += 1) {
+      registerPanel(`plugin-${index}`, `Plugin ${index}`);
+    }
+    renderSidebarItems({
+      storedOrder: [
+        "plugin-1/main",
+        "plugin-2/main",
+        "plugin-3/main",
+        "plugin-4/main",
+      ],
+      hiddenKeys: ["plugin-3/main", "plugin-4/main"],
+    });
+    await waitFor(() => {
+      expect(window.localStorage.getItem("bb.sidebar.hiddenPluginPanels")).toBe(
+        "[]",
+      );
+    });
+
+    fireEvent.click(screen.getByTestId("plugin-nav-sidebar-overflow-toggle"));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Plugin 3 panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Move to top" }),
+    );
+    fireEvent.click(screen.getByTestId("plugin-nav-sidebar-overflow-toggle"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
+      ).toContain("Show 1 more");
+    });
+    fireEvent.click(screen.getByTestId("plugin-nav-sidebar-overflow-toggle"));
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Plugin 4 panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Move to top" }),
+    );
+    await waitFor(() => {
+      expect(panelRowNames()).toHaveLength(4);
+      expect(
+        screen.queryByTestId("plugin-nav-sidebar-overflow-toggle"),
+      ).toBeNull();
+      expect(
+        window.localStorage.getItem(
+          "bb.sidebar.pluginPanelMigratedVisibleLimit",
+        ),
+      ).toBeNull();
+    });
+  });
+
+  it("leaves the legacy Extensions key for its owning migration", async () => {
+    for (let index = 1; index <= 4; index += 1) {
+      registerPanel(`plugin-${index}`, `Plugin ${index}`);
+    }
+    renderSidebarItems({
+      hiddenKeys: ["plugin-4/main", "__builtin__/tools"],
+    });
+
+    await waitFor(() => {
+      expect(
+        JSON.parse(
+          window.localStorage.getItem("bb.sidebar.hiddenPluginPanels") ?? "[]",
+        ),
+      ).toEqual(["__builtin__/tools"]);
+    });
+    expect(
+      window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "",
+    ).not.toContain("__builtin__/tools");
+    fireEvent.click(screen.getByTestId("plugin-nav-sidebar-overflow-toggle"));
+    expect(panelRowNames()).toEqual([
+      "Plugin 1",
+      "Plugin 2",
+      "Plugin 3",
+      "Plugin 4",
+    ]);
   });
 
   it("keeps a newly installed page at the end when five already show", async () => {

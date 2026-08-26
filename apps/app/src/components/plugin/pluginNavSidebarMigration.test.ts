@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
+  PLUGIN_NAV_PANEL_MIGRATED_VISIBLE_LIMIT_STORAGE_KEY,
   PLUGIN_NAV_PANEL_ORDER_STORAGE_KEY,
 } from "./pluginNavSidebarAtoms";
 import {
   HIDDEN_PLUGIN_NAV_PANELS_MIGRATION_STORAGE_KEY,
+  LEGACY_TOOLS_NAV_ROW_KEY,
   migrateHiddenPluginNavPanels,
 } from "./pluginNavSidebarMigration";
 
@@ -17,6 +19,10 @@ class MemoryStorage {
 
   setItem(key: string, value: string): void {
     this.values.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
   }
 }
 
@@ -41,7 +47,7 @@ const registrationOrder = [
 ];
 
 describe("migrateHiddenPluginNavPanels", () => {
-  it("appends legacy hidden pages in registration order and clears hiding", async () => {
+  it("appends legacy hidden pages in their stored order and clears only those keys", async () => {
     const storage = new MemoryStorage();
     storage.setItem(
       PLUGIN_NAV_PANEL_ORDER_STORAGE_KEY,
@@ -49,7 +55,7 @@ describe("migrateHiddenPluginNavPanels", () => {
     );
     storage.setItem(
       HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
-      JSON.stringify(["tasks/main", "github/main"]),
+      JSON.stringify(["tasks/main", "github/main", LEGACY_TOOLS_NAV_ROW_KEY]),
     );
 
     await expect(
@@ -58,13 +64,17 @@ describe("migrateHiddenPluginNavPanels", () => {
         registrationOrder,
         lockManager: null,
       }),
-    ).resolves.toEqual([
-      "docs/main",
-      "notes/main",
-      "github/main",
-      "tasks/main",
-    ]);
-    expect(storage.getItem(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY)).toBe("[]");
+    ).resolves.toEqual({
+      order: ["docs/main", "notes/main", "tasks/main", "github/main"],
+      remainingHiddenKeys: [LEGACY_TOOLS_NAV_ROW_KEY],
+      migratedVisibleLimit: 2,
+    });
+    expect(storage.getItem(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY)).toBe(
+      JSON.stringify([LEGACY_TOOLS_NAV_ROW_KEY]),
+    );
+    expect(
+      storage.getItem(PLUGIN_NAV_PANEL_MIGRATED_VISIBLE_LIMIT_STORAGE_KEY),
+    ).toBe("2");
     expect(
       storage.getItem(HIDDEN_PLUGIN_NAV_PANELS_MIGRATION_STORAGE_KEY),
     ).toBe("1");
@@ -87,8 +97,9 @@ describe("migrateHiddenPluginNavPanels", () => {
     );
     storage.setItem(
       HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
-      JSON.stringify(["tasks/main"]),
+      JSON.stringify(["tasks/main", LEGACY_TOOLS_NAV_ROW_KEY]),
     );
+    storage.removeItem(PLUGIN_NAV_PANEL_MIGRATED_VISIBLE_LIMIT_STORAGE_KEY);
 
     await expect(
       migrateHiddenPluginNavPanels({
@@ -96,13 +107,14 @@ describe("migrateHiddenPluginNavPanels", () => {
         registrationOrder,
         lockManager: null,
       }),
-    ).resolves.toEqual([
-      "tasks/main",
-      "docs/main",
-      "github/main",
-      "notes/main",
-    ]);
-    expect(storage.getItem(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY)).toBe("[]");
+    ).resolves.toEqual({
+      order: ["tasks/main", "docs/main", "github/main", "notes/main"],
+      remainingHiddenKeys: [LEGACY_TOOLS_NAV_ROW_KEY],
+      migratedVisibleLimit: null,
+    });
+    expect(storage.getItem(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY)).toBe(
+      JSON.stringify([LEGACY_TOOLS_NAV_ROW_KEY]),
+    );
   });
 
   it("serializes concurrent windows and dedupes the order on read", async () => {
@@ -121,15 +133,33 @@ describe("migrateHiddenPluginNavPanels", () => {
       migrateHiddenPluginNavPanels({ storage, registrationOrder, lockManager }),
       migrateHiddenPluginNavPanels({ storage, registrationOrder, lockManager }),
     ]);
-    expect(first).toEqual([
-      "docs/main",
-      "github/main",
-      "notes/main",
-      "tasks/main",
-    ]);
+    expect(first).toEqual({
+      order: ["docs/main", "github/main", "notes/main", "tasks/main"],
+      remainingHiddenKeys: [],
+      migratedVisibleLimit: 3,
+    });
     expect(second).toEqual(first);
     expect(
       JSON.parse(storage.getItem(PLUGIN_NAV_PANEL_ORDER_STORAGE_KEY) ?? "[]"),
-    ).toEqual(first);
+    ).toEqual(first.order);
+  });
+
+  it("records a zero-row fold when every registered page was hidden", async () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
+      JSON.stringify(registrationOrder),
+    );
+
+    await expect(
+      migrateHiddenPluginNavPanels({
+        storage,
+        registrationOrder,
+        lockManager: null,
+      }),
+    ).resolves.toMatchObject({
+      order: registrationOrder,
+      migratedVisibleLimit: 0,
+    });
   });
 });

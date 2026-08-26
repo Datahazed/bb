@@ -34,6 +34,7 @@ interface ArrangePluginNavPanelsArgs<TPanel extends PluginNavPanelIdentity> {
   panels: readonly TPanel[];
   storedOrder: readonly string[];
   activeKey?: string;
+  visibleLimit?: number;
 }
 
 interface ArrangedPluginNavPanels<TPanel extends PluginNavPanelIdentity> {
@@ -47,6 +48,7 @@ export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
   panels,
   storedOrder,
   activeKey,
+  visibleLimit: visibleLimitValue = PLUGIN_NAV_PANEL_VISIBLE_LIMIT,
 }: ArrangePluginNavPanelsArgs<TPanel>): ArrangedPluginNavPanels<TPanel> {
   const byKey = new Map(
     panels.map((panel) => [getPluginNavPanelKey(panel), panel]),
@@ -67,8 +69,12 @@ export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
     ordered.push(panel);
   }
 
-  const visible = ordered.slice(0, PLUGIN_NAV_PANEL_VISIBLE_LIMIT);
-  let overflow = ordered.slice(PLUGIN_NAV_PANEL_VISIBLE_LIMIT);
+  const visibleLimit = Math.max(
+    0,
+    Math.min(PLUGIN_NAV_PANEL_VISIBLE_LIMIT, visibleLimitValue),
+  );
+  const visible = ordered.slice(0, visibleLimit);
+  let overflow = ordered.slice(visibleLimit);
   const activeOverflowIndex =
     activeKey === undefined
       ? -1
@@ -77,9 +83,15 @@ export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
         );
   if (activeOverflowIndex !== -1) {
     const active = overflow[activeOverflowIndex];
-    const displaced = visible[PLUGIN_NAV_PANEL_VISIBLE_LIMIT - 1];
-    if (active !== undefined && displaced !== undefined) {
-      visible[PLUGIN_NAV_PANEL_VISIBLE_LIMIT - 1] = active;
+    const displaced = visible[visibleLimit - 1];
+    if (active !== undefined && visibleLimit === 0) {
+      visible.push(active);
+      overflow = [
+        ...overflow.slice(0, activeOverflowIndex),
+        ...overflow.slice(activeOverflowIndex + 1),
+      ];
+    } else if (active !== undefined && displaced !== undefined) {
+      visible[visibleLimit - 1] = active;
       overflow = [
         displaced,
         ...overflow.slice(0, activeOverflowIndex),
@@ -142,19 +154,20 @@ export function movePluginNavPanelToOverflow(
   order: readonly string[],
   registeredKeys: readonly string[],
   key: string,
+  visibleLimit = PLUGIN_NAV_PANEL_VISIBLE_LIMIT,
 ): string[] | null {
   const from = registeredKeys.indexOf(key);
   if (
-    registeredKeys.length <= PLUGIN_NAV_PANEL_VISIBLE_LIMIT ||
+    registeredKeys.length <= visibleLimit ||
     from < 0 ||
-    from >= PLUGIN_NAV_PANEL_VISIBLE_LIMIT
+    from >= visibleLimit
   ) {
     return null;
   }
 
   const nextRegisteredKeys = [...registeredKeys];
   nextRegisteredKeys.splice(from, 1);
-  nextRegisteredKeys.splice(PLUGIN_NAV_PANEL_VISIBLE_LIMIT, 0, key);
+  nextRegisteredKeys.splice(visibleLimit, 0, key);
   return replaceRegisteredOrder(order, registeredKeys, nextRegisteredKeys);
 }
 

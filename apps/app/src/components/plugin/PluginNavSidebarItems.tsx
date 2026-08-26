@@ -84,12 +84,16 @@ import {
   getPluginPanelRoutePath,
 } from "@/lib/route-paths";
 import {
+  HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
   hiddenPluginNavPanelsAtom,
+  PLUGIN_NAV_PANEL_MIGRATED_VISIBLE_LIMIT_STORAGE_KEY,
+  pluginNavPanelMigratedVisibleLimitAtom,
   pluginNavPanelOrderAtom,
   pluginNavPanelOverflowExpandedAtom,
 } from "./pluginNavSidebarAtoms";
 import {
   HIDDEN_PLUGIN_NAV_PANELS_MIGRATION_STORAGE_KEY,
+  isPluginNavPanelKey,
   migrateHiddenPluginNavPanels,
 } from "./pluginNavSidebarMigration";
 import {
@@ -98,6 +102,7 @@ import {
   havePluginNavPanelOrdersDiverged,
   movePluginNavPanelToOverflow,
   movePluginNavPanelToTop,
+  normalizePluginNavPanelOrder,
   PLUGIN_NAV_PANEL_VISIBLE_LIMIT,
   reorderPluginNavPanels,
 } from "./pluginNavSidebarOrder";
@@ -137,6 +142,34 @@ function routePathForRow(row: SidebarNavRow): string {
   });
 }
 
+function readStoredPluginNavPanelKeys(storageKey: string): string[] {
+  const value = getLocalStorage()?.getItem(storageKey);
+  if (value === null || value === undefined) return [];
+  try {
+    return normalizePluginNavPanelOrder(JSON.parse(value));
+  } catch {
+    return [];
+  }
+}
+
+function readStoredMigratedVisibleLimit(): number | null {
+  const value = getLocalStorage()?.getItem(
+    PLUGIN_NAV_PANEL_MIGRATED_VISIBLE_LIMIT_STORAGE_KEY,
+  );
+  if (value === null || value === undefined) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return typeof parsed === "number" &&
+      Number.isInteger(parsed) &&
+      parsed >= 0 &&
+      parsed <= PLUGIN_NAV_PANEL_VISIBLE_LIMIT
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function PluginNavSidebarItemList({
   onNavigate,
   rows,
@@ -151,6 +184,9 @@ function PluginNavSidebarItemList({
   const [storedOrder, setStoredOrder] = useAtom(pluginNavPanelOrderAtom);
   const [legacyHiddenKeys, setLegacyHiddenKeys] = useAtom(
     hiddenPluginNavPanelsAtom,
+  );
+  const [migratedVisibleLimit, setMigratedVisibleLimit] = useAtom(
+    pluginNavPanelMigratedVisibleLimitAtom,
   );
   const [isOverflowOpen, setIsOverflowOpen] = useAtom(
     pluginNavPanelOverflowExpandedAtom,
@@ -174,23 +210,62 @@ function PluginNavSidebarItemList({
     getLocalStorage()?.getItem(
       HIDDEN_PLUGIN_NAV_PANELS_MIGRATION_STORAGE_KEY,
     ) !== "1";
+  const pendingStoredHiddenKeys = migrationPending
+    ? readStoredPluginNavPanelKeys(HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY)
+    : [];
+  const legacyPluginHiddenKeys = useMemo(
+    () =>
+      normalizePluginNavPanelOrder([
+        ...legacyHiddenKeys,
+        ...pendingStoredHiddenKeys,
+      ]).filter(isPluginNavPanelKey),
+    [legacyHiddenKeys, pendingStoredHiddenKeys],
+  );
+  const pendingVisibleLimit = useMemo(() => {
+    if (!migrationPending || legacyPluginHiddenKeys.length === 0) return null;
+    const hiddenSet = new Set(legacyPluginHiddenKeys);
+    return Math.min(
+      registrationOrder.filter((key) => !hiddenSet.has(key)).length,
+      PLUGIN_NAV_PANEL_VISIBLE_LIMIT,
+    );
+  }, [legacyPluginHiddenKeys, migrationPending, registrationOrder]);
+  const visibleLimit =
+    pendingVisibleLimit ??
+    migratedVisibleLimit ??
+    readStoredMigratedVisibleLimit() ??
+    PLUGIN_NAV_PANEL_VISIBLE_LIMIT;
   const displayOrder = useMemo(() => {
-    if (!migrationPending || legacyHiddenKeys.length === 0) return storedOrder;
-    const hiddenSet = new Set(legacyHiddenKeys);
+    const pluginOrder = normalizePluginNavPanelOrder([
+      ...storedOrder.filter(isPluginNavPanelKey),
+      ...registrationOrder,
+    ]);
+    if (!migrationPending || legacyPluginHiddenKeys.length === 0) {
+      return pluginOrder;
+    }
+    const hiddenSet = new Set(legacyPluginHiddenKeys);
+    const completeOrder = normalizePluginNavPanelOrder([
+      ...pluginOrder,
+      ...legacyPluginHiddenKeys,
+    ]);
     return [
-      ...storedOrder.filter((key) => !hiddenSet.has(key)),
-      ...registrationOrder.filter((key) => hiddenSet.has(key)),
-      ...legacyHiddenKeys.filter((key) => !registrationOrder.includes(key)),
+      ...completeOrder.filter((key) => !hiddenSet.has(key)),
+      ...completeOrder.filter((key) => hiddenSet.has(key)),
     ];
-  }, [legacyHiddenKeys, migrationPending, registrationOrder, storedOrder]);
+  }, [
+    legacyPluginHiddenKeys,
+    migrationPending,
+    registrationOrder,
+    storedOrder,
+  ]);
   const { visible, overflow, ordered, normalizedOrder } = useMemo(
     () =>
       arrangePluginNavPanels({
         panels: rows,
         storedOrder: displayOrder,
+        visibleLimit,
         ...(activeKey === undefined ? {} : { activeKey }),
       }),
-    [activeKey, displayOrder, rows],
+    [activeKey, displayOrder, rows, visibleLimit],
   );
   const registeredKeys = useMemo(
     () => ordered.map(getPluginNavPanelKey),
@@ -203,10 +278,11 @@ function PluginNavSidebarItemList({
     if (storage === null) return;
     let cancelled = false;
     void migrateHiddenPluginNavPanels({ storage, registrationOrder })
-      .then((nextOrder) => {
+      .then((result) => {
         if (cancelled) return;
-        setStoredOrder(nextOrder);
-        setLegacyHiddenKeys([]);
+        setStoredOrder(result.order);
+        setLegacyHiddenKeys(result.remainingHiddenKeys);
+        setMigratedVisibleLimit(result.migratedVisibleLimit);
       })
       .catch((error: unknown) => {
         console.warn("Could not migrate hidden plugin pages", error);
@@ -214,15 +290,21 @@ function PluginNavSidebarItemList({
     return () => {
       cancelled = true;
     };
-  }, [bootComplete, registrationOrder, setLegacyHiddenKeys, setStoredOrder]);
+  }, [
+    bootComplete,
+    registrationOrder,
+    setLegacyHiddenKeys,
+    setMigratedVisibleLimit,
+    setStoredOrder,
+  ]);
 
   useEffect(() => {
-    if (!bootComplete || legacyHiddenKeys.length > 0) return;
+    if (!bootComplete || migrationPending) return;
     if (!havePluginNavPanelOrdersDiverged(storedOrder, normalizedOrder)) return;
     setStoredOrder(normalizedOrder);
   }, [
     bootComplete,
-    legacyHiddenKeys.length,
+    migrationPending,
     normalizedOrder,
     setStoredOrder,
     storedOrder,
@@ -244,21 +326,72 @@ function PluginNavSidebarItemList({
         overKey: event.over.id,
         order: normalizedOrder,
       });
-      if (nextOrder) setStoredOrder(nextOrder);
+      if (nextOrder) {
+        setStoredOrder(nextOrder);
+        const from = registeredKeys.indexOf(event.active.id);
+        const to = registeredKeys.indexOf(event.over.id);
+        if (
+          migratedVisibleLimit !== null &&
+          from >= visibleLimit &&
+          to >= 0 &&
+          to < visibleLimit
+        ) {
+          const standardVisibleLimit = Math.min(
+            registeredKeys.length,
+            PLUGIN_NAV_PANEL_VISIBLE_LIMIT,
+          );
+          const nextVisibleLimit = Math.min(
+            visibleLimit + 1,
+            standardVisibleLimit,
+          );
+          setMigratedVisibleLimit(
+            nextVisibleLimit >= standardVisibleLimit ? null : nextVisibleLimit,
+          );
+        }
+      }
     },
-    [normalizedOrder, setStoredOrder],
+    [
+      migratedVisibleLimit,
+      normalizedOrder,
+      registeredKeys,
+      setMigratedVisibleLimit,
+      setStoredOrder,
+      visibleLimit,
+    ],
   );
   const { dndContextProps, onClickCapture } = useSidebarReorderDnd({
     onDragEnd: handleDragEnd,
   });
 
+  const handleOrderChange = useCallback(
+    (order: string[], promotesFromOverflow = false) => {
+      setStoredOrder(order);
+      if (!promotesFromOverflow || migratedVisibleLimit === null) return;
+      const standardVisibleLimit = Math.min(
+        registeredKeys.length,
+        PLUGIN_NAV_PANEL_VISIBLE_LIMIT,
+      );
+      const nextVisibleLimit = Math.min(visibleLimit + 1, standardVisibleLimit);
+      setMigratedVisibleLimit(
+        nextVisibleLimit >= standardVisibleLimit ? null : nextVisibleLimit,
+      );
+    },
+    [
+      migratedVisibleLimit,
+      registeredKeys.length,
+      setMigratedVisibleLimit,
+      setStoredOrder,
+      visibleLimit,
+    ],
+  );
   const rowProps = {
     onNavigate,
     pathname: location.pathname,
     splitEnabled,
     registeredKeys,
     normalizedOrder,
-    onOrderChange: setStoredOrder,
+    visibleLimit,
+    onOrderChange: handleOrderChange,
   };
   const reorderDisabled = displayedRows.length < 2;
 
@@ -268,7 +401,7 @@ function PluginNavSidebarItemList({
       data-testid="plugin-nav-sidebar-items"
       onClickCapture={onClickCapture}
     >
-      {overflow.length > 0 ? (
+      {ordered.length > PLUGIN_NAV_PANEL_VISIBLE_LIMIT ? (
         <div
           className={cn(
             CHROME_SECTION_LABEL_CLASS,
@@ -362,7 +495,8 @@ interface SidebarNavRowItemProps {
   splitEnabled: boolean;
   registeredKeys: readonly string[];
   normalizedOrder: readonly string[];
-  onOrderChange(order: string[]): void;
+  visibleLimit: number;
+  onOrderChange(order: string[], promotesFromOverflow?: boolean): void;
   dragBindings?: SidebarSortableDragBindings;
   rowRef?: (element: HTMLElement | null) => void;
   rowStyle?: CSSProperties;
@@ -719,6 +853,7 @@ function PluginNavSidebarItem({
   splitEnabled,
   registeredKeys,
   normalizedOrder,
+  visibleLimit,
   onOrderChange,
   ...props
 }: SidebarNavRowItemProps) {
@@ -748,9 +883,8 @@ function PluginNavSidebarItem({
   const hostActions = useMemo<HostMenuAction[]>(() => {
     const actions: HostMenuAction[] = [];
     if (
-      storedIndex >= PLUGIN_NAV_PANEL_VISIBLE_LIMIT ||
-      (registeredKeys.length <= PLUGIN_NAV_PANEL_VISIBLE_LIMIT &&
-        storedIndex > 0)
+      storedIndex >= visibleLimit ||
+      (registeredKeys.length <= visibleLimit && storedIndex > 0)
     ) {
       actions.push({
         id: "move-top",
@@ -762,13 +896,10 @@ function PluginNavSidebarItem({
             registeredKeys,
             rowKey,
           );
-          if (order) onOrderChange(order);
+          if (order) onOrderChange(order, storedIndex >= visibleLimit);
         },
       });
-    } else if (
-      registeredKeys.length > PLUGIN_NAV_PANEL_VISIBLE_LIMIT &&
-      storedIndex >= 0
-    ) {
+    } else if (registeredKeys.length > visibleLimit && storedIndex >= 0) {
       actions.push({
         id: "move-overflow",
         label: "Move to overflow",
@@ -778,6 +909,7 @@ function PluginNavSidebarItem({
             normalizedOrder,
             registeredKeys,
             rowKey,
+            visibleLimit,
           );
           if (order) onOrderChange(order);
         },
@@ -821,6 +953,7 @@ function PluginNavSidebarItem({
     rowKey,
     splitEnabled,
     storedIndex,
+    visibleLimit,
   ]);
   const menuContext = useMemo<ExperimentalPluginNavPanelMenuContext>(
     () => ({

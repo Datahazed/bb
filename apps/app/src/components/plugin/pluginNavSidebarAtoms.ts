@@ -11,6 +11,8 @@ export const HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY =
   "bb.sidebar.hiddenPluginPanels";
 export const PLUGIN_NAV_PANEL_OVERFLOW_EXPANDED_STORAGE_KEY =
   "bb.sidebar.pluginPanelOverflowExpanded";
+export const PLUGIN_NAV_PANEL_MIGRATED_VISIBLE_LIMIT_STORAGE_KEY =
+  "bb.sidebar.pluginPanelMigratedVisibleLimit";
 
 const jsonStringArrayStorage = createJsonLocalStorage<unknown>();
 const normalizedStringArrayStorage: SyncStorage<string[]> = {
@@ -32,6 +34,39 @@ const normalizedStringArrayStorage: SyncStorage<string[]> = {
     ),
 };
 
+function normalizeMigratedVisibleLimit(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 5
+    ? value
+    : null;
+}
+
+const jsonMigratedVisibleLimitStorage = createJsonLocalStorage<unknown>();
+const migratedVisibleLimitStorage: SyncStorage<number | null> = {
+  getItem: (key, initialValue) =>
+    normalizeMigratedVisibleLimit(
+      jsonMigratedVisibleLimitStorage.getItem(key, initialValue),
+    ),
+  setItem: (key, value) => {
+    if (value === null) {
+      jsonMigratedVisibleLimitStorage.removeItem(key);
+      return;
+    }
+    jsonMigratedVisibleLimitStorage.setItem(key, value);
+  },
+  removeItem: (key) => {
+    jsonMigratedVisibleLimitStorage.removeItem(key);
+  },
+  subscribe: (key, callback, initialValue) =>
+    jsonMigratedVisibleLimitStorage.subscribe?.(
+      key,
+      (value) => callback(normalizeMigratedVisibleLimit(value)),
+      initialValue,
+    ),
+};
+
 /**
  * User-chosen order of every sidebar plugin panel row, as
  * `<pluginId>/<panelId>` keys. Reads dedupe malformed stored values so two
@@ -45,8 +80,8 @@ export const pluginNavPanelOrderAtom = atomWithStorage<string[]>(
 );
 
 /**
- * Legacy hidden page keys. Phase 3 reads this atom only to migrate those pages
- * to the end of the one order, then clears it.
+ * Legacy hidden row keys. Phase 3 consumes plugin-page keys only; host-owned
+ * keys remain for the migration that owns their replacement preference.
  */
 export const hiddenPluginNavPanelsAtom = atomWithStorage<string[]>(
   HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
@@ -58,4 +93,18 @@ export const hiddenPluginNavPanelsAtom = atomWithStorage<string[]>(
 export const pluginNavPanelOverflowExpandedAtom = createBooleanPreferenceAtom(
   PLUGIN_NAV_PANEL_OVERFLOW_EXPANDED_STORAGE_KEY,
   false,
+);
+
+/**
+ * Temporary fold that preserves the number of visible plugin pages from the
+ * legacy hidden-page model. It disappears once the user promotes enough pages
+ * to reach the standard cap, after which the ordinary <=5 flat-list rule wins.
+ */
+export const pluginNavPanelMigratedVisibleLimitAtom = atomWithStorage<
+  number | null
+>(
+  PLUGIN_NAV_PANEL_MIGRATED_VISIBLE_LIMIT_STORAGE_KEY,
+  null,
+  migratedVisibleLimitStorage,
+  { getOnInit: true },
 );
