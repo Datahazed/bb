@@ -107,6 +107,7 @@ describe("third-party marketplaces", () => {
       appVersion: "1.0.0",
       marketplaceUrl: OFFICIAL_URL,
       dataDir,
+      isDevelopment: false,
       bundledPlugins: [],
       plugins: {
         installOfficialPlugin: async () => {
@@ -399,6 +400,7 @@ describe("third-party marketplaces", () => {
       appVersion: "1.0.0",
       marketplaceUrl: OFFICIAL_URL,
       dataDir,
+      isDevelopment: false,
       bundledPlugins: [
         {
           name: "docs",

@@ -13,7 +13,7 @@ import {
   OFFICIAL_PLUGINS,
 } from "../../../src/services/plugins/builtin-registry.js";
 
-const MANIFEST_URL = "https://marketplace.test/marketplace/v1/marketplace.json";
+const MANIFEST_URL = "https://marketplace.test/marketplace/v2/marketplace.json";
 const SEED_ENTRY_COUNT = BUNDLED_CURATED_MARKETPLACE.plugins.length;
 const VALID_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h16v16H0z"/></svg>',
@@ -43,6 +43,7 @@ describe("plugin catalog routes", () => {
       appVersion: "1.0.0",
       marketplaceUrl: MANIFEST_URL,
       dataDir,
+      isDevelopment: false,
       plugins: {
         installOfficialPlugin: async () => {
           throw new Error("unexpected install");
@@ -75,7 +76,9 @@ describe("plugin catalog routes", () => {
     });
     const search = await app.request("/plugin-catalog/search?q=memory");
     await expect(search.json()).resolves.toMatchObject({
-      results: [{ entryId: "memory", installed: false }],
+      results: expect.arrayContaining([
+        expect.objectContaining({ entryId: "memory", installed: false }),
+      ]),
     });
 
     // Refreshes are server-owned (startup plus a six-hour interval); no route
@@ -110,15 +113,18 @@ describe("plugin catalog routes", () => {
       url === MANIFEST_URL
         ? new Response(
             JSON.stringify({
-              schemaVersion: 1,
+              schemaVersion: 2,
               name: "bb-community",
               displayName: "BB Community",
+              newAndNotable: [],
               plugins: [
                 {
                   id: "widgets",
                   displayName: "Acme Widgets",
                   description: "Widgets for threads.",
                   icon: { url: "./icons/widgets.svg" },
+                  category: "automation",
+                  screenshots: [],
                   author: { name: "Acme" },
                   source: {
                     git: {

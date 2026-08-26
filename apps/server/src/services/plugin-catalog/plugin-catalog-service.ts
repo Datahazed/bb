@@ -64,11 +64,14 @@ import {
   resolvedEntrySource,
   type MarketplaceEntry,
   type MarketplaceManifest,
+  type MarketplaceManifestV1,
+  type MarketplaceManifestV2,
 } from "./marketplace-manifest.js";
 import {
   marketplaceEntryCategoryId,
   pluginCatalogCategory,
   PLUGIN_CATALOG_CATEGORIES,
+  REVIEWED_COMMUNITY_ENTRY_CATEGORIES,
 } from "./plugin-category-registry.js";
 import {
   marketplaceSourceColumns,
@@ -215,6 +218,8 @@ export function createPluginCatalogService(deps: {
   schedule?: (callback: () => void, delayMs: number) => () => void;
   notifyCatalogChanged?: () => void;
   warn?: (message: string) => void;
+  /** Enables development-only previews of unreleased discovery metadata. */
+  isDevelopment: boolean;
 }): PluginCatalogService {
   const bundledPlugins =
     deps.bundledPlugins ?? listBundledPluginRegistrations();
@@ -606,6 +611,30 @@ export function createPluginCatalogService(deps: {
     };
   }
 
+  /**
+   * Development-only preview of the unreleased v2 registry. Live v1 remains
+   * the source of every listing field; only reviewed categories are joined.
+   * Entries without an assignment stay out of categorized shelves rather
+   * than receiving invented discovery metadata.
+   */
+  function synthesizeDevelopmentDiscoveryCatalog(
+    catalog: MarketplaceManifestV1,
+  ): MarketplaceManifestV2 {
+    return {
+      schemaVersion: 2,
+      name: catalog.name,
+      displayName: catalog.displayName,
+      ...(catalog.description === undefined
+        ? {}
+        : { description: catalog.description }),
+      newAndNotable: [],
+      plugins: catalog.plugins.flatMap((entry) => {
+        const category = REVIEWED_COMMUNITY_ENTRY_CATEGORIES[entry.id];
+        return category === undefined ? [] : [{ ...entry, category }];
+      }),
+    };
+  }
+
   async function performRefresh(
     row: PluginMarketplaceRow,
     attemptedAt: number,
@@ -663,12 +692,35 @@ export function createPluginCatalogService(deps: {
       try {
         materialized = await materialize({ source, expectedVersion: 2 });
       } catch (error) {
-        if (!(error instanceof MarketplaceManifestMissingError)) throw error;
+        // Production only treats an absent v2 document as fallback-worthy.
+        // Development also previews reviewed categories while the unreleased
+        // endpoint is present but unhealthy, using live v1 as its source.
+        if (
+          deps.isDevelopment === false &&
+          !(error instanceof MarketplaceManifestMissingError)
+        ) {
+          throw error;
+        }
         source = {
           kind: "https",
           manifestUrl: officialManifestUrls.v1,
         };
         materialized = await materialize({ source, expectedVersion: 1 });
+        if (deps.isDevelopment === true) {
+          if (materialized.catalog.schemaVersion !== 1) {
+            throw new Error(
+              "internal error: v1 marketplace fallback returned another schema version",
+            );
+          }
+          const catalog = synthesizeDevelopmentDiscoveryCatalog(
+            materialized.catalog,
+          );
+          materialized = {
+            ...materialized,
+            catalog,
+            manifestJson: JSON.stringify(catalog),
+          };
+        }
       }
     } else {
       materialized = await materialize({ source, expectedVersion: null });

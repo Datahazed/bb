@@ -143,12 +143,14 @@ describe("plugin catalog service", () => {
     fetch?: MarketplaceFetch;
     notifyCatalogChanged?: () => void;
     warn?: (message: string) => void;
+    isDevelopment?: boolean;
   }) {
     return createPluginCatalogService({
       db,
       appVersion: "1.0.0",
       marketplaceUrl: MANIFEST_URL,
       dataDir,
+      isDevelopment: options?.isDevelopment ?? false,
       plugins: {
         installOfficialPlugin: async (name: string) => {
           installedNames.push(name);
@@ -445,12 +447,15 @@ describe("plugin catalog service", () => {
 
     it("falls back to immutable v1 only when v2 is missing", async () => {
       const requests: string[] = [];
+      const fallbackManifest = manifestV1([
+        remoteEntryV1({ icon: "Zap" }),
+      ]);
       const catalog = service({
         fetch: async (url) => {
           requests.push(url);
           if (url === MANIFEST_URL) return new Response(null, { status: 404 });
           if (url === V1_MANIFEST_URL) {
-            return jsonResponse(manifestV1([remoteEntryV1({ icon: "Zap" })]));
+            return jsonResponse(fallbackManifest);
           }
           throw new Error(`unexpected request ${url}`);
         },
@@ -468,9 +473,106 @@ describe("plugin catalog service", () => {
       expect(await catalog.search("widgets")).toMatchObject([
         { screenshots: [], newAndNotableRank: null },
       ]);
+      const stored = getPluginMarketplace(db, "bb-community");
+      expect(stored).toMatchObject({
+        manifestUrl: V1_MANIFEST_URL,
+        lastSuccessfulRefreshAt: 1_000,
+      });
+      expect(stored?.manifestJson).toBe(JSON.stringify(fallbackManifest));
+      expect(JSON.parse(stored?.manifestJson ?? "null")).toEqual(
+        fallbackManifest,
+      );
+    });
+
+    it("synthesizes categorized discovery from the live v1 catalog in development", async () => {
+      const requests: string[] = [];
+      const liveAdvisor = remoteEntryV1({
+        id: "advisor",
+        displayName: "Live Advisor Name",
+        description: "Live registry description.",
+        icon: "Sparkles",
+        tags: ["live", "registry"],
+        author: { name: "Live Author", github: "live-author" },
+        source: { npm: { package: "bb-plugin-live-advisor", tag: "next" } },
+      });
+      const catalog = service({
+        bundledPlugins: [],
+        isDevelopment: true,
+        fetch: async (url) => {
+          requests.push(url);
+          if (url === MANIFEST_URL) return new Response(null, { status: 500 });
+          if (url === V1_MANIFEST_URL) {
+            return jsonResponse(
+              manifestV1([
+                liveAdvisor,
+                remoteEntryV1({
+                  id: "ports",
+                  displayName: "Live Ports",
+                  icon: "Network",
+                }),
+                remoteEntryV1({ id: "not-yet-reviewed", icon: "Zap" }),
+              ]),
+            );
+          }
+          throw new Error(`unexpected request ${url}`);
+        },
+      });
+
+      await catalog.refresh(1_000);
+
+      expect(requests).toEqual([MANIFEST_URL, V1_MANIFEST_URL]);
+      expect(await catalog.search("")).toMatchObject([
+        {
+          entryId: "advisor",
+          displayName: "Live Advisor Name",
+          description: "Live registry description.",
+          icon: "Sparkles",
+          categoryId: "agent-tools",
+          category: "Agent Tools",
+          screenshots: [],
+          newAndNotableRank: null,
+          source: "npm:bb-plugin-live-advisor@next",
+          author: {
+            name: "Live Author",
+            url: "https://github.com/live-author",
+          },
+        },
+        {
+          entryId: "ports",
+          displayName: "Live Ports",
+          categoryId: "machines-and-hosts",
+          category: "Machines & Hosts",
+        },
+      ]);
+      expect(await catalog.search("registry")).toHaveLength(1);
+      expect(await catalog.search("not-yet-reviewed")).toEqual([]);
       expect(getPluginMarketplace(db, "bb-community")).toMatchObject({
         manifestUrl: V1_MANIFEST_URL,
         lastSuccessfulRefreshAt: 1_000,
+      });
+      expect(
+        JSON.parse(
+          getPluginMarketplace(db, "bb-community")?.manifestJson ?? "null",
+        ),
+      ).toEqual({
+        schemaVersion: 2,
+        name: "bb-community",
+        displayName: "BB Community",
+        newAndNotable: [],
+        plugins: [
+          {
+            ...liveAdvisor,
+            category: "agent-tools",
+          },
+          {
+            ...remoteEntryV1({
+              id: "ports",
+              displayName: "Live Ports",
+              icon: "Network",
+            }),
+            category: "machines-and-hosts",
+          },
+        ],
       });
     });
 

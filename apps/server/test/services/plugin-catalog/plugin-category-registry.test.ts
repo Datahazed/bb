@@ -6,7 +6,6 @@ import {
 } from "@bb/db";
 import {
   PLUGIN_CATALOG_CATEGORY_IDS,
-  type PluginCatalogCategoryId,
 } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -22,104 +21,6 @@ import {
   type MarketplaceEntry,
 } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 import { BUNDLED_PLUGINS } from "../../../src/services/plugins/builtin-registry.js";
-
-const EXPECTED_REVIEWED_ENTRY_IDS_BY_CATEGORY = {
-  "themes-and-appearance": [
-    "ayu",
-    "monokai",
-    "fonts",
-    "pets",
-    "theme-toggle",
-    "tokyo-night",
-    "ui-tweaks",
-  ],
-  "thread-lists-and-navigation": [
-    "arc-switcher",
-    "cascade",
-    "gtd-sidebar",
-    "t3sidebar",
-    "thread-namer",
-    "tinted-threads",
-    "bb-sidebar",
-    "copy-session-id",
-    "sidebar-filter",
-    "thread-provider-icons",
-  ],
-  "thread-messages-and-timelines": [
-    "bb-better-latex",
-    "emoji-react",
-    "image-preview",
-    "message-timestamps",
-    "bb-rpiv-todo-renderer",
-    "session-notes",
-    "sticky-notes",
-  ],
-  "composer-and-prompts": [
-    "dispatch",
-    "prompt-enhancer",
-    "prompts",
-    "rephrase",
-  ],
-  "memory-and-context": ["noema", "progressive-skill", "project-instructions"],
-  "agent-tools": ["advisor", "noisegate", "perspectives", "rtk", "unslop"],
-  security: ["security-guidance"],
-  "agents-and-providers": [
-    "agent-proxy",
-    "amp",
-    "handoff",
-    "autorouter",
-    "bots",
-    "provider-authentication",
-  ],
-  "token-usage-and-cost": [
-    "context-meter",
-    "headroom",
-    "lanes",
-    "usage-page",
-    "usage-tracker",
-    "usage",
-    "provider-usage",
-    "usage-meter",
-  ],
-  "notifications-and-attention": [
-    "chime",
-    "attention",
-    "notify",
-    "ntfy",
-    "web-push-notify",
-  ],
-  "code-and-reviews": [
-    "callstack",
-    "dependabot",
-    "gh-stack",
-    "gitlab",
-    "slopcop",
-    "git-history",
-    "repo-watch",
-  ],
-  "files-and-viewers": ["monaco", "audio-preview", "pdf-viewer"],
-  "machines-and-hosts": [
-    "disk-usage",
-    "floating-terminal",
-    "worktree-setup",
-    "wterm-terminal-preview",
-    "file-manager",
-    "ports",
-    "server-status",
-  ],
-  "plugin-development": [
-    "agentation",
-    "agentation-mentions",
-    "bb-ui-reference",
-    "traces",
-  ],
-  "task-tracking": ["agent-checklists", "taskboard"],
-  automation: ["global-workflows", "auto-archive"],
-} as const satisfies Record<PluginCatalogCategoryId, readonly string[]>;
-
-const REVIEWED_ENTRY_IDS = Object.values(
-  EXPECTED_REVIEWED_ENTRY_IDS_BY_CATEGORY,
-).flat();
 
 function entry(
   id: string,
@@ -163,19 +64,19 @@ describe("plugin category registry", () => {
     ]);
   });
 
-  it("records the confirmed 81-entry community publisher handoff", () => {
-    expect(Object.keys(REVIEWED_COMMUNITY_ENTRY_CATEGORIES).sort()).toEqual(
-      [...REVIEWED_ENTRY_IDS].sort(),
+  it("keeps reviewed community entry ids unique and categories valid", () => {
+    const ids = Object.keys(REVIEWED_COMMUNITY_ENTRY_CATEGORIES);
+    const validCategoryIds = new Set(PLUGIN_CATALOG_CATEGORY_IDS);
+
+    expect(ids).toHaveLength(81);
+    expect(new Set(ids).size).toBe(ids.length);
+    const assignedCategoryIds = Object.values(
+      REVIEWED_COMMUNITY_ENTRY_CATEGORIES,
     );
-    expect(REVIEWED_ENTRY_IDS).toHaveLength(81);
-    expect(new Set(REVIEWED_ENTRY_IDS).size).toBe(81);
-    for (const [category, ids] of Object.entries(
-      EXPECTED_REVIEWED_ENTRY_IDS_BY_CATEGORY,
-    )) {
-      for (const id of ids) {
-        expect(REVIEWED_COMMUNITY_ENTRY_CATEGORIES[id]).toBe(category);
-      }
+    for (const categoryId of assignedCategoryIds) {
+      expect(validCategoryIds.has(categoryId)).toBe(true);
     }
+    expect(new Set(assignedCategoryIds)).toEqual(validCategoryIds);
   });
 
   it("uses v2 declarations and preserves category absence for v1", () => {

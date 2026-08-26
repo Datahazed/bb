@@ -72,10 +72,14 @@ const categoryById = new Map<PluginCatalogCategoryId, PluginCatalogCategory>(
  * 410621e9d0190a1711623dac8a02db1a8a2a83b2; the remaining 18 assignments
  * were confirmed before publisher integration. The marketplace repository
  * uses this map to seed its single source-entry model before projecting v1
- * and v2. Runtime v1 fallback never applies it: v1 remains untouched and its
- * entries retain genuine category absence.
+ * and v2. Production v1 fallback never applies it: v1 remains untouched and
+ * its entries retain genuine category absence. Development builds also join
+ * this reviewed map onto the live v1 registry so the unreleased discovery UI
+ * can exercise a realistic categorized catalog without a committed snapshot.
  */
-export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES = {
+export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES: Readonly<
+  Record<string, PluginCatalogCategoryId>
+> = {
   ayu: "themes-and-appearance",
   monokai: "themes-and-appearance",
   fonts: "themes-and-appearance",
@@ -172,7 +176,7 @@ export const REVIEWED_COMMUNITY_ENTRY_CATEGORIES = {
 
   "global-workflows": "automation",
   "auto-archive": "automation",
-} as const satisfies Record<string, PluginCatalogCategoryId>;
+};
 
 /** Resolve a stable category ID to the current display record. */
 export function pluginCatalogCategory(

@@ -437,6 +437,7 @@ describe("plugin update service and routes", () => {
       appVersion: "1.0.0",
       marketplaceUrl: "https://marketplace.test/marketplace.json",
       dataDir: join(workDir, "data"),
+      isDevelopment: false,
       plugins: service,
     });
     const candidate = await commitPlugin(repo, "1.1.0");
