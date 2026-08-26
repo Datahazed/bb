@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import {
   cloudflare,
   type PluginConfig,
@@ -11,6 +12,49 @@ import tailwindcss from "@tailwindcss/vite";
 import { unstable_readConfig } from "wrangler";
 import { resolveCloudDevViteSettings } from "./src/server/cloud-dev-vite.js";
 import { resolveSiteOrigin } from "./src/server/site-origin.js";
+
+/**
+ * Hugeicons publishes its whole free set as one ESM module. Once the lazy
+ * Plugin Guide also imports that module, Rollup otherwise hoists the union of
+ * the landing and Guide icons into a shared chunk and preloads it on `/`.
+ * Give Guide-only workspace sources their own module identity so the map's
+ * icon inventory stays behind the route boundary instead of growing the
+ * performance-sensitive landing bundle.
+ */
+function isolatePluginGuideIcons(): Plugin {
+  const moduleName = "@hugeicons/core-free-icons";
+  const suffix = "?bb-plugin-guide-icons";
+  const guideSources = [
+    "/packages/plugin-api-map/",
+    "/packages/showcase-hero/",
+    // The portable hero consumes shared-ui's icon registry. apps/web has no
+    // other shared-ui consumer, so this arm is Guide-only in this build.
+    "/packages/shared-ui/",
+  ];
+
+  return {
+    name: "isolate-plugin-guide-icons",
+    enforce: "pre",
+    async resolveId(source, importer, options) {
+      if (
+        source !== moduleName ||
+        importer === undefined ||
+        !guideSources.some((segment) => importer.includes(segment))
+      ) {
+        return null;
+      }
+      const resolved = await this.resolve(source, importer, {
+        ...options,
+        skipSelf: true,
+      });
+      return resolved === null ? null : `${resolved.id}${suffix}`;
+    },
+    load(id) {
+      if (!id.endsWith(suffix)) return null;
+      return readFileSync(id.slice(0, -suffix.length), "utf8");
+    },
+  };
+}
 
 export default defineConfig(({ command }) => {
   const cloudDev = resolveCloudDevViteSettings(command, process.env);
@@ -53,6 +97,7 @@ export default defineConfig(({ command }) => {
     plugins: [
       cloudflare(cloudflareConfig),
       tailwindcss(),
+      isolatePluginGuideIcons(),
       tanstackStart({
         router: {
           routeTreeFileHeader: [

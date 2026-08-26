@@ -1,5 +1,5 @@
 /**
- * Color helpers for the showcase heroes' mini-window scenes.
+ * Color helpers for showcase-hero mini-window scenes.
  *
  * Every value derives from a theme token, never an `oklch(L 0 0)` literal, so
  * a custom palette (Nord, Dracula) that re-anchors --canvas/--ink retints the

@@ -17,6 +17,7 @@ import { Route as BlogRouteImport } from './routes/blog'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as MarketplacePluginIdRouteImport } from './routes/marketplace_.$pluginId'
 import { Route as DownloadMacosRouteImport } from './routes/download.macos'
+import { Route as DocsPluginsRouteImport } from './routes/docs_.plugins'
 import { Route as BlogSlugRouteImport } from './routes/blog_.$slug'
 import { Route as ApiSubscribeRouteImport } from './routes/api.subscribe'
 import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from './routes/[.]well-known.assetlinks[.]json'
@@ -69,6 +70,11 @@ const DownloadMacosRoute = DownloadMacosRouteImport.update({
   path: '/download/macos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocsPluginsRoute = DocsPluginsRouteImport.update({
+  id: '/docs_/plugins',
+  path: '/docs/plugins',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/docs_.plugins.lazy').then((d) => d.Route))
 const BlogSlugRoute = BlogSlugRouteImport.update({
   id: '/blog_/$slug',
   path: '/blog/$slug',
@@ -138,6 +144,7 @@ export interface FileRoutesByFullPath {
   '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/docs/plugins': typeof DocsPluginsRoute
   '/download/macos': typeof DownloadMacosRoute
   '/marketplace/$pluginId': typeof MarketplacePluginIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -159,6 +166,7 @@ export interface FileRoutesByTo {
   '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/docs/plugins': typeof DocsPluginsRoute
   '/download/macos': typeof DownloadMacosRoute
   '/marketplace/$pluginId': typeof MarketplacePluginIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -181,6 +189,7 @@ export interface FileRoutesById {
   '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/blog_/$slug': typeof BlogSlugRoute
+  '/docs_/plugins': typeof DocsPluginsRoute
   '/download/macos': typeof DownloadMacosRoute
   '/marketplace_/$pluginId': typeof MarketplacePluginIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -204,6 +213,7 @@ export interface FileRouteTypes {
     | '/.well-known/assetlinks.json'
     | '/api/subscribe'
     | '/blog/$slug'
+    | '/docs/plugins'
     | '/download/macos'
     | '/marketplace/$pluginId'
     | '/api/auth/$'
@@ -225,6 +235,7 @@ export interface FileRouteTypes {
     | '/.well-known/assetlinks.json'
     | '/api/subscribe'
     | '/blog/$slug'
+    | '/docs/plugins'
     | '/download/macos'
     | '/marketplace/$pluginId'
     | '/api/auth/$'
@@ -246,6 +257,7 @@ export interface FileRouteTypes {
     | '/.well-known/assetlinks.json'
     | '/api/subscribe'
     | '/blog_/$slug'
+    | '/docs_/plugins'
     | '/download/macos'
     | '/marketplace_/$pluginId'
     | '/api/auth/$'
@@ -268,6 +280,7 @@ export interface RootRouteChildren {
   DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute
   ApiSubscribeRoute: typeof ApiSubscribeRoute
   BlogSlugRoute: typeof BlogSlugRoute
+  DocsPluginsRoute: typeof DocsPluginsRoute
   DownloadMacosRoute: typeof DownloadMacosRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiConnectMachineCodeRoute: typeof ApiConnectMachineCodeRoute
@@ -334,6 +347,13 @@ declare module '@tanstack/react-router' {
       path: '/download/macos'
       fullPath: '/download/macos'
       preLoaderRoute: typeof DownloadMacosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs_/plugins': {
+      id: '/docs_/plugins'
+      path: '/docs/plugins'
+      fullPath: '/docs/plugins'
+      preLoaderRoute: typeof DocsPluginsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/blog_/$slug': {
@@ -440,6 +460,7 @@ const rootRouteChildren: RootRouteChildren = {
   DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,
   BlogSlugRoute: BlogSlugRoute,
+  DocsPluginsRoute: DocsPluginsRoute,
   DownloadMacosRoute: DownloadMacosRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiConnectMachineCodeRoute: ApiConnectMachineCodeRoute,

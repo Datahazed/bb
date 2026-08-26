@@ -38,6 +38,27 @@
   line-height: 1.55;
 }
 
+.marketplace-author-guide {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--dim);
+  font-size: 14px;
+}
+
+.marketplace-author-guide a {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.marketplace-author-guide a:hover {
+  color: var(--accent);
+}
+
 .marketplace-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

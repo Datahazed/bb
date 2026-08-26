@@ -1,22 +1,22 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
 import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
-import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
-import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
-import { getThreadRoutePath } from "@/lib/route-paths";
 import { ShowcaseFrame } from "./ShowcaseFrame";
-import type { ShowcaseArchetype, ShowcaseScenes } from "./showcase-archetype";
+import type {
+  ShowcaseArchetype,
+  ShowcaseIconRenderer,
+  ShowcaseScenes,
+} from "./showcase-archetype";
 import { accentInk, accentTint, neutral } from "./showcase-tokens";
+import "./styles.css";
 
 const SLIDE_MS = 5000;
 
@@ -55,36 +55,22 @@ export interface ShowcaseHeroCopy {
   frameBadge: string;
 }
 
-/** How the engine seeds bb's real new-thread composer for this surface. */
-export interface ShowcaseHeroComposerConfig {
-  /** The sentence prefix an archetype brief completes. */
-  promptPrefix: string;
-  placeholder: string;
-  /** Namespaces the composer's saved draft per surface. */
-  draftKey: string;
-}
-
-interface ShowcaseHeroCarouselProps {
+export interface ShowcaseHeroCarouselProps {
   archetypes: readonly ShowcaseArchetype[];
   scenes: ShowcaseScenes;
   copy: ShowcaseHeroCopy;
-  composer: ShowcaseHeroComposerConfig;
   /** Static rail glyphs for the mini window; omit to render no rail. */
   rail?: readonly IconName[];
   /** Stories force a slide and disable autoplay to capture a stable frame. */
   initialIndex?: number;
   autoplay?: boolean;
-  /** Stories render the showcase without the thread-creating composer. */
-  composerDisabled?: boolean;
   /**
-   * External request to open (or, with `close`, dismiss) the inline composer —
-   * an example card, the page's create button. A new nonce applies it; `seed`
-   * overrides the default prefix-only seed. The hero owns the composer, so
-   * every create affordance on the page funnels here instead of navigating.
+   * Optional host-owned composer rendered in place of the showcase. Omit this
+   * on hosts that cannot create bb threads, including the public docs site.
    */
-  openRequest?: { nonce: number; seed?: string; close?: boolean } | null;
-  /** Reports composer open/close so the page can keep the hero region shown. */
-  onComposingChange?: (composing: boolean) => void;
+  composerSlot?: ReactNode;
+  /** Uses static artwork on SSR hosts; defaults to shared-ui's lazy registry. */
+  renderIcon?: ShowcaseIconRenderer;
 }
 
 /**
@@ -96,52 +82,27 @@ interface ShowcaseHeroCarouselProps {
  * one feel one step away — so the headline states the outcome in plain words
  * while the window shows it.
  *
- * Composing is a MODE, not an inset panel: activating it swaps the showcase out
- * for bb's real new-thread composer in the same block, so the visitor gets the
- * genuine prompt box (mentions, attachments, model/project/environment pickers)
- * rather than a lookalike that drops their selections on the way to a thread.
- * Both states share one grid cell, so the swap cross-fades in place and the
- * page below never jumps.
+ * A host can optionally provide a composer slot. Composing is a MODE, not an
+ * inset panel: the slot swaps into the showcase's grid cell, so the page below
+ * never jumps. Hosts without a bb thread runtime simply omit it.
  */
 export function ShowcaseHeroCarousel({
   archetypes,
   scenes,
   copy,
-  composer,
   rail,
   initialIndex = 0,
   autoplay = true,
-  composerDisabled = false,
-  openRequest = null,
-  onComposingChange,
+  composerSlot,
+  renderIcon = (name, className) => <Icon name={name} className={className} />,
 }: ShowcaseHeroCarouselProps) {
   const reducedMotion = usePrefersReducedMotion();
-  const navigate = useNavigate();
-  const createThread = useCreateThread();
-  // The composer restores its saved draft on mount and only falls back to
-  // `initialPrompt` when that draft is empty — the right default for a blank
-  // open, but an example card's brief must land even over a leftover draft,
-  // so explicit seeds REPLACE the stored draft before the composer mounts.
-  // Imperative access on purpose: subscribing here would re-render the whole
-  // carousel on every keystroke the mounted composer writes.
-  const promptDraft = useMemo(
-    () =>
-      getPromptDraftAccessor({
-        kind: "plugin-new-thread",
-        key: composer.draftKey,
-      }),
-    [composer.draftKey],
-  );
   const [activeIndex, setActiveIndex] = useState(initialIndex);
   const [interacting, setInteracting] = useState(false);
   const [documentHidden, setDocumentHidden] = useState(false);
-  // Null while showcasing. Holds the seed prompt for the composer once open,
-  // and remounts it (via `composerKey`) so a new seed always takes effect.
-  const [composerSeed, setComposerSeed] = useState<string | null>(null);
-  const [composerKey, setComposerKey] = useState(0);
   const tabsRef = useRef<HTMLDivElement>(null);
 
-  const composing = composerSeed !== null;
+  const composing = composerSlot !== undefined && composerSlot !== null;
   const active = archetypes[activeIndex] ?? archetypes[0];
   const paused =
     !autoplay || reducedMotion || interacting || composing || documentHidden;
@@ -153,59 +114,6 @@ export function ShowcaseHeroCarousel({
     document.addEventListener("visibilitychange", update);
     return () => document.removeEventListener("visibilitychange", update);
   }, []);
-
-  // Composing-state changes flow from the two events that cause them (open,
-  // close), not from an effect. The transition is tracked in a ref so the
-  // parent callback fires exactly once per real change and the state updater
-  // stays pure (updaters run during render and re-run under StrictMode).
-  const composingRef = useRef(false);
-  const setSeedAndNotify = useCallback(
-    (seed: string | null, options?: { replaceDraft?: boolean }) => {
-      if (seed !== null && options?.replaceDraft === true) {
-        promptDraft.setDraft({
-          text: seed,
-          mentions: [],
-          // A brief replaces what the composer says, not what's attached.
-          attachments: promptDraft.getCurrent().attachments,
-        });
-      }
-      const willCompose = seed !== null;
-      if (composingRef.current !== willCompose) {
-        composingRef.current = willCompose;
-        onComposingChange?.(willCompose);
-      }
-      setComposerSeed(seed);
-      if (seed !== null) setComposerKey((current) => current + 1);
-    },
-    [onComposingChange, promptDraft],
-  );
-
-  // A repeated nonce is a no-op; each distinct request opens (or re-seeds) the
-  // composer even if it is already open, so a second card click still lands.
-  const handledRequestNonce = useRef<number | null>(null);
-  useEffect(() => {
-    if (composerDisabled) return;
-    if (
-      openRequest === null ||
-      openRequest.nonce === handledRequestNonce.current
-    ) {
-      return;
-    }
-    handledRequestNonce.current = openRequest.nonce;
-    // The rule's own exception: `openRequest` is an external command channel,
-    // and this effect is the subscription callback that applies it. The
-    // render-phase alternative would call `onComposingChange` — parent
-    // setState — during render. A request carrying a seed is an explicit
-    // choice (a card, a menu example), so it replaces the stored draft; a
-    // seedless request behaves like the blank CTA and restores it.
-    // oxlint-disable-next-line react/set-state-in-effect
-    setSeedAndNotify(
-      openRequest.close === true
-        ? null
-        : (openRequest.seed ?? composer.promptPrefix),
-      { replaceDraft: !openRequest.close && openRequest.seed !== undefined },
-    );
-  }, [composer.promptPrefix, composerDisabled, openRequest, setSeedAndNotify]);
 
   useEffect(() => {
     if (paused) return;
@@ -326,7 +234,7 @@ export function ShowcaseHeroCarousel({
                   isActive ? "opacity-100" : "opacity-70 hover:opacity-100",
                 )}
               >
-                <Icon name={archetype.icon} className="size-3 shrink-0" />
+                {renderIcon(archetype.icon, "size-3 shrink-0")}
                 <span className="truncate">{archetype.title}</span>
               </button>
             );
@@ -340,6 +248,7 @@ export function ShowcaseHeroCarousel({
             badge={copy.frameBadge}
             rail={rail}
             reducedMotion={reducedMotion}
+            renderIcon={renderIcon}
             // 13rem fits the densest scenes (the prototype grid and the inbox
             // with its handoff line) without a bottom clip.
             className="mx-auto h-[13rem] w-full max-w-[38rem] lg:w-[66%]"
@@ -354,38 +263,7 @@ export function ShowcaseHeroCarousel({
                 "animate-in fade-in slide-in-from-bottom-2 duration-300",
             )}
           >
-            <div className="mx-auto w-full max-w-[44rem]">
-              <PluginNewThreadComposer
-                // Remounting per open re-seeds the prompt; the composer treats
-                // initialPrompt as a mount-time seed, not a controlled value.
-                key={composerKey}
-                initialPrompt={composerSeed ?? undefined}
-                placeholder={composer.placeholder}
-                draftKey={composer.draftKey}
-                focusRequest={composerKey}
-                onSubmit={async (request) => {
-                  const thread = await createThread.mutateAsync({
-                    input: request.input,
-                    projectId: request.projectId,
-                    providerId: request.providerId,
-                    model: request.model,
-                    reasoningLevel: request.reasoningLevel,
-                    permissionMode: request.permissionMode,
-                    ...(request.serviceTier
-                      ? { serviceTier: request.serviceTier }
-                      : {}),
-                    executionInputSources: request.executionInputSources,
-                    environment: request.environment,
-                  });
-                  navigate(
-                    getThreadRoutePath({
-                      projectId: thread.projectId ?? request.projectId,
-                      threadId: thread.id,
-                    }),
-                  );
-                }}
-              />
-            </div>
+            <div className="mx-auto w-full max-w-[44rem]">{composerSlot}</div>
           </div>
         ) : null}
       </div>

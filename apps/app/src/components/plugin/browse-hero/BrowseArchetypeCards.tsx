@@ -1,5 +1,5 @@
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { ShowcaseExampleCard } from "@/components/showcase-hero/ShowcaseArchetypeCards";
+import { ShowcaseExampleCard } from "@bb/showcase-hero";
 import {
   BROWSE_ARCHETYPES,
   UTILITY_EXAMPLES,

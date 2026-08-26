@@ -540,6 +540,11 @@ export function PublicMarketplacePage({
             )}
           </div>
         </section>
+
+        <aside className="marketplace-author-guide">
+          <span>Building a plugin?</span>
+          <Link to="/docs/plugins">Read the Plugin Guide</Link>
+        </aside>
       </main>
       <SiteFooter />
     </div>
