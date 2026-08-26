@@ -1668,7 +1668,7 @@ describe("public thread data routes", () => {
   });
 
   it(
-    "expands the newest slice when a large delegation parent completes last",
+    "expands the canonical summary when a large delegation parent completes last",
     async () => {
       await withTestHarness(async (harness) => {
         const { environment, thread } = seedThreadFixture(harness);
@@ -1803,12 +1803,18 @@ describe("public thread data routes", () => {
         if (!turnRow) {
           throw new Error("Expected a turn row");
         }
-        expect(turnRow.sourceSeqStart).toBeGreaterThan(2);
+        expect(turnRow.sourceSeqStart).toBe(1);
+        expect(turnRow.sourceSeqEnd).toBe(sequence);
 
         const detailsResponse = await harness.app.request(
-          `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
+          `/api/v1/threads/${thread.id}/timeline/turn-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
         );
         expect(detailsResponse.status).toBe(200);
+        const details = timelineTurnDetailsResponseSchema.parse(
+          await readJson(detailsResponse),
+        );
+        expect(details.rows.length).toBeGreaterThan(0);
+        expect(details.nextCursor).not.toBeNull();
       });
     },
     10_000,

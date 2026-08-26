@@ -305,7 +305,9 @@ function buildPage(
   return buildThreadTimelineWithProfile(db, thread, {
     eventBudget,
     includeProviderUnhandledOperations: false,
-    includeNestedRows: false,
+    // This suite exercises the legacy nested event-window reader. The default
+    // summary timeline projects the full semantic stream before pagination.
+    includeNestedRows: true,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
     page: cursor

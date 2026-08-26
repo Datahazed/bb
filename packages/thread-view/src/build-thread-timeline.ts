@@ -1359,6 +1359,26 @@ function orderRowsAfterExternalUserBoundary(
   return [...rows.slice(0, suffixStartIndex), ...orderedSuffix];
 }
 
+/** Restore source order for thread-scoped system events emitted during a turn. */
+function restoreLateSystemRowSourceOrder(rows: TimelineRow[]): TimelineRow[] {
+  const orderedRows: TimelineRow[] = [];
+  for (const row of rows) {
+    if (row.kind !== "system") {
+      orderedRows.push(row);
+      continue;
+    }
+    const insertionIndex = orderedRows.findIndex(
+      (candidate) => candidate.sourceSeqStart > row.sourceSeqStart,
+    );
+    if (insertionIndex === -1) {
+      orderedRows.push(row);
+    } else {
+      orderedRows.splice(insertionIndex, 0, row);
+    }
+  }
+  return orderedRows;
+}
+
 function buildTimelineRows(
   projection: EventProjection,
   options: BuildTimelineRowsOptions,
@@ -1388,9 +1408,11 @@ function buildTimelineRows(
     }
   }
 
-  return orderRowsAfterExternalUserBoundary(
-    rows,
-    collectExternalUserBoundarySeqs(projection),
+  return restoreLateSystemRowSourceOrder(
+    orderRowsAfterExternalUserBoundary(
+      rows,
+      collectExternalUserBoundarySeqs(projection),
+    ),
   );
 }
 

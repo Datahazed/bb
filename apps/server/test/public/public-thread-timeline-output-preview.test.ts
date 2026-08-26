@@ -47,7 +47,9 @@ function findCommandRow(rows: readonly TimelineRow[], command: string) {
 function seedRunningTurnWithCommands(harness: TestAppHarness): {
   threadId: string;
 } {
-  const { environment, thread } = seedThreadFixture(harness);
+  const { environment, thread } = seedThreadFixture(harness, {
+    thread: { status: "active" },
+  });
   const turn = {
     threadId: thread.id,
     environmentId: environment.id,
@@ -201,7 +203,9 @@ describe("GET /threads/:id/timeline inline output preview", () => {
 describe("GET /threads/:id/timeline inline output preview (tool rows)", () => {
   it("previews a large tool result and row-scoped details return it whole", async () => {
     await withTestHarness(async (harness) => {
-      const { environment, thread } = seedThreadFixture(harness);
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
       const turn = {
         threadId: thread.id,
         environmentId: environment.id,

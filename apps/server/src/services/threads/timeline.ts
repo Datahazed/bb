@@ -1350,6 +1350,12 @@ function resolveTimelineSegmentWindow(
       segmentLimit: page.segmentLimit,
       threadId,
     });
+    // Rows before the first user-message anchor are the thread prelude. When
+    // this page reaches the oldest anchor, include that prelude as one extra
+    // logical segment instead of leaving it unreachable behind no cursor.
+    const includesThreadPrelude =
+      bounds.sequenceWindowStart === null &&
+      precedingAnchors.length <= page.segmentLimit;
     return {
       // Every cursor names the first sequence the page that issued it covered,
       // so this page ends exactly there. Reading up to the *next anchor* past
@@ -1362,13 +1368,15 @@ function resolveTimelineSegmentWindow(
         sequenceCursor?.kind === "byte" ? bounds.sequenceStart : null,
       requiresWholeItemClosure:
         sequenceCursor !== null || bounds.sequenceWindowStart !== null,
-      effectiveSegmentLimit: bounds.effectiveSegmentLimit,
+      effectiveSegmentLimit: includesThreadPrelude
+        ? bounds.effectiveSegmentLimit + 1
+        : bounds.effectiveSegmentLimit,
       hasAnchors: true,
       sequenceWindowStart: bounds.sequenceWindowStart,
       knownHasOlderSegments:
         precedingAnchors.length > bounds.affordableAnchorCount,
       oversizedEventPlaceholder: null,
-      sequenceStart: bounds.sequenceStart,
+      sequenceStart: includesThreadPrelude ? 0 : bounds.sequenceStart,
     };
   }
 
@@ -1389,18 +1397,23 @@ function resolveTimelineSegmentWindow(
     segmentLimit: page.segmentLimit,
     threadId,
   });
+  const includesThreadPrelude =
+    bounds.sequenceWindowStart === null &&
+    newestAnchors.length <= page.segmentLimit;
   return {
     beforeSequence: undefined,
     byteWindowSequenceStart: null,
     requiresWholeItemClosure: bounds.sequenceWindowStart !== null,
-    effectiveSegmentLimit: bounds.effectiveSegmentLimit,
+    effectiveSegmentLimit: includesThreadPrelude
+      ? bounds.effectiveSegmentLimit + 1
+      : bounds.effectiveSegmentLimit,
     hasAnchors: true,
     sequenceWindowStart: bounds.sequenceWindowStart,
     // Budgeted windows read exactly the segments they return, so "is there
     // more" comes from the anchor list rather than an over-read segment.
     knownHasOlderSegments: newestAnchors.length > bounds.affordableAnchorCount,
     oversizedEventPlaceholder: null,
-    sequenceStart: bounds.sequenceStart,
+    sequenceStart: includesThreadPrelude ? 0 : bounds.sequenceStart,
   };
 }
 
@@ -1410,16 +1423,20 @@ function selectStandardTimelineEventRows(
   page: ThreadTimelinePageRequest,
   eventBudget: number,
   maxInlineOutputChars: InlineOutputCharLimit,
+  enforceByteBudget = true,
 ): TimelineEventRowSelection {
-  const window = applyTimelineWindowByteBudget(db, {
-    maxInlineOutputChars,
+  const segmentWindow = resolveTimelineSegmentWindow(db, {
+    eventBudget,
+    page,
     threadId: thread.id,
-    window: resolveTimelineSegmentWindow(db, {
-      eventBudget,
-      page,
-      threadId: thread.id,
-    }),
   });
+  const window = enforceByteBudget
+    ? applyTimelineWindowByteBudget(db, {
+        maxInlineOutputChars,
+        threadId: thread.id,
+        window: segmentWindow,
+      })
+    : segmentWindow;
   if (
     !window.hasAnchors &&
     window.sequenceWindowStart === null &&
@@ -1666,6 +1683,12 @@ function buildThreadTimelineInternal(
     ? createThreadTimelineBuildProfileAccumulator()
     : null;
   const includeNestedRows = options.includeNestedRows ?? false;
+  // A default timeline page must never begin at a raw event/byte cut: semantic
+  // rows can span those cuts, leaving a row as context on one page and outside
+  // the next. Page the summary resource only at its user-message anchors.
+  // Nested consumers keep the bounded legacy event windows; completed-turn
+  // expansion has its own paginated resource.
+  const useTransportWindows = includeNestedRows;
   const includeProviderUnhandledOperations =
     options.includeProviderUnhandledOperations;
   const eventSelection = measureThreadTimelineStage(
@@ -1676,8 +1699,11 @@ function buildThreadTimelineInternal(
         db,
         thread,
         options.page,
-        options.eventBudget,
-        options.maxInlineOutputChars,
+        useTransportWindows ? options.eventBudget : Number.MAX_SAFE_INTEGER,
+        useTransportWindows || thread.status !== "idle"
+          ? options.maxInlineOutputChars
+          : 0,
+        useTransportWindows,
       ),
   );
   const rawEventRows = eventSelection.rows;
@@ -2127,8 +2153,7 @@ function buildTimelineTurnSummaryDetailsRange(
   // route actually holds, so the parent expansion spends what is left rather
   // than a pre-closure estimate of it. The subtraction may go negative, which
   // is the safe direction: the parent fetch then stays inside its bounds.
-  const detailsEventDataBytes =
-    byteLengthOfStoredEventRows(wholeItemEventRows);
+  const detailsEventDataBytes = byteLengthOfStoredEventRows(wholeItemEventRows);
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     maxInlineOutputChars: detailsInlineOutputLimit,
     outOfBoundsChildDataByteLimit:

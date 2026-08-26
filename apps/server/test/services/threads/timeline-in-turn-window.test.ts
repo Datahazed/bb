@@ -454,12 +454,31 @@ function buildPage(
   return buildThreadTimelineWithProfile(db, thread, {
     eventBudget,
     includeProviderUnhandledOperations: false,
-    includeNestedRows: false,
+    includeNestedRows: true,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
     page: cursor
       ? { kind: "older", beforeCursor: cursor, segmentLimit: 20 }
       : { kind: "latest", segmentLimit: 20 },
+  });
+}
+
+function buildSummaryPage(
+  db: DbConnection,
+  thread: Thread,
+  eventBudget: number,
+  cursor: TimelinePaginationCursor | null = null,
+  segmentLimit = 20,
+) {
+  return buildThreadTimelineWithProfile(db, thread, {
+    eventBudget,
+    includeProviderUnhandledOperations: false,
+    includeNestedRows: false,
+    maxInlineOutputChars: 32_000,
+    maxSeq: 0,
+    page: cursor
+      ? { kind: "older", beforeCursor: cursor, segmentLimit }
+      : { kind: "latest", segmentLimit },
   });
 }
 
@@ -543,6 +562,159 @@ function walkAllPages(
 }
 
 describe("in-turn timeline windows", () => {
+  it("keeps summary rows independent of event and byte transport budgets", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      commandChars: 25_000,
+      completeLastTurn: true,
+      itemsPerTurn: [BYTE_WINDOW_ITEM_COUNT],
+    });
+
+    const budgeted = buildSummaryPage(db, thread, 100);
+    const unbudgeted = buildSummaryPage(db, thread, LARGE_BUDGET);
+
+    expect(budgeted.profile.eventRowCount).toBeGreaterThan(100);
+    expect(budgeted.profile.eventDataBytes).toBeGreaterThan(
+      THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+    );
+    expect(budgeted.response.timelinePage.hasOlderRows).toBe(false);
+    expect(budgeted.response.rows).toEqual(unbudgeted.response.rows);
+  });
+
+  it("recombines logical summary pages into the unpaginated projection", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      commandChars: 25_000,
+      completeLastTurn: true,
+      itemsPerTurn: [1, 1, BYTE_WINDOW_ITEM_COUNT, 1, 1],
+    });
+
+    const rowsByPage: string[][] = [];
+    let cursor: TimelinePaginationCursor | null = null;
+    let maxEventDataBytes = 0;
+    let maxEventRowCount = 0;
+    let pages = 0;
+    for (;;) {
+      const { profile, response } = buildSummaryPage(
+        db,
+        thread,
+        100,
+        cursor,
+        2,
+      );
+      pages += 1;
+      maxEventDataBytes = Math.max(maxEventDataBytes, profile.eventDataBytes);
+      maxEventRowCount = Math.max(maxEventRowCount, profile.eventRowCount);
+      rowsByPage.push(response.rows.map((row) => JSON.stringify(row)));
+      if (!response.timelinePage.hasOlderRows) break;
+      cursor = response.timelinePage.olderCursor;
+      expect(cursor).not.toBeNull();
+      expect(pages).toBeLessThan(10);
+    }
+
+    const unpaginated = buildSummaryPage(
+      db,
+      thread,
+      LARGE_BUDGET,
+      null,
+      LARGE_BUDGET,
+    );
+    expect(pages).toBe(3);
+    expect(maxEventRowCount).toBeGreaterThan(100);
+    expect(maxEventDataBytes).toBeGreaterThan(
+      THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+    );
+    expect(rowsByPage.reverse().flat()).toEqual(
+      unpaginated.response.rows.map((row) => JSON.stringify(row)),
+    );
+  });
+
+  it("keeps assistant prelude rows before the first user anchor", () => {
+    const { db, thread } = setup();
+    const firstRequestId = requestId(1);
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        scope: turnScope("prelude-turn"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/completed",
+        scope: turnScope("prelude-turn"),
+        providerThreadId,
+        itemId: "prelude-message",
+        itemKind: "agentMessage",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "agentMessage",
+            id: "prelude-message",
+            text: "Assistant greeting before the first prompt.",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "turn/completed",
+        scope: turnScope("prelude-turn"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ status: "completed", providerThreadId }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          direction: "outbound",
+          source: "tell",
+          initiator: "user",
+          request: { method: "turn/start", params: {} },
+          requestId: firstRequestId,
+          senderThreadId: null,
+          input: [{ type: "text", text: "First prompt", mentions: [] }],
+          target: { kind: "thread-start" },
+          execution,
+        }),
+      },
+    ]);
+
+    const { response } = buildSummaryPage(db, thread, 100);
+    expect(response.timelinePage.hasOlderRows).toBe(false);
+    expect(response.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "conversation",
+          role: "assistant",
+          text: "Assistant greeting before the first prompt.",
+        }),
+        expect.objectContaining({
+          kind: "conversation",
+          role: "user",
+          text: "First prompt",
+        }),
+      ]),
+    );
+    expect(response.rows[0]).toEqual(
+      expect.objectContaining({ role: "assistant" }),
+    );
+  });
+
   const expectSteerDetailsOwnership = (
     steerStatus: "accepted" | "rejected",
   ): void => {

@@ -85,48 +85,25 @@ function getSummaryMessageBounds(
   return { startedAt };
 }
 
-function combineSummaryGroupsWithoutLaterHumanBoundary(
+function applySingleSummaryTurnBounds(
   turn: EventProjectionTurn,
   items: readonly CompletedTurnSummaryItem[],
 ): CompletedTurnSummaryItem[] {
   const summaryGroups = items.filter(isCompletedTurnSummaryGroup);
-  if (summaryGroups.length === 0) {
-    return [...items];
-  }
-  const canUseCanonicalIdentity =
-    (turn.externalUserBoundarySeqs?.length ?? 0) === 0 &&
-    !items.some(
-      (item) =>
-        item.kind === "ungrouped-message" &&
-        isTimelineUngroupableMessage(item.message) &&
-        item.message.sourceSeqStart > turn.sourceSeqStart,
-    );
-
-  if (!canUseCanonicalIdentity) {
+  if (summaryGroups.length !== 1) {
     return [...items];
   }
 
-  const firstSummaryGroup = summaryGroups[0];
-  if (!firstSummaryGroup) {
-    return [...items];
-  }
-  const combinedSummaryGroup: CompletedTurnSummaryGroup = {
-    ...firstSummaryGroup,
-    startedAt: turn.startedAt,
-    completedAt: turn.completedAt,
-    rowIdSegmentIndex: null,
-    sourceBounds:
-      summaryGroups.length === 1 ? firstSummaryGroup.sourceBounds : "messages",
-    sourceMessages: summaryGroups.flatMap((group) => group.sourceMessages),
-    summaryCount: summaryGroups.reduce(
-      (count, group) => count + group.summaryCount,
-      0,
-    ),
-  };
-  return items.flatMap((item): CompletedTurnSummaryItem[] => {
-    if (item === firstSummaryGroup) return [combinedSummaryGroup];
-    return isCompletedTurnSummaryGroup(item) ? [] : [item];
-  });
+  const onlySummaryGroup = summaryGroups[0];
+  return items.map((item) =>
+    item === onlySummaryGroup
+      ? {
+          ...item,
+          startedAt: turn.startedAt,
+          completedAt: turn.completedAt,
+        }
+      : item,
+  );
 }
 
 function splitCompletedTurnMessages(
@@ -321,7 +298,7 @@ function groupCompletedTurnSummaryMessages(
     externalBoundaryIndex += 1;
   }
   flushGroupedMessages();
-  return combineSummaryGroupsWithoutLaterHumanBoundary(turn, items);
+  return applySingleSummaryTurnBounds(turn, items);
 }
 
 export function groupCompletedTurnMessages(
