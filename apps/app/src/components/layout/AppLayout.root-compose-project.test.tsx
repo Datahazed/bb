@@ -26,6 +26,7 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
     if (enabled) commandHandlers.set(command, handler);
     else commandHandlers.delete(command);
   },
+  useIndexedAppCommandHandlers: () => {},
   useAppCommandShortcut: () => null,
   useAppCommandShortcuts: () => new Map(),
   useAppCommandRunner: () => ({
