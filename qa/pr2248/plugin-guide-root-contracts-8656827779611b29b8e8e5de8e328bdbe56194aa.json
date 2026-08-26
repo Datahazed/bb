@@ -1,0 +1,1251 @@
+{
+  "candidate": "8656827779611b29b8e8e5de8e328bdbe56194aa",
+  "result": "PASS",
+  "appResults": [
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844,
+      "state": {
+        "scale": 0.2651,
+        "expectedScale": 0.2650793650793651,
+        "frameClientWidth": 334,
+        "fixtureScrollWidth": 1260,
+        "frameRect": {
+          "left": 28,
+          "top": 247.5,
+          "right": 362,
+          "bottom": 387.71875,
+          "width": 334,
+          "height": 140.21875
+        },
+        "fixtureRect": {
+          "left": 28,
+          "top": 247.5,
+          "right": 218.85714721679688,
+          "bottom": 387.72698974609375,
+          "width": 190.85714721679688,
+          "height": 140.22698974609375
+        },
+        "documentClientWidth": 390,
+        "documentScrollWidth": 390,
+        "pageListClientWidth": 270,
+        "pageListScrollWidth": 872,
+        "pageListOverflowX": "auto",
+        "tabs": [
+          {
+            "id": "code-renderers",
+            "number": "9",
+            "badge": {
+              "left": 266.8323974609375,
+              "top": 247.5,
+              "right": 272.13397216796875,
+              "bottom": 252.8015899658203,
+              "width": 5.30157470703125,
+              "height": 5.3015899658203125
+            },
+            "target": {
+              "left": 262.3301696777344,
+              "top": 257.1753845214844,
+              "right": 276.64031982421875,
+              "bottom": 264.5976257324219,
+              "width": 14.310150146484375,
+              "height": 7.4222412109375
+            }
+          },
+          {
+            "id": "thread-panel",
+            "number": "10",
+            "badge": {
+              "left": 286.3778381347656,
+              "top": 247.5,
+              "right": 291.679443359375,
+              "bottom": 252.8015899658203,
+              "width": 5.301605224609375,
+              "height": 5.3015899658203125
+            },
+            "target": {
+              "left": 278.23077392578125,
+              "top": 257.1753845214844,
+              "right": 299.83062744140625,
+              "bottom": 264.5976257324219,
+              "width": 21.599853515625,
+              "height": 7.4222412109375
+            }
+          },
+          {
+            "id": "file-opener",
+            "number": "11",
+            "badge": {
+              "left": 314.47210693359375,
+              "top": 247.5,
+              "right": 319.7737121582031,
+              "bottom": 252.8015899658203,
+              "width": 5.301605224609375,
+              "height": 5.3015899658203125
+            },
+            "target": {
+              "left": 301.42108154296875,
+              "top": 257.1753845214844,
+              "right": 332.828857421875,
+              "bottom": 264.5976257324219,
+              "width": 31.40777587890625,
+              "height": 7.4222412109375
+            }
+          }
+        ],
+        "timeline": {
+          "left": 215.2081756591797,
+          "top": 294.8166809082031,
+          "right": 220.50975036621094,
+          "bottom": 300.1182556152344,
+          "width": 5.30157470703125,
+          "height": 5.30157470703125
+        },
+        "content": {
+          "left": 352.4571533203125,
+          "top": 378.18414306640625,
+          "right": 357.7587585449219,
+          "bottom": 383.4857177734375,
+          "width": 5.301605224609375,
+          "height": 5.30157470703125
+        },
+        "hitTests": [
+          {
+            "id": "nav-panel",
+            "hit": true
+          },
+          {
+            "id": "thread-list",
+            "hit": true
+          },
+          {
+            "id": "content-scripts",
+            "hit": true
+          },
+          {
+            "id": "code-renderers",
+            "hit": true
+          },
+          {
+            "id": "thread-panel",
+            "hit": true
+          },
+          {
+            "id": "file-opener",
+            "hit": true
+          },
+          {
+            "id": "thread-row-status",
+            "hit": true
+          },
+          {
+            "id": "sidebar-footer",
+            "hit": true
+          },
+          {
+            "id": "thread-header",
+            "hit": true
+          },
+          {
+            "id": "timeline-renderers",
+            "hit": true
+          },
+          {
+            "id": "message-directives",
+            "hit": true
+          },
+          {
+            "id": "message-actions",
+            "hit": true
+          },
+          {
+            "id": "pending-interaction",
+            "hit": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "split-pane",
+      "width": 1100,
+      "height": 980,
+      "state": {
+        "scale": 0.5746,
+        "expectedScale": 0.5746031746031746,
+        "frameClientWidth": 724,
+        "fixtureScrollWidth": 1260,
+        "frameRect": {
+          "left": 348,
+          "top": 201.25,
+          "right": 1072,
+          "bottom": 505.203125,
+          "width": 724,
+          "height": 303.953125
+        },
+        "fixtureRect": {
+          "left": 348,
+          "top": 201.25,
+          "right": 764.0126953125,
+          "bottom": 505.215087890625,
+          "width": 416.0126953125,
+          "height": 303.965087890625
+        },
+        "documentClientWidth": 1100,
+        "documentScrollWidth": 1100,
+        "pageListClientWidth": 660,
+        "pageListScrollWidth": 872,
+        "pageListOverflowX": "auto",
+        "tabs": [
+          {
+            "id": "code-renderers",
+            "number": "9",
+            "badge": {
+              "left": 865.70849609375,
+              "top": 201.25,
+              "right": 877.2005615234375,
+              "bottom": 212.7420654296875,
+              "width": 11.4920654296875,
+              "height": 11.4920654296875
+            },
+            "target": {
+              "left": 855.94921875,
+              "top": 222.2230224609375,
+              "right": 886.9688110351562,
+              "bottom": 238.31190490722656,
+              "width": 31.01959228515625,
+              "height": 16.088882446289062
+            }
+          },
+          {
+            "id": "thread-panel",
+            "number": "10",
+            "badge": {
+              "left": 908.0765380859375,
+              "top": 201.25,
+              "right": 919.568603515625,
+              "bottom": 212.7420654296875,
+              "width": 11.4920654296875,
+              "height": 11.4920654296875
+            },
+            "target": {
+              "left": 890.4164428710938,
+              "top": 222.2230224609375,
+              "right": 937.2376098632812,
+              "bottom": 238.31190490722656,
+              "width": 46.8211669921875,
+              "height": 16.088882446289062
+            }
+          },
+          {
+            "id": "file-opener",
+            "number": "11",
+            "badge": {
+              "left": 968.9754638671875,
+              "top": 201.25,
+              "right": 980.467529296875,
+              "bottom": 212.7420654296875,
+              "width": 11.4920654296875,
+              "height": 11.4920654296875
+            },
+            "target": {
+              "left": 940.6852416992188,
+              "top": 222.2230224609375,
+              "right": 1008.7667236328125,
+              "bottom": 238.31190490722656,
+              "width": 68.08148193359375,
+              "height": 16.088882446289062
+            }
+          }
+        ],
+        "timeline": {
+          "left": 753.8045654296875,
+          "top": 303.8166809082031,
+          "right": 765.296630859375,
+          "bottom": 315.3087463378906,
+          "width": 11.4920654296875,
+          "height": 11.4920654296875
+        },
+        "content": {
+          "left": 1051.3143310546875,
+          "top": 484.5293884277344,
+          "right": 1062.806396484375,
+          "bottom": 496.0214538574219,
+          "width": 11.4920654296875,
+          "height": 11.4920654296875
+        },
+        "hitTests": [
+          {
+            "id": "nav-panel",
+            "hit": true
+          },
+          {
+            "id": "thread-list",
+            "hit": true
+          },
+          {
+            "id": "content-scripts",
+            "hit": true
+          },
+          {
+            "id": "code-renderers",
+            "hit": true
+          },
+          {
+            "id": "thread-panel",
+            "hit": true
+          },
+          {
+            "id": "file-opener",
+            "hit": true
+          },
+          {
+            "id": "thread-row-status",
+            "hit": true
+          },
+          {
+            "id": "sidebar-footer",
+            "hit": true
+          },
+          {
+            "id": "thread-header",
+            "hit": true
+          },
+          {
+            "id": "timeline-renderers",
+            "hit": true
+          },
+          {
+            "id": "message-directives",
+            "hit": true
+          },
+          {
+            "id": "message-actions",
+            "hit": true
+          },
+          {
+            "id": "pending-interaction",
+            "hit": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900,
+      "state": {
+        "scale": 0.8444,
+        "expectedScale": 0.8444444444444444,
+        "frameClientWidth": 1064,
+        "fixtureScrollWidth": 1260,
+        "frameRect": {
+          "left": 348,
+          "top": 201.25,
+          "right": 1412,
+          "bottom": 647.953125,
+          "width": 1064,
+          "height": 446.703125
+        },
+        "fixtureRect": {
+          "left": 348,
+          "top": 201.25,
+          "right": 1246.4888916015625,
+          "bottom": 647.9611206054688,
+          "width": 898.4888916015625,
+          "height": 446.71112060546875
+        },
+        "documentClientWidth": 1440,
+        "documentScrollWidth": 1440,
+        "pageListClientWidth": 1000,
+        "pageListScrollWidth": 1000,
+        "pageListOverflowX": "auto",
+        "tabs": [
+          {
+            "id": "code-renderers",
+            "number": "9",
+            "badge": {
+              "left": 1108.831298828125,
+              "top": 201.25,
+              "right": 1125.72021484375,
+              "bottom": 218.13888549804688,
+              "width": 16.888916015625,
+              "height": 16.888885498046875
+            },
+            "target": {
+              "left": 1094.4888916015625,
+              "top": 232.0722198486328,
+              "right": 1140.07568359375,
+              "bottom": 255.7166748046875,
+              "width": 45.5867919921875,
+              "height": 23.644454956054688
+            }
+          },
+          {
+            "id": "thread-panel",
+            "number": "10",
+            "badge": {
+              "left": 1171.0958251953125,
+              "top": 201.25,
+              "right": 1187.9847412109375,
+              "bottom": 218.13888549804688,
+              "width": 16.888916015625,
+              "height": 16.888885498046875
+            },
+            "target": {
+              "left": 1145.142333984375,
+              "top": 232.0722198486328,
+              "right": 1213.951416015625,
+              "bottom": 255.7166748046875,
+              "width": 68.80908203125,
+              "height": 23.644454956054688
+            }
+          },
+          {
+            "id": "file-opener",
+            "number": "11",
+            "badge": {
+              "left": 1260.59375,
+              "top": 201.25,
+              "right": 1277.482666015625,
+              "bottom": 218.13888549804688,
+              "width": 16.888916015625,
+              "height": 16.888885498046875
+            },
+            "target": {
+              "left": 1219.01806640625,
+              "top": 232.0722198486328,
+              "right": 1319.071533203125,
+              "bottom": 255.7166748046875,
+              "width": 100.053466796875,
+              "height": 23.644454956054688
+            }
+          }
+        ],
+        "timeline": {
+          "left": 944.3756713867188,
+          "top": 351.98333740234375,
+          "right": 961.2645874023438,
+          "bottom": 368.8722229003906,
+          "width": 16.888916015625,
+          "height": 16.888885498046875
+        },
+        "content": {
+          "left": 1381.5999755859375,
+          "top": 617.5611572265625,
+          "right": 1398.4888916015625,
+          "bottom": 634.4500122070312,
+          "width": 16.888916015625,
+          "height": 16.88885498046875
+        },
+        "hitTests": [
+          {
+            "id": "nav-panel",
+            "hit": true
+          },
+          {
+            "id": "thread-list",
+            "hit": true
+          },
+          {
+            "id": "content-scripts",
+            "hit": true
+          },
+          {
+            "id": "code-renderers",
+            "hit": true
+          },
+          {
+            "id": "thread-panel",
+            "hit": true
+          },
+          {
+            "id": "file-opener",
+            "hit": true
+          },
+          {
+            "id": "thread-row-status",
+            "hit": true
+          },
+          {
+            "id": "sidebar-footer",
+            "hit": true
+          },
+          {
+            "id": "thread-header",
+            "hit": true
+          },
+          {
+            "id": "timeline-renderers",
+            "hit": true
+          },
+          {
+            "id": "message-directives",
+            "hit": true
+          },
+          {
+            "id": "message-actions",
+            "hit": true
+          },
+          {
+            "id": "pending-interaction",
+            "hit": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "external-display",
+      "width": 2048,
+      "height": 1080,
+      "state": {
+        "scale": 1,
+        "expectedScale": 1,
+        "frameClientWidth": 1272,
+        "fixtureScrollWidth": 1272,
+        "frameRect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 782.25,
+          "width": 1272,
+          "height": 581
+        },
+        "fixtureRect": {
+          "left": 548,
+          "top": 201.25,
+          "right": 1820,
+          "bottom": 782.25,
+          "width": 1272,
+          "height": 581
+        },
+        "documentClientWidth": 2048,
+        "documentScrollWidth": 2048,
+        "pageListClientWidth": 1208,
+        "pageListScrollWidth": 1208,
+        "pageListOverflowX": "auto",
+        "tabs": [
+          {
+            "id": "code-renderers",
+            "number": "9",
+            "badge": {
+              "left": 1460.984375,
+              "top": 201.25,
+              "right": 1480.984375,
+              "bottom": 221.25,
+              "width": 20,
+              "height": 20
+            },
+            "target": {
+              "left": 1444,
+              "top": 237.75,
+              "right": 1497.984375,
+              "bottom": 265.75,
+              "width": 53.984375,
+              "height": 28
+            }
+          },
+          {
+            "id": "thread-panel",
+            "number": "10",
+            "badge": {
+              "left": 1534.71875,
+              "top": 201.25,
+              "right": 1554.71875,
+              "bottom": 221.25,
+              "width": 20,
+              "height": 20
+            },
+            "target": {
+              "left": 1503.984375,
+              "top": 237.75,
+              "right": 1585.46875,
+              "bottom": 265.75,
+              "width": 81.484375,
+              "height": 28
+            }
+          },
+          {
+            "id": "file-opener",
+            "number": "11",
+            "badge": {
+              "left": 1640.703125,
+              "top": 201.25,
+              "right": 1660.703125,
+              "bottom": 221.25,
+              "width": 20,
+              "height": 20
+            },
+            "target": {
+              "left": 1591.46875,
+              "top": 237.75,
+              "right": 1709.953125,
+              "bottom": 265.75,
+              "width": 118.484375,
+              "height": 28
+            }
+          }
+        ],
+        "timeline": {
+          "left": 1263.59375,
+          "top": 379.75,
+          "right": 1283.59375,
+          "bottom": 399.75,
+          "width": 20,
+          "height": 20
+        },
+        "content": {
+          "left": 1784,
+          "top": 746.25,
+          "right": 1804,
+          "bottom": 766.25,
+          "width": 20,
+          "height": 20
+        },
+        "hitTests": [
+          {
+            "id": "nav-panel",
+            "hit": true
+          },
+          {
+            "id": "thread-list",
+            "hit": true
+          },
+          {
+            "id": "content-scripts",
+            "hit": true
+          },
+          {
+            "id": "code-renderers",
+            "hit": true
+          },
+          {
+            "id": "thread-panel",
+            "hit": true
+          },
+          {
+            "id": "file-opener",
+            "hit": true
+          },
+          {
+            "id": "thread-row-status",
+            "hit": true
+          },
+          {
+            "id": "sidebar-footer",
+            "hit": true
+          },
+          {
+            "id": "thread-header",
+            "hit": true
+          },
+          {
+            "id": "timeline-renderers",
+            "hit": true
+          },
+          {
+            "id": "message-directives",
+            "hit": true
+          },
+          {
+            "id": "message-actions",
+            "hit": true
+          },
+          {
+            "id": "pending-interaction",
+            "hit": true
+          }
+        ]
+      }
+    }
+  ],
+  "cardGap": {
+    "gap": 8,
+    "cardBottom": 749.828125,
+    "viewportBottom": 980
+  },
+  "composer": {
+    "controls": [
+      {
+        "id": "composer-state",
+        "badge": {
+          "left": 351.75128173828125,
+          "top": 575.9345703125,
+          "right": 370.5077819824219,
+          "bottom": 594.6910400390625
+        },
+        "target": {
+          "left": 405.2072448730469,
+          "top": 571.2454833984375,
+          "right": 988.5336608886719,
+          "bottom": 597.5045166015625
+        }
+      },
+      {
+        "id": "composer-plus-menu",
+        "badge": {
+          "left": 351.75128173828125,
+          "top": 642.5200805664062,
+          "right": 370.5077819824219,
+          "bottom": 661.2765502929688
+        },
+        "target": {
+          "left": 398.6424865722656,
+          "top": 631.2662353515625,
+          "right": 436.15545654296875,
+          "bottom": 668.7791748046875
+        }
+      },
+      {
+        "id": "provider-picker",
+        "badge": {
+          "left": 567.4508056640625,
+          "top": 607.820556640625,
+          "right": 586.207275390625,
+          "bottom": 626.5770263671875
+        },
+        "target": {
+          "left": 439.90673828125,
+          "top": 631.2662353515625,
+          "right": 587.1450805664062,
+          "bottom": 668.7791748046875
+        }
+      },
+      {
+        "id": "composer-actions",
+        "badge": {
+          "left": 925.699462890625,
+          "top": 609.6962280273438,
+          "right": 944.4559326171875,
+          "bottom": 628.4527587890625
+        },
+        "target": {
+          "left": 916.3212280273438,
+          "top": 633.141845703125,
+          "right": 950.0828857421875,
+          "bottom": 666.9035034179688
+        }
+      }
+    ],
+    "actionTargets": 1,
+    "actionGlyphs": 1,
+    "submitIcon": "CornerDownLeft",
+    "hitTests": [
+      {
+        "id": "composer-state",
+        "hit": true
+      },
+      {
+        "id": "composer-plus-menu",
+        "hit": true
+      },
+      {
+        "id": "provider-picker",
+        "hit": true
+      },
+      {
+        "id": "composer-actions",
+        "hit": true
+      }
+    ]
+  },
+  "plusState": {
+    "badge": {
+      "left": 351.75128173828125,
+      "top": 642.5200805664062,
+      "right": 370.5077819824219,
+      "bottom": 661.2765502929688
+    },
+    "target": {
+      "left": 398.6424865722656,
+      "top": 631.2662353515625,
+      "right": 436.15545654296875,
+      "bottom": 668.7791748046875
+    },
+    "menu": {
+      "left": 397.70465087890625,
+      "top": 549.675537109375,
+      "right": 562.7616577148438,
+      "bottom": 626.5770263671875
+    },
+    "visibleBadges": [
+      {
+        "id": "composer-banners",
+        "rect": {
+          "left": 1053.2435302734375,
+          "top": 520.6029663085938,
+          "right": 1072,
+          "bottom": 539.3594970703125
+        }
+      },
+      {
+        "id": "composer-state",
+        "rect": {
+          "left": 351.75128173828125,
+          "top": 575.9345703125,
+          "right": 370.5077819824219,
+          "bottom": 594.6910400390625
+        }
+      },
+      {
+        "id": "composer-plus-menu",
+        "rect": {
+          "left": 351.75128173828125,
+          "top": 642.5200805664062,
+          "right": 370.5077819824219,
+          "bottom": 661.2765502929688
+        }
+      },
+      {
+        "id": "provider-picker",
+        "rect": {
+          "left": 567.4508056640625,
+          "top": 607.820556640625,
+          "right": 586.207275390625,
+          "bottom": 626.5770263671875
+        }
+      },
+      {
+        "id": "composer-actions",
+        "rect": {
+          "left": 925.699462890625,
+          "top": 609.6962280273438,
+          "right": 944.4559326171875,
+          "bottom": 628.4527587890625
+        }
+      },
+      {
+        "id": "mention-provider",
+        "rect": {
+          "left": 582.3973388671875,
+          "top": 552.489013671875,
+          "right": 601.15380859375,
+          "bottom": 571.2454833984375
+        }
+      },
+      {
+        "id": "composer-rich-text",
+        "rect": {
+          "left": 657.2327880859375,
+          "top": 551.5511474609375,
+          "right": 675.9892578125,
+          "bottom": 570.3076171875
+        }
+      }
+    ]
+  },
+  "mentionState": {
+    "badge": {
+      "left": 582.3973388671875,
+      "top": 552.489013671875,
+      "right": 601.15380859375,
+      "bottom": 571.2454833984375
+    },
+    "target": {
+      "left": 473.199462890625,
+      "top": 574.0589599609375,
+      "right": 577.708251953125,
+      "bottom": 594.6910400390625
+    },
+    "menu": {
+      "left": 389.2642517089844,
+      "top": 420.2558288574219,
+      "right": 1034.4870300292969,
+      "bottom": 502.7843322753906
+    },
+    "visibleBadges": [
+      {
+        "id": "composer-banners",
+        "rect": {
+          "left": 1053.2435302734375,
+          "top": 520.6029663085938,
+          "right": 1072,
+          "bottom": 539.3594970703125
+        }
+      },
+      {
+        "id": "composer-state",
+        "rect": {
+          "left": 351.75128173828125,
+          "top": 575.9345703125,
+          "right": 370.5077819824219,
+          "bottom": 594.6910400390625
+        }
+      },
+      {
+        "id": "composer-plus-menu",
+        "rect": {
+          "left": 351.75128173828125,
+          "top": 642.5200805664062,
+          "right": 370.5077819824219,
+          "bottom": 661.2765502929688
+        }
+      },
+      {
+        "id": "provider-picker",
+        "rect": {
+          "left": 567.4508056640625,
+          "top": 607.820556640625,
+          "right": 586.207275390625,
+          "bottom": 626.5770263671875
+        }
+      },
+      {
+        "id": "composer-actions",
+        "rect": {
+          "left": 925.699462890625,
+          "top": 609.6962280273438,
+          "right": 944.4559326171875,
+          "bottom": 628.4527587890625
+        }
+      },
+      {
+        "id": "mention-provider",
+        "rect": {
+          "left": 582.3973388671875,
+          "top": 552.489013671875,
+          "right": 601.15380859375,
+          "bottom": 571.2454833984375
+        }
+      },
+      {
+        "id": "composer-rich-text",
+        "rect": {
+          "left": 657.2327880859375,
+          "top": 551.5511474609375,
+          "right": 675.9892578125,
+          "bottom": 570.3076171875
+        }
+      }
+    ]
+  },
+  "plusScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-composer-plus-menu-8656827779611b29b8e8e5de8e328bdbe56194aa.png",
+  "mentionScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-composer-mention-menu-8656827779611b29b8e8e5de8e328bdbe56194aa.png",
+  "catalog": [
+    {
+      "groupId": "app-shell",
+      "label": "The bb app window",
+      "pageScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-page-app-shell-8656827779611b29b8e8e5de8e328bdbe56194aa.png",
+      "cards": [
+        {
+          "id": "nav-panel",
+          "number": 1,
+          "title": "Full-page panels",
+          "text": "1Full-page panelsAdds a row to bb's sidebar that opens a page your plugin renders where threads normally appear. With this, a plugin can:Render any React you write across that whole areaGet its own URL, so the page can be linked to and bb's back and forward buttons workRegister tabs in the panel to the right of its page, beside bb's own Browser and Terminal tabsUsed byAutomationsDocsGitHubTasksCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-01-nav-panel-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "thread-list",
+          "number": 2,
+          "title": "The thread list",
+          "text": "2The thread listexperimentalReplaces the list of threads in bb's sidebar with a component your plugin renders. With this, a plugin can:Render every row, and decide the grouping, the ordering, and what each row showsRead the same live thread data and run statuses bb's own list readsReplace only the list. The New thread button, the search field, the plugin rows, and the sidebar footer stay bb'sCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-02-thread-list-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "thread-row-status",
+          "number": 3,
+          "title": "Thread row status",
+          "text": "3Thread row statusexperimentalA small status bb can draw on a thread's row in the sidebar. With this, a plugin can:Give the status an icon and a labelMark a thread as running while it works on it, and bb shimmers the iconMark it succeeded or failed when the work ends, and bb settles the iconSet it only from an app-wide script. A status needs an owner that outlives any single screen, and those scripts are the only plugin code that doesRely on bb to clear it when the script unmountsCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-03-thread-row-status-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "sidebar-footer",
+          "number": 4,
+          "title": "Sidebar footer buttons",
+          "text": "4Sidebar footer buttonsAdds an icon button to the row at the bottom of bb's sidebar, beside the Settings button. With this, a plugin can:Supply the button's icon and its hover tooltipRun a callback when the button is clickedStay reachable wherever bb's sidebar is showingUsed byRemote accessCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-04-sidebar-footer-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "thread-header",
+          "number": 5,
+          "title": "Thread header controls",
+          "text": "5Thread header controlsexperimentalAdds a control to the header bar at the top of an open thread. With this, a plugin can:Render a React component rather than a plain button, so it can show live stateReceive the id of the thread currently on screenRender in the same row as bb's own header controlsCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-05-thread-header-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "message-directives",
+          "number": 6,
+          "title": "Rich message embeds",
+          "text": "6Rich message embedsRenders your component inside an agent's reply, in place of a marker the agent writes into its message. With this, a plugin can:Claim a directive name; an agent writes ::name in a message to invoke itReplace that marker with a live component, inline in the conversationOpen a file from the workspace when someone interacts with the embedUsed byDocsInline visualizationsTasksWorkflowsCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-06-message-directives-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "message-actions",
+          "number": 7,
+          "title": "Message actions",
+          "text": "7Message actionsAdds an action to individual messages in a thread. With this, a plugin can:Appear in the row that shows under messages on hover, or in the toolbar that appears when text in an agent's message is selectedReceive the message, plus the selected text when the action was run from a selectionOpen one of the plugin's own side-panel tabs with what it receivedUsed bySide chatCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-07-message-actions-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "pending-interaction",
+          "number": 8,
+          "title": "In-thread forms",
+          "text": "8In-thread formsPauses an agent mid-turn to ask the person a question, and hands their answer back to the agent. With this, a plugin can:Replace the prompt box with a form while the agent waits for an answerReceive the submitted answer, or a cancellation and its reasonSupply the component that draws the formUsed byAsk User QuestionSecretsCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-08-pending-interaction-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "code-renderers",
+          "number": 9,
+          "title": "Code & diff renderers",
+          "text": "9Code & diff renderersexperimentalReplaces bb's source-code or diff renderer everywhere that kind of content appears. With this, a plugin can:Register the source-code and diff replacements independentlyApply each replacement across bb's file previews, timeline and environment diffs, and plugin pagesHand any individual render back to bb's built-in renderer, and fall back to it automatically if the plugin is unavailable or crashesCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-09-code-renderers-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "thread-panel",
+          "number": 10,
+          "title": "Thread side-panel tabs",
+          "text": "10Thread side-panel tabsAdds a tab to the side panel that opens to the right of a thread. With this, a plugin can:Render the tab's contents and receive the id of the thread it was opened fromOpen the tab from a message action, from the + button in the side panel, or from its own codeUsed byDocsGitHubSide chatTasksWorkflowsCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-10-thread-panel-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "file-opener",
+          "number": 11,
+          "title": "File viewers & editors",
+          "text": "11File viewers & editorsRegisters a viewer for the file types you name, so bb opens those files there instead of its built-in preview. With this, a plugin can:Declare the file extensions it handles, for example .csv or .excalidrawRender its own viewer or editor whenever a file of that type is opened in bbReceive the file's path, then read it however the plugin already reads filesUsed byDocsCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-11-file-opener-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "timeline-renderers",
+          "number": 12,
+          "title": "Timeline entry content",
+          "text": "12Timeline entry contentexperimentalRenders the expanded content of plugin-owned timeline entries while bb keeps each entry's header and controls. With this, a plugin can:Draw the expanded content beneath timeline entries created by the plugin's own providerReceive the entry data and plugin payload, plus bb's default content as OriginalFall back to bb's default content automatically when the plugin is unavailable or crashesCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-12-timeline-renderers-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "content-scripts",
+          "number": 13,
+          "title": "App-wide scripts",
+          "text": "13App-wide scriptsRuns your code inside the bb window itself, without rendering a UI of its own. With this, a plugin can:Mount once per bb window and unmount when the window reloadsAdd behavior that is not tied to one screen, such as a keyboard shortcutSet a thread row status on any thread, for as long as the script is mountedAdd plugin-owned elements to app pages without taking ownership of bb's built-in layoutReturn a cleanup function. bb calls it once on unmount, and clears any row statuses the script setCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-13-content-scripts-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        }
+      ]
+    },
+    {
+      "groupId": "command-palette",
+      "label": "Command palette",
+      "pageScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-page-command-palette-8656827779611b29b8e8e5de8e328bdbe56194aa.png",
+      "cards": [
+        {
+          "id": "command-palette-actions",
+          "number": 1,
+          "title": "Command palette actions",
+          "text": "1Command palette actionsAdds a row under Plugins in bb's quick command palette. With this, a plugin can:Supply the row's label and run behavior; bb owns matching, ordering, and recencyRead the current thread and project, and hide the row when it is unavailableOpen one of the plugin's own thread side-panel tabs when a thread is on screenCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-01-command-palette-actions-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        }
+      ]
+    },
+    {
+      "groupId": "composer",
+      "label": "The composer",
+      "pageScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-page-composer-8656827779611b29b8e8e5de8e328bdbe56194aa.png",
+      "cards": [
+        {
+          "id": "composer-banners",
+          "number": 1,
+          "title": "Banners",
+          "text": "1BannersRenders a banner above the prompt box. With this, a plugin can:Render its own component in the strip directly above the draft promptName which prompt boxes it appears in: the new-thread screen, the follow-up composer in a thread, or a queued message being edited. Omit the list to appear in all of themShow something the person should read before sending, such as a warning or a statusUsed byProvider retryWorkflowsCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-01-composer-banners-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "mention-provider",
+          "number": 2,
+          "title": "Mentions",
+          "text": "2MentionsAdds results to the menu that opens when someone types a trigger character in the prompt box. On a trigger bb does not use itself, your plugin opens that menu and owns it. With this, a plugin can:Answer each keystroke after the trigger with a list of items to showClaim one or more of the trigger characters @, #, $, !, and ~. Omit them to answer the default @Turn a picked item into a chip in the draft prompt, and send its content to the agent along with the messageUsed byDocsGitHubTasksCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-02-mention-provider-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "composer-rich-text",
+          "number": 3,
+          "title": "Draft prompt highlighting",
+          "text": "3Draft prompt highlightingStyles text ranges as the person types a prompt, without changing the text. With this, a plugin can:Match ranges in the draft prompt, such as a ticket number or the word TODOChange only how those ranges look; the text the agent receives is untouchedRe-run its matcher on every keystrokeObserve the draft prompt and its @-mentions as they change, read-onlyCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-03-composer-rich-text-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "composer-state",
+          "number": 4,
+          "title": "Draft prompt state & locking",
+          "text": "4Draft prompt state & lockingReads the draft prompt, and can block typing while the plugin works. With this, a plugin can:Read the draft prompt's text, whether it is empty, and how many files are attachedRead the prompt box's layout and whether the thread is already running a turnLock the input and release it again, so the draft prompt cannot change mid-operationMark the thread row as running while the input is locked, with a thread row statusCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-04-composer-state-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "composer-plus-menu",
+          "number": 5,
+          "title": "The + menu",
+          "text": "5The + menuAdds rows to the menu that opens from the + button beside the prompt box. With this, a plugin can:Supply each row's icon, label, and disabled state; bb renders the row itselfRun a callback when someone picks the rowRead and rewrite the draft prompt from that callbackCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-05-composer-plus-menu-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "provider-picker",
+          "number": 6,
+          "title": "Agent providers",
+          "text": "6Agent providersexperimentalAdds an agent to bb's model picker and runs the threads started with it. With this, a plugin can:Appear in the model picker beside bb's built-in providersDeclare what the provider supports, then serve its model list at runtimeSupply a small icon that appears next to its nameReceive every message in a thread started with it, through a bridge process the plugin shipsUsed byACP providersClaude Code providerCodex providerPi providerCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-06-provider-picker-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "composer-actions",
+          "number": 7,
+          "title": "Inline actions",
+          "text": "7Inline actionsAdds a button to the row of controls inside the prompt box, beside the voice and send buttons. With this, a plugin can:Read and rewrite the draft prompt, for example rephrasing it or inserting a templateInsert an @-mention into the draft so its provider can resolve fresh context when the message is sentLock the input while it works, and tint the whole draft while it doesRender in the same row as bb's own prompt-box buttons. If you have more than 3 plugins enabled, bb keeps the 3 most-used plugins inline and moves the rest into an overflow menuCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-07-composer-actions-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        }
+      ]
+    },
+    {
+      "groupId": "home",
+      "label": "Home page",
+      "pageScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-page-home-8656827779611b29b8e8e5de8e328bdbe56194aa.png",
+      "cards": [
+        {
+          "id": "homepage-section",
+          "number": 1,
+          "title": "Home-screen sections",
+          "text": "1Home-screen sectionsAdds a full-width section to the page bb opens on, below the prompt box. With this, a plugin can:Render its own component across the width of the content areaRender before any thread exists, which suits shortcuts and pinned workRender after bb's own content, in the order plugins registeredCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-01-homepage-section-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "new-thread-panel",
+          "number": 2,
+          "title": "New-thread side panel",
+          "text": "2New-thread side panelexperimentalAdds a plugin tab to the side panel on the new-thread screen. With this, a plugin can:Render before a thread exists, so it receives no thread idHost setup the person does while writing the first promptReceive the project selected in the prompt boxCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-02-new-thread-panel-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        }
+      ]
+    },
+    {
+      "groupId": "settings",
+      "label": "Plugin settings page",
+      "pageScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-page-settings-8656827779611b29b8e8e5de8e328bdbe56194aa.png",
+      "cards": [
+        {
+          "id": "declarative-settings",
+          "number": 1,
+          "title": "Settings fields",
+          "text": "1Settings fieldsDeclares the settings your plugin needs as plain data; bb renders the form for them on the plugin's settings page and stores the values. With this, a plugin can:Declare each field's type (text, toggle, choice, or project) with a label and an optional defaultGet the form, its validation, and saving without writing any UIMark a text field secret: bb stores it in a protected file on the server and never sends it to the browserRead saved values from its server code, or the non-secret ones from its own UI with useSettings()Used byGitHubProvider retryWorkflowsCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-01-declarative-settings-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        },
+        {
+          "id": "settings-section",
+          "number": 2,
+          "title": "Custom settings section",
+          "text": "2Custom settings sectionRenders your own React component on the plugin's settings page, below the fields bb generated. Use it for anything that is not a value in a form. With this, a plugin can:Render whatever UI it needs, such as a connect-account button, a test-connection result, or a previewRun in the browser, so it stores nothing itself. It calls the plugin's own backend to do thatSupply a heading and a one-line description for bb to render above itUsed byCustom instructionsKeep AwakeMemoryRemote accessCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-02-settings-section-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        }
+      ]
+    },
+    {
+      "groupId": "extensions",
+      "label": "Plugin page in Extensions",
+      "pageScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-page-extensions-8656827779611b29b8e8e5de8e328bdbe56194aa.png",
+      "cards": [
+        {
+          "id": "plugin-status",
+          "number": 1,
+          "title": "Configuration status",
+          "text": "1Configuration statusReports that the plugin cannot run until someone configures it, so bb can say so instead of the plugin failing silently. With this, a plugin can:Set a needs-configuration state with a message naming what is missingShow a warning banner with that message on the plugin's page in ExtensionsUsed byGitHubWorkflowsCopy for agent",
+          "screenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-card-01-plugin-status-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+        }
+      ]
+    },
+    {
+      "groupId": "headless",
+      "label": "Plugin backend",
+      "pageScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-page-headless-8656827779611b29b8e8e5de8e328bdbe56194aa.png",
+      "cards": []
+    }
+  ],
+  "commandOutcomeScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-command-palette-outcome-8656827779611b29b8e8e5de8e328bdbe56194aa.png",
+  "messageHoverScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-message-action-hover-8656827779611b29b8e8e5de8e328bdbe56194aa.png",
+  "messageSelectionScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-message-action-selection-8656827779611b29b8e8e5de8e328bdbe56194aa.png",
+  "highlightChecks": [
+    {
+      "id": "composer-state",
+      "highlight": {
+        "left": 401.4559631347656,
+        "top": 567.494140625,
+        "right": 996.0362854003906,
+        "bottom": 601.255859375
+      },
+      "target": {
+        "left": 405.2072448730469,
+        "top": 571.2454833984375,
+        "right": 988.5336608886719,
+        "bottom": 597.5045166015625
+      },
+      "box": {
+        "left": 390.20208740234375,
+        "top": 559.0537109375,
+        "right": 1033.5491943359375,
+        "bottom": 677.2195434570312
+      }
+    },
+    {
+      "id": "composer-plus-menu",
+      "highlight": {
+        "left": 398.6424865722656,
+        "top": 631.2662353515625,
+        "right": 436.15545654296875,
+        "bottom": 668.7791748046875
+      },
+      "target": {
+        "left": 398.6424865722656,
+        "top": 631.2662353515625,
+        "right": 436.15545654296875,
+        "bottom": 668.7791748046875
+      },
+      "box": {
+        "left": 390.20208740234375,
+        "top": 559.0537109375,
+        "right": 1033.5491943359375,
+        "bottom": 677.2195434570312
+      }
+    },
+    {
+      "id": "provider-picker",
+      "highlight": {
+        "left": 439.90673828125,
+        "top": 631.2662353515625,
+        "right": 587.1450805664062,
+        "bottom": 668.7791748046875
+      },
+      "target": {
+        "left": 439.90673828125,
+        "top": 631.2662353515625,
+        "right": 587.1450805664062,
+        "bottom": 668.7791748046875
+      },
+      "box": {
+        "left": 390.20208740234375,
+        "top": 559.0537109375,
+        "right": 1033.5491943359375,
+        "bottom": 677.2195434570312
+      }
+    },
+    {
+      "id": "composer-actions",
+      "highlight": {
+        "left": 916.3212280273438,
+        "top": 599.141845703125,
+        "right": 950.0828857421875,
+        "bottom": 632.9035034179688
+      },
+      "target": {
+        "left": 916.3212280273438,
+        "top": 599.141845703125,
+        "right": 950.0828857421875,
+        "bottom": 632.9035034179688
+      },
+      "box": {
+        "left": 390.20208740234375,
+        "top": 525.0537109375,
+        "right": 1033.5491943359375,
+        "bottom": 643.2195434570312
+      }
+    }
+  ],
+  "pluginDetail": {
+    "href": "http://localhost:17867/extensions/plugins/plugin-api-docs",
+    "heading": "Plugin Guide",
+    "detailSections": 3
+  },
+  "pluginDetailScreenshot": "/Users/brsbl/.bb/thread-storage/thr_n5zzpc884f/qa/final/plugin-guide-fullwindow-plugin-detail-8656827779611b29b8e8e5de8e328bdbe56194aa.png"
+}
