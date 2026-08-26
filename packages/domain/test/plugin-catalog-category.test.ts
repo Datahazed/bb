@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   PLUGIN_CATALOG_CATEGORIES,
   PLUGIN_CATALOG_CATEGORY_IDS,
+  PLUGIN_CATALOG_SHELF_GROUPS,
   pluginCatalogCategory,
   pluginCatalogCategoryIdSchema,
+  pluginCatalogShelfGroupForCategory,
 } from "../src/plugin-catalog-category.js";
 
 describe("plugin catalog categories", () => {
@@ -32,5 +34,28 @@ describe("plugin catalog categories", () => {
     expect(pluginCatalogCategoryIdSchema.safeParse("other").success).toBe(
       false,
     );
+  });
+
+  it("assigns every canonical category to exactly one browse shelf", () => {
+    const groupedCategoryIds = PLUGIN_CATALOG_SHELF_GROUPS.flatMap(
+      (group) => group.categoryIds,
+    );
+
+    expect(PLUGIN_CATALOG_SHELF_GROUPS).toHaveLength(5);
+    expect(groupedCategoryIds).toHaveLength(PLUGIN_CATALOG_CATEGORIES.length);
+    expect(new Set(groupedCategoryIds).size).toBe(
+      PLUGIN_CATALOG_CATEGORIES.length,
+    );
+    expect(new Set(groupedCategoryIds)).toEqual(
+      new Set(PLUGIN_CATALOG_CATEGORY_IDS),
+    );
+
+    for (const group of PLUGIN_CATALOG_SHELF_GROUPS) {
+      expect(group.displayName).not.toHaveLength(0);
+      expect(group.description).not.toHaveLength(0);
+      for (const categoryId of group.categoryIds) {
+        expect(pluginCatalogShelfGroupForCategory(categoryId)).toBe(group);
+      }
+    }
   });
 });

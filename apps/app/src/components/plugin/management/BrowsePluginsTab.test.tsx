@@ -245,16 +245,23 @@ describe("BrowsePluginsTab", () => {
     await screen.findByRole("button", { name: "Open Legacy Reviewer details" });
     const notableShelf = screen.getByText("New & notable").closest("section");
     if (notableShelf === null) throw new Error("Notable shelf missing");
-    const notableCard = within(notableShelf).getByRole("button", {
-      name: "Open Memory details",
-    }).parentElement;
-    expect(notableCard?.parentElement?.classList.contains("flex-1")).toBe(true);
+    expect(
+      within(notableShelf).getByRole("button", {
+        name: "Open Memory details",
+      }),
+    ).toBeTruthy();
+    // Landing previews are mutually exclusive: a notable entry is not
+    // repeated in its broad presentation shelf.
+    expect(
+      screen.getAllByRole("button", { name: "Open Memory details" }),
+    ).toHaveLength(1);
     expect(screen.getAllByText("Acme Plugins").length).toBeGreaterThan(0);
-    const memoryShelf = screen.getByText("Memory & Context").closest("section");
-    if (memoryShelf === null) throw new Error("Memory shelf missing");
     fireEvent.click(
-      within(memoryShelf).getByRole("button", { name: /View all/u }),
+      screen.getByRole("button", {
+        name: /Filter plugins by category: All categories/u,
+      }),
     );
+    fireEvent.click(screen.getByRole("option", { name: /Memory & Context/u }));
     expect(
       screen.getByRole("button", { name: "Open Memory details" }),
     ).toBeTruthy();
@@ -310,19 +317,33 @@ describe("BrowsePluginsTab", () => {
     const sortTrigger = screen.getByRole("button", { name: "Sort plugins" });
     expect(sortTrigger.querySelector('[data-icon="ArrowUpDown"]')).toBeTruthy();
     fireEvent.pointerDown(sortTrigger);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Name" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
 
     // The flat result contains each compatible plugin exactly once, in name
     // order. The incompatible result remains hidden as before.
     expect(cardOrder()).toEqual(["Open Alpha details", "Open Zulu details"]);
     expect(
+      screen.getByRole("button", {
+        name: "Sort direction: A–Z. Change direction.",
+      }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Sort direction: A–Z. Change direction.",
+      }),
+    );
+    expect(cardOrder()).toEqual(["Open Zulu details", "Open Alpha details"]);
+    expect(
       screen.getByRole("radiogroup", {
         name: "Filter plugins by category",
       }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Clear Name sort" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Clear plugin sort and return to shelves",
+      }),
+    );
     expect(screen.getByText("New & notable")).toBeTruthy();
-    expect(screen.getByText("Memory & Context")).toBeTruthy();
     expect(screen.queryByRole("radiogroup")).toBeNull();
   });
 
@@ -391,7 +412,7 @@ describe("BrowsePluginsTab", () => {
     ).toBeNull();
   });
 
-  it("orders shelves by count, shows real counts, and View all owns a URL", async () => {
+  it("shows broad shelf counts, multi-row previews, and View all owns a URL", async () => {
     const entries = Array.from(
       { length: CATALOG_STATUS.pluginCount },
       (_, index) => ({
@@ -439,8 +460,8 @@ describe("BrowsePluginsTab", () => {
     );
 
     await screen.findAllByText("Official 1");
-    const memoryHeading = screen.getByText("Memory & Context");
-    const codeHeading = screen.getByText("Code & Reviews");
+    const memoryHeading = screen.getByText("Agents & Workflows");
+    const codeHeading = screen.getByText("Code & Integrations");
     expect(
       memoryHeading.compareDocumentPosition(codeHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -450,12 +471,13 @@ describe("BrowsePluginsTab", () => {
 
     const memoryShelf = memoryHeading.closest("section");
     if (memoryShelf === null) throw new Error("Memory shelf missing");
-    expect(memoryShelf.querySelector(".bg-gradient-to-r")).not.toBeNull();
+    expect(memoryShelf.querySelector(".grid")).not.toBeNull();
+    expect(memoryShelf.querySelector(".overflow-x-auto")).toBeNull();
     fireEvent.click(
       within(memoryShelf).getByRole("button", { name: /View all/ }),
     );
     expect(screen.getByTestId("location").textContent).toBe(
-      "?category=memory-and-context",
+      "?shelf=agents-and-workflows",
     );
     expect(screen.getByText("· 8 plugins")).toBeTruthy();
     expect(
@@ -529,6 +551,21 @@ describe("BrowsePluginsTab", () => {
       "Open Reviewer details",
       "Open Unknown metrics details",
     ]);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Sort direction: Most first. Change direction.",
+      }),
+    );
+    expect(cardOrder()).toEqual([
+      "Open Reviewer details",
+      "Open Popular details",
+      "Open Unknown metrics details",
+    ]);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Sort direction: Least first. Change direction.",
+      }),
+    );
     expect(screen.getByLabelText("1,204 installs")).toBeTruthy();
     expect(container.querySelector('[aria-label^="Updated "]')).not.toBeNull();
     const unknownCard = screen
@@ -574,12 +611,84 @@ describe("BrowsePluginsTab", () => {
     await screen.findAllByText("Memory");
     fireEvent.pointerDown(screen.getByRole("button", { name: "Sort plugins" }));
     expect(
-      screen.getByRole("menuitem", { name: "Recently added" }),
+      screen.getByRole("menuitemradio", { name: "Recently added" }),
     ).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Name" })).toBeTruthy();
+    expect(screen.getByRole("menuitemradio", { name: "Name" })).toBeTruthy();
     expect(
-      screen.queryByRole("menuitem", { name: "Most installed" }),
+      screen.queryByRole("menuitemradio", { name: "Most installed" }),
     ).toBeNull();
+  });
+
+  it("searches the complete category taxonomy and explains no results", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({ results: [MEMORY_ENTRY] });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    function LocationProbe() {
+      return <span data-testid="location">{useLocation().search}</span>;
+    }
+    render(
+      <MemoryRouter>
+        <LocationProbe />
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    await screen.findAllByText("Memory");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Filter plugins by category: All categories",
+      }),
+    );
+    expect(screen.getByText("16 categories")).toBeTruthy();
+    expect(screen.getAllByRole("option")).toHaveLength(17);
+
+    const categorySearch = screen.getByRole("combobox", {
+      name: "Search plugin categories",
+    });
+    fireEvent.keyDown(categorySearch, { key: "ArrowDown" });
+    expect(document.activeElement?.textContent).toContain("All categories");
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "End" });
+    expect(document.activeElement?.textContent).toContain("Automation");
+
+    categorySearch.focus();
+    fireEvent.change(categorySearch, {
+      target: { value: "definitely not a category" },
+    });
+    expect(screen.getByText("No categories match your search.")).toBeTruthy();
+
+    fireEvent.change(categorySearch, { target: { value: "security" } });
+    fireEvent.keyDown(categorySearch, { key: "ArrowUp" });
+    expect(document.activeElement?.textContent).toContain("Security");
+    fireEvent.click(document.activeElement as HTMLElement);
+    expect(screen.getByTestId("location").textContent).toBe(
+      "?category=security",
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Filter plugins by category: Security",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("No plugins match this browse selection and search."),
+    ).toBeTruthy();
   });
 
   it("keeps Most installed available when filtered results omit counts", async () => {
@@ -630,11 +739,13 @@ describe("BrowsePluginsTab", () => {
     });
     await screen.findAllByText("Unknown search result");
     expect(
-      screen.getByRole("button", { name: "Filter plugins by category" }),
+      screen.getByRole("button", {
+        name: "Filter plugins by category: All categories",
+      }),
     ).toBeTruthy();
     fireEvent.pointerDown(screen.getByRole("button", { name: "Sort plugins" }));
     expect(
-      screen.getByRole("menuitem", { name: "Most installed" }),
+      screen.getByRole("menuitemradio", { name: "Most installed" }),
     ).toBeTruthy();
   });
 
@@ -698,12 +809,14 @@ describe("BrowsePluginsTab", () => {
       screen.getAllByText(GITHUB_ENTRY.description).length,
     ).toBeGreaterThan(0);
     expect(
-      screen.getAllByText("Memory").some((title) =>
-        title.classList.contains("line-clamp-2"),
-      ),
+      screen
+        .getAllByText("Memory")
+        .some((title) => title.classList.contains("line-clamp-2")),
     ).toBe(true);
     expect(
-      screen.getByRole("button", { name: "Filter plugins by category" }),
+      screen.getByRole("button", {
+        name: "Filter plugins by category: All categories",
+      }),
     ).toBeTruthy();
     expect(
       screen.queryByRole("heading", { name: /BB Official plugins/i }),

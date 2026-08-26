@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import {
+  browseShelfGroups,
   categoryShelves,
   newAndNotableEntries,
+  sortPluginEntries,
 } from "./plugin-browse-discovery";
 
 function entry(
@@ -83,5 +85,50 @@ describe("plugin browse discovery projections", () => {
         }),
       ]).map((item) => item.entryId),
     ).toEqual(["older"]);
+  });
+
+  it("projects categories through the shared five-shelf grouping", () => {
+    const groups = browseShelfGroups([
+      entry("theme", {
+        categoryId: "themes-and-appearance",
+        category: "Themes & Appearance",
+      }),
+      entry("timeline", {
+        categoryId: "thread-messages-and-timelines",
+        category: "Thread Messages & Timelines",
+      }),
+      entry("provider", {
+        categoryId: "agents-and-providers",
+        category: "Agents & Providers",
+      }),
+      entry("security", {
+        categoryId: "security",
+        category: "Security",
+      }),
+      entry("host", {
+        categoryId: "machines-and-hosts",
+        category: "Machines & Hosts",
+      }),
+    ]);
+
+    expect(
+      groups.map(({ id, entries }) => [
+        id,
+        entries.map(({ entryId }) => entryId),
+      ]),
+    ).toEqual([
+      ["threads-and-interface", ["theme", "timeline"]],
+      ["agents-and-workflows", ["provider"]],
+      ["insights-and-security", ["security"]],
+      ["machines-and-hosts", ["host"]],
+    ]);
+  });
+
+  it("sorts app entries in both directions", () => {
+    expect(
+      sortPluginEntries([entry("alpha"), entry("zulu")], "name", "desc").map(
+        ({ entryId }) => entryId,
+      ),
+    ).toEqual(["zulu", "alpha"]);
   });
 });

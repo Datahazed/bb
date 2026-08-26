@@ -136,7 +136,7 @@ export function SectionSidebar({
         </div>
       </div>
       <SidebarContent>
-        <div className="min-w-0 px-2 group-data-[collapsible=icon]:hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 group-data-[collapsible=icon]:hidden">
           {children}
         </div>
       </SidebarContent>

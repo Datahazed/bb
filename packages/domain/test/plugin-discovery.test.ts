@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   pluginDiscoveryNewAndNotableEntries,
   pluginDiscoveryShelves,
+  defaultPluginDiscoverySortDirection,
   sortPluginDiscoveryEntries,
   visiblePluginCategoryChipCount,
   type PluginCatalogCategoryId,
@@ -123,6 +124,47 @@ describe("plugin discovery projections", () => {
         accessors,
       ).map(({ id }) => id),
     ).toEqual(["newer", "older", "unknown-date"]);
+  });
+
+  it("sorts every criterion in both directions while keeping unknown metrics last", () => {
+    const entries = [
+      entry("unknown", { name: "Middle" }),
+      entry("older", {
+        name: "Alpha",
+        installCount: 2,
+        publishedAt: "2026-08-20T09:30:00Z",
+      }),
+      entry("newer", {
+        name: "Zulu",
+        installCount: 10,
+        publishedAt: "2026-08-24T09:30:00Z",
+      }),
+    ];
+
+    expect(defaultPluginDiscoverySortDirection("name")).toBe("asc");
+    expect(defaultPluginDiscoverySortDirection("recently-added")).toBe("desc");
+    expect(defaultPluginDiscoverySortDirection("most-installed")).toBe("desc");
+    expect(
+      sortPluginDiscoveryEntries(entries, "name", accessors, "desc").map(
+        ({ id }) => id,
+      ),
+    ).toEqual(["newer", "unknown", "older"]);
+    expect(
+      sortPluginDiscoveryEntries(
+        entries,
+        "most-installed",
+        accessors,
+        "asc",
+      ).map(({ id }) => id),
+    ).toEqual(["older", "newer", "unknown"]);
+    expect(
+      sortPluginDiscoveryEntries(
+        entries,
+        "recently-added",
+        accessors,
+        "asc",
+      ).map(({ id }) => id),
+    ).toEqual(["older", "newer", "unknown"]);
   });
 
   it("adds overflow only once the exact chip row no longer fits", () => {

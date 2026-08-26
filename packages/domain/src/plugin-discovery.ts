@@ -4,6 +4,7 @@ import {
 } from "./plugin-catalog-category.js";
 
 export type PluginDiscoverySort = "recently-added" | "most-installed" | "name";
+export type PluginDiscoverySortDirection = "asc" | "desc";
 
 export interface PluginDiscoveryEntryAccessors<Entry, Category> {
   entryId: (entry: Entry) => string;
@@ -66,19 +67,32 @@ export function sortPluginDiscoveryEntries<Entry, Category>(
   entries: readonly Entry[],
   sort: PluginDiscoverySort,
   accessors: PluginDiscoveryEntryAccessors<Entry, Category>,
+  direction: PluginDiscoverySortDirection = defaultPluginDiscoverySortDirection(
+    sort,
+  ),
 ): Entry[] {
   return [...entries].sort((left, right) => {
-    if (sort === "name") return compareNames(left, right, accessors);
+    if (sort === "name") {
+      const comparison = compareNames(left, right, accessors);
+      return direction === "asc" ? comparison : -comparison;
+    }
     if (sort === "most-installed") {
       return (
-        compareOptionalNumbersDescending(
+        compareOptionalNumbers(
           accessors.installCount(left),
           accessors.installCount(right),
+          direction,
         ) || compareNames(left, right, accessors)
       );
     }
-    return comparePublishedAt(left, right, accessors);
+    return comparePublishedAt(left, right, accessors, direction);
   });
+}
+
+export function defaultPluginDiscoverySortDirection(
+  sort: PluginDiscoverySort,
+): PluginDiscoverySortDirection {
+  return sort === "name" ? "asc" : "desc";
 }
 
 /** Curated order wins; a categorized catalog without one falls back to newest. */
@@ -116,24 +130,27 @@ function comparePublishedAt<Entry, Category>(
   left: Entry,
   right: Entry,
   accessors: PluginDiscoveryEntryAccessors<Entry, Category>,
+  direction: PluginDiscoverySortDirection = "desc",
 ): number {
   const leftPublishedAt = accessors.publishedAt(left);
   const rightPublishedAt = accessors.publishedAt(right);
   return (
-    compareOptionalNumbersDescending(
+    compareOptionalNumbers(
       leftPublishedAt === undefined ? undefined : Date.parse(leftPublishedAt),
       rightPublishedAt === undefined ? undefined : Date.parse(rightPublishedAt),
+      direction,
     ) || compareNames(left, right, accessors)
   );
 }
 
-function compareOptionalNumbersDescending(
+function compareOptionalNumbers(
   left: number | undefined,
   right: number | undefined,
+  direction: PluginDiscoverySortDirection,
 ): number {
   if (left === undefined) return right === undefined ? 0 : 1;
   if (right === undefined) return -1;
-  return right - left;
+  return direction === "asc" ? left - right : right - left;
 }
 
 function compareNames<Entry, Category>(

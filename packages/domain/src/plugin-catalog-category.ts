@@ -94,6 +94,98 @@ export const PLUGIN_CATALOG_CATEGORY_IDS = Object.freeze(
   PLUGIN_CATALOG_CATEGORIES.map((category) => category.id),
 );
 
+/**
+ * Browse-page presentation groups over the stable category taxonomy.
+ *
+ * These deliberately do not replace category metadata. They merge the nine
+ * discovery themes (Appearance, Threads & Chat, Agents, Work, Code &
+ * Integrations, Machines & Hosts, Insights & Alerts, Security, Build for bb)
+ * into five shelves sized for the live catalog. Filters and manifests continue
+ * to use the sixteen canonical category IDs above.
+ */
+export const PLUGIN_CATALOG_SHELF_GROUPS = [
+  {
+    id: "threads-and-interface",
+    displayName: "Threads & Interface",
+    description:
+      "Shape bb's navigation, conversations, prompts, and appearance.",
+    categoryIds: [
+      "themes-and-appearance",
+      "thread-lists-and-navigation",
+      "thread-messages-and-timelines",
+      "composer-and-prompts",
+    ],
+  },
+  {
+    id: "agents-and-workflows",
+    displayName: "Agents & Workflows",
+    description: "Add providers, context, tools, automation, and task systems.",
+    categoryIds: [
+      "memory-and-context",
+      "agent-tools",
+      "agents-and-providers",
+      "task-tracking",
+      "automation",
+    ],
+  },
+  {
+    id: "code-and-integrations",
+    displayName: "Code & Integrations",
+    description: "Work with code, files, reviews, and the bb plugin platform.",
+    categoryIds: [
+      "code-and-reviews",
+      "files-and-viewers",
+      "plugin-development",
+    ],
+  },
+  {
+    id: "insights-and-security",
+    displayName: "Insights & Security",
+    description: "Track usage and attention while protecting sensitive work.",
+    categoryIds: [
+      "token-usage-and-cost",
+      "notifications-and-attention",
+      "security",
+    ],
+  },
+  {
+    id: "machines-and-hosts",
+    displayName: "Machines & Hosts",
+    description: "Operate terminals, remote machines, ports, and storage.",
+    categoryIds: ["machines-and-hosts"],
+  },
+] as const satisfies readonly {
+  id: string;
+  displayName: string;
+  description: string;
+  categoryIds: readonly PluginCatalogCategoryId[];
+}[];
+
+export type PluginCatalogShelfGroup =
+  (typeof PLUGIN_CATALOG_SHELF_GROUPS)[number];
+export type PluginCatalogShelfGroupId = PluginCatalogShelfGroup["id"];
+
+const pluginCatalogShelfGroupByCategoryId = new Map<
+  PluginCatalogCategoryId,
+  PluginCatalogShelfGroup
+>(
+  PLUGIN_CATALOG_SHELF_GROUPS.flatMap((group) =>
+    group.categoryIds.map((categoryId) => [categoryId, group] as const),
+  ),
+);
+
+export function pluginCatalogShelfGroupForCategory(
+  categoryId: PluginCatalogCategoryId,
+): PluginCatalogShelfGroup {
+  const group = pluginCatalogShelfGroupByCategoryId.get(categoryId);
+  if (group === undefined) {
+    throw new Error(
+      `plugin category ${JSON.stringify(categoryId)} has no shelf group`,
+    );
+  }
+  return group;
+}
+
 export const pluginCatalogCategoryIdSchema = z.enum(
   PLUGIN_CATALOG_CATEGORY_IDS,
 );

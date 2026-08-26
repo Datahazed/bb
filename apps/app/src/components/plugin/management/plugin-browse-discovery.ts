@@ -1,14 +1,19 @@
 import {
+  PLUGIN_CATALOG_SHELF_GROUPS,
+  defaultPluginDiscoverySortDirection,
   pluginDiscoveryNewAndNotableEntries,
   pluginDiscoveryShelves,
   sortPluginDiscoveryEntries,
   visiblePluginCategoryChipCount,
   type PluginDiscoveryEntryAccessors,
   type PluginDiscoverySort,
+  type PluginDiscoverySortDirection,
+  type PluginCatalogShelfGroupId,
 } from "@bb/domain";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 
 export type PluginBrowseSort = PluginDiscoverySort;
+export type PluginBrowseSortDirection = PluginDiscoverySortDirection;
 
 export type CategorizedPluginCatalogEntry = PluginCatalogSearchEntry & {
   categoryId: NonNullable<PluginCatalogSearchEntry["categoryId"]>;
@@ -18,6 +23,14 @@ export type CategorizedPluginCatalogEntry = PluginCatalogSearchEntry & {
 export interface PluginCategoryShelf {
   id: CategorizedPluginCatalogEntry["categoryId"];
   label: string;
+  entries: CategorizedPluginCatalogEntry[];
+}
+
+export interface PluginBrowseShelfGroup {
+  id: PluginCatalogShelfGroupId;
+  label: string;
+  description: string;
+  categoryIds: readonly CategorizedPluginCatalogEntry["categoryId"][];
   entries: CategorizedPluginCatalogEntry[];
 }
 
@@ -65,6 +78,27 @@ export function categoryShelves(
   }));
 }
 
+/** Groups categorized entries into the five presentation shelves. */
+export function browseShelfGroups(
+  entries: readonly PluginCatalogSearchEntry[],
+): PluginBrowseShelfGroup[] {
+  const categorizedEntries = entries.filter(hasPluginCatalogCategory);
+  return PLUGIN_CATALOG_SHELF_GROUPS.map((group) => {
+    const categoryIds = new Set(group.categoryIds);
+    return {
+      id: group.id,
+      label: group.displayName,
+      description: group.description,
+      categoryIds: group.categoryIds,
+      entries: categorizedEntries
+        .filter((entry) => categoryIds.has(entry.categoryId))
+        .sort((left, right) =>
+          left.displayName.localeCompare(right.displayName),
+        ),
+    };
+  }).filter((group) => group.entries.length > 0);
+}
+
 /** Curated official order wins; a categorized catalog falls back to newest. */
 export function newAndNotableEntries(
   entries: readonly PluginCatalogSearchEntry[],
@@ -104,8 +138,16 @@ export function publisherGroups(
 export function sortPluginEntries(
   entries: readonly PluginCatalogSearchEntry[],
   sort: PluginBrowseSort,
+  direction: PluginBrowseSortDirection = defaultPluginDiscoverySortDirection(
+    sort,
+  ),
 ): PluginCatalogSearchEntry[] {
-  return sortPluginDiscoveryEntries(entries, sort, DISCOVERY_ACCESSORS);
+  return sortPluginDiscoveryEntries(
+    entries,
+    sort,
+    DISCOVERY_ACCESSORS,
+    direction,
+  );
 }
 
 export const visibleCategoryChipCount = visiblePluginCategoryChipCount;
