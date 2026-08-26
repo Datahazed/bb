@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { LAUNCHER_ACTION_ROW_BASE_CLASS } from "@/components/secondary-panel/launcherRow";
 import {
   useAppCommandHandler,
@@ -18,7 +19,10 @@ import {
   useAppCommandShortcuts,
 } from "./AppCommandProvider";
 import { AppCommandShortcutPill } from "./AppCommandShortcutHint";
-import type { PaletteAction } from "@/lib/command-palette/palette-action";
+import {
+  PALETTE_ACTION_BUCKETS,
+  type PaletteAction,
+} from "@/lib/command-palette/palette-action";
 import {
   buildAppCommandActions,
   PALETTE_COMMAND_IDS,
@@ -94,9 +98,29 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     () => rankPaletteActions({ actions, query, recentIds: recents }),
     [actions, query, recents],
   );
+  const isGroupedRoot = query.trim() === "";
+  const rootGroups = useMemo(() => {
+    const groups = PALETTE_ACTION_BUCKETS.map((bucket) => ({
+      bucket,
+      entries: ranked.filter((entry) => entry.action.bucket === bucket),
+    }));
+    return groups.map((group, index) => ({
+      ...group,
+      startIndex: groups
+        .slice(0, index)
+        .reduce((total, prior) => total + prior.entries.length, 0),
+    }));
+  }, [ranked]);
+  const visibleEntries = useMemo(
+    () =>
+      isGroupedRoot ? rootGroups.flatMap((group) => group.entries) : ranked,
+    [isGroupedRoot, ranked, rootGroups],
+  );
   // Typing can shrink the list under the selection.
   const activeIndex =
-    ranked.length === 0 ? -1 : Math.min(highlightedIndex, ranked.length - 1);
+    visibleEntries.length === 0
+      ? -1
+      : Math.min(highlightedIndex, visibleEntries.length - 1);
 
   /**
    * Focus stays in the search field, so nothing scrolls the highlighted row
@@ -136,12 +160,12 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
-      if (ranked.length === 0) return;
+      if (visibleEntries.length === 0) return;
       if (event.key === "ArrowDown") {
         event.preventDefault();
         scrollOnNextHighlightRef.current = true;
         setHighlightedIndex((current) =>
-          current + 1 >= ranked.length ? 0 : current + 1,
+          current + 1 >= visibleEntries.length ? 0 : current + 1,
         );
         return;
       }
@@ -149,7 +173,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
         event.preventDefault();
         scrollOnNextHighlightRef.current = true;
         setHighlightedIndex((current) =>
-          current <= 0 ? ranked.length - 1 : current - 1,
+          current <= 0 ? visibleEntries.length - 1 : current - 1,
         );
         return;
       }
@@ -162,17 +186,17 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       if (event.key === "End") {
         event.preventDefault();
         scrollOnNextHighlightRef.current = true;
-        setHighlightedIndex(ranked.length - 1);
+        setHighlightedIndex(visibleEntries.length - 1);
         return;
       }
       if (event.key === "Enter") {
-        const choice = ranked[activeIndex];
+        const choice = visibleEntries[activeIndex];
         if (choice === undefined) return;
         event.preventDefault();
         chooseAction(choice.action);
       }
     },
-    [activeIndex, chooseAction, ranked],
+    [activeIndex, chooseAction, visibleEntries],
   );
 
   return (
@@ -224,12 +248,48 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
           aria-label="Commands"
           className="max-h-[min(24rem,50dvh)] overflow-y-auto p-1"
         >
-          {ranked.length === 0 ? (
+          {!isGroupedRoot && visibleEntries.length === 0 ? (
             <p className="px-2 py-6 text-center text-sm text-muted-foreground">
               No matching commands
             </p>
+          ) : isGroupedRoot ? (
+            rootGroups.map((group, groupIndex) => {
+              const labelId = `${optionIdPrefix}-${group.bucket.toLowerCase()}-label`;
+              return (
+                <div
+                  key={group.bucket}
+                  role="group"
+                  aria-labelledby={labelId}
+                  data-palette-bucket={group.bucket}
+                >
+                  <div
+                    id={labelId}
+                    className={cn(
+                      CHROME_SECTION_LABEL_CLASS,
+                      "px-2 pb-1",
+                      groupIndex === 0 ? "pt-1" : "pt-2",
+                    )}
+                  >
+                    {group.bucket}
+                  </div>
+                  {group.entries.map((entry, index) => {
+                    const visibleIndex = group.startIndex + index;
+                    return (
+                      <PaletteRow
+                        key={entry.action.id}
+                        entry={entry}
+                        id={`${optionIdPrefix}-${visibleIndex}`}
+                        isActive={visibleIndex === activeIndex}
+                        onActivate={() => setHighlightedIndex(visibleIndex)}
+                        onSelect={() => chooseAction(entry.action)}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            })
           ) : (
-            ranked.map((entry, index) => (
+            visibleEntries.map((entry, index) => (
               <PaletteRow
                 key={entry.action.id}
                 entry={entry}
@@ -259,6 +319,9 @@ function PaletteRow({
   onActivate: () => void;
   onSelect: () => void;
 }) {
+  const metadataGroup =
+    entry.action.group === entry.action.bucket ? null : entry.action.group;
+  const hasTrailing = metadataGroup !== null || entry.action.shortcut !== null;
   return (
     // A listbox option the input points at, not a focusable control.
     <div
@@ -279,16 +342,23 @@ function PaletteRow({
           positions={entry.positions}
         />
       </span>
-      <span className="ml-auto flex shrink-0 items-center gap-2">
-        <span
-          className={cn("text-muted-foreground", COARSE_POINTER_TEXT_SM_CLASS)}
-        >
-          {entry.action.group}
+      {hasTrailing ? (
+        <span className="ml-auto flex shrink-0 items-center gap-2">
+          {metadataGroup === null ? null : (
+            <span
+              className={cn(
+                "text-muted-foreground",
+                COARSE_POINTER_TEXT_SM_CLASS,
+              )}
+            >
+              {metadataGroup}
+            </span>
+          )}
+          {entry.action.shortcut === null ? null : (
+            <AppCommandShortcutPill shortcut={entry.action.shortcut} />
+          )}
         </span>
-        {entry.action.shortcut === null ? null : (
-          <AppCommandShortcutPill shortcut={entry.action.shortcut} />
-        )}
-      </span>
+      ) : null}
     </div>
   );
 }

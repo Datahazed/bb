@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,11 +16,16 @@ import {
   type AppDefaultKeybinding,
   type AppKeybinding,
 } from "@bb/domain";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { AppCommandProvider, useAppCommandHandler } from "./AppCommandProvider";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 import { CommandPalette } from "./CommandPalette";
 
 const PALETTE_SHORTCUT = {
@@ -55,6 +61,20 @@ const THREAD_NEW_BINDING: AppKeybinding = {
   when: { all: ["mainSurface"], none: ["modalOpen"] },
 };
 
+const THREAD_SEARCH_BINDING: AppKeybinding = {
+  command: "thread.search",
+  desktopOnly: false,
+  shortcut: {
+    key: "k",
+    mod: true,
+    meta: false,
+    control: false,
+    alt: false,
+    shift: false,
+  },
+  when: { all: ["mainSurface"], none: ["modalOpen"] },
+};
+
 function defaults(...commands: AppCommandId[]): AppDefaultKeybinding[] {
   return commands.map((command) => ({
     command,
@@ -73,9 +93,10 @@ vi.mock("@/hooks/queries/system-queries", () => ({
         ...defaultAppSettings,
         showKeyboardHints: false,
       },
-      keybindings: [PALETTE_BINDING, THREAD_NEW_BINDING],
+      keybindings: [PALETTE_BINDING, THREAD_NEW_BINDING, THREAD_SEARCH_BINDING],
       defaultKeybindings: [
         PALETTE_BINDING,
+        THREAD_SEARCH_BINDING,
         ...defaults(
           "thread.new",
           "thread.next",
@@ -107,6 +128,7 @@ function renderPalette() {
           origin
         </button>
         <Handler command="thread.new" />
+        <Handler command="thread.search" />
         <Handler command="thread.next" />
         <Handler command="panel.toggle" />
         <Handler command="terminal.open" />
@@ -131,6 +153,9 @@ function openPalette(): KeyboardEvent {
 }
 
 const searchField = () => screen.getByRole("combobox");
+const commandList = () => screen.getByRole("listbox", { name: "Commands" });
+const bucketGroup = (name: string) =>
+  within(commandList()).getByRole("group", { name });
 const optionTitles = () =>
   screen.getAllByRole("option").map((option) => option.textContent);
 const selectedOption = () =>
@@ -141,6 +166,7 @@ const selectedOption = () =>
 afterEach(() => {
   cleanup();
   removePluginSlotRegistrations("linear");
+  resetPluginLogoStoreForTest();
   testState.calls.length = 0;
   window.localStorage.clear();
 });
@@ -155,7 +181,49 @@ describe("CommandPalette", () => {
     const titles = optionTitles();
     expect(titles?.[0]).toContain("New thread");
     // Every mounted handler is listed; nothing else is.
-    expect(titles).toHaveLength(4);
+    expect(titles).toHaveLength(5);
+  });
+
+  it("groups the resting root into three text buckets with producer metadata", async () => {
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    const groups = within(commandList()).getAllByRole("group");
+    expect(
+      groups.map((group) => group.getAttribute("data-palette-bucket")),
+    ).toEqual(["Threads", "Actions", "Plugins"]);
+    for (const [index, label] of ["Threads", "Actions", "Plugins"].entries()) {
+      const header = within(groups[index] as HTMLElement).getByText(label, {
+        selector: "div",
+      });
+      for (const className of CHROME_SECTION_LABEL_CLASS.split(" ")) {
+        expect(header.classList.contains(className)).toBe(true);
+      }
+      expect(header.classList.contains("px-2")).toBe(true);
+    }
+
+    const threadRows = within(bucketGroup("Threads")).getAllByRole("option");
+    expect(threadRows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining("New thread"),
+      expect.stringContaining("Search threads"),
+      expect.stringContaining("Next thread"),
+    ]);
+    // The bucket already supplies this context, so rows do not repeat it.
+    for (const row of threadRows) {
+      expect(within(row).queryByText("Threads")).toBeNull();
+    }
+    expect(threadRows[1]?.querySelector("kbd")).not.toBeNull();
+
+    const actionRows = within(bucketGroup("Actions")).getAllByRole("option");
+    expect(actionRows[0]?.textContent).toContain("Window and layout");
+    expect(actionRows[1]?.textContent).toContain("Workspace");
+    for (const row of [...threadRows, ...actionRows]) {
+      expect(row.classList.contains("px-2")).toBe(true);
+    }
+    // Root rows and headers remain text-only; the existing input icon is
+    // outside this list and is removed by the mode-shell layer.
+    expect(commandList().querySelector("[data-icon]")).toBeNull();
   });
 
   it("filters as the user types and keeps the selection on a live row", async () => {
@@ -169,6 +237,8 @@ describe("CommandPalette", () => {
 
     await waitFor(() => expect(optionTitles()).toHaveLength(1));
     expect(selectedOption()?.textContent).toContain("Open terminal");
+    expect(selectedOption()?.textContent).toContain("Workspace");
+    expect(within(commandList()).queryAllByRole("group")).toHaveLength(0);
   });
 
   it("wraps at both ends of the list", async () => {
@@ -199,7 +269,7 @@ describe("CommandPalette", () => {
     expect(document.activeElement).toBe(screen.getByTestId("origin"));
   });
 
-  it("offers the last command run first the next time it opens", async () => {
+  it("offers the last command run first within its resting bucket", async () => {
     renderPalette();
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
@@ -212,7 +282,8 @@ describe("CommandPalette", () => {
 
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
-    expect(optionTitles()?.[0]).toContain("Toggle panel");
+    const actionRows = within(bucketGroup("Actions")).getAllByRole("option");
+    expect(actionRows[0]?.textContent).toContain("Toggle panel");
   });
 
   it("closes on Escape without running anything", async () => {
@@ -278,6 +349,21 @@ describe("CommandPalette", () => {
   });
 
   it("lists a plugin's commandPaletteAction and runs it", async () => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "linear",
+          {
+            displayName: "Linear",
+            icon: null,
+            compactIconUrl: null,
+            logoUrl: null,
+            logoDarkUrl: null,
+            icons: new Map(),
+          },
+        ],
+      ]),
+    );
     setPluginSlotRegistrations("linear", {
       homepageSections: [],
       settingsSections: [],
@@ -289,7 +375,7 @@ describe("CommandPalette", () => {
       commandPaletteActions: [
         {
           id: "open-issue",
-          title: "Linear: open issue",
+          title: "Open issue",
           run: () => {
             testState.calls.push("plugin-ran");
           },
@@ -300,9 +386,15 @@ describe("CommandPalette", () => {
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
+    const pluginRow = within(bucketGroup("Plugins")).getByRole("option");
+    expect(pluginRow.textContent).toContain("Open issue");
+    expect(pluginRow.textContent).toContain("Linear");
+
     fireEvent.change(searchField(), { target: { value: "linear" } });
     await waitFor(() => expect(optionTitles()).toHaveLength(1));
-    expect(optionTitles()?.[0]).toContain("Linear: open issue");
+    expect(optionTitles()?.[0]).toContain("Open issue");
+    expect(optionTitles()?.[0]).toContain("Linear");
+    expect(within(commandList()).queryAllByRole("group")).toHaveLength(0);
     fireEvent.keyDown(searchField(), { key: "Enter" });
 
     await waitFor(() => expect(testState.calls).toEqual(["plugin-ran"]));
