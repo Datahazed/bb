@@ -2,7 +2,6 @@ import {
   Fragment,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -13,7 +12,6 @@ import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
 import {
   Sidebar,
@@ -23,7 +21,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useCloseMobileSidebar,
-  useSidebar,
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
@@ -48,8 +45,6 @@ import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { createNewThreadDraftSlotId } from "@/lib/prompt-draft-slots";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
-import type { SidebarThreadSearchNavigationItem } from "./sidebarThreadSearch";
-import { useSidebarThreadSearch } from "./useSidebarThreadSearch";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
   getSidebarThreadNavigationTargets,
@@ -154,8 +149,8 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
   // The resolved replacement owns the sidebar's scrolling thread list. It never
-  // replaces the chrome around it: the New-thread button, search field,
-  // the plugin nav rows, and the footer stay host-rendered in every sidebar.
+  // replaces the chrome around it: the New-thread button, plugin nav rows, and
+  // footer stay host-rendered in every sidebar.
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
@@ -172,7 +167,6 @@ export function AppSidebar({
     label: "New thread",
   });
   const closeOnMobile = useCloseMobileSidebar();
-  const { isCompactViewport, setOpen, setOpenMobile } = useSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
     ReadonlyMap<string, SidebarThreadShortcutPresentation>
@@ -181,7 +175,6 @@ export function AppSidebar({
   const threadShortcutTargetsRef = useRef<
     readonly SidebarThreadShortcutTarget[]
   >([]);
-  const isPointerCoarse = usePointerCoarse();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const threadJumpShortcuts = useAppCommandShortcuts(
     THREAD_JUMP_APP_COMMAND_IDS,
@@ -193,44 +186,6 @@ export function AppSidebar({
     hiddenSidebarTopLevelSectionIdsAtom,
   );
   const pluginNavPanels = usePluginNavPanelChrome();
-
-  const openSidebarForThreadSearch = useCallback(() => {
-    if (isCompactViewport) {
-      setOpenMobile(true);
-    } else {
-      setOpen(true);
-    }
-  }, [isCompactViewport, setOpen, setOpenMobile]);
-
-  const openSearchedThread = useCallback(
-    (item: SidebarThreadSearchNavigationItem) => {
-      void navigate(
-        getThreadRoutePath({
-          projectId: item.projectId,
-          threadId: item.threadId,
-        }),
-        // Hand the matched message's event sequence to the timeline so it can
-        // scroll to and briefly highlight that message. Omitted for title-only
-        // matches, which just open the thread normally.
-        item.messageSeq !== null
-          ? {
-              state: {
-                searchMessageSeq: item.messageSeq,
-                searchThreadId: item.threadId,
-              },
-            }
-          : undefined,
-      );
-    },
-    [navigate],
-  );
-
-  const threadSearch = useSidebarThreadSearch({
-    isPointerCoarse,
-    onOpenSidebar: openSidebarForThreadSearch,
-    onOpenThread: openSearchedThread,
-    onThreadOpened: closeOnMobile,
-  });
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
@@ -307,14 +262,8 @@ export function AppSidebar({
   // While hosted-and-hidden (a Settings/Tools body is showing in the drawer)
   // this sidebar is not the visible one: leave its shortcuts unhandled, as
   // they are on wide viewports where Settings/Tools replace the sidebar,
-  // rather than opening the drawer onto a hidden search field or clicking
-  // rows the user cannot see.
+  // rather than clicking rows the user cannot see.
   const isHiddenHostedBody = mobileHosted?.hidden === true;
-  useAppCommandHandler("thread.search", () => {
-    if (isHiddenHostedBody) return false;
-    threadSearch.onActivate();
-    return true;
-  });
   const activateVisibleThreadShortcut = useCallback(
     (index: number) =>
       isHiddenHostedBody ? false : activateThreadShortcut(index),
@@ -339,29 +288,6 @@ export function AppSidebar({
     hideThreadShortcuts();
   }, [hideThreadShortcuts, isAppCommandModifierHeld, showThreadShortcuts]);
 
-  // Keep this object identity stable across unrelated re-renders (opening
-  // the mobile drawer flips useSidebar context and re-renders AppSidebar):
-  // a fresh object here would defeat ProjectList's memo and re-render every
-  // thread group on each drawer toggle.
-  const threadSearchPanelController = useMemo(
-    () => ({
-      activeIndex: threadSearch.activeIndex,
-      isActive: threadSearch.isActive,
-      onActiveIndexChange: threadSearch.onActiveIndexChange,
-      onNavigationItemsChange: threadSearch.onNavigationItemsChange,
-      onSelectItem: threadSearch.onSelectItem,
-      query: threadSearch.query,
-    }),
-    [
-      threadSearch.activeIndex,
-      threadSearch.isActive,
-      threadSearch.onActiveIndexChange,
-      threadSearch.onNavigationItemsChange,
-      threadSearch.onSelectItem,
-      threadSearch.query,
-    ],
-  );
-
   const originalThreadList = (
     <ProjectList
       onNewProject={
@@ -371,7 +297,6 @@ export function AppSidebar({
       }
       onProjectSelect={closeOnMobile}
       isCreatingProject={quickCreateProject.isCreating}
-      threadSearch={threadSearchPanelController}
     />
   );
 
@@ -421,15 +346,6 @@ export function AppSidebar({
                 splitEnabled
                 newThreadSplit={newThreadSplit}
                 onNewChat={handleNewChat}
-                threadSearch={{
-                  activeDescendantId: threadSearch.activeDescendantId,
-                  inputRef: threadSearch.inputRef,
-                  isActive: threadSearch.isActive,
-                  onActivate: threadSearch.onActivate,
-                  onClose: threadSearch.onClose,
-                  onQueryChange: threadSearch.onQueryChange,
-                  query: threadSearch.query,
-                }}
               />
               {toolsRoutePath ? (
                 <ExtensionsNavSidebarItem
@@ -448,8 +364,8 @@ export function AppSidebar({
               <PluginThreadList
                 replacement={threadListReplacement}
                 original={originalThreadList}
-                searchQuery={threadSearch.query}
-                onNavigate={threadSearch.onExternalThreadOpen}
+                searchQuery=""
+                onNavigate={closeOnMobile}
               />
             </SidebarContent>
           ),
@@ -539,14 +455,11 @@ export function AppSidebar({
           data-testid="app-sidebar-body"
           hidden={mobileHosted.hidden}
           className="flex min-h-0 flex-1 flex-col"
-          onKeyDown={threadSearch.onKeyDown}
         >
           {body}
         </div>
       ) : (
-        <Sidebar ref={sidebarRef} onKeyDown={threadSearch.onKeyDown}>
-          {body}
-        </Sidebar>
+        <Sidebar ref={sidebarRef}>{body}</Sidebar>
       )}
     </SidebarThreadShortcutKeysContext.Provider>
   );
