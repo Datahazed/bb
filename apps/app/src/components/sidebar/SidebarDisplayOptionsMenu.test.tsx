@@ -12,7 +12,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { sdk } from "@/lib/sdk";
-import { SidebarDisplayOptionsMenu } from "./ProjectList";
+import {
+  ProjectListActionButtons,
+  SidebarDisplayOptionsMenu,
+} from "./ProjectList";
 import {
   hiddenSidebarTopLevelSectionIdsAtom,
   sidebarTopLevelSectionOrderAtom,
@@ -200,6 +203,19 @@ describe("SidebarDisplayOptionsMenu fixed sidebar items", () => {
     expect(store.get(sidebarExtensionsVisibleAtom)).toBe(false);
     expect(store.get(sidebarNewThreadVisibleAtom)).toBe(true);
     expect(screen.getByRole("group", { name: "Sidebar items" })).toBeDefined();
+  });
+
+  it("removes the New thread row and its Split action together", () => {
+    render(
+      <ProjectListActionButtons
+        onNewChat={vi.fn()}
+        onSplit={vi.fn()}
+        showNewThread={false}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /^New thread/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Split" })).toBeNull();
   });
 });
 

@@ -52,6 +52,11 @@ function getPluginLogoUrls(): ReadonlyMap<string, PluginLogoUrls> {
   return logoUrls;
 }
 
+/** Manifest display name, with the stable plugin id as the unavailable fallback. */
+export function getPluginDisplayName(pluginId: string): string {
+  return getPluginLogoUrls().get(pluginId)?.displayName ?? pluginId;
+}
+
 /** Compact branding resolved from the latest plugin inventory. */
 export function usePluginCompactBranding(
   pluginId: string,

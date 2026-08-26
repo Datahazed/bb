@@ -8,20 +8,26 @@ import {
 } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
-import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { LAUNCHER_ACTION_ROW_BASE_CLASS } from "@/components/secondary-panel/launcherRow";
 import {
   useAppCommandHandler,
+  useAppCommandShortcut,
   useAppCommandRunner,
   useAppCommandShortcuts,
+  useIndexedAppCommandHandlers,
 } from "./AppCommandProvider";
 import { AppCommandShortcutPill } from "./AppCommandShortcutHint";
-import type { PaletteAction } from "@/lib/command-palette/palette-action";
+import {
+  PALETTE_ACTION_BUCKETS,
+  type PaletteAction,
+} from "@/lib/command-palette/palette-action";
 import {
   buildAppCommandActions,
   PALETTE_COMMAND_IDS,
+  paletteActionIdForCommand,
 } from "@/lib/command-palette/palette-app-commands";
 import {
   rankPaletteActions,
@@ -34,8 +40,20 @@ import {
 import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
 import { getPluginSlotSnapshot } from "@/lib/plugin-slots";
 import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
+import {
+  PALETTE_MODE_ENTRY_COMMANDS,
+  PALETTE_MODES,
+} from "@/lib/command-palette/palette-modes";
+import { PaletteShell } from "./PaletteShell";
 
 const PALETTE_PLACEHOLDER = "Search commands";
+const MODE_ENTRY_HANDLER_PRIORITY = 100;
+const MODE_BY_ACTION_ID = new Map(
+  PALETTE_MODES.map((mode) => [
+    paletteActionIdForCommand(mode.entryCommand),
+    mode,
+  ]),
+);
 
 export interface CommandPaletteProps {
   /** The surface's thread and project, handed to plugin rows. */
@@ -50,6 +68,7 @@ export interface CommandPaletteProps {
 export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const runner = useAppCommandRunner();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
+  const paletteShortcut = useAppCommandShortcut("palette.open");
   const listId = useId();
   const optionIdPrefix = useId();
 
@@ -57,20 +76,17 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [actions, setActions] = useState<readonly PaletteAction[]>([]);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [activeModeId, setActiveModeId] = useState<string | null>(null);
   const [recents, setRecents] = useState<readonly string[]>(() =>
     readPaletteRecents(),
   );
   // Where availability, dispatch, and focus-on-close all point.
   const openTargetRef = useRef<EventTarget | null>(null);
   // Set when a row is chosen, read once focus has been restored.
-  const pendingActionRef = useRef<PaletteAction | null>(null);
+  const pendingRunRef = useRef<(() => void) | null>(null);
 
-  useAppCommandHandler("palette.open", (invocation) => {
-    const target =
-      invocation.target ??
-      (typeof document === "undefined" ? null : document.activeElement);
-    openTargetRef.current = target;
-    setActions([
+  const buildActions = useCallback(
+    (target: EventTarget | null) => [
       ...buildAppCommandActions({
         target,
         isCommandAvailable: runner.isCommandAvailable,
@@ -83,20 +99,79 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
         projectId,
         openThreadPanel: getActiveThreadPanelOpener(),
       }),
-    ]);
-    setQuery("");
-    setHighlightedIndex(0);
+    ],
+    [
+      projectId,
+      runner.dispatch,
+      runner.isCommandAvailable,
+      shortcuts,
+      threadId,
+    ],
+  );
+
+  const prepareOpen = useCallback(
+    (target: EventTarget | null) => {
+      openTargetRef.current = target;
+      setActions(buildActions(target));
+      setQuery("");
+      setHighlightedIndex(0);
+    },
+    [buildActions],
+  );
+
+  useAppCommandHandler("palette.open", (invocation) => {
+    const target =
+      invocation.target ??
+      (typeof document === "undefined" ? null : document.activeElement);
+    prepareOpen(target);
+    setActiveModeId(null);
     setOpen(true);
     return true;
   });
+
+  useIndexedAppCommandHandlers(
+    PALETTE_MODE_ENTRY_COMMANDS,
+    (index, invocation) => {
+      const mode = PALETTE_MODES[index];
+      if (mode === undefined) return false;
+      const target =
+        invocation.target ??
+        (typeof document === "undefined" ? null : document.activeElement);
+      prepareOpen(target);
+      setActiveModeId(mode.id);
+      setOpen(true);
+      return true;
+    },
+    MODE_ENTRY_HANDLER_PRIORITY,
+  );
 
   const ranked = useMemo(
     () => rankPaletteActions({ actions, query, recentIds: recents }),
     [actions, query, recents],
   );
+  const isGroupedRoot = query.trim() === "";
+  const rootGroups = useMemo(() => {
+    const groups = PALETTE_ACTION_BUCKETS.map((bucket) => ({
+      bucket,
+      entries: ranked.filter((entry) => entry.action.bucket === bucket),
+    }));
+    return groups.map((group, index) => ({
+      ...group,
+      startIndex: groups
+        .slice(0, index)
+        .reduce((total, prior) => total + prior.entries.length, 0),
+    }));
+  }, [ranked]);
+  const visibleEntries = useMemo(
+    () =>
+      isGroupedRoot ? rootGroups.flatMap((group) => group.entries) : ranked,
+    [isGroupedRoot, ranked, rootGroups],
+  );
   // Typing can shrink the list under the selection.
   const activeIndex =
-    ranked.length === 0 ? -1 : Math.min(highlightedIndex, ranked.length - 1);
+    visibleEntries.length === 0
+      ? -1
+      : Math.min(highlightedIndex, visibleEntries.length - 1);
 
   /**
    * Focus stays in the search field, so nothing scrolls the highlighted row
@@ -114,8 +189,17 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   }, [activeIndex]);
 
   const chooseAction = useCallback((action: PaletteAction) => {
-    pendingActionRef.current = action;
     setRecents((current) => recordPaletteRecent(current, action.id));
+    if (MODE_BY_ACTION_ID.has(action.id)) {
+      action.run();
+      return;
+    }
+    pendingRunRef.current = action.run;
+    setOpen(false);
+  }, []);
+
+  const runAfterClose = useCallback((run: () => void) => {
+    pendingRunRef.current = run;
     setOpen(false);
   }, []);
 
@@ -124,24 +208,33 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
    * have it taken back by the dialog's own restoration a tick later.
    */
   const handleCloseAutoFocus = useCallback((event: Event) => {
-    const pending = pendingActionRef.current;
-    pendingActionRef.current = null;
+    const pending = pendingRunRef.current;
+    pendingRunRef.current = null;
     const target = openTargetRef.current;
     if (target instanceof HTMLElement && target.isConnected) {
       event.preventDefault();
       target.focus({ preventScroll: true });
     }
-    pending?.run();
+    pending?.();
+  }, []);
+
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) {
+      setActiveModeId(null);
+      setQuery("");
+      setHighlightedIndex(0);
+    }
   }, []);
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
-      if (ranked.length === 0) return;
+      if (visibleEntries.length === 0) return;
       if (event.key === "ArrowDown") {
         event.preventDefault();
         scrollOnNextHighlightRef.current = true;
         setHighlightedIndex((current) =>
-          current + 1 >= ranked.length ? 0 : current + 1,
+          current + 1 >= visibleEntries.length ? 0 : current + 1,
         );
         return;
       }
@@ -149,7 +242,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
         event.preventDefault();
         scrollOnNextHighlightRef.current = true;
         setHighlightedIndex((current) =>
-          current <= 0 ? ranked.length - 1 : current - 1,
+          current <= 0 ? visibleEntries.length - 1 : current - 1,
         );
         return;
       }
@@ -162,85 +255,129 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       if (event.key === "End") {
         event.preventDefault();
         scrollOnNextHighlightRef.current = true;
-        setHighlightedIndex(ranked.length - 1);
+        setHighlightedIndex(visibleEntries.length - 1);
         return;
       }
       if (event.key === "Enter") {
-        const choice = ranked[activeIndex];
+        const choice = visibleEntries[activeIndex];
         if (choice === undefined) return;
         event.preventDefault();
         chooseAction(choice.action);
       }
     },
-    [activeIndex, chooseAction, ranked],
+    [activeIndex, chooseAction, visibleEntries],
   );
+  const activeMode =
+    activeModeId === null
+      ? undefined
+      : PALETTE_MODES.find((mode) => mode.id === activeModeId);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         hideCloseButton
         aria-describedby={undefined}
         className="top-[12%] max-w-xl translate-y-0 gap-0 p-0"
         onCloseAutoFocus={handleCloseAutoFocus}
+        onEscapeKeyDown={(event) => {
+          // A mode owns Escape as a one-level pop. The focused input/filter
+          // performs that transition; the dialog must not close underneath it.
+          if (activeMode !== undefined) event.preventDefault();
+        }}
         data-testid="command-palette"
       >
         <DialogTitle className="sr-only">Quick palette</DialogTitle>
-        <div className="flex items-center gap-2 border-b px-3">
-          <Icon
-            name="Search"
-            className="size-4 shrink-0 text-muted-foreground"
-          />
-          <input
-            // Opened by a chord expressly to type into.
-            autoFocus
-            role="combobox"
-            aria-expanded
-            aria-controls={listId}
-            aria-activedescendant={
+        {activeMode === undefined ? (
+          <PaletteShell
+            activeDescendantId={
               activeIndex === -1
                 ? undefined
                 : `${optionIdPrefix}-${activeIndex}`
             }
-            aria-label={PALETTE_PLACEHOLDER}
-            autoComplete="off"
-            spellCheck={false}
-            className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            placeholder={PALETTE_PLACEHOLDER}
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
+            accessory={
+              paletteShortcut === null ? null : (
+                <AppCommandShortcutPill shortcut={paletteShortcut} />
+              )
+            }
+            inputLabel={PALETTE_PLACEHOLDER}
+            listId={listId}
+            listLabel="Commands"
+            listRef={listRef}
+            onInputChange={(value) => {
+              setQuery(value);
               setHighlightedIndex(0);
               // `activeIndex` may not change, so the effect above cannot do
               // this: send the scrolled container back to the first row.
               if (listRef.current !== null) listRef.current.scrollTop = 0;
             }}
-            onKeyDown={handleKeyDown}
+            onInputKeyDown={handleKeyDown}
+            placeholder={PALETTE_PLACEHOLDER}
+            value={query}
+          >
+            {!isGroupedRoot && visibleEntries.length === 0 ? (
+              <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                No matching commands
+              </p>
+            ) : isGroupedRoot ? (
+              rootGroups.map((group, groupIndex) => {
+                const labelId = `${optionIdPrefix}-${group.bucket.toLowerCase()}-label`;
+                return (
+                  <div
+                    key={group.bucket}
+                    role="group"
+                    aria-labelledby={labelId}
+                    data-palette-bucket={group.bucket}
+                  >
+                    <div
+                      id={labelId}
+                      className={cn(
+                        CHROME_SECTION_LABEL_CLASS,
+                        "px-2 pb-1",
+                        groupIndex === 0 ? "pt-1" : "pt-2",
+                      )}
+                    >
+                      {group.bucket}
+                    </div>
+                    {group.entries.map((entry, index) => {
+                      const visibleIndex = group.startIndex + index;
+                      return (
+                        <PaletteRow
+                          key={entry.action.id}
+                          entry={entry}
+                          id={`${optionIdPrefix}-${visibleIndex}`}
+                          isActive={visibleIndex === activeIndex}
+                          onActivate={() => setHighlightedIndex(visibleIndex)}
+                          onSelect={() => chooseAction(entry.action)}
+                        />
+                      );
+                    })}
+                  </div>
+                );
+              })
+            ) : (
+              visibleEntries.map((entry, index) => (
+                <PaletteRow
+                  key={entry.action.id}
+                  entry={entry}
+                  id={`${optionIdPrefix}-${index}`}
+                  isActive={index === activeIndex}
+                  onActivate={() => setHighlightedIndex(index)}
+                  onSelect={() => chooseAction(entry.action)}
+                />
+              ))
+            )}
+          </PaletteShell>
+        ) : (
+          <activeMode.View
+            presentation={activeMode}
+            onExit={() => {
+              setActiveModeId(null);
+              setQuery("");
+              setHighlightedIndex(0);
+            }}
+            runAfterClose={runAfterClose}
           />
-        </div>
-        <div
-          ref={listRef}
-          id={listId}
-          role="listbox"
-          aria-label="Commands"
-          className="max-h-[min(24rem,50dvh)] overflow-y-auto p-1"
-        >
-          {ranked.length === 0 ? (
-            <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-              No matching commands
-            </p>
-          ) : (
-            ranked.map((entry, index) => (
-              <PaletteRow
-                key={entry.action.id}
-                entry={entry}
-                id={`${optionIdPrefix}-${index}`}
-                isActive={index === activeIndex}
-                onActivate={() => setHighlightedIndex(index)}
-                onSelect={() => chooseAction(entry.action)}
-              />
-            ))
-          )}
-        </div>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -259,6 +396,9 @@ function PaletteRow({
   onActivate: () => void;
   onSelect: () => void;
 }) {
+  const metadataGroup =
+    entry.action.group === entry.action.bucket ? null : entry.action.group;
+  const hasTrailing = metadataGroup !== null || entry.action.shortcut !== null;
   return (
     // A listbox option the input points at, not a focusable control.
     <div
@@ -279,16 +419,23 @@ function PaletteRow({
           positions={entry.positions}
         />
       </span>
-      <span className="ml-auto flex shrink-0 items-center gap-2">
-        <span
-          className={cn("text-muted-foreground", COARSE_POINTER_TEXT_SM_CLASS)}
-        >
-          {entry.action.group}
+      {hasTrailing ? (
+        <span className="ml-auto flex shrink-0 items-center gap-2">
+          {metadataGroup === null ? null : (
+            <span
+              className={cn(
+                "text-muted-foreground",
+                COARSE_POINTER_TEXT_SM_CLASS,
+              )}
+            >
+              {metadataGroup}
+            </span>
+          )}
+          {entry.action.shortcut === null ? null : (
+            <AppCommandShortcutPill shortcut={entry.action.shortcut} />
+          )}
         </span>
-        {entry.action.shortcut === null ? null : (
-          <AppCommandShortcutPill shortcut={entry.action.shortcut} />
-        )}
-      </span>
+      ) : null}
     </div>
   );
 }

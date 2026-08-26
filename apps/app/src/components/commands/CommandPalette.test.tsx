@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,13 +15,22 @@ import {
   type AppCommandId,
   type AppDefaultKeybinding,
   type AppKeybinding,
+  type ThreadListEntry,
 } from "@bb/domain";
+import { emptyPromptDraftState } from "@bb/client-core";
+import type { ThreadSearchResponse } from "@bb/server-contract";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { AppCommandProvider, useAppCommandHandler } from "./AppCommandProvider";
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 import { CommandPalette } from "./CommandPalette";
+import type { NewThreadDraftRow } from "@/hooks/useNewThreadDraftSlots";
 
 const PALETTE_SHORTCUT = {
   key: "p",
@@ -55,6 +65,20 @@ const THREAD_NEW_BINDING: AppKeybinding = {
   when: { all: ["mainSurface"], none: ["modalOpen"] },
 };
 
+const THREAD_SEARCH_BINDING: AppKeybinding = {
+  command: "thread.search",
+  desktopOnly: false,
+  shortcut: {
+    key: "k",
+    mod: true,
+    meta: false,
+    control: false,
+    alt: false,
+    shift: false,
+  },
+  when: { all: ["mainSurface"], none: ["modalOpen"] },
+};
+
 function defaults(...commands: AppCommandId[]): AppDefaultKeybinding[] {
   return commands.map((command) => ({
     command,
@@ -65,6 +89,12 @@ function defaults(...commands: AppCommandId[]): AppDefaultKeybinding[] {
 }
 
 const testState = vi.hoisted(() => ({ calls: [] as string[] }));
+const modeState = vi.hoisted(() => ({
+  drafts: [] as NewThreadDraftRow[],
+  searchResponse: undefined as ThreadSearchResponse | undefined,
+}));
+const openThreadInSplitMock = vi.hoisted(() => vi.fn());
+const routeNavigateMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
@@ -73,9 +103,10 @@ vi.mock("@/hooks/queries/system-queries", () => ({
         ...defaultAppSettings,
         showKeyboardHints: false,
       },
-      keybindings: [PALETTE_BINDING, THREAD_NEW_BINDING],
+      keybindings: [PALETTE_BINDING, THREAD_NEW_BINDING, THREAD_SEARCH_BINDING],
       defaultKeybindings: [
         PALETTE_BINDING,
+        THREAD_SEARCH_BINDING,
         ...defaults(
           "thread.new",
           "thread.next",
@@ -91,12 +122,92 @@ vi.mock("@/lib/bb-desktop", () => ({
   getBbDesktopInfo: () => null,
 }));
 
+vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
+  useIsCompactViewport: () => false,
+}));
+
+vi.mock("@/lib/split-layout/openThreadInSplit", () => ({
+  openThreadInSplit: openThreadInSplitMock,
+}));
+
+vi.mock("@/components/ui/app-route-anchor", () => ({
+  useRouteNavigate: () => routeNavigateMock,
+}));
+
+vi.mock("@/hooks/useNewThreadDraftSlots", () => ({
+  useNewThreadDraftSlots: () => modeState.drafts,
+}));
+
+vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
+  useSidebarNavigation: () => ({ data: undefined, isLoading: false }),
+}));
+
+vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/hooks/queries/thread-queries")>();
+  return {
+    ...actual,
+    useThreadSearch: ({ query }: { query: string }) => ({
+      data: modeState.searchResponse,
+      debouncedQuery: query.trim(),
+      hasSearchableQuery: query.trim().length >= 2,
+      isDebouncing: false,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    }),
+  };
+});
+
 function Handler({ command }: { command: AppCommandId }) {
   useAppCommandHandler(command, () => {
     testState.calls.push(command);
     return true;
   });
   return null;
+}
+
+function makeThread(
+  id: string,
+  overrides: Partial<ThreadListEntry> = {},
+): ThreadListEntry {
+  return {
+    id,
+    projectId: "project-1",
+    environmentId: null,
+    providerId: "codex",
+    title: `Title ${id}`,
+    titleFallback: `Title ${id}`,
+    sectionId: null,
+    status: "idle",
+    parentThreadId: null,
+    sourceThreadId: null,
+    originKind: null,
+    originPluginId: null,
+    visibility: "visible",
+    archivedAt: null,
+    pinnedAt: null,
+    pinSortKey: null,
+    deletedAt: null,
+    lastReadAt: null,
+    latestAttentionAt: 1,
+    createdAt: 1,
+    updatedAt: Date.now(),
+    activity: {
+      activeWorkflowCount: 0,
+      activeBackgroundAgentCount: 0,
+      activeBackgroundCommandCount: 0,
+      activePlanModeCount: 0,
+      activeGoalCount: 0,
+    },
+    hasPendingInteraction: false,
+    environmentHostId: null,
+    environmentName: null,
+    environmentBranchName: null,
+    environmentWorkspaceDisplayKind: "other",
+    runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+    ...overrides,
+  };
 }
 
 function renderPalette() {
@@ -107,6 +218,7 @@ function renderPalette() {
           origin
         </button>
         <Handler command="thread.new" />
+        <Handler command="thread.search" />
         <Handler command="thread.next" />
         <Handler command="panel.toggle" />
         <Handler command="terminal.open" />
@@ -130,7 +242,21 @@ function openPalette(): KeyboardEvent {
   return event;
 }
 
+function openThreadSearch(): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    key: "k",
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  (document.activeElement ?? window).dispatchEvent(event);
+  return event;
+}
+
 const searchField = () => screen.getByRole("combobox");
+const commandList = () => screen.getByRole("listbox", { name: "Commands" });
+const bucketGroup = (name: string) =>
+  within(commandList()).getByRole("group", { name });
 const optionTitles = () =>
   screen.getAllByRole("option").map((option) => option.textContent);
 const selectedOption = () =>
@@ -141,7 +267,12 @@ const selectedOption = () =>
 afterEach(() => {
   cleanup();
   removePluginSlotRegistrations("linear");
+  resetPluginLogoStoreForTest();
   testState.calls.length = 0;
+  modeState.drafts = [];
+  modeState.searchResponse = undefined;
+  openThreadInSplitMock.mockReset();
+  routeNavigateMock.mockReset();
   window.localStorage.clear();
 });
 
@@ -155,7 +286,302 @@ describe("CommandPalette", () => {
     const titles = optionTitles();
     expect(titles?.[0]).toContain("New thread");
     // Every mounted handler is listed; nothing else is.
-    expect(titles).toHaveLength(4);
+    expect(titles).toHaveLength(5);
+  });
+
+  it("groups the resting root into three text buckets with producer metadata", async () => {
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    const groups = within(commandList()).getAllByRole("group");
+    expect(
+      groups.map((group) => group.getAttribute("data-palette-bucket")),
+    ).toEqual(["Threads", "Actions", "Plugins"]);
+    for (const [index, label] of ["Threads", "Actions", "Plugins"].entries()) {
+      const header = within(groups[index] as HTMLElement).getByText(label, {
+        selector: "div",
+      });
+      for (const className of CHROME_SECTION_LABEL_CLASS.split(" ")) {
+        expect(header.classList.contains(className)).toBe(true);
+      }
+      expect(header.classList.contains("px-2")).toBe(true);
+    }
+
+    const threadRows = within(bucketGroup("Threads")).getAllByRole("option");
+    expect(threadRows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining("New thread"),
+      expect.stringContaining("Search threads"),
+      expect.stringContaining("Next thread"),
+    ]);
+    // The bucket already supplies this context, so rows do not repeat it.
+    for (const row of threadRows) {
+      expect(within(row).queryByText("Threads")).toBeNull();
+    }
+    expect(threadRows[1]?.querySelector("kbd")).not.toBeNull();
+
+    const actionRows = within(bucketGroup("Actions")).getAllByRole("option");
+    expect(actionRows[0]?.textContent).toContain("Window and layout");
+    expect(actionRows[1]?.textContent).toContain("Workspace");
+    for (const row of [...threadRows, ...actionRows]) {
+      expect(row.classList.contains("px-2")).toBe(true);
+    }
+    // Root rows and headers remain text-only.
+    expect(commandList().querySelector("[data-icon]")).toBeNull();
+    expect(
+      screen.getByTestId("command-palette").querySelector("svg"),
+    ).toBeNull();
+  });
+
+  it("enters the registered thread mode from its existing command and pops one level per Escape", async () => {
+    renderPalette();
+    const event = openThreadSearch();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Search threads" }),
+      ).toBeTruthy(),
+    );
+    expect(event.defaultPrevented).toBe(true);
+    expect(
+      screen.getByText("Threads").closest("[data-palette-mode-chip]"),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Thread scope" }).textContent,
+    ).toContain("All");
+
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Search commands" }),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByRole("button", { name: "Thread scope" })).toBeNull();
+
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+  });
+
+  it("enters the same registered mode by running Search threads from the root", async () => {
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    const searchCommand = within(bucketGroup("Threads"))
+      .getAllByRole("option")
+      .find((row) => row.textContent?.includes("Search threads"));
+    expect(searchCommand).toBeDefined();
+    fireEvent.click(searchCommand as HTMLElement);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Search threads" }),
+      ).toBeTruthy(),
+    );
+    expect(testState.calls).toEqual([]);
+  });
+
+  it("cycles the thread scope and resets it after leaving the mode", async () => {
+    renderPalette();
+    openThreadSearch();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Thread scope" })).toBeTruthy(),
+    );
+    const scope = screen.getByRole("button", { name: "Thread scope" });
+    scope.focus();
+    fireEvent.keyDown(scope, { key: "ArrowDown" });
+    expect(scope.textContent).toContain("Active");
+    expect(
+      screen.getByRole("listbox", { name: "Thread scope options" }),
+    ).toBeTruthy();
+    fireEvent.keyDown(scope, { key: "Escape" });
+    expect(document.activeElement).toBe(screen.getByRole("combobox"));
+
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Search commands" }),
+      ).toBeTruthy(),
+    );
+    const searchCommand = within(bucketGroup("Threads"))
+      .getAllByRole("option")
+      .find((row) => row.textContent?.includes("Search threads"));
+    fireEvent.click(searchCommand as HTMLElement);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Thread scope" }).textContent,
+      ).toContain("All"),
+    );
+  });
+
+  it("makes scope the input's only sibling tab stop and applies every keyboard choice immediately", async () => {
+    modeState.searchResponse = {
+      active: {
+        total: 1,
+        results: [{ thread: makeThread("matching-active"), matches: [] }],
+      },
+      archived: {
+        total: 1,
+        results: [
+          {
+            thread: makeThread("matching-archived", {
+              archivedAt: Date.now(),
+            }),
+            matches: [],
+          },
+        ],
+      },
+    };
+    modeState.drafts = [
+      {
+        id: "matching-draft",
+        title: "matching draft",
+        draft: { ...emptyPromptDraftState(), text: "matching draft" },
+        lastEditedAt: Date.now(),
+        destination: { projectId: "project-1", sectionId: null },
+        delete: vi.fn(),
+      },
+    ];
+    renderPalette();
+    openThreadSearch();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Search threads" }),
+      ).toBeTruthy(),
+    );
+    const input = screen.getByRole("combobox", { name: "Search threads" });
+    const scope = screen.getByRole("button", { name: "Thread scope" });
+    const palette = screen.getByTestId("command-palette");
+    expect(
+      Array.from(
+        palette.querySelectorAll<HTMLElement>(
+          'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ),
+    ).toEqual([input, scope]);
+
+    fireEvent.change(input, { target: { value: "match" } });
+    const results = screen.getByRole("listbox", { name: "Threads" });
+    await waitFor(() =>
+      expect(within(results).getAllByRole("option")).toHaveLength(3),
+    );
+
+    scope.focus();
+    fireEvent.keyDown(scope, { key: "ArrowDown" });
+    expect(scope.textContent).toContain("Active");
+    const scopeOptions = screen.getByRole("listbox", {
+      name: "Thread scope options",
+    });
+    expect(
+      within(scopeOptions)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["All", "Active", "Drafts", "Archived"]);
+    expect(within(results).getAllByRole("option")).toHaveLength(1);
+    expect(within(results).getByRole("option").textContent).toContain(
+      "matching-active",
+    );
+    fireEvent.keyDown(scope, { key: "Enter" });
+    expect(document.activeElement).toBe(input);
+    expect(
+      screen.queryByRole("listbox", { name: "Thread scope options" }),
+    ).toBeNull();
+
+    scope.focus();
+    fireEvent.keyDown(scope, { key: "ArrowDown" });
+    expect(scope.textContent).toContain("Drafts");
+    expect(within(results).getAllByRole("option")).toHaveLength(1);
+    expect(within(results).getByRole("option").textContent).toContain(
+      "matching draft",
+    );
+    fireEvent.keyDown(scope, { key: "Escape" });
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.click(within(results).getByRole("option"));
+    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+    openThreadSearch();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Thread scope" }).textContent,
+      ).toContain("All"),
+    );
+  });
+
+  it("renders search matches as one unlabelled active, draft, archived list", async () => {
+    const active = makeThread("active");
+    const archived = makeThread("archived", { archivedAt: Date.now() });
+    modeState.searchResponse = {
+      active: { total: 1, results: [{ thread: active, matches: [] }] },
+      archived: { total: 1, results: [{ thread: archived, matches: [] }] },
+    };
+    modeState.drafts = [
+      {
+        id: "draft-1",
+        title: "matching draft",
+        draft: { ...emptyPromptDraftState(), text: "matching draft" },
+        lastEditedAt: Date.now(),
+        destination: { projectId: "project-1", sectionId: null },
+        delete: vi.fn(),
+      },
+    ];
+    renderPalette();
+    openThreadSearch();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Search threads" }),
+      ).toBeTruthy(),
+    );
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "match" },
+    });
+
+    const results = screen.getByRole("listbox", { name: "Threads" });
+    await waitFor(() =>
+      expect(within(results).getAllByRole("option")).toHaveLength(3),
+    );
+    const rows = within(results).getAllByRole("option");
+    expect(rows[0]?.textContent).toContain("Title active");
+    expect(rows[1]?.textContent).toContain("matching draft");
+    expect(rows[1]?.textContent).toContain("Draft");
+    expect(rows[2]?.textContent).toContain("Title archived");
+    expect(rows[2]?.textContent).toContain("Archived");
+    expect(rows[0]?.textContent).not.toContain("Active");
+    expect(within(results).queryAllByRole("group")).toHaveLength(0);
+    expect(within(results).queryByText("Recent")).toBeNull();
+    expect(results.textContent).not.toContain("1/1");
+    expect(
+      screen.getByTestId("command-palette").querySelectorAll("svg"),
+    ).toHaveLength(1);
+  });
+
+  it("opens a persisted thread result in a split with Command-Enter", async () => {
+    modeState.searchResponse = {
+      active: {
+        total: 1,
+        results: [{ thread: makeThread("matching-split"), matches: [] }],
+      },
+      archived: { total: 0, results: [] },
+    };
+    renderPalette();
+    openThreadSearch();
+    const input = await screen.findByRole("combobox", {
+      name: "Search threads",
+    });
+    fireEvent.change(input, { target: { value: "match" } });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("option").textContent,
+      ).toContain("matching-split"),
+    );
+
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+
+    await waitFor(() => expect(openThreadInSplitMock).toHaveBeenCalledTimes(1));
+    expect(openThreadInSplitMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project-1",
+        threadId: "matching-split",
+      }),
+    );
   });
 
   it("filters as the user types and keeps the selection on a live row", async () => {
@@ -169,6 +595,8 @@ describe("CommandPalette", () => {
 
     await waitFor(() => expect(optionTitles()).toHaveLength(1));
     expect(selectedOption()?.textContent).toContain("Open terminal");
+    expect(selectedOption()?.textContent).toContain("Workspace");
+    expect(within(commandList()).queryAllByRole("group")).toHaveLength(0);
   });
 
   it("wraps at both ends of the list", async () => {
@@ -199,7 +627,7 @@ describe("CommandPalette", () => {
     expect(document.activeElement).toBe(screen.getByTestId("origin"));
   });
 
-  it("offers the last command run first the next time it opens", async () => {
+  it("offers the last command run first within its resting bucket", async () => {
     renderPalette();
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
@@ -212,7 +640,8 @@ describe("CommandPalette", () => {
 
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
-    expect(optionTitles()?.[0]).toContain("Toggle panel");
+    const actionRows = within(bucketGroup("Actions")).getAllByRole("option");
+    expect(actionRows[0]?.textContent).toContain("Toggle panel");
   });
 
   it("closes on Escape without running anything", async () => {
@@ -278,6 +707,21 @@ describe("CommandPalette", () => {
   });
 
   it("lists a plugin's commandPaletteAction and runs it", async () => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "linear",
+          {
+            displayName: "Linear",
+            icon: null,
+            compactIconUrl: null,
+            logoUrl: null,
+            logoDarkUrl: null,
+            icons: new Map(),
+          },
+        ],
+      ]),
+    );
     setPluginSlotRegistrations("linear", {
       homepageSections: [],
       settingsSections: [],
@@ -289,7 +733,7 @@ describe("CommandPalette", () => {
       commandPaletteActions: [
         {
           id: "open-issue",
-          title: "Linear: open issue",
+          title: "Open issue",
           run: () => {
             testState.calls.push("plugin-ran");
           },
@@ -300,9 +744,15 @@ describe("CommandPalette", () => {
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
+    const pluginRow = within(bucketGroup("Plugins")).getByRole("option");
+    expect(pluginRow.textContent).toContain("Open issue");
+    expect(pluginRow.textContent).toContain("Linear");
+
     fireEvent.change(searchField(), { target: { value: "linear" } });
     await waitFor(() => expect(optionTitles()).toHaveLength(1));
-    expect(optionTitles()?.[0]).toContain("Linear: open issue");
+    expect(optionTitles()?.[0]).toContain("Open issue");
+    expect(optionTitles()?.[0]).toContain("Linear");
+    expect(within(commandList()).queryAllByRole("group")).toHaveLength(0);
     fireEvent.keyDown(searchField(), { key: "Enter" });
 
     await waitFor(() => expect(testState.calls).toEqual(["plugin-ran"]));
