@@ -184,11 +184,22 @@ export function paginateTimelineRows(
       rows: [...rows],
     };
   }
-  // Every window ends strictly before its cursor, so no segment at or past the
-  // cursor was read and none has to be trimmed off here.
-  const selectedSegments = segments.slice(-page.segmentLimit);
+  // An older semantic-summary read can overlap its cursor segment so rows that
+  // cross the raw event boundary are projected with context from both sides.
+  // The cursor segment is context only; this page owns everything before it.
+  const cursorIndex =
+    page.kind === "older"
+      ? segments.findIndex(
+          (segment) =>
+            segment.cursor.anchorSeq === page.beforeCursor.anchorSeq &&
+            segment.cursor.anchorId === page.beforeCursor.anchorId,
+        )
+      : -1;
+  const eligibleSegments =
+    cursorIndex === -1 ? segments : segments.slice(0, cursorIndex);
+  const selectedSegments = eligibleSegments.slice(-page.segmentLimit);
   const hasOlderRows =
-    knownHasOlderSegments ?? segments.length > selectedSegments.length;
+    knownHasOlderSegments ?? eligibleSegments.length > selectedSegments.length;
   const oldestSelectedSegment = selectedSegments[0];
 
   return {

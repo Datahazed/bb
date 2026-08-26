@@ -2940,6 +2940,26 @@ export interface TimelineSegmentAnchorLookupArgs {
   sequence: number;
 }
 
+/** The first segment anchor strictly after `sequence`, if any. */
+export function findTimelineSegmentAnchorSequenceAfter(
+  db: DbConnection,
+  args: TimelineSegmentAnchorLookupArgs,
+): number | undefined {
+  const row = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        timelineSegmentAnchorConditions(args.threadId),
+        gt(events.sequence, args.sequence),
+      ),
+    )
+    .orderBy(events.sequence)
+    .limit(1)
+    .get();
+  return row?.sequence;
+}
+
 /** The segment anchor at exactly `sequence`, if that turn qualifies as one. */
 export function getTimelineSegmentAnchorAtSequence(
   db: DbConnection,

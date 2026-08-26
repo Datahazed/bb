@@ -261,6 +261,7 @@ export {
   getStoredEventRowsByParentToolCallIdsDataBytes,
   findUnfinishedTurnCoveringSequence,
   hasParentedEventCrossingSequence,
+  findTimelineSegmentAnchorSequenceAfter,
   getTimelineSegmentAnchorAtSequence,
   listStoredClientTurnRequestIdsInRange,
   listStoredClientTurnRequestRowsByKeys,

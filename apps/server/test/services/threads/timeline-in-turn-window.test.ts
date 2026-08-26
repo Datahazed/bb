@@ -629,6 +629,193 @@ describe("in-turn timeline windows", () => {
     );
   });
 
+  it("keeps an assistant message that finishes after the next user anchor", () => {
+    const { db, thread } = setup();
+    const firstRequestId = requestId(1);
+    const secondRequestId = requestId(2);
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          direction: "outbound",
+          source: "tell",
+          initiator: "user",
+          request: { method: "turn/start", params: {} },
+          requestId: firstRequestId,
+          senderThreadId: null,
+          input: [{ type: "text", text: "First prompt", mentions: [] }],
+          target: { kind: "thread-start" },
+          execution,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "turn/started",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "turn/input/accepted",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ clientRequestId: firstRequestId }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "item/started",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: "assistant-1",
+        itemKind: "agentMessage",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: { type: "agentMessage", id: "assistant-1", text: "" },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "item/agentMessage/delta",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: "assistant-1",
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ itemId: "assistant-1", delta: "Answer" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 6,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          direction: "outbound",
+          source: "tell",
+          initiator: "user",
+          request: { method: "turn/start", params: {} },
+          requestId: secondRequestId,
+          senderThreadId: null,
+          input: [{ type: "text", text: "Second prompt", mentions: [] }],
+          target: { kind: "new-turn" },
+          execution,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 7,
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: "assistant-1",
+        itemKind: "agentMessage",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "agentMessage",
+            id: "assistant-1",
+            text: "Answer completed after the second prompt arrived.",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 8,
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ status: "completed", providerThreadId }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 9,
+        type: "turn/started",
+        scope: turnScope("turn-2"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 10,
+        type: "turn/input/accepted",
+        scope: turnScope("turn-2"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ clientRequestId: secondRequestId }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 11,
+        type: "turn/completed",
+        scope: turnScope("turn-2"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ status: "completed", providerThreadId }),
+      },
+    ]);
+
+    const newest = buildSummaryPage(db, thread, 100, null, 1).response;
+    expect(newest.timelinePage.olderCursor).not.toBeNull();
+    const older = buildSummaryPage(
+      db,
+      thread,
+      100,
+      newest.timelinePage.olderCursor,
+      1,
+    ).response;
+    const olderRowIds = new Set(older.rows.map((row) => row.id));
+    const paginatedRows = [
+      ...older.rows,
+      ...newest.rows.filter((row) => !olderRowIds.has(row.id)),
+    ];
+    const unpaginatedRows = buildSummaryPage(
+      db,
+      thread,
+      LARGE_BUDGET,
+      null,
+      LARGE_BUDGET,
+    ).response.rows;
+
+    expect(paginatedRows).toEqual(unpaginatedRows);
+    expect(
+      paginatedRows.some(
+        (row) =>
+          row.kind === "conversation" &&
+          row.role === "assistant" &&
+          row.text === "Answer completed after the second prompt arrived.",
+      ),
+    ).toBe(true);
+  });
+
   it("keeps assistant prelude rows before the first user anchor", () => {
     const { db, thread } = setup();
     const firstRequestId = requestId(1);

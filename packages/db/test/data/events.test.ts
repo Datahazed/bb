@@ -17,6 +17,7 @@ import {
   appendStoredThreadEventsInTransaction,
   findStoredEventRow,
   findStoredTimelineWindowByteBudgetFloor,
+  findTimelineSegmentAnchorSequenceAfter,
   findTimelineWindowBudgetFloorSequence,
   getActiveStoredTurnId,
   getHighWaterMarks,
@@ -1460,6 +1461,24 @@ describe("events", () => {
         threadId: thread.id,
       }),
     ).toEqual({ rowId: `${thread.id}:user-seed:2`, sequence: 2 });
+    expect(
+      findTimelineSegmentAnchorSequenceAfter(db, {
+        sequence: 7,
+        threadId: thread.id,
+      }),
+    ).toBe(8);
+    expect(
+      findTimelineSegmentAnchorSequenceAfter(db, {
+        sequence: 10,
+        threadId: thread.id,
+      }),
+    ).toBe(11);
+    expect(
+      findTimelineSegmentAnchorSequenceAfter(db, {
+        sequence: 11,
+        threadId: thread.id,
+      }),
+    ).toBeUndefined();
   });
 
   it("loads timeline event windows with sequence bounds and exclusions", () => {

@@ -28,6 +28,7 @@ import type {
 import {
   findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
+  findTimelineSegmentAnchorSequenceAfter,
   getStoredEventRowsByParentToolCallIdsDataBytes,
   getEnvironment,
   findUnfinishedTurnCoveringSequence,
@@ -1357,12 +1358,9 @@ function resolveTimelineSegmentWindow(
       bounds.sequenceWindowStart === null &&
       precedingAnchors.length <= page.segmentLimit;
     return {
-      // Every cursor names the first sequence the page that issued it covered,
-      // so this page ends exactly there. Reading up to the *next anchor* past
-      // the cursor instead — and trimming that segment off after projecting it
-      // — meant an older page read one whole extra segment beyond its budget:
-      // on a thread with a 3,900-event turn, 5,513 events against a budget of
-      // 1,500, all to discard the surplus.
+      // Transport-window readers end exactly at the cursor. The top-level
+      // semantic summary can add one segment of projection overlap later,
+      // after it has deliberately opted out of these event/byte budgets.
       beforeSequence: cursor.anchorSeq,
       byteWindowSequenceStart:
         sequenceCursor?.kind === "byte" ? bounds.sequenceStart : null,
@@ -1430,13 +1428,28 @@ function selectStandardTimelineEventRows(
     page,
     threadId: thread.id,
   });
+  // A semantic row may start below a user-message cursor and finish above it
+  // (for example, an assistant message interrupted by a steer). The older
+  // summary page reads through the following segment anchor, projects that
+  // overlap, and trims the cursor segment afterward. Nested transport windows
+  // keep their existing exact upper bound.
+  const projectionWindow =
+    !enforceByteBudget && page.kind === "older"
+      ? {
+          ...segmentWindow,
+          beforeSequence: findTimelineSegmentAnchorSequenceAfter(db, {
+            sequence: page.beforeCursor.anchorSeq,
+            threadId: thread.id,
+          }),
+        }
+      : segmentWindow;
   const window = enforceByteBudget
     ? applyTimelineWindowByteBudget(db, {
         maxInlineOutputChars,
         threadId: thread.id,
-        window: segmentWindow,
+        window: projectionWindow,
       })
-    : segmentWindow;
+    : projectionWindow;
   if (
     !window.hasAnchors &&
     window.sequenceWindowStart === null &&
