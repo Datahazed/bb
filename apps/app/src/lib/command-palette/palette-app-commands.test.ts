@@ -81,7 +81,7 @@ describe("buildAppCommandActions", () => {
     const { actions } = build(["thread.split"]);
     expect(actions[0]).toMatchObject({
       id: "app:thread.split",
-      group: "Window and layout",
+      group: "Threads",
       shortcut: null,
       title: "Split",
     });
