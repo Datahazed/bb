@@ -1,4 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import {
+  buildAgentModelCatalog,
+  parseAgentModelLines,
+} from "./bridge/model-catalog.js";
+import { SAMPLE_LIST } from "./bridge/model-catalog.fixture.js";
 import { acpLaunchSpecSchema, type AcpLaunchSpec } from "./launch-spec.js";
 import {
   buildAcpModelListParams,
@@ -26,7 +32,7 @@ function launchSpecFor(spec: AcpLaunchSpec): AcpLaunchSpec {
 }
 
 describe("buildAcpModelListParams", () => {
-  it("discovers models with the spec's list command, cwd, and env", () => {
+  it("keeps a custom CLI catalog when model-picker options are absent", () => {
     const params = buildAcpModelListParams(
       launchSpecFor({
         displayName: "Custom ACP",
@@ -40,6 +46,10 @@ describe("buildAcpModelListParams", () => {
           primaryModels: ["model-a"],
         },
       }),
+      {
+        parameterizedModelPicker: false,
+        reasoningProbePriorityModelIds: [],
+      },
     );
 
     expect(params).toEqual({
@@ -50,6 +60,8 @@ describe("buildAcpModelListParams", () => {
         envVars: { CUSTOM_AGENT_TOKEN: "token" },
       },
       primaryModels: ["model-a"],
+      reasoningProbePriorityModelIds: [],
+      parameterizedModelPicker: false,
     });
   });
 
@@ -70,10 +82,16 @@ describe("buildAcpModelListParams", () => {
           env: {},
           reasoningCli,
         }),
+        {
+          parameterizedModelPicker: false,
+          reasoningProbePriorityModelIds: [],
+        },
       ),
     ).toEqual({
       agent: { command: "custom-agent", args: ["serve"] },
       primaryModels: [],
+      reasoningProbePriorityModelIds: [],
+      parameterizedModelPicker: false,
       reasoningCli,
     });
   });
@@ -95,15 +113,43 @@ describe("buildAcpModelListParams", () => {
           env: {},
           ...(modelCli !== undefined ? { modelCli } : {}),
         }),
+        {
+          parameterizedModelPicker: false,
+          reasoningProbePriorityModelIds: [],
+        },
       );
 
       expect(params).toEqual({
         agent: { command: "custom-agent", args: ["serve"] },
         primaryModels: [],
+        reasoningProbePriorityModelIds: [],
+        parameterizedModelPicker: false,
       });
       expect(params).not.toHaveProperty("listCommand");
     },
   );
+  it("discovers parameterized Cursor session models with Grok first", () => {
+    expect(
+      buildAcpModelListParams(
+        launchSpecFor({
+          displayName: "Cursor",
+          command: "cursor-agent",
+          args: ["acp"],
+          env: {},
+        }),
+        {
+          parameterizedModelPicker: true,
+          primaryModels: ["default", "composer-2.5", "grok-4.6"],
+          reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
+        },
+      ),
+    ).toEqual({
+      agent: { command: "cursor-agent", args: ["acp"] },
+      parameterizedModelPicker: true,
+      primaryModels: ["default", "composer-2.5", "grok-4.6"],
+      reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
+    });
+  });
 });
 
 describe("buildAcpSessionParams", () => {
@@ -116,6 +162,7 @@ describe("buildAcpSessionParams", () => {
           ...BASE_OPTIONS,
           envVars: { BB_THREAD_ID: "thread-1" },
         },
+        parameterizedModelPicker: false,
         launchSpec: launchSpecFor({
           displayName: "Custom ACP",
           command: "custom-agent",
@@ -148,6 +195,7 @@ describe("buildAcpSessionParams", () => {
         additionalWorkspaceWriteRoots: [],
         cwd: "/workspace",
         options: { ...BASE_OPTIONS, model: "requested-model" },
+        parameterizedModelPicker: false,
         launchSpec: launchSpecFor({
           displayName: "Custom ACP",
           command: "custom-agent",
@@ -176,6 +224,7 @@ describe("buildAcpSessionParams", () => {
       options: { ...BASE_OPTIONS, reasoningLevel: "max" },
       providerLabel: "acp-custom",
       threadId: "thread-1",
+      parameterizedModelPicker: false,
     } as const;
 
     expect(
@@ -205,25 +254,22 @@ describe("buildAcpSessionParams", () => {
   });
 });
 
-/**
- * The CLI-flavored launch spec (Cursor's shape): model discovery and selection run
- * through the launch binary's flags rather than the ACP protocol.
- */
-describe("buildAcpSessionParams model selection", () => {
+describe("buildAcpSessionParams parameterized model selection", () => {
+  const cursorParameterizedModelIds = new Set(
+    `default grok-4.6 composer-2.5 claude-opus-5 claude-opus-4-8
+gpt-5.6-sol gpt-5.5 claude-fable-5 grok-4.5 gemini-3.7-flash gpt-5.6-terra
+claude-sonnet-5 claude-sonnet-4-6 gpt-5.3-codex claude-opus-4-7 gpt-5.4
+claude-opus-4-6 claude-opus-4-5 gpt-5.2 gpt-5.6-luna gemini-3.6-flash gemini-3.1-pro
+gpt-5.4-mini gpt-5.4-nano claude-haiku-4-5 claude-sonnet-4-5 gpt-5.1 gemini-3-flash
+gemini-3.5-flash claude-sonnet-4 gpt-5-mini gemini-2.5-flash kimi-k3 kimi-k2.7-code glm-5.2`.split(
+      /\s+/u,
+    ),
+  );
   const cursorSpec: AcpLaunchSpec = {
     displayName: "Cursor",
     command: "cursor-agent",
     args: ["acp"],
     env: {},
-    modelCli: {
-      listArgs: ["--list-models"],
-      selectFlag: "--model",
-      primaryModels: ["composer-2.5"],
-    },
-  };
-  const cursorListCommand = {
-    command: "cursor-agent",
-    args: ["--list-models"],
   };
 
   function cursorSessionParams(
@@ -232,48 +278,98 @@ describe("buildAcpSessionParams model selection", () => {
     return buildAcpSessionParams({
       additionalWorkspaceWriteRoots: [],
       cwd: "/workspace",
+      dialectId: "cursor",
       options: { ...BASE_OPTIONS, ...options },
+      parameterizedModelPicker: true,
       launchSpec: launchSpecFor(cursorSpec),
       providerLabel: "acp-cursor",
       threadId: "thread-1",
     });
   }
 
-  it("forwards the session model and reasoning level for bridge resolution", () => {
+  it("forwards Cursor's bare ACP model and reasoning level", () => {
     expect(
-      cursorSessionParams({ model: "gpt-5.3-codex", reasoningLevel: "high" }),
+      cursorSessionParams({ model: "grok-4.6", reasoningLevel: "high" }),
     ).toMatchObject({
       agent: { command: "cursor-agent", args: ["acp"] },
       modelSelection: {
-        listCommand: cursorListCommand,
-        selectFlag: "--model",
-        model: "gpt-5.3-codex",
+        modelId: "grok-4.6",
         reasoningLevel: "high",
       },
+      parameterizedModelPicker: true,
     });
   });
 
   it("omits the reasoning level when the session has none", () => {
-    const selection = cursorSessionParams({ model: "gpt-5.3-codex" })
+    const selection = cursorSessionParams({ model: "grok-4.6" })
       .modelSelection as Record<string, unknown>;
-    expect(selection).toMatchObject({ model: "gpt-5.3-codex" });
+    expect(selection).toMatchObject({ modelId: "grok-4.6" });
     expect("reasoningLevel" in selection).toBe(false);
   });
 
-  it("forwards Fast mode as the model selection service tier", () => {
-    expect(
-      cursorSessionParams({ model: "composer-2.5", serviceTier: "fast" })
-        .modelSelection,
-    ).toMatchObject({ model: "composer-2.5", serviceTier: "fast" });
+  it("keeps Cursor's new default id unchanged", () => {
+    expect(cursorSessionParams({ model: "default" }).modelSelection).toEqual({
+      modelId: "default",
+    });
   });
 
-  it("omits a default service tier from the model selection", () => {
-    const selection = cursorSessionParams({
-      model: "composer-2.5",
-      serviceTier: "default",
-    }).modelSelection as Record<string, unknown>;
-    expect("serviceTier" in selection).toBe(false);
+  it("translates the union of checked-in persisted Cursor families", () => {
+    const persistedFamilyIds = new Set(
+      [
+        SAMPLE_LIST,
+        readFileSync(
+          new URL(
+            "./bridge/issue-1688-cursor-list-models.txt",
+            import.meta.url,
+          ),
+          "utf8",
+        ),
+      ].flatMap(
+        (source) =>
+          buildAgentModelCatalog(parseAgentModelLines(source))?.models.map(
+            ({ id }) => id,
+          ) ?? [],
+      ),
+    );
+    expect(persistedFamilyIds.size).toBe(35);
+    expect(
+      [...persistedFamilyIds].filter((id) => {
+        const selection = cursorSessionParams({ model: id }).modelSelection;
+        return (
+          !selection ||
+          !("modelId" in selection) ||
+          !cursorParameterizedModelIds.has(selection.modelId)
+        );
+      }),
+    ).toEqual([]);
   });
+
+  it.each([
+    ["claude-4.6-sonnet-medium-thinking", "high", "claude-sonnet-4-6", "high"],
+    ["claude-4.6-opus-high-thinking", "high", "claude-opus-4-6", "high"],
+    ["claude-4.5-opus-high-thinking", "high", "claude-opus-4-5", "high"],
+    ["gemini-3.6-flash", "medium", "gemini-3.6-flash", "medium"],
+    ["gemini-3.6-flash-minimal", "medium", "gemini-3.6-flash", "low"],
+    ["claude-4.5-sonnet-thinking", "high", "claude-sonnet-4-5", "high"],
+    ["claude-4-sonnet-thinking", "high", "claude-sonnet-4", "high"],
+    ["gpt-5.1-codex-max-medium", "medium", "gpt-5.1", "medium"],
+  ] as const)(
+    "maps Cursor selection %s to its accepted tuple",
+    (model, reasoningLevel, modelId, expectedReasoningLevel) => {
+      expect(
+        cursorSessionParams({ model, reasoningLevel }).modelSelection,
+      ).toEqual({ modelId, reasoningLevel: expectedReasoningLevel });
+    },
+  );
+
+  it.each(["default", "fast"] as const)(
+    "forwards the %s service tier explicitly",
+    (serviceTier) => {
+      expect(
+        cursorSessionParams({ model: "grok-4.6", serviceTier }).modelSelection,
+      ).toMatchObject({ modelId: "grok-4.6", serviceTier });
+    },
+  );
 
   it("never forwards the synthetic default model id", () => {
     // "acp-default" is bb's placeholder for "the agent's own default"; leaking
@@ -288,6 +384,7 @@ describe("buildAcpSessionParams model selection", () => {
       additionalWorkspaceWriteRoots: [],
       cwd: "/workspace",
       options: { ...BASE_OPTIONS, model: "custom/strong" },
+      parameterizedModelPicker: false,
       launchSpec: launchSpecFor({
         displayName: "Custom ACP",
         command: "custom-acp",
@@ -320,6 +417,7 @@ describe("buildAcpSessionParams skill instructions", () => {
       additionalWorkspaceWriteRoots: [],
       cwd: "/workspace",
       options: { ...BASE_OPTIONS, ...options },
+      parameterizedModelPicker: false,
       launchSpec: launchSpecFor({
         displayName: "Custom ACP",
         command: "custom-agent",

@@ -75,17 +75,14 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions";
 import {
-  COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
   COARSE_POINTER_ROW_HEIGHT_CLASS,
-  COARSE_POINTER_TEXT_SM_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   ChronologicalSectionThreadSections,
   ProjectThreadTree,
 } from "./ProjectRow";
-import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import {
   SidebarArchivedThreadGroup,
   SidebarDraftRows,
@@ -141,7 +138,6 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
-  SIDEBAR_LEADING_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
@@ -149,11 +145,9 @@ import {
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
 export { TopLevelSidebarSection };
 import {
-  SIDEBAR_THREAD_SEARCH_LISTBOX_ID,
-  type SidebarThreadSearchInputController,
-  type SidebarThreadSearchPanelController,
-} from "./sidebarThreadSearch";
-import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
+  useAppCommandRunner,
+  useAppCommandShortcut,
+} from "@/components/commands/AppCommandProvider";
 import { useNewThreadSplitIndicator } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import {
@@ -183,7 +177,6 @@ interface ProjectListProps {
   onNewProject?: () => void;
   onProjectSelect?: () => void;
   isCreatingProject?: boolean;
-  threadSearch?: SidebarThreadSearchPanelController;
 }
 
 interface ProjectListActionButtonsProps {
@@ -194,7 +187,7 @@ interface ProjectListActionButtonsProps {
   };
   onNewChat?: () => void;
   onSplit?: () => void;
-  threadSearch?: SidebarThreadSearchInputController;
+  onSearchThreads?: () => void;
 }
 
 interface ProjectListShellProps {
@@ -248,21 +241,6 @@ const PROJECT_LIST_ACTION_ICON_BUTTON_CLASS = cn(
   "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md text-sidebar-foreground/85 outline-none ring-sidebar-ring transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 disabled:cursor-default disabled:opacity-50",
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 );
-
-const PROJECT_LIST_SEARCH_INPUT_ROW_CLASS = cn(
-  SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-  COARSE_POINTER_ROW_HEIGHT_CLASS,
-  "min-w-0 overflow-hidden bg-sidebar-accent pr-1 font-normal text-sidebar-foreground shadow-[0_0_0_1px_var(--sidebar-accent)] transition-shadow focus-within:shadow-[0_0_0_1px_var(--sidebar-border)]",
-);
-
-const PROJECT_LIST_SEARCH_INPUT_CLASS = cn(
-  "min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground",
-  COARSE_POINTER_TEXT_SM_CLASS,
-);
-
-const PROJECT_LIST_SEARCH_CLOSE_BUTTON_CLASS =
-  "h-6 w-6 shrink-0 rounded-md p-0 text-muted-foreground ring-sidebar-ring hover:bg-sidebar-border/60 hover:text-sidebar-foreground focus-visible:ring-2 max-md:pointer-coarse:h-8 max-md:pointer-coarse:w-8";
 
 const PROJECT_LIST_SECTION_ACTION_BUTTON_CLASS = cn(
   "inline-flex items-center justify-center rounded-md text-muted-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 disabled:opacity-50",
@@ -866,154 +844,106 @@ export function ProjectListActionButtons({
   newThreadSplit,
   onNewChat,
   onSplit,
-  threadSearch,
+  onSearchThreads,
 }: ProjectListActionButtonsProps) {
+  const commandRunner = useAppCommandRunner();
   const isNewChatDisabled = !onNewChat;
   const newThreadShortcut = useAppCommandShortcut("thread.new");
   const threadSearchShortcut = useAppCommandShortcut("thread.search");
   const newThreadSplitIndicator = useNewThreadSplitIndicator(splitEnabled);
-  // One click on the X fully dismisses search — it clears the query and closes
-  // the input in a single step (onClose resets the query too). Previously this
-  // was a two-step clear-then-close, which felt like the X "needed two presses".
-  const handleSearchClose = useCallback(() => {
-    threadSearch?.onClose();
-  }, [threadSearch]);
 
   return (
     <div className="space-y-1">
-      {threadSearch?.isActive ? (
-        <div className={PROJECT_LIST_SEARCH_INPUT_ROW_CLASS}>
-          <span className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS}>
-            <Icon
-              name="Search"
-              className={COARSE_POINTER_ICON_SIZE_CLASS}
-              aria-hidden="true"
-            />
-          </span>
-          <input
-            ref={threadSearch.inputRef}
-            value={threadSearch.query}
-            role="combobox"
-            aria-label="Search threads"
-            aria-autocomplete="list"
-            aria-activedescendant={threadSearch.activeDescendantId}
-            aria-controls={SIDEBAR_THREAD_SEARCH_LISTBOX_ID}
-            aria-expanded="true"
-            placeholder="Search threads"
-            className={PROJECT_LIST_SEARCH_INPUT_CLASS}
-            onChange={(event) =>
-              threadSearch.onQueryChange(event.currentTarget.value)
+      <div className="flex min-w-0 items-center gap-0.5">
+        <div
+          className={cn(
+            "relative min-w-0 flex-1",
+            SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+          )}
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
+            onPointerDown={newThreadSplit?.onPointerDown}
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey) {
+                newThreadSplit?.openInSplit();
+                return;
+              }
+              onNewChat?.();
+            }}
+            disabled={isNewChatDisabled}
+            aria-label={
+              newThreadShortcut
+                ? `New thread (${newThreadShortcut.label})`
+                : "New thread"
             }
-          />
+            aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
+          >
+            <Icon name="MessageSquarePlus" />
+            <span
+              className={cn(
+                "flex min-w-0 flex-1 items-center gap-1.5",
+                onSplit && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+              )}
+            >
+              <span className="min-w-0 truncate text-left">New thread</span>
+              {newThreadSplitIndicator.miniMap ? (
+                <SplitPaneMiniMap
+                  slots={newThreadSplitIndicator.miniMap}
+                  label="New thread — open in split"
+                />
+              ) : null}
+              <AppCommandShortcutHint shortcut={newThreadShortcut} />
+            </span>
+          </Button>
+          {onSplit ? (
+            <div
+              className={cn(
+                SIDEBAR_HOVER_ACTIONS_CLASS,
+                "absolute inset-y-0 right-0 flex items-center",
+              )}
+            >
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="Split"
+                className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
+                onClick={onSplit}
+              >
+                <Icon
+                  name="Columns2"
+                  className={COARSE_POINTER_ICON_SIZE_CLASS}
+                />
+              </Button>
+            </div>
+          ) : null}
+        </div>
+        <span className="flex shrink-0 items-center gap-1">
+          <AppCommandShortcutHint shortcut={threadSearchShortcut} />
           <Button
             type="button"
             size="icon"
             variant="ghost"
             aria-label={
-              threadSearch.query.trim()
-                ? "Clear and close search"
-                : "Close search"
+              threadSearchShortcut
+                ? `Search threads (${threadSearchShortcut.label})`
+                : "Search threads"
             }
-            className={PROJECT_LIST_SEARCH_CLOSE_BUTTON_CLASS}
-            onClick={handleSearchClose}
+            aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
+            className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
+            onClick={(event) => {
+              onSearchThreads?.();
+              commandRunner.dispatch("thread.search", event.currentTarget);
+            }}
           >
-            <Icon name="X" className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS} />
+            <Icon name="Search" className={COARSE_POINTER_ICON_SIZE_CLASS} />
           </Button>
-        </div>
-      ) : (
-        <div className="flex min-w-0 items-center gap-0.5">
-          <div
-            className={cn(
-              "relative min-w-0 flex-1",
-              SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-            )}
-          >
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
-              onPointerDown={newThreadSplit?.onPointerDown}
-              onClick={(event) => {
-                if (event.metaKey || event.ctrlKey) {
-                  newThreadSplit?.openInSplit();
-                  return;
-                }
-                onNewChat?.();
-              }}
-              disabled={isNewChatDisabled}
-              aria-label={
-                newThreadShortcut
-                  ? `New thread (${newThreadShortcut.label})`
-                  : "New thread"
-              }
-              aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
-            >
-              <Icon name="MessageSquarePlus" />
-              <span
-                className={cn(
-                  "flex min-w-0 flex-1 items-center gap-1.5",
-                  onSplit && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
-                )}
-              >
-                <span className="min-w-0 truncate text-left">New thread</span>
-                {newThreadSplitIndicator.miniMap ? (
-                  <SplitPaneMiniMap
-                    slots={newThreadSplitIndicator.miniMap}
-                    label="New thread — open in split"
-                  />
-                ) : null}
-                <AppCommandShortcutHint shortcut={newThreadShortcut} />
-              </span>
-            </Button>
-            {onSplit ? (
-              <div
-                className={cn(
-                  SIDEBAR_HOVER_ACTIONS_CLASS,
-                  "absolute inset-y-0 right-0 flex items-center",
-                )}
-              >
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  aria-label="Split"
-                  className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
-                  onClick={onSplit}
-                >
-                  <Icon
-                    name="Columns2"
-                    className={COARSE_POINTER_ICON_SIZE_CLASS}
-                  />
-                </Button>
-              </div>
-            ) : null}
-          </div>
-          {threadSearch ? (
-            <span className="flex shrink-0 items-center gap-1">
-              <AppCommandShortcutHint shortcut={threadSearchShortcut} />
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                aria-label={
-                  threadSearchShortcut
-                    ? `Search threads (${threadSearchShortcut.label})`
-                    : "Search threads"
-                }
-                aria-keyshortcuts={threadSearchShortcut?.ariaKeyshortcuts}
-                className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
-                onClick={threadSearch.onActivate}
-              >
-                <Icon
-                  name="Search"
-                  className={COARSE_POINTER_ICON_SIZE_CLASS}
-                />
-              </Button>
-            </span>
-          ) : null}
-        </div>
-      )}
+        </span>
+      </div>
     </div>
   );
 }
@@ -1593,7 +1523,6 @@ function ProjectListComponent({
   onNewProject,
   onProjectSelect,
   isCreatingProject = false,
-  threadSearch,
 }: ProjectListProps) {
   const navigate = useNavigate();
   const setRootComposeProjectId = useSetRootComposeProjectId();
@@ -1634,15 +1563,13 @@ function ProjectListComponent({
     [archivedThreadsQuery.data],
   );
   useEffect(() => {
-    const rowsAreVisible = showDrafts && threadSearch?.isActive !== true;
-    setBuiltInDraftRowsVisible(rowsAreVisible);
+    setBuiltInDraftRowsVisible(showDrafts);
     return () => setBuiltInDraftRowsVisible(false);
-  }, [setBuiltInDraftRowsVisible, showDrafts, threadSearch?.isActive]);
+  }, [setBuiltInDraftRowsVisible, showDrafts]);
   // Provided once by AppLayout from the same sidebar payload (with value
   // retention across refetches); building a second copy here re-rendered every
   // row twice per sidebar update.
   const titleMentionResources = useThreadTitleMentionResources();
-  const { sectionNamesById, projectNamesById } = titleMentionResources;
   const threadById = useMemo(() => {
     const map = new Map<string, ThreadListEntry>();
     for (const thread of threads) {
@@ -2132,25 +2059,6 @@ function ProjectListComponent({
     isReady: projectsState.status === "ready",
     selection: lifecycleSelection,
   });
-
-  if (threadSearch?.isActive) {
-    return (
-      <ProjectListShell>
-        <SidebarThreadSearchPanel
-          activeIndex={threadSearch.activeIndex}
-          isRecentsLoading={projectsState.status === "loading"}
-          onActiveIndexChange={threadSearch.onActiveIndexChange}
-          onNavigationItemsChange={threadSearch.onNavigationItemsChange}
-          onSelect={threadSearch.onSelectItem}
-          sectionNamesById={sectionNamesById}
-          projectNamesById={projectNamesById}
-          query={threadSearch.query}
-          recentThreads={threads}
-          showSectionLabels={isSectionOrganizationMode}
-        />
-      </ProjectListShell>
-    );
-  }
 
   if (projectsState.status === "loading") {
     return (

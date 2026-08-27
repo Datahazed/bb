@@ -5,7 +5,6 @@ import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
   createThread,
-  countThreads,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
   getThread,
@@ -691,35 +690,6 @@ describe("threads", () => {
       created[1]?.id,
       created[0]?.id,
     ]);
-  });
-
-  it("counts archived visible threads without returning list rows", () => {
-    const { db, project } = setup();
-    const visibleArchived = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    const hiddenArchived = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      visibility: "hidden",
-    });
-    const deletedArchived = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-
-    archiveThread(db, noopNotifier, visibleArchived.id);
-    archiveThread(db, noopNotifier, hiddenArchived.id);
-    archiveThread(db, noopNotifier, deletedArchived.id);
-    markThreadDeleted(db, noopNotifier, { threadId: deletedArchived.id });
-
-    expect(countThreads(db, { archived: true })).toBe(1);
-    expect(countThreads(db, { archived: true, includeHidden: true })).toBe(2);
   });
 
   it("counts active assigned child threads", () => {

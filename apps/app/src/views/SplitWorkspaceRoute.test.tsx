@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { useEffect, type ComponentProps } from "react";
+import { Suspense, useEffect, type ComponentProps } from "react";
 import {
   cleanup,
   fireEvent,
@@ -48,6 +48,12 @@ vi.mock("./thread-detail/SplitThreadArea", () => ({
 
 vi.mock("./RootComposeView", () => ({
   LegacyProjectComposeRedirect: () => <div>legacy redirect</div>,
+}));
+
+vi.mock("./ToolsView", () => ({
+  ToolsView: ({ pluginId }: { pluginId?: string }) => (
+    <output data-testid="tools-view">{pluginId ?? "overview"}</output>
+  ),
 }));
 
 function NavigationControls() {
@@ -178,5 +184,30 @@ describe("SplitWorkspaceRoute", () => {
       "true",
     );
     expect(draftSlotSequence.next).toBe(1);
+  });
+
+  // The app mounts this route under `path="*"`, so `useParams` can never
+  // carry `:pluginId` — the id must be derived from the URL here and passed
+  // down explicitly. Regression: the full-window detail URL rendered the
+  // plugins overview because ToolsView read an absent route param.
+  it("passes the plugin id from the full-window detail URL to ToolsView", async () => {
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
+        <Routes>
+          <Route
+            path="*"
+            element={
+              <Suspense fallback={null}>
+                <SplitWorkspaceRoute />
+              </Suspense>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect((await screen.findByTestId("tools-view")).textContent).toBe(
+      "github",
+    );
   });
 });

@@ -44,7 +44,6 @@ function candidate(
 ): PluginFrontendCandidate {
   return {
     pluginId,
-    providerIds: [],
     bundle: {
       jsUrl: `/api/v1/plugins/${pluginId}/assets/app.js?h=${hash}`,
       cssUrl: `/api/v1/plugins/${pluginId}/assets/app.css?h=${hash}`,
@@ -113,8 +112,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(async (_url: string): Promise<unknown> =>
-      pluginModule("hello"),
+    importModule: vi.fn(
+      async (_url: string): Promise<unknown> => pluginModule("hello"),
     ),
     applyCss: vi.fn(),
     retainCss: vi.fn(() => vi.fn()),
@@ -124,7 +123,6 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     beginSlotBatch: () => () => {},
     warn: vi.fn(),
     routePluginId: () => null,
-    wantedProviderPluginIds: () => new Set<string>(),
     mountTimeoutMs: undefined as number | undefined,
   };
 }
@@ -176,6 +174,38 @@ describe("reconcilePluginFrontends", () => {
     );
   });
 
+  it("waits for the stylesheet before publishing registrations", async () => {
+    // Registrations are what mount a plugin's components. Publishing them
+    // while the stylesheet is still in flight paints one unstyled frame —
+    // the plugin's UI renders at its natural, oversized layout and then
+    // snaps down when the sheet lands.
+    const state = createPluginFrontendReconcileState();
+    const deps = makeDeps([candidate("hello", "aaa")]);
+    const cssGate: { release: (() => void) | null } = { release: null };
+    vi.mocked(deps.applyCss).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          cssGate.release = resolve;
+        }),
+    );
+
+    const done = reconcilePluginFrontends(state, deps);
+    // Let every await before the CSS gate settle.
+    for (let tick = 0; tick < 20; tick++) await Promise.resolve();
+    expect(deps.applyCss).toHaveBeenCalledWith(
+      "hello",
+      "/api/v1/plugins/hello/assets/app.css?h=aaa",
+    );
+    expect(deps.setRegistrations).not.toHaveBeenCalled();
+
+    cssGate.release?.();
+    await done;
+    expect(deps.setRegistrations).toHaveBeenCalledWith(
+      "hello",
+      expect.anything(),
+    );
+  });
+
   it("reloading twice leaves exactly one homepage section registered (design §9 exit criterion)", async () => {
     resetPluginSlotStoreForTest();
     const state = createPluginFrontendReconcileState();
@@ -195,7 +225,6 @@ describe("reconcilePluginFrontends", () => {
       beginSlotBatch: () => () => {},
       warn: vi.fn(),
       routePluginId: () => null,
-      wantedProviderPluginIds: () => new Set<string>(),
     };
 
     await reconcilePluginFrontends(state, deps); // boot

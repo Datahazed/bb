@@ -31,8 +31,6 @@ import {
   terminalOutputResponseSchema,
   terminalSessionSchema,
   terminalWebSocketQuerySchema,
-  threadCountQuerySchema,
-  threadCountResponseSchema,
   threadListResponseSchema,
   threadPendingInteractionsResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
@@ -827,15 +825,6 @@ describe("server-contract canonical schemas", () => {
         nextThreadId: "thr_next",
       }),
     ).toThrow();
-
-    expect(threadCountQuerySchema.parse({ archived: "true" })).toEqual({
-      archived: "true",
-    });
-    expect(() => threadCountQuerySchema.parse({})).toThrow();
-    expect(threadCountResponseSchema.parse({ count: 12 })).toEqual({
-      count: 12,
-    });
-    expect(() => threadCountResponseSchema.parse({ count: -1 })).toThrow();
 
     expect(
       threadListResponseSchema.parse([

@@ -1,7 +1,6 @@
 import {
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
-  countThreads,
   countNonDeletedAssignedChildThreads,
   getEnvironment,
   getThreadSectionById,
@@ -21,7 +20,6 @@ import {
   type ThreadGetQuery,
   type ThreadIncludeOption,
   type ThreadChildSummaryResponse,
-  type ThreadCountResponse,
   type ThreadSearchResponse,
   type ThreadWithIncludesResponse,
   type PublicApiSchema,
@@ -212,15 +210,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;
-
-  get(routes.count, (context, query) => {
-    const response: ThreadCountResponse = {
-      count: countThreads(deps.db, {
-        archived: query.archived === "true",
-      }),
-    };
-    return context.json(response);
-  });
 
   get(routes.list, (context, query) => {
     const limit = parseOptionalInteger(query.limit, "limit");
