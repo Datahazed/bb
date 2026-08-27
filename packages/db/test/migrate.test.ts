@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +17,10 @@ import {
   type DbConnection,
   type MigrationWarningLogger,
 } from "../src/index.js";
+import {
+  createMigratedConnection,
+  prepareMigratedConnectionTemplate,
+} from "./helpers/migrated-connection.js";
 
 type InsertMigrationParameters = [string, number];
 type DeleteMigrationParameters = [number];
@@ -1477,6 +1481,13 @@ function deleteDeferredCleanupMigrationRows(db: DbConnection): void {
 }
 
 describe("migrate", () => {
+  beforeAll(() => {
+    // The large-value replay cases need a current database only as a rewind
+    // fixture. Build that shared image outside either case's timeout budget;
+    // each case still exercises the real migrate() boundary after rewinding.
+    prepareMigratedConnectionTemplate();
+  });
+
   it("migrates a database at main's 0109 through the renumbered stack migrations", () => {
     const db = createConnection(":memory:");
 
@@ -4375,10 +4386,9 @@ describe("migrate", () => {
   });
 
   it("skips legacy large event value round trip when values are already inline", () => {
-    const db = createConnection(":memory:");
+    const db = createMigratedConnection();
 
     try {
-      migrate(db);
       dropRewindAddedTables(db);
       seedEventLargeValueBackfillThread(db);
       const values = seedEventLargeValueBackfillEvents(db);
@@ -4429,10 +4439,9 @@ describe("migrate", () => {
   });
 
   it("restores legacy large event values to inline payloads", () => {
-    const db = createConnection(":memory:");
+    const db = createMigratedConnection();
 
     try {
-      migrate(db);
       dropRewindAddedTables(db);
       seedEventLargeValueBackfillThread(db);
       const values = seedEventLargeValueBackfillEvents(db);

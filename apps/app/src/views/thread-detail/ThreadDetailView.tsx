@@ -2568,6 +2568,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           ? `${environmentMachinePrefix}${threadEnvironmentDisplay.modeLabel}`
           : undefined
       }
+      environmentPath={environment?.path ?? undefined}
       environmentGoneStatus={threadEnvironmentGoneStatus}
       environmentHostId={environment?.hostId}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}

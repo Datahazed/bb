@@ -11,6 +11,7 @@ import { AuthCallbackView } from "./views/AuthCallbackView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { AppNavigationUrlHost } from "./lib/url-open-routing";
+import { NativeShellReporter } from "./lib/native-shell";
 import { AppFileExternalNavigationHost } from "./components/plugin/AppFileExternalNavigationHost";
 import { PluginListingNoticeHost } from "./components/plugin/PluginListingNoticeHost";
 import { useAppTheme } from "./hooks/useAppTheme";
@@ -382,6 +383,7 @@ export function App() {
             <AppFileExternalNavigationHost>
               <PluginListingNoticeHost />
               <HashNavigationScroll />
+              <NativeShellReporter />
               <Routes>
                 <Route
                   path={AUTH_CALLBACK_ROUTE_PATH}
