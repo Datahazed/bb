@@ -228,7 +228,7 @@ function makeThread(
   };
 }
 
-function renderPalette() {
+function renderPalette({ onSplit }: { onSplit?: () => void } = {}) {
   const result = render(
     <MemoryRouter>
       <AppCommandProvider>
@@ -240,7 +240,7 @@ function renderPalette() {
         <Handler command="thread.next" />
         <Handler command="panel.toggle" />
         <Handler command="terminal.open" />
-        <CommandPalette threadId={null} projectId={null} />
+        <CommandPalette threadId={null} projectId={null} onSplit={onSplit} />
       </AppCommandProvider>
     </MemoryRouter>,
   );
@@ -626,9 +626,9 @@ describe("CommandPalette", () => {
     });
     fireEvent.change(input, { target: { value: "match" } });
     await waitFor(() =>
-      expect(
-        screen.getByRole("option").textContent,
-      ).toContain("matching-split"),
+      expect(screen.getByRole("option").textContent).toContain(
+        "matching-split",
+      ),
     );
 
     fireEvent.keyDown(input, { key: "Enter", metaKey: true });
@@ -683,6 +683,22 @@ describe("CommandPalette", () => {
     await waitFor(() => expect(testState.calls).toEqual(["panel.toggle"]));
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(document.activeElement).toBe(screen.getByTestId("origin"));
+  });
+
+  it("runs Split as an internal palette action without an app command", async () => {
+    const onSplit = vi.fn();
+    renderPalette({ onSplit });
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), { target: { value: "split" } });
+    await waitFor(() =>
+      expect(selectedOption()?.textContent).toContain("Split"),
+    );
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    await waitFor(() => expect(onSplit).toHaveBeenCalledOnce());
+    expect(testState.calls).toEqual([]);
   });
 
   it("offers the last command run first within its resting bucket", async () => {

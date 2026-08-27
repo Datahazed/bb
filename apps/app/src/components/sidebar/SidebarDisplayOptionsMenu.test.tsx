@@ -8,58 +8,21 @@ import {
   within,
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { sdk } from "@/lib/sdk";
 import { SidebarDisplayOptionsMenu } from "./ProjectList";
-import {
-  hiddenSidebarTopLevelSectionIdsAtom,
-  sidebarTopLevelSectionOrderAtom,
-} from "./sidebarTopLevelSectionPreferences";
 import { sidebarThreadLifecycleSelectionAtom } from "./sidebarThreadLifecycle";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    threads: {
-      count: vi.fn(),
-    },
-  },
-}));
+afterEach(cleanup);
 
-afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
-});
-
-function renderMenu({
-  activeCount = 3,
-  draftCount = 2,
-}: {
-  activeCount?: number;
-  draftCount?: number;
-} = {}) {
+function renderMenu() {
   const store = createStore();
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  store.set(sidebarTopLevelSectionOrderAtom, [
-    "new-thread-extensions",
-    "plugin-pages",
-    "thread-list",
-  ]);
-  store.set(hiddenSidebarTopLevelSectionIdsAtom, []);
   render(
-    <QueryClientProvider client={queryClient}>
-      <Provider store={store}>
-        <TooltipProvider>
-          <SidebarDisplayOptionsMenu
-            activeCount={activeCount}
-            draftCount={draftCount}
-          />
-        </TooltipProvider>
-      </Provider>
-    </QueryClientProvider>,
+    <Provider store={store}>
+      <TooltipProvider>
+        <SidebarDisplayOptionsMenu />
+      </TooltipProvider>
+    </Provider>,
   );
   return store;
 }
@@ -71,54 +34,46 @@ function openMenu() {
   );
 }
 
-function openSectionSubmenu(name: string) {
-  const group = screen.getByRole("group", { name: "Sidebar sections" });
-  const trigger = within(group).getByRole("menuitem", { name });
-  fireEvent.click(trigger);
-}
-
-function getShowItem(name: string) {
-  return within(screen.getByRole("group", { name: "Show" })).getByRole(
+function getStatusItem(name: string) {
+  return within(screen.getByRole("group", { name: "Thread status" })).getByRole(
     "menuitemcheckbox",
     { name: new RegExp(`^${name}`) },
   );
 }
 
 describe("SidebarDisplayOptionsMenu lifecycle filter", () => {
-  it("renders Show below Organize and Sort by with disjoint state counts", async () => {
-    vi.mocked(sdk.threads.count).mockResolvedValue({ count: 17 });
-    renderMenu({ activeCount: 8, draftCount: 4 });
+  it("renders count-free Thread status below Organize and Sort by", async () => {
+    renderMenu();
     openMenu();
 
-    await screen.findByRole("group", { name: "Show" });
+    await screen.findByRole("group", { name: "Thread status" });
     expect(
       screen
         .getAllByRole("group")
         .map((group) => group.getAttribute("aria-label"))
         .filter(Boolean),
-    ).toEqual(["Organize", "Sort by", "Show", "Sidebar sections"]);
-    expect(getShowItem("Active").textContent).toContain("8");
-    expect(getShowItem("Drafts").textContent).toContain("4");
-    expect(getShowItem("Archived").textContent).toContain("17");
+    ).toEqual(["Organize", "Sort by", "Thread status"]);
+    expect(getStatusItem("Active").textContent).toBe("Active");
+    expect(getStatusItem("Drafts").textContent).toBe("Drafts");
+    expect(getStatusItem("Archived").textContent).toBe("Archived");
     expect(
       document.querySelector("[data-sidebar-display-filter-dot]"),
     ).toBeNull();
   });
 
   it("builds unions, keeps one state selected, and marks an off-default filter", async () => {
-    vi.mocked(sdk.threads.count).mockResolvedValue({ count: 0 });
     const store = renderMenu();
     openMenu();
-    await screen.findByRole("group", { name: "Show" });
+    await screen.findByRole("group", { name: "Thread status" });
 
-    fireEvent.click(getShowItem("Drafts"));
+    fireEvent.click(getStatusItem("Drafts"));
     openMenu();
-    fireEvent.click(getShowItem("Active"));
+    fireEvent.click(getStatusItem("Active"));
     expect([...store.get(sidebarThreadLifecycleSelectionAtom)]).toEqual([
       "drafts",
     ]);
     openMenu();
-    fireEvent.click(getShowItem("Drafts"));
+    fireEvent.click(getStatusItem("Drafts"));
     expect([...store.get(sidebarThreadLifecycleSelectionAtom)]).toEqual([
       "drafts",
     ]);
@@ -130,89 +85,5 @@ describe("SidebarDisplayOptionsMenu lifecycle filter", () => {
     expect(
       document.querySelector("[data-sidebar-display-filter-dot]"),
     ).not.toBeNull();
-  });
-
-  it("refetches Archived on every open and freezes each open snapshot", async () => {
-    let resolveFirst: ((value: { count: number }) => void) | undefined;
-    const first = new Promise<{ count: number }>((resolve) => {
-      resolveFirst = resolve;
-    });
-    vi.mocked(sdk.threads.count)
-      .mockReturnValueOnce(first)
-      .mockResolvedValueOnce({ count: 9 });
-    renderMenu();
-    openMenu();
-    await screen.findByRole("group", { name: "Show" });
-    expect(getShowItem("Archived").textContent).toContain("—");
-
-    resolveFirst?.({ count: 7 });
-    expect(await screen.findByText("7")).toBeDefined();
-    fireEvent.keyDown(document, { key: "Escape" });
-    openMenu();
-    expect(getShowItem("Archived").textContent).toContain("—");
-    expect(await screen.findByText("9")).toBeDefined();
-    expect(sdk.threads.count).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("SidebarDisplayOptionsMenu top-level sections", () => {
-  it("lists all sections in order and never offers a Thread list hide control", async () => {
-    renderMenu();
-    openMenu();
-
-    const group = await screen.findByRole("group", {
-      name: "Sidebar sections",
-    });
-    expect(
-      within(group)
-        .getAllByRole("menuitem")
-        .map((item) => item.textContent),
-    ).toEqual(["New thread / Extensions", "Plugin pages", "Thread list"]);
-
-    openSectionSubmenu("Thread list");
-    expect(
-      screen.queryByRole("menuitemcheckbox", { name: "Show section" }),
-    ).toBeNull();
-    expect(screen.getByRole("menuitem", { name: "Move up" })).toBeDefined();
-  });
-
-  it("hides and restores the first section from Display options", async () => {
-    const store = renderMenu();
-    openMenu();
-    await screen.findByRole("group", { name: "Sidebar sections" });
-    openSectionSubmenu("New thread / Extensions");
-
-    const showSection = await screen.findByRole("menuitemcheckbox", {
-      name: "Show section",
-    });
-    expect(showSection.getAttribute("data-state")).toBe("checked");
-    fireEvent.click(showSection);
-    expect(store.get(hiddenSidebarTopLevelSectionIdsAtom)).toEqual([
-      "new-thread-extensions",
-    ]);
-
-    openMenu();
-    await screen.findByRole("group", { name: "Sidebar sections" });
-    openSectionSubmenu("New thread / Extensions");
-    const restoreSection = await screen.findByRole("menuitemcheckbox", {
-      name: "Show section",
-    });
-    expect(restoreSection.getAttribute("data-state")).toBe("unchecked");
-    fireEvent.click(restoreSection);
-    expect(store.get(hiddenSidebarTopLevelSectionIdsAtom)).toEqual([]);
-  });
-
-  it("reorders the Thread list from the same menu", async () => {
-    const store = renderMenu();
-    openMenu();
-    await screen.findByRole("group", { name: "Sidebar sections" });
-    openSectionSubmenu("Thread list");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Move up" }));
-
-    expect(store.get(sidebarTopLevelSectionOrderAtom)).toEqual([
-      "new-thread-extensions",
-      "thread-list",
-      "plugin-pages",
-    ]);
   });
 });

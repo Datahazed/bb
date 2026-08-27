@@ -4,6 +4,14 @@ import {
   parsePromptDraftStorage,
   type PromptDraftState,
 } from "@bb/client-core";
+import {
+  permissionModeSchema,
+  reasoningLevelSchema,
+  serviceTierSchema,
+  type PermissionMode,
+  type ReasoningLevel,
+  type ServiceTier,
+} from "@bb/domain";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
@@ -21,10 +29,26 @@ const newThreadDraftDestinationSchema = z
     sectionId: z.string().min(1).nullable(),
   })
   .strict();
+const newThreadDraftComposerSelectionSchema = z
+  .object({
+    providerId: z.string().min(1),
+    model: z.string().min(1),
+    reasoningLevel: reasoningLevelSchema,
+    serviceTier: serviceTierSchema.optional(),
+    permissionMode: permissionModeSchema,
+    environmentSelectionValue: z.string().min(1),
+  })
+  .strict();
 const storedSlotSchema = z.object({
   lastEditedAt: z.number().int().nonnegative(),
   projectId: z.string().min(1),
   sectionId: z.string().min(1).optional(),
+  // A malformed optional companion must never make otherwise-valid draft
+  // content unreadable. Older and future clients fall back to composer
+  // defaults while preserving the user's text and attachments.
+  composerSelection: newThreadDraftComposerSelectionSchema
+    .optional()
+    .catch(undefined),
 });
 const storedSlotOrderSchema = z
   .object({
@@ -38,11 +62,26 @@ export interface NewThreadDraftSlot {
   lastEditedAt: number;
   draft: PromptDraftState;
   destination: NewThreadDraftDestination;
+  composerSelection: NewThreadDraftComposerSelection | null;
 }
 
 export interface NewThreadDraftDestination {
   projectId: string;
   sectionId: string | null;
+}
+
+/**
+ * The component-local execution choices that belong to one new-thread draft.
+ * This is persisted only as part of a non-empty local draft-slot record; it is
+ * not a server, daemon, or Plugin SDK contract.
+ */
+export interface NewThreadDraftComposerSelection {
+  providerId: string;
+  model: string;
+  reasoningLevel: ReasoningLevel;
+  serviceTier?: ServiceTier;
+  permissionMode: PermissionMode;
+  environmentSelectionValue: string;
 }
 
 function getLocalStorage(): Storage | null {
@@ -153,6 +192,7 @@ export function parseNewThreadDraftSlot(
         projectId: result.data.projectId,
         sectionId: result.data.sectionId ?? null,
       },
+      composerSelection: result.data.composerSelection ?? null,
     };
   } catch {
     return null;
@@ -163,9 +203,14 @@ export function serializeNewThreadDraftSlot(
   draft: PromptDraftState,
   lastEditedAt: number,
   destination: NewThreadDraftDestination,
+  composerSelection: NewThreadDraftComposerSelection | null = null,
 ): string | null {
   if (isPromptDraftEmpty(draft)) return null;
   const parsedDestination = newThreadDraftDestinationSchema.parse(destination);
+  const parsedComposerSelection =
+    composerSelection === null
+      ? null
+      : newThreadDraftComposerSelectionSchema.parse(composerSelection);
   return JSON.stringify({
     text: draft.text,
     ...(draft.mentions.length > 0 ? { mentions: draft.mentions } : {}),
@@ -175,6 +220,9 @@ export function serializeNewThreadDraftSlot(
     ...(parsedDestination.sectionId === null
       ? {}
       : { sectionId: parsedDestination.sectionId }),
+    ...(parsedComposerSelection === null
+      ? {}
+      : { composerSelection: parsedComposerSelection }),
   });
 }
 
@@ -242,12 +290,14 @@ export function persistNewThreadDraftSlot(
   draft: PromptDraftState,
   lastEditedAt: number,
   destination: NewThreadDraftDestination,
+  composerSelection: NewThreadDraftComposerSelection | null = null,
 ): string | null {
   const storage = getLocalStorage();
   const serialized = serializeNewThreadDraftSlot(
     draft,
     lastEditedAt,
     destination,
+    composerSelection,
   );
   if (storage === null) return serialized;
 

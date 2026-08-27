@@ -14,6 +14,7 @@ interface AppLayoutSidebarProps {
   settingsRoutePath: string;
   toolsBackRoutePath: string;
   toolsRoutePath?: string;
+  onSplit?: () => void;
 }
 
 /**
@@ -38,6 +39,7 @@ export function AppLayoutSidebar({
   settingsRoutePath,
   toolsBackRoutePath,
   toolsRoutePath,
+  onSplit,
 }: AppLayoutSidebarProps) {
   const { isCompactViewport, isMobileSidebarClosing } = useSidebar();
   const holdCurrentMode = isCompactViewport && isMobileSidebarClosing;
@@ -58,6 +60,7 @@ export function AppLayoutSidebar({
           showTopReserve={true}
           settingsRoutePath={settingsRoutePath}
           toolsRoutePath={toolsRoutePath}
+          onSplit={onSplit}
           mobileHosted={{ hidden: renderedMode !== "app" }}
         />
         {renderedMode === "settings" ? (
@@ -111,6 +114,7 @@ export function AppLayoutSidebar({
       showTopReserve={true}
       settingsRoutePath={settingsRoutePath}
       toolsRoutePath={toolsRoutePath}
+      onSplit={onSplit}
     />
   );
 }

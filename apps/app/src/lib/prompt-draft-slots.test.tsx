@@ -16,6 +16,7 @@ import {
   promptDraftSlotStorageKeysForTests,
   readNewThreadDraftSlots,
   serializeNewThreadDraftSlot,
+  type NewThreadDraftComposerSelection,
   type NewThreadDraftDestination,
 } from "./prompt-draft-slots";
 
@@ -27,6 +28,14 @@ const WITH_SECTION: NewThreadDraftDestination = {
   projectId: "project-work",
   sectionId: "section-inbox",
 };
+const COMPOSER_SELECTION: NewThreadDraftComposerSelection = {
+  providerId: "codex",
+  model: "gpt-5.6-sol",
+  reasoningLevel: "high",
+  serviceTier: "fast",
+  permissionMode: "full",
+  environmentSelectionValue: "host:host-local:worktree",
+};
 
 function draft(text: string): PromptDraftState {
   return { text, mentions: [], attachments: [] };
@@ -34,6 +43,13 @@ function draft(text: string): PromptDraftState {
 
 function legacyDraft(text: string): string {
   return JSON.stringify({ text, attachments: [] });
+}
+
+function readSlot(slotId: string) {
+  return parseNewThreadDraftSlot(
+    slotId,
+    window.localStorage.getItem(getNewThreadDraftSlotStorageKey(slotId)),
+  );
 }
 
 beforeEach(() => {
@@ -113,12 +129,14 @@ describe("new-thread draft slot records", () => {
       lastEditedAt: 100,
       draft: draft("Section-scoped work"),
       destination: WITH_SECTION,
+      composerSelection: null,
     });
     expect(parseNewThreadDraftSlot("without-section", withoutSection)).toEqual({
       id: "without-section",
       lastEditedAt: 200,
       draft: draft("Project-scoped work"),
       destination: WITHOUT_SECTION,
+      composerSelection: null,
     });
     expect(JSON.parse(withSection ?? "null")).toMatchObject({
       projectId: "project-work",
@@ -126,6 +144,124 @@ describe("new-thread draft slot records", () => {
     });
     expect(JSON.parse(withoutSection ?? "null")).not.toHaveProperty(
       "sectionId",
+    );
+  });
+
+  it("round-trips composer selection and preserves legacy drafts without it", () => {
+    const serialized = serializeNewThreadDraftSlot(
+      draft("Restore my exact model"),
+      300,
+      WITH_SECTION,
+      COMPOSER_SELECTION,
+    );
+
+    expect(parseNewThreadDraftSlot("with-selection", serialized)).toEqual({
+      id: "with-selection",
+      lastEditedAt: 300,
+      draft: draft("Restore my exact model"),
+      destination: WITH_SECTION,
+      composerSelection: COMPOSER_SELECTION,
+    });
+
+    const malformedSelection = JSON.stringify({
+      text: "Keep valid content",
+      attachments: [],
+      lastEditedAt: 400,
+      projectId: "project-personal",
+      composerSelection: { model: 42 },
+    });
+    expect(
+      parseNewThreadDraftSlot("malformed-selection", malformedSelection),
+    ).toEqual({
+      id: "malformed-selection",
+      lastEditedAt: 400,
+      draft: draft("Keep valid content"),
+      destination: WITHOUT_SECTION,
+      composerSelection: null,
+    });
+  });
+
+  it("keeps selection memory-only until content exists, then clears it with the draft", () => {
+    const { result } = renderHook(() =>
+      usePromptDraftStorage({
+        kind: "new-thread",
+        slotId: "selection-before-content",
+        destination: WITHOUT_SECTION,
+      }),
+    );
+
+    act(() => result.current.setComposerSelection(COMPOSER_SELECTION));
+    expect(window.localStorage.getItem(result.current.storageKey)).toBeNull();
+    expect(result.current.composerSelection).toEqual(COMPOSER_SELECTION);
+
+    act(() => result.current.setDraft(draft("Now I am a draft")));
+    expect(readSlot("selection-before-content")).toEqual(
+      expect.objectContaining({
+        draft: draft("Now I am a draft"),
+        composerSelection: COMPOSER_SELECTION,
+      }),
+    );
+
+    act(() => result.current.clear());
+    expect(window.localStorage.getItem(result.current.storageKey)).toBeNull();
+    expect(result.current.composerSelection).toBeNull();
+  });
+
+  it("atomically applies selection changes over pending text and attachment-only drafts", () => {
+    vi.useFakeTimers();
+    const pending = renderHook(() =>
+      usePromptDraftStorage({
+        kind: "new-thread",
+        slotId: "pending-selection-change",
+        destination: WITHOUT_SECTION,
+      }),
+    );
+    const changedSelection = {
+      ...COMPOSER_SELECTION,
+      model: "gpt-5.6-terra",
+      reasoningLevel: "medium" as const,
+    };
+
+    act(() => {
+      pending.result.current.setComposerSelection(COMPOSER_SELECTION);
+      pending.result.current.setTextAndMentions("Still typing", []);
+      pending.result.current.setComposerSelection(changedSelection);
+    });
+    expect(readSlot("pending-selection-change")).toEqual(
+      expect.objectContaining({
+        draft: draft("Still typing"),
+        composerSelection: changedSelection,
+      }),
+    );
+    act(() => vi.advanceTimersByTime(250));
+    expect(readSlot("pending-selection-change")?.composerSelection).toEqual(
+      changedSelection,
+    );
+
+    const attachmentOnly = renderHook(() =>
+      usePromptDraftStorage({
+        kind: "new-thread",
+        slotId: "attachment-only-selection",
+        destination: WITH_SECTION,
+      }),
+    );
+    act(() => {
+      attachmentOnly.result.current.setComposerSelection(COMPOSER_SELECTION);
+      attachmentOnly.result.current.addAttachment({
+        type: "localFile",
+        path: "uploads/plan.md",
+        name: "plan.md",
+        sizeBytes: 8,
+      });
+    });
+    expect(readSlot("attachment-only-selection")).toEqual(
+      expect.objectContaining({
+        draft: expect.objectContaining({
+          text: "",
+          attachments: [expect.objectContaining({ path: "uploads/plan.md" })],
+        }),
+        composerSelection: COMPOSER_SELECTION,
+      }),
     );
   });
 
