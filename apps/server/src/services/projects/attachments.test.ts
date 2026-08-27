@@ -1,9 +1,12 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   copyProjectAttachments,
+  preparePromptAttachmentInputGroups,
   readAttachment,
   validatePromptAttachmentReferences,
 } from "./attachments.js";
@@ -123,6 +126,60 @@ describe("project attachments", () => {
         ],
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("preserves uploaded and URL-like image references during prompt preparation", async () => {
+    const dataDir = await makeTempDir();
+    const attachmentDir = join(dataDir, "attachments", "proj_test");
+    await mkdir(attachmentDir, { recursive: true });
+    await writeFile(join(attachmentDir, "uploaded.png"), "uploaded bytes");
+    const input = [
+      { type: "localImage" as const, path: "uploaded.png" },
+      { type: "localImage" as const, path: "https://example.test/image.png" },
+      { type: "localImage" as const, path: "data:image/png;base64,aW1hZ2U=" },
+      { type: "localImage" as const, path: "blob:https://example.test/id" },
+      { type: "localFile" as const, path: "/remote/notes.txt" },
+    ];
+
+    await expect(
+      preparePromptAttachmentInputGroups({
+        dataDir,
+        inputGroups: [input],
+        projectId: "proj_test",
+        readHostFile: async () => {
+          throw new Error("URL-like and file inputs must not be imported");
+        },
+      }),
+    ).resolves.toEqual([input]);
+  });
+
+  it("imports Windows absolute image paths with their original filename", async () => {
+    const dataDir = await makeTempDir();
+    const bytes = Buffer.from("remote image bytes");
+    const absolutePath = "C:\\Users\\michael\\reference.png";
+
+    const [prepared] = await preparePromptAttachmentInputGroups({
+      dataDir,
+      inputGroups: [[{ type: "localImage", path: absolutePath }]],
+      projectId: "proj_test",
+      readHostFile: async (path) => ({
+        path,
+        content: bytes.toString("base64"),
+        contentEncoding: "base64",
+        mimeType: "image/png",
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        sizeBytes: bytes.byteLength,
+      }),
+    });
+    const image = prepared?.[0];
+    expect(image?.type).toBe("localImage");
+    if (image?.type !== "localImage") {
+      throw new Error("Expected imported image input");
+    }
+    expect(image.path).toMatch(/^reference-\d+-[a-z0-9]{6}\.png$/u);
+    await expect(
+      readAttachment(dataDir, "proj_test", image.path),
+    ).resolves.toMatchObject({ content: bytes, mimeType: "image/png" });
   });
 
   it("rejects POSIX traversal outside the project attachment directory", async () => {
