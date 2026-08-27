@@ -7,7 +7,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { Link, useNavigate } from "react-router-dom";
@@ -29,6 +28,7 @@ import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import {
+  AutomationsNavSidebarItem,
   ExtensionsNavSidebarItem,
   PluginNavSidebarItems,
 } from "@/components/plugin/PluginNavSidebarItems";
@@ -44,7 +44,11 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import {
+  AUTOMATIONS_PLUGIN_ID,
+  getRootComposeRoutePath,
+  getThreadRoutePath,
+} from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import type { SidebarThreadSearchNavigationItem } from "./sidebarThreadSearch";
@@ -66,13 +70,6 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
 import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
-import {
-  hiddenSidebarTopLevelSectionIdsAtom,
-  normalizeHiddenSidebarTopLevelSectionIds,
-  normalizeSidebarTopLevelSectionOrder,
-  sidebarTopLevelSectionOrderAtom,
-  type SidebarTopLevelSectionId,
-} from "./sidebarTopLevelSectionPreferences";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -83,10 +80,16 @@ const SIDEBAR_FOOTER_ACTION_CLASS = cn(
 );
 
 interface SidebarTopLevelSectionsProps {
-  order: readonly SidebarTopLevelSectionId[];
-  hiddenSectionIds: readonly SidebarTopLevelSectionId[];
   sections: Readonly<Record<SidebarTopLevelSectionId, ReactNode>>;
 }
+
+const SIDEBAR_TOP_LEVEL_SECTION_IDS = [
+  "new-thread-extensions",
+  "plugin-pages",
+  "thread-list",
+] as const;
+
+type SidebarTopLevelSectionId = (typeof SIDEBAR_TOP_LEVEL_SECTION_IDS)[number];
 
 /**
  * Renders the three persistent sidebar regions and derives dividers from the
@@ -94,19 +97,12 @@ interface SidebarTopLevelSectionsProps {
  * it is absent beside an empty/hidden region and never joins keyboard order.
  */
 export function SidebarTopLevelSections({
-  order,
-  hiddenSectionIds,
   sections,
 }: SidebarTopLevelSectionsProps) {
-  const hidden = new Set(
-    normalizeHiddenSidebarTopLevelSectionIds(hiddenSectionIds),
-  );
-  const visibleSections = normalizeSidebarTopLevelSectionOrder(order).flatMap(
-    (id) => {
-      const content = sections[id];
-      return hidden.has(id) || content === null ? [] : [{ id, content }];
-    },
-  );
+  const visibleSections = SIDEBAR_TOP_LEVEL_SECTION_IDS.flatMap((id) => {
+    const content = sections[id];
+    return content === null ? [] : [{ id, content }];
+  });
 
   return visibleSections.map(({ id, content }, index) => (
     <Fragment key={id}>
@@ -182,11 +178,13 @@ export function AppSidebar({
   );
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
   const settingsShortcut = useAppCommandShortcut("settings.open");
-  const topLevelSectionOrder = useAtomValue(sidebarTopLevelSectionOrderAtom);
-  const hiddenTopLevelSectionIds = useAtomValue(
-    hiddenSidebarTopLevelSectionIdsAtom,
-  );
   const pluginNavPanels = usePluginNavPanelChrome();
+  const automationsNavPanel = pluginNavPanels.find(
+    ({ chrome }) => chrome.pluginId === AUTOMATIONS_PLUGIN_ID,
+  );
+  const hasTraditionalPluginPanels = pluginNavPanels.some(
+    ({ chrome }) => chrome.pluginId !== AUTOMATIONS_PLUGIN_ID,
+  );
 
   const openSidebarForThreadSearch = useCallback(() => {
     if (isCompactViewport) {
@@ -403,8 +401,6 @@ export function AppSidebar({
         </div>
       ) : null}
       <SidebarTopLevelSections
-        order={topLevelSectionOrder}
-        hiddenSectionIds={hiddenTopLevelSectionIds}
         sections={{
           "new-thread-extensions": (
             <div
@@ -431,12 +427,17 @@ export function AppSidebar({
                   onNavigate={closeOnMobile}
                 />
               ) : null}
+              {automationsNavPanel ? (
+                <AutomationsNavSidebarItem
+                  chrome={automationsNavPanel.chrome}
+                  onNavigate={closeOnMobile}
+                />
+              ) : null}
             </div>
           ),
-          "plugin-pages":
-            pluginNavPanels.length > 0 ? (
-              <PluginNavSidebarItems onNavigate={closeOnMobile} splitEnabled />
-            ) : null,
+          "plugin-pages": hasTraditionalPluginPanels ? (
+            <PluginNavSidebarItems onNavigate={closeOnMobile} splitEnabled />
+          ) : null,
           "thread-list": (
             <SidebarContent>
               <PluginThreadList
