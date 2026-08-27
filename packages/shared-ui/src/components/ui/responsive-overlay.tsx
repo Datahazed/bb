@@ -204,6 +204,7 @@ export function stripRadixContentProps<T extends Record<string, unknown>>(
 interface ResponsiveDrawerShellProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onAfterCloseAutoFocus?: () => void;
   /**
    * Sr-only label announced when the drawer opens. Omit if the caller
    * renders its own labeled heading inside children (e.g. DialogTitle).
@@ -272,6 +273,7 @@ export function useResponsiveDrawerRealization({
 export function ResponsiveDrawerShell({
   open,
   onOpenChange,
+  onAfterCloseAutoFocus,
   srLabel,
   labelledBy,
   describedBy,
@@ -289,6 +291,7 @@ export function ResponsiveDrawerShell({
     <PersistentResponsiveDrawerShell
       open={open}
       onOpenChange={onOpenChange}
+      onAfterCloseAutoFocus={onAfterCloseAutoFocus}
       srLabel={srLabel}
       labelledBy={labelledBy}
       describedBy={describedBy}
@@ -319,6 +322,7 @@ export function ResponsiveDrawerShell({
 interface PersistentResponsiveDrawerShellProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onAfterCloseAutoFocus?: () => void;
   srLabel?: string;
   labelledBy?: string;
   describedBy?: string;
@@ -475,6 +479,7 @@ type PersistentDrawerDrag = {
 export function PersistentResponsiveDrawerShell({
   open,
   onOpenChange,
+  onAfterCloseAutoFocus,
   srLabel,
   labelledBy,
   describedBy,
@@ -583,9 +588,10 @@ export function PersistentResponsiveDrawerShell({
         returnFocus.focus({ preventScroll: true });
       }
       returnFocusRef.current = null;
+      onAfterCloseAutoFocus?.();
     }
     previousOpenRef.current = open;
-  }, [open]);
+  }, [onAfterCloseAutoFocus, open]);
 
   const setDragPosition = React.useCallback(
     (offsetY: number, height: number, animate: boolean) => {
