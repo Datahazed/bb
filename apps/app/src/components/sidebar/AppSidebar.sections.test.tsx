@@ -20,13 +20,7 @@ function renderedSectionIds(): string[] {
 
 describe("SidebarTopLevelSections", () => {
   it("renders all three sections in default order with full dividers", () => {
-    const view = render(
-      <SidebarTopLevelSections
-        order={["new-thread-extensions", "plugin-pages", "thread-list"]}
-        hiddenSectionIds={[]}
-        sections={sections}
-      />,
-    );
+    const view = render(<SidebarTopLevelSections sections={sections} />);
 
     expect(renderedSectionIds()).toEqual([
       "new-thread-extensions",
@@ -47,31 +41,35 @@ describe("SidebarTopLevelSections", () => {
     ).toEqual(["New thread", "Plugin page", "Thread row"]);
   });
 
-  it("reorders all regions and keeps keyboard controls in that order", () => {
+  it("keeps region and keyboard order fixed even when object keys differ", () => {
     render(
       <SidebarTopLevelSections
-        order={["thread-list", "new-thread-extensions", "plugin-pages"]}
-        hiddenSectionIds={[]}
-        sections={sections}
+        sections={{
+          "thread-list": sections["thread-list"],
+          "plugin-pages": sections["plugin-pages"],
+          "new-thread-extensions": sections["new-thread-extensions"],
+        }}
       />,
     );
 
     expect(renderedSectionIds()).toEqual([
-      "thread-list",
       "new-thread-extensions",
       "plugin-pages",
+      "thread-list",
     ]);
     expect(
       screen.getAllByRole("button").map((button) => button.textContent),
-    ).toEqual(["Thread row", "New thread", "Plugin page"]);
+    ).toEqual(["New thread", "Plugin page", "Thread row"]);
   });
 
-  it("draws no divider beside a hidden or empty region", () => {
+  it("draws no divider beside empty regions", () => {
     const view = render(
       <SidebarTopLevelSections
-        order={["new-thread-extensions", "plugin-pages", "thread-list"]}
-        hiddenSectionIds={["new-thread-extensions"]}
-        sections={{ ...sections, "plugin-pages": null }}
+        sections={{
+          ...sections,
+          "new-thread-extensions": null,
+          "plugin-pages": null,
+        }}
       />,
     );
 
@@ -79,5 +77,21 @@ describe("SidebarTopLevelSections", () => {
     expect(
       view.container.querySelectorAll("[data-sidebar-top-level-divider]"),
     ).toHaveLength(0);
+  });
+
+  it("draws one seam when the middle plugin region is empty", () => {
+    const view = render(
+      <SidebarTopLevelSections
+        sections={{ ...sections, "plugin-pages": null }}
+      />,
+    );
+
+    expect(renderedSectionIds()).toEqual([
+      "new-thread-extensions",
+      "thread-list",
+    ]);
+    expect(
+      view.container.querySelectorAll("[data-sidebar-top-level-divider]"),
+    ).toHaveLength(1);
   });
 });
