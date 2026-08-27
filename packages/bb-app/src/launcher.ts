@@ -239,6 +239,7 @@ export interface BbAppStartContext {
   logDir: string;
   packageRoot: string;
   serverEntry: string;
+  serverLockDir: string;
   serverPort: number;
   serverUrl: string;
 }
@@ -663,8 +664,11 @@ function formatReadyOutputRow(label: string, value: string): string {
   return `${dim(label.padEnd("daemon".length))} ${value}`;
 }
 
-function warnExistingDaemonLock(lockDir: string): void {
-  log(yellow("!"), "Daemon lock exists - waiting or reclaiming if stale");
+function warnExistingDataDirectoryLock(
+  ownerName: "Daemon" | "Server",
+  lockDir: string,
+): void {
+  log(yellow("!"), `${ownerName} lock exists - waiting or reclaiming if stale`);
   log(" ", dim(`lock: ${lockDir}`));
   log(" ", dim("If startup fails, stop the other bb process or remove it."));
   process.stdout.write("\n");
@@ -1352,6 +1356,7 @@ export function resolveBbAppStartContext(
     logDir: join(dataDir, "logs"),
     packageRoot,
     serverEntry,
+    serverLockDir: `${join(dataDir, "server.lock")}.lock`,
     serverPort,
     serverUrl:
       toOptionalString(args.env.BB_SERVER_URL) ??
@@ -2843,7 +2848,7 @@ async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
   process.stdout.write(`\n  ${bold("bb host-daemon")}\n\n`);
 
   if (existsSync(args.context.daemonLockDir)) {
-    warnExistingDaemonLock(args.context.daemonLockDir);
+    warnExistingDataDirectoryLock("Daemon", args.context.daemonLockDir);
   }
 
   if (!enrollment.enrolled && enrollment.enrollKey === undefined) {
@@ -3010,7 +3015,8 @@ function logManagedProcessStartupFailureContext(
   args: LogManagedProcessStartupFailureContextArgs,
 ): void {
   if (args.processName === "server") {
-    log(" ", dim(`Check logs: ${args.context.logDir}/`));
+    log(" ", dim(`lock: ${args.context.serverLockDir}`));
+    log(" ", dim(`logs: ${args.context.logDir}/`));
     return;
   }
 
@@ -3403,7 +3409,10 @@ export async function runBbApp(
   process.stdout.write(`\n  ${bold("bb")}\n\n`);
 
   if (existsSync(runtime.context.daemonLockDir)) {
-    warnExistingDaemonLock(runtime.context.daemonLockDir);
+    warnExistingDataDirectoryLock("Daemon", runtime.context.daemonLockDir);
+  }
+  if (existsSync(runtime.context.serverLockDir)) {
+    warnExistingDataDirectoryLock("Server", runtime.context.serverLockDir);
   }
 
   const runtimeRecordOwned = await claimBbAppRuntimeFile({

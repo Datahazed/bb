@@ -4,14 +4,10 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import lockfile from "proper-lockfile";
 
-// proper-lockfile refreshes the held lock's mtime while the holder is alive.
-// A lock older than the stale window is therefore abandoned and reclaimable.
 const DEFAULT_LOCK_STALE_MS = 10_000;
+const MINIMUM_LOCK_STALE_MS = 2_000;
 const DEFAULT_LOCK_RETRY_INTERVAL_MS = 1_000;
 const DEFAULT_LOCK_ACQUIRE_RETRIES = 13;
-// Each failed re-acquire cycle spans the full acquisition retry budget
-// (~14s with defaults), so this cap bounds unlocked operation after a
-// compromise to roughly five minutes before the process yields.
 const LOCK_REACQUIRE_MAX_CYCLES = 20;
 
 export interface DataDirectoryLockLogger {
@@ -22,27 +18,12 @@ export interface DataDirectoryLockLogger {
 export interface AcquireDataDirectoryLockOptions {
   dataDir: string;
   lockFileName: string;
-  /** Human-readable owner used in diagnostics, such as "Server". */
   ownerName: string;
-  /** Lock is treated as stale once its mtime is older than this many ms. */
   staleMs?: number;
-  /**
-   * Number of retries when the lock is first acquired. Together with
-   * retryIntervalMs this should span staleMs so a recently exited owner's lock
-   * can age out and be reclaimed during startup.
-   */
   initialRetries?: number;
-  /**
-   * Number of retries when a compromised lock is re-acquired. Together with
-   * retryIntervalMs this must span staleMs: compromise recovery relies on a
-   * still-ours lock directory aging past the stale window within this budget.
-   */
   reacquireRetries?: number;
-  /** Fixed delay between acquisition retries. */
   retryIntervalMs?: number;
-  /** Receives lock lifecycle diagnostics. Defaults to the console. */
   logger?: DataDirectoryLockLogger;
-  /** Called when the lock cannot be safely re-acquired. Defaults to exit(1). */
   onLockLost?: (error: unknown) => void;
 }
 
@@ -60,10 +41,6 @@ function isErrorWithCode(
   return error instanceof Error && "code" in error && error.code === code;
 }
 
-/**
- * Exclusively owns a named lock inside a data directory until the returned
- * release function runs or the process exits.
- */
 export async function acquireDataDirectoryLock(
   options: AcquireDataDirectoryLockOptions,
 ): Promise<ReleaseDataDirectoryLock> {
@@ -72,11 +49,11 @@ export async function acquireDataDirectoryLock(
   const lockPath = path.join(options.dataDir, options.lockFileName);
   await fs.writeFile(lockPath, "", { encoding: "utf8", flag: "a" });
 
-  // proper-lockfile creates a directory at `<path>.lock` to hold the lock.
-  // Pass lockfilePath explicitly so exit cleanup does not depend on an
-  // undocumented default.
   const lockDirPath = `${lockPath}.lock`;
-  const staleMs = options.staleMs ?? DEFAULT_LOCK_STALE_MS;
+  const staleMs = Math.max(
+    options.staleMs ?? DEFAULT_LOCK_STALE_MS,
+    MINIMUM_LOCK_STALE_MS,
+  );
   const retryIntervalMs =
     options.retryIntervalMs ?? DEFAULT_LOCK_RETRY_INTERVAL_MS;
   const initialRetries = options.initialRetries ?? DEFAULT_LOCK_ACQUIRE_RETRIES;
@@ -86,17 +63,11 @@ export async function acquireDataDirectoryLock(
   const onLockLost = options.onLockLost ?? (() => process.exit(1));
 
   let released = false;
+  let releasePromise: Promise<void> | null = null;
   let reacquiring = false;
   let holdsLock = false;
   let release: ReleaseDataDirectoryLock | null = null;
 
-  // A compromised lock (the periodic mtime refresh failed — e.g. a transient
-  // EPERM/ENOENT after sleep or an FS hiccup) must not crash the process:
-  // proper-lockfile's default handler throws from a timer callback. Re-acquire
-  // in place instead. A still-ours lock dir ages past the stale window and is
-  // retaken; a lock actively refreshed by another process stays ELOCKED, so
-  // this owner yields the data directory. Persistent non-ELOCKED failures are
-  // bounded so the process never runs unlocked indefinitely.
   function handleCompromised(error: Error): void {
     if (released || reacquiring) {
       return;
@@ -150,8 +121,6 @@ export async function acquireDataDirectoryLock(
               { err: acquireError, cycle },
               `Re-acquiring the compromised ${options.ownerName.toLowerCase()} lock failed; retrying`,
             );
-            // Unref'd so a pending retry never keeps a shutting-down process
-            // alive.
             await sleep(retryIntervalMs, undefined, { ref: false });
           }
         }
@@ -193,35 +162,31 @@ export async function acquireDataDirectoryLock(
   }
   holdsLock = true;
 
-  // Synchronous fallback: if the process exits before async release finishes,
-  // remove the lock directory. Only do this while the lock is believed ours;
-  // after a compromise the directory may belong to a different process.
   const onExit = () => {
     if (!holdsLock) {
       return;
     }
     try {
       fsSync.rmSync(lockDirPath, { recursive: true, force: true });
-    } catch {
-      // Best-effort — nothing useful can happen if this fails during exit.
-    }
+    } catch {}
   };
   process.once("exit", onExit);
 
-  return async () => {
-    if (released) {
-      return;
-    }
+  return () => {
+    if (releasePromise !== null) return releasePromise;
     released = true;
-    try {
-      await release?.();
-    } catch (error) {
-      // A compromised lock is already dropped by proper-lockfile.
-      if (!isErrorWithCode(error, "ERELEASED")) {
-        throw error;
+    releasePromise = (async () => {
+      try {
+        await release?.();
+      } catch (error) {
+        if (!isErrorWithCode(error, "ERELEASED")) {
+          throw error;
+        }
+      } finally {
+        holdsLock = false;
+        process.removeListener("exit", onExit);
       }
-    }
-    holdsLock = false;
-    process.removeListener("exit", onExit);
+    })();
+    return releasePromise;
   };
 }
