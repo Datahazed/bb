@@ -79,6 +79,7 @@ const GITHUB_CATALOG_ENTRY = {
   official: true,
   author: null,
   installed: false,
+  installs: null,
   compatible: true,
   incompatibleReason: null,
 } satisfies PluginCatalogSearchEntry;
@@ -536,7 +537,10 @@ describe("BB Official plugin detail routing", () => {
     render(
       <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
         <Routes>
-          <Route path="/extensions/plugins/:pluginId" element={<ToolsView />} />
+          <Route
+            path="/extensions/plugins/:pluginId"
+            element={<ToolsView pluginId="github" />}
+          />
         </Routes>
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
@@ -601,7 +605,10 @@ describe("plugin removal confirmation", () => {
     render(
       <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
         <Routes>
-          <Route path="/extensions/plugins/:pluginId" element={<ToolsView />} />
+          <Route
+            path="/extensions/plugins/:pluginId"
+            element={<ToolsView pluginId="github" />}
+          />
         </Routes>
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },

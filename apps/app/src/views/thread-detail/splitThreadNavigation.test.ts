@@ -14,6 +14,7 @@ import {
   createSinglePaneLayout,
   focusedPaneNavigationTarget,
   focusedPaneRoute,
+  paneContentForPathname,
   paneContentNavigationTarget,
   reconcileLayoutForContent,
 } from "./splitThreadNavigation";
@@ -46,6 +47,14 @@ function eightPaneLayout(): SplitLayout {
 }
 
 describe("mixed page navigation", () => {
+  it("allocates compose identity only when opening the root in a split", () => {
+    expect(paneContentForPathname("/")).toBeNull();
+    expect(paneContentForPathname("/", true)).toEqual({
+      kind: "new-thread",
+      draftSlotId: expect.any(String),
+    });
+  });
+
   it("carries a compose slot through internal navigation state", () => {
     const content = {
       kind: "new-thread",

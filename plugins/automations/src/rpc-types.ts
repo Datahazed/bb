@@ -2,7 +2,6 @@ import { z } from "zod";
 import {
   AUTOMATION_IDEMPOTENCY_KEY_MAX_LENGTH,
   AUTOMATION_NAME_MAX_LENGTH,
-  AUTOMATION_PROMPT_MAX_LENGTH,
   AUTOMATION_RUNS_LIMIT_DEFAULT,
   AUTOMATION_RUNS_LIMIT_MAX,
   AUTOMATION_SCRIPT_FILE_MAX_LENGTH,
@@ -17,7 +16,6 @@ import {
 // number without bundling zod; these re-exports keep the backend's existing
 // imports and the package's `./rpc-types` export map entry unchanged.
 export {
-  AUTOMATION_PROMPT_MAX_LENGTH,
   AUTOMATION_RUNS_LIMIT_MAX,
   AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
   AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
@@ -146,7 +144,7 @@ export type AutomationTrigger = z.infer<typeof automationTriggerSchema>;
 const automationAgentExecutionSchema = z
   .object({
     mode: z.literal("agent"),
-    prompt: z.string().min(1).max(AUTOMATION_PROMPT_MAX_LENGTH),
+    prompt: z.string().min(1),
     providerId: z.string().min(1),
     model: z.string().min(1),
     reasoningLevel: reasoningLevelSchema.default("medium"),
@@ -182,6 +180,13 @@ export const automationExecutionSchema = z.discriminatedUnion("mode", [
   automationScriptExecutionSchema,
 ]);
 export type AutomationExecution = z.infer<typeof automationExecutionSchema>;
+
+// Desktop v0.40.0 persisted this otherwise-canonical empty-prompt shape.
+// Only update recovery may use it; every persisted write stays canonical.
+export const repairableAutomationExecutionSchema = z.union([
+  automationExecutionSchema,
+  automationAgentExecutionSchema.extend({ prompt: z.literal("") }),
+]);
 
 function requireExactlyOneScriptSource(
   exec: z.infer<typeof automationExecutionSchema>,
@@ -233,7 +238,7 @@ const agentExecutionTargetSchema = z.discriminatedUnion("type", [
 
 const agentExecutionUpdateSchema = z
   .object({
-    prompt: z.string().min(1).max(AUTOMATION_PROMPT_MAX_LENGTH).optional(),
+    prompt: z.string().min(1).optional(),
     providerId: z.string().min(1).optional(),
     model: z.string().min(1).optional(),
     reasoningLevel: reasoningLevelSchema.optional(),

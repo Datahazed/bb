@@ -41,6 +41,10 @@ import {
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
+import {
+  voiceUnsupportedMessage,
+  type VoiceUnsupportedReason,
+} from "@/hooks/voice-input-support";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -377,6 +381,8 @@ type PromptVoiceState = "idle" | "recording" | "transcribing" | "error";
 export interface PromptVoiceConfig {
   state: PromptVoiceState;
   isSupported: boolean;
+  /** Why voice is unavailable; absent when it is supported. */
+  unsupportedReason?: VoiceUnsupportedReason | null;
   stream: MediaStream | null;
   start: () => void | Promise<void>;
   stop: () => void;
@@ -1619,11 +1625,23 @@ export function PromptBoxInternal({
   const syncTriggerState = useCallback(
     (editor: Editor) => {
       const caretPosition = editor.state.selection.from;
-      const dismissedTrigger = dismissedTriggerRef.current;
+      let dismissedTrigger = dismissedTriggerRef.current;
       const isRestoringAppliedMention =
         isRestoringAppliedMentionRef.current && dismissedTrigger !== null;
-
+      const detectedTrigger = findActiveTrigger(editor, triggers);
       if (dismissedTrigger && !isRestoringAppliedMention) {
+        if (
+          !dismissedTrigger.hasLeftRange &&
+          detectedTrigger?.from === dismissedTrigger.start
+        ) {
+          // Continuing to type extends the same trigger occurrence. Grow the
+          // dismissed range before checking whether the caret left it.
+          dismissedTrigger = {
+            ...dismissedTrigger,
+            end: Math.max(dismissedTrigger.end, caretPosition),
+          };
+          dismissedTriggerRef.current = dismissedTrigger;
+        }
         const isWithinDismissedRange =
           caretPosition >= dismissedTrigger.start &&
           caretPosition <= dismissedTrigger.end;
@@ -1646,9 +1664,7 @@ export function PromptBoxInternal({
             caretPosition <= dismissedTriggerRef.current.end)),
       );
 
-      const nextTrigger = shouldSuppressTrigger
-        ? null
-        : findActiveTrigger(editor, triggers);
+      const nextTrigger = shouldSuppressTrigger ? null : detectedTrigger;
       const nextKey = nextTrigger
         ? `${nextTrigger.kind}:${nextTrigger.from}:${nextTrigger.to}:${nextTrigger.query}`
         : "";
@@ -1896,6 +1912,24 @@ export function PromptBoxInternal({
       },
       onUpdate({ editor: updatedEditor, transaction }) {
         if (skipEditorChangeRef.current) return;
+        const dismissedTrigger = dismissedTriggerRef.current;
+        if (
+          dismissedTrigger !== null &&
+          transaction.docChanged &&
+          !isRestoringAppliedMentionRef.current
+        ) {
+          const mappedStart = transaction.mapping.mapResult(
+            dismissedTrigger.start,
+            1,
+          );
+          dismissedTriggerRef.current = mappedStart.deleted
+            ? null
+            : {
+                ...dismissedTrigger,
+                start: mappedStart.pos,
+                end: transaction.mapping.map(dismissedTrigger.end, -1),
+              };
+        }
         const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
         lastSyncedEditorValueRef.current = nextValue;
         onChangeRef.current(nextValue.text, nextValue.mentions);
@@ -2008,6 +2042,11 @@ export function PromptBoxInternal({
     ) {
       return;
     }
+
+    // A controlled replacement is a new occurrence. Parent echoes of editor
+    // updates return above because `lastSyncedEditorValueRef` already matches.
+    dismissedTriggerRef.current = null;
+    triggerKeyRef.current = "";
 
     try {
       skipEditorChangeRef.current = true;
@@ -2436,6 +2475,20 @@ export function PromptBoxInternal({
     },
     [applyCommandSuggestion, applyMentionSuggestion],
   );
+
+  const dismissActiveTrigger = useCallback(() => {
+    triggerKeyRef.current = "";
+    if (activeTrigger) {
+      dismissedTriggerRef.current = {
+        start: activeTrigger.from,
+        end: activeTrigger.to,
+        hasLeftRange: false,
+      };
+    }
+    setActiveTrigger(null);
+    onMentionQueryChange(null, null);
+    onCommandQueryChange(null);
+  }, [activeTrigger, onCommandQueryChange, onMentionQueryChange]);
 
   const focusEnd = useCallback(() => {
     if (isPointerCoarse) {
@@ -2931,19 +2984,7 @@ export function PromptBoxInternal({
         }
         if (event.key === "Escape") {
           event.preventDefault();
-          triggerKeyRef.current = "";
-          if (activeTrigger) {
-            // Escape dismisses the typed token span for both kinds — re-trigger
-            // stays suppressed while the caret remains inside `[from, to]`.
-            dismissedTriggerRef.current = {
-              start: activeTrigger.from,
-              end: activeTrigger.to,
-              hasLeftRange: false,
-            };
-          }
-          setActiveTrigger(null);
-          onMentionQueryChange(null, null);
-          onCommandQueryChange(null);
+          dismissActiveTrigger();
           return true;
         }
       }
@@ -3076,7 +3117,6 @@ export function PromptBoxInternal({
     [
       activeHistoryIndex,
       activeSuggestions,
-      activeTrigger,
       activeTriggerKind,
       applyHistoryDraft,
       applyTrigger,
@@ -3085,12 +3125,11 @@ export function PromptBoxInternal({
       commandHasMore,
       commandIsLoadingMore,
       dispatchAppCommandKey,
+      dismissActiveTrigger,
       history,
       isPointerCoarse,
       loadMoreCommands,
-      onCommandQueryChange,
       onEscape,
-      onMentionQueryChange,
       onModifierSubmit,
       postCompositionKeyDownEvents,
       resetHistorySession,
@@ -3248,6 +3287,7 @@ export function PromptBoxInternal({
                 state={typeaheadMenuState}
                 selectedIndex={selectedIndex}
                 onApply={applyTrigger}
+                onDismiss={isPointerCoarse ? dismissActiveTrigger : undefined}
                 onCommandLoadMore={
                   canLoadMoreCommands ? loadMoreCommands : undefined
                 }
@@ -3363,7 +3403,9 @@ export function PromptBoxInternal({
                           variant="ghost"
                           aria-label={
                             !voice.isSupported
-                              ? "Voice input is not supported in this browser"
+                              ? voiceUnsupportedMessage(
+                                  voice.unsupportedReason ?? null,
+                                )
                               : "Start voice input"
                           }
                           disabled={!canStartVoiceInput}

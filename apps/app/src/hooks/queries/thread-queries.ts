@@ -18,7 +18,6 @@ import type {
   ThreadSearchResponse,
   ThreadWithIncludesResponse,
   ThreadConversationOutlineResponse,
-  ThreadCountResponse,
   ThreadStorageFileListResponse,
   ThreadStorageLocationResponse,
   ThreadStoragePathListResponse,
@@ -63,7 +62,6 @@ import {
   RESUME_REFETCH_QUERY_POLICY,
 } from "./query-policies";
 import {
-  archivedThreadCountQueryKey,
   archivedThreadsListQueryKey,
   disabledThreadListQueryKey,
   threadDetailBootstrapQueryKey,
@@ -363,25 +361,6 @@ export function useArchivedThreads(
     },
     enabled,
     staleTime: THREAD_LIST_STALE_TIME_MS,
-  });
-}
-
-/**
- * An explicit archived-count read for the sidebar Display menu. It stays
- * disabled between opens so callers decide exactly when a fresh count is
- * requested and displayed.
- */
-export function useArchivedThreadCount() {
-  return useQuery<
-    ThreadCountResponse,
-    Error,
-    number,
-    ReturnType<typeof archivedThreadCountQueryKey>
-  >({
-    queryKey: archivedThreadCountQueryKey(),
-    queryFn: ({ signal }) => sdk.threads.count({ archived: true, signal }),
-    enabled: false,
-    select: (response) => response.count,
   });
 }
 

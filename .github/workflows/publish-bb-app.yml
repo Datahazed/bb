@@ -301,8 +301,8 @@ jobs:
           echo "version=${nightly_version}" >> "$GITHUB_OUTPUT"
           echo "Prepared bb-app and desktop version ${nightly_version}."
 
-      # bb-app's prepack hook only prunes stale bb CLI chunks; its `files`
-      # list ships built output, so `npm publish` packs whatever is on disk.
+      # bb-app's prepack hook prunes stale bb CLI chunks immediately before
+      # `npm publish` packs the built output selected by its `files` list.
       # This job runs on a fresh runner, so it must build before it packs.
       # smoke:tarball depends on build and also proves the packed tarball
       # runs at the nightly version.
@@ -665,6 +665,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
+      - name: Install AppImage FUSE runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libfuse2
+
       - name: Apply the nightly version
         id: nightly_version
         env:
@@ -702,6 +707,11 @@ jobs:
         # The packaged app opens a real BrowserWindow, so the headless runner
         # needs a virtual display.
         run: xvfb-run -a pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
+
+      - name: Smoke test nightly AppImage mount lifecycle
+        # Launches the generated AppImage itself, tears down only its GUI mount,
+        # and verifies the separately mounted owned runtime remains healthy.
+        run: xvfb-run -a pnpm exec turbo run smoke:appimage-lifecycle --filter=@bb/desktop --force --output-logs=new-only
 
       - name: Generate nightly desktop version feed
         run: pnpm --dir apps/desktop run desktop:version-feed
