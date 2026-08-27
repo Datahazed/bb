@@ -1,10 +1,9 @@
 /**
- * Ordering and hide/show logic for the plugin panel rows in the sidebar.
+ * Ordering logic for the traditional plugin panel rows in the sidebar.
  *
  * Panels arrive from the slot registry in a fixed registration order (plugin id
- * then declaration order). Users can drag them into their own order and hide
- * the ones they don't use; hidden panels are not removed, they move into the
- * sidebar's "More" disclosure. Both preferences persist client-side keyed by
+ * then declaration order). One persisted order determines both the first five
+ * rows and positional overflow. Preferences are keyed by
  * `<pluginId>/<panelId>`, so an uninstalled-and-reinstalled plugin keeps its
  * place and a renamed panel id starts fresh at the end of the list.
  */
@@ -23,15 +22,11 @@ interface ArrangePluginNavPanelsArgs<TPanel extends PluginNavPanelIdentity> {
   panels: readonly TPanel[];
   /** Persisted key order; may name panels that no longer exist. */
   storedOrder: readonly string[];
-  /** Persisted hidden keys; may name panels that no longer exist. */
-  hiddenKeys: readonly string[];
 }
 
 interface ArrangedPluginNavPanels<TPanel extends PluginNavPanelIdentity> {
-  /** Panels rendered in the sidebar proper, in user order. */
-  visible: TPanel[];
-  /** Panels parked in the "More" disclosure, in user order. */
-  hidden: TPanel[];
+  /** Registered panels in user order. */
+  ordered: TPanel[];
   /**
    * `storedOrder` with duplicates dropped and never-ordered panels appended.
    * Callers persist this so newly installed panels get a slot.
@@ -48,7 +43,6 @@ interface ArrangedPluginNavPanels<TPanel extends PluginNavPanelIdentity> {
 export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
   panels,
   storedOrder,
-  hiddenKeys,
 }: ArrangePluginNavPanelsArgs<TPanel>): ArrangedPluginNavPanels<TPanel> {
   const byKey = new Map(
     panels.map((panel) => [getPluginNavPanelKey(panel), panel]),
@@ -75,31 +69,22 @@ export function arrangePluginNavPanels<TPanel extends PluginNavPanelIdentity>({
     ordered.push(panel);
   }
 
-  const hiddenSet = new Set(hiddenKeys);
-  const visible: TPanel[] = [];
-  const hidden: TPanel[] = [];
-  for (const panel of ordered) {
-    if (hiddenSet.has(getPluginNavPanelKey(panel))) hidden.push(panel);
-    else visible.push(panel);
-  }
-
-  return { visible, hidden, normalizedOrder };
+  return { ordered, normalizedOrder };
 }
 
 interface ReorderPluginNavPanelsArgs {
   activeKey: string;
   overKey: string;
-  /** Full persisted order, including hidden panels. */
+  /** Full persisted order, including temporarily unregistered panels. */
   order: readonly string[];
-  /** Keys currently rendered in the sidebar proper, in display order. */
+  /** Registered keys in display order. */
   visibleKeys: readonly string[];
 }
 
 /**
- * Moves `activeKey` to `overKey`'s slot among the visible rows and folds the
- * result back into the full order. Hidden keys keep their index in the stored
- * list, so unhiding a panel restores it near where it used to sit instead of
- * appending it to the end.
+ * Moves `activeKey` to `overKey`'s slot among registered rows and folds the
+ * result back into the full order. Temporarily unregistered keys keep their
+ * index so late plugin registration cannot erase the user's arrangement.
  *
  * Returns `null` when the drag is a no-op.
  */
@@ -124,18 +109,34 @@ export function reorderPluginNavPanels({
   );
 }
 
-export function hidePluginNavPanel(
+/**
+ * Converts the old hide preference into position: previously visible keys
+ * keep their relative order, followed by previously hidden keys. Unknown keys
+ * stay in the order so a late-registering or reinstalled plugin retains its
+ * slot.
+ */
+export function migrateLegacyHiddenPluginNavPanelOrder(
+  order: readonly string[],
   hiddenKeys: readonly string[],
-  key: string,
 ): string[] {
-  return hiddenKeys.includes(key) ? [...hiddenKeys] : [...hiddenKeys, key];
+  const uniqueOrder = [
+    ...new Set(
+      [...order, ...hiddenKeys].filter((key) => key.length > 0),
+    ),
+  ];
+  const hidden = new Set(hiddenKeys);
+  return [
+    ...uniqueOrder.filter((key) => !hidden.has(key)),
+    ...uniqueOrder.filter((key) => hidden.has(key)),
+  ];
 }
 
-export function showPluginNavPanel(
-  hiddenKeys: readonly string[],
+export function movePluginNavPanelToTop(
+  order: readonly string[],
   key: string,
 ): string[] {
-  return hiddenKeys.filter((hiddenKey) => hiddenKey !== key);
+  if (order[0] === key) return [...order];
+  return [key, ...order.filter((candidate) => candidate !== key)];
 }
 
 export function havePluginNavPanelOrdersDiverged(
