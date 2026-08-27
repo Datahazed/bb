@@ -476,7 +476,7 @@ function PluginNavRowMenuItems({
         icon="Info"
         onSelect={onOpenDetails}
       >
-        Plugin details
+        Detail page
       </PluginNavRowMenuItem>
       <PluginNavRowMenuSeparator surface={surface} />
       <PluginNavRowMenuItem

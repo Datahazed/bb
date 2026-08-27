@@ -306,7 +306,7 @@ describe("PluginNavSidebarItems", () => {
       ["Move to top", "ArrowUp"],
       ["Move to overflow", "ArrowDown"],
       ["Open in split", "Columns2"],
-      ["Plugin details", "Info"],
+      ["Detail page", "Info"],
       ["Disable", "Pause"],
     ] as const;
     expect(
@@ -349,7 +349,7 @@ describe("PluginNavSidebarItems", () => {
       screen.queryByRole("menuitem", { name: "Open in split" }),
     ).toBeNull();
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Plugin details" }),
+      await screen.findByRole("menuitem", { name: "Detail page" }),
     );
     expect(screen.getByTestId("location-path").textContent).toBe(
       "/extensions/plugins/docs",
