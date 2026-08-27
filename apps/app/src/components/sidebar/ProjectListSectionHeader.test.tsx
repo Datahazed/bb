@@ -18,7 +18,6 @@ import {
   setPluginThreadRowStatus,
 } from "@/lib/plugin-thread-row-status";
 import {
-  ProjectListManualPinnedSectionActions,
   ProjectListSectionIconButton,
   TopLevelSidebarSection,
 } from "./ProjectList";
@@ -74,38 +73,6 @@ describe("ProjectListSectionIconButton", () => {
     fireEvent.click(trigger, { detail: 0 });
 
     expect(document.activeElement).toBe(trigger);
-  });
-});
-
-describe("ProjectListManualPinnedSectionActions", () => {
-  it("offers the shared New section action only in Manual view", () => {
-    const onNewSection = vi.fn();
-    const result = render(
-      <TooltipProvider>
-        <ProjectListManualPinnedSectionActions
-          displayOptions={<span>Display options</span>}
-          isCreatingSection={false}
-          onNewSection={onNewSection}
-        />
-      </TooltipProvider>,
-    );
-
-    expect(screen.getByText("Display options")).not.toBeNull();
-    const newSection = screen.getByRole("button", { name: "New section" });
-    expect(newSection.querySelector('[data-icon="SectionAdd"]')).not.toBeNull();
-
-    fireEvent.click(newSection);
-    expect(onNewSection).toHaveBeenCalledOnce();
-
-    result.rerender(
-      <TooltipProvider>
-        <ProjectListManualPinnedSectionActions
-          displayOptions={<span>Display options</span>}
-          isCreatingSection={false}
-        />
-      </TooltipProvider>,
-    );
-    expect(screen.queryByRole("button", { name: "New section" })).toBeNull();
   });
 });
 

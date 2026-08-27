@@ -428,63 +428,6 @@ describe("ProjectRow interactions", () => {
     expect(screen.queryByLabelText("Plan mode active")).toBeNull();
   });
 
-  it("offers New section from a Manual-view section menu", async () => {
-    const store = createStore();
-    const queryClient = new QueryClient();
-    const sectionId = "sec_actions";
-    const onCreateSection = vi.fn();
-    const onRenameSection = vi.fn();
-    const onRemoveSection = vi.fn();
-
-    render(
-      <TooltipProvider>
-        <Provider store={store}>
-          <QueryClientProvider client={queryClient}>
-            <MemoryRouter>
-              <ChronologicalSectionThreadSections
-                threadListState={{
-                  status: "ready",
-                  threads: [makeThread({ sectionId })],
-                }}
-                compareThreads={() => 0}
-                sections={[{ id: sectionId, name: "Actionable" }]}
-                collapsedThreadIds={new Set()}
-                collapsedEnvironmentIds={new Set()}
-                onCreateSection={onCreateSection}
-                onRenameSection={onRenameSection}
-                onRemoveSection={onRemoveSection}
-                onToggleThreadCollapsed={vi.fn()}
-                onToggleEnvironmentCollapsed={vi.fn()}
-                topLevelSectionOrder={[
-                  buildSidebarEntitySectionId("section", sectionId),
-                ]}
-                onTopLevelSectionOrderChange={vi.fn()}
-                pinnedReorderPending={false}
-                pinnedThreads={[]}
-                onReorderPinnedThread={vi.fn()}
-              />
-            </MemoryRouter>
-          </QueryClientProvider>
-        </Provider>
-      </TooltipProvider>,
-    );
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Actionable section actions" }),
-      { button: 0 },
-    );
-
-    const newSection = await screen.findByRole("menuitem", {
-      name: "New section",
-    });
-    expect(newSection.querySelector('[data-icon="SectionAdd"]')).not.toBeNull();
-    expect(screen.getByRole("menuitem", { name: "Rename" })).not.toBeNull();
-    expect(screen.getByRole("menuitem", { name: "Remove" })).not.toBeNull();
-
-    fireEvent.click(newSection);
-    expect(onCreateSection).toHaveBeenCalledOnce();
-  });
-
   it("surfaces named activity when the project is collapsed", () => {
     renderProjectRow(
       vi.fn(),

@@ -209,12 +209,6 @@ interface ProjectListThreadsSectionActionsProps {
   onNewThread: () => void;
 }
 
-interface ProjectListManualPinnedSectionActionsProps {
-  displayOptions: ReactNode;
-  isCreatingSection: boolean;
-  onNewSection?: () => void;
-}
-
 interface SidebarDisplayOptionsMenuProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -570,10 +564,20 @@ function ProjectListThreadsSectionActions({
 }: ProjectListThreadsSectionActionsProps) {
   return (
     <>
-      <ProjectListNewSectionAction
-        isCreatingSection={isCreatingSection}
-        onNewSection={onNewSection}
-      />
+      {onNewSection ? (
+        <ProjectListSectionIconButton
+          ariaLabel="New section"
+          title="New section"
+          disabled={isCreatingSection}
+          icon={
+            <Icon
+              name="SectionAdd"
+              className={COARSE_POINTER_ICON_SIZE_CLASS}
+            />
+          }
+          onClick={onNewSection}
+        />
+      ) : null}
       <ProjectListSectionIconButton
         ariaLabel="New thread"
         title="New thread"
@@ -584,42 +588,6 @@ function ProjectListThreadsSectionActions({
           />
         }
         onClick={onNewThread}
-      />
-    </>
-  );
-}
-
-function ProjectListNewSectionAction({
-  isCreatingSection,
-  onNewSection,
-}: Pick<
-  ProjectListThreadsSectionActionsProps,
-  "isCreatingSection" | "onNewSection"
->) {
-  return onNewSection ? (
-    <ProjectListSectionIconButton
-      ariaLabel="New section"
-      title="New section"
-      disabled={isCreatingSection}
-      icon={
-        <Icon name="SectionAdd" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-      }
-      onClick={onNewSection}
-    />
-  ) : null;
-}
-
-export function ProjectListManualPinnedSectionActions({
-  displayOptions,
-  isCreatingSection,
-  onNewSection,
-}: ProjectListManualPinnedSectionActionsProps) {
-  return (
-    <>
-      {displayOptions}
-      <ProjectListNewSectionAction
-        isCreatingSection={isCreatingSection}
-        onNewSection={onNewSection}
       />
     </>
   );
@@ -1277,7 +1245,6 @@ interface SectionModeSectionsProps
   compareThreads: ThreadComparator;
   sections: readonly SidebarSectionDefinition[];
   isReady: boolean;
-  onCreateSection: () => void;
   onCreateThreadInSection: (sectionId: string) => void;
   onProjectSelect?: () => void;
   onRemoveSection: (section: SidebarSectionDefinition) => void;
@@ -1307,7 +1274,6 @@ function SectionModeSections({
   effectivePinnedThreadIds,
   sections,
   isReady,
-  onCreateSection,
   onCreateThreadInSection,
   onProjectSelect,
   onRemoveSection,
@@ -1357,7 +1323,6 @@ function SectionModeSections({
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
       onProjectSelect={onProjectSelect}
-      onCreateSection={onCreateSection}
       onCreateThreadInSection={onCreateThreadInSection}
       onRenameSection={onRenameSection}
       onRemoveSection={onRemoveSection}
@@ -2086,16 +2051,6 @@ function ProjectListComponent({
     collapsedThreads: pinnedSectionThreads,
     label: "Pinned",
     content: pinnedSectionContent,
-    actions: (
-      <ProjectListManualPinnedSectionActions
-        displayOptions={null}
-        isCreatingSection={isCreateThreadSectionPending}
-        onNewSection={
-          isSectionOrganizationMode ? handleOpenCreateSectionDialog : undefined
-        }
-      />
-    ),
-    actionsOpen: false,
   };
   const threadsSection = {
     label: "Threads",
@@ -2223,7 +2178,6 @@ function ProjectListComponent({
                   displayOptions={displayOptionsMenu}
                   displayOptionsOpen={displayOptionsOpen}
                   onProjectSelect={onProjectSelect}
-                  onCreateSection={handleOpenCreateSectionDialog}
                   onCreateThreadInSection={handleCreateThreadInSection}
                   onRenameSection={handleOpenRenameThreadSection}
                   onRemoveSection={handleRemoveThreadSection}

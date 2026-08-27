@@ -201,7 +201,6 @@ interface SectionThreadTreeProps {
   collapsedThreadIds: Set<string>;
   collapsedEnvironmentIds: Set<string>;
   onProjectSelect?: () => void;
-  onCreateSection?: () => void;
   onCreateThreadInSection?: (sectionId: string) => void;
   onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
@@ -303,7 +302,6 @@ interface ThreadTreeItemRowProps {
   collapsedEnvironmentIds: Set<string>;
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
-  onCreateSection?: () => void;
   onCreateThreadInSection?: (sectionId: string) => void;
   onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
@@ -326,7 +324,6 @@ interface SectionTreeItemRowProps {
   collapsedEnvironmentIds: Set<string>;
   variant: ProjectThreadTreeVariant;
   onProjectSelect?: () => void;
-  onCreateSection?: () => void;
   onCreateThreadInSection?: (sectionId: string) => void;
   onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
@@ -1196,7 +1193,6 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   collapsedEnvironmentIds,
   variant,
   onProjectSelect,
-  onCreateSection,
   onCreateThreadInSection,
   onRenameSection,
   onRemoveSection,
@@ -1220,7 +1216,6 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         collapsedEnvironmentIds={collapsedEnvironmentIds}
         variant={variant}
         onProjectSelect={onProjectSelect}
-        onCreateSection={onCreateSection}
         onCreateThreadInSection={onCreateThreadInSection}
         onRenameSection={onRenameSection}
         onRemoveSection={onRemoveSection}
@@ -1342,7 +1337,6 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   collapsedEnvironmentIds,
   variant,
   onProjectSelect,
-  onCreateSection,
   onCreateThreadInSection,
   onRenameSection,
   onRemoveSection,
@@ -1426,7 +1420,6 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
                   collapsedEnvironmentIds={collapsedEnvironmentIds}
                   variant={variant}
                   onProjectSelect={onProjectSelect}
-                  onCreateSection={onCreateSection}
                   onCreateThreadInSection={onCreateThreadInSection}
                   onRenameSection={onRenameSection}
                   onRemoveSection={onRemoveSection}
@@ -1455,9 +1448,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
 
   if (variant === "section" && depthOffset === 0) {
     const externalHeaderActions = renderTopLevelSectionHeaderActions?.(section);
-    const hasMenuActions = Boolean(
-      onCreateSection || onRenameSection || onRemoveSection,
-    );
+    const hasMenuActions = Boolean(onRenameSection || onRemoveSection);
     const hasTopLevelActions = Boolean(
       externalHeaderActions?.actions ||
       hasMenuActions ||
@@ -1488,12 +1479,6 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {onCreateSection ? (
-                <DropdownMenuItem onSelect={onCreateSection}>
-                  <Icon name="SectionAdd" aria-hidden="true" />
-                  New section
-                </DropdownMenuItem>
-              ) : null}
               {onRenameSection ? (
                 <DropdownMenuItem onSelect={() => onRenameSection(section)}>
                   <Icon name="Edit" aria-hidden="true" />
@@ -1770,7 +1755,6 @@ interface SectionThreadTreeItemsProps {
   onProjectSelect?: () => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
-  onCreateSection?: () => void;
   onCreateThreadInSection?: (sectionId: string) => void;
   onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
@@ -1847,7 +1831,6 @@ function SectionThreadTreeItems({
   onProjectSelect,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
-  onCreateSection,
   onCreateThreadInSection,
   onRenameSection,
   onRemoveSection,
@@ -1884,7 +1867,6 @@ function SectionThreadTreeItems({
             onProjectSelect={onProjectSelect}
             onToggleThreadCollapsed={onToggleThreadCollapsed}
             onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-            onCreateSection={onCreateSection}
             onCreateThreadInSection={onCreateThreadInSection}
             onRenameSection={onRenameSection}
             onRemoveSection={onRemoveSection}
@@ -1998,7 +1980,6 @@ export const ChronologicalSectionThreadSections = memo(
     collapsedThreadIds,
     collapsedEnvironmentIds,
     onProjectSelect,
-    onCreateSection,
     onCreateThreadInSection,
     onRenameSection,
     onRemoveSection,
@@ -2133,7 +2114,6 @@ export const ChronologicalSectionThreadSections = memo(
         onProjectSelect={onProjectSelect}
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
-        onCreateSection={onCreateSection}
         onCreateThreadInSection={onCreateThreadInSection}
         onRenameSection={onRenameSection}
         onRemoveSection={onRemoveSection}
