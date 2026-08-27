@@ -164,8 +164,6 @@ const archivedThreadIds = new Set();
  * see the children die on release, archive, and bridge shutdown.
  */
 const processLogPath = script?.processLogPath ?? null;
-/** `startDelayMs`: answer `thread/start` only after this many milliseconds. */
-const startDelayMs = script?.startDelayMs ?? 0;
 /** `stallThreadStart`: leave `thread/start` pending until this process dies. */
 const stallThreadStart = script?.stallThreadStart ?? false;
 
@@ -176,11 +174,11 @@ function logProcessStep(step) {
   appendFileSync(processLogPath, `${step}:${process.pid}:${process.ppid}\n`);
 }
 
-logProcessStep("spawn");
 process.on("SIGTERM", () => {
   logProcessStep("exit");
   process.exit(0);
 });
+logProcessStep("spawn");
 let scriptedTurnIndex = 0;
 
 function readArchivedThreadIds() {
@@ -345,9 +343,6 @@ async function handleRequest(message) {
     case "thread/start": {
       if (stallThreadStart) {
         await new Promise(() => undefined);
-      }
-      if (startDelayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, startDelayMs));
       }
       threadCounter += 1;
       const threadId = `codex-fx-${process.pid}-${threadCounter}`;

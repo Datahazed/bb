@@ -356,7 +356,7 @@ describe("codex process topology", () => {
         );
       }
       expect(outcome.error).toBeInstanceOf(Error);
-      expect(String(outcome.error)).toMatch(/timed out/i);
+      expect(String(outcome.error)).toMatch(/timed out: thread\/start/i);
     } finally {
       vi.useRealTimers();
     }
@@ -367,11 +367,12 @@ describe("codex process topology", () => {
       throw new Error("Expected the stalled construction to spawn a child");
     }
     await waitForRuntimeState({
-      label: "the late-constructed child was released",
-      predicate: () => !isAlive(childPid),
+      label: "the stalled construction child exited gracefully",
+      predicate: () => topology.exited() === 1 && !isAlive(childPid),
       timeoutMs: 10_000,
     });
     expect(topology.spawned()).toBe(1);
+    expect(topology.exited()).toBe(1);
     expect(runtime.listRunningProviders()).toEqual(["codex"]);
   }, 30_000);
 

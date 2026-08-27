@@ -22,6 +22,7 @@ import type { z } from "zod";
 const STDERR_TAIL_MAX_CHUNKS = 40;
 const CLOSE_AFTER_EXIT_GRACE_MS = 1_000;
 const KILL_ESCALATION_MS = 4_000;
+const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
 
 export interface CodexAppServerRequestResponder {
   result(value: unknown): void;
@@ -111,6 +112,14 @@ function parseChildLine(line: string): ParsedChildMessage | null {
   return parsed as ParsedChildMessage;
 }
 
+function isClosedChildStdinError(error: Error): boolean {
+  return (
+    "code" in error &&
+    typeof error.code === "string" &&
+    CLOSED_STDIN_ERROR_CODES.has(error.code)
+  );
+}
+
 export function createCodexAppServerConnection(
   options: CreateCodexAppServerConnectionOptions,
 ): CodexAppServerConnection {
@@ -161,29 +170,49 @@ export function createCodexAppServerConnection(
   }
 
   function handleBrokenStdin(error: Error): void {
-    if (finalized) {
+    if (finalized || exitStatus !== null) {
       return;
     }
+    const code =
+      "code" in error && typeof error.code === "string"
+        ? ` (${error.code})`
+        : "";
+    const detail = `stdin failed${code}: ${error.message}`;
     const connectionError = new CodexAppServerExitedError(
-      `codex app-server stdin failed: ${error.message}`,
+      `codex app-server ${detail}`,
     );
-    rejectAllPending(connectionError);
-    killChild();
+    const stderrTail = [...stderrChunks, detail].join("\n");
+    // Once the child stops reading requests the protocol cannot recover. Mark
+    // the connection terminal immediately so callers can rebuild it, and use
+    // SIGKILL so a child that ignores SIGTERM cannot linger behind that state.
+    child.kill("SIGKILL");
+    finalizeConnection(
+      { code: null, signal: null },
+      stderrTail,
+      connectionError,
+    );
   }
 
   function writeLine(message: object): void {
     const stdin = child.stdin;
     if (!stdin || stdin.destroyed || !stdin.writable) {
+      // `exit` intentionally precedes finalization while stdout drains. A
+      // response during that grace must not replace the real exit status or
+      // discard a final protocol message still buffered on stdout.
+      if (exitStatus !== null) {
+        return;
+      }
       handleBrokenStdin(new Error("stdin is not writable"));
       return;
     }
     stdin.write(JSON.stringify(message) + "\n");
   }
 
-  function finalizeExit(status: {
-    code: number | null;
-    signal: NodeJS.Signals | null;
-  }): void {
+  function finalizeConnection(
+    status: { code: number | null; signal: NodeJS.Signals | null },
+    stderrTail: string,
+    pendingError: CodexAppServerExitedError,
+  ): void {
     if (finalized) {
       return;
     }
@@ -197,8 +226,18 @@ export function createCodexAppServerConnection(
     stdoutLines?.close();
     child.stdout?.destroy();
     child.stderr?.destroy();
+    rejectAllPending(pendingError);
+    options.onExit({ ...status, stderrTail, spawnFailed });
+  }
+
+  function finalizeExit(status: {
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  }): void {
     const stderrTail = stderrChunks.join("\n");
-    rejectAllPending(
+    finalizeConnection(
+      status,
+      stderrTail,
       new CodexAppServerExitedError(
         `codex app-server exited (code ${status.code ?? "null"}, signal ${status.signal ?? "null"})${
           stderrTail ? `: ${stderrTail}` : ""
@@ -206,7 +245,6 @@ export function createCodexAppServerConnection(
         { spawnFailed },
       ),
     );
-    options.onExit({ ...status, stderrTail, spawnFailed });
   }
 
   if (child.stdout) {
@@ -295,7 +333,12 @@ export function createCodexAppServerConnection(
     finalizeExit({ code: null, signal: null });
   });
 
-  child.stdin?.on("error", handleBrokenStdin);
+  child.stdin?.on("error", (error) => {
+    if (!isClosedChildStdinError(error)) {
+      throw error;
+    }
+    handleBrokenStdin(error);
+  });
 
   child.on("exit", (code, signal) => {
     exitStatus = { code: code ?? null, signal: signal ?? null };
