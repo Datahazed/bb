@@ -54,7 +54,7 @@ export const PLUGIN_HERO_COPY: ShowcaseHeroCopy = {
   headlineLead: "Turn bb into",
   composingNoun: "whatever you need",
   description:
-    "Plugins add app surfaces, commands, services, schedules, and skills to bb. Install an official plugin, or describe your own and build it from a prompt.",
+    "Install one from the community. Or describe what's missing, and bb builds it.",
   tablistLabel: "Plugin examples",
   frameTitlePrefix: "bb — ",
   frameBadge: "Plugin",

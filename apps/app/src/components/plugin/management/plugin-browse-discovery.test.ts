@@ -133,3 +133,49 @@ describe("plugin browse discovery projections", () => {
     ).toEqual(["zulu", "alpha"]);
   });
 });
+
+describe("recently added ordering", () => {
+  it("puts the newest published entry first", () => {
+    const ordered = sortPluginEntries(
+      [
+        entry("older", { publishedAt: "2026-01-05T00:00:00Z" }),
+        entry("newest", { publishedAt: "2026-08-20T00:00:00Z" }),
+        entry("middle", { publishedAt: "2026-04-11T00:00:00Z" }),
+      ],
+      "recently-added",
+    );
+    expect(ordered.map((candidate) => candidate.entryId)).toEqual([
+      "newest",
+      "middle",
+      "older",
+    ]);
+  });
+
+  it("reverses to oldest first when the direction flips", () => {
+    const ordered = sortPluginEntries(
+      [
+        entry("newest", { publishedAt: "2026-08-20T00:00:00Z" }),
+        entry("older", { publishedAt: "2026-01-05T00:00:00Z" }),
+      ],
+      "recently-added",
+      "asc",
+    );
+    expect(ordered.map((candidate) => candidate.entryId)).toEqual([
+      "older",
+      "newest",
+    ]);
+  });
+
+  it("falls back to name order when no entry carries a timestamp", () => {
+    // Today's catalog is in exactly this state: nothing publishes publishedAt,
+    // so the control cannot order anything until the registry emits it.
+    const ordered = sortPluginEntries(
+      [entry("zulu"), entry("alpha")],
+      "recently-added",
+    );
+    expect(ordered.map((candidate) => candidate.entryId)).toEqual([
+      "alpha",
+      "zulu",
+    ]);
+  });
+});

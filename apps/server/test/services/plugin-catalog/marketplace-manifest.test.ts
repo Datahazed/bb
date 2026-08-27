@@ -9,6 +9,8 @@ import {
   resolveEntryIcon,
   resolvedEntrySource,
   type MarketplaceEntry,
+  entryIconTinted,
+  svgAdoptsTextColor,
 } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 
@@ -626,5 +628,61 @@ describe("marketplace manifest schema", () => {
     expect(() =>
       parseMarketplaceManifest(BUNDLED_CURATED_MARKETPLACE, "bundled snapshot"),
     ).not.toThrow();
+  });
+});
+
+describe("svgAdoptsTextColor", () => {
+  const svg = (body: string) =>
+    new TextEncoder().encode(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${body}</svg>`,
+    );
+
+  it("accepts artwork that names no colour of its own", () => {
+    expect(svgAdoptsTextColor(svg('<path d="M0 0h24v24H0z"/>'))).toBe(true);
+    expect(
+      svgAdoptsTextColor(
+        svg('<path fill="currentColor" stroke="none" d="M0 0"/>'),
+      ),
+    ).toBe(true);
+    expect(
+      svgAdoptsTextColor(
+        svg('<path style="fill:inherit;stroke:transparent" d="M0 0"/>'),
+      ),
+    ).toBe(true);
+  });
+
+  it("refuses artwork that paints from its own source", () => {
+    expect(svgAdoptsTextColor(svg('<path fill="#ff6154" d="M0 0"/>'))).toBe(
+      false,
+    );
+    expect(
+      svgAdoptsTextColor(svg('<path style="fill: rgb(12,34,56)" d="M0 0"/>')),
+    ).toBe(false);
+    expect(
+      svgAdoptsTextColor(svg('<path stroke="rebeccapurple" d="M0 0"/>')),
+    ).toBe(false);
+    expect(
+      svgAdoptsTextColor(
+        svg(
+          '<linearGradient id="g"><stop stop-color="#fff"/></linearGradient>',
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      svgAdoptsTextColor(svg('<image href="data:image/png;base64,AA"/>')),
+    ).toBe(false);
+  });
+
+  it("ignores colours that only appear inside comments", () => {
+    expect(
+      svgAdoptsTextColor(svg('<!-- fill="#ff0000" --><path d="M0 0"/>')),
+    ).toBe(true);
+  });
+
+  it("only tints SVGs", () => {
+    const mono = svg('<path d="M0 0"/>');
+    expect(entryIconTinted("image/svg+xml", mono)).toBe(true);
+    expect(entryIconTinted("image/png", mono)).toBe(false);
+    expect(entryIconTinted("image/webp", mono)).toBe(false);
   });
 });

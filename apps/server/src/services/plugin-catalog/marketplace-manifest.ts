@@ -227,13 +227,56 @@ export function entryScreenshotUrls(
   });
 }
 
+/** Paint keywords that defer to the cascade rather than naming a colour. */
+const INHERITED_PAINT_KEYWORDS = new Set([
+  "",
+  "none",
+  "currentcolor",
+  "inherit",
+  "transparent",
+  "context-fill",
+  "context-stroke",
+]);
+
+/**
+ * Whether an SVG was authored to take its colour from whatever renders it.
+ *
+ * BB masks tintable icons with the surrounding text colour so a
+ * black-on-transparent glyph stays visible in either theme. That is only
+ * correct for artwork that names no colour of its own — a full-colour logo
+ * masked this way is destroyed. So the answer comes from the bytes rather
+ * than the file extension: an SVG that paints from its own source (a
+ * gradient, a pattern, an embedded raster, or any concrete fill or stroke)
+ * keeps its colours, and everything else inherits.
+ */
+export function svgAdoptsTextColor(bytes: Uint8Array): boolean {
+  const document = new TextDecoder("utf-8", { fatal: false })
+    .decode(bytes)
+    .replace(/<!--[\s\S]*?-->/gu, "");
+  if (/<(?:linearGradient|radialGradient|pattern|image)\b/iu.test(document)) {
+    return false;
+  }
+  for (const declaration of document.matchAll(
+    /\b(?:fill|stroke|stop-color|flood-color|lighting-color)\s*[=:]\s*["']?\s*([^"';>\s]*)/giu,
+  )) {
+    if (!INHERITED_PAINT_KEYWORDS.has(declaration[1].toLowerCase())) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Whether BB masks a cached image icon with the surrounding text color. Only
- * an SVG is tinted; see {@link iconSchema}. `contentType` is the validated
- * type BB serves the cached bytes as.
+ * an SVG can be tinted; see {@link iconSchema}. Raster formats always keep
+ * their own pixels, and an SVG only qualifies when
+ * {@link svgAdoptsTextColor} says it names no colour of its own.
  */
-export function entryIconTinted(contentType: string): boolean {
-  return contentType === "image/svg+xml";
+export function entryIconTinted(
+  contentType: string,
+  bytes: Uint8Array,
+): boolean {
+  return contentType === "image/svg+xml" && svgAdoptsTextColor(bytes);
 }
 
 /**

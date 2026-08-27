@@ -109,6 +109,25 @@ export function PluginMarketplaceMetadata({
   );
 }
 
+/**
+ * The listing image contract, shared by the gallery and by the capture
+ * guidance authors follow.
+ *
+ * Plugins do not occupy one shape. Roughly six in ten sit on a full page or
+ * the whole window, but the sidebar rail is portrait and the composer, an
+ * inline message row, and a footer gauge are all short and wide. Normalising
+ * the ratio would letterbox four in ten listings, so the row normalises
+ * *height* and lets each image keep its own width — a rail shot and a
+ * full-page shot then read at the same scale, side by side.
+ */
+const PLUGIN_SCREENSHOT_ROW_HEIGHT = 420;
+/**
+ * Width ceiling, as a multiple of the row height. A true 4:1 composer strip
+ * at full row height would be wider than the panel and could never be seen
+ * whole, so anything past this scales down instead of overrunning.
+ */
+const PLUGIN_SCREENSHOT_MAX_ASPECT = 2;
+
 function PluginScreenshotGallery({
   entry,
 }: {
@@ -132,32 +151,41 @@ function PluginScreenshotGallery({
   if (entry.screenshots.length === 0) return null;
   return (
     <ResourceDefinitionSection label="Screenshots">
+      {/* Each image sizes itself to the row height, so several narrow shots
+          share a row while one wide shot fills it. The arrows live in a
+          gutter beside the strip rather than on top of it — a control sitting
+          over the artwork hides the thing the reader came to see. */}
       <Carousel
         setApi={setApi}
         opts={{ align: "start", containScroll: "trimSnaps" }}
         aria-label={`${entry.displayName} screenshots`}
-        className="px-1"
+        className={cn("w-full", entry.screenshots.length > 1 && "px-11")}
       >
-        <CarouselContent className="-ml-2">
+        <CarouselContent
+          className="-ml-3 items-center"
+          style={{ minHeight: `${PLUGIN_SCREENSHOT_ROW_HEIGHT}px` }}
+        >
           {entry.screenshots.map((screenshot, index) => (
-            <CarouselItem
-              key={screenshot}
-              className="basis-[88%] pl-2 sm:basis-[72%]"
-            >
-              <div className="aspect-video overflow-hidden rounded-md border border-border bg-surface-recessed">
-                <img
-                  src={screenshot}
-                  alt={`${entry.displayName} screenshot ${index + 1}`}
-                  className="size-full object-contain"
-                />
-              </div>
+            <CarouselItem key={screenshot} className="basis-auto pl-3">
+              {/* Height and width are both ceilings, never fixed: an image
+                  fills the row unless it is wider than the clamp, in which
+                  case it gets shorter rather than growing letterbox bars. */}
+              <img
+                src={screenshot}
+                alt={`${entry.displayName} screenshot ${index + 1}`}
+                className="h-auto w-auto rounded-md border border-border object-contain"
+                style={{
+                  maxHeight: `${PLUGIN_SCREENSHOT_ROW_HEIGHT}px`,
+                  maxWidth: `${PLUGIN_SCREENSHOT_ROW_HEIGHT * PLUGIN_SCREENSHOT_MAX_ASPECT}px`,
+                }}
+              />
             </CarouselItem>
           ))}
         </CarouselContent>
         {entry.screenshots.length > 1 ? (
           <>
-            <CarouselPrevious className="left-2 size-7" />
-            <CarouselNext className="right-2 size-7" />
+            <CarouselPrevious className="-left-0 size-8" />
+            <CarouselNext className="-right-0 size-8" />
           </>
         ) : null}
       </Carousel>

@@ -30,7 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { appToast } from "@/components/ui/app-toast";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
@@ -65,7 +65,7 @@ import {
   type PluginBrowseCategoryOption,
 } from "./PluginBrowseControls";
 import { PluginCategoryChips } from "./PluginCategoryChips";
-import { CatalogEntryIconChip } from "./plugin-ui";
+import { CatalogEntryIconChip, PluginCategoryLabel } from "./plugin-ui";
 import { pluginMarketplaceAuthorId } from "./plugin-marketplace-author";
 
 const PLUGIN_BROWSE_SORTS = [
@@ -78,6 +78,13 @@ const PLUGIN_BROWSE_SORT_LABELS: Record<PluginBrowseSort, string> = {
   "recently-added": "Recently added",
   "most-installed": "Most installed",
   name: "Name",
+};
+
+/** One glyph per criterion, so the menu reads without parsing three labels. */
+const PLUGIN_BROWSE_SORT_ICONS: Record<PluginBrowseSort, IconName> = {
+  "recently-added": "Clock",
+  "most-installed": "Download",
+  name: "Sort",
 };
 
 function browseSort(value: string | null): PluginBrowseSort | null {
@@ -196,6 +203,7 @@ export function BrowsePluginsTab({
   ).map((sort) => ({
     id: sort,
     label: PLUGIN_BROWSE_SORT_LABELS[sort],
+    leading: <Icon name={PLUGIN_BROWSE_SORT_ICONS[sort]} className="size-4" />,
   }));
   const catalogCategoryCounts = new Map(
     catalogShelves.map((shelf) => [shelf.id, shelf.entries.length]),
@@ -286,6 +294,14 @@ export function BrowsePluginsTab({
     setSearchParams(nextSearchParams);
   }
 
+  /** Drop the sort so the shelf view comes back. */
+  function clearSort() {
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("sort");
+    nextSearchParams.delete("direction");
+    setSearchParams(nextSearchParams);
+  }
+
   function clearDiscoveryScope() {
     const nextSearchParams = new URLSearchParams(searchParams);
     nextSearchParams.delete("category");
@@ -365,12 +381,16 @@ export function BrowsePluginsTab({
                   <>
                     {sortOptions.length > 0 ? (
                       <ResourceSortMenu
+                        // Null while unsorted, so the trigger keeps reading
+                        // "Sort plugins" rather than naming a sort that is not
+                        // applied. The Featured row is the way back, not a
+                        // claim about the current state.
                         value={activeSort}
                         direction={activeDirection}
                         options={sortOptions}
                         compact
-                        showDirectionForAllOptions
                         placeholderLabel="Sort plugins"
+                        onClear={clearSort}
                         onChange={(value) => {
                           const sort = browseSort(value);
                           if (sort !== null) setSort(sort);
@@ -391,7 +411,9 @@ export function BrowsePluginsTab({
             </div>
 
             {activeSort === null ? null : (
-              <div className="mt-3">
+              // Same content width as the toolbar above, so the pill row lines
+              // up with the search field rather than running past it.
+              <div className="mt-3 w-full px-[var(--resource-source-shelf-inset)]">
                 {hasCategoryDiscovery ? (
                   <PluginCategoryChips
                     options={categoryOptions}
@@ -459,16 +481,18 @@ export function BrowsePluginsTab({
                   </div>
                 )
               ) : selectedCategoryId === null && selectedShelfId === null ? (
-                <div className="space-y-8">
+                <div className="space-y-9 [&>*+*]:border-t [&>*+*]:border-border-seam/60 [&>*+*]:pt-9">
                   {hasCategoryDiscovery ? (
                     <BrowseShelf
                       label="New & notable"
                       entries={notableEntries}
-                      description="Fresh additions from across the plugin catalog."
                       leading={
+                        // Filled, and geometric rather than pictorial: a set of
+                        // modules reads as "extensions" at 14px, where an
+                        // outlined toolbox or package turns to mush.
                         <Icon
-                          name="Star"
-                          className="size-3.5 text-muted-foreground"
+                          name="GridView"
+                          className="size-3.5 fill-current text-muted-foreground"
                           aria-hidden
                         />
                       }
@@ -481,7 +505,6 @@ export function BrowsePluginsTab({
                       key={shelf.id}
                       label={shelf.label}
                       description={shelf.description}
-                      count={shelf.entries.length}
                       entries={shelf.entries
                         .filter(
                           (entry) =>
@@ -593,7 +616,6 @@ function BrowseShelf({
   label,
   description,
   leading,
-  count,
   entries,
   onViewAll,
   onInstall,
@@ -602,7 +624,6 @@ function BrowseShelf({
   label: string;
   description?: string;
   leading?: ReactNode;
-  count?: number;
   entries: readonly PluginCatalogSearchEntry[];
   onViewAll?: () => void;
   onInstall: (initial: AddPluginInitial) => void;
@@ -613,23 +634,30 @@ function BrowseShelf({
     <ResourceSourceShelf
       label={label}
       leading={leading}
-      attribution={count === undefined ? undefined : `· ${count}`}
+      description={description}
       contentMode="panel"
       contentSurface="plain"
       browseAction={
         onViewAll === undefined ? undefined : (
-          <ResourceShelfAction type="button" onClick={onViewAll}>
+          <ResourceShelfAction
+            type="button"
+            onClick={onViewAll}
+            className="group gap-1"
+          >
             View all
-            <Icon name="ChevronRight" className="size-3" aria-hidden />
+            {/* The arrow leans into the direction it takes you. */}
+            {/* CONTROL_HOVER_TRANSITION is colour-only and snaps on hover, so
+                it cannot carry this: the arrow needs the transform itself to
+                ease, at the same 150ms the rest of the controls use. */}
+            <Icon
+              name="ChevronRight"
+              className="size-3 transition-transform duration-150 group-hover:translate-x-1"
+              aria-hidden
+            />
           </ResourceShelfAction>
         )
       }
     >
-      {description === undefined ? null : (
-        <p className="mb-2 max-w-2xl px-0.5 text-xs leading-relaxed text-muted-foreground">
-          {description}
-        </p>
-      )}
       <PluginCatalogGrid
         entries={entries}
         previewLimitBelowXl={4}
@@ -727,17 +755,23 @@ export function PluginCatalogCard({
         to={getPluginAuthorRoutePath({ authorId })}
         className="pointer-events-auto relative rounded-sm underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
-        <span className="text-subtle-foreground">By:</span>{" "}
-        <span className="text-muted-foreground">{entry.author.name}</span>
+        <span className="text-2xs text-subtle-foreground">By:</span>{" "}
+        <span className="text-xs text-foreground/80">{entry.author.name}</span>
       </Link>
     );
+  // The category rides the byline rather than its own row: a card's metadata
+  // line is where a reader already looks for it, and a fourth row made every
+  // card taller for one short tag.
   const byline =
     showCategory && entry.category !== undefined ? (
       <span className="flex min-w-0 items-center gap-1.5">
-        <span className="shrink-0 rounded bg-surface-recessed px-1.5 py-0.5 text-2xs text-muted-foreground">
-          {entry.category}
-        </span>
-        {authorByline}
+        <PluginCategoryLabel
+          categoryId={entry.categoryId}
+          label={entry.category}
+        />
+        {/* The pill keeps its full width; the author is what gives way, or a
+            long name runs under the source link beside it. */}
+        <span className="min-w-0 truncate">{authorByline}</span>
       </span>
     ) : (
       authorByline
@@ -788,49 +822,45 @@ export function PluginCatalogCard({
           timestamp: Date.parse(entry.updatedAt),
           now: Date.now(),
         });
-  const stats = (
-    <>
-      {entry.installs === null ? null : (
-        <ResourceCardStat
-          icon="Download"
-          accessibleLabel={`${entry.installs.toLocaleString()} installs`}
-          iconClassName="size-2.5 opacity-70"
-          className="h-auto px-0 text-2xs text-subtle-foreground"
-        >
-          {formatInstallCount(entry.installs)}
-        </ResourceCardStat>
-      )}
-      {updatedRelativeTime === null ? null : (
-        <ResourceCardStat
-          icon="Clock"
-          accessibleLabel={`Updated ${updatedRelativeTime}`}
-        >
-          {updatedRelativeTime}
-        </ResourceCardStat>
-      )}
-    </>
-  );
-  const footerMeta =
-    originMeta === undefined && !hasStats ? undefined : (
-      <span className="flex min-w-0 items-center gap-1.5">
-        {originMeta}
-        {originMeta !== undefined && hasStats ? (
-          <span aria-hidden className="text-subtle-foreground">
-            ·
-          </span>
-        ) : null}
-        {stats}
+  // Just the number. The download glyph beside it repeated the install
+  // control's own glyph an inch away, which read as two install affordances.
+  const installCount =
+    entry.installs === null ? null : (
+      <span
+        aria-label={`${entry.installs.toLocaleString()} installs`}
+        className="shrink-0 whitespace-nowrap text-2xs text-subtle-foreground"
+      >
+        {formatInstallCount(entry.installs)}
       </span>
     );
-  const headerAction =
+  // Install count sits with the Install control; the footer keeps provenance,
+  // with the source link flush right where the eye lands last.
+  const footerMeta =
+    originMeta === undefined && updatedRelativeTime === null ? undefined : (
+      <span className="flex min-w-0 items-center gap-1.5">
+        {updatedRelativeTime === null ? null : (
+          <ResourceCardStat
+            icon="Clock"
+            accessibleLabel={`Updated ${updatedRelativeTime}`}
+          >
+            {updatedRelativeTime}
+          </ResourceCardStat>
+        )}
+        {originMeta}
+      </span>
+    );
+  const installControl =
     installedPluginId !== null ? (
       <ResourceInstallControl
         accessibleLabel={`Uninstall ${entry.displayName}`}
-        icon="Check"
+        icon="Download"
         pending={uninstall.isPending}
         presentation="icon"
         tooltip={`Installed — uninstall ${entry.displayName}`}
-        className="border-transparent bg-transparent text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] shadow-none hover:border-transparent hover:bg-transparent hover:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))] focus-visible:border-transparent focus-visible:bg-transparent focus-visible:text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]"
+        // Installed is a settled state, not an offer: it sits at the weight of
+        // a disabled control so the eye goes to the cards you can still act on.
+        // The glyph matches the install count beside it so the pair reads level.
+        className="border-transparent bg-transparent text-subtle-foreground shadow-none hover:border-transparent hover:bg-transparent hover:text-muted-foreground focus-visible:border-transparent focus-visible:bg-transparent [&_svg]:size-3.5"
         onAction={() => setConfirmingUninstall(true)}
       />
     ) : (
@@ -839,6 +869,9 @@ export function PluginCatalogCard({
         disabled={!entry.compatible}
         presentation="icon"
         tooltip={`Install ${entry.displayName}`}
+        // A bordered box here competed with the card's own edge; the glyph
+        // alone is enough on a surface this dense, sized to match the count.
+        className="border-transparent bg-transparent shadow-none hover:border-transparent hover:bg-state-hover [&_svg]:size-3.5"
         onAction={() =>
           onInstall({
             entryId: entry.entryId,
@@ -853,6 +886,12 @@ export function PluginCatalogCard({
         }
       />
     );
+  const headerAction = (
+    <span className="flex items-center gap-1.5">
+      {installCount}
+      {installControl}
+    </span>
+  );
 
   return (
     <>

@@ -272,6 +272,49 @@ describe("BrowsePluginsTab", () => {
     expect(document.body.textContent).not.toContain("Other");
   });
 
+  it("returns to the shelves when the sort is cleared", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          return jsonResponse({ results: [MEMORY_ENTRY, GITHUB_ENTRY] });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    await screen.findAllByText(MEMORY_ENTRY.displayName);
+    // Sorting flattens the shelves away.
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Sort plugins" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
+    expect(screen.queryByText("New & notable")).toBeNull();
+
+    // Without this action the reader is stranded in the flat list: no other
+    // control drops the sort. (The menu stays open after a select, so it does
+    // not need reopening here.)
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clear sort" }));
+    // The shelves are back, which is the whole point of the row.
+    expect(await screen.findByText("New & notable")).toBeTruthy();
+  });
+
   it("flattens shelves and repeated menu actions toggle direction without separate controls", async () => {
     const entries = [
       { ...MEMORY_ENTRY, displayName: "Zulu" },
@@ -333,8 +376,12 @@ describe("BrowsePluginsTab", () => {
     // The flat view contains each compatible plugin exactly once, in name order.
     // The incompatible result remains hidden as before.
     expect(cardOrder()).toEqual(["Open Alpha details", "Open Zulu details"]);
+    // Only the applied criterion carries a visible arrow: an arrow on every row
+    // read as several sorts being active at once.
     for (const option of screen.getAllByRole("menuitemradio")) {
-      expect(option.querySelector('[data-icon="ArrowUp"]')).toBeTruthy();
+      const arrow = option.querySelector('[data-icon="ArrowUp"]');
+      const hidden = arrow?.classList.contains("opacity-0") === true;
+      expect(hidden).toBe(option.getAttribute("aria-checked") !== "true");
     }
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
     expect(cardOrder()).toEqual(["Open Zulu details", "Open Alpha details"]);
@@ -468,8 +515,10 @@ describe("BrowsePluginsTab", () => {
       memoryHeading.compareDocumentPosition(codeHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.getByText("· 8")).toBeTruthy();
-    expect(screen.getByText("· 5")).toBeTruthy();
+    // Shelf headings carry no item count: the number told the reader nothing
+    // they could act on and competed with the section's own name.
+    expect(screen.queryByText("· 8")).toBeNull();
+    expect(screen.queryByText("· 5")).toBeNull();
 
     const memoryShelf = memoryHeading.closest("section");
     if (memoryShelf === null) throw new Error("Memory shelf missing");
@@ -677,7 +726,9 @@ describe("BrowsePluginsTab", () => {
         name: "Filter plugins by category: All categories",
       }),
     );
-    expect(screen.getByText("16 categories")).toBeTruthy();
+    // The taxonomy size is not a filter the user can act on, so the menu shows
+    // the categories themselves rather than a count of them.
+    expect(screen.queryByText(/^\d+ categories$/u)).toBeNull();
     expect(screen.getAllByRole("option")).toHaveLength(17);
 
     const categorySearch = screen.getByRole("combobox", {
@@ -974,12 +1025,12 @@ describe("BrowsePluginsTab", () => {
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Installed — uninstall Memory",
     );
-    // A check, not a download arrow: the corner glyph must read as state
-    // ("installed"), never as an available install action.
-    expect(installed.querySelector('[data-icon="Check"]')).not.toBeNull();
-    expect(installed.querySelector('[data-icon="Download"]')).toBeNull();
-    // The installed state reads as a plain success-tinted glyph: no outline,
-    // no fill, at rest or on hover/focus.
+    // The same glyph install uses, at a resting weight: one symbol for one
+    // idea, so an installed card reads as the settled version of the control
+    // rather than a second, unrelated mark. That it offers no install is
+    // asserted below by the absence of an Install button, not by the glyph.
+    expect(installed.querySelector('[data-icon="Download"]')).not.toBeNull();
+    // No outline and no fill, at rest or on hover/focus.
     // Tokenize: `toContain` also matches inside the hover:/focus-visible:
     // twins, which would leave the resting state unverified.
     const installedClasses = new Set(installed.className.split(/\s+/));
@@ -994,16 +1045,14 @@ describe("BrowsePluginsTab", () => {
     ]) {
       expect(installedClasses.has(variantClass)).toBe(true);
     }
-    // Tokenized for the same reason as the border/bg checks above: the resting
-    // tint IS the feature here, and `toContain` would be satisfied by the
-    // hover:/focus-visible: twins alone, leaving it unverified.
-    const successTint =
-      "text-[color:color-mix(in_oklab,var(--success)_72%,var(--ink))]";
-    expect(installedClasses.has(successTint)).toBe(true);
-    expect(installedClasses.has(`hover:${successTint}`)).toBe(true);
-    expect(installedClasses.has(`focus-visible:${successTint}`)).toBe(true);
+    // Installed is a settled state, so the marker sits at disabled weight
+    // rather than shouting success at every already-installed card.
+    expect(installedClasses.has("text-subtle-foreground")).toBe(true);
+    expect(installedClasses.has("hover:text-muted-foreground")).toBe(true);
+    expect(
+      [...installedClasses].some((entry) => entry.includes("--success")),
+    ).toBe(false);
     expect(installedClasses.has("text-success-foreground")).toBe(false);
-    expect(installedClasses.has("hover:text-foreground")).toBe(false);
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
     fireEvent.click(installed);
     expect(

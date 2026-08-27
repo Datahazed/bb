@@ -84,6 +84,11 @@ export interface ResourceOption {
   leading?: ReactNode;
   description?: string;
   disabled?: boolean;
+  /**
+   * The option means "no sort", so it has no direction to announce or flip.
+   * Its row carries no arrow and the trigger drops the direction suffix.
+   */
+  omitDirection?: boolean;
 }
 
 function ResourceOptionContent({
@@ -490,6 +495,7 @@ export function ResourceSortMenu({
   onChange,
   compact = false,
   showDirectionForAllOptions = false,
+  onClear,
   placeholderLabel = "Sort",
 }: {
   value: string | null;
@@ -499,6 +505,11 @@ export function ResourceSortMenu({
   compact?: boolean;
   /** Keep every criterion's direction action visible, not only the selected one. */
   showDirectionForAllOptions?: boolean;
+  /**
+   * Offers a way back to the unsorted view. Rendered as a separated action
+   * rather than another radio, because "no sort" is not a sort criterion.
+   */
+  onClear?: () => void;
   /** Accessible trigger label before this optional sort has been applied. */
   placeholderLabel?: string;
 }) {
@@ -508,7 +519,9 @@ export function ResourceSortMenu({
   const sortStateLabel =
     selectedOption === undefined
       ? placeholderLabel
-      : `Sort: ${selectedOption.label}, ${directionLabel}`;
+      : selectedOption.omitDirection === true
+        ? `Sort: ${selectedOption.label}`
+        : `Sort: ${selectedOption.label}, ${directionLabel}`;
 
   return (
     <DropdownMenu onOpenChange={setOpen}>
@@ -552,19 +565,41 @@ export function ResourceSortMenu({
               )}
             >
               <ResourceOptionContent option={option} compact={compact} />
+              {/* Direction is secondary to the criterion it qualifies, so it
+                  carries the same muted weight as the "Sort by" label rather
+                  than the row's own text. */}
               <Icon
                 name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
                 aria-hidden
                 className={cn(
-                  "size-4",
-                  selected || showDirectionForAllOptions
-                    ? "opacity-100"
-                    : "opacity-0",
+                  "size-4 text-subtle-foreground",
+                  option.omitDirection === true
+                    ? "hidden"
+                    : selected || showDirectionForAllOptions
+                      ? "opacity-100"
+                      : "opacity-0",
                 )}
               />
             </DropdownMenuItem>
           );
         })}
+        {onClear === undefined || value === null ? null : (
+          <>
+            <DropdownMenuSeparator className={cn(compact && "md:my-0.5")} />
+            <DropdownMenuItem
+              className={cn(
+                "text-muted-foreground",
+                compact && "md:gap-2 md:px-1.5 md:py-1",
+              )}
+              onSelect={(event) => {
+                event.preventDefault();
+                onClear();
+              }}
+            >
+              Clear sort
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, realpath, rm, stat } from "node:fs/promises";
+import { extname, isAbsolute, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   deletePluginMarketplace,
@@ -76,6 +76,7 @@ import {
   pluginCatalogCategory,
   PLUGIN_CATALOG_CATEGORIES,
   REVIEWED_COMMUNITY_ENTRY_CATEGORIES,
+  REVIEWED_COMMUNITY_ENTRY_DATES,
 } from "./plugin-category-registry.js";
 import {
   marketplaceSourceColumns,
@@ -96,7 +97,27 @@ const MARKETPLACE_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1_000;
 /** branding.icon paths are validated as SVG, so bundled icons are only ever this. */
 const BUNDLED_ICON_CONTENT_TYPE = "image/svg+xml";
 
+/**
+ * Screenshot formats a bundled plugin may declare. The declared extension
+ * picks the served content type outright, so BB never sniffs bytes it is
+ * about to hand a browser, and an SVG — the one image format that can carry
+ * script — is not serveable here at all.
+ */
+const BUNDLED_SCREENSHOT_CONTENT_TYPES = new Map<string, string>([
+  [".png", "image/png"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".webp", "image/webp"],
+]);
+
 interface PluginCatalogIcon {
+  bytes: Buffer;
+  contentType: string;
+  hash: string;
+}
+
+/** One served screenshot, shaped and cache-keyed exactly like an icon. */
+interface PluginCatalogScreenshot {
   bytes: Buffer;
   contentType: string;
   hash: string;
@@ -176,6 +197,18 @@ export interface PluginCatalogService {
     marketplace: string,
     entryId: string,
   ): Promise<PluginCatalogIcon | undefined>;
+  /**
+   * Bytes behind GET /plugin-catalog/screenshots/:marketplace/:entryId/:index:
+   * the screenshot a bundled entry declares at that position, read from its
+   * plugin directory. A marketplace listing publishes absolute screenshot
+   * URLs the app loads from the publisher, so only bundled entries resolve
+   * here.
+   */
+  screenshot(
+    marketplace: string,
+    entryId: string,
+    index: number,
+  ): Promise<PluginCatalogScreenshot | undefined>;
   listMarketplaces(): PluginMarketplace[];
   /** Validate, store, and refresh a marketplace. Installs nothing. */
   addMarketplace(source: string): Promise<PluginMarketplace>;
@@ -438,6 +471,128 @@ export function createPluginCatalogService(deps: {
     }
   }
 
+  /**
+   * Where a screenshot a bundled registration declares actually lives, or null
+   * when it must not be served. The declarations are BB's own code, but they
+   * turn into a filesystem read behind an HTTP route, so containment is
+   * checked rather than assumed: plugin-relative only, a raster image
+   * extension, and a real file still inside the plugin directory once
+   * symlinks are resolved.
+   */
+  async function bundledScreenshotFile(
+    entry: BundledPluginRegistration,
+    declared: string,
+  ): Promise<{
+    path: string;
+    contentType: string;
+    size: number;
+    mtimeMs: number;
+  } | null> {
+    const refuse = (reason: string): null => {
+      deps.warn?.(
+        `bundled plugin ${entry.name} screenshot ${JSON.stringify(declared)} ${reason}`,
+      );
+      return null;
+    };
+    const contentType = BUNDLED_SCREENSHOT_CONTENT_TYPES.get(
+      extname(declared).toLowerCase(),
+    );
+    if (contentType === undefined) {
+      return refuse("is not a .png, .jpg, .jpeg, or .webp file");
+    }
+    if (isAbsolute(declared)) return refuse("must be plugin-relative");
+    const path = resolve(entry.rootDir, declared);
+    if (!path.startsWith(entry.rootDir + "/")) {
+      return refuse("escapes the plugin directory");
+    }
+    try {
+      const stats = await stat(path);
+      if (!stats.isFile()) return refuse("is not a file");
+      const [realRoot, realPath] = await Promise.all([
+        realpath(entry.rootDir),
+        realpath(path),
+      ]);
+      if (!realPath.startsWith(realRoot + "/")) {
+        return refuse("escapes the plugin directory through a symlink");
+      }
+      return {
+        path,
+        contentType,
+        size: stats.size,
+        mtimeMs: stats.mtimeMs,
+      };
+    } catch (error: unknown) {
+      return refuse(
+        `is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Content hashes of bundled screenshots, keyed by the exact file revision
+   * they were taken from. A screenshot is orders of magnitude larger than a
+   * compact icon and every search re-derives every bundled entry, so the
+   * bytes are hashed once per on-disk revision instead of per query.
+   */
+  const bundledScreenshotHashes = new Map<string, string>();
+
+  /** A declared screenshot's servable location and cache-busting hash. */
+  async function bundledScreenshotAsset(
+    entry: BundledPluginRegistration,
+    declared: string,
+  ): Promise<{ path: string; contentType: string; hash: string } | null> {
+    const file = await bundledScreenshotFile(entry, declared);
+    if (file === null) return null;
+    const revision = `${file.path}:${file.size}:${file.mtimeMs}`;
+    const cached = bundledScreenshotHashes.get(revision);
+    if (cached !== undefined) {
+      return { path: file.path, contentType: file.contentType, hash: cached };
+    }
+    try {
+      const hash = createHash("sha256")
+        .update(await readFile(file.path))
+        .digest("hex")
+        .slice(0, 16);
+      bundledScreenshotHashes.set(revision, hash);
+      return { path: file.path, contentType: file.contentType, hash };
+    } catch (error: unknown) {
+      deps.warn?.(
+        `bundled plugin ${entry.name} screenshot ${JSON.stringify(declared)} is unreadable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Same-origin URLs for a bundled entry's declared screenshots, in declared
+   * order. A declaration BB refuses to serve drops out of the list; the
+   * remaining URLs keep their declared index, so they still name their own
+   * declaration.
+   */
+  async function bundledScreenshotUrls(
+    entry: BundledPluginRegistration,
+  ): Promise<string[]> {
+    const declared = entry.screenshots ?? [];
+    if (declared.length === 0) return [];
+    const assets = await Promise.all(
+      declared.map((path) => bundledScreenshotAsset(entry, path)),
+    );
+    return assets.flatMap((asset, index) =>
+      asset === null
+        ? []
+        : [
+            entryScreenshotAssetUrl(
+              CURATED_MARKETPLACE_NAME,
+              entry.name,
+              index,
+              asset.hash,
+            ),
+          ],
+    );
+  }
+
   function bundledSearchResult(
     entry: {
       name: string;
@@ -446,6 +601,7 @@ export function createPluginCatalogService(deps: {
     },
     manifest: PluginManifest,
     iconHash: string | null,
+    screenshotUrls: string[],
     discoveryEnabled: boolean,
     installs: number | null,
   ): PluginCatalogSearchResult {
@@ -472,7 +628,10 @@ export function createPluginCatalogService(deps: {
       ...(category === undefined
         ? {}
         : { categoryId: category.id, category: category.displayName }),
-      screenshots: [],
+      // A bundled plugin ships its screenshots in its own plugin directory
+      // instead of publishing them at a marketplace URL, so the detail page
+      // loads them from BB's origin like the bundled icon.
+      screenshots: screenshotUrls,
       newAndNotableRank: null,
       source: builtinPluginSource(entry.name),
       // Bundled registrations use their canonical plugins/<name> directory,
@@ -508,6 +667,38 @@ export function createPluginCatalogService(deps: {
     return `/api/v1/plugin-catalog/icons/${encodeURIComponent(marketplace)}/${encodeURIComponent(entryId)}?h=${contentHash}`;
   }
 
+  /**
+   * Same-origin URL of the bytes `screenshot(marketplace, entryId, index)`
+   * serves. The index is the entry's own declaration order, so the URL stays
+   * valid for exactly the declaration it was built from.
+   */
+  function entryScreenshotAssetUrl(
+    marketplace: string,
+    entryId: string,
+    index: number,
+    contentHash: string,
+  ): string {
+    return `/api/v1/plugin-catalog/screenshots/${encodeURIComponent(marketplace)}/${encodeURIComponent(entryId)}/${index}?h=${contentHash}`;
+  }
+
+  /**
+   * Reading the paint out of an SVG is cheap, but `search()` re-derives every
+   * entry per query, so the answer is memoized on the content hash the cached
+   * bytes already carry.
+   */
+  const iconTintedByHash = new Map<string, boolean>();
+  function cachedIconTinted(icon: {
+    contentHash: string;
+    contentType: string;
+    bytes: Uint8Array;
+  }): boolean {
+    const cached = iconTintedByHash.get(icon.contentHash);
+    if (cached !== undefined) return cached;
+    const tinted = entryIconTinted(icon.contentType, icon.bytes);
+    iconTintedByHash.set(icon.contentHash, tinted);
+    return tinted;
+  }
+
   /** The cached icon's same-origin URL and how the app paints it. */
   function entryIconAsset(
     marketplace: string,
@@ -518,7 +709,7 @@ export function createPluginCatalogService(deps: {
       ? { iconUrl: null, iconTinted: false }
       : {
           iconUrl: entryIconAssetUrl(marketplace, entryId, icon.contentHash),
-          iconTinted: entryIconTinted(icon.contentType),
+          iconTinted: cachedIconTinted(icon),
         };
   }
 
@@ -642,7 +833,12 @@ export function createPluginCatalogService(deps: {
       newAndNotable: [],
       plugins: catalog.plugins.flatMap((entry) => {
         const category = REVIEWED_COMMUNITY_ENTRY_CATEGORIES[entry.id];
-        return category === undefined ? [] : [{ ...entry, category }];
+        if (category === undefined) return [];
+        // v1 carries no dates, so the sorts that read them have nothing to
+        // order by until a real v2 manifest ships. These come from the
+        // registry's own git history rather than being invented here.
+        const dates = REVIEWED_COMMUNITY_ENTRY_DATES[entry.id];
+        return [{ ...entry, category, ...(dates ?? {}) }];
       }),
     };
   }
@@ -1246,6 +1442,31 @@ export function createPluginCatalogService(deps: {
           };
     },
 
+    async screenshot(marketplace, entryId, index) {
+      // Only bundled entries resolve here: a marketplace listing's screenshots
+      // are the publisher's own absolute URLs, never bytes BB holds.
+      if (marketplace !== CURATED_MARKETPLACE_NAME) return undefined;
+      const bundled = officialPlugins.find((entry) => entry.name === entryId);
+      const declared = bundled?.screenshots?.[index];
+      if (bundled === undefined || declared === undefined) return undefined;
+      const asset = await bundledScreenshotAsset(bundled, declared);
+      if (asset === null) return undefined;
+      try {
+        return {
+          bytes: await readFile(asset.path),
+          contentType: asset.contentType,
+          hash: asset.hash,
+        };
+      } catch (error: unknown) {
+        deps.warn?.(
+          `bundled plugin ${bundled.name} screenshot ${JSON.stringify(declared)} is unreadable: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        return undefined;
+      }
+    },
+
     listMarketplaces() {
       return orderedMarketplaces().map(marketplaceView);
     },
@@ -1348,7 +1569,10 @@ export function createPluginCatalogService(deps: {
         officialPlugins.map(async (entry) => {
           const manifest = await entryManifest(entry);
           if (manifest === null) return null;
-          const icon = await bundledIcon(manifest);
+          const [icon, screenshotUrls] = await Promise.all([
+            bundledIcon(manifest),
+            bundledScreenshotUrls(entry),
+          ]);
           return {
             pluginId: entry.pluginId,
             tags: [] as string[],
@@ -1357,6 +1581,7 @@ export function createPluginCatalogService(deps: {
               entry,
               manifest,
               icon?.hash ?? null,
+              screenshotUrls,
               officialDiscoveryEnabled,
               curatedInstalls.get(entry.pluginId) ?? null,
             ),

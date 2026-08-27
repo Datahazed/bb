@@ -112,6 +112,8 @@ async function copyBuiltinPlugin(args: {
   bbVersion: string;
   build: boolean;
   name: string;
+  /** `BundledPluginDefinition.screenshots`, plugin-relative. */
+  screenshots: readonly string[];
   sourceRoot: string;
   targetRoot: string;
 }): Promise<void> {
@@ -168,11 +170,16 @@ async function copyBuiltinPlugin(args: {
   const declaredIcons = Object.values(
     packageJson.bb.branding.experimental_icons ?? {},
   );
+  // Store screenshots are declared in BB's own bundled registry rather than
+  // the manifest, so third-party plugins never inherit the field — but they
+  // ship on the same terms, because the catalog reads them out of the
+  // packaged plugin directory at runtime.
   for (const asset of [
     compactIcon,
     logo?.light,
     logo?.dark,
     ...declaredIcons,
+    ...args.screenshots,
   ]) {
     if (asset === undefined) continue;
     const sourcePath = path.resolve(args.sourceRoot, asset);
@@ -194,7 +201,7 @@ async function copyBuiltinPlugin(args: {
 export async function copyBuiltinPlugins(args: {
   bbVersion: string;
   build?: boolean;
-  plugins?: readonly Pick<BundledPluginDefinition, "name">[];
+  plugins?: readonly Pick<BundledPluginDefinition, "name" | "screenshots">[];
   sourceModuleDir?: string;
   targetRoot?: string;
 }): Promise<void> {
@@ -214,6 +221,7 @@ export async function copyBuiltinPlugins(args: {
       bbVersion: args.bbVersion,
       build,
       name: plugin.name,
+      screenshots: plugin.screenshots ?? [],
       sourceRoot: resolveBuiltinPluginRootPathForModuleDir({
         moduleDir: resolvedSourceModuleDir,
         name: plugin.name,

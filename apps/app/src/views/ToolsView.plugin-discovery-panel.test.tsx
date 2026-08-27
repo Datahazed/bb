@@ -140,10 +140,11 @@ describe("plugin discovery detail panel", () => {
       expect(element).not.toBeNull();
       return element as HTMLElement;
     });
-    const flyout = document.querySelector<HTMLElement>(
-      '[data-persistent-drawer-content][data-state="closed"]',
-    );
-    expect(flyout?.style.transform).toBe("translate3d(100%, 0, 0)");
+    // The detail is the page's docked right panel, so nothing is mounted for
+    // it until a plugin is opened — there is no offscreen overlay parked here.
+    expect(
+      document.querySelector("[data-persistent-drawer-content]"),
+    ).toBeNull();
     browseViewport.scrollTop = 240;
     const githubOpen = await screen.findByRole("button", {
       name: "Open GitHub details",
@@ -152,8 +153,6 @@ describe("plugin discovery detail panel", () => {
     fireEvent.click(githubOpen);
 
     expect(await screen.findByRole("heading", { name: "GitHub" })).toBeTruthy();
-    expect(screen.getByRole("dialog", { name: "Plugin details" })).toBeTruthy();
-    expect(flyout?.style.transform).toBe("translate3d(0, 0, 0)");
     const closeFlyout = screen.getByRole("button", {
       name: /Close plugin details/u,
     });

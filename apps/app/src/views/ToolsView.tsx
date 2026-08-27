@@ -29,10 +29,7 @@ import {
   ResourceListState,
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
-import {
-  PersistentResponsiveDrawerShell,
-  useResponsiveDrawerRealization,
-} from "@bb/shared-ui/responsive-overlay";
+import {} from "@bb/shared-ui/responsive-overlay";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import { PluginAuthorPage } from "@/components/plugin/management/PluginAuthorPage";
@@ -76,6 +73,7 @@ import {
 } from "@/components/tools/tools-navigation";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "@/components/tools/SkillsLibrary";
+import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/secondaryPanelTab";
 
@@ -591,8 +589,6 @@ export function ToolsView({
     enabled: activeSection === "plugins",
   });
   const listQuery = usePluginList({ enabled: activeSection === "plugins" });
-  const { isContentRealized: isFlyoutContentRealized } =
-    useResponsiveDrawerRealization({ open: pluginId !== undefined });
 
   useEffect(() => {
     if (pluginId === undefined) return;
@@ -762,54 +758,66 @@ export function ToolsView({
       </Suspense>
     </div>
   );
-  const flyout = (
-    <PersistentResponsiveDrawerShell
-      open={pluginId !== undefined}
-      onOpenChange={(open) => {
-        if (!open) closePanel();
-      }}
-      placement="right"
-      srLabel="Plugin details"
-    >
-      {isFlyoutContentRealized || retainedPluginDetailId !== undefined ? (
-        <ThreadSecondaryPanel
-          activeTab={activePanelTab}
-          canUseGitUi={false}
-          metadataContent={null}
-          tabs={panelTabs}
-          fixedTabs={[]}
-          onTabReorder={reorderPluginTabs}
-          isOpen={pluginId !== undefined}
-          showConversationCollapseControl={false}
-          showNewTabButton={false}
-          onPanelFocus={() => {}}
-          onCollapse={closePanel}
-          onClose={closePanel}
-          hidePanelIcon="X"
-          hidePanelLabel="Close plugin details"
-          onOpenNewTab={() => {}}
-          isConversationCollapsed={false}
-          onToggleConversationCollapse={() => {}}
-          renderAsDrawer
-        />
-      ) : (
-        <div
-          aria-hidden="true"
-          className="flex min-h-0 flex-1 flex-col gap-3 p-4"
-          data-responsive-drawer-placeholder=""
-        >
-          <Skeleton className="h-8 w-40 rounded-md" />
-          <Skeleton className="h-36 w-full rounded-md" />
-          <Skeleton className="h-24 w-full rounded-md" />
-        </div>
-      )}
-    </PersistentResponsiveDrawerShell>
+  // The detail opens as the page's right panel — resizable, docked, and a
+  // drawer on compact widths — rather than a floating overlay: it belongs to
+  // Extensions, and the reader keeps the catalog beside it.
+  const renderPanel = useCallback(
+    ({
+      presentation,
+      onToggleMainCollapse,
+      resizablePanelId,
+    }: {
+      presentation: "inline" | "drawer";
+      onToggleMainCollapse: () => void;
+      resizablePanelId?: string;
+    }) => (
+      <ThreadSecondaryPanel
+        activeTab={activePanelTab}
+        canUseGitUi={false}
+        metadataContent={null}
+        tabs={panelTabs}
+        fixedTabs={[]}
+        onTabReorder={reorderPluginTabs}
+        isOpen={pluginId !== undefined}
+        showConversationCollapseControl={false}
+        showNewTabButton={false}
+        onPanelFocus={() => {}}
+        onCollapse={closePanel}
+        onClose={closePanel}
+        hidePanelIcon="X"
+        hidePanelLabel="Close plugin details"
+        onOpenNewTab={() => {}}
+        isConversationCollapsed={false}
+        onToggleConversationCollapse={onToggleMainCollapse}
+        renderAsDrawer={presentation === "drawer"}
+        resizablePanelId={resizablePanelId}
+      />
+    ),
+    [activePanelTab, closePanel, panelTabs, pluginId, reorderPluginTabs],
   );
 
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
-      {mainContent}
-      {flyout}
+      <SecondaryPanelLayout
+        open={pluginId !== undefined}
+        onToggle={pluginId === undefined ? () => {} : closePanel}
+        onClose={closePanel}
+        panelGroupKey="extensions-plugin-details"
+        resetKey={pluginId ?? panelAuthorId ?? "extensions-plugins"}
+        contentKey={pluginId ?? panelAuthorId ?? "extensions-plugins"}
+        drawerLabel="Plugin details"
+        drawerFallback={
+          <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+            <Skeleton className="h-8 w-40 rounded-md" />
+            <Skeleton className="h-36 w-full rounded-md" />
+            <Skeleton className="h-24 w-full rounded-md" />
+          </div>
+        }
+        mainPanelId="extensions-main-panel"
+        main={mainContent}
+        renderPanel={renderPanel}
+        composerHost={null}
+      />
     </div>
   );
 }

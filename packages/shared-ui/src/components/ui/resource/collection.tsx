@@ -379,6 +379,7 @@ export function ResourceOverviewPage({
 export function ResourceSourceShelf({
   label,
   attribution,
+  description,
   leading,
   browseAction,
   scrollOverlay,
@@ -388,6 +389,12 @@ export function ResourceSourceShelf({
 }: {
   label: ReactNode;
   attribution?: ReactNode;
+  /**
+   * The shelf's one-line explanation. When present the browse action moves
+   * down onto its row, so the action reads as belonging to the section rather
+   * than floating beside the title.
+   */
+  description?: ReactNode;
   leading?: ReactNode;
   browseAction?: ReactNode;
   scrollOverlay?: ReactNode;
@@ -412,12 +419,24 @@ export function ResourceSourceShelf({
             </span>
           ) : null}
         </div>
-        {browseAction ? (
+        {browseAction && description === undefined ? (
           <div className="ml-auto shrink-0 text-xs text-muted-foreground">
             {browseAction}
           </div>
         ) : null}
       </div>
+      {description === undefined ? null : (
+        <div className="flex min-w-0 items-center gap-3 px-[var(--resource-source-shelf-inset)]">
+          <p className="min-w-0 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+          {browseAction ? (
+            <div className="ml-auto shrink-0 text-xs text-muted-foreground">
+              {browseAction}
+            </div>
+          ) : null}
+        </div>
+      )}
       <div
         className={cn(
           contentSurface === "recessed"
@@ -532,7 +551,7 @@ export function ResourceBrowseCard({
       className={cn(
         "group relative grid min-h-28 w-full grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr_auto] gap-2 rounded-lg border border-border bg-card p-3 text-left",
         onOpen &&
-          "transition-[border-color,box-shadow] duration-150 hover:border-foreground/20 hover:shadow-xs",
+          "transition-[border-color,box-shadow,background-color] duration-150 hover:border-foreground/30 hover:bg-[color-mix(in_oklab,var(--ink)_2.5%,transparent)] hover:shadow-sm",
         className,
       )}
     >
@@ -578,12 +597,12 @@ export function ResourceBrowseCard({
         </span>
       ) : null}
       {byline ? (
-        <span className="pointer-events-none relative col-start-1 row-start-3 flex min-h-4 min-w-0 items-center text-left text-xs text-subtle-foreground">
+        <span className="pointer-events-none relative col-start-1 row-start-3 mt-1.5 flex min-h-4 min-w-0 items-center text-left text-xs text-subtle-foreground">
           <span className="block min-w-0 truncate">{byline}</span>
         </span>
       ) : null}
       {footerMeta ? (
-        <span className="pointer-events-none relative col-start-2 row-start-3 flex min-h-4 min-w-0 items-center justify-end text-right">
+        <span className="pointer-events-none relative col-start-2 row-start-3 mt-1.5 flex min-h-4 min-w-0 items-center justify-end text-right">
           {footerMeta}
         </span>
       ) : null}

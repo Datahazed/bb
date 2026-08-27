@@ -67,6 +67,43 @@ export function registerPluginCatalogRoutes(
     });
   });
 
+  // Detail-page screenshots for a bundled entry, served the same way its icon
+  // is: the bytes ship inside the plugin's own directory, addressed by the
+  // entry's declaration index, so the store never asks the browser for an
+  // off-origin image. `?h=<content hash>` gets immutable caching; anything
+  // else is no-store.
+  app.get(
+    "/plugin-catalog/screenshots/:marketplace/:entryId/:index",
+    async (context) => {
+      const index = Number(context.req.param("index"));
+      const screenshot =
+        Number.isInteger(index) && index >= 0
+          ? await catalog.screenshot(
+              context.req.param("marketplace"),
+              context.req.param("entryId"),
+              index,
+            )
+          : undefined;
+      if (screenshot === undefined) {
+        return context.json(
+          { ok: false, error: "unknown catalog screenshot" },
+          404,
+        );
+      }
+      return context.body(new Uint8Array(screenshot.bytes), 200, {
+        "content-type": screenshot.contentType,
+        "cache-control":
+          context.req.query("h") === screenshot.hash
+            ? "public, max-age=31536000, immutable"
+            : "no-store",
+        // Only raster formats are serveable here, so unlike the icon route
+        // there is no inline style to allow: deny everything.
+        "content-security-policy": "default-src 'none'; sandbox",
+        "x-content-type-options": "nosniff",
+      });
+    },
+  );
+
   // What an install would do, resolved before anything runs: the install
   // confirmation renders this, so the user approves the true source rather
   // than the listing's description of it.

@@ -59,7 +59,8 @@ export function PluginCategoryChips({
           overflowWidthsByHiddenCount: overflowMeasureRefs.current.map(
             (element) => element?.offsetWidth ?? 0,
           ),
-          gap: 8,
+          // Must track the row's gap-1.5, or the fit math overcounts.
+          gap: 6,
         }),
       );
     };
@@ -77,8 +78,11 @@ export function PluginCategoryChips({
   if (options.length === 0) return null;
   const visibleOptions = options.slice(0, visibleCount);
   const hiddenOptions = options.slice(visibleCount);
+  // A resting fill so the row reads as a set of controls rather than floating
+  // labels, and a pressed step just above it — the old jump from transparent
+  // straight to state-active landed too dark to sit in a filter row.
   const chipClassName =
-    "h-7 shrink-0 rounded-full px-3 font-normal aria-pressed:bg-state-active aria-pressed:text-foreground";
+    "h-7 shrink-0 rounded-full border-transparent bg-surface-recessed px-3 font-normal hover:bg-state-hover aria-pressed:bg-state-active aria-pressed:text-foreground";
 
   return (
     <div className="relative min-w-0">
@@ -86,7 +90,9 @@ export function PluginCategoryChips({
         ref={containerRef}
         role="radiogroup"
         aria-label={ariaLabel}
-        className="flex min-w-0 items-center gap-2 overflow-hidden"
+        // Packed left at a tight gap rather than justified across the row: spreading
+        // them put ~30px between pills, which read as unrelated controls.
+        className="flex min-w-0 items-center gap-1.5 overflow-hidden"
       >
         <Button
           type="button"
@@ -110,7 +116,7 @@ export function PluginCategoryChips({
             role="radio"
             aria-checked={value === option.id}
             aria-pressed={value === option.id}
-            onClick={() => onChange(option.id)}
+            onClick={() => onChange(value === option.id ? null : option.id)}
           >
             {option.label}
           </Button>
@@ -136,7 +142,9 @@ export function PluginCategoryChips({
               {hiddenOptions.map((option) => (
                 <DropdownMenuItem
                   key={option.id}
-                  onSelect={() => onChange(option.id)}
+                  onSelect={() =>
+                    onChange(value === option.id ? null : option.id)
+                  }
                   className="flex items-center justify-between gap-3"
                 >
                   {option.label}
@@ -157,7 +165,7 @@ export function PluginCategoryChips({
 
       <div
         aria-hidden
-        className="pointer-events-none invisible absolute left-0 top-0 flex w-full items-center gap-2 overflow-hidden"
+        className="pointer-events-none invisible absolute left-0 top-0 flex w-full items-center gap-1.5 overflow-hidden"
       >
         <Button
           ref={allMeasureRef}

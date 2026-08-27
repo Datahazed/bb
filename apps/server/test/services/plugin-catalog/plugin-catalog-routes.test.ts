@@ -162,6 +162,46 @@ describe("plugin catalog routes", () => {
     expect(missing.status).toBe(404);
   });
 
+  it("serves a bundled entry's screenshot and refuses unknown ones", async () => {
+    const { app, catalog } = catalogApp();
+    const screenshot = await catalog.screenshot(
+      "bb-community",
+      "plugin-api-docs",
+      0,
+    );
+    expect(screenshot?.contentType).toBe("image/png");
+
+    const hashed = await app.request(
+      `/plugin-catalog/screenshots/bb-community/plugin-api-docs/0?h=${screenshot?.hash}`,
+    );
+    expect(hashed.status).toBe(200);
+    expect(hashed.headers.get("content-type")).toBe("image/png");
+    expect(hashed.headers.get("cache-control")).toContain("immutable");
+    expect(hashed.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(Buffer.from(await hashed.arrayBuffer()).byteLength).toBe(
+      screenshot?.bytes.byteLength,
+    );
+
+    const stale = await app.request(
+      "/plugin-catalog/screenshots/bb-community/plugin-api-docs/0?h=stale",
+    );
+    expect(stale.headers.get("cache-control")).toBe("no-store");
+
+    // An index past the declarations, a non-index, another marketplace, an
+    // unknown entry, and an entry id shaped like a traversal all resolve to
+    // nothing rather than to a file.
+    for (const path of [
+      "/plugin-catalog/screenshots/bb-community/plugin-api-docs/9",
+      "/plugin-catalog/screenshots/bb-community/plugin-api-docs/-1",
+      "/plugin-catalog/screenshots/bb-community/plugin-api-docs/first",
+      "/plugin-catalog/screenshots/acme/plugin-api-docs/0",
+      "/plugin-catalog/screenshots/bb-community/nothing/0",
+      "/plugin-catalog/screenshots/bb-community/..%2F..%2Fetc%2Fpasswd/0",
+    ]) {
+      expect((await app.request(path)).status).toBe(404);
+    }
+  });
+
   describe("marketplace routes", () => {
     const ACME_URL = "https://acme.test/marketplace.json";
 

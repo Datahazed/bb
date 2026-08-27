@@ -32,11 +32,14 @@ export function SectionSidebarIcon({ name }: { name: IconName }) {
 export function SectionSidebarRow({
   active,
   children,
+  className,
   label,
   to,
 }: {
   active: boolean;
   children: ReactNode;
+  /** Extra row classes — used to indent rows under a section's label text. */
+  className?: string;
   label: string;
   to: string;
 }) {
@@ -50,6 +53,7 @@ export function SectionSidebarRow({
         PROJECT_LIST_ACTION_BUTTON_CLASS,
         "w-full",
         active && "bg-sidebar-accent text-sidebar-foreground",
+        className,
       )}
     >
       <Link

@@ -11,17 +11,6 @@ import {
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
-// The post-create examples establish this palette and icon-chip treatment.
-// Category vocabulary and grouping still come exclusively from @bb/domain;
-// the shelf order only chooses which existing accent token paints each group.
-const CATALOG_ACCENT_TOKENS = [
-  "--file-accent",
-  "--success",
-  "--pr-merged",
-  "--warning",
-  "--attention",
-] as const;
-
 /**
  * Shared pieces of the Plugins collection and detail surfaces. Tinted styles derive
  * from the theme anchors per the repo palette rules. These mix a *chromatic*
@@ -155,6 +144,48 @@ export function CatalogEntryIcon({
   );
 }
 
+/**
+ * The accent belonging to the shelf group a category sits in. Bound to the
+ * group's identity in @bb/domain, so reordering groups cannot repaint cards.
+ */
+export function pluginCategoryAccentToken(
+  categoryId: string | undefined,
+): string | undefined {
+  return PLUGIN_CATALOG_SHELF_GROUPS.find((group) =>
+    group.categoryIds.some((candidate) => candidate === categoryId),
+  )?.accentToken;
+}
+
+/**
+ * The card's category, as a tinted pill. The shelf group's accent fills the
+ * pill rather than the text, so the category reads as a tag at a glance while
+ * its label keeps normal reading contrast.
+ */
+export function PluginCategoryLabel({
+  categoryId,
+  label,
+}: {
+  categoryId: string | undefined;
+  label: string;
+}) {
+  const accentToken = pluginCategoryAccentToken(categoryId);
+  return (
+    <span
+      className="shrink-0 truncate rounded px-1.5 py-0.5 text-2xs"
+      style={
+        accentToken === undefined
+          ? { background: neutral(6), color: neutral(55) }
+          : {
+              background: accentTint(accentToken, 16),
+              color: accentInk(accentToken, 70),
+            }
+      }
+    >
+      {label}
+    </span>
+  );
+}
+
 /** The compact, tinted identity chip shared by Browse and related listings. */
 export function CatalogEntryIconChip({
   entry,
@@ -169,11 +200,17 @@ export function CatalogEntryIconChip({
   };
   className?: string;
 }) {
-  const groupIndex = PLUGIN_CATALOG_SHELF_GROUPS.findIndex((group) =>
+  // The accent travels with the shelf group itself, so reordering the groups
+  // in @bb/domain cannot silently repaint the catalog.
+  const accentToken = PLUGIN_CATALOG_SHELF_GROUPS.find((group) =>
     group.categoryIds.some((categoryId) => categoryId === entry.categoryId),
-  );
-  const accentToken =
-    groupIndex < 0 ? undefined : CATALOG_ACCENT_TOKENS[groupIndex];
+  )?.accentToken;
+  // Full-colour artwork carries its own opaque background, which punches a
+  // hole in a tinted chip. Those entries get a neutral chip so they keep the
+  // same footprint as every other icon without fighting the category colour.
+  // Monochrome art and named glyphs adopt the chip's ink, so they keep it.
+  const keepsOwnColors = entry.iconUrl !== null && !entry.iconTinted;
+  const tint = keepsOwnColors ? undefined : accentToken;
   return (
     <span
       className={cn(
@@ -181,16 +218,16 @@ export function CatalogEntryIconChip({
         className,
       )}
       style={
-        accentToken === undefined
+        tint === undefined
           ? {
               background: neutral(5),
               borderColor: neutral(14),
               color: neutral(55),
             }
           : {
-              background: accentTint(accentToken, 14),
-              borderColor: accentTint(accentToken, 40),
-              color: accentInk(accentToken, 62),
+              background: accentTint(tint, 14),
+              borderColor: accentTint(tint, 40),
+              color: accentInk(tint, 62),
             }
       }
     >

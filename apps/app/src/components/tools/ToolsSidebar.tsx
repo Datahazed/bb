@@ -1,34 +1,32 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Button } from "@bb/shared-ui/button";
+import { useLocation } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   SectionSidebar,
-  SectionSidebarIcon,
   SectionSidebarLabel,
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
-import { getPluginsRoutePath } from "@/lib/route-paths";
 import { resolveToolsActivePage, TOOLS_PAGES } from "./tools-navigation";
 
+/**
+ * Extensions has exactly two things in it, so the sidebar says so: one group
+ * per noun, each carrying that noun's icon. The rows below a group are its
+ * three views, and they stay plain text — an icon per row competed with the
+ * group mark and gave the eye four things to read where the group heading
+ * already answers "which of the two is this".
+ */
 const TOOLS_SIDEBAR_GROUPS = [
   {
-    id: "discover",
-    label: "Discover",
-    description: "Find plugins and reusable agent skills.",
-    pageIds: ["plugins-browse", "skills-browse"],
+    id: "plugins",
+    label: "Plugins",
+    icon: "ElectricPlugs",
+    pageIds: ["plugins-browse", "plugins-installed", "plugins-my"],
   },
   {
-    id: "manage",
-    label: "Manage",
-    description: "Review what is installed on this bb.",
-    pageIds: ["plugins-installed", "skills-installed"],
-  },
-  {
-    id: "build",
-    label: "Build",
-    description: "Manage extensions you can publish or maintain.",
-    pageIds: ["plugins-my", "skills-my"],
+    id: "skills",
+    label: "Skills",
+    icon: "Zap",
+    pageIds: ["skills-browse", "skills-installed", "skills-my"],
   },
 ] as const;
 
@@ -68,64 +66,42 @@ export function ToolsSidebar({
       showTopReserve={showTopReserve}
       testIdPrefix="tools"
     >
-      <div className="flex min-h-full flex-col pb-3">
-        <div>
-          {TOOLS_SIDEBAR_GROUPS.map((group, index) => (
-            <section
-              key={group.id}
-              className={index > 0 ? "mt-5" : undefined}
-              aria-labelledby={`tools-sidebar-${group.id}`}
-            >
-              <SectionSidebarLabel>
-                <span id={`tools-sidebar-${group.id}`}>{group.label}</span>
-              </SectionSidebarLabel>
-              <p className="px-2 pb-1 text-2xs leading-relaxed text-subtle-foreground">
-                {group.description}
-              </p>
-              <div className="space-y-0.5">
-                {group.pageIds.map((pageId) => {
-                  const page = TOOLS_PAGES.find(
-                    (candidate) => candidate.id === pageId,
-                  );
-                  if (page === undefined) return null;
-                  return (
-                    <SectionSidebarRow
-                      key={page.id}
-                      active={activePage === page.id}
-                      label={page.label}
-                      to={page.to}
-                    >
-                      <SectionSidebarIcon name={page.icon} />
-                    </SectionSidebarRow>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
-
-        <aside className="mt-auto pt-6">
-          <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/45 p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-sidebar-foreground">
-              <Icon name="Puzzle" className="size-3.5" aria-hidden />
-              Build for bb
+      <div className="pb-3">
+        {TOOLS_SIDEBAR_GROUPS.map((group, index) => (
+          <section
+            key={group.id}
+            className={index > 0 ? "mt-4" : undefined}
+            aria-labelledby={`tools-sidebar-${group.id}`}
+          >
+            <SectionSidebarLabel>
+              <span
+                id={`tools-sidebar-${group.id}`}
+                className="flex items-center gap-1.5"
+              >
+                <Icon name={group.icon} className="size-3.5" aria-hidden />
+                {group.label}
+              </span>
+            </SectionSidebarLabel>
+            <div className="mt-1 space-y-0.5">
+              {group.pageIds.map((pageId) => {
+                const page = TOOLS_PAGES.find(
+                  (candidate) => candidate.id === pageId,
+                );
+                if (page === undefined) return null;
+                return (
+                  <SectionSidebarRow
+                    key={page.id}
+                    active={activePage === page.id}
+                    label={page.label}
+                    to={page.to}
+                  >
+                    {null}
+                  </SectionSidebarRow>
+                );
+              })}
             </div>
-            <p className="mt-1.5 text-2xs leading-relaxed text-subtle-foreground">
-              Describe an extension and start it from a prompt.
-            </p>
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-              className="mt-3 h-7 w-full justify-start gap-2 bg-background px-2 text-xs font-normal"
-            >
-              <Link to={`${getPluginsRoutePath()}?view=create`}>
-                <Icon name="MessageSquarePlus" className="size-3.5" />
-                Create a plugin
-              </Link>
-            </Button>
-          </div>
-        </aside>
+          </section>
+        ))}
       </div>
     </SectionSidebar>
   );

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 
 export interface PluginBrowseCategoryOption {
   id: string;
@@ -13,6 +14,16 @@ export interface PluginBrowseCategoryOption {
 
 const ENGAGED_CONTROL_CLASS =
   "bg-state-active text-foreground hover:bg-state-active";
+
+/**
+ * How long the category list keeps its thumb visible after the last scroll
+ * event. `.transient-scrollbar` (app.css) hides the thumb at rest and paints
+ * it only while `data-scrollbar-scrolling` is set, so the menu needs the same
+ * idle window the thread body uses (`SCROLLBAR_IDLE_DELAY_MS` in
+ * bottom-anchored-scroll-body.tsx) or the two surfaces settle at different
+ * speeds.
+ */
+const SCROLLBAR_IDLE_DELAY_MS = 600;
 
 /** Searchable, single-dimension category picker for the full taxonomy. */
 export function PluginBrowseCategoryFilter({
@@ -41,6 +52,32 @@ export function PluginBrowseCategoryFilter({
   );
   const showAllOption =
     normalizedSearch === "" || "all categories".includes(normalizedSearch);
+  const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
+  // The fade is an overflow affordance, not decoration: it may only exist
+  // while there is more list below the viewport. `measureOverflow` covers the
+  // just-opened menu, where the sentinels have not intersected yet.
+  //
+  // Binding is gated on the scroll node rather than on `open`: Radix mounts
+  // this popover's body in a later commit than the state change that opened
+  // it, so an `open`-keyed effect would run against a ref that is still null
+  // and never rebind.
+  const {
+    scrollRef: listRef,
+    topSentinelRef,
+    bottomSentinelRef,
+    belowOverflow,
+  } = useScrollOverflowState<HTMLDivElement>({
+    enabled: listElement !== null,
+    measureOverflow: true,
+  });
+  const attachList = useCallback(
+    (node: HTMLDivElement | null) => {
+      listRef.current = node;
+      setListElement(node);
+    },
+    [listRef],
+  );
+  const scrollbarIdleRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -50,10 +87,47 @@ export function PluginBrowseCategoryFilter({
     return () => cancelAnimationFrame(animationFrame);
   }, [open]);
 
+  useEffect(
+    () => () => {
+      if (scrollbarIdleRef.current !== null) {
+        window.clearTimeout(scrollbarIdleRef.current);
+      }
+    },
+    [],
+  );
+
+  const revealScrollbarWhileScrolling = (
+    event: React.UIEvent<HTMLDivElement>,
+  ) => {
+    const list = event.currentTarget;
+    if (list.dataset.scrollbarScrolling !== "true") {
+      list.dataset.scrollbarScrolling = "true";
+    }
+    if (scrollbarIdleRef.current !== null) {
+      window.clearTimeout(scrollbarIdleRef.current);
+    }
+    scrollbarIdleRef.current = window.setTimeout(() => {
+      scrollbarIdleRef.current = null;
+      list.removeAttribute("data-scrollbar-scrolling");
+    }, SCROLLBAR_IDLE_DELAY_MS);
+  };
+
   const select = (nextValue: string | null) => {
     onChange(nextValue);
     setOpen(false);
     setSearch("");
+  };
+
+  /**
+   * Choosing the already-active category clears the filter.
+   *
+   * This menu and the category pill row are two views of one single-select
+   * filter, so "pick what is already picked" has to mean the same thing in
+   * both — otherwise the menu is the one place in Browse where a selection is
+   * a dead end and the only way back to everything is the separate All row.
+   */
+  const toggle = (optionId: string) => {
+    select(optionId === value ? null : optionId);
   };
 
   return (
@@ -98,10 +172,13 @@ export function PluginBrowseCategoryFilter({
           <Icon name="ChevronDown" className="size-3 shrink-0" aria-hidden />
         </Button>
       </PopoverTrigger>
+      {/* `md:p-0.5` is the toolbar's compact menu padding (ResourceSortMenu,
+          ResourceMultiSelectMenu); the roomier `p-1.5` stays for the mobile
+          drawer this popover becomes on a compact viewport. */}
       <PopoverContent
         align="end"
         mobileTitle="Filter plugins by category"
-        className="w-72 p-1.5"
+        className="w-72 p-1.5 md:p-0.5"
       >
         <div className="relative">
           <Icon
@@ -147,81 +224,91 @@ export function PluginBrowseCategoryFilter({
             }}
           />
         </div>
-        <p className="px-1.5 pb-1 pt-1.5 text-2xs text-subtle-foreground">
-          {options.length} categories
-        </p>
-        <div
-          id="plugin-category-options"
-          role="listbox"
-          aria-label="Plugin categories"
-          className="max-h-64 overflow-y-auto"
-        >
-          {!showAllOption && filteredOptions.length === 0 ? (
-            <p
-              className="px-2 py-6 text-center text-xs text-muted-foreground"
-              role="status"
-            >
-              {options.length === 0
-                ? "No categories are available."
-                : "No categories match your search."}
-            </p>
-          ) : (
-            <>
-              {showAllOption ? (
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={value === null}
-                  onClick={() => select(null)}
-                  className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left text-xs outline-none hover:bg-state-hover focus-visible:bg-state-hover focus-visible:text-foreground"
-                  onKeyDown={focusCategoryOption}
-                >
-                  <span className="min-w-0 flex-1 truncate">
-                    All categories
-                  </span>
-                  <span className="text-2xs tabular-nums text-subtle-foreground">
-                    {totalCount.toLocaleString()}
-                  </span>
-                  <Icon
-                    name="Check"
-                    className={cn(
-                      "size-3.5",
-                      value === null ? "opacity-100" : "opacity-0",
-                    )}
-                    aria-hidden
-                  />
-                </button>
-              ) : null}
-              {filteredOptions.map((option) => {
-                return (
+        <div className="relative isolate mt-1">
+          <div
+            id="plugin-category-options"
+            ref={attachList}
+            role="listbox"
+            aria-label="Plugin categories"
+            className="transient-scrollbar max-h-64 overflow-y-auto"
+            onScroll={revealScrollbarWhileScrolling}
+          >
+            <div ref={topSentinelRef} aria-hidden className="h-px w-full" />
+            {!showAllOption && filteredOptions.length === 0 ? (
+              <p
+                className="px-2 py-6 text-center text-xs text-muted-foreground"
+                role="status"
+              >
+                {options.length === 0
+                  ? "No categories are available."
+                  : "No categories match your search."}
+              </p>
+            ) : (
+              <>
+                {showAllOption ? (
                   <button
-                    key={option.id}
                     type="button"
                     role="option"
-                    aria-selected={option.id === value}
-                    onClick={() => select(option.id)}
-                    className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left text-xs outline-none hover:bg-state-hover focus-visible:bg-state-hover focus-visible:text-foreground"
+                    aria-selected={value === null}
+                    onClick={() => select(null)}
+                    className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left text-xs outline-none hover:bg-state-hover focus-visible:bg-state-hover focus-visible:text-foreground md:gap-1.5"
                     onKeyDown={focusCategoryOption}
                   >
                     <span className="min-w-0 flex-1 truncate">
-                      {option.label}
+                      All categories
                     </span>
                     <span className="text-2xs tabular-nums text-subtle-foreground">
-                      {option.count.toLocaleString()}
+                      {totalCount.toLocaleString()}
                     </span>
                     <Icon
                       name="Check"
                       className={cn(
                         "size-3.5",
-                        option.id === value ? "opacity-100" : "opacity-0",
+                        value === null ? "opacity-100" : "opacity-0",
                       )}
                       aria-hidden
                     />
                   </button>
-                );
-              })}
-            </>
-          )}
+                ) : null}
+                {filteredOptions.map((option) => {
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="option"
+                      aria-selected={option.id === value}
+                      onClick={() => toggle(option.id)}
+                      className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left text-xs outline-none hover:bg-state-hover focus-visible:bg-state-hover focus-visible:text-foreground md:gap-1.5"
+                      onKeyDown={focusCategoryOption}
+                    >
+                      <span className="min-w-0 flex-1 truncate">
+                        {option.label}
+                      </span>
+                      <span className="text-2xs tabular-nums text-subtle-foreground">
+                        {option.count.toLocaleString()}
+                      </span>
+                      <Icon
+                        name="Check"
+                        className={cn(
+                          "size-3.5",
+                          option.id === value ? "opacity-100" : "opacity-0",
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                  );
+                })}
+              </>
+            )}
+            <div ref={bottomSentinelRef} aria-hidden className="h-px w-full" />
+          </div>
+          {belowOverflow ? (
+            <div
+              aria-hidden
+              data-category-list-fade="below"
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-gradient-to-t from-popover/90 via-popover/60 to-transparent"
+            />
+          ) : null}
         </div>
       </PopoverContent>
     </Popover>

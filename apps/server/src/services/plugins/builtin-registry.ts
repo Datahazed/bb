@@ -17,6 +17,8 @@ export interface BundledPluginDefinition {
   defaultEnabled: boolean;
   /** Stable Browse category identity. */
   category: PluginCatalogCategoryId;
+  /** Detail-page screenshots, repo-relative to the plugin's own directory. */
+  screenshots?: readonly string[];
 }
 
 export interface BundledPluginRegistration extends BundledPluginDefinition {
@@ -45,6 +47,10 @@ const BUILTIN_PLUGIN_DEFINITIONS = [
     pluginId: "automations",
     defaultEnabled: true,
     category: "automation",
+    screenshots: [
+      "screenshots/automations-catalog.png",
+      "screenshots/automations-sidebar.png",
+    ],
   },
   {
     name: "connect",
@@ -123,6 +129,11 @@ const BUILTIN_PLUGIN_DEFINITIONS = [
     pluginId: "plugin-api-docs",
     defaultEnabled: true,
     category: "plugin-development",
+    screenshots: [
+      "screenshots/plugin-guide-map.png",
+      "screenshots/plugin-guide-surfaces.png",
+      "screenshots/plugin-guide-reference.png",
+    ],
   },
   {
     name: "provider-retry",

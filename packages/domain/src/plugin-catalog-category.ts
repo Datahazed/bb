@@ -109,6 +109,7 @@ export const PLUGIN_CATALOG_SHELF_GROUPS = [
     displayName: "Threads & Interface",
     description:
       "Shape bb's navigation, conversations, prompts, and appearance.",
+    accentToken: "--file-accent",
     categoryIds: [
       "themes-and-appearance",
       "thread-lists-and-navigation",
@@ -120,6 +121,7 @@ export const PLUGIN_CATALOG_SHELF_GROUPS = [
     id: "agents-and-workflows",
     displayName: "Agents & Workflows",
     description: "Add providers, context, tools, automation, and task systems.",
+    accentToken: "--success",
     categoryIds: [
       "memory-and-context",
       "agent-tools",
@@ -132,6 +134,7 @@ export const PLUGIN_CATALOG_SHELF_GROUPS = [
     id: "code-and-integrations",
     displayName: "Code & Integrations",
     description: "Work with code, files, reviews, and the bb plugin platform.",
+    accentToken: "--pr-merged",
     categoryIds: [
       "code-and-reviews",
       "files-and-viewers",
@@ -142,6 +145,7 @@ export const PLUGIN_CATALOG_SHELF_GROUPS = [
     id: "insights-and-security",
     displayName: "Insights & Security",
     description: "Track usage and attention while protecting sensitive work.",
+    accentToken: "--warning",
     categoryIds: [
       "token-usage-and-cost",
       "notifications-and-attention",
@@ -152,12 +156,19 @@ export const PLUGIN_CATALOG_SHELF_GROUPS = [
     id: "machines-and-hosts",
     displayName: "Machines & Hosts",
     description: "Operate terminals, remote machines, ports, and storage.",
+    accentToken: "--attention",
     categoryIds: ["machines-and-hosts"],
   },
 ] as const satisfies readonly {
   id: string;
   displayName: string;
   description: string;
+  /**
+   * The shelf's own accent. Bound to the group's identity rather than its
+   * position, so reordering these entries can never silently repaint every
+   * plugin in the catalog.
+   */
+  accentToken: string;
   categoryIds: readonly PluginCatalogCategoryId[];
 }[];
 

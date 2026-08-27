@@ -28,7 +28,6 @@ import {
 } from "../../../src/services/plugins/plugin-service.js";
 import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 import {
-  BUILTIN_PLUGIN_NAMES,
   BUILTIN_PLUGINS,
   OFFICIAL_PLUGINS,
   resolveBuiltinPluginRootPath,
@@ -62,9 +61,9 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
 }> {
   const sourceModuleDir = join(workDir, "source-module");
   // copyBuiltinPlugins packages EVERY declared builtin, so the synthetic
-  // source tree must carry one packaged plugin per BUILTIN_PLUGIN_NAMES
-  // entry — a name added to the registry is covered here automatically.
-  for (const name of BUILTIN_PLUGIN_NAMES) {
+  // source tree must carry one packaged plugin per BUILTIN_PLUGINS entry — a
+  // plugin added to the registry is covered here automatically.
+  for (const { name, screenshots } of BUILTIN_PLUGINS) {
     const sourceRoot = join(sourceModuleDir, "builtin-plugins", name);
     const usesPluginOwnedIcon = name === "automations";
     // Declared icons (`bb.branding.experimental_icons`) are manifest assets
@@ -115,6 +114,12 @@ async function writePackagedBuiltinSource(workDir: string): Promise<{
     if (usesDeclaredIcons) {
       await mkdir(join(sourceRoot, "icons"), { recursive: true });
       await writeFile(join(sourceRoot, "icons", "cursor.svg"), "<svg/>\n");
+    }
+    // Store screenshots come from the registry, not the manifest, so a plugin
+    // that declares them is covered here the moment the registry names them.
+    for (const screenshot of screenshots ?? []) {
+      await mkdir(dirname(join(sourceRoot, screenshot)), { recursive: true });
+      await writeFile(join(sourceRoot, screenshot), "packaged screenshot\n");
     }
     await writeFile(
       join(sourceRoot, "dist", "server.js"),
@@ -1018,6 +1023,18 @@ describe("builtin plugin packaging", () => {
     await expect(
       readFile(join(targetRoot, "provider-acp", "icons", "cursor.svg"), "utf8"),
     ).resolves.toBe("<svg/>\n");
+
+    // Registry-declared store screenshots ship too: the catalog serves them
+    // from the packaged plugin directory, not from a repo checkout.
+    const docs = BUILTIN_PLUGINS.find(
+      (plugin) => plugin.name === "plugin-api-docs",
+    );
+    expect(docs?.screenshots ?? []).not.toHaveLength(0);
+    for (const screenshot of docs?.screenshots ?? []) {
+      await expect(
+        readFile(join(targetRoot, "plugin-api-docs", screenshot), "utf8"),
+      ).resolves.toBe("packaged screenshot\n");
+    }
 
     const connectRoot = join(targetRoot, "connect");
     await expect(stat(join(connectRoot, "package.json"))).resolves.toBeTruthy();

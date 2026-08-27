@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -14,6 +14,7 @@ import {
 } from "@bb/db";
 import { ROOT_PLUGIN_SOURCE_SELECTION } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { REVIEWED_COMMUNITY_ENTRY_DATES } from "../../../src/services/plugin-catalog/plugin-category-registry.js";
 import {
   createPluginCatalogService,
   officialMarketplaceManifestUrls,
@@ -390,6 +391,119 @@ describe("plugin catalog service", () => {
     expect(await catalog.icon("bb-community", withGlyph.name)).toBeUndefined();
   });
 
+  function bundledRegistration(name: string) {
+    const registration = listBundledPluginRegistrations().find(
+      (plugin) => plugin.name === name,
+    );
+    if (registration === undefined) {
+      throw new Error(`expected the ${name} bundled registration`);
+    }
+    return registration;
+  }
+
+  it("serves a bundled entry's declared screenshots from its plugin directory", async () => {
+    const docs = bundledRegistration("plugin-api-docs");
+    const declared = docs.screenshots ?? [];
+    expect(declared).toEqual([
+      "screenshots/plugin-guide-map.png",
+      "screenshots/plugin-guide-surfaces.png",
+      "screenshots/plugin-guide-reference.png",
+    ]);
+    const catalog = service({ bundledPlugins: [docs] });
+
+    const entry = (await catalog.search("")).find(
+      (result) => result.entryId === docs.name,
+    );
+    expect(entry?.screenshots).toHaveLength(declared.length);
+    const first = await catalog.screenshot("bb-community", docs.name, 0);
+    expect(first?.contentType).toBe("image/png");
+    // PNG magic bytes: the served body is the plugin's own file, not a
+    // manifest string that happens to end in .png.
+    expect(first?.bytes.subarray(0, 4).toString("hex")).toBe("89504e47");
+    expect(entry?.screenshots[0]).toBe(
+      `/api/v1/plugin-catalog/screenshots/bb-community/${docs.name}/0?h=${first?.hash}`,
+    );
+    expect(entry?.screenshots[2]).toMatch(
+      new RegExp(
+        `^/api/v1/plugin-catalog/screenshots/bb-community/${docs.name}/2\\?h=[0-9a-f]{16}$`,
+        "u",
+      ),
+    );
+  });
+
+  it("refuses a bundled screenshot that leaves the plugin directory", async () => {
+    const warnings: string[] = [];
+    const docs = bundledRegistration("plugin-api-docs");
+    const catalog = service({
+      bundledPlugins: [
+        {
+          ...docs,
+          screenshots: [
+            "../../etc/passwd.png",
+            "/etc/passwd.png",
+            "../../etc/passwd",
+          ],
+        },
+      ],
+      warn: (message) => warnings.push(message),
+    });
+
+    const entry = (await catalog.search("")).find(
+      (result) => result.entryId === docs.name,
+    );
+    expect(entry?.screenshots).toEqual([]);
+    expect(warnings.splice(0)).toEqual([
+      expect.stringContaining("escapes the plugin directory"),
+      expect.stringContaining("must be plugin-relative"),
+      expect.stringContaining("is not a .png, .jpg, .jpeg, or .webp file"),
+    ]);
+    // The route refuses the same declarations on its own, so a URL that was
+    // never published still cannot be guessed into a read.
+    for (const index of [0, 1, 2]) {
+      expect(
+        await catalog.screenshot("bb-community", docs.name, index),
+      ).toBeUndefined();
+    }
+    expect(warnings).toHaveLength(3);
+  });
+
+  it("refuses a bundled screenshot that escapes through a symlink", async () => {
+    const pluginRoot = await mkdtemp(join(tmpdir(), "bb-screenshot-plugin-"));
+    const outside = await mkdtemp(join(tmpdir(), "bb-screenshot-outside-"));
+    const warnings: string[] = [];
+    try {
+      const secret = join(outside, "secret.png");
+      await writeFile(secret, Buffer.from("89504e470d0a1a0a", "hex"));
+      await symlink(secret, join(pluginRoot, "escape.png"));
+      const catalog = service({
+        bundledPlugins: [
+          {
+            name: "escaper",
+            pluginId: "escaper",
+            autoInstall: false,
+            defaultEnabled: true,
+            category: "code-and-reviews",
+            rootDir: pluginRoot,
+            screenshots: ["escape.png"],
+          },
+        ],
+        warn: (message) => warnings.push(message),
+      });
+
+      expect(
+        await catalog.screenshot("bb-community", "escaper", 0),
+      ).toBeUndefined();
+      expect(warnings).toEqual([
+        expect.stringContaining(
+          "escapes the plugin directory through a symlink",
+        ),
+      ]);
+    } finally {
+      await rm(pluginRoot, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
   it("links every bundled BB Team entry to its canonical source directory", async () => {
     const registrations = listBundledPluginRegistrations();
     const catalog = service({ bundledPlugins: registrations });
@@ -587,6 +701,10 @@ describe("plugin catalog service", () => {
           {
             ...liveAdvisor,
             category: "agent-tools",
+            // v1 carries no dates, so the synthesis joins the reviewed ones on
+            // alongside the category — without them "Recently added" has
+            // nothing to order by.
+            ...REVIEWED_COMMUNITY_ENTRY_DATES.advisor,
           },
           {
             ...remoteEntryV1({
@@ -595,9 +713,17 @@ describe("plugin catalog service", () => {
               icon: "Network",
             }),
             category: "machines-and-hosts",
+            ...REVIEWED_COMMUNITY_ENTRY_DATES.ports,
           },
         ],
       });
+      // Every reviewed entry carries a real published date, not a placeholder.
+      for (const entry of [
+        REVIEWED_COMMUNITY_ENTRY_DATES.advisor,
+        REVIEWED_COMMUNITY_ENTRY_DATES.ports,
+      ]) {
+        expect(Number.isNaN(Date.parse(entry?.publishedAt ?? ""))).toBe(false);
+      }
     });
 
     it("does not hide v2 failures behind the v1 fallback", async () => {
