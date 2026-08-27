@@ -104,8 +104,8 @@ export function CommandPalette({
         : [
             {
               id: "internal:thread.split",
-              bucket: "Threads",
-              group: "Threads",
+              bucket: "Actions",
+              group: "Window and layout",
               title: "Split",
               shortcut: null,
               run: onSplit,

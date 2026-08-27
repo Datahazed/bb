@@ -691,6 +691,11 @@ describe("CommandPalette", () => {
     openPalette();
     await waitFor(() => expect(searchField()).toBeTruthy());
 
+    const splitRow = within(bucketGroup("Actions"))
+      .getAllByRole("option")
+      .find((row) => row.textContent?.includes("Split"));
+    expect(splitRow?.textContent).toContain("Window and layout");
+
     fireEvent.change(searchField(), { target: { value: "split" } });
     await waitFor(() =>
       expect(selectedOption()?.textContent).toContain("Split"),

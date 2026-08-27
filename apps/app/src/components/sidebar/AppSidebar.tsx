@@ -20,7 +20,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useCloseMobileSidebar,
-  useSidebar,
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
@@ -166,7 +165,6 @@ export function AppSidebar({
     label: "New thread",
   });
   const closeOnMobile = useCloseMobileSidebar();
-  const { isCompactViewport } = useSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
     ReadonlyMap<string, SidebarThreadShortcutPresentation>

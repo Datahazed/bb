@@ -12,7 +12,6 @@ import {
 import { useStore } from "jotai";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import type { ThreadSearchHighlightRange } from "@bb/server-contract";
 import { useNewThreadDraftSlots } from "@/hooks/useNewThreadDraftSlots";
@@ -252,11 +251,6 @@ export function ThreadSearchPaletteMode({
       placeholder={presentation.placeholder}
       value={query}
     >
-      {result.isRecent && result.rows.length === 0 ? (
-        <div className={cn(CHROME_SECTION_LABEL_CLASS, "px-2 pb-1 pt-1")}>
-          Recent
-        </div>
-      ) : null}
       {emptyMessage === null ? (
         result.rows.map((row, index) => (
           <ThreadSearchPaletteRow
