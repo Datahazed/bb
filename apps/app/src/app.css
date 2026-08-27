@@ -410,6 +410,55 @@
  * The mobile path still owns its React state so software-keyboard expansion
  * remains synchronized with visualViewport changes.
  */
+/*
+ * Browse shelf preview: complete rows at every width.
+ *
+ * Columns and the visible-card cutoff now key off the same container. They
+ * used to disagree — the grid gained a third column from its own width at
+ * about 1060px, while the fifth and sixth cards waited on a 1280px viewport
+ * breakpoint, so for that whole band a shelf drew three cards and then one
+ * card alone on a second row. A viewport breakpoint could never have matched
+ * the column count anyway: opening the detail panel changes the grid's width
+ * without changing the viewport's.
+ *
+ * One column takes four cards, two columns take four, three take six. Every
+ * count divides its column count, and both multi-column counts are even.
+ */
+[data-plugin-shelf] {
+  container: plugin-shelf / inline-size;
+}
+
+[data-plugin-shelf-grid] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container plugin-shelf (min-width: 32.5rem) {
+  [data-plugin-shelf-grid] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container plugin-shelf (min-width: 49rem) {
+  [data-plugin-shelf-grid] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/*
+ * Stated as a max-width so the cards that stay simply keep their own
+ * display. Toggling one back on would have to name the card's display mode
+ * here, and `revert` resolves to the user-agent value, not the card's.
+ *
+ * Unlayered, like the composer container rules below: hiding a card has to
+ * beat the `grid` display utility on the card itself, and a rule in
+ * @layer components loses to the utilities layer no matter its specificity.
+ */
+@container plugin-shelf (max-width: 48.999rem) {
+  [data-plugin-shelf-grid] > :nth-child(n + 5) {
+    display: none;
+  }
+}
+
 @container promptbox-shell (max-width: 30rem) {
   [data-follow-up-composer] {
     --follow-up-composer-container-compact: true;

@@ -595,35 +595,50 @@ export function BrowsePluginsTab({
 
 export function PluginCatalogGrid({
   entries,
-  previewLimitBelowXl,
+  preview = false,
   showCategory = false,
   onInstall,
   onOpenPlugin,
 }: {
   entries: readonly PluginCatalogSearchEntry[];
-  /** Keep compact panes scannable; View all still exposes the full shelf. */
-  previewLimitBelowXl?: number;
+  /**
+   * Render as a shelf preview: complete rows only, dropping the tail rather
+   * than leaving a card stranded. View all still exposes the full shelf.
+   *
+   * The column count and the cutoff both come from the shelf's own width (see
+   * `[data-plugin-shelf]` in app.css) rather than from here, because the grid
+   * is sized by the catalog pane and the pane is not the viewport.
+   */
+  preview?: boolean;
   showCategory?: boolean;
   onInstall: (initial: AddPluginInitial) => void;
   onOpenPlugin: (pluginId: string) => void;
 }) {
+  const cards = entries.map((entry) => (
+    <PluginCatalogCard
+      key={`${entry.marketplace}/${entry.entryId}`}
+      entry={entry}
+      installedPluginId={entry.installed ? entry.pluginId : null}
+      showCategory={showCategory}
+      onInstall={onInstall}
+      onOpenPlugin={onOpenPlugin}
+    />
+  ));
+  if (preview) {
+    // A plain grid, not ResourceBrowseGrid: its auto-fit columns are a utility
+    // and would win the cascade over the container rules that keep the rows
+    // complete.
+    return (
+      <div data-plugin-shelf>
+        <div data-plugin-shelf-grid className="grid gap-2">
+          {cards}
+        </div>
+      </div>
+    );
+  }
   return (
     <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-2">
-      {entries.map((entry, index) => (
-        <PluginCatalogCard
-          key={`${entry.marketplace}/${entry.entryId}`}
-          entry={entry}
-          className={cn(
-            previewLimitBelowXl !== undefined &&
-              index >= previewLimitBelowXl &&
-              "max-xl:hidden",
-          )}
-          installedPluginId={entry.installed ? entry.pluginId : null}
-          showCategory={showCategory}
-          onInstall={onInstall}
-          onOpenPlugin={onOpenPlugin}
-        />
-      ))}
+      {cards}
     </ResourceBrowseGrid>
   );
 }
@@ -676,7 +691,7 @@ function BrowseShelf({
     >
       <PluginCatalogGrid
         entries={entries}
-        previewLimitBelowXl={4}
+        preview
         onInstall={onInstall}
         onOpenPlugin={onOpenPlugin}
       />
