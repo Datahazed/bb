@@ -1,0 +1,14 @@
+# Contain native state after a failed flow. A custom-scheme confirmation is
+# owned by iOS, so stopping or relaunching the app does not dismiss it. Cancel
+# the exact system dialog, stop the app, and prove the dialog is gone before a
+# later stateful flow is allowed to run.
+appId: app.getbb.mobile
+---
+- runFlow:
+    when:
+      platform: iOS
+      visible: "Open in.*bb.*"
+    commands:
+      - tapOn: "Cancel"
+- stopApp
+- assertNotVisible: "Open in.*bb.*"

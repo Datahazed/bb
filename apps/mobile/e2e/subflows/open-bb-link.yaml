@@ -1,0 +1,16 @@
+# Open one real bb custom-scheme URL. On a fresh iOS simulator the operating
+# system can require confirmation before it delivers the first deep link to
+# the app. The choice belongs to the simulator, not app state, so accept it
+# only when the native dialog is actually present.
+#
+# Required env: LINK (for example, bb://threads).
+appId: app.getbb.mobile
+---
+- openLink: "${LINK}"
+- runFlow:
+    when:
+      platform: iOS
+      visible: "Open in.*bb.*"
+    commands:
+      - tapOn: "Open"
+- assertNotVisible: "Open in.*bb.*"

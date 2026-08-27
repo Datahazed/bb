@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Runs the Maestro flows CI can run against a Release build of the app (the
 # embedded JS bundle, no Metro) and a fresh mobile e2e backend, one `maestro
-# test` per flow so each gets its own artifacts, continuing past failures and
-# exiting non-zero if any flow failed.
+# test` per flow so each gets its own artifacts. After a failure it clears and
+# verifies native confirmation state before continuing; if containment fails,
+# it stops instead of contaminating later flows. It exits non-zero if any flow
+# failed.
 #
 # Usage:
 #   SERVER_URL=http://127.0.0.1:41999 \
@@ -64,9 +66,28 @@ for flow in "${FLOWS[@]}"; do
   else
     echo "FAIL $flow"
     failed+=("$flow")
-    # A failed flow can leave the app on any screen; the next flow cold-starts
-    # it, but keep a screenshot of where this one ended.
+    # A failed flow can leave the app on any screen; keep a screenshot before
+    # cleanup changes it.
     xcrun simctl io "$UDID" screenshot "$out/final-screen.png" >/dev/null 2>&1 || true
+
+    # `openLink` can leave an iOS-owned confirmation above the app. Neither
+    # stopApp nor the next flow's cold launch dismisses it, so explicitly
+    # cancel and verify that exact dialog before allowing another stateful flow
+    # to run. If cleanup cannot establish isolation, stop here.
+    cleanup="$out/cleanup"
+    mkdir -p "$cleanup"
+    if maestro --device "$UDID" test \
+        ${LAUNCH_ENV[@]+"${LAUNCH_ENV[@]}"} \
+        --format junit --output "$cleanup/junit.xml" \
+        --test-output-dir "$cleanup" \
+        ${MAESTRO_FLAGS:-} \
+        "subflows/clear-open-confirmation.yaml" 2>&1 | tee "$cleanup/maestro.log"; then
+      echo "RESET after $flow"
+    else
+      echo "Failed to clear native state after $flow; stopping before the next flow" >&2
+      echo "::endgroup::"
+      break
+    fi
   fi
   echo "::endgroup::"
 done
