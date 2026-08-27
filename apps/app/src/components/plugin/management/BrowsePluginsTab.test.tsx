@@ -687,12 +687,15 @@ describe("BrowsePluginsTab", () => {
       name: "Install Popular",
     });
     expect(installButton.getAttribute("aria-describedby")).toBe(count.id);
-    expect(container.querySelector('[aria-label^="Updated "]')).not.toBeNull();
+    // No card carries an "updated" date, including this entry which has one.
+    // Recency belongs to the detail page: on a browse card it competed with
+    // the author for the same glance without helping anyone choose.
+    expect(container.querySelector('[aria-label^="Updated "]')).toBeNull();
+    expect(container.textContent).not.toMatch(/\bago\b/u);
     const unknownCard = screen
       .getByRole("button", { name: "Open Unknown metrics details" })
       .closest("div");
     expect(unknownCard?.querySelector('[aria-label$=" installs"]')).toBeNull();
-    expect(unknownCard?.querySelector('[aria-label^="Updated "]')).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", {

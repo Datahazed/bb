@@ -42,6 +42,7 @@ import {
 import {
   PluginMarketplaceListingSections,
   PluginMarketplaceMetadata,
+  PluginMoreFromAuthorSection,
 } from "@/components/plugin/management/PluginMarketplaceListing";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
 import {
@@ -179,7 +180,8 @@ export function CatalogPluginDetail({
       }
     >
       <ResourceDetailStack>
-        <PluginMarketplaceListingSections
+        <PluginMarketplaceListingSections entry={entry} />
+        <PluginMoreFromAuthorSection
           entry={entry}
           catalogEntries={catalogEntries}
           onOpenPlugin={onOpenPlugin}
@@ -508,11 +510,7 @@ export function PluginDetail({
             </p>
           </ResourceDetailOverviewSection>
         ) : (
-          <PluginMarketplaceListingSections
-            entry={catalogEntry}
-            catalogEntries={catalogEntries}
-            onOpenPlugin={onOpenPlugin}
-          />
+          <PluginMarketplaceListingSections entry={catalogEntry} />
         )}
         {hasConfiguration ? (
           <ResourceDetailConfigurationSection
@@ -609,6 +607,15 @@ export function PluginDetail({
             <PluginSchedules plugin={plugin} />
           </ResourceActivitySection>
         ) : null}
+        {/* Last, after everything about this plugin: it is the way out of the
+            page, not part of it. */}
+        {catalogEntry === null ? null : (
+          <PluginMoreFromAuthorSection
+            entry={catalogEntry}
+            catalogEntries={catalogEntries}
+            onOpenPlugin={onOpenPlugin}
+          />
+        )}
       </ResourceDetailStack>
     </ResourceDetailPage>
   );

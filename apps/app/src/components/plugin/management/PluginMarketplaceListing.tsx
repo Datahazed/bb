@@ -13,6 +13,7 @@ import {
   ResourceBrowseCard,
   ResourceDefinitionSection,
   ResourceDetailOverviewSection,
+  ResourceMeta,
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
@@ -47,12 +48,16 @@ export function PluginMarketplaceMetadata({
           now: Date.now(),
         });
   const installs = pluginInstalls(entry);
+  // One metadata run, in the order a reader needs it: what kind of thing it
+  // is, who made it, how many took it, when it last moved, where it lives.
+  // ResourceMeta owns the separators — the previous hand-rolled version had to
+  // re-test every preceding field to decide whether to print a dot, which is a
+  // condition that grows with each field added.
   return (
-    <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1">
-      {entry.category === undefined ? null : <span>{entry.category}</span>}
-      {author === null ? null : (
-        <>
-          {entry.category === undefined ? null : <span aria-hidden>·</span>}
+    <ResourceMeta
+      items={[
+        entry.category,
+        author === null ? null : (
           <span>
             By{" "}
             <Link
@@ -62,34 +67,14 @@ export function PluginMarketplaceMetadata({
               {author.name}
             </Link>
           </span>
-        </>
-      )}
-      {installs === undefined ? null : (
-        <>
-          {entry.category === undefined && author === null ? null : (
-            <span aria-hidden>·</span>
-          )}
-          <span>{installs.toLocaleString()} installs</span>
-        </>
-      )}
-      {updatedRelativeTime === null ? null : (
-        <>
-          {entry.category === undefined &&
-          author === null &&
-          installs === undefined ? null : (
-            <span aria-hidden>·</span>
-          )}
-          <span>updated {updatedRelativeTime}</span>
-        </>
-      )}
-      {entry.repositoryUrl === null ? null : (
-        <>
-          {entry.category === undefined &&
-          author === null &&
-          installs === undefined &&
-          updatedRelativeTime === null ? null : (
-            <span aria-hidden>·</span>
-          )}
+        ),
+        installs === undefined
+          ? null
+          : `${installs.toLocaleString()} installs`,
+        // The card no longer carries this, so the detail page is where a
+        // reader finds out how current a listing is.
+        updatedRelativeTime === null ? null : `updated ${updatedRelativeTime}`,
+        entry.repositoryUrl === null ? null : (
           <a
             href={entry.repositoryUrl}
             target="_blank"
@@ -103,9 +88,9 @@ export function PluginMarketplaceMetadata({
               aria-hidden
             />
           </a>
-        </>
-      )}
-    </span>
+        ),
+      ]}
+    />
   );
 }
 
@@ -213,7 +198,15 @@ function PluginScreenshotGallery({
   );
 }
 
-function MoreFromAuthor({
+/**
+ * The last section on a plugin's page, wherever that page is composed.
+ *
+ * It points at other plugins, so anything about the one being read has to come
+ * first — on an installed plugin that includes its configuration, release,
+ * errors, services and schedules. Exported separately from the listing
+ * sections so a page cannot accidentally sandwich it between two of its own.
+ */
+export function PluginMoreFromAuthorSection({
   entry,
   catalogEntries,
   onOpenPlugin,
@@ -275,14 +268,15 @@ function MoreFromAuthor({
   );
 }
 
+/**
+ * What the listing says about *this* plugin: what it looks like, then what it
+ * is. Deliberately excludes "More from this author", which is a way out of the
+ * page rather than part of it — see {@link PluginMoreFromAuthorSection}.
+ */
 export function PluginMarketplaceListingSections({
   entry,
-  catalogEntries,
-  onOpenPlugin,
 }: {
   entry: PluginCatalogSearchEntry;
-  catalogEntries: readonly PluginCatalogSearchEntry[];
-  onOpenPlugin: (pluginId: string) => void;
 }) {
   return (
     <>
@@ -294,11 +288,6 @@ export function PluginMarketplaceListingSections({
           </p>
         </ResourceDetailOverviewSection>
       )}
-      <MoreFromAuthor
-        entry={entry}
-        catalogEntries={catalogEntries}
-        onOpenPlugin={onOpenPlugin}
-      />
     </>
   );
 }

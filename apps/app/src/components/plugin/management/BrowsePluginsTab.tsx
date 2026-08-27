@@ -10,7 +10,6 @@ import {
 import {
   ResourceBrowseCard,
   ResourceBrowseGrid,
-  ResourceCardStat,
   ResourceCollectionViewport,
   ResourceInstallControl,
   ResourceListState,
@@ -46,7 +45,6 @@ import {
   type PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
 import { removePlugin } from "@/hooks/queries/plugin-settings-queries";
-import { formatRelativeTime } from "@/lib/relative-time";
 import { formatInstallCount } from "@/lib/skills-registry";
 import { getPluginAuthorRoutePath } from "@/lib/route-paths";
 import type { AddPluginInitial } from "./AddPluginDialog";
@@ -819,12 +817,11 @@ export function PluginCatalogCard({
         />
       </a>
     );
-  const hasStats = entry.installs !== null || entry.updatedAt !== undefined;
-  // Compact cards prioritize the two registry trust signals when they exist.
-  // Keep the actionable source link beside them; the marketplace label
-  // remains on cards with no stats (or when there is no link to show).
+  // Compact cards prioritize the registry trust signal when it exists. Keep
+  // the actionable source link beside it; the marketplace label remains on
+  // cards with no install count (or when there is no link to show).
   const showPublisherLabel =
-    !entry.official && (!hasStats || sourceLink === null);
+    !entry.official && (entry.installs === null || sourceLink === null);
   const originMeta =
     !showPublisherLabel && sourceLink === null ? undefined : (
       <span className="min-w-0 truncate text-2xs text-subtle-foreground">
@@ -833,13 +830,6 @@ export function PluginCatalogCard({
         {sourceLink}
       </span>
     );
-  const updatedRelativeTime =
-    entry.updatedAt === undefined
-      ? null
-      : formatRelativeTime({
-          timestamp: Date.parse(entry.updatedAt),
-          now: Date.now(),
-        });
   // Just the number, handed to the install control as its own metadata. The
   // download glyph it used to carry repeated the control's glyph an inch away,
   // which read as two install affordances.
@@ -850,22 +840,12 @@ export function PluginCatalogCard({
           display: formatInstallCount(entry.installs),
           accessibleLabel: `${entry.installs.toLocaleString()} installs`,
         };
-  // Install count sits with the Install control; the footer keeps provenance,
-  // with the source link flush right where the eye lands last.
-  const footerMeta =
-    originMeta === undefined && updatedRelativeTime === null ? undefined : (
-      <span className="flex min-w-0 items-center gap-1.5">
-        {updatedRelativeTime === null ? null : (
-          <ResourceCardStat
-            icon="Clock"
-            accessibleLabel={`Updated ${updatedRelativeTime}`}
-          >
-            {updatedRelativeTime}
-          </ResourceCardStat>
-        )}
-        {originMeta}
-      </span>
-    );
+  // The card's metadata row is who made it (left) and where it came from
+  // (right). The install count rides the install control above, and the
+  // "updated" date now lives on the detail page: a browse card is for
+  // choosing between plugins, and a relative date on every card competed with
+  // the author for the same glance without helping that choice.
+  const footerMeta = originMeta;
   const installControl =
     installedPluginId !== null ? (
       <ResourceInstallControl

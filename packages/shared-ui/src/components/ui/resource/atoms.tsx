@@ -95,7 +95,11 @@ export function ResourceMeta({
 }) {
   const visibleItems = items.filter(Boolean);
   return (
-    <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+    // max-w-full, not just min-w-0: an inline-flex box is shrink-to-fit and
+    // cannot go below its own min-content, and one nowrap item — a repository
+    // URL, say — makes that min-content wider than the column. Without the cap
+    // the run overflows its container and the per-item truncate never engages.
+    <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5">
       {visibleItems.map((item, index) => (
         <span key={index} className="inline-flex min-w-0 items-center gap-1.5">
           {index > 0 ? (
