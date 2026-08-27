@@ -1,31 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { cn } from "@bb/shared-ui/lib/utils";
-import type {
-  PluginBrowseSort,
-  PluginBrowseSortDirection,
-} from "./plugin-browse-discovery";
 
 export interface PluginBrowseCategoryOption {
   id: string;
   label: string;
   count: number;
-}
-
-export interface PluginBrowseSortOption {
-  id: PluginBrowseSort;
-  label: string;
-  icon: IconName;
 }
 
 const ENGAGED_CONTROL_CLASS =
@@ -45,7 +28,9 @@ export function PluginBrowseCategoryFilter({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [showKeyboardFocus, setShowKeyboardFocus] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const keyboardFocusRef = useRef(false);
   const selectedOption = options.find((option) => option.id === value);
   const selectionLabel = selectedOption?.label ?? "All categories";
   const normalizedSearch = search.trim().toLocaleLowerCase();
@@ -89,6 +74,20 @@ export function PluginBrowseCategoryFilter({
           )}
           aria-label={`Filter plugins by category: ${selectionLabel}`}
           aria-expanded={open}
+          onPointerDown={() => {
+            keyboardFocusRef.current = false;
+            setShowKeyboardFocus(false);
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" ||
+              event.key === " " ||
+              event.key === "ArrowDown"
+            ) {
+              keyboardFocusRef.current = true;
+              setShowKeyboardFocus(true);
+            }
+          }}
         >
           <Icon
             name="SlidersHorizontal"
@@ -102,12 +101,12 @@ export function PluginBrowseCategoryFilter({
       <PopoverContent
         align="end"
         mobileTitle="Filter plugins by category"
-        className="w-80 p-2"
+        className="w-72 p-1.5"
       >
         <div className="relative">
           <Icon
             name="Search"
-            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+            className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground"
             aria-hidden
           />
           <Input
@@ -120,8 +119,19 @@ export function PluginBrowseCategoryFilter({
             aria-controls="plugin-category-options"
             aria-expanded={open}
             aria-autocomplete="list"
-            className="h-8 pl-8"
+            className={cn(
+              "h-7 border-transparent bg-surface-recessed pl-7 pr-2 text-xs focus-visible:ring-0",
+              showKeyboardFocus && "ring-1 ring-ring",
+            )}
+            onFocus={() => setShowKeyboardFocus(keyboardFocusRef.current)}
+            onBlur={() => setShowKeyboardFocus(false)}
+            onPointerDown={() => {
+              keyboardFocusRef.current = false;
+              setShowKeyboardFocus(false);
+            }}
             onKeyDown={(event) => {
+              keyboardFocusRef.current = true;
+              setShowKeyboardFocus(true);
               if (event.key === "ArrowDown") {
                 event.preventDefault();
                 categoryOptionElements()[0]?.focus();
@@ -137,14 +147,14 @@ export function PluginBrowseCategoryFilter({
             }}
           />
         </div>
-        <p className="px-2 pb-1 pt-2 text-2xs text-subtle-foreground">
+        <p className="px-1.5 pb-1 pt-1.5 text-2xs text-subtle-foreground">
           {options.length} categories
         </p>
         <div
           id="plugin-category-options"
           role="listbox"
           aria-label="Plugin categories"
-          className="max-h-72 space-y-0.5 overflow-y-auto"
+          className="max-h-64 overflow-y-auto"
         >
           {!showAllOption && filteredOptions.length === 0 ? (
             <p
@@ -163,7 +173,7 @@ export function PluginBrowseCategoryFilter({
                   role="option"
                   aria-selected={value === null}
                   onClick={() => select(null)}
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs outline-none hover:bg-state-hover focus-visible:bg-state-hover focus-visible:text-foreground"
+                  className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left text-xs outline-none hover:bg-state-hover focus-visible:bg-state-hover focus-visible:text-foreground"
                   onKeyDown={focusCategoryOption}
                 >
                   <span className="min-w-0 flex-1 truncate">
@@ -190,7 +200,7 @@ export function PluginBrowseCategoryFilter({
                     role="option"
                     aria-selected={option.id === value}
                     onClick={() => select(option.id)}
-                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs outline-none hover:bg-state-hover focus-visible:bg-state-hover focus-visible:text-foreground"
+                    className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left text-xs outline-none hover:bg-state-hover focus-visible:bg-state-hover focus-visible:text-foreground"
                     onKeyDown={focusCategoryOption}
                   >
                     <span className="min-w-0 flex-1 truncate">
@@ -237,128 +247,4 @@ function categoryOptionElements(): HTMLButtonElement[] {
   const listbox = document.getElementById("plugin-category-options");
   if (listbox === null) return [];
   return [...listbox.querySelectorAll<HTMLButtonElement>('[role="option"]')];
-}
-
-/**
- * A labelled criterion menu plus an explicit direction toggle. The selected
- * criterion and human direction (A–Z, newest, most installed) remain visible
- * after the menu closes instead of collapsing back to an ambiguous sort glyph.
- */
-export function PluginBrowseSortControl({
-  value,
-  direction,
-  options,
-  directionLabel,
-  onChange,
-  onDirectionToggle,
-  onClear,
-}: {
-  value: PluginBrowseSort | null;
-  direction: PluginBrowseSortDirection;
-  options: readonly PluginBrowseSortOption[];
-  directionLabel: string;
-  onChange: (value: PluginBrowseSort) => void;
-  onDirectionToggle: () => void;
-  onClear: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const selectedOption = options.find((option) => option.id === value);
-  const active = selectedOption !== undefined;
-  const criterionLabel = selectedOption?.label ?? "Sort";
-  const stateLabel = active
-    ? `Sort plugins: ${criterionLabel}, ${directionLabel}`
-    : "Sort plugins";
-
-  return (
-    <div
-      role="group"
-      aria-label={stateLabel}
-      className="flex shrink-0 items-center"
-    >
-      <DropdownMenu onOpenChange={setOpen}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            className={cn(
-              "h-8 max-w-44 gap-2 rounded-r-none px-2.5 text-xs font-normal",
-              (open || active) && ENGAGED_CONTROL_CLASS,
-            )}
-            aria-label={stateLabel}
-          >
-            <Icon
-              name={selectedOption?.icon ?? "ArrowUpDown"}
-              className="size-3.5 shrink-0"
-              aria-hidden
-            />
-            <span className="min-w-0 truncate">{criterionLabel}</span>
-            <Icon name="ChevronDown" className="size-3 shrink-0" aria-hidden />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" mobileTitle="Sort plugins">
-          <DropdownMenuLabel className="text-xs font-normal text-subtle-foreground">
-            Sort by
-          </DropdownMenuLabel>
-          {options.map((option) => {
-            const selected = option.id === value;
-            return (
-              <DropdownMenuItem
-                key={option.id}
-                role="menuitemradio"
-                aria-checked={selected}
-                onSelect={() => onChange(option.id)}
-                className="flex min-w-48 items-center gap-2"
-              >
-                <Icon name={option.icon} className="size-3.5" aria-hidden />
-                <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                <Icon
-                  name="Check"
-                  className={cn(
-                    "size-3.5",
-                    selected ? "opacity-100" : "opacity-0",
-                  )}
-                  aria-hidden
-                />
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <Button
-        type="button"
-        variant="outline"
-        className={cn(
-          "-ml-px h-8 gap-1.5 rounded-none px-2 text-xs font-normal",
-          active && ENGAGED_CONTROL_CLASS,
-        )}
-        disabled={!active}
-        aria-label={
-          active
-            ? `Sort direction: ${directionLabel}. Change direction.`
-            : "Choose a sort criterion before changing direction"
-        }
-        onClick={onDirectionToggle}
-      >
-        <Icon
-          name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
-          className="size-3.5"
-          aria-hidden
-        />
-        <span>{active ? directionLabel : "Direction"}</span>
-      </Button>
-
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className="-ml-px size-8 rounded-l-none"
-        disabled={!active}
-        aria-label="Clear plugin sort and return to shelves"
-        onClick={onClear}
-      >
-        <Icon name="X" className="size-3.5" aria-hidden />
-      </Button>
-    </div>
-  );
 }

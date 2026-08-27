@@ -383,6 +383,7 @@ export function ResourceSourceShelf({
   browseAction,
   scrollOverlay,
   contentMode = "rail",
+  contentSurface = "recessed",
   children,
 }: {
   label: ReactNode;
@@ -391,6 +392,8 @@ export function ResourceSourceShelf({
   browseAction?: ReactNode;
   scrollOverlay?: ReactNode;
   contentMode?: "rail" | "panel";
+  /** Browse shelves can use spacing alone instead of a recessed container. */
+  contentSurface?: "recessed" | "plain";
   children: ReactNode;
 }) {
   return (
@@ -415,7 +418,13 @@ export function ResourceSourceShelf({
           </div>
         ) : null}
       </div>
-      <div className="rounded-lg bg-surface-recessed/70 p-[var(--resource-source-shelf-inset)]">
+      <div
+        className={cn(
+          contentSurface === "recessed"
+            ? "rounded-lg bg-surface-recessed/70 p-[var(--resource-source-shelf-inset)]"
+            : "px-[var(--resource-source-shelf-inset)]",
+        )}
+      >
         {contentMode === "panel" ? (
           children
         ) : (

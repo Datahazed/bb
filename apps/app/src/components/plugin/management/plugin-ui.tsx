@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from "react";
+import { PLUGIN_CATALOG_SHELF_GROUPS } from "@bb/domain";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { accentInk, accentTint, neutral } from "@bb/showcase-hero";
 import {
   PluginCompactIconMask,
   PluginIcon,
@@ -8,6 +10,17 @@ import {
 } from "@/components/plugin/PluginIcon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
+
+// The post-create examples establish this palette and icon-chip treatment.
+// Category vocabulary and grouping still come exclusively from @bb/domain;
+// the shelf order only chooses which existing accent token paints each group.
+const CATALOG_ACCENT_TOKENS = [
+  "--file-accent",
+  "--success",
+  "--pr-merged",
+  "--warning",
+  "--attention",
+] as const;
 
 /**
  * Shared pieces of the Plugins collection and detail surfaces. Tinted styles derive
@@ -139,6 +152,50 @@ export function CatalogEntryIcon({
       className={cn("rounded-sm object-contain", className)}
       onError={() => setFailedIconUrl(entry.iconUrl)}
     />
+  );
+}
+
+/** The compact, tinted identity chip shared by Browse and related listings. */
+export function CatalogEntryIconChip({
+  entry,
+  className,
+}: {
+  entry: {
+    displayName: string;
+    icon: string | null;
+    iconUrl: string | null;
+    iconTinted: boolean;
+    categoryId?: string;
+  };
+  className?: string;
+}) {
+  const groupIndex = PLUGIN_CATALOG_SHELF_GROUPS.findIndex((group) =>
+    group.categoryIds.some((categoryId) => categoryId === entry.categoryId),
+  );
+  const accentToken =
+    groupIndex < 0 ? undefined : CATALOG_ACCENT_TOKENS[groupIndex];
+  return (
+    <span
+      className={cn(
+        "flex size-6 shrink-0 items-center justify-center rounded-md border",
+        className,
+      )}
+      style={
+        accentToken === undefined
+          ? {
+              background: neutral(5),
+              borderColor: neutral(14),
+              color: neutral(55),
+            }
+          : {
+              background: accentTint(accentToken, 14),
+              borderColor: accentTint(accentToken, 40),
+              color: accentInk(accentToken, 62),
+            }
+      }
+    >
+      <CatalogEntryIcon entry={entry} className="size-3.5" />
+    </span>
   );
 }
 

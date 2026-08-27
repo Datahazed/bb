@@ -272,10 +272,15 @@ describe("BrowsePluginsTab", () => {
     expect(document.body.textContent).not.toContain("Other");
   });
 
-  it("flattens shelves for a sort and clearing the pill restores them", async () => {
+  it("flattens shelves and repeated menu actions toggle direction without separate controls", async () => {
     const entries = [
       { ...MEMORY_ENTRY, displayName: "Zulu" },
-      { ...GITHUB_ENTRY, displayName: "Alpha" },
+      {
+        ...GITHUB_ENTRY,
+        displayName: "Alpha",
+        categoryId: "memory-and-context" as const,
+        category: "Memory & Context",
+      },
       { ...INCOMPATIBLE_ENTRY, displayName: "Middle" },
     ];
     vi.stubGlobal(
@@ -315,40 +320,34 @@ describe("BrowsePluginsTab", () => {
           'button[aria-label^="Open "][aria-label$=" details"]',
         ),
       ].map((button) => button.getAttribute("aria-label"));
-    const sortTrigger = screen.getByRole("button", { name: "Sort plugins" });
+    const sortTrigger = screen.getByRole("button", {
+      name: "Sort plugins",
+    });
     expect(sortTrigger.querySelector('[data-icon="ArrowUpDown"]')).toBeTruthy();
     fireEvent.pointerDown(sortTrigger);
+    for (const option of screen.getAllByRole("menuitemradio")) {
+      expect(option.querySelector('[data-icon="ArrowDown"]')).toBeTruthy();
+    }
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
 
-    // The flat result contains each compatible plugin exactly once, in name
-    // order. The incompatible result remains hidden as before.
+    // The flat view contains each compatible plugin exactly once, in name order.
+    // The incompatible result remains hidden as before.
     expect(cardOrder()).toEqual(["Open Alpha details", "Open Zulu details"]);
-    expect(
-      screen.getByRole("button", {
-        name: "Sort direction: A–Z. Change direction.",
-      }),
-    ).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Sort direction: A–Z. Change direction.",
-      }),
-    );
+    for (const option of screen.getAllByRole("menuitemradio")) {
+      expect(option.querySelector('[data-icon="ArrowUp"]')).toBeTruthy();
+    }
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Name" }));
     expect(cardOrder()).toEqual(["Open Zulu details", "Open Alpha details"]);
+    expect(screen.queryByText("New & notable")).toBeNull();
     expect(
-      screen.getByRole("radiogroup", {
-        name: "Filter plugins by category",
-      }),
-    ).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Clear plugin sort and return to shelves",
-      }),
-    );
-    expect(screen.getByText("New & notable")).toBeTruthy();
-    expect(screen.queryByRole("radiogroup")).toBeNull();
+      screen.queryByRole("button", { name: /Sort direction/u }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Clear plugin sort/u }),
+    ).toBeNull();
   });
 
-  it("keeps third-party origin, author, and repository facts on shelf cards", async () => {
+  it("keeps third-party origin, author, and source facts on shelf cards", async () => {
     const entries = [
       { ...MEMORY_ENTRY, displayName: "Memory" },
       {
@@ -401,15 +400,17 @@ describe("BrowsePluginsTab", () => {
     expect(authorLink?.getAttribute("href")).toBe(
       "/extensions/plugins/authors/12%3Aacme-plugins%3Agithub%3Aacme",
     );
-    // The card links the repository; a bundled entry has none to link.
-    const repositoryLink = screen.getAllByRole("link", {
-      name: "Open Acme Notes repository",
+    // The card names and links the source; this fixture's bundled entry has no
+    // source URL because server behavior is covered by the catalog test.
+    const sourceLink = screen.getAllByRole("link", {
+      name: "Open Acme Notes source",
     })[0]!;
-    expect(repositoryLink.getAttribute("href")).toBe(
+    expect(sourceLink.textContent).toContain("Source");
+    expect(sourceLink.getAttribute("href")).toBe(
       "https://github.com/acme/notes",
     );
     expect(
-      screen.queryByRole("link", { name: "Open Memory repository" }),
+      screen.queryByRole("link", { name: "Open Memory source" }),
     ).toBeNull();
   });
 
@@ -508,6 +509,8 @@ describe("BrowsePluginsTab", () => {
         entryId: "reviewer",
         pluginId: "reviewer",
         displayName: "Reviewer",
+        categoryId: "memory-and-context" as const,
+        category: "Memory & Context",
         installs: 40,
         publishedAt: "2026-08-24T09:30:00Z",
       },
@@ -552,10 +555,13 @@ describe("BrowsePluginsTab", () => {
       "Open Reviewer details",
       "Open Unknown metrics details",
     ]);
-    fireEvent.click(
+    fireEvent.pointerDown(
       screen.getByRole("button", {
-        name: "Sort direction: Most first. Change direction.",
+        name: "Sort: Most installed, descending",
       }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitemradio", { name: "Most installed" }),
     );
     expect(cardOrder()).toEqual([
       "Open Reviewer details",
@@ -563,10 +569,9 @@ describe("BrowsePluginsTab", () => {
       "Open Unknown metrics details",
     ]);
     fireEvent.click(
-      screen.getByRole("button", {
-        name: "Sort direction: Least first. Change direction.",
-      }),
+      screen.getByRole("menuitemradio", { name: "Most installed" }),
     );
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByLabelText("1,204 installs")).toBeTruthy();
     expect(container.querySelector('[aria-label^="Updated "]')).not.toBeNull();
     const unknownCard = screen
@@ -575,9 +580,19 @@ describe("BrowsePluginsTab", () => {
     expect(unknownCard?.querySelector('[aria-label$=" installs"]')).toBeNull();
     expect(unknownCard?.querySelector('[aria-label^="Updated "]')).toBeNull();
 
-    fireEvent.click(screen.getByRole("radio", { name: "Code & Reviews" }));
-    expect(cardOrder()).toEqual(["Open Reviewer details"]);
-    fireEvent.click(screen.getByRole("radio", { name: "All" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Filter plugins by category: All categories",
+      }),
+    );
+    fireEvent.click(screen.getByRole("option", { name: /Security/u }));
+    expect(cardOrder()).toEqual([]);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Filter plugins by category: Security",
+      }),
+    );
+    fireEvent.click(screen.getByRole("option", { name: /All categories/u }));
     expect(cardOrder()).toHaveLength(3);
   });
 
@@ -610,7 +625,11 @@ describe("BrowsePluginsTab", () => {
     );
 
     await screen.findAllByText("Memory");
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Sort plugins" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", {
+        name: "Sort plugins",
+      }),
+    );
     expect(
       screen.getByRole("menuitemradio", { name: "Recently added" }),
     ).toBeTruthy();
@@ -744,7 +763,11 @@ describe("BrowsePluginsTab", () => {
         name: "Filter plugins by category: All categories",
       }),
     ).toBeTruthy();
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Sort plugins" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", {
+        name: "Sort plugins",
+      }),
+    );
     expect(
       screen.getByRole("menuitemradio", { name: "Most installed" }),
     ).toBeTruthy();

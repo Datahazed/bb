@@ -489,17 +489,26 @@ export function ResourceSortMenu({
   options,
   onChange,
   compact = false,
+  showDirectionForAllOptions = false,
+  placeholderLabel = "Sort",
 }: {
-  value: string;
+  value: string | null;
   direction: "asc" | "desc";
   options: readonly ResourceOption[];
   onChange: (value: string) => void;
   compact?: boolean;
+  /** Keep every criterion's direction action visible, not only the selected one. */
+  showDirectionForAllOptions?: boolean;
+  /** Accessible trigger label before this optional sort has been applied. */
+  placeholderLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const selectedOption = options.find((option) => option.id === value);
   const directionLabel = direction === "asc" ? "ascending" : "descending";
-  const sortStateLabel = `Sort: ${selectedOption?.label ?? value}, ${directionLabel}`;
+  const sortStateLabel =
+    selectedOption === undefined
+      ? placeholderLabel
+      : `Sort: ${selectedOption.label}, ${directionLabel}`;
 
   return (
     <DropdownMenu onOpenChange={setOpen}>
@@ -546,7 +555,12 @@ export function ResourceSortMenu({
               <Icon
                 name={direction === "asc" ? "ArrowUp" : "ArrowDown"}
                 aria-hidden
-                className={cn("size-4", selected ? "opacity-100" : "opacity-0")}
+                className={cn(
+                  "size-4",
+                  selected || showDirectionForAllOptions
+                    ? "opacity-100"
+                    : "opacity-0",
+                )}
               />
             </DropdownMenuItem>
           );

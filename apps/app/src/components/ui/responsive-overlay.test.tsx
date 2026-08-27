@@ -213,6 +213,67 @@ describe("responsive Dialog", () => {
 });
 
 describe("PersistentResponsiveDrawerShell", () => {
+  it("supports a full-viewport flyout from the right without a drag handle", () => {
+    const view = render(
+      <PersistentResponsiveDrawerShell
+        open={false}
+        onOpenChange={() => {}}
+        placement="right"
+        srLabel="Plugin details"
+      >
+        <button type="button">Panel action</button>
+      </PersistentResponsiveDrawerShell>,
+    );
+
+    const content = document.querySelector<HTMLElement>(
+      "[data-persistent-drawer-content]",
+    );
+    expect(content?.className).toContain("inset-0");
+    expect(content?.style.transform).toBe("translate3d(100%, 0, 0)");
+    expect(
+      document.querySelector("[data-persistent-drawer-handle]"),
+    ).toBeNull();
+
+    view.rerender(
+      <PersistentResponsiveDrawerShell
+        open
+        onOpenChange={() => {}}
+        placement="right"
+        srLabel="Plugin details"
+      >
+        <button type="button">Panel action</button>
+      </PersistentResponsiveDrawerShell>,
+    );
+    expect(content?.style.transform).toBe("translate3d(0, 0, 0)");
+  });
+
+  it("stages a route-mounted right flyout before animating it onscreen", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    render(
+      <PersistentResponsiveDrawerShell
+        open
+        onOpenChange={() => {}}
+        placement="right"
+        srLabel="Plugin details"
+      >
+        <button type="button">Panel action</button>
+      </PersistentResponsiveDrawerShell>,
+    );
+
+    const content = document.querySelector<HTMLElement>(
+      "[data-persistent-drawer-content]",
+    );
+    expect(content?.style.transform).toBe("translate3d(100%, 0, 0)");
+    act(() => frames.shift()?.(performance.now()));
+    expect(content?.style.transform).toBe("translate3d(100%, 0, 0)");
+    act(() => frames.shift()?.(performance.now()));
+    expect(content?.style.transform).toBe("translate3d(0, 0, 0)");
+  });
+
   it("opens without applying modal state to the app tree", () => {
     mockPointerCoarse(true);
     const onContentAnimationEnd = vi.fn();

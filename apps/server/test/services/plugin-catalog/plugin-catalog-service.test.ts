@@ -390,6 +390,21 @@ describe("plugin catalog service", () => {
     expect(await catalog.icon("bb-community", withGlyph.name)).toBeUndefined();
   });
 
+  it("links every bundled BB Team entry to its canonical source directory", async () => {
+    const registrations = listBundledPluginRegistrations();
+    const catalog = service({ bundledPlugins: registrations });
+
+    const bundledEntries = (await catalog.search("")).filter(
+      (entry) => entry.author?.name === "BB Team",
+    );
+    expect(bundledEntries).toHaveLength(registrations.length);
+    for (const entry of bundledEntries) {
+      expect(entry.repositoryUrl).toBe(
+        `https://github.com/get-bb/bb/tree/main/plugins/${encodeURIComponent(entry.entryId)}`,
+      );
+    }
+  });
+
   describe("refresh", () => {
     it("returns discovery metadata declared by v2", async () => {
       const catalog = service({

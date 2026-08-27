@@ -16,6 +16,7 @@ import {
   ResourceListState,
   ResourceShelfAction,
   ResourceSourceShelf,
+  ResourceSortMenu,
   ResourceToolbar,
 } from "@bb/shared-ui/resource-list";
 import {
@@ -61,12 +62,10 @@ import {
 } from "./plugin-browse-discovery";
 import {
   PluginBrowseCategoryFilter,
-  PluginBrowseSortControl,
   type PluginBrowseCategoryOption,
-  type PluginBrowseSortOption,
 } from "./PluginBrowseControls";
 import { PluginCategoryChips } from "./PluginCategoryChips";
-import { CatalogEntryIcon } from "./plugin-ui";
+import { CatalogEntryIconChip } from "./plugin-ui";
 import { pluginMarketplaceAuthorId } from "./plugin-marketplace-author";
 
 const PLUGIN_BROWSE_SORTS = [
@@ -81,12 +80,6 @@ const PLUGIN_BROWSE_SORT_LABELS: Record<PluginBrowseSort, string> = {
   name: "Name",
 };
 
-const PLUGIN_BROWSE_SORT_ICONS = {
-  "recently-added": "Clock",
-  "most-installed": "Download",
-  name: "Sort",
-} as const satisfies Record<PluginBrowseSort, PluginBrowseSortOption["icon"]>;
-
 function browseSort(value: string | null): PluginBrowseSort | null {
   return PLUGIN_BROWSE_SORTS.find((sort) => sort === value) ?? null;
 }
@@ -95,17 +88,6 @@ function browseSortDirection(
   value: string | null,
 ): PluginBrowseSortDirection | null {
   return value === "asc" || value === "desc" ? value : null;
-}
-
-function browseSortDirectionLabel(
-  sort: PluginBrowseSort | null,
-  direction: PluginBrowseSortDirection,
-): string {
-  if (sort === "name") return direction === "asc" ? "A–Z" : "Z–A";
-  if (sort === "most-installed") {
-    return direction === "asc" ? "Least first" : "Most first";
-  }
-  return direction === "asc" ? "Oldest first" : "Newest first";
 }
 
 /**
@@ -180,7 +162,6 @@ export function BrowsePluginsTab({
   const entries = (searchQuery.data ?? []).filter((entry) => entry.compatible);
   const shelves = categoryShelves(entries);
   const catalogShelves = categoryShelves(catalogEntries);
-  const groupedShelves = browseShelfGroups(entries);
   const hasCategoryDiscovery = catalogShelves.length > 0;
   const selectedCategoryId = hasCategoryDiscovery
     ? searchParams.get("category")
@@ -200,10 +181,11 @@ export function BrowsePluginsTab({
     (entry) => entry.installs !== null,
   );
   const requestedSort = browseSort(searchParams.get("sort"));
-  const activeSort =
+  const usableRequestedSort =
     requestedSort === "most-installed" && !hasInstallCounts
       ? null
       : requestedSort;
+  const activeSort = usableRequestedSort;
   const activeDirection =
     activeSort === null
       ? "desc"
@@ -214,7 +196,6 @@ export function BrowsePluginsTab({
   ).map((sort) => ({
     id: sort,
     label: PLUGIN_BROWSE_SORT_LABELS[sort],
-    icon: PLUGIN_BROWSE_SORT_ICONS[sort],
   }));
   const catalogCategoryCounts = new Map(
     catalogShelves.map((shelf) => [shelf.id, shelf.entries.length]),
@@ -272,18 +253,9 @@ export function BrowsePluginsTab({
       activeSort === null ? "asc" : activeDirection,
     ),
   }));
+  const groupedShelves = browseShelfGroups(entries);
   const showLegacyPublisherHeadings =
     hasCategoryDiscovery || legacyGroups.length > 1;
-
-  function setDiscoveryParam(
-    name: "category" | "direction" | "shelf" | "sort",
-    value: string | null,
-  ) {
-    const nextSearchParams = new URLSearchParams(searchParams);
-    if (value === null) nextSearchParams.delete(name);
-    else nextSearchParams.set(name, value);
-    setSearchParams(nextSearchParams);
-  }
 
   function setCategory(categoryId: string | null) {
     const nextSearchParams = new URLSearchParams(searchParams);
@@ -305,15 +277,12 @@ export function BrowsePluginsTab({
     nextSearchParams.set("sort", sort);
     nextSearchParams.set(
       "direction",
-      defaultPluginDiscoverySortDirection(sort),
+      sort === activeSort
+        ? activeDirection === "asc"
+          ? "desc"
+          : "asc"
+        : defaultPluginDiscoverySortDirection(sort),
     );
-    setSearchParams(nextSearchParams);
-  }
-
-  function clearSort() {
-    const nextSearchParams = new URLSearchParams(searchParams);
-    nextSearchParams.delete("sort");
-    nextSearchParams.delete("direction");
     setSearchParams(nextSearchParams);
   }
 
@@ -395,22 +364,17 @@ export function BrowsePluginsTab({
                 controls={
                   <>
                     {sortOptions.length > 0 ? (
-                      <PluginBrowseSortControl
+                      <ResourceSortMenu
                         value={activeSort}
                         direction={activeDirection}
                         options={sortOptions}
-                        directionLabel={browseSortDirectionLabel(
-                          activeSort,
-                          activeDirection,
-                        )}
-                        onChange={setSort}
-                        onDirectionToggle={() =>
-                          setDiscoveryParam(
-                            "direction",
-                            activeDirection === "asc" ? "desc" : "asc",
-                          )
-                        }
-                        onClear={clearSort}
+                        compact
+                        showDirectionForAllOptions
+                        placeholderLabel="Sort plugins"
+                        onChange={(value) => {
+                          const sort = browseSort(value);
+                          if (sort !== null) setSort(sort);
+                        }}
                       />
                     ) : null}
                     {hasCategoryDiscovery ? (
@@ -495,7 +459,7 @@ export function BrowsePluginsTab({
                   </div>
                 )
               ) : selectedCategoryId === null && selectedShelfId === null ? (
-                <div className="space-y-6">
+                <div className="space-y-8">
                   {hasCategoryDiscovery ? (
                     <BrowseShelf
                       label="New & notable"
@@ -574,7 +538,7 @@ export function BrowsePluginsTab({
                     />
                   ) : (
                     <PluginCatalogGrid
-                      entries={scopedEntries}
+                      entries={flatEntries}
                       showCategory={selectedShelf !== undefined}
                       onInstall={onInstall}
                       onOpenPlugin={onOpenPlugin}
@@ -605,7 +569,7 @@ export function PluginCatalogGrid({
   onOpenPlugin: (pluginId: string) => void;
 }) {
   return (
-    <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] gap-3">
+    <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-2">
       {entries.map((entry, index) => (
         <PluginCatalogCard
           key={`${entry.marketplace}/${entry.entryId}`}
@@ -651,6 +615,7 @@ function BrowseShelf({
       leading={leading}
       attribution={count === undefined ? undefined : `· ${count}`}
       contentMode="panel"
+      contentSurface="plain"
       browseAction={
         onViewAll === undefined ? undefined : (
           <ResourceShelfAction type="button" onClick={onViewAll}>
@@ -661,7 +626,7 @@ function BrowseShelf({
       }
     >
       {description === undefined ? null : (
-        <p className="mb-3 max-w-2xl px-0.5 text-xs leading-relaxed text-muted-foreground">
+        <p className="mb-2 max-w-2xl px-0.5 text-xs leading-relaxed text-muted-foreground">
           {description}
         </p>
       )}
@@ -749,11 +714,11 @@ export function PluginCatalogCard({
     },
   });
 
-  const leading = <CatalogEntryIcon entry={entry} className="size-6" />;
+  const leading = <CatalogEntryIconChip entry={entry} />;
   const description =
     entry.description.length > 0 ? entry.description : undefined;
   const descriptionArea = (
-    <span className="block min-h-[3lh]">{description}</span>
+    <span className="block min-h-[2lh]">{description}</span>
   );
   const authorId = pluginMarketplaceAuthorId(entry);
   const authorByline =
@@ -780,19 +745,19 @@ export function PluginCatalogCard({
   // The publisher label, not the marketplace's raw display name: a third-party
   // manifest names itself, and the raw name would print a reserved BB label on
   // the card that the server already refused to grant.
-  // The repository link sits with the publisher label: both say where the
+  // The source link sits with the publisher label: both say where the
   // plugin comes from. The card footer ignores pointer events so clicks fall
   // through to the open button; the link opts back in to take its own click.
-  const repositoryLink =
+  const sourceLink =
     entry.repositoryUrl === null ? null : (
       <a
         href={entry.repositoryUrl}
         target="_blank"
         rel="noreferrer"
-        aria-label={`Open ${entry.displayName} repository`}
+        aria-label={`Open ${entry.displayName} source`}
         className="pointer-events-auto inline-flex items-center gap-0.5 leading-none underline underline-offset-2 hover:text-foreground"
       >
-        repo
+        Source
         {/* Optical nudge: centered against the line box, the glyph sits a
             pixel above the x-height of the lowercase label beside it. */}
         <Icon
@@ -802,19 +767,18 @@ export function PluginCatalogCard({
         />
       </a>
     );
-  const hasStats =
-    entry.installs !== null || entry.updatedAt !== undefined;
+  const hasStats = entry.installs !== null || entry.updatedAt !== undefined;
   // Compact cards prioritize the two registry trust signals when they exist.
-  // Keep the actionable repository link beside them; the marketplace label
+  // Keep the actionable source link beside them; the marketplace label
   // remains on cards with no stats (or when there is no link to show).
   const showPublisherLabel =
-    !entry.official && (!hasStats || repositoryLink === null);
+    !entry.official && (!hasStats || sourceLink === null);
   const originMeta =
-    !showPublisherLabel && repositoryLink === null ? undefined : (
+    !showPublisherLabel && sourceLink === null ? undefined : (
       <span className="min-w-0 truncate text-2xs text-subtle-foreground">
         {showPublisherLabel ? entry.publisherLabel : null}
-        {showPublisherLabel && repositoryLink !== null ? " · " : null}
-        {repositoryLink}
+        {showPublisherLabel && sourceLink !== null ? " · " : null}
+        {sourceLink}
       </span>
     );
   const updatedRelativeTime =
@@ -830,6 +794,8 @@ export function PluginCatalogCard({
         <ResourceCardStat
           icon="Download"
           accessibleLabel={`${entry.installs.toLocaleString()} installs`}
+          iconClassName="size-2.5 opacity-70"
+          className="h-auto px-0 text-2xs text-subtle-foreground"
         >
           {formatInstallCount(entry.installs)}
         </ResourceCardStat>
@@ -892,17 +858,17 @@ export function PluginCatalogCard({
     <>
       <ResourceBrowseCard
         className={cn(
-          "min-h-36 grid-cols-[minmax(0,1fr)_fit-content(10rem)] gap-x-3 gap-y-2.5 border-border-seam p-4 shadow-xs",
+          "min-h-28 gap-2 border-border bg-background p-3 shadow-none",
           className,
         )}
         leading={leading}
         title={
-          <span className="line-clamp-2 whitespace-normal break-words font-semibold leading-tight">
+          <span className="line-clamp-2 whitespace-normal break-words font-medium leading-tight">
             {entry.displayName}
           </span>
         }
         description={descriptionArea}
-        descriptionLines={3}
+        descriptionLines={2}
         byline={byline}
         footerMeta={footerMeta}
         headerAction={headerAction}

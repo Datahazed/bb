@@ -29,6 +29,10 @@ import {
   ResourceListState,
   useResourceRouteLabel,
 } from "@bb/shared-ui/resource-list";
+import {
+  PersistentResponsiveDrawerShell,
+  useResponsiveDrawerRealization,
+} from "@bb/shared-ui/responsive-overlay";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
 import { PluginAuthorPage } from "@/components/plugin/management/PluginAuthorPage";
@@ -72,9 +76,86 @@ import {
 } from "@/components/tools/tools-navigation";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "@/components/tools/SkillsLibrary";
-import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/secondaryPanelTab";
+
+let pluginBrowseFocusReturn:
+  | { accessibleLabel: string; occurrence: number }
+  | undefined;
+let retainedPluginDetailId: string | undefined;
+
+function capturePluginBrowseFocusReturn(): void {
+  const activeElement = document.activeElement;
+  if (
+    !(activeElement instanceof HTMLButtonElement) ||
+    activeElement.closest("[data-persistent-drawer-content]") !== null
+  ) {
+    return;
+  }
+  const accessibleLabel = activeElement.getAttribute("aria-label");
+  if (
+    accessibleLabel === null ||
+    !accessibleLabel.startsWith("Open ") ||
+    !accessibleLabel.endsWith(" details")
+  ) {
+    return;
+  }
+  const matches = Array.from(
+    document.querySelectorAll<HTMLButtonElement>(
+      'button[aria-label^="Open "][aria-label$=" details"]',
+    ),
+  ).filter(
+    (candidate) => candidate.getAttribute("aria-label") === accessibleLabel,
+  );
+  const occurrence = matches.indexOf(activeElement);
+  if (occurrence >= 0) {
+    pluginBrowseFocusReturn = { accessibleLabel, occurrence };
+  }
+}
+
+function schedulePluginBrowseFocusRestore(fallbackTarget?: {
+  accessibleLabel: string;
+  occurrence: number;
+}): void {
+  const returnTarget = pluginBrowseFocusReturn ?? fallbackTarget;
+  if (returnTarget === undefined) return;
+
+  const restore = () => {
+    const matches = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        'button[aria-label^="Open "][aria-label$=" details"]',
+      ),
+    ).filter(
+      (candidate) =>
+        candidate.getAttribute("aria-label") === returnTarget.accessibleLabel,
+    );
+    const target = matches[returnTarget.occurrence];
+    if (target === undefined) return false;
+    target.focus({ preventScroll: true });
+    pluginBrowseFocusReturn = undefined;
+    return true;
+  };
+
+  const observedRoot =
+    document.getElementById("plugins-browse-results") ?? document.body;
+  const observer = new MutationObserver(() => {
+    if (document.activeElement === document.body) restore();
+  });
+  observer.observe(observedRoot, { childList: true, subtree: true });
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      restore();
+    });
+  });
+  // Browse can replace its cards once the detail-route query settles. Watch
+  // that collection briefly so a disconnected target is replaced without
+  // overriding a focus choice the user made in the meantime.
+  window.setTimeout(() => {
+    observer.disconnect();
+    if (document.activeElement === document.body) restore();
+  }, 2_000);
+}
 
 function ToolsBodyFallback() {
   return (
@@ -510,6 +591,8 @@ export function ToolsView({
     enabled: activeSection === "plugins",
   });
   const listQuery = usePluginList({ enabled: activeSection === "plugins" });
+  const { isContentRealized: isFlyoutContentRealized } =
+    useResponsiveDrawerRealization({ open: pluginId !== undefined });
 
   useEffect(() => {
     if (pluginId === undefined) return;
@@ -517,19 +600,20 @@ export function ToolsView({
       current.includes(pluginId) ? current : [...current, pluginId],
     );
   }, [pluginId]);
-
   // Memoized because three hooks below depend on it; an inline array would be a
   // new identity every render and defeat their dependency checks.
-  const visiblePluginIds = useMemo(
-    () =>
-      pluginId === undefined || openedPluginIds.includes(pluginId)
-        ? openedPluginIds
-        : [...openedPluginIds, pluginId],
-    [openedPluginIds, pluginId],
-  );
+  const visiblePluginIds = useMemo(() => {
+    const visiblePluginId = pluginId ?? retainedPluginDetailId;
+    return visiblePluginId === undefined ||
+      openedPluginIds.includes(visiblePluginId)
+      ? openedPluginIds
+      : [...openedPluginIds, visiblePluginId];
+  }, [openedPluginIds, pluginId]);
 
   const navigateToPlugin = useCallback(
     (nextPluginId: string, view?: "browse" | "installed" | "my") => {
+      if (pluginId === undefined) capturePluginBrowseFocusReturn();
+      retainedPluginDetailId = nextPluginId;
       const nextSearch = new URLSearchParams(searchParams);
       if (panelAuthorId === null) nextSearch.delete("author");
       else nextSearch.set("author", panelAuthorId);
@@ -542,10 +626,11 @@ export function ToolsView({
         search: query.length === 0 ? "" : `?${query}`,
       });
     },
-    [navigate, panelAuthorId, searchParams],
+    [navigate, panelAuthorId, pluginId, searchParams],
   );
 
   const closePanel = useCallback(() => {
+    if (pluginId !== undefined) retainedPluginDetailId = pluginId;
     const nextSearch = new URLSearchParams(searchParams);
     nextSearch.delete("author");
     const query = nextSearch.toString();
@@ -556,7 +641,18 @@ export function ToolsView({
           : getPluginAuthorRoutePath({ authorId: panelAuthorId }),
       search: query.length === 0 ? "" : `?${query}`,
     });
-  }, [navigate, panelAuthorId, searchParams]);
+    const closingEntry = catalogQuery.data?.find(
+      (entry) => entry.pluginId === pluginId,
+    );
+    schedulePluginBrowseFocusRestore(
+      closingEntry === undefined
+        ? undefined
+        : {
+            accessibleLabel: `Open ${closingEntry.displayName} details`,
+            occurrence: 0,
+          },
+    );
+  }, [catalogQuery.data, navigate, panelAuthorId, pluginId, searchParams]);
 
   const closePluginTab = useCallback(
     (closingPluginId: string) => {
@@ -647,11 +743,12 @@ export function ToolsView({
       visiblePluginIds,
     ],
   );
+  const retainedPluginId = pluginId ?? retainedPluginDetailId;
   const activePanelTab =
-    pluginId === undefined
+    retainedPluginId === undefined
       ? null
       : (panelTabs.find(
-          (tab) => tab.tab.id === `marketplace-plugin:${pluginId}`,
+          (tab) => tab.tab.id === `marketplace-plugin:${retainedPluginId}`,
         )?.tab ?? null);
   const mainContent = (
     <div className="min-h-0 flex-1 overflow-hidden">
@@ -665,61 +762,54 @@ export function ToolsView({
       </Suspense>
     </div>
   );
-  const renderPanel = useCallback(
-    ({
-      presentation,
-      onToggleMainCollapse,
-      resizablePanelId,
-    }: {
-      presentation: "inline" | "drawer";
-      onToggleMainCollapse: () => void;
-      resizablePanelId?: string;
-    }) => (
-      <ThreadSecondaryPanel
-        activeTab={activePanelTab}
-        canUseGitUi={false}
-        metadataContent={null}
-        tabs={panelTabs}
-        fixedTabs={[]}
-        onTabReorder={reorderPluginTabs}
-        isOpen={pluginId !== undefined}
-        showConversationCollapseControl={false}
-        showNewTabButton={false}
-        onPanelFocus={() => {}}
-        onCollapse={closePanel}
-        onClose={closePanel}
-        onOpenNewTab={() => {}}
-        isConversationCollapsed={false}
-        onToggleConversationCollapse={onToggleMainCollapse}
-        renderAsDrawer={presentation === "drawer"}
-        resizablePanelId={resizablePanelId}
-      />
-    ),
-    [activePanelTab, closePanel, panelTabs, pluginId, reorderPluginTabs],
+  const flyout = (
+    <PersistentResponsiveDrawerShell
+      open={pluginId !== undefined}
+      onOpenChange={(open) => {
+        if (!open) closePanel();
+      }}
+      placement="right"
+      srLabel="Plugin details"
+    >
+      {isFlyoutContentRealized || retainedPluginDetailId !== undefined ? (
+        <ThreadSecondaryPanel
+          activeTab={activePanelTab}
+          canUseGitUi={false}
+          metadataContent={null}
+          tabs={panelTabs}
+          fixedTabs={[]}
+          onTabReorder={reorderPluginTabs}
+          isOpen={pluginId !== undefined}
+          showConversationCollapseControl={false}
+          showNewTabButton={false}
+          onPanelFocus={() => {}}
+          onCollapse={closePanel}
+          onClose={closePanel}
+          hidePanelIcon="X"
+          hidePanelLabel="Close plugin details"
+          onOpenNewTab={() => {}}
+          isConversationCollapsed={false}
+          onToggleConversationCollapse={() => {}}
+          renderAsDrawer
+        />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="flex min-h-0 flex-1 flex-col gap-3 p-4"
+          data-responsive-drawer-placeholder=""
+        >
+          <Skeleton className="h-8 w-40 rounded-md" />
+          <Skeleton className="h-36 w-full rounded-md" />
+          <Skeleton className="h-24 w-full rounded-md" />
+        </div>
+      )}
+    </PersistentResponsiveDrawerShell>
   );
 
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:-mx-5 md:-mb-5 md:-mt-5">
-      <SecondaryPanelLayout
-        open={pluginId !== undefined}
-        onToggle={pluginId === undefined ? () => {} : closePanel}
-        onClose={closePanel}
-        panelGroupKey="extensions-plugin-details"
-        resetKey={pluginId ?? panelAuthorId ?? "extensions-plugins"}
-        contentKey={pluginId ?? panelAuthorId ?? "extensions-plugins"}
-        drawerLabel="Plugin details"
-        drawerFallback={
-          <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-            <Skeleton className="h-8 w-40 rounded-md" />
-            <Skeleton className="h-36 w-full rounded-md" />
-            <Skeleton className="h-24 w-full rounded-md" />
-          </div>
-        }
-        mainPanelId="extensions-main-panel"
-        main={mainContent}
-        renderPanel={renderPanel}
-        composerHost={null}
-      />
+      {mainContent}
+      {flyout}
     </div>
   );
 }

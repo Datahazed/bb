@@ -18,7 +18,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { getPluginAuthorRoutePath } from "@/lib/route-paths";
-import { CatalogEntryIcon } from "./plugin-ui";
+import { CatalogEntryIconChip } from "./plugin-ui";
 import {
   entriesByMarketplaceAuthor,
   pluginMarketplaceAuthorId,
@@ -222,12 +222,12 @@ function MoreFromAuthor({
         </Link>
       }
     >
-      <div className="grid gap-2">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {moreEntries.slice(0, 3).map((candidate) => (
           <ResourceBrowseCard
             key={`${candidate.marketplace}/${candidate.entryId}`}
-            className="min-h-20 gap-1.5 p-2.5"
-            leading={<CatalogEntryIcon entry={candidate} className="size-5" />}
+            className="min-h-24 gap-1.5 border-border bg-background p-2.5 shadow-none"
+            leading={<CatalogEntryIconChip entry={candidate} />}
             title={candidate.displayName}
             description={candidate.description || undefined}
             byline={

@@ -140,12 +140,24 @@ describe("plugin discovery detail panel", () => {
       expect(element).not.toBeNull();
       return element as HTMLElement;
     });
-    browseViewport.scrollTop = 240;
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open GitHub details" }),
+    const flyout = document.querySelector<HTMLElement>(
+      '[data-persistent-drawer-content][data-state="closed"]',
     );
+    expect(flyout?.style.transform).toBe("translate3d(100%, 0, 0)");
+    browseViewport.scrollTop = 240;
+    const githubOpen = await screen.findByRole("button", {
+      name: "Open GitHub details",
+    });
+    githubOpen.focus();
+    fireEvent.click(githubOpen);
 
     expect(await screen.findByRole("heading", { name: "GitHub" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Plugin details" })).toBeTruthy();
+    expect(flyout?.style.transform).toBe("translate3d(0, 0, 0)");
+    const closeFlyout = screen.getByRole("button", {
+      name: /Close plugin details/u,
+    });
+    expect(closeFlyout.querySelector('[data-icon="X"]')).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe(
       "/extensions/plugins/github?sort=name",
     );
@@ -153,6 +165,16 @@ describe("plugin discovery detail panel", () => {
       browseViewport,
     );
     expect(browseViewport.scrollTop).toBe(240);
+
+    fireEvent.click(closeFlyout);
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/extensions/plugins?sort=name",
+      );
+      expect(document.activeElement).toBe(githubOpen);
+    });
+    fireEvent.click(githubOpen);
+    expect(await screen.findByRole("heading", { name: "GitHub" })).toBeTruthy();
 
     fireEvent.click(
       within(browseViewport).getByRole("button", {

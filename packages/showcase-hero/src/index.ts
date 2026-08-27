@@ -4,6 +4,7 @@ export {
   type ShowcaseHeroCopy,
 } from "./ShowcaseHeroCarousel";
 export { ShowcaseExampleCard } from "./ShowcaseArchetypeCards";
+export { accentInk, accentTint, neutral } from "./showcase-tokens";
 export type {
   ShowcaseArchetype,
   ShowcaseIconRenderer,

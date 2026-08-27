@@ -13,7 +13,7 @@ import {
 } from "react";
 import { useAtomValue } from "jotai";
 import type { DiffFileEntry } from "@bb/server-contract";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Button } from "@bb/shared-ui/button";
@@ -260,6 +260,9 @@ export interface ThreadSecondaryPanelProps {
    * The drawer layout always renders the button (it carries its own close).
    */
   inlinePanelToggle?: "button" | "reserved" | "hidden";
+  /** Optional surface-specific close treatment for a drawer/flyout. */
+  hidePanelIcon?: IconName;
+  hidePanelLabel?: string;
   /**
    * Unique id for this panel's resizable Panel within its PanelGroup. The
    * split-workspace host swaps different panes' panels through one group, and
@@ -317,6 +320,8 @@ export function ThreadSecondaryPanel({
   showConversationCollapseControl = true,
   showNewTabButton = true,
   inlinePanelToggle = "button",
+  hidePanelIcon,
+  hidePanelLabel = HIDE_PANEL_LABEL,
   resizablePanelId = "thread-detail-secondary-panel",
   onPanelFocus,
   onCollapse,
@@ -345,7 +350,8 @@ export function ThreadSecondaryPanel({
     [tabs],
   );
   const hasActiveRenderableTab = activeRenderableTab !== undefined;
-  const hidePanelIconName = getRightPanelToggleIconName(renderAsDrawer);
+  const hidePanelIconName =
+    hidePanelIcon ?? getRightPanelToggleIconName(renderAsDrawer);
   // The conversation-collapse toggle only exists on a wide viewport; the drawer
   // layout fills the screen and cannot collapse the conversation.
   const conversationCollapseControl =
@@ -597,8 +603,8 @@ export function ThreadSecondaryPanel({
       onClick={onClose}
       aria-label={
         togglePanelShortcut
-          ? `${HIDE_PANEL_LABEL} (${togglePanelShortcut.label})`
-          : HIDE_PANEL_LABEL
+          ? `${hidePanelLabel} (${togglePanelShortcut.label})`
+          : hidePanelLabel
       }
       aria-keyshortcuts={togglePanelShortcut?.ariaKeyshortcuts}
     >

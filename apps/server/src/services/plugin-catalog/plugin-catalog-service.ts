@@ -475,8 +475,9 @@ export function createPluginCatalogService(deps: {
       screenshots: [],
       newAndNotableRank: null,
       source: builtinPluginSource(entry.name),
-      // The build ships the code; there is no separate repository to open.
-      repositoryUrl: null,
+      // Bundled registrations use their canonical plugins/<name> directory,
+      // so every BB Team card can link to the exact source it ships from.
+      repositoryUrl: `https://github.com/get-bb/bb/tree/main/plugins/${encodeURIComponent(entry.name)}`,
       // Plugins bundled with the app are BB's own, so the store groups them
       // with the official marketplace rather than inventing a fourth origin.
       marketplace: CURATED_MARKETPLACE_NAME,

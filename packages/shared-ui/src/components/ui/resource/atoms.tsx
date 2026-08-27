@@ -128,18 +128,23 @@ export function ResourceLocationMeta({
 export function ResourceCardStat({
   icon,
   iconClassName,
+  className,
   accessibleLabel,
   children,
 }: {
   icon: IconName;
   iconClassName?: string;
+  className?: string;
   accessibleLabel?: string;
   children: ReactNode;
 }) {
   return (
     <span
       aria-label={accessibleLabel}
-      className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap px-1 text-muted-foreground"
+      className={cn(
+        "inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap px-1 text-muted-foreground",
+        className,
+      )}
     >
       <Icon
         name={icon}
