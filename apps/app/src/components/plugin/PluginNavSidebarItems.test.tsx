@@ -12,6 +12,7 @@ import { createStore, Provider } from "jotai";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { AUTOMATIONS_PLUGIN_ID } from "@/lib/route-paths";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
 import {
   resetPluginSlotStoreForTest,
@@ -94,13 +95,12 @@ function renderSidebarItems(
   );
 }
 
-const ROW_LABELS = new Set(["Docs", "GitHub"]);
-
-function panelRowNames(): string[] {
+function panelRowNames(labels: readonly string[]): string[] {
+  const rowLabels = new Set(labels);
   return screen
     .getAllByRole("button")
     .map((button) => button.textContent?.trim() ?? "")
-    .filter((label) => ROW_LABELS.has(label));
+    .filter((label) => rowLabels.has(label));
 }
 
 beforeEach(() => {
@@ -214,7 +214,7 @@ describe("PluginNavSidebarItems", () => {
       { button: 0 },
     );
     expect(
-      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+      await screen.findByRole("menuitem", { name: "Move to top" }),
     ).not.toBeNull();
 
     expect(accessory?.getAttribute("data-sidebar-hover-actions-open")).toBe(
@@ -259,74 +259,128 @@ describe("PluginNavSidebarItems", () => {
     expect(screen.queryByText("plugin tasks crashed")).toBeNull();
   });
 
-  it("moves a hidden panel into an expanded More disclosure and back", async () => {
-    registerPanel("docs", "Docs");
-    registerPanel("github", "GitHub");
-
+  it("collapses the entire subsection with zero traditional plugins", () => {
     renderSidebarItems();
 
-    expect(panelRowNames()).toEqual(["Docs", "GitHub"]);
+    expect(screen.queryByTestId("plugin-nav-sidebar-items")).toBeNull();
+    expect(screen.queryByText("Plugins")).toBeNull();
+  });
+
+  it("shows the subsection label without a disclosure for one plugin", () => {
+    registerPanel("docs", "Docs");
+    renderSidebarItems();
+
+    expect(screen.getByText("Plugins")).toBeDefined();
+    expect(panelRowNames(["Docs"])).toEqual(["Docs"]);
     expect(
       screen.queryByTestId("plugin-nav-sidebar-overflow-toggle"),
     ).toBeNull();
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Docs panel options" }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("plugin-nav-sidebar-overflow-toggle").textContent,
-      ).toContain("More (1)");
-    });
-    expect(panelRowNames()).toEqual(["GitHub"]);
-    expect(
-      window.localStorage.getItem("bb.sidebar.hiddenPluginPanels"),
-    ).toContain("docs/main");
-
-    fireEvent.click(screen.getByTestId("plugin-nav-sidebar-overflow-toggle"));
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["GitHub", "Docs"]);
-    });
-
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Docs panel options" }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Show in sidebar" }),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("plugin-nav-sidebar-overflow-toggle"),
-      ).toBeNull();
-    });
-    expect(panelRowNames()).toEqual(["Docs", "GitHub"]);
   });
 
-  it("collapses hidden panels behind the More toggle on a later mount", async () => {
-    registerPanel("docs", "Docs");
-    registerPanel("github", "GitHub");
-    window.localStorage.setItem(
-      "bb.sidebar.hiddenPluginPanels",
-      JSON.stringify(["docs/main"]),
-    );
-
+  it("shows five plugins without overflow and disables moving into it", async () => {
+    const labels = ["One", "Two", "Three", "Four", "Five"];
+    labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
     renderSidebarItems();
 
-    expect(panelRowNames()).toEqual(["GitHub"]);
+    expect(panelRowNames(labels)).toEqual(labels);
+    expect(
+      screen.queryByTestId("plugin-nav-sidebar-overflow-toggle"),
+    ).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "One panel options" }),
+      { button: 0 },
+    );
+    expect(
+      (
+        await screen.findByRole("menuitem", { name: "Move to overflow" })
+      ).hasAttribute("data-disabled"),
+    ).toBe(true);
+  });
+
+  it("puts the sixth plugin behind a count-free trailing disclosure", async () => {
+    const labels = ["One", "Two", "Three", "Four", "Five", "Six"];
+    labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
+    renderSidebarItems();
+
+    expect(panelRowNames(labels)).toEqual(labels.slice(0, 5));
     const toggle = screen.getByTestId("plugin-nav-sidebar-overflow-toggle");
-    expect(toggle.textContent).toContain("More (1)");
+    expect(toggle.textContent).toBe("More plugins");
+    expect(toggle.textContent).not.toMatch(/\d/);
+    expect(toggle.lastElementChild?.getAttribute("data-icon")).toBe(
+      "ChevronRight",
+    );
+    expect(toggle.lastElementChild?.classList.contains("rotate-90")).toBe(
+      false,
+    );
 
     fireEvent.click(toggle);
-    await waitFor(() => {
-      expect(panelRowNames()).toEqual(["GitHub", "Docs"]);
+    await waitFor(() => expect(panelRowNames(labels)).toEqual(labels));
+    expect(toggle.textContent).toBe("Show fewer");
+    expect(toggle.lastElementChild?.classList.contains("rotate-90")).toBe(true);
+  });
+
+  it("moves a visible row to positional overflow and back to top", async () => {
+    const labels = ["One", "Two", "Three", "Four", "Five", "Six"];
+    labels.forEach((label, index) => registerPanel(`plugin-${index}`, label));
+    renderSidebarItems();
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "One panel options" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Move to overflow" }),
+    );
+
+    await waitFor(() =>
+      expect(panelRowNames(labels)).toEqual([
+        "Two",
+        "Three",
+        "Four",
+        "Five",
+        "Six",
+      ]),
+    );
+    fireEvent.click(screen.getByTestId("plugin-nav-sidebar-overflow-toggle"));
+    await waitFor(() =>
+      expect(panelRowNames(labels)).toEqual([
+        "Two",
+        "Three",
+        "Four",
+        "Five",
+        "Six",
+        "One",
+      ]),
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "One panel options" }),
+      { button: 0 },
+    );
+    expect(
+      (
+        await screen.findByRole("menuitem", { name: "Move to overflow" })
+      ).hasAttribute("data-disabled"),
+    ).toBe(true);
+
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Move to top" }),
+    );
+    await waitFor(() => expect(panelRowNames(labels)).toEqual(labels));
+  });
+
+  it("excludes Automations from traditional ordering and overflow", () => {
+    registerPanel(AUTOMATIONS_PLUGIN_ID, "Automations");
+    registerPanel("docs", "Docs");
+    renderSidebarItems({
+      storedOrder: [`${AUTOMATIONS_PLUGIN_ID}/main`, "docs/main"],
     });
+
+    expect(screen.queryByRole("button", { name: "Automations" })).toBeNull();
+    expect(panelRowNames(["Docs"])).toEqual(["Docs"]);
+    expect(
+      window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "",
+    ).not.toContain(AUTOMATIONS_PLUGIN_ID);
   });
 
   it("keeps a saved order when plugin frontends register after the first render", async () => {
@@ -340,7 +394,7 @@ describe("PluginNavSidebarItems", () => {
     registerPanel("github", "GitHub");
 
     await waitFor(() => {
-      expect(panelRowNames()).toEqual(["GitHub", "Docs"]);
+      expect(panelRowNames(["Docs", "GitHub"])).toEqual(["GitHub", "Docs"]);
     });
   });
 
@@ -348,7 +402,7 @@ describe("PluginNavSidebarItems", () => {
     registerPanel("docs", "Docs");
     renderSidebarItems({ storedOrder: ["docs/main"] });
 
-    await waitFor(() => expect(panelRowNames()).toEqual(["Docs"]));
+    await waitFor(() => expect(panelRowNames(["Docs"])).toEqual(["Docs"]));
     expect(
       window.localStorage.getItem("bb.sidebar.pluginPanelOrder") ?? "",
     ).not.toContain("__builtin__");
