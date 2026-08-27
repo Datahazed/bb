@@ -276,6 +276,9 @@ const CHILD_REQUEST_TIMEOUT_MS = 60_000;
 const INTERRUPT_SETTLEMENT_TIMEOUT_MS = 5_000;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
+const CODEX_ACTIVE_WRITER_ERROR_PATTERN =
+  /\bthread\s+\S+\s+already has an active writer\b/i;
+const CODEX_ACTIVE_WRITER_RETRY_DELAYS_MS = [100, 400, 1_000] as const;
 const CODEX_ALREADY_ARCHIVED_ERROR_PATTERN =
   /\bno rollout found for thread id\b/i;
 const CODEX_NOT_ARCHIVED_ERROR_PATTERN =
@@ -316,6 +319,12 @@ function archivedSessionHint(message: string): ProviderRecoveryHint | null {
   return CODEX_ARCHIVED_SESSION_ERROR_PATTERN.test(message)
     ? { kind: "sessionArchived", message, retryable: true }
     : null;
+}
+
+function withActiveWriterGuidance(message: string): string {
+  return CODEX_ACTIVE_WRITER_ERROR_PATTERN.test(message)
+    ? `${message}. Close the other Codex session and retry.`
+    : message;
 }
 
 async function delay(ms: number): Promise<void> {
@@ -399,13 +408,14 @@ function currentSession(
   return session;
 }
 
-function releaseSession(session: CodexBridgeSession): void {
+function releaseSession(session: CodexBridgeSession): Promise<void> {
   session.closing = true;
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
-  session.connection?.kill();
+  const exitPromise = session.connection?.kill() ?? Promise.resolve();
   session.connection = null;
+  return exitPromise;
 }
 
 const codexProviderOptionsSchema = z
@@ -816,6 +826,34 @@ const codexThreadIdentityResultSchema = z
   .object({ thread: z.object({ id: z.string().min(1) }).passthrough() })
   .passthrough();
 
+async function requestThreadConstructionWithWriterRetry(
+  connection: CodexAppServerConnection,
+  method: string,
+  params: BbThreadStartParams | ThreadResumeParams | BbThreadForkParams,
+): Promise<z.infer<typeof codexThreadIdentityResultSchema>> {
+  const sendOnce = (): Promise<
+    z.infer<typeof codexThreadIdentityResultSchema>
+  > =>
+    connection.request({
+      method,
+      params,
+      resultSchema: codexThreadIdentityResultSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    });
+  for (const retryDelayMs of CODEX_ACTIVE_WRITER_RETRY_DELAYS_MS) {
+    try {
+      return await sendOnce();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!CODEX_ACTIVE_WRITER_ERROR_PATTERN.test(message)) {
+        throw error;
+      }
+      await delay(retryDelayMs);
+    }
+  }
+  return await sendOnce();
+}
+
 type CodexSessionConstructionRequest =
   | { kind: "start" }
   | { kind: "resume"; providerThreadId: string }
@@ -844,7 +882,10 @@ async function constructThreadSession(
 ): Promise<ConstructedCodexSession> {
   const existing = sessionsByBbThreadId.get(args.threadId);
   if (existing) {
-    releaseSession(existing);
+    // Codex holds a rollout's writer lock for the app-server process lifetime.
+    // Do not let the replacement resume that rollout until the old child has
+    // fully exited and released its ownership.
+    await releaseSession(existing);
   }
 
   const decoded = decodeCodexOptions(args.options);
@@ -968,12 +1009,11 @@ async function constructThreadSession(
       }
     }
 
-    const result = await connection.request({
+    const result = await requestThreadConstructionWithWriterRetry(
+      connection,
       method,
       params,
-      resultSchema: codexThreadIdentityResultSchema,
-      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-    });
+    );
     const codexThreadId = result.thread.id;
     session.codexThreadId = codexThreadId;
     translator.activateThreadGitWritableRoots({
@@ -1212,8 +1252,9 @@ function sendConstructionError(
   error: unknown,
   resumable: boolean,
 ): void {
-  const message = describeCodexLaunchError(error);
-  const recovery = archivedSessionHint(message);
+  const providerMessage = describeCodexLaunchError(error);
+  const recovery = archivedSessionHint(providerMessage);
+  const message = withActiveWriterGuidance(providerMessage);
   sendError(
     id,
     resumable && recovery !== null
@@ -1453,7 +1494,7 @@ async function handleThreadStop(
 
   if (params.intent === "release") {
     if (session) {
-      releaseSession(session);
+      await releaseSession(session);
     }
     sendResult(id, { ok: true });
     return;
@@ -1509,7 +1550,7 @@ async function handleThreadStop(
       providerThreadId: session.codexThreadId,
     }),
   );
-  releaseSession(session);
+  await releaseSession(session);
   sendResult(id, { ok: true });
 }
 
@@ -1557,11 +1598,11 @@ async function handleThreadMaintenance(
     alreadyInRequestedState?: RegExp;
   },
 ): Promise<void> {
-  const settle = (): void => {
+  const settle = async (): Promise<void> => {
     if (options?.releaseAfter) {
       const session = sessionsByBbThreadId.get(params.threadId);
       if (session) {
-        releaseSession(session);
+        await releaseSession(session);
       }
     }
     sendResult(id, { ok: true });
@@ -1570,13 +1611,13 @@ async function handleThreadMaintenance(
     await withChildForThread(params.threadId, (connection) =>
       sendMaintenanceRequestWithRetries(connection, request),
     );
-    settle();
+    await settle();
   } catch (error) {
     if (
       error instanceof Error &&
       options?.alreadyInRequestedState?.test(error.message) === true
     ) {
-      settle();
+      await settle();
       return;
     }
     rejectWithCodexError(id, error);
@@ -1584,8 +1625,9 @@ async function handleThreadMaintenance(
 }
 
 function rejectWithCodexError(id: string | number, error: unknown): void {
-  const message = describeCodexLaunchError(error);
-  const recovery = archivedSessionHint(message);
+  const providerMessage = describeCodexLaunchError(error);
+  const recovery = archivedSessionHint(providerMessage);
+  const message = withActiveWriterGuidance(providerMessage);
   if (recovery !== null) {
     sendError(id, BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR, message, { recovery });
     return;
