@@ -65,6 +65,7 @@ import {
   type PromptVoiceConfig,
   type TypeaheadConfig,
 } from "./PromptBoxInternal";
+import { promptMentionClipboardContent } from "./mentions/prompt-mention-clipboard";
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
@@ -2791,6 +2792,120 @@ describe("PromptBoxInternal mention triggers", () => {
     replacement: "#42 Fix login bug",
   };
 
+  it("applies the first result with Enter for a multiword mention query", async () => {
+    const { changes, onMentionQueryChange, onSubmit, promptBoxRef } =
+      renderPromptBox("Ask @fix login", {
+        mentionSuggestions: [githubIssueSuggestion],
+      });
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenCalledWith("fix login", "@"),
+    );
+    await screen.findByRole("button", { name: /Fix login bug/u });
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+
+    await waitFor(() =>
+      expect(latestValue(changes)).toBe("Ask @#42 Fix login bug "),
+    );
+    expect(latestChange(changes)?.mentions).toHaveLength(1);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("keeps a dismissed multiword occurrence closed as its query extends", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("@asdf qwe", {
+      mentionSuggestions: [githubIssueSuggestion],
+    });
+    await focusPromptEnd(promptBoxRef);
+    await screen.findByRole("button", { name: /Fix login bug/u });
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+    await act(async () => promptBoxRef.current?.insertTextAtCursor("rt"));
+
+    await waitFor(() => expect(latestValue(changes)).toBe("@asdf qwe rt"));
+    expect(screen.queryByRole("button", { name: /Fix login bug/u })).toBeNull();
+  });
+
+  it("dismisses a coarse-pointer occurrence from a 44px close target", async () => {
+    const restorePointer = mockPointerCoarse(true);
+    try {
+      const { onMentionQueryChange } = renderPromptBox("@fix", {
+        mentionSuggestions: [githubIssueSuggestion],
+      });
+
+      const closeButton = await screen.findByRole("button", {
+        name: "Close suggestions",
+      });
+      expect(closeButton.classList).toContain("size-11");
+      expect(closeButton.parentElement?.classList).toContain("h-11");
+      expect(closeButton.parentElement?.classList).not.toContain("absolute");
+
+      fireEvent.click(closeButton);
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("button", { name: /Fix login bug/u }),
+        ).toBeNull(),
+      );
+      expect(getPromptEditorElement().textContent).toBe("@fix");
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null);
+    } finally {
+      restorePointer();
+    }
+  });
+
+  it("reopens after a touch-dismissed occurrence is removed and retyped", async () => {
+    const restorePointer = mockPointerCoarse(true);
+    const promptBoxRef = createRef<PromptBoxHandle>();
+
+    function RetriggerHarness() {
+      const [value, setValue] = useState("@fix");
+      return (
+        <>
+          <button type="button" onClick={() => setValue("")}>
+            Remove occurrence
+          </button>
+          <button type="button" onClick={() => setValue("@fix")}>
+            Retype occurrence
+          </button>
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value,
+              onChange: (nextValue) => setValue(nextValue),
+              typeahead: buildTypeaheadConfig({
+                mentionSuggestions: [githubIssueSuggestion],
+              }),
+            })}
+            promptBoxRef={promptBoxRef}
+          />
+        </>
+      );
+    }
+
+    try {
+      render(<RetriggerHarness />);
+      await screen.findByRole("button", { name: /Fix login bug/u });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Close suggestions" }),
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Remove occurrence" }),
+      );
+      await waitFor(() =>
+        expect(getPromptEditorElement().textContent).toBe(""),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Retype occurrence" }),
+      );
+
+      await screen.findByRole("button", { name: /Fix login bug/u });
+    } finally {
+      restorePointer();
+    }
+  });
+
   it("reports the queued editor typeahead's open state and measured height", async () => {
     const layouts: Array<{ height: number; isOpen: boolean }> = [];
     const nativeGetBoundingClientRect =
@@ -2991,9 +3106,6 @@ describe("PromptBoxInternal selection reveal", () => {
     const lines = Array.from({ length: 40 }, (_, index) => `line ${index}`);
     const { promptBoxRef } = renderPromptBox(lines.join("\n"));
 
-    await focusPromptEnd(promptBoxRef);
-    await nextAnimationFrame();
-
     const scrollContainer = document.querySelector(
       "[data-promptbox-editor-scroll]",
     );
@@ -3029,8 +3141,16 @@ describe("PromptBoxInternal selection reveal", () => {
       });
 
     try {
-      await waitFor(() => expect(view).not.toBeNull());
-      const liveView = view as unknown as EditorView;
+      // Install the layout spies above before triggering the reveal whose
+      // EditorView this test uses; there is no guaranteed later reveal.
+      await focusPromptEnd(promptBoxRef);
+      await nextAnimationFrame();
+
+      expect(view).not.toBeNull();
+      if (view === null) {
+        throw new Error("Expected focus reveal to capture the editor view");
+      }
+      const liveView: EditorView = view;
       const { doc } = liveView.state;
       // The focusEnd reveal above captured `view`; reset the baseline it set.
       scrollTop = 500;
@@ -3121,6 +3241,50 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await waitFor(() => expect(latestValue(changes)).toBe("> quoted"));
     expect(getPromptEditorElement().querySelector("blockquote")).not.toBeNull();
+  });
+
+  it("keeps multiple pasted plugin references as distinct pills", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+    const reference = (id: string, label: string) => {
+      const pill = promptMentionClipboardContent({
+        kind: "plugin",
+        pluginId: "plugin-api-docs",
+        icon: null,
+        itemId: `surface:${id}`,
+        label,
+      });
+      return {
+        text: `Build a plugin capability like ${pill.text.trimEnd()} using bb's Plugin Guide. `,
+        html: `Build a plugin capability like ${pill.html.trimEnd()} using bb's Plugin Guide. `,
+      };
+    };
+
+    await focusPromptEnd(promptBoxRef);
+    const actions = reference("composer-actions", "Inline actions");
+    pasteClipboard({ html: actions.html, plainText: actions.text });
+    await waitFor(() =>
+      expect(latestChange(changes)?.mentions).toHaveLength(1),
+    );
+
+    const panels = reference("thread-panel", "Thread side-panel tabs");
+    pasteClipboard({ html: panels.html, plainText: panels.text });
+
+    await waitFor(() =>
+      expect(latestChange(changes)?.mentions).toHaveLength(2),
+    );
+    expect(
+      latestChange(changes)?.mentions.map((mention) => mention.resource),
+    ).toEqual([
+      expect.objectContaining({ itemId: "surface:composer-actions" }),
+      expect.objectContaining({ itemId: "surface:thread-panel" }),
+    ]);
+    expect(
+      getPromptEditorElement().querySelectorAll(".prompt-mention-pill"),
+    ).toHaveLength(2);
+    expect(latestValue(changes)).toBe(
+      "Build a plugin capability like @Inline actions using bb's Plugin Guide. " +
+        "Build a plugin capability like @Thread side-panel tabs using bb's Plugin Guide. ",
+    );
   });
 
   it("opens the file picker from the prompt actions menu", async () => {

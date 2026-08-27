@@ -79,6 +79,12 @@ export const BUILTIN_PLUGINS = [
     category: "Interface",
   },
   {
+    name: "monaco-editor",
+    pluginId: "monaco-editor",
+    defaultEnabled: false,
+    category: "Interface",
+  },
+  {
     name: "pdf-preview",
     pluginId: "pdf-preview",
     defaultEnabled: true,
@@ -119,6 +125,12 @@ export const BUILTIN_PLUGINS = [
     pluginId: "keep-awake",
     defaultEnabled: true,
     category: "Host access",
+  },
+  {
+    name: "plugin-api-docs",
+    pluginId: "plugin-api-docs",
+    defaultEnabled: false,
+    category: "Developer tools",
   },
   {
     name: "provider-retry",

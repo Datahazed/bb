@@ -961,7 +961,7 @@ describe("ThreadTimelineRows actions", () => {
     );
   });
 
-  it("ignores sidebar search scroll state for a different thread", () => {
+  it("ignores thread-search scroll state for a different thread", () => {
     // Row wrappers schedule frames of their own (containment arming), so run
     // every frame synchronously and assert on the reveal itself.
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
@@ -1007,7 +1007,7 @@ describe("ThreadTimelineRows actions", () => {
     ).toBe(false);
   });
 
-  it("scrolls sidebar search matches to the nested row instead of the containing parent", async () => {
+  it("scrolls thread-search matches to the nested row instead of the containing parent", async () => {
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       callback(performance.now());
       return 1;
@@ -1122,7 +1122,7 @@ describe("ThreadTimelineRows actions", () => {
     }
   });
 
-  it("loads older timeline rows before scrolling to an older sidebar search match", async () => {
+  it("loads older timeline rows before scrolling to an older thread-search match", async () => {
     const onLoadOlderRows = vi.fn();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       callback(performance.now());
@@ -1520,5 +1520,177 @@ describe("ThreadTimelineRows actions", () => {
     await waitFor(() =>
       expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
     );
+  });
+});
+
+describe("ThreadTimelineRows shared message column width", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("expands overflow actions in place from the row list's one column measurement", () => {
+    mockSelectionMenuMedia({ isCompactViewport: true, isPointerCoarse: true });
+    const observations: { callback: ResizeObserverCallback; node: Element }[] =
+      [];
+    class ControlledResizeObserver {
+      readonly #callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.#callback = callback;
+      }
+      observe(node: Element) {
+        observations.push({ callback: this.#callback, node });
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
+
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "earlier_agent_message",
+            role: "assistant",
+            text: "An earlier answer.",
+          }),
+          conversationRow({
+            id: "latest_agent_message",
+            role: "assistant",
+            text: "The latest answer.",
+          }),
+        ]}
+        canSpawnChild
+        onForkMessage={vi.fn()}
+        onMessageAddToChat={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    // Report a width only for the top-level row list: the bars' own columns
+    // are never observed here, so an in-place expansion can only come from
+    // the shared list-level measurement flowing down through context.
+    act(() => {
+      for (const { callback, node } of observations) {
+        if (!node.hasAttribute("data-timeline-row-list")) continue;
+        callback(
+          [
+            {
+              target: node,
+              contentRect: { width: 358, height: 600 },
+            } as unknown as ResizeObserverEntry,
+          ],
+          undefined as unknown as ResizeObserver,
+        );
+      }
+    });
+
+    const earlierMessage = container.querySelector(
+      '[data-timeline-row-id="earlier_agent_message"]',
+    );
+    const trigger = earlierMessage?.querySelector<HTMLButtonElement>(
+      '[aria-label="Message actions"]',
+    );
+    if (!trigger) throw new Error("Missing overflow trigger");
+    fireEvent.click(trigger);
+
+    // In-place expansion, not the popover: the 358px column fits all three
+    // 28px touch actions with the comfort margin to spare.
+    expect(document.body.querySelector('[data-side="top"]')).toBeNull();
+    expect(
+      earlierMessage?.querySelector('[aria-label="Copy message"]'),
+    ).not.toBeNull();
+    expect(
+      earlierMessage?.querySelector('[aria-label="Fork into new thread"]'),
+    ).not.toBeNull();
+  });
+
+  it("subtracts the assistant column's padding from the shared list width", () => {
+    mockSelectionMenuMedia({ isCompactViewport: true, isPointerCoarse: true });
+    const observations: { callback: ResizeObserverCallback; node: Element }[] =
+      [];
+    class ControlledResizeObserver {
+      readonly #callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.#callback = callback;
+      }
+      observe(node: Element) {
+        observations.push({ callback: this.#callback, node });
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
+
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "earlier_agent_message",
+            role: "assistant",
+            text: "An earlier answer.",
+          }),
+          conversationRow({
+            id: "latest_agent_message",
+            role: "assistant",
+            text: "The latest answer.",
+          }),
+        ]}
+        canSpawnChild
+        onForkMessage={vi.fn()}
+        onMessageAddToChat={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+    const reportListWidth = (width: number) => {
+      act(() => {
+        for (const { callback, node } of observations) {
+          if (!node.hasAttribute("data-timeline-row-list")) continue;
+          callback(
+            [
+              {
+                target: node,
+                contentRect: { width, height: 600 },
+              } as unknown as ResizeObserverEntry,
+            ],
+            undefined as unknown as ResizeObserver,
+          );
+        }
+      });
+    };
+    const earlierMessage = container.querySelector(
+      '[data-timeline-row-id="earlier_agent_message"]',
+    );
+    if (!earlierMessage) throw new Error("Missing earlier assistant row");
+    const clickTrigger = () => {
+      const trigger = earlierMessage.querySelector<HTMLButtonElement>(
+        '[aria-label="Message actions"]',
+      );
+      if (!trigger) throw new Error("Missing overflow trigger");
+      fireEvent.click(trigger);
+    };
+
+    // The assistant `[data-message-column]` is `px-2`, so a 131px list leaves
+    // it a 115px content box: one short of the 116px the three 28px touch
+    // actions need with their comfort margin. The popover must win, exactly
+    // as it did when each bar observed its own column.
+    reportListWidth(131);
+    clickTrigger();
+    expect(document.body.querySelector('[data-side="top"]')).not.toBeNull();
+    expect(
+      earlierMessage.querySelector('[aria-label="Copy message"]'),
+    ).toBeNull();
+
+    // One more pixel of list width clears the threshold: in place, no popover.
+    reportListWidth(132);
+    clickTrigger();
+    expect(document.body.querySelector('[data-side="top"]')).toBeNull();
+    expect(
+      earlierMessage.querySelector('[aria-label="Copy message"]'),
+    ).not.toBeNull();
+    expect(
+      earlierMessage.querySelector('[aria-label="Fork into new thread"]'),
+    ).not.toBeNull();
   });
 });
