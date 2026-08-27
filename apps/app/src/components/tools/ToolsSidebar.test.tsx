@@ -35,15 +35,13 @@ function renderAt(path: string, appRoutePath = "/") {
 const row = (name: string) => screen.getByRole("link", { name });
 
 describe("ToolsSidebar", () => {
-  it("groups every Extensions page by job and keeps the back target", () => {
+  it("groups every Extensions page by noun and keeps the back target", () => {
     renderAt("/extensions/plugins", "/projects/proj_one");
 
-    expect(screen.getByText("Discover")).toBeTruthy();
-    expect(screen.getByText("Manage")).toBeTruthy();
-    expect(screen.getByText("Build")).toBeTruthy();
-    expect(
-      screen.getByText("Find plugins and reusable agent skills."),
-    ).toBeTruthy();
+    // Extensions holds two nouns, so the sidebar has two groups. Each row's
+    // page lives under exactly one of them.
+    expect(screen.getByText("Plugins")).toBeTruthy();
+    expect(screen.getByText("Skills")).toBeTruthy();
     expect(row("Browse plugins").getAttribute("href")).toBe(
       "/extensions/plugins",
     );
@@ -61,9 +59,6 @@ describe("ToolsSidebar", () => {
     );
     expect(row("My skills").getAttribute("href")).toBe(
       "/extensions/skills?view=my",
-    );
-    expect(row("Create a plugin").getAttribute("href")).toBe(
-      "/extensions/plugins?view=create",
     );
     // The back row must point at the remembered app route, not merely exist.
     expect(row("Back to app").getAttribute("href")).toBe("/projects/proj_one");

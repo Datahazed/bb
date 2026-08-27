@@ -38,7 +38,18 @@ describe("plugin-listing-screenshots skill", () => {
     }
     expect(skill).toContain("--fixture-thread <id>");
     expect(skill).toContain("Open every image.");
-    expect(skill).toContain("Crop nothing.");
+    expect(skill).toContain("Crop to the surface, not the desktop.");
+  });
+
+  it("gates capture on host safety, seeded data, and being a product surface", async () => {
+    const skill = await readFile(skillPath, "utf8");
+
+    // These three ran as review rules until a capture on a working machine
+    // photographed a real personal vault. They only help before the shutter.
+    expect(skill).toContain("## Before you capture anything");
+    expect(skill).toContain("Is this host safe to photograph?");
+    expect(skill).toContain("Does the surface have anything in it yet?");
+    expect(skill).toContain("Is this a product surface at all?");
   });
 
   it("is explicitly part of the marketplace submission procedure", async () => {
