@@ -840,6 +840,7 @@ export function NewThreadComposer({
       selectedBranch,
     ],
   );
+  const setDraftComposerSelection = promptDraft.setComposerSelection;
 
   useEffect(() => {
     if (
@@ -850,7 +851,7 @@ export function NewThreadComposer({
     ) {
       return;
     }
-    promptDraft.setComposerSelection({
+    setDraftComposerSelection({
       providerId: selectedProviderId,
       model: selectedThreadModel,
       reasoningLevel,
@@ -861,7 +862,7 @@ export function NewThreadComposer({
   }, [
     environmentSelectionValue,
     permissionMode,
-    promptDraft.setComposerSelection,
+    setDraftComposerSelection,
     reasoningLevel,
     selectedProviderId,
     selectedThreadModel,
