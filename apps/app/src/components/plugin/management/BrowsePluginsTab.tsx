@@ -840,17 +840,16 @@ export function PluginCatalogCard({
           timestamp: Date.parse(entry.updatedAt),
           now: Date.now(),
         });
-  // Just the number. The download glyph beside it repeated the install
-  // control's own glyph an inch away, which read as two install affordances.
+  // Just the number, handed to the install control as its own metadata. The
+  // download glyph it used to carry repeated the control's glyph an inch away,
+  // which read as two install affordances.
   const installCount =
-    entry.installs === null ? null : (
-      <span
-        aria-label={`${entry.installs.toLocaleString()} installs`}
-        className="shrink-0 whitespace-nowrap text-2xs text-subtle-foreground"
-      >
-        {formatInstallCount(entry.installs)}
-      </span>
-    );
+    entry.installs === null
+      ? undefined
+      : {
+          display: formatInstallCount(entry.installs),
+          accessibleLabel: `${entry.installs.toLocaleString()} installs`,
+        };
   // Install count sits with the Install control; the footer keeps provenance,
   // with the source link flush right where the eye lands last.
   const footerMeta =
@@ -875,6 +874,7 @@ export function PluginCatalogCard({
         pending={uninstall.isPending}
         presentation="icon"
         tooltip={`Installed — uninstall ${entry.displayName}`}
+        count={installCount}
         // Installed is a settled state, not an offer: it sits at the weight of
         // a disabled control so the eye goes to the cards you can still act on.
         // The glyph matches the install count beside it so the pair reads level.
@@ -887,6 +887,7 @@ export function PluginCatalogCard({
         disabled={!entry.compatible}
         presentation="icon"
         tooltip={`Install ${entry.displayName}`}
+        count={installCount}
         // A bordered box here competed with the card's own edge; the glyph
         // alone is enough on a surface this dense, sized to match the count.
         className="border-transparent bg-transparent shadow-none hover:border-transparent hover:bg-state-hover [&_svg]:size-3.5"
@@ -904,12 +905,8 @@ export function PluginCatalogCard({
         }
       />
     );
-  const headerAction = (
-    <span className="flex items-center gap-1.5">
-      {installCount}
-      {installControl}
-    </span>
-  );
+  // The control owns the count now, so the header action is the control.
+  const headerAction = installControl;
 
   return (
     <>

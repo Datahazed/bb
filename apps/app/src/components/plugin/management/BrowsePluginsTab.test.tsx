@@ -678,7 +678,15 @@ describe("BrowsePluginsTab", () => {
       screen.getByRole("menuitemradio", { name: "Most installed" }),
     );
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.getByLabelText("1,204 installs")).toBeTruthy();
+    const count = screen.getByLabelText("1,204 installs");
+    expect(count).toBeTruthy();
+    // The count is metadata for the install control, not a sibling that
+    // happens to sit nearby: the button points at it as its description, so
+    // screen readers announce the offer and its weight together.
+    const installButton = screen.getByRole("button", {
+      name: "Install Popular",
+    });
+    expect(installButton.getAttribute("aria-describedby")).toBe(count.id);
     expect(container.querySelector('[aria-label^="Updated "]')).not.toBeNull();
     const unknownCard = screen
       .getByRole("button", { name: "Open Unknown metrics details" })
