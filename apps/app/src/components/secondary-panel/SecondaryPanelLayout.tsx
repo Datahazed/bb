@@ -33,6 +33,7 @@ import {
   usePanelCollapseTransitionsReady,
 } from "./panelTransitionTokens";
 import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
+import type { WritableAtom } from "jotai";
 
 const FULL_PANEL_SIZE_PERCENT = 100;
 const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
@@ -71,6 +72,13 @@ interface SecondaryPanelLayoutProps {
     active: boolean;
     onToggle: () => void;
   };
+  /**
+   * Where this surface keeps its secondary-panel width. A surface with its own
+   * pane proportions passes its own atom; omitted, the thread's shared width
+   * applies. The layout reads it to size the main pane, so it must be the same
+   * atom the panel itself resizes.
+   */
+  secondaryWidthAtom?: WritableAtom<number, [number], void>;
   renderPanel: (args: SecondaryPanelRenderArgs) => ReactNode;
   renderHostedPanel?: (panel: ReactNode) => ReactNode;
   composerHost: PluginComposerHost | null;
@@ -96,6 +104,7 @@ export function SecondaryPanelLayout({
   mainHeader,
   main,
   collapse,
+  secondaryWidthAtom = secondaryPanelWidthPercentAtom,
   renderPanel,
   renderHostedPanel,
   composerHost,
@@ -107,9 +116,7 @@ export function SecondaryPanelLayout({
     resetKey,
     !renderAsDrawer,
   );
-  const persistedSecondaryWidthPercent = useAtomValue(
-    secondaryPanelWidthPercentAtom,
-  );
+  const persistedSecondaryWidthPercent = useAtomValue(secondaryWidthAtom);
   const isMainCollapsed = open && !renderAsDrawer && collapse?.active === true;
 
   const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(

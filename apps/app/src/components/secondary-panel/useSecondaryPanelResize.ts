@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, type WritableAtom } from "jotai";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useResizeObserver } from "usehooks-ts";
 import {
@@ -17,16 +17,23 @@ type SecondaryPanelResizeHandler = (size: number) => void;
 interface UseSecondaryPanelResizeArgs {
   isSecondaryPanelOpen: boolean;
   onPanelWidthChange: SecondaryPanelWidthChangeHandler;
+  /**
+   * Where this surface keeps its width. A surface with its own pane
+   * proportions passes its own atom so a drag here does not resize an
+   * unrelated surface's panel; omitted, the thread's shared width applies.
+   */
+  widthAtom?: WritableAtom<number, [number], void>;
 }
 
 export function useSecondaryPanelResize({
   isSecondaryPanelOpen,
   onPanelWidthChange,
+  widthAtom = secondaryPanelWidthPercentAtom,
 }: UseSecondaryPanelResizeArgs) {
   const [isSecondaryPanelDragging, setIsSecondaryPanelDragging] =
     useState(false);
-  const persistedWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
-  const setPersistedWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
+  const persistedWidthPercent = useAtomValue(widthAtom);
+  const setPersistedWidthPercent = useSetAtom(widthAtom);
   const setIsResizing = useSetAtom(threadSecondaryPanelResizingAtom);
   const secondaryPanelRef = useRef<HTMLElement>(null!);
   const secondaryResizablePanelRef = useRef<ImperativePanelHandle | null>(null);

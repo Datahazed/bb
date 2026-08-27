@@ -17,6 +17,7 @@ import {
 // so those icons never flash blank waiting for an on-demand load.
 import "@bb/shared-ui/icon-extended";
 import { useMutation } from "@tanstack/react-query";
+import { useWindowSize } from "usehooks-ts";
 import { appToast } from "@/components/ui/app-toast";
 import { OverflowFade } from "@/components/ui/overflow-fade";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
@@ -74,6 +75,11 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SkillsLibrary } from "@/components/tools/SkillsLibrary";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
+import { marketplaceSecondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import {
+  marketplaceDetailMinPercent,
+  MARKETPLACE_DETAIL_MAX_WIDTH_PERCENT,
+} from "@/components/tools/marketplacePaneSizing";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/secondaryPanelTab";
 
@@ -761,6 +767,18 @@ export function ToolsView({
   // The detail opens as the page's right panel — resizable, docked, and a
   // drawer on compact widths — rather than a floating overlay: it belongs to
   // Extensions, and the reader keeps the catalog beside it.
+  // The catalog must stay the widest pane, so the detail pane is capped below
+  // half the group and floored above the nav — see marketplacePaneSizing.
+  const { width: viewportWidth } = useWindowSize();
+  const detailWidthPolicy = useMemo(
+    () => ({
+      minPercent: marketplaceDetailMinPercent(viewportWidth),
+      maxPercent: MARKETPLACE_DETAIL_MAX_WIDTH_PERCENT,
+      widthAtom: marketplaceSecondaryPanelWidthPercentAtom,
+    }),
+    [viewportWidth],
+  );
+
   const renderPanel = useCallback(
     ({
       presentation,
@@ -791,9 +809,17 @@ export function ToolsView({
         onToggleConversationCollapse={onToggleMainCollapse}
         renderAsDrawer={presentation === "drawer"}
         resizablePanelId={resizablePanelId}
+        widthPolicy={detailWidthPolicy}
       />
     ),
-    [activePanelTab, closePanel, panelTabs, pluginId, reorderPluginTabs],
+    [
+      activePanelTab,
+      closePanel,
+      detailWidthPolicy,
+      panelTabs,
+      pluginId,
+      reorderPluginTabs,
+    ],
   );
 
   return (
@@ -813,6 +839,7 @@ export function ToolsView({
             <Skeleton className="h-24 w-full rounded-md" />
           </div>
         }
+        secondaryWidthAtom={marketplaceSecondaryPanelWidthPercentAtom}
         mainPanelId="extensions-main-panel"
         main={mainContent}
         renderPanel={renderPanel}

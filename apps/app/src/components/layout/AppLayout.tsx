@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { atom, useAtom, useAtomValue, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
+import { useWindowSize } from "usehooks-ts";
 import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
@@ -98,6 +99,10 @@ import { wsManager } from "@/lib/ws";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { findPaneByThread } from "@/lib/split-layout";
 import { applyThreadOpenToLayout } from "@/views/thread-detail/splitThreadNavigation";
+import {
+  clampMarketplaceNavWidth,
+  marketplaceNavWidth,
+} from "@/components/tools/marketplacePaneSizing";
 import { useAppSettingsRouteMemory } from "@/hooks/useAppSettingsRouteMemory";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 
@@ -130,6 +135,35 @@ const sidebarWidthAtom = atomWithStorage<number>(
   sidebarWidthStorage,
   { getOnInit: true },
 );
+
+/**
+ * The Extensions nav pane keeps its own width.
+ *
+ * It holds six fixed labels where the app sidebar holds project trees, so the
+ * two want different widths, and sharing one number meant a width dragged in
+ * Threads decided how much room the catalog had. `null` means "never dragged
+ * here" — the width then follows the viewport (see marketplacePaneSizing), so
+ * the default stays proportional instead of freezing at whatever the window
+ * happened to be on first load.
+ */
+const MARKETPLACE_SIDEBAR_WIDTH_KEY = "bb.extensions.sidebar.width";
+const marketplaceSidebarWidthStorage =
+  createLocalStorageSyncStorage<number | null>({
+    parse: (storedValue) => {
+      if (storedValue === null) return null;
+      const parsedValue = Number(storedValue);
+      if (!Number.isFinite(parsedValue)) return null;
+      return clampMarketplaceNavWidth(parsedValue);
+    },
+    serialize: (value) =>
+      value === null ? "" : String(clampMarketplaceNavWidth(value)),
+  });
+const marketplaceSidebarWidthAtom = atomWithStorage<number | null>(
+  MARKETPLACE_SIDEBAR_WIDTH_KEY,
+  null,
+  marketplaceSidebarWidthStorage,
+  { getOnInit: true },
+);
 // The in-flight width while the resize handle is dragged, or null at rest.
 // Written from the drag's animation-frame callback and read only by the
 // bridge below, so a frame of dragging re-renders the bridge and the
@@ -160,6 +194,8 @@ const sidebarOpenAtom = atomWithStorage<boolean>(
 
 interface SidebarStateBridgeProps {
   providerRef: Ref<HTMLDivElement>;
+  /** Extensions sizes its nav pane from the Marketplace policy, not the app width. */
+  isMarketplace: boolean;
   children: ReactNode;
 }
 
@@ -168,11 +204,19 @@ type SidebarOpenChangeHandler = (open: boolean) => void;
 
 function SidebarStateBridge({
   providerRef,
+  isMarketplace,
   children,
 }: SidebarStateBridgeProps) {
   const [open, setOpen] = useAtom(sidebarOpenAtom);
-  const sidebarWidth = useAtomValue(sidebarWidthAtom);
+  const appSidebarWidth = useAtomValue(sidebarWidthAtom);
+  const marketplaceStoredWidth = useAtomValue(marketplaceSidebarWidthAtom);
+  const { width: viewportWidth } = useWindowSize();
   const sidebarLiveWidth = useAtomValue(sidebarLiveWidthAtom);
+  // An undragged Extensions nav follows the viewport, so widening the window
+  // widens the pane instead of leaving a proportion chosen at first load.
+  const sidebarWidth = isMarketplace
+    ? (marketplaceStoredWidth ?? marketplaceNavWidth(viewportWidth))
+    : appSidebarWidth;
   const handleOpenChange = useCallback<SidebarOpenChangeHandler>(
     (nextOpen) => {
       setOpen(nextOpen);
@@ -715,16 +759,28 @@ export function AppLayout({ children }: AppLayoutProps) {
   // `user-select` or `cursor` on `body` instead would change an inherited
   // property on the document root and restyle every element on mousedown and
   // again on mouseup.
+  // The nav pane the drag is actually moving. Extensions keeps its own width
+  // and its own bounds, so the drag must read, clamp and commit against the
+  // same pane the user has hold of.
+  const activeSidebarWidthAtom = isGlobalToolsView
+    ? marketplaceSidebarWidthAtom
+    : sidebarWidthAtom;
+  const clampActiveSidebarWidth = isGlobalToolsView
+    ? clampMarketplaceNavWidth
+    : clampSidebarWidth;
+
   const handleResizeMouseDown = useCallback(
     (event: SidebarResizeMouseEvent) => {
       event.preventDefault();
       setIsSidebarResizing(true);
       startXRef.current = event.clientX;
-      startWidthRef.current = store.get(sidebarWidthAtom);
+      startWidthRef.current =
+        store.get(activeSidebarWidthAtom) ??
+        marketplaceNavWidth(window.innerWidth);
       liveWidthRef.current = startWidthRef.current;
       document.body.classList.add("sidebar-resizing");
     },
-    [store],
+    [activeSidebarWidthAtom, store],
   );
 
   const finishSidebarResize = useCallback(() => {
@@ -735,13 +791,13 @@ export function AppLayout({ children }: AppLayoutProps) {
     // flushSync so the sidebar is at its final width in the DOM before the
     // bounds sync below measures it.
     flushSync(() => {
-      store.set(sidebarWidthAtom, liveWidthRef.current);
+      store.set(activeSidebarWidthAtom, liveWidthRef.current);
       store.set(sidebarLiveWidthAtom, null);
     });
     dispatchBrowserViewBoundsSync();
     setIsSidebarResizing(false);
     resetSidebarResizeDocumentState();
-  }, [store]);
+  }, [activeSidebarWidthAtom, store]);
 
   useEffect(() => {
     if (!isSidebarResizing) return;
@@ -758,7 +814,9 @@ export function AppLayout({ children }: AppLayoutProps) {
 
     const handleMouseMove = (event: MouseEvent) => {
       const delta = event.clientX - startXRef.current;
-      liveWidthRef.current = clampSidebarWidth(startWidthRef.current + delta);
+      liveWidthRef.current = clampActiveSidebarWidth(
+        startWidthRef.current + delta,
+      );
       if (animationFrameRef.current === null) {
         animationFrameRef.current =
           window.requestAnimationFrame(applyLiveWidth);
@@ -800,7 +858,10 @@ export function AppLayout({ children }: AppLayoutProps) {
     <ProjectActionsProvider>
       <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
         <ThreadActionsProvider>
-          <SidebarStateBridge providerRef={providerRef}>
+          <SidebarStateBridge
+            providerRef={providerRef}
+            isMarketplace={isGlobalToolsView}
+          >
             <AppLayoutSidebar
               mode={
                 isGlobalSettingsView

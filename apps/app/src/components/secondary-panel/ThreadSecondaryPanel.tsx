@@ -65,6 +65,7 @@ import {
   type SecondaryPanelDraggingHandler,
   useSecondaryPanelResize,
 } from "./useSecondaryPanelResize";
+import type { WritableAtom } from "jotai";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
 import { GitDiffTabContent } from "./ThreadSecondaryPanelTabContent";
@@ -272,6 +273,17 @@ export interface ThreadSecondaryPanelProps {
    * Defaults to the standalone surface's stable id.
    */
   resizablePanelId?: string;
+  /**
+   * Width bounds for this panel, as a percentage of its PanelGroup. A surface
+   * whose main pane must stay the widest supplies its own band; omitted, the
+   * thread's bounds apply.
+   */
+  widthPolicy?: {
+    minPercent: number;
+    maxPercent: number;
+    /** Where this surface persists its width. */
+    widthAtom: WritableAtom<number, [number], void>;
+  };
   onPanelFocus: () => void;
   onCollapse: () => void;
   onClose: () => void;
@@ -323,6 +335,7 @@ export function ThreadSecondaryPanel({
   hidePanelIcon,
   hidePanelLabel = HIDE_PANEL_LABEL,
   resizablePanelId = "thread-detail-secondary-panel",
+  widthPolicy,
   onPanelFocus,
   onCollapse,
   onClose,
@@ -374,6 +387,7 @@ export function ThreadSecondaryPanel({
     secondaryPanelRef: panelRef,
     secondaryResizablePanelRef: resizablePanelRef,
   } = useSecondaryPanelResize({
+    ...(widthPolicy === undefined ? {} : { widthAtom: widthPolicy.widthAtom }),
     isSecondaryPanelOpen: isOpen,
     onPanelWidthChange: handleSecondaryPanelWidthChange,
   });
@@ -1129,11 +1143,14 @@ export function ThreadSecondaryPanel({
               : persistedWidthPercent
             : 0
         }
-        minSize={THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT}
+        minSize={
+          widthPolicy?.minPercent ?? THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT
+        }
         maxSize={
           isConversationCollapsed
             ? CONVERSATION_COLLAPSED_PANEL_SIZE_PERCENT
-            : THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT
+            : (widthPolicy?.maxPercent ??
+              THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT)
         }
         onCollapse={handlePanelCollapse}
         onResize={handlePanelResize}

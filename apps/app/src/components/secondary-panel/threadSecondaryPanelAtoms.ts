@@ -2,6 +2,7 @@ import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
+import { MARKETPLACE_DETAIL_WIDTH_PERCENT } from "@/components/tools/marketplacePaneSizing";
 
 export const threadSecondaryPanelResizingAtom = atom(false);
 
@@ -33,6 +34,23 @@ export const secondaryPanelWidthPercentAtom = atomWithStorage<number>(
   secondaryPanelWidthStorage,
   { getOnInit: true },
 );
+
+/**
+ * The Marketplace detail pane's width, kept apart from the thread panel's.
+ *
+ * The two surfaces want different proportions — a thread's panel may take
+ * half the window, while the Marketplace's must stay narrower than the
+ * catalog it was opened from — and one shared number meant a width dragged in
+ * a thread decided how much of the catalog stayed visible. Its default comes
+ * from the Marketplace pane policy.
+ */
+export const marketplaceSecondaryPanelWidthPercentAtom =
+  atomWithStorage<number>(
+    "bb.extensions.secondaryPanel.widthPercent",
+    MARKETPLACE_DETAIL_WIDTH_PERCENT,
+    secondaryPanelWidthStorage,
+    { getOnInit: true },
+  );
 
 const threadSecondaryPanelBooleanStorage =
   createLocalStorageSyncStorage<boolean>({
