@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { Icon, type IconName } from "../icon";
 import {
   Tooltip,
@@ -110,6 +110,64 @@ export function ResourceMeta({
           <span className="min-w-0 truncate">{item}</span>
         </span>
       ))}
+    </span>
+  );
+}
+
+/**
+ * Box sizes for {@link ResourceIconFrame}, each paired with the glyph size
+ * that centres inside it.
+ *
+ * The pair is the point. A frame and its glyph were previously sized at two
+ * different call sites, and when they disagreed the glyph did not simply look
+ * large — a grid or flex item bigger than its area resolves to the start edge,
+ * so it sat off-centre as well. Declaring them together means a caller cannot
+ * express the mismatch.
+ *
+ * Ratios are ~58% at the identity sizes, which keeps a 24px chip's mark
+ * optically level with the 14px artwork it stands beside.
+ */
+export const RESOURCE_ICON_FRAME_SIZES = {
+  sm: { frame: "size-5", glyph: "size-3" },
+  md: { frame: "size-6", glyph: "size-3.5" },
+  lg: { frame: "size-8", glyph: "size-[1.125rem]" },
+} as const;
+
+export type ResourceIconFrameSize = keyof typeof RESOURCE_ICON_FRAME_SIZES;
+
+/**
+ * A resource's icon, centred in its own background.
+ *
+ * Callers supply the background through `className`/`style` — a category tint,
+ * a neutral chip — and receive the matching glyph size, so the mark stays
+ * mathematically centred at every supported size without anyone restating the
+ * ratio. Fixed box sizes rather than viewport units on purpose: the frame sits
+ * inside cards and rows that already reflow, and a mark that changed size with
+ * the viewport would break alignment with the text beside it.
+ */
+export function ResourceIconFrame({
+  size = "md",
+  className,
+  style,
+  children,
+}: {
+  size?: ResourceIconFrameSize;
+  className?: string;
+  style?: CSSProperties;
+  /** Receives the glyph class that centres in this frame. */
+  children: (glyphClassName: string) => ReactNode;
+}) {
+  const { frame, glyph } = RESOURCE_ICON_FRAME_SIZES[size];
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center overflow-hidden",
+        frame,
+        className,
+      )}
+      style={style}
+    >
+      {children(glyph)}
     </span>
   );
 }

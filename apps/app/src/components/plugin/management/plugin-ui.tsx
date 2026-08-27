@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { PLUGIN_CATALOG_SHELF_GROUPS } from "@bb/domain";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { ResourceIconFrame } from "@bb/shared-ui/resource-list";
 import { accentInk, accentTint, neutral } from "@bb/showcase-hero";
 import {
   PluginCompactIconMask,
@@ -211,12 +212,12 @@ export function CatalogEntryIconChip({
   // Monochrome art and named glyphs adopt the chip's ink, so they keep it.
   const keepsOwnColors = entry.iconUrl !== null && !entry.iconTinted;
   const tint = keepsOwnColors ? undefined : accentToken;
+  // The frame owns the box and the glyph size together; this chip supplies
+  // only the paint. Sizing them at two call sites is what let a placeholder
+  // glyph outgrow its box and land off-centre.
   return (
-    <span
-      className={cn(
-        "flex size-6 shrink-0 items-center justify-center rounded-md border",
-        className,
-      )}
+    <ResourceIconFrame
+      className={cn("rounded-md border", className)}
       style={
         tint === undefined
           ? {
@@ -231,8 +232,10 @@ export function CatalogEntryIconChip({
             }
       }
     >
-      <CatalogEntryIcon entry={entry} className="size-3.5" />
-    </span>
+      {(glyphClassName) => (
+        <CatalogEntryIcon entry={entry} className={glyphClassName} />
+      )}
+    </ResourceIconFrame>
   );
 }
 
@@ -257,7 +260,13 @@ function PlaceholderBadge({
         className,
       )}
     >
-      <Icon name={iconName} className="size-5" />
+      {/* size-full, not a fixed size: the glyph has to be whatever footprint
+          the caller asked for, the same as the <img> and masked branches
+          beside it. A hardcoded size drew a 20px mark inside the 14px box a
+          24px chip centres, and a grid item larger than its area resolves to
+          the start edge rather than the centre — so every placeholder icon
+          sat 3px right and 3px low of the artwork it stood in for. */}
+      <Icon name={iconName} className="size-full" />
     </span>
   );
 }
