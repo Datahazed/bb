@@ -173,7 +173,7 @@ describe("provider registration and package shape", () => {
 
     expect(packageJson).toMatchObject({
       name: "bb-plugin-at-plugin",
-      engines: { bbPluginSdk: ">=0.4.8" },
+      engines: { bbPluginSdk: ">=0.4.25" },
       bb: {
         name: "@Plugin",
         branding: { icon: "./assets/at.svg" },
