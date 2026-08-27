@@ -8,48 +8,21 @@ import {
   within,
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { sdk } from "@/lib/sdk";
 import { SidebarDisplayOptionsMenu } from "./ProjectList";
 import { sidebarThreadLifecycleSelectionAtom } from "./sidebarThreadLifecycle";
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: {
-    threads: {
-      count: vi.fn(),
-    },
-  },
-}));
+afterEach(cleanup);
 
-afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
-});
-
-function renderMenu({
-  activeCount = 3,
-  draftCount = 2,
-}: {
-  activeCount?: number;
-  draftCount?: number;
-} = {}) {
+function renderMenu() {
   const store = createStore();
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
   render(
-    <QueryClientProvider client={queryClient}>
-      <Provider store={store}>
-        <TooltipProvider>
-          <SidebarDisplayOptionsMenu
-            activeCount={activeCount}
-            draftCount={draftCount}
-          />
-        </TooltipProvider>
-      </Provider>
-    </QueryClientProvider>,
+    <Provider store={store}>
+      <TooltipProvider>
+        <SidebarDisplayOptionsMenu />
+      </TooltipProvider>
+    </Provider>,
   );
   return store;
 }
@@ -61,48 +34,46 @@ function openMenu() {
   );
 }
 
-function getShowItem(name: string) {
-  return within(screen.getByRole("group", { name: "Show" })).getByRole(
+function getStatusItem(name: string) {
+  return within(screen.getByRole("group", { name: "Thread status" })).getByRole(
     "menuitemcheckbox",
     { name: new RegExp(`^${name}`) },
   );
 }
 
 describe("SidebarDisplayOptionsMenu lifecycle filter", () => {
-  it("renders Show below Organize and Sort by with disjoint state counts", async () => {
-    vi.mocked(sdk.threads.count).mockResolvedValue({ count: 17 });
-    renderMenu({ activeCount: 8, draftCount: 4 });
+  it("renders count-free Thread status below Organize and Sort by", async () => {
+    renderMenu();
     openMenu();
 
-    await screen.findByRole("group", { name: "Show" });
+    await screen.findByRole("group", { name: "Thread status" });
     expect(
       screen
         .getAllByRole("group")
         .map((group) => group.getAttribute("aria-label"))
         .filter(Boolean),
-    ).toEqual(["Organize", "Sort by", "Show"]);
-    expect(getShowItem("Active").textContent).toContain("8");
-    expect(getShowItem("Drafts").textContent).toContain("4");
-    expect(getShowItem("Archived").textContent).toContain("17");
+    ).toEqual(["Organize", "Sort by", "Thread status"]);
+    expect(getStatusItem("Active").textContent).toBe("Active");
+    expect(getStatusItem("Drafts").textContent).toBe("Drafts");
+    expect(getStatusItem("Archived").textContent).toBe("Archived");
     expect(
       document.querySelector("[data-sidebar-display-filter-dot]"),
     ).toBeNull();
   });
 
   it("builds unions, keeps one state selected, and marks an off-default filter", async () => {
-    vi.mocked(sdk.threads.count).mockResolvedValue({ count: 0 });
     const store = renderMenu();
     openMenu();
-    await screen.findByRole("group", { name: "Show" });
+    await screen.findByRole("group", { name: "Thread status" });
 
-    fireEvent.click(getShowItem("Drafts"));
+    fireEvent.click(getStatusItem("Drafts"));
     openMenu();
-    fireEvent.click(getShowItem("Active"));
+    fireEvent.click(getStatusItem("Active"));
     expect([...store.get(sidebarThreadLifecycleSelectionAtom)]).toEqual([
       "drafts",
     ]);
     openMenu();
-    fireEvent.click(getShowItem("Drafts"));
+    fireEvent.click(getStatusItem("Drafts"));
     expect([...store.get(sidebarThreadLifecycleSelectionAtom)]).toEqual([
       "drafts",
     ]);
@@ -114,27 +85,5 @@ describe("SidebarDisplayOptionsMenu lifecycle filter", () => {
     expect(
       document.querySelector("[data-sidebar-display-filter-dot]"),
     ).not.toBeNull();
-  });
-
-  it("refetches Archived on every open and freezes each open snapshot", async () => {
-    let resolveFirst: ((value: { count: number }) => void) | undefined;
-    const first = new Promise<{ count: number }>((resolve) => {
-      resolveFirst = resolve;
-    });
-    vi.mocked(sdk.threads.count)
-      .mockReturnValueOnce(first)
-      .mockResolvedValueOnce({ count: 9 });
-    renderMenu();
-    openMenu();
-    await screen.findByRole("group", { name: "Show" });
-    expect(getShowItem("Archived").textContent).toContain("—");
-
-    resolveFirst?.({ count: 7 });
-    expect(await screen.findByText("7")).toBeDefined();
-    fireEvent.keyDown(document, { key: "Escape" });
-    openMenu();
-    expect(getShowItem("Archived").textContent).toContain("—");
-    expect(await screen.findByText("9")).toBeDefined();
-    expect(sdk.threads.count).toHaveBeenCalledTimes(2);
   });
 });

@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type MouseEventHandler,
   type PointerEventHandler,
@@ -28,10 +27,7 @@ import {
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import {
-  useArchivedThreadCount,
-  useArchivedThreads,
-} from "@/hooks/queries/thread-queries";
+import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import { useReorderPinnedThread } from "@/hooks/mutations/thread-state-mutations";
 import {
   useCreateThreadSection,
@@ -134,7 +130,6 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -220,8 +215,6 @@ interface ProjectListThreadsSectionActionsProps {
 }
 
 interface SidebarDisplayOptionsMenuProps {
-  activeCount?: number;
-  draftCount?: number;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -695,8 +688,6 @@ function SidebarDisplayMenuTrigger({
 // Thread display options stay scoped to thread organization, sorting, and
 // lifecycle visibility. Top-region destinations are customized separately.
 export function SidebarDisplayOptionsMenu({
-  activeCount = 0,
-  draftCount = 0,
   open,
   onOpenChange,
 }: SidebarDisplayOptionsMenuProps) {
@@ -709,41 +700,10 @@ export function SidebarDisplayOptionsMenu({
   const [lifecycleSelection, setLifecycleSelection] = useAtom(
     sidebarThreadLifecycleSelectionAtom,
   );
-  const { refetch: refetchArchivedThreadCount } = useArchivedThreadCount();
-  const archivedCountRequestRef = useRef(0);
-  const [archivedCountSnapshot, setArchivedCountSnapshot] = useState<
-    number | null
-  >(null);
   const selectedSort: SidebarChronologicalSort =
     chronologicalSort === "none" ? "updated" : chronologicalSort;
   const isFiltered =
     !isDefaultSidebarThreadLifecycleSelection(lifecycleSelection);
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      onOpenChange?.(nextOpen);
-      archivedCountRequestRef.current += 1;
-      if (!nextOpen) return;
-
-      const requestId = archivedCountRequestRef.current;
-      setArchivedCountSnapshot(null);
-      void refetchArchivedThreadCount().then((result) => {
-        if (
-          archivedCountRequestRef.current === requestId &&
-          result.isSuccess &&
-          result.data !== undefined
-        ) {
-          setArchivedCountSnapshot(result.data);
-        }
-      });
-    },
-    [onOpenChange, refetchArchivedThreadCount],
-  );
-  const lifecycleCounts: Record<SidebarThreadLifecycleState, string> = {
-    active: String(activeCount),
-    drafts: String(draftCount),
-    archived:
-      archivedCountSnapshot === null ? "—" : String(archivedCountSnapshot),
-  };
   const lifecycleLabels: Record<SidebarThreadLifecycleState, string> = {
     active: "Active",
     drafts: "Drafts",
@@ -751,7 +711,7 @@ export function SidebarDisplayOptionsMenu({
   };
 
   return (
-    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <SidebarDisplayMenuTrigger
         ariaLabel={
           isFiltered
@@ -799,9 +759,9 @@ export function SidebarDisplayOptionsMenu({
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
-          Show
+          Thread status
         </DropdownMenuLabel>
-        <DropdownMenuGroup aria-label="Show">
+        <DropdownMenuGroup aria-label="Thread status">
           {SIDEBAR_THREAD_LIFECYCLE_STATES.map((state) => (
             <DropdownMenuCheckboxItem
               key={state}
@@ -812,12 +772,7 @@ export function SidebarDisplayOptionsMenu({
                 )
               }
             >
-              <span className="min-w-0 flex-1 truncate">
-                {lifecycleLabels[state]}
-              </span>
-              <span className="ml-4 shrink-0 text-xs text-muted-foreground">
-                {lifecycleCounts[state]}
-              </span>
+              {lifecycleLabels[state]}
             </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuGroup>
@@ -827,9 +782,7 @@ export function SidebarDisplayOptionsMenu({
 }
 
 interface SidebarThreadsSectionActionsProps {
-  activeCount: number;
   displayOptionsOpen: boolean;
-  draftCount: number;
   onDisplayOptionsOpenChange: (open: boolean) => void;
   isCreatingSection: boolean;
   onNewSection?: () => void;
@@ -842,9 +795,7 @@ interface SidebarThreadsSectionActionsProps {
 // every section state renders this same component so the label-adjacent actions
 // cannot drift apart.
 function SidebarThreadsSectionActions({
-  activeCount,
   displayOptionsOpen,
-  draftCount,
   onDisplayOptionsOpenChange,
   isCreatingSection,
   onNewSection,
@@ -855,8 +806,6 @@ function SidebarThreadsSectionActions({
   return (
     <>
       <SidebarDisplayOptionsMenu
-        activeCount={activeCount}
-        draftCount={draftCount}
         open={displayOptionsOpen}
         onOpenChange={onDisplayOptionsOpenChange}
       />
@@ -1867,8 +1816,6 @@ function ProjectListComponent({
     const menuId = `displayOptions:${sectionId}` as const;
     return (
       <SidebarDisplayOptionsMenu
-        activeCount={threads.length}
-        draftCount={newThreadDrafts.length}
         open={openSidebarMenu === menuId}
         onOpenChange={(open) => setSidebarMenuOpen(menuId, open)}
       />
@@ -2071,9 +2018,7 @@ function ProjectListComponent({
   // One Threads-header cluster shared by every organization and section state.
   const threadsSectionActions = (
     <SidebarThreadsSectionActions
-      activeCount={threads.length}
       displayOptionsOpen={threadsDisplayOptionsMenuOpen}
-      draftCount={newThreadDrafts.length}
       onDisplayOptionsOpenChange={handleThreadsDisplayOptionsMenuOpenChange}
       isCreatingSection={isCreateThreadSectionPending}
       onNewSection={

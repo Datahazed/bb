@@ -131,10 +131,11 @@ describe("SidebarDraftRows", () => {
       "newest",
       "older",
     ]);
-    expect(container.querySelectorAll('[data-icon="EditFile"]')).toHaveLength(
-      2,
-    );
-    expect(container.querySelector('[data-icon="Edit"]')).toBeNull();
+    expect(container.querySelector('[data-icon="EditFile"]')).toBeNull();
+    expect(
+      container.querySelectorAll("[data-sidebar-draft-state]"),
+    ).toHaveLength(2);
+    expect(screen.getAllByText("Draft")).toHaveLength(2);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Open draft Older draft" }),
@@ -236,6 +237,10 @@ describe("SidebarArchivedThreadGroup", () => {
       "second",
       "third",
     ]);
+    expect(container.querySelector('[data-icon="Archive"]')).toBeNull();
+    expect(
+      container.querySelectorAll("[data-sidebar-archived-state]"),
+    ).toHaveLength(3);
     const secondLink = screen.getByRole("link", {
       name: "Open archived thread Second archived",
     });
@@ -246,7 +251,7 @@ describe("SidebarArchivedThreadGroup", () => {
     expect(onNavigate).toHaveBeenCalledOnce();
   });
 
-  it("uses the shipped thread menus with Unarchive on overflow and right-click, without Split", () => {
+  it("replaces the right-edge state with quick Unarchive and keeps it in both menus", () => {
     const { container } = renderLifecycleRows(
       <SidebarArchivedThreadGroup
         threads={[archivedThreads[0]!]}
@@ -255,6 +260,19 @@ describe("SidebarArchivedThreadGroup", () => {
         onLoadMore={vi.fn()}
       />,
     );
+
+    const archivedState = container.querySelector<HTMLElement>(
+      "[data-sidebar-archived-state]",
+    );
+    expect(archivedState?.textContent).toBe("Archived");
+    expect(archivedState?.className).toContain(
+      "group-focus-within/archived-thread-row:opacity-0",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Unarchive thread" }));
+    expect(threadActions.unarchiveThread).toHaveBeenCalledWith(
+      archivedThreads[0],
+    );
+    threadActions.unarchiveThread.mockClear();
 
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Thread actions" }),

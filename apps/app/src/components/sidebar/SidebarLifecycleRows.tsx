@@ -23,6 +23,7 @@ import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import {
+  ThreadArchiveQuickAction,
   ThreadActionsContextMenu,
   ThreadActionsMenu,
 } from "@/components/thread/ThreadActionsMenu";
@@ -41,7 +42,6 @@ import { getThreadRoutePath } from "@/lib/route-paths";
 import {
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
-  SIDEBAR_ROW_GLYPH_SLOT_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
@@ -201,15 +201,14 @@ function SidebarDraftRow({
           "flex min-w-0 flex-1 items-center gap-2",
         )}
       >
-        <span className={cn(SIDEBAR_ROW_GLYPH_SLOT_CLASS, "w-4")}>
-          <Icon
-            name="EditFile"
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-            aria-hidden="true"
-          />
-        </span>
         <span className="min-w-0 truncate" title={draft.title}>
           {draft.title}
+        </span>
+        <span
+          data-sidebar-draft-state=""
+          className="ml-auto shrink-0 text-xs text-muted-foreground transition-opacity group-hover/draft-row:opacity-0 group-focus-within/draft-row:opacity-0"
+        >
+          Draft
         </span>
       </span>
       <span
@@ -324,15 +323,14 @@ function SidebarArchivedThreadRow({
           "flex min-w-0 flex-1 items-center gap-2",
         )}
       >
-        <span className={cn(SIDEBAR_ROW_GLYPH_SLOT_CLASS, "w-4")}>
-          <Icon
-            name="Archive"
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-            aria-hidden="true"
-          />
-        </span>
         <span className="min-w-0 truncate" title={title}>
           {title}
+        </span>
+        <span
+          data-sidebar-archived-state=""
+          className="ml-auto shrink-0 text-xs text-muted-foreground transition-opacity group-hover/archived-thread-row:opacity-0 group-focus-within/archived-thread-row:opacity-0"
+        >
+          Archived
         </span>
       </span>
       <span
@@ -342,6 +340,11 @@ function SidebarArchivedThreadRow({
           "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
         )}
       >
+        <ThreadArchiveQuickAction
+          thread={thread}
+          showLabel
+          className="h-6 px-1.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+        />
         <ThreadActionsMenu
           thread={thread}
           triggerClassName={cn(
