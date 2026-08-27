@@ -554,6 +554,7 @@ export function ThreadSecondaryPanel({
     surfaceTabs: readonly SecondaryPanelRenderableTab[];
     fixedSurfaceTabs: readonly SecondaryPanelFixedTab[];
     isFocused: boolean;
+    isFullScreen?: boolean;
     isSurfaceDiffEligibilityPending: boolean;
     onBeginTabDrag?: (
       tabId: string,
@@ -561,10 +562,12 @@ export function ThreadSecondaryPanel({
     ) => void;
     onMoveActiveTabToSide?: (side: SplitSide) => void;
     onRemoveSplit?: () => void;
+    onToggleFullScreen?: () => void;
     onFocusPane: () => void;
     onSurfaceTabReorder: SecondaryPanelTabReorderHandler;
     paneId: string | null;
     reserveLeadingChrome: boolean;
+    reserveNewTabControl: boolean;
     showNewTabControl: boolean;
     showOuterControls: boolean;
     usesPaneArrangementControl: boolean;
@@ -580,7 +583,9 @@ export function ThreadSecondaryPanel({
       tabId: string,
       event: ReactPointerEvent<HTMLElement>,
     ) => void;
+    newTabAriaLabel: string;
     onSurfaceTabReorder: SecondaryPanelTabReorderHandler;
+    reserveNewTabButton: boolean;
     showNewTabButton: boolean;
   }
 
@@ -630,26 +635,31 @@ export function ThreadSecondaryPanel({
     ) : null;
 
   const renderConversationCollapseButton = ({
+    isFullScreen,
     onMoveActiveTabToSide,
+    onToggleFullScreen,
     usesPaneArrangementControl,
   }: {
+    isFullScreen?: boolean;
     onMoveActiveTabToSide?: (side: SplitSide) => void;
+    onToggleFullScreen?: () => void;
     usesPaneArrangementControl: boolean;
   }) => {
-    if (conversationCollapseControl === null) return null;
     if (usesPaneArrangementControl) {
+      if (onToggleFullScreen === undefined) return null;
       return (
         <PaneArrangementButton
           className={cn(
             "shrink-0",
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
-          isFullScreen={conversationCollapseControl.isFullScreen}
+          isFullScreen={isFullScreen ?? false}
           onMoveToSide={onMoveActiveTabToSide}
-          onToggleFullScreen={conversationCollapseControl.onClick}
+          onToggleFullScreen={onToggleFullScreen}
         />
       );
     }
+    if (conversationCollapseControl === null) return null;
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -680,8 +690,10 @@ export function ThreadSecondaryPanel({
     activeSurfaceTabId,
     surfaceTabs,
     fixedSurfaceTabs,
+    newTabAriaLabel,
     onBeginTabDrag,
     onSurfaceTabReorder,
+    reserveNewTabButton,
     showNewTabButton: showGroupNewTabButton,
   }: PanelTabGroupArgs) => {
     const activeSurfaceTab = surfaceTabs.find(
@@ -735,9 +747,19 @@ export function ThreadSecondaryPanel({
         ) : null}
         {showGroupNewTabButton ? (
           <NewTabButton
+            ariaLabel={newTabAriaLabel}
             onOpenNewTab={onOpenNewTab}
             shortcut={newTabShortcut}
             usesDesktopChrome={usesDesktopChrome}
+          />
+        ) : reserveNewTabButton ? (
+          <div
+            aria-hidden
+            data-new-tab-control-reserved=""
+            className={cn(
+              SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS,
+              usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+            )}
           />
         ) : null}
       </>
@@ -750,14 +772,17 @@ export function ThreadSecondaryPanel({
     surfaceTabs,
     fixedSurfaceTabs,
     isFocused,
+    isFullScreen,
     isSurfaceDiffEligibilityPending,
     onBeginTabDrag,
     onFocusPane,
     onMoveActiveTabToSide,
     onRemoveSplit,
+    onToggleFullScreen,
     onSurfaceTabReorder,
     paneId,
     reserveLeadingChrome,
+    reserveNewTabControl,
     showNewTabControl,
     showOuterControls,
     usesPaneArrangementControl,
@@ -828,19 +853,28 @@ export function ThreadSecondaryPanel({
                 activeSurfaceTabId,
                 surfaceTabs,
                 fixedSurfaceTabs,
+                newTabAriaLabel:
+                  onRemoveSplit === undefined
+                    ? "Open new tab"
+                    : "Open new tab in this pane",
                 onBeginTabDrag,
                 onSurfaceTabReorder,
+                reserveNewTabButton: reserveNewTabControl,
                 showNewTabButton: showNewTabControl,
               })}
             </div>
-            {showOuterControls || onRemoveSplit ? (
+            {showOuterControls ||
+            onRemoveSplit ||
+            usesPaneArrangementControl ? (
               <div
                 className="flex min-w-0 shrink-0 items-center gap-1"
                 onPointerDown={(event) => event.stopPropagation()}
               >
-                {showOuterControls
+                {usesPaneArrangementControl || showOuterControls
                   ? renderConversationCollapseButton({
+                      isFullScreen,
                       onMoveActiveTabToSide,
+                      onToggleFullScreen,
                       usesPaneArrangementControl,
                     })
                   : null}
@@ -993,6 +1027,7 @@ export function ThreadSecondaryPanel({
     <SidebarSplitContainer
       key={splitPanelStateId}
       activeTabId={globalActiveTabId}
+      isFullScreen={isConversationCollapsed}
       onActivateTab={(tabId) => {
         const fixedTab = fixedTabs.find(
           (candidate) => candidate.tab.id === tabId,
@@ -1001,10 +1036,12 @@ export function ThreadSecondaryPanel({
         else tabs.find((tab) => tab.tab.id === tabId)?.onSelect();
       }}
       onGlobalTabReorder={onTabReorder}
+      onToggleFullScreen={onToggleConversationCollapse}
       panelStateId={splitPanelStateId}
       tabs={splitTabs}
       renderPane={(pane: SidebarSplitPaneRenderArgs) => {
         const activePaneTabId = pane.group.activeTabId;
+        const isSplitPane = pane.onRemoveSplit !== undefined;
         const paneTabs = resolveSplitPaneTabs(pane);
         const paneFixedTabs = fixedTabs
           .filter((fixedTab) => pane.group.tabIds.includes(fixedTab.tab.id))
@@ -1021,6 +1058,7 @@ export function ThreadSecondaryPanel({
           surfaceTabs: paneTabs,
           fixedSurfaceTabs: paneFixedTabs,
           isFocused: pane.isFocused,
+          isFullScreen: pane.isMaximized,
           isSurfaceDiffEligibilityPending:
             activePaneFixedTab?.tab.kind === "git-diff" &&
             (resolvedGitDiffTabStatus === "loading" ||
@@ -1029,10 +1067,14 @@ export function ThreadSecondaryPanel({
           onFocusPane: pane.onFocusPane,
           onMoveActiveTabToSide: pane.onMoveActiveTabToSide,
           onRemoveSplit: pane.onRemoveSplit,
+          onToggleFullScreen: pane.onToggleMaximize,
           onSurfaceTabReorder: pane.onReorderTab,
           paneId: pane.paneId,
           reserveLeadingChrome: pane.isTopRow && pane.isLeftEdge,
-          showNewTabControl: pane.showOuterControls && showNewTabButton,
+          reserveNewTabControl:
+            isSplitPane && !pane.isFocused && showNewTabButton,
+          showNewTabControl:
+            (!isSplitPane || pane.isFocused) && showNewTabButton,
           showOuterControls: pane.showOuterControls,
           usesPaneArrangementControl: true,
           usesWindowChrome: pane.isTopRow,
@@ -1051,6 +1093,7 @@ export function ThreadSecondaryPanel({
       onSurfaceTabReorder: onTabReorder,
       paneId: null,
       reserveLeadingChrome: true,
+      reserveNewTabControl: false,
       showNewTabControl: showNewTabButton,
       showOuterControls: true,
       usesPaneArrangementControl: false,
@@ -1091,7 +1134,13 @@ export function ThreadSecondaryPanel({
       style={
         !renderAsDrawer && !isSecondaryPanelResizing
           ? {
-              width: `var(--secondary-swipe-width, ${persistedWidthPercent}cqw)`,
+              // Full screen collapses the conversation and lifts this Panel to
+              // 100% of its host. Do not retain the ordinary persisted panel
+              // width inside that expanded shell: it leaves the tab surface at
+              // its old half-width with an empty region to the right.
+              width: isConversationCollapsed
+                ? "100%"
+                : `var(--secondary-swipe-width, ${persistedWidthPercent}cqw)`,
             }
           : undefined
       }
@@ -1184,6 +1233,7 @@ export function ThreadSecondaryPanel({
 }
 
 interface NewTabButtonProps {
+  ariaLabel: string;
   onOpenNewTab: () => void;
   shortcut: AppShortcutPresentation | null;
   usesDesktopChrome: boolean;
@@ -1242,6 +1292,7 @@ function PinnedIconTab({
 }
 
 function NewTabButton({
+  ariaLabel,
   onOpenNewTab,
   shortcut,
   usesDesktopChrome,
@@ -1256,9 +1307,7 @@ function NewTabButton({
         usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
       )}
       onClick={onOpenNewTab}
-      aria-label={
-        shortcut ? `Open new tab (${shortcut.label})` : "Open new tab"
-      }
+      aria-label={shortcut ? `${ariaLabel} (${shortcut.label})` : ariaLabel}
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
     >
       <Icon name="Plus" />
