@@ -43,15 +43,10 @@ const hostDraftMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
-  const { usePluginComposerHostDraft } = await import(
-    "@/components/plugin/plugin-composer-host"
-  );
+  const { usePluginComposerHostDraft } =
+    await import("@/components/plugin/plugin-composer-host");
   // A host-draft subscriber, like plugin surfaces reading useComposerView().
-  function BottomHostDraftProbe({
-    host,
-  }: {
-    host: PluginComposerHost | null;
-  }) {
+  function BottomHostDraftProbe({ host }: { host: PluginComposerHost | null }) {
     // Record what the CURRENT host's getCurrent() returns at the exact moment
     // subscribeDraft notifies. useSyncExternalStore reads the snapshot inside
     // the notification to decide whether to re-render, so a notify that fires
@@ -201,7 +196,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
 vi.mock("@/hooks/usePromptMentions", () => ({
   usePromptMentions: () => ({
     triggers: [],
-    suggestions: [],
+    results: { groups: [], suggestions: [] },
     isLoading: false,
     isError: false,
     setQuery: vi.fn(),

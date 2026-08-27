@@ -22,7 +22,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { emptyPromptDraftState } from "@bb/client-core";
+import {
+  EMPTY_ORDERED_MENTION_SUGGESTIONS,
+  emptyPromptDraftState,
+} from "@bb/client-core";
 import {
   getComposerInputLock,
   useComposer,
@@ -66,6 +69,7 @@ import {
   type TypeaheadConfig,
 } from "./PromptBoxInternal";
 import { promptMentionClipboardContent } from "./mentions/prompt-mention-clipboard";
+import { orderPromptMentionSuggestions } from "@/hooks/promptMentionCandidates";
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
@@ -123,7 +127,7 @@ function createPromptBoxProps(
     mentionMenuPlacement: "bottom",
     typeahead: {
       mention: {
-        suggestions: [],
+        results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
         isLoading: false,
         isError: false,
         onQueryChange: vi.fn(),
@@ -142,7 +146,7 @@ function buildTypeaheadConfig({
   onCommandQueryChange = () => {},
 }: {
   mentionTriggers?: TypeaheadConfig["mention"]["triggers"];
-  mentionSuggestions?: TypeaheadConfig["mention"]["suggestions"];
+  mentionSuggestions?: readonly PromptMentionSuggestion[];
   onMentionQueryChange?: TypeaheadConfig["mention"]["onQueryChange"];
   commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
   onCommandQueryChange?: (query: string | null) => void;
@@ -150,7 +154,10 @@ function buildTypeaheadConfig({
   return {
     mention: {
       triggers: mentionTriggers,
-      suggestions: mentionSuggestions,
+      results: orderPromptMentionSuggestions({
+        query: "",
+        suggestions: mentionSuggestions,
+      }),
       isLoading: false,
       isError: false,
       onQueryChange: onMentionQueryChange,
@@ -269,7 +276,7 @@ function renderPromptBox(
   options: {
     initialMentionRanges?: PromptTextMention[];
     mentionTriggers?: TypeaheadConfig["mention"]["triggers"];
-    mentionSuggestions?: TypeaheadConfig["mention"]["suggestions"];
+    mentionSuggestions?: readonly PromptMentionSuggestion[];
     commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
   } = {},
 ) {
@@ -3747,7 +3754,7 @@ describe("PromptBoxInternal command typeahead submit", () => {
           onSubmit={onSubmit}
           typeahead={{
             mention: {
-              suggestions: [],
+              results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
               isLoading: false,
               isError: false,
               onQueryChange: () => {},

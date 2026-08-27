@@ -1,6 +1,11 @@
 import type { PluginMentionSearchGroup } from "./queries/plugin-contribution-queries";
 import type { PromptMentionSuggestion } from "@bb/client-core";
 
+type PluginMentionSuggestion = Extract<
+  PromptMentionSuggestion,
+  { kind: "plugin" }
+>;
+
 /**
  * Map GET /plugins/mentions/search groups onto mention-menu suggestions
  * (plugin design §4.9). Group order is server-owned (plugin id, then
@@ -10,8 +15,8 @@ import type { PromptMentionSuggestion } from "@bb/client-core";
  */
 export function buildPluginMentionSuggestions(
   groups: readonly PluginMentionSearchGroup[],
-): PromptMentionSuggestion[] {
-  const suggestions: PromptMentionSuggestion[] = [];
+): PluginMentionSuggestion[] {
+  const suggestions: PluginMentionSuggestion[] = [];
   for (const group of groups) {
     for (const item of group.items) {
       const title = item.title.trim();

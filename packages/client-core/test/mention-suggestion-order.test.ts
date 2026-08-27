@@ -160,9 +160,11 @@ describe("orderMentionCandidates", () => {
       "plugin",
     );
 
-    expect(results.groups.map((group) => [group.key, group.label])).toEqual([
-      ["first", "First label"],
-      ["second", "Second label"],
+    expect(
+      results.groups.map((group) => [group.key, group.label, group.startIndex]),
+    ).toEqual([
+      ["first", "First label", 0],
+      ["second", "Second label", 2],
     ]);
     expect(suggestionNames(results)).toEqual(
       results.groups

@@ -74,7 +74,7 @@ export function useComposerTypeahead({
     () => ({
       mention: {
         triggers: promptMentions.triggers,
-        suggestions: promptMentions.suggestions,
+        results: promptMentions.results,
         isLoading: promptMentions.isLoading,
         isError: promptMentions.isError,
         onQueryChange: promptMentions.setQuery,
@@ -104,7 +104,7 @@ export function useComposerTypeahead({
       promptMentions.isError,
       promptMentions.isLoading,
       promptMentions.setQuery,
-      promptMentions.suggestions,
+      promptMentions.results,
       promptMentions.triggers,
       resolveMentionLink,
     ],

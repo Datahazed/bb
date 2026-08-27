@@ -6,20 +6,22 @@ import type { PromptMentionSuggestion } from "./types.js";
  * group. Client core owns all relevance decisions after that boundary.
  */
 export interface MentionCandidate {
-  suggestion: PromptMentionSuggestion;
-  visibleTitle: string;
+  readonly suggestion: PromptMentionSuggestion;
+  readonly visibleTitle: string;
   /** Additional identities, such as a resource id or provider search alias. */
-  identityTerms: readonly string[];
-  supportingTerms: readonly string[];
-  groupKey: string;
-  groupLabel: string;
+  readonly identityTerms: readonly string[];
+  readonly supportingTerms: readonly string[];
+  readonly groupKey: string;
+  readonly groupLabel: string;
 }
 
 /** One intact rendered group after relevance ordering. */
 export interface OrderedMentionSuggestionGroup {
-  key: string;
-  label: string;
-  suggestions: readonly PromptMentionSuggestion[];
+  readonly key: string;
+  readonly label: string;
+  /** Index of this group's first row in the flattened navigation sequence. */
+  readonly startIndex: number;
+  readonly suggestions: readonly PromptMentionSuggestion[];
 }
 
 /**
@@ -27,9 +29,14 @@ export interface OrderedMentionSuggestionGroup {
  * navigation. `suggestions` is the concatenation of `groups` in order.
  */
 export interface OrderedMentionSuggestions {
-  groups: readonly OrderedMentionSuggestionGroup[];
-  suggestions: readonly PromptMentionSuggestion[];
+  readonly groups: readonly OrderedMentionSuggestionGroup[];
+  readonly suggestions: readonly PromptMentionSuggestion[];
 }
+
+export const EMPTY_ORDERED_MENTION_SUGGESTIONS: OrderedMentionSuggestions = {
+  groups: [],
+  suggestions: [],
+};
 
 interface RankedMentionCandidate {
   candidate: MentionCandidate;
@@ -125,15 +132,22 @@ export function orderMentionCandidates(
     });
   }
 
+  let nextStartIndex = 0;
   const groups = [...groupsByKey.values()]
     .sort(compareRankedMentionCandidateGroups)
-    .map<OrderedMentionSuggestionGroup>((group) => ({
-      key: group.key,
-      label: group.label,
-      suggestions: group.candidates
+    .map<OrderedMentionSuggestionGroup>((group) => {
+      const suggestions = group.candidates
         .sort(compareRankedMentionCandidates)
-        .map(({ candidate }) => candidate.suggestion),
-    }));
+        .map(({ candidate }) => candidate.suggestion);
+      const orderedGroup: OrderedMentionSuggestionGroup = {
+        key: group.key,
+        label: group.label,
+        startIndex: nextStartIndex,
+        suggestions,
+      };
+      nextStartIndex += suggestions.length;
+      return orderedGroup;
+    });
   const suggestions = groups.flatMap((group) => group.suggestions);
 
   return { groups, suggestions };

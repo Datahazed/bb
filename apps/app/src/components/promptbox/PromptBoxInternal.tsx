@@ -30,6 +30,7 @@ import {
   type CommandMenuState,
   type ComposerCommandSuggestion,
   type MentionMenuState,
+  type OrderedMentionSuggestions,
   type ProviderCommandSuggestion,
   type PromptMentionSuggestion,
   type TypeaheadMenuState,
@@ -278,13 +279,13 @@ function PromptSubmitButton({
 }
 
 /**
- * The `@`-mention half of {@link TypeaheadConfig}. Unchanged from the prior
- * `MentionsConfig` surface other than living under `typeahead.mention`.
+ * The `@`-mention half of {@link TypeaheadConfig}. `results` carries the
+ * canonical grouped render model plus the identical flat keyboard order.
  */
 export interface TypeaheadMentionConfig {
   /** Mention trigger characters to watch. Defaults to `@`. */
   triggers?: readonly PluginMentionTrigger[];
-  suggestions: readonly PromptMentionSuggestion[];
+  results: OrderedMentionSuggestions;
   isLoading: boolean;
   isError: boolean;
   /** Called whenever the active mention query changes; null when no mention is active. */
@@ -1235,7 +1236,7 @@ export function PromptBoxInternal({
   } = submission;
   const {
     triggers: mentionTriggerChars = DEFAULT_TYPEAHEAD_MENTION_TRIGGERS,
-    suggestions: mentionSuggestions,
+    results: mentionResults,
     isLoading: mentionLoading,
     isError: mentionError,
     onQueryChange: onMentionQueryChange,
@@ -2227,9 +2228,9 @@ export function PromptBoxInternal({
       activeTriggerKind === "command"
         ? orderedCommandSuggestions
         : activeTriggerKind === "mention"
-          ? mentionSuggestions
+          ? mentionResults.suggestions
           : [],
-    [activeTriggerKind, mentionSuggestions, orderedCommandSuggestions],
+    [activeTriggerKind, mentionResults.suggestions, orderedCommandSuggestions],
   );
 
   const activeMentionQuery =
@@ -2241,7 +2242,7 @@ export function PromptBoxInternal({
         ? { kind: "loading" }
         : mentionError
           ? { kind: "error" }
-          : { kind: "results", suggestions: mentionSuggestions };
+          : { kind: "results", results: mentionResults };
 
   const commandMenuState: CommandMenuState = commandLoading
     ? { kind: "loading" }

@@ -8,6 +8,7 @@ import {
 } from "@bb/server-contract";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import type { PluginMentionTrigger } from "./plugin-mention-triggers.js";
+import type { OrderedMentionSuggestions } from "./mention-candidates.js";
 
 type PromptPathMentionSource = "workspace" | "thread-storage";
 type PromptPathMentionEntryKind = "file" | "directory";
@@ -252,7 +253,7 @@ export type ActiveTrigger =
  * Mutually-exclusive states the mention menu can render. Replaces the prior
  * 4-boolean flag soup (showQueryHint / mentionLoading / mentionError /
  * mentionSuggestions). The "results" state's empty-vs-populated rendering is
- * a single decision inside the menu (`suggestions.length === 0` shows the
+ * a single decision inside the menu (`results.suggestions.length === 0` shows the
  * empty state).
  */
 export type MentionMenuState =
@@ -265,7 +266,7 @@ export type MentionMenuState =
   /** Suggestions resolved (possibly empty). */
   | {
       kind: "results";
-      suggestions: readonly PromptMentionSuggestion[];
+      results: OrderedMentionSuggestions;
     };
 
 /**

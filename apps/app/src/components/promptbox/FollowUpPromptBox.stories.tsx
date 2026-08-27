@@ -11,6 +11,7 @@ import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
+import { EMPTY_ORDERED_MENTION_SUGGESTIONS } from "@bb/client-core";
 import type {
   SystemExecutionOptionsModelLoadError,
   ThreadContextWindowUsage,
@@ -314,7 +315,7 @@ const usage: ThreadContextWindowUsage = {
 
 const typeaheadBase: TypeaheadConfig = {
   mention: {
-    suggestions: [],
+    results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
     isLoading: false,
     isError: false,
     onQueryChange: noop,
