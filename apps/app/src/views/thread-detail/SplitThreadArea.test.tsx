@@ -147,8 +147,8 @@ vi.mock("react-resizable-panels", async () => {
       getLayout: () => number[];
       setLayout: (layout: number[]) => void;
     },
-    { children?: ReactNode }
-  >(({ children }, ref) => {
+    React.HTMLAttributes<HTMLDivElement> & { children?: ReactNode }
+  >(({ children, ...props }, ref) => {
     React.useImperativeHandle(
       ref,
       () => ({
@@ -159,7 +159,11 @@ vi.mock("react-resizable-panels", async () => {
       }),
       [],
     );
-    return <div data-testid="workspace-panel-group">{children}</div>;
+    return (
+      <div {...props} data-testid="workspace-panel-group">
+        {children}
+      </div>
+    );
   });
   PanelGroup.displayName = "MockPanelGroup";
   // Record each panel's lifecycle callbacks so a test can fire the ones the
@@ -1175,6 +1179,112 @@ describe("SplitThreadArea", () => {
     expect(offscreenRow.style.containIntrinsicBlockSize).toBe("");
   });
 
+  it("snaps a workspace divider to its equal two-pane boundary and clears its guide", () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+    const separator = screen.getByRole("separator");
+    const previous = separator.previousElementSibling;
+    const next = separator.nextElementSibling;
+    const hitTarget = separator.querySelector<HTMLElement>(
+      "[data-split-divider-hit-target]",
+    );
+    if (
+      hitTarget === null ||
+      !(previous instanceof HTMLElement) ||
+      !(next instanceof HTMLElement)
+    ) {
+      throw new Error("Expected adjacent workspace split items");
+    }
+    const grid = separator.parentElement;
+    if (grid === null) throw new Error("Expected a workspace split grid");
+    expect(separator.dataset.splitResizeGridBoundary).toBe("1");
+    expect(separator.dataset.splitResizeGridCount).toBe("2");
+    Object.defineProperties(hitTarget, {
+      releasePointerCapture: { configurable: true, value: vi.fn() },
+      setPointerCapture: { configurable: true, value: vi.fn() },
+    });
+    vi.spyOn(previous, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 300,
+      right: 500,
+      top: 0,
+      width: 200,
+      x: 300,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(next, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 501,
+      right: 900,
+      top: 0,
+      width: 399,
+      x: 501,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(separator, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 500,
+      right: 501,
+      top: 0,
+      width: 1,
+      x: 500,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(grid, "getBoundingClientRect").mockReturnValue({
+      bottom: 600,
+      height: 600,
+      left: 100,
+      right: 900,
+      top: 0,
+      width: 800,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    fireEvent.pointerDown(hitTarget, { clientX: 470, pointerId: 31 });
+    fireEvent.pointerMove(hitTarget, { clientX: 518, pointerId: 31 });
+
+    expect(Number.parseFloat(previous.style.flexGrow)).toBeCloseTo(
+      199.5 / 599,
+      5,
+    );
+    expect(
+      document.querySelector<HTMLElement>("[data-split-resize-snap-guide]")
+        ?.style.left,
+    ).toBe("500px");
+
+    fireEvent.pointerUp(hitTarget, { clientX: 518, pointerId: 31 });
+
+    const root = store.get(splitLayoutAtom)?.root;
+    expect(root?.type).toBe("split");
+    if (root?.type === "split") {
+      expect(root.sizes[0]).toBeCloseTo(199.5 / 599, 5);
+      expect(root.sizes[1]).toBeCloseTo(399.5 / 599, 5);
+    }
+    expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
+  });
+
+  it("keeps workspace separators out of the tab order", () => {
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+
+    const separator = screen.getByRole("separator");
+    fireEvent.keyDown(separator, { key: "ArrowRight" });
+
+    expect(separator.tabIndex).toBe(-1);
+    expect(document.querySelector("[data-split-resize-snap-guide]")).toBeNull();
+  });
+
   it("gives a top-to-bottom split a full-width drag target without thickening its seam", () => {
     const store = renderSplitArea({
       path: threadPath("thr-a"),
@@ -1251,6 +1361,10 @@ describe("SplitThreadArea", () => {
     });
 
     const toggle = await screen.findByTestId("split-workspace-panel-toggle");
+    expect(
+      screen.getByTestId("workspace-panel-group").dataset
+        .splitResizeGridRoot,
+    ).toBe("");
     expect(
       screen.queryAllByTestId("split-workspace-panel-toggle"),
     ).toHaveLength(1);

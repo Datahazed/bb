@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -42,6 +43,7 @@ import {
 } from "@/components/secondary-panel/panelTransitionTokens";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
+import { usePanelResizeSnap } from "@/components/secondary-panel/usePanelResizeSnap";
 import {
   type PaneSecondaryPanelRegistry,
   usePaneSecondaryPanelModel,
@@ -173,11 +175,30 @@ export function SplitWorkspaceSecondaryPanelHost({
   // pane's panel shows next. Dragging it collapsed closes the window panel.
   const setPanelWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
   const lastEmptyPanelSizeRef = useRef(0);
+  const handleEmptyPanelPointerResize = useCallback(
+    (leadingFraction: number) => {
+      panelGroupRef.current?.setLayout([
+        leadingFraction * 100,
+        (1 - leadingFraction) * 100,
+      ]);
+    },
+    [],
+  );
+  const {
+    finish: finishEmptyPanelResizeSnap,
+    onPointerDownCapture: handleEmptyPanelResizePointerDownCapture,
+  } = usePanelResizeSnap({
+    axis: "x",
+    onResize: handleEmptyPanelPointerResize,
+    target: { boundaryIndex: 1, childCount: 2 },
+  });
   const handleEmptyPanelResize = (size: number) => {
     if (size > 0) lastEmptyPanelSizeRef.current = size;
   };
   const handleEmptyPanelDragging = (isDragging: boolean) => {
-    if (isDragging || lastEmptyPanelSizeRef.current <= 0) return;
+    if (isDragging) return;
+    finishEmptyPanelResizeSnap();
+    if (lastEmptyPanelSizeRef.current <= 0) return;
     setPanelWidthPercent(lastEmptyPanelSizeRef.current);
   };
   const handleEmptyPanelCollapse = () => {
@@ -255,6 +276,7 @@ export function SplitWorkspaceSecondaryPanelHost({
         </div>
         <PanelGroup
           ref={panelGroupRef}
+          data-split-resize-grid-root=""
           direction="horizontal"
           className="@container h-full min-w-0 flex-1"
           style={{ overflow: "clip" }}
@@ -294,6 +316,10 @@ export function SplitWorkspaceSecondaryPanelHost({
                 id="split-workspace-empty-secondary-panel-handle"
                 disabled={!isOpen}
                 onDragging={handleEmptyPanelDragging}
+                onPointerDownCapture={(event) =>
+                  handleEmptyPanelResizePointerDownCapture(event.nativeEvent)
+                }
+                data-panel-resize-snap-handle=""
                 hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
                 className={cn(
                   "relative shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] hover:bg-ring/40 data-[resize-handle-state=drag]:bg-ring/40",

@@ -6,6 +6,7 @@ import {
   secondaryPanelWidthPercentAtom,
   threadSecondaryPanelResizingAtom,
 } from "./threadSecondaryPanelAtoms";
+import { usePanelResizeSnap } from "./usePanelResizeSnap";
 
 export type SecondaryPanelDraggingHandler = (isDragging: boolean) => void;
 export type SecondaryPanelWidthChangeHandler = (
@@ -32,6 +33,20 @@ export function useSecondaryPanelResize({
   const secondaryResizablePanelRef = useRef<ImperativePanelHandle | null>(null);
   const isSecondaryPanelDraggingRef = useRef(false);
   const lastSecondaryPanelSizeRef = useRef(persistedWidthPercent);
+  const handleSecondaryPanelPointerResize = useCallback(
+    (leadingFraction: number) => {
+      secondaryResizablePanelRef.current?.resize((1 - leadingFraction) * 100);
+    },
+    [],
+  );
+  const {
+    finish: finishSecondaryPanelResizeSnap,
+    onPointerDownCapture: handleSecondaryPanelResizePointerDownCapture,
+  } = usePanelResizeSnap({
+    axis: "x",
+    onResize: handleSecondaryPanelPointerResize,
+    target: { boundaryIndex: 1, childCount: 2 },
+  });
 
   const prevOpenRef = useRef(isSecondaryPanelOpen);
   useEffect(() => {
@@ -88,9 +103,14 @@ export function useSecondaryPanelResize({
           return;
         }
 
+        finishSecondaryPanelResizeSnap();
         finishSecondaryPanelDragging();
       },
-      [finishSecondaryPanelDragging, setIsResizing],
+      [
+        finishSecondaryPanelDragging,
+        finishSecondaryPanelResizeSnap,
+        setIsResizing,
+      ],
     );
 
   useEffect(
@@ -157,6 +177,7 @@ export function useSecondaryPanelResize({
   return {
     handleSecondaryPanelDragging,
     handleSecondaryPanelResize,
+    handleSecondaryPanelResizePointerDownCapture,
     persistedWidthPercent,
     secondaryPanelRef,
     secondaryResizablePanelRef,

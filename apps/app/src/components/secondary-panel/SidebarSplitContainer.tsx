@@ -12,7 +12,6 @@ import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { beginSplitDrag, type SplitDropTarget } from "@/lib/split-drag";
 import {
-  clampSplitPairFraction,
   computePaneRects,
   countPanes,
   listPanes,
@@ -23,6 +22,7 @@ import {
   type SplitSide,
 } from "@/lib/split-layout";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
+import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import {
@@ -558,6 +558,7 @@ function SidebarSplitTrackTree(props: SidebarSplitTrackTreeProps) {
   const node = props.node;
   return (
     <div
+      data-split-resize-grid-root=""
       className={cn(
         "pointer-events-none flex min-h-0 min-w-0 flex-1",
         node.dir === "row" ? "flex-row" : "flex-col",
@@ -567,6 +568,8 @@ function SidebarSplitTrackTree(props: SidebarSplitTrackTreeProps) {
         <Fragment key={sidebarSplitSubtreeKey(child)}>
           {index > 0 ? (
             <SidebarSplitDivider
+              boundaryIndex={index}
+              childCount={node.children.length}
               dir={node.dir}
               hidden={props.maximizedPaneId !== null}
               onResize={(fraction) =>
@@ -712,12 +715,16 @@ function SidebarSplitLeaf(props: SidebarSplitLeafProps) {
 }
 
 function SidebarSplitDivider({
+  boundaryIndex,
+  childCount,
   dir,
   hidden,
   onResize,
   onResizeDragChange,
   onPreviewResize,
 }: {
+  boundaryIndex: number;
+  childCount: number;
   dir: "row" | "col";
   hidden: boolean;
   onResize: (fraction: number) => void;
@@ -758,6 +765,12 @@ function SidebarSplitDivider({
       const pair = createSidebarSplitResizePair(previous, next);
       hitTarget.setPointerCapture(pointerId);
       divider.dataset.dragging = "true";
+      const snapSession = createSplitResizeSnapSession(
+        divider,
+        horizontal ? "x" : "y",
+        { boundaryIndex, childCount },
+      );
+      snapSession.resolve({ end, pointer: pointerDownPosition, start });
       let pendingFraction: number | null = null;
       let receivedPointerMove = false;
       let finished = false;
@@ -765,7 +778,11 @@ function SidebarSplitDivider({
         const pointer = horizontal
           ? pointerEvent.clientX
           : pointerEvent.clientY;
-        const fraction = clampSplitPairFraction((pointer - start) / span);
+        const { fraction } = snapSession.resolve({
+          end,
+          pointer,
+          start,
+        });
         pendingFraction = fraction;
         pair.previous.style.flex = `${pair.total * fraction} 1 0px`;
         pair.next.style.flex = `${pair.total * (1 - fraction)} 1 0px`;
@@ -784,9 +801,11 @@ function SidebarSplitDivider({
         hitTarget.removeEventListener("pointermove", move);
         hitTarget.removeEventListener("pointerup", onUp);
         hitTarget.removeEventListener("pointercancel", cancel);
+        hitTarget.removeEventListener("lostpointercapture", lostCapture);
         if (hitTarget.hasPointerCapture?.(pointerId)) {
           hitTarget.releasePointerCapture(pointerId);
         }
+        snapSession.clear();
         onResizeDragChange(null);
         onPreviewResize(null);
         if (commit && pendingFraction !== null) {
@@ -812,17 +831,31 @@ function SidebarSplitDivider({
         if (cancelEvent.pointerId !== pointerId) return;
         finish(false);
       };
+      const lostCapture = (lostEvent: PointerEvent) => {
+        if (lostEvent.pointerId !== pointerId) return;
+        finish(false);
+      };
       hitTarget.addEventListener("pointermove", move);
       hitTarget.addEventListener("pointerup", onUp);
       hitTarget.addEventListener("pointercancel", cancel);
+      hitTarget.addEventListener("lostpointercapture", lostCapture);
       finishResizeRef.current = () => finish(false);
       onResizeDragChange(horizontal ? "col-resize" : "row-resize");
     },
-    [horizontal, onPreviewResize, onResize, onResizeDragChange],
+    [
+      boundaryIndex,
+      childCount,
+      horizontal,
+      onPreviewResize,
+      onResize,
+      onResizeDragChange,
+    ],
   );
   return (
     <div
       role="separator"
+      data-split-resize-grid-boundary={boundaryIndex}
+      data-split-resize-grid-count={childCount}
       aria-hidden={hidden || undefined}
       aria-label={
         horizontal

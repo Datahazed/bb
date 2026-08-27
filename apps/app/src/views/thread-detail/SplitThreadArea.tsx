@@ -32,7 +32,6 @@ import {
   splitLayoutAtom,
 } from "@/lib/split-layout/atoms";
 import {
-  clampSplitPairFraction,
   computePaneRects,
   countPanes,
   findPane,
@@ -44,6 +43,7 @@ import {
   setFocus,
   swapPanes,
 } from "@/lib/split-layout";
+import { createSplitResizeSnapSession } from "@/lib/split-resize-snap";
 import type {
   LayoutNode,
   PaneContent,
@@ -889,6 +889,7 @@ function SplitTree(props: SplitTreeProps) {
 
   return (
     <div
+      data-split-resize-grid-root=""
       className={cn(
         "flex min-h-0 min-w-0 flex-1",
         node.dir === "col" ? "flex-col" : "flex-row",
@@ -898,6 +899,8 @@ function SplitTree(props: SplitTreeProps) {
         <Fragment key={paneKey(child)}>
           {index > 0 ? (
             <SplitDivider
+              boundaryIndex={index}
+              childCount={node.children.length}
               dir={node.dir}
               hidden={props.maximizedPaneId !== null}
               onResize={(fraction) => props.onResize(path, index - 1, fraction)}
@@ -1313,6 +1316,8 @@ function NonThreadPaneContent({
 }
 
 interface SplitDividerProps {
+  boundaryIndex: number;
+  childCount: number;
   dir: "row" | "col";
   hidden: boolean;
   onResize: (fraction: number) => void;
@@ -1393,12 +1398,26 @@ function freezeOffscreenTimelineRows(
   };
 }
 
-function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
+function SplitDivider({
+  boundaryIndex,
+  childCount,
+  dir,
+  hidden,
+  onResize,
+}: SplitDividerProps) {
   const horizontal = dir === "row";
+  const finishResizeRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      finishResizeRef.current?.();
+    },
+    [],
+  );
 
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       event.preventDefault();
+      finishResizeRef.current?.();
       const hitTarget = event.currentTarget;
       const divider = hitTarget.parentElement;
       if (!(divider instanceof HTMLDivElement)) {
@@ -1425,6 +1444,14 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
 
       hitTarget.setPointerCapture(event.pointerId);
       divider.dataset.dragging = "true";
+      const pointerId = event.pointerId;
+      const snapSession = createSplitResizeSnapSession(
+        divider,
+        horizontal ? "x" : "y",
+        { boundaryIndex, childCount },
+      );
+      const pointerDownPosition = horizontal ? event.clientX : event.clientY;
+      snapSession.resolve({ end, pointer: pointerDownPosition, start });
 
       const previousGrow = Number.parseFloat(
         window.getComputedStyle(previous).flexGrow,
@@ -1445,8 +1472,13 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
       let finished = false;
 
       const onMove = (moveEvent: PointerEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
         const pointer = horizontal ? moveEvent.clientX : moveEvent.clientY;
-        const fraction = clampSplitPairFraction((pointer - start) / span);
+        const { fraction } = snapSession.resolve({
+          end,
+          pointer,
+          start,
+        });
         pendingFraction = fraction;
 
         // Keep high-frequency drag state local to the two flex items. Writing
@@ -1458,10 +1490,16 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
       const finish = (commit: boolean) => {
         if (finished) return;
         finished = true;
+        finishResizeRef.current = null;
         delete divider.dataset.dragging;
         hitTarget.removeEventListener("pointermove", onMove);
         hitTarget.removeEventListener("pointerup", onUp);
         hitTarget.removeEventListener("pointercancel", onCancel);
+        hitTarget.removeEventListener("lostpointercapture", onLostCapture);
+        if (hitTarget.hasPointerCapture?.(pointerId)) {
+          hitTarget.releasePointerCapture(pointerId);
+        }
+        snapSession.clear();
         restoreTimelineRows();
         if (commit && pendingFraction !== null) {
           // Commit once so the imperative flex values above become the
@@ -1472,18 +1510,32 @@ function SplitDivider({ dir, hidden, onResize }: SplitDividerProps) {
         previous.style.flex = previousFlex;
         next.style.flex = nextFlex;
       };
-      const onUp = () => finish(true);
-      const onCancel = () => finish(false);
+      const onUp = (upEvent: PointerEvent) => {
+        if (upEvent.pointerId !== pointerId) return;
+        finish(true);
+      };
+      const onCancel = (cancelEvent: PointerEvent) => {
+        if (cancelEvent.pointerId !== pointerId) return;
+        finish(false);
+      };
+      const onLostCapture = (lostEvent: PointerEvent) => {
+        if (lostEvent.pointerId !== pointerId) return;
+        finish(false);
+      };
       hitTarget.addEventListener("pointermove", onMove);
       hitTarget.addEventListener("pointerup", onUp);
       hitTarget.addEventListener("pointercancel", onCancel);
+      hitTarget.addEventListener("lostpointercapture", onLostCapture);
+      finishResizeRef.current = () => finish(false);
     },
-    [horizontal, onResize],
+    [boundaryIndex, childCount, horizontal, onResize],
   );
 
   return (
     <div
       role="separator"
+      data-split-resize-grid-boundary={boundaryIndex}
+      data-split-resize-grid-count={childCount}
       aria-orientation={horizontal ? "vertical" : "horizontal"}
       className={cn(
         // A one-pixel seam between flush tiles — squared ends, no rounding,
