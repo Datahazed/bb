@@ -27,7 +27,7 @@
  * injected.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -472,6 +472,8 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
   const recording = readBridgeRecording(options.recordingDir);
 
   const stateDir = mkdtempSync(join(tmpdir(), "bb-parity-replay-"));
+  const runtimeResponseDir = join(stateDir, "runtime-responses");
+  mkdirSync(runtimeResponseDir);
   // The replayed session's workspace: the recording's cwd belongs to the
   // machine that recorded it, and nothing in a replay runs real commands.
   // Resolved to its real path: macOS's `tmpdir()` is a symlink, and the Agent
@@ -559,6 +561,7 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
     : null;
 
   const answeredIds = new Set<string>();
+  const runtimeResponseCounts = new Map<string, number>();
   const pendingBridgeRequests: { id: string | number; method: string }[] = [];
   /** Recorded runtime responses to bridge requests, queued per method. */
   const recordedAnswers = new Map<string, ParsedWireMessage[]>();
@@ -616,7 +619,12 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
       const message = parseWire(line);
       if (message === null) return;
       if (isResponse(message)) {
-        answeredIds.add(String(message.id));
+        const responseId = String(message.id);
+        answeredIds.add(responseId);
+        const occurrence = (runtimeResponseCounts.get(responseId) ?? 0) + 1;
+        runtimeResponseCounts.set(responseId, occurrence);
+        const marker = `${Buffer.from(responseId, "utf8").toString("hex")}-${occurrence}`;
+        writeFileSync(join(runtimeResponseDir, marker), "");
         return;
       }
       if (isRequest(message)) {

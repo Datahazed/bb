@@ -49,20 +49,9 @@ const LOOKAHEAD_MS = 750;
 const CURSOR_POLL_MS = 5;
 /**
  * Gap between two emitted provider lines. A real provider never delivers a
- * response and the notification after it in one read; the bridge's response
- * handlers (which emit the steer's ack, say) must get the event loop between
- * them, or the replay reorders what the recording had in order.
+ * response and the notification after it in one read.
  */
 const EMIT_GAP_MS = 2;
-/**
- * Gap after a response. The bridge continues its request's continuation in
- * a microtask once the line loop yields; a notification read in the same
- * chunk is handled first, so under load two milliseconds let a steer's ack
- * (emitted after `await request("turn/steer")`) land after the next
- * notification instead of before it, as the recording had it. A response
- * is rare, so the longer gap costs nothing measurable.
- */
-const RESPONSE_GAP_MS = 50;
 /** A request that opens or addresses a provider session; see segment release. */
 const SESSION_DEFINING_KEY =
   /^(thread|session)\/(start|resume|fork|new|load|archive|unarchive|name\/set)$/;
@@ -250,6 +239,55 @@ function buildSegments(entries, dialect) {
   return segments;
 }
 
+/**
+ * Runtime responses recorded between a provider response and the next
+ * provider-originated line. The fake provider must not advance across those
+ * observable bridge outputs: the four-lane recording fixed their wire order.
+ */
+function runtimeResponseGates(script, entries) {
+  const occurrences = new Map();
+  const runtimeResponses = [];
+  for (const entry of entries) {
+    const message = parseLine(entry.line);
+    if (
+      message === null ||
+      (typeof message.id !== "string" && typeof message.id !== "number") ||
+      message.method !== undefined
+    ) {
+      continue;
+    }
+    const id = String(message.id);
+    const occurrence = (occurrences.get(id) ?? 0) + 1;
+    occurrences.set(id, occurrence);
+    runtimeResponses.push({
+      ...entry,
+      marker: `${Buffer.from(id, "utf8").toString("hex")}-${occurrence}`,
+    });
+  }
+
+  const gates = new Map();
+  for (let position = 0; position < script.length; position += 1) {
+    const step = script[position];
+    if (step.dir !== "provider→bridge" || step.classified.kind !== "response") {
+      continue;
+    }
+    const nextProvider = script
+      .slice(position + 1)
+      .find((candidate) => candidate.dir === "provider→bridge");
+    if (nextProvider === undefined || nextProvider.run !== step.run) continue;
+    const markers = runtimeResponses
+      .filter(
+        (response) =>
+          response.run === step.run &&
+          response.seq > step.seq &&
+          response.seq < nextProvider.seq,
+      )
+      .map((response) => response.marker);
+    if (markers.length > 0) gates.set(position, markers);
+  }
+  return gates;
+}
+
 function claimSegmentIndex(stateDir) {
   mkdirSync(stateDir, { recursive: true });
   for (let index = 0; index < 10_000; index += 1) {
@@ -381,6 +419,11 @@ function main() {
   let cursorWait = null;
 
   let position = 0;
+  const responseGates = runtimeResponseGates(
+    script,
+    readLane(args.recording, "bridge→runtime"),
+  );
+  let pendingRuntimeResponseMarkers = [];
   const pendingLive = [];
   /** recorded bridge request id → live bridge request id */
   const liveIdByRecordedId = new Map();
@@ -453,6 +496,23 @@ function main() {
       // A line just went out; the next one waits its gap.
       return;
     }
+    if (pendingRuntimeResponseMarkers.length > 0) {
+      const responseDir = join(args.state, "runtime-responses");
+      if (
+        pendingRuntimeResponseMarkers.some(
+          (marker) => !existsSync(join(responseDir, marker)),
+        )
+      ) {
+        if (cursorWait === null) {
+          cursorWait = setTimeout(() => {
+            cursorWait = null;
+            advance();
+          }, CURSOR_POLL_MS);
+        }
+        return;
+      }
+      pendingRuntimeResponseMarkers = [];
+    }
     while (position < script.length) {
       const step = script[position];
       if (step.dir === "provider→bridge") {
@@ -489,10 +549,9 @@ function main() {
           }
         }
         emitRecorded(step);
+        pendingRuntimeResponseMarkers = responseGates.get(position) ?? [];
         position += 1;
-        scheduleAdvance(
-          step.classified.kind === "response" ? RESPONSE_GAP_MS : EMIT_GAP_MS,
-        );
+        scheduleAdvance();
         return;
       }
       // An expectation of what the bridge writes.

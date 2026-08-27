@@ -7,14 +7,16 @@ import { replayRecording } from "./parity.js";
 
 function writeLane(
   dir: string,
-  direction: "runtime→bridge" | "bridge→runtime",
+  direction:
+    | "runtime→bridge"
+    | "bridge→runtime"
+    | "provider→bridge"
+    | "bridge→provider",
   entries: ReadonlyArray<{ seq: number; line: string }>,
+  current: boolean,
 ): void {
   writeFileSync(
-    join(
-      dir,
-      `${direction}${direction === "bridge→runtime" ? ".current" : ""}.ndjson`,
-    ),
+    join(dir, `${direction}${current ? ".current" : ""}.ndjson`),
     `${entries
       .map((entry) =>
         JSON.stringify({
@@ -85,11 +87,11 @@ it("waits for the exact planned tail and a quiet period before closing", async (
           params: {},
         }),
       },
-    ]);
+    ], false);
     writeLane(dir, "bridge→runtime", [
       { seq: 1.1, line: delta(prefixEvents) },
       { seq: 1.2, line: delta(tailEvents) },
-    ]);
+    ], true);
     writeFileSync(
       bridgePath,
       [
@@ -162,6 +164,139 @@ it("waits for the exact planned tail and a quiet period before closing", async (
       ...tailEvents,
       ...extraEvents,
     ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+it("holds a provider notification for the runtime response recorded before it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "bb-parity-response-gate-test-"));
+  const bridgePath = join(dir, "delayed-response-bridge.mjs");
+  const event: ThreadEvent = {
+    type: "thread/contextWindowUsage/updated",
+    threadId: "thr_test",
+    providerThreadId: "provider_test",
+    scope: { kind: "thread" },
+    contextWindowUsage: {
+      usedTokens: 42,
+      modelContextWindow: 1_000,
+      estimated: false,
+    },
+  };
+  const runtimeRequest = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "thread/start",
+    params: {},
+  });
+  const runtimeResponse = JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} });
+  const providerRequest = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {},
+  });
+  const providerResponse = JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} });
+  const providerNotification = JSON.stringify({
+    jsonrpc: "2.0",
+    method: "update",
+    params: {},
+  });
+  const delta = JSON.stringify({
+    jsonrpc: "2.0",
+    method: "thread/delta",
+    params: { events: [event] },
+  });
+  const bridgeOutput = [
+    { seq: 4, line: runtimeResponse },
+    { seq: 6, line: delta },
+  ];
+
+  try {
+    writeLane(dir, "runtime→bridge", [{ seq: 1, line: runtimeRequest }], false);
+    writeLane(dir, "bridge→provider", [{ seq: 2, line: providerRequest }], false);
+    writeLane(
+      dir,
+      "provider→bridge",
+      [
+        { seq: 3, line: providerResponse },
+        { seq: 5, line: providerNotification },
+      ],
+      false,
+    );
+    writeLane(dir, "bridge→runtime", bridgeOutput, false);
+    writeLane(dir, "bridge→runtime", bridgeOutput, true);
+    // The old child advanced after a 50ms sleep. Keep the bridge response
+    // pending long enough for that notification to overtake it deterministically.
+    writeFileSync(
+      bridgePath,
+      [
+        "import { spawn } from 'node:child_process';",
+        "import { createInterface } from 'node:readline';",
+        `const event = ${JSON.stringify(event)};`,
+        "const provider = spawn(process.env.REPLAY_PROVIDER_COMMAND, [], { stdio: ['pipe', 'pipe', 'inherit'] });",
+        "let pendingRuntimeId = null;",
+        "const send = (message) => process.stdout.write(JSON.stringify(message) + '\\n');",
+        "createInterface({ input: provider.stdout, terminal: false }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.id !== undefined && message.method === undefined) {",
+        "    setTimeout(() => send({ jsonrpc: '2.0', id: pendingRuntimeId, result: {} }), 250);",
+        "    return;",
+        "  }",
+        "  send({ jsonrpc: '2.0', method: 'thread/delta', params: { events: [event] } });",
+        "});",
+        "createInterface({ input: process.stdin, terminal: false }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') {",
+        "    send({ jsonrpc: '2.0', id: message.id, result: {} });",
+        "    return;",
+        "  }",
+        "  pendingRuntimeId = message.id;",
+        "  provider.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }) + '\\n');",
+        "});",
+        "process.stdin.on('end', () => provider.stdin.end());",
+        "provider.on('exit', () => process.exit(0));",
+        "",
+      ].join("\n"),
+    );
+
+    const run = await replayRecording({
+      recordingDir: dir,
+      providerId: "test-provider",
+      bridge: {
+        command: process.execPath,
+        args: [bridgePath],
+        cwd: dir,
+        env: {},
+      },
+      profile: {
+        dialect: "json-rpc",
+        env: ({ wrapperPath }) => ({ REPLAY_PROVIDER_COMMAND: wrapperPath }),
+      },
+      createAssembler: () => ({
+        assembleMessage: (message) => {
+          const params = message.params;
+          if (
+            typeof params !== "object" ||
+            params === null ||
+            !("events" in params)
+          ) {
+            return [];
+          }
+          return threadEventSchema.array().parse(params.events);
+        },
+      }),
+      planFromCurrentLane: true,
+      settleMs: 20,
+      timeoutMs: 2_000,
+    });
+
+    const runtimeResponseIndex = run.lines.indexOf(runtimeResponse);
+    const notificationIndex = run.lines.indexOf(delta);
+    expect(run.stalls).toEqual([]);
+    expect(run.events).toEqual([event]);
+    expect(runtimeResponseIndex).toBeGreaterThan(-1);
+    expect(notificationIndex).toBeGreaterThan(runtimeResponseIndex);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
