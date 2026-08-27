@@ -13,10 +13,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { sdk } from "@/lib/sdk";
 import { SidebarDisplayOptionsMenu } from "./ProjectList";
-import {
-  hiddenSidebarTopLevelSectionIdsAtom,
-  sidebarTopLevelSectionOrderAtom,
-} from "./sidebarTopLevelSectionPreferences";
 import { sidebarThreadLifecycleSelectionAtom } from "./sidebarThreadLifecycle";
 
 vi.mock("@/lib/sdk", () => ({
@@ -43,12 +39,6 @@ function renderMenu({
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  store.set(sidebarTopLevelSectionOrderAtom, [
-    "new-thread-extensions",
-    "plugin-pages",
-    "thread-list",
-  ]);
-  store.set(hiddenSidebarTopLevelSectionIdsAtom, []);
   render(
     <QueryClientProvider client={queryClient}>
       <Provider store={store}>
@@ -71,12 +61,6 @@ function openMenu() {
   );
 }
 
-function openSectionSubmenu(name: string) {
-  const group = screen.getByRole("group", { name: "Sidebar sections" });
-  const trigger = within(group).getByRole("menuitem", { name });
-  fireEvent.click(trigger);
-}
-
 function getShowItem(name: string) {
   return within(screen.getByRole("group", { name: "Show" })).getByRole(
     "menuitemcheckbox",
@@ -96,7 +80,7 @@ describe("SidebarDisplayOptionsMenu lifecycle filter", () => {
         .getAllByRole("group")
         .map((group) => group.getAttribute("aria-label"))
         .filter(Boolean),
-    ).toEqual(["Organize", "Sort by", "Show", "Sidebar sections"]);
+    ).toEqual(["Organize", "Sort by", "Show"]);
     expect(getShowItem("Active").textContent).toContain("8");
     expect(getShowItem("Drafts").textContent).toContain("4");
     expect(getShowItem("Archived").textContent).toContain("17");
@@ -152,67 +136,5 @@ describe("SidebarDisplayOptionsMenu lifecycle filter", () => {
     expect(getShowItem("Archived").textContent).toContain("—");
     expect(await screen.findByText("9")).toBeDefined();
     expect(sdk.threads.count).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("SidebarDisplayOptionsMenu top-level sections", () => {
-  it("lists all sections in order and never offers a Thread list hide control", async () => {
-    renderMenu();
-    openMenu();
-
-    const group = await screen.findByRole("group", {
-      name: "Sidebar sections",
-    });
-    expect(
-      within(group)
-        .getAllByRole("menuitem")
-        .map((item) => item.textContent),
-    ).toEqual(["New thread / Extensions", "Plugin pages", "Thread list"]);
-
-    openSectionSubmenu("Thread list");
-    expect(
-      screen.queryByRole("menuitemcheckbox", { name: "Show section" }),
-    ).toBeNull();
-    expect(screen.getByRole("menuitem", { name: "Move up" })).toBeDefined();
-  });
-
-  it("hides and restores the first section from Display options", async () => {
-    const store = renderMenu();
-    openMenu();
-    await screen.findByRole("group", { name: "Sidebar sections" });
-    openSectionSubmenu("New thread / Extensions");
-
-    const showSection = await screen.findByRole("menuitemcheckbox", {
-      name: "Show section",
-    });
-    expect(showSection.getAttribute("data-state")).toBe("checked");
-    fireEvent.click(showSection);
-    expect(store.get(hiddenSidebarTopLevelSectionIdsAtom)).toEqual([
-      "new-thread-extensions",
-    ]);
-
-    openMenu();
-    await screen.findByRole("group", { name: "Sidebar sections" });
-    openSectionSubmenu("New thread / Extensions");
-    const restoreSection = await screen.findByRole("menuitemcheckbox", {
-      name: "Show section",
-    });
-    expect(restoreSection.getAttribute("data-state")).toBe("unchecked");
-    fireEvent.click(restoreSection);
-    expect(store.get(hiddenSidebarTopLevelSectionIdsAtom)).toEqual([]);
-  });
-
-  it("reorders the Thread list from the same menu", async () => {
-    const store = renderMenu();
-    openMenu();
-    await screen.findByRole("group", { name: "Sidebar sections" });
-    openSectionSubmenu("Thread list");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Move up" }));
-
-    expect(store.get(sidebarTopLevelSectionOrderAtom)).toEqual([
-      "new-thread-extensions",
-      "thread-list",
-      "plugin-pages",
-    ]);
   });
 });

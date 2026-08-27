@@ -471,6 +471,10 @@ export function NewThreadComposer({
     [projectThreads, worktreeHostNameById],
   );
 
+  const promptDraft = usePromptDraftStorage(draftStorage);
+  const restoredComposerSelection =
+    selectionScope === "component-local" ? promptDraft.composerSelection : null;
+
   const seedSignature = JSON.stringify([
     resetKey ?? null,
     seed?.providerId ?? null,
@@ -536,25 +540,42 @@ export function NewThreadComposer({
       : undefined;
   const projectDefaultsUnavailable =
     projectDefaultsState.status !== "resolved" &&
-    (seed?.providerId === undefined ||
-      seed?.model === undefined ||
-      seed?.reasoningLevel === undefined ||
-      seed?.permissionMode === undefined);
+    ((restoredComposerSelection?.providerId === undefined &&
+      seed?.providerId === undefined) ||
+      (restoredComposerSelection?.model === undefined &&
+        seed?.model === undefined) ||
+      (restoredComposerSelection?.reasoningLevel === undefined &&
+        seed?.reasoningLevel === undefined) ||
+      (restoredComposerSelection?.permissionMode === undefined &&
+        seed?.permissionMode === undefined));
   const creationOptions = useThreadCreationOptions({
     scope: selectionScope,
     preferenceProjectId: projectId,
-    resetKey: `${projectId}\0${seedSignature}`,
+    resetKey: `${projectId}\0${promptDraft.storageKey}\0${seedSignature}`,
     resolveProviderRouting,
-    initialProviderId: seed?.providerId ?? projectDefaults?.providerId,
+    initialProviderId:
+      restoredComposerSelection?.providerId ??
+      seed?.providerId ??
+      projectDefaults?.providerId,
     preferReadyProviderWhenUnset:
       preferReadyProviderWhenUnset && projectDefaults === null,
-    initialModel: seed?.model ?? projectDefaults?.model,
-    initialServiceTier: seed?.serviceTier ?? projectDefaults?.serviceTier,
+    initialModel:
+      restoredComposerSelection?.model ?? seed?.model ?? projectDefaults?.model,
+    initialServiceTier:
+      restoredComposerSelection?.serviceTier ??
+      seed?.serviceTier ??
+      projectDefaults?.serviceTier,
     initialReasoningLevel:
-      seed?.reasoningLevel ?? projectDefaults?.reasoningLevel,
+      restoredComposerSelection?.reasoningLevel ??
+      seed?.reasoningLevel ??
+      projectDefaults?.reasoningLevel,
     initialPermissionMode:
-      seed?.permissionMode ?? projectDefaults?.permissionMode,
-    initialEnvironmentSelectionValue: environmentSeed?.selectionValue,
+      restoredComposerSelection?.permissionMode ??
+      seed?.permissionMode ??
+      projectDefaults?.permissionMode,
+    initialEnvironmentSelectionValue:
+      restoredComposerSelection?.environmentSelectionValue ??
+      environmentSeed?.selectionValue,
   });
   const {
     activeModel,
@@ -592,7 +613,6 @@ export function NewThreadComposer({
   } = creationOptions;
   const selectedThreadModel = activeModel?.model ?? selectedModel;
 
-  const promptDraft = usePromptDraftStorage(draftStorage);
   const textEffects = useComposerTextEffects(promptDraft.storageKey);
   const promptOptionDraftSnapshotRef = useRef<PromptDraftState | null>(null);
   const snapshotDraftBeforeOptionChange = useCallback(() => {
@@ -821,6 +841,34 @@ export function NewThreadComposer({
     ],
   );
 
+  useEffect(() => {
+    if (
+      selectionScope !== "component-local" ||
+      selectedProviderId.length === 0 ||
+      selectedThreadModel.length === 0 ||
+      environmentSelectionValue.length === 0
+    ) {
+      return;
+    }
+    promptDraft.setComposerSelection({
+      providerId: selectedProviderId,
+      model: selectedThreadModel,
+      reasoningLevel,
+      ...(serviceTier === undefined ? {} : { serviceTier }),
+      permissionMode,
+      environmentSelectionValue,
+    });
+  }, [
+    environmentSelectionValue,
+    permissionMode,
+    promptDraft.setComposerSelection,
+    reasoningLevel,
+    selectedProviderId,
+    selectedThreadModel,
+    selectionScope,
+    serviceTier,
+  ]);
+
   const seedInitialPrompt = promptDraft.restoreIfEmpty;
   useEffect(() => {
     if (!seed?.initialPrompt) return;
@@ -1037,23 +1085,37 @@ export function NewThreadComposer({
   const seededExecutionInputSources = useMemo(
     // The server discards requested provider/model values that have no source
     // and re-derives them from project defaults. Preserve explicit provenance
-    // so SDK-provided seeds survive threads.spawn unchanged.
+    // for both SDK-provided seeds and a restored draft-specific selection.
     (): CreateExecutionInputSources => ({
-      ...(seed?.providerId !== undefined
+      ...(restoredComposerSelection?.providerId !== undefined ||
+      seed?.providerId !== undefined
         ? { providerId: "explicit" as const }
         : {}),
-      ...(seed?.model !== undefined ? { model: "explicit" as const } : {}),
-      ...(seed?.reasoningLevel !== undefined
+      ...(restoredComposerSelection?.model !== undefined ||
+      seed?.model !== undefined
+        ? { model: "explicit" as const }
+        : {}),
+      ...(restoredComposerSelection?.reasoningLevel !== undefined ||
+      seed?.reasoningLevel !== undefined
         ? { reasoningLevel: "explicit" as const }
         : {}),
-      ...(seed?.serviceTier !== undefined && supportsServiceTier && serviceTier
+      ...((restoredComposerSelection?.serviceTier !== undefined ||
+        seed?.serviceTier !== undefined) &&
+      supportsServiceTier &&
+      serviceTier
         ? { serviceTier: "explicit" as const }
         : {}),
-      ...(seed?.permissionMode !== undefined
+      ...(restoredComposerSelection?.permissionMode !== undefined ||
+      seed?.permissionMode !== undefined
         ? { permissionMode: "explicit" as const }
         : {}),
     }),
     [
+      restoredComposerSelection?.model,
+      restoredComposerSelection?.permissionMode,
+      restoredComposerSelection?.providerId,
+      restoredComposerSelection?.reasoningLevel,
+      restoredComposerSelection?.serviceTier,
       seed?.model,
       seed?.permissionMode,
       seed?.providerId,
