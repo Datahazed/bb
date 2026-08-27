@@ -23,6 +23,10 @@ bb tasks preset create --name "Codex high" --provider codex \
 ```
 
 `preset update` accepts the same flags; `--service-tier none` clears a tier.
+Create and update validate the tuple against the selected machine's live model
+catalog before saving it. Invalid models and advertised unsupported reasoning
+levels fail non-zero; register a deliberately unlisted provider-accepted model
+through `customModels` first.
 
 ## Work a task
 

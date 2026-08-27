@@ -10,6 +10,96 @@ import { tasksRpcContract } from "../shared/contract";
 import { createComment, createStore, registerTasksApi } from ".";
 
 describe("Tasks RPC domain API", () => {
+  it("rejects invalid execution selections before creating or updating a preset", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    harness.sdk.stub(
+      "providers.experimental_validateExecutionSelection",
+      async (input: { model: string; reasoningLevel: string }) => {
+        if (input.model === "claude-does-not-exist-9") {
+          throw new Error(
+            'HTTP 400: Model "claude-does-not-exist-9" is not available for provider claude-code.',
+          );
+        }
+        if (
+          input.model === "claude-haiku-test" &&
+          input.reasoningLevel !== "low"
+        ) {
+          throw new Error(
+            `HTTP 400: Reasoning level "${input.reasoningLevel}" is not supported by claude-code model "claude-haiku-test".`,
+          );
+        }
+        return input;
+      },
+    );
+
+    const validInput = {
+      name: "Haiku low",
+      providerId: "claude-code",
+      modelId: "claude-haiku-test",
+      reasoningLevel: "low" as const,
+      serviceTier: null,
+      permissionMode: "auto" as const,
+      environmentKind: "new-worktree" as const,
+      baseBranch: null,
+      machineId: "host_remote",
+      instructions: "",
+    };
+    const created = await harness.callRpc("createPreset", validInput);
+
+    await expect(
+      harness.callRpc("createPreset", {
+        ...validInput,
+        name: "Invalid",
+        modelId: "claude-does-not-exist-9",
+      }),
+    ).rejects.toThrow("claude-does-not-exist-9");
+    await expect(
+      harness.callRpc("createPreset", {
+        ...validInput,
+        name: "Invalid reasoning",
+        reasoningLevel: "medium",
+      }),
+    ).rejects.toThrow("Reasoning level");
+    expect(store.tasks.listPresets()).toHaveLength(1);
+
+    await expect(
+      harness.callRpc("updatePreset", {
+        presetId: created.preset.id,
+        modelId: "claude-does-not-exist-9",
+      }),
+    ).rejects.toThrow("claude-does-not-exist-9");
+    await expect(
+      harness.callRpc("updatePreset", {
+        presetId: created.preset.id,
+        providerId: undefined,
+        modelId: undefined,
+        reasoningLevel: "medium",
+        environmentKind: undefined,
+        machineId: undefined,
+      }),
+    ).rejects.toThrow("Reasoning level");
+    expect(store.tasks.getPreset(created.preset.id)?.modelId).toBe(
+      "claude-haiku-test",
+    );
+    expect(
+      harness.sdk.callsTo("providers.experimental_validateExecutionSelection"),
+    ).toHaveLength(5);
+    expect(
+      harness.sdk.callsTo(
+        "providers.experimental_validateExecutionSelection",
+      )[0],
+    ).toEqual([
+      expect.objectContaining({
+        hostId: "host_remote",
+        model: "claude-haiku-test",
+      }),
+    ]);
+
+    await harness.dispose();
+  });
+
   it("deletes through the typed RPC policy and rejects saved-description references", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     const store = createStore(bb);
@@ -1070,6 +1160,10 @@ describe("Tasks RPC domain API", () => {
 
   it("allows legacy built-in rows to be renamed and deleted", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    harness.sdk.stub(
+      "providers.experimental_validateExecutionSelection",
+      async (input: unknown) => input,
+    );
     const store = createStore(bb);
     registerTasksApi(bb, store);
     const preset = store.tasks.createPreset({

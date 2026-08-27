@@ -187,6 +187,11 @@ message agents, or inspect projects, providers, and environments.
   context variables. Omitted execution flags use remembered project defaults;
   without a remembered model, bb uses the explicitly requested provider or
   Codex and resolves its provider-reported default model on the target machine.
+- Spawn validates the resolved model and any advertised per-model reasoning
+  support against that target machine's live catalog before creating a thread
+  or environment. Invalid selections exit non-zero without provisioning or a
+  provider turn. Register a deliberately unlisted provider-accepted id in
+  `customModels`; an arbitrary missing id is rejected.
 - Add repeatable `--file <path>` / `--image <path>` flags for structured prompt
   attachments, and `--section <id>` to add the new thread to a section. These
   flags pass host-readable absolute paths (or relative server-upload tokens)
@@ -605,6 +610,9 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   `agent` automation if script creation is rejected.
 - Create an agent automation with
   `bb automation create --project <id> --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --reasoning <level> --service-tier <default|fast> --prompt "..."`.
+- Agent automation create/update validates model and reasoning against the
+  selected environment or machine before persisting, and each run validates
+  again before provisioning.
 - Create a one-shot agent automation with
   `bb automation create --project <id> --name "..." --in "30m" --provider <id> --model <model> --prompt "..."`,
   or use `--at "2026-07-03T09:00:00-07:00"` for an absolute run time.

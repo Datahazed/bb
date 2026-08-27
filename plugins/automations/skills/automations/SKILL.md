@@ -135,6 +135,11 @@ Choose one of two execution update forms:
   target. When changing providers, pass the provider's coherent model,
   reasoning, tier, and permission selection together:
 
+Agent create/update validates the model and advertised reasoning support on the
+selected environment or machine before saving. A run validates again before
+thread or worktree provisioning, so a catalog change becomes a failed run
+rather than a provider turn.
+
 ```bash
 bb plugin run automations update <automationId> --project <id> \
   --environment <environment-id-or-path>

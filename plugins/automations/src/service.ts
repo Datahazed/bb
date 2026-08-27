@@ -60,10 +60,25 @@ import { executeAgentRun, executeScriptRun } from "./run.js";
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
-    providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
+    providers: Pick<
+      BbPluginApi["sdk"]["providers"],
+      "list" | "experimental_validateExecutionSelection"
+    >;
     threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
   };
 };
+
+async function validateAgentExecutionSelection(
+  bb: ServiceApi,
+  execution: Extract<AutomationExecution, { mode: "agent" }>,
+): Promise<void> {
+  await bb.sdk.providers.experimental_validateExecutionSelection({
+    providerId: execution.providerId,
+    model: execution.model,
+    reasoningLevel: execution.reasoningLevel,
+    ...providerRoutingForEnvironment(execution.environment),
+  });
+}
 
 export interface AutomationService {
   overview(): Promise<AutomationsOverviewResponse>;
@@ -449,6 +464,7 @@ export function createAutomationService(args: {
           payload.execution.permissionMode,
           providerRoutingForEnvironment(payload.execution.environment),
         );
+        await validateAgentExecutionSelection(bb, payload.execution);
       }
       const automationId = createAutomationId();
       const stored = await resolveStoredExecution({
@@ -515,6 +531,7 @@ export function createAutomationService(args: {
             input.execution.permissionMode,
             providerRoutingForEnvironment(input.execution.environment),
           );
+          await validateAgentExecutionSelection(bb, input.execution);
         }
         const stored = await resolveStoredExecution({
           pluginDataDir,
@@ -545,6 +562,9 @@ export function createAutomationService(args: {
             updatedExecution.permissionMode,
             providerRoutingForEnvironment(updatedExecution.environment),
           );
+        }
+        if (updatedExecution.mode === "agent") {
+          await validateAgentExecutionSelection(bb, updatedExecution);
         }
         patch.execution = updatedExecution;
       }

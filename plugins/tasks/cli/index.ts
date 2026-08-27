@@ -117,7 +117,10 @@ const PRESET_HELP = `Usage:
   bb tasks preset show <name-or-id> [--json]
   bb tasks preset create --name <name> --provider <id> --model <id> --reasoning <level> --permission <accept-edits|auto|full> [--service-tier default|fast|none] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
   bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <accept-edits|auto|full>] [--service-tier default|fast|none] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
-  bb tasks preset delete <name-or-id> [--json]`;
+  bb tasks preset delete <name-or-id> [--json]
+
+Create/update validates model and advertised reasoning support against the
+selected machine before saving.`;
 const DISPATCH_HELP =
   "Usage: bb tasks dispatch <key> --preset <name> [--instructions <extra>] [--json]";
 const ATTACH_HELP =

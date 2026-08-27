@@ -643,6 +643,7 @@ export function createWorkflowService(
       );
     }
     if (
+      model.supportedReasoningEfforts.length > 0 &&
       !model.supportedReasoningEfforts.some(
         (effort) => effort.reasoningEffort === requested.reasoningLevel,
       )

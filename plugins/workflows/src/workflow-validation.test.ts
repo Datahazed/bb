@@ -162,4 +162,26 @@ describe("workflow validation", () => {
       ),
     ).rejects.toThrow("Model mismatch");
   });
+
+  it("accepts reasoning when the model does not advertise an authoritative contract", async () => {
+    await expect(
+      validateWorkflowSource(
+        SOURCE,
+        "env-1",
+        catalog({
+          loadModels: async () => ({
+            selectedOnlyModels: [],
+            modelLoadError: null,
+            models: [
+              {
+                id: "gpt-test",
+                model: "gpt-test",
+                supportedReasoningEfforts: [],
+              },
+            ],
+          }),
+        }),
+      ),
+    ).resolves.toMatchObject({ valid: true });
+  });
 });

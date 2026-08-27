@@ -20,6 +20,28 @@ the wire are unchanged); on `@get-bb/plugin-sdk` the tool type
 `PluginAgentToolExperimentalStatusLabels` is `PluginAgentToolLabels`, the
 type of `presentation.label`.
 
+## `bb.sdk.providers.experimental_validateExecutionSelection`
+
+**What it does.** Validates a provider/model/reasoning tuple against the live,
+authoritative model catalog on an explicit environment host, explicit machine,
+or the primary machine. It returns the provider-routable model id (so catalog
+aliases resolve consistently) and throws typed HTTP errors for an unavailable
+model, unsupported advertised reasoning level, or unavailable catalog. The
+Tasks and Automations plugins use it before persisting execution presets; the
+thread routes enforce the same server policy again at execution time.
+
+**Audit before stabilizing.**
+
+1. Confirm third-party server plugins need a validation-only call rather than a
+   richer mutation API that stores execution settings for them.
+2. Decide whether the host/environment routing union should grow a project and
+   prospective-workspace target for workspace-scoped catalogs. Current callers
+   validate project-default/new-worktree settings against the selected host,
+   then thread spawn revalidates against the resolved workspace before
+   provisioning.
+3. Confirm returning only the canonical tuple is enough, rather than returning
+   the matched catalog row for UI display.
+
 ## One-release compatibility windows (removal target: bb 0.42)
 
 - The app runtime keeps deprecated aliases for plugin bundles compiled

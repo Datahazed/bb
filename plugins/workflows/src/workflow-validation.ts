@@ -79,6 +79,7 @@ export async function validateWorkflowSource(
         );
       }
       if (
+        model.supportedReasoningEfforts.length > 0 &&
         !model.supportedReasoningEfforts.some(
           (effort) => effort.reasoningEffort === selection.reasoningLevel,
         )

@@ -7,6 +7,7 @@ import {
 import type {
   ProjectExecutionDefaults,
   Project,
+  ReasoningLevel,
   Thread,
   ThreadOriginKind,
   ThreadVisibility,
@@ -67,7 +68,10 @@ import {
   resolveManagedNamedBaseBranchSpec,
 } from "../projects/worktree-base-branch.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
-import { resolveSystemProviderModels } from "../system/execution-options.js";
+import {
+  loadAuthoritativeProviderExecutionCatalog,
+  validateExecutionSelectionAgainstCatalog,
+} from "../system/execution-selection.js";
 
 type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -109,35 +113,31 @@ interface ResolveCatalogExecutionDefaultsArgs {
   hostId: string;
   providerId: string;
   requestedModel: string | null;
+  requestedReasoningLevel:
+    | ThreadCreateServiceRequestInput["reasoningLevel"]
+    | null;
+}
+
+interface ResolvedCatalogExecutionDefaults {
+  executionDefaults: ProjectExecutionDefaults;
+  normalizedRequestedModel: string | null;
 }
 
 async function resolveCatalogExecutionDefaults(
   deps: ThreadCreateDeps,
   args: ResolveCatalogExecutionDefaultsArgs,
-): Promise<ProjectExecutionDefaults | null> {
-  if (args.executionDefaults !== null || args.requestedModel !== null) {
-    return args.executionDefaults;
-  }
-
-  const catalog = await resolveSystemProviderModels(deps, {
+): Promise<ResolvedCatalogExecutionDefaults> {
+  const catalog = await loadAuthoritativeProviderExecutionCatalog(deps, {
     ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
     hostId: args.hostId,
     providerId: args.providerId,
   });
-  if (catalog.modelLoadError !== null) {
-    throw new ApiError(
-      503,
-      "model_catalog_unavailable",
-      `Unable to load ${args.providerId} models to resolve the default. Try again once the host is connected and the provider is ready.`,
-      {
-        details: catalog.modelLoadError,
-        retryable: true,
-      },
-    );
-  }
-  const defaultModel =
+  const requestedOrStoredModel =
+    args.requestedModel ?? args.executionDefaults?.model ?? null;
+  const defaultModelEntry =
     catalog.models.find((model) => model.isDefault) ?? catalog.models[0];
-  if (defaultModel === undefined) {
+  const model = requestedOrStoredModel ?? defaultModelEntry?.model;
+  if (model === undefined) {
     throw new ApiError(
       503,
       "model_catalog_unavailable",
@@ -145,10 +145,56 @@ async function resolveCatalogExecutionDefaults(
       true,
     );
   }
-  return buildProviderThreadExecutionDefaults(deps.providerRegistry, {
+  const modelEntry = [
+    ...catalog.models,
+    ...(args.requestedModel === null && args.executionDefaults !== null
+      ? catalog.selectedOnlyModels
+      : []),
+  ].find((candidate) => candidate.id === model || candidate.model === model);
+  const reasoningLevel =
+    args.requestedReasoningLevel ??
+    args.executionDefaults?.reasoningLevel ??
+    modelEntry?.defaultReasoningEffort ??
+    defaultModelEntry?.defaultReasoningEffort ??
+    "medium";
+  const validated = validateExecutionSelectionAgainstCatalog({
+    allowSelectedOnly:
+      args.requestedModel === null && args.executionDefaults !== null,
+    catalog,
+    model,
     providerId: args.providerId,
-    model: defaultModel.model,
+    reasoningLevel,
   });
+  const baseDefaults =
+    args.executionDefaults ??
+    buildProviderThreadExecutionDefaults(deps.providerRegistry, {
+      providerId: args.providerId,
+      model: validated.model,
+      reasoningLevel: validated.reasoningLevel,
+    });
+  return {
+    executionDefaults: {
+      ...baseDefaults,
+      model: validated.model,
+      reasoningLevel: validated.reasoningLevel,
+    },
+    normalizedRequestedModel:
+      args.requestedModel === null ? null : validated.model,
+  };
+}
+
+function requestedCreateReasoningLevel(
+  request: ThreadCreateServiceRequestInput,
+): ReasoningLevel | null {
+  const value = request.reasoningLevel;
+  if (value === undefined) return null;
+  if (
+    request.executionInputSources !== undefined &&
+    request.executionInputSources.reasoningLevel === undefined
+  ) {
+    return null;
+  }
+  return value;
 }
 
 function resolveForkPoint(
@@ -464,6 +510,7 @@ async function createProvisioningThread(
         ? { projectDefaults: args.executionDefaults }
         : {}),
       hostId: intentHostId(deps, args.environmentIntent),
+      catalogValidated: true,
       threadId: thread.id,
     });
     context = requestThreadProvision(deps, {
@@ -656,7 +703,7 @@ export async function createThreadFromRequest(
     sourceThreadId: _requestedSourceThreadId,
     ...requestRest
   } = requestInput;
-  const request: ThreadCreateServiceRequest = {
+  let request: ThreadCreateServiceRequest = {
     ...requestRest,
     ...(hierarchyParentThreadId
       ? { parentThreadId: hierarchyParentThreadId }
@@ -689,16 +736,20 @@ export async function createThreadFromRequest(
   ).dataDir;
   const modelCatalogCwd =
     modelCatalogCwdForResolvedEnvironment(resolvedEnvironment);
-  const resolvedExecutionDefaults = await resolveCatalogExecutionDefaults(
-    deps,
-    {
-      ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
-      executionDefaults,
-      hostId: childHostId,
-      providerId,
-      requestedModel,
-    },
-  );
+  const catalogResolution = await resolveCatalogExecutionDefaults(deps, {
+    ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
+    executionDefaults,
+    hostId: childHostId,
+    providerId,
+    requestedModel,
+    requestedReasoningLevel: requestedCreateReasoningLevel(requestInput),
+  });
+  if (catalogResolution.normalizedRequestedModel !== null) {
+    request = {
+      ...request,
+      model: catalogResolution.normalizedRequestedModel,
+    };
+  }
 
   let environmentId: string | null = null;
   let environmentIntent: ThreadProvisionEnvironmentIntent;
@@ -818,7 +869,7 @@ export async function createThreadFromRequest(
   const thread = await createProvisioningThread(deps, {
     environmentId,
     environmentIntent,
-    executionDefaults: resolvedExecutionDefaults,
+    executionDefaults: catalogResolution.executionDefaults,
     fork,
     ...(options.providerInput !== undefined
       ? { providerInput: options.providerInput }

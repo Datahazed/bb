@@ -54,5 +54,10 @@ agent preserve omitted fields and accept `--prompt`, `--provider`, `--model`,
 target option. Pass provider, model, reasoning, service tier, and permission
 together when switching providers.
 
+Agent execution selections are validated against the selected environment or
+machine catalog before create/update persists them, and are validated again at
+run time before thread/environment provisioning. An invalid model or an
+advertised unsupported reasoning level exits non-zero.
+
 Add `--json` for machine-readable output. Use `runs --output <runId>` to print a
 script run's captured output.

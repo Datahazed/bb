@@ -42,6 +42,7 @@ import {
   resolveMessageSenderThreadId,
   sendThreadMessage,
 } from "./thread-send.js";
+import { buildExecutionOptions } from "./thread-commands.js";
 
 interface AcceptThreadSendRequestArgs {
   payload: SendMessageRequest;
@@ -78,6 +79,12 @@ export async function acceptThreadSendRequest(
       input: payload.input,
       projectId: thread.projectId,
     });
+    if (payload.model !== undefined || payload.reasoningLevel !== undefined) {
+      // Deferred sends are externally visible as soon as their row is stored.
+      // Validate explicit selection fields now, just like immediate and queued
+      // sends; ordinary inherited execution still resolves only at delivery.
+      await buildExecutionOptions(deps, payload, { threadId: thread.id });
+    }
     deferThreadMessage(deps, {
       threadId: thread.id,
       payload: { kind: "send", request: payload },

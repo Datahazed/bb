@@ -41,6 +41,11 @@ Spawning:
   requested provider or Codex and resolves its provider-reported default model
   on the target machine. The product reasoning and permission defaults are
   medium and auto.
+  Before creating a thread or environment, bb validates the resolved model and
+  any advertised per-model reasoning support against that target machine's
+  live catalog. An explicit model must be active (or registered in
+  customModels); an inherited selected-only model remains valid. A bad tuple
+  exits non-zero without provisioning a worktree or submitting a provider turn.
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.

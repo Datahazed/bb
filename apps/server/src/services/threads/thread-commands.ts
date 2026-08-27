@@ -1,4 +1,10 @@
-import { environments, events, threads } from "@bb/db";
+import {
+  environments,
+  events,
+  getEnvironment,
+  getThread,
+  threads,
+} from "@bb/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   PromptInput,
@@ -44,6 +50,7 @@ import {
   requireBridgeLaunchForProviderId,
   resolveBridgeLaunchForProviderId,
 } from "../system/provider-bridge-launch.js";
+import { validateProviderExecutionSelection } from "../system/execution-selection.js";
 
 type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 
@@ -129,6 +136,7 @@ interface RuntimeExecutionOptionsArgs {
 }
 
 interface BuildExecutionOptionsArgs {
+  catalogValidated?: boolean;
   hostId?: string | null;
   projectDefaults?: ProjectExecutionDefaults | null;
   threadId: string;
@@ -242,20 +250,57 @@ function toRuntimeExecutionOptions(
 }
 
 export async function buildExecutionOptions(
-  deps: Pick<AppDeps, "db" | "hub" | "providerRegistry">,
+  deps: LoggedWorkSessionDeps,
   request: ExecutionOptionsRequest,
   args: BuildExecutionOptionsArgs,
 ): Promise<ResolvedThreadExecutionOptions> {
+  const input = buildExistingThreadExecutionInput(request);
   const plan = await resolveExistingThreadExecutionPlan(deps, {
     ...(args.projectDefaults !== undefined
       ? { projectDefaults: args.projectDefaults }
       : {}),
     ...(args.hostId !== undefined ? { hostId: args.hostId } : {}),
     executionSource: "client/turn/requested",
-    input: buildExistingThreadExecutionInput(request),
+    input,
     threadId: args.threadId,
   });
-  return plan.resolvedExecution;
+  let resolvedExecution = plan.resolvedExecution;
+  if (
+    args.catalogValidated !== true &&
+    (input.model !== undefined || input.reasoningLevel !== undefined)
+  ) {
+    const thread = getThread(deps.db, args.threadId);
+    if (thread === null) {
+      throw new ApiError(404, "thread_not_found", "Thread not found");
+    }
+    const environment =
+      thread.environmentId === null
+        ? null
+        : getEnvironment(deps.db, thread.environmentId);
+    const hostId =
+      args.hostId === undefined ? (environment?.hostId ?? null) : args.hostId;
+    if (hostId === null) {
+      // A queued message can be admitted while its new thread is still waiting
+      // for an environment. There is no catalog target yet; the queue drain
+      // re-enters this resolver after provisioning and validates there.
+      return resolvedExecution;
+    }
+    const validated = await validateProviderExecutionSelection(deps, {
+      ...(environment?.path === null || environment?.path === undefined
+        ? {}
+        : { cwd: environment.path }),
+      allowSelectedOnly: input.model?.source !== "explicit",
+      hostId,
+      providerId: thread.providerId,
+      model: plan.resolvedExecution.model,
+      reasoningLevel: plan.resolvedExecution.reasoningLevel,
+    });
+    resolvedExecution = {
+      ...resolvedExecution,
+      model: validated.model,
+    };
+  }
+  return resolvedExecution;
 }
 
 export async function buildThreadStartCommand(
