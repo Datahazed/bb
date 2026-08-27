@@ -145,6 +145,41 @@ describe("codex app-server connection", () => {
     }
   }, 30_000);
 
+  it("preserves exit status when EPIPE precedes the exit event", async () => {
+    const exited = deferred<CodexAppServerExitInfo>();
+    const connection = createCodexAppServerConnection({
+      command: process.execPath,
+      args: [
+        "-e",
+        'process.stderr.write("fixture stderr\\n"); process.exit(7);',
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      recordThreadId: null,
+      onNotification: () => undefined,
+      onRequest: () => undefined,
+      onExit: exited.resolve,
+    });
+
+    try {
+      await expect(
+        connection.request({
+          method: "thread/start",
+          params: { payload: "x".repeat(EPIPE_PAYLOAD_SIZE) },
+          resultSchema: z.unknown(),
+        }),
+      ).rejects.toThrow(/codex app-server exited \(code 7, signal null\)/);
+      await expect(exited.promise).resolves.toMatchObject({
+        code: 7,
+        signal: null,
+        stderrTail: expect.stringContaining("fixture stderr"),
+        spawnFailed: false,
+      });
+    } finally {
+      await stopConnection(connection, exited.promise);
+    }
+  }, 30_000);
+
   it("makes a broken child stdin immediately terminal", async () => {
     const ready = deferred<void>();
     const exited = deferred<CodexAppServerExitInfo>();
@@ -197,7 +232,7 @@ describe("codex app-server connection", () => {
       ).rejects.toBeInstanceOf(CodexAppServerExitedError);
       await expect(exited.promise).resolves.toMatchObject({
         code: null,
-        signal: null,
+        signal: "SIGKILL",
         stderrTail: expect.stringMatching(/stdin failed \(EPIPE\)/),
         spawnFailed: false,
       });

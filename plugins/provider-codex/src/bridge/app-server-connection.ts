@@ -142,8 +142,16 @@ export function createCodexAppServerConnection(
     signal: NodeJS.Signals | null;
   } | null = null;
   let killStarted = false;
+  let stdinFailure: CodexAppServerExitedError | null = null;
   let closeGraceTimer: NodeJS.Timeout | null = null;
   let stdoutLines: Interface | null = null;
+
+  function pushStderrChunk(chunk: string): void {
+    stderrChunks.push(chunk);
+    if (stderrChunks.length > STDERR_TAIL_MAX_CHUNKS) {
+      stderrChunks.shift();
+    }
+  }
 
   function rejectAllPending(error: Error): void {
     for (const [, request] of pending) {
@@ -170,7 +178,7 @@ export function createCodexAppServerConnection(
   }
 
   function handleBrokenStdin(error: Error): void {
-    if (finalized || exitStatus !== null) {
+    if (finalized || exitStatus !== null || stdinFailure !== null) {
       return;
     }
     const code =
@@ -178,22 +186,20 @@ export function createCodexAppServerConnection(
         ? ` (${error.code})`
         : "";
     const detail = `stdin failed${code}: ${error.message}`;
-    const connectionError = new CodexAppServerExitedError(
-      `codex app-server ${detail}`,
-    );
-    const stderrTail = [...stderrChunks, detail].join("\n");
-    // Once the child stops reading requests the protocol cannot recover. Mark
-    // the connection terminal immediately so callers can rebuild it, and use
-    // SIGKILL so a child that ignores SIGTERM cannot linger behind that state.
+    stdinFailure = new CodexAppServerExitedError(`codex app-server ${detail}`);
+    pushStderrChunk(detail);
+    // Once the child stops reading requests the protocol cannot recover. Kill
+    // it immediately, then let its exit/close events finalize the connection:
+    // an EPIPE can arrive just before `exit`, and that boundary preserves the
+    // real code or signal plus any final stdout still in flight.
+    killStarted = true;
     child.kill("SIGKILL");
-    finalizeConnection(
-      { code: null, signal: null },
-      stderrTail,
-      connectionError,
-    );
   }
 
   function writeLine(message: object): void {
+    if (stdinFailure !== null) {
+      return;
+    }
     const stdin = child.stdin;
     if (!stdin || stdin.destroyed || !stdin.writable) {
       // `exit` intentionally precedes finalization while stdout drains. A
@@ -320,16 +326,13 @@ export function createCodexAppServerConnection(
       terminal: false,
     });
     stderrLines.on("line", (line) => {
-      stderrChunks.push(line);
-      if (stderrChunks.length > STDERR_TAIL_MAX_CHUNKS) {
-        stderrChunks.shift();
-      }
+      pushStderrChunk(line);
     });
   }
 
   child.on("error", (error) => {
     spawnFailed = true;
-    stderrChunks.push(error.message);
+    pushStderrChunk(error.message);
     finalizeExit({ code: null, signal: null });
   });
 
@@ -357,7 +360,7 @@ export function createCodexAppServerConnection(
 
   return {
     get exited() {
-      return finalized;
+      return finalized || stdinFailure !== null;
     },
 
     request({ method, params, resultSchema, timeoutMs }) {
@@ -367,6 +370,9 @@ export function createCodexAppServerConnection(
             spawnFailed,
           }),
         );
+      }
+      if (stdinFailure !== null) {
+        return Promise.reject(stdinFailure);
       }
       const id = nextRequestId;
       nextRequestId += 1;
@@ -404,7 +410,7 @@ export function createCodexAppServerConnection(
     },
 
     notify(method, params) {
-      if (finalized) {
+      if (finalized || stdinFailure !== null) {
         return;
       }
       writeLine({ jsonrpc: "2.0", method, params });
