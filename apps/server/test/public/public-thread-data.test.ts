@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import {
-  archiveThread,
   claimQueuedThreadMessage,
   createQueuedThreadMessageId,
   createThreadSection,
@@ -11,7 +10,6 @@ import {
   getQueuedThreadMessage,
   insertEvents,
   listQueuedThreadMessages,
-  markThreadDeleted,
   getThread,
   queuedThreadMessages,
   reorderQueuedThreadMessage,
@@ -31,7 +29,6 @@ import {
   threadSectionMutationResponseSchema,
   threadSectionSchema,
   threadConversationOutlineResponseSchema,
-  threadCountResponseSchema,
   threadQueuedMessageListResponseSchema,
   threadStorageLocationResponseSchema,
   threadTimelineResponseSchema,
@@ -258,42 +255,6 @@ describe("public thread data routes", () => {
         .parse(await readJson(hiddenListResponse));
       expect(hiddenList).toContainEqual(
         expect.objectContaining({ id: thread.id, visibility: "hidden" }),
-      );
-    });
-  });
-
-  it("counts archived visible threads without returning thread rows", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const visibleArchived = seedThread(harness.deps, {
-        projectId: project.id,
-      });
-      const hiddenArchived = seedThread(harness.deps, {
-        projectId: project.id,
-        visibility: "hidden",
-      });
-      const deletedArchived = seedThread(harness.deps, {
-        projectId: project.id,
-      });
-      seedThread(harness.deps, { projectId: project.id });
-
-      archiveThread(harness.db, harness.deps.hub, visibleArchived.id);
-      archiveThread(harness.db, harness.deps.hub, hiddenArchived.id);
-      archiveThread(harness.db, harness.deps.hub, deletedArchived.id);
-      markThreadDeleted(harness.db, harness.deps.hub, {
-        threadId: deletedArchived.id,
-      });
-
-      const response = await harness.app.request(
-        "/api/v1/threads/count?archived=true",
-      );
-
-      expect(response.status).toBe(200);
-      expect(threadCountResponseSchema.parse(await readJson(response))).toEqual(
-        { count: 1 },
       );
     });
   });

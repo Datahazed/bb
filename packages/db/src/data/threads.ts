@@ -395,11 +395,6 @@ export interface ListThreadsOptions {
   includeHidden?: boolean;
 }
 
-export type CountThreadsOptions = Omit<
-  ListThreadsOptions,
-  "limit" | "offset"
->;
-
 type ThreadRow = typeof threads.$inferSelect;
 
 export interface ListThreadsForProjectsOptions {
@@ -637,6 +632,10 @@ export interface ListThreadEnvironmentAssignmentsOnHostArgs {
 }
 
 export interface ListHostThreadIdsArgs {
+  hostId: string;
+}
+
+export interface ListActiveHostThreadsArgs {
   hostId: string;
 }
 
@@ -1202,13 +1201,6 @@ export function listThreads(db: DbConnection, options: ListThreadsOptions) {
   return query.all();
 }
 
-export function countThreads(
-  db: DbConnection,
-  options: CountThreadsOptions,
-): number {
-  return countThreadsWhere(db, and(...buildListThreadsFilters(options)));
-}
-
 export function listThreadsWithPendingInteractionState(
   db: DbConnection,
   options: ListThreadsOptions,
@@ -1419,7 +1411,7 @@ export function hasLiveThreadAtHostPath(
       and(
         eq(environments.hostId, args.hostId),
         eq(environments.path, args.path),
-        nonDeletedThreads(
+        liveThreads(
           inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
         ),
       ),
@@ -1440,6 +1432,27 @@ export function listHostThreadIds(
     .where(eq(environments.hostId, args.hostId))
     .all()
     .map((row) => row.id);
+}
+
+/**
+ * Full rows for the host's non-deleted `active` threads: the only rows whose
+ * displayed runtime depends on whether the host is connected.
+ */
+export function listActiveHostThreads(
+  db: DbConnection,
+  args: ListActiveHostThreadsArgs,
+): ThreadRow[] {
+  return db
+    .select(getTableColumns(threads))
+    .from(threads)
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      nonDeletedThreads(
+        eq(environments.hostId, args.hostId),
+        eq(threads.status, "active"),
+      ),
+    )
+    .all();
 }
 
 export function hasPendingThreadShutdownInEnvironment(

@@ -6,8 +6,10 @@ import {
   getPluginPanelRoutePath,
   getRootComposeRoutePath,
   getThreadRoutePath,
+  getPluginDetailRoutePath,
 } from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { openPaneContentInSplit } from "@/lib/split-layout/openPaneContentInSplit";
 import {
   countPanes,
   findPaneByContent,
@@ -32,6 +34,9 @@ const MAIN_CONTENT_SELECTOR = "main";
 function routeForContent(content: PaneContent): string {
   if (content.kind === "thread") return getThreadRoutePath(content);
   if (content.kind === "new-thread") return getRootComposeRoutePath();
+  if (content.kind === "plugin-detail") {
+    return getPluginDetailRoutePath({ pluginId: content.pluginId });
+  }
   return getPluginPanelRoutePath({
     pluginId: content.pluginId,
     path: content.panelPath,
@@ -80,24 +85,13 @@ export function usePaneContentSplitDrag({
 
   const openInSplit = useCallback(() => {
     const content = resolveContent();
-    const route = routeForContent(content);
-    const layout = store.get(splitLayoutAtom);
-    if (!enabled || isCompact || layout === null) {
-      navigate(route, navigationOptionsForContent(content));
-      return;
-    }
-    const existing = findPaneByContent(layout.root, content);
-    const next =
-      existing !== null
-        ? setFocus(layout, existing.paneId)
-        : countPanes(layout.root) >= MAX_PANES
-          ? replacePaneContent(layout, layout.focusedPaneId, content)
-          : splitPane(layout, layout.focusedPaneId, "right", content);
-    if (next !== layout) store.set(splitLayoutAtom, next);
-    navigate(
-      route,
-      navigationOptionsForContent(content, existing !== null),
-    );
+    openPaneContentInSplit({
+      store,
+      navigate,
+      content,
+      route: routeForContent(content),
+      enabled: enabled && !isCompact,
+    });
   }, [enabled, isCompact, navigate, resolveContent, store]);
 
   const onPointerDown = useCallback(
