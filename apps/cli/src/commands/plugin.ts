@@ -7,6 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
 import { z } from "zod";
 import { derivePluginId } from "@bb/domain";
+import { pluginCliCall, RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 import type {
   InstalledPlugin as PluginEntry,
   PluginApplyUpdateResult,
@@ -61,9 +62,11 @@ export function resolveNewPluginTarget(name: string): NewPluginTarget | null {
   ) {
     return null;
   }
+  const pluginId = derivePluginId(packageName);
+  if (RESERVED_BB_CLI_COMMANDS.includes(pluginId)) return null;
   return {
     packageName,
-    directoryName: `bb-plugin-${derivePluginId(packageName)}`,
+    directoryName: `bb-plugin-${pluginId}`,
   };
 }
 
@@ -806,8 +809,13 @@ function printPlugin(plugin: PluginEntry): void {
     );
   }
   if (plugin.cliCommand) {
+    const collisionNote = RESERVED_BB_CLI_COMMANDS.includes(
+      plugin.cliCommand.name,
+    )
+      ? ` (core command "bb ${plugin.cliCommand.name}" takes precedence)`
+      : "";
     console.log(
-      `  command: bb ${plugin.cliCommand.name} — ${plugin.cliCommand.summary}`,
+      `  command: ${pluginCliCall(plugin.id, plugin.cliCommand.name)} — ${plugin.cliCommand.summary}${collisionNote}`,
     );
   }
 }
@@ -905,10 +913,20 @@ export function registerPluginCommands(
         // Where a listing came from only matters once something other than
         // BB's own catalog is registered; until then the column is noise.
         const showMarketplace = results.some((result) => !result.official);
+        // Only the curated marketplace publishes counts, and only once it has
+        // been refreshed from a server that serves the sidecar.
+        const showInstalls = results.some((result) => result.installs !== null);
         const rows = results.map((result) => [
           result.displayName,
           result.description,
           ...(showMarketplace ? [result.marketplaceDisplayName] : []),
+          ...(showInstalls
+            ? [
+                result.installs === null
+                  ? ""
+                  : result.installs.toLocaleString("en-US"),
+              ]
+            : []),
           result.installed
             ? "✓ installed"
             : result.compatible
@@ -922,9 +940,16 @@ export function registerPluginCommands(
                 "Name",
                 "Description",
                 ...(showMarketplace ? ["Marketplace"] : []),
+                ...(showInstalls ? ["Installs"] : []),
                 "Status",
               ],
-              colWidths: showMarketplace ? [26, 42, 22, 40] : [28, 54, 48],
+              colWidths: [
+                showMarketplace ? 26 : 28,
+                showMarketplace ? 42 : 54,
+                ...(showMarketplace ? [22] : []),
+                ...(showInstalls ? [10] : []),
+                showMarketplace ? 40 : 48,
+              ],
               trimTrailingWhitespace: true,
             },
             rows,
@@ -1079,9 +1104,8 @@ export function registerPluginCommands(
                 // moved, not refused; name the install being replaced so
                 // the confirmation is about the move, not a fresh install.
                 const pluginId = derivePluginId(pkg.name);
-                const { plugins } = await createCliBbSdk(
-                  getUrl(),
-                ).plugins.list();
+                const { plugins } =
+                  await createCliBbSdk(getUrl()).plugins.list();
                 const installed = plugins.find((p) => p.id === pluginId);
                 if (
                   installed !== undefined &&
@@ -1293,7 +1317,7 @@ export function registerPluginCommands(
         const target = resolveNewPluginTarget(name);
         if (target === null) {
           console.error(
-            `Invalid plugin name "${name}" — use name, bb-plugin-name, or @scope/bb-plugin-name.`,
+            `Invalid or reserved plugin name "${name}" — use a non-core name, bb-plugin-name, or @scope/bb-plugin-name.`,
           );
           process.exit(1);
         }
@@ -1321,7 +1345,7 @@ export function registerPluginCommands(
   plugin
     .command("types [path]")
     .description(
-      "Sync a plugin's @get-bb/plugin-sdk surface to the running bb (default: cwd): repin the npm devDependency for plugins that depend on the package, or rewrite the vendored types/ declarations for plugins that still carry them",
+      "Sync a plugin's @get-bb/plugin-sdk surface to the running bb (default: cwd): repin the npm devDependency and the type-only devDependencies of the packages bb shims at runtime (sonner, vaul, the portal radix families, ...) for plugins that depend on the package, or rewrite the vendored types/ declarations for plugins that still carry them",
     )
     .option(
       "--check",
@@ -1347,6 +1371,7 @@ export function registerPluginCommands(
             const pending = await setPluginSdkPin({
               rootDir,
               sdkVersion: PLUGIN_SDK_VERSION,
+              app: hasApp,
               dryRun: true,
             });
             if (pending === null) {
@@ -1355,20 +1380,30 @@ export function registerPluginCommands(
               );
               return;
             }
-            console.error(
-              pending.pin === null
-                ? 'Move "@get-bb/plugin-sdk" from dependencies to devDependencies — bb provides its runtime (`bb plugin types` does it for you).'
-                : `Set "@get-bb/plugin-sdk" to ${PLUGIN_SDK_VERSION} in devDependencies and re-run npm install (\`bb plugin types\` does it for you).`,
-            );
+            if (pending.pin !== null || pending.movedFromDependencies) {
+              console.error(
+                pending.pin === null
+                  ? 'Move "@get-bb/plugin-sdk" from dependencies to devDependencies — bb provides its runtime (`bb plugin types` does it for you).'
+                  : `Set "@get-bb/plugin-sdk" to ${PLUGIN_SDK_VERSION} in devDependencies and re-run npm install (\`bb plugin types\` does it for you).`,
+              );
+            }
+            for (const shim of pending.shimmedTypePins) {
+              console.error(
+                shim.movedFromDependencies
+                  ? `Move "${shim.name}" from dependencies to devDependencies at ${shim.to} — bb shims it at runtime and never bundles it (\`bb plugin types\` does it for you).`
+                  : `Set "${shim.name}" to ${shim.to} in devDependencies — the version this bb shims at runtime (\`bb plugin types\` does it for you).`,
+              );
+            }
             process.exit(1);
           }
           const changed = await setPluginSdkPin({
             rootDir,
             sdkVersion: PLUGIN_SDK_VERSION,
+            app: hasApp,
           });
           if (changed === null) {
             console.log(
-              `@get-bb/plugin-sdk is already pinned to ${PLUGIN_SDK_VERSION} — this bb's SDK version.`,
+              `@get-bb/plugin-sdk is already pinned to ${PLUGIN_SDK_VERSION} — this bb's SDK version${hasApp ? ", and the runtime-shimmed packages are at this bb's versions" : ""}.`,
             );
             console.log(
               "The declarations are in node_modules/@get-bb/plugin-sdk/bundled-types/ — read them for exact signatures.",
@@ -1385,6 +1420,13 @@ export function registerPluginCommands(
             // npm install a second copy that shadows the pinned one.
             console.log(
               "Moved @get-bb/plugin-sdk from dependencies to devDependencies.",
+            );
+          }
+          for (const shim of changed.shimmedTypePins) {
+            // Same reasoning as the SDK: bb shims these at runtime, so they
+            // are declared for types only, at the versions bb itself ships.
+            console.log(
+              `${shim.name}: ${shim.from ?? "(not declared)"} → ${shim.to} in devDependencies${shim.movedFromDependencies ? " (moved from dependencies)" : ""}.`,
             );
           }
           // The new pin has to resolve for the declarations to land, so the

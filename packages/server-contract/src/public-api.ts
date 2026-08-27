@@ -167,8 +167,6 @@ import type {
   TerminalResizeRequest,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
-  ThreadCountQuery,
-  ThreadCountResponse,
   ThreadEventWaitQuery,
   ThreadEventsQuery,
   ThreadSectionMutationResponse,
@@ -285,7 +283,6 @@ import {
   threadFilesRawQuerySchema,
   threadGetQuerySchema,
   threadHostFileContentQuerySchema,
-  threadCountQuerySchema,
   threadListQuerySchema,
   threadOpenRequestSchema,
   threadPaneActionRequestSchema,
@@ -899,14 +896,6 @@ export const publicApiRoutes = {
   },
 
   threads: {
-    count: defineRoute({
-      path: "/threads/count",
-      method: "get",
-      request: queryRequest<EmptyInput, ThreadCountQuery>(
-        threadCountQuerySchema,
-      ),
-      response: jsonResponse<ThreadCountResponse>(),
-    }),
     list: defineRoute({
       path: "/threads",
       method: "get",
