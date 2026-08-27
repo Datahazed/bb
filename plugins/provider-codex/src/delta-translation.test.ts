@@ -13,9 +13,14 @@ import {
   PLAN_PRESENTATION,
 } from "./presentation.js";
 import {
+  applyCodexRateLimitUpdate,
+  createCodexEventTranslationState,
+} from "./delta-translation.js";
+import {
   createCodexEventTranslator,
   type CodexEventTranslator,
 } from "./translator.js";
+import { codexRateLimitReadResponseSchema } from "./schemas.js";
 
 /**
  * Per-event Codex translation equivalence for the narrow-grammar path.
@@ -293,9 +298,16 @@ describe("codex thread lifecycle translation", () => {
           parentThreadId: null,
           preview: "Fix the tests",
           ephemeral: false,
+
+          section: null,
+
+          sectionEnteredAt: null,
+
+          projectId: null,
           modelProvider: "openai",
           createdAt: 0,
           updatedAt: 0,
+          recencyAt: null,
           status: { type: "idle" },
           path: null,
           cwd: "/tmp",
@@ -440,6 +452,7 @@ describe("codex item translation", () => {
           text: "Hello",
           phase: null,
           memoryCitation: null,
+          delivery: null,
         },
       }),
     );
@@ -626,6 +639,8 @@ describe("codex item translation", () => {
           command: "ls -la",
           cwd: "/tmp",
           processId: null,
+          pluginId: null,
+          scriptPath: null,
           source: "agent",
           status: "completed",
           commandActions: [],
@@ -665,6 +680,8 @@ describe("codex item translation", () => {
           command: "ls -la",
           cwd: "/tmp",
           processId: null,
+          pluginId: null,
+          scriptPath: null,
           source: "agent",
           status: "declined",
           commandActions: [],
@@ -700,6 +717,8 @@ describe("codex item translation", () => {
           command: "ls -la",
           cwd: "/tmp",
           processId: null,
+          pluginId: null,
+          scriptPath: null,
           source: "agent",
           status: "declined",
           commandActions: [],
@@ -800,6 +819,8 @@ describe("codex item translation", () => {
           server: "myserver",
           tool: "search",
           pluginId: null,
+          appContext: null,
+          readOnlyHint: null,
           status: "completed",
           arguments: { query: "test" },
           result: null,
@@ -1250,6 +1271,7 @@ describe("codex web item translation", () => {
           type: "webSearch",
           id: "web-1",
           query: "react suspense",
+          results: null,
           action: { type: "search", query: "react suspense", queries: null },
         },
       }),
@@ -1279,6 +1301,7 @@ describe("codex web item translation", () => {
           type: "webSearch",
           id: "web-start-1",
           query: "react suspense fallback",
+          results: null,
           action: {
             type: "search",
             query: "react suspense primary",
@@ -1317,6 +1340,7 @@ describe("codex web item translation", () => {
           type: "webSearch",
           id: "web-open-1",
           query: "ignored fallback",
+          results: null,
           action: { type: "openPage", url: "https://example.com" },
         },
       }),
@@ -1345,6 +1369,7 @@ describe("codex web item translation", () => {
           type: "webSearch",
           id: "web-open-1",
           query: "https://example.com",
+          results: null,
           action: { type: "openPage", url: "https://example.com" },
         },
       }),
@@ -1375,6 +1400,7 @@ describe("codex web item translation", () => {
           type: "webSearch",
           id: "web-find-1",
           query: "https://example.com",
+          results: null,
           action: {
             type: "findInPage",
             url: "https://example.com",
@@ -1415,6 +1441,7 @@ describe("codex web item translation", () => {
             type: "webSearch",
             id: "web-placeholder-1",
             query: "",
+            results: null,
             action: { type: "other" },
           },
         }),
@@ -1430,6 +1457,7 @@ describe("codex web item translation", () => {
             type: "webSearch",
             id: "web-placeholder-completed-1",
             query: "",
+            results: null,
             action: null,
           },
         }),
@@ -1448,6 +1476,7 @@ describe("codex web item translation", () => {
           type: "webSearch",
           id: "web-open-missing-url-1",
           query: "not-a-url",
+          results: null,
           action: { type: "openPage", url: null },
         },
       }),
@@ -1551,6 +1580,7 @@ describe("codex delta and usage translation", () => {
             totalTokens: 100,
             inputTokens: 60,
             cachedInputTokens: 10,
+            cacheWriteInputTokens: 0,
             outputTokens: 30,
             reasoningOutputTokens: 0,
           },
@@ -1558,6 +1588,7 @@ describe("codex delta and usage translation", () => {
             totalTokens: 50,
             inputTokens: 30,
             cachedInputTokens: 5,
+            cacheWriteInputTokens: 0,
             outputTokens: 15,
             reasoningOutputTokens: 0,
           },
@@ -1803,6 +1834,65 @@ describe("codex error and warning translation", () => {
     );
   });
 
+  it.each([
+    ["sessionBudgetExceeded", "budget-exceeded"],
+    ["misalignmentPolicyViolation", "policy"],
+  ] as const)(
+    "normalizes %s errors and failed turn completion",
+    (codexErrorInfo, category) => {
+      const harness = createHarness();
+
+      expect(
+        harness.translate(
+          codexEvent("error", {
+            threadId: "t1",
+            turnId: "turn-1",
+            error: {
+              message: "terminal failure",
+              codexErrorInfo,
+              additionalDetails: null,
+            },
+            willRetry: false,
+          }),
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          type: "provider/error",
+          scope: turnScope(harness.turnId("turn-1")),
+          errorInfo: {
+            category,
+            providerCode: codexErrorInfo,
+            httpStatusCode: null,
+          },
+        }),
+      ]);
+
+      expect(
+        harness.translate(
+          codexEvent("turn/completed", {
+            threadId: "t1",
+            turn: codexTurn({
+              id: "turn-1",
+              status: "failed",
+              error: {
+                message: "terminal failure",
+                codexErrorInfo,
+                additionalDetails: null,
+              },
+            }),
+          }),
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          type: "turn/completed",
+          scope: turnScope(harness.turnId("turn-1")),
+          status: "failed",
+          error: { message: "terminal failure" },
+        }),
+      ]);
+    },
+  );
+
   it("maps deprecationNotice to a thread-scoped warning", () => {
     const harness = createHarness();
     const events = harness.translate(
@@ -1874,6 +1964,65 @@ describe("codex error and warning translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex account rate-limit translation", () => {
+  const blockedSpendControlSnapshot = {
+    limitId: "codex",
+    limitName: "Codex",
+    primary: null,
+    secondary: null,
+    credits: null,
+    individualLimit: null,
+    spendControlReached: true,
+    planType: "team",
+    rateLimitReachedType: null,
+  } as const;
+
+  it("carries Codex spend-control state from the initial read", () => {
+    const response = codexRateLimitReadResponseSchema.parse({
+      rateLimits: blockedSpendControlSnapshot,
+    });
+    const snapshot = applyCodexRateLimitUpdate(
+      createCodexEventTranslationState(),
+      response.rateLimits,
+    );
+
+    expect(snapshot.spendControlReached).toBe(true);
+  });
+
+  it.each([
+    ["null", { spendControlReached: null }],
+    ["absence", {}],
+  ])("does not resurrect blocked spend control after %s", (_, clearUpdate) => {
+    const harness = createHarness();
+    const [blockedEvent] = harness.translate(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: blockedSpendControlSnapshot,
+      }),
+    );
+    expect(blockedEvent).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "spend-control",
+        windows: [],
+        reachedReason: null,
+      },
+    });
+
+    const [clearedEvent] = harness.translate({
+      jsonrpc: "2.0",
+      method: "account/rateLimits/updated",
+      params: { rateLimits: clearUpdate },
+    });
+    expect(clearedEvent).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "unknown",
+        kind: "unknown",
+        reachedReason: null,
+      },
+    });
+  });
+
   it("preserves Codex subscription rate limits", () => {
     const harness = createHarness();
     const events = harness.translate(
@@ -1889,6 +2038,7 @@ describe("codex account rate-limit translation", () => {
           secondary: null,
           credits: null,
           individualLimit: null,
+          spendControlReached: null,
           planType: null,
           rateLimitReachedType: "rate_limit_reached",
         },
@@ -1940,6 +2090,7 @@ describe("codex account rate-limit translation", () => {
             remainingPercent: 0,
             resetsAt: 1_781_120_400,
           },
+          spendControlReached: null,
           planType: "pro",
           rateLimitReachedType: "rate_limit_reached",
         },
