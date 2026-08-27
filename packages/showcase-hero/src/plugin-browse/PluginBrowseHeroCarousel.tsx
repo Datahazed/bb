@@ -54,7 +54,7 @@ export const PLUGIN_HERO_COPY: ShowcaseHeroCopy = {
   headlineLead: "Turn bb into",
   composingNoun: "whatever you need",
   description:
-    "Install one from the community. Or describe what's missing, and bb builds it.",
+    "Plugins let you extend every part of bb. Install one from the community, or ask an agent to create one for you.",
   tablistLabel: "Plugin examples",
   frameTitlePrefix: "bb — ",
   frameBadge: "Plugin",
