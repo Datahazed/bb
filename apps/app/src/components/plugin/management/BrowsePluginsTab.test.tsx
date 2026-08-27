@@ -132,6 +132,63 @@ afterEach(() => {
 });
 
 describe("BrowsePluginsTab", () => {
+  it("offers a way back when a failed search leaves stale results on screen", async () => {
+    // The catalog answers once, then fails. Cached entries stay on screen, so
+    // the empty-state error below never renders and Retry is the only exit.
+    let searches = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url === "/api/v1/plugin-catalog/search?q=") {
+          searches += 1;
+          return searches === 1
+            ? jsonResponse({ results: [MEMORY_ENTRY] })
+            : jsonResponse({ error: "catalog unavailable" }, 503);
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    await screen.findByRole("button", { name: "Open Memory details" });
+    // Refetching the same key is what produces this state: React Query keeps
+    // the last good results and marks the query errored. A new query string
+    // would instead land on the empty-catalog error, which already has Retry.
+    await queryClient.invalidateQueries({
+      queryKey: ["plugin-catalog-search"],
+    });
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    // The stale notice and the cached card share the screen: this is the
+    // degraded state, not the empty-catalog error.
+    expect(
+      screen.getByText(/Showing cached catalog results/u),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Memory details" })).toBeTruthy();
+
+    const before = searches;
+    fireEvent.click(retry);
+    await vi.waitFor(() => {
+      expect(searches).toBeGreaterThan(before);
+    });
+  });
+
   it("restores publisher grouping with no category UI for an all-v1 catalog", async () => {
     const entries = [
       withoutCategory({ ...MEMORY_ENTRY, displayName: "Zulu Memory" }),

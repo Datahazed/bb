@@ -427,10 +427,28 @@ export function BrowsePluginsTab({
 
             <div className="mt-7 space-y-3">
               {searchQuery.isError && entries.length > 0 ? (
-                <p className="text-xs text-warning-text" role="status">
-                  Showing cached catalog results because the latest search
-                  failed.
-                </p>
+                // The empty-catalog error below offers Retry; this one is the
+                // same failure with stale results still on screen, so it needs
+                // the same way out. Without it the only escape from a stale
+                // catalog is reloading the page or editing the query.
+                <div
+                  className="flex items-center gap-2 text-xs text-warning-text"
+                  role="status"
+                >
+                  <span>
+                    Showing cached catalog results because the latest search
+                    failed.
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void searchQuery.refetch();
+                    }}
+                  >
+                    Retry
+                  </Button>
+                </div>
               ) : null}
 
               {searchQuery.isPending ? (
