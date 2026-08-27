@@ -395,11 +395,6 @@ export interface ListThreadsOptions {
   includeHidden?: boolean;
 }
 
-export type CountThreadsOptions = Omit<
-  ListThreadsOptions,
-  "limit" | "offset"
->;
-
 type ThreadRow = typeof threads.$inferSelect;
 
 export interface ListThreadsForProjectsOptions {
@@ -1200,13 +1195,6 @@ export function listThreads(db: DbConnection, options: ListThreadsOptions) {
     query = query.offset(options.offset);
   }
   return query.all();
-}
-
-export function countThreads(
-  db: DbConnection,
-  options: CountThreadsOptions,
-): number {
-  return countThreadsWhere(db, and(...buildListThreadsFilters(options)));
 }
 
 export function listThreadsWithPendingInteractionState(
