@@ -20,6 +20,7 @@ function community(
     iconTinted: false,
     iconUrl: null,
     incompatibleReason: null,
+    installs: null,
     installed: false,
     marketplace: "bb-community",
     marketplaceDisplayName: "BB Community",
