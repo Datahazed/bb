@@ -11,22 +11,26 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Button } from "@bb/shared-ui/button";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -34,7 +38,13 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
-import { getPluginPanelRoutePath } from "@/lib/route-paths";
+import {
+  AUTOMATIONS_PLUGIN_ID,
+  getPluginDetailRoutePath,
+  getPluginPanelRoutePath,
+  getPluginPanelRoutePluginId,
+  getPluginsRoutePath,
+} from "@/lib/route-paths";
 import {
   usePluginNavPanelChrome,
   type PluginNavPanelChrome,
@@ -55,18 +65,19 @@ import {
 import { useSidebarSortable } from "@/components/sidebar/sortableMotion";
 import { useSidebarReorderDnd } from "@/components/sidebar/useSidebarReorderDnd";
 import type { SidebarSortableDragBindings } from "@/components/sidebar/sortableMotion";
-import {
-  hiddenPluginNavPanelsAtom,
-  pluginNavPanelOrderAtom,
-} from "./pluginNavSidebarAtoms";
+import { appToast } from "@/components/ui/app-toast";
+import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
+import { setPluginEnabled } from "@/hooks/queries/plugin-settings-queries";
+import { pluginNavPanelOrderAtom } from "./pluginNavSidebarAtoms";
 import {
   arrangePluginNavPanels,
   getPluginNavPanelKey,
   havePluginNavPanelOrdersDiverged,
-  hidePluginNavPanel,
+  movePluginNavPanelToTop,
   reorderPluginNavPanels,
-  showPluginNavPanel,
 } from "./pluginNavSidebarOrder";
+
+export const PLUGIN_NAV_VISIBLE_LIMIT = 5;
 
 /** One sidebar nav row contributed by a plugin `navPanel` slot. */
 type SidebarNavRow = {
@@ -89,9 +100,8 @@ type SidebarNavRow = {
  * owns the row chrome; only an optional bounded sidebar accessory mounts here.
  * The panel component itself mounts on the route (PluginPanelView).
  *
- * Rows are drag-reorderable and can be hidden; hidden rows move into a
- * collapsed "More" disclosure below the list rather than disappearing. Both
- * preferences live in `pluginNavSidebarAtoms`.
+ * Rows are drag-reorderable. One persisted order supplies the first five rows
+ * and a positional overflow; plugin pages never disappear from navigation.
  */
 export function PluginNavSidebarItems(props: {
   onNavigate?: () => void;
@@ -100,13 +110,19 @@ export function PluginNavSidebarItems(props: {
   const navPanels = usePluginNavPanelChrome();
   const rows = useMemo<SidebarNavRow[]>(
     () =>
-      navPanels.map(({ chrome, panel }) => ({
-        pluginId: chrome.pluginId,
-        id: chrome.id,
-        title: chrome.title,
-        chrome,
-        panel,
-      })),
+      navPanels.flatMap(({ chrome, panel }) =>
+        chrome.pluginId === AUTOMATIONS_PLUGIN_ID
+          ? []
+          : [
+              {
+                pluginId: chrome.pluginId,
+                id: chrome.id,
+                title: chrome.title,
+                chrome,
+                panel,
+              },
+            ],
+      ),
     [navPanels],
   );
   // Router hooks live in the inner component so hosts without a Router
@@ -125,17 +141,41 @@ function PluginNavSidebarItemList({
   splitEnabled?: boolean;
 }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [storedOrder, setStoredOrder] = useAtom(pluginNavPanelOrderAtom);
-  const [hiddenKeys, setHiddenKeys] = useAtom(hiddenPluginNavPanelsAtom);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
+  const disable = useMutation({
+    mutationFn: (row: SidebarNavRow) =>
+      setPluginEnabled(fetch, row.pluginId, false),
+    onSuccess: (_result, row) => {
+      appToast.success(`${row.title} disabled`);
+      if (getPluginPanelRoutePluginId(location.pathname) === row.pluginId) {
+        onNavigate?.();
+        void navigate(getPluginsRoutePath());
+      }
+    },
+    onError: (error, row) => {
+      appToast.error(`Failed to disable ${row.title}`, {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    },
+    onSettled: () => invalidatePluginList({ queryClient }),
+  });
+  const traditionalStoredOrder = useMemo(
+    () =>
+      storedOrder.filter((key) => !key.startsWith(`${AUTOMATIONS_PLUGIN_ID}/`)),
+    [storedOrder],
+  );
 
-  const { visible, hidden, normalizedOrder } = useMemo(() => {
+  const { ordered, normalizedOrder } = useMemo(() => {
     return arrangePluginNavPanels({
       panels: rows,
-      storedOrder,
-      hiddenKeys,
+      storedOrder: traditionalStoredOrder,
     });
-  }, [hiddenKeys, rows, storedOrder]);
+  }, [rows, traditionalStoredOrder]);
+  const visible = ordered.slice(0, PLUGIN_NAV_VISIBLE_LIMIT);
+  const overflow = ordered.slice(PLUGIN_NAV_VISIBLE_LIMIT);
 
   // Give newly installed panels a slot in the persisted order. This only ever
   // adds keys: a plugin frontend that has not registered yet keeps its slot, so
@@ -145,9 +185,9 @@ function PluginNavSidebarItemList({
     setStoredOrder(normalizedOrder);
   }, [normalizedOrder, setStoredOrder, storedOrder]);
 
-  const visibleKeys = useMemo(
-    () => visible.map(getPluginNavPanelKey),
-    [visible],
+  const orderedKeys = useMemo(
+    () => ordered.map(getPluginNavPanelKey),
+    [ordered],
   );
 
   const handleDragEnd = useCallback(
@@ -163,34 +203,47 @@ function PluginNavSidebarItemList({
         activeKey: event.active.id,
         overKey: event.over.id,
         order: normalizedOrder,
-        visibleKeys,
+        visibleKeys: orderedKeys,
       });
       if (nextOrder) setStoredOrder(nextOrder);
     },
-    [normalizedOrder, setStoredOrder, visibleKeys],
+    [normalizedOrder, orderedKeys, setStoredOrder],
   );
   const { dndContextProps, onClickCapture } = useSidebarReorderDnd({
     onDragEnd: handleDragEnd,
   });
 
-  const handleHide = useCallback(
+  const handleMoveToTop = useCallback(
     (key: string) => {
-      setHiddenKeys((current) => hidePluginNavPanel(current, key));
+      setStoredOrder(movePluginNavPanelToTop(normalizedOrder, key));
     },
-    [setHiddenKeys],
+    [normalizedOrder, setStoredOrder],
   );
-  const handleShow = useCallback(
+  const handleMoveToOverflow = useCallback(
     (key: string) => {
-      setHiddenKeys((current) => showPluginNavPanel(current, key));
+      const overflowTarget = orderedKeys[PLUGIN_NAV_VISIBLE_LIMIT];
+      if (!overflowTarget) return;
+      const nextOrder = reorderPluginNavPanels({
+        activeKey: key,
+        overKey: overflowTarget,
+        order: normalizedOrder,
+        visibleKeys: orderedKeys,
+      });
+      if (nextOrder) setStoredOrder(nextOrder);
     },
-    [setHiddenKeys],
+    [normalizedOrder, orderedKeys, setStoredOrder],
   );
 
-  const reorderDisabled = visible.length < 2;
+  const reorderDisabled = ordered.length < 2;
   const rowProps = {
     onNavigate,
     pathname: location.pathname,
     splitEnabled,
+    orderedKeys,
+    onMoveToTop: handleMoveToTop,
+    onMoveToOverflow: handleMoveToOverflow,
+    disablePending: disable.isPending,
+    onDisable: (row: SidebarNavRow) => disable.mutate(row),
   };
 
   return (
@@ -199,9 +252,10 @@ function PluginNavSidebarItemList({
       data-testid="plugin-nav-sidebar-items"
       onClickCapture={onClickCapture}
     >
+      <div className={cn(CHROME_SECTION_LABEL_CLASS, "px-2")}>Plugins</div>
       <DndContext {...dndContextProps}>
         <SortableContext
-          items={visibleKeys}
+          items={orderedKeys}
           strategy={verticalListSortingStrategy}
         >
           {visible.map((row) => (
@@ -209,42 +263,37 @@ function PluginNavSidebarItemList({
               key={getPluginNavPanelKey(row)}
               row={row}
               reorderDisabled={reorderDisabled}
-              onHide={handleHide}
               {...rowProps}
             />
           ))}
+          {overflow.length > 0 ? (
+            <>
+              <PluginNavSidebarOverflowToggle
+                isOpen={isOverflowOpen}
+                onToggle={() => setIsOverflowOpen((open) => !open)}
+              />
+              {isOverflowOpen
+                ? overflow.map((row) => (
+                    <SortableSidebarNavRow
+                      key={getPluginNavPanelKey(row)}
+                      row={row}
+                      reorderDisabled={reorderDisabled}
+                      {...rowProps}
+                    />
+                  ))
+                : null}
+            </>
+          ) : null}
         </SortableContext>
       </DndContext>
-      {hidden.length > 0 ? (
-        <>
-          <PluginNavSidebarOverflowToggle
-            count={hidden.length}
-            isOpen={isOverflowOpen}
-            onToggle={() => setIsOverflowOpen((open) => !open)}
-          />
-          {isOverflowOpen
-            ? hidden.map((row) => (
-                <SidebarNavRowItem
-                  key={getPluginNavPanelKey(row)}
-                  row={row}
-                  isHidden
-                  onShow={handleShow}
-                  {...rowProps}
-                />
-              ))
-            : null}
-        </>
-      ) : null}
     </div>
   );
 }
 
 function PluginNavSidebarOverflowToggle({
-  count,
   isOpen,
   onToggle,
 }: {
-  count: number;
   isOpen: boolean;
   onToggle: () => void;
 }) {
@@ -264,6 +313,9 @@ function PluginNavSidebarOverflowToggle({
       onClick={onToggle}
       data-testid="plugin-nav-sidebar-overflow-toggle"
     >
+      <span className="min-w-0 flex-1 truncate text-left">
+        {isOpen ? "Show fewer" : "More plugins"}
+      </span>
       <Icon
         name="ChevronRight"
         className={cn(
@@ -272,7 +324,6 @@ function PluginNavSidebarOverflowToggle({
         )}
         aria-hidden="true"
       />
-      <span className="min-w-0 truncate text-left">{`More (${count})`}</span>
     </Button>
   );
 }
@@ -302,10 +353,11 @@ interface SidebarNavRowItemProps {
   pathname: string;
   onNavigate?: () => void;
   splitEnabled: boolean;
-  /** Present for rows parked in the "More" disclosure. */
-  isHidden?: boolean;
-  onHide?: (key: string) => void;
-  onShow?: (key: string) => void;
+  orderedKeys: readonly string[];
+  onMoveToTop: (key: string) => void;
+  onMoveToOverflow: (key: string) => void;
+  disablePending: boolean;
+  onDisable: (row: SidebarNavRow) => void;
   dragBindings?: SidebarSortableDragBindings;
   rowRef?: (element: HTMLElement | null) => void;
   rowStyle?: CSSProperties;
@@ -323,25 +375,119 @@ function SidebarNavRowItem({
 
 type PluginNavRowMenuSurface = "context" | "dropdown";
 
-function PluginNavRowVisibilityMenuItem({
-  isHidden,
+function PluginNavRowMenuItem({
+  children,
+  disabled = false,
+  icon,
   onSelect,
   surface,
 }: {
-  isHidden: boolean;
+  children: ReactNode;
+  disabled?: boolean;
+  icon: "ArrowDown" | "ArrowUp" | "Columns2" | "Info" | "Pause";
   onSelect: () => void;
   surface: PluginNavRowMenuSurface;
 }) {
   const content = (
     <>
-      <Icon name={isHidden ? "Eye" : "EyeOff"} aria-hidden="true" />
-      {isHidden ? "Show in sidebar" : "Hide from sidebar"}
+      <Icon name={icon} aria-hidden="true" />
+      {children}
     </>
   );
+  if (surface === "context") {
+    return (
+      <ContextMenuItem disabled={disabled} onSelect={onSelect}>
+        {content}
+      </ContextMenuItem>
+    );
+  }
+  return (
+    <DropdownMenuItem disabled={disabled} onSelect={onSelect}>
+      {content}
+    </DropdownMenuItem>
+  );
+}
+
+function PluginNavRowMenuSeparator({
+  surface,
+}: {
+  surface: PluginNavRowMenuSurface;
+}) {
   return surface === "context" ? (
-    <ContextMenuItem onSelect={onSelect}>{content}</ContextMenuItem>
+    <ContextMenuSeparator />
   ) : (
-    <DropdownMenuItem onSelect={onSelect}>{content}</DropdownMenuItem>
+    <DropdownMenuSeparator />
+  );
+}
+
+function PluginNavRowMenuItems({
+  canMoveToTop,
+  canMoveToOverflow,
+  canOpenInSplit,
+  disablePending,
+  onDisable,
+  onOpenInSplit,
+  onOpenDetails,
+  onMoveToTop,
+  onMoveToOverflow,
+  surface,
+}: {
+  canMoveToTop: boolean;
+  canMoveToOverflow: boolean;
+  canOpenInSplit: boolean;
+  disablePending: boolean;
+  onDisable: () => void;
+  onOpenInSplit: () => void;
+  onOpenDetails: () => void;
+  onMoveToTop: () => void;
+  onMoveToOverflow: () => void;
+  surface: PluginNavRowMenuSurface;
+}) {
+  return (
+    <>
+      <PluginNavRowMenuItem
+        surface={surface}
+        icon="ArrowUp"
+        disabled={!canMoveToTop}
+        onSelect={onMoveToTop}
+      >
+        Move to top
+      </PluginNavRowMenuItem>
+      <PluginNavRowMenuItem
+        surface={surface}
+        icon="ArrowDown"
+        disabled={!canMoveToOverflow}
+        onSelect={onMoveToOverflow}
+      >
+        Move to overflow
+      </PluginNavRowMenuItem>
+      <PluginNavRowMenuSeparator surface={surface} />
+      {canOpenInSplit ? (
+        <PluginNavRowMenuItem
+          surface={surface}
+          icon="Columns2"
+          onSelect={onOpenInSplit}
+        >
+          Open in split
+        </PluginNavRowMenuItem>
+      ) : null}
+      <PluginNavRowMenuItem
+        surface={surface}
+        icon="Info"
+        onSelect={onOpenDetails}
+      >
+        Plugin details
+      </PluginNavRowMenuItem>
+      <PluginNavRowMenuSeparator surface={surface} />
+      <PluginNavRowMenuItem
+        surface={surface}
+        icon="Pause"
+        disabled={disablePending}
+        onSelect={onDisable}
+      >
+        Disable
+      </PluginNavRowMenuItem>
+    </>
   );
 }
 
@@ -393,10 +539,54 @@ export function ExtensionsNavSidebarItem({
   );
 }
 
+/**
+ * Host-owned Automations navigation. Its content still comes from the built-in
+ * plugin panel, but its sidebar placement belongs with New thread and
+ * Extensions rather than traditional plugin ordering or overflow.
+ */
+export function AutomationsNavSidebarItem({
+  chrome,
+  onNavigate,
+}: {
+  chrome: PluginNavPanelChrome;
+  onNavigate?: () => void;
+}) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const path = getPluginPanelRoutePath({
+    pluginId: chrome.pluginId,
+    path: chrome.path,
+  });
+  const isActive =
+    location.pathname === path || location.pathname.startsWith(`${path}/`);
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={cn(
+        PROJECT_LIST_ACTION_BUTTON_CLASS,
+        "w-full",
+        isActive && "bg-sidebar-accent text-sidebar-foreground",
+      )}
+      aria-current={isActive ? "page" : undefined}
+      onClick={() => {
+        onNavigate?.();
+        void navigate(path);
+      }}
+    >
+      <PluginIcon pluginId={chrome.pluginId} icon={chrome.icon} />
+      <span className="min-w-0 flex-1 truncate text-left">{chrome.title}</span>
+    </Button>
+  );
+}
+
 function PluginNavSidebarItem({
   row,
   pathname,
   onNavigate,
+  onDisable,
   splitEnabled,
   ...props
 }: Omit<SidebarNavRowItemProps, "row"> & {
@@ -447,6 +637,12 @@ function PluginNavSidebarItem({
       // Split-drag initiator; engages only when the pointer leaves the
       // sidebar, so it coexists with the dnd-kit reorder listeners.
       onPointerDown={onPointerDown}
+      onOpenInSplit={splitEnabled ? openInSplit : undefined}
+      onOpenDetails={() => {
+        onNavigate?.();
+        void navigate(getPluginDetailRoutePath({ pluginId: chrome.pluginId }));
+      }}
+      onDisable={() => onDisable(row)}
       onSelect={(event) => {
         onNavigate?.();
         if (event.metaKey || event.ctrlKey) {
@@ -466,17 +662,21 @@ interface SidebarNavRowChromeProps {
   isActive: boolean;
   onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onPointerDown?: PointerEventHandler<HTMLElement>;
+  onOpenInSplit?: () => void;
+  onOpenDetails: () => void;
+  onDisable: () => void;
+  disablePending: boolean;
   splitMiniMap?: MiniMapSlot[] | null;
   accessory?: ReactNode;
-  isHidden?: boolean;
-  onHide?: (key: string) => void;
-  onShow?: (key: string) => void;
+  orderedKeys: readonly string[];
+  onMoveToTop: (key: string) => void;
+  onMoveToOverflow: (key: string) => void;
   dragBindings?: SidebarSortableDragBindings;
   rowRef?: (element: HTMLElement | null) => void;
   rowStyle?: CSSProperties;
 }
 
-/** Shared chrome for every sidebar nav row: button, hide menus, drag handle. */
+/** Shared chrome for every sidebar nav row: button, action menus, drag handle. */
 function SidebarNavRowChrome({
   rowKey,
   title,
@@ -484,11 +684,15 @@ function SidebarNavRowChrome({
   isActive,
   onSelect,
   onPointerDown,
+  onOpenInSplit,
+  onOpenDetails,
+  onDisable,
+  disablePending,
   splitMiniMap = null,
   accessory,
-  isHidden = false,
-  onHide,
-  onShow,
+  orderedKeys,
+  onMoveToTop,
+  onMoveToOverflow,
   dragBindings,
   rowRef,
   rowStyle,
@@ -499,11 +703,23 @@ function SidebarNavRowChrome({
   // only the pointer/touch drag activators. Reordering stays a pointer gesture.
   const { onKeyDown: _keyboardDragActivator, ...pointerDragListeners } =
     dragBindings?.listeners ?? {};
-  const visibilityItem = (surface: PluginNavRowMenuSurface): ReactNode => (
-    <PluginNavRowVisibilityMenuItem
+  const rowIndex = orderedKeys.indexOf(rowKey);
+  const menuItems = (surface: PluginNavRowMenuSurface): ReactNode => (
+    <PluginNavRowMenuItems
       surface={surface}
-      isHidden={isHidden}
-      onSelect={() => (isHidden ? onShow?.(rowKey) : onHide?.(rowKey))}
+      canMoveToTop={rowIndex > 0}
+      canMoveToOverflow={
+        orderedKeys.length > PLUGIN_NAV_VISIBLE_LIMIT &&
+        rowIndex >= 0 &&
+        rowIndex < PLUGIN_NAV_VISIBLE_LIMIT
+      }
+      canOpenInSplit={onOpenInSplit !== undefined}
+      disablePending={disablePending}
+      onDisable={onDisable}
+      onOpenInSplit={() => onOpenInSplit?.()}
+      onOpenDetails={onOpenDetails}
+      onMoveToTop={() => onMoveToTop(rowKey)}
+      onMoveToOverflow={() => onMoveToOverflow(rowKey)}
     />
   );
 
@@ -527,7 +743,6 @@ function SidebarNavRowChrome({
               "w-full pr-7",
               accessory && "pr-18",
               isActive && "bg-sidebar-accent text-sidebar-foreground",
-              isHidden && "text-subtle-foreground",
             )}
             aria-current={isActive ? "page" : undefined}
             ref={dragBindings?.setActivatorNodeRef}
@@ -598,14 +813,14 @@ function SidebarNavRowChrome({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {visibilityItem("dropdown")}
+                {menuItems("dropdown")}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent aria-label={`${title} panel options`}>
-        {visibilityItem("context")}
+        {menuItems("context")}
       </ContextMenuContent>
     </ContextMenu>
   );

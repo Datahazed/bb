@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
@@ -37,7 +44,15 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
 }));
 
 vi.mock("@/components/sidebar/AppSidebar", () => ({
-  AppSidebar: () => <aside data-testid="app-sidebar" />,
+  AppSidebar: ({ onSplit }: { onSplit?: () => void }) => (
+    <aside data-testid="app-sidebar">
+      {onSplit ? (
+        <button type="button" onClick={onSplit}>
+          Split
+        </button>
+      ) : null}
+    </aside>
+  ),
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
@@ -260,12 +275,8 @@ describe("AppLayout root compose project preference", () => {
       </Provider>,
     );
 
-    await waitFor(() => {
-      expect(commandHandlers.has("thread.split")).toBe(true);
-    });
-    act(() => {
-      expect(commandHandlers.get("thread.split")?.()).toBe(true);
-    });
+    fireEvent.click(await screen.findByRole("button", { name: "Split" }));
+    expect(commandHandlers.has("thread.split")).toBe(false);
 
     const layout = store.get(splitLayoutAtom);
     expect(layout).not.toBeNull();

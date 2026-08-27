@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 
 import { createStore } from "jotai";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-const LEGACY_EXTENSIONS_NAV_ROW_KEY = "__builtin__/tools";
-const LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY =
-  "bb.sidebar.hiddenPluginPanels";
-const SIDEBAR_EXTENSIONS_VISIBLE_STORAGE_KEY = "bb.sidebar.extensionsVisible";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  DEFAULT_SIDEBAR_TOP_REGION_ITEM_PREFERENCES,
+  migrateLegacySidebarTopRegionItems,
+  normalizeSidebarTopRegionItemPreferences,
+  reorderSidebarTopRegionItems,
+  setSidebarTopRegionItemVisible,
+  sidebarTopRegionItemPreferencesAtom,
+} from "./sidebarTopRegionItemPreferences";
 
 class MemoryStorage {
   readonly values = new Map<string, string>();
@@ -18,154 +21,105 @@ class MemoryStorage {
   setItem(key: string, value: string): void {
     this.values.set(key, value);
   }
-}
 
-function seedLegacyHiddenKeys(
-  storage: MemoryStorage,
-  keys: readonly unknown[],
-): void {
-  storage.setItem(
-    LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
-    JSON.stringify(keys),
-  );
-}
-
-function runPhaseThreePluginPageMigration(storage: MemoryStorage): void {
-  const value = storage.getItem(LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY);
-  if (value === null) return;
-  const parsed: unknown = JSON.parse(value);
-  if (!Array.isArray(parsed)) return;
-  storage.setItem(
-    LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
-    JSON.stringify(
-      parsed.filter(
-        (key) => typeof key === "string" && key.startsWith("__builtin__/"),
-      ),
-    ),
-  );
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
 }
 
 afterEach(() => {
   window.localStorage.clear();
-  vi.resetModules();
 });
 
 describe("top-region sidebar item preferences", () => {
-  it("defaults both fixed rows on for a fresh install", async () => {
-    const { sidebarExtensionsVisibleAtom, sidebarNewThreadVisibleAtom } =
-      await import("./sidebarTopRegionItemPreferences");
+  it("defaults to all three host-owned items in approved order", () => {
     const store = createStore();
 
-    expect(store.get(sidebarNewThreadVisibleAtom)).toBe(true);
-    expect(store.get(sidebarExtensionsVisibleAtom)).toBe(true);
+    expect(store.get(sidebarTopRegionItemPreferencesAtom)).toEqual({
+      order: ["new-thread", "extensions", "automations"],
+      hiddenIds: [],
+    });
   });
 
-  it("synchronously keeps legacy-hidden Extensions off and clears only its key", async () => {
-    window.localStorage.setItem(
-      LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
-      JSON.stringify([
-        "docs/main",
-        LEGACY_EXTENSIONS_NAV_ROW_KEY,
-        "github/main",
-      ]),
-    );
-
-    const { sidebarExtensionsVisibleAtom } =
-      await import("./sidebarTopRegionItemPreferences");
-    const store = createStore();
-
-    expect(store.get(sidebarExtensionsVisibleAtom)).toBe(false);
+  it("normalizes duplicate, unknown, and missing ids without losing hidden choices", () => {
     expect(
-      window.localStorage.getItem(SIDEBAR_EXTENSIONS_VISIBLE_STORAGE_KEY),
-    ).toBe("false");
-    expect(
-      JSON.parse(
-        window.localStorage.getItem(
-          LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
-        ) ?? "[]",
-      ),
-    ).toEqual(["docs/main", "github/main"]);
+      normalizeSidebarTopRegionItemPreferences({
+        order: ["automations", "unknown", "automations"],
+        hiddenIds: ["extensions", "unknown", "extensions"],
+      }),
+    ).toEqual({
+      order: ["automations", "new-thread", "extensions"],
+      hiddenIds: ["extensions"],
+    });
   });
 
-  it.each(["toggles-first", "plugins-first"] as const)(
-    "composes with the plugin-page migration when %s",
-    async (order) => {
-      const { migrateLegacyHiddenExtensions } =
-        await import("./sidebarTopRegionItemPreferences");
-      const storage = new MemoryStorage();
-      seedLegacyHiddenKeys(storage, [
-        "docs/main",
-        LEGACY_EXTENSIONS_NAV_ROW_KEY,
-        "github/main",
-      ]);
-
-      if (order === "toggles-first") {
-        expect(migrateLegacyHiddenExtensions(storage)).toBe(false);
-        expect(
-          JSON.parse(
-            storage.getItem(LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY) ??
-              "[]",
-          ),
-        ).toEqual(["docs/main", "github/main"]);
-        runPhaseThreePluginPageMigration(storage);
-      } else {
-        runPhaseThreePluginPageMigration(storage);
-        expect(
-          JSON.parse(
-            storage.getItem(LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY) ??
-              "[]",
-          ),
-        ).toEqual([LEGACY_EXTENSIONS_NAV_ROW_KEY]);
-        expect(migrateLegacyHiddenExtensions(storage)).toBe(false);
-      }
-
-      expect(
-        JSON.parse(
-          storage.getItem(LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY) ?? "[]",
-        ),
-      ).toEqual([]);
-      expect(storage.getItem(SIDEBAR_EXTENSIONS_VISIBLE_STORAGE_KEY)).toBe(
-        "false",
-      );
-    },
-  );
-
-  it("is idempotent and preserves an existing explicit preference", async () => {
-    const { migrateLegacyHiddenExtensions } =
-      await import("./sidebarTopRegionItemPreferences");
+  it("migrates both booleans and legacy hidden built-in panels atomically", () => {
     const storage = new MemoryStorage();
-    storage.setItem(SIDEBAR_EXTENSIONS_VISIBLE_STORAGE_KEY, "true");
-    seedLegacyHiddenKeys(storage, [
-      LEGACY_EXTENSIONS_NAV_ROW_KEY,
-      "docs/main",
-      LEGACY_EXTENSIONS_NAV_ROW_KEY,
-    ]);
-
-    expect(migrateLegacyHiddenExtensions(storage)).toBe(true);
-    expect(migrateLegacyHiddenExtensions(storage)).toBe(true);
-    expect(storage.getItem(SIDEBAR_EXTENSIONS_VISIBLE_STORAGE_KEY)).toBe(
-      "true",
+    storage.setItem("bb.sidebar.newThreadVisible", "false");
+    storage.setItem("bb.sidebar.extensionsVisible", "true");
+    storage.setItem(
+      "bb.sidebar.hiddenPluginPanels",
+      JSON.stringify(["docs/main", "__builtin__/tools", "automations/main"]),
     );
+
+    expect(migrateLegacySidebarTopRegionItems(storage)).toEqual({
+      order: ["new-thread", "extensions", "automations"],
+      hiddenIds: ["new-thread", "extensions", "automations"],
+    });
+    expect(storage.getItem("bb.sidebar.hiddenPluginPanels")).toBe(
+      JSON.stringify(["docs/main"]),
+    );
+    expect(storage.getItem("bb.sidebar.newThreadVisible")).toBeNull();
+    expect(storage.getItem("bb.sidebar.extensionsVisible")).toBeNull();
     expect(
-      JSON.parse(
-        storage.getItem(LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY) ?? "[]",
-      ),
-    ).toEqual(["docs/main"]);
+      JSON.parse(storage.getItem("bb.sidebar.topRegionItems") ?? "{}"),
+    ).toEqual({
+      order: ["new-thread", "extensions", "automations"],
+      hiddenIds: ["new-thread", "extensions", "automations"],
+    });
   });
 
-  it("leaves malformed legacy storage untouched instead of deleting unowned data", async () => {
-    const { migrateLegacyHiddenExtensions } =
-      await import("./sidebarTopRegionItemPreferences");
+  it("preserves an existing combined preference and only consumes owned legacy keys", () => {
     const storage = new MemoryStorage();
     storage.setItem(
-      LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
-      "not valid json",
+      "bb.sidebar.topRegionItems",
+      JSON.stringify({
+        order: ["automations", "extensions", "new-thread"],
+        hiddenIds: ["extensions"],
+      }),
+    );
+    storage.setItem(
+      "bb.sidebar.hiddenPluginPanels",
+      JSON.stringify(["automations/main", "docs/main"]),
     );
 
-    expect(migrateLegacyHiddenExtensions(storage)).toBe(true);
-    expect(storage.getItem(LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY)).toBe(
-      "not valid json",
+    expect(migrateLegacySidebarTopRegionItems(storage)).toEqual({
+      order: ["automations", "extensions", "new-thread"],
+      hiddenIds: ["extensions"],
+    });
+    expect(storage.getItem("bb.sidebar.hiddenPluginPanels")).toBe(
+      JSON.stringify(["docs/main"]),
     );
-    expect(storage.getItem(SIDEBAR_EXTENSIONS_VISIBLE_STORAGE_KEY)).toBeNull();
+  });
+
+  it("reorders live and can hide then restore every item", () => {
+    const reordered = reorderSidebarTopRegionItems(
+      DEFAULT_SIDEBAR_TOP_REGION_ITEM_PREFERENCES,
+      "automations",
+      "new-thread",
+    );
+    expect(reordered.order).toEqual([
+      "automations",
+      "new-thread",
+      "extensions",
+    ]);
+
+    let next = reordered;
+    for (const id of reordered.order) {
+      next = setSidebarTopRegionItemVisible(next, id, false);
+    }
+    expect(next.hiddenIds).toEqual(["automations", "new-thread", "extensions"]);
+    next = setSidebarTopRegionItemVisible(next, "new-thread", true);
+    expect(next.hiddenIds).toEqual(["automations", "extensions"]);
   });
 });

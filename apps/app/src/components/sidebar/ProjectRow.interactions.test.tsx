@@ -587,6 +587,19 @@ describe("ProjectRow interactions", () => {
       ],
     });
 
+    const disclosure = screen.getByRole("button", {
+      name: "Collapse Feature workspace threads",
+    });
+    const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
+    const row = caretSlot?.parentElement;
+    const trailingControls = row?.querySelector(
+      "[data-sidebar-collapsible-trailing-controls]",
+    );
+
+    expect(caretSlot?.classList.contains("w-6")).toBe(true);
+    expect(row?.lastElementChild).toBe(caretSlot);
+    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
+
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Worktree actions" }),
       { button: 0 },

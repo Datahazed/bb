@@ -23,6 +23,8 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import {
+  SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
+  SIDEBAR_COLLAPSE_CARET_SLOT_CLASS,
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
@@ -162,35 +164,31 @@ function SidebarSectionRowComponent({
         onClick={onToggleCollapsed}
         className="absolute inset-0 rounded-md outline-none ring-sidebar-ring focus-visible:ring-2"
       />
-      <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1 text-left">
+      <span className="relative z-10 flex min-w-0 flex-1 items-center text-left">
         <span className="min-w-0 truncate">{name}</span>
-        <SidebarChildToggleChevron
-          isCollapsed={isCollapsed}
-          expandLabel={`Expand ${label} section`}
-          collapseLabel={`Collapse ${label} section`}
-          onToggle={onToggleCollapsed}
-        />
       </span>
-      {showRollupIndicator ? (
-        <span
-          data-sidebar-collapsed-activity-edge=""
-          data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
-          className={cn(
-            "pointer-events-none absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center text-subtle-foreground max-md:pointer-coarse:hidden",
-            hasActions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-          )}
-        >
-          {renderRollupIndicator()}
-        </span>
-      ) : null}
       <span
+        data-sidebar-collapsible-trailing-controls=""
         className={cn(
+          SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
           "relative z-10 shrink-0",
           hasActions
             ? "inline-flex items-center"
             : COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         )}
       >
+        {showRollupIndicator ? (
+          <span
+            data-sidebar-collapsed-activity-edge=""
+            data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+            className={cn(
+              "pointer-events-none absolute inset-0 inline-flex items-center justify-end text-subtle-foreground max-md:pointer-coarse:hidden",
+              hasActions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+            )}
+          >
+            {renderRollupIndicator()}
+          </span>
+        ) : null}
         {hasActions ? (
           <span
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
@@ -276,6 +274,17 @@ function SidebarSectionRowComponent({
             {renderRollupIndicator()}
           </span>
         ) : null}
+      </span>
+      <span
+        data-sidebar-collapse-caret-slot=""
+        className={SIDEBAR_COLLAPSE_CARET_SLOT_CLASS}
+      >
+        <SidebarChildToggleChevron
+          isCollapsed={isCollapsed}
+          expandLabel={`Expand ${label} section`}
+          collapseLabel={`Collapse ${label} section`}
+          onToggle={onToggleCollapsed}
+        />
       </span>
     </>
   );

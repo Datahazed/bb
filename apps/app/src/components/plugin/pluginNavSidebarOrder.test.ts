@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   arrangePluginNavPanels,
   getPluginNavPanelKey,
+  migrateLegacyHiddenPluginNavPanelOrder,
+  movePluginNavPanelToTop,
   reorderPluginNavPanels,
 } from "./pluginNavSidebarOrder";
 
@@ -15,13 +17,12 @@ const tasks = panel("tasks", "board");
 
 describe("arrangePluginNavPanels", () => {
   it("falls back to registry order before the user has reordered anything", () => {
-    const { visible, normalizedOrder } = arrangePluginNavPanels({
+    const { ordered, normalizedOrder } = arrangePluginNavPanels({
       panels: [github, docs, tasks],
       storedOrder: [],
-      hiddenKeys: [],
     });
 
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
+    expect(ordered.map(getPluginNavPanelKey)).toEqual([
       "github/pulls",
       "docs/vault",
       "tasks/board",
@@ -34,13 +35,12 @@ describe("arrangePluginNavPanels", () => {
   });
 
   it("appends newly installed panels last instead of at the top of a customized list", () => {
-    const { visible } = arrangePluginNavPanels({
+    const { ordered } = arrangePluginNavPanels({
       panels: [github, docs, tasks],
       storedOrder: ["tasks/board", "github/pulls"],
-      hiddenKeys: [],
     });
 
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
+    expect(ordered.map(getPluginNavPanelKey)).toEqual([
       "tasks/board",
       "github/pulls",
       "docs/vault",
@@ -50,13 +50,12 @@ describe("arrangePluginNavPanels", () => {
   it("renders no row for an unregistered key but keeps its slot in the order", () => {
     // A plugin frontend can register after the sidebar mounts. Dropping the key
     // here would persist a shortened order and lose the user's arrangement.
-    const { visible, normalizedOrder } = arrangePluginNavPanels({
+    const { ordered, normalizedOrder } = arrangePluginNavPanels({
       panels: [github, docs],
       storedOrder: ["strudel/repl", "docs/vault", "github/pulls"],
-      hiddenKeys: [],
     });
 
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
+    expect(ordered.map(getPluginNavPanelKey)).toEqual([
       "docs/vault",
       "github/pulls",
     ]);
@@ -68,45 +67,58 @@ describe("arrangePluginNavPanels", () => {
   });
 
   it("returns a late-registering panel to its stored slot", () => {
-    const { visible } = arrangePluginNavPanels({
+    const { ordered } = arrangePluginNavPanels({
       panels: [github, docs, tasks],
       // The order saved while only github had registered still names all three.
       storedOrder: ["tasks/board", "docs/vault", "github/pulls"],
-      hiddenKeys: [],
     });
 
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
+    expect(ordered.map(getPluginNavPanelKey)).toEqual([
       "tasks/board",
       "docs/vault",
       "github/pulls",
-    ]);
-  });
-
-  it("splits hidden panels out while both lists keep the user's order", () => {
-    const { visible, hidden } = arrangePluginNavPanels({
-      panels: [github, docs, tasks],
-      storedOrder: ["tasks/board", "docs/vault", "github/pulls"],
-      hiddenKeys: ["docs/vault", "tasks/board"],
-    });
-
-    expect(visible.map(getPluginNavPanelKey)).toEqual(["github/pulls"]);
-    expect(hidden.map(getPluginNavPanelKey)).toEqual([
-      "tasks/board",
-      "docs/vault",
     ]);
   });
 
   it("ignores duplicate stored keys so a corrupted list can't render a panel twice", () => {
-    const { visible } = arrangePluginNavPanels({
+    const { ordered } = arrangePluginNavPanels({
       panels: [github, docs],
       storedOrder: ["github/pulls", "github/pulls", "docs/vault"],
-      hiddenKeys: [],
     });
 
-    expect(visible.map(getPluginNavPanelKey)).toEqual([
+    expect(ordered.map(getPluginNavPanelKey)).toEqual([
       "github/pulls",
       "docs/vault",
     ]);
+  });
+});
+
+describe("legacy hidden-panel migration", () => {
+  it("moves hidden keys behind visible keys while preserving both orders", () => {
+    expect(
+      migrateLegacyHiddenPluginNavPanelOrder(
+        ["tasks/board", "docs/vault", "github/pulls", "docs/vault"],
+        ["tasks/board", "docs/vault"],
+      ),
+    ).toEqual(["github/pulls", "tasks/board", "docs/vault"]);
+  });
+
+  it("retains a legacy hidden key that was missing from the stored order", () => {
+    expect(
+      migrateLegacyHiddenPluginNavPanelOrder(
+        ["github/pulls"],
+        ["docs/vault"],
+      ),
+    ).toEqual(["github/pulls", "docs/vault"]);
+  });
+
+  it("moves a panel to the top without duplicating it", () => {
+    expect(
+      movePluginNavPanelToTop(
+        ["github/pulls", "docs/vault", "tasks/board"],
+        "tasks/board",
+      ),
+    ).toEqual(["tasks/board", "github/pulls", "docs/vault"]);
   });
 });
 

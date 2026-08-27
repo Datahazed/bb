@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe("SidebarSectionRow", () => {
-  it("renders the section name before the disclosure without a sidebar icon", () => {
+  it("keeps the disclosure in the fixed final slot after section actions", () => {
     const result = render(
       <SidebarSectionRow
         name="Nested work"
@@ -29,6 +29,7 @@ describe("SidebarSectionRow", () => {
         activity={NO_COLLAPSED_CHILD_ACTIVITY}
         isCollapsed={false}
         onToggleCollapsed={vi.fn()}
+        onRename={vi.fn()}
       />,
     );
 
@@ -38,6 +39,10 @@ describe("SidebarSectionRow", () => {
     const icon = result.container.querySelector('[data-icon="ListView"]');
     const label = screen.getByText("Nested work");
     const row = label.parentElement?.parentElement as HTMLElement | null;
+    const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
+    const trailingControls = row?.querySelector(
+      "[data-sidebar-collapsible-trailing-controls]",
+    );
 
     expect(icon).toBeNull();
     expect(
@@ -45,6 +50,9 @@ describe("SidebarSectionRow", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(row?.style.paddingLeft).toBe("32px");
+    expect(caretSlot?.classList.contains("w-6")).toBe(true);
+    expect(row?.lastElementChild).toBe(caretSlot);
+    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
   });
 
   it("rolls hidden split threads up to the collapsed section row", () => {

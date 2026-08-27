@@ -828,6 +828,18 @@ describe("ThreadRow", () => {
     expect(
       disclosure.classList.contains("hover:text-sidebar-accent-foreground"),
     ).toBe(true);
+    const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
+    const row = caretSlot?.parentElement;
+    const titleRegion = screen
+      .getByTitle("Parent thread")
+      .closest(".bb-sidebar-collapsible-hover-actions-inset");
+
+    expect(caretSlot?.classList.contains("w-6")).toBe(true);
+    expect(row?.lastElementChild).toBe(caretSlot);
+    expect(titleRegion).not.toBeNull();
+    expect(
+      titleRegion?.classList.contains("bb-sidebar-hover-actions-inset"),
+    ).toBe(false);
   });
 
   it("shows its Command shortcut in place of an active indicator", () => {

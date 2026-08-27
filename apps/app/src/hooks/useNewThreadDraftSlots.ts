@@ -10,7 +10,7 @@ import type {
   NewThreadDraftSlot,
 } from "@/lib/prompt-draft-slots";
 
-const EMPTY_NEW_THREAD_DRAFT_ROWS: readonly NewThreadDraftRow[] = [];
+const EMPTY_NEW_THREAD_DRAFT_SLOTS: readonly NewThreadDraftSlot[] = [];
 
 export interface NewThreadDraftRow {
   id: string;
@@ -43,7 +43,7 @@ export function useNewThreadDraftSlots(): readonly NewThreadDraftRow[] {
   const slots = useSyncExternalStore(
     subscribeNewThreadDraftSlots,
     getNewThreadDraftSlotsSnapshot,
-    () => EMPTY_NEW_THREAD_DRAFT_ROWS,
+    () => EMPTY_NEW_THREAD_DRAFT_SLOTS,
   );
 
   return useMemo(

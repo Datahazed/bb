@@ -24,6 +24,7 @@ export function SidebarChildToggleChevron({
   return (
     <button
       type="button"
+      data-sidebar-collapse-caret=""
       aria-expanded={!isCollapsed}
       aria-label={isCollapsed ? expandLabel : collapseLabel}
       data-sidebar-hover-actions-mobile={

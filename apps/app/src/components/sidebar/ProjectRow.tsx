@@ -56,6 +56,8 @@ import {
   COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
+  SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
+  SIDEBAR_COLLAPSE_CARET_SLOT_CLASS,
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
@@ -974,20 +976,15 @@ function EnvironmentThreadGroupHeader({
           aria-hidden="true"
         />
       </span>
-      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-1.5 text-left text-subtle-foreground/80">
+      <span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center text-left text-subtle-foreground/80">
         <span className="min-w-0 truncate">
           <span>{displayName}</span>
         </span>
-        <SidebarChildToggleChevron
-          isCollapsed={isCollapsed}
-          expandLabel={`Expand ${displayName} threads`}
-          collapseLabel={`Collapse ${displayName} threads`}
-          onToggle={() => onToggleCollapsed(environmentId)}
-          revealOnHover
-        />
       </span>
       <span
+        data-sidebar-collapsible-trailing-controls=""
         className={cn(
+          SIDEBAR_COLLAPSIBLE_TRAILING_CONTROLS_CLASS,
           "relative z-10 shrink-0",
           COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
         )}
@@ -1018,6 +1015,18 @@ function EnvironmentThreadGroupHeader({
             onOpenChange={setIsActionsOpen}
           />
         </div>
+      </span>
+      <span
+        data-sidebar-collapse-caret-slot=""
+        className={SIDEBAR_COLLAPSE_CARET_SLOT_CLASS}
+      >
+        <SidebarChildToggleChevron
+          isCollapsed={isCollapsed}
+          expandLabel={`Expand ${displayName} threads`}
+          collapseLabel={`Collapse ${displayName} threads`}
+          onToggle={() => onToggleCollapsed(environmentId)}
+          revealOnHover
+        />
       </span>
     </>
   );
@@ -1823,7 +1832,7 @@ function useWindowedThreadItems({
 }
 
 // The one place that maps thread-tree items to rows. Every sidebar view
-// (project, chronological, sections) renders through this, so a row-prop
+// (project, manual, sections) renders through this, so a row-prop
 // change lands once instead of being copied across each view's renderer.
 function SectionThreadTreeItems({
   items,

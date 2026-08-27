@@ -6,10 +6,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { Link, useNavigate } from "react-router-dom";
+import { useAtomValue } from "jotai";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
@@ -21,12 +21,12 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useCloseMobileSidebar,
-  useSidebar,
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import {
+  AutomationsNavSidebarItem,
   ExtensionsNavSidebarItem,
   PluginNavSidebarItems,
 } from "@/components/plugin/PluginNavSidebarItems";
@@ -42,7 +42,11 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import {
+  AUTOMATIONS_PLUGIN_ID,
+  getRootComposeRoutePath,
+  getThreadRoutePath,
+} from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { createNewThreadDraftSlotId } from "@/lib/prompt-draft-slots";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
@@ -56,7 +60,6 @@ import {
 } from "./sidebarThreadShortcuts";
 import {
   useAppCommandHandler,
-  useAppCommandRunner,
   useAppCommandShortcut,
   useAppCommandShortcuts,
   useIsAppCommandModifierHeld,
@@ -64,16 +67,10 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
 import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
+import { SidebarTopRegionCustomizeMenu } from "./SidebarTopRegionCustomizeMenu";
 import {
-  hiddenSidebarTopLevelSectionIdsAtom,
-  normalizeHiddenSidebarTopLevelSectionIds,
-  normalizeSidebarTopLevelSectionOrder,
-  sidebarTopLevelSectionOrderAtom,
-  type SidebarTopLevelSectionId,
-} from "./sidebarTopLevelSectionPreferences";
-import {
-  sidebarExtensionsVisibleAtom,
-  sidebarNewThreadVisibleAtom,
+  sidebarTopRegionItemPreferencesAtom,
+  type SidebarTopRegionItemId,
 } from "./sidebarTopRegionItemPreferences";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
@@ -83,10 +80,16 @@ const SIDEBAR_FOOTER_ACTION_CLASS = cn(
 );
 
 interface SidebarTopLevelSectionsProps {
-  order: readonly SidebarTopLevelSectionId[];
-  hiddenSectionIds: readonly SidebarTopLevelSectionId[];
   sections: Readonly<Record<SidebarTopLevelSectionId, ReactNode>>;
 }
+
+const SIDEBAR_TOP_LEVEL_SECTION_IDS = [
+  "new-thread-extensions",
+  "plugin-pages",
+  "thread-list",
+] as const;
+
+type SidebarTopLevelSectionId = (typeof SIDEBAR_TOP_LEVEL_SECTION_IDS)[number];
 
 /**
  * Renders the three persistent sidebar regions and derives dividers from the
@@ -94,19 +97,12 @@ interface SidebarTopLevelSectionsProps {
  * it is absent beside an empty/hidden region and never joins keyboard order.
  */
 export function SidebarTopLevelSections({
-  order,
-  hiddenSectionIds,
   sections,
 }: SidebarTopLevelSectionsProps) {
-  const hidden = new Set(
-    normalizeHiddenSidebarTopLevelSectionIds(hiddenSectionIds),
-  );
-  const visibleSections = normalizeSidebarTopLevelSectionOrder(order).flatMap(
-    (id) => {
-      const content = sections[id];
-      return hidden.has(id) || content === null ? [] : [{ id, content }];
-    },
-  );
+  const visibleSections = SIDEBAR_TOP_LEVEL_SECTION_IDS.flatMap((id) => {
+    const content = sections[id];
+    return content === null ? [] : [{ id, content }];
+  });
 
   return visibleSections.map(({ id, content }, index) => (
     <Fragment key={id}>
@@ -136,6 +132,7 @@ interface AppSidebarProps {
   showTopReserve: boolean;
   settingsRoutePath: string;
   toolsRoutePath?: string;
+  onSplit?: () => void;
   /**
    * Compact drawer hosting. When set, the sidebar renders its body only,
    * inside a persistent `<Sidebar>` panel owned by AppLayoutSidebar, and stays
@@ -151,6 +148,7 @@ export function AppSidebar({
   showTopReserve,
   settingsRoutePath,
   toolsRoutePath,
+  onSplit,
   mobileHosted,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
@@ -173,8 +171,6 @@ export function AppSidebar({
     label: "New thread",
   });
   const closeOnMobile = useCloseMobileSidebar();
-  const { isCompactViewport } = useSidebar();
-  const appCommandRunner = useAppCommandRunner();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
     ReadonlyMap<string, SidebarThreadShortcutPresentation>
@@ -189,13 +185,16 @@ export function AppSidebar({
   );
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
   const settingsShortcut = useAppCommandShortcut("settings.open");
-  const topLevelSectionOrder = useAtomValue(sidebarTopLevelSectionOrderAtom);
-  const hiddenTopLevelSectionIds = useAtomValue(
-    hiddenSidebarTopLevelSectionIdsAtom,
+  const topRegionItemPreferences = useAtomValue(
+    sidebarTopRegionItemPreferencesAtom,
   );
-  const showNewThread = useAtomValue(sidebarNewThreadVisibleAtom);
-  const showExtensions = useAtomValue(sidebarExtensionsVisibleAtom);
   const pluginNavPanels = usePluginNavPanelChrome();
+  const automationsNavPanel = pluginNavPanels.find(
+    ({ chrome }) => chrome.pluginId === AUTOMATIONS_PLUGIN_ID,
+  );
+  const hasTraditionalPluginPanels = pluginNavPanels.some(
+    ({ chrome }) => chrome.pluginId !== AUTOMATIONS_PLUGIN_ID,
+  );
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
@@ -203,13 +202,6 @@ export function AppSidebar({
       state: { focusPrompt: true },
     });
   }, [closeOnMobile, navigate]);
-  const handleSplit = useCallback(() => {
-    appCommandRunner.dispatch(
-      "thread.split",
-      typeof document === "undefined" ? null : document.activeElement,
-    );
-  }, [appCommandRunner]);
-
   const showThreadShortcuts = useCallback(() => {
     const targets = getSidebarThreadShortcutTargets(sidebarRef.current);
     threadShortcutTargetsRef.current = targets;
@@ -315,6 +307,33 @@ export function AppSidebar({
       isCreatingProject={quickCreateProject.isCreating}
     />
   );
+  const topRegionItemNodes: Record<SidebarTopRegionItemId, ReactNode | null> = {
+    "new-thread": (
+      <ProjectListActionButtons
+        splitEnabled
+        newThreadSplit={newThreadSplit}
+        onNewChat={handleNewChat}
+        onSplit={onSplit}
+      />
+    ),
+    extensions: toolsRoutePath ? (
+      <ExtensionsNavSidebarItem
+        routePath={toolsRoutePath}
+        onNavigate={closeOnMobile}
+      />
+    ) : null,
+    automations: automationsNavPanel ? (
+      <AutomationsNavSidebarItem
+        chrome={automationsNavPanel.chrome}
+        onNavigate={closeOnMobile}
+      />
+    ) : null,
+  };
+  const visibleTopRegionItems = topRegionItemPreferences.order.flatMap((id) => {
+    if (topRegionItemPreferences.hiddenIds.includes(id)) return [];
+    const node = topRegionItemNodes[id];
+    return node === null ? [] : [<Fragment key={id}>{node}</Fragment>];
+  });
 
   const body = (
     <>
@@ -340,43 +359,31 @@ export function AppSidebar({
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
           )}
         >
-          <SidebarHistoryNavigationControls
-            onNavigate={closeOnMobile}
+          <div
             className={cn(
-              "group-data-[collapsible=icon]:hidden",
+              "flex items-center gap-1 group-data-[collapsible=icon]:hidden",
               usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
             )}
-          />
+          >
+            <SidebarHistoryNavigationControls onNavigate={closeOnMobile} />
+            <SidebarTopRegionCustomizeMenu />
+          </div>
         </div>
       ) : null}
       <SidebarTopLevelSections
-        order={topLevelSectionOrder}
-        hiddenSectionIds={hiddenTopLevelSectionIds}
         sections={{
-          "new-thread-extensions": (
-            <div
-              data-testid="app-sidebar-primary-actions"
-              className="space-y-1 px-2 py-2 group-data-[collapsible=icon]:hidden"
-            >
-              <ProjectListActionButtons
-                splitEnabled
-                newThreadSplit={newThreadSplit}
-                onNewChat={handleNewChat}
-                onSplit={isCompactViewport ? undefined : handleSplit}
-                showNewThread={showNewThread}
-              />
-              {toolsRoutePath && showExtensions ? (
-                <ExtensionsNavSidebarItem
-                  routePath={toolsRoutePath}
-                  onNavigate={closeOnMobile}
-                />
-              ) : null}
-            </div>
-          ),
-          "plugin-pages":
-            pluginNavPanels.length > 0 ? (
-              <PluginNavSidebarItems onNavigate={closeOnMobile} splitEnabled />
+          "new-thread-extensions":
+            visibleTopRegionItems.length > 0 ? (
+              <div
+                data-testid="app-sidebar-primary-actions"
+                className="space-y-1 px-2 py-2 group-data-[collapsible=icon]:hidden"
+              >
+                {visibleTopRegionItems}
+              </div>
             ) : null,
+          "plugin-pages": hasTraditionalPluginPanels ? (
+            <PluginNavSidebarItems onNavigate={closeOnMobile} splitEnabled />
+          ) : null,
           "thread-list": (
             <SidebarContent>
               <PluginThreadList

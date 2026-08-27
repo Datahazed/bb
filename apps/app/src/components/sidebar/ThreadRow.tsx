@@ -31,6 +31,8 @@ import {
   COARSE_POINTER_ROW_HEIGHT_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
+  SIDEBAR_COLLAPSIBLE_HOVER_ACTIONS_INSET_CLASS,
+  SIDEBAR_COLLAPSE_CARET_SLOT_CLASS,
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
@@ -725,7 +727,10 @@ function ThreadRowComponent({
           "flex min-w-0 flex-1 items-center gap-1.5",
           // The hover actions overlay grows leftward past the trailing slot;
           // this reserves room so the title never runs under the extra button.
-          !shortcut && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+          !shortcut &&
+            (parentOptions && hasChildren
+              ? SIDEBAR_COLLAPSIBLE_HOVER_ACTIONS_INSET_CLASS
+              : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
       >
         {isEditing ? (
@@ -763,15 +768,6 @@ function ThreadRowComponent({
             </TooltipTrigger>
             <TooltipContent side="top">{crossProjectLabel}</TooltipContent>
           </Tooltip>
-        ) : null}
-        {parentOptions && hasChildren ? (
-          <SidebarChildToggleChevron
-            isCollapsed={isParentCollapsed}
-            expandLabel={`Expand ${labelTitle} threads`}
-            collapseLabel={`Collapse ${labelTitle} threads`}
-            onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
-            revealOnHover
-          />
         ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
@@ -860,6 +856,20 @@ function ThreadRowComponent({
           </span>
         )}
       </span>
+      {parentOptions && hasChildren ? (
+        <span
+          data-sidebar-collapse-caret-slot=""
+          className={SIDEBAR_COLLAPSE_CARET_SLOT_CLASS}
+        >
+          <SidebarChildToggleChevron
+            isCollapsed={isParentCollapsed}
+            expandLabel={`Expand ${labelTitle} threads`}
+            collapseLabel={`Collapse ${labelTitle} threads`}
+            onToggle={() => parentOptions.onToggleCollapsed(thread.id)}
+            revealOnHover
+          />
+        </span>
+      ) : null}
     </>
   );
 

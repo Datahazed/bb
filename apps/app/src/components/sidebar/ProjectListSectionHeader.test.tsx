@@ -156,10 +156,11 @@ describe("TopLevelSidebarSection", () => {
     ).not.toBeNull();
   });
 
-  it("renders the disclosure after the section label without a leading icon", () => {
+  it("keeps the disclosure in the fixed final slot after section actions", () => {
     const result = render(
       <TopLevelSidebarSection
         label="Pinned"
+        actions={<button type="button">Section action</button>}
         collapseControl={{ isCollapsed: false, onToggleCollapsed: vi.fn() }}
       >
         <div>Pinned thread</div>
@@ -171,6 +172,11 @@ describe("TopLevelSidebarSection", () => {
     });
     const icon = result.container.querySelector('[data-icon="Pin"]');
     const label = screen.getByTitle("Pinned");
+    const caretSlot = disclosure.closest("[data-sidebar-collapse-caret-slot]");
+    const row = caretSlot?.parentElement;
+    const trailingControls = row?.querySelector(
+      "[data-sidebar-collapsible-trailing-controls]",
+    );
 
     expect(icon).toBeNull();
     expect(
@@ -184,6 +190,9 @@ describe("TopLevelSidebarSection", () => {
     expect(
       disclosure.classList.contains("hover:text-sidebar-accent-foreground"),
     ).toBe(true);
+    expect(caretSlot?.classList.contains("w-6")).toBe(true);
+    expect(row?.lastElementChild).toBe(caretSlot);
+    expect(trailingControls?.nextElementSibling).toBe(caretSlot);
   });
 
   it("rolls a hidden split thread up to a collapsed top-level section", () => {
