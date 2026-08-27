@@ -49,11 +49,6 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Start a thread in the active project.",
       ),
       command(
-        "thread.split",
-        "Split",
-        "Open two blank thread composers side by side.",
-      ),
-      command(
         "thread.search",
         "Search threads",
         "Focus the sidebar thread search.",

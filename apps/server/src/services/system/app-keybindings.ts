@@ -144,8 +144,6 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     ...mainWithoutModal,
     desktopOnly: true,
   }),
-  // Discoverable in the palette without adding a default chord.
-  unassignedBinding("thread.split", mainWithoutModal),
   binding("thread.search", "k", { mod: true }, mainWithoutModal),
   unassignedBinding("thread.rename", mainWithoutModal),
   unassignedBinding("thread.archive", mainWithoutModal),

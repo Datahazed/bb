@@ -64,7 +64,6 @@ import {
 } from "./sidebarThreadShortcuts";
 import {
   useAppCommandHandler,
-  useAppCommandRunner,
   useAppCommandShortcut,
   useAppCommandShortcuts,
   useIsAppCommandModifierHeld,
@@ -132,6 +131,7 @@ interface AppSidebarProps {
   showTopReserve: boolean;
   settingsRoutePath: string;
   toolsRoutePath?: string;
+  onSplit?: () => void;
   /**
    * Compact drawer hosting. When set, the sidebar renders its body only,
    * inside a persistent `<Sidebar>` panel owned by AppLayoutSidebar, and stays
@@ -147,6 +147,7 @@ export function AppSidebar({
   showTopReserve,
   settingsRoutePath,
   toolsRoutePath,
+  onSplit,
   mobileHosted,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
@@ -170,7 +171,6 @@ export function AppSidebar({
   });
   const closeOnMobile = useCloseMobileSidebar();
   const { isCompactViewport, setOpen, setOpenMobile } = useSidebar();
-  const appCommandRunner = useAppCommandRunner();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
     ReadonlyMap<string, SidebarThreadShortcutPresentation>
@@ -238,13 +238,6 @@ export function AppSidebar({
       state: { focusPrompt: true },
     });
   }, [closeOnMobile, navigate]);
-  const handleSplit = useCallback(() => {
-    appCommandRunner.dispatch(
-      "thread.split",
-      typeof document === "undefined" ? null : document.activeElement,
-    );
-  }, [appCommandRunner]);
-
   const showThreadShortcuts = useCallback(() => {
     const targets = getSidebarThreadShortcutTargets(sidebarRef.current);
     threadShortcutTargetsRef.current = targets;
@@ -425,7 +418,7 @@ export function AppSidebar({
                 splitEnabled
                 newThreadSplit={newThreadSplit}
                 onNewChat={handleNewChat}
-                onSplit={isCompactViewport ? undefined : handleSplit}
+                onSplit={onSplit}
                 threadSearch={{
                   activeDescendantId: threadSearch.activeDescendantId,
                   inputRef: threadSearch.inputRef,
