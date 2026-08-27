@@ -59,13 +59,19 @@ export interface CommandPaletteProps {
   /** The surface's thread and project, handed to plugin rows. */
   threadId: string | null;
   projectId: string | null;
+  /** Internal layout action; intentionally not a public app command. */
+  onSplit?: () => void;
 }
 
 /**
  * Type to filter the commands that apply right now, then run one with Enter.
  * Mounted once by `AppLayout` and opened by `palette.open`.
  */
-export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
+export function CommandPalette({
+  threadId,
+  projectId,
+  onSplit,
+}: CommandPaletteProps) {
   const runner = useAppCommandRunner();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
   const paletteShortcut = useAppCommandShortcut("palette.open");
@@ -93,6 +99,18 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
         dispatch: runner.dispatch,
         shortcuts,
       }),
+      ...(onSplit === undefined
+        ? []
+        : [
+            {
+              id: "internal:thread.split",
+              bucket: "Actions",
+              group: "Window and layout",
+              title: "Split",
+              shortcut: null,
+              run: onSplit,
+            } satisfies PaletteAction,
+          ]),
       ...buildPluginPaletteActions({
         slots: getPluginSlotSnapshot().commandPaletteActions,
         threadId,
@@ -106,6 +124,7 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       runner.isCommandAvailable,
       shortcuts,
       threadId,
+      onSplit,
     ],
   );
 

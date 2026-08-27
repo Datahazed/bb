@@ -1807,7 +1807,7 @@ function useWindowedThreadItems({
 }
 
 // The one place that maps thread-tree items to rows. Every sidebar view
-// (project, chronological, sections) renders through this, so a row-prop
+// (project, manual, sections) renders through this, so a row-prop
 // change lands once instead of being copied across each view's renderer.
 function SectionThreadTreeItems({
   items,

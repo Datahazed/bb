@@ -3,127 +3,232 @@ import {
   createJsonLocalStorage,
   type SyncStorage,
 } from "@/lib/browser-storage";
+import { AUTOMATIONS_PLUGIN_ID } from "@/lib/route-paths";
 
-export const SIDEBAR_NEW_THREAD_VISIBLE_STORAGE_KEY =
+export const SIDEBAR_TOP_REGION_ITEMS_STORAGE_KEY = "bb.sidebar.topRegionItems";
+export const LEGACY_NEW_THREAD_VISIBLE_STORAGE_KEY =
   "bb.sidebar.newThreadVisible";
-export const SIDEBAR_EXTENSIONS_VISIBLE_STORAGE_KEY =
+export const LEGACY_EXTENSIONS_VISIBLE_STORAGE_KEY =
   "bb.sidebar.extensionsVisible";
 export const LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY =
   "bb.sidebar.hiddenPluginPanels";
 export const LEGACY_EXTENSIONS_NAV_ROW_KEY = "__builtin__/tools";
 
+export const SIDEBAR_TOP_REGION_ITEM_IDS = [
+  "new-thread",
+  "extensions",
+  "automations",
+] as const;
+
+export type SidebarTopRegionItemId =
+  (typeof SIDEBAR_TOP_REGION_ITEM_IDS)[number];
+
+export interface SidebarTopRegionItemPreferences {
+  order: SidebarTopRegionItemId[];
+  hiddenIds: SidebarTopRegionItemId[];
+}
+
+export const DEFAULT_SIDEBAR_TOP_REGION_ITEM_PREFERENCES: SidebarTopRegionItemPreferences =
+  {
+    order: [...SIDEBAR_TOP_REGION_ITEM_IDS],
+    hiddenIds: [],
+  };
+
 interface SidebarItemMigrationStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+function isSidebarTopRegionItemId(
+  value: unknown,
+): value is SidebarTopRegionItemId {
+  return SIDEBAR_TOP_REGION_ITEM_IDS.some((id) => id === value);
+}
+
+function normalizeIds(value: unknown): SidebarTopRegionItemId[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter(isSidebarTopRegionItemId))];
+}
+
+export function normalizeSidebarTopRegionItemPreferences(
+  value: unknown,
+): SidebarTopRegionItemPreferences {
+  const candidate =
+    typeof value === "object" && value !== null
+      ? (value as { order?: unknown; hiddenIds?: unknown })
+      : {};
+  const presentOrder = normalizeIds(candidate.order);
+  const order = [
+    ...presentOrder,
+    ...SIDEBAR_TOP_REGION_ITEM_IDS.filter((id) => !presentOrder.includes(id)),
+  ];
+  const hiddenIds = normalizeIds(candidate.hiddenIds).filter((id) =>
+    order.includes(id),
+  );
+  return { order, hiddenIds };
+}
+
+function readJson(storage: SidebarItemMigrationStorage, key: string): unknown {
+  const value = storage.getItem(key);
+  if (value === null) return undefined;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 function readStoredBoolean(
   storage: SidebarItemMigrationStorage,
   key: string,
 ): boolean | null {
-  const value = storage.getItem(key);
-  if (value === null) return null;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return typeof parsed === "boolean" ? parsed : null;
-  } catch {
-    return null;
-  }
+  const value = readJson(storage, key);
+  return typeof value === "boolean" ? value : null;
 }
 
 function readLegacyHiddenKeys(
   storage: SidebarItemMigrationStorage,
 ): unknown[] | null {
-  const value = storage.getItem(LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY);
-  if (value === null) return null;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
+  const value = readJson(storage, LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY);
+  return Array.isArray(value) ? value : null;
+}
+
+function isLegacyAutomationsPanelKey(value: unknown): value is string {
+  return (
+    typeof value === "string" && value.startsWith(`${AUTOMATIONS_PLUGIN_ID}/`)
+  );
+}
+
+function consumeOwnedLegacyHiddenKeys(
+  storage: SidebarItemMigrationStorage,
+  legacyHiddenKeys: readonly unknown[] | null,
+): void {
+  if (legacyHiddenKeys === null) return;
+  const remaining = legacyHiddenKeys.filter(
+    (key) =>
+      key !== LEGACY_EXTENSIONS_NAV_ROW_KEY &&
+      !isLegacyAutomationsPanelKey(key),
+  );
+  if (remaining.length === 0) {
+    storage.removeItem(LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY);
+  } else {
+    storage.setItem(
+      LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
+      JSON.stringify(remaining),
+    );
   }
+}
+
+function consumeLegacyBooleanPreferences(
+  storage: SidebarItemMigrationStorage,
+): void {
+  storage.removeItem(LEGACY_NEW_THREAD_VISIBLE_STORAGE_KEY);
+  storage.removeItem(LEGACY_EXTENSIONS_VISIBLE_STORAGE_KEY);
 }
 
 /**
- * Migrates only the host-owned Extensions row from the legacy plugin hide set.
- *
- * The migration deliberately has no completion marker. Removing the owned key
- * is the marker, which makes partial reruns safe and lets this cleanup compose
- * with the plugin-page migration whichever one observes the shared array first.
+ * Moves the stack's two booleans and the shipped plugin-hide choices into the
+ * one top-region preference. The combined value wins once it exists, while
+ * owned legacy keys are still consumed so the plugin-page migration cannot
+ * reintroduce Automations as a traditional row.
  */
-export function migrateLegacyHiddenExtensions(
+export function migrateLegacySidebarTopRegionItems(
   storage: SidebarItemMigrationStorage,
-): boolean {
-  const storedPreference = readStoredBoolean(
-    storage,
-    SIDEBAR_EXTENSIONS_VISIBLE_STORAGE_KEY,
-  );
+): SidebarTopRegionItemPreferences {
   const legacyHiddenKeys = readLegacyHiddenKeys(storage);
-  if (
-    legacyHiddenKeys === null ||
-    !legacyHiddenKeys.includes(LEGACY_EXTENSIONS_NAV_ROW_KEY)
-  ) {
-    return storedPreference ?? true;
+  const storedValue = readJson(storage, SIDEBAR_TOP_REGION_ITEMS_STORAGE_KEY);
+  if (storedValue !== undefined) {
+    const normalized = normalizeSidebarTopRegionItemPreferences(storedValue);
+    storage.setItem(
+      SIDEBAR_TOP_REGION_ITEMS_STORAGE_KEY,
+      JSON.stringify(normalized),
+    );
+    consumeOwnedLegacyHiddenKeys(storage, legacyHiddenKeys);
+    consumeLegacyBooleanPreferences(storage);
+    return normalized;
   }
 
-  const extensionsVisible = storedPreference ?? false;
-  // Write the replacement preference before consuming the legacy key so a
-  // partially completed rerun cannot reset a previously hidden Extensions row.
-  if (storedPreference === null) {
-    storage.setItem(
-      SIDEBAR_EXTENSIONS_VISIBLE_STORAGE_KEY,
-      JSON.stringify(extensionsVisible),
-    );
+  const hiddenIds: SidebarTopRegionItemId[] = [];
+  if (
+    readStoredBoolean(storage, LEGACY_NEW_THREAD_VISIBLE_STORAGE_KEY) === false
+  ) {
+    hiddenIds.push("new-thread");
   }
+  if (
+    readStoredBoolean(storage, LEGACY_EXTENSIONS_VISIBLE_STORAGE_KEY) ===
+      false ||
+    legacyHiddenKeys?.includes(LEGACY_EXTENSIONS_NAV_ROW_KEY)
+  ) {
+    hiddenIds.push("extensions");
+  }
+  if (legacyHiddenKeys?.some(isLegacyAutomationsPanelKey)) {
+    hiddenIds.push("automations");
+  }
+
+  const migrated = normalizeSidebarTopRegionItemPreferences({
+    order: SIDEBAR_TOP_REGION_ITEM_IDS,
+    hiddenIds,
+  });
   storage.setItem(
-    LEGACY_HIDDEN_PLUGIN_NAV_PANELS_STORAGE_KEY,
-    JSON.stringify(
-      legacyHiddenKeys.filter((key) => key !== LEGACY_EXTENSIONS_NAV_ROW_KEY),
-    ),
+    SIDEBAR_TOP_REGION_ITEMS_STORAGE_KEY,
+    JSON.stringify(migrated),
   );
-  return extensionsVisible;
+  consumeOwnedLegacyHiddenKeys(storage, legacyHiddenKeys);
+  consumeLegacyBooleanPreferences(storage);
+  return migrated;
 }
 
-const jsonBooleanStorage = createJsonLocalStorage<unknown>();
-const normalizedBooleanStorage: SyncStorage<boolean> = {
-  getItem: (key, initialValue) => {
-    const value = jsonBooleanStorage.getItem(key, initialValue);
-    return typeof value === "boolean" ? value : initialValue;
+export function reorderSidebarTopRegionItems(
+  current: SidebarTopRegionItemPreferences,
+  activeId: SidebarTopRegionItemId,
+  overId: SidebarTopRegionItemId,
+): SidebarTopRegionItemPreferences {
+  const activeIndex = current.order.indexOf(activeId);
+  const overIndex = current.order.indexOf(overId);
+  if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) {
+    return current;
+  }
+  const order = [...current.order];
+  const [moved] = order.splice(activeIndex, 1);
+  if (moved === undefined) return current;
+  order.splice(overIndex, 0, moved);
+  return { ...current, order };
+}
+
+export function setSidebarTopRegionItemVisible(
+  current: SidebarTopRegionItemPreferences,
+  id: SidebarTopRegionItemId,
+  visible: boolean,
+): SidebarTopRegionItemPreferences {
+  const hiddenIds = visible
+    ? current.hiddenIds.filter((candidate) => candidate !== id)
+    : [...new Set([...current.hiddenIds, id])];
+  return { ...current, hiddenIds };
+}
+
+const jsonStorage = createJsonLocalStorage<unknown>();
+const topRegionItemStorage: SyncStorage<SidebarTopRegionItemPreferences> = {
+  getItem: (_key, initialValue) => {
+    if (typeof window === "undefined") return initialValue;
+    return migrateLegacySidebarTopRegionItems(window.localStorage);
   },
   setItem: (key, value) => {
-    jsonBooleanStorage.setItem(key, value);
+    jsonStorage.setItem(key, normalizeSidebarTopRegionItemPreferences(value));
   },
-  removeItem: (key) => {
-    jsonBooleanStorage.removeItem(key);
-  },
+  removeItem: jsonStorage.removeItem,
   subscribe: (key, callback, initialValue) =>
-    jsonBooleanStorage.subscribe?.(
+    jsonStorage.subscribe?.(
       key,
-      (value) => callback(typeof value === "boolean" ? value : initialValue),
+      (value) => callback(normalizeSidebarTopRegionItemPreferences(value)),
       initialValue,
     ),
 };
 
-const extensionsVisibilityStorage: SyncStorage<boolean> = {
-  getItem: (_key, _initialValue) => {
-    if (typeof window === "undefined") return true;
-    return migrateLegacyHiddenExtensions(window.localStorage);
-  },
-  setItem: normalizedBooleanStorage.setItem,
-  removeItem: normalizedBooleanStorage.removeItem,
-  subscribe: normalizedBooleanStorage.subscribe,
-};
-
-export const sidebarNewThreadVisibleAtom = atomWithStorage<boolean>(
-  SIDEBAR_NEW_THREAD_VISIBLE_STORAGE_KEY,
-  true,
-  normalizedBooleanStorage,
-  { getOnInit: true },
-);
-
-export const sidebarExtensionsVisibleAtom = atomWithStorage<boolean>(
-  SIDEBAR_EXTENSIONS_VISIBLE_STORAGE_KEY,
-  true,
-  extensionsVisibilityStorage,
-  { getOnInit: true },
-);
+export const sidebarTopRegionItemPreferencesAtom =
+  atomWithStorage<SidebarTopRegionItemPreferences>(
+    SIDEBAR_TOP_REGION_ITEMS_STORAGE_KEY,
+    DEFAULT_SIDEBAR_TOP_REGION_ITEM_PREFERENCES,
+    topRegionItemStorage,
+    { getOnInit: true },
+  );

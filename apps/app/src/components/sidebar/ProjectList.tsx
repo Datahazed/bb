@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type MouseEventHandler,
   type PointerEventHandler,
@@ -28,10 +27,7 @@ import {
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import {
-  useArchivedThreadCount,
-  useArchivedThreads,
-} from "@/hooks/queries/thread-queries";
+import { useArchivedThreads } from "@/hooks/queries/thread-queries";
 import { useReorderPinnedThread } from "@/hooks/mutations/thread-state-mutations";
 import {
   useCreateThreadSection,
@@ -136,12 +132,8 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -169,17 +161,6 @@ import {
   type ThreadTitleMentionResources,
 } from "@/components/thread/ThreadTitleMentions";
 import {
-  hiddenSidebarTopLevelSectionIdsAtom,
-  moveSidebarTopLevelSection,
-  sidebarTopLevelSectionOrderAtom,
-  setSidebarTopLevelSectionHidden,
-  SIDEBAR_TOP_LEVEL_SECTION_DEFINITIONS,
-} from "./sidebarTopLevelSectionPreferences";
-import {
-  sidebarExtensionsVisibleAtom,
-  sidebarNewThreadVisibleAtom,
-} from "./sidebarTopRegionItemPreferences";
-import {
   isDefaultSidebarThreadLifecycleSelection,
   builtInSidebarDraftRowsVisibleAtom,
   getBuiltInSidebarLifecycleRenderState,
@@ -203,7 +184,6 @@ interface ProjectListActionButtonsProps {
   };
   onNewChat?: () => void;
   onSplit?: () => void;
-  showNewThread?: boolean;
 }
 
 interface ProjectListShellProps {
@@ -230,8 +210,6 @@ interface ProjectListThreadsSectionActionsProps {
 }
 
 interface SidebarDisplayOptionsMenuProps {
-  activeCount?: number;
-  draftCount?: number;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -298,10 +276,6 @@ type ToggleCollapsedId = (id: string) => void;
 type ToggleCollapsedSidebarSectionId = (
   id: CollapsibleSidebarSectionId,
 ) => void;
-type OpenSidebarMenu =
-  | "threadsDisplayOptions"
-  | `displayOptions:${string}`
-  | null;
 
 function removeCollapsedIds<T extends string>(
   current: T[],
@@ -337,7 +311,7 @@ export function getSelectedThreadSidebarExpansion({
     };
   }
 
-  if (organizationMode === "chronological") {
+  if (organizationMode === "manual") {
     const sectionKey = sectionKeyForThreadSection(
       CHRONOLOGICAL_CONTAINER_ID,
       selectedThread.sectionId,
@@ -619,22 +593,22 @@ function ProjectListThreadsSectionActions({
   );
 }
 
-// "Manually" is the user-facing name for chronological/drag-ordered mode;
-// the stored atom value stays "chronological".
 const SIDEBAR_ORGANIZE_OPTIONS = [
-  { label: "By project", mode: "project" },
-  { label: "By machine", mode: "machine" },
-  { label: "Manually", mode: "chronological" },
+  { icon: "Folder", label: "By project", mode: "project" },
+  { icon: "Laptop", label: "By machine", mode: "machine" },
+  { icon: "ListView", label: "Manual", mode: "manual" },
 ] as const satisfies readonly {
+  icon: IconName;
   label: string;
   mode: SidebarOrganizationMode;
 }[];
 
 const SIDEBAR_SORT_OPTIONS = [
-  { label: "Updated at", sort: "updated" },
-  { label: "Created at", sort: "created" },
-  { label: "Alphabetical", sort: "alpha" },
+  { icon: "Clock", label: "Updated at", sort: "updated" },
+  { icon: "Calendar", label: "Created at", sort: "created" },
+  { icon: "Sort", label: "Alphabetical", sort: "alpha" },
 ] as const satisfies readonly {
+  icon: IconName;
   label: string;
   sort: SidebarChronologicalSort;
 }[];
@@ -674,7 +648,7 @@ function SidebarDisplayMenuTrigger({
               <span
                 aria-hidden="true"
                 data-sidebar-display-filter-dot=""
-                className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-primary"
+                className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-muted-foreground"
               />
             ) : null}
           </Button>
@@ -687,12 +661,9 @@ function SidebarDisplayMenuTrigger({
   );
 }
 
-// Single combined display-options menu rendered on every section header.
-// Organization, sorting, and top-level sidebar structure are global, so any
-// header's menu drives the whole sidebar and can restore a hidden region.
+// Thread display options stay scoped to thread organization, sorting, and
+// lifecycle visibility. Top-region destinations are customized separately.
 export function SidebarDisplayOptionsMenu({
-  activeCount = 0,
-  draftCount = 0,
   open,
   onOpenChange,
 }: SidebarDisplayOptionsMenuProps) {
@@ -702,64 +673,26 @@ export function SidebarDisplayOptionsMenu({
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
   );
-  const [topLevelSectionOrder, setTopLevelSectionOrder] = useAtom(
-    sidebarTopLevelSectionOrderAtom,
-  );
-  const [hiddenTopLevelSectionIds, setHiddenTopLevelSectionIds] = useAtom(
-    hiddenSidebarTopLevelSectionIdsAtom,
-  );
-  const [showNewThread, setShowNewThread] = useAtom(
-    sidebarNewThreadVisibleAtom,
-  );
-  const [showExtensions, setShowExtensions] = useAtom(
-    sidebarExtensionsVisibleAtom,
-  );
   const [lifecycleSelection, setLifecycleSelection] = useAtom(
     sidebarThreadLifecycleSelectionAtom,
   );
-  const { refetch: refetchArchivedThreadCount } = useArchivedThreadCount();
-  const archivedCountRequestRef = useRef(0);
-  const [archivedCountSnapshot, setArchivedCountSnapshot] = useState<
-    number | null
-  >(null);
   const selectedSort: SidebarChronologicalSort =
     chronologicalSort === "none" ? "updated" : chronologicalSort;
   const isFiltered =
+    organizationMode !== "project" ||
+    selectedSort !== "updated" ||
     !isDefaultSidebarThreadLifecycleSelection(lifecycleSelection);
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      onOpenChange?.(nextOpen);
-      archivedCountRequestRef.current += 1;
-      if (!nextOpen) return;
-
-      const requestId = archivedCountRequestRef.current;
-      setArchivedCountSnapshot(null);
-      void refetchArchivedThreadCount().then((result) => {
-        if (
-          archivedCountRequestRef.current === requestId &&
-          result.isSuccess &&
-          result.data !== undefined
-        ) {
-          setArchivedCountSnapshot(result.data);
-        }
-      });
-    },
-    [onOpenChange, refetchArchivedThreadCount],
-  );
-  const lifecycleCounts: Record<SidebarThreadLifecycleState, string> = {
-    active: String(activeCount),
-    drafts: String(draftCount),
-    archived:
-      archivedCountSnapshot === null ? "—" : String(archivedCountSnapshot),
-  };
-  const lifecycleLabels: Record<SidebarThreadLifecycleState, string> = {
-    active: "Active",
-    drafts: "Drafts",
-    archived: "Archived",
+  const lifecyclePresentation: Record<
+    SidebarThreadLifecycleState,
+    { icon: IconName; label: string }
+  > = {
+    active: { icon: "Circle", label: "Active" },
+    drafts: { icon: "EditFile", label: "Drafts" },
+    archived: { icon: "Archive", label: "Archived" },
   };
 
   return (
-    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <SidebarDisplayMenuTrigger
         ariaLabel={
           isFiltered
@@ -767,7 +700,7 @@ export function SidebarDisplayOptionsMenu({
             : "Sidebar display options"
         }
         filtered={isFiltered}
-        iconName="SlidersHorizontal"
+        iconName="Filter"
         tooltip="Display options"
       />
       <DropdownMenuContent align="end" mobileTitle="Display options">
@@ -786,6 +719,7 @@ export function SidebarDisplayOptionsMenu({
                 setOrganizationMode(option.mode);
               }}
             >
+              <Icon name={option.icon} aria-hidden="true" />
               {option.label}
             </DropdownMenuCheckboxItem>
           ))}
@@ -801,15 +735,16 @@ export function SidebarDisplayOptionsMenu({
               checked={selectedSort === option.sort}
               onCheckedChange={() => setChronologicalSort(option.sort)}
             >
+              <Icon name={option.icon} aria-hidden="true" />
               {option.label}
             </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
-          Show
+          Thread status
         </DropdownMenuLabel>
-        <DropdownMenuGroup aria-label="Show">
+        <DropdownMenuGroup aria-label="Thread status">
           {SIDEBAR_THREAD_LIFECYCLE_STATES.map((state) => (
             <DropdownMenuCheckboxItem
               key={state}
@@ -820,95 +755,13 @@ export function SidebarDisplayOptionsMenu({
                 )
               }
             >
-              <span className="min-w-0 flex-1 truncate">
-                {lifecycleLabels[state]}
-              </span>
-              <span className="ml-4 shrink-0 text-xs text-muted-foreground">
-                {lifecycleCounts[state]}
-              </span>
+              <Icon
+                name={lifecyclePresentation[state].icon}
+                aria-hidden="true"
+              />
+              {lifecyclePresentation[state].label}
             </DropdownMenuCheckboxItem>
           ))}
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
-          Sidebar sections
-        </DropdownMenuLabel>
-        <DropdownMenuGroup aria-label="Sidebar sections">
-          {topLevelSectionOrder.map((sectionId, index) => {
-            const section = SIDEBAR_TOP_LEVEL_SECTION_DEFINITIONS.find(
-              (candidate) => candidate.id === sectionId,
-            );
-            if (!section) return null;
-            const isHidden = hiddenTopLevelSectionIds.includes(sectionId);
-            return (
-              <DropdownMenuSub key={sectionId}>
-                <DropdownMenuSubTrigger>{section.label}</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {section.hideable ? (
-                    <>
-                      <DropdownMenuCheckboxItem
-                        checked={!isHidden}
-                        onCheckedChange={(shown) =>
-                          setHiddenTopLevelSectionIds((current) =>
-                            setSidebarTopLevelSectionHidden(
-                              current,
-                              sectionId,
-                              !shown,
-                            ),
-                          )
-                        }
-                      >
-                        Show section
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuSeparator />
-                    </>
-                  ) : null}
-                  <DropdownMenuItem
-                    disabled={index === 0}
-                    onSelect={() =>
-                      setTopLevelSectionOrder((current) =>
-                        moveSidebarTopLevelSection(current, sectionId, -1),
-                      )
-                    }
-                  >
-                    <Icon name="ArrowUp" aria-hidden="true" />
-                    Move up
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={index === topLevelSectionOrder.length - 1}
-                    onSelect={() =>
-                      setTopLevelSectionOrder((current) =>
-                        moveSidebarTopLevelSection(current, sectionId, 1),
-                      )
-                    }
-                  >
-                    <Icon name="ArrowDown" aria-hidden="true" />
-                    Move down
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            );
-          })}
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
-          Sidebar items
-        </DropdownMenuLabel>
-        <DropdownMenuGroup aria-label="Sidebar items">
-          <DropdownMenuCheckboxItem
-            checked={showNewThread}
-            onSelect={(event) => event.preventDefault()}
-            onCheckedChange={(shown) => setShowNewThread(shown === true)}
-          >
-            New thread
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
-            checked={showExtensions}
-            onSelect={(event) => event.preventDefault()}
-            onCheckedChange={(shown) => setShowExtensions(shown === true)}
-          >
-            Extensions
-          </DropdownMenuCheckboxItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -916,10 +769,7 @@ export function SidebarDisplayOptionsMenu({
 }
 
 interface SidebarThreadsSectionActionsProps {
-  activeCount: number;
-  displayOptionsOpen: boolean;
-  draftCount: number;
-  onDisplayOptionsOpenChange: (open: boolean) => void;
+  displayOptions?: ReactNode;
   isCreatingSection: boolean;
   onNewSection?: () => void;
   isCreatingProject: boolean;
@@ -927,14 +777,10 @@ interface SidebarThreadsSectionActionsProps {
   onNewThread: () => void;
 }
 
-// The complete Threads-section header cluster. Every organization mode and
-// every section state renders this same component so the label-adjacent actions
-// cannot drift apart.
+// Creation actions owned by the loose/manual bucket. The global Filter is
+// supplied separately so it can live on the first visible header in any mode.
 function SidebarThreadsSectionActions({
-  activeCount,
-  displayOptionsOpen,
-  draftCount,
-  onDisplayOptionsOpenChange,
+  displayOptions,
   isCreatingSection,
   onNewSection,
   isCreatingProject,
@@ -943,12 +789,7 @@ function SidebarThreadsSectionActions({
 }: SidebarThreadsSectionActionsProps) {
   return (
     <>
-      <SidebarDisplayOptionsMenu
-        activeCount={activeCount}
-        draftCount={draftCount}
-        open={displayOptionsOpen}
-        onOpenChange={onDisplayOptionsOpenChange}
-      />
+      {displayOptions}
       {onNewProject ? (
         <ProjectListProjectsSectionActions
           isCreatingProject={isCreatingProject}
@@ -1000,7 +841,6 @@ export function ProjectListActionButtons({
   newThreadSplit,
   onNewChat,
   onSplit,
-  showNewThread = true,
 }: ProjectListActionButtonsProps) {
   const isNewChatDisabled = !onNewChat;
   const newThreadShortcut = useAppCommandShortcut("thread.new");
@@ -1008,81 +848,74 @@ export function ProjectListActionButtons({
 
   return (
     <div className="space-y-1">
-      <div
-        className={cn(
-          "flex min-w-0 items-center gap-0.5",
-          !showNewThread && "justify-end",
-        )}
-      >
-        {showNewThread ? (
-          <div
-            className={cn(
-              "relative min-w-0 flex-1",
-              SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-            )}
-          >
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
-              onPointerDown={newThreadSplit?.onPointerDown}
-              onClick={(event) => {
-                if (event.metaKey || event.ctrlKey) {
-                  newThreadSplit?.openInSplit();
-                  return;
-                }
-                onNewChat?.();
-              }}
-              disabled={isNewChatDisabled}
-              aria-label={
-                newThreadShortcut
-                  ? `New thread (${newThreadShortcut.label})`
-                  : "New thread"
+      <div className="flex min-w-0 items-center gap-0.5">
+        <div
+          className={cn(
+            "relative min-w-0 flex-1",
+            SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
+          )}
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={cn(PROJECT_LIST_ACTION_BUTTON_CLASS, "w-full")}
+            onPointerDown={newThreadSplit?.onPointerDown}
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey) {
+                newThreadSplit?.openInSplit();
+                return;
               }
-              aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
+              onNewChat?.();
+            }}
+            disabled={isNewChatDisabled}
+            aria-label={
+              newThreadShortcut
+                ? `New thread (${newThreadShortcut.label})`
+                : "New thread"
+            }
+            aria-keyshortcuts={newThreadShortcut?.ariaKeyshortcuts}
+          >
+            <Icon name="MessageSquarePlus" />
+            <span
+              className={cn(
+                "flex min-w-0 flex-1 items-center gap-1.5",
+                onSplit && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
+              )}
             >
-              <Icon name="MessageSquarePlus" />
-              <span
-                className={cn(
-                  "flex min-w-0 flex-1 items-center gap-1.5",
-                  onSplit && SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
-                )}
+              <span className="min-w-0 truncate text-left">New thread</span>
+              {newThreadSplitIndicator.miniMap ? (
+                <SplitPaneMiniMap
+                  slots={newThreadSplitIndicator.miniMap}
+                  label="New thread — open in split"
+                />
+              ) : null}
+              <AppCommandShortcutHint shortcut={newThreadShortcut} />
+            </span>
+          </Button>
+          {onSplit ? (
+            <div
+              className={cn(
+                SIDEBAR_HOVER_ACTIONS_CLASS,
+                "absolute inset-y-0 right-0 flex items-center",
+              )}
+            >
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="Split"
+                className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
+                onClick={onSplit}
               >
-                <span className="min-w-0 truncate text-left">New thread</span>
-                {newThreadSplitIndicator.miniMap ? (
-                  <SplitPaneMiniMap
-                    slots={newThreadSplitIndicator.miniMap}
-                    label="New thread — open in split"
-                  />
-                ) : null}
-                <AppCommandShortcutHint shortcut={newThreadShortcut} />
-              </span>
-            </Button>
-            {onSplit ? (
-              <div
-                className={cn(
-                  SIDEBAR_HOVER_ACTIONS_CLASS,
-                  "absolute inset-y-0 right-0 flex items-center",
-                )}
-              >
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  aria-label="Split"
-                  className={PROJECT_LIST_ACTION_ICON_BUTTON_CLASS}
-                  onClick={onSplit}
-                >
-                  <Icon
-                    name="Columns2"
-                    className={COARSE_POINTER_ICON_SIZE_CLASS}
-                  />
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+                <Icon
+                  name="Columns2"
+                  className={COARSE_POINTER_ICON_SIZE_CLASS}
+                />
+              </Button>
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -1102,9 +935,14 @@ interface BuiltInSectionRenderState {
   showPinnedSection: boolean;
 }
 
+interface GlobalDisplayOptionsProps {
+  displayOptions: ReactNode;
+  displayOptionsOpen: boolean;
+}
+
 interface ActiveSidebarModeSectionsProps {
   mode: SidebarOrganizationMode;
-  renderChronological: () => ReactNode;
+  renderManual: () => ReactNode;
   renderMachine: () => ReactNode;
   renderProject: () => ReactNode;
 }
@@ -1134,21 +972,23 @@ export function BuiltInSidebarLifecycleSections({
 
 export function ActiveSidebarModeSections({
   mode,
-  renderChronological,
+  renderManual,
   renderMachine,
   renderProject,
 }: ActiveSidebarModeSectionsProps) {
   if (mode === "machine") return renderMachine();
-  if (mode === "chronological") return renderChronological();
+  if (mode === "manual") return renderManual();
   return renderProject();
 }
 
-interface ProjectModeSectionsProps extends BuiltInSectionRenderState {
+interface ProjectModeSectionsProps
+  extends BuiltInSectionRenderState, GlobalDisplayOptionsProps {
   collapsedEnvironmentIds: Set<string>;
   collapsedThreadIds: Set<string>;
   compareThreads: ThreadComparator;
   draftThreadIds: ReadonlySet<string>;
   effectivePinnedThreadIds: ReadonlySet<string>;
+  personalProjectLabel: string;
   isReady: boolean;
   onCreateProjectThread: (projectId: string) => void;
   onProjectSelect?: () => void;
@@ -1156,8 +996,6 @@ interface ProjectModeSectionsProps extends BuiltInSectionRenderState {
   onToggleThreadCollapsed: ToggleCollapsedId;
   pinnedSection: BuiltInSidebarSectionOptions;
   projects: readonly ProjectResponse[];
-  renderSectionDisplayOptions: (sectionId: SidebarSectionId) => ReactNode;
-  isSectionDisplayOptionsOpen: (sectionId: SidebarSectionId) => boolean;
   selectedThreadId?: string;
   status: ConnectionAwareQueryStatus;
   threads: ThreadListEntry[];
@@ -1169,18 +1007,19 @@ function ProjectModeSections({
   collapsedSectionIds,
   collapsedThreadIds,
   compareThreads,
+  displayOptions,
+  displayOptionsOpen,
   draftThreadIds,
   effectivePinnedThreadIds,
   isReady,
-  isSectionDisplayOptionsOpen,
   onCreateProjectThread,
   onProjectSelect,
   onToggleCollapsed,
   onToggleEnvironmentCollapsed,
   onToggleThreadCollapsed,
   pinnedSection,
+  personalProjectLabel,
   projects,
-  renderSectionDisplayOptions,
   selectedThreadId,
   showPinnedSection,
   status,
@@ -1291,14 +1130,42 @@ function ProjectModeSections({
     showPinnedSection,
     isReady,
   });
+  const firstSectionId = order[0];
   const reorderDisabled = order.length < 2;
   const personalThreads =
     threadsByProject.get(PERSONAL_PROJECT_ID)?.filter(isSidebarProjectThread) ??
     [];
   const builtInSections: BuiltInSidebarSectionOptionsById = {
-    pinned: pinnedSection,
+    pinned: {
+      ...pinnedSection,
+      actions:
+        firstSectionId === "pinned" ? (
+          <>
+            {displayOptions}
+            {pinnedSection.actions}
+          </>
+        ) : (
+          pinnedSection.actions
+        ),
+      actionsOpen:
+        pinnedSection.actionsOpen ||
+        (firstSectionId === "pinned" && displayOptionsOpen),
+    },
     threads: {
       ...threadsSection,
+      label: personalProjectLabel,
+      actions:
+        firstSectionId === "threads" ? (
+          <>
+            {displayOptions}
+            {threadsSection.actions}
+          </>
+        ) : (
+          threadsSection.actions
+        ),
+      actionsOpen:
+        threadsSection.actionsOpen ||
+        (firstSectionId === "threads" && displayOptionsOpen),
       activity: getCollapsedChildActivity(personalThreads, draftThreadIds),
       collapsedThreads: personalThreads,
       content: (
@@ -1353,8 +1220,10 @@ function ProjectModeSections({
             collapsedEnvironmentIds={collapsedEnvironmentIds}
             compareThreads={compareThreads}
             isLocalPathInvalid={row.isLocalPathInvalid}
-            headerActions={renderSectionDisplayOptions(sectionId)}
-            headerActionsOpen={isSectionDisplayOptionsOpen(sectionId)}
+            headerActions={firstSectionId === sectionId ? displayOptions : null}
+            headerActionsOpen={
+              firstSectionId === sectionId && displayOptionsOpen
+            }
             onProjectSelect={onProjectSelect}
             onCreateProjectThread={onCreateProjectThread}
             onToggleProjectCollapsed={toggleProjectCollapsed}
@@ -1369,7 +1238,8 @@ function ProjectModeSections({
   );
 }
 
-interface SectionModeSectionsProps extends BuiltInSectionRenderState {
+interface SectionModeSectionsProps
+  extends BuiltInSectionRenderState, GlobalDisplayOptionsProps {
   collapsedEnvironmentIds: Set<string>;
   collapsedThreadIds: Set<string>;
   compareThreads: ThreadComparator;
@@ -1387,10 +1257,6 @@ interface SectionModeSectionsProps extends BuiltInSectionRenderState {
   onReorderPinnedThread: NonNullable<
     PinnedThreadTreeProps["onReorderPinnedRoot"]
   >;
-  renderTopLevelSectionHeaderActions: (section: SidebarSectionDefinition) => {
-    actions: ReactNode;
-    actionsOpen: boolean;
-  };
   selectedThreadId?: string;
   status: ConnectionAwareQueryStatus;
   threads: ThreadListEntry[];
@@ -1403,6 +1269,8 @@ function SectionModeSections({
   collapsedSectionIds,
   collapsedThreadIds,
   compareThreads,
+  displayOptions,
+  displayOptionsOpen,
   effectivePinnedThreadIds,
   sections,
   isReady,
@@ -1417,7 +1285,6 @@ function SectionModeSections({
   pinnedReorderPending,
   pinnedThreads,
   onReorderPinnedThread,
-  renderTopLevelSectionHeaderActions,
   selectedThreadId,
   showPinnedSection,
   status,
@@ -1440,11 +1307,12 @@ function SectionModeSections({
     [sections],
   );
   const { onOrderChange, order } = useSidebarModeSectionOrder({
-    mode: "chronological",
+    mode: "manual",
     entitySectionIds: threadSectionIds,
     showPinnedSection,
     isReady,
   });
+  const firstSectionId = order[0];
 
   return (
     <ChronologicalSectionThreadSections
@@ -1458,7 +1326,13 @@ function SectionModeSections({
       onCreateThreadInSection={onCreateThreadInSection}
       onRenameSection={onRenameSection}
       onRemoveSection={onRemoveSection}
-      renderTopLevelSectionHeaderActions={renderTopLevelSectionHeaderActions}
+      renderTopLevelSectionHeaderActions={(section) => {
+        const sectionId = buildSidebarEntitySectionId("section", section.id);
+        return {
+          actions: firstSectionId === sectionId ? displayOptions : null,
+          actionsOpen: firstSectionId === sectionId && displayOptionsOpen,
+        };
+      }}
       onToggleThreadCollapsed={onToggleThreadCollapsed}
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
       topLevelSectionOrder={order}
@@ -1467,8 +1341,36 @@ function SectionModeSections({
       pinnedThreads={pinnedThreads}
       onReorderPinnedThread={onReorderPinnedThread}
       builtInSections={{
-        pinned: pinnedSection,
-        threads: threadsSection,
+        pinned: {
+          ...pinnedSection,
+          actions:
+            firstSectionId === "pinned" ? (
+              <>
+                {displayOptions}
+                {pinnedSection.actions}
+              </>
+            ) : (
+              pinnedSection.actions
+            ),
+          actionsOpen:
+            pinnedSection.actionsOpen ||
+            (firstSectionId === "pinned" && displayOptionsOpen),
+        },
+        threads: {
+          ...threadsSection,
+          actions:
+            firstSectionId === "threads" ? (
+              <>
+                {displayOptions}
+                {threadsSection.actions}
+              </>
+            ) : (
+              threadsSection.actions
+            ),
+          actionsOpen:
+            threadsSection.actionsOpen ||
+            (firstSectionId === "threads" && displayOptionsOpen),
+        },
         collapsedSectionIds,
         onToggleCollapsed,
       }}
@@ -1476,7 +1378,8 @@ function SectionModeSections({
   );
 }
 
-interface MachineModeSectionsProps extends BuiltInSectionRenderState {
+interface MachineModeSectionsProps
+  extends BuiltInSectionRenderState, GlobalDisplayOptionsProps {
   collapsedEnvironmentIds: Set<string>;
   collapsedThreadIds: Set<string>;
   compareThreads: ThreadComparator;
@@ -1487,8 +1390,6 @@ interface MachineModeSectionsProps extends BuiltInSectionRenderState {
   onToggleEnvironmentCollapsed: ToggleCollapsedId;
   onToggleThreadCollapsed: ToggleCollapsedId;
   pinnedSection: BuiltInSidebarSectionOptions;
-  renderSectionDisplayOptions: (sectionId: SidebarSectionId) => ReactNode;
-  isSectionDisplayOptionsOpen: (sectionId: SidebarSectionId) => boolean;
   selectedThreadId?: string;
   status: ConnectionAwareQueryStatus;
   threads: ThreadListEntry[];
@@ -1500,16 +1401,16 @@ export function MachineModeSections({
   collapsedSectionIds,
   collapsedThreadIds,
   compareThreads,
+  displayOptions,
+  displayOptionsOpen,
   draftThreadIds,
   effectivePinnedThreadIds,
   isReady,
-  isSectionDisplayOptionsOpen,
   onProjectSelect,
   onToggleCollapsed,
   onToggleEnvironmentCollapsed,
   onToggleThreadCollapsed,
   pinnedSection,
-  renderSectionDisplayOptions,
   selectedThreadId,
   showPinnedSection,
   status,
@@ -1582,11 +1483,39 @@ export function MachineModeSections({
     showPinnedSection,
     isReady,
   });
+  const firstSectionId = order[0];
   const reorderDisabled = order.length < 2;
   const builtInSections: BuiltInSidebarSectionOptionsById = {
-    pinned: pinnedSection,
+    pinned: {
+      ...pinnedSection,
+      actions:
+        firstSectionId === "pinned" ? (
+          <>
+            {displayOptions}
+            {pinnedSection.actions}
+          </>
+        ) : (
+          pinnedSection.actions
+        ),
+      actionsOpen:
+        pinnedSection.actionsOpen ||
+        (firstSectionId === "pinned" && displayOptionsOpen),
+    },
     threads: {
       ...threadsSection,
+      label: "Machines",
+      actions:
+        firstSectionId === "threads" ? (
+          <>
+            {displayOptions}
+            {threadsSection.actions}
+          </>
+        ) : (
+          threadsSection.actions
+        ),
+      actionsOpen:
+        threadsSection.actionsOpen ||
+        (firstSectionId === "threads" && displayOptionsOpen),
       activity: getCollapsedChildActivity(nonPinnedThreads, draftThreadIds),
       collapsedThreads: nonPinnedThreads,
       content: (
@@ -1630,8 +1559,8 @@ export function MachineModeSections({
             id={sectionId}
             label={section.label}
             disabled={reorderDisabled}
-            actions={renderSectionDisplayOptions(sectionId)}
-            actionsOpen={isSectionDisplayOptionsOpen(sectionId)}
+            actions={firstSectionId === sectionId ? displayOptions : null}
+            actionsOpen={firstSectionId === sectionId && displayOptionsOpen}
             actionsMobileAlways
             collapsedActivity={section.activity}
             collapsedThreads={section.threadListState.threads}
@@ -1905,39 +1834,12 @@ function ProjectListComponent({
   const setCollapsedMachineKeyList = useSetAtom(sidebarCollapsedMachinesAtom);
   const [collapsedSidebarSectionIdList, setCollapsedSidebarSectionIdList] =
     useAtom(collapsedSidebarSectionIdsAtom);
-  const [openSidebarMenu, setOpenSidebarMenu] = useState<OpenSidebarMenu>(null);
-  const setSidebarMenuOpen = useCallback(
-    (menu: Exclude<OpenSidebarMenu, null>, open: boolean) => {
-      setOpenSidebarMenu((current) =>
-        open ? menu : current === menu ? null : current,
-      );
-    },
-    [],
-  );
-  const handleThreadsDisplayOptionsMenuOpenChange = useCallback(
-    (open: boolean) => setSidebarMenuOpen("threadsDisplayOptions", open),
-    [setSidebarMenuOpen],
-  );
-  const threadsDisplayOptionsMenuOpen =
-    openSidebarMenu === "threadsDisplayOptions";
-  const renderSectionDisplayOptions = (sectionId: string) => {
-    const menuId = `displayOptions:${sectionId}` as const;
-    return (
-      <SidebarDisplayOptionsMenu
-        activeCount={threads.length}
-        draftCount={newThreadDrafts.length}
-        open={openSidebarMenu === menuId}
-        onOpenChange={(open) => setSidebarMenuOpen(menuId, open)}
-      />
-    );
-  };
-  const isSectionDisplayOptionsOpen = (sectionId: SidebarSectionId) =>
-    openSidebarMenu === `displayOptions:${sectionId}`;
+  const [displayOptionsOpen, setDisplayOptionsOpen] = useState(false);
   const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
   const [chronologicalSort, setChronologicalSort] = useAtom(
     sidebarChronologicalSortAtom,
   );
-  const isSectionOrganizationMode = organizationMode === "chronological";
+  const isSectionOrganizationMode = organizationMode === "manual";
   const setCollapsedSectionList = useSetAtom(
     sidebarCollapsedThreadSectionsAtom,
   );
@@ -2125,13 +2027,16 @@ function ProjectListComponent({
       pinnedSidebarState.effectivePinnedThreadIds.has(thread.id) &&
       isSidebarProjectThread(thread),
   );
-  // One Threads-header cluster shared by every organization and section state.
+  const displayOptionsMenu = (
+    <SidebarDisplayOptionsMenu
+      open={displayOptionsOpen}
+      onOpenChange={setDisplayOptionsOpen}
+    />
+  );
+  // Creation controls stay attached to the loose/manual bucket. The global
+  // Filter is injected separately into the first visible thread-list header.
   const threadsSectionActions = (
     <SidebarThreadsSectionActions
-      activeCount={threads.length}
-      displayOptionsOpen={threadsDisplayOptionsMenuOpen}
-      draftCount={newThreadDrafts.length}
-      onDisplayOptionsOpenChange={handleThreadsDisplayOptionsMenuOpenChange}
       isCreatingSection={isCreateThreadSectionPending}
       onNewSection={
         isSectionOrganizationMode ? handleOpenCreateSectionDialog : undefined
@@ -2146,13 +2051,11 @@ function ProjectListComponent({
     collapsedThreads: pinnedSectionThreads,
     label: "Pinned",
     content: pinnedSectionContent,
-    actions: renderSectionDisplayOptions("pinned"),
-    actionsOpen: isSectionDisplayOptionsOpen("pinned"),
   };
   const threadsSection = {
     label: "Threads",
     actions: threadsSectionActions,
-    actionsOpen: threadsDisplayOptionsMenuOpen,
+    actionsOpen: false,
   } satisfies Omit<BuiltInSidebarSectionOptions, "content">;
   const sectionCreateDialog = (
     <ThreadSectionCreateDialog
@@ -2244,15 +2147,15 @@ function ProjectListComponent({
                   collapsedThreadIds={collapsedThreadIds}
                   collapsedEnvironmentIds={collapsedEnvironmentIds}
                   compareThreads={sidebarThreadComparator}
-                  renderSectionDisplayOptions={renderSectionDisplayOptions}
-                  isSectionDisplayOptionsOpen={isSectionDisplayOptionsOpen}
+                  displayOptions={displayOptionsMenu}
+                  displayOptionsOpen={displayOptionsOpen}
                   onProjectSelect={onProjectSelect}
                   onToggleCollapsed={toggleSidebarSectionCollapsed}
                   onToggleThreadCollapsed={toggleThreadCollapsed}
                   onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
                 />
               )}
-              renderChronological={() => (
+              renderManual={() => (
                 <SectionModeSections
                   threads={threads}
                   effectivePinnedThreadIds={
@@ -2272,20 +2175,12 @@ function ProjectListComponent({
                   collapsedThreadIds={collapsedThreadIds}
                   collapsedEnvironmentIds={collapsedEnvironmentIds}
                   compareThreads={sidebarThreadComparator}
+                  displayOptions={displayOptionsMenu}
+                  displayOptionsOpen={displayOptionsOpen}
                   onProjectSelect={onProjectSelect}
                   onCreateThreadInSection={handleCreateThreadInSection}
                   onRenameSection={handleOpenRenameThreadSection}
                   onRemoveSection={handleRemoveThreadSection}
-                  renderTopLevelSectionHeaderActions={(section) => {
-                    const sectionId = buildSidebarEntitySectionId(
-                      "section",
-                      section.id,
-                    );
-                    return {
-                      actions: renderSectionDisplayOptions(sectionId),
-                      actionsOpen: isSectionDisplayOptionsOpen(sectionId),
-                    };
-                  }}
                   onToggleCollapsed={toggleSidebarSectionCollapsed}
                   onToggleThreadCollapsed={toggleThreadCollapsed}
                   onToggleEnvironmentCollapsed={toggleEnvironmentCollapsed}
@@ -2299,6 +2194,9 @@ function ProjectListComponent({
                   effectivePinnedThreadIds={
                     pinnedSidebarState.effectivePinnedThreadIds
                   }
+                  personalProjectLabel={
+                    sidebarNavigation?.personalProject.name ?? "Personal"
+                  }
                   status={projectsState.status}
                   isReady={Boolean(sidebarNavigation)}
                   showPinnedSection={hasPinnedSection}
@@ -2309,8 +2207,8 @@ function ProjectListComponent({
                   collapsedThreadIds={collapsedThreadIds}
                   collapsedEnvironmentIds={collapsedEnvironmentIds}
                   compareThreads={sidebarThreadComparator}
-                  renderSectionDisplayOptions={renderSectionDisplayOptions}
-                  isSectionDisplayOptionsOpen={isSectionDisplayOptionsOpen}
+                  displayOptions={displayOptionsMenu}
+                  displayOptionsOpen={displayOptionsOpen}
                   onProjectSelect={onProjectSelect}
                   onCreateProjectThread={handleCreateProjectThread}
                   onToggleCollapsed={toggleSidebarSectionCollapsed}
@@ -2326,8 +2224,8 @@ function ProjectListComponent({
             <SidebarArchivedThreadGroup
               threads={archivedThreads}
               activeThreadId={selectedThreadId}
-              actions={renderSectionDisplayOptions("archived")}
-              actionsOpen={openSidebarMenu === "displayOptions:archived"}
+              actions={!showActiveModeSections ? displayOptionsMenu : null}
+              actionsOpen={!showActiveModeSections && displayOptionsOpen}
               hasNextPage={archivedThreadsQuery.hasNextPage}
               isFetchingNextPage={archivedThreadsQuery.isFetchingNextPage}
               onLoadMore={() => {
@@ -2342,15 +2240,16 @@ function ProjectListComponent({
             <TopLevelSidebarSection
               label={showArchivedOnlyControl ? "Archived" : "Threads"}
               actions={
-                showArchivedOnlyControl
-                  ? renderSectionDisplayOptions("archived")
-                  : threadsSectionActions
+                showArchivedOnlyControl ? (
+                  displayOptionsMenu
+                ) : (
+                  <>
+                    {displayOptionsMenu}
+                    {threadsSectionActions}
+                  </>
+                )
               }
-              actionsOpen={
-                showArchivedOnlyControl
-                  ? openSidebarMenu === "displayOptions:archived"
-                  : threadsDisplayOptionsMenuOpen
-              }
+              actionsOpen={displayOptionsOpen}
             >
               {showFilteredEmptyState ? (
                 <p

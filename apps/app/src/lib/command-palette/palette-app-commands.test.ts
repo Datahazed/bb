@@ -28,7 +28,6 @@ function build(
 describe("PALETTE_COMMAND_IDS", () => {
   it("omits the numbered accelerator families and the palette's own command", () => {
     expect(PALETTE_COMMAND_IDS).toContain("thread.new");
-    expect(PALETTE_COMMAND_IDS).toContain("thread.split");
     expect(PALETTE_COMMAND_IDS).not.toContain("thread.jump.1");
     expect(PALETTE_COMMAND_IDS).not.toContain("pane.focus.1");
     expect(PALETTE_COMMAND_IDS).not.toContain("question.select.1");
@@ -86,18 +85,6 @@ describe("buildAppCommandActions", () => {
       group: "Window and layout",
     });
   });
-
-  it("leaves the shortcut null for a command the user has not bound", () => {
-    const { actions } = build(["thread.split"]);
-    expect(actions[0]).toMatchObject({
-      id: "app:thread.split",
-      bucket: "Threads",
-      group: "Threads",
-      shortcut: null,
-      title: "Split",
-    });
-  });
-
   it("dispatches with the element that was focused before the palette opened", () => {
     const target = { id: "composer" } as unknown as EventTarget;
     const dispatch = vi.fn();
